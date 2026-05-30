@@ -1,0 +1,12 @@
+[submodule "languages/rust-lang-project-harness"]
+	path = languages/rust-lang-project-harness
+	url = https://github.com/tao3k/rust-lang-project-harness
+[submodule "languages/typescript-lang-project-harness"]
+	path = languages/typescript-lang-project-harness
+	url = https://github.com/tao3k/typescript-lang-project-harness
+[submodule "languages/JuliaLangProjectHarness.jl"]
+	path = languages/JuliaLangProjectHarness.jl
+	url = https://github.com/JuliaCN/JuliaLangProjectHarness.jl
+[submodule "languages/python-lang-project-harness"]
+	path = languages/python-lang-project-harness
+	url = https://github.com/tao3k/python-lang-project-harness
