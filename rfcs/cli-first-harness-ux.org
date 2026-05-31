@@ -1087,21 +1087,21 @@ rs-harness search deps reqwest@0.12::Client
 #+end_src
 
 #+begin_example
-[search-deps] q=reqwest@0.12::Client pkg=. dep=1 own=2 api=0 requestedVersion=0.12 versionScope=current apiQuery=Client
+[search-deps] q=reqwest@0.12::Client pkg=. dep=1 own=2 api=0 requestedVersion=0.12 currentWorkspaceVersion=0.12 versionScope=current apiQuery=Client
 |dep reqwest import=reqwest pkg=reqwest version=0.12 kind=normal opt=false source=manifest manager=cargo feat=json,rustls-tls
-|owner src/http/client.rs hitKind=dependency-api apiQuery=Client locations=42:17 next=owner:src/http/client.rs
-|owner src/api/orders.rs hitKind=dependency-api apiQuery=Client locations=19:8 next=owner:src/api/orders.rs
-|next dependency:reqwest,docs-use:reqwest::Client,text:Client,tests:Client
+|owner src/http/client.rs hit_kind=dependency-api apiQuery=Client locations=42:17 next=owner:src/http/client.rs
+|owner src/api/orders.rs hit_kind=dependency-api apiQuery=Client locations=19:8 next=owner:src/api/orders.rs
+|next dependency:reqwest,docs:reqwest::Client,text:Client,tests:Client
 #+end_example
 
 If the query asks for a version outside the current workspace resolution, the
 same view becomes a version distinction packet rather than a local usage claim:
 
 #+begin_example
-[search-deps] q=reqwest@0.11::Client pkg=. dep=1 own=0 api=0 requestedVersion=0.11 versionScope=external apiQuery=Client
+[search-deps] q=reqwest@0.11::Client pkg=. dep=1 own=0 api=0 requestedVersion=0.11 currentWorkspaceVersion=0.12 versionScope=external apiQuery=Client
 |dep reqwest import=reqwest pkg=reqwest version=0.12 kind=normal opt=false source=manifest manager=cargo feat=json,rustls-tls
-|note requestedVersion=0.11 scope=external currentWorkspaceVersion=0.12 next=docs-use:reqwest@0.11::Client
-|next docs-use:reqwest@0.11::Client,text:Client
+|note kind=version-scope message=requested-version-is-outside-current-workspace-version
+|next docs:reqwest::Client,text:Client
 #+end_example
 
 The current workspace package metadata and lockfile define the local version
@@ -1247,6 +1247,10 @@ presenting current workspace parser facts as external-version docs:
 #+begin_src text
 |note docsSource=registry-source missing=true
 #+end_src
+
+Dependency-prefixed docs/API queries such as =serde::Serialize= use
+=source=registry-source= unless the provider has parser facts for a local
+workspace/path dependency source.
 
 Output format (API facts, not docs prose):
 
