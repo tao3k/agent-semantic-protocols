@@ -280,7 +280,7 @@ fn rust_profile() -> Value {
         "commands": {
             "prime": {"argv": ["rs-harness", "search", "prime", "--view", "seeds", "."]},
             "owner": {"argv": ["rs-harness", "search", "owner", "{path}", "items", "--view", "seeds", "."]},
-            "text": {"argv": ["rs-harness", "search", "text", "{query}", "owner", "tests", "--view", "seeds", "."]},
+            "text": {"argv": ["rs-harness", "search", "text", "{query}", "tests", "--view", "seeds", "."]},
             "ingest": {"argv": ["rs-harness", "search", "ingest", "items", "tests", "--view", "seeds", "."], "stdinMode": "pipe-candidates"},
             "checkChanged": {"argv": ["rs-harness", "check", "--changed", "."]}
         }
@@ -323,7 +323,7 @@ fn python_profile() -> Value {
             "prime": {"argv": ["py-harness", "search", "prime", "."]},
             "owner": {"argv": ["py-harness", "search", "owner", "{path}", "."]},
             "text": {"argv": ["py-harness", "search", "text", "{query}", "owner", "tests", "--view", "seeds", "."]},
-            "ingest": {"argv": ["py-harness", "search", "ingest", "owner", "tests", "--view", "seeds", "."], "stdinMode": "pipe-candidates"},
+            "ingest": {"argv": ["py-harness", "search", "ingest", "."], "stdinMode": "pipe-candidates"},
             "checkChanged": {"argv": ["py-harness", "check", "--changed", "."]}
         }
     })

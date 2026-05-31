@@ -155,6 +155,57 @@ fn cli_install_writes_root_owned_codex_hook_config() {
     let registry = parse_profiles(&profiles).expect("valid installed profile registry");
     assert_eq!(registry.profiles.len(), 1);
     assert_eq!(registry.profiles[0].language_id, "rust");
+    assert_eq!(
+        registry.profiles[0].commands.text.argv,
+        [
+            "rs-harness",
+            "search",
+            "text",
+            "{query}",
+            "tests",
+            "--view",
+            "seeds",
+            "."
+        ]
+    );
+    std::fs::remove_dir_all(root).expect("cleanup temp project root");
+}
+
+#[test]
+fn cli_install_writes_executable_python_ingest_route() {
+    let root = temp_project_root("install-python");
+    std::fs::write(
+        root.join("pyproject.toml"),
+        "[project]\nname = \"demo-python\"\nversion = \"0.1.0\"\n",
+    )
+    .expect("write temp pyproject.toml");
+    let output = Command::new(env!("CARGO_BIN_EXE_semantic-agent-hook"))
+        .args([
+            "install",
+            "--client",
+            "codex",
+            root.to_str().expect("utf8 temp root"),
+        ])
+        .output()
+        .expect("run semantic-agent-hook install");
+
+    assert!(
+        output.status.success(),
+        "install stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let profiles = std::fs::read_to_string(root.join(".codex/semantic-agent-hook/profiles.json"))
+        .expect("installed profile registry");
+    let registry = parse_profiles(&profiles).expect("valid installed profile registry");
+    let python = registry
+        .profiles
+        .iter()
+        .find(|profile| profile.language_id == "python")
+        .expect("python profile");
+    assert_eq!(
+        python.commands.ingest.argv,
+        ["py-harness", "search", "ingest", "."]
+    );
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
 }
 
@@ -219,7 +270,7 @@ fn cli_profiles_merge_writes_combined_registry() {
                     "prime": {"argv": ["py-harness", "search", "prime", "."]},
                     "owner": {"argv": ["py-harness", "search", "owner", "{path}", "."]},
                     "text": {"argv": ["py-harness", "search", "text", "{query}", "owner", "tests", "--view", "seeds", "."]},
-                    "ingest": {"argv": ["py-harness", "search", "ingest", "owner", "tests", "--view", "seeds", "."], "stdinMode": "pipe-candidates"},
+                    "ingest": {"argv": ["py-harness", "search", "ingest", "."], "stdinMode": "pipe-candidates"},
                     "checkChanged": {"argv": ["py-harness", "check", "--changed", "."]}
                 }
             }]

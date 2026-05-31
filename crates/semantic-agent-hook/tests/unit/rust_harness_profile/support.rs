@@ -39,7 +39,7 @@ pub(super) fn root_owned_rust_profile_registry_json() -> String {
             "commands": {
                 "prime": {"argv": ["rs-harness", "search", "prime", "--view", "seeds", "."]},
                 "owner": {"argv": ["rs-harness", "search", "owner", "{path}", "items", "--view", "seeds", "."]},
-                "text": {"argv": ["rs-harness", "search", "text", "{query}", "owner", "tests", "--view", "seeds", "."]},
+                "text": {"argv": ["rs-harness", "search", "text", "{query}", "tests", "--view", "seeds", "."]},
                 "ingest": {"argv": ["rs-harness", "search", "ingest", "items", "tests", "--view", "seeds", "."], "stdinMode": "pipe-candidates"},
                 "checkChanged": {"argv": ["rs-harness", "check", "--changed", "."]}
             }
