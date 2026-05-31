@@ -1,0 +1,216 @@
+#+TITLE: Semantic Flow Sandbox: TypeScript Schema-CI Drill
+#+DATE: 2026-05-31
+#+STATUS: sandbox
+#+SOURCE_RFC: rfcs/evidence-layer-architecture.org, rfcs/cli-first-harness-ux.org
+
+* Scenario
+
+The drill replays the TypeScript CI failure mode where the provider package ran
+from an independent checkout while the shared JSON Schema files lived only in
+the protocol repository root.
+
+The expected flow is:
+
+#+begin_src text
+Spec -> Scope -> Plan -> Implement -> Check -> Test -> Verify -> Close
+registry -> workspace -> prime -> focused search -> synthesis -> check
+#+end_src
+
+This is a sandbox drill, not a new protocol surface.  The CLI still owns
+deterministic facts only; the agent client owns task intent, axis selection,
+subagent planning, synthesis, and edit decisions.
+
+* Commands
+
+All commands were run from:
+
+#+begin_src text
+languages/typescript-lang-project-harness
+#+end_src
+
+** Registry
+
+#+begin_src shell
+node dist/src/cli/main.js agent doctor --json . \
+  | jq -c '{registryId, protocolId, language: .languages[0].languageId, provider: .languages[0].providerId, binary: .languages[0].binary, methods: (.languages[0].methods|length), schemas: .languages[0].schemas}'
+#+end_src
+
+Observed:
+
+#+begin_src text
+provider=ts-harness binary=ts-harness language=typescript methods=14
+schemas=semantic-search-packet.v1,semantic-language-registry.v1
+#+end_src
+
+** Workspace Router
+
+#+begin_src shell
+node dist/src/cli/main.js search workspace .
+#+end_src
+
+Observed:
+
+#+begin_src text
+[search-workspace] mode=single-package package=typescript-lang-project-harness packages=0 shown=0 edge=0 external=4 find=39
+|package . name=typescript-lang-project-harness role=workspace-root packages=0 dependencies=4 next=prime:.
+|next prime:.
+#+end_src
+
+Result: workspace behaves as a package router, not a repository-wide search.
+For this single-package package it correctly points to =prime:.=.
+
+** Prime
+
+#+begin_src shell
+node dist/src/cli/main.js search prime .
+#+end_src
+
+Observed:
+
+#+begin_src text
+[search-prime] mode=package package=typescript-lang-project-harness src=200 own=171 edge=496 find=39
+|package typescript-lang-project-harness root=. scripts=build,check,check:implementation,check:policy,clean,format,format:check,harness dependencies=4 exports=1 imports=0 workspaces=0
+|owner src/cli/semantic-search/build.ts role="root,entrypoint" public=true ...
+|owner src/cli/protocol.ts role="root,entrypoint" public=true ...
+|owner src/cli/semantic-search/dependency.ts role="root,entrypoint" public=true ...
+|find TS-AGENT-R005 x3 at=O:src/cli/semantic-search/deps.ts severity=info
+|next owner:src/cli/semantic-search/build.ts,...
+#+end_src
+
+Result: prime gives a bounded package map and exposes the semantic-search
+implementation owners before any broad text search.
+
+** Focused Search
+
+#+begin_src shell
+node dist/src/cli/main.js search owner tests/unit/semantic_search_schema.test.ts .
+#+end_src
+
+Observed:
+
+#+begin_src text
+[search-owner] q=tests/unit/semantic_search_schema.test.ts own=0 edge=0 find=0
+|note kind=not-found message="owner not found: tests/unit/semantic_search_schema.test.ts"
+|next prime:search-prime
+#+end_src
+
+Finding: =search owner= currently behaves like a source-owner resolver.  It does
+not resolve this test file, even though test files are part of the practical
+schema-CI drill.
+
+** External Candidate Ingest
+
+#+begin_src shell
+rg -n "schemas/semantic|package-local|protocol repository" README.md docs tests package.json \
+  | node dist/src/cli/main.js search ingest .
+#+end_src
+
+Observed:
+
+#+begin_src text
+[search-ingest] src=rg-n in=15 own=6 hit=15
+|owner README.md role=unknown public=false
+|owner docs/03_features/203_cli.md role=unknown public=false
+|owner tests/unit/semantic_search_schema.test.ts role=unknown public=false
+|hit tests/unit/semantic_search_schema.test.ts:213 owner=tests/unit/semantic_search_schema.test.ts kind=text score=2 reason=rg-n source=rg-n
+|next owner:README.md,owner:docs/03_features/201_rule_catalog.md,owner:docs/03_features/203_cli.md,owner:tests/unit/cli.test.ts,owner:tests/unit/semantic_search_schema.test.ts
+#+end_src
+
+JSON shape:
+
+#+begin_src text
+schemaId=agent.semantic-protocols.semantic-search-packet
+view=ingest
+method=search/ingest
+inputDetection.source=rg-n
+owners=6
+hits=15
+notes=0
+#+end_src
+
+Result: ingest is the correct fallback for docs/tests/schema-copy text surfaces.
+It preserved compact grouping and emitted schema-valid JSON.
+
+** Check And Test
+
+#+begin_src shell
+node dist/src/cli/main.js check --changed .
+npm run test:implementation -- --test-name-pattern 'semantic-search JSON packets|semantic language registry|package-local semantic schemas'
+#+end_src
+
+Observed:
+
+#+begin_src text
+check --changed exit=0
+semantic-search JSON packets conform to the shared schema envelope: pass
+semantic language registry JSON documents the TypeScript provider identity: pass
+package-local semantic schemas stay synchronized with the protocol repository: pass
+#+end_src
+
+The check lane still renders non-blocking Info advice.  That matches the policy
+split: implementation/test gates pass, while agent-facing advice remains visible.
+
+* Synthesis
+
+#+begin_src text
+[search-synthesis] flow=schema-ci package=typescript-lang-project-harness registry=ok workspace=single-package prime=ok ingest=ok schema_tests=passed check=passed missing=owner:test-file,text:docs-schema next=clarify-owner-surfaces,clarify-text-vs-ingest
+#+end_src
+
+* Findings
+
+1. The registry/schema design is strong enough for independent provider CI.
+   Provider-local schema copies plus submodule sync tests close the CI failure.
+
+2. =search workspace= works as the RFC now describes: it is a router, not a
+   whole-repo search.
+
+3. =search prime= gives a useful bounded package map and identifies the
+   semantic-search implementation owners before broad search.
+
+4. =search owner <test-file>= is currently weaker than the flow recipe suggests.
+   Either the TypeScript provider should resolve test/doc owners, or the registry
+   and guide should say that =search owner= is source-owner only for this
+   provider.
+
+5. =search text= did not find =semantic-search-packet= in docs/schema-test
+   surfaces during the drill, while =rg | search ingest= found and grouped the
+   evidence.  The practical rule should be explicit: use =ingest= for docs,
+   tests, schema files, and other non-source text unless the provider advertises
+   broader text indexing.
+
+* Next Slice
+
+The next RFC/implementation slice should close the two practical gaps exposed by
+the sandbox:
+
+#+begin_src text
+1. Registry descriptor surface capability:
+   - sourceOwnerSearch
+   - testOwnerSearch
+   - docsTextSearch
+   - ingestRequiredForNonSourceText
+
+2. TypeScript provider behavior:
+   - either resolve test/doc files in search owner
+   - or emit an explicit source-owner-only note with next=ingest guidance
+
+3. Agent guide:
+   - tell agents to use rg | search ingest for docs/tests/schema-copy text
+     until broader provider text indexing is advertised
+#+end_src
+
+* Closeout
+
+#+begin_src text
+[flow-closeout]
+scenario=typescript-schema-ci
+registry=passed
+workspace=passed
+prime=passed
+ingest=passed
+schema_json=passed
+check=passed
+test=passed
+gaps=owner-test-file,text-docs-schema
+decision=need-followup-slice
+#+end_src
