@@ -228,6 +228,20 @@ package-local copies at the same relative paths.  Their tests should validate
 against the package-local files, and monorepo/submodule checkouts should compare
 the package-local copies with the repository source schemas to prevent drift.
 
+Schema evolution rules:
+
+#+begin_src text
+Additive v1 change     add optional fields, enum members, or descriptors
+Breaking change        new schema file and schemaVersion, e.g. *.v2.schema.json
+Provider adoption      update package-local copies and sync tests together
+Registry advertisement advertise every emitted schema id/version/path
+Client behavior        accept known schema versions; reject unknown versions with a compact diagnostic
+#+end_src
+
+Never change the meaning of a v1 field in place.  If an agent could interpret
+old and new packets differently, the change is breaking and needs a new schema
+version plus registry advertisement.
+
 Registry identity fields:
 
 #+begin_src text

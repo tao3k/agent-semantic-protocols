@@ -64,6 +64,9 @@ directory. The TypeScript package also carries package-local copies at the same
 relative paths so its CI can run from an independent checkout. Its schema tests
 read the package-local copies and, when the package is checked out as a
 submodule, compare them with the repository source schemas to catch drift.
+Additive v1 schema changes are limited to optional fields, enum members, and
+new method descriptors. Breaking changes require a new schema file/version and
+an explicit provider registry update.
 
 ## TypeScript Mapping
 
