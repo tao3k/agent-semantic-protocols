@@ -334,8 +334,10 @@ Phase 5:  <lang-harness> check --changed    (validation)
 
 ** What workspace covers (and what it does not)
 
-Workspace outputs package routing facts and cross-package axes.  It never
-outputs raw hits, source lines, docs prose, or full per-owner graphs:
+Workspace is a package router, not a repository-wide search.  It outputs just
+enough package routing facts for the agent to choose a package and then run
+=search prime --package <package-id>=.  It never outputs raw hits, source
+lines, docs prose, or full per-owner graphs:
 
 #+begin_src text
 workspace/package scale
@@ -345,6 +347,23 @@ external dependency axes across packages
 finding groups by package
 next hints (package/dependency axes, not hits)
 #+end_src
+
+Workspace routing invariants:
+
+#+begin_src text
+package id     root-relative package path; exact value accepted by --package
+package name   native package name from package metadata, when present
+package role   workspace-root | workspace-package | single-package
+package config native config path, e.g. package.json, Cargo.toml, Project.toml
+package edges  workspace-internal import/reference/member edges only
+findings       package-scoped counts/groups, not full diagnostics
+owners/items   empty in workspace packets
+hits           empty in workspace packets
+#+end_src
+
+If a provider advertises =search/workspace= for a single-package project, it may
+return one =single-package= row with =next=prime:.=.  Agent guides should still
+skip workspace for known single-package roots and start with =search prime=.
 
 Workspace output format:
 
