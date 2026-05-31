@@ -8,6 +8,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -15,7 +16,12 @@ from typing import Any
 
 
 DEFAULT_SCENARIO_GLOB = "sandtables/**/*.json"
+SCENARIO_SCHEMA_PATH = Path("schemas/semantic-sandtable-scenario.v1.schema.json")
 TOKEN_PATTERN = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)\}")
+
+
+class ScenarioLoadError(Exception):
+    """A scenario file is not valid enough to execute."""
 
 
 @dataclass
@@ -49,7 +55,7 @@ class ScenarioResult:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        prog="python -m tools.semantic_sandtable",
+        prog="semantic-sandtable",
         description="Run semantic language harness sandtable scenarios.",
     )
     parser.add_argument(
@@ -79,7 +85,11 @@ def main(argv: list[str] | None = None) -> int:
     scenario_paths = discover_scenarios(repo_root, args.scenarios)
     if args.list:
         for path in scenario_paths:
-            scenario = load_scenario(path)
+            try:
+                scenario = load_scenario(path, repo_root)
+            except ScenarioLoadError as error:
+                print(f"[sandtable-error] {error}", file=sys.stderr)
+                return 1
             print(
                 f"{scenario.get('id', path.stem)}\t"
                 f"{scenario.get('language', 'unknown')}\t"
@@ -118,13 +128,60 @@ def discoverable_scenario_path(repo_root: Path, path: Path) -> bool:
     return not any(part.startswith(".") for part in relative.parts)
 
 
-def load_scenario(path: Path) -> dict[str, Any]:
-    with path.open("r", encoding="utf-8") as handle:
-        return json.load(handle)
+def load_scenario(path: Path, repo_root: Path | None = None) -> dict[str, Any]:
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            scenario = json.load(handle)
+    except OSError as error:
+        raise ScenarioLoadError(f"failed to read scenario: {error}") from error
+    except json.JSONDecodeError as error:
+        raise ScenarioLoadError(f"failed to parse scenario JSON: {error.msg}") from error
+    if repo_root is not None:
+        validate_scenario_schema(repo_root, path, scenario)
+    return scenario
+
+
+def validate_scenario_schema(repo_root: Path, path: Path, scenario: Any) -> None:
+    schema_path = repo_root / SCENARIO_SCHEMA_PATH
+    if not schema_path.exists():
+        return
+    try:
+        from jsonschema import Draft202012Validator
+    except ImportError as error:
+        raise ScenarioLoadError(
+            "scenario schema validation requires jsonschema; run through `uv run semantic-sandtable`"
+        ) from error
+    try:
+        with schema_path.open("r", encoding="utf-8") as handle:
+            schema = json.load(handle)
+    except (OSError, json.JSONDecodeError) as error:
+        raise ScenarioLoadError(f"failed to load scenario schema: {error}") from error
+
+    validator = Draft202012Validator(schema)
+    errors = sorted(validator.iter_errors(scenario), key=lambda error: list(error.path))
+    if errors:
+        messages = []
+        for error in errors[:3]:
+            location = ".".join(str(part) for part in error.path) or "$"
+            messages.append(f"{location}: {error.message}")
+        if len(errors) > 3:
+            messages.append(f"... {len(errors) - 3} more")
+        relative = path.relative_to(repo_root) if path.is_relative_to(repo_root) else path
+        raise ScenarioLoadError(f"{relative} failed schema validation: {'; '.join(messages)}")
 
 
 def run_scenario(repo_root: Path, path: Path) -> ScenarioResult:
-    scenario = load_scenario(path)
+    try:
+        scenario = load_scenario(path, repo_root)
+    except ScenarioLoadError as error:
+        return ScenarioResult(
+            scenario_id=path.stem,
+            language="unknown",
+            path=path,
+            status="fail",
+            workdir=None,
+            errors=[str(error)],
+        )
     scenario_id = require_str(scenario, "id", path.stem)
     language = require_str(scenario, "language", "unknown")
     workdir = resolve_workdir(repo_root, scenario.get("workdir"))

@@ -24,13 +24,15 @@ poor subagent handoff packets across languages.
 From the protocol repository root:
 
 #+begin_src shell
-python3 -m tools.semantic_sandtable --list
-python3 -m tools.semantic_sandtable
-python3 -m tools.semantic_sandtable sandtables/typescript/search-code-flow.json
-python3 -m tools.semantic_sandtable --json sandtables/rust/tokio-async-io-flow.json
+uv run semantic-sandtable --list
+uv run semantic-sandtable
+uv run semantic-sandtable sandtables/typescript/search-code-flow.json
+uv run semantic-sandtable --json sandtables/rust/tokio-async-io-flow.json
 #+end_src
 
-The runner only depends on the Python standard library.
+The runner is a first-class =uv= project.  =pyproject.toml= owns the
+=semantic-sandtable= command and =uv.lock= pins the schema-validation
+dependency set.
 
 * Scenario Contract
 
@@ -50,6 +52,9 @@ The shared descriptor contract is:
 #+begin_src text
 schemas/semantic-sandtable-scenario.v1.schema.json
 #+end_src
+
+The runner validates each scenario against this schema before executing any
+commands, so malformed drills fail before touching a language harness fixture.
 
 Example surfaces:
 

@@ -1,0 +1,22 @@
+[project]
+name = "agent-semantic-protocols"
+version = "0.1.0"
+description = "Shared semantic protocol schemas and sandtable runners for language harnesses."
+readme = { file = "docs/superpowers/specs/2026-05-31-semantic-sandtable-runner.org", content-type = "text/plain" }
+requires-python = ">=3.11"
+dependencies = [
+  "jsonschema>=4.23,<5",
+]
+
+[project.scripts]
+semantic-sandtable = "tools.semantic_sandtable.runner:main"
+
+[build-system]
+requires = ["hatchling>=1.26"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["tools"]
+
+[tool.uv]
+package = true

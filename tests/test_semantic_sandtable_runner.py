@@ -43,6 +43,35 @@ class SemanticSandtableRunnerTests(unittest.TestCase):
 
             self.assertEqual([scenario_path], discover_scenarios(repo_root, []))
 
+    def test_schema_validation_fails_before_running_steps(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            schema_dir = repo_root / "schemas"
+            schema_dir.mkdir()
+            (schema_dir / "semantic-sandtable-scenario.v1.schema.json").write_text(
+                json.dumps(
+                    {
+                        "$schema": "https://json-schema.org/draft/2020-12/schema",
+                        "type": "object",
+                        "additionalProperties": False,
+                        "required": ["id"],
+                        "properties": {"id": {"type": "string"}},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            scenario_path = repo_root / "scenario.json"
+            scenario_path.write_text(
+                json.dumps({"id": "bad.schema", "unexpected": True}),
+                encoding="utf-8",
+            )
+
+            result = run_scenario(repo_root, scenario_path)
+
+        self.assertEqual("fail", result.status)
+        self.assertEqual([], result.steps)
+        self.assertIn("failed schema validation", result.errors[0])
+
     def test_capture_expansion_and_stdin_command_pipe(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)
