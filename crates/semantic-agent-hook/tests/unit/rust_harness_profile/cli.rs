@@ -1,107 +1,24 @@
 use std::io::Write;
-use std::path::PathBuf;
 use std::process::{Command, Stdio};
-use std::time::{SystemTime, UNIX_EPOCH};
 
-use semantic_agent_hook::{
-    classify_hook, parse_profiles, DecisionKind, ProfileRegistry, ReasonKind,
-};
+use semantic_agent_hook::parse_profiles;
 use serde_json::json;
 
-fn generated_rust_profile_path() -> &'static str {
-    env!("SEMANTIC_AGENT_HOOK_RUST_PROFILE_REGISTRY")
-}
-
-fn temp_project_root(name: &str) -> PathBuf {
-    let unique = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("clock")
-        .as_nanos();
-    let root = std::env::temp_dir().join(format!("semantic-agent-hook-{name}-{unique}"));
-    std::fs::create_dir_all(&root).expect("create temp project root");
-    root
-}
-
-fn rust_harness_profile_registry() -> ProfileRegistry {
-    let contents = std::fs::read_to_string(generated_rust_profile_path())
-        .expect("generated rust profile registry");
-    parse_profiles(&contents).expect("valid generated rust profile registry")
-}
+use super::support::{
+    root_owned_rust_profile_registry_json, temp_project_root,
+    write_root_owned_rust_profile_registry,
+};
 
 #[test]
-fn build_script_uses_rust_harness_source_roots() {
-    assert_eq!(env!("SEMANTIC_AGENT_HOOK_RUST_SOURCE_ROOTS"), "src");
-}
-
-#[test]
-fn generated_rust_harness_profile_uses_provider_identity() {
-    let registry = rust_harness_profile_registry();
-    assert_eq!(registry.profiles.len(), 1);
-    let profile = &registry.profiles[0];
-    assert_eq!(profile.language_id, "rust");
-    assert_eq!(profile.provider_id, "rs-harness");
-    assert_eq!(profile.binary, "rs-harness");
-    assert!(profile.source_roots.iter().any(|root| root == "src"));
-    assert!(profile
-        .source_extensions
-        .iter()
-        .any(|extension| extension == ".rs"));
-}
-
-#[test]
-fn rust_harness_profile_routes_direct_reads_to_owner_search() {
-    let decision = classify_hook(
-        &rust_harness_profile_registry(),
-        "codex",
-        "pre-tool",
-        &json!({
-            "tool_name": "Read",
-            "tool_input": {"path": "src/lib.rs"}
-        }),
-    );
-
-    assert_eq!(decision.decision, DecisionKind::Deny);
-    assert_eq!(decision.reason_kind, ReasonKind::DirectSourceRead);
-    assert_eq!(
-        decision.routes[0].argv,
-        [
-            "rs-harness",
-            "search",
-            "owner",
-            "src/lib.rs",
-            "items",
-            "--view",
-            "seeds",
-            "."
-        ]
-    );
-}
-
-#[test]
-fn rust_harness_profile_routes_raw_root_search_to_ingest() {
-    let decision = classify_hook(
-        &rust_harness_profile_registry(),
-        "codex",
-        "pre-tool",
-        &json!({
-            "tool_name": "functions.exec_command",
-            "tool_input": {"cmd": "rg -n \"HookDecision\" ."}
-        }),
-    );
-
-    assert_eq!(decision.decision, DecisionKind::Deny);
-    assert_eq!(decision.reason_kind, ReasonKind::RawBroadSearch);
-    assert_eq!(decision.routes[0].kind, "ingest");
-    assert_eq!(
-        decision.routes[0].stdin_mode.as_deref(),
-        Some("pipe-candidates")
-    );
-}
-
-#[test]
-fn cli_doctor_accepts_generated_rust_profile_registry() {
+fn cli_doctor_accepts_root_owned_rust_profile_registry() {
+    let root = temp_project_root("doctor-profile");
+    let profile_path = write_root_owned_rust_profile_registry(&root);
     let output = Command::new(env!("CARGO_BIN_EXE_semantic-agent-hook"))
-        .args(["doctor", "--profiles", generated_rust_profile_path()])
+        .args([
+            "doctor",
+            "--profiles",
+            profile_path.to_str().expect("utf8 profile path"),
+        ])
         .output()
         .expect("run semantic-agent-hook doctor");
 
@@ -110,10 +27,13 @@ fn cli_doctor_accepts_generated_rust_profile_registry() {
     assert!(stdout.contains("[agent-doctor] status=ok"));
     assert!(stdout.contains("profiles=1"));
     assert!(stdout.contains("|profile language=rust provider=rs-harness"));
+    std::fs::remove_dir_all(root).expect("cleanup temp project root");
 }
 
 #[test]
-fn cli_hook_emits_decision_for_generated_rust_profile_registry() {
+fn cli_hook_emits_decision_for_root_owned_rust_profile_registry() {
+    let root = temp_project_root("hook-profile");
+    let profile_path = write_root_owned_rust_profile_registry(&root);
     let mut child = Command::new(env!("CARGO_BIN_EXE_semantic-agent-hook"))
         .args([
             "hook",
@@ -121,7 +41,7 @@ fn cli_hook_emits_decision_for_generated_rust_profile_registry() {
             "codex",
             "pre-tool",
             "--profiles",
-            generated_rust_profile_path(),
+            profile_path.to_str().expect("utf8 profile path"),
         ])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -152,10 +72,13 @@ fn cli_hook_emits_decision_for_generated_rust_profile_registry() {
         value["agentHookDecision"]["routes"][0]["argv"][3],
         "src/lib.rs"
     );
+    std::fs::remove_dir_all(root).expect("cleanup temp project root");
 }
 
 #[test]
 fn cli_hook_can_emit_raw_decision_for_schema_tests() {
+    let root = temp_project_root("hook-decision-profile");
+    let profile_path = write_root_owned_rust_profile_registry(&root);
     let mut child = Command::new(env!("CARGO_BIN_EXE_semantic-agent-hook"))
         .args([
             "hook",
@@ -163,7 +86,7 @@ fn cli_hook_can_emit_raw_decision_for_schema_tests() {
             "codex",
             "pre-tool",
             "--profiles",
-            generated_rust_profile_path(),
+            profile_path.to_str().expect("utf8 profile path"),
             "--emit",
             "decision",
         ])
@@ -184,6 +107,7 @@ fn cli_hook_can_emit_raw_decision_for_schema_tests() {
     let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("hook JSON");
     assert_eq!(value["decision"], "deny");
     assert_eq!(value["reasonKind"], "direct-source-read");
+    std::fs::remove_dir_all(root).expect("cleanup temp project root");
 }
 
 #[test]
@@ -222,9 +146,10 @@ fn cli_install_writes_root_owned_codex_hook_config() {
     assert!(config.contains("fs\\\\.read"));
     assert!(!config.contains("ts-harness agent hook --client codex"));
     assert!(!config.contains("rs-harness agent hook --client codex"));
-    assert!(root
-        .join(".codex/semantic-agent-hook/bin/semantic-agent-hook")
-        .is_file());
+    assert!(
+        root.join(".codex/semantic-agent-hook/bin/semantic-agent-hook")
+            .is_file()
+    );
     let profiles = std::fs::read_to_string(root.join(".codex/semantic-agent-hook/profiles.json"))
         .expect("installed profile registry");
     let registry = parse_profiles(&profiles).expect("valid installed profile registry");
@@ -256,8 +181,10 @@ fn cli_install_refuses_to_overwrite_invalid_codex_toml() {
         .expect("run semantic-agent-hook install");
 
     assert!(!output.status.success());
-    assert!(String::from_utf8_lossy(&output.stderr)
-        .contains("refusing to write invalid Codex config TOML"));
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains("refusing to write invalid Codex config TOML")
+    );
     let config = std::fs::read_to_string(&config_path).expect("preserved config");
     assert_eq!(config, "unified_exec = \"unterminated\n");
     assert!(!config.contains("# BEGIN semantic-agent-hook agent hooks"));
@@ -268,7 +195,8 @@ fn cli_install_refuses_to_overwrite_invalid_codex_toml() {
 fn cli_profiles_merge_writes_combined_registry() {
     let root = temp_project_root("profiles-merge");
     let rust_profile = root.join("rust.json");
-    std::fs::copy(generated_rust_profile_path(), &rust_profile).expect("copy rust profile");
+    std::fs::write(&rust_profile, root_owned_rust_profile_registry_json())
+        .expect("write rust profile");
     let python_profile = root.join("python.json");
     std::fs::write(
         &python_profile,
@@ -320,13 +248,17 @@ fn cli_profiles_merge_writes_combined_registry() {
     let merged = std::fs::read_to_string(&output_path).expect("merged registry");
     let registry = parse_profiles(&merged).expect("valid merged registry");
     assert_eq!(registry.profiles.len(), 2);
-    assert!(registry
-        .profiles
-        .iter()
-        .any(|profile| profile.language_id == "rust"));
-    assert!(registry
-        .profiles
-        .iter()
-        .any(|profile| profile.language_id == "python"));
+    assert!(
+        registry
+            .profiles
+            .iter()
+            .any(|profile| profile.language_id == "rust")
+    );
+    assert!(
+        registry
+            .profiles
+            .iter()
+            .any(|profile| profile.language_id == "python")
+    );
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
 }
