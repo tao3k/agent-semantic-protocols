@@ -124,8 +124,50 @@ fn cli_hook_emits_decision_for_generated_rust_profile_registry() {
 
     assert!(output.status.success());
     let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("hook JSON");
+    assert_eq!(value["hookSpecificOutput"]["permissionDecision"], "deny");
+    assert_eq!(value["agentHookDecision"]["decision"], "deny");
+    assert_eq!(
+        value["agentHookDecision"]["reasonKind"],
+        "direct-source-read"
+    );
+    assert_eq!(
+        value["agentHookDecision"]["routes"][0]["binary"],
+        "rs-harness"
+    );
+    assert_eq!(
+        value["agentHookDecision"]["routes"][0]["argv"][3],
+        "src/lib.rs"
+    );
+}
+
+#[test]
+fn cli_hook_can_emit_raw_decision_for_schema_tests() {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_semantic-agent-hook"))
+        .args([
+            "hook",
+            "--client",
+            "codex",
+            "pre-tool",
+            "--profiles",
+            generated_rust_profile_path(),
+            "--emit",
+            "decision",
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("run semantic-agent-hook hook");
+    child
+        .stdin
+        .as_mut()
+        .expect("hook stdin")
+        .write_all(br#"{"tool_name":"Read","tool_input":{"path":"src/lib.rs"}}"#)
+        .expect("write hook payload");
+
+    let output = child.wait_with_output().expect("wait for hook output");
+
+    assert!(output.status.success());
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("hook JSON");
     assert_eq!(value["decision"], "deny");
     assert_eq!(value["reasonKind"], "direct-source-read");
-    assert_eq!(value["routes"][0]["binary"], "rs-harness");
-    assert_eq!(value["routes"][0]["argv"][3], "src/lib.rs");
 }

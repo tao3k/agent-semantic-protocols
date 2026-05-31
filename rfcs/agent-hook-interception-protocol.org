@@ -20,7 +20,8 @@ The current hook implementations are drifting:
   checks.
 - TypeScript has a standalone Codex hook implementation, but it reimplements
   platform parsing and language routing in TypeScript-specific code.
-- Python and Julia do not yet have the same enforcement surface.
+- Python now has a provider hook for direct-source-read denial; Julia does not
+  yet have the same enforcement surface.
 - Root =.codex/config.toml= can install multiple language hook commands, but
   the algorithm is not standardized.
 
@@ -66,6 +67,7 @@ The v1 implementation target is a small Rust binary in this repository:
 #+begin_src text
 semantic-agent-hook hook --client codex pre-tool --profiles .codex/agent-hook-profiles.json
 semantic-agent-hook hook --client claude pre-tool --profiles .claude/agent-hook-profiles.json
+semantic-agent-hook hook --client codex pre-tool --profiles .codex/agent-hook-profiles.json --emit decision
 semantic-agent-hook doctor --profiles .codex/agent-hook-profiles.json
 semantic-agent-hook install --client codex .
 #+end_src
@@ -79,6 +81,8 @@ The runtime is intentionally language-neutral:
   descriptors;
 - emit =schemas/semantic-agent-hook-decision.v1.schema.json= before rendering
   the platform-specific response;
+- default to platform hook payload output for =hook=, with =--emit decision=
+  reserved for schema tests, receipts, and machine validation;
 - maintain only shared hook state: prime/search evidence, dirty profile paths,
   changed-check evidence, and subagent receipt evidence.
 
@@ -348,7 +352,16 @@ Output-mode denial example:
      that invokes =semantic-agent-hook=;
    - keep TypeScript-specific source/config ownership local.
 
-4. Python and Julia providers:
+4. Python provider:
+   - export a Python profile descriptor;
+   - keep the transitional =py-harness agent hook= wrapper strict enough to
+     deny direct Python source reads with =reasonKind=direct-source-read= and a
+     concrete =py-harness search owner <path> .= route;
+   - continue moving shared classification into root =semantic-agent-hook= for
+     raw-search-to-ingest, edit-before-prime, changed-check, subagent, and stop
+     gates.
+
+5. Julia provider:
    - export profile descriptors before adding provider-owned hook code;
    - rely on root =semantic-agent-hook= for direct-read, raw-search-to-ingest,
      edit-before-prime, changed-check, subagent, and stop gates.

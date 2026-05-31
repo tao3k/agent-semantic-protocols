@@ -1,7 +1,7 @@
 //! Root semantic agent hook classifier over language profile descriptors.
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
 
 pub const PROFILE_REGISTRY_SCHEMA_ID: &str =
     "agent.semantic-protocols.semantic-agent-hook-profile-registry";
@@ -120,6 +120,7 @@ pub enum AgentHookError {
     InvalidProfiles(serde_json::Error),
     InvalidProfileRegistry(String),
     InvalidPayload(serde_json::Error),
+    InvalidOutput(serde_json::Error),
 }
 
 pub fn parse_profiles(input: &str) -> Result<ProfileRegistry, AgentHookError> {
@@ -131,6 +132,24 @@ pub fn parse_profiles(input: &str) -> Result<ProfileRegistry, AgentHookError> {
 
 pub fn parse_payload(input: &str) -> Result<Value, AgentHookError> {
     serde_json::from_str(input).map_err(AgentHookError::InvalidPayload)
+}
+
+pub fn render_platform_response(decision: &HookDecision) -> Result<Value, AgentHookError> {
+    let decision_value = serde_json::to_value(decision).map_err(AgentHookError::InvalidOutput)?;
+    if decision.decision == DecisionKind::Deny {
+        return Ok(json!({
+            "agentHookDecision": decision_value,
+            "hookSpecificOutput": {
+                "hookEventName": platform_hook_event_name(&decision.event),
+                "permissionDecision": "deny",
+                "permissionDecisionReason": decision.message,
+            },
+            "systemMessage": decision.message,
+        }));
+    }
+    Ok(json!({
+        "agentHookDecision": decision_value,
+    }))
 }
 
 pub fn classify_hook(
@@ -534,6 +553,20 @@ fn is_separator(token: &str) -> bool {
     matches!(token, "|" | ";" | "&&" | "&")
 }
 
+fn platform_hook_event_name(event: &str) -> &'static str {
+    match event {
+        "session-start" => "SessionStart",
+        "user-prompt" => "UserPromptSubmit",
+        "pre-tool" => "PreToolUse",
+        "permission-request" => "PermissionRequest",
+        "post-tool" => "PostToolUse",
+        "subagent-start" => "SubagentStart",
+        "subagent-stop" => "SubagentStop",
+        "stop" => "Stop",
+        _ => "Unknown",
+    }
+}
+
 fn language_ids(profiles: &[&LanguageProfile]) -> Vec<String> {
     profiles
         .iter()
@@ -627,6 +660,32 @@ mod tests {
         let error = parse_profiles(&value.to_string()).unwrap_err();
 
         assert!(format!("{error:?}").contains("schemaId"));
+    }
+
+    #[test]
+    fn platform_response_wraps_denied_decision_for_codex_hooks() {
+        let decision = classify_hook(
+            &registry(),
+            "codex",
+            "pre-tool",
+            &json!({
+                "tool_name": "Read",
+                "tool_input": {"path": "src/cli/agent-hooks.ts"}
+            }),
+        );
+
+        let response = render_platform_response(&decision).unwrap();
+
+        assert_eq!(
+            response["hookSpecificOutput"]["hookEventName"],
+            "PreToolUse"
+        );
+        assert_eq!(response["hookSpecificOutput"]["permissionDecision"], "deny");
+        assert_eq!(response["agentHookDecision"]["decision"], "deny");
+        assert_eq!(
+            response["agentHookDecision"]["reasonKind"],
+            "direct-source-read"
+        );
     }
 
     #[test]

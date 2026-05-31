@@ -3,7 +3,7 @@ use std::fs;
 use std::io::{self, Read};
 use std::process;
 
-use semantic_agent_hook::{classify_hook, parse_payload, parse_profiles};
+use semantic_agent_hook::{classify_hook, parse_payload, parse_profiles, render_platform_response};
 
 fn main() {
     if let Err(message) = run() {
@@ -20,10 +20,7 @@ fn run() -> Result<(), String> {
         Some("install") => {
             Err("install is specified by RFC but not implemented in this scaffold".to_string())
         }
-        _ => Err(
-            "usage: semantic-agent-hook hook --client <client> <event> --profiles <path>"
-                .to_string(),
-        ),
+        _ => Err("usage: semantic-agent-hook hook --client <client> <event> --profiles <path> [--emit platform|decision]".to_string()),
     }
 }
 
@@ -32,6 +29,7 @@ fn run_hook(args: &[String]) -> Result<(), String> {
         .ok_or_else(|| "missing required --client <client>".to_string())?;
     let profiles_path = flag_value(args, "--profiles")
         .ok_or_else(|| "missing required --profiles <path>".to_string())?;
+    let emit = flag_value(args, "--emit").unwrap_or("platform");
     let event = first_positional(args).ok_or_else(|| "missing hook event".to_string())?;
     let registry = load_profiles(profiles_path)?;
     let mut stdin = String::new();
@@ -41,8 +39,19 @@ fn run_hook(args: &[String]) -> Result<(), String> {
     let payload =
         parse_payload(&stdin).map_err(|error| format!("invalid hook payload JSON: {error:?}"))?;
     let decision = classify_hook(&registry, client, event, &payload);
-    let output = serde_json::to_string_pretty(&decision)
-        .map_err(|error| format!("failed to serialize hook decision: {error}"))?;
+    let output_value = match emit {
+        "decision" => serde_json::to_value(&decision)
+            .map_err(|error| format!("failed to serialize hook decision: {error}"))?,
+        "platform" => render_platform_response(&decision)
+            .map_err(|error| format!("failed to render hook response: {error:?}"))?,
+        other => {
+            return Err(format!(
+                "unsupported --emit value: {other}; expected platform or decision"
+            ));
+        }
+    };
+    let output = serde_json::to_string_pretty(&output_value)
+        .map_err(|error| format!("failed to serialize hook response: {error}"))?;
     println!("{output}");
     Ok(())
 }
@@ -78,7 +87,7 @@ fn first_positional(args: &[String]) -> Option<&str> {
             skip_next = false;
             continue;
         }
-        if matches!(arg.as_str(), "--client" | "--profiles") {
+        if matches!(arg.as_str(), "--client" | "--profiles" | "--emit") {
             skip_next = true;
             continue;
         }
