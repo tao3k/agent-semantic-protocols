@@ -386,6 +386,9 @@ def validate_step(
     for pattern in string_list(expect.get("stdoutMatches", [])):
         if re.search(pattern, stdout, flags=re.MULTILINE) is None:
             result.errors.append(f"stdout regex missed {pattern!r}")
+    if bool(expect.get("stdoutEmpty", False)) and stdout:
+        result.errors.append("stdout expected empty")
+    validate_stdout_json(expect, result, stdout)
     if bool(expect.get("lineProtocol", False)):
         validate_line_protocol(result, stdout)
 
@@ -437,6 +440,65 @@ def capture_values(
             result.errors.append(f"capture {name!r} missed {pattern!r}")
             continue
         captures[name] = match.group(1) if match.groups() else match.group(0)
+
+
+def validate_stdout_json(
+    expect: dict[str, Any],
+    result: StepResult,
+    stdout: str,
+) -> None:
+    equals = expect.get("stdoutJsonEquals", {})
+    contains = expect.get("stdoutJsonContains", {})
+    if not isinstance(equals, dict):
+        result.errors.append("expect.stdoutJsonEquals must be an object")
+        equals = {}
+    if not isinstance(contains, dict):
+        result.errors.append("expect.stdoutJsonContains must be an object")
+        contains = {}
+    if not equals and not contains:
+        return
+
+    try:
+        payload = json.loads(stdout)
+    except json.JSONDecodeError as error:
+        result.errors.append(f"stdout JSON parse failed: {error.msg}")
+        return
+
+    for path, expected in equals.items():
+        if not isinstance(path, str):
+            result.errors.append("stdoutJsonEquals paths must be strings")
+            continue
+        actual, found = json_path(payload, path)
+        if not found:
+            result.errors.append(f"stdout JSON path missing {path!r}")
+        elif actual != expected:
+            result.errors.append(
+                f"stdout JSON path {path!r}={actual!r} expected={expected!r}"
+            )
+
+    for path, needle in contains.items():
+        if not isinstance(path, str) or not isinstance(needle, str):
+            result.errors.append("stdoutJsonContains entries must be string to string")
+            continue
+        actual, found = json_path(payload, path)
+        if not found:
+            result.errors.append(f"stdout JSON path missing {path!r}")
+            continue
+        actual_text = actual if isinstance(actual, str) else json.dumps(actual, sort_keys=True)
+        if needle not in actual_text:
+            result.errors.append(
+                f"stdout JSON path {path!r} missing substring {needle!r}"
+            )
+
+
+def json_path(payload: Any, path: str) -> tuple[Any, bool]:
+    current = payload
+    for part in path.split("."):
+        if isinstance(current, dict) and part in current:
+            current = current[part]
+            continue
+        return None, False
+    return current, True
 
 
 def validate_line_protocol(result: StepResult, stdout: str) -> None:

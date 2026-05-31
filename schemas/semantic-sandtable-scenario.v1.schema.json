@@ -150,6 +150,15 @@
         "stdoutMatches": {
           "$ref": "#/$defs/stringList"
         },
+        "stdoutEmpty": {
+          "type": "boolean"
+        },
+        "stdoutJsonEquals": {
+          "$ref": "#/$defs/jsonPathMap"
+        },
+        "stdoutJsonContains": {
+          "$ref": "#/$defs/stringMap"
+        },
         "maxStdoutLinesWarn": {
           "type": "integer",
           "minimum": 1
@@ -180,6 +189,27 @@
       "items": {
         "type": "string"
       }
+    },
+    "stringMap": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "jsonPathMap": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/scalar"
+      }
+    },
+    "scalar": {
+      "oneOf": [
+        { "type": "string" },
+        { "type": "number" },
+        { "type": "integer" },
+        { "type": "boolean" },
+        { "type": "null" }
+      ]
     }
   }
 }

@@ -1,0 +1,116 @@
+{
+  "id": "rust.codex-desktop-hook-smoke",
+  "language": "rust",
+  "title": "Codex Desktop tool payloads route raw Rust reads through rs-harness policy",
+  "workdir": {
+    "relative": "sandtables/fixtures/codex-desktop-hook-smoke"
+  },
+  "budgets": {
+    "maxCommands": 4,
+    "maxTotalLinesWarn": 16
+  },
+  "steps": [
+    {
+      "id": "exec-command-rtk-read",
+      "command": [
+        "rs-harness",
+        "agent",
+        "hook",
+        "--client",
+        "codex",
+        "pre-tool",
+        "."
+      ],
+      "stdin": "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"functions.exec_command\",\"tool_input\":{\"cmd\":\"rtk read src/lib.rs\"}}",
+      "expect": {
+        "stdoutContains": [
+          "\"permissionDecision\":\"deny\"",
+          "\"reasonKind\":\"direct-source-read\"",
+          "\"paths\":[\"src/lib.rs\"]",
+          "rs-harness"
+        ],
+        "stdoutNotContains": [
+          "codex-desktop-smoke-fixture"
+        ],
+        "maxStdoutLinesWarn": 1,
+        "maxElapsedMsWarn": 1000
+      }
+    },
+    {
+      "id": "exec-command-rtk-grep",
+      "command": [
+        "rs-harness",
+        "agent",
+        "hook",
+        "--client",
+        "codex",
+        "pre-tool",
+        "."
+      ],
+      "stdin": "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"functions.exec_command\",\"tool_input\":{\"cmd\":\"rtk grep -n smoke src tests\"}}",
+      "expect": {
+        "stdoutContains": [
+          "\"permissionDecision\":\"deny\"",
+          "\"reasonKind\":\"raw-broad-search\"",
+          "\"kind\":\"ingest\"",
+          "\"stdinMode\":\"pipe-candidates\""
+        ],
+        "stdoutNotContains": [
+          "codex-desktop-smoke-fixture"
+        ],
+        "maxStdoutLinesWarn": 1,
+        "maxElapsedMsWarn": 500
+      }
+    },
+    {
+      "id": "parallel-nested-exec-command",
+      "command": [
+        "rs-harness",
+        "agent",
+        "hook",
+        "--client",
+        "codex",
+        "pre-tool",
+        "."
+      ],
+      "stdin": "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"multi_tool_use.parallel\",\"tool_input\":{\"tool_uses\":[{\"recipient_name\":\"functions.exec_command\",\"parameters\":{\"cmd\":\"rtk read src/lib.rs\"}}]}}",
+      "expect": {
+        "stdoutContains": [
+          "\"permissionDecision\":\"deny\"",
+          "\"reasonKind\":\"direct-source-read\"",
+          "\"paths\":[\"src/lib.rs\"]"
+        ],
+        "stdoutNotContains": [
+          "codex-desktop-smoke-fixture"
+        ],
+        "maxStdoutLinesWarn": 1,
+        "maxElapsedMsWarn": 500
+      }
+    },
+    {
+      "id": "shell-read",
+      "command": [
+        "rs-harness",
+        "agent",
+        "hook",
+        "--client",
+        "codex",
+        "pre-tool",
+        "."
+      ],
+      "stdin": "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"functions.exec_command\",\"tool_input\":{\"cmd\":\"sed -n '1,40p' src/lib.rs\"}}",
+      "expect": {
+        "stdoutContains": [
+          "\"permissionDecision\":\"deny\"",
+          "\"reasonKind\":\"direct-source-read\"",
+          "\"paths\":[\"src/lib.rs\"]"
+        ],
+        "stdoutNotContains": [
+          "codex-desktop-smoke-fixture"
+        ],
+        "maxStdoutLinesWarn": 1,
+        "maxElapsedMsWarn": 500
+      }
+    }
+  ]
+}

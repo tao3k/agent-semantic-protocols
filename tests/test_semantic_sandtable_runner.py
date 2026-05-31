@@ -140,6 +140,50 @@ class SemanticSandtableRunnerTests(unittest.TestCase):
         self.assertEqual(["stdin command exited 7"], result.steps[0].errors)
         self.assertEqual(7, result.steps[0].exit_code)
 
+    def test_stdout_json_expectations_assert_hook_decisions(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            scenario_path = repo_root / "scenario.json"
+            scenario_path.write_text(
+                json.dumps(
+                    {
+                        "id": "python.hook-json",
+                        "language": "python",
+                        "workdir": ".",
+                        "steps": [
+                            {
+                                "id": "deny",
+                                "command": [
+                                    sys.executable,
+                                    "-c",
+                                    (
+                                        "print('{\"hookSpecificOutput\":"
+                                        "{\"permissionDecision\":\"deny\","
+                                        "\"permissionDecisionReason\":"
+                                        "\"[flow] blocked=read-rs path=src/lib.rs\"}}')"
+                                    ),
+                                ],
+                                "expect": {
+                                    "stdoutJsonEquals": {
+                                        "hookSpecificOutput.permissionDecision": "deny"
+                                    },
+                                    "stdoutJsonContains": {
+                                        "hookSpecificOutput.permissionDecisionReason": (
+                                            "blocked=read-rs"
+                                        )
+                                    },
+                                },
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = run_scenario(repo_root, scenario_path)
+
+        self.assertEqual("pass", result.status)
+
 
 if __name__ == "__main__":
     unittest.main()

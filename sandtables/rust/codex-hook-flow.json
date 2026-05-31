@@ -1,0 +1,127 @@
+{
+  "id": "rust.codex-hook-flow",
+  "language": "rust",
+  "title": "Codex hook replay for Rust source-read and search-flow gates",
+  "workdir": {
+    "env": "SANDTABLE_RUST_HOOK_ROOT",
+    "candidates": [
+      "../rust-lang-project-harness"
+    ]
+  },
+  "budgets": {
+    "maxCommands": 5,
+    "maxTotalLinesWarn": 40
+  },
+  "steps": [
+    {
+      "id": "direct-read-deny",
+      "command": [
+        "rs-harness",
+        "agent",
+        "hook",
+        "--client",
+        "codex",
+        "pre-tool",
+        "."
+      ],
+      "stdin": "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Read\",\"tool_input\":{\"path\":\"src/lib.rs\"}}",
+      "expect": {
+        "stdoutJsonEquals": {
+          "hookSpecificOutput.permissionDecision": "deny"
+        },
+        "stdoutJsonContains": {
+          "hookSpecificOutput.permissionDecisionReason": "blocked=read-rs path=src/lib.rs"
+        },
+        "maxStdoutLinesWarn": 1,
+        "maxElapsedMsWarn": 700
+      }
+    },
+    {
+      "id": "command-execution-read-deny",
+      "command": [
+        "rs-harness",
+        "agent",
+        "hook",
+        "--client",
+        "codex",
+        "pre-tool",
+        "."
+      ],
+      "stdin": "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"command_execution\",\"tool_input\":{\"command\":\"/bin/zsh -lc \\\"sed -n '1,8p' src/lib.rs\\\"\"}}",
+      "expect": {
+        "stdoutJsonEquals": {
+          "hookSpecificOutput.permissionDecision": "deny"
+        },
+        "stdoutJsonContains": {
+          "hookSpecificOutput.permissionDecisionReason": "blocked=read-rs path=src/lib.rs"
+        },
+        "maxStdoutLinesWarn": 1,
+        "maxElapsedMsWarn": 700
+      }
+    },
+    {
+      "id": "raw-rg-deny",
+      "command": [
+        "rs-harness",
+        "agent",
+        "hook",
+        "--client",
+        "codex",
+        "pre-tool",
+        "."
+      ],
+      "stdin": "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"functions.exec_command\",\"tool_input\":{\"cmd\":\"rg -n \\\"fn run_agent\\\" src tests\"}}",
+      "expect": {
+        "stdoutJsonEquals": {
+          "hookSpecificOutput.permissionDecision": "deny",
+          "agentHookDecision.reasonKind": "raw-broad-search"
+        },
+        "stdoutJsonContains": {
+          "hookSpecificOutput.permissionDecisionReason": "Raw broad Rust search"
+        },
+        "maxStdoutLinesWarn": 1,
+        "maxElapsedMsWarn": 700
+      }
+    },
+    {
+      "id": "ingest-pipe-allow",
+      "command": [
+        "rs-harness",
+        "agent",
+        "hook",
+        "--client",
+        "codex",
+        "pre-tool",
+        "."
+      ],
+      "stdin": "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"rg -n \\\"fn run_agent\\\" --glob '*.rs' src tests | rs-harness search ingest items tests --view seeds --seeds 8 .\"}}",
+      "expect": {
+        "stdoutEmpty": true,
+        "maxElapsedMsWarn": 700
+      }
+    },
+    {
+      "id": "subagent-receipt-required",
+      "command": [
+        "rs-harness",
+        "agent",
+        "hook",
+        "--client",
+        "codex",
+        "subagent-stop",
+        "."
+      ],
+      "stdin": "{\"hook_event_name\":\"SubagentStop\",\"turn_id\":\"sandtable\",\"last_assistant_message\":\"done\"}",
+      "expect": {
+        "stdoutJsonEquals": {
+          "decision": "block"
+        },
+        "stdoutJsonContains": {
+          "reason": "[search-subagent]"
+        },
+        "maxStdoutLinesWarn": 1,
+        "maxElapsedMsWarn": 700
+      }
+    }
+  ]
+}
