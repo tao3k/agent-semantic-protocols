@@ -296,7 +296,18 @@
           "minLength": 1
         },
         "kind": {
-          "enum": ["package", "owner", "dependency", "test", "finding", "symbol"]
+          "enum": [
+            "package",
+            "owner",
+            "dependency",
+            "test",
+            "finding",
+            "symbol",
+            "tsconfig",
+            "extension",
+            "build_tool",
+            "test_surface"
+          ]
         },
         "path": {
           "type": "string"

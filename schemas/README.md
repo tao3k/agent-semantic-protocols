@@ -105,6 +105,9 @@ Language harnesses should preserve compiler-native facts in `fields` maps
 instead of changing the envelope. For example, Rust can place Cargo feature
 facts in `fields`, TypeScript can place owner import summaries in `fields`, and
 Julia can place JuliaSyntax-native module facts in `fields`.
+Shared `nodes` may also name common search-axis kinds such as `tsconfig`,
+`extension`, `build_tool`, and `test_surface` when a language provider exposes
+those axes from native project facts.
 
 Dependency API searches should distinguish the current workspace resolution
 from an explicitly requested external version. Providers can use fields such as
