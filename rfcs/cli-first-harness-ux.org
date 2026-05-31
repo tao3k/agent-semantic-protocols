@@ -97,6 +97,18 @@ Every read-only exploration goes through =<lang-harness> search=.  Common views:
 <lang-harness> search text <query>
 #+end_src
 
+=search owner= resolves parser-visible owners first.  If the query is an
+existing project path that is not a parser owner, providers may return a
+path-only owner with =source=path-only=, =parserOwner=false=, and
+=next=ingest:<path>= so agents can keep the path in the protocol instead of
+falling back to raw shell output.
+
+=search text= covers the provider's semantic text index, such as owner paths,
+exports, symbols, or language-native docs when implemented.  If docs, tests,
+schema files, or other non-source text are outside that index, the provider
+should return a =next=ingest:<query>= action and the agent must route external
+candidates through =search ingest=.
+
 Rust adds Cargo-native views under the same search namespace:
 
 #+begin_src shell
@@ -1874,7 +1886,10 @@ git diff --name-only | rs-harness search ingest
 ```
 
 Never paste raw =rg= / =fd= output.  The ingest command groups results by
-owner and emits =next= actions.
+owner or path, annotates the input source, and keeps downstream navigation in
+the shared packet schema.  This is required for docs, tests, schema files, and
+other non-source text whenever the provider's =search text= index does not
+advertise those surfaces.
 
 ## Structural pattern rule
 

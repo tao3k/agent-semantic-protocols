@@ -86,7 +86,7 @@ implementation owners before any broad text search.
 node dist/src/cli/main.js search owner tests/unit/semantic_search_schema.test.ts .
 #+end_src
 
-Observed:
+Original observation:
 
 #+begin_src text
 [search-owner] q=tests/unit/semantic_search_schema.test.ts own=0 edge=0 find=0
@@ -94,9 +94,18 @@ Observed:
 |next prime:search-prime
 #+end_src
 
-Finding: =search owner= currently behaves like a source-owner resolver.  It does
-not resolve this test file, even though test files are part of the practical
-schema-CI drill.
+Follow-up implementation result:
+
+#+begin_src text
+[search-owner] q=tests/unit/semantic_search_schema.test.ts role=test public=false edge=0 find=0
+|owner tests/unit/semantic_search_schema.test.ts role=test public=false source=path-only parserOwner=false next=ingest:tests/unit/semantic_search_schema.test.ts
+|note kind=owner-not-found message="path exists but is not a parser-visible owner; use search ingest for line evidence"
+|next ingest:tests/unit/semantic_search_schema.test.ts
+#+end_src
+
+Result: =search owner= now keeps existing test/schema paths in the protocol
+without pretending they are parser-visible owners.  The =path-only= owner and
+=parserOwner=false= field give agents an explicit branch into =search ingest=.
 
 ** External Candidate Ingest
 
@@ -131,6 +140,24 @@ notes=0
 Result: ingest is the correct fallback for docs/tests/schema-copy text surfaces.
 It preserved compact grouping and emitted schema-valid JSON.
 
+** Text Miss Guidance
+
+#+begin_src shell
+node dist/src/cli/main.js search text semantic-search-packet .
+#+end_src
+
+Follow-up implementation result:
+
+#+begin_src text
+[search-text] q=semantic-search-packet own=0 hit=0 view=hits
+|note kind=not-found message="text search covers parser owner paths and exports; pipe rg output to search ingest for docs, tests, schema files, and other non-source text"
+|next ingest:semantic-search-packet
+#+end_src
+
+Result: =search text= now makes its TypeScript provider boundary explicit.
+Docs, tests, schema files, and other non-source text remain an external
+candidate expansion lane through =rg | search ingest=.
+
 ** Check And Test
 
 #+begin_src shell
@@ -153,7 +180,7 @@ split: implementation/test gates pass, while agent-facing advice remains visible
 * Synthesis
 
 #+begin_src text
-[search-synthesis] flow=schema-ci package=typescript-lang-project-harness registry=ok workspace=single-package prime=ok ingest=ok schema_tests=passed check=passed missing=owner:test-file,text:docs-schema next=clarify-owner-surfaces,clarify-text-vs-ingest
+[search-synthesis] flow=schema-ci package=typescript-lang-project-harness registry=ok workspace=single-package prime=ok ingest=ok schema_tests=passed check=passed owner_path_only=implemented text_ingest_guidance=implemented missing=none
 #+end_src
 
 * Findings
@@ -167,21 +194,20 @@ split: implementation/test gates pass, while agent-facing advice remains visible
 3. =search prime= gives a useful bounded package map and identifies the
    semantic-search implementation owners before broad search.
 
-4. =search owner <test-file>= is currently weaker than the flow recipe suggests.
-   Either the TypeScript provider should resolve test/doc owners, or the registry
-   and guide should say that =search owner= is source-owner only for this
-   provider.
+4. =search owner <test-file>= now returns an explicit path-only owner when the
+   path exists but is not parser-visible.  This is weaker than full parser owner
+   evidence by design, and stronger than a raw miss because the packet carries
+   =source=path-only=, =parserOwner=false=, and =next=ingest:<path>=.
 
-5. =search text= did not find =semantic-search-packet= in docs/schema-test
-   surfaces during the drill, while =rg | search ingest= found and grouped the
-   evidence.  The practical rule should be explicit: use =ingest= for docs,
-   tests, schema files, and other non-source text unless the provider advertises
-   broader text indexing.
+5. =search text= still does not index docs/schema-test body text in the
+   TypeScript provider, but the miss now returns =next=ingest:<query>= and a
+   note that names docs, tests, schema files, and other non-source text.
 
 * Next Slice
 
-The next RFC/implementation slice should close the two practical gaps exposed by
-the sandbox:
+The RFC/implementation slice closed the two practical gaps exposed by the
+sandbox.  A later registry descriptor slice can advertise these as provider
+capabilities instead of relying on packet notes:
 
 #+begin_src text
 1. Registry descriptor surface capability:
@@ -190,13 +216,13 @@ the sandbox:
    - docsTextSearch
    - ingestRequiredForNonSourceText
 
-2. TypeScript provider behavior:
-   - either resolve test/doc files in search owner
-   - or emit an explicit source-owner-only note with next=ingest guidance
+2. Current TypeScript provider behavior:
+   - existing non-parser paths resolve as path-only owners
+   - text misses emit explicit next=ingest guidance
 
 3. Agent guide:
-   - tell agents to use rg | search ingest for docs/tests/schema-copy text
-     until broader provider text indexing is advertised
+   - use rg | search ingest for docs/tests/schema-copy text until broader
+     provider text indexing is advertised
 #+end_src
 
 * Closeout
@@ -211,6 +237,6 @@ ingest=passed
 schema_json=passed
 check=passed
 test=passed
-gaps=owner-test-file,text-docs-schema
-decision=need-followup-slice
+gaps=none
+decision=followup-slice-implemented
 #+end_src
