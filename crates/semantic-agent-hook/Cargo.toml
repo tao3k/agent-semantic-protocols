@@ -11,6 +11,7 @@ serde_json = "1"
 
 [build-dependencies]
 rust-lang-project-harness = { path = "../../languages/rust-lang-project-harness", default-features = false }
+serde_json = "1"
 
 [dev-dependencies]
 rust-lang-project-harness = { path = "../../languages/rust-lang-project-harness", default-features = false }

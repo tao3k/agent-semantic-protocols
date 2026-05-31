@@ -1,81 +1,39 @@
+use std::io::Write;
+use std::process::{Command, Stdio};
+
 use semantic_agent_hook::{
-    classify_hook, CommandTemplate, DecisionKind, HookCommands, LanguageProfile, ProfileRegistry,
-    ReasonKind,
+    classify_hook, parse_profiles, DecisionKind, ProfileRegistry, ReasonKind,
 };
 use serde_json::json;
 
-fn rust_harness_profile_registry() -> ProfileRegistry {
-    let config = rust_lang_project_harness::default_rust_harness_config();
-    let mut ignored_path_prefixes = config.ignored_dir_names.into_iter().collect::<Vec<_>>();
-    ignored_path_prefixes.sort();
-
-    let mut source_roots = config.source_dir_names;
-    source_roots.extend(config.test_dir_names);
-    source_roots.extend(["examples".to_string(), "benches".to_string()]);
-
-    ProfileRegistry {
-        project_root: ".".to_string(),
-        profiles: vec![LanguageProfile {
-            language_id: "rust".to_string(),
-            provider_id: "rs-harness".to_string(),
-            binary: "rs-harness".to_string(),
-            namespace: "agent.semantic-protocols.languages.rust.rs-harness".to_string(),
-            source_extensions: vec![".rs".to_string()],
-            config_files: vec!["Cargo.toml".to_string(), "Cargo.lock".to_string()],
-            source_roots,
-            ignored_path_prefixes,
-            commands: HookCommands {
-                prime: command(["rs-harness", "search", "prime", "--view", "seeds", "."]),
-                owner: command([
-                    "rs-harness",
-                    "search",
-                    "owner",
-                    "{path}",
-                    "items",
-                    "--view",
-                    "seeds",
-                    ".",
-                ]),
-                text: command([
-                    "rs-harness",
-                    "search",
-                    "text",
-                    "{query}",
-                    "owner",
-                    "tests",
-                    "--view",
-                    "seeds",
-                    ".",
-                ]),
-                ingest: CommandTemplate {
-                    argv: vec![
-                        "rs-harness".to_string(),
-                        "search".to_string(),
-                        "ingest".to_string(),
-                        "items".to_string(),
-                        "tests".to_string(),
-                        "--view".to_string(),
-                        "seeds".to_string(),
-                        ".".to_string(),
-                    ],
-                    stdin_mode: Some("pipe-candidates".to_string()),
-                },
-                check_changed: command(["rs-harness", "check", "--changed", "."]),
-            },
-        }],
-    }
+fn generated_rust_profile_path() -> &'static str {
+    env!("SEMANTIC_AGENT_HOOK_RUST_PROFILE_REGISTRY")
 }
 
-fn command<const N: usize>(argv: [&str; N]) -> CommandTemplate {
-    CommandTemplate {
-        argv: argv.into_iter().map(str::to_string).collect(),
-        stdin_mode: None,
-    }
+fn rust_harness_profile_registry() -> ProfileRegistry {
+    let contents = std::fs::read_to_string(generated_rust_profile_path())
+        .expect("generated rust profile registry");
+    parse_profiles(&contents).expect("valid generated rust profile registry")
 }
 
 #[test]
 fn build_script_uses_rust_harness_source_roots() {
     assert_eq!(env!("SEMANTIC_AGENT_HOOK_RUST_SOURCE_ROOTS"), "src");
+}
+
+#[test]
+fn generated_rust_harness_profile_uses_provider_identity() {
+    let registry = rust_harness_profile_registry();
+    assert_eq!(registry.profiles.len(), 1);
+    let profile = &registry.profiles[0];
+    assert_eq!(profile.language_id, "rust");
+    assert_eq!(profile.provider_id, "rs-harness");
+    assert_eq!(profile.binary, "rs-harness");
+    assert!(profile.source_roots.iter().any(|root| root == "src"));
+    assert!(profile
+        .source_extensions
+        .iter()
+        .any(|extension| extension == ".rs"));
 }
 
 #[test]
@@ -126,4 +84,48 @@ fn rust_harness_profile_routes_raw_root_search_to_ingest() {
         decision.routes[0].stdin_mode.as_deref(),
         Some("pipe-candidates")
     );
+}
+
+#[test]
+fn cli_doctor_accepts_generated_rust_profile_registry() {
+    let output = Command::new(env!("CARGO_BIN_EXE_semantic-agent-hook"))
+        .args(["doctor", "--profiles", generated_rust_profile_path()])
+        .output()
+        .expect("run semantic-agent-hook doctor");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).expect("doctor stdout");
+    assert!(stdout.contains("semantic-agent-hook profiles=1 projectRoot=."));
+}
+
+#[test]
+fn cli_hook_emits_decision_for_generated_rust_profile_registry() {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_semantic-agent-hook"))
+        .args([
+            "hook",
+            "--client",
+            "codex",
+            "pre-tool",
+            "--profiles",
+            generated_rust_profile_path(),
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("run semantic-agent-hook hook");
+    child
+        .stdin
+        .as_mut()
+        .expect("hook stdin")
+        .write_all(br#"{"tool_name":"Read","tool_input":{"path":"src/lib.rs"}}"#)
+        .expect("write hook payload");
+
+    let output = child.wait_with_output().expect("wait for hook output");
+
+    assert!(output.status.success());
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("hook JSON");
+    assert_eq!(value["decision"], "deny");
+    assert_eq!(value["reasonKind"], "direct-source-read");
+    assert_eq!(value["routes"][0]["binary"], "rs-harness");
+    assert_eq!(value["routes"][0]["argv"][3], "src/lib.rs");
 }

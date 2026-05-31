@@ -86,6 +86,11 @@ The runtime must not call compiler parsers or inspect language syntax.  It
 constructs safe next commands from profile descriptors and lets the provider
 binary own search/check semantics.
 
+Provider crates may be linked only in build/dev contexts to generate profile
+fixtures and black-box runtime tests.  They must not become normal
+=semantic-agent-hook= runtime dependencies; production classification consumes
+profile JSON, not provider APIs.
+
 * Platform Facts
 
 Claude Code hook documentation describes command hooks as JSON on stdin plus
