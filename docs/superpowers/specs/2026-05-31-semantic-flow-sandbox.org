@@ -140,13 +140,13 @@ notes=0
 Result: ingest is the correct fallback for docs/tests/schema-copy text surfaces.
 It preserved compact grouping and emitted schema-valid JSON.
 
-** Text Miss Guidance
+** Text Search Follow-Up
 
 #+begin_src shell
 node dist/src/cli/main.js search text semantic-search-packet .
 #+end_src
 
-Follow-up implementation result:
+First follow-up implementation result:
 
 #+begin_src text
 [search-text] q=semantic-search-packet own=0 hit=0 view=hits
@@ -154,9 +154,22 @@ Follow-up implementation result:
 |next ingest:semantic-search-packet
 #+end_src
 
-Result: =search text= now makes its TypeScript provider boundary explicit.
-Docs, tests, schema files, and other non-source text remain an external
-candidate expansion lane through =rg | search ingest=.
+Second follow-up implementation result:
+
+#+begin_src text
+[search-text] q=semantic-search-packet own=6 hit=11 view=hits
+|owner src/cli/protocol.ts role="root,entrypoint" ...
+|owner src/cli/semantic-search/build.ts role="root,entrypoint" ...
+|owner tests/unit/semantic_search_schema.test.ts role=unknown public=false
+|hit src/cli/semantic-search/build.ts:580:41 owner=src/cli/semantic-search/build.ts kind=text score=2 reason=source-text source=parser-visible-source
+|hit tests/unit/semantic_search_schema.test.ts:167:35 owner=tests/unit/semantic_search_schema.test.ts kind=text score=2 reason=source-text source=parser-visible-source
+|next owner:src/cli/protocol.ts,owner:src/cli/semantic-language.ts,owner:src/cli/semantic-search/build.ts,owner:src/cli/semantic-search/types.ts,owner:tests/unit/cli.test.ts
+#+end_src
+
+Result: =search text= now covers parser-visible TypeScript source text, owner
+paths, and exports.  Docs, schema JSON, generated artifacts, and other
+non-parser text remain an external candidate expansion lane through
+=rg | search ingest=.
 
 ** Check And Test
 
@@ -199,9 +212,9 @@ split: implementation/test gates pass, while agent-facing advice remains visible
    evidence by design, and stronger than a raw miss because the packet carries
    =source=path-only=, =parserOwner=false=, and =next=ingest:<path>=.
 
-5. =search text= still does not index docs/schema-test body text in the
-   TypeScript provider, but the miss now returns =next=ingest:<query>= and a
-   note that names docs, tests, schema files, and other non-source text.
+5. =search text= now indexes parser-visible TypeScript source text, including
+   test files selected by the project, while docs/schema JSON and other
+   non-parser text remain =rg | search ingest= candidates.
 
 * Next Slice
 
@@ -218,10 +231,11 @@ capabilities instead of relying on packet notes:
 
 2. Current TypeScript provider behavior:
    - existing non-parser paths resolve as path-only owners
-   - text misses emit explicit next=ingest guidance
+   - parser-visible source text is searchable through search text
+   - non-parser text misses emit explicit next=ingest guidance
 
 3. Agent guide:
-   - use rg | search ingest for docs/tests/schema-copy text until broader
+   - use rg | search ingest for docs/schema-copy text until broader
      provider text indexing is advertised
 #+end_src
 

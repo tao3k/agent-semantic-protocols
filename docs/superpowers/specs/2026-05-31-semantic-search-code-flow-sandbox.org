@@ -1,0 +1,167 @@
+#+TITLE: Semantic Search Code-Flow Sandbox
+#+DATE: 2026-05-31
+#+STATUS: implemented
+
+* Goal
+
+This sandbox exercises a more complex code-agent flow for changing
+TypeScript search code with fewer tokens and fewer turns.
+
+The working rule is:
+
+#+begin_src text
+TS code search starts with ts-harness search.
+External grep/fd is allowed only as an expansion source, and its output must
+return through search ingest before the agent reasons over it.
+#+end_src
+
+* Scenario
+
+Task: modify the TypeScript semantic-search implementation without first
+opening broad source files.
+
+The desired flow is:
+
+#+begin_src text
+1. workspace/prime: orient package and top search owners
+2. text: find implementation terms inside parser-visible TypeScript code
+3. owner: inspect the selected owner graph
+4. tests: locate focused checks
+5. ingest: expand only for docs, schema JSON, generated files, or misses
+#+end_src
+
+* Initial Probe
+
+#+begin_src shell
+node dist/src/cli/main.js search text parserOwner .
+#+end_src
+
+Before source-text search, the result was a miss:
+
+#+begin_src text
+[search-text] q=parserOwner own=0 hit=0 view=hits
+|note kind=not-found message="text search covers parser owner paths and exports; pipe rg output to search ingest for docs, tests, schema files, and other non-source text"
+|next ingest:parserOwner
+#+end_src
+
+Finding: for TS implementation work, path/export-only text search still forced
+the agent into an external search round for ordinary source identifiers.
+
+* Expansion Probe
+
+#+begin_src shell
+rg -n "sourceText|readFileSync|text search|textHits" src tests \
+  | node dist/src/cli/main.js search ingest .
+#+end_src
+
+Useful owners:
+
+#+begin_src text
+|owner src/cli/semantic-search/hits.ts role="root,entrypoint" ...
+|owner src/parser/diagnostics.ts role=source ...
+|owner src/syntax/model.ts role=source ...
+|hit src/cli/semantic-search/build.ts:322 owner=src/cli/semantic-search/build.ts kind=text reason=rg-n
+#+end_src
+
+Result: ingest grouped external candidates correctly, but this was still an
+avoidable round for parser-visible TypeScript source.
+
+* Implemented Improvement
+
+The TypeScript provider now adds bounded parser-visible source-text hits to
+=search text=:
+
+#+begin_src text
+kind=text
+reason=source-text
+fields.source=parser-visible-source
+location=<owner-path>:<line>:<column>
+#+end_src
+
+It does not widen the JSON schema.  It also does not claim docs or schema JSON
+are parser-visible source; those remain =rg | search ingest= surfaces.
+
+Self-apply caught the first implementation shape:
+
+#+begin_src text
+TS-MOD-R002: src/cli/semantic-search/hits.ts
+#+end_src
+
+The fix was to split source-text matching into its own owner:
+
+#+begin_src text
+src/cli/semantic-search/source-text.ts
+#+end_src
+
+This keeps =hits.ts= as the search hit aggregator and makes source-text search
+independently navigable through =search owner=.
+
+* Follow-Up Probe
+
+#+begin_src shell
+node dist/src/cli/main.js search text parserOwner .
+#+end_src
+
+Observed:
+
+#+begin_src text
+[search-text] q=parserOwner own=2 hit=4 view=hits
+|owner src/cli/semantic-search/build.ts role="root,entrypoint" ...
+|owner tests/unit/cli.test.ts role=unknown public=false
+|hit src/cli/semantic-search/build.ts:312:7 owner=src/cli/semantic-search/build.ts kind=text score=2 reason=source-text source=parser-visible-source
+|hit tests/unit/cli.test.ts:234:41 owner=tests/unit/cli.test.ts kind=text score=2 reason=source-text source=parser-visible-source
+|next owner:src/cli/semantic-search/build.ts,owner:tests/unit/cli.test.ts
+#+end_src
+
+#+begin_src shell
+node dist/src/cli/main.js search owner src/cli/semantic-search/source-text.ts .
+#+end_src
+
+Observed:
+
+#+begin_src text
+[search-owner] q=src/cli/semantic-search/source-text.ts role="root,entrypoint" public=true edge=4 find=0
+|owner src/cli/semantic-search/source-text.ts role="root,entrypoint" public=true exp=sourceTextHits imports=4 external=1 unresolved=0 next=owner:src/cli/semantic-search/source-text.ts,"text:sourceTextHits(owner=src/cli/semantic-search/source-text.ts)"
+|edge O:src/cli/semantic-search/hits.ts -import-> O:src/cli/semantic-search/source-text.ts importKind=import typeOnly=false test=false resolution=relative
+#+end_src
+
+#+begin_src shell
+node dist/src/cli/main.js search text semantic-search-packet .
+#+end_src
+
+Observed:
+
+#+begin_src text
+[search-text] q=semantic-search-packet own=6 hit=11 view=hits
+|owner src/cli/protocol.ts role="root,entrypoint" ...
+|owner src/cli/semantic-search/build.ts role="root,entrypoint" ...
+|owner tests/unit/semantic_search_schema.test.ts role=unknown public=false
+|hit src/cli/semantic-search/build.ts:580:41 owner=src/cli/semantic-search/build.ts kind=text score=2 reason=source-text source=parser-visible-source
+|hit tests/unit/semantic_search_schema.test.ts:167:35 owner=tests/unit/semantic_search_schema.test.ts kind=text score=2 reason=source-text source=parser-visible-source
+#+end_src
+
+* Code-Agent Recipe
+
+#+begin_src text
+[search-code-flow]
+1. ts-harness search workspace .
+2. ts-harness search prime .
+3. ts-harness search text <implementation-term> .
+4. ts-harness search owner <top-owner> .
+5. ts-harness search tests <top-owner> .
+6. self-apply policy gates must stay green; split owners instead of waiving size findings
+7. rg/fd only for non-parser text, always piped into ts-harness search ingest .
+#+end_src
+
+* Closeout
+
+#+begin_src text
+[sandbox-closeout]
+scenario=typescript-search-code-flow
+issue=text-search-for-ts-code-required-external-rg
+fix=parser-visible-source-text-hits
+modularity_fix=split-source-text-owner
+token_rounds=one-fewer-for-source-identifiers
+schema_change=none
+remaining_external_surfaces=docs,schema-json,generated-artifacts,non-parser-text
+#+end_src

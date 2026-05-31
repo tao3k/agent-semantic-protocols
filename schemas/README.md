@@ -138,10 +138,10 @@ rg -n "OrderStatus" src tests | ts-harness search ingest --json .
 For TypeScript, `search owner` resolves parser-visible owners first. Existing
 project paths outside the parser owner set are still represented as path-only
 owners with `fields.source=path-only`, `fields.parserOwner=false`, and
-`nextActions=[{kind:"ingest", target:<path>}]`. `search text` currently indexes
-parser owner paths and exports; docs, tests, schema files, and other non-source
-text should be expanded with `rg` or `fd` and normalized through
-`search ingest`.
+`nextActions=[{kind:"ingest", target:<path>}]`. `search text` indexes
+parser-visible source text, owner paths, and exports; docs, schema files, and
+other non-parser text should be expanded with `rg` or `fd` and normalized
+through `search ingest`.
 
 The Rust slice emits the same envelope from `rs-harness search ... --json`,
 including Cargo, owner, dependency, symbol, callsite, import, cfg, pattern,
