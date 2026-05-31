@@ -95,9 +95,15 @@ local usage should only be attributed when `versionScope` is `current`. When
 `versionScope` is `external`, owner evidence belongs to the workspace version
 and must not be presented as evidence for the requested external version.
 
-The TypeScript harness unit suite reads both schemas, validates every
-implemented `ts-harness search ... --json` view against the shared envelope,
-and checks `ts-harness agent doctor --json` against the registry contract.
+This repository's `schemas/` directory is the protocol source of truth.
+Provider packages that run CI from independent checkouts should carry
+package-local copies at the same relative paths, for example
+`schemas/semantic-search-packet.v1.schema.json`. The TypeScript harness unit
+suite reads its package-local copies, validates every implemented
+`ts-harness search ... --json` view against the shared envelope, checks
+`ts-harness agent doctor --json` against the registry contract, and compares
+the package-local copies with this repository's source schemas when the package
+is checked out as a submodule.
 The Rust harness exposes the same registry contract through
 `rs-harness agent doctor --json`.
 

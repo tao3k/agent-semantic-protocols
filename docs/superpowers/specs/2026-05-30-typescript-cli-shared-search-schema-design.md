@@ -57,6 +57,12 @@ The schema uses language-neutral field names and permits language-specific
 structured `fields` maps. That keeps the stable packet shape shared while
 allowing each harness to preserve parser-native facts.
 
+The protocol repository keeps the source schema files in its root `schemas/`
+directory. The TypeScript package also carries package-local copies at the same
+relative paths so its CI can run from an independent checkout. Its schema tests
+read the package-local copies and, when the package is checked out as a
+submodule, compare them with the repository source schemas to catch drift.
+
 ## TypeScript Mapping
 
 The TypeScript CLI builds packets from the existing `TypeScriptHarnessReport`

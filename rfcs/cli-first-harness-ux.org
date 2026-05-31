@@ -222,6 +222,12 @@ schemas/semantic-language-registry.v1.schema.json
 schemas/semantic-search-packet.v1.schema.json
 #+end_src
 
+The protocol repository's =schemas/= directory is the source of truth.
+Provider packages that run their own CI from independent checkouts may carry
+package-local copies at the same relative paths.  Their tests should validate
+against the package-local files, and monorepo/submodule checkouts should compare
+the package-local copies with the repository source schemas to prevent drift.
+
 Registry identity fields:
 
 #+begin_src text
