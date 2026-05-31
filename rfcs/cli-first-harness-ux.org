@@ -2418,7 +2418,8 @@ The first Python search slice is intentionally smaller than the Rust and
 TypeScript surfaces but follows the same contract.  =py-harness search
 workspace= emits package-root routing facts and =next= prime targets.
 =py-harness search prime= emits parser-owned reasoning-tree owners, import
-edges, dependency nodes, findings, and owner/deps/test next actions.
+edges, dependency nodes, findings, owner-scoped text seeds, and de-duplicated
+deps next actions.
 =py-harness search callsite <query>= emits parser-owned =PythonCall= facts so
 agents can move from a symbol or API owner to the modules that invoke it without
 re-running broad text search.
