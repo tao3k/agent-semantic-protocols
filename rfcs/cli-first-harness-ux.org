@@ -431,12 +431,15 @@ Phase 5:  <lang-harness> check --changed    (validation)
 Public TypeScript sandbox runs calibrate this model against large real
 repositories.  =vitejs/vite= requires =search workspace= to ingest
 =pnpm-workspace.yaml= before prime, otherwise the parent agent starts from an
-incorrect single-package map.  =microsoft/TypeScript= requires prime to degrade
-through parser-version and deep-AST pressure while preserving per-file import
-resolution, otherwise the next =owner= / =import= / =tests= pipes lose graph
-edges after fallback.  Text-flow evidence such as =surface=source|test=,
-=ownerRole=, and bounded =text= snippets exists so follow-up filters do not
-re-search the original query token.
+incorrect single-package map.  When a workspace pattern also includes fixture
+packages such as =packages/**/__tests__/**=, the workspace router must rank
+source packages before fixture packages so the capped package list still gives
+the parent useful =prime:<package>= choices.  =microsoft/TypeScript= requires
+prime to degrade through parser-version and deep-AST pressure while preserving
+per-file import resolution, otherwise the next =owner= / =import= / =tests=
+pipes lose graph edges after fallback.  Text-flow evidence such as
+=surface=source|test=, =ownerRole=, and bounded =text= snippets exists so
+follow-up filters do not re-search the original query token.
 
 ** What workspace covers (and what it does not)
 
