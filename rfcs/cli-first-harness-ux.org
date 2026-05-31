@@ -528,7 +528,7 @@ Owners are ranked, not listed alphabetically:
 - no per-file item listings (use source_large + next=items instead)
 #+end_src
 
-** Prime output format with sandbox-verified fields
+** Prime output format with drill-verified fields
 
 Medium package (Tokio):
 
@@ -2309,7 +2309,7 @@ cover Tokio, rust-lang/rust, and large agent-client class projects:
 |       | templates: dependency/feature/public-api/external-candidate/ |
 |       | namespace/finding-repair/unknown/docs-api.                  |
 
-Sandbox-verified implementation order — deep PM first, pipes after:
+Drill-verified implementation order — deep PM first, pipes after:
 
 #+begin_src text
 Step 1: Deep PM minimum viable loop
