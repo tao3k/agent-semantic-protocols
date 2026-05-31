@@ -153,6 +153,7 @@ ts-harness search owner src/index.ts --json .
 ts-harness search dependency react --json .
 ts-harness search deps react/jsx-runtime@19.0.0::jsx --json .
 ts-harness search api OrderStatus --json .
+ts-harness search public-external-types react --json .
 ts-harness search symbol OrderStatus --json .
 ts-harness search callsite OrderStatus --json .
 ts-harness search import ./order --json .
@@ -182,6 +183,10 @@ non-parser text, docs text, schema JSON, and generated artifacts.
 current workspace. Dependency-prefixed or external-version API queries require a
 separate docs/API source and must not present current workspace parser facts as
 dependency-version documentation.
+`search/public-external-types` projects TypeScript parser-owned public type
+surfaces that expose a dependency package. Direct import-type text is confirmed;
+owner-level external import plus unbound type text is marked possible until the
+provider exposes named import binding attribution.
 
 The Rust slice emits the same envelope from `rs-harness search ... --json`,
 including Cargo, owner, dependency, symbol, callsite, import, cfg, pattern,

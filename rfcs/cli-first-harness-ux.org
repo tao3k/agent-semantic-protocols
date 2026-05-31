@@ -2380,7 +2380,11 @@ shared schema.  Its API search slice is intentionally parser-owned:
 =ts-harness search api <query>= emits current-workspace exported/public API
 facts only, while dependency-prefixed queries such as
 =react@18.0.0::jsx= return an explicit missing-provider note until an external
-docs/API source exists.  For equal relevance scores, TypeScript search ranks
+docs/API source exists.  It also implements
+=ts-harness search public-external-types <pkg>= as a parser-owned dependency
+leakage slice: direct =import("pkg").Type= public type text is confirmed, while
+named import text is marked possible until the parser exposes import binding
+attribution.  For equal relevance scores, TypeScript search ranks
 recently modified project files before older files and then falls back to path
 order, so active repair context rises without adding a new protocol field.
 

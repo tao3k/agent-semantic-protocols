@@ -58,6 +58,8 @@
             "exported-api-shape-search",
             "public-function-api-shape-search",
             "public-data-api-shape-search",
+            "public-external-type-search",
+            "public-api-type-text-search",
             "symbol-export-search",
             "owner-callsite-search",
             "import-edge-search",
