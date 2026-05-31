@@ -7,19 +7,48 @@ descriptors, and packet schemas.
 
 `semantic-search-packet.v1.schema.json` is the shared JSON contract for search
 output across semantic language providers. Compact text stays the default
-prompt surface; JSON is the validation, cache, and artifact shape.
+prompt surface; JSON is the validation, cache, and artifact shape. Agent-facing
+interactive exploration should not request `search ... --json`; hooks should
+deny that output-mode error with `reasonKind=agent-search-json` and guide to
+the equivalent compact command.
 
 `semantic-sandtable-scenario.v1.schema.json` is the shared scenario descriptor
 for replaying bounded search flows against real harness binaries. It owns the
 portable drill shape: workdir selection, argv commands, stdin pipe commands,
 regex capture handoff, line-protocol expectations, and warning budgets for
-token-size and latency findings.
+token-size and latency findings. Scenario descriptors can also carry compact
+real-trigger `evidence` metadata for recorded agent exploration loops, including
+the launch intent, edit-stop boundary, receipt path, recorded metrics,
+repeated-search findings, and query-set merge opportunities. Hook replay steps
+may use `expect.guideQuality` to assert that a denial includes the reason kind,
+language route, safe command shape, ingest-pipe guidance, and no leaked source
+text.
+
+`semantic-sandtable-receipt.v1.schema.json` is the compact evidence contract
+for a real-trigger agent exploration before it is converted into replayable
+scenario steps. It records the project, intent, edit boundary, accepted search
+commands, hook-deny guide routes, subagent or ingest shapes, per-command
+metrics, per-command token cost, output mode, repeated-search findings,
+JSON-search misuse counts, summary token cost, and query-set merge
+opportunities without embedding source excerpts or full terminal transcripts.
+Each `commands[].metrics.tokenCost` records the token cost for that command id;
+`summary.tokenCost` is the checked sum across command costs. Both levels must
+identify whether the value is an estimate or a measured count and include a
+basis string so sandtable evidence is not confused with model billing.
+`semantic-sandtable` can validate these receipts directly with
+`--receipt <path>`, and scenarios can link a receipt through
+`evidence.receiptPath`.
+
+`semantic-agent-hook-profile.v1.schema.json` is the profile registry consumed by
+the root `semantic-agent-hook` runtime. It standardizes language-owned source
+extensions, config files, ignored path prefixes, route command templates, and
+policy toggles without making the hook classifier language-specific.
 
 `semantic-agent-hook-decision.v1.schema.json` is the shared decision packet for
-agent hook classifiers before they render a platform-specific Codex or Claude
+the root hook classifier before it renders a platform-specific Codex or Claude
 hook response. It standardizes normalized event names, deny/context decisions,
-language/provider routes, and state updates while leaving platform payload
-parsing and language-specific profile descriptors in provider repositories.
+language/provider routes, and state updates while provider repositories own only
+their language profile descriptors and semantic search/check commands.
 
 The TypeScript provider registers as:
 
@@ -58,7 +87,10 @@ machine-readable command grammar for each method.
 Search descriptors must include a `view` and emitted `outputSchemaIds`; check
 descriptors intentionally do not advertise a search view; agent descriptors can
 point at registry output schemas such as
-`agent.semantic-protocols.semantic-language-registry`.
+`agent.semantic-protocols.semantic-language-registry`. Agent hook descriptors
+that emit structured decisions must instead advertise
+`agent.semantic-protocols.agent-hook-decision`, so providers can render
+platform-specific hook payloads without changing the shared decision contract.
 For search methods, `requiresQuery`, `acceptsStdin`, and `supportsPackageScope`
 define the v1 public input shape: one optional/required query positional, stdin
 participation, and `--package <package-id>`. Additional public controls must be
@@ -111,6 +143,8 @@ The stable envelope is language-neutral:
   `text`, or `ingest`
 - `header`, `packages`, `nodes`, `edges`, `owners`, `items`, `hits`,
   `findings`, `nextActions`, and `notes`
+- optional `querySet` and `queryComposition` for homogeneous same-view
+  query-set packets
 - optional `inputDetection` for stdin-derived searches
 
 Language harnesses should preserve compiler-native facts in `fields` maps
@@ -122,11 +156,11 @@ Shared `nodes` may also name common search-axis kinds such as `tsconfig`,
 those axes from native project facts.
 
 Structured path fields use the shared `projectPath` definition. A project path
-is either `.` for the workspace root or a canonical project-root-relative path,
-not a display locator. It must not include rank prefixes such as `0:`, URI
-schemes, absolute paths, `..` escapes, line ranges, or command prefixes such as
-`owner:`. Put line/column data in `location`, graph identity in typed node ids
-such as `O:src/lib.rs`, and ranking metadata in separate fields.
+is a canonical project-root-relative path, not a display locator. It must not
+include rank prefixes such as `0:`, URI schemes, absolute paths, `..` escapes,
+line ranges, or command prefixes such as `owner:`. Put line/column data in
+`location`, graph identity in typed node ids such as `O:src/lib.rs`, and ranking
+metadata in separate fields.
 
 Dependency API searches should distinguish the current workspace resolution
 from an explicitly requested external version. Providers can use fields such as
@@ -134,6 +168,22 @@ from an explicitly requested external version. Providers can use fields such as
 local usage should only be attributed when `versionScope` is `current`. When
 `versionScope` is `external`, owner evidence belongs to the workspace version
 and must not be presented as evidence for the requested external version.
+
+Query-set packets are for repeated same-axis searches, such as multiple
+dependencies or multiple owner paths in one package/scope context. Providers
+should set `queryComposition.mode` to `query-set`, list normalized terms in
+`querySet`, include `queryComposition.scope` when the query-set is owner- or
+package-scoped, and advertise support through registry method descriptors.
+Descriptor `querySetScopes` uses `project`, `package`, and `owner` to show which
+scope forms are accepted. Query sets are not a general command batch surface;
+distinct axes should remain separate search packets.
+
+Owner-scoped TypeScript text searches are the motivating case: once
+`search owner src/cli/semantic-search/render.ts .` has selected the owner,
+repeated text probes such as `location.path`, `location.column`,
+`location.line`, and `renderLocation` should become one
+`search/text` query-set packet with `scope.ownerPath`, not several separate
+text packets or a comma-joined literal query.
 
 This repository's `schemas/` directory is the protocol source of truth.
 It contains common protocol schemas only. Provider packages that run CI from
@@ -188,6 +238,11 @@ ts-harness search tests src/domain/order.ts --json .
 ts-harness search text OrderStatus --json .
 rg -n "OrderStatus" src tests | ts-harness search ingest --json .
 ```
+
+Those JSON examples are contract checks, not an agent exploration recipe. A
+prompt-facing agent should use compact line protocol, for example
+`ts-harness search text OrderStatus --view seeds .`, and reserve `--json` for
+tests, receipts, validators, IDE/Flowhub, or other machine consumers.
 
 For TypeScript, `search owner` resolves reasoning owners first, then
 parser-visible modules, then existing project paths. Parser-visible modules

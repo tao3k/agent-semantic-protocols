@@ -1,0 +1,186 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-agent-hook-profile.v1.schema.json",
+  "title": "Semantic Agent Hook Profile Registry",
+  "description": "Language profile descriptors consumed by the root semantic-agent-hook runtime before it emits shared hook decisions.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "protocolId",
+    "protocolVersion",
+    "projectRoot",
+    "profiles"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.semantic-agent-hook-profile-registry"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "protocolId": {
+      "const": "agent.semantic-protocols.agent-hooks"
+    },
+    "protocolVersion": {
+      "const": "1"
+    },
+    "projectRoot": {
+      "type": "string",
+      "minLength": 1
+    },
+    "profiles": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/profile"
+      }
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "namespace": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*(\\.[a-z][a-z0-9_-]*)+$"
+    },
+    "pathPattern": {
+      "type": "string",
+      "minLength": 1,
+      "not": {
+        "pattern": "^/"
+      }
+    },
+    "sourceExtension": {
+      "type": "string",
+      "pattern": "^\\.[A-Za-z0-9]+$"
+    },
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "languageId",
+        "providerId",
+        "binary",
+        "namespace",
+        "sourceExtensions",
+        "configFiles",
+        "sourceRoots",
+        "ignoredPathPrefixes",
+        "commands"
+      ],
+      "properties": {
+        "languageId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "providerId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "binary": {
+          "$ref": "#/$defs/identifier"
+        },
+        "namespace": {
+          "$ref": "#/$defs/namespace"
+        },
+        "sourceExtensions": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/sourceExtension"
+          }
+        },
+        "configFiles": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/pathPattern"
+          }
+        },
+        "sourceRoots": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/pathPattern"
+          }
+        },
+        "ignoredPathPrefixes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/pathPattern"
+          }
+        },
+        "policy": {
+          "$ref": "#/$defs/policy"
+        },
+        "commands": {
+          "$ref": "#/$defs/commands"
+        }
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "blockDirectRead": {
+          "type": "boolean",
+          "default": true
+        },
+        "blockBroadRawSearch": {
+          "type": "boolean",
+          "default": true
+        },
+        "blockAgentSearchJson": {
+          "type": "boolean",
+          "default": true
+        },
+        "requirePrimeBeforeEdit": {
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+    "commands": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["prime", "owner", "text", "ingest", "checkChanged"],
+      "properties": {
+        "prime": {
+          "$ref": "#/$defs/commandTemplate"
+        },
+        "owner": {
+          "$ref": "#/$defs/commandTemplate"
+        },
+        "text": {
+          "$ref": "#/$defs/commandTemplate"
+        },
+        "ingest": {
+          "$ref": "#/$defs/commandTemplate"
+        },
+        "checkChanged": {
+          "$ref": "#/$defs/commandTemplate"
+        }
+      }
+    },
+    "commandTemplate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["argv"],
+      "properties": {
+        "argv": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "stdinMode": {
+          "enum": ["none", "pipe-candidates", "pipe-diff", "unknown"]
+        }
+      }
+    }
+  }
+}

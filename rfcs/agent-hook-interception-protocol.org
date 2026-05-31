@@ -36,21 +36,55 @@ The hook protocol has three layers:
 
 #+begin_example
 agent platform event
-  -> platform adapter
+  -> root Rust semantic-agent-hook platform adapter
   -> normalized hook invocation
-  -> root classification algorithm
+  -> root Rust classification algorithm
   -> language provider routes
   -> platform-specific response
 #+end_example
 
-The root protocol standardizes the middle two layers.  Provider repositories
-still own the language-native pieces:
+The root repository owns the platform adapter and classifier as a single Rust
+runtime named =semantic-agent-hook=.  Provider repositories still own the
+language-native pieces:
 
 - source extensions and config files;
 - project roots and ignored directories;
 - provider binary and method descriptors;
 - check command;
 - search guide commands.
+
+Provider-level =agent hook= commands are transitional wrappers.  They may remain
+for one release as compatibility shims that emit or locate a profile descriptor,
+but they must not keep independent Codex/Claude payload parsing, shell
+classification, stop/subagent state machines, or deny-guide rendering.  Those
+belong to the root runtime.
+
+* Root Rust Runtime
+
+The v1 implementation target is a small Rust binary in this repository:
+
+#+begin_src text
+semantic-agent-hook hook --client codex pre-tool --profiles .codex/agent-hook-profiles.json
+semantic-agent-hook hook --client claude pre-tool --profiles .claude/agent-hook-profiles.json
+semantic-agent-hook doctor --profiles .codex/agent-hook-profiles.json
+semantic-agent-hook install --client codex .
+#+end_src
+
+The runtime is intentionally language-neutral:
+
+- parse platform hook JSON from stdin;
+- normalize Codex/Claude event names and tool payloads;
+- tokenize shell commands into command stages rather than substring matching;
+- route paths and root-scoped broad searches through the enabled profile
+  descriptors;
+- emit =schemas/semantic-agent-hook-decision.v1.schema.json= before rendering
+  the platform-specific response;
+- maintain only shared hook state: prime/search evidence, dirty profile paths,
+  changed-check evidence, and subagent receipt evidence.
+
+The runtime must not call compiler parsers or inspect language syntax.  It
+constructs safe next commands from profile descriptors and lets the provider
+binary own search/check semantics.
 
 * Platform Facts
 
@@ -104,7 +138,15 @@ not try to infer agent intent.
 * Language Profile Descriptor
 
 Each language provider supplies a profile descriptor derived from the semantic
-language registry:
+language registry.  The shared JSON shape is:
+
+#+begin_src text
+schemas/semantic-agent-hook-profile.v1.schema.json
+#+end_src
+
+One root config file can contain all enabled profiles for a workspace.  The
+runtime consumes that profile registry directly; it does not shell out to each
+provider just to classify a tool payload.
 
 #+begin_src text
 languageId
@@ -141,6 +183,7 @@ direct-read       structured Read/read_file/MCP read of a source path
 content-dump      Bash content reader: cat, sed, nl, bat, head, tail, awk, less
 raw-search        rg, grep, ag, fd, find, git grep, git ls-files, ast-grep
 semantic-search   <provider-binary> search ...
+search-json       <provider-binary> search ... --json during agent exploration
 changed-check     <provider-binary> check --changed
 edit              apply_patch, Edit, Write, or shell patch/write command
 subagent-receipt  SubagentStop final message
@@ -176,19 +219,29 @@ it must not dump them into the model.  It should normalize through
 =search ingest= so the provider can group by owner, tests, dependency, and
 next actions.
 
+Semantic search JSON is not the agent-facing exploration surface.  A
+provider-binary =search ... --json= command is allowed only when the caller is a
+schema-contract test, sandtable receipt/replay, IDE/Flowhub consumer, or local
+validator that consumes the JSON as a machine artifact.  During interactive
+agent exploration, hooks should deny it with =reasonKind=agent-search-json= and
+return the equivalent compact command, usually preserving the search route and
+adding =--view seeds= when the provider supports it.
+
 ** Decisions
 
 The decision order is:
 
 1. block direct source reads unless the provider route is already a semantic
    search command;
-2. block broad content dumps and broad raw searches unless they pipe to ingest;
-3. block broad edits to language-profile files before prime/search evidence;
-4. allow exact-file edits before prime only when policy enables the exception;
-5. record semantic-search evidence in post-tool state;
-6. record changed checks in post-tool state;
-7. require compact subagent receipt shape at subagent stop;
-8. require changed checks at stop when dirty profile files exist.
+2. block prompt-facing =search ... --json= exploration unless the invocation is
+   a registered machine-consumer context;
+3. block broad content dumps and broad raw searches unless they pipe to ingest;
+4. block broad edits to language-profile files before prime/search evidence;
+5. allow exact-file edits before prime only when policy enables the exception;
+6. record semantic-search evidence in post-tool state;
+7. record changed checks in post-tool state;
+8. require compact subagent receipt shape at subagent stop;
+9. require changed checks at stop when dirty profile files exist.
 
 Blocking decisions must include the next safe command, not only a denial.
 
@@ -240,37 +293,65 @@ the platform's expected output:
 }
 #+end_src
 
+Output-mode denial example:
+
+#+begin_src json
+{
+  "schemaId": "agent.semantic-protocols.agent-hook-decision",
+  "schemaVersion": "1",
+  "protocolId": "agent.semantic-protocols.agent-hooks",
+  "protocolVersion": "1",
+  "platform": "codex",
+  "event": "pre-tool",
+  "decision": "deny",
+  "reasonKind": "agent-search-json",
+  "languageIds": ["typescript"],
+  "subject": {
+    "toolName": "Bash",
+    "command": "ts-harness search text location.path owner tests --json ."
+  },
+  "routes": [
+    {
+      "languageId": "typescript",
+      "providerId": "ts-harness",
+      "binary": "ts-harness",
+      "kind": "text",
+      "argv": ["ts-harness", "search", "text", "location.path", "owner", "tests", "--view", "seeds", "."]
+    }
+  ],
+  "message": "Use compact search output for agent exploration; reserve --json for schema tests, receipts, IDE/Flowhub, or local validators."
+}
+#+end_src
+
 * Downstream Plan
 
 1. Root protocol:
-   - keep the shared decision schema;
-   - document platform adapter rules;
-   - keep sandtable drills for hook payload fixtures.
+   - keep the shared decision schema and profile registry schema;
+   - ship the Rust =semantic-agent-hook= runtime as the only classifier;
+   - keep sandtable drills for hook payload fixtures and shell-tokenizer
+     conformance.
 
 2. Rust provider:
-   - keep its current state machine as the reference implementation;
-   - replace Rust/TS-specific branches with descriptor-driven profile routes;
-   - emit the shared decision packet before rendering Codex output.
+   - export a Rust profile descriptor;
+   - move current state-machine behavior into root-runtime tests;
+   - remove provider-private Codex payload parsing once the root runtime covers
+     direct reads, raw search, edit-before-prime, stop, and subagent receipts.
 
 3. TypeScript provider:
-   - remove hardcoded Codex-only naming from the classifier;
-   - share the normalized invocation and decision concepts;
-   - keep TypeScript-specific profile descriptors local.
+   - export a TypeScript profile descriptor;
+   - delete the standalone Codex classifier or replace it with a thin wrapper
+     that invokes =semantic-agent-hook=;
+   - keep TypeScript-specific source/config ownership local.
 
 4. Python and Julia providers:
-   - implement the same =agent hook --client <platform> <event>= CLI;
-   - start with direct-read, raw-search-to-ingest, edit-before-prime, and
-     changed-check gates;
-   - add subagent/stop state once the core gates are stable.
+   - export profile descriptors before adding provider-owned hook code;
+   - rely on root =semantic-agent-hook= for direct-read, raw-search-to-ingest,
+     edit-before-prime, changed-check, subagent, and stop gates.
 
 * Open Questions
 
-- Whether root should eventually ship a small standalone hook router binary
-  that dispatches to installed language providers.  The v1 design does not
-  require it because provider binaries already exist.
 - Whether Codex will add portable =updatedInput= support.  Until then,
   provider hooks should not depend on rewriting tool inputs.
-- Whether shell parsing should use a common library in each implementation or
-  a generated conformance fixture suite.  The v1 requirement is behavioral:
-  parse command boundaries conservatively and route broad output through
-  ingest.
+- Which Rust shell-tokenizer crate is acceptable for the production runtime.
+  The conformance requirement is fixed now: parse command boundaries
+  conservatively and route broad output through ingest.

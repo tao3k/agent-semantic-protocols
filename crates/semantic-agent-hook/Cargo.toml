@@ -1,0 +1,16 @@
+[package]
+name = "semantic-agent-hook"
+version = "0.1.0"
+edition = "2021"
+description = "Root semantic agent hook runtime for language harness profiles."
+license = "MIT"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[build-dependencies]
+rust-lang-project-harness = { path = "../../languages/rust-lang-project-harness", default-features = false }
+
+[dev-dependencies]
+rust-lang-project-harness = { path = "../../languages/rust-lang-project-harness", default-features = false }
