@@ -3,9 +3,21 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+pub const PROFILE_REGISTRY_SCHEMA_ID: &str =
+    "agent.semantic-protocols.semantic-agent-hook-profile-registry";
+pub const PROFILE_REGISTRY_SCHEMA_VERSION: &str = "1";
+pub const HOOK_DECISION_SCHEMA_ID: &str = "agent.semantic-protocols.agent-hook-decision";
+pub const HOOK_DECISION_SCHEMA_VERSION: &str = "1";
+pub const HOOK_PROTOCOL_ID: &str = "agent.semantic-protocols.agent-hooks";
+pub const HOOK_PROTOCOL_VERSION: &str = "1";
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProfileRegistry {
+    pub schema_id: String,
+    pub schema_version: String,
+    pub protocol_id: String,
+    pub protocol_version: String,
     pub project_root: String,
     pub profiles: Vec<LanguageProfile>,
 }
@@ -106,11 +118,15 @@ pub struct DecisionRoute {
 #[derive(Debug)]
 pub enum AgentHookError {
     InvalidProfiles(serde_json::Error),
+    InvalidProfileRegistry(String),
     InvalidPayload(serde_json::Error),
 }
 
 pub fn parse_profiles(input: &str) -> Result<ProfileRegistry, AgentHookError> {
-    serde_json::from_str(input).map_err(AgentHookError::InvalidProfiles)
+    let registry: ProfileRegistry =
+        serde_json::from_str(input).map_err(AgentHookError::InvalidProfiles)?;
+    registry.validate_protocol()?;
+    Ok(registry)
 }
 
 pub fn parse_payload(input: &str) -> Result<Value, AgentHookError> {
@@ -241,6 +257,22 @@ pub fn classify_hook(
 }
 
 impl ProfileRegistry {
+    fn validate_protocol(&self) -> Result<(), AgentHookError> {
+        expect_field("schemaId", &self.schema_id, PROFILE_REGISTRY_SCHEMA_ID)?;
+        expect_field(
+            "schemaVersion",
+            &self.schema_version,
+            PROFILE_REGISTRY_SCHEMA_VERSION,
+        )?;
+        expect_field("protocolId", &self.protocol_id, HOOK_PROTOCOL_ID)?;
+        expect_field(
+            "protocolVersion",
+            &self.protocol_version,
+            HOOK_PROTOCOL_VERSION,
+        )?;
+        Ok(())
+    }
+
     fn profile_for_path(&self, path: &str) -> Option<&LanguageProfile> {
         let normalized = path.trim_start_matches("./");
         self.profiles
@@ -304,6 +336,15 @@ impl LanguageProfile {
             stdin_mode: template.stdin_mode.clone(),
         }
     }
+}
+
+fn expect_field(name: &str, actual: &str, expected: &str) -> Result<(), AgentHookError> {
+    if actual == expected {
+        return Ok(());
+    }
+    Err(AgentHookError::InvalidProfileRegistry(format!(
+        "invalid profile registry {name}: expected {expected}, got {actual}"
+    )))
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -502,10 +543,10 @@ fn language_ids(profiles: &[&LanguageProfile]) -> Vec<String> {
 
 fn allow(platform: &str, event: &str, subject: DecisionSubject) -> HookDecision {
     HookDecision {
-        schema_id: "agent.semantic-protocols.agent-hook-decision",
-        schema_version: "1",
-        protocol_id: "agent.semantic-protocols.agent-hooks",
-        protocol_version: "1",
+        schema_id: HOOK_DECISION_SCHEMA_ID,
+        schema_version: HOOK_DECISION_SCHEMA_VERSION,
+        protocol_id: HOOK_PROTOCOL_ID,
+        protocol_version: HOOK_PROTOCOL_VERSION,
         platform: platform.to_string(),
         event: event.to_string(),
         decision: DecisionKind::Allow,
@@ -527,10 +568,10 @@ fn deny(
     message: String,
 ) -> HookDecision {
     HookDecision {
-        schema_id: "agent.semantic-protocols.agent-hook-decision",
-        schema_version: "1",
-        protocol_id: "agent.semantic-protocols.agent-hooks",
-        protocol_version: "1",
+        schema_id: HOOK_DECISION_SCHEMA_ID,
+        schema_version: HOOK_DECISION_SCHEMA_VERSION,
+        protocol_id: HOOK_PROTOCOL_ID,
+        protocol_version: HOOK_PROTOCOL_VERSION,
         platform: platform.to_string(),
         event: event.to_string(),
         decision: DecisionKind::Deny,
@@ -547,8 +588,12 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    fn registry() -> ProfileRegistry {
-        serde_json::from_value(json!({
+    fn registry_value() -> Value {
+        json!({
+            "schemaId": PROFILE_REGISTRY_SCHEMA_ID,
+            "schemaVersion": PROFILE_REGISTRY_SCHEMA_VERSION,
+            "protocolId": HOOK_PROTOCOL_ID,
+            "protocolVersion": HOOK_PROTOCOL_VERSION,
             "projectRoot": ".",
             "profiles": [{
                 "languageId": "typescript",
@@ -567,8 +612,21 @@ mod tests {
                     "checkChanged": {"argv": ["ts-harness", "check", "--changed", "."]}
                 }
             }]
-        }))
-        .unwrap()
+        })
+    }
+
+    fn registry() -> ProfileRegistry {
+        parse_profiles(&registry_value().to_string()).unwrap()
+    }
+
+    #[test]
+    fn profile_registry_protocol_identity_is_validated() {
+        let mut value = registry_value();
+        value["schemaId"] = json!("agent.semantic-protocols.wrong-profile-registry");
+
+        let error = parse_profiles(&value.to_string()).unwrap_err();
+
+        assert!(format!("{error:?}").contains("schemaId"));
     }
 
     #[test]
