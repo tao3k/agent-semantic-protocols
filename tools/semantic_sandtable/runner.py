@@ -17,11 +17,19 @@ from typing import Any
 
 DEFAULT_SCENARIO_GLOB = "sandtables/**/*.json"
 SCENARIO_SCHEMA_PATH = Path("schemas/semantic-sandtable-scenario.v1.schema.json")
+COVERAGE_POLICY_PATH = Path("sandtables/coverage-policy.json")
+COVERAGE_POLICY_SCHEMA_PATH = Path(
+    "schemas/semantic-sandtable-coverage-policy.v1.schema.json"
+)
 TOKEN_PATTERN = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)\}")
 
 
 class ScenarioLoadError(Exception):
     """A scenario file is not valid enough to execute."""
+
+
+class CoveragePolicyLoadError(Exception):
+    """The coverage policy cannot be used for audit reporting."""
 
 
 @dataclass
@@ -69,6 +77,8 @@ class CoverageReport:
     language_ids: set[str]
     expected_surfaces: list[str]
     surfaces: dict[str, CoverageSurface]
+    policy_path: Path | None = None
+    language_expected_surfaces: dict[str, list[str]] = field(default_factory=dict)
     errors: list[str] = field(default_factory=list)
 
     @property
@@ -78,6 +88,23 @@ class CoverageReport:
             for surface in self.expected_surfaces
             if surface not in self.surfaces
         ]
+
+    @property
+    def language_missing(self) -> dict[str, list[str]]:
+        missing: dict[str, list[str]] = {}
+        for language, expected in self.language_expected_surfaces.items():
+            covered = self.covered_surfaces_for_language(language)
+            language_missing = [surface for surface in expected if surface not in covered]
+            if language_missing:
+                missing[language] = language_missing
+        return missing
+
+    def covered_surfaces_for_language(self, language: str) -> set[str]:
+        return {
+            name
+            for name, surface in self.surfaces.items()
+            if language in surface.languages
+        }
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -107,6 +134,16 @@ def main(argv: list[str] | None = None) -> int:
         help="Audit declared scenario coverage without executing commands.",
     )
     parser.add_argument(
+        "--coverage-policy",
+        default=str(COVERAGE_POLICY_PATH),
+        help="Coverage policy JSON for per-language audit expectations.",
+    )
+    parser.add_argument(
+        "--fail-on-missing",
+        action="store_true",
+        help="Return non-zero if coverage audit reports missing surfaces.",
+    )
+    parser.add_argument(
         "--fail-on-warn",
         action="store_true",
         help="Return non-zero if any warning budget is exceeded.",
@@ -130,12 +167,16 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.coverage:
-        coverage = coverage_report(repo_root, scenario_paths)
+        policy_path = resolve_path(repo_root, args.coverage_policy)
+        coverage = coverage_report(repo_root, scenario_paths, policy_path=policy_path)
         if args.json:
             print(json.dumps(coverage_report_json(coverage), indent=2, sort_keys=True))
         else:
             print_coverage_report(coverage)
-        return 1 if coverage.errors else 0
+        missing = bool(coverage.missing or coverage.language_missing)
+        if coverage.errors or (args.fail_on_missing and missing):
+            return 1
+        return 0
 
     results = [run_scenario(repo_root, path) for path in scenario_paths]
     if args.json:
@@ -165,6 +206,8 @@ def discoverable_scenario_path(repo_root: Path, path: Path) -> bool:
         relative = path.relative_to(repo_root)
     except ValueError:
         relative = path
+    if relative == COVERAGE_POLICY_PATH:
+        return False
     return not any(part.startswith(".") for part in relative.parts)
 
 
@@ -210,11 +253,26 @@ def validate_scenario_schema(repo_root: Path, path: Path, scenario: Any) -> None
         raise ScenarioLoadError(f"{relative} failed schema validation: {'; '.join(messages)}")
 
 
-def coverage_report(repo_root: Path, scenario_paths: list[Path]) -> CoverageReport:
+def coverage_report(
+    repo_root: Path,
+    scenario_paths: list[Path],
+    policy_path: Path | None = None,
+) -> CoverageReport:
     surfaces: dict[str, CoverageSurface] = {}
     languages: set[str] = set()
     scenario_count = 0
     errors: list[str] = []
+    expected_surfaces = coverage_surfaces_from_schema(repo_root)
+    language_expected_surfaces: dict[str, list[str]] = {}
+    if policy_path is not None and policy_path.exists():
+        try:
+            language_expected_surfaces = load_coverage_policy(
+                repo_root,
+                policy_path,
+                expected_surfaces,
+            )
+        except CoveragePolicyLoadError as error:
+            errors.append(str(error))
     for path in scenario_paths:
         try:
             scenario = load_scenario(path, repo_root)
@@ -244,11 +302,20 @@ def coverage_report(repo_root: Path, scenario_paths: list[Path]) -> CoverageRepo
                     language=language,
                     step_id=f"{scenario_id}:{step_id}",
                 )
+    display_policy_path = None
+    if policy_path and policy_path.exists():
+        display_policy_path = policy_path
+        try:
+            display_policy_path = policy_path.relative_to(repo_root)
+        except ValueError:
+            pass
     return CoverageReport(
         scenario_count=scenario_count,
         language_ids=languages,
-        expected_surfaces=coverage_surfaces_from_schema(repo_root),
+        expected_surfaces=expected_surfaces,
         surfaces=surfaces,
+        policy_path=display_policy_path,
+        language_expected_surfaces=language_expected_surfaces,
         errors=errors,
     )
 
@@ -282,6 +349,86 @@ def coverage_surfaces_from_schema(repo_root: Path) -> list[str]:
         .get("enum", [])
     )
     return [item for item in values if isinstance(item, str)]
+
+
+def load_coverage_policy(
+    repo_root: Path,
+    path: Path,
+    expected_surfaces: list[str],
+) -> dict[str, list[str]]:
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            policy = json.load(handle)
+    except OSError as error:
+        raise CoveragePolicyLoadError(
+            f"failed to read coverage policy: {error}"
+        ) from error
+    except json.JSONDecodeError as error:
+        raise CoveragePolicyLoadError(
+            f"failed to parse coverage policy JSON: {error.msg}"
+        ) from error
+
+    validate_coverage_policy_schema(repo_root, path, policy)
+    if not isinstance(policy, dict):
+        raise CoveragePolicyLoadError("coverage policy must be an object")
+
+    expected_set = set(expected_surfaces)
+    languages = policy.get("languages", [])
+    if not isinstance(languages, list):
+        raise CoveragePolicyLoadError("coverage policy languages must be an array")
+    result: dict[str, list[str]] = {}
+    for index, entry in enumerate(languages):
+        if not isinstance(entry, dict):
+            raise CoveragePolicyLoadError(
+                f"coverage policy languages.{index} must be an object"
+            )
+        language = entry.get("languageId")
+        if not isinstance(language, str):
+            raise CoveragePolicyLoadError(
+                f"coverage policy languages.{index}.languageId must be a string"
+            )
+        required = string_list(entry.get("requiredCoverage", []))
+        unknown = [surface for surface in required if surface not in expected_set]
+        if unknown:
+            raise CoveragePolicyLoadError(
+                f"coverage policy languageId {language} has unknown surfaces: "
+                f"{','.join(unknown)}"
+            )
+        result[language] = required
+    return result
+
+
+def validate_coverage_policy_schema(repo_root: Path, path: Path, policy: Any) -> None:
+    schema_path = repo_root / COVERAGE_POLICY_SCHEMA_PATH
+    if not schema_path.exists():
+        return
+    try:
+        from jsonschema import Draft202012Validator
+    except ImportError as error:
+        raise CoveragePolicyLoadError(
+            "coverage policy validation requires jsonschema; run through `uv run semantic-sandtable`"
+        ) from error
+    try:
+        with schema_path.open("r", encoding="utf-8") as handle:
+            schema = json.load(handle)
+    except (OSError, json.JSONDecodeError) as error:
+        raise CoveragePolicyLoadError(
+            f"failed to load coverage policy schema: {error}"
+        ) from error
+
+    validator = Draft202012Validator(schema)
+    errors = sorted(validator.iter_errors(policy), key=lambda error: list(error.path))
+    if errors:
+        messages = []
+        for error in errors[:3]:
+            location = ".".join(str(part) for part in error.path) or "$"
+            messages.append(f"{location}: {error.message}")
+        if len(errors) > 3:
+            messages.append(f"... {len(errors) - 3} more")
+        relative = path.relative_to(repo_root) if path.is_relative_to(repo_root) else path
+        raise CoveragePolicyLoadError(
+            f"{relative} failed schema validation: {'; '.join(messages)}"
+        )
 
 
 def run_scenario(repo_root: Path, path: Path) -> ScenarioResult:
@@ -1003,13 +1150,19 @@ def print_coverage_report(report: CoverageReport) -> None:
     covered_count = sum(
         1 for surface in report.expected_surfaces if surface in report.surfaces
     )
+    language_missing_count = sum(
+        len(missing) for missing in report.language_missing.values()
+    )
     languages = ",".join(sorted(report.language_ids)) or "-"
     print(
         "[coverage] "
         f"scenarios={report.scenario_count} languages={languages} "
         f"surfaces={covered_count}/{expected_count} "
-        f"missing={len(report.missing)} errors={len(report.errors)}"
+        f"missing={len(report.missing)} "
+        f"language_missing={language_missing_count} errors={len(report.errors)}"
     )
+    if report.policy_path is not None:
+        print(f"|policy {report.policy_path}")
     for surface in sorted_coverage_surfaces(report):
         print(
             f"|surface {surface.name} "
@@ -1020,6 +1173,15 @@ def print_coverage_report(report: CoverageReport) -> None:
             print(f"|steps {surface.name} {','.join(sorted(surface.step_ids))}")
     for missing in report.missing:
         print(f"|missing surface={missing}")
+    for language, expected in sorted(report.language_expected_surfaces.items()):
+        covered = report.covered_surfaces_for_language(language)
+        missing = report.language_missing.get(language, [])
+        print(
+            f"|language {language} surfaces={len(covered.intersection(expected))}/"
+            f"{len(expected)} missing={len(missing)}"
+        )
+        for surface in missing:
+            print(f"|missing language={language} surface={surface}")
     for error in report.errors:
         print(f"|error {error}")
 
@@ -1042,6 +1204,9 @@ def coverage_report_json(report: CoverageReport) -> dict[str, Any]:
     covered_count = sum(
         1 for surface in report.expected_surfaces if surface in report.surfaces
     )
+    language_missing_count = sum(
+        len(missing) for missing in report.language_missing.values()
+    )
     return {
         "summary": {
             "scenarios": report.scenario_count,
@@ -1049,10 +1214,27 @@ def coverage_report_json(report: CoverageReport) -> dict[str, Any]:
             "surfaces": covered_count,
             "expectedSurfaces": expected_count,
             "missing": len(report.missing),
+            "languageMissing": language_missing_count,
             "errors": len(report.errors),
         },
+        "policy": str(report.policy_path) if report.policy_path is not None else None,
         "expectedSurfaces": report.expected_surfaces,
         "missing": report.missing,
+        "languageCoverage": [
+            {
+                "language": language,
+                "expectedSurfaces": expected,
+                "coveredSurfaces": sorted(
+                    report.covered_surfaces_for_language(language).intersection(
+                        expected
+                    )
+                ),
+                "missing": report.language_missing.get(language, []),
+            }
+            for language, expected in sorted(
+                report.language_expected_surfaces.items()
+            )
+        ],
         "surfaces": [
             {
                 "name": surface.name,

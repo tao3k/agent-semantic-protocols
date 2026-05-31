@@ -39,6 +39,23 @@ dependency set.
 reads their declared =coverage= surfaces, and reports which standardized
 surfaces are represented before any real harness command runs.
 
+The default coverage policy lives at:
+
+#+begin_src text
+sandtables/coverage-policy.json
+#+end_src
+
+Its schema is:
+
+#+begin_src text
+schemas/semantic-sandtable-coverage-policy.v1.schema.json
+#+end_src
+
+The policy is deliberately stricter than the currently implemented scenario
+set.  It declares the coverage that Rust, TypeScript, and Python should all
+reach, so the audit can show provider alignment gaps instead of only reporting
+that a surface exists somewhere in the repository.
+
 * Scenario Contract
 
 Scenarios are JSON files under =sandtables/<language>/=.  They describe:
@@ -81,15 +98,20 @@ JSON-producing steps can also validate stdout against protocol schemas:
 Coverage audit output is intentionally line-protocol shaped:
 
 #+begin_src text
-[coverage] scenarios=8 languages=python,rust,typescript surfaces=12/12 missing=0 errors=0
+[coverage] scenarios=8 languages=python,rust,typescript surfaces=12/12 missing=0 language_missing=20 errors=0
 |surface language-registry languages=rust scenarios=rust.registry-schema-policy-flow
 |surface deps-query languages=rust scenarios=rust.ignore-walkdir-flow
+|language typescript surfaces=2/12 missing=10
+|missing language=typescript surface=language-registry
 #+end_src
 
 The expected surface names come from =coverageList= in the scenario schema:
 =language-registry=, =json-schema=, =search-flow=, =deps-query=,
 =policy-blackbox=, =policy-whitebox=, =performance=, =security=,
 =codex-hooks=, =codex-wrapper=, =desktop-hooks=, and =cli-hooks=.
+
+Use =--fail-on-missing= when the policy is ready to become a CI gate.  Until
+then, missing language surfaces are project findings rather than hard failures.
 
 Example surfaces:
 

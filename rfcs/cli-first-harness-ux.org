@@ -268,7 +268,7 @@ providerId      = rs-harness | ts-harness | jl-harness | ...
 binary          = rs-harness | ts-harness | jl-harness | ...
 namespace       = agent.semantic-protocols.languages.<languageId>.<providerId>
 methods         = search/prime | search/dependency | check/full | agent/doctor | ...
-methodDescriptors = method + command + view + outputSchemaIds + output modes
+methodDescriptors = method + command + view + JSON/text output modes + schemas
 #+end_src
 
 =methods= is the callable truth.  The shared packet schema can contain a
@@ -279,8 +279,10 @@ capability.  Agents should only call methods present in the registry and use
 whether it consumes stdin, whether =--package= is accepted, and whether
 compact/JSON output is supported.  A =search/*= descriptor must carry its
 =view=, emitted schema ids, and CLI input semantics; a =check/*= descriptor must
-not pretend to be a search view; an =agent/*= descriptor can advertise
-registry-shaped JSON output.
+not pretend to be a search view; an =agent/*= descriptor only requires
+=outputSchemaIds= when =supportsJson=true=.  Text-only helper methods such as
+=agent/guide= can be registry-described without inventing a JSON schema they do
+not emit.
 
 Registry invariants are deliberately strict:
 
@@ -320,7 +322,7 @@ capabilities          direct searchable surfaces for this method
 ingestRequiredFor     surfaces that must route through search ingest
 supportsJson          --json is accepted
 supportsCompact       compact text is accepted/default
-outputSchemaIds       JSON schemas emitted by the method
+outputSchemaIds       JSON schemas emitted when supportsJson=true
 #+end_src
 
 If a provider needs additional public controls, they must be added to the

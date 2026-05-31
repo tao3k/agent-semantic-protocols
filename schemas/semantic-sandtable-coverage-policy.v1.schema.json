@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-sandtable-coverage-policy.v1.schema.json",
+  "title": "Semantic Sandtable Coverage Policy",
+  "description": "Project-level coverage expectations for semantic sandtable scenarios, grouped by language provider.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "languages"],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "schemaVersion": {
+      "const": "semantic-sandtable-coverage-policy.v1"
+    },
+    "languages": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/languageCoveragePolicy"
+      }
+    }
+  },
+  "$defs": {
+    "languageCoveragePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["languageId", "requiredCoverage"],
+      "properties": {
+        "languageId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "requiredCoverage": {
+          "$ref": "#/$defs/coverageList"
+        }
+      }
+    },
+    "coverageList": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "language-registry",
+          "json-schema",
+          "search-flow",
+          "deps-query",
+          "policy-blackbox",
+          "policy-whitebox",
+          "performance",
+          "security",
+          "codex-hooks",
+          "codex-wrapper",
+          "desktop-hooks",
+          "cli-hooks"
+        ]
+      }
+    }
+  }
+}

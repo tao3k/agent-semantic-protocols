@@ -1,0 +1,57 @@
+{
+  "$schema": "../schemas/semantic-sandtable-coverage-policy.v1.schema.json",
+  "schemaVersion": "semantic-sandtable-coverage-policy.v1",
+  "languages": [
+    {
+      "languageId": "rust",
+      "requiredCoverage": [
+        "language-registry",
+        "json-schema",
+        "search-flow",
+        "deps-query",
+        "policy-blackbox",
+        "policy-whitebox",
+        "performance",
+        "security",
+        "codex-hooks",
+        "codex-wrapper",
+        "desktop-hooks",
+        "cli-hooks"
+      ]
+    },
+    {
+      "languageId": "typescript",
+      "requiredCoverage": [
+        "language-registry",
+        "json-schema",
+        "search-flow",
+        "deps-query",
+        "policy-blackbox",
+        "policy-whitebox",
+        "performance",
+        "security",
+        "codex-hooks",
+        "codex-wrapper",
+        "desktop-hooks",
+        "cli-hooks"
+      ]
+    },
+    {
+      "languageId": "python",
+      "requiredCoverage": [
+        "language-registry",
+        "json-schema",
+        "search-flow",
+        "deps-query",
+        "policy-blackbox",
+        "policy-whitebox",
+        "performance",
+        "security",
+        "codex-hooks",
+        "codex-wrapper",
+        "desktop-hooks",
+        "cli-hooks"
+      ]
+    }
+  ]
+}

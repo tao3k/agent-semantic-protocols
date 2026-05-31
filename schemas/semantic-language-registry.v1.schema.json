@@ -207,17 +207,34 @@
             "required": ["method"]
           },
           "then": {
-            "required": ["outputSchemaIds"],
             "properties": {
               "command": {
                 "const": "agent"
-              },
-              "outputSchemaIds": {
-                "minItems": 1
               }
             },
             "not": {
               "required": ["view"]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "pattern": "^agent/"
+              },
+              "supportsJson": {
+                "const": true
+              }
+            },
+            "required": ["method", "supportsJson"]
+          },
+          "then": {
+            "required": ["outputSchemaIds"],
+            "properties": {
+              "outputSchemaIds": {
+                "minItems": 1
+              }
             }
           }
         }
