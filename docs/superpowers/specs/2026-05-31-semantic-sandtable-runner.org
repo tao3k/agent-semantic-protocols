@@ -39,12 +39,17 @@ dependency set.
 Scenarios are JSON files under =sandtables/<language>/=.  They describe:
 
 - the real harness binary command to execute;
+- the contract coverage being exercised, such as =language-registry=,
+  =json-schema=, =policy-blackbox=, =policy-whitebox=, =performance=,
+  =security=, =codex-hooks=, and =codex-wrapper=;
 - a workdir chosen from a repo-relative path, an environment variable, or local
   fixture candidates such as cargo registry paths;
 - optional =stdinCommand= to exercise pipe flow without shell syntax;
 - regex capture of prior output, so owner/test follow-up commands can consume
   discovered seeds instead of hardcoding source paths;
 - expected compact line protocol markers;
+- expected JSON Schema conformance for whole stdout payloads or nested JSON
+  paths such as =agentHookDecision=;
 - warning budgets for lines, bytes, time, and command count.
 
 The shared descriptor contract is:
@@ -55,6 +60,18 @@ schemas/semantic-sandtable-scenario.v1.schema.json
 
 The runner validates each scenario against this schema before executing any
 commands, so malformed drills fail before touching a language harness fixture.
+JSON-producing steps can also validate stdout against protocol schemas:
+
+#+begin_src json
+{
+  "expect": {
+    "stdoutJsonSchema": "schemas/semantic-search-packet.v1.schema.json",
+    "stdoutJsonSchemaAt": {
+      "agentHookDecision": "schemas/semantic-agent-hook-decision.v1.schema.json"
+    }
+  }
+}
+#+end_src
 
 Example surfaces:
 
@@ -90,6 +107,9 @@ Rust:
   prime, source text, owner items, tests, and =rg -> search ingest=.
 - =rust.ignore-walkdir-flow= exercises dependency evidence around =walkdir=.
 - =rust.bytes-buffer-flow= exercises buffer API navigation around =BytesMut=.
+- =rust.registry-schema-policy-flow= validates the language registry,
+  semantic search JSON packet, hook decision packet, guard wrapper behavior,
+  source-leak security checks, and performance warning budgets.
 
 TypeScript:
 

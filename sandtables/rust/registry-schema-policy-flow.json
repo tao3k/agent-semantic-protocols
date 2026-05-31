@@ -1,0 +1,176 @@
+{
+  "id": "rust.registry-schema-policy-flow",
+  "language": "rust",
+  "title": "Rust registry, JSON schema, policy, performance, and hook contract flow",
+  "coverage": [
+    "language-registry",
+    "json-schema",
+    "search-flow",
+    "policy-blackbox",
+    "policy-whitebox",
+    "performance",
+    "security",
+    "codex-hooks",
+    "codex-wrapper"
+  ],
+  "workdir": {
+    "env": "SANDTABLE_RUST_HOOK_ROOT",
+    "candidates": [
+      "../rust-lang-project-harness"
+    ]
+  },
+  "budgets": {
+    "maxCommands": 5,
+    "maxTotalLinesWarn": 12,
+    "maxTotalElapsedMsWarn": 3500,
+    "maxTotalStdoutBytesWarn": 18000
+  },
+  "steps": [
+    {
+      "id": "registry-json-schema",
+      "kind": "schema-contract",
+      "coverage": ["language-registry", "json-schema", "policy-whitebox"],
+      "command": [
+        "rs-harness",
+        "agent",
+        "doctor",
+        "--client",
+        "codex",
+        "--json",
+        "."
+      ],
+      "expect": {
+        "stdoutJsonSchema": "schemas/semantic-language-registry.v1.schema.json",
+        "stdoutJsonEquals": {
+          "registryId": "agent.semantic-protocols.semantic-language-registry",
+          "languages.0.languageId": "rust",
+          "languages.0.providerId": "rs-harness",
+          "languages.0.binary": "rs-harness"
+        },
+        "stdoutJsonContains": {
+          "languages.0.methods": "agent/guard",
+          "languages.0.methodDescriptors": "agent.semantic-protocols.agent-hook-decision"
+        },
+        "maxStdoutLinesWarn": 1,
+        "maxElapsedMsWarn": 800
+      }
+    },
+    {
+      "id": "prime-search-packet-schema",
+      "kind": "schema-contract",
+      "coverage": ["json-schema", "search-flow", "performance"],
+      "command": [
+        "rs-harness",
+        "search",
+        "prime",
+        "--json",
+        "--view",
+        "seeds",
+        "--seeds",
+        "4",
+        "."
+      ],
+      "expect": {
+        "stdoutJsonSchema": "schemas/semantic-search-packet.v1.schema.json",
+        "stdoutJsonEquals": {
+          "schemaId": "agent.semantic-protocols.semantic-search-packet",
+          "languageId": "rust",
+          "providerId": "rs-harness",
+          "method": "search/prime",
+          "renderMode": "seeds"
+        },
+        "maxStdoutLinesWarn": 1,
+        "maxStdoutBytesWarn": 9000,
+        "maxElapsedMsWarn": 1000
+      }
+    },
+    {
+      "id": "hook-decision-schema",
+      "kind": "hook-replay",
+      "coverage": ["codex-hooks", "json-schema", "policy-blackbox", "security"],
+      "command": [
+        "rs-harness",
+        "agent",
+        "hook",
+        "--client",
+        "codex",
+        "pre-tool",
+        "."
+      ],
+      "stdin": "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Read\",\"tool_input\":{\"path\":\"src/lib.rs\"}}",
+      "expect": {
+        "stdoutJsonSchemaAt": {
+          "agentHookDecision": "schemas/semantic-agent-hook-decision.v1.schema.json"
+        },
+        "stdoutJsonEquals": {
+          "hookSpecificOutput.permissionDecision": "deny",
+          "agentHookDecision.reasonKind": "direct-source-read",
+          "agentHookDecision.languageIds": ["rust"]
+        },
+        "stdoutNotContains": [
+          "pub mod",
+          "fn main"
+        ],
+        "maxStdoutLinesWarn": 1,
+        "maxElapsedMsWarn": 800
+      }
+    },
+    {
+      "id": "guard-decision-schema",
+      "kind": "wrapper",
+      "coverage": ["codex-wrapper", "json-schema", "policy-blackbox", "security"],
+      "command": [
+        "rs-harness",
+        "agent",
+        "guard",
+        "--client",
+        "codex",
+        "--json",
+        ".",
+        "--",
+        "sed",
+        "-n",
+        "1,40p",
+        "src/lib.rs"
+      ],
+      "expect": {
+        "exitCode": 1,
+        "stdoutJsonSchemaAt": {
+          "agentHookDecision": "schemas/semantic-agent-hook-decision.v1.schema.json"
+        },
+        "stdoutJsonEquals": {
+          "hookSpecificOutput.permissionDecision": "deny",
+          "agentHookDecision.reasonKind": "direct-source-read"
+        },
+        "stdoutNotContains": [
+          "pub mod",
+          "fn main"
+        ],
+        "maxStdoutLinesWarn": 1,
+        "maxElapsedMsWarn": 800
+      }
+    },
+    {
+      "id": "exact-file-search-allowed",
+      "kind": "policy-blackbox",
+      "coverage": ["policy-blackbox", "security", "performance"],
+      "command": [
+        "rs-harness",
+        "agent",
+        "guard",
+        "--client",
+        "codex",
+        ".",
+        "--",
+        "rg",
+        "-n",
+        "run_agent",
+        "src/cli/runner.rs"
+      ],
+      "expect": {
+        "stdoutEmpty": true,
+        "maxElapsedMsWarn": 800
+      }
+    }
+  ]
+}

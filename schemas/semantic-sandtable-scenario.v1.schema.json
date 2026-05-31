@@ -19,6 +19,12 @@
       "type": "string",
       "minLength": 1
     },
+    "coverage": {
+      "$ref": "#/$defs/coverageList"
+    },
+    "tags": {
+      "$ref": "#/$defs/stringList"
+    },
     "workdir": {
       "oneOf": [
         {
@@ -85,6 +91,18 @@
         "maxTotalLinesWarn": {
           "type": "integer",
           "minimum": 1
+        },
+        "maxTotalElapsedMsWarn": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maxTotalStdoutBytesWarn": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maxTotalStderrBytesWarn": {
+          "type": "integer",
+          "minimum": 1
         }
       }
     },
@@ -96,6 +114,24 @@
         "id": {
           "type": "string",
           "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "kind": {
+          "enum": [
+            "command",
+            "schema-contract",
+            "policy-blackbox",
+            "policy-whitebox",
+            "performance",
+            "security",
+            "hook-replay",
+            "wrapper"
+          ]
+        },
+        "coverage": {
+          "$ref": "#/$defs/coverageList"
+        },
+        "tags": {
+          "$ref": "#/$defs/stringList"
         },
         "command": {
           "$ref": "#/$defs/argv"
@@ -159,6 +195,13 @@
         "stdoutJsonContains": {
           "$ref": "#/$defs/stringMap"
         },
+        "stdoutJsonSchema": {
+          "type": "string",
+          "minLength": 1
+        },
+        "stdoutJsonSchemaAt": {
+          "$ref": "#/$defs/stringMap"
+        },
         "maxStdoutLinesWarn": {
           "type": "integer",
           "minimum": 1
@@ -190,6 +233,26 @@
         "type": "string"
       }
     },
+    "coverageList": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "language-registry",
+          "json-schema",
+          "search-flow",
+          "deps-query",
+          "policy-blackbox",
+          "policy-whitebox",
+          "performance",
+          "security",
+          "codex-hooks",
+          "codex-wrapper",
+          "desktop-hooks",
+          "cli-hooks"
+        ]
+      }
+    },
     "stringMap": {
       "type": "object",
       "additionalProperties": {
@@ -208,7 +271,13 @@
         { "type": "number" },
         { "type": "integer" },
         { "type": "boolean" },
-        { "type": "null" }
+        { "type": "null" },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/scalar"
+          }
+        }
       ]
     }
   }

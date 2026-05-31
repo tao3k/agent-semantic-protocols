@@ -2,6 +2,12 @@
   "id": "rust.codex-hook-flow",
   "language": "rust",
   "title": "Codex hook replay for Rust source-read and search-flow gates",
+  "coverage": [
+    "codex-hooks",
+    "cli-hooks",
+    "policy-blackbox",
+    "security"
+  ],
   "workdir": {
     "env": "SANDTABLE_RUST_HOOK_ROOT",
     "candidates": [

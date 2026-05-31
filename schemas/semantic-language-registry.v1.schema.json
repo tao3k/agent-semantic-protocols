@@ -271,6 +271,25 @@
             "$ref": "#/$defs/capabilityDescriptor"
           }
         },
+        "clients": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "requiredOptions": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "input": {
+          "type": "string",
+          "minLength": 1
+        },
         "supportsJson": {
           "type": "boolean"
         },

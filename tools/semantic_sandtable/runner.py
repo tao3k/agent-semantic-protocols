@@ -47,6 +47,8 @@ class ScenarioResult:
     path: Path
     status: str
     workdir: Path | None
+    coverage: list[str] = field(default_factory=list)
+    tags: list[str] = field(default_factory=list)
     steps: list[StepResult] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
@@ -191,6 +193,8 @@ def run_scenario(repo_root: Path, path: Path) -> ScenarioResult:
         path=path,
         status="pass",
         workdir=workdir,
+        coverage=string_list(scenario.get("coverage", [])),
+        tags=string_list(scenario.get("tags", [])),
     )
     if workdir is None:
         result.status = "skip"
@@ -212,8 +216,12 @@ def run_scenario(repo_root: Path, path: Path) -> ScenarioResult:
     env = build_env(scenario.get("env", {}))
     captures: dict[str, str] = {}
     total_lines = 0
+    total_elapsed_ms = 0
+    total_stdout_bytes = 0
+    total_stderr_bytes = 0
     for index, step in enumerate(steps, start=1):
         step_result = run_step(
+            repo_root=repo_root,
             workdir=workdir,
             scenario_id=scenario_id,
             step=step,
@@ -223,6 +231,9 @@ def run_scenario(repo_root: Path, path: Path) -> ScenarioResult:
         )
         result.steps.append(step_result)
         total_lines += step_result.stdout_lines + step_result.stderr_lines
+        total_elapsed_ms += step_result.elapsed_ms
+        total_stdout_bytes += step_result.stdout_bytes
+        total_stderr_bytes += step_result.stderr_bytes
         if step_result.status == "fail":
             result.status = "fail"
 
@@ -231,6 +242,27 @@ def run_scenario(repo_root: Path, path: Path) -> ScenarioResult:
         result.warnings.append(
             f"totalLines={total_lines} exceeds maxTotalLinesWarn={max_total_lines_warn}"
         )
+    warn_scenario_if_over(
+        result,
+        "totalElapsedMs",
+        total_elapsed_ms,
+        "maxTotalElapsedMsWarn",
+        budgets.get("maxTotalElapsedMsWarn"),
+    )
+    warn_scenario_if_over(
+        result,
+        "totalStdoutBytes",
+        total_stdout_bytes,
+        "maxTotalStdoutBytesWarn",
+        budgets.get("maxTotalStdoutBytesWarn"),
+    )
+    warn_scenario_if_over(
+        result,
+        "totalStderrBytes",
+        total_stderr_bytes,
+        "maxTotalStderrBytesWarn",
+        budgets.get("maxTotalStderrBytesWarn"),
+    )
 
     if result.status != "fail" and has_warnings(result):
         result.status = "warn"
@@ -239,6 +271,7 @@ def run_scenario(repo_root: Path, path: Path) -> ScenarioResult:
 
 def run_step(
     *,
+    repo_root: Path,
     workdir: Path,
     scenario_id: str,
     step: Any,
@@ -319,7 +352,7 @@ def run_step(
         stdout_bytes=len(process.stdout.encode("utf-8")),
         stderr_bytes=len(process.stderr.encode("utf-8")),
     )
-    validate_step(step, result, process.stdout, process.stderr)
+    validate_step(step, result, process.stdout, process.stderr, repo_root)
     capture_values(step, result, process.stdout, captures)
     if result.errors:
         result.status = "fail"
@@ -429,6 +462,7 @@ def validate_step(
     result: StepResult,
     stdout: str,
     stderr: str,
+    repo_root: Path,
 ) -> None:
     expect = step.get("expect", {})
     if not isinstance(expect, dict):
@@ -455,7 +489,7 @@ def validate_step(
             result.errors.append(f"stdout regex missed {pattern!r}")
     if bool(expect.get("stdoutEmpty", False)) and stdout:
         result.errors.append("stdout expected empty")
-    validate_stdout_json(expect, result, stdout)
+    validate_stdout_json(expect, result, stdout, repo_root)
     if bool(expect.get("lineProtocol", False)):
         validate_line_protocol(result, stdout)
 
@@ -513,16 +547,25 @@ def validate_stdout_json(
     expect: dict[str, Any],
     result: StepResult,
     stdout: str,
+    repo_root: Path,
 ) -> None:
     equals = expect.get("stdoutJsonEquals", {})
     contains = expect.get("stdoutJsonContains", {})
+    schema_path = expect.get("stdoutJsonSchema")
+    schemas_at = expect.get("stdoutJsonSchemaAt", {})
     if not isinstance(equals, dict):
         result.errors.append("expect.stdoutJsonEquals must be an object")
         equals = {}
     if not isinstance(contains, dict):
         result.errors.append("expect.stdoutJsonContains must be an object")
         contains = {}
-    if not equals and not contains:
+    if schema_path is not None and not isinstance(schema_path, str):
+        result.errors.append("expect.stdoutJsonSchema must be a string")
+        schema_path = None
+    if not isinstance(schemas_at, dict):
+        result.errors.append("expect.stdoutJsonSchemaAt must be an object")
+        schemas_at = {}
+    if not equals and not contains and schema_path is None and not schemas_at:
         return
 
     try:
@@ -530,6 +573,30 @@ def validate_stdout_json(
     except json.JSONDecodeError as error:
         result.errors.append(f"stdout JSON parse failed: {error.msg}")
         return
+
+    if schema_path is not None:
+        validate_json_value_against_schema(
+            result,
+            repo_root,
+            payload,
+            "$",
+            schema_path,
+        )
+    for path, nested_schema_path in schemas_at.items():
+        if not isinstance(path, str) or not isinstance(nested_schema_path, str):
+            result.errors.append("stdoutJsonSchemaAt entries must be string to string")
+            continue
+        actual, found = json_path(payload, path)
+        if not found:
+            result.errors.append(f"stdout JSON path missing {path!r}")
+            continue
+        validate_json_value_against_schema(
+            result,
+            repo_root,
+            actual,
+            path,
+            nested_schema_path,
+        )
 
     for path, expected in equals.items():
         if not isinstance(path, str):
@@ -558,12 +625,54 @@ def validate_stdout_json(
             )
 
 
+def validate_json_value_against_schema(
+    result: StepResult,
+    repo_root: Path,
+    value: Any,
+    value_path: str,
+    schema_path_text: str,
+) -> None:
+    schema_path = resolve_path(repo_root, schema_path_text)
+    if schema_path is None or not schema_path.exists():
+        result.errors.append(f"stdout JSON schema not found {schema_path_text!r}")
+        return
+    try:
+        from jsonschema import Draft202012Validator
+    except ImportError:
+        result.errors.append("stdout JSON schema validation requires jsonschema")
+        return
+    try:
+        with schema_path.open("r", encoding="utf-8") as handle:
+            schema = json.load(handle)
+    except (OSError, json.JSONDecodeError) as error:
+        result.errors.append(f"stdout JSON schema load failed {schema_path_text!r}: {error}")
+        return
+    errors = sorted(
+        Draft202012Validator(schema).iter_errors(value),
+        key=lambda error: list(error.path),
+    )
+    for error in errors[:3]:
+        location = ".".join(str(part) for part in error.path) or "$"
+        result.errors.append(
+            f"stdout JSON schema {schema_path_text!r} failed at {value_path}.{location}: {error.message}"
+        )
+    if len(errors) > 3:
+        result.errors.append(
+            f"stdout JSON schema {schema_path_text!r} has {len(errors) - 3} more failures"
+        )
+
+
 def json_path(payload: Any, path: str) -> tuple[Any, bool]:
     current = payload
     for part in path.split("."):
         if isinstance(current, dict) and part in current:
             current = current[part]
             continue
+        if isinstance(current, list) and part.isdigit():
+            index = int(part)
+            if index < len(current):
+                current = current[index]
+                continue
         return None, False
     return current, True
 
@@ -583,6 +692,18 @@ def validate_line_protocol(result: StepResult, stdout: str) -> None:
 
 def warn_if_over(
     result: StepResult,
+    name: str,
+    actual: int,
+    threshold_name: str,
+    threshold: Any,
+) -> None:
+    limit = optional_int(threshold)
+    if limit is not None and actual > limit:
+        result.warnings.append(f"{name}={actual} exceeds {threshold_name}={limit}")
+
+
+def warn_scenario_if_over(
+    result: ScenarioResult,
     name: str,
     actual: int,
     threshold_name: str,
@@ -736,6 +857,10 @@ def print_text_report(repo_root: Path, results: list[ScenarioResult]) -> None:
             f"[scenario] id={result.scenario_id} lang={result.language} "
             f"status={result.status} path={relative_path} workdir={workdir}"
         )
+        if result.coverage:
+            print(f"|coverage {','.join(result.coverage)}")
+        if result.tags:
+            print(f"|tags {','.join(result.tags)}")
         if result.skip_reason:
             print(f"|skip reason={quote_value(result.skip_reason)}")
         for warning in result.warnings:
@@ -781,6 +906,8 @@ def scenario_json(result: ScenarioResult) -> dict[str, Any]:
         "path": str(result.path),
         "status": result.status,
         "workdir": str(result.workdir) if result.workdir is not None else None,
+        "coverage": result.coverage,
+        "tags": result.tags,
         "skipReason": result.skip_reason,
         "warnings": result.warnings,
         "errors": result.errors,

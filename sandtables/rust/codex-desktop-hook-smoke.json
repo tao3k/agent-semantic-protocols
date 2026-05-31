@@ -2,6 +2,14 @@
   "id": "rust.codex-desktop-hook-smoke",
   "language": "rust",
   "title": "Codex Desktop tool payloads route raw Rust reads through rs-harness policy",
+  "coverage": [
+    "desktop-hooks",
+    "codex-hooks",
+    "codex-wrapper",
+    "policy-blackbox",
+    "security",
+    "performance"
+  ],
   "workdir": {
     "relative": "sandtables/fixtures/codex-desktop-hook-smoke"
   },
