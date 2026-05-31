@@ -16,7 +16,7 @@ protocol becomes:
 ```shell
 ts-harness search <view> ... [--json] [--package PATH] [PROJECT_ROOT]
 ts-harness check [--changed | --full] [--json] [PROJECT_ROOT]
-ts-harness agent doctor [PROJECT_ROOT]
+ts-harness agent doctor [--json] [PROJECT_ROOT]
 ```
 
 The protocol identity is the semantic language registry, not the binary:
@@ -41,8 +41,8 @@ a capability advertisement. Search descriptors also carry CLI input semantics
 such as `requiresQuery`, `acceptsStdin`, and `supportsPackageScope`.
 The TypeScript provider treats this registry as the single source of CLI search
 view metadata: `methodDescriptors` and `methods` must be the same set, search
-descriptors use `view` equal to the `search/<view>` suffix, and compatibility
-binary aliases are not advertised as semantic-language identities.
+descriptors use `view` equal to the `search/<view>` suffix, and the public
+semantic-language identity is exactly the advertised provider registration.
 
 Add `schemas/semantic-search-packet.v1.schema.json` as a repo-level contract for
 semantic search packets. The schema models:
@@ -70,7 +70,7 @@ and `TypeScriptReasoningTree`.
   facts plus TypeScript import-resolution usage for an external package.
 - `search deps <dep[/subpath][@version][::api]>` renders version-aware
   dependency API usage: manifest range, current `currentWorkspaceVersion` when
-  available, local import usage, and explicit `versionStatus`/`versionScope`.
+  available, local import usage, and explicit `versionScope`.
   If the requested version is not the current workspace resolution, the packet
   is an external-version query and local import usage is not attributed to it.
 - `search symbol <query>` renders exported symbol definitions.

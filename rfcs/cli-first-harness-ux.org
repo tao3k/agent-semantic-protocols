@@ -258,10 +258,10 @@ methods      complete callable set
 descriptors  exactly one descriptor for every method, no extras, no duplicates
 #+end_src
 
-Providers must not advertise compatibility aliases in the registry.  If a
-package keeps an old binary name for local migration, that alias stays outside
-the semantic-language contract.  For TypeScript, the only advertised provider
-and binary is =ts-harness=.
+Providers advertise exactly one semantic-language identity in the registry.
+Extra local entry points, if a package has any, are outside the protocol and
+must not appear in registry output, generated guides, schemas, or RFC examples.
+For TypeScript, the only advertised provider and binary is =ts-harness=.
 
 The descriptor command must match the method prefix.  For =search/<view>=,
 =view= must be the method suffix, =outputSchemaIds= must include
