@@ -57,7 +57,13 @@ fn run_hook(args: &[String]) -> Result<(), String> {
     let profiles_path = flag_value(args, "--profiles")
         .map(PathBuf::from)
         .unwrap_or_else(|| default_profile_registry_path(&PathBuf::from(".")));
-    let registry = load_profiles(&profiles_path)?;
+    let registry = if profiles_path.exists() {
+        load_profiles(&profiles_path)?
+    } else {
+        let value = build_default_profile_registry(&PathBuf::from("."))?;
+        parse_profiles(&value.to_string())
+            .map_err(|error| format!("invalid generated profile registry: {error:?}"))?
+    };
     let mut stdin = String::new();
     io::stdin()
         .read_to_string(&mut stdin)
@@ -162,6 +168,8 @@ fn run_install(args: &[String]) -> Result<(), String> {
     let config_path = codex_dir.join("config.toml");
     let existing = fs::read_to_string(&config_path).unwrap_or_default();
     let merged = merge_codex_config(&existing, &codex_hook_block());
+    validate_codex_config_toml(&merged)
+        .map_err(|error| format!("refusing to write invalid Codex config TOML: {error}"))?;
     fs::write(&config_path, merged.as_bytes())
         .map_err(|error| format!("failed to write {}: {error}", config_path.display()))?;
 
@@ -400,11 +408,34 @@ fn codex_hook_event_block(
     hook_event: &str,
 ) -> String {
     let matcher_line = matcher
-        .map(|value| format!("matcher = \"{value}\"\n\n"))
+        .map(|value| format!("matcher = {}\n\n", toml_basic_string(value)))
         .unwrap_or_else(|| "\n".to_string());
     format!(
         "[[hooks.{event}]]\n{matcher_line}[[hooks.{event}.hooks]]\ntype = \"command\"\ntimeout = 5\nstatusMessage = \"{status}\"\ncommand = '''\nrepo_root=\"$(git rev-parse --show-toplevel 2>/dev/null || pwd)\"\ncd \"$repo_root\"\nhook_bin=\"$repo_root/.codex/semantic-agent-hook/bin/semantic-agent-hook\"\nprofiles=\"$repo_root/.codex/semantic-agent-hook/profiles.json\"\nif [ -x \"$hook_bin\" ]; then\n  exec \"$hook_bin\" hook --client codex {hook_event} --profiles \"$profiles\"\nfi\nexec semantic-agent-hook hook --client codex {hook_event} --profiles \"$profiles\"\n'''"
     )
+}
+
+fn validate_codex_config_toml(content: &str) -> Result<(), String> {
+    toml::from_str::<toml::Value>(content)
+        .map(|_| ())
+        .map_err(|error| error.to_string())
+}
+
+fn toml_basic_string(value: &str) -> String {
+    let mut output = String::from("\"");
+    for ch in value.chars() {
+        match ch {
+            '\\' => output.push_str("\\\\"),
+            '"' => output.push_str("\\\""),
+            '\n' => output.push_str("\\n"),
+            '\r' => output.push_str("\\r"),
+            '\t' => output.push_str("\\t"),
+            c if c.is_control() => output.push_str(&format!("\\u{:04X}", c as u32)),
+            c => output.push(c),
+        }
+    }
+    output.push('"');
+    output
 }
 
 fn merge_codex_config(existing: &str, block: &str) -> String {

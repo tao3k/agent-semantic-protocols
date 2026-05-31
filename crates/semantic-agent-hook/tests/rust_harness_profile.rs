@@ -218,6 +218,8 @@ fn cli_install_writes_root_owned_codex_hook_config() {
     assert!(config.contains(".codex/semantic-agent-hook/bin/semantic-agent-hook"));
     assert!(config.contains("semantic-agent-hook hook --client codex pre-tool"));
     assert!(config.contains("--profiles \"$profiles\""));
+    toml::from_str::<toml::Value>(&config).expect("installed Codex config is valid TOML");
+    assert!(config.contains("fs\\\\.read"));
     assert!(!config.contains("ts-harness agent hook --client codex"));
     assert!(!config.contains("rs-harness agent hook --client codex"));
     assert!(root
@@ -228,6 +230,37 @@ fn cli_install_writes_root_owned_codex_hook_config() {
     let registry = parse_profiles(&profiles).expect("valid installed profile registry");
     assert_eq!(registry.profiles.len(), 1);
     assert_eq!(registry.profiles[0].language_id, "rust");
+    std::fs::remove_dir_all(root).expect("cleanup temp project root");
+}
+
+#[test]
+fn cli_install_refuses_to_overwrite_invalid_codex_toml() {
+    let root = temp_project_root("install-invalid-toml");
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"demo\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+    )
+    .expect("write temp Cargo.toml");
+    std::fs::create_dir_all(root.join(".codex")).expect("create .codex");
+    let config_path = root.join(".codex/config.toml");
+    std::fs::write(&config_path, "unified_exec = \"unterminated\n").expect("write invalid config");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_semantic-agent-hook"))
+        .args([
+            "install",
+            "--client",
+            "codex",
+            root.to_str().expect("utf8 temp root"),
+        ])
+        .output()
+        .expect("run semantic-agent-hook install");
+
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr)
+        .contains("refusing to write invalid Codex config TOML"));
+    let config = std::fs::read_to_string(&config_path).expect("preserved config");
+    assert_eq!(config, "unified_exec = \"unterminated\n");
+    assert!(!config.contains("# BEGIN semantic-agent-hook agent hooks"));
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
 }
 
