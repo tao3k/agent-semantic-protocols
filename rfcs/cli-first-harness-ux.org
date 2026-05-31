@@ -114,16 +114,18 @@ version/feature/target facts and local API usage owners for the version range
 declared by the current workspace.  If a query asks for =dep@version= that does
 not match the workspace declaration, the packet must mark it as
 =versionScope=external= and avoid presenting current owner usage as evidence
-for that external version.  Current workspace versions are already reported by
-native manifest facts such as =|dep ... version=...=; external queries can add
-a =|note ... currentWorkspaceVersion=...= hint when the current workspace has a
-different declaration.  For current workspace versions,
+for that external version.  Current workspace versions are reported as
+=currentWorkspaceVersion= when a lockfile or manifest exact version proves the
+value.  For current workspace versions,
 =::api= narrows owner hits to dependency owners that also mention the API token.
 =search prime= is the low-token entry point with graph structure.
 
 ** Multi-pipe: deterministic packet composition
 
-A =search= command can chain multiple pipe stages in one invocation:
+A provider can optionally chain multiple pipe stages in one invocation.  This
+is an RFC target for providers that can keep the packet final-only and
+deterministic; agents must still treat the registry's =methods= and
+=methodDescriptors= as the callable truth:
 
 #+begin_src shell
 <lang-harness> search <source> <pipe1> <pipe2> ...
@@ -143,11 +145,11 @@ pattern <recipe>      structural recipe search
 ingest                stdin auto-sniff (rg -n / fd / git diff)
 #+end_src
 
-Pipe stages (enrich the packet, all optional):
+Candidate pipe stages (enrich the packet, all optional):
 
 #+begin_src text
 owners      resolve to owner graph nodes
-items       resolve to intra-file items (--item-slice)
+items       resolve to intra-file items
 tests       find owned tests/benches/examples
 examples    find owned examples
 benches     find owned benches
@@ -178,7 +180,8 @@ rs-harness search dependency bytes public-api docs tests --package tokio
 rg -n "require_git|git_ignore|parents" agent-rs/file-search | rs-harness search ingest items tests
 #+end_src
 
-Debug with =--trace= (compact stage list, not full intermediate packets):
+When a provider advertises diagnostic tracing, it should return a compact
+stage list rather than full intermediate packets:
 
 #+begin_src text
 [search-trace] source=dependency query=ignore pipes=items,docs,tests
@@ -615,7 +618,7 @@ Rules:
 - no blank lines
 - no Markdown headings
 - no bullet indentation
-- no source lines unless explicit --lines
+- no source excerpts in default search packets
 - no Help / Contract unless it is a check finding
 - no prose paragraphs
 - paths relative to project root
@@ -638,7 +641,8 @@ Line shape:
 |note k=v                           ← exceptional info (keep ≤ 1)
 #+end_src
 
-=|item= lines only appear with =--item-slice=.
+=|item= lines only appear when the request includes the =items= pipe or an
+advertised provider method returns item facts by default.
 =|next= is an inline field on owner/item/package/cargo lines, not a separate
 line type.  A standalone =|next= line is only used when no owner/item
 context exists to attach to.
@@ -691,7 +695,8 @@ Distinguishing =workspace->= from =crates-io->= matters in monorepos like
 rust-lang/rust and agent-client repos where cross-crate edges are workspace-internal
 but still cross-package.
 
-=--explain= also uses this protocol (diagnostic only, not default):
+A provider-private diagnostic method, if advertised, also uses this line
+protocol rather than prose:
 
 #+begin_src text
 [search-plan] view=dependency q=reqwest
@@ -738,31 +743,18 @@ rs-harness check --changed         → compact finding text (default)
 rs-harness check --changed --json  → structured JSON report
 #+end_src
 
-* Graph-first flags
+* Graph-first view controls
 
 #+begin_src text
 --view graph|hits|both|seeds
---depth <n>               default 1
---dir out|in|both         default both for owner, out for dep
---edge mod,crate,ext,test,find,call,import,reexport,item,feature
---item-slice              enable =|item= lines for large-file owners
---owner <owner|path>
 --package <pkg>
---workspace               cross-package symbol/dep search after search workspace
---scope src|tests|benches|examples|build|all
---feature <feature>        limit to feature-gated code
---target <cfg-or-triple>   limit to target-conditional code
---owners <n>              default 8
---edges <n>               default 24
---hits <n>                default 0 in graph view
---per-owner <n>           default 5
---seeds <n>               default 8
---lines                   default false
---explain                 show internal resolve steps (diagnostic only)
 #+end_src
 
-=--depth 0= means header line only.  =--hits 0= means no hit lines in graph
-view.  =--dir= controls which direction edges render.
+=--view= selects the final render mode for a search packet.  =--package=
+selects a workspace package after =search workspace=.  Depth, edge, hit, owner,
+line, feature, target, and seed caps are provider-owned deterministic limits
+unless a future =methodDescriptor= explicitly advertises them for that method.
+They are not shared semantic-language flags.
 
 There is no =--backend= flag.  Backend selection is fully internal.  The agent client
 never chooses a backend.
@@ -780,23 +772,18 @@ There is exactly one ingest command — no sub-kinds, no =--query=:
 rs-harness search ingest
 #+end_src
 
-Flags (output / scope control only, no source declaration):
+Shared controls (output / scope control only, no source declaration):
 
 #+begin_src text
 --json
---owner <owner>
 --package <pkg>
---scope src|tests|benches|examples|build|all
 --view graph|hits|both|seeds
---owners <n>
---hits <n>
---per-owner <n>
---lines
---explain
 #+end_src
 
 No =--query=, no =ingest rg= / =ingest paths= / =ingest fd= sub-kind.
 Ingest auto-detects the format from the first few KB of stdin.
+Owner, scope, hit, item, line, and per-owner caps are provider-owned
+deterministic limits unless a method descriptor explicitly advertises them.
 
 ** Auto-detection
 
@@ -872,7 +859,7 @@ git diff --name-only | rs-harness search ingest
 Seed policy: ingest does not know the user's query intent, so it defaults
 to conservative next actions — owner and pattern next actions derived
 from structure, not from matching text.  No =text:= next actions unless
-=--explain= shows internal derivation.
+an advertised diagnostic method can show internal derivation.
 
 The ingest command ALWAYS returns owner-grouped compact packets with
 =next= actions.
@@ -923,7 +910,7 @@ Adapters can seed or enrich bounded candidate lists, but they do not replace
 native parser facts and must be visible as adapter/ingest provenance in the
 packet.
 
-=--explain= may show the resolve path for diagnostics, but the default
+An advertised diagnostic method may show the resolve path, but the default
 output never mentions =backend=.
 
 * Search view reference (graph-first)
@@ -953,7 +940,7 @@ plan — they are graph-derived candidate entry points.
 ** =search owner=
 
 #+begin_src shell
-rs-harness search owner src/http/client.rs --dir both --depth 1
+rs-harness search owner src/http/client.rs
 #+end_src
 
 #+begin_example
@@ -964,10 +951,10 @@ rs-harness search owner src/http/client.rs --dir both --depth 1
 |edge O:src/http/client.rs -test-> T:tests/unit/http/client.rs
 #+end_example
 
-With =--dir in= (who depends on this owner):
+With the =dependents= pipe (who depends on this owner), when advertised:
 
 #+begin_src shell
-rs-harness search owner src/http/client.rs --dir in --depth 1
+rs-harness search owner src/http/client.rs dependents
 #+end_src
 
 #+begin_example
@@ -977,10 +964,10 @@ rs-harness search owner src/http/client.rs --dir in --depth 1
 |edge O:src/lib.rs -reexport-> O:src/http/client.rs
 #+end_example
 
-With =--item-slice= for large-file owners:
+With the =items= pipe for large-file owners:
 
 #+begin_src shell
-rs-harness search owner file-search/src/lib.rs --item-slice --edge item,call,ext
+rs-harness search owner file-search/src/lib.rs items
 #+end_src
 
 #+begin_example
@@ -994,8 +981,8 @@ rs-harness search owner file-search/src/lib.rs --item-slice --edge item,call,ext
 |next callsite:FileSearchOptions,callsite:create_session,pattern:ignore-walker
 #+end_example
 
-Without =--item-slice=, the owner renders as a single =|node= line.
-=--item-slice= is essential for large files where one owner collapses too
+Without the =items= pipe, the owner can render as a single =|node= line.
+The =items= pipe is essential for large files where one owner collapses too
 many responsibilities.
 
 ** =search dependency=
@@ -1027,11 +1014,11 @@ Rename dependency:
 With =--view hits= (after graph, when hits are needed):
 
 #+begin_src shell
-rs-harness search dependency reqwest --view hits --owner src/http/client.rs
+rs-harness search dependency reqwest --view hits
 #+end_src
 
 #+begin_example
-[search-dependency] q=reqwest view=hits own=src/http/client.rs next=pattern:public-error-boundary
+[search-dependency] q=reqwest view=hits own=2 next=pattern:public-error-boundary
 |owner src/http/client.rs role=source pub=false hit_kind=text locations=3:5,42:17
 #+end_example
 
@@ -1113,7 +1100,7 @@ empty unless the provider has source facts for that external version.
 
 #+begin_src shell
 rs-harness search symbol create_order
-rs-harness search callsite create_order --owner src/api
+rs-harness search callsite create_order
 #+end_src
 
 #+begin_example
@@ -1143,8 +1130,8 @@ rs-harness search import reqwest
 #+begin_src shell
 rs-harness search pattern public-anyhow-result
 rs-harness search pattern public-error-boundary
-rs-harness search pattern clone-in-loop --owner src/index.rs
-rs-harness search pattern public-external-type --dependency smallvec
+rs-harness search pattern clone-in-loop
+rs-harness search dependency smallvec public-api
 #+end_src
 
 =public-external-type= finds external dependency types that leak into
@@ -1264,8 +1251,9 @@ entry point.  It may point to =search docs ignore::WalkBuilder::require_git=
 when an external docs provider is available, but it must not require docs to
 answer local usage.
 
-=search docs= never outputs long prose by default.  Use =--lines= for
-doc-comment text when needed.
+=search docs= never outputs long prose by default.  Doc-comment excerpts are
+not part of the baseline contract; providers can expose them only through an
+advertised detail method or method descriptor field.
 
 ** =search tests=
 
@@ -1333,7 +1321,7 @@ Acceptance criteria for every snapshot:
 
 #+begin_src text
 - no blank lines
-- no source lines by default (--lines opt-in)
+- no source lines in default packets
 - default ≤ max lines per block
 - paths root-relative
 - every =next= action directly translatable to a subsequent rs-harness search command
@@ -1361,7 +1349,7 @@ Goal: the agent client never searches by package name when the dependency is ren
 
 Fixture: a file with 1000+ lines and 10+ public items.
 
-Expected with =--item-slice=:
+Expected with the =items= pipe:
 
 #+begin_example
 [search-owner] role=source-large item=N
@@ -1369,7 +1357,7 @@ Expected with =--item-slice=:
 |item walker_worker kind=fn ...
 #+end_example
 
-Goal: =--item-slice= prevents large files from collapsing into one owner node.
+Goal: the =items= pipe prevents large files from collapsing into one owner node.
 
 *** Test C: feature-gated dependency
 
@@ -1581,8 +1569,9 @@ rg -n "<query>" <roots> | rs-harness search ingest items tests
 
 Only request separate hit-level searches after selecting owners:
 ```sh
-rs-harness search callsite <symbol> --view hits --owner <owner>
-rs-harness search text <query> --view hits --scope tests --owner <owner>
+rs-harness search owner <owner> items
+rs-harness search callsite <symbol> --view hits
+rg -n "<query>" tests | rs-harness search ingest
 ```
 
 Choose a focused recipe below.
@@ -1594,7 +1583,7 @@ For broad tasks, spawn read-only explorer subagents yourself.
 Parent gets graph; subagents get slices; hits only within slices:
 - Parent: =search prime= or =search dependency <dep> --view graph=
 - Dependency subagent: =search deps <dep[/subpath][@version][::api]>=
-- Source subagent: =search dependency <dep> --view graph --depth 1 --scope src=
+- Source subagent: =search dependency <dep> owners items --package <pkg>=
 - Test subagent: =search tests <owner> --view graph=
 
 Each subagent should:
@@ -1647,13 +1636,13 @@ current workspace owner hits as evidence for that requested version.
 
 Source usage subagent:
 ```sh
-rs-harness search dependency <dep> --scope src
+rs-harness search dependency <dep> owners
 rs-harness search import <dep-import-root>
 ```
 
 Test/bench subagent:
 ```sh
-rs-harness search dependency <dep> --scope tests
+rs-harness search dependency <dep> tests
 rs-harness search tests <dep-or-owner>
 ```
 
@@ -1687,7 +1676,7 @@ Useful parallel subagents:
 Owner boundary subagent:
 ```sh
 rs-harness search owner <owner-or-path>
-rs-harness search pattern public-api-shape --owner <owner>
+rs-harness search owner <owner-or-path> public-api
 ```
 
 Callsite subagent:
@@ -1699,7 +1688,7 @@ rs-harness search import <module-or-owner>
 Test subagent:
 ```sh
 rs-harness search tests <owner-or-path>
-rs-harness search text <symbol> --scope tests
+rg -n "<symbol>" tests | rs-harness search ingest
 ```
 
 ## Recipe: module move or namespace change
@@ -1719,7 +1708,7 @@ Useful parallel subagents:
 Owner graph subagent:
 ```sh
 rs-harness search owner <path-or-owner>
-rs-harness search prime --limit-owners 12
+rs-harness search prime
 ```
 
 Import subagent:
@@ -1731,7 +1720,7 @@ rs-harness search import <new-module-root>
 Test mount subagent:
 ```sh
 rs-harness search tests <owner-or-path>
-rs-harness search text "#[path" --scope tests
+rg -n "#[path" tests | rs-harness search ingest
 ```
 
 ## Flow: dependency API docs and usage
@@ -1749,8 +1738,8 @@ rs-harness search docs <dep>::<item>
 Subagents:
 docs=`rs-harness search docs <dep>::<item>`
 usage=`rs-harness search deps <dep[/subpath][@version][::item]>`
-public=`rs-harness search pattern public-external-type --dependency <dep>`
-tests=`rs-harness search text <item-name> --scope tests`
+public=`rs-harness search dependency <dep> public-api`
+tests=`rg -n "<item-name>" tests | rs-harness search ingest`
 
 Parent synthesis fields:
 dependency, version, features, api_shape, local_usage, public_leakage,
@@ -1794,7 +1783,7 @@ Start with:
 ```sh
 rs-harness search workspace
 rs-harness search prime
-rs-harness search symbol <concept> --limit-matches 20
+rs-harness search symbol <concept>
 ```
 
 If symbol search is too sparse, expand with lexical/file candidates
@@ -1892,8 +1881,8 @@ echo "Use SKILL.org recipes to choose command groups."
 echo "For broad tasks, spawn read-only subagents yourself."
 echo ""
 
-rs-harness search workspace --lines 80 || true
-rs-harness search prime --lines 80 || true
+rs-harness search workspace || true
+rs-harness search prime || true
 #+end_src
 
 =|| true= is deliberate — session start must not block the user if harness
@@ -2152,20 +2141,21 @@ cover Tokio, rust-lang/rust, and large agent-client class projects:
 #+begin_src text
 1. search workspace + search prime --package
 2. search features/cfg/deps dependency-version usage
-3. search owner --item-slice
+3. search owner <path> items
 4. search ingest auto-sniff + owner/item grouping
 #+end_src
 
 | Phase | Deliverable                                               |
 |-------+-----------------------------------------------------------|
 | M1    | Multi-pipe grammar + final-only renderer.  =search <source> |
-|       | <pipe1> <pipe2> ...= with deterministic stages.  =--trace=  |
-|       | for compact stage list.  Full field names, =locations=/     |
+|       | <pipe1> <pipe2> ...= with deterministic stages.  Trace      |
+|       | output is descriptor-advertised.  Full field names,         |
+|       | =locations=/                                                |
 |       | =calls=/=uses= fold hits, next= inline on owner/item lines. |
 | M2    | Cargo feature/cfg pipes.  =search features <f> cfg     |
 |       | owners tests docs=.  Feature→optional-dep→target cfg chain. |
 |       | Tokio =io-uring= / =loom= fixtures.                         |
-| M3    | Items pipe.  =--item-slice= for owner.  Nearest-item for    |
+| M3    | Items pipe.  =search owner <path> items=.  Nearest-item for |
 |       | ingest.  =source-large= role.  agent-client file-search fixture.   |
 | M4    | Docs/API facts.  Workspace/registry-source API facts: kind, |
 |       | signature, async, unsafe, feature, receiver, return, error. |
@@ -2206,7 +2196,8 @@ Step 3: Cargo feature/cfg
 Step 4: Multi-pipe final-only renderer
     rs-harness search dependency <dep> items tests
     rs-harness search features <feature> cfg owners tests
-    --trace for compact stage list, single enriched packet output
+    descriptor-advertised trace for compact stage list
+    single enriched packet output
 
 Step 5: Docs/API facts
     rs-harness search docs <crate>::<item>
@@ -2236,13 +2227,18 @@ The TypeScript harness already has:
 
 - A CLI binary: =ts-harness= → =./dist/src/cli/main.js=
 - =package.json= scripts: =build=, =check=, =format=, =lint=, =test=, =harness=
+- Stable protocol commands: =search=, =check=, and =agent doctor=
+- A provider registry emitted by =ts-harness agent doctor --json=
+- A =SKILL.org= guide that teaches protocol commands, not direct renderer flags
 - Public library surface: =renderTypeScriptProjectHarnessAgentCompactText=,
   =renderTypeScriptProjectHarnessAgentSnapshot=,
   =runTypeScriptProjectHarnessAgentSnapshot=, =runTypeScriptProjectHarness=,
   verification/render/profile/task index APIs
 
-The first iteration extends the existing CLI with stable subcommands rather
-than introducing a new protocol ecosystem.
+The TypeScript slice is the reference implementation for the semantic-language
+registry contract.  The CLI advertises =ts-harness= only, rejects old direct
+renderer flags as protocol commands, and validates search JSON against the
+shared schema.
 
 * The correct division of labor
 
@@ -2265,7 +2261,8 @@ Agent subagents:
   return compact evidence
 
 rs-harness CLI:
-  graph / cargo / search / check primitives
+  search / check / agent primitives
+  registry-described methods
   deterministic output
   no natural-language intent
   no subagent planning
@@ -2280,9 +2277,9 @@ hooks:
 
 One sentence:
 
-/Put "intent → plan → subagents" in the agent client.  Put "Cargo facts / reasoning
-graph / owner slices / search hits / compact checks" in rs-harness.  That
-is the correct harness-client boundary./
+/Put "intent → plan → subagents" in the agent client.  Put native facts, owner
+slices, search packets, compact checks, and registry-described methods in the
+harness.  That is the correct harness-client boundary./
 
 * The bottom line
 
