@@ -210,6 +210,7 @@ py-harness search dependency pytest --json .
 py-harness search deps pytest::fixture --json .
 py-harness search api PythonHarnessReport --json .
 py-harness search symbol PythonHarnessReport --json .
+py-harness search callsite PythonHarnessReport --json .
 py-harness search import python_lang_project_harness --json .
 py-harness search tests src/python_lang_project_harness/_cli.py --json .
 py-harness search text PythonHarnessReport --json .

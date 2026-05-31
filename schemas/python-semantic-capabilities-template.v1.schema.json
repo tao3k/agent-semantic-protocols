@@ -62,6 +62,7 @@
             "public-function-api-shape-search",
             "public-data-api-shape-search",
             "symbol-definition-search",
+            "owner-callsite-search",
             "import-edge-search",
             "owner-path-text-search",
             "export-text-search",
