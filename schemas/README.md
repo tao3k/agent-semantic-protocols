@@ -15,6 +15,12 @@ portable drill shape: workdir selection, argv commands, stdin pipe commands,
 regex capture handoff, line-protocol expectations, and warning budgets for
 token-size and latency findings.
 
+`semantic-agent-hook-decision.v1.schema.json` is the shared decision packet for
+agent hook classifiers before they render a platform-specific Codex or Claude
+hook response. It standardizes normalized event names, deny/context decisions,
+language/provider routes, and state updates while leaving platform payload
+parsing and language-specific profile descriptors in provider repositories.
+
 The TypeScript provider registers as:
 
 ```json

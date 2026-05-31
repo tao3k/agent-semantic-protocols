@@ -1,0 +1,216 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-agent-hook-decision.v1.schema.json",
+  "title": "Semantic Agent Hook Decision",
+  "description": "Language-neutral decision packet emitted by semantic language agent hook classifiers before platform-specific rendering.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "protocolId",
+    "protocolVersion",
+    "platform",
+    "event",
+    "decision",
+    "reasonKind",
+    "languageIds",
+    "subject",
+    "routes",
+    "message"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.agent-hook-decision"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "protocolId": {
+      "const": "agent.semantic-protocols.agent-hooks"
+    },
+    "protocolVersion": {
+      "const": "1"
+    },
+    "platform": {
+      "enum": ["codex", "claude", "unknown"]
+    },
+    "event": {
+      "enum": [
+        "session-start",
+        "user-prompt",
+        "pre-tool",
+        "permission-request",
+        "post-tool",
+        "subagent-start",
+        "subagent-stop",
+        "stop",
+        "unknown"
+      ]
+    },
+    "decision": {
+      "enum": ["allow", "context", "deny", "block"]
+    },
+    "reasonKind": {
+      "enum": [
+        "none",
+        "direct-source-read",
+        "bulk-source-dump",
+        "raw-broad-search",
+        "edit-before-prime",
+        "changed-check-required",
+        "subagent-receipt-required",
+        "unsupported-platform",
+        "policy"
+      ]
+    },
+    "languageIds": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/identifier"
+      }
+    },
+    "subject": {
+      "$ref": "#/$defs/subject"
+    },
+    "routes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/route"
+      }
+    },
+    "message": {
+      "type": "string",
+      "minLength": 1
+    },
+    "stateUpdates": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/stateUpdate"
+      }
+    },
+    "fields": {
+      "$ref": "#/$defs/fields"
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "toolName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "command": {
+          "type": "string"
+        },
+        "paths": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "prompt": {
+          "type": "string"
+        }
+      }
+    },
+    "route": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["languageId", "providerId", "binary", "kind", "argv"],
+      "properties": {
+        "languageId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "providerId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "binary": {
+          "$ref": "#/$defs/identifier"
+        },
+        "kind": {
+          "enum": [
+            "prime",
+            "owner",
+            "text",
+            "deps",
+            "api",
+            "ingest",
+            "tests",
+            "check-changed"
+          ]
+        },
+        "argv": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "stdinMode": {
+          "enum": ["none", "pipe-candidates", "pipe-diff", "unknown"]
+        },
+        "scope": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "stateUpdate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "languageId"],
+      "properties": {
+        "kind": {
+          "enum": [
+            "prime-seen",
+            "semantic-search-seen",
+            "dirty-files",
+            "changed-check-seen",
+            "subagent-receipt-seen"
+          ]
+        },
+        "languageId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "scalar": {
+      "oneOf": [
+        { "type": "string" },
+        { "type": "number" },
+        { "type": "boolean" },
+        {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              { "type": "string" },
+              { "type": "number" },
+              { "type": "boolean" }
+            ]
+          }
+        }
+      ]
+    },
+    "fields": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/scalar"
+      }
+    }
+  }
+}
