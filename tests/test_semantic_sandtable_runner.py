@@ -4,9 +4,16 @@ import json
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stdout
+from io import StringIO
 from pathlib import Path
 
-from tools.semantic_sandtable.runner import discover_scenarios, run_scenario
+from tools.semantic_sandtable.runner import (
+    coverage_report,
+    discover_scenarios,
+    main,
+    run_scenario,
+)
 
 
 class SemanticSandtableRunnerTests(unittest.TestCase):
@@ -352,6 +359,109 @@ class SemanticSandtableRunnerTests(unittest.TestCase):
             result = run_scenario(repo_root, scenario_path)
 
         self.assertEqual("pass", result.status)
+
+    def test_coverage_report_uses_schema_surfaces_and_step_coverage(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            schema_dir = repo_root / "schemas"
+            schema_dir.mkdir()
+            (schema_dir / "semantic-sandtable-scenario.v1.schema.json").write_text(
+                json.dumps(
+                    {
+                        "$schema": "https://json-schema.org/draft/2020-12/schema",
+                        "type": "object",
+                        "required": ["id", "language", "workdir", "steps"],
+                        "properties": {
+                            "id": {"type": "string"},
+                            "language": {"type": "string"},
+                            "workdir": {"type": "string"},
+                            "coverage": {
+                                "$ref": "#/$defs/coverageList",
+                            },
+                            "steps": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "id": {"type": "string"},
+                                        "command": {"type": "array"},
+                                        "coverage": {
+                                            "$ref": "#/$defs/coverageList",
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                        "$defs": {
+                            "coverageList": {
+                                "type": "array",
+                                "items": {
+                                    "enum": [
+                                        "search-flow",
+                                        "deps-query",
+                                        "codex-hooks",
+                                    ]
+                                },
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            scenario_path = repo_root / "scenario.json"
+            scenario_path.write_text(
+                json.dumps(
+                    {
+                        "id": "python.search",
+                        "language": "python",
+                        "workdir": ".",
+                        "coverage": ["search-flow"],
+                        "steps": [
+                            {
+                                "id": "deps",
+                                "coverage": ["deps-query"],
+                                "command": ["missing-binary"],
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            report = coverage_report(repo_root, [scenario_path])
+
+        self.assertEqual(1, report.scenario_count)
+        self.assertEqual({"python"}, report.language_ids)
+        self.assertIn("search-flow", report.surfaces)
+        self.assertIn("deps-query", report.surfaces)
+        self.assertEqual(["codex-hooks"], report.missing)
+        self.assertEqual({"python.search:deps"}, report.surfaces["deps-query"].step_ids)
+
+    def test_coverage_cli_does_not_execute_scenario_commands(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            scenario_path = repo_root / "scenario.json"
+            scenario_path.write_text(
+                json.dumps(
+                    {
+                        "id": "python.coverage",
+                        "language": "python",
+                        "workdir": ".",
+                        "coverage": ["search-flow"],
+                        "steps": [{"id": "never-run", "command": ["missing-binary"]}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            stdout = StringIO()
+            with redirect_stdout(stdout):
+                exit_code = main(
+                    ["--coverage", "--repo-root", str(repo_root), "scenario.json"]
+                )
+
+        self.assertEqual(0, exit_code)
+        self.assertIn("[coverage]", stdout.getvalue())
+        self.assertIn("|surface search-flow", stdout.getvalue())
 
 
 if __name__ == "__main__":

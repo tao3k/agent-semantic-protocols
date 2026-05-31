@@ -2,6 +2,10 @@
   "id": "rust.tokio-async-io-flow",
   "language": "rust",
   "title": "Tokio async IO prime/text/owner/tests/ingest flow",
+  "coverage": [
+    "search-flow",
+    "performance"
+  ],
   "workdir": {
     "env": "SANDTABLE_RUST_TOKIO_ROOT",
     "candidates": [

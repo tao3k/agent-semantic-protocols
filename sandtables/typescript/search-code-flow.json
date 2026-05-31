@@ -2,6 +2,10 @@
   "id": "typescript.search-code-flow",
   "language": "typescript",
   "title": "TypeScript semantic search source-text and ingest pipe flow",
+  "coverage": [
+    "search-flow",
+    "performance"
+  ],
   "workdir": {
     "relative": "languages/typescript-lang-project-harness"
   },

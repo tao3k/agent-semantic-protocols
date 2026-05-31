@@ -2,6 +2,10 @@
   "id": "python.search-code-flow",
   "language": "python",
   "title": "Python semantic search source-text and tests pipe flow",
+  "coverage": [
+    "search-flow",
+    "performance"
+  ],
   "workdir": {
     "relative": "languages/python-lang-project-harness"
   },

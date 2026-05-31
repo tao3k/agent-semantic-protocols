@@ -2,6 +2,10 @@
   "id": "rust.bytes-buffer-flow",
   "language": "rust",
   "title": "bytes BytesMut buffer flow",
+  "coverage": [
+    "search-flow",
+    "performance"
+  ],
   "workdir": {
     "env": "SANDTABLE_RUST_BYTES_ROOT",
     "candidates": [

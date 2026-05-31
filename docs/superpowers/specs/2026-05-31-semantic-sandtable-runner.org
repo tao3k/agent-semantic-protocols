@@ -25,6 +25,7 @@ From the protocol repository root:
 
 #+begin_src shell
 uv run semantic-sandtable --list
+uv run semantic-sandtable --coverage
 uv run semantic-sandtable
 uv run semantic-sandtable sandtables/typescript/search-code-flow.json
 uv run semantic-sandtable --json sandtables/rust/tokio-async-io-flow.json
@@ -33,6 +34,10 @@ uv run semantic-sandtable --json sandtables/rust/tokio-async-io-flow.json
 The runner is a first-class =uv= project.  =pyproject.toml= owns the
 =semantic-sandtable= command and =uv.lock= pins the schema-validation
 dependency set.
+
+=--coverage= is a non-executing audit mode.  It validates scenario descriptors,
+reads their declared =coverage= surfaces, and reports which standardized
+surfaces are represented before any real harness command runs.
 
 * Scenario Contract
 
@@ -72,6 +77,19 @@ JSON-producing steps can also validate stdout against protocol schemas:
   }
 }
 #+end_src
+
+Coverage audit output is intentionally line-protocol shaped:
+
+#+begin_src text
+[coverage] scenarios=8 languages=python,rust,typescript surfaces=12/12 missing=0 errors=0
+|surface language-registry languages=rust scenarios=rust.registry-schema-policy-flow
+|surface deps-query languages=rust scenarios=rust.ignore-walkdir-flow
+#+end_src
+
+The expected surface names come from =coverageList= in the scenario schema:
+=language-registry=, =json-schema=, =search-flow=, =deps-query=,
+=policy-blackbox=, =policy-whitebox=, =performance=, =security=,
+=codex-hooks=, =codex-wrapper=, =desktop-hooks=, and =cli-hooks=.
 
 Example surfaces:
 

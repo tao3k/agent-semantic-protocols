@@ -2,6 +2,11 @@
   "id": "rust.ignore-walkdir-flow",
   "language": "rust",
   "title": "ignore WalkBuilder public crate flow",
+  "coverage": [
+    "search-flow",
+    "deps-query",
+    "performance"
+  ],
   "workdir": {
     "env": "SANDTABLE_RUST_IGNORE_ROOT",
     "candidates": [

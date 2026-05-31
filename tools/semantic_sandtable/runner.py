@@ -55,6 +55,31 @@ class ScenarioResult:
     skip_reason: str | None = None
 
 
+@dataclass
+class CoverageSurface:
+    name: str
+    scenario_ids: set[str] = field(default_factory=set)
+    languages: set[str] = field(default_factory=set)
+    step_ids: set[str] = field(default_factory=set)
+
+
+@dataclass
+class CoverageReport:
+    scenario_count: int
+    language_ids: set[str]
+    expected_surfaces: list[str]
+    surfaces: dict[str, CoverageSurface]
+    errors: list[str] = field(default_factory=list)
+
+    @property
+    def missing(self) -> list[str]:
+        return [
+            surface
+            for surface in self.expected_surfaces
+            if surface not in self.surfaces
+        ]
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="semantic-sandtable",
@@ -75,6 +100,11 @@ def main(argv: list[str] | None = None) -> int:
         "--list",
         action="store_true",
         help="List discovered scenarios without running them.",
+    )
+    parser.add_argument(
+        "--coverage",
+        action="store_true",
+        help="Audit declared scenario coverage without executing commands.",
     )
     parser.add_argument(
         "--fail-on-warn",
@@ -98,6 +128,14 @@ def main(argv: list[str] | None = None) -> int:
                 f"{path.relative_to(repo_root)}"
             )
         return 0
+
+    if args.coverage:
+        coverage = coverage_report(repo_root, scenario_paths)
+        if args.json:
+            print(json.dumps(coverage_report_json(coverage), indent=2, sort_keys=True))
+        else:
+            print_coverage_report(coverage)
+        return 1 if coverage.errors else 0
 
     results = [run_scenario(repo_root, path) for path in scenario_paths]
     if args.json:
@@ -170,6 +208,80 @@ def validate_scenario_schema(repo_root: Path, path: Path, scenario: Any) -> None
             messages.append(f"... {len(errors) - 3} more")
         relative = path.relative_to(repo_root) if path.is_relative_to(repo_root) else path
         raise ScenarioLoadError(f"{relative} failed schema validation: {'; '.join(messages)}")
+
+
+def coverage_report(repo_root: Path, scenario_paths: list[Path]) -> CoverageReport:
+    surfaces: dict[str, CoverageSurface] = {}
+    languages: set[str] = set()
+    scenario_count = 0
+    errors: list[str] = []
+    for path in scenario_paths:
+        try:
+            scenario = load_scenario(path, repo_root)
+        except ScenarioLoadError as error:
+            errors.append(str(error))
+            continue
+        scenario_count += 1
+        scenario_id = require_str(scenario, "id", path.stem)
+        language = require_str(scenario, "language", "unknown")
+        languages.add(language)
+        for surface in string_list(scenario.get("coverage", [])):
+            add_coverage_surface(
+                surfaces,
+                surface,
+                scenario_id=scenario_id,
+                language=language,
+            )
+        for index, step in enumerate(scenario.get("steps", []), start=1):
+            if not isinstance(step, dict):
+                continue
+            step_id = require_str(step, "id", f"step-{index}")
+            for surface in string_list(step.get("coverage", [])):
+                add_coverage_surface(
+                    surfaces,
+                    surface,
+                    scenario_id=scenario_id,
+                    language=language,
+                    step_id=f"{scenario_id}:{step_id}",
+                )
+    return CoverageReport(
+        scenario_count=scenario_count,
+        language_ids=languages,
+        expected_surfaces=coverage_surfaces_from_schema(repo_root),
+        surfaces=surfaces,
+        errors=errors,
+    )
+
+
+def add_coverage_surface(
+    surfaces: dict[str, CoverageSurface],
+    surface: str,
+    *,
+    scenario_id: str,
+    language: str,
+    step_id: str | None = None,
+) -> None:
+    entry = surfaces.setdefault(surface, CoverageSurface(name=surface))
+    entry.scenario_ids.add(scenario_id)
+    entry.languages.add(language)
+    if step_id is not None:
+        entry.step_ids.add(step_id)
+
+
+def coverage_surfaces_from_schema(repo_root: Path) -> list[str]:
+    schema_path = repo_root / SCENARIO_SCHEMA_PATH
+    try:
+        with schema_path.open("r", encoding="utf-8") as handle:
+            schema = json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return []
+    values = (
+        schema.get("$defs", {})
+        .get("coverageList", {})
+        .get("items", {})
+        .get("enum", [])
+    )
+    return [item for item in values if isinstance(item, str)]
 
 
 def run_scenario(repo_root: Path, path: Path) -> ScenarioResult:
@@ -884,6 +996,74 @@ def quote_value(value: str) -> str:
     if re.fullmatch(r"[A-Za-z0-9_.:/=-]+", value):
         return value
     return json.dumps(value)
+
+
+def print_coverage_report(report: CoverageReport) -> None:
+    expected_count = len(report.expected_surfaces)
+    covered_count = sum(
+        1 for surface in report.expected_surfaces if surface in report.surfaces
+    )
+    languages = ",".join(sorted(report.language_ids)) or "-"
+    print(
+        "[coverage] "
+        f"scenarios={report.scenario_count} languages={languages} "
+        f"surfaces={covered_count}/{expected_count} "
+        f"missing={len(report.missing)} errors={len(report.errors)}"
+    )
+    for surface in sorted_coverage_surfaces(report):
+        print(
+            f"|surface {surface.name} "
+            f"languages={','.join(sorted(surface.languages)) or '-'} "
+            f"scenarios={','.join(sorted(surface.scenario_ids)) or '-'}"
+        )
+        if surface.step_ids:
+            print(f"|steps {surface.name} {','.join(sorted(surface.step_ids))}")
+    for missing in report.missing:
+        print(f"|missing surface={missing}")
+    for error in report.errors:
+        print(f"|error {error}")
+
+
+def sorted_coverage_surfaces(report: CoverageReport) -> list[CoverageSurface]:
+    expected_order = {
+        surface: index for index, surface in enumerate(report.expected_surfaces)
+    }
+    return sorted(
+        report.surfaces.values(),
+        key=lambda surface: (
+            expected_order.get(surface.name, len(expected_order)),
+            surface.name,
+        ),
+    )
+
+
+def coverage_report_json(report: CoverageReport) -> dict[str, Any]:
+    expected_count = len(report.expected_surfaces)
+    covered_count = sum(
+        1 for surface in report.expected_surfaces if surface in report.surfaces
+    )
+    return {
+        "summary": {
+            "scenarios": report.scenario_count,
+            "languages": sorted(report.language_ids),
+            "surfaces": covered_count,
+            "expectedSurfaces": expected_count,
+            "missing": len(report.missing),
+            "errors": len(report.errors),
+        },
+        "expectedSurfaces": report.expected_surfaces,
+        "missing": report.missing,
+        "surfaces": [
+            {
+                "name": surface.name,
+                "languages": sorted(surface.languages),
+                "scenarios": sorted(surface.scenario_ids),
+                "steps": sorted(surface.step_ids),
+            }
+            for surface in sorted_coverage_surfaces(report)
+        ],
+        "errors": report.errors,
+    }
 
 
 def report_json(results: list[ScenarioResult]) -> dict[str, Any]:
