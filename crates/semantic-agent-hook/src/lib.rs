@@ -11,7 +11,7 @@ pub const HOOK_DECISION_SCHEMA_VERSION: &str = "1";
 pub const HOOK_PROTOCOL_ID: &str = "agent.semantic-protocols.agent-hooks";
 pub const HOOK_PROTOCOL_VERSION: &str = "1";
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProfileRegistry {
     pub schema_id: String,
@@ -22,7 +22,7 @@ pub struct ProfileRegistry {
     pub profiles: Vec<LanguageProfile>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LanguageProfile {
     pub language_id: String,
@@ -37,10 +37,32 @@ pub struct LanguageProfile {
     pub source_roots: Vec<String>,
     #[serde(default)]
     pub ignored_path_prefixes: Vec<String>,
+    #[serde(default)]
+    pub policy: HookPolicy,
     pub commands: HookCommands,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HookPolicy {
+    pub block_direct_read: bool,
+    pub block_broad_raw_search: bool,
+    pub block_agent_search_json: bool,
+    pub require_prime_before_edit: bool,
+}
+
+impl Default for HookPolicy {
+    fn default() -> Self {
+        Self {
+            block_direct_read: true,
+            block_broad_raw_search: true,
+            block_agent_search_json: true,
+            require_prime_before_edit: true,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HookCommands {
     pub prime: CommandTemplate,
@@ -50,7 +72,7 @@ pub struct HookCommands {
     pub check_changed: CommandTemplate,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CommandTemplate {
     pub argv: Vec<String>,
@@ -134,6 +156,34 @@ pub fn parse_payload(input: &str) -> Result<Value, AgentHookError> {
     serde_json::from_str(input).map_err(AgentHookError::InvalidPayload)
 }
 
+pub fn merge_profile_registries(registries: Vec<ProfileRegistry>) -> ProfileRegistry {
+    let project_root = registries
+        .first()
+        .map(|registry| registry.project_root.clone())
+        .unwrap_or_else(|| ".".to_string());
+    let mut profiles = Vec::<LanguageProfile>::new();
+    for registry in registries {
+        for profile in registry.profiles {
+            if let Some(existing_index) = profiles.iter().position(|existing| {
+                existing.language_id == profile.language_id
+                    && existing.provider_id == profile.provider_id
+            }) {
+                profiles[existing_index] = profile;
+            } else {
+                profiles.push(profile);
+            }
+        }
+    }
+    ProfileRegistry {
+        schema_id: PROFILE_REGISTRY_SCHEMA_ID.to_string(),
+        schema_version: PROFILE_REGISTRY_SCHEMA_VERSION.to_string(),
+        protocol_id: HOOK_PROTOCOL_ID.to_string(),
+        protocol_version: HOOK_PROTOCOL_VERSION.to_string(),
+        project_root,
+        profiles,
+    }
+}
+
 pub fn render_platform_response(decision: &HookDecision) -> Result<Value, AgentHookError> {
     let decision_value = serde_json::to_value(decision).map_err(AgentHookError::InvalidOutput)?;
     if decision.decision == DecisionKind::Deny {
@@ -178,11 +228,15 @@ pub fn classify_hook(
     };
 
     if is_direct_read_tool(&tool_name) {
-        if let Some((profile, path)) = paths.iter().find_map(|path| {
-            registry
-                .profile_for_path(path)
-                .map(|profile| (profile, path))
-        }) {
+        if let Some((profile, path)) = paths
+            .iter()
+            .find_map(|path| {
+                registry
+                    .profile_for_path(path)
+                    .map(|profile| (profile, path))
+            })
+            .filter(|(profile, _)| profile.policy.block_direct_read)
+        {
             return deny(
                 platform,
                 event,
@@ -204,27 +258,35 @@ pub fn classify_hook(
         let tokens = shell_tokens(&command);
         if tokens.iter().any(|token| token == "--json") {
             if let Some((profile, argv)) = search_json_route(registry, &tokens) {
-                return deny(
-                    platform,
-                    event,
-                    ReasonKind::AgentSearchJson,
-                    vec![profile.language_id.clone()],
-                    subject,
-                    vec![DecisionRoute {
-                        language_id: profile.language_id.clone(),
-                        provider_id: profile.provider_id.clone(),
-                        binary: profile.binary.clone(),
-                        kind: "text".to_string(),
-                        argv,
-                        stdin_mode: None,
-                    }],
-                    "Use compact search output for agent exploration; reserve --json for schema tests and machine consumers.".to_string(),
-                );
+                if profile.policy.block_agent_search_json {
+                    return deny(
+                        platform,
+                        event,
+                        ReasonKind::AgentSearchJson,
+                        vec![profile.language_id.clone()],
+                        subject,
+                        vec![DecisionRoute {
+                            language_id: profile.language_id.clone(),
+                            provider_id: profile.provider_id.clone(),
+                            binary: profile.binary.clone(),
+                            kind: "text".to_string(),
+                            argv,
+                            stdin_mode: None,
+                        }],
+                        "Use compact search output for agent exploration; reserve --json for schema tests and machine consumers.".to_string(),
+                    );
+                }
             }
         }
 
         let routed_profiles = profiles_for_command(registry, &tokens);
-        if command_intent(&tokens) == CommandIntent::ContentDump && !routed_profiles.is_empty() {
+        let direct_read_profiles = routed_profiles
+            .iter()
+            .copied()
+            .filter(|profile| profile.policy.block_direct_read)
+            .collect::<Vec<_>>();
+        if command_intent(&tokens) == CommandIntent::ContentDump && !direct_read_profiles.is_empty()
+        {
             let route = first_path(&tokens)
                 .and_then(|path| {
                     registry.profile_for_path(path).map(|profile| {
@@ -237,23 +299,28 @@ pub fn classify_hook(
                     })
                 })
                 .unwrap_or_else(|| {
-                    let profile = routed_profiles[0];
+                    let profile = direct_read_profiles[0];
                     profile.route_from_template("prime", &profile.commands.prime, None, None)
                 });
             return deny(
                 platform,
                 event,
                 ReasonKind::BulkSourceDump,
-                language_ids(&routed_profiles),
+                language_ids(&direct_read_profiles),
                 subject,
                 vec![route],
                 "Use semantic search before dumping source content.".to_string(),
             );
         }
 
-        if command_intent(&tokens) == CommandIntent::RawSearch && !routed_profiles.is_empty() {
-            if !contains_ingest_pipe(&tokens, &routed_profiles) {
-                let routes = routed_profiles
+        let raw_search_profiles = routed_profiles
+            .iter()
+            .copied()
+            .filter(|profile| profile.policy.block_broad_raw_search)
+            .collect::<Vec<_>>();
+        if command_intent(&tokens) == CommandIntent::RawSearch && !raw_search_profiles.is_empty() {
+            if !contains_ingest_pipe(&tokens, &raw_search_profiles) {
+                let routes = raw_search_profiles
                     .iter()
                     .map(|profile| {
                         profile.route_from_template("ingest", &profile.commands.ingest, None, None)
@@ -263,7 +330,7 @@ pub fn classify_hook(
                     platform,
                     event,
                     ReasonKind::RawBroadSearch,
-                    language_ids(&routed_profiles),
+                    language_ids(&raw_search_profiles),
                     subject,
                     routes,
                     "Pipe broad raw search candidates into semantic search ingest.".to_string(),
@@ -660,6 +727,24 @@ mod tests {
         let error = parse_profiles(&value.to_string()).unwrap_err();
 
         assert!(format!("{error:?}").contains("schemaId"));
+    }
+
+    #[test]
+    fn profile_registry_merge_replaces_same_provider_profile() {
+        let mut replacement = registry_value();
+        replacement["profiles"][0]["sourceRoots"] = json!(["src", "packages"]);
+
+        let merged = merge_profile_registries(vec![
+            parse_profiles(&registry_value().to_string()).unwrap(),
+            parse_profiles(&replacement.to_string()).unwrap(),
+        ]);
+
+        assert_eq!(merged.schema_id, PROFILE_REGISTRY_SCHEMA_ID);
+        assert_eq!(merged.profiles.len(), 1);
+        assert_eq!(
+            merged.profiles[0].source_roots,
+            ["src".to_string(), "packages".to_string()]
+        );
     }
 
     #[test]

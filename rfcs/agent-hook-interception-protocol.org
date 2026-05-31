@@ -70,6 +70,7 @@ semantic-agent-hook hook --client claude pre-tool --profiles .claude/agent-hook-
 semantic-agent-hook hook --client codex pre-tool --profiles .codex/agent-hook-profiles.json --emit decision
 semantic-agent-hook doctor --profiles .codex/agent-hook-profiles.json
 semantic-agent-hook install --client codex --profiles .codex/agent-hook-profiles.json .
+semantic-agent-hook profiles merge --output .codex/agent-hook-profiles.json rs.json ts.json py.json
 #+end_src
 
 The runtime is intentionally language-neutral:
@@ -86,6 +87,8 @@ The runtime is intentionally language-neutral:
 - own =.codex/config.toml= hook blocks that invoke =semantic-agent-hook=
   directly; provider installers should write or merge profile registry entries
   instead of installing provider-private hook classifiers;
+- merge provider-owned single-language profile registries into one workspace
+  registry without provider-private Codex hook blocks;
 - maintain only shared hook state: prime/search evidence, dirty profile paths,
   changed-check evidence, and subagent receipt evidence.
 
