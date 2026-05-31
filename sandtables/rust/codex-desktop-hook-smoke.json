@@ -6,8 +6,8 @@
     "relative": "sandtables/fixtures/codex-desktop-hook-smoke"
   },
   "budgets": {
-    "maxCommands": 4,
-    "maxTotalLinesWarn": 16
+    "maxCommands": 11,
+    "maxTotalLinesWarn": 40
   },
   "steps": [
     {
@@ -37,7 +37,7 @@
       }
     },
     {
-      "id": "exec-command-rtk-grep",
+      "id": "exec-command-rtk-rg",
       "command": [
         "rs-harness",
         "agent",
@@ -47,7 +47,7 @@
         "pre-tool",
         "."
       ],
-      "stdin": "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"functions.exec_command\",\"tool_input\":{\"cmd\":\"rtk grep -n smoke src tests\"}}",
+      "stdin": "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"functions.exec_command\",\"tool_input\":{\"cmd\":\"rtk rg -n smoke src tests\"}}",
       "expect": {
         "stdoutContains": [
           "\"permissionDecision\":\"deny\"",
@@ -109,6 +109,176 @@
           "codex-desktop-smoke-fixture"
         ],
         "maxStdoutLinesWarn": 1,
+        "maxElapsedMsWarn": 500
+      }
+    },
+    {
+      "id": "guard-rtk-read",
+      "command": [
+        "rs-harness",
+        "agent",
+        "guard",
+        "--client",
+        "codex",
+        "--json",
+        ".",
+        "--",
+        "rtk",
+        "read",
+        "src/lib.rs"
+      ],
+      "expect": {
+        "exitCode": 1,
+        "stdoutContains": [
+          "\"permissionDecision\":\"deny\"",
+          "\"reasonKind\":\"direct-source-read\"",
+          "\"paths\":[\"src/lib.rs\"]"
+        ],
+        "stdoutNotContains": [
+          "codex-desktop-smoke-fixture"
+        ],
+        "maxStdoutLinesWarn": 1,
+        "maxElapsedMsWarn": 500
+      }
+    },
+    {
+      "id": "guard-rtk-rg",
+      "command": [
+        "rs-harness",
+        "agent",
+        "guard",
+        "--client",
+        "codex",
+        "--json",
+        ".",
+        "--",
+        "rtk",
+        "rg",
+        "-n",
+        "smoke",
+        "src",
+        "tests"
+      ],
+      "expect": {
+        "exitCode": 1,
+        "stdoutContains": [
+          "\"permissionDecision\":\"deny\"",
+          "\"reasonKind\":\"raw-broad-search\"",
+          "\"kind\":\"ingest\"",
+          "\"stdinMode\":\"pipe-candidates\""
+        ],
+        "stdoutNotContains": [
+          "codex-desktop-smoke-fixture"
+        ],
+        "maxStdoutLinesWarn": 1,
+        "maxElapsedMsWarn": 500
+      }
+    },
+    {
+      "id": "guard-shell-read",
+      "command": [
+        "rs-harness",
+        "agent",
+        "guard",
+        "--client",
+        "codex",
+        "--json",
+        ".",
+        "--",
+        "sed",
+        "-n",
+        "1,40p",
+        "src/lib.rs"
+      ],
+      "expect": {
+        "exitCode": 1,
+        "stdoutContains": [
+          "\"permissionDecision\":\"deny\"",
+          "\"reasonKind\":\"direct-source-read\"",
+          "\"paths\":[\"src/lib.rs\"]"
+        ],
+        "stdoutNotContains": [
+          "codex-desktop-smoke-fixture"
+        ],
+        "maxStdoutLinesWarn": 1,
+        "maxElapsedMsWarn": 500
+      }
+    },
+    {
+      "id": "guard-exact-file-search",
+      "command": [
+        "rs-harness",
+        "agent",
+        "guard",
+        "--client",
+        "codex",
+        ".",
+        "--",
+        "rg",
+        "-n",
+        "smoke",
+        "src/lib.rs"
+      ],
+      "expect": {
+        "stdoutEmpty": true,
+        "maxElapsedMsWarn": 500
+      }
+    },
+    {
+      "id": "shim-rtk-read",
+      "command": [
+        ".codex/rs-harness/bin/rtk",
+        "read",
+        "src/lib.rs"
+      ],
+      "expect": {
+        "exitCode": 1,
+        "stdoutEmpty": true,
+        "stderrContains": [
+          "[rs-harness-flow] blocked=read-rs path=src/lib.rs",
+          "rs-harness search owner src/lib.rs items"
+        ],
+        "maxStderrLinesWarn": 8,
+        "maxElapsedMsWarn": 500
+      }
+    },
+    {
+      "id": "shim-rtk-rg",
+      "command": [
+        ".codex/rs-harness/bin/rtk",
+        "rg",
+        "-n",
+        "smoke",
+        "src",
+        "tests"
+      ],
+      "expect": {
+        "exitCode": 1,
+        "stdoutEmpty": true,
+        "stderrContains": [
+          "Raw broad Rust search",
+          "rs-harness search ingest"
+        ],
+        "maxStderrLinesWarn": 3,
+        "maxElapsedMsWarn": 500
+      }
+    },
+    {
+      "id": "shim-sed-read",
+      "command": [
+        ".codex/rs-harness/bin/sed",
+        "-n",
+        "1,40p",
+        "src/lib.rs"
+      ],
+      "expect": {
+        "exitCode": 1,
+        "stdoutEmpty": true,
+        "stderrContains": [
+          "[rs-harness-flow] blocked=read-rs path=src/lib.rs",
+          "rs-harness search owner src/lib.rs items"
+        ],
+        "maxStderrLinesWarn": 8,
         "maxElapsedMsWarn": 500
       }
     }

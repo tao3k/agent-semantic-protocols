@@ -105,7 +105,17 @@ def discover_scenarios(repo_root: Path, scenario_args: list[str]) -> list[Path]:
         paths = [Path(arg).expanduser() for arg in scenario_args]
         return [path if path.is_absolute() else repo_root / path for path in paths]
     matches = sorted(repo_root.glob(DEFAULT_SCENARIO_GLOB))
-    return [path for path in matches if path.is_file()]
+    return [path for path in matches if discoverable_scenario_path(repo_root, path)]
+
+
+def discoverable_scenario_path(repo_root: Path, path: Path) -> bool:
+    if not path.is_file():
+        return False
+    try:
+        relative = path.relative_to(repo_root)
+    except ValueError:
+        relative = path
+    return not any(part.startswith(".") for part in relative.parts)
 
 
 def load_scenario(path: Path) -> dict[str, Any]:

@@ -13,5 +13,5 @@ Manual Desktop smoke:
    not dispatch the project hook.
 
 The automated sandtable scenario replays the Codex Desktop payload shapes
-directly through `rs-harness agent hook`.
-
+directly through `rs-harness agent hook`, then runs the fixture-local guard
+shims to verify `rtk`/shell reads deny Rust source even without hook dispatch.

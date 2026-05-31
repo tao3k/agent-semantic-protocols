@@ -6,10 +6,43 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tools.semantic_sandtable.runner import run_scenario
+from tools.semantic_sandtable.runner import discover_scenarios, run_scenario
 
 
 class SemanticSandtableRunnerTests(unittest.TestCase):
+    def test_discovery_ignores_generated_hidden_state_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            scenario_dir = repo_root / "sandtables" / "rust"
+            scenario_dir.mkdir(parents=True)
+            scenario_path = scenario_dir / "flow.json"
+            scenario_path.write_text(
+                json.dumps(
+                    {
+                        "id": "rust.flow",
+                        "language": "rust",
+                        "workdir": ".",
+                        "steps": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            state_dir = (
+                repo_root
+                / "sandtables"
+                / "fixtures"
+                / "demo"
+                / ".codex"
+                / "harness-state"
+            )
+            state_dir.mkdir(parents=True)
+            (state_dir / "project.json").write_text(
+                json.dumps({"id": "project"}),
+                encoding="utf-8",
+            )
+
+            self.assertEqual([scenario_path], discover_scenarios(repo_root, []))
+
     def test_capture_expansion_and_stdin_command_pipe(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)
