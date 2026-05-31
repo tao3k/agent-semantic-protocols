@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/typescript-semantic-capabilities-template.v1.schema.json",
+  "title": "TypeScript Semantic Capabilities Template",
+  "description": "Protocol-repository template for TypeScript provider-specific semantic capability schemas. Active provider schemas live inside the TypeScript harness repository.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaId", "schemaVersion", "languageId", "providerId"],
+  "properties": {
+    "schemaId": {
+      "type": "string",
+      "pattern": "^agent\\.semantic-protocols\\.languages\\.typescript\\.[a-z][a-z0-9_-]*\\.capabilities$"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "languageId": {
+      "const": "typescript"
+    },
+    "providerId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "capability": {
+      "$ref": "#/$defs/capabilityDescriptor"
+    },
+    "ingestSurface": {
+      "$ref": "#/$defs/ingestSurfaceDescriptor"
+    }
+  },
+  "$defs": {
+    "namespace": {
+      "enum": ["semantic", "typescript"]
+    },
+    "capabilityDescriptor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["languageId", "namespace", "name"],
+      "properties": {
+        "languageId": {
+          "const": "typescript"
+        },
+        "namespace": {
+          "$ref": "#/$defs/namespace"
+        },
+        "name": {
+          "enum": [
+            "workspace-router",
+            "package-prime-map",
+            "reasoning-owner-search",
+            "parser-visible-module-owner-search",
+            "test-owner-search",
+            "path-owner-fallback",
+            "dependency-manifest-search",
+            "dependency-local-usage-search",
+            "dependency-version-scope",
+            "dependency-api-token-usage-search",
+            "symbol-export-search",
+            "owner-callsite-search",
+            "import-edge-search",
+            "owner-path-text-search",
+            "export-text-search",
+            "parser-visible-source-text-search",
+            "external-candidate-ingest",
+            "stdin-shape-detection",
+            "owner-grouped-ingest"
+          ]
+        }
+      }
+    },
+    "ingestSurfaceDescriptor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["languageId", "namespace", "name"],
+      "properties": {
+        "languageId": {
+          "const": "typescript"
+        },
+        "namespace": {
+          "$ref": "#/$defs/namespace"
+        },
+        "name": {
+          "enum": [
+            "non-parser-path",
+            "non-parser-text",
+            "docs-text",
+            "schema-json",
+            "generated-artifact"
+          ]
+        }
+      }
+    }
+  }
+}

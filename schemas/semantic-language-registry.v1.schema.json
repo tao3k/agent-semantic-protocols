@@ -57,6 +57,22 @@
       "type": "string",
       "pattern": "^[a-z][a-z0-9_-]*(\\.[a-z][a-z0-9_-]*)+$"
     },
+    "capabilityDescriptor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["languageId", "namespace", "name"],
+      "properties": {
+        "languageId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "namespace": {
+          "$ref": "#/$defs/identifier"
+        },
+        "name": {
+          "$ref": "#/$defs/identifier"
+        }
+      }
+    },
     "schemaRegistration": {
       "type": "object",
       "additionalProperties": false,
@@ -232,6 +248,28 @@
         },
         "supportsPackageScope": {
           "type": "boolean"
+        },
+        "acceptedPipes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]*$"
+          }
+        },
+        "capabilities": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/capabilityDescriptor"
+          }
+        },
+        "ingestRequiredFor": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/capabilityDescriptor"
+          }
         },
         "supportsJson": {
           "type": "boolean"

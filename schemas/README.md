@@ -54,6 +54,21 @@ added to the registry schema before agents depend on them. Provider-private
 debug flags are not semantic-language protocol methods until they are
 registry-described.
 
+Search descriptors may also carry `capabilities` and `ingestRequiredFor`.
+The common registry schema only standardizes their shape:
+`{languageId, namespace, name}`. It does not maintain TypeScript, Rust, Python,
+Julia, or JavaScript capability vocabularies. Language-specific harness
+repositories own those schemas under their local `schemas/` directories and may
+advertise them through the provider `schemas` list.
+`capabilities` is the machine-readable answer to "what can this method search
+directly"; `ingestRequiredFor` is the machine-readable answer to "what must be
+expanded through `rg`/`fd` or another external source and normalized through
+`search ingest`." Agents should consult these fields before interpreting packet
+notes or falling back to raw shell output.
+Search descriptors can also carry `acceptedPipes`, a provider-advertised list of
+final-only pipe names accepted by that method, such as TypeScript's
+`search/text` accepting `owner` and `tests`.
+
 Registry invariants mirror Language Server Protocol naming discipline without
 copying LSP transport. `languageId` identifies the source language,
 `providerId` identifies the implementation, `binary` is the executable an
@@ -99,14 +114,24 @@ local usage should only be attributed when `versionScope` is `current`. When
 and must not be presented as evidence for the requested external version.
 
 This repository's `schemas/` directory is the protocol source of truth.
-Provider packages that run CI from independent checkouts should carry
-package-local copies at the same relative paths, for example
-`schemas/semantic-search-packet.v1.schema.json`. The TypeScript harness unit
-suite reads its package-local copies, validates every implemented
+It contains common protocol schemas only. Provider packages that run CI from
+independent checkouts should carry package-local copies of those common schemas
+at the same relative paths, for example
+`schemas/semantic-search-packet.v1.schema.json`. Language-specific schemas stay
+inside the language harness repository, for example the TypeScript provider's
+`schemas/typescript-semantic-capabilities.v1.schema.json`. The protocol
+repository may keep language-specific templates, such as
+`schemas/typescript-semantic-capabilities-template.v1.schema.json`, to document
+the expected active schema shape without making the common registry schema own a
+global capability enum. The TypeScript harness unit suite reads its
+package-local common schema copies, validates every implemented
 `ts-harness search ... --json` view against the shared envelope, checks
-`ts-harness agent doctor --json` against the registry contract, and compares
-the package-local copies with this repository's source schemas when the package
-is checked out as a submodule.
+`ts-harness agent doctor --json` against the common registry contract, checks
+TypeScript descriptor capabilities against the TypeScript-local schema, compares
+common package-local copies with this repository's source schemas when the
+package is checked out as a submodule, and compares the TypeScript-local
+capability vocabulary with the protocol repository template when that template
+is available.
 The Rust harness exposes the same registry contract through
 `rs-harness agent doctor --json`.
 
@@ -145,7 +170,13 @@ the parser module set are still represented as path-only owners with
 `nextActions=[{kind:"ingest", target:<path>}]`. `search text` indexes
 parser-visible source text, owner paths, and exports; docs, schema files, and
 other non-parser text should be expanded with `rg` or `fd` and normalized
-through `search ingest`.
+through `search ingest`. The TypeScript registry advertises this directly:
+`search/owner` carries TypeScript-scoped
+`parser-visible-module-owner-search`, `test-owner-search`, and
+`ingestRequiredFor=[{languageId:"typescript",namespace:"typescript",name:"non-parser-path"}]`;
+`search/text` carries TypeScript-scoped
+`parser-visible-source-text-search` and TypeScript-scoped ingest surfaces for
+non-parser text, docs text, schema JSON, and generated artifacts.
 
 The Rust slice emits the same envelope from `rs-harness search ... --json`,
 including Cargo, owner, dependency, symbol, callsite, import, cfg, pattern,

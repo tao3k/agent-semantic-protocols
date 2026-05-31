@@ -315,6 +315,9 @@ view                 search method suffix only
 requiresQuery         exactly one query positional before PROJECT_ROOT
 acceptsStdin          stdin is part of the method input
 supportsPackageScope  --package <package-id> is accepted
+acceptedPipes         final-only pipe names accepted after the method query
+capabilities          direct searchable surfaces for this method
+ingestRequiredFor     surfaces that must route through search ingest
 supportsJson          --json is accepted
 supportsCompact       compact text is accepted/default
 outputSchemaIds       JSON schemas emitted by the method
@@ -325,6 +328,45 @@ descriptor schema first.  Provider-private flags may exist for local debugging,
 but they are not semantic-language protocol until they are registry-described.
 This keeps agent clients from learning accidental flags or inferring CLI shape
 from the shared packet =view= enum.
+
+Search capability descriptors answer the two questions agents need before they
+spend tokens expanding context:
+
+#+begin_src text
+capabilities      what the provider can search directly
+ingestRequiredFor what needs rg/fd/external expansion then search ingest
+#+end_src
+
+The common registry schema owns only the descriptor shape:
+=languageId=, =namespace=, and =name=.  It must not maintain one global enum for
+TypeScript, Rust, Python, Julia, and JavaScript capability names.  Each language
+harness owns its language-specific capability schema under that language
+repository's =schemas/= directory and can advertise that schema in its provider
+registry.
+
+The protocol repository may keep language-specific schema templates under root
+=schemas/=, for example
+=schemas/typescript-semantic-capabilities-template.v1.schema.json=.  Those
+templates document the expected active schema shape and vocabulary, but the
+provider's own repository still carries the active schema it advertises and
+validates in CI.
+
+For example, a TypeScript provider can advertise
+=languageId=typescript namespace=typescript name=parser-visible-source-text-search=
+for =search/text= while also advertising TypeScript-scoped
+=ingestRequiredFor= records for docs text, schema JSON, generated artifacts,
+and other non-parser text.  Agents should use that registry fact before reading
+packet notes or running external search.
+
+Minimal multi-pipe support is also registry-described.  A provider advertises
+=acceptedPipes= on the source method, for example TypeScript =search/text=
+can advertise =owner,tests= and accept:
+
+#+begin_src shell
+ts-harness search text OrderStatus owner tests .
+#+end_src
+
+The output remains one final packet; intermediate pipe packets are not rendered.
 
 Search packet identity fields:
 
