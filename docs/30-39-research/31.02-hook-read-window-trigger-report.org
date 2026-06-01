@@ -1,0 +1,275 @@
+#+TITLE: 31.02 Hook Read Window Trigger Research Report
+#+DATE: 2026-06-01
+#+STATUS: active
+#+JOHNNY_DECIMAL: 31.02
+#+AREA: 30-39 Research
+#+CATEGORY: 31 Search Flow Research
+
+* Purpose
+
+This report records a real agent trace where the search protocol reduced direct
+source reads but still forced many narrow follow-up searches while the agent was
+planning a =semantic-agent-hook read= feature.
+
+The trace matters because it shows the next protocol gap after direct-read hook
+blocking: the agent can avoid whole-file reads, but it still lacks a compact
+task-level packet that names the implementation frontier, test frontier, and
+bounded read windows for a concrete change.
+
+* Replayed Trace
+
+The agent started with owner and query-set searches around hook CLI dispatch:
+
+#+begin_src shell
+rs-harness search owner crates/semantic-agent-hook/src/cli.rs items --view seeds .
+rs-harness search text --query-set "install" --query-set "hook" --query-set "pre-tool" --view seeds .
+rs-harness search owner crates/semantic-agent-hook/src/lib.rs items --view seeds .
+rs-harness search owner crates/semantic-agent-hook/src/protocol.rs items --view seeds .
+#+end_src
+
+It then described the intended edit boundary:
+
+#+begin_src text
+I now take only the narrow command-dispatch and test window, not whole files.
+Implementation focus is crates/semantic-agent-hook: add read subcommand, legal
+path/range parsing, query match windows, and JSON schema.
+#+end_src
+
+The agent still had to ask for additional windows and searches:
+
+#+begin_src text
+Read hook CLI windows
+Read hook support windows
+Read hook module windows
+Read semantic hook test entry windows
+List hook tests shallow
+Read unit test entry
+#+end_src
+
+Then it continued with more owner/text probes:
+
+#+begin_src shell
+rs-harness search owner crates/semantic-agent-hook/src/classifier.rs items --view seeds .
+rs-harness search owner crates/semantic-agent-hook/src/command/intent.rs items --view seeds .
+rs-harness search text --query-set "direct-source-read" --query-set "owner" --query-set "routes" --view seeds .
+#+end_src
+
+* Observed Problems
+
+** Owner search is still path-first
+
+The repeated =owner <path>= calls show that the provider can answer "what owns
+this file" but not "what is the edit frontier for adding a read subcommand".
+
+For this feature, the expected frontier spans:
+
+- CLI dispatch and command parsing
+- hook event rendering and install behavior
+- protocol/schema constants
+- classifier guidance for direct source reads
+- unit test entry points
+- sandtable hook replay coverage
+
+The current packet leaves the agent to discover those axes one path at a time.
+
+** Query-set text search is still term-first
+
+=install=, =hook=, and =pre-tool= are not three independent questions. In this
+trace they are one task axis: Codex hook install and pre-tool dispatch.
+
+The query-set command compressed the terminal calls, but it did not synthesize a
+feature bundle. The agent still had to infer the module groups and test groups
+outside the packet.
+
+** Window categories are inferred by the LLM
+
+The agent named useful categories:
+
+- hook CLI windows
+- hook support windows
+- hook module windows
+- semantic hook test entry windows
+
+Those categories should be provider-owned evidence, not temporary LLM
+vocabulary. If the packet emitted them as structured window groups, the parent
+agent could read only the selected windows and avoid another path discovery
+round.
+
+** Test frontier is not coupled to edit frontier
+
+The trace included separate shallow test discovery after implementation owners
+were found. For hook runtime changes, the test entry points should be returned
+with the implementation frontier because the import/module graph and existing
+test suite already encode that association.
+
+* Root Cause
+
+The protocol currently has good primitive operations but insufficient task
+composition.
+
+#+begin_src text
+concrete feature intent
+  -> file owner search
+  -> term query-set search
+  -> LLM-inferred module categories
+  -> more owner searches
+  -> separate test discovery
+#+end_src
+
+This is a search synthesis failure, not a read-window failure. A bounded read
+contract can make source windows safe, but it cannot decide which windows matter
+for a feature unless search has already selected the frontier.
+
+* Improvement Direction
+
+** 31.02-A Add task-level search synthesis
+
+Search packets should be able to name a change bundle when query terms and owner
+results point at one feature axis.
+
+Minimum useful fields can remain under existing =searchSynthesis.fields= first:
+
+#+begin_src json
+{
+  "searchSynthesis": {
+    "algorithm": "change-frontier-query-set",
+    "scope": "semantic-agent-hook-read",
+    "summary": "read subcommand spans CLI dispatch, protocol schema, classifier guide, and hook tests",
+    "fields": {
+      "editFrontier": [
+        "crates/semantic-agent-hook/src/cli.rs",
+        "crates/semantic-agent-hook/src/protocol.rs",
+        "crates/semantic-agent-hook/src/classifier.rs"
+      ],
+      "testFrontier": [
+        "crates/semantic-agent-hook/tests/unit/rust_harness_profile/cli.rs",
+        "crates/semantic-agent-hook/tests/unit/classifier/routes/direct_read.rs"
+      ],
+      "windowGroups": [
+        "cli-dispatch",
+        "protocol-schema",
+        "direct-read-guide",
+        "unit-test-entry"
+      ]
+    }
+  }
+}
+#+end_src
+
+After repeated sandtable evidence, stable fields can be promoted from =fields=
+into the shared schema as first-class =editFrontier=, =testFrontier=, or
+=windowSet= structures.
+
+** 31.02-B Couple owner packets with related tests
+
+=search owner <path> items --view seeds .= should not only return owner items.
+For implementation owners, it should also emit bounded related-test facts when
+the provider can derive them from module/import/test associations.
+
+Expected compact shape:
+
+#+begin_src text
+|owner crates/semantic-agent-hook/src/cli.rs ...
+|item fn run_install ...
+|test crates/semantic-agent-hook/tests/unit/rust_harness_profile/cli/install.rs reason=cli-install
+|next text:read,hook,pre-tool scope=change-frontier
+#+end_src
+
+** 31.02-C Add window-set guidance before source rendering
+
+The provider should return window-set guidance before any source lines are
+rendered. This keeps search responsible for choosing the semantic frontier, and
+keeps read responsible only for bounded source window transport.
+
+Example next action:
+
+#+begin_src text
+|next read-window-set:semantic-agent-hook-read
+#+end_src
+
+JSON can initially carry the concrete commands in =nextAction.fields=:
+
+#+begin_src json
+{
+  "kind": "read",
+  "target": "semantic-agent-hook-read",
+  "fields": {
+    "commands": [
+      "semantic-agent-hook read crates/semantic-agent-hook/src/cli.rs --query run_install .",
+      "semantic-agent-hook read crates/semantic-agent-hook/src/protocol.rs --query semantic-read-packet .",
+      "semantic-agent-hook read crates/semantic-agent-hook/tests/unit/rust_harness_profile/cli/install.rs --query install ."
+    ]
+  }
+}
+#+end_src
+
+* Is =semantic-read-packet.v1.schema.json= Necessary?
+
+Yes, but it solves a different layer than the repeated-search problem.
+
+The current =schemas/semantic-read-packet.v1.schema.json= is necessary as the
+shared contract for bounded source-window transport:
+
+- it gives hooks a safe target after denying direct source reads;
+- it validates project-relative paths instead of accepting copied display
+  locators, absolute paths, URI schemes, or rank prefixes;
+- it separates locator, path, query, total line count, windows, truncation, and
+  notes;
+- it makes source-line output bounded and JSON-validatable;
+- it keeps read behavior root-runtime-owned instead of provider-private.
+
+However, =semantic-read-packet= must not become the search synthesis packet. It
+should not decide edit frontiers, test frontiers, task axes, or owner ranking.
+Those decisions belong to =semantic-search-packet= and provider search logic.
+
+The correct layering is:
+
+#+begin_src text
+search packet
+  selects task axis, owners, tests, and window-set intent
+read packet
+  transports bounded source windows for concrete selected paths/ranges/queries
+#+end_src
+
+So implementation is justified when the hook runtime needs a safe replacement
+for direct =Read= or =sed= against a known source path. It is not sufficient to
+reduce the owner/text search loop by itself.
+
+* Recommendation
+
+Implement =semantic-agent-hook read= and validate it against
+=semantic-read-packet.v1.schema.json=, but do not treat it as the primary fix for
+the repeated search trace.
+
+The near-term sequence should be:
+
+1. Keep =semantic-read-packet= as the bounded source-window contract.
+2. Implement root =semantic-agent-hook read= for concrete path/range/query
+   windows and JSON validation.
+3. Improve =semantic-search-packet= synthesis so query-set/owner searches emit
+   task-level =editFrontier=, =testFrontier=, and =windowSet= evidence, initially
+   through =searchSynthesis.fields=.
+4. Update hook deny guides to route concrete direct reads to
+   =semantic-agent-hook read=, but route broad discovery to provider search or
+   search ingest.
+5. Add sandtable evidence for the full loop: fewer commands, fewer repeated
+   owner searches, bounded read packet validation, and no whole-file source
+   dumps.
+
+* Success Metrics
+
+For the replayed trace, the target is:
+
+#+begin_src text
+before: 8+ owner/text/read-window discovery turns
+after:  2-3 search turns plus bounded semantic-agent-hook read windows
+#+end_src
+
+Required evidence:
+
+- no direct whole-file source reads
+- read packets validate against =semantic-read-packet.v1.schema.json=
+- search packets validate against =semantic-search-packet.v1.schema.json=
+- implementation and test frontiers are present before source windows are read
+- hook deny guide distinguishes concrete read from broad discovery
+

@@ -71,10 +71,11 @@ different views.
 Language-neutral examples use =<lang-harness>=.  The TypeScript implementation
 ships this as =ts-harness=; Rust/Cargo-specific lanes use =rs-harness=.
 
-The agent sees three top-level commands:
+The agent sees four language-provider top-level commands:
 
 #+begin_src shell
 <lang-harness> search <view> ...   # all exploration / location / evidence
+<lang-harness> query ...           # parser-owned compact code/query reroutes
 <lang-harness> check ...           # policy / style / changed / full
 <lang-harness> agent ...           # agent-client install and diagnostics
 #+end_src
@@ -105,11 +106,47 @@ outside the parser module set may return =source=path-only= and
 =next=ingest:<path>= so agents can keep the path in the protocol instead of
 falling back to raw shell output.
 
+Provider-native item query is the default code extraction path for agents:
+
+#+begin_src shell
+<lang-harness> query <project-path> --query <symbol-or-a|b|c>
+<lang-harness> query --from-hook direct-source-read --selector <project-path>
+#+end_src
+
+The language provider owns parser/AST lookup, exact item matching, multi-term
+query expressions, hook reroute normalization, and compact code rendering.
+Providers should exact-match item names first; if no exact item exists, they may
+fall back to contains matching.  A hit emits both parser-owned item metadata and
+compact code:
+
+#+begin_example
+[search-owner] q=src/search/owner_view.rs pkg=. own=1 item=1 itemQuery=render_search_owner
+|item render_search_owner kind=fn line=22 endLine=40 public=false doc=false next=symbol:render_search_owner read=src/search/owner_view.rs:22-40
+|code path=src/search/owner_view.rs startLine=22 endLine=40 reason=item-query truncated=false text="pub(super) fn render_search_owner(\nproject_root: &Path,"
+#+end_example
+
+Compact code omits blank lines and strips per-line indentation.  Root hooks
+must not maintain a parallel read/query engine for the normal flow.
+
 =search text= covers the provider's semantic text index, such as parser-visible
 source text, owner paths, exports, symbols, or language-native docs when
 implemented.  If docs, schema files, generated artifacts, or other non-parser
 text are outside that index, the provider should return a =next=ingest:<query>=
 action and the agent must route external candidates through =search ingest=.
+
+** Source windows are not the primary protocol
+
+The durable search path is parser-native =search= output, not a root runtime
+read surface.  A root read command may remain as a legacy or emergency fallback,
+but agent-facing guidance must not steer normal work toward source-window
+transport.  Providers should instead return compact parser-owned evidence:
+owners, items, tests, dependency edges, findings, and =searchSynthesis=.
+
+Direct source reads and wrapper reads should be denied or rerouted to provider
+=query --from-hook direct-source-read --selector <path>=, =query --term ...=,
+=search text ... owner tests=, or =search ingest ...= depending on the evidence
+already available.  The provider owns the parser facts; the hook should not
+invent a separate language-neutral source inspection protocol.
 
 Rust adds Cargo-native views under the same search namespace:
 
@@ -317,6 +354,9 @@ view                 search method suffix only
 requiresQuery         exactly one query positional before PROJECT_ROOT
 acceptsStdin          stdin is part of the method input
 supportsPackageScope  --package <package-id> is accepted
+supportsQuerySet      --query-set <term> may replace the single query positional
+acceptedQuerySetSelectors exact-set | prefix-set | stdin-path-set
+querySetScopes        project | package | owner contexts accepted by --query-set
 acceptedPipes         final-only pipe names accepted after the method query
 capabilities          direct searchable surfaces for this method
 ingestRequiredFor     surfaces that must route through search ingest
@@ -533,6 +573,58 @@ Owners are ranked, not listed alphabetically:
 6. owners with tests / benches
 #+end_src
 
+** Graph-derived search synthesis
+
+Search providers may run bounded graph algorithms over their native reasoning
+tree to make LLM planning cheaper.  The graph is an internal computation input;
+the prompt-facing packet gets only compact graph evidence and synthesis inside
+the existing =search= result.  The graph vocabulary is owned by
+=schemas/semantic-graph.v1.schema.json= and embedded into search packets through
+compatible =nodes=, =edges=, and =searchSynthesis= fields.  Providers must not
+add a separate =search graph= lane for the agent, and must not hide graph
+semantics in language-private =fields= maps:
+
+#+begin_src text
+algorithm        named algorithm, e.g. owner-rank-frontier or bounded-reachability-depth1
+scope            prime | owner | dependency | query-set
+highImpactOwners ranked owner paths that explain the selected axis
+frontierOwners   owner paths one graph step beyond the current packet
+editFrontier     source owners the next edit/read window should consider
+testFrontier     test owners tied to the selected source frontier
+findingOwners    owner paths with policy findings in the current graph slice
+seeds            next actions derived from graph frontier, not text coincidence
+#+end_src
+
+Graph synthesis must never replace parser-owned facts.  It ranks, trims,
+explains, and proposes next actions from owner/dependency/test edges already
+owned by the language harness.  If the provider cannot prove an edge from
+parser, package metadata, schema registry, or test ownership facts, the graph
+algorithm must not present it as an impact path.
+
+For =search prime --view seeds=, providers should still use their native parser
+and reasoning tree.  A seed packet built from directory/file discovery alone is
+too close to a path list and causes the LLM to fan out across unrelated files.
+The compact seed packet should run the same owner graph ranking as full prime,
+then emit =searchSynthesis= with:
+
+#+begin_src text
+highImpactOwners  ranked owners shown in the packet
+frontierOwners    adjacent owners one parser-owned graph step outside the packet
+findingOwners     owners carrying grouped findings
+seeds             owner/test/dependency next actions derived from the graph frontier
+#+end_src
+
+For =search owner <path> --view seeds=, providers should emit
+=bounded-reachability-depth1=: incoming owner count, outgoing owner count,
+frontier owners, finding owners, and owner/test seeds.  This makes the next
+agent step a graph decision instead of a new round of text fragments.
+
+Compact rendering uses one bounded line:
+
+#+begin_src text
+|synthesis summary="owner graph ranked and capped for agent planning" algorithm=owner-rank-frontier scope=prime highImpactOwners=src/lib.rs frontierOwners=src/tests.rs
+#+end_src
+
 ** What prime must NOT output
 
 #+begin_src text
@@ -709,6 +801,36 @@ contract for callable method discovery.
 --json                    tool / IDE / flowhub output
 #+end_src
 
+Agent clients must use compact output for interactive exploration.  =--json=
+is only for schema-contract tests, sandtable receipts/replay, IDE/Flowhub
+consumers, or a local validator that consumes the JSON directly.  It is not a
+prompt-facing discovery mode: repeated commands such as
+=search text <query> owner tests --json .= waste tokens, hide the intended line
+protocol guidance, and should be rejected by agent hooks with a safe compact
+route.
+
+When a provider does emit =--json= for a machine consumer, the renderer should
+prefer minified JSON.  Pretty JSON is easier for humans but produces the same
+facts with extra prompt-visible whitespace; schema-contract sandtables and
+receipts should validate the structured payload instead of relying on
+line-oriented JSON formatting.
+
+When an agent asks for JSON during exploration, the hook denial should preserve
+the semantic route, explain that agent search commands must not use =--json=,
+and remove only the output-mode error.  For example:
+
+#+begin_src text
+denied: ts-harness search text location.path owner tests --json .
+guide:  ts-harness search text location.path owner tests --view seeds .
+#+end_src
+
+For =search text=, the first required query positional is owned by the query,
+even when the literal text begins with a dash.  For example,
+=ts-harness search text --json --view seeds .= searches for the literal
+=--json= token.  A structured output request must put the output flag after the
+query, e.g. =ts-harness search text OrderStatus --json .=.  This prevents a
+flag-like source token from silently becoming a prompt-facing JSON packet.
+
 If a daemon is running, the CLI internally routes through the daemon socket.
 If no daemon is running, the CLI runs the native parser directly.  The agent
 never knows which path was taken.
@@ -758,9 +880,8 @@ Rules:
 #+end_src
 
 Path values are canonical project-root-relative paths, not display locators.
-The workspace root is rendered as =.=.  Other path values must not include rank
-prefixes, node slots, URI schemes, line ranges, column numbers, or command
-prefixes.  In particular, values such as
+They must not include rank prefixes, node slots, URI schemes, line ranges,
+column numbers, or command prefixes.  In particular, values such as
 =0:src/components/WorkflowExecution.tsx=, =owner:src/lib.rs=, and
 =src/lib.rs:42-90= are not paths.  Put rank/score in separate fields
 (for example =rank=0= or =score=2), put line/column data in =locations=, and
@@ -788,8 +909,8 @@ Line shape:
 
 =|item= lines only appear when the request includes the =items= pipe or an
 advertised provider method returns item facts by default.
-=|hit= and =|api= lines must render the path as =path=<projectPath>= and
-line/column as separate fields.  They must not use =src/lib.rs:42:7= or
+=|hit= lines must render the path as =path=<projectPath>= and line/column as
+separate fields.  They must not use =src/lib.rs:42:7= or
 =src/lib.rs:42-90= as the positional value because agents will copy that token
 as a file path.
 =|next= is an inline field on owner/item/package/cargo lines, not a separate
@@ -891,6 +1012,11 @@ rs-harness search prime --json     → structured JSON
 rs-harness check --changed         → compact finding text (default)
 rs-harness check --changed --json  → structured JSON report
 #+end_src
+
+For agent exploration, =--json= is a hook-deniable output-mode error, not a
+better search.  Agents should request compact =--view seeds= when they need the
+smallest prompt-facing packet and reserve JSON for tests, receipts, or
+machine-to-machine validation.
 
 * Graph-first view controls
 
@@ -1740,6 +1866,546 @@ rg -n "<query>" tests | rs-harness search ingest
 
 Choose a focused recipe below.
 
+## Query-set composition
+
+When the parent already has several queries for the same semantic axis, the
+provider should accept one bounded query-set packet instead of forcing the
+agent to issue one command per query.  This is /homogeneous composition/:
+one search view, one package/scope context, one set of same-kind query terms.
+It is not a general batch language and must not concatenate unrelated commands.
+
+Supported first-hop forms:
+
+```sh
+rs-harness search dependency <dep1>,<dep2>,<dep3> items tests --package <pkg>
+rs-harness search owner <path1>,<path2>,<path3> items --package <pkg>
+ts-harness search text --query-set <q1> --query-set <q2> owner tests --owner <path> .
+```
+
+Providers may add query-set support to other views only when each query term
+uses the same parser-owned source and the merged packet can de-duplicate owners,
+items, tests, next actions, and notes without hiding which query caused which
+fact.  Query-set selectors are explicit:
+
+- =exact-set= means every term is a literal query value supplied by the agent.
+- =stdin-path-set= means a path list was normalized by =search ingest= before
+  becoming owner/path evidence.
+- =prefix-set= may be used only when the provider derives matches from
+  parser-owned package/dependency facts, not from raw substring scanning.
+
+The line protocol keeps the normal view header and adds composition metadata:
+
+```text
+[search-dependency] q=dep1,dep2 querySet=2 selector=exact-set pkg=<pkg> dep=2 own=4 api=0 item=8 tests=2
+[search-owner] q=src/a.rs,src/b.rs querySet=2 selector=exact-set pkg=<pkg> own=2 item=12
+```
+
+JSON packets expose the normalized query terms through =querySet= and the merge
+policy through =queryComposition=.  Agents should prefer a query-set packet when
+the alternative is a repeated series of same-view searches, but should keep
+separate packets for distinct axes such as dependency, owner, callsite, and
+tests.
+
+Owner-scoped text query-sets are the TypeScript stress case.  A real trace
+around =src/cli/semantic-search/render.ts= searched the same owner with
+=location.path=, =location.column=, =location.line=, =renderLocation=,
+=function renderFields=, =if (location=, and string-literal fragments after
+the owner was already known.  That pattern is not a user intent change; it is
+one text axis with several exact parser-visible terms and one owner scope.
+Providers must not rely on comma-separated text such as
+=location.path,location.column= because that is a valid literal search query.
+
+The registry must advertise this explicitly:
+
+#+begin_src text
+method=search/text
+supportsQuerySet=true
+acceptedQuerySetSelectors=exact-set
+acceptedPipes=owner,tests
+querySetScopes=project,owner
+#+end_src
+
+The packet should then carry =querySet= terms and a =queryComposition.scope=
+with the owner path:
+
+#+begin_src json
+{
+  "method": "search/text",
+  "view": "text",
+  "querySet": [
+    {"value": "location.path", "kind": "text", "selector": "exact"},
+    {"value": "location.column", "kind": "text", "selector": "exact"}
+  ],
+  "queryComposition": {
+    "mode": "query-set",
+    "view": "text",
+    "selector": "exact-set",
+    "scope": {"ownerPath": "src/cli/semantic-search/render.ts"},
+    "merge": ["owners", "hits", "items", "nextActions", "notes"]
+  }
+}
+#+end_src
+
+This is still homogeneous composition.  It does not batch =owner=, =text=,
+=tests=, and shell commands together.  It collapses repeated text searches
+after the owner/scope is known, lets the provider de-duplicate hits and tests,
+and gives the agent one next action instead of encouraging token-fragment
+probing.
+
+For compact =--view seeds= output, a query-set packet should also carry a
+change-frontier synthesis when the provider can derive it from parser-visible
+owners and tests.  This is the root fix for traces that alternate between text,
+owner, tests, and raw reads: the first same-axis query-set packet must identify
+the source edit frontier, the test frontier, and typed =seeds= follow-ups.
+
+#+begin_src text
+[search-text] q=load,Thing querySet=2 selector=exact-set pkg=. own=3
+|seed owner:tests/domain.rs,owner:src/domain/mod.rs,owner:src/lib.rs
+|synthesis algorithm=change-frontier-query-set scope=query-set selected_owners=3 edit_frontier=src/domain/mod.rs,src/lib.rs test_frontier=tests/domain.rs seeds=owner:src/domain/mod.rs,owner:src/lib.rs,tests:tests/domain.rs
+#+end_src
+
+The corresponding JSON uses schema-owned fields, not provider-private maps:
+
+#+begin_src json
+{
+  "searchSynthesis": {
+    "algorithm": "change-frontier-query-set",
+    "scope": "query-set",
+    "selectedOwners": 3,
+    "editFrontier": ["src/domain/mod.rs", "src/lib.rs"],
+    "testFrontier": ["tests/domain.rs"],
+    "seeds": [
+      {"kind": "owner", "target": "src/domain/mod.rs"},
+      {"kind": "owner", "target": "src/lib.rs"},
+      {"kind": "tests", "target": "tests/domain.rs"}
+    ]
+  }
+}
+#+end_src
+
+Query-set packets must also explain what each term actually proved.  A real
+TypeScript trace around =AgentHookEvent= and =runCodexAgentHook= found only
+=tests/unit/cli.test.ts=.  The apparent path =src/cli/agent-hooks.ts= was a
+fixture string constructed inside that test file, not a workspace owner.  A
+packet that only says =source=parser-visible-source= forces the agent to repair
+the missing semantics by running =search owner src/cli/agent-hooks.ts=,
+=search tests src/cli/agent-hooks.ts=, =search owner tests/unit/cli.test.ts=,
+and =search tests tests/unit/cli.test.ts=.  That is not a query-set problem; it
+is an underspecified hit.
+
+The shared packet therefore has four extra explanation surfaces:
+
+- =queryCoverage= records every normalized term, its =hit|miss|partial|error=
+  status, hit count, surfaces, owner paths, and fixture paths.
+- =hit.surface= and fixture fields classify results as =real-source=,
+  =test-source=, =test-fixture-string=, =generated-source=,
+  =external-source=, or =unknown=.
+- =ownerResolution= says whether a candidate path is a real workspace owner,
+  a fixture path, missing, ambiguous, external, or unknown.
+- =searchSynthesis= and =avoidNextActions= let the provider name useful
+  follow-up seeds and block false follow-ups such as
+  =owner:src/cli/agent-hooks.ts= when that path only appears as fixture data.
+
+#+begin_src json
+{
+  "queryCoverage": [
+    {"value": "AgentHookEvent", "kind": "text", "status": "miss", "hitCount": 0},
+    {
+      "value": "runCodexAgentHook",
+      "kind": "text",
+      "status": "hit",
+      "hitCount": 2,
+      "surfaces": ["test-fixture-string"],
+      "ownerPaths": ["tests/unit/cli.test.ts"],
+      "fixturePaths": ["src/cli/agent-hooks.ts"]
+    }
+  ],
+  "hits": [
+    {
+      "kind": "text",
+      "ownerPath": "tests/unit/cli.test.ts",
+      "location": {"path": "tests/unit/cli.test.ts", "line": 505},
+      "score": 2,
+      "reason": "source-text",
+      "surface": "test-fixture-string",
+      "realOwner": false,
+      "fixturePath": "src/cli/agent-hooks.ts",
+      "fixtureOwner": "tests/unit/cli.test.ts"
+    }
+  ],
+  "ownerResolution": [
+    {
+      "target": "src/cli/agent-hooks.ts",
+      "status": "fixture-path",
+      "realOwner": false,
+      "fixtureOwner": "tests/unit/cli.test.ts",
+      "reason": "path appears only as a test fixture string"
+    }
+  ],
+  "searchSynthesis": {
+    "seeds": [
+      {"kind": "text", "target": "runProtocolCli"},
+      {"kind": "text", "target": "parseProtocolArgs"},
+      {"kind": "owner", "target": "src/cli/protocol.ts"}
+    ]
+  },
+  "avoidNextActions": [
+    {
+      "kind": "owner",
+      "target": "src/cli/agent-hooks.ts",
+      "reason": "fixture-path-not-workspace-owner"
+    }
+  ]
+}
+#+end_src
+
+In compact output this should be visible without JSON:
+
+#+begin_src text
+|query AgentHookEvent hit=0 status=miss
+|query runCodexAgentHook hit=2 surface=test-fixture-string owner=tests/unit/cli.test.ts fixturePath=src/cli/agent-hooks.ts
+|avoid owner:src/cli/agent-hooks.ts reason=fixture-path-not-workspace-owner
+|seed text:runProtocolCli
+|seed text:parseProtocolArgs
+|next owner:src/cli/protocol.ts
+#+end_src
+
+Large-library real-trigger traces add three more provider-owned explanation
+surfaces.  These are not TypeScript-only fields; they describe facts every
+language provider can learn from its parser, package graph, test map, and
+runtime index:
+
+- =sourceCoverage= explains whether the current project root/config made the
+  expected owners parser-visible.  This catches cases where a package
+  =tsconfig=, =pyproject=, =Cargo.toml= workspace member, or Julia project file
+  exposes only part of the real source tree.
+- =testResolution= explains whether =search tests <owner>= found relevant
+  tests, missed them, or found them only through a noisy broader scope.
+- =runtimeCost= records cold/warm/reused index status and coarse elapsed/parse
+  facts so search-flow improvements do not hide provider cold-start cost.
+
+The TypeScript/Vite trigger shows why this belongs in the packet.  From the
+Vite repository root, =search prime --view seeds packages/vite= followed
+=packages/vite/tsconfig.json= and saw only build scripts.  The real owner
+=packages/vite/src/node/server/pluginContainer.ts= existed, but the package
+prime and owner lookup could not see it until raw =rg= candidates were piped
+through =search ingest=.  A compact packet should say that directly:
+
+#+begin_src json
+{
+  "sourceCoverage": [
+    {
+      "scope": {"projectRoot": "packages/vite", "packageName": "vite"},
+      "status": "partial",
+      "coverageKind": "config-root",
+      "configPaths": ["packages/vite/tsconfig.json"],
+      "coveredRoots": ["packages/vite/scripts"],
+      "missingRoots": ["packages/vite/src/node"],
+      "missingOwners": ["packages/vite/src/node/server/pluginContainer.ts"],
+      "reason": "package tsconfig excludes nested source tsconfigs"
+    }
+  ],
+  "ownerResolution": [
+    {
+      "target": "packages/vite/src/node/server/pluginContainer.ts",
+      "status": "missing",
+      "realOwner": false,
+      "reason": "path exists but is not parser-visible in this project root"
+    }
+  ],
+  "searchSynthesis": {
+    "algorithm": "source-coverage-resolution",
+    "scope": "prime",
+    "seeds": [
+      {"kind": "ingest", "target": "packages/vite/src/node/server/pluginContainer.ts"}
+    ]
+  }
+}
+#+end_src
+
+The TypeScript/Vue and Playwright triggers show the test side.  Vue
+=packages/runtime-core= found =src/scheduler.ts=, but package-scoped
+=search tests src/scheduler.ts= returned =test=0=.  Root-scoped tests found
+=packages/runtime-core/__tests__/scheduler.spec.ts=, but also unrelated compat
+tests.  Playwright found the API request owner, but did not link it to
+=tests/library/global-fetch.spec.ts=.  These are =testResolution= facts, not
+more text-search terms:
+
+#+begin_src json
+{
+  "testResolution": [
+    {
+      "targetOwner": "packages/runtime-core/src/scheduler.ts",
+      "status": "noisy",
+      "scope": {"projectRoot": "."},
+      "testPaths": ["packages/runtime-core/__tests__/scheduler.spec.ts"],
+      "unrelatedTestPaths": ["packages/vue-compat/__tests__/options.spec.ts"],
+      "reason": "root-scoped tests search found the colocated spec with unrelated package tests"
+    },
+    {
+      "targetOwner": "packages/playwright-core/src/server/fetch.ts",
+      "status": "missing",
+      "candidateTestPaths": ["tests/library/global-fetch.spec.ts"],
+      "reason": "implementation owner is not linked to top-level APIRequestContext tests"
+    }
+  ]
+}
+#+end_src
+
+Runtime cost must stay visible in the same packet family.  A Playwright
+real-trigger replay can be semantically correct and still spend most time
+cold-parsing package facts.  The packet can report:
+
+#+begin_src json
+{
+  "runtimeCost": {
+    "cacheStatus": "cold",
+    "elapsedMs": 84292,
+    "sourceFilesParsed": 708,
+    "packagesScanned": 21,
+    "parserFactsReused": false,
+    "reason": "large monorepo search cold-started parser facts"
+  }
+}
+#+end_src
+
+In compact output, the same evidence should be visible as bounded guide lines:
+
+#+begin_src text
+|sourceCoverage status=partial scope=packages/vite missingRoot=packages/vite/src/node missingOwner=packages/vite/src/node/server/pluginContainer.ts
+|tests owner=packages/runtime-core/src/scheduler.ts status=noisy test=packages/runtime-core/__tests__/scheduler.spec.ts noise=7
+|runtime cache=cold elapsedMs=84292 sourceFilesParsed=708 parserFactsReused=false
+#+end_src
+
+Python project-layout traces show the same failure mode with a different
+surface.  A real search phase around package root and source-layout policy ran
+many same-axis probes:
+
+#+begin_src text
+py-harness search text metadata owner tests .
+py-harness search text package-roots .
+py-harness search text package_paths .
+py-harness search text _src_layout_findings .
+py-harness search text scope.source_paths .
+py-harness search text package_roots .
+py-harness search text root / "src" .
+py-harness search text return True .
+py-harness search text return False .
+py-harness search text relative_to .
+py-harness search text ValueError .
+#+end_src
+
+The durable fix is not simply to concatenate those terms.  A mechanical
+=search text --query-set= union can still let broad terms such as =metadata= or
+=relative_to= consume the bounded hit budget, hiding the layout-policy owner
+that caused the trace.  Python =search text --query-set= must therefore:
+
+- record =queryCoverage= for every term, including misses and truncated terms
+- merge hits fairly across terms before applying the compact hit limit
+- classify selected owners with =ownerResolution=
+- emit =searchSynthesis= seeds that point to owner/tests follow-ups instead of
+  encouraging more text fragments
+- keep the cold-start cost visible in sandtable receipts so provider indexing
+  work is not confused with prompt-surface compression
+
+This keeps query-set as homogeneous composition while making the provider own
+the explanation that otherwise becomes repeated agent-side guessing.
+
+## Prime-driven fan-out/fan-in
+
+=search prime= is the parent planning packet.  When it exposes several
+independent semantic axes, the agent should fan out the bounded follow-up work
+before editing and then fan in the compact evidence for one decision.  The
+fan-out unit is not an arbitrary shell command.  It is one semantic axis, one
+scope, and one command group selected from the prime packet:
+
+#+begin_src text
+parent: search prime
+deps worker:  search deps <dep[/subpath][@version][::api]>
+source worker: search owner <owner> items
+tests worker:  search tests <owner>
+policy worker: check --changed or check --full when the edit boundary requires it
+parent: merge receipts into [search-synthesis]
+#+end_src
+
+Clients with multi-agent support can run these workers as read-only subagents.
+Clients with tool parallelism can run independent search commands in parallel
+inside the parent turn.  Clients without either capability must run the same
+command groups sequentially.  The protocol does not depend on the client
+feature flag.  The portable contract is the prime packet, the bounded search
+packets, the =[search-subagent]= receipts, and the parent
+=[search-synthesis]= line.
+
+This differs from query-set composition.  A query-set merges repeated queries
+inside one view and one scope.  Fan-out runs distinct views or scopes in
+parallel after prime has selected them.  Providers should keep both visible:
+query-set metadata explains why one packet contains several same-axis terms;
+subagent receipts explain why several independent packets were explored before
+the parent chose the edit boundary.
+
+## Real-trigger sandtable loop
+
+Hand-written search-flow drills are necessary but incomplete: they prove a
+known command sequence, not whether a real agent chooses that sequence from a
+task intent.  Sandtable calibration therefore includes a real-trigger loop:
+start an agent on a representative large project with a feature-level intent,
+record the search phase, stop before edits, and replay the harness-facing
+command flow as a normal sandtable scenario.
+
+The first real-trigger target is a Rust/Tokio package.  The intent should be
+broad enough to require =search prime=, parent-axis selection, focused
+follow-ups, optional subagent fan-out, and at least one hook denial.  The
+recorded artifact is not a full terminal transcript.  It is a compact receipt:
+
+#+begin_src text
+project identity and workdir
+user intent
+accepted <lang-harness> search commands before editing
+denied raw reads/searches and their safe guide commands
+subagent search requests and compact receipts
+elapsed time, stdout/stderr bytes, line counts
+missing facts, confusing next actions, repeated searches
+query-set or multi-pipe merge opportunities
+#+end_src
+
+The edit-stop boundary is strict.  Once the agent is ready to patch a source
+file, the real-trigger recording ends.  Implementation belongs to the language
+provider repository and its normal tests; the protocol repository keeps the
+search behavior evidence.
+
+The replay scenario runs only deterministic harness-facing commands:
+
+#+begin_src text
+prime -> focused search -> owner/items -> tests -> ingest -> hook deny guide
+#+end_src
+
+It does not launch Codex, simulate LLM reasoning, or embed source excerpts.
+If the real agent used =rg= or =fd= to widen candidates, the replay must pipe
+that output through =search ingest= so the provider owns grouping, ranking,
+deduplication, tests, and next actions.
+
+Keep the trigger layer distinct from the target library.  Codex CLI, Claude, or
+another client supplies hook payloads such as =PreToolUse= and should be tested
+through hook replay at that boundary.  Libraries such as Tokio, Vite, Vue, or
+Playwright are exploration targets that exercise provider search quality.  A
+complete real-trigger sandtable can therefore have both:
+
+#+begin_src text
+client trigger: Codex PreToolUse -> hook deny/allow guide
+target replay:  <lang-harness> search prime/text/owner/tests/ingest
+#+end_src
+
+This prevents a large target-library replay from being mistaken for the Codex
+CLI trigger itself, while still keeping the provider-facing commands
+deterministic and replayable.
+
+Real-trigger evidence feeds two optimization loops:
+
+1. /Prime quality/: did =search prime= expose the owners, features, cfgs,
+   dependencies, tests, and next actions needed to choose focused axes?
+2. /Flow compression/: which repeated same-view searches should become a
+   query-set packet, and which predictable follow-ups should become a
+   multi-pipe command?
+
+Hook denials in these scenarios test guide quality, not only enforcement.  A
+useful denial must include the reason category, language/provider route, next
+safe command, pipe shape for =search ingest= when needed, subagent receipt
+requirements when applicable, and no leaked source text.
+
+Sandtable summaries should make the improvement visible:
+
+#+begin_src text
+[sandtable-flow] scenario=rust.tokio-real-trigger commands=7 stdoutBytes=...
+|prime quality=pass missing=...
+|merge view=owner queries=3 saveCommands=2
+|guide raw-search=pass direct-read=pass
+|token delta=lower repeatedSearches=...
+#+end_src
+
+Warnings are acceptable while a real-trigger pattern is being calibrated.  Once
+the flow is stable, command count, packet size, latency, repeated-search, and
+guide-quality budgets can become regression gates through =--fail-on-warn=.
+
+## Large-library intent fixture matrix
+
+Real-trigger calibration must not collapse to one favorite project or one task
+shape.  Each language provider should keep a portable large-library fixture
+matrix with at least three representative libraries and the same three agent
+intent classes:
+
+#+begin_src text
+feature-implementation      implement or modify a named feature
+api-usage                   find how a public API is used or exposed
+implementation-principle    explain how a behavior is implemented internally
+#+end_src
+
+The CLI still does not parse natural-language intent.  The scenario records
+the human task in =evidence.intentCases=, then exercises deterministic harness
+commands such as =search prime=, =search text=, =search dependency=,
+=search owner=, =search tests=, or =search ingest=.  The agent client owns the
+intent-to-command choice; the provider owns only parser/schema/RFC facts and
+ranked compact packets.
+
+Each large-library scenario carries typed metadata:
+
+#+begin_src text
+evidence.fixtureTier=large-library
+evidence.targetLibrary={language,name,package,workdirKind}
+evidence.intentCases=[{intentKind,intent,stepIds...,queryTerms...}]
+#+end_src
+
+The workdir must be optional through an environment variable or local checkout
+candidate.  Missing large-library checkouts skip the scenario instead of
+failing CI.  Schema and coverage tests still validate that Rust, TypeScript,
+Python, and future providers publish the same matrix shape.
+
+The first baseline matrix is:
+
+| Language   | Libraries                         |
+|------------+-----------------------------------|
+| Rust       | tokio, bytes, ignore              |
+| TypeScript | typescript, vite, playwright      |
+| Python     | fastapi, rich, pandas             |
+
+Every library row must include all three intent classes.  A scenario may group
+the three intent cases for one library, but it must name the step ids and query
+terms that exercise each case so later receipts can compare command count,
+packet size, frontier quality, and repeated-search compression by intent kind.
+When same-view text probes are homogeneous, prefer one =search text
+--query-set= step over three separate text steps; keep the per-intent
+=queryTerms= metadata as the audit join key.
+
+Language providers may use filesystem tools such as =fd= and =rg= to prune
+large-library text/query-set candidate files before parsing, but those tools
+only own candidate ordering and caps.  Owners, symbols, callsites, imports,
+test edges, and packet facts still come from the language parser.  Any such
+prefilter must be visible in the packet through =runtimeCost= and/or notes,
+and query coverage remains =partial= when the provider has intentionally
+pruned a broad text frontier.
+
+When a text prefilter handles =--query-set=, it should treat the query-set as
+one same-axis search frontier.  Running one multi-pattern =rg= pass and then
+fairly capping per-term parser inputs is preferred over N full source scans for
+N query terms.  The packet should keep this auditable through
+=runtimeCost.fields=, for example =queryTerms= and =sourceSearchPasses=.
+When that first source scan already proves a large enough candidate frontier
+and every query-set term has enough source matches to satisfy the per-term cap,
+the provider may skip a separate full file-list pass.  Path-only or weak-source
+terms must still fall back to a file-list/path-match pass.  The packet should
+make this visible with fields such as =fileListPasses= and
+=candidateFileBasis= so audits can distinguish exact all-file counts from
+source-matched lower bounds.
+
+Coverage audit reports this matrix explicitly:
+
+#+begin_src text
+|intent-matrix language=rust libraries=3/3 missing=0
+|intent-library language=rust package=tokio intents=api-usage,feature-implementation,implementation-principle scenarios=rust.tokio-intent-matrix
+#+end_src
+
+When =--fail-on-missing= is enabled, missing large-library rows or missing
+intent classes are coverage failures, just like missing protocol surfaces.
+
 ## Subagent rule: graph slice, not full search
 
 For broad tasks, spawn read-only explorer subagents yourself.
@@ -2260,17 +2926,20 @@ repo
 │   ├── config.json
 │   ├── cache/
 │   └── server.sock / server.pid
-├── .agent/
-│   ├── skills/ts-harness/SKILL.org
-│   └── hooks/
-│       ├── session-start.sh
-│       ├── before-edit.sh
-│       ├── after-edit.sh
-│       └── closeout.sh
+├── .agents/
+│   └── skills/
+│       └── agent-semantic-protocols/
+│           └── SKILL.md
 └── src/
 #+end_example
 
 * Agent integration bundle structure (future)
+
+For Codex clients, =semantic-agent-hook install --client codex= installs the
+repo-maintained language-bin skill into
+=.agents/skills/agent-semantic-protocols/SKILL.md=.  The skill is concise and
+agent-facing: it describes =rs-harness=, =ts-harness=, and =py-harness= command
+flows, and tells agents not to use =--json= for exploratory searches.
 
 If an agent-client integration bundle is desired, it contains:
 
@@ -2428,6 +3097,11 @@ The Python harness now exposes the same CLI-first protocol lane:
 
 - A CLI binary: =py-harness= → =python_lang_project_harness:run_cli_from_env=
 - Stable protocol commands: =search=, =check=, and =agent doctor=
+- Transitional Codex hooks: =py-harness agent hook --client codex pre-tool=
+  denies direct Python source reads, including shell content readers such as
+  =sed ... file.py= and tool-native =Read= calls, with
+  =reasonKind=direct-source-read= plus a concrete
+  =py-harness search owner <path> .= route.
 - A provider registry emitted by =py-harness agent doctor --json=
 - Python-local capability schema:
   =schemas/python-semantic-capabilities.v1.schema.json=

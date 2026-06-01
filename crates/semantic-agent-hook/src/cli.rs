@@ -1,5 +1,9 @@
 //! CLI entrypoint for installing and replaying `semantic-agent-hook` profiles.
 
+use crate::codex_config::{
+    ROOT_BLOCK_BEGIN, ROOT_BLOCK_END, codex_hook_block, codex_user_trust_state_status,
+    install_codex_user_trust_state, merge_codex_config, validate_codex_config_toml,
+};
 use crate::{
     ProfileRegistry, classify_hook, merge_profile_registries, parse_payload, parse_profiles,
     render_platform_response,
@@ -10,26 +14,10 @@ use std::fs;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 
-const ROOT_BLOCK_BEGIN: &str = "# BEGIN semantic-agent-hook agent hooks";
-const ROOT_BLOCK_END: &str = "# END semantic-agent-hook agent hooks";
-const LEGACY_BLOCKS: [(&str, &str); 3] = [
-    (
-        "# BEGIN ts-harness agent hooks",
-        "# END ts-harness agent hooks",
-    ),
-    (
-        "# BEGIN py-harness agent hooks",
-        "# END py-harness agent hooks",
-    ),
-    (
-        "# BEGIN rs-harness agent hooks",
-        "# END rs-harness agent hooks",
-    ),
-];
-const CODEX_TOOL_MATCHER: &str = ".*(Read|readFile|readDirectory|read_file|FsReadFile|FsReadDirectory|fs\\.read|fs\\.readDirectory|fs/readFile|fs/readDirectory|fs\\.readbin|writeFile|FsWriteFile|fs\\.write|fs/write|fs\\.writeFile|fs/writeFile|FsRemove|fs\\.remove|fs/remove|FsCopy|fs\\.copy|fs/copy|fs\\.rename|fs/rename|mcp__.*__read.*|multi_tool_use\\.parallel|multi_tool_use/parallel|multi_tool_use|Bash|exec_command|command_execution|apply_patch|Edit|Write).*";
 const PYTHON_PROFILE_REGISTRY_JSON: &str = include_str!(
     "../../../languages/python-lang-project-harness/src/python_lang_project_harness/semantic-agent-hook-profile.py-harness.v1.json"
 );
+const AGENT_SEMANTIC_PROTOCOLS_SKILL_MD: &str = include_str!("../../../SKILL.md");
 
 /// Run the `semantic-agent-hook` CLI using process arguments and standard IO.
 pub fn run_cli_from_env() -> Result<(), String> {
@@ -83,7 +71,7 @@ fn run_hook(args: &[String]) -> Result<(), String> {
             ));
         }
     };
-    let output = serde_json::to_string_pretty(&output_value)
+    let output = serde_json::to_string(&output_value)
         .map_err(|error| format!("failed to serialize hook response: {error}"))?;
     println!("{output}");
     Ok(())
@@ -106,16 +94,29 @@ fn run_doctor(args: &[String]) -> Result<(), String> {
     let config_path = project_root.join(".codex").join("config.toml");
     let config = fs::read_to_string(&config_path).unwrap_or_default();
     let root_hook = config.contains(ROOT_BLOCK_BEGIN) && config.contains(ROOT_BLOCK_END);
-    let local_binary = root_hook_binary_path(&project_root).is_file();
+    let hook_binary = provider_binary_available("semantic-agent-hook");
+    let trust_status = codex_user_trust_state_status(&config_path).ok();
+    let trust = trust_status.as_ref().is_some_and(|status| status.trusted);
+    let trust_config = trust_status
+        .as_ref()
+        .map(|status| status.trust_config_path.display().to_string())
+        .unwrap_or_else(|| "unavailable".to_string());
     println!(
-        "[agent-doctor] status=ok client={client} profiles={} profileRegistry={} config={} hook={} binary={} protocol={}",
+        "[agent-doctor] status=ok client={client} profiles={} profileRegistry={} config={} hook={} trust={} trustConfig={} binary={} protocol={}",
         registry.profiles.len(),
         display_path(&project_root, &profiles_path),
         config_path.is_file(),
         root_hook,
-        local_binary,
+        trust,
+        trust_config,
+        hook_binary,
         crate::HOOK_PROTOCOL_ID,
     );
+    if let Some(status) = trust_status.as_ref() {
+        if !status.missing_events.is_empty() {
+            println!("|trust missing={}", status.missing_events.join(","));
+        }
+    }
     for profile in registry.profiles {
         println!(
             "|profile language={} provider={} binary={} roots={} extensions={}",
@@ -134,24 +135,11 @@ fn run_install(args: &[String]) -> Result<(), String> {
     ensure_codex_client(client)?;
     let project_root = project_root_arg(args);
     let codex_dir = project_root.join(".codex");
-    let asset_dir = codex_dir.join("semantic-agent-hook");
-    let bin_dir = asset_dir.join("bin");
-    fs::create_dir_all(&bin_dir)
-        .map_err(|error| format!("failed to create {}: {error}", bin_dir.display()))?;
-
-    let current_exe =
-        env::current_exe().map_err(|error| format!("failed to resolve current exe: {error}"))?;
-    let hook_binary = root_hook_binary_path(&project_root);
-    fs::copy(&current_exe, &hook_binary).map_err(|error| {
-        format!(
-            "failed to copy {} to {}: {error}",
-            current_exe.display(),
-            hook_binary.display()
-        )
-    })?;
-    set_executable(&hook_binary)?;
-
     let profiles_path = default_profile_registry_path(&project_root);
+    if let Some(parent) = profiles_path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
+    }
     let profiles = if let Some(path) = flag_value(args, "--profiles") {
         fs::read_to_string(path)
             .map_err(|error| format!("failed to read profile registry {path}: {error}"))?
@@ -163,6 +151,7 @@ fn run_install(args: &[String]) -> Result<(), String> {
         .map_err(|error| format!("invalid profile registry before install: {error:?}"))?;
     fs::write(&profiles_path, format!("{}\n", profiles.trim_end()))
         .map_err(|error| format!("failed to write {}: {error}", profiles_path.display()))?;
+    let skill_path = install_agent_semantic_protocols_skill(&project_root)?;
 
     fs::create_dir_all(&codex_dir)
         .map_err(|error| format!("failed to create {}: {error}", codex_dir.display()))?;
@@ -177,12 +166,15 @@ fn run_install(args: &[String]) -> Result<(), String> {
         .map_err(|error| format!("refusing to write invalid Codex config TOML: {error}"))?;
     fs::write(&config_path, merged.as_bytes())
         .map_err(|error| format!("failed to write {}: {error}", config_path.display()))?;
+    let user_config_path = install_codex_user_trust_state(&config_path)?;
 
     println!(
-        "[agent-install] client={client} profiles={} config={} binary={} mode=updated",
+        "[agent-install] client={client} profiles={} config={} trustConfig={} skill={} binary={} mode=updated",
         display_path(&project_root, &profiles_path),
         display_path(&project_root, &config_path),
-        display_path(&project_root, &hook_binary),
+        user_config_path.display(),
+        display_path(&project_root, &skill_path),
+        "semantic-agent-hook",
     );
     Ok(())
 }
@@ -297,10 +289,11 @@ fn rust_profile() -> Value {
         "policy": default_policy(),
         "commands": {
             "prime": {"argv": ["rs-harness", "search", "prime", "--view", "seeds", "."]},
-            "owner": {"argv": ["rs-harness", "search", "owner", "{path}", "items", "--view", "seeds", "."]},
+            "owner": {"argv": ["rs-harness", "query", "--from-hook", "direct-source-read", "--selector", "{path}", "."]},
             "text": {"argv": ["rs-harness", "search", "text", "{query}", "tests", "--view", "seeds", "."]},
             "ingest": {"argv": ["rs-harness", "search", "ingest", "items", "tests", "--view", "seeds", "."], "stdinMode": "pipe-candidates"},
-            "checkChanged": {"argv": ["rs-harness", "check", "--changed", "."]}
+            "checkChanged": {"argv": ["rs-harness", "check", "--changed", "."]},
+            "guide": {"argv": ["rs-harness", "agent", "guide", "."]}
         }
     })
 }
@@ -318,10 +311,11 @@ fn typescript_profile() -> Value {
         "policy": default_policy(),
         "commands": {
             "prime": {"argv": ["ts-harness", "search", "prime", "."]},
-            "owner": {"argv": ["ts-harness", "search", "owner", "{path}", "."]},
+            "owner": {"argv": ["ts-harness", "search", "owner", "{path}", "items", "--query", "{query}", "."]},
             "text": {"argv": ["ts-harness", "search", "text", "{query}", "owner", "tests", "--view", "seeds", "."]},
             "ingest": {"argv": ["ts-harness", "search", "ingest", "owner", "tests", "--view", "seeds", "."], "stdinMode": "pipe-candidates"},
-            "checkChanged": {"argv": ["ts-harness", "check", "--changed", "."]}
+            "checkChanged": {"argv": ["ts-harness", "check", "--changed", "."]},
+            "guide": {"argv": ["ts-harness", "agent", "guide", "."]}
         }
     })
 }
@@ -334,202 +328,15 @@ fn python_profile() -> Value {
 
 fn default_policy() -> Value {
     json!({
+        "directSourceRead": "block",
+        "bulkSourceDump": "block",
+        "rawSourceSearch": "block",
+        "agentSearchJson": "block",
         "blockDirectRead": true,
         "blockBroadRawSearch": true,
         "blockAgentSearchJson": true,
         "requirePrimeBeforeEdit": true,
     })
-}
-
-fn codex_hook_block() -> String {
-    let events = [
-        (
-            "SessionStart",
-            Some("startup|resume|clear|compact"),
-            "Loading semantic agent hook profiles",
-            "session-start",
-        ),
-        (
-            "UserPromptSubmit",
-            None,
-            "Planning semantic search flow",
-            "user-prompt",
-        ),
-        (
-            "PreToolUse",
-            Some(CODEX_TOOL_MATCHER),
-            "Checking semantic search flow",
-            "pre-tool",
-        ),
-        (
-            "PermissionRequest",
-            Some(CODEX_TOOL_MATCHER),
-            "Checking semantic approval flow",
-            "permission-request",
-        ),
-        (
-            "PostToolUse",
-            Some(CODEX_TOOL_MATCHER),
-            "Updating semantic search flow state",
-            "post-tool",
-        ),
-        (
-            "SubagentStart",
-            Some(".*"),
-            "Preparing semantic subagent context",
-            "subagent-start",
-        ),
-        (
-            "SubagentStop",
-            Some(".*"),
-            "Checking semantic subagent evidence",
-            "subagent-stop",
-        ),
-        ("Stop", None, "Checking semantic changed files", "stop"),
-    ];
-    let body = events
-        .iter()
-        .map(|(event, matcher, status, hook_event)| {
-            codex_hook_event_block(event, *matcher, status, hook_event)
-        })
-        .collect::<Vec<_>>()
-        .join("\n\n");
-    format!(
-        "{ROOT_BLOCK_BEGIN}\n# Generated by `semantic-agent-hook install --client codex`.\n# Root dispatcher for language-owned semantic hook profiles.\n\n{body}\n{ROOT_BLOCK_END}"
-    )
-}
-
-fn codex_hook_event_block(
-    event: &str,
-    matcher: Option<&str>,
-    status: &str,
-    hook_event: &str,
-) -> String {
-    let matcher_line = matcher
-        .map(|value| format!("matcher = {}\n\n", toml_basic_string(value)))
-        .unwrap_or_else(|| "\n".to_string());
-    format!(
-        "[[hooks.{event}]]\n{matcher_line}[[hooks.{event}.hooks]]\ntype = \"command\"\ntimeout = 5\nstatusMessage = \"{status}\"\ncommand = '''\nrepo_root=\"$(git rev-parse --show-toplevel 2>/dev/null || pwd)\"\ncd \"$repo_root\"\nhook_bin=\"$repo_root/.codex/semantic-agent-hook/bin/semantic-agent-hook\"\nprofiles=\"$repo_root/.codex/semantic-agent-hook/profiles.json\"\nif [ -x \"$hook_bin\" ]; then\n  exec \"$hook_bin\" hook --client codex {hook_event} --profiles \"$profiles\"\nfi\nexec semantic-agent-hook hook --client codex {hook_event} --profiles \"$profiles\"\n'''"
-    )
-}
-
-fn validate_codex_config_toml(content: &str) -> Result<(), String> {
-    toml::from_str::<toml::Value>(content)
-        .map(|_| ())
-        .map_err(|error| error.to_string())
-}
-
-fn toml_basic_string(value: &str) -> String {
-    let mut output = String::from("\"");
-    for ch in value.chars() {
-        match ch {
-            '\\' => output.push_str("\\\\"),
-            '"' => output.push_str("\\\""),
-            '\n' => output.push_str("\\n"),
-            '\r' => output.push_str("\\r"),
-            '\t' => output.push_str("\\t"),
-            c if c.is_control() => output.push_str(&format!("\\u{:04X}", c as u32)),
-            c => output.push(c),
-        }
-    }
-    output.push('"');
-    output
-}
-
-fn merge_codex_config(existing: &str, block: &str) -> String {
-    let mut content = existing.to_string();
-    for (begin, end) in LEGACY_BLOCKS {
-        content = remove_managed_block(&content, begin, end);
-    }
-    content = remove_managed_block(&content, ROOT_BLOCK_BEGIN, ROOT_BLOCK_END);
-    content = ensure_codex_unified_exec_feature(&content);
-    let prefix = content.trim();
-    if prefix.is_empty() {
-        format!("[features]\nunified_exec = true\n\n{}\n", block.trim_end())
-    } else {
-        format!("{}\n\n{}\n", prefix, block.trim_end())
-    }
-}
-
-fn ensure_codex_unified_exec_feature(existing: &str) -> String {
-    let mut table = String::new();
-    let mut lines = existing
-        .lines()
-        .filter_map(|line| {
-            let trimmed = line.trim();
-            let skip = is_top_level_unified_exec(&table, trimmed);
-            if let Some(header) = toml_table_header(trimmed) {
-                table = header;
-            }
-            (!skip).then(|| line.to_string())
-        })
-        .collect::<Vec<_>>();
-
-    let Some(features_start) = lines
-        .iter()
-        .position(|line| toml_table_header(line.trim()).as_deref() == Some("features"))
-    else {
-        let body = lines.join("\n").trim().to_string();
-        return if body.is_empty() {
-            "[features]\nunified_exec = true".to_string()
-        } else {
-            format!("[features]\nunified_exec = true\n\n{body}")
-        };
-    };
-
-    let features_end = lines
-        .iter()
-        .enumerate()
-        .skip(features_start + 1)
-        .find_map(|(index, line)| toml_table_header(line.trim()).map(|_| index))
-        .unwrap_or(lines.len());
-
-    if let Some(unified_exec_index) = lines[features_start + 1..features_end]
-        .iter()
-        .position(|line| is_unified_exec_key(line.trim()))
-        .map(|offset| features_start + 1 + offset)
-    {
-        lines[unified_exec_index] = "unified_exec = true".to_string();
-    } else {
-        lines.insert(features_start + 1, "unified_exec = true".to_string());
-    }
-    lines.join("\n")
-}
-
-fn is_top_level_unified_exec(table: &str, trimmed: &str) -> bool {
-    table.is_empty() && is_unified_exec_key(trimmed)
-}
-
-fn is_unified_exec_key(trimmed: &str) -> bool {
-    if trimmed.is_empty() || trimmed.starts_with('#') {
-        return false;
-    }
-    trimmed
-        .split_once('=')
-        .is_some_and(|(key, _)| key.trim() == "unified_exec")
-}
-
-fn toml_table_header(trimmed: &str) -> Option<String> {
-    if !trimmed.starts_with('[') || !trimmed.ends_with(']') {
-        return None;
-    }
-    let header = trimmed.trim_matches(['[', ']']).trim();
-    (!header.is_empty()).then(|| header.to_string())
-}
-
-fn remove_managed_block(existing: &str, begin: &str, end: &str) -> String {
-    let mut content = existing.to_string();
-    loop {
-        let Some(start) = content.find(begin) else {
-            break;
-        };
-        let Some(relative_end) = content[start..].find(end) else {
-            break;
-        };
-        let end_index = start + relative_end + end.len();
-        content.replace_range(start..end_index, "");
-    }
-    content.trim().to_string()
 }
 
 fn default_profile_registry_path(project_root: &Path) -> PathBuf {
@@ -539,12 +346,26 @@ fn default_profile_registry_path(project_root: &Path) -> PathBuf {
         .join("profiles.json")
 }
 
-fn root_hook_binary_path(project_root: &Path) -> PathBuf {
+fn default_agent_skill_path(project_root: &Path) -> PathBuf {
     project_root
-        .join(".codex")
-        .join("semantic-agent-hook")
-        .join("bin")
-        .join("semantic-agent-hook")
+        .join(".agents")
+        .join("skills")
+        .join("agent-semantic-protocols")
+        .join("SKILL.md")
+}
+
+fn install_agent_semantic_protocols_skill(project_root: &Path) -> Result<PathBuf, String> {
+    let skill_path = default_agent_skill_path(project_root);
+    if let Some(parent) = skill_path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
+    }
+    fs::write(
+        &skill_path,
+        format!("{}\n", AGENT_SEMANTIC_PROTOCOLS_SKILL_MD.trim_end()),
+    )
+    .map_err(|error| format!("failed to write {}: {error}", skill_path.display()))?;
+    Ok(skill_path)
 }
 
 fn project_root_arg(args: &[String]) -> PathBuf {
@@ -567,23 +388,6 @@ fn display_path(project_root: &Path, path: &Path) -> String {
         .unwrap_or(path)
         .to_string_lossy()
         .replace('\\', "/")
-}
-
-#[cfg(unix)]
-fn set_executable(path: &Path) -> Result<(), String> {
-    use std::os::unix::fs::PermissionsExt;
-
-    let mut permissions = fs::metadata(path)
-        .map_err(|error| format!("failed to stat {}: {error}", path.display()))?
-        .permissions();
-    permissions.set_mode(0o755);
-    fs::set_permissions(path, permissions)
-        .map_err(|error| format!("failed to chmod {}: {error}", path.display()))
-}
-
-#[cfg(not(unix))]
-fn set_executable(_path: &Path) -> Result<(), String> {
-    Ok(())
 }
 
 fn flag_value<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {

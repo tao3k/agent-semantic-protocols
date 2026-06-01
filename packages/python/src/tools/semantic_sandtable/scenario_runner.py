@@ -1,0 +1,197 @@
+"""Execute semantic sandtable scenarios."""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+from .budgets import warn_scenario_if_over
+from .models import ScenarioLoadError, ScenarioResult, StepResult, has_warnings
+from .receipts import validate_linked_receipt
+from .scenario_io import load_scenario
+from .step_runner import run_step
+from .utils import build_env, dict_value, optional_int, require_str, resolve_workdir, string_list
+
+
+def run_scenario(repo_root: Path, path: Path) -> ScenarioResult:
+    scenario = _load_scenario_or_result(repo_root, path)
+    if isinstance(scenario, ScenarioResult):
+        return scenario
+    return _run_loaded_scenario(repo_root, path, scenario)
+
+
+def _run_loaded_scenario(
+    repo_root: Path,
+    path: Path,
+    scenario: dict[str, Any],
+) -> ScenarioResult:
+    prepared = _prepare_loaded_scenario(repo_root, path, scenario)
+    if isinstance(prepared, ScenarioResult):
+        return prepared
+    scenario_id, workdir, result, steps, budgets = prepared
+    env = build_env(scenario.get("env", {}))
+    captures: dict[str, str] = {}
+    totals = _run_scenario_steps(repo_root, workdir, scenario_id, steps, env, captures, result)
+    _apply_scenario_budget_warnings(result, budgets, totals)
+    _finalize_scenario_status(result)
+    return result
+
+
+def _prepare_loaded_scenario(
+    repo_root: Path,
+    path: Path,
+    scenario: dict[str, Any],
+) -> tuple[str, Path, ScenarioResult, list[Any], dict[str, Any]] | ScenarioResult:
+    scenario_id = require_str(scenario, "id", path.stem)
+    language = require_str(scenario, "language", "unknown")
+    workdir = resolve_workdir(repo_root, scenario.get("workdir"))
+    result = _initial_scenario_result(scenario, scenario_id, language, path, workdir)
+    if _apply_receipt_error(repo_root, result):
+        return result
+    if workdir is None:
+        result.status = "skip"
+        result.skip_reason = "no workdir candidate exists"
+        return result
+
+    budgets = scenario.get("budgets", {})
+    max_commands = optional_int(budgets.get("maxCommands"))
+    steps = scenario.get("steps", [])
+    if not isinstance(steps, list):
+        result.status = "fail"
+        result.errors.append("scenario.steps must be an array")
+        return result
+    _warn_on_command_budget(result, steps, max_commands)
+    return scenario_id, workdir, result, steps, budgets
+
+
+def _finalize_scenario_status(result: ScenarioResult) -> None:
+    if result.status != "fail" and has_warnings(result):
+        result.status = "warn"
+
+
+def _load_scenario_or_result(
+    repo_root: Path,
+    path: Path,
+) -> dict[str, Any] | ScenarioResult:
+    try:
+        return load_scenario(path, repo_root)
+    except ScenarioLoadError as error:
+        return ScenarioResult(
+            scenario_id=path.stem,
+            language="unknown",
+            path=path,
+            status="fail",
+            workdir=None,
+            errors=[str(error)],
+        )
+
+
+def _initial_scenario_result(
+    scenario: dict[str, Any],
+    scenario_id: str,
+    language: str,
+    path: Path,
+    workdir: Path | None,
+) -> ScenarioResult:
+    return ScenarioResult(
+        scenario_id=scenario_id,
+        language=language,
+        path=path,
+        status="pass",
+        workdir=workdir,
+        coverage=string_list(scenario.get("coverage", [])),
+        tags=string_list(scenario.get("tags", [])),
+        evidence=dict_value(scenario.get("evidence")),
+        workdir_spec=scenario.get("workdir"),
+    )
+
+
+def _apply_receipt_error(repo_root: Path, result: ScenarioResult) -> bool:
+    receipt_error = validate_linked_receipt(repo_root, result.evidence)
+    if receipt_error is None:
+        return False
+    result.status = "fail"
+    result.errors.append(receipt_error)
+    return True
+
+
+def _warn_on_command_budget(
+    result: ScenarioResult,
+    steps: list[Any],
+    max_commands: int | None,
+) -> None:
+    if max_commands is not None and len(steps) > max_commands:
+        result.warnings.append(
+            f"commands={len(steps)} exceeds maxCommands={max_commands}"
+        )
+
+
+def _run_scenario_steps(
+    repo_root: Path,
+    workdir: Path,
+    scenario_id: str,
+    steps: list[Any],
+    env: dict[str, str],
+    captures: dict[str, str],
+    result: ScenarioResult,
+) -> dict[str, int]:
+    totals = {"lines": 0, "elapsedMs": 0, "stdoutBytes": 0, "stderrBytes": 0}
+    for index, step in enumerate(steps, start=1):
+        step_result = run_step(
+            repo_root=repo_root,
+            workdir=workdir,
+            scenario_id=scenario_id,
+            step=step,
+            index=index,
+            env=env,
+            captures=captures,
+        )
+        _record_step_result(result, step_result, totals)
+    return totals
+
+
+def _record_step_result(
+    result: ScenarioResult,
+    step_result: StepResult,
+    totals: dict[str, int],
+) -> None:
+    result.steps.append(step_result)
+    totals["lines"] += step_result.stdout_lines + step_result.stderr_lines
+    totals["elapsedMs"] += step_result.elapsed_ms
+    totals["stdoutBytes"] += step_result.stdout_bytes
+    totals["stderrBytes"] += step_result.stderr_bytes
+    if step_result.status == "fail":
+        result.status = "fail"
+
+
+def _apply_scenario_budget_warnings(
+    result: ScenarioResult,
+    budgets: dict[str, Any],
+    totals: dict[str, int],
+) -> None:
+    max_total_lines_warn = optional_int(budgets.get("maxTotalLinesWarn"))
+    if max_total_lines_warn is not None and totals["lines"] > max_total_lines_warn:
+        result.warnings.append(
+            f"totalLines={totals['lines']} exceeds maxTotalLinesWarn={max_total_lines_warn}"
+        )
+    warn_scenario_if_over(
+        result,
+        "totalElapsedMs",
+        totals["elapsedMs"],
+        "maxTotalElapsedMsWarn",
+        budgets.get("maxTotalElapsedMsWarn"),
+    )
+    warn_scenario_if_over(
+        result,
+        "totalStdoutBytes",
+        totals["stdoutBytes"],
+        "maxTotalStdoutBytesWarn",
+        budgets.get("maxTotalStdoutBytesWarn"),
+    )
+    warn_scenario_if_over(
+        result,
+        "totalStderrBytes",
+        totals["stderrBytes"],
+        "maxTotalStderrBytesWarn",
+        budgets.get("maxTotalStderrBytesWarn"),
+    )

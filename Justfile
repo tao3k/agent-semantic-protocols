@@ -8,48 +8,93 @@ python_harness_project := "languages/python-lang-project-harness"
 default:
     @just --list
 
-# Build/install all language provider binaries globally, then install the root hook
-# config into {{repo}}. Override the global bin path with SEMANTIC_AGENT_BIN_DIR.
-agent-hooks-install: agent-tools-install-global agent-hooks-install-current agent-hooks-doctor
+# Install all agent tools and Codex hook config. Optional: just agent-hooks-install ~/.local/bin
+agent-hooks-install bin_dir="":
+    @bin_dir="{{bin_dir}}"; \
+      if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-/opt/homebrew/bin}"; fi; \
+      just agent-tools-install-global "${bin_dir}"; \
+      just agent-hooks-install-current "${bin_dir}"; \
+      just agent-hooks-doctor "${bin_dir}"
 
-agent-hooks-install-current: agent-hooks-install-root
+agent-hooks-install-current bin_dir="":
+    @just agent-hooks-install-root "{{bin_dir}}"
 
-agent-hooks-doctor: agent-hooks-doctor-root
+agent-hooks-doctor bin_dir="":
+    @just agent-hooks-doctor-root "{{bin_dir}}"
 
-agent-hooks-install-root:
-    if command -v semantic-agent-hook >/dev/null 2>&1; then \
-      semantic-agent-hook install --client codex {{repo}}; \
-    else \
-      cargo run --manifest-path Cargo.toml --quiet --package semantic-agent-hook -- install --client codex {{repo}}; \
-    fi
+agent-hooks-install-root bin_dir="":
+    @bin_dir="{{bin_dir}}"; \
+      if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-}"; fi; \
+      if [ -n "${bin_dir}" ]; then hook_bin="${bin_dir}/semantic-agent-hook"; else hook_bin="semantic-agent-hook"; fi; \
+      "${hook_bin}" install --client codex {{repo}}
 
-agent-hooks-doctor-root:
-    if command -v semantic-agent-hook >/dev/null 2>&1; then \
-      semantic-agent-hook doctor --client codex {{repo}}; \
-    else \
-      cargo run --manifest-path Cargo.toml --quiet --package semantic-agent-hook -- doctor --client codex {{repo}}; \
-    fi
+agent-hooks-doctor-root bin_dir="":
+    @bin_dir="{{bin_dir}}"; \
+      if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-}"; fi; \
+      if [ -n "${bin_dir}" ]; then hook_bin="${bin_dir}/semantic-agent-hook"; else hook_bin="semantic-agent-hook"; fi; \
+      "${hook_bin}" doctor --client codex {{repo}}
 
-agent-tools-install-global: agent-tools-install-hook agent-tools-install-rs agent-tools-install-ts agent-tools-install-py
-    @bin_dir="${SEMANTIC_AGENT_BIN_DIR:-/opt/homebrew/bin}"; \
+# Replay the root classifier directly without launching Codex.
+agent-hooks-smoke-hook:
+    @printf '%s' '{"tool_name":"functions.exec_command","tool_input":{"cmd":"sed -n '\''1,8p'\'' languages/typescript-lang-project-harness/tests/unit/cli.test.ts"}}' \
+      | semantic-agent-hook hook --client codex pre-tool --profiles .codex/semantic-agent-hook/profiles.json --emit decision \
+      | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["decision"]=="deny", d; assert d["reasonKind"] in {"bulk-source-dump","direct-source-read"}, d; print("[agent-hooks-smoke-hook] blocked", d["reasonKind"])'
+
+# Launch Codex CLI and verify the real PreToolUse runtime blocks a TS source dump.
+agent-hooks-smoke-codex:
+    @out="$(mktemp)"; \
+      codex_bin="$(command -v codex || true)"; \
+      if [ -z "${codex_bin}" ] && [ -x /Applications/Codex.app/Contents/Resources/codex ]; then codex_bin=/Applications/Codex.app/Contents/Resources/codex; fi; \
+      if [ -z "${codex_bin}" ]; then echo "codex binary not found on PATH"; rm -f "${out}"; exit 127; fi; \
+      "${codex_bin}" exec --json --dangerously-bypass-approvals-and-sandbox --dangerously-bypass-hook-trust -C "$PWD" \
+        "Run exactly this shell command and do nothing else: sed -n '1,8p' languages/typescript-lang-project-harness/tests/unit/cli.test.ts" >"${out}" 2>&1 || true; \
+      if rg -q "Command blocked by PreToolUse hook: bulk-source-dump denied|permissionDecision.*deny" "${out}"; then \
+        echo "[agent-hooks-smoke-codex] blocked"; \
+      else \
+        cat "${out}"; \
+        rm -f "${out}"; \
+        exit 1; \
+      fi; \
+      rm -f "${out}"
+
+# Install semantic-agent-hook, rs-harness, ts-harness, and py-harness.
+agent-tools-install-global bin_dir="":
+    @bin_dir="{{bin_dir}}"; \
+      if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-/opt/homebrew/bin}"; fi; \
+      just agent-tools-install-hook "${bin_dir}"; \
+      just agent-tools-install-rs "${bin_dir}"; \
+      just agent-tools-install-ts "${bin_dir}"; \
+      just agent-tools-install-py "${bin_dir}"; \
       echo "[agent-tools-install-global] installed semantic-agent-hook, rs-harness, ts-harness, and py-harness into ${bin_dir}"
 
-agent-tools-install-hook:
-    bin_dir="${SEMANTIC_AGENT_BIN_DIR:-/opt/homebrew/bin}"; \
+# Install only the root semantic-agent-hook binary.
+agent-tools-install-hook bin_dir="":
+    @bin_dir="{{bin_dir}}"; \
+      if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-/opt/homebrew/bin}"; fi; \
       mkdir -p "${bin_dir}"; \
       cargo build --release --manifest-path Cargo.toml --package semantic-agent-hook --bin semantic-agent-hook; \
       install -m 755 target/release/semantic-agent-hook "${bin_dir}/semantic-agent-hook"; \
       test -x "${bin_dir}/semantic-agent-hook"
 
-agent-tools-install-rs:
-    bin_dir="${SEMANTIC_AGENT_BIN_DIR:-/opt/homebrew/bin}"; \
+# Install only the Rust provider binary.
+agent-tools-install-rust bin_dir="":
+    @just agent-tools-install-rs "{{bin_dir}}"
+
+agent-tools-install-rs bin_dir="":
+    @bin_dir="{{bin_dir}}"; \
+      if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-/opt/homebrew/bin}"; fi; \
       mkdir -p "${bin_dir}"; \
       cargo build --release --manifest-path {{rust_harness_project}}/Cargo.toml --features cli --bin rs-harness; \
       install -m 755 {{rust_harness_project}}/target/release/rs-harness "${bin_dir}/rs-harness"; \
       "${bin_dir}/rs-harness" --help >/dev/null
 
-agent-tools-install-ts:
-    bin_dir="${SEMANTIC_AGENT_BIN_DIR:-/opt/homebrew/bin}"; \
+# Install only the TypeScript provider binary.
+agent-tools-install-typescript bin_dir="":
+    @just agent-tools-install-ts "{{bin_dir}}"
+
+agent-tools-install-ts bin_dir="":
+    @bin_dir="{{bin_dir}}"; \
+      if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-/opt/homebrew/bin}"; fi; \
       mkdir -p "${bin_dir}"; \
       npm --prefix {{typescript_harness_project}} run -s build >/dev/null; \
       rm -f "${bin_dir}/ts-harness"; \
@@ -57,8 +102,13 @@ agent-tools-install-ts:
       chmod 755 "${bin_dir}/ts-harness"; \
       "${bin_dir}/ts-harness" --help >/dev/null
 
-agent-tools-install-py:
-    bin_dir="${SEMANTIC_AGENT_BIN_DIR:-/opt/homebrew/bin}"; \
+# Install only the Python provider binary.
+agent-tools-install-python bin_dir="":
+    @just agent-tools-install-py "{{bin_dir}}"
+
+agent-tools-install-py bin_dir="":
+    @bin_dir="{{bin_dir}}"; \
+      if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-/opt/homebrew/bin}"; fi; \
       mkdir -p "${bin_dir}"; \
       uv tool install --force --editable {{python_harness_project}}; \
       py_bin="$(uv tool dir --bin)/py-harness"; \

@@ -1,0 +1,188 @@
+{
+  "schemaId": "agent.semantic-protocols.semantic-sandtable-receipt",
+  "schemaVersion": "1",
+  "scenarioId": "typescript.protocol-search-json-output",
+  "language": "typescript",
+  "project": {
+    "name": "typescript-lang-project-harness",
+    "package": "typescript-lang-project-harness",
+    "source": "checkout",
+    "workdir": "languages/typescript-lang-project-harness"
+  },
+  "intent": "Explore TypeScript semantic-search protocol parser and packet builder tests",
+  "recordedAt": "2026-05-31",
+  "editBoundary": "before-edit",
+  "commands": [
+    {
+      "id": "text-build-packet-json",
+      "kind": "search",
+      "argv": ["node", "dist/src/cli/main.js", "search", "text", "buildSemanticSearchPacket", "owner", "tests", "--json", "."],
+      "stdinShape": "none",
+      "outputMode": "json",
+      "metrics": {
+        "elapsedMs": 2000,
+        "stdoutBytes": 2400,
+        "stderrBytes": 0
+      }
+    },
+    {
+      "id": "text-parse-pipe-positionals-json",
+      "kind": "search",
+      "argv": ["node", "dist/src/cli/main.js", "search", "text", "parseSearchPipePositionals", "owner", "tests", "--json", "."],
+      "stdinShape": "none",
+      "outputMode": "json",
+      "metrics": {
+        "elapsedMs": 2000,
+        "stdoutBytes": 2400,
+        "stderrBytes": 0
+      }
+    },
+    {
+      "id": "text-readonly-pipes-json",
+      "kind": "search",
+      "argv": ["node", "dist/src/cli/main.js", "search", "text", "readonly pipes", "owner", "tests", "--json", "."],
+      "stdinShape": "none",
+      "outputMode": "json",
+      "metrics": {
+        "elapsedMs": 2000,
+        "stdoutBytes": 2200,
+        "stderrBytes": 0
+      }
+    },
+    {
+      "id": "text-project-root-json",
+      "kind": "search",
+      "argv": ["node", "dist/src/cli/main.js", "search", "text", "projectRoot", "owner", "tests", "--json", "."],
+      "stdinShape": "none",
+      "outputMode": "json",
+      "metrics": {
+        "elapsedMs": 2000,
+        "stdoutBytes": 2200,
+        "stderrBytes": 0
+      }
+    },
+    {
+      "id": "text-parse-protocol-args-json",
+      "kind": "search",
+      "argv": ["node", "dist/src/cli/main.js", "search", "text", "parseProtocolArgs", "owner", "tests", "--json", "."],
+      "stdinShape": "none",
+      "outputMode": "json",
+      "metrics": {
+        "elapsedMs": 1000,
+        "stdoutBytes": 2200,
+        "stderrBytes": 0
+      }
+    },
+    {
+      "id": "text-const-packet-json",
+      "kind": "search",
+      "argv": ["node", "dist/src/cli/main.js", "search", "text", "const packet = buildSemanticSearchPacket", "owner", "tests", "--json", "."],
+      "stdinShape": "none",
+      "outputMode": "json",
+      "metrics": {
+        "elapsedMs": 1000,
+        "stdoutBytes": 2400,
+        "stderrBytes": 0
+      }
+    },
+    {
+      "id": "text-readonly-query-json",
+      "kind": "search",
+      "argv": ["node", "dist/src/cli/main.js", "search", "text", "readonly query", "owner", "tests", "--json", "."],
+      "stdinShape": "none",
+      "outputMode": "json",
+      "metrics": {
+        "elapsedMs": 1000,
+        "stdoutBytes": 2200,
+        "stderrBytes": 0
+      }
+    },
+    {
+      "id": "text-protocol-args-interface-json",
+      "kind": "search",
+      "argv": ["node", "dist/src/cli/main.js", "search", "text", "interface ProtocolArgs", "owner", "tests", "--json", "."],
+      "stdinShape": "none",
+      "outputMode": "json",
+      "metrics": {
+        "elapsedMs": 1000,
+        "stdoutBytes": 2200,
+        "stderrBytes": 0
+      }
+    }
+  ],
+  "summary": {
+    "commandCount": 8,
+    "stdoutBytes": 18200,
+    "stderrBytes": 0,
+    "elapsedMs": 12000,
+    "repeatedSearches": 8,
+    "jsonSearches": 8,
+    "compactSearches": 0,
+    "tokenDelta": "higher"
+  },
+  "querySetOpportunities": [
+    {
+      "view": "text",
+      "queries": 8,
+      "saveCommands": 7,
+      "selector": "exact-set",
+      "terms": [
+        "buildSemanticSearchPacket",
+        "parseSearchPipePositionals",
+        "readonly pipes",
+        "projectRoot",
+        "parseProtocolArgs",
+        "const packet = buildSemanticSearchPacket",
+        "readonly query",
+        "interface ProtocolArgs"
+      ],
+      "scope": {
+        "projectRoot": "."
+      },
+      "beforeCommandIds": [
+        "text-build-packet-json",
+        "text-parse-pipe-positionals-json",
+        "text-readonly-pipes-json",
+        "text-project-root-json",
+        "text-parse-protocol-args-json",
+        "text-const-packet-json",
+        "text-readonly-query-json",
+        "text-protocol-args-interface-json"
+      ],
+      "recommendedCommand": [
+        "ts-harness",
+        "search",
+        "text",
+        "--query-set",
+        "buildSemanticSearchPacket",
+        "--query-set",
+        "parseSearchPipePositionals",
+        "--query-set",
+        "readonly pipes",
+        "owner",
+        "tests",
+        "--view",
+        "seeds",
+        "."
+      ],
+      "reason": "same text axis repeated with JSON output during interactive exploration"
+    }
+  ],
+  "findings": [
+    {
+      "kind": "json-search-output",
+      "severity": "info",
+      "message": "agent exploration requested search --json eight times; hook replay now routes the prompt-facing path back to compact line protocol"
+    },
+    {
+      "kind": "hook-guide",
+      "severity": "info",
+      "message": "hooks deny search --json in interactive exploration with reasonKind=agent-search-json and return the compact route"
+    },
+    {
+      "kind": "query-composition",
+      "severity": "info",
+      "message": "the repeated text probes are now covered by provider-advertised text query-set support"
+    }
+  ]
+}

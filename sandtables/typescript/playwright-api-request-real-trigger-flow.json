@@ -1,0 +1,211 @@
+{
+  "id": "typescript.playwright-api-request-real-trigger-flow",
+  "language": "typescript",
+  "title": "Playwright API request real-trigger search flow",
+  "coverage": [
+    "search-flow",
+    "performance",
+    "real-trigger",
+    "large-library"
+  ],
+  "tags": [
+    "real-trigger",
+    "typescript",
+    "playwright",
+    "large-monorepo",
+    "tests-ranking"
+  ],
+  "evidence": {
+    "source": "real-trigger",
+    "intent": "Implement APIRequestContext fetch behavior before selecting files to edit",
+    "recordedAt": "2026-06-01",
+    "receiptPath": "sandtables/receipts/typescript/playwright-api-request-real-trigger-flow.receipt.json",
+    "editBoundary": "before-edit",
+    "metrics": {
+      "recordedCommandCount": 6,
+      "repeatedSearches": 0,
+      "jsonSearches": 0,
+      "compactSearches": 6,
+      "tokenDelta": "lower"
+    },
+    "querySetOpportunities": [
+      {
+        "view": "text",
+        "queries": 3,
+        "saveCommands": 2,
+        "selector": "exact-set",
+        "reason": "APIRequestContext, BrowserContextAPIRequestContext, and fetch are one request-context axis"
+      }
+    ],
+    "findings": [
+      {
+        "kind": "prime-quality",
+        "severity": "info",
+        "message": "root prime keeps packages/playwright-core/src/server/fetch.ts inside the seed budget"
+      },
+      {
+        "kind": "tests-ranking",
+        "severity": "warning",
+        "message": "tests search does not link API request implementation owners to top-level tests/library/global-fetch.spec.ts"
+      }
+    ]
+  },
+  "workdir": {
+    "env": "SANDTABLE_TS_PLAYWRIGHT_ROOT",
+    "candidates": [
+      ".cache/sandtable-repos/typescript/playwright"
+    ]
+  },
+  "budgets": {
+    "maxCommands": 6,
+    "maxTotalLinesWarn": 90,
+    "maxTotalElapsedMsWarn": 28000,
+    "maxTotalStdoutBytesWarn": 24000
+  },
+  "steps": [
+    {
+      "id": "workspace",
+      "command": [
+        "ts-harness",
+        "search",
+        "workspace",
+        "."
+      ],
+      "expect": {
+        "lineProtocol": true,
+        "stdoutContains": [
+          "[search-workspace]",
+          "playwright-internal",
+          "packages/playwright-core"
+        ],
+        "maxStdoutLinesWarn": 28,
+        "maxElapsedMsWarn": 7000
+      }
+    },
+    {
+      "id": "prime-root",
+      "command": [
+        "ts-harness",
+        "search",
+        "prime",
+        "--view",
+        "seeds",
+        "."
+      ],
+      "expect": {
+        "lineProtocol": true,
+        "stdoutContains": [
+          "[search-prime]",
+          "package=playwright-internal",
+          "packages/playwright-core/src/server/fetch.ts"
+        ],
+        "maxStdoutLinesWarn": 8,
+        "maxElapsedMsWarn": 9000
+      }
+    },
+    {
+      "id": "text-api-request-query-set",
+      "command": [
+        "ts-harness",
+        "search",
+        "text",
+        "--query-set",
+        "APIRequestContext",
+        "--query-set",
+        "BrowserContextAPIRequestContext",
+        "--query-set",
+        "fetch",
+        "owner",
+        "tests",
+        "--view",
+        "seeds",
+        "."
+      ],
+      "expect": {
+        "lineProtocol": true,
+        "stdoutContains": [
+          "[search-text]",
+          "querySet=3",
+          "packages/playwright-core/src/server/fetch.ts",
+          "tests:packages/playwright-core/src/server/fetch.ts"
+        ],
+        "maxStdoutLinesWarn": 12,
+        "maxElapsedMsWarn": 8000
+      }
+    },
+    {
+      "id": "owner-fetch-items",
+      "command": [
+        "ts-harness",
+        "search",
+        "owner",
+        "packages/playwright-core/src/server/fetch.ts",
+        "items",
+        "--view",
+        "seeds",
+        "."
+      ],
+      "expect": {
+        "lineProtocol": true,
+        "stdoutContains": [
+          "[search-owner]",
+          "class APIRequestContext",
+          "class BrowserContextAPIRequestContext"
+        ],
+        "maxStdoutLinesWarn": 18,
+        "maxElapsedMsWarn": 8000
+      }
+    },
+    {
+      "id": "tests-fetch-missing",
+      "command": [
+        "ts-harness",
+        "search",
+        "tests",
+        "packages/playwright-core/src/server/fetch.ts",
+        "--view",
+        "seeds",
+        "."
+      ],
+      "expect": {
+        "lineProtocol": true,
+        "stdoutContains": [
+          "[search-tests]",
+          "test=0",
+          "packages/playwright-core/src/server/fetch.ts"
+        ],
+        "maxStdoutLinesWarn": 8,
+        "maxElapsedMsWarn": 8000
+      }
+    },
+    {
+      "id": "rg-api-request-tests-ingest",
+      "stdinCommand": [
+        "rg",
+        "-n",
+        "--with-filename",
+        "request\\.newContext|APIRequestContext",
+        "tests/library/global-fetch.spec.ts",
+        "tests/library/global-fetch-cookie.spec.ts"
+      ],
+      "command": [
+        "ts-harness",
+        "search",
+        "ingest",
+        "--view",
+        "seeds",
+        "."
+      ],
+      "expect": {
+        "lineProtocol": true,
+        "stdoutContains": [
+          "[search-ingest]",
+          "src=rg-n",
+          "tests/library/global-fetch.spec.ts"
+        ],
+        "maxStdoutLinesWarn": 6,
+        "maxElapsedMsWarn": 8000
+      }
+    }
+  ]
+}

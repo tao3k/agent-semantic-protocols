@@ -1,0 +1,88 @@
+{
+  "id": "python.fastapi-intent-matrix",
+  "language": "python",
+  "title": "FastAPI large-library feature/API/principle intent matrix",
+  "coverage": ["search-flow", "performance", "large-library"],
+  "tags": ["large-library", "fastapi", "intent-matrix"],
+  "evidence": {
+    "source": "handwritten",
+    "fixtureTier": "large-library",
+    "targetLibrary": {
+      "language": "python",
+      "name": "FastAPI",
+      "package": "fastapi",
+      "repository": "fastapi/fastapi",
+      "workdirKind": "checkout"
+    },
+    "intentCases": [
+      {
+        "intentKind": "feature-implementation",
+        "intent": "Implement lifespan or startup behavior after locating compact owners and tests",
+        "stepIds": ["prime", "intent-query-set"],
+        "queryTerms": ["lifespan"]
+      },
+      {
+        "intentKind": "api-usage",
+        "intent": "Find APIRouter API usage and callsites",
+        "stepIds": ["prime", "intent-query-set"],
+        "queryTerms": ["APIRouter"]
+      },
+      {
+        "intentKind": "implementation-principle",
+        "intent": "Understand dependency solving implementation paths from parser-owned facts",
+        "stepIds": ["prime", "intent-query-set"],
+        "queryTerms": ["solve_dependencies"]
+      }
+    ]
+  },
+  "workdir": {
+    "env": "SANDTABLE_PY_FASTAPI_ROOT",
+    "candidates": [
+      "~/ghq/github.com/fastapi/fastapi",
+      "~/src/fastapi",
+      "~/work/fastapi"
+    ]
+  },
+  "budgets": {
+    "maxCommands": 2,
+    "maxTotalLinesWarn": 22,
+    "maxTotalStdoutBytesWarn": 12000
+  },
+  "steps": [
+    {
+      "id": "prime",
+      "command": ["py-harness", "search", "prime", "--view", "seeds", "."],
+      "expect": {
+        "lineProtocol": true,
+        "stdoutContains": ["[search-prime]", "|seed"],
+        "maxStdoutLinesWarn": 8,
+        "maxElapsedMsWarn": 9000
+      }
+    },
+    {
+      "id": "intent-query-set",
+      "command": [
+        "py-harness",
+        "search",
+        "text",
+        "--query-set",
+        "lifespan",
+        "--query-set",
+        "APIRouter",
+        "--query-set",
+        "solve_dependencies",
+        "owner",
+        "tests",
+        "--view",
+        "seeds",
+        "."
+      ],
+      "expect": {
+        "lineProtocol": true,
+        "stdoutContains": ["[search-text]", "querySet=3", "|seed"],
+        "maxStdoutLinesWarn": 14,
+        "maxElapsedMsWarn": 12000
+      }
+    }
+  ]
+}

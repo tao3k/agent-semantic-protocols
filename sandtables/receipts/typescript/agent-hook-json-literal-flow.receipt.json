@@ -1,0 +1,253 @@
+{
+  "schemaId": "agent.semantic-protocols.semantic-sandtable-receipt",
+  "schemaVersion": "1",
+  "scenarioId": "typescript.agent-hook-json-literal-flow",
+  "language": "typescript",
+  "project": {
+    "name": "typescript-lang-project-harness",
+    "package": "typescript-lang-project-harness",
+    "source": "checkout",
+    "workdir": "languages/typescript-lang-project-harness"
+  },
+  "intent": "Implement agent-search-json hook denial in the TypeScript provider before selecting files to edit",
+  "recordedAt": "2026-05-31",
+  "editBoundary": "before-edit",
+  "commands": [
+    {
+      "id": "prime",
+      "kind": "search",
+      "argv": ["node", "dist/src/cli/main.js", "search", "prime", "--view", "seeds", "."],
+      "stdinShape": "none",
+      "outputMode": "compact",
+      "metrics": {
+        "elapsedMs": 1008,
+        "stdoutBytes": 854,
+        "stderrBytes": 0,
+        "stdoutLines": 5,
+        "stderrLines": 0,
+        "tokenCost": {
+          "unit": "token-estimate",
+          "outputTokens": 214,
+          "totalTokens": 214,
+          "basis": "stdoutBytes/4 rounded up; terminal-output estimate only"
+        }
+      },
+      "next": ["text:AgentHookEvent", "text:runCodexAgentHook", "owner:src/cli/agent-hooks.ts"]
+    },
+    {
+      "id": "text-hook-query-set",
+      "kind": "search",
+      "argv": [
+        "node",
+        "dist/src/cli/main.js",
+        "search",
+        "text",
+        "--query-set",
+        "AgentHookEvent",
+        "--query-set",
+        "runCodexAgentHook",
+        "owner",
+        "tests",
+        "--view",
+        "seeds",
+        "."
+      ],
+      "stdinShape": "none",
+      "outputMode": "compact",
+      "metrics": {
+        "elapsedMs": 672,
+        "stdoutBytes": 740,
+        "stderrBytes": 0,
+        "stdoutLines": 6,
+        "stderrLines": 0,
+        "tokenCost": {
+          "unit": "token-estimate",
+          "outputTokens": 185,
+          "totalTokens": 185,
+          "basis": "stdoutBytes/4 rounded up; terminal-output estimate only"
+        }
+      },
+      "next": ["owner:src/cli/agent-hooks.ts", "owner:tests/unit/cli.test.ts"],
+      "notes": [
+        "AgentHookEvent/runCodexAgentHook hits came from tests/unit/cli.test.ts fixture strings; packet should classify surface=test-fixture-string and avoid owner:src/cli/agent-hooks.ts"
+      ]
+    },
+    {
+      "id": "owner-agent-hooks",
+      "kind": "search",
+      "argv": [
+        "node",
+        "dist/src/cli/main.js",
+        "search",
+        "owner",
+        "src/cli/agent-hooks.ts",
+        "--view",
+        "seeds",
+        "."
+      ],
+      "stdinShape": "none",
+      "outputMode": "compact",
+      "metrics": {
+        "elapsedMs": 794,
+        "stdoutBytes": 330,
+        "stderrBytes": 0,
+        "stdoutLines": 5,
+        "stderrLines": 0,
+        "tokenCost": {
+          "unit": "token-estimate",
+          "outputTokens": 83,
+          "totalTokens": 83,
+          "basis": "stdoutBytes/4 rounded up; terminal-output estimate only"
+        }
+      },
+      "next": ["symbol:runCodexAgentHook", "tests:src/cli/agent-hooks.ts"]
+    },
+    {
+      "id": "tests-agent-hooks",
+      "kind": "search",
+      "argv": [
+        "node",
+        "dist/src/cli/main.js",
+        "search",
+        "tests",
+        "src/cli/agent-hooks.ts",
+        "--view",
+        "seeds",
+        "."
+      ],
+      "stdinShape": "none",
+      "outputMode": "compact",
+      "metrics": {
+        "elapsedMs": 589,
+        "stdoutBytes": 655,
+        "stderrBytes": 0,
+        "stdoutLines": 6,
+        "stderrLines": 0,
+        "tokenCost": {
+          "unit": "token-estimate",
+          "outputTokens": 164,
+          "totalTokens": 164,
+          "basis": "stdoutBytes/4 rounded up; terminal-output estimate only"
+        }
+      },
+      "notes": ["tests view linked tests/unit/cli.test.ts through parser-owned transitive imports"]
+    },
+    {
+      "id": "flag-like-json-query",
+      "kind": "search",
+      "argv": [
+        "node",
+        "dist/src/cli/main.js",
+        "search",
+        "text",
+        "--json",
+        "--view",
+        "seeds",
+        "."
+      ],
+      "stdinShape": "none",
+      "outputMode": "compact",
+      "metrics": {
+        "elapsedMs": 751,
+        "stdoutBytes": 591,
+        "stderrBytes": 0,
+        "stdoutLines": 6,
+        "stderrLines": 0,
+        "tokenCost": {
+          "unit": "token-estimate",
+          "outputTokens": 148,
+          "totalTokens": 148,
+          "basis": "stdoutBytes/4 rounded up; terminal-output estimate only"
+        }
+      },
+      "notes": ["flag-like literal query --json stayed in compact search output"]
+    }
+  ],
+  "summary": {
+    "commandCount": 5,
+    "stdoutBytes": 3170,
+    "stderrBytes": 0,
+    "elapsedMs": 3814,
+    "repeatedSearches": 0,
+    "jsonSearches": 0,
+    "compactSearches": 5,
+    "tokenDelta": "lower",
+    "tokenCost": {
+      "unit": "token-estimate",
+      "outputTokens": 794,
+      "totalTokens": 794,
+      "basis": "sum of per-command stdoutBytes/4 rounded up; terminal-output estimate only"
+    }
+  },
+  "querySetOpportunities": [
+    {
+      "view": "text",
+      "queries": 2,
+      "saveCommands": 1,
+      "selector": "exact-set",
+      "terms": [
+        "AgentHookEvent",
+        "runCodexAgentHook"
+      ],
+      "scope": {
+        "projectRoot": "."
+      },
+      "beforeCommandIds": [
+        "text-hook-query-set"
+      ],
+      "recommendedCommand": [
+        "node",
+        "dist/src/cli/main.js",
+        "search",
+        "text",
+        "--query-set",
+        "AgentHookEvent",
+        "--query-set",
+        "runCodexAgentHook",
+        "owner",
+        "tests",
+        "--view",
+        "seeds",
+        "."
+      ],
+      "reason": "same hook bridge text axis would otherwise repeat probes"
+    }
+  ],
+  "findings": [
+    {
+      "kind": "flag-like-query",
+      "severity": "info",
+      "message": "flag-like text query --json can be searched literally through the first query positional"
+    },
+    {
+      "kind": "json-search-output",
+      "severity": "info",
+      "message": "the flag-like query now stays compact instead of producing a large JSON packet"
+    },
+    {
+      "kind": "tests-association",
+      "severity": "info",
+      "message": "tests src/cli/agent-hooks.ts links tests/unit/cli.test.ts through transitive parser-owned imports"
+    },
+    {
+      "kind": "surface-classification",
+      "severity": "warning",
+      "message": "text hits for AgentHookEvent/runCodexAgentHook should distinguish test fixture strings from real workspace owner hits"
+    },
+    {
+      "kind": "owner-resolution",
+      "severity": "warning",
+      "message": "search packet should mark src/cli/agent-hooks.ts as fixture-path realOwner=false fixtureOwner=tests/unit/cli.test.ts and avoid owner follow-up"
+    },
+    {
+      "kind": "search-synthesis",
+      "severity": "warning",
+      "message": "provider should synthesize implementation seeds such as runProtocolCli, parseProtocolArgs, and owner src/cli/protocol.ts from fixture context"
+    },
+    {
+      "kind": "pipe-grammar",
+      "severity": "info",
+      "message": "text owner tests remains the accepted final-only pipe; owner items is not advertised"
+    }
+  ]
+}

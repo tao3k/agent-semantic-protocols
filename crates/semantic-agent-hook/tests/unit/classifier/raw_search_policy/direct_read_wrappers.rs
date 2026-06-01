@@ -1,0 +1,64 @@
+use semantic_agent_hook::{DecisionKind, DecisionRouteKind, classify_hook};
+use serde_json::json;
+
+use super::support::{assert_allowed, assert_direct_read_denied, polyglot_registry};
+
+#[test]
+fn rtk_read_source_globs_are_denied_for_each_profile() {
+    for (command, binary) in [
+        ("rtk read -n *.rs", "rs-harness"),
+        ("rtk read *.ts", "ts-harness"),
+        ("rtk read '*.py'", "py-harness"),
+        ("rtk read -n 'src/**/*.tsx'", "ts-harness"),
+        ("rtk read 'packages/*/src/**/*.py'", "py-harness"),
+        ("rtk read 'crates/**/lib.rs'", "rs-harness"),
+        ("rtk read '*.[jt]s'", "ts-harness"),
+        ("rtk read '*.{ts,py}'", "ts-harness"),
+    ] {
+        assert_direct_read_denied(command, binary);
+    }
+}
+
+#[test]
+fn rtk_read_scans_all_path_arguments() {
+    for (command, binary) in [
+        (
+            "rtk read README.md crates/semantic-agent-hook/src/lib.rs",
+            "rs-harness",
+        ),
+        ("rtk read docs/guide.md src/cli/protocol.ts", "ts-harness"),
+        (
+            "rtk read README.md packages/python/src/tools/semantic_sandtable/runner.py",
+            "py-harness",
+        ),
+    ] {
+        assert_direct_read_denied(command, binary);
+    }
+}
+
+#[test]
+fn rtk_read_non_source_files_stays_allowed() {
+    for command in ["rtk read README.md", "rtk read -n docs/*.org"] {
+        assert_allowed(command);
+    }
+}
+
+#[test]
+fn rtk_read_source_globs_route_to_prime_not_owner() {
+    let decision = classify_hook(
+        &polyglot_registry(),
+        "codex",
+        "pre-tool",
+        &json!({
+            "tool_name": "functions.exec_command",
+            "tool_input": {"cmd": "rtk read 'packages/*/src/**/*.py'"}
+        }),
+    );
+
+    assert_eq!(decision.decision, DecisionKind::Deny);
+    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Prime);
+    assert_eq!(
+        decision.routes[0].argv,
+        vec!["py-harness", "search", "prime", "."]
+    );
+}

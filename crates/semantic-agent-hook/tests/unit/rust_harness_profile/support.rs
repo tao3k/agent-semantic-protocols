@@ -38,10 +38,11 @@ pub(super) fn root_owned_rust_profile_registry_json() -> String {
             },
             "commands": {
                 "prime": {"argv": ["rs-harness", "search", "prime", "--view", "seeds", "."]},
-                "owner": {"argv": ["rs-harness", "search", "owner", "{path}", "items", "--view", "seeds", "."]},
+                "owner": {"argv": ["rs-harness", "query", "--from-hook", "direct-source-read", "--selector", "{path}", "."]},
                 "text": {"argv": ["rs-harness", "search", "text", "{query}", "tests", "--view", "seeds", "."]},
                 "ingest": {"argv": ["rs-harness", "search", "ingest", "items", "tests", "--view", "seeds", "."], "stdinMode": "pipe-candidates"},
-                "checkChanged": {"argv": ["rs-harness", "check", "--changed", "."]}
+                "checkChanged": {"argv": ["rs-harness", "check", "--changed", "."]},
+                "guide": {"argv": ["rs-harness", "agent", "guide", "."]}
             }
         }]
     }))

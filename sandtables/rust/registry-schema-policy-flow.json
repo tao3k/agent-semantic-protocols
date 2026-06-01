@@ -20,7 +20,7 @@
     ]
   },
   "budgets": {
-    "maxCommands": 5,
+    "maxCommands": 6,
     "maxTotalLinesWarn": 12,
     "maxTotalElapsedMsWarn": 3500,
     "maxTotalStdoutBytesWarn": 18000
@@ -47,10 +47,10 @@
           "languages.0.providerId": "rs-harness",
           "languages.0.binary": "rs-harness"
         },
-        "stdoutJsonContains": {
-          "languages.0.methods": "agent/guard",
-          "languages.0.methodDescriptors": "agent.semantic-protocols.agent-hook-decision"
-        },
+        "stdoutNotContains": [
+          "agent/guard",
+          "agent/hook"
+        ],
         "maxStdoutLinesWarn": 1,
         "maxElapsedMsWarn": 800
       }
@@ -85,17 +85,53 @@
       }
     },
     {
+      "id": "dependency-query-set-packet-schema",
+      "kind": "schema-contract",
+      "coverage": ["json-schema", "search-flow", "deps-query", "performance"],
+      "command": [
+        "rs-harness",
+        "search",
+        "dependency",
+        "serde,serde_json",
+        "--json",
+        "--view",
+        "seeds",
+        "--seeds",
+        "4",
+        "."
+      ],
+      "expect": {
+        "stdoutJsonSchema": "schemas/semantic-search-packet.v1.schema.json",
+        "stdoutJsonEquals": {
+          "schemaId": "agent.semantic-protocols.semantic-search-packet",
+          "languageId": "rust",
+          "providerId": "rs-harness",
+          "method": "search/dependency",
+          "query": "serde,serde_json",
+          "header.fields.selector": "exact-set",
+          "querySet.0.value": "serde",
+          "querySet.1.value": "serde_json",
+          "queryComposition.mode": "query-set",
+          "queryComposition.selector": "exact-set"
+        },
+        "stdoutJsonContains": {
+          "header.fields": "\"querySet\": 2"
+        },
+        "maxStdoutLinesWarn": 1,
+        "maxStdoutBytesWarn": 12000,
+        "maxElapsedMsWarn": 1000
+      }
+    },
+    {
       "id": "hook-decision-schema",
       "kind": "hook-replay",
       "coverage": ["codex-hooks", "json-schema", "policy-blackbox", "security"],
       "command": [
-        "rs-harness",
-        "agent",
+        "semantic-agent-hook",
         "hook",
         "--client",
         "codex",
-        "pre-tool",
-        "."
+        "pre-tool"
       ],
       "stdin": "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Read\",\"tool_input\":{\"path\":\"src/lib.rs\"}}",
       "expect": {
@@ -120,27 +156,20 @@
       "kind": "wrapper",
       "coverage": ["codex-wrapper", "json-schema", "policy-blackbox", "security"],
       "command": [
-        "rs-harness",
-        "agent",
-        "guard",
+        "semantic-agent-hook",
+        "hook",
         "--client",
         "codex",
-        "--json",
-        ".",
-        "--",
-        "sed",
-        "-n",
-        "1,40p",
-        "src/lib.rs"
+        "pre-tool",
+        "--emit",
+        "decision"
       ],
+      "stdin": "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"functions.exec_command\",\"tool_input\":{\"cmd\":\"sed -n '1,40p' src/lib.rs\"}}",
       "expect": {
-        "exitCode": 1,
-        "stdoutJsonSchemaAt": {
-          "agentHookDecision": "schemas/semantic-agent-hook-decision.v1.schema.json"
-        },
+        "stdoutJsonSchema": "schemas/semantic-agent-hook-decision.v1.schema.json",
         "stdoutJsonEquals": {
-          "hookSpecificOutput.permissionDecision": "deny",
-          "agentHookDecision.reasonKind": "direct-source-read"
+          "decision": "deny",
+          "reasonKind": "bulk-source-dump"
         },
         "stdoutNotContains": [
           "pub mod",
@@ -155,20 +184,20 @@
       "kind": "policy-blackbox",
       "coverage": ["policy-blackbox", "security", "performance"],
       "command": [
-        "rs-harness",
-        "agent",
-        "guard",
+        "semantic-agent-hook",
+        "hook",
         "--client",
         "codex",
-        ".",
-        "--",
-        "rg",
-        "-n",
-        "run_agent",
-        "src/cli/runner.rs"
+        "pre-tool",
+        "--emit",
+        "decision"
       ],
+      "stdin": "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"functions.exec_command\",\"tool_input\":{\"cmd\":\"rg -n run_agent src/cli/runner.rs\"}}",
       "expect": {
-        "stdoutEmpty": true,
+        "stdoutJsonEquals": {
+          "decision": "allow",
+          "reasonKind": "none"
+        },
         "maxElapsedMsWarn": 800
       }
     }

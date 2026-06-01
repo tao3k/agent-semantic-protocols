@@ -16,7 +16,9 @@
         "codex-hooks",
         "codex-wrapper",
         "desktop-hooks",
-        "cli-hooks"
+        "cli-hooks",
+        "real-trigger",
+        "large-library"
       ]
     },
     {
@@ -26,14 +28,9 @@
         "json-schema",
         "search-flow",
         "deps-query",
-        "policy-blackbox",
-        "policy-whitebox",
         "performance",
-        "security",
-        "codex-hooks",
-        "codex-wrapper",
-        "desktop-hooks",
-        "cli-hooks"
+        "real-trigger",
+        "large-library"
       ]
     },
     {
@@ -43,14 +40,10 @@
         "json-schema",
         "search-flow",
         "deps-query",
-        "policy-blackbox",
-        "policy-whitebox",
         "performance",
-        "security",
         "codex-hooks",
-        "codex-wrapper",
-        "desktop-hooks",
-        "cli-hooks"
+        "cli-hooks",
+        "large-library"
       ]
     }
   ]

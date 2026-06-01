@@ -1,0 +1,203 @@
+{
+  "id": "rust.tokio-task-abort-flow",
+  "language": "rust",
+  "title": "Tokio real-trigger task abort and JoinSet search flow",
+  "coverage": [
+    "search-flow",
+    "performance",
+    "real-trigger"
+  ],
+  "tags": [
+    "real-trigger",
+    "tokio",
+    "query-composition",
+    "tests-ranking"
+  ],
+  "evidence": {
+    "source": "real-trigger",
+    "intent": "Implement task abort or JoinSet shutdown behavior before selecting files to edit",
+    "recordedAt": "2026-05-31",
+    "receiptPath": "sandtables/receipts/rust/tokio-task-abort-flow.receipt.json",
+    "editBoundary": "before-edit",
+    "metrics": {
+      "recordedCommandCount": 5,
+      "recordedElapsedMs": 2959,
+      "recordedStdoutBytes": 2426,
+      "recordedStderrBytes": 0,
+      "repeatedSearches": 0,
+      "jsonSearches": 0,
+      "compactSearches": 5,
+      "tokenDelta": "lower"
+    },
+    "querySetOpportunities": [
+      {
+        "view": "text",
+        "queries": 3,
+        "saveCommands": 2,
+        "selector": "exact-set",
+        "reason": "abort, JoinSet, and abort_on_drop are same-intent text probes for task cancellation"
+      },
+      {
+        "view": "tests",
+        "queries": 2,
+        "saveCommands": 1,
+        "selector": "exact-set",
+        "reason": "abort and JoinSet owners were tested separately after the symbol packet showed the shared task axis"
+      }
+    ],
+    "findings": [
+      {
+        "kind": "prime-quality",
+        "severity": "warning",
+        "message": "prime seeds for Tokio are too generic for task abort intent at a low seed cap"
+      },
+      {
+        "kind": "tests-ranking",
+        "severity": "info",
+        "message": "query-set tests search keeps tests/task_join_set.rs inside the seed budget"
+      }
+    ]
+  },
+  "workdir": {
+    "env": "SANDTABLE_RUST_TOKIO_ROOT",
+    "candidates": [
+      "~/.cargo/registry/src/*/tokio-[0-9]*"
+    ]
+  },
+  "budgets": {
+    "maxCommands": 5,
+    "maxTotalLinesWarn": 120,
+    "maxTotalElapsedMsWarn": 7000,
+    "maxTotalStdoutBytesWarn": 30000
+  },
+  "steps": [
+    {
+      "id": "prime",
+      "command": [
+        "rs-harness",
+        "search",
+        "prime",
+        "--view",
+        "seeds",
+        "--seeds",
+        "10",
+        "."
+      ],
+      "expect": {
+        "lineProtocol": true,
+        "stdoutContains": [
+          "[search-prime]",
+          "|seed"
+        ],
+        "maxStdoutLinesWarn": 10,
+        "maxElapsedMsWarn": 3000
+      }
+    },
+    {
+      "id": "text-task-abort-query-set",
+      "command": [
+        "rs-harness",
+        "search",
+        "text",
+        "--query-set",
+        "abort",
+        "--query-set",
+        "JoinSet",
+        "--query-set",
+        "abort_on_drop",
+        "--view",
+        "seeds",
+        "--seeds",
+        "24",
+        "."
+      ],
+      "expect": {
+        "lineProtocol": true,
+        "stdoutContains": [
+          "[search-text]",
+          "querySet=3",
+          "src/runtime/task/abort.rs",
+          "src/task/join_set.rs"
+        ],
+        "maxStdoutLinesWarn": 4,
+        "maxElapsedMsWarn": 2500
+      }
+    },
+    {
+      "id": "owner-abort-items",
+      "command": [
+        "rs-harness",
+        "search",
+        "owner",
+        "src/runtime/task/abort.rs",
+        "items",
+        "--trace",
+        "--view",
+        "seeds",
+        "--seeds",
+        "8",
+        "."
+      ],
+      "expect": {
+        "lineProtocol": true,
+        "stdoutContains": [
+          "[search-owner]",
+          "symbol:AbortHandle"
+        ],
+        "maxStdoutLinesWarn": 18,
+        "maxElapsedMsWarn": 1800
+      }
+    },
+    {
+      "id": "symbol-abort-handle",
+      "command": [
+        "rs-harness",
+        "search",
+        "symbol",
+        "AbortHandle",
+        "--view",
+        "seeds",
+        "--seeds",
+        "8",
+        "."
+      ],
+      "expect": {
+        "lineProtocol": true,
+        "stdoutContains": [
+          "[search-symbol]",
+          "src/runtime/task/abort.rs",
+          "src/task/join_set.rs"
+        ],
+        "maxStdoutLinesWarn": 8,
+        "maxElapsedMsWarn": 1500
+      }
+    },
+    {
+      "id": "tests-task-query-set",
+      "command": [
+        "rs-harness",
+        "search",
+        "tests",
+        "--query-set",
+        "src/runtime/task/abort.rs",
+        "--query-set",
+        "src/task/join_set.rs",
+        "--view",
+        "seeds",
+        "--seeds",
+        "8",
+        "."
+      ],
+      "expect": {
+        "lineProtocol": true,
+        "stdoutContains": [
+          "[search-tests]",
+          "querySet=2",
+          "tests/task_join_set.rs"
+        ],
+        "maxStdoutLinesWarn": 10,
+        "maxElapsedMsWarn": 2500
+      }
+    }
+  ]
+}

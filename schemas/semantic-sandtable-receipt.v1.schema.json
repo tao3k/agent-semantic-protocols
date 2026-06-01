@@ -1,0 +1,329 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-sandtable-receipt.v1.schema.json",
+  "title": "Semantic Sandtable Receipt",
+  "description": "Compact evidence artifact recorded from a real agent exploration loop before conversion into a deterministic sandtable scenario.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "scenarioId",
+    "language",
+    "project",
+    "intent",
+    "editBoundary",
+    "commands",
+    "summary"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.semantic-sandtable-receipt"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "scenarioId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*(\\.[a-z][a-z0-9_-]*)+$"
+    },
+    "language": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "project": {
+      "$ref": "#/$defs/project"
+    },
+    "intent": {
+      "type": "string",
+      "minLength": 1
+    },
+    "recordedAt": {
+      "type": "string",
+      "minLength": 1
+    },
+    "editBoundary": {
+      "enum": ["before-edit", "after-search"]
+    },
+    "commands": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/recordedCommand"
+      }
+    },
+    "summary": {
+      "$ref": "#/$defs/summary"
+    },
+    "querySetOpportunities": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/querySetOpportunity"
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/evidenceFinding"
+      }
+    }
+  },
+  "$defs": {
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workdir": {
+          "type": "string",
+          "minLength": 1
+        },
+        "package": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source": {
+          "enum": ["checkout", "registry", "fixture", "unknown"]
+        }
+      }
+    },
+    "recordedCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "argv", "metrics"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "kind": {
+          "enum": [
+            "search",
+            "hook-deny",
+            "subagent",
+            "external-ingest",
+            "check",
+            "other"
+          ]
+        },
+        "argv": {
+          "$ref": "#/$defs/argv"
+        },
+        "stdinShape": {
+          "enum": ["none", "candidate-pipe", "hook-payload", "redacted", "unknown"]
+        },
+        "outputMode": {
+          "enum": ["compact", "json", "unknown"]
+        },
+        "decisionReasonKind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "routeKind": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "next": {
+          "$ref": "#/$defs/stringList"
+        },
+        "metrics": {
+          "$ref": "#/$defs/commandMetrics"
+        },
+        "notes": {
+          "$ref": "#/$defs/stringList"
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commandCount", "stdoutBytes", "stderrBytes", "elapsedMs"],
+      "properties": {
+        "commandCount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "stdoutBytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "stderrBytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "elapsedMs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "repeatedSearches": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "jsonSearches": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "compactSearches": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "tokenDelta": {
+          "enum": ["lower", "same", "higher", "unknown"]
+        },
+        "tokenCost": {
+          "$ref": "#/$defs/tokenCost"
+        }
+      }
+    },
+    "tokenCost": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["unit", "totalTokens", "basis"],
+      "properties": {
+        "unit": {
+          "enum": ["token-estimate", "token-count"]
+        },
+        "inputTokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "outputTokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "totalTokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "basis": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "commandMetrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["elapsedMs", "stdoutBytes", "stderrBytes"],
+      "properties": {
+        "elapsedMs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "stdoutBytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "stderrBytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "stdoutLines": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "stderrLines": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "tokenCost": {
+          "$ref": "#/$defs/tokenCost"
+        }
+      }
+    },
+    "querySetOpportunity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["view", "queries", "saveCommands"],
+      "properties": {
+        "view": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "queries": {
+          "type": "integer",
+          "minimum": 2
+        },
+        "saveCommands": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "selector": {
+          "enum": ["exact-set", "prefix-set", "stdin-path-set"]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "terms": {
+          "$ref": "#/$defs/stringList"
+        },
+        "scope": {
+          "$ref": "#/$defs/queryScope"
+        },
+        "beforeCommandIds": {
+          "$ref": "#/$defs/stringList"
+        },
+        "recommendedCommand": {
+          "$ref": "#/$defs/argv"
+        }
+      }
+    },
+    "queryScope": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "projectRoot": {
+          "type": "string",
+          "minLength": 1
+        },
+        "packageName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ownerPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "roots": {
+          "$ref": "#/$defs/stringList"
+        }
+      }
+    },
+    "evidenceFinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "message"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "severity": {
+          "enum": ["info", "warning", "error"]
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "argv": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string"
+      }
+    },
+    "stringList": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

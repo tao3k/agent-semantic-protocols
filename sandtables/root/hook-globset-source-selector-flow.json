@@ -1,0 +1,127 @@
+{
+  "id": "root.hook-globset-source-selector-flow",
+  "language": "root",
+  "title": "Root hook globset source selector classification flow",
+  "coverage": [
+    "policy-blackbox",
+    "security",
+    "codex-hooks",
+    "codex-wrapper"
+  ],
+  "workdir": {
+    "relative": "."
+  },
+  "budgets": {
+    "maxCommands": 4,
+    "maxTotalLinesWarn": 120,
+    "maxTotalStdoutBytesWarn": 16000
+  },
+  "steps": [
+    {
+      "id": "rtk-rust-glob-read-deny",
+      "kind": "hook-replay",
+      "command": [
+        "semantic-agent-hook",
+        "hook",
+        "--client",
+        "codex",
+        "pre-tool",
+        "--emit",
+        "decision"
+      ],
+      "stdin": "{\"tool_name\":\"functions.exec_command\",\"tool_input\":{\"cmd\":\"rtk read -n *.rs\"}}",
+      "expect": {
+        "stdoutJsonSchema": "schemas/semantic-agent-hook-decision.v1.schema.json",
+        "stdoutJsonEquals": {
+          "decision": "deny",
+          "reasonKind": "direct-source-read",
+          "languageIds.0": "rust",
+          "routes.0.kind": "prime",
+          "routes.0.providerId": "rs-harness"
+        },
+        "stdoutJsonContains": {
+          "message": "rs-harness agent guide ."
+        },
+        "maxElapsedMsWarn": 6000
+      }
+    },
+    {
+      "id": "rtk-python-package-glob-read-deny",
+      "kind": "hook-replay",
+      "command": [
+        "semantic-agent-hook",
+        "hook",
+        "--client",
+        "codex",
+        "pre-tool",
+        "--emit",
+        "decision"
+      ],
+      "stdin": "{\"tool_name\":\"functions.exec_command\",\"tool_input\":{\"cmd\":\"rtk read 'packages/*/src/**/*.py'\"}}",
+      "expect": {
+        "stdoutJsonSchema": "schemas/semantic-agent-hook-decision.v1.schema.json",
+        "stdoutJsonEquals": {
+          "decision": "deny",
+          "reasonKind": "direct-source-read",
+          "languageIds.0": "python",
+          "routes.0.kind": "prime",
+          "routes.0.providerId": "py-harness"
+        },
+        "stdoutJsonContains": {
+          "message": "py-harness agent guide ."
+        },
+        "maxElapsedMsWarn": 6000
+      }
+    },
+    {
+      "id": "rg-charclass-glob-deny",
+      "kind": "hook-replay",
+      "command": [
+        "semantic-agent-hook",
+        "hook",
+        "--client",
+        "codex",
+        "pre-tool",
+        "--emit",
+        "decision"
+      ],
+      "stdin": "{\"tool_name\":\"functions.exec_command\",\"tool_input\":{\"cmd\":\"rg --files -g '*.[jt]s' src\"}}",
+      "expect": {
+        "stdoutJsonSchema": "schemas/semantic-agent-hook-decision.v1.schema.json",
+        "stdoutJsonEquals": {
+          "decision": "deny",
+          "reasonKind": "raw-broad-search",
+          "languageIds.0": "typescript",
+          "routes.0.kind": "ingest",
+          "routes.0.providerId": "ts-harness"
+        },
+        "stdoutJsonContains": {
+          "message": "ts-harness agent guide ."
+        },
+        "maxElapsedMsWarn": 6000
+      }
+    },
+    {
+      "id": "rg-pattern-source-like-text-allow",
+      "kind": "hook-replay",
+      "command": [
+        "semantic-agent-hook",
+        "hook",
+        "--client",
+        "codex",
+        "pre-tool",
+        "--emit",
+        "decision"
+      ],
+      "stdin": "{\"tool_name\":\"functions.exec_command\",\"tool_input\":{\"cmd\":\"rg -e 'runner.py' docs\"}}",
+      "expect": {
+        "stdoutJsonSchema": "schemas/semantic-agent-hook-decision.v1.schema.json",
+        "stdoutJsonEquals": {
+          "decision": "allow",
+          "reasonKind": "none"
+        },
+        "maxElapsedMsWarn": 6000
+      }
+    }
+  ]
+}

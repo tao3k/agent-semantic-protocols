@@ -1,0 +1,234 @@
+{
+  "schemaId": "agent.semantic-protocols.semantic-sandtable-receipt",
+  "schemaVersion": "1",
+  "scenarioId": "typescript.playwright-api-request-real-trigger-flow",
+  "language": "typescript",
+  "project": {
+    "name": "playwright",
+    "package": "playwright-internal",
+    "source": "checkout",
+    "workdir": ".cache/sandtable-repos/typescript/playwright"
+  },
+  "intent": "Implement APIRequestContext fetch behavior before selecting files to edit",
+  "recordedAt": "2026-06-01",
+  "editBoundary": "before-edit",
+  "commands": [
+    {
+      "id": "workspace",
+      "kind": "search",
+      "argv": ["ts-harness", "search", "workspace", "."],
+      "stdinShape": "none",
+      "outputMode": "compact",
+      "metrics": {
+        "elapsedMs": 19731,
+        "stdoutBytes": 4128,
+        "stderrBytes": 0,
+        "stdoutLines": 24,
+        "stderrLines": 0,
+        "tokenCost": {
+          "unit": "token-estimate",
+          "outputTokens": 1032,
+          "totalTokens": 1032,
+          "basis": "stdoutBytes/4 rounded up; terminal-output estimate only"
+        }
+      },
+      "next": ["prime:."]
+    },
+    {
+      "id": "prime-root",
+      "kind": "search",
+      "argv": ["ts-harness", "search", "prime", "--view", "seeds", "."],
+      "stdinShape": "none",
+      "outputMode": "compact",
+      "metrics": {
+        "elapsedMs": 21299,
+        "stdoutBytes": 1804,
+        "stderrBytes": 0,
+        "stdoutLines": 6,
+        "stderrLines": 0,
+        "tokenCost": {
+          "unit": "token-estimate",
+          "outputTokens": 451,
+          "totalTokens": 451,
+          "basis": "stdoutBytes/4 rounded up; terminal-output estimate only"
+        }
+      },
+      "notes": ["root prime retained packages/playwright-core/src/server/fetch.ts in the seed budget"],
+      "next": ["text:APIRequestContext", "text:BrowserContextAPIRequestContext", "text:fetch"]
+    },
+    {
+      "id": "text-api-request-query-set",
+      "kind": "search",
+      "argv": [
+        "ts-harness",
+        "search",
+        "text",
+        "--query-set",
+        "APIRequestContext",
+        "--query-set",
+        "BrowserContextAPIRequestContext",
+        "--query-set",
+        "fetch",
+        "owner",
+        "tests",
+        "--view",
+        "seeds",
+        "."
+      ],
+      "stdinShape": "none",
+      "outputMode": "compact",
+      "metrics": {
+        "elapsedMs": 10196,
+        "stdoutBytes": 2514,
+        "stderrBytes": 0,
+        "stdoutLines": 10,
+        "stderrLines": 0,
+        "tokenCost": {
+          "unit": "token-estimate",
+          "outputTokens": 629,
+          "totalTokens": 629,
+          "basis": "stdoutBytes/4 rounded up; terminal-output estimate only"
+        }
+      },
+      "notes": ["query-set found the request implementation owner but not the top-level global-fetch tests"]
+    },
+    {
+      "id": "owner-fetch-items",
+      "kind": "search",
+      "argv": [
+        "ts-harness",
+        "search",
+        "owner",
+        "packages/playwright-core/src/server/fetch.ts",
+        "items",
+        "--view",
+        "seeds",
+        "."
+      ],
+      "stdinShape": "none",
+      "outputMode": "compact",
+      "metrics": {
+        "elapsedMs": 14353,
+        "stdoutBytes": 2569,
+        "stderrBytes": 0,
+        "stdoutLines": 13,
+        "stderrLines": 0,
+        "tokenCost": {
+          "unit": "token-estimate",
+          "outputTokens": 643,
+          "totalTokens": 643,
+          "basis": "stdoutBytes/4 rounded up; terminal-output estimate only"
+        }
+      },
+      "next": ["tests:packages/playwright-core/src/server/fetch.ts"]
+    },
+    {
+      "id": "tests-fetch-missing",
+      "kind": "search",
+      "argv": [
+        "ts-harness",
+        "search",
+        "tests",
+        "packages/playwright-core/src/server/fetch.ts",
+        "--view",
+        "seeds",
+        "."
+      ],
+      "stdinShape": "none",
+      "outputMode": "compact",
+      "metrics": {
+        "elapsedMs": 8457,
+        "stdoutBytes": 423,
+        "stderrBytes": 0,
+        "stdoutLines": 5,
+        "stderrLines": 0,
+        "tokenCost": {
+          "unit": "token-estimate",
+          "outputTokens": 106,
+          "totalTokens": 106,
+          "basis": "stdoutBytes/4 rounded up; terminal-output estimate only"
+        }
+      },
+      "notes": ["tests search returned test=0 for the implementation owner"]
+    },
+    {
+      "id": "rg-api-request-tests-ingest",
+      "kind": "external-ingest",
+      "argv": ["ts-harness", "search", "ingest", "--view", "seeds", "."],
+      "stdinShape": "candidate-pipe",
+      "outputMode": "compact",
+      "metrics": {
+        "elapsedMs": 10256,
+        "stdoutBytes": 163,
+        "stderrBytes": 0,
+        "stdoutLines": 3,
+        "stderrLines": 0,
+        "tokenCost": {
+          "unit": "token-estimate",
+          "outputTokens": 41,
+          "totalTokens": 41,
+          "basis": "stdoutBytes/4 rounded up; terminal-output estimate only"
+        }
+      },
+      "notes": ["external candidates surfaced tests/library/global-fetch.spec.ts as relevant evidence"]
+    }
+  ],
+  "summary": {
+    "commandCount": 6,
+    "stdoutBytes": 11601,
+    "stderrBytes": 0,
+    "elapsedMs": 84292,
+    "repeatedSearches": 0,
+    "jsonSearches": 0,
+    "compactSearches": 6,
+    "tokenDelta": "lower",
+    "tokenCost": {
+      "unit": "token-estimate",
+      "outputTokens": 2902,
+      "totalTokens": 2902,
+      "basis": "sum of per-command stdoutBytes/4 rounded up; terminal-output estimate only"
+    }
+  },
+  "querySetOpportunities": [
+    {
+      "view": "text",
+      "queries": 3,
+      "saveCommands": 2,
+      "selector": "exact-set",
+      "terms": ["APIRequestContext", "BrowserContextAPIRequestContext", "fetch"],
+      "scope": {
+        "ownerPath": "packages/playwright-core/src/server/fetch.ts"
+      },
+      "beforeCommandIds": ["text-api-request-query-set"],
+      "recommendedCommand": [
+        "ts-harness",
+        "search",
+        "text",
+        "--query-set",
+        "APIRequestContext",
+        "--query-set",
+        "BrowserContextAPIRequestContext",
+        "--query-set",
+        "fetch",
+        "owner",
+        "tests",
+        "--view",
+        "seeds",
+        "."
+      ],
+      "reason": "same request-context axis would otherwise repeat text probes"
+    }
+  ],
+  "findings": [
+    {
+      "kind": "prime-quality",
+      "severity": "info",
+      "message": "root prime keeps the API request implementation owner inside the seed budget"
+    },
+    {
+      "kind": "tests-ranking",
+      "severity": "warning",
+      "message": "tests search misses top-level tests/library APIRequestContext coverage"
+    }
+  ]
+}

@@ -125,6 +125,18 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
+        "directSourceRead": {
+          "$ref": "#/$defs/actionPolicy"
+        },
+        "bulkSourceDump": {
+          "$ref": "#/$defs/actionPolicy"
+        },
+        "rawSourceSearch": {
+          "$ref": "#/$defs/actionPolicy"
+        },
+        "agentSearchJson": {
+          "$ref": "#/$defs/actionPolicy"
+        },
         "blockDirectRead": {
           "type": "boolean",
           "default": true
@@ -142,6 +154,9 @@
           "default": true
         }
       }
+    },
+    "actionPolicy": {
+      "enum": ["block", "allow", "advisory"]
     },
     "commands": {
       "type": "object",
@@ -161,6 +176,9 @@
           "$ref": "#/$defs/commandTemplate"
         },
         "checkChanged": {
+          "$ref": "#/$defs/commandTemplate"
+        },
+        "guide": {
           "$ref": "#/$defs/commandTemplate"
         }
       }

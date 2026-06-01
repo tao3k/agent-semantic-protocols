@@ -1,0 +1,277 @@
+{
+  "schemaId": "agent.semantic-protocols.semantic-sandtable-receipt",
+  "schemaVersion": "1",
+  "scenarioId": "typescript.vue-runtime-scheduler-real-trigger-flow",
+  "language": "typescript",
+  "project": {
+    "name": "vue-core",
+    "package": "vue",
+    "source": "checkout",
+    "workdir": ".cache/sandtable-repos/typescript/vue-core"
+  },
+  "intent": "Implement runtime scheduler flush behavior before selecting files to edit",
+  "recordedAt": "2026-06-01",
+  "editBoundary": "before-edit",
+  "commands": [
+    {
+      "id": "workspace",
+      "kind": "search",
+      "argv": ["ts-harness", "search", "workspace", "."],
+      "stdinShape": "none",
+      "outputMode": "compact",
+      "metrics": {
+        "elapsedMs": 8575,
+        "stdoutBytes": 3316,
+        "stderrBytes": 0,
+        "stdoutLines": 20,
+        "stderrLines": 0,
+        "tokenCost": {
+          "unit": "token-estimate",
+          "outputTokens": 829,
+          "totalTokens": 829,
+          "basis": "stdoutBytes/4 rounded up; terminal-output estimate only"
+        }
+      },
+      "next": ["text:queueJob", "text:flushJobs", "text:nextTick"]
+    },
+    {
+      "id": "text-scheduler-query-set",
+      "kind": "search",
+      "argv": [
+        "ts-harness",
+        "search",
+        "text",
+        "--query-set",
+        "queueJob",
+        "--query-set",
+        "flushJobs",
+        "--query-set",
+        "nextTick",
+        "owner",
+        "tests",
+        "--view",
+        "seeds",
+        "packages/runtime-core"
+      ],
+      "stdinShape": "none",
+      "outputMode": "compact",
+      "metrics": {
+        "elapsedMs": 2236,
+        "stdoutBytes": 1325,
+        "stderrBytes": 0,
+        "stdoutLines": 10,
+        "stderrLines": 0,
+        "tokenCost": {
+          "unit": "token-estimate",
+          "outputTokens": 332,
+          "totalTokens": 332,
+          "basis": "stdoutBytes/4 rounded up; terminal-output estimate only"
+        }
+      },
+      "notes": ["query-set found src/scheduler.ts as the implementation owner but did not surface the colocated scheduler spec"]
+    },
+    {
+      "id": "owner-scheduler-items",
+      "kind": "search",
+      "argv": [
+        "ts-harness",
+        "search",
+        "owner",
+        "src/scheduler.ts",
+        "items",
+        "--view",
+        "seeds",
+        "packages/runtime-core"
+      ],
+      "stdinShape": "none",
+      "outputMode": "compact",
+      "metrics": {
+        "elapsedMs": 2120,
+        "stdoutBytes": 2355,
+        "stderrBytes": 0,
+        "stdoutLines": 18,
+        "stderrLines": 0,
+        "tokenCost": {
+          "unit": "token-estimate",
+          "outputTokens": 589,
+          "totalTokens": 589,
+          "basis": "stdoutBytes/4 rounded up; terminal-output estimate only"
+        }
+      },
+      "next": ["tests:src/scheduler.ts"]
+    },
+    {
+      "id": "tests-scheduler-package-miss",
+      "kind": "search",
+      "argv": [
+        "ts-harness",
+        "search",
+        "tests",
+        "src/scheduler.ts",
+        "--view",
+        "seeds",
+        "packages/runtime-core"
+      ],
+      "stdinShape": "none",
+      "outputMode": "compact",
+      "metrics": {
+        "elapsedMs": 1846,
+        "stdoutBytes": 335,
+        "stderrBytes": 0,
+        "stdoutLines": 5,
+        "stderrLines": 0,
+        "tokenCost": {
+          "unit": "token-estimate",
+          "outputTokens": 84,
+          "totalTokens": 84,
+          "basis": "stdoutBytes/4 rounded up; terminal-output estimate only"
+        }
+      },
+      "notes": ["package-scoped tests search returned test=0 for src/scheduler.ts"]
+    },
+    {
+      "id": "tests-scheduler-root-noisy",
+      "kind": "search",
+      "argv": [
+        "ts-harness",
+        "search",
+        "tests",
+        "packages/runtime-core/src/scheduler.ts",
+        "--view",
+        "seeds",
+        "."
+      ],
+      "stdinShape": "none",
+      "outputMode": "compact",
+      "metrics": {
+        "elapsedMs": 5575,
+        "stdoutBytes": 1428,
+        "stderrBytes": 0,
+        "stdoutLines": 6,
+        "stderrLines": 0,
+        "tokenCost": {
+          "unit": "token-estimate",
+          "outputTokens": 357,
+          "totalTokens": 357,
+          "basis": "stdoutBytes/4 rounded up; terminal-output estimate only"
+        }
+      },
+      "notes": ["root-scoped tests search found scheduler.spec.ts but also unrelated compat/vue tests"]
+    },
+    {
+      "id": "tests-query-set-unsupported",
+      "kind": "search",
+      "argv": [
+        "ts-harness",
+        "search",
+        "tests",
+        "--query-set",
+        "src/scheduler.ts",
+        "--query-set",
+        "src/apiWatch.ts",
+        "--view",
+        "seeds",
+        "packages/runtime-core"
+      ],
+      "stdinShape": "none",
+      "outputMode": "compact",
+      "metrics": {
+        "elapsedMs": 1173,
+        "stdoutBytes": 0,
+        "stderrBytes": 42,
+        "stdoutLines": 0,
+        "stderrLines": 1,
+        "tokenCost": {
+          "unit": "token-estimate",
+          "outputTokens": 11,
+          "totalTokens": 11,
+          "basis": "stderrBytes/4 rounded up; terminal-output estimate only"
+        }
+      },
+      "notes": ["tests view rejects query-set even though the user intent has multiple test targets"]
+    }
+  ],
+  "summary": {
+    "commandCount": 6,
+    "stdoutBytes": 8759,
+    "stderrBytes": 42,
+    "elapsedMs": 21525,
+    "repeatedSearches": 0,
+    "jsonSearches": 0,
+    "compactSearches": 6,
+    "tokenDelta": "lower",
+    "tokenCost": {
+      "unit": "token-estimate",
+      "outputTokens": 2202,
+      "totalTokens": 2202,
+      "basis": "sum of per-command stdoutBytes or stderrBytes/4 rounded up; terminal-output estimate only"
+    }
+  },
+  "querySetOpportunities": [
+    {
+      "view": "text",
+      "queries": 3,
+      "saveCommands": 2,
+      "selector": "exact-set",
+      "terms": ["queueJob", "flushJobs", "nextTick"],
+      "scope": {
+        "projectRoot": "packages/runtime-core",
+        "ownerPath": "src/scheduler.ts"
+      },
+      "beforeCommandIds": ["text-scheduler-query-set"],
+      "recommendedCommand": [
+        "ts-harness",
+        "search",
+        "text",
+        "--query-set",
+        "queueJob",
+        "--query-set",
+        "flushJobs",
+        "--query-set",
+        "nextTick",
+        "owner",
+        "tests",
+        "--view",
+        "seeds",
+        "packages/runtime-core"
+      ],
+      "reason": "same scheduler axis would otherwise repeat text probes"
+    },
+    {
+      "view": "tests",
+      "queries": 2,
+      "saveCommands": 1,
+      "selector": "exact-set",
+      "terms": ["src/scheduler.ts", "src/apiWatch.ts"],
+      "scope": {
+        "projectRoot": "packages/runtime-core"
+      },
+      "beforeCommandIds": ["tests-query-set-unsupported"],
+      "recommendedCommand": [
+        "ts-harness",
+        "search",
+        "tests",
+        "--query-set",
+        "src/scheduler.ts",
+        "--query-set",
+        "src/apiWatch.ts",
+        "--view",
+        "seeds",
+        "packages/runtime-core"
+      ],
+      "reason": "tests query-set would keep multi-owner test reachability in one compact packet"
+    }
+  ],
+  "findings": [
+    {
+      "kind": "tests-ranking",
+      "severity": "warning",
+      "message": "package-root tests search misses packages/runtime-core/__tests__/scheduler.spec.ts but root search is noisy"
+    },
+    {
+      "kind": "query-composition",
+      "severity": "warning",
+      "message": "TypeScript tests view does not support --query-set"
+    }
+  ]
+}

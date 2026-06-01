@@ -1,0 +1,201 @@
+{
+  "schemaId": "agent.semantic-protocols.semantic-sandtable-receipt",
+  "schemaVersion": "1",
+  "scenarioId": "typescript.vite-plugin-container-real-trigger-flow",
+  "language": "typescript",
+  "project": {
+    "name": "vite",
+    "package": "@vitejs/vite-monorepo",
+    "source": "checkout",
+    "workdir": ".cache/sandtable-repos/typescript/vite"
+  },
+  "intent": "Implement plugin container resolveId behavior before selecting files to edit",
+  "recordedAt": "2026-06-01",
+  "editBoundary": "before-edit",
+  "commands": [
+    {
+      "id": "workspace",
+      "kind": "search",
+      "argv": ["ts-harness", "search", "workspace", "."],
+      "stdinShape": "none",
+      "outputMode": "compact",
+      "metrics": {
+        "elapsedMs": 6580,
+        "stdoutBytes": 4994,
+        "stderrBytes": 0,
+        "stdoutLines": 28,
+        "stderrLines": 0,
+        "tokenCost": {
+          "unit": "token-estimate",
+          "outputTokens": 1249,
+          "totalTokens": 1249,
+          "basis": "stdoutBytes/4 rounded up; terminal-output estimate only"
+        }
+      },
+      "next": ["prime:packages/vite"]
+    },
+    {
+      "id": "prime-vite-package",
+      "kind": "search",
+      "argv": ["ts-harness", "search", "prime", "--view", "seeds", "packages/vite"],
+      "stdinShape": "none",
+      "outputMode": "compact",
+      "metrics": {
+        "elapsedMs": 2148,
+        "stdoutBytes": 592,
+        "stderrBytes": 0,
+        "stdoutLines": 6,
+        "stderrLines": 0,
+        "tokenCost": {
+          "unit": "token-estimate",
+          "outputTokens": 148,
+          "totalTokens": 148,
+          "basis": "stdoutBytes/4 rounded up; terminal-output estimate only"
+        }
+      },
+      "notes": ["prime only saw packages/vite build scripts because package tsconfig excludes nested src/node tsconfigs"],
+      "next": ["text:pluginContainer", "text:resolveId"]
+    },
+    {
+      "id": "text-plugin-query-set",
+      "kind": "search",
+      "argv": [
+        "ts-harness",
+        "search",
+        "text",
+        "--query-set",
+        "pluginContainer",
+        "--query-set",
+        "resolveId",
+        "owner",
+        "tests",
+        "--view",
+        "seeds",
+        "packages/vite"
+      ],
+      "stdinShape": "none",
+      "outputMode": "compact",
+      "metrics": {
+        "elapsedMs": 2210,
+        "stdoutBytes": 956,
+        "stderrBytes": 0,
+        "stdoutLines": 9,
+        "stderrLines": 0,
+        "tokenCost": {
+          "unit": "token-estimate",
+          "outputTokens": 239,
+          "totalTokens": 239,
+          "basis": "stdoutBytes/4 rounded up; terminal-output estimate only"
+        }
+      },
+      "notes": ["pluginContainer was a miss even though packages/vite/src/node/server/pluginContainer.ts exists"]
+    },
+    {
+      "id": "owner-plugin-container-not-visible",
+      "kind": "search",
+      "argv": [
+        "ts-harness",
+        "search",
+        "owner",
+        "src/node/server/pluginContainer.ts",
+        "items",
+        "--view",
+        "seeds",
+        "packages/vite"
+      ],
+      "stdinShape": "none",
+      "outputMode": "compact",
+      "metrics": {
+        "elapsedMs": 1394,
+        "stdoutBytes": 368,
+        "stderrBytes": 0,
+        "stdoutLines": 5,
+        "stderrLines": 0,
+        "tokenCost": {
+          "unit": "token-estimate",
+          "outputTokens": 92,
+          "totalTokens": 92,
+          "basis": "stdoutBytes/4 rounded up; terminal-output estimate only"
+        }
+      },
+      "next": ["ingest:src/node/server/pluginContainer.ts"]
+    },
+    {
+      "id": "rg-plugin-container-ingest",
+      "kind": "external-ingest",
+      "argv": ["ts-harness", "search", "ingest", "--view", "seeds", "packages/vite"],
+      "stdinShape": "candidate-pipe",
+      "outputMode": "compact",
+      "metrics": {
+        "elapsedMs": 1712,
+        "stdoutBytes": 175,
+        "stderrBytes": 0,
+        "stdoutLines": 3,
+        "stderrLines": 0,
+        "tokenCost": {
+          "unit": "token-estimate",
+          "outputTokens": 44,
+          "totalTokens": 44,
+          "basis": "stdoutBytes/4 rounded up; terminal-output estimate only"
+        }
+      },
+      "notes": ["external candidates normalized the missing owner through search ingest"]
+    }
+  ],
+  "summary": {
+    "commandCount": 5,
+    "stdoutBytes": 7085,
+    "stderrBytes": 0,
+    "elapsedMs": 14044,
+    "repeatedSearches": 1,
+    "jsonSearches": 0,
+    "compactSearches": 5,
+    "tokenDelta": "lower",
+    "tokenCost": {
+      "unit": "token-estimate",
+      "outputTokens": 1772,
+      "totalTokens": 1772,
+      "basis": "sum of per-command stdoutBytes/4 rounded up; terminal-output estimate only"
+    }
+  },
+  "querySetOpportunities": [
+    {
+      "view": "text",
+      "queries": 2,
+      "saveCommands": 1,
+      "selector": "exact-set",
+      "terms": ["pluginContainer", "resolveId"],
+      "scope": {
+        "projectRoot": "packages/vite"
+      },
+      "beforeCommandIds": ["text-plugin-query-set"],
+      "recommendedCommand": [
+        "ts-harness",
+        "search",
+        "text",
+        "--query-set",
+        "pluginContainer",
+        "--query-set",
+        "resolveId",
+        "owner",
+        "tests",
+        "--view",
+        "seeds",
+        "packages/vite"
+      ],
+      "reason": "same plugin-resolution axis would otherwise repeat text probes"
+    }
+  ],
+  "findings": [
+    {
+      "kind": "source-coverage",
+      "severity": "warning",
+      "message": "package-level prime does not follow Vite nested src/node tsconfigs"
+    },
+    {
+      "kind": "ingest-workaround",
+      "severity": "info",
+      "message": "search ingest can recover bounded evidence for parser-invisible source paths"
+    }
+  ]
+}

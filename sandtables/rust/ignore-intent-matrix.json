@@ -1,0 +1,84 @@
+{
+  "id": "rust.ignore-intent-matrix",
+  "language": "rust",
+  "title": "ignore large-library feature/API/principle intent matrix",
+  "coverage": ["search-flow", "deps-query", "performance", "large-library"],
+  "tags": ["large-library", "ignore", "intent-matrix"],
+  "evidence": {
+    "source": "handwritten",
+    "fixtureTier": "large-library",
+    "targetLibrary": {
+      "language": "rust",
+      "name": "ignore",
+      "package": "ignore",
+      "repository": "BurntSushi/ripgrep",
+      "workdirKind": "registry"
+    },
+    "intentCases": [
+      {
+        "intentKind": "feature-implementation",
+        "intent": "Implement an override or gitignore matching feature while preserving compact search boundaries",
+        "stepIds": ["prime", "intent-query-set"],
+        "queryTerms": ["OverrideBuilder"]
+      },
+      {
+        "intentKind": "api-usage",
+        "intent": "Find WalkBuilder API usage and dependency-facing paths",
+        "stepIds": ["prime", "intent-query-set"],
+        "queryTerms": ["WalkBuilder"]
+      },
+      {
+        "intentKind": "implementation-principle",
+        "intent": "Understand how gitignore matching is organized internally",
+        "stepIds": ["prime", "intent-query-set"],
+        "queryTerms": ["gitignore"]
+      }
+    ]
+  },
+  "workdir": {
+    "env": "SANDTABLE_RUST_IGNORE_ROOT",
+    "candidates": ["~/.cargo/registry/src/*/ignore-[0-9]*"]
+  },
+  "budgets": {
+    "maxCommands": 2,
+    "maxTotalLinesWarn": 24,
+    "maxTotalStdoutBytesWarn": 16000
+  },
+  "steps": [
+    {
+      "id": "prime",
+      "command": ["rs-harness", "search", "prime", "--view", "seeds", "--seeds", "4", "."],
+      "expect": {
+        "lineProtocol": true,
+        "stdoutContains": ["[search-prime]", "|seed"],
+        "maxStdoutLinesWarn": 10,
+        "maxElapsedMsWarn": 2500
+      }
+    },
+    {
+      "id": "intent-query-set",
+      "command": [
+        "rs-harness",
+        "search",
+        "text",
+        "--query-set",
+        "OverrideBuilder",
+        "--query-set",
+        "WalkBuilder",
+        "--query-set",
+        "gitignore",
+        "--view",
+        "seeds",
+        "--seeds",
+        "4",
+        "."
+      ],
+      "expect": {
+        "lineProtocol": true,
+        "stdoutContains": ["[search-text]", "querySet=3", "|seed"],
+        "maxStdoutLinesWarn": 10,
+        "maxElapsedMsWarn": 2500
+      }
+    }
+  ]
+}

@@ -1,0 +1,263 @@
+{
+  "schemaId": "agent.semantic-protocols.semantic-sandtable-receipt",
+  "schemaVersion": "1",
+  "scenarioId": "typescript.render-location-queryset",
+  "language": "typescript",
+  "project": {
+    "name": "typescript-lang-project-harness",
+    "package": "typescript-lang-project-harness",
+    "source": "checkout",
+    "workdir": "languages/typescript-lang-project-harness"
+  },
+  "intent": "Repair semantic-search render location formatting in render.ts",
+  "recordedAt": "2026-05-31",
+  "editBoundary": "after-search",
+  "commands": [
+    {
+      "id": "owner-render",
+      "kind": "search",
+      "argv": ["node", "dist/src/cli/main.js", "search", "owner", "src/cli/semantic-search/render.ts", "."],
+      "stdinShape": "none",
+      "metrics": {
+        "elapsedMs": 2000,
+        "stdoutBytes": 900,
+        "stderrBytes": 0
+      },
+      "next": ["text:renderSemanticSearchPacket"]
+    },
+    {
+      "id": "text-hit-prefix",
+      "kind": "search",
+      "argv": ["node", "dist/src/cli/main.js", "search", "text", "lines.push(`|hit", "owner", "tests", "."],
+      "stdinShape": "none",
+      "metrics": {
+        "elapsedMs": 1000,
+        "stdoutBytes": 1400,
+        "stderrBytes": 0
+      }
+    },
+    {
+      "id": "text-location-path-single-quote",
+      "kind": "search",
+      "argv": ["node", "dist/src/cli/main.js", "search", "text", "location.path", "owner", "tests", "."],
+      "stdinShape": "none",
+      "metrics": {
+        "elapsedMs": 1000,
+        "stdoutBytes": 1900,
+        "stderrBytes": 0
+      }
+    },
+    {
+      "id": "list-cli-files",
+      "kind": "other",
+      "argv": ["ls", "cli"],
+      "stdinShape": "none",
+      "metrics": {
+        "elapsedMs": 100,
+        "stdoutBytes": 200,
+        "stderrBytes": 0
+      },
+      "notes": ["non-semantic orientation command"]
+    },
+    {
+      "id": "dist-binary-check",
+      "kind": "other",
+      "argv": ["ls", "-l", "dist/src/cli/main.js"],
+      "stdinShape": "none",
+      "metrics": {
+        "elapsedMs": 100,
+        "stdoutBytes": 200,
+        "stderrBytes": 0
+      },
+      "notes": ["binary path uncertainty after node invocation"]
+    },
+    {
+      "id": "text-location-path-node",
+      "kind": "search",
+      "argv": ["node", "dist/src/cli/main.js", "search", "text", "location.path", "owner", "tests", "."],
+      "stdinShape": "none",
+      "metrics": {
+        "elapsedMs": 1000,
+        "stdoutBytes": 1900,
+        "stderrBytes": 0
+      }
+    },
+    {
+      "id": "text-location-path-direct",
+      "kind": "search",
+      "argv": ["./dist/src/cli/main.js", "search", "text", "location.path", "owner", "tests", "."],
+      "stdinShape": "none",
+      "metrics": {
+        "elapsedMs": 1000,
+        "stdoutBytes": 1900,
+        "stderrBytes": 0
+      }
+    },
+    {
+      "id": "text-render-location",
+      "kind": "search",
+      "argv": ["./dist/src/cli/main.js", "search", "text", "renderLocation", "owner", "tests", "."],
+      "stdinShape": "none",
+      "metrics": {
+        "elapsedMs": 1000,
+        "stdoutBytes": 1200,
+        "stderrBytes": 0
+      }
+    },
+    {
+      "id": "text-render-fields",
+      "kind": "search",
+      "argv": ["./dist/src/cli/main.js", "search", "text", "function renderFields", "owner", "tests", "."],
+      "stdinShape": "none",
+      "metrics": {
+        "elapsedMs": 1000,
+        "stdoutBytes": 1200,
+        "stderrBytes": 0
+      }
+    },
+    {
+      "id": "text-return-location-path",
+      "kind": "search",
+      "argv": ["./dist/src/cli/main.js", "search", "text", "return `${location.path}", "owner", "tests", "."],
+      "stdinShape": "none",
+      "metrics": {
+        "elapsedMs": 1000,
+        "stdoutBytes": 1200,
+        "stderrBytes": 0
+      }
+    },
+    {
+      "id": "text-location-path-colon",
+      "kind": "search",
+      "argv": ["./dist/src/cli/main.js", "search", "text", "location.path}:", "owner", "tests", "."],
+      "stdinShape": "none",
+      "metrics": {
+        "elapsedMs": 1000,
+        "stdoutBytes": 1200,
+        "stderrBytes": 0
+      }
+    },
+    {
+      "id": "owner-render-items",
+      "kind": "search",
+      "argv": ["./dist/src/cli/main.js", "search", "owner", "src/cli/semantic-search/render.ts", "items", "."],
+      "stdinShape": "none",
+      "metrics": {
+        "elapsedMs": 1000,
+        "stdoutBytes": 500,
+        "stderrBytes": 100
+      },
+      "notes": ["current TypeScript dist rejects owner items as an extra project-root argument"]
+    },
+    {
+      "id": "text-location-column",
+      "kind": "search",
+      "argv": ["./dist/src/cli/main.js", "search", "text", "location.column", "owner", "tests", "."],
+      "stdinShape": "none",
+      "metrics": {
+        "elapsedMs": 1000,
+        "stdoutBytes": 1200,
+        "stderrBytes": 0
+      }
+    },
+    {
+      "id": "text-if-location",
+      "kind": "search",
+      "argv": ["./dist/src/cli/main.js", "search", "text", "if (location", "owner", "tests", "."],
+      "stdinShape": "none",
+      "metrics": {
+        "elapsedMs": 1000,
+        "stdoutBytes": 1200,
+        "stderrBytes": 0
+      }
+    },
+    {
+      "id": "text-location-line",
+      "kind": "search",
+      "argv": ["./dist/src/cli/main.js", "search", "text", "location.line", "owner", "tests", "."],
+      "stdinShape": "none",
+      "metrics": {
+        "elapsedMs": 1000,
+        "stdoutBytes": 1200,
+        "stderrBytes": 0
+      }
+    }
+  ],
+  "summary": {
+    "commandCount": 15,
+    "stdoutBytes": 18400,
+    "stderrBytes": 100,
+    "elapsedMs": 14200,
+    "repeatedSearches": 9,
+    "jsonSearches": 0,
+    "compactSearches": 13,
+    "tokenDelta": "higher"
+  },
+  "querySetOpportunities": [
+    {
+      "view": "text",
+      "queries": 8,
+      "saveCommands": 7,
+      "selector": "exact-set",
+      "terms": [
+        "location.path",
+        "location.column",
+        "location.line",
+        "renderLocation",
+        "function renderFields",
+        "if (location",
+        "return `${location.path}",
+        "location.path}:"
+      ],
+      "scope": {
+        "ownerPath": "src/cli/semantic-search/render.ts"
+      },
+      "beforeCommandIds": [
+        "text-location-path-single-quote",
+        "text-location-path-node",
+        "text-location-path-direct",
+        "text-render-location",
+        "text-render-fields",
+        "text-return-location-path",
+        "text-location-path-colon",
+        "text-location-column",
+        "text-if-location",
+        "text-location-line"
+      ],
+      "recommendedCommand": [
+        "ts-harness",
+        "search",
+        "text",
+        "--query-set",
+        "location.path",
+        "--query-set",
+        "location.column",
+        "--query-set",
+        "location.line",
+        "owner",
+        "tests",
+        "--owner",
+        "src/cli/semantic-search/render.ts",
+        "."
+      ],
+      "reason": "same text axis repeated after the render.ts owner was already known"
+    }
+  ],
+  "findings": [
+    {
+      "kind": "prime-quality",
+      "severity": "warning",
+      "message": "trace began from owner and text probes rather than a compact prime or owner-scoped item packet"
+    },
+    {
+      "kind": "query-composition",
+      "severity": "info",
+      "message": "comma-joined text remains literal; provider-advertised --query-set now owns the composed text search path"
+    },
+    {
+      "kind": "binary-route",
+      "severity": "info",
+      "message": "node dist and direct dist invocations were both attempted; the registry binary should be the stable route"
+    }
+  ]
+}

@@ -36,7 +36,8 @@ fn cli_profiles_merge_writes_combined_registry() {
                     "owner": {"argv": ["py-harness", "search", "owner", "{path}", "."]},
                     "text": {"argv": ["py-harness", "search", "text", "{query}", "owner", "tests", "--view", "seeds", "."]},
                     "ingest": {"argv": ["py-harness", "search", "ingest", "."], "stdinMode": "pipe-candidates"},
-                    "checkChanged": {"argv": ["py-harness", "check", "--changed", "."]}
+                    "checkChanged": {"argv": ["py-harness", "check", "--changed", "."]},
+                    "guide": {"argv": ["py-harness", "agent", "guide", "."]}
                 }
             }]
         }))

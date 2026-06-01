@@ -110,18 +110,86 @@ stdout/stderr/exit-code or structured JSON decisions.  =PreToolUse= receives
 to subcommands, and complex commands should be treated conservatively.
 
 Codex has a Claude-style hook configuration surface, but its current coverage
-is not yet equivalent across every built-in tool.  Public Codex issue threads
-also document that =updatedInput= rewrite should not be treated as portable
-and that tool coverage has changed over recent releases.
+is not yet equivalent across every built-in tool.  A local audit of
+=openai/codex= found that =PreToolUse= serializes a canonical =tool_name= and
+keeps matcher aliases as client-side compatibility inputs.  For example,
+=apply_patch= may match legacy =Write=/=Edit= aliases, and =spawn_agent= may
+match legacy =Agent= aliases, while dynamic/deferred tools can be introduced
+through =tool_search=.  The durable boundary is therefore not a long
+tool-name regex in =config.toml=; the config should dispatch broadly and let
+=semantic-agent-hook= classify the normalized payload against profile schemas.
+
+The installed Codex hook command should also invoke =semantic-agent-hook=
+through =PATH=.  Copying a per-repository binary into
+=.codex/semantic-agent-hook/bin= makes the runtime stale and easy to bypass:
+the profile registry and config block are repository-owned, but the classifier
+binary is a global toolchain component.
+
+Public Codex issue threads also document that =updatedInput= rewrite should
+not be treated as portable and that tool coverage has changed over recent
+releases.
 
 Therefore v1 must be conservative:
 
 - do not rely on input rewriting;
 - do not rely on =PreToolUse= context injection;
+- keep Codex hook matchers broad and perform language/policy classification in
+  =semantic-agent-hook= instead of encoding tool-name allowlists in TOML;
 - use deny-with-guide for unsafe actions;
 - use =SessionStart=, =UserPromptSubmit=, =SubagentStart=, =PostToolUse=, and
   =Stop= for context/state when the platform supports them;
 - use =stop_hook_active= / equivalent loop guards when present.
+
+** Codex runtime constraints
+
+The root installer must treat Codex hook activation as a runtime contract, not
+as a repository-local TOML snippet:
+
+- =features.hooks=true= is required, or Codex will not run hook handlers.
+- Project config is not a self-trust root.  Codex only runs project hooks after
+  the project config layer is loaded and the hook's current hash is trusted from
+  user/session/managed hook state.  Writing =hooks.state= only inside the same
+  project =.codex/config.toml= has no enforcement value.
+- Untrusted unmanaged hooks can appear in =hooks/list=, but they are discovery
+  metadata; they do not become runnable handlers.
+- =PreToolUse= matcher selection uses the canonical tool name plus compatibility
+  aliases, but the hook stdin payload contains the canonical =tool_name= and
+  =tool_input=.  Therefore match broadly in TOML and classify the normalized
+  payload in =semantic-agent-hook=.
+- Codex hook output is schema-strict.  Unknown top-level fields can make the
+  output fail to parse and convert an intended denial into no blocking action.
+  The shared decision packet must either be emitted with =--emit decision= for
+  tests/receipts, or embedded inside an accepted platform field such as
+  =hookSpecificOutput.additionalContext=.
+- The installed command must resolve =semantic-agent-hook= through =PATH= so
+  upgrades affect every repository.  The repository owns profiles and config;
+  the classifier binary is a toolchain component.
+
+This is the concrete root-cause model for the low escape cost observed during
+the Codex CLI audit: a narrow matcher, a stale repo-local binary, missing hook
+feature enablement, project-local self-trust, or a schema-invalid output can
+each make the hook non-enforcing before language policy is even evaluated.
+
+#+begin_src mermaid
+flowchart TD
+  A["Codex tool event"] --> B{"hooks feature enabled?"}
+  B -- "no" --> Z["not enforced"]
+  B -- "yes" --> C{"project config loaded and hook hash trusted from user/session/managed state?"}
+  C -- "no" --> Z
+  C -- "yes" --> D{"matcher matches canonical tool name or alias?"}
+  D -- "no" --> Z
+  D -- "yes" --> E["semantic-agent-hook receives canonical tool_name + tool_input"]
+  E --> F{"payload classifies to unsafe semantic action?"}
+  F -- "direct source read or source dump" --> G["deny: route to provider owner/search"]
+  F -- "broad rg/fd/find/git source search" --> H{"piped to provider search ingest?"}
+  H -- "yes" --> I["allow"]
+  H -- "no" --> J["deny: route to provider ingest"]
+  F -- "non-source rg/fd/find or docs search" --> I
+  G --> K{"Codex output schema valid?"}
+  J --> K
+  K -- "yes" --> L["blocked by PreToolUse"]
+  K -- "no" --> Z
+#+end_src
 
 * Normalized Invocation
 
@@ -172,16 +240,28 @@ sourceExtensions[]
 configFiles[]
 sourceRoots[]
 ignoredPathPrefixes[]
+policy.directSourceRead = block | allow | advisory
+policy.bulkSourceDump = block | allow | advisory
+policy.rawSourceSearch = block | allow | advisory
+policy.agentSearchJson = block | allow | advisory
 primeCommand
 ownerCommand(path)
 textPipeCommand(query)
 ingestCommand(stdinKind)
 checkChangedCommand
+guideCommand
 #+end_src
 
 The descriptor is not a global enum in the common schema.  Language-specific
 repositories own language-specific capability names, while the root protocol
 only requires that provider routes are explicit and machine-readable.
+
+The action policy fields are the durable policy surface.  The legacy
+=blockDirectRead=, =blockBroadRawSearch=, =blockAgentSearchJson=, and
+=requirePrimeBeforeEdit= booleans remain accepted for v1 compatibility, but
+new profiles should use the action fields.  =block= denies with a provider
+guide, =allow= bypasses the policy, and =advisory= is non-blocking but keeps the
+profile-visible intent available for future state/reporting surfaces.
 
 * Classifier
 
@@ -194,7 +274,7 @@ state.
 Classify the tool call into one or more intents:
 
 #+begin_src text
-direct-read       structured Read/read_file/MCP read of a source path
+direct-read       structured Read/read_file/namespaced read_file/MCP read of a source path
 content-dump      Bash content reader: cat, sed, nl, bat, head, tail, awk, less
 raw-search        rg, grep, ag, fd, find, git grep, git ls-files, ast-grep
 semantic-search   <provider-binary> search ...
@@ -211,20 +291,52 @@ must detect pipelines, command separators, and content-reader stages.  If a
 compound command cannot be parsed safely, treat it as broad when it touches a
 known source root, source glob, or project root.
 
+Structured direct-read tool names must be normalized before classification.
+Bare names such as =Read= and =read_file=, namespaced deferred tools such as
+=functions.read_file=, and MCP read aliases are the same hook intent when they
+carry a source path.
+
 ** Profile routing
 
 Paths route to profiles by descriptor:
 
 - source extension or config file -> matching language profile;
-- source root plus source glob -> matching profile;
+- source root plus source glob -> matching profile through a compiled glob
+  selector, not ad hoc suffix string matching;
 - ignored path prefixes such as =target/=, =node_modules/=, =dist/=,
   =coverage/=, and generated cache roots -> no profile;
 - root-scoped search such as =rg ... .= or =fd ... .= -> every enabled profile
   unless narrowed by globs.
 
+The classifier should maintain one shared source-selector matcher.  Structured
+read tools, wrappers such as =rtk read=, content dumps, and raw search scopes
+all consult the same profile-owned =sourceExtensions=, =sourceRoots=, and
+=configFiles=.  Adding another language should normally require changing those
+profile fields and provider routes only; the classifier algorithm should not
+gain a language-specific branch.
+
+For performance, a selector is normalized and parsed once per classifier pass:
+the matcher owns glob detection, basename extension matching, config filename
+matching, literal prefix extraction, and compiled globsets.  Profiles consume
+that parsed selector rather than compiling glob patterns inside every
+profile-extension pair.
+
+Glob-like selectors such as =*.rs=, =src/**/*.tsx=,
+=packages/*/src/**/*.py=, =crates/**/lib.rs=, =*.{ts,py}=, and =*.[jt]s=
+must be matched with a glob engine such as Rust =globset=.  Command parsing
+still owns argument roles: =rg -e runner.py docs= treats =runner.py= as the
+search pattern, not as a Python source selector, while =rg -g '*.py' docs= or
+=git ls-files '*.py'= are source selectors.
+
+Selectors without a source suffix are still policy-relevant when they target a
+profile source root or the whole workspace.  For example =src/**= matches
+profiles that declare =src=, =crates/**= matches profiles that declare
+=crates=, and =**/*= is treated as all enabled source profiles.  A non-source
+root such as =docs/**= remains allowed unless it also matches a profile-owned
+extension, config file, or source root.
+
 Raw shell search is allowed only when one of these is true:
 
-- it is an exact-file search over one known owner file;
 - it is piped into the matching provider's =search ingest= command;
 - it is outside enabled language profiles;
 - the policy explicitly marks it advisory.
@@ -233,6 +345,10 @@ This is the key token-saving rule: root-scoped =rg= may collect candidates, but
 it must not dump them into the model.  It should normalize through
 =search ingest= so the provider can group by owner, tests, dependency, and
 next actions.
+Exact source-file raw search such as =rg -n Foo src/model.ts= is still raw
+source exploration.  It should be denied with the same provider-owned guide
+instead of being treated as a safe exception; use =search owner= or a scoped
+=search text= packet when the owner is already known.
 
 Semantic search JSON is not the agent-facing exploration surface.  A
 provider-binary =search ... --json= command is allowed only when the caller is a
@@ -258,7 +374,36 @@ The decision order is:
 8. require compact subagent receipt shape at subagent stop;
 9. require changed checks at stop when dirty profile files exist.
 
-Blocking decisions must include the next safe command, not only a denial.
+Blocking decisions must include the next safe route, not only a denial.  The
+=routes= array is the machine-readable next-action source of truth.  When a
+provider has a parser-native owner query route for direct reads, the hook should
+surface that route as the default recovery command instead of falling back to a
+generic guide pointer.  For TypeScript, direct-source-read recovery therefore
+routes to the provider-owned compact query path:
+
+#+begin_example
+direct-source-read denied; route: ts-harness search owner src/components/WorkflowExecution.tsx items --query WorkflowExecution .
+#+end_example
+
+The root hook may infer a lightweight query term from the exact project path
+when the provider route template declares ={query}=.  This is only route
+materialization: the language provider still owns parser matching, exact item
+selection, and compact code rendering.  For file names with separators, the hook
+may include raw, PascalCase, and camelCase variants in one provider-native query
+expression, for example =agent-hooks|AgentHooks|agentHooks=.
+
+For broad or pattern-based denials that do not carry one exact source path, the
+=message= field remains an agent-facing guide pointer.  In that case, it should
+wrap the provider-owned guide command in a compact form such as:
+
+#+begin_example
+direct-source-read denied; provider guide: rs-harness => rs-harness agent guide .; py-harness => py-harness agent guide .
+raw-broad-search denied; provider guide: ts-harness => ts-harness agent guide .
+#+end_example
+
+The root hook must not maintain a parser/query engine.  It may render the exact
+provider route already present in the decision packet, while provider ids and
+binaries select the provider guide command for broader recovery.
 
 * Decision Packet
 
@@ -301,10 +446,10 @@ the platform's expected output:
       "providerId": "ts-harness",
       "binary": "ts-harness",
       "kind": "owner",
-      "argv": ["ts-harness", "search", "owner", "src/cli/agent-hooks.ts", "."]
+      "argv": ["ts-harness", "search", "owner", "src/components/WorkflowExecution.tsx", "items", "--query", "WorkflowExecution", "."]
     }
   ],
-  "message": "Use ts-harness search owner before reading TypeScript source."
+  "message": "direct-source-read denied; route: ts-harness search owner src/components/WorkflowExecution.tsx items --query WorkflowExecution ."
 }
 #+end_src
 
@@ -334,7 +479,7 @@ Output-mode denial example:
       "argv": ["ts-harness", "search", "text", "location.path", "owner", "tests", "--view", "seeds", "."]
     }
   ],
-  "message": "Use compact search output for agent exploration; reserve --json for schema tests, receipts, IDE/Flowhub, or local validators."
+  "message": "agent-search-json denied; provider guide: ts-harness => ts-harness agent guide ."
 }
 #+end_src
 

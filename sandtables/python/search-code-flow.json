@@ -3,17 +3,105 @@
   "language": "python",
   "title": "Python semantic search source-text and tests pipe flow",
   "coverage": [
+    "language-registry",
+    "json-schema",
     "search-flow",
-    "performance"
+    "deps-query",
+    "performance",
+    "real-trigger"
   ],
+  "tags": ["query-composition", "python-layout", "real-trigger"],
   "workdir": {
     "relative": "languages/python-lang-project-harness"
   },
   "budgets": {
-    "maxCommands": 5,
-    "maxTotalLinesWarn": 80
+    "maxCommands": 10,
+    "maxTotalLinesWarn": 120,
+    "maxTotalStdoutBytesWarn": 70000
   },
   "steps": [
+    {
+      "id": "registry-json-schema",
+      "kind": "schema-contract",
+      "coverage": ["language-registry", "json-schema"],
+      "command": [
+        ".venv/bin/py-harness",
+        "agent",
+        "doctor",
+        "--json",
+        "."
+      ],
+      "expect": {
+        "stdoutJsonSchema": "schemas/semantic-language-registry.v1.schema.json",
+        "stdoutJsonEquals": {
+          "registryId": "agent.semantic-protocols.semantic-language-registry",
+          "languages.0.languageId": "python",
+          "languages.0.providerId": "py-harness",
+          "languages.0.binary": "py-harness"
+        },
+        "stdoutJsonArrayContains": {
+          "languages.0.schemas": {
+            "schemaId": "agent.semantic-protocols.semantic-graph",
+            "path": "schemas/semantic-graph.v1.schema.json"
+          }
+        },
+        "maxStdoutLinesWarn": 12,
+        "maxStdoutBytesWarn": 10000,
+        "maxElapsedMsWarn": 1500
+      }
+    },
+    {
+      "id": "prime-json-schema",
+      "kind": "schema-contract",
+      "coverage": ["json-schema", "search-flow", "performance"],
+      "command": [
+        ".venv/bin/py-harness",
+        "search",
+        "prime",
+        "--json",
+        "."
+      ],
+      "expect": {
+        "stdoutJsonSchema": "schemas/semantic-search-packet.v1.schema.json",
+        "stdoutJsonEquals": {
+          "schemaId": "agent.semantic-protocols.semantic-search-packet",
+          "languageId": "python",
+          "providerId": "py-harness",
+          "method": "search/prime",
+          "searchSynthesis.algorithm": "owner-rank-frontier",
+          "searchSynthesis.scope": "prime"
+        },
+        "maxStdoutLinesWarn": 12,
+        "maxStdoutBytesWarn": 20000,
+        "maxElapsedMsWarn": 4000
+      }
+    },
+    {
+      "id": "dependency-json-schema",
+      "kind": "schema-contract",
+      "coverage": ["json-schema", "deps-query", "performance"],
+      "command": [
+        ".venv/bin/py-harness",
+        "search",
+        "dependency",
+        "ruff",
+        "--json",
+        "."
+      ],
+      "expect": {
+        "stdoutJsonSchema": "schemas/semantic-search-packet.v1.schema.json",
+        "stdoutJsonEquals": {
+          "schemaId": "agent.semantic-protocols.semantic-search-packet",
+          "languageId": "python",
+          "providerId": "py-harness",
+          "method": "search/dependency",
+          "query": "ruff"
+        },
+        "maxStdoutLinesWarn": 12,
+        "maxStdoutBytesWarn": 1500,
+        "maxElapsedMsWarn": 2500
+      }
+    },
     {
       "id": "workspace",
       "command": [
@@ -28,7 +116,7 @@
           "[search-workspace]"
         ],
         "maxStdoutLinesWarn": 6,
-        "maxElapsedMsWarn": 1200
+        "maxElapsedMsWarn": 4500
       }
     },
     {
@@ -43,10 +131,12 @@
         "lineProtocol": true,
         "stdoutContains": [
           "[search-prime]",
-          "|owner"
+          "|owner",
+          "|synthesis algorithm=owner-rank-frontier scope=prime",
+          "highImpactOwners="
         ],
         "maxStdoutLinesWarn": 18,
-        "maxElapsedMsWarn": 1500
+        "maxElapsedMsWarn": 3000
       }
     },
     {
@@ -55,9 +145,14 @@
         ".venv/bin/py-harness",
         "search",
         "text",
+        "--query-set",
         "PythonSemanticSearchOptions",
+        "--query-set",
+        "render_python_semantic_search_packet",
         "owner",
         "tests",
+        "--owner",
+        "src/python_lang_project_harness/__init__.py",
         "."
       ],
       "capture": {
@@ -67,13 +162,95 @@
         "lineProtocol": true,
         "stdoutContains": [
           "[search-text]",
+          "querySet=2",
+          "selector=exact-set",
+          "scopeOwner=src/python_lang_project_harness/__init__.py",
           "pipes=owner,tests",
           "source=parser-visible-source",
-          "|edge"
+          "tests:src/python_lang_project_harness/__init__.py"
         ],
         "maxStdoutLinesWarn": 24,
         "maxStdoutBytesWarn": 12000,
-        "maxElapsedMsWarn": 2500
+        "maxElapsedMsWarn": 3500
+      }
+    },
+    {
+      "id": "layout-query-set-synthesis",
+      "command": [
+        ".venv/bin/py-harness",
+        "search",
+        "text",
+        "--query-set",
+        "metadata",
+        "--query-set",
+        "package-roots",
+        "--query-set",
+        "package_paths",
+        "--query-set",
+        "_src_layout_findings",
+        "--query-set",
+        "scope.source_paths",
+        "--query-set",
+        "package_roots",
+        "--query-set",
+        "root / \"src\"",
+        "--query-set",
+        "return True",
+        "--query-set",
+        "return False",
+        "--query-set",
+        "relative_to",
+        "--query-set",
+        "ValueError",
+        "owner",
+        "tests",
+        "."
+      ],
+      "expect": {
+        "lineProtocol": true,
+        "stdoutContains": [
+          "querySet=11",
+          "|query _src_layout_findings",
+          "|query scope.source_paths",
+          "owner=src/python_lang_project_harness/_project_policy_layout.py",
+          "|synthesis",
+          "owner:src/python_lang_project_harness/_project_policy_layout.py"
+        ],
+        "maxStdoutLinesWarn": 38,
+        "maxStdoutBytesWarn": 16000,
+        "maxElapsedMsWarn": 7000
+      }
+    },
+    {
+      "id": "layout-query-set-json-schema",
+      "kind": "schema-contract",
+      "coverage": ["json-schema", "search-flow", "real-trigger"],
+      "command": [
+        ".venv/bin/py-harness",
+        "search",
+        "text",
+        "--query-set",
+        "_src_layout_findings",
+        "--query-set",
+        "scope.source_paths",
+        "owner",
+        "tests",
+        "--json",
+        "."
+      ],
+      "expect": {
+        "stdoutJsonSchema": "schemas/semantic-search-packet.v1.schema.json",
+        "stdoutJsonEquals": {
+          "schemaId": "agent.semantic-protocols.semantic-search-packet",
+          "method": "search/text",
+          "querySet.0.value": "_src_layout_findings",
+          "querySet.1.value": "scope.source_paths",
+          "queryCoverage.0.value": "_src_layout_findings",
+          "searchSynthesis.seeds.0.target": "src/python_lang_project_harness/_project_policy_layout.py"
+        },
+        "maxStdoutLinesWarn": 12,
+        "maxStdoutBytesWarn": 16000,
+        "maxElapsedMsWarn": 7000
       }
     },
     {
@@ -89,10 +266,11 @@
         "lineProtocol": true,
         "stdoutContains": [
           "[search-owner]",
-          "|owner"
+          "|owner",
+          "|synthesis algorithm=bounded-reachability-depth1 scope=owner"
         ],
-        "maxStdoutLinesWarn": 8,
-        "maxElapsedMsWarn": 1500
+        "maxStdoutLinesWarn": 12,
+        "maxElapsedMsWarn": 2500
       }
     },
     {
@@ -118,7 +296,7 @@
           "[search-ingest]"
         ],
         "maxStdoutLinesWarn": 18,
-        "maxElapsedMsWarn": 1500
+        "maxElapsedMsWarn": 2500
       }
     }
   ]

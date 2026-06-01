@@ -1,4 +1,5 @@
 [features]
+hooks = true
 unified_exec = true
 
 # BEGIN semantic-agent-hook agent hooks
@@ -15,11 +16,7 @@ statusMessage = "Loading semantic agent hook profiles"
 command = '''
 repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$repo_root"
-hook_bin="$repo_root/.codex/semantic-agent-hook/bin/semantic-agent-hook"
 profiles="$repo_root/.codex/semantic-agent-hook/profiles.json"
-if [ -x "$hook_bin" ]; then
-  exec "$hook_bin" hook --client codex session-start --profiles "$profiles"
-fi
 exec semantic-agent-hook hook --client codex session-start --profiles "$profiles"
 '''
 
@@ -32,16 +29,12 @@ statusMessage = "Planning semantic search flow"
 command = '''
 repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$repo_root"
-hook_bin="$repo_root/.codex/semantic-agent-hook/bin/semantic-agent-hook"
 profiles="$repo_root/.codex/semantic-agent-hook/profiles.json"
-if [ -x "$hook_bin" ]; then
-  exec "$hook_bin" hook --client codex user-prompt --profiles "$profiles"
-fi
 exec semantic-agent-hook hook --client codex user-prompt --profiles "$profiles"
 '''
 
 [[hooks.PreToolUse]]
-matcher = ".*(Read|readFile|readDirectory|read_file|FsReadFile|FsReadDirectory|fs\\.read|fs\\.readDirectory|fs/readFile|fs/readDirectory|fs\\.readbin|writeFile|FsWriteFile|fs\\.write|fs/write|fs\\.writeFile|fs/writeFile|FsRemove|fs\\.remove|fs/remove|FsCopy|fs\\.copy|fs/copy|fs\\.rename|fs/rename|mcp__.*__read.*|multi_tool_use\\.parallel|multi_tool_use/parallel|multi_tool_use|Bash|exec_command|command_execution|apply_patch|Edit|Write).*"
+matcher = ".*"
 
 [[hooks.PreToolUse.hooks]]
 type = "command"
@@ -50,16 +43,12 @@ statusMessage = "Checking semantic search flow"
 command = '''
 repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$repo_root"
-hook_bin="$repo_root/.codex/semantic-agent-hook/bin/semantic-agent-hook"
 profiles="$repo_root/.codex/semantic-agent-hook/profiles.json"
-if [ -x "$hook_bin" ]; then
-  exec "$hook_bin" hook --client codex pre-tool --profiles "$profiles"
-fi
 exec semantic-agent-hook hook --client codex pre-tool --profiles "$profiles"
 '''
 
 [[hooks.PermissionRequest]]
-matcher = ".*(Read|readFile|readDirectory|read_file|FsReadFile|FsReadDirectory|fs\\.read|fs\\.readDirectory|fs/readFile|fs/readDirectory|fs\\.readbin|writeFile|FsWriteFile|fs\\.write|fs/write|fs\\.writeFile|fs/writeFile|FsRemove|fs\\.remove|fs/remove|FsCopy|fs\\.copy|fs/copy|fs\\.rename|fs/rename|mcp__.*__read.*|multi_tool_use\\.parallel|multi_tool_use/parallel|multi_tool_use|Bash|exec_command|command_execution|apply_patch|Edit|Write).*"
+matcher = ".*"
 
 [[hooks.PermissionRequest.hooks]]
 type = "command"
@@ -68,16 +57,12 @@ statusMessage = "Checking semantic approval flow"
 command = '''
 repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$repo_root"
-hook_bin="$repo_root/.codex/semantic-agent-hook/bin/semantic-agent-hook"
 profiles="$repo_root/.codex/semantic-agent-hook/profiles.json"
-if [ -x "$hook_bin" ]; then
-  exec "$hook_bin" hook --client codex permission-request --profiles "$profiles"
-fi
 exec semantic-agent-hook hook --client codex permission-request --profiles "$profiles"
 '''
 
 [[hooks.PostToolUse]]
-matcher = ".*(Read|readFile|readDirectory|read_file|FsReadFile|FsReadDirectory|fs\\.read|fs\\.readDirectory|fs/readFile|fs/readDirectory|fs\\.readbin|writeFile|FsWriteFile|fs\\.write|fs/write|fs\\.writeFile|fs/writeFile|FsRemove|fs\\.remove|fs/remove|FsCopy|fs\\.copy|fs/copy|fs\\.rename|fs/rename|mcp__.*__read.*|multi_tool_use\\.parallel|multi_tool_use/parallel|multi_tool_use|Bash|exec_command|command_execution|apply_patch|Edit|Write).*"
+matcher = ".*"
 
 [[hooks.PostToolUse.hooks]]
 type = "command"
@@ -86,11 +71,7 @@ statusMessage = "Updating semantic search flow state"
 command = '''
 repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$repo_root"
-hook_bin="$repo_root/.codex/semantic-agent-hook/bin/semantic-agent-hook"
 profiles="$repo_root/.codex/semantic-agent-hook/profiles.json"
-if [ -x "$hook_bin" ]; then
-  exec "$hook_bin" hook --client codex post-tool --profiles "$profiles"
-fi
 exec semantic-agent-hook hook --client codex post-tool --profiles "$profiles"
 '''
 
@@ -104,11 +85,7 @@ statusMessage = "Preparing semantic subagent context"
 command = '''
 repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$repo_root"
-hook_bin="$repo_root/.codex/semantic-agent-hook/bin/semantic-agent-hook"
 profiles="$repo_root/.codex/semantic-agent-hook/profiles.json"
-if [ -x "$hook_bin" ]; then
-  exec "$hook_bin" hook --client codex subagent-start --profiles "$profiles"
-fi
 exec semantic-agent-hook hook --client codex subagent-start --profiles "$profiles"
 '''
 
@@ -122,11 +99,7 @@ statusMessage = "Checking semantic subagent evidence"
 command = '''
 repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$repo_root"
-hook_bin="$repo_root/.codex/semantic-agent-hook/bin/semantic-agent-hook"
 profiles="$repo_root/.codex/semantic-agent-hook/profiles.json"
-if [ -x "$hook_bin" ]; then
-  exec "$hook_bin" hook --client codex subagent-stop --profiles "$profiles"
-fi
 exec semantic-agent-hook hook --client codex subagent-stop --profiles "$profiles"
 '''
 
@@ -139,11 +112,7 @@ statusMessage = "Checking semantic changed files"
 command = '''
 repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$repo_root"
-hook_bin="$repo_root/.codex/semantic-agent-hook/bin/semantic-agent-hook"
 profiles="$repo_root/.codex/semantic-agent-hook/profiles.json"
-if [ -x "$hook_bin" ]; then
-  exec "$hook_bin" hook --client codex stop --profiles "$profiles"
-fi
 exec semantic-agent-hook hook --client codex stop --profiles "$profiles"
 '''
 # END semantic-agent-hook agent hooks

@@ -2,3 +2,21 @@
 members = ["crates/semantic-agent-hook"]
 exclude = ["languages/rust-lang-project-harness"]
 resolver = "2"
+
+[workspace.dependencies]
+globset = "0.4"
+rust-lang-project-harness = { path = "languages/rust-lang-project-harness", default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+toml = "0.9"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+strip = true
+panic = "abort"
+
+[profile.dev]
+debug = 1
+split-debuginfo = "unpacked"

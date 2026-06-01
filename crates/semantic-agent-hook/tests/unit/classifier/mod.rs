@@ -27,10 +27,11 @@ pub(super) fn registry_value() -> Value {
             "ignoredPathPrefixes": ["node_modules", "dist"],
             "commands": {
                 "prime": {"argv": ["ts-harness", "search", "prime", "."]},
-                "owner": {"argv": ["ts-harness", "search", "owner", "{path}", "."]},
+                    "owner": {"argv": ["ts-harness", "search", "owner", "{path}", "items", "--query", "{query}", "."]},
                 "text": {"argv": ["ts-harness", "search", "text", "{query}", "owner", "tests", "--view", "seeds", "."]},
                 "ingest": {"argv": ["ts-harness", "search", "ingest", "owner", "tests", "--view", "seeds", "."], "stdinMode": "pipe-candidates"},
-                "checkChanged": {"argv": ["ts-harness", "check", "--changed", "."]}
+                "checkChanged": {"argv": ["ts-harness", "check", "--changed", "."]},
+                "guide": {"argv": ["ts-harness", "agent", "guide", "."]}
             }
         }]
     })

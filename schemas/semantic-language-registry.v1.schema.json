@@ -266,6 +266,23 @@
         "supportsPackageScope": {
           "type": "boolean"
         },
+        "supportsQuerySet": {
+          "type": "boolean"
+        },
+        "acceptedQuerySetSelectors": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": ["exact-set", "prefix-set", "stdin-path-set"]
+          }
+        },
+        "querySetScopes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": ["project", "package", "owner"]
+          }
+        },
         "acceptedPipes": {
           "type": "array",
           "uniqueItems": true,

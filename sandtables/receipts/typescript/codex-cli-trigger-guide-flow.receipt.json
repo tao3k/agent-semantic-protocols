@@ -1,0 +1,163 @@
+{
+  "schemaId": "agent.semantic-protocols.semantic-sandtable-receipt",
+  "schemaVersion": "1",
+  "scenarioId": "typescript.codex-cli-trigger-guide-flow",
+  "language": "typescript",
+  "project": {
+    "name": "codex",
+    "package": "@openai/codex",
+    "source": "checkout",
+    "workdir": ".data/codex"
+  },
+  "intent": "Codex CLI explores TypeScript SDK behavior and must be guided into compact ts-harness search before reading or requesting JSON",
+  "recordedAt": "2026-06-01",
+  "editBoundary": "before-edit",
+  "commands": [
+    {
+      "id": "json-search-deny-guide",
+      "kind": "hook-deny",
+      "argv": [
+        "ts-harness",
+        "search",
+        "text",
+        "buildSemanticSearchPacket",
+        "owner",
+        "tests",
+        "--view",
+        "seeds",
+        "."
+      ],
+      "stdinShape": "hook-payload",
+      "outputMode": "json",
+      "decisionReasonKind": "agent-search-json",
+      "routeKind": "text",
+      "metrics": {
+        "elapsedMs": 34,
+        "stdoutBytes": 736,
+        "stderrBytes": 0,
+        "stdoutLines": 1,
+        "stderrLines": 0,
+        "tokenCost": {
+          "unit": "token-estimate",
+          "outputTokens": 184,
+          "totalTokens": 184,
+          "basis": "stdoutBytes/4 rounded up; terminal-output estimate only"
+        }
+      },
+      "notes": ["Codex trigger requested --json during exploration; hook rendered compact text route"]
+    },
+    {
+      "id": "direct-sdk-read-deny-guide",
+      "kind": "hook-deny",
+      "argv": [
+        "ts-harness",
+        "search",
+        "owner",
+        "sdk/typescript/src/codex.ts",
+        "."
+      ],
+      "stdinShape": "hook-payload",
+      "outputMode": "json",
+      "decisionReasonKind": "direct-source-read",
+      "routeKind": "owner",
+      "metrics": {
+        "elapsedMs": 20,
+        "stdoutBytes": 596,
+        "stderrBytes": 0,
+        "stdoutLines": 1,
+        "stderrLines": 0,
+        "tokenCost": {
+          "unit": "token-estimate",
+          "outputTokens": 149,
+          "totalTokens": 149,
+          "basis": "stdoutBytes/4 rounded up; terminal-output estimate only"
+        }
+      },
+      "notes": ["direct TypeScript source read was redirected to owner search without leaking source text"]
+    },
+    {
+      "id": "safe-prime-allow",
+      "kind": "other",
+      "argv": [
+        "ts-harness",
+        "search",
+        "prime",
+        "--view",
+        "seeds",
+        "sdk/typescript"
+      ],
+      "stdinShape": "hook-payload",
+      "outputMode": "json",
+      "metrics": {
+        "elapsedMs": 32,
+        "stdoutBytes": 451,
+        "stderrBytes": 0,
+        "stdoutLines": 1,
+        "stderrLines": 0,
+        "tokenCost": {
+          "unit": "token-estimate",
+          "outputTokens": 113,
+          "totalTokens": 113,
+          "basis": "stdoutBytes/4 rounded up; terminal-output estimate only"
+        }
+      },
+      "notes": ["Codex PreToolUse allowed the safe harness command"]
+    },
+    {
+      "id": "sdk-prime-search",
+      "kind": "search",
+      "argv": [
+        "ts-harness",
+        "search",
+        "prime",
+        "--view",
+        "seeds",
+        "sdk/typescript"
+      ],
+      "stdinShape": "none",
+      "outputMode": "compact",
+      "metrics": {
+        "elapsedMs": 2676,
+        "stdoutBytes": 1072,
+        "stderrBytes": 0,
+        "stdoutLines": 6,
+        "stderrLines": 0,
+        "tokenCost": {
+          "unit": "token-estimate",
+          "outputTokens": 268,
+          "totalTokens": 268,
+          "basis": "stdoutBytes/4 rounded up; terminal-output estimate only"
+        }
+      },
+      "next": ["owner:src/codex.ts", "owner:tests/testCodex.ts"]
+    }
+  ],
+  "summary": {
+    "commandCount": 4,
+    "stdoutBytes": 2855,
+    "stderrBytes": 0,
+    "elapsedMs": 2762,
+    "repeatedSearches": 0,
+    "jsonSearches": 0,
+    "compactSearches": 1,
+    "tokenDelta": "lower",
+    "tokenCost": {
+      "unit": "token-estimate",
+      "outputTokens": 714,
+      "totalTokens": 714,
+      "basis": "sum of per-command stdoutBytes/4 rounded up; terminal-output estimate only"
+    }
+  },
+  "findings": [
+    {
+      "kind": "codex-trigger",
+      "severity": "info",
+      "message": "Codex PreToolUse replay validates guide quality at the client boundary"
+    },
+    {
+      "kind": "safe-search",
+      "severity": "info",
+      "message": "safe compact ts-harness prime search is allowed and replayed"
+    }
+  ]
+}

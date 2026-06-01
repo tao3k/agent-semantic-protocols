@@ -1,0 +1,235 @@
+{
+  "id": "typescript.agent-hook-json-literal-flow",
+  "language": "typescript",
+  "title": "TypeScript real-trigger agent hook JSON literal search flow",
+  "coverage": [
+    "json-schema",
+    "search-flow",
+    "performance",
+    "real-trigger"
+  ],
+  "tags": [
+    "real-trigger",
+    "typescript",
+    "flag-like-query",
+    "tests-association",
+    "fixture-surface",
+    "owner-resolution",
+    "search-synthesis"
+  ],
+  "evidence": {
+    "source": "real-trigger",
+    "intent": "Implement agent-facing search JSON literal parsing in the TypeScript provider before selecting files to edit",
+    "recordedAt": "2026-05-31",
+    "receiptPath": "sandtables/receipts/typescript/agent-hook-json-literal-flow.receipt.json",
+    "editBoundary": "before-edit",
+    "metrics": {
+      "recordedCommandCount": 5,
+      "repeatedSearches": 0,
+      "jsonSearches": 0,
+      "compactSearches": 5,
+      "tokenDelta": "lower"
+    },
+    "querySetOpportunities": [
+      {
+        "view": "text",
+        "queries": 2,
+        "saveCommands": 1,
+        "selector": "exact-set",
+        "reason": "parseProtocolArgs and runProtocolCli are same CLI protocol text-axis probes"
+      }
+    ],
+    "findings": [
+      {
+        "kind": "flag-like-query",
+        "severity": "info",
+        "message": "search text --json is now parsed as a literal text query when it is the first query positional"
+      },
+      {
+        "kind": "tests-association",
+        "severity": "info",
+        "message": "tests for src/cli/protocol.ts are linked through parser-owned transitive import edges"
+      },
+      {
+        "kind": "surface-classification",
+        "severity": "info",
+        "message": "query-set packets expose term-level surface classification so fixture strings are not treated as real owners"
+      },
+      {
+        "kind": "owner-resolution",
+        "severity": "info",
+        "message": "fixture path src/cli/agent-hooks.ts is ownerResolution realOwner=false with avoidNextActions owner:src/cli/agent-hooks.ts"
+      },
+      {
+        "kind": "search-synthesis",
+        "severity": "info",
+        "message": "provider synthesizes runProtocolCli/parseProtocolArgs and owner:src/cli/protocol.ts from the fixture context"
+      }
+    ]
+  },
+  "workdir": {
+    "relative": "languages/typescript-lang-project-harness"
+  },
+  "budgets": {
+    "maxCommands": 6,
+    "maxTotalLinesWarn": 1300,
+    "maxTotalElapsedMsWarn": 22000,
+    "maxTotalStdoutBytesWarn": 56000
+  },
+  "steps": [
+    {
+      "id": "prime",
+      "command": [
+        "node",
+        "dist/src/cli/main.js",
+        "search",
+        "prime",
+        "--view",
+        "seeds",
+        "."
+      ],
+      "expect": {
+        "lineProtocol": true,
+        "stdoutContains": [
+          "[search-prime]",
+          "src/cli/semantic-search/build.ts"
+        ],
+        "maxStdoutLinesWarn": 10,
+        "maxElapsedMsWarn": 6000
+      }
+    },
+    {
+      "id": "text-hook-query-set",
+      "command": [
+        "node",
+        "dist/src/cli/main.js",
+        "search",
+        "text",
+        "--query-set",
+        "parseProtocolArgs",
+        "--query-set",
+        "runProtocolCli",
+        "owner",
+        "tests",
+        "--view",
+        "seeds",
+        "."
+      ],
+      "expect": {
+        "lineProtocol": true,
+        "stdoutContains": [
+          "[search-text]",
+          "querySet=2",
+          "src/cli/protocol.ts",
+          "tests/unit/cli.test.ts"
+        ],
+        "maxStdoutLinesWarn": 10,
+        "maxElapsedMsWarn": 6000
+      }
+    },
+    {
+      "id": "fixture-query-set-json-schema",
+      "command": [
+        "node",
+        "dist/src/cli/main.js",
+        "search",
+        "text",
+        "--query-set",
+        "AgentHookEvent",
+        "--query-set",
+        "runCodexAgentHook",
+        "owner",
+        "tests",
+        "--json",
+        "."
+      ],
+      "expect": {
+        "stdoutJsonSchema": "schemas/semantic-search-packet.v1.schema.json",
+        "stdoutJsonEquals": {
+          "method": "search/text",
+          "queryComposition.mode": "query-set",
+          "queryCoverage.0.value": "AgentHookEvent",
+          "queryCoverage.0.status": "miss",
+          "queryCoverage.1.value": "runCodexAgentHook",
+          "avoidNextActions.0.target": "src/cli/agent-hooks.ts",
+          "searchSynthesis.seeds.0.target": "runProtocolCli"
+        },
+        "stdoutJsonContains": {
+          "queryCoverage.1.surfaces": "test-fixture-string",
+          "queryCoverage.1.fixturePaths": "src/cli/agent-hooks.ts",
+          "ownerResolution": "\"target\": \"src/cli/agent-hooks.ts\""
+        },
+        "maxStdoutLinesWarn": 4,
+        "maxStdoutBytesWarn": 22000,
+        "maxElapsedMsWarn": 6000
+      }
+    },
+    {
+      "id": "owner-protocol-cli",
+      "command": [
+        "node",
+        "dist/src/cli/main.js",
+        "search",
+        "owner",
+        "src/cli/protocol.ts",
+        "--view",
+        "seeds",
+        "."
+      ],
+      "expect": {
+        "lineProtocol": true,
+        "stdoutContains": [
+          "[search-owner]",
+          "runProtocolCli"
+        ],
+        "maxStdoutLinesWarn": 8,
+        "maxElapsedMsWarn": 6000
+      }
+    },
+    {
+      "id": "tests-protocol-cli",
+      "command": [
+        "node",
+        "dist/src/cli/main.js",
+        "search",
+        "tests",
+        "src/cli/protocol.ts",
+        "--view",
+        "seeds",
+        "."
+      ],
+      "expect": {
+        "lineProtocol": true,
+        "stdoutContains": [
+          "[search-tests]",
+          "tests/unit/cli.test.ts"
+        ],
+        "maxStdoutLinesWarn": 8,
+        "maxElapsedMsWarn": 6000
+      }
+    },
+    {
+      "id": "flag-like-json-query",
+      "command": [
+        "node",
+        "dist/src/cli/main.js",
+        "search",
+        "text",
+        "--json",
+        "--view",
+        "seeds",
+        "."
+      ],
+      "expect": {
+        "lineProtocol": true,
+        "stdoutContains": [
+          "[search-text] q=--json",
+          "|flow prime->owner|deps|symbol|tests"
+        ],
+        "maxStdoutLinesWarn": 8,
+        "maxStdoutBytesWarn": 3000,
+        "maxElapsedMsWarn": 6000
+      }
+    }
+  ]
+}

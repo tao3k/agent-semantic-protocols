@@ -57,6 +57,7 @@
         "direct-source-read",
         "bulk-source-dump",
         "raw-broad-search",
+        "agent-search-json",
         "edit-before-prime",
         "changed-check-required",
         "subagent-receipt-required",

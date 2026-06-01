@@ -1,0 +1,214 @@
+{
+  "id": "typescript.vue-runtime-scheduler-real-trigger-flow",
+  "language": "typescript",
+  "title": "Vue runtime scheduler real-trigger search flow",
+  "coverage": [
+    "search-flow",
+    "performance",
+    "real-trigger",
+    "large-library"
+  ],
+  "tags": [
+    "real-trigger",
+    "typescript",
+    "vue",
+    "query-composition",
+    "tests-ranking"
+  ],
+  "evidence": {
+    "source": "real-trigger",
+    "intent": "Implement runtime scheduler flush behavior before selecting files to edit",
+    "recordedAt": "2026-06-01",
+    "receiptPath": "sandtables/receipts/typescript/vue-runtime-scheduler-real-trigger-flow.receipt.json",
+    "editBoundary": "before-edit",
+    "metrics": {
+      "recordedCommandCount": 6,
+      "repeatedSearches": 0,
+      "jsonSearches": 0,
+      "compactSearches": 6,
+      "tokenDelta": "lower"
+    },
+    "querySetOpportunities": [
+      {
+        "view": "text",
+        "queries": 3,
+        "saveCommands": 2,
+        "selector": "exact-set",
+        "reason": "queueJob, flushJobs, and nextTick are one scheduler intent axis"
+      },
+      {
+        "view": "tests",
+        "queries": 2,
+        "saveCommands": 1,
+        "selector": "exact-set",
+        "reason": "tests view currently rejects query-set even though root-level tests search is noisy"
+      }
+    ],
+    "findings": [
+      {
+        "kind": "tests-ranking",
+        "severity": "warning",
+        "message": "package-root tests search misses __tests__/scheduler.spec.ts, while root tests search finds it with many unrelated compat/vue tests"
+      },
+      {
+        "kind": "query-composition",
+        "severity": "warning",
+        "message": "TypeScript tests view does not yet support --query-set"
+      }
+    ]
+  },
+  "workdir": {
+    "env": "SANDTABLE_TS_VUE_CORE_ROOT",
+    "candidates": [
+      ".cache/sandtable-repos/typescript/vue-core"
+    ]
+  },
+  "budgets": {
+    "maxCommands": 6,
+    "maxTotalLinesWarn": 90,
+    "maxTotalElapsedMsWarn": 24000,
+    "maxTotalStdoutBytesWarn": 22000
+  },
+  "steps": [
+    {
+      "id": "workspace",
+      "command": [
+        "ts-harness",
+        "search",
+        "workspace",
+        "."
+      ],
+      "expect": {
+        "lineProtocol": true,
+        "stdoutContains": [
+          "[search-workspace]",
+          "packages/runtime-core",
+          "packages/compiler-core"
+        ],
+        "maxStdoutLinesWarn": 24,
+        "maxElapsedMsWarn": 5000
+      }
+    },
+    {
+      "id": "text-scheduler-query-set",
+      "command": [
+        "ts-harness",
+        "search",
+        "text",
+        "--query-set",
+        "queueJob",
+        "--query-set",
+        "flushJobs",
+        "--query-set",
+        "nextTick",
+        "owner",
+        "tests",
+        "--view",
+        "seeds",
+        "packages/runtime-core"
+      ],
+      "expect": {
+        "lineProtocol": true,
+        "stdoutContains": [
+          "[search-text]",
+          "querySet=3",
+          "owner=src/scheduler.ts",
+          "tests:src/scheduler.ts"
+        ],
+        "maxStdoutLinesWarn": 12,
+        "maxElapsedMsWarn": 5000
+      }
+    },
+    {
+      "id": "owner-scheduler-items",
+      "command": [
+        "ts-harness",
+        "search",
+        "owner",
+        "src/scheduler.ts",
+        "items",
+        "--view",
+        "seeds",
+        "packages/runtime-core"
+      ],
+      "expect": {
+        "lineProtocol": true,
+        "stdoutContains": [
+          "[search-owner]",
+          "function queueJob",
+          "function flushPostFlushCbs"
+        ],
+        "maxStdoutLinesWarn": 18,
+        "maxElapsedMsWarn": 5000
+      }
+    },
+    {
+      "id": "tests-scheduler-package-miss",
+      "command": [
+        "ts-harness",
+        "search",
+        "tests",
+        "src/scheduler.ts",
+        "--view",
+        "seeds",
+        "packages/runtime-core"
+      ],
+      "expect": {
+        "lineProtocol": true,
+        "stdoutContains": [
+          "[search-tests]",
+          "test=0",
+          "src/scheduler.ts"
+        ],
+        "maxStdoutLinesWarn": 8,
+        "maxElapsedMsWarn": 5000
+      }
+    },
+    {
+      "id": "tests-scheduler-root-noisy",
+      "command": [
+        "ts-harness",
+        "search",
+        "tests",
+        "packages/runtime-core/src/scheduler.ts",
+        "--view",
+        "seeds",
+        "."
+      ],
+      "expect": {
+        "lineProtocol": true,
+        "stdoutContains": [
+          "[search-tests]",
+          "packages/runtime-core/__tests__/scheduler.spec.ts",
+          "packages/vue-compat/__tests__/options.spec.ts"
+        ],
+        "maxStdoutLinesWarn": 8,
+        "maxElapsedMsWarn": 7000
+      }
+    },
+    {
+      "id": "tests-query-set-unsupported",
+      "command": [
+        "ts-harness",
+        "search",
+        "tests",
+        "--query-set",
+        "src/scheduler.ts",
+        "--query-set",
+        "src/apiWatch.ts",
+        "--view",
+        "seeds",
+        "packages/runtime-core"
+      ],
+      "expect": {
+        "exitCode": 2,
+        "stdoutEmpty": true,
+        "stderrContains": [
+          "search tests does not support --query-set"
+        ],
+        "maxStderrLinesWarn": 2,
+        "maxElapsedMsWarn": 2000
+      }
+    }
+  ]
+}

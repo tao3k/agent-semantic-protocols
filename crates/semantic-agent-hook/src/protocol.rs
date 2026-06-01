@@ -1,5 +1,6 @@
 //! Shared semantic agent hook protocol models and renderers.
 
+use globset::{GlobBuilder, GlobSet, GlobSetBuilder};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -50,25 +51,92 @@ pub struct LanguageProfile {
     pub commands: HookCommands,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum SourceSelectorKind {
+    ExactPath,
+    Pattern,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ProfileSelectorMatch<'a> {
+    pub profile: &'a LanguageProfile,
+    pub kind: SourceSelectorKind,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 /// Policy switches that control how the root hook classifier handles a provider.
 pub struct HookPolicy {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub direct_source_read: Option<ActionPolicy>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bulk_source_dump: Option<ActionPolicy>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub raw_source_search: Option<ActionPolicy>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_search_json: Option<ActionPolicy>,
+    #[serde(default = "default_true")]
     pub block_direct_read: bool,
+    #[serde(default = "default_true")]
     pub block_broad_raw_search: bool,
+    #[serde(default = "default_true")]
     pub block_agent_search_json: bool,
+    #[serde(default = "default_true")]
     pub require_prime_before_edit: bool,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+/// Per-action enforcement mode for hook policy.
+pub enum ActionPolicy {
+    Block,
+    Allow,
+    Advisory,
 }
 
 impl Default for HookPolicy {
     fn default() -> Self {
         Self {
+            direct_source_read: None,
+            bulk_source_dump: None,
+            raw_source_search: None,
+            agent_search_json: None,
             block_direct_read: true,
             block_broad_raw_search: true,
             block_agent_search_json: true,
             require_prime_before_edit: true,
         }
     }
+}
+
+impl HookPolicy {
+    pub(crate) fn blocks_direct_source_read(&self) -> bool {
+        action_blocks(self.direct_source_read, self.block_direct_read)
+    }
+
+    pub(crate) fn blocks_bulk_source_dump(&self) -> bool {
+        action_blocks(self.bulk_source_dump, self.block_direct_read)
+    }
+
+    pub(crate) fn blocks_raw_source_search(&self) -> bool {
+        action_blocks(self.raw_source_search, self.block_broad_raw_search)
+    }
+
+    pub(crate) fn blocks_agent_search_json(&self) -> bool {
+        action_blocks(self.agent_search_json, self.block_agent_search_json)
+    }
+}
+
+fn action_blocks(action: Option<ActionPolicy>, legacy_block: bool) -> bool {
+    match action {
+        Some(ActionPolicy::Block) => true,
+        Some(ActionPolicy::Allow | ActionPolicy::Advisory) => false,
+        None => legacy_block,
+    }
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -80,6 +148,8 @@ pub struct HookCommands {
     pub text: CommandTemplate,
     pub ingest: CommandTemplate,
     pub check_changed: CommandTemplate,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub guide: Option<CommandTemplate>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -114,6 +184,7 @@ pub struct HookDecision {
 /// Allow or deny result emitted by the hook classifier.
 pub enum DecisionKind {
     Allow,
+    Block,
     Deny,
 }
 
@@ -126,6 +197,7 @@ pub enum ReasonKind {
     BulkSourceDump,
     RawBroadSearch,
     AgentSearchJson,
+    SubagentReceiptRequired,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -231,20 +303,36 @@ pub fn merge_profile_registries(registries: Vec<ProfileRegistry>) -> ProfileRegi
 /// Render a shared hook decision into the selected platform response envelope.
 pub fn render_platform_response(decision: &HookDecision) -> Result<Value, AgentHookError> {
     let decision_value = serde_json::to_value(decision).map_err(AgentHookError::InvalidOutput)?;
-    if decision.decision == DecisionKind::Deny {
-        return Ok(json!({
-            "agentHookDecision": decision_value,
-            "hookSpecificOutput": {
-                "hookEventName": platform_hook_event_name(&decision.event),
-                "permissionDecision": "deny",
-                "permissionDecisionReason": decision.message,
-            },
-            "systemMessage": decision.message,
-        }));
+    let decision_context = format!(
+        "[agent-hook-decision] {}",
+        serde_json::to_string(&decision_value).map_err(AgentHookError::InvalidOutput)?
+    );
+    match decision.decision {
+        DecisionKind::Deny => {
+            return Ok(json!({
+                "hookSpecificOutput": {
+                    "hookEventName": platform_hook_event_name(&decision.event),
+                    "permissionDecision": "deny",
+                    "permissionDecisionReason": decision.message,
+                    "additionalContext": decision_context,
+                },
+                "systemMessage": decision.message,
+            }));
+        }
+        DecisionKind::Block => {
+            return Ok(json!({
+                "decision": "block",
+                "reason": decision.message,
+                "hookSpecificOutput": {
+                    "hookEventName": platform_hook_event_name(&decision.event),
+                    "additionalContext": decision_context,
+                },
+                "systemMessage": decision.message,
+            }));
+        }
+        DecisionKind::Allow => {}
     }
-    Ok(json!({
-        "agentHookDecision": decision_value,
-    }))
+    Ok(json!({}))
 }
 
 impl ProfileRegistry {
@@ -264,42 +352,79 @@ impl ProfileRegistry {
         Ok(())
     }
 
-    pub(crate) fn profile_for_path(&self, path: &str) -> Option<&LanguageProfile> {
-        let normalized = path.trim_start_matches("./");
+    pub(crate) fn profiles_for_selector(&self, selector: &str) -> Vec<ProfileSelectorMatch<'_>> {
+        let matcher = SourceSelectorMatcher::new(selector);
         self.profiles
             .iter()
-            .find(|profile| profile.matches_path(normalized))
+            .filter_map(|profile| {
+                profile
+                    .match_source_selector_with(&matcher)
+                    .map(|kind| ProfileSelectorMatch { profile, kind })
+            })
+            .collect()
     }
 }
 
 impl LanguageProfile {
-    fn matches_path(&self, path: &str) -> bool {
+    pub(crate) fn matches_source_selector(&self, selector: &str) -> bool {
+        self.match_source_selector(selector).is_some()
+    }
+
+    pub(crate) fn match_source_selector(&self, selector: &str) -> Option<SourceSelectorKind> {
+        let matcher = SourceSelectorMatcher::new(selector);
+        self.match_source_selector_with(&matcher)
+    }
+
+    fn match_source_selector_with(
+        &self,
+        selector: &SourceSelectorMatcher<'_>,
+    ) -> Option<SourceSelectorKind> {
         if self
             .ignored_path_prefixes
             .iter()
-            .any(|prefix| path == prefix || path.starts_with(&format!("{prefix}/")))
+            .any(|prefix| selector.is_ignored_by(prefix))
         {
-            return false;
+            return None;
+        }
+        if selector.has_glob {
+            return self
+                .glob_matches_source_selector(selector)
+                .then_some(SourceSelectorKind::Pattern);
         }
         if self
             .config_files
             .iter()
-            .any(|config| path.ends_with(config))
+            .any(|config| selector.normalized.ends_with(config))
         {
-            return true;
+            return Some(SourceSelectorKind::ExactPath);
         }
-        self.source_extensions
+        if self
+            .source_extensions
             .iter()
-            .any(|extension| path.ends_with(extension))
+            .any(|extension| selector.normalized.ends_with(extension))
+        {
+            return Some(SourceSelectorKind::ExactPath);
+        }
+        None
     }
 
     pub(crate) fn matches_search_token(&self, token: &str) -> bool {
         let normalized = token.trim_start_matches("./");
-        self.matches_path(normalized)
+        self.matches_source_selector(normalized)
             || self
                 .source_roots
                 .iter()
                 .any(|root| normalized == root || normalized.starts_with(&format!("{root}/")))
+    }
+
+    fn glob_matches_source_selector(&self, selector: &SourceSelectorMatcher<'_>) -> bool {
+        self.source_extensions
+            .iter()
+            .any(|extension| selector.targets_extension(extension))
+            || self
+                .config_files
+                .iter()
+                .any(|config| selector.matches_config(config))
     }
 
     pub(crate) fn route_from_template(
@@ -327,6 +452,113 @@ impl LanguageProfile {
             stdin_mode: template.stdin_mode.clone(),
         }
     }
+}
+
+struct SourceSelectorMatcher<'a> {
+    normalized: &'a str,
+    has_glob: bool,
+    extension_glob: Option<GlobSet>,
+    basename_glob: Option<GlobSet>,
+    literal_prefix: &'a str,
+    has_extension_pattern: bool,
+}
+
+impl<'a> SourceSelectorMatcher<'a> {
+    fn new(selector: &'a str) -> Self {
+        let normalized = selector.trim_start_matches("./");
+        let has_glob = selector_has_glob(normalized);
+        let basename = basename_pattern(normalized).to_ascii_lowercase();
+        let extension_pattern = basename_extension_pattern(&basename);
+        Self {
+            normalized,
+            has_glob,
+            extension_glob: extension_pattern.and_then(build_glob_set),
+            basename_glob: build_glob_set(&basename),
+            literal_prefix: literal_prefix_before_glob(normalized),
+            has_extension_pattern: extension_pattern.is_some(),
+        }
+    }
+
+    fn is_ignored_by(&self, prefix: &str) -> bool {
+        self.normalized == prefix || self.normalized.starts_with(&format!("{prefix}/"))
+    }
+
+    fn targets_extension(&self, extension: &str) -> bool {
+        let extension = extension.trim_start_matches('.').to_ascii_lowercase();
+        self.extension_glob
+            .as_ref()
+            .is_some_and(|glob_set| glob_set.is_match(extension))
+    }
+
+    fn matches_config(&self, config: &str) -> bool {
+        if !self.has_extension_pattern {
+            return false;
+        }
+        if self.normalized.contains('/') && !self.literal_prefix.trim_matches('/').is_empty() {
+            return false;
+        }
+        let config_basename = basename_pattern(config).to_ascii_lowercase();
+        self.basename_glob
+            .as_ref()
+            .is_some_and(|glob_set| glob_set.is_match(config_basename))
+    }
+}
+
+fn build_glob_set(pattern: &str) -> Option<GlobSet> {
+    let glob = match GlobBuilder::new(pattern)
+        .literal_separator(false)
+        .backslash_escape(false)
+        .build()
+    {
+        Ok(glob) => glob,
+        Err(_) => return None,
+    };
+    let mut builder = GlobSetBuilder::new();
+    builder.add(glob);
+    builder.build().ok()
+}
+
+fn basename_pattern(selector: &str) -> &str {
+    selector
+        .trim_end_matches('/')
+        .rsplit('/')
+        .next()
+        .unwrap_or(selector)
+}
+
+fn basename_extension_pattern(basename: &str) -> Option<&str> {
+    let (_, _, last_literal_dot) = basename.char_indices().fold(
+        (0usize, 0usize, None),
+        |(bracket_depth, brace_depth, last_literal_dot), (index, character)| match character {
+            '[' => (bracket_depth + 1, brace_depth, last_literal_dot),
+            ']' if bracket_depth > 0 => (bracket_depth - 1, brace_depth, last_literal_dot),
+            '{' if bracket_depth == 0 => (bracket_depth, brace_depth + 1, last_literal_dot),
+            '}' if bracket_depth == 0 && brace_depth > 0 => {
+                (bracket_depth, brace_depth - 1, last_literal_dot)
+            }
+            '.' if bracket_depth == 0 && brace_depth == 0 => {
+                (bracket_depth, brace_depth, Some(index))
+            }
+            _ => (bracket_depth, brace_depth, last_literal_dot),
+        },
+    );
+    let start = last_literal_dot? + 1;
+    (start < basename.len()).then_some(&basename[start..])
+}
+
+fn literal_prefix_before_glob(selector: &str) -> &str {
+    let glob_start = selector
+        .char_indices()
+        .find_map(|(index, character)| {
+            matches!(character, '*' | '?' | '[' | ']' | '{' | '}').then_some(index)
+        })
+        .unwrap_or(selector.len());
+    selector[..glob_start].trim_end_matches('/')
+}
+
+fn selector_has_glob(path: &str) -> bool {
+    path.chars()
+        .any(|character| matches!(character, '*' | '?' | '[' | ']' | '{' | '}'))
 }
 
 fn expect_field(name: &str, actual: &str, expected: &str) -> Result<(), AgentHookError> {

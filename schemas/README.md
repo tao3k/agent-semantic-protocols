@@ -10,7 +10,26 @@ output across semantic language providers. Compact text stays the default
 prompt surface; JSON is the validation, cache, and artifact shape. Agent-facing
 interactive exploration should not request `search ... --json`; hooks should
 deny that output-mode error with `reasonKind=agent-search-json` and guide to
-the equivalent compact command.
+the equivalent compact command. Providers should emit JSON in a compact
+machine-oriented form, leaving readability to validators and artifact viewers
+rather than spending terminal tokens on pretty-print whitespace.
+
+`semantic-graph.v1.schema.json` is the shared embeddable graph vocabulary behind
+search packets. It owns parser-proved graph nodes, graph edges, bounded
+synthesis algorithms, frontier owners, finding owners, and graph-derived next
+actions. Agent workflows should consume graph evidence through normal
+`search ...` packets: `nodes`, `edges`, and `searchSynthesis` carry the graph
+slice that lets the LLM choose the next focused search. The graph schema exists
+to keep that embedded vocabulary aligned across providers, not to introduce a
+separate `search graph` or top-level graph exploration workflow.
+
+`semantic-query-packet.v1.schema.json` is the shared JSON contract for
+provider-native parser queries that return compact code by default. Query is a
+language-provider capability, not a root hook capability: Rust, TypeScript,
+Python, and future providers own AST/parser lookup, exact item matching,
+multi-term expressions such as `fun1|fun2|fun3`, and compact code extraction.
+Root hooks should route source access back to provider `search owner <path>
+items [--query SYMBOL]`; they should not maintain a parallel read/query engine.
 
 `semantic-sandtable-scenario.v1.schema.json` is the shared scenario descriptor
 for replaying bounded search flows against real harness binaries. It owns the
@@ -22,7 +41,16 @@ the launch intent, edit-stop boundary, receipt path, recorded metrics,
 repeated-search findings, and query-set merge opportunities. Hook replay steps
 may use `expect.guideQuality` to assert that a denial includes the reason kind,
 language route, safe command shape, ingest-pipe guidance, and no leaked source
-text.
+text. JSON stdout expectations can assert exact paths, substring containment,
+schema conformance, and array membership with scalar values or object subsets.
+Large-library calibration scenarios use typed `evidence.targetLibrary`,
+`evidence.fixtureTier`, and `evidence.intentCases` metadata so every provider
+can publish the same feature/API/principle search matrix without asking the
+harness to parse natural-language intent. Coverage audits render this as
+`|intent-matrix` and `|intent-library` lines, and `--fail-on-missing` treats
+missing large-library rows or missing intent cases as coverage failures.
+`intentCases[].queryTerms` records which query-set terms exercise each intent
+when several same-view probes are compressed into one scenario step.
 
 `semantic-sandtable-receipt.v1.schema.json` is the compact evidence contract
 for a real-trigger agent exploration before it is converted into replayable
@@ -42,7 +70,10 @@ basis string so sandtable evidence is not confused with model billing.
 `semantic-agent-hook-profile.v1.schema.json` is the profile registry consumed by
 the root `semantic-agent-hook` runtime. It standardizes language-owned source
 extensions, config files, ignored path prefixes, route command templates, and
-policy toggles without making the hook classifier language-specific.
+policy toggles without making the hook classifier language-specific. Profiles
+may also advertise a `commands.guide` template; deny messages should point to
+that provider-owned `agent guide` command instead of reconstructing searchflow
+instructions from route argv.
 
 `semantic-agent-hook-decision.v1.schema.json` is the shared decision packet for
 the root hook classifier before it renders a platform-specific Codex or Claude
@@ -58,7 +89,7 @@ The TypeScript provider registers as:
   "providerId": "ts-harness",
   "binary": "ts-harness",
   "namespace": "agent.semantic-protocols.languages.typescript.ts-harness",
-  "methods": ["search/workspace", "search/prime", "check/full", "agent/doctor"],
+  "methods": ["search/workspace", "search/prime", "check/full", "agent/doctor", "agent/guide"],
   "methodDescriptors": [
     {
       "method": "search/workspace",
@@ -145,6 +176,12 @@ The stable envelope is language-neutral:
   `findings`, `nextActions`, and `notes`
 - optional `querySet` and `queryComposition` for homogeneous same-view
   query-set packets
+- optional `queryCoverage`, `ownerResolution`, `searchSynthesis`, and
+  `avoidNextActions` when a provider must explain term-level coverage, fixture
+  paths, false owner candidates, or synthesized follow-up seeds
+- optional `sourceCoverage`, `testResolution`, and `runtimeCost` when a large
+  project search must explain parser-visible source coverage, owner-to-test
+  reachability, or cold/warm index cost
 - optional `inputDetection` for stdin-derived searches
 
 Language harnesses should preserve compiler-native facts in `fields` maps
@@ -184,6 +221,40 @@ repeated text probes such as `location.path`, `location.column`,
 `location.line`, and `renderLocation` should become one
 `search/text` query-set packet with `scope.ownerPath`, not several separate
 text packets or a comma-joined literal query.
+Project-scoped TypeScript text query-sets are also valid when the owner has not
+been selected yet and the repeated probes are still the same text axis.
+
+Query-set packets must not only merge terms; they must preserve the meaning of
+each term. When a text hit is a test fixture string such as
+`"src/cli/agent-hooks.ts"` inside `tests/unit/cli.test.ts`, the packet should
+classify the hit as `surface="test-fixture-string"`, set `realOwner=false`,
+record `fixturePath` and `fixtureOwner`, add `queryCoverage` for every term,
+and add `ownerResolution` so the agent knows not to run
+`search owner src/cli/agent-hooks.ts`. If the provider can infer a real
+implementation axis from the fixture context, it should emit
+`searchSynthesis.seeds` such as `text:runProtocolCli` or
+`owner:src/cli/protocol.ts`, and put the false follow-up in `avoidNextActions`.
+
+Providers may also use `searchSynthesis` for bounded graph-derived planning
+facts. The shared schema owns the graph algorithm name, scope, high-impact
+owners, frontier owners, and finding owners as explicit `searchSynthesis`
+properties; derived follow-up routes belong in `searchSynthesis.seeds`. These
+facts rank and explain parser-owned owner/dependency/test edges but do not
+introduce a second source of truth.
+
+Large-library packets should keep source and runtime limits explicit instead
+of forcing the agent to discover them through repeated commands.
+`sourceCoverage` reports whether the selected package root or config made the
+expected source owners parser-visible. `testResolution` reports whether a
+tests search linked, missed, or noisily found tests for an owner. `runtimeCost`
+reports coarse cache and parser reuse facts such as `cacheStatus`, `elapsedMs`,
+`sourceFilesParsed`, and `parserFactsReused`. These fields are evidence for
+follow-up search planning; provider-specific compiler details still belong in
+`fields`.
+
+For `search text`, a flag-like first query positional remains literal. For
+example, `ts-harness search text --json --view seeds .` searches for the token
+`--json`; request JSON output by placing `--json` after the query.
 
 This repository's `schemas/` directory is the protocol source of truth.
 It contains common protocol schemas only. Provider packages that run CI from

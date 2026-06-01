@@ -1,0 +1,93 @@
+{
+  "id": "typescript.typescript-intent-matrix",
+  "language": "typescript",
+  "title": "TypeScript compiler large-library feature/API/principle intent matrix",
+  "coverage": ["search-flow", "performance", "large-library"],
+  "tags": ["large-library", "typescript", "intent-matrix"],
+  "evidence": {
+    "source": "handwritten",
+    "fixtureTier": "large-library",
+    "targetLibrary": {
+      "language": "typescript",
+      "name": "TypeScript",
+      "package": "typescript",
+      "repository": "microsoft/TypeScript",
+      "workdirKind": "checkout"
+    },
+    "intentCases": [
+      {
+        "intentKind": "feature-implementation",
+        "intent": "Implement or modify project reference behavior from compact compiler owners",
+        "stepIds": ["prime", "feature-project-reference"],
+        "queryTerms": ["projectReferences"]
+      },
+      {
+        "intentKind": "api-usage",
+        "intent": "Find createProgram API usage and exported surface owners",
+        "stepIds": ["prime", "api-create-program"],
+        "queryTerms": ["createProgram"]
+      },
+      {
+        "intentKind": "implementation-principle",
+        "intent": "Understand module resolution implementation paths without broad source reads",
+        "stepIds": ["prime", "principle-module-resolution"],
+        "queryTerms": ["resolveModuleName"]
+      }
+    ]
+  },
+  "workdir": {
+    "env": "SANDTABLE_TS_TYPESCRIPT_ROOT",
+    "candidates": [
+      "~/ghq/github.com/microsoft/TypeScript",
+      "~/src/TypeScript",
+      "~/work/TypeScript"
+    ]
+  },
+  "budgets": {
+    "maxCommands": 4,
+    "maxTotalLinesWarn": 60,
+    "maxTotalStdoutBytesWarn": 32000
+  },
+  "steps": [
+    {
+      "id": "prime",
+      "command": ["ts-harness", "search", "prime", "--view", "seeds", "."],
+      "expect": {
+        "lineProtocol": true,
+        "stdoutContains": ["[search-prime]"],
+        "maxStdoutLinesWarn": 16,
+        "maxElapsedMsWarn": 9000
+      }
+    },
+    {
+      "id": "feature-project-reference",
+      "command": ["ts-harness", "search", "text", "projectReferences", "--view", "seeds", "."],
+      "expect": {
+        "lineProtocol": true,
+        "stdoutContains": ["[search-text]"],
+        "maxStdoutLinesWarn": 14,
+        "maxElapsedMsWarn": 9000
+      }
+    },
+    {
+      "id": "api-create-program",
+      "command": ["ts-harness", "search", "api", "createProgram", "--view", "seeds", "."],
+      "expect": {
+        "lineProtocol": true,
+        "stdoutContains": ["[search-api]"],
+        "maxStdoutLinesWarn": 14,
+        "maxElapsedMsWarn": 9000
+      }
+    },
+    {
+      "id": "principle-module-resolution",
+      "command": ["ts-harness", "search", "text", "resolveModuleName", "--view", "seeds", "."],
+      "expect": {
+        "lineProtocol": true,
+        "stdoutContains": ["[search-text]"],
+        "maxStdoutLinesWarn": 16,
+        "maxElapsedMsWarn": 9000
+      }
+    }
+  ]
+}

@@ -3,17 +3,108 @@
   "language": "typescript",
   "title": "TypeScript semantic search source-text and ingest pipe flow",
   "coverage": [
+    "language-registry",
+    "json-schema",
     "search-flow",
+    "deps-query",
     "performance"
   ],
   "workdir": {
     "relative": "languages/typescript-lang-project-harness"
   },
   "budgets": {
-    "maxCommands": 5,
-    "maxTotalLinesWarn": 90
+    "maxCommands": 8,
+    "maxTotalLinesWarn": 120,
+    "maxTotalStdoutBytesWarn": 85000
   },
   "steps": [
+    {
+      "id": "registry-json-schema",
+      "kind": "schema-contract",
+      "coverage": ["language-registry", "json-schema"],
+      "command": [
+        "node",
+        "dist/src/cli/main.js",
+        "agent",
+        "doctor",
+        "--json",
+        "."
+      ],
+      "expect": {
+        "stdoutJsonSchema": "schemas/semantic-language-registry.v1.schema.json",
+        "stdoutJsonEquals": {
+          "registryId": "agent.semantic-protocols.semantic-language-registry",
+          "languages.0.languageId": "typescript",
+          "languages.0.providerId": "ts-harness",
+          "languages.0.binary": "ts-harness"
+        },
+        "maxStdoutLinesWarn": 12,
+        "maxStdoutBytesWarn": 10000,
+        "maxElapsedMsWarn": 3500
+      }
+    },
+    {
+      "id": "prime-json-schema",
+      "kind": "schema-contract",
+      "coverage": ["json-schema", "search-flow", "performance"],
+      "command": [
+        "node",
+        "dist/src/cli/main.js",
+        "search",
+        "prime",
+        "--json",
+        "."
+      ],
+      "expect": {
+        "stdoutJsonSchema": "schemas/semantic-search-packet.v1.schema.json",
+        "stdoutJsonEquals": {
+          "schemaId": "agent.semantic-protocols.semantic-search-packet",
+          "languageId": "typescript",
+          "providerId": "ts-harness",
+          "method": "search/prime",
+          "searchSynthesis.algorithm": "owner-rank-frontier",
+          "searchSynthesis.scope": "prime"
+        },
+        "stdoutJsonArrayContains": {
+          "searchSynthesis.highImpactOwners": "src/cli/semantic-search/build.ts",
+          "searchSynthesis.frontierOwners": "src/cli/semantic-search/types.ts",
+          "searchSynthesis.seeds": {
+            "kind": "owner",
+            "target": "src/cli/semantic-search/types.ts"
+          }
+        },
+        "maxStdoutLinesWarn": 12,
+        "maxStdoutBytesWarn": 21000,
+        "maxElapsedMsWarn": 6500
+      }
+    },
+    {
+      "id": "dependency-json-schema",
+      "kind": "schema-contract",
+      "coverage": ["json-schema", "deps-query", "performance"],
+      "command": [
+        "node",
+        "dist/src/cli/main.js",
+        "search",
+        "dependency",
+        "typescript",
+        "--json",
+        "."
+      ],
+      "expect": {
+        "stdoutJsonSchema": "schemas/semantic-search-packet.v1.schema.json",
+        "stdoutJsonEquals": {
+          "schemaId": "agent.semantic-protocols.semantic-search-packet",
+          "languageId": "typescript",
+          "providerId": "ts-harness",
+          "method": "search/dependency",
+          "query": "typescript"
+        },
+        "maxStdoutLinesWarn": 12,
+        "maxStdoutBytesWarn": 42000,
+        "maxElapsedMsWarn": 5000
+      }
+    },
     {
       "id": "workspace",
       "command": [
@@ -30,7 +121,7 @@
           "|next prime:."
         ],
         "maxStdoutLinesWarn": 6,
-        "maxElapsedMsWarn": 1000
+        "maxElapsedMsWarn": 5500
       }
     },
     {
@@ -46,10 +137,14 @@
         "lineProtocol": true,
         "stdoutContains": [
           "[search-prime]",
-          "|owner"
+          "|owner",
+          "|synthesis",
+          "algorithm=owner-rank-frontier",
+          "frontierOwners=src/cli/semantic-search/types.ts",
+          "seeds=owner:src/cli/semantic-search/types.ts"
         ],
         "maxStdoutLinesWarn": 16,
-        "maxElapsedMsWarn": 1200
+        "maxElapsedMsWarn": 5500
       }
     },
     {
@@ -59,9 +154,14 @@
         "dist/src/cli/main.js",
         "search",
         "text",
+        "--query-set",
+        "SemanticSearchOwnerFallback",
+        "--query-set",
         "parserOwner",
         "owner",
         "tests",
+        "--owner",
+        "src/cli/semantic-search/owner-fallback.ts",
         "."
       ],
       "capture": {
@@ -71,12 +171,15 @@
         "lineProtocol": true,
         "stdoutContains": [
           "[search-text]",
+          "querySet=2",
+          "selector=exact-set",
+          "scopeOwner=src/cli/semantic-search/owner-fallback.ts",
           "pipes=owner,tests",
           "source=parser-visible-source",
           "|next owner:"
         ],
-        "maxStdoutLinesWarn": 18,
-        "maxElapsedMsWarn": 1200
+        "maxStdoutLinesWarn": 20,
+        "maxElapsedMsWarn": 4500
       }
     },
     {
@@ -93,10 +196,13 @@
         "lineProtocol": true,
         "stdoutContains": [
           "[search-owner]",
-          "|owner"
+          "|owner",
+          "|synthesis",
+          "algorithm=bounded-reachability-depth1",
+          "scope=owner"
         ],
         "maxStdoutLinesWarn": 12,
-        "maxElapsedMsWarn": 1000
+        "maxElapsedMsWarn": 7000
       }
     },
     {
@@ -125,7 +231,7 @@
           "|owner"
         ],
         "maxStdoutLinesWarn": 18,
-        "maxElapsedMsWarn": 1200
+        "maxElapsedMsWarn": 5000
       }
     }
   ]

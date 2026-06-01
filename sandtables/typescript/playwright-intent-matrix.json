@@ -1,0 +1,93 @@
+{
+  "id": "typescript.playwright-intent-matrix",
+  "language": "typescript",
+  "title": "Playwright large-library feature/API/principle intent matrix",
+  "coverage": ["search-flow", "performance", "large-library"],
+  "tags": ["large-library", "playwright", "intent-matrix"],
+  "evidence": {
+    "source": "handwritten",
+    "fixtureTier": "large-library",
+    "targetLibrary": {
+      "language": "typescript",
+      "name": "Playwright",
+      "package": "playwright",
+      "repository": "microsoft/playwright",
+      "workdirKind": "checkout"
+    },
+    "intentCases": [
+      {
+        "intentKind": "feature-implementation",
+        "intent": "Implement trace or recorder behavior after finding compact feature owners",
+        "stepIds": ["prime", "feature-tracing"],
+        "queryTerms": ["trace"]
+      },
+      {
+        "intentKind": "api-usage",
+        "intent": "Find locator API usage and public surface owners",
+        "stepIds": ["prime", "api-locator"],
+        "queryTerms": ["locator"]
+      },
+      {
+        "intentKind": "implementation-principle",
+        "intent": "Understand browser context implementation paths from ranked search packets",
+        "stepIds": ["prime", "principle-browser-context"],
+        "queryTerms": ["BrowserContext"]
+      }
+    ]
+  },
+  "workdir": {
+    "env": "SANDTABLE_TS_PLAYWRIGHT_ROOT",
+    "candidates": [
+      "~/ghq/github.com/microsoft/playwright",
+      "~/src/playwright",
+      "~/work/playwright"
+    ]
+  },
+  "budgets": {
+    "maxCommands": 4,
+    "maxTotalLinesWarn": 60,
+    "maxTotalStdoutBytesWarn": 32000
+  },
+  "steps": [
+    {
+      "id": "prime",
+      "command": ["ts-harness", "search", "prime", "--view", "seeds", "."],
+      "expect": {
+        "lineProtocol": true,
+        "stdoutContains": ["[search-prime]"],
+        "maxStdoutLinesWarn": 16,
+        "maxElapsedMsWarn": 9000
+      }
+    },
+    {
+      "id": "feature-tracing",
+      "command": ["ts-harness", "search", "text", "trace", "--view", "seeds", "."],
+      "expect": {
+        "lineProtocol": true,
+        "stdoutContains": ["[search-text]"],
+        "maxStdoutLinesWarn": 14,
+        "maxElapsedMsWarn": 9000
+      }
+    },
+    {
+      "id": "api-locator",
+      "command": ["ts-harness", "search", "api", "locator", "--view", "seeds", "."],
+      "expect": {
+        "lineProtocol": true,
+        "stdoutContains": ["[search-api]"],
+        "maxStdoutLinesWarn": 14,
+        "maxElapsedMsWarn": 9000
+      }
+    },
+    {
+      "id": "principle-browser-context",
+      "command": ["ts-harness", "search", "text", "BrowserContext", "--view", "seeds", "."],
+      "expect": {
+        "lineProtocol": true,
+        "stdoutContains": ["[search-text]"],
+        "maxStdoutLinesWarn": 16,
+        "maxElapsedMsWarn": 9000
+      }
+    }
+  ]
+}

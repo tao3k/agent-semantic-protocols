@@ -25,6 +25,9 @@
     "tags": {
       "$ref": "#/$defs/stringList"
     },
+    "evidence": {
+      "$ref": "#/$defs/evidence"
+    },
     "workdir": {
       "oneOf": [
         {
@@ -54,6 +57,228 @@
     }
   },
   "$defs": {
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source"],
+      "properties": {
+        "source": {
+          "enum": ["handwritten", "real-trigger", "recorded-replay"]
+        },
+        "intent": {
+          "type": "string",
+          "minLength": 1
+        },
+        "intentKind": {
+          "$ref": "#/$defs/intentKind"
+        },
+        "targetLibrary": {
+          "$ref": "#/$defs/targetLibrary"
+        },
+        "fixtureTier": {
+          "enum": ["large-library"]
+        },
+        "intentCases": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/intentCase"
+          }
+        },
+        "recordedAt": {
+          "type": "string",
+          "minLength": 1
+        },
+        "receiptPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "editBoundary": {
+          "enum": ["before-edit", "after-search", "none", "unknown"]
+        },
+        "metrics": {
+          "$ref": "#/$defs/evidenceMetrics"
+        },
+        "querySetOpportunities": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/querySetOpportunity"
+          }
+        },
+        "findings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/evidenceFinding"
+          }
+        }
+      }
+    },
+    "intentKind": {
+      "enum": [
+        "feature-implementation",
+        "api-usage",
+        "implementation-principle"
+      ]
+    },
+    "targetLibrary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["language", "name", "package", "workdirKind"],
+      "properties": {
+        "language": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "package": {
+          "type": "string",
+          "minLength": 1
+        },
+        "repository": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workdirKind": {
+          "enum": ["checkout", "registry", "fixture", "unknown"]
+        }
+      }
+    },
+    "intentCase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["intentKind", "intent", "stepIds"],
+      "properties": {
+        "intentKind": {
+          "$ref": "#/$defs/intentKind"
+        },
+        "intent": {
+          "type": "string",
+          "minLength": 1
+        },
+        "stepIds": {
+          "$ref": "#/$defs/stringList"
+        },
+        "queryTerms": {
+          "$ref": "#/$defs/stringList"
+        }
+      }
+    },
+    "evidenceMetrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "recordedCommandCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "recordedElapsedMs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "recordedStdoutBytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "recordedStderrBytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "repeatedSearches": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "jsonSearches": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "compactSearches": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "tokenDelta": {
+          "enum": ["lower", "same", "higher", "unknown"]
+        }
+      }
+    },
+    "querySetOpportunity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["view", "queries", "saveCommands"],
+      "properties": {
+        "view": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "queries": {
+          "type": "integer",
+          "minimum": 2
+        },
+        "saveCommands": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "selector": {
+          "enum": ["exact-set", "prefix-set", "stdin-path-set"]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "terms": {
+          "$ref": "#/$defs/stringList"
+        },
+        "scope": {
+          "$ref": "#/$defs/queryScope"
+        },
+        "beforeCommandIds": {
+          "$ref": "#/$defs/stringList"
+        },
+        "recommendedCommand": {
+          "$ref": "#/$defs/argv"
+        }
+      }
+    },
+    "queryScope": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "projectRoot": {
+          "type": "string",
+          "minLength": 1
+        },
+        "packageName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ownerPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "roots": {
+          "$ref": "#/$defs/stringList"
+        }
+      }
+    },
+    "evidenceFinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "message"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "severity": {
+          "enum": ["info", "warning", "error"]
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
     "workdir": {
       "type": "object",
       "additionalProperties": false,
@@ -195,12 +420,18 @@
         "stdoutJsonContains": {
           "$ref": "#/$defs/stringMap"
         },
+        "stdoutJsonArrayContains": {
+          "$ref": "#/$defs/jsonValueMap"
+        },
         "stdoutJsonSchema": {
           "type": "string",
           "minLength": 1
         },
         "stdoutJsonSchemaAt": {
           "$ref": "#/$defs/stringMap"
+        },
+        "guideQuality": {
+          "$ref": "#/$defs/guideQuality"
         },
         "maxStdoutLinesWarn": {
           "type": "integer",
@@ -217,6 +448,33 @@
         "maxElapsedMsWarn": {
           "type": "integer",
           "minimum": 1
+        }
+      }
+    },
+    "guideQuality": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "reasonKind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "languageId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "routeKind": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "commandContains": {
+          "$ref": "#/$defs/stringList"
+        },
+        "requiresIngestPipe": {
+          "type": "boolean"
+        },
+        "sourceLeakNotContains": {
+          "$ref": "#/$defs/stringList"
         }
       }
     },
@@ -249,7 +507,9 @@
           "codex-hooks",
           "codex-wrapper",
           "desktop-hooks",
-          "cli-hooks"
+          "cli-hooks",
+          "real-trigger",
+          "large-library"
         ]
       }
     },
@@ -264,6 +524,33 @@
       "additionalProperties": {
         "$ref": "#/$defs/scalar"
       }
+    },
+    "jsonValueMap": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/jsonValue"
+      }
+    },
+    "jsonValue": {
+      "oneOf": [
+        { "type": "string" },
+        { "type": "number" },
+        { "type": "integer" },
+        { "type": "boolean" },
+        { "type": "null" },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/jsonValue"
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/jsonValue"
+          }
+        }
+      ]
     },
     "scalar": {
       "oneOf": [

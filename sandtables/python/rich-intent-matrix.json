@@ -1,0 +1,88 @@
+{
+  "id": "python.rich-intent-matrix",
+  "language": "python",
+  "title": "Rich large-library feature/API/principle intent matrix",
+  "coverage": ["search-flow", "performance", "large-library"],
+  "tags": ["large-library", "rich", "intent-matrix"],
+  "evidence": {
+    "source": "handwritten",
+    "fixtureTier": "large-library",
+    "targetLibrary": {
+      "language": "python",
+      "name": "Rich",
+      "package": "rich",
+      "repository": "Textualize/rich",
+      "workdirKind": "checkout"
+    },
+    "intentCases": [
+      {
+        "intentKind": "feature-implementation",
+        "intent": "Implement a progress rendering feature after locating owners and tests",
+        "stepIds": ["prime", "intent-query-set"],
+        "queryTerms": ["Progress"]
+      },
+      {
+        "intentKind": "api-usage",
+        "intent": "Find Console API usage and callsites",
+        "stepIds": ["prime", "intent-query-set"],
+        "queryTerms": ["Console"]
+      },
+      {
+        "intentKind": "implementation-principle",
+        "intent": "Understand renderable protocol implementation paths from compact search packets",
+        "stepIds": ["prime", "intent-query-set"],
+        "queryTerms": ["RenderableType"]
+      }
+    ]
+  },
+  "workdir": {
+    "env": "SANDTABLE_PY_RICH_ROOT",
+    "candidates": [
+      "~/ghq/github.com/Textualize/rich",
+      "~/src/rich",
+      "~/work/rich"
+    ]
+  },
+  "budgets": {
+    "maxCommands": 2,
+    "maxTotalLinesWarn": 22,
+    "maxTotalStdoutBytesWarn": 10000
+  },
+  "steps": [
+    {
+      "id": "prime",
+      "command": ["py-harness", "search", "prime", "--view", "seeds", "."],
+      "expect": {
+        "lineProtocol": true,
+        "stdoutContains": ["[search-prime]", "|seed"],
+        "maxStdoutLinesWarn": 8,
+        "maxElapsedMsWarn": 9000
+      }
+    },
+    {
+      "id": "intent-query-set",
+      "command": [
+        "py-harness",
+        "search",
+        "text",
+        "--query-set",
+        "Progress",
+        "--query-set",
+        "Console",
+        "--query-set",
+        "RenderableType",
+        "owner",
+        "tests",
+        "--view",
+        "seeds",
+        "."
+      ],
+      "expect": {
+        "lineProtocol": true,
+        "stdoutContains": ["[search-text]", "querySet=3", "|seed"],
+        "maxStdoutLinesWarn": 14,
+        "maxElapsedMsWarn": 14000
+      }
+    }
+  ]
+}

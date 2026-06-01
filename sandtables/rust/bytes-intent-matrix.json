@@ -1,0 +1,84 @@
+{
+  "id": "rust.bytes-intent-matrix",
+  "language": "rust",
+  "title": "bytes large-library feature/API/principle intent matrix",
+  "coverage": ["search-flow", "performance", "large-library"],
+  "tags": ["large-library", "bytes", "intent-matrix"],
+  "evidence": {
+    "source": "handwritten",
+    "fixtureTier": "large-library",
+    "targetLibrary": {
+      "language": "rust",
+      "name": "bytes",
+      "package": "bytes",
+      "repository": "tokio-rs/bytes",
+      "workdirKind": "registry"
+    },
+    "intentCases": [
+      {
+        "intentKind": "feature-implementation",
+        "intent": "Implement a BytesMut capacity or reserve behavior change from compact owner seeds",
+        "stepIds": ["prime", "intent-query-set"],
+        "queryTerms": ["reserve"]
+      },
+      {
+        "intentKind": "api-usage",
+        "intent": "Find how BytesMut is exposed and used",
+        "stepIds": ["prime", "intent-query-set"],
+        "queryTerms": ["BytesMut"]
+      },
+      {
+        "intentKind": "implementation-principle",
+        "intent": "Understand BufMut implementation principles without reading the whole crate",
+        "stepIds": ["prime", "intent-query-set"],
+        "queryTerms": ["BufMut"]
+      }
+    ]
+  },
+  "workdir": {
+    "env": "SANDTABLE_RUST_BYTES_ROOT",
+    "candidates": ["~/.cargo/registry/src/*/bytes-[0-9]*"]
+  },
+  "budgets": {
+    "maxCommands": 2,
+    "maxTotalLinesWarn": 24,
+    "maxTotalStdoutBytesWarn": 16000
+  },
+  "steps": [
+    {
+      "id": "prime",
+      "command": ["rs-harness", "search", "prime", "--view", "seeds", "--seeds", "4", "."],
+      "expect": {
+        "lineProtocol": true,
+        "stdoutContains": ["[search-prime]", "|seed"],
+        "maxStdoutLinesWarn": 10,
+        "maxElapsedMsWarn": 2500
+      }
+    },
+    {
+      "id": "intent-query-set",
+      "command": [
+        "rs-harness",
+        "search",
+        "text",
+        "--query-set",
+        "reserve",
+        "--query-set",
+        "BytesMut",
+        "--query-set",
+        "BufMut",
+        "--view",
+        "seeds",
+        "--seeds",
+        "4",
+        "."
+      ],
+      "expect": {
+        "lineProtocol": true,
+        "stdoutContains": ["[search-text]", "querySet=3", "|seed"],
+        "maxStdoutLinesWarn": 10,
+        "maxElapsedMsWarn": 2500
+      }
+    }
+  ]
+}

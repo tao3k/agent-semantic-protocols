@@ -2,6 +2,7 @@
 
 mod classifier;
 mod cli;
+mod codex_config;
 mod command;
 mod protocol;
 

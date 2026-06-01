@@ -1,0 +1,88 @@
+{
+  "id": "python.codex-hook-flow",
+  "language": "python",
+  "title": "Python Codex hook denies direct source reads",
+  "coverage": ["codex-hooks", "cli-hooks"],
+  "tags": ["agent-hooks", "direct-source-read"],
+  "workdir": ".",
+  "steps": [
+    {
+      "id": "direct-python-read-deny",
+      "command": [
+        "semantic-agent-hook",
+        "hook",
+        "--client",
+        "codex",
+        "pre-tool",
+        "--emit",
+        "decision"
+      ],
+      "stdin": "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"functions.exec_command\",\"tool_input\":{\"cmd\":\"sed -n '1,80p' src/tools/semantic_sandtable/receipt_reports.py\"}}",
+      "expect": {
+        "stdoutJsonSchema": "schemas/semantic-agent-hook-decision.v1.schema.json",
+        "stdoutJsonEquals": {
+          "decision": "deny",
+          "reasonKind": "bulk-source-dump",
+          "languageIds.0": "python",
+          "routes.0.providerId": "py-harness",
+          "routes.0.kind": "owner"
+        },
+        "stdoutJsonContains": {
+          "message": "py-harness agent guide .",
+          "routes.0.argv": "py-harness"
+        }
+      }
+    },
+    {
+      "id": "direct-python-read-tool-deny",
+      "command": [
+        "semantic-agent-hook",
+        "hook",
+        "--client",
+        "codex",
+        "pre-tool",
+        "--emit",
+        "decision"
+      ],
+      "stdin": "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Read\",\"tool_input\":{\"path\":\"src/tools/semantic_sandtable/guide_quality.py\"}}",
+      "expect": {
+        "stdoutJsonSchema": "schemas/semantic-agent-hook-decision.v1.schema.json",
+        "stdoutJsonEquals": {
+          "decision": "deny",
+          "reasonKind": "direct-source-read",
+          "languageIds.0": "python",
+          "routes.0.argv.3": "src/tools/semantic_sandtable/guide_quality.py"
+        },
+        "stdoutJsonContains": {
+          "message": "py-harness agent guide ."
+        }
+      }
+    },
+    {
+      "id": "namespaced-python-read-tool-deny",
+      "command": [
+        "semantic-agent-hook",
+        "hook",
+        "--client",
+        "codex",
+        "pre-tool",
+        "--emit",
+        "decision"
+      ],
+      "stdin": "{\"hook_event_name\":\"PreToolUse\",\"toolName\":\"functions.read_file\",\"toolInput\":{\"path\":\"src/tools/semantic_sandtable/guide_quality.py\"}}",
+      "expect": {
+        "stdoutJsonSchema": "schemas/semantic-agent-hook-decision.v1.schema.json",
+        "stdoutJsonEquals": {
+          "decision": "deny",
+          "reasonKind": "direct-source-read",
+          "languageIds.0": "python",
+          "subject.toolName": "functions.read_file",
+          "routes.0.argv.3": "src/tools/semantic_sandtable/guide_quality.py"
+        },
+        "stdoutJsonContains": {
+          "message": "py-harness agent guide ."
+        }
+      }
+    }
+  ]
+}

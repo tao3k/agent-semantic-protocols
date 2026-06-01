@@ -1,0 +1,260 @@
+{
+  "schemaId": "agent.semantic-protocols.semantic-sandtable-receipt",
+  "schemaVersion": "1",
+  "scenarioId": "rust.tokio-task-abort-flow",
+  "language": "rust",
+  "project": {
+    "name": "tokio",
+    "package": "tokio",
+    "source": "registry",
+    "workdir": "~/.cargo/registry/src/*/tokio-[0-9]*"
+  },
+  "intent": "Implement task abort or JoinSet shutdown behavior before selecting files to edit",
+  "recordedAt": "2026-05-31",
+  "editBoundary": "before-edit",
+  "commands": [
+    {
+      "id": "prime",
+      "kind": "search",
+      "argv": ["rs-harness", "search", "prime", "--view", "seeds", "--seeds", "10", "."],
+      "stdinShape": "none",
+      "outputMode": "compact",
+      "metrics": {
+        "elapsedMs": 1333,
+        "stdoutBytes": 627,
+        "stderrBytes": 0,
+        "stdoutLines": 7,
+        "stderrLines": 0,
+        "tokenCost": {
+          "unit": "token-estimate",
+          "outputTokens": 157,
+          "totalTokens": 157,
+          "basis": "stdoutBytes/4 rounded up; terminal-output estimate only"
+        }
+      },
+      "notes": ["prime returned generic Tokio owners and truncated 537 seeds"]
+    },
+    {
+      "id": "text-task-abort-query-set",
+      "kind": "search",
+      "argv": [
+        "rs-harness",
+        "search",
+        "text",
+        "--query-set",
+        "abort",
+        "--query-set",
+        "JoinSet",
+        "--query-set",
+        "abort_on_drop",
+        "--view",
+        "seeds",
+        "--seeds",
+        "24",
+        "."
+      ],
+      "stdinShape": "none",
+      "outputMode": "compact",
+      "metrics": {
+        "elapsedMs": 187,
+        "stdoutBytes": 917,
+        "stderrBytes": 0,
+        "stdoutLines": 3,
+        "stderrLines": 0,
+        "tokenCost": {
+          "unit": "token-estimate",
+          "outputTokens": 230,
+          "totalTokens": 230,
+          "basis": "stdoutBytes/4 rounded up; terminal-output estimate only"
+        }
+      },
+      "next": ["owner:src/runtime/task/abort.rs", "owner:src/task/join_set.rs"]
+    },
+    {
+      "id": "symbol-abort-handle",
+      "kind": "search",
+      "argv": ["rs-harness", "search", "symbol", "AbortHandle", "--view", "seeds", "--seeds", "8", "."],
+      "stdinShape": "none",
+      "outputMode": "compact",
+      "metrics": {
+        "elapsedMs": 125,
+        "stdoutBytes": 193,
+        "stderrBytes": 0,
+        "stdoutLines": 2,
+        "stderrLines": 0,
+        "tokenCost": {
+          "unit": "token-estimate",
+          "outputTokens": 49,
+          "totalTokens": 49,
+          "basis": "stdoutBytes/4 rounded up; terminal-output estimate only"
+        }
+      },
+      "next": ["owner:src/runtime/task/abort.rs", "owner:src/task/join_set.rs"]
+    },
+    {
+      "id": "owner-abort-items",
+      "kind": "search",
+      "argv": ["rs-harness", "search", "owner", "src/runtime/task/abort.rs", "items", "--trace", "--view", "seeds", "--seeds", "8", "."],
+      "stdinShape": "none",
+      "outputMode": "compact",
+      "metrics": {
+        "elapsedMs": 11,
+        "stdoutBytes": 360,
+        "stderrBytes": 0,
+        "stdoutLines": 7,
+        "stderrLines": 0,
+        "tokenCost": {
+          "unit": "token-estimate",
+          "outputTokens": 90,
+          "totalTokens": 90,
+          "basis": "stdoutBytes/4 rounded up; terminal-output estimate only"
+        }
+      },
+      "next": ["tests:src/runtime/task/abort.rs", "symbol:AbortHandle"]
+    },
+    {
+      "id": "tests-task-query-set",
+      "kind": "search",
+      "argv": [
+        "rs-harness",
+        "search",
+        "tests",
+        "--query-set",
+        "src/runtime/task/abort.rs",
+        "--query-set",
+        "src/task/join_set.rs",
+        "--view",
+        "seeds",
+        "--seeds",
+        "8",
+        "."
+      ],
+      "stdinShape": "none",
+      "outputMode": "compact",
+      "metrics": {
+        "elapsedMs": 1303,
+        "stdoutBytes": 329,
+        "stderrBytes": 0,
+        "stdoutLines": 3,
+        "stderrLines": 0,
+        "tokenCost": {
+          "unit": "token-estimate",
+          "outputTokens": 83,
+          "totalTokens": 83,
+          "basis": "stdoutBytes/4 rounded up; terminal-output estimate only"
+        }
+      },
+      "notes": ["query-set keeps tests/task_join_set.rs inside the seed budget"]
+    }
+  ],
+  "summary": {
+    "commandCount": 5,
+    "stdoutBytes": 2426,
+    "stderrBytes": 0,
+    "elapsedMs": 2959,
+    "repeatedSearches": 0,
+    "jsonSearches": 0,
+    "compactSearches": 5,
+    "tokenDelta": "lower",
+    "tokenCost": {
+      "unit": "token-estimate",
+      "outputTokens": 609,
+      "totalTokens": 609,
+      "basis": "sum of per-command stdoutBytes/4 rounded up; terminal-output estimate only"
+    }
+  },
+  "querySetOpportunities": [
+    {
+      "view": "text",
+      "queries": 3,
+      "saveCommands": 2,
+      "selector": "exact-set",
+      "terms": [
+        "abort",
+        "JoinSet",
+        "abort_on_drop"
+      ],
+      "scope": {
+        "projectRoot": "."
+      },
+      "beforeCommandIds": [
+        "text-task-abort-query-set"
+      ],
+      "recommendedCommand": [
+        "rs-harness",
+        "search",
+        "text",
+        "--query-set",
+        "abort",
+        "--query-set",
+        "JoinSet",
+        "--query-set",
+        "abort_on_drop",
+        "--view",
+        "seeds",
+        "--seeds",
+        "24",
+        "."
+      ],
+      "reason": "same task cancellation intent now covered by one text query-set packet"
+    },
+    {
+      "view": "tests",
+      "queries": 2,
+      "saveCommands": 1,
+      "selector": "exact-set",
+      "terms": [
+        "src/runtime/task/abort.rs",
+        "src/task/join_set.rs"
+      ],
+      "scope": {
+        "projectRoot": "."
+      },
+      "beforeCommandIds": [
+        "tests-task-query-set"
+      ],
+      "recommendedCommand": [
+        "rs-harness",
+        "search",
+        "tests",
+        "--query-set",
+        "src/runtime/task/abort.rs",
+        "--query-set",
+        "src/task/join_set.rs",
+        "--view",
+        "seeds",
+        "--seeds",
+        "8",
+        "."
+      ],
+      "reason": "same task axis now tested through one owner-path query-set"
+    }
+  ],
+  "findings": [
+    {
+      "kind": "prime-quality",
+      "severity": "warning",
+      "message": "prime seeds did not expose task/runtime abort owners for this intent before text fallback"
+    },
+    {
+      "kind": "query-composition",
+      "severity": "info",
+      "message": "same-intent text probes now merge into a Rust text query-set packet"
+    },
+    {
+      "kind": "tests-ranking",
+      "severity": "info",
+      "message": "tests query-set keeps tests/task_join_set.rs inside the seed budget"
+    },
+    {
+      "kind": "tests-association",
+      "severity": "info",
+      "message": "AbortHandle and JoinSet owners can be tested together through an exact-set owner-path query-set"
+    },
+    {
+      "kind": "pipe-grammar",
+      "severity": "info",
+      "message": "Rust text/tests query-set support is registry-advertised as the safe composition target"
+    }
+  ]
+}

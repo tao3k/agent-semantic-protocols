@@ -1,3 +1,9 @@
+.codex/harness-state
+.codex/semantic-agent-hook/
+.codex/rs-harness/
+.data/
+.devenv/
+target/
 .venv/
 __pycache__/
 *.py[cod]

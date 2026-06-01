@@ -3,13 +3,13 @@
 use serde_json::Value;
 
 use crate::command::{
-    CommandIntent, command_intent, contains_ingest_pipe, first_path, profiles_for_command,
-    profiles_for_raw_search, search_json_route, semantic_shell_tokens,
+    CommandIntent, command_intent, contains_ingest_pipe, path_like_tokens, profiles_for_raw_search,
+    search_json_route, semantic_shell_tokens,
 };
 use crate::protocol::{
     DecisionKind, DecisionRoute, DecisionRouteKind, DecisionSubject, HOOK_DECISION_SCHEMA_ID,
     HOOK_DECISION_SCHEMA_VERSION, HOOK_PROTOCOL_ID, HOOK_PROTOCOL_VERSION, HookDecision,
-    LanguageProfile, ProfileRegistry, ReasonKind,
+    LanguageProfile, ProfileRegistry, ProfileSelectorMatch, ReasonKind, SourceSelectorKind,
 };
 
 #[derive(Clone, Debug)]
@@ -58,20 +58,33 @@ fn extract_paths_direct(tool_input: &Value) -> Vec<String> {
 
 fn is_direct_read_tool(tool_name: &str) -> bool {
     let lower = tool_name.to_ascii_lowercase();
+    let normalized = lower
+        .chars()
+        .map(|ch| match ch {
+            '-' | '/' | ':' => '.',
+            _ => ch,
+        })
+        .collect::<String>();
+    is_direct_read_tool_alias(&normalized)
+        || normalized
+            .split('.')
+            .next_back()
+            .is_some_and(is_direct_read_tool_alias)
+        || (lower.starts_with("mcp__") && lower.contains("__read"))
+}
+
+fn is_direct_read_tool_alias(tool_name: &str) -> bool {
     matches!(
         tool_name,
-        "Read"
-            | "readFile"
-            | "readDirectory"
+        "read"
+            | "readfile"
             | "read_file"
-            | "FsReadFile"
-            | "FsReadDirectory"
-            | "fs.read"
-            | "fs.readDirectory"
-            | "fs/readFile"
-            | "fs/readDirectory"
+            | "readdirectory"
+            | "read_directory"
+            | "fsreadfile"
+            | "fsreaddirectory"
             | "mcp_read"
-    ) || (lower.starts_with("mcp__") && lower.contains("__read"))
+    )
 }
 
 fn collect_tool_actions(tool_name: &str, tool_input: &Value) -> Vec<ToolAction> {
@@ -127,9 +140,10 @@ fn nested_tool_actions(tool_input: &Value) -> Vec<NestedToolAction<'_>> {
 
 fn command_source_paths(command: &str) -> Vec<String> {
     let tokens = semantic_shell_tokens(command);
-    first_path(&tokens)
-        .map(|path| vec![path.to_string()])
-        .unwrap_or_default()
+    path_like_tokens(&tokens)
+        .into_iter()
+        .map(str::to_string)
+        .collect()
 }
 
 fn subject_for_action(action: &ToolAction) -> DecisionSubject {
@@ -151,6 +165,10 @@ pub fn classify_hook(
     event: &str,
     payload: &Value,
 ) -> HookDecision {
+    if let Some(decision) = classify_subagent_stop(platform, event, payload) {
+        return decision;
+    }
+
     let tool_name = payload_string(payload, "tool_name")
         .or_else(|| payload_string(payload, "toolName"))
         .unwrap_or_default();
@@ -177,6 +195,33 @@ pub fn classify_hook(
     allow(platform, event, subject)
 }
 
+fn classify_subagent_stop(platform: &str, event: &str, payload: &Value) -> Option<HookDecision> {
+    if event != "subagent-stop" {
+        return None;
+    }
+    let last_message = payload_string(payload, "last_assistant_message")
+        .or_else(|| payload_string(payload, "lastAssistantMessage"))
+        .unwrap_or_default();
+    if last_message.contains("[search-subagent]") {
+        return Some(allow(platform, event, DecisionSubject::default()));
+    }
+    Some(HookDecision {
+        schema_id: HOOK_DECISION_SCHEMA_ID,
+        schema_version: HOOK_DECISION_SCHEMA_VERSION,
+        protocol_id: HOOK_PROTOCOL_ID,
+        protocol_version: HOOK_PROTOCOL_VERSION,
+        platform: platform.to_string(),
+        event: event.to_string(),
+        decision: DecisionKind::Block,
+        reason_kind: ReasonKind::SubagentReceiptRequired,
+        language_ids: Vec::new(),
+        subject: DecisionSubject::default(),
+        routes: Vec::new(),
+        message: "SubagentStop requires compact [search-subagent] evidence before fan-in."
+            .to_string(),
+    })
+}
+
 fn classify_direct_read_action(
     registry: &ProfileRegistry,
     platform: &str,
@@ -186,29 +231,13 @@ fn classify_direct_read_action(
     if !is_direct_read_tool(&action.tool_name) {
         return None;
     }
-    let (profile, path) = action
-        .paths
-        .iter()
-        .find_map(|path| {
-            registry
-                .profile_for_path(path)
-                .map(|profile| (profile, path))
-        })
-        .filter(|(profile, _)| profile.policy.block_direct_read)?;
-    Some(deny(
+    direct_read_decision(
+        registry,
         platform,
         event,
-        ReasonKind::DirectSourceRead,
-        vec![profile.language_id.clone()],
-        subject_for_action(action),
-        vec![profile.route_from_template(
-            DecisionRouteKind::Owner,
-            &profile.commands.owner,
-            Some(path),
-            None,
-        )],
-        format!("Use {} search owner before reading source.", profile.binary),
-    ))
+        action,
+        collect_direct_read_matches(registry, action.paths.iter().map(String::as_str)),
+    )
 }
 
 fn classify_command_action(
@@ -235,24 +264,26 @@ fn classify_search_json_command(
         return None;
     }
     let (profile, argv) = search_json_route(registry, tokens)?;
-    if !profile.policy.block_agent_search_json {
+    if !profile.policy.blocks_agent_search_json() {
         return None;
     }
+    let routes = vec![DecisionRoute {
+        language_id: profile.language_id.clone(),
+        provider_id: profile.provider_id.clone(),
+        binary: profile.binary.clone(),
+        kind: DecisionRouteKind::Text,
+        argv,
+        stdin_mode: None,
+    }];
+    let message = provider_guide_message("agent-search-json denied", &[profile]);
     Some(deny(
         platform,
         event,
         ReasonKind::AgentSearchJson,
         vec![profile.language_id.clone()],
         subject_for_action(action),
-        vec![DecisionRoute {
-            language_id: profile.language_id.clone(),
-            provider_id: profile.provider_id.clone(),
-            binary: profile.binary.clone(),
-            kind: DecisionRouteKind::Text,
-            argv,
-            stdin_mode: None,
-        }],
-        "Use compact search output for agent exploration; reserve --json for schema tests and machine consumers.".to_string(),
+        routes,
+        message,
     ))
 }
 
@@ -263,65 +294,317 @@ fn classify_source_read_command(
     action: &ToolAction,
     tokens: &[String],
 ) -> Option<HookDecision> {
-    let direct_read_profiles = profiles_for_command(registry, tokens)
-        .into_iter()
-        .filter(|profile| profile.policy.block_direct_read)
-        .collect::<Vec<_>>();
     match command_intent(tokens) {
-        CommandIntent::DirectRead => {
-            let (path, profile) = first_path(tokens).and_then(|path| {
-                registry
-                    .profile_for_path(path)
-                    .map(|profile| (path, profile))
-            })?;
-            Some(deny(
-                platform,
-                event,
-                ReasonKind::DirectSourceRead,
-                vec![profile.language_id.clone()],
-                subject_for_action(action),
-                vec![profile.route_from_template(
-                    DecisionRouteKind::Owner,
-                    &profile.commands.owner,
-                    Some(path),
-                    None,
-                )],
-                format!("Use {} search owner before reading source.", profile.binary),
-            ))
-        }
-        CommandIntent::ContentDump if !direct_read_profiles.is_empty() => {
-            let route = first_path(tokens)
-                .and_then(|path| {
-                    registry.profile_for_path(path).map(|profile| {
-                        profile.route_from_template(
-                            DecisionRouteKind::Owner,
-                            &profile.commands.owner,
-                            Some(path),
-                            None,
-                        )
-                    })
-                })
-                .unwrap_or_else(|| {
-                    let profile = direct_read_profiles[0];
-                    profile.route_from_template(
-                        DecisionRouteKind::Prime,
-                        &profile.commands.prime,
-                        None,
-                        None,
-                    )
-                });
+        CommandIntent::DirectRead => direct_read_decision(
+            registry,
+            platform,
+            event,
+            action,
+            collect_direct_read_matches(registry, path_like_tokens(tokens)),
+        ),
+        CommandIntent::ContentDump => {
+            let matches = collect_content_dump_matches(registry, path_like_tokens(tokens));
+            if matches.is_empty() {
+                return None;
+            }
+            let routes = direct_read_routes(&matches);
+            let profiles = profiles_from_matches(&matches);
+            let message = provider_guide_message("bulk-source-dump denied", &profiles);
             Some(deny(
                 platform,
                 event,
                 ReasonKind::BulkSourceDump,
-                language_ids(&direct_read_profiles),
+                direct_read_language_ids(&matches),
                 subject_for_action(action),
-                vec![route],
-                "Use semantic search before dumping source content.".to_string(),
+                routes,
+                message,
             ))
         }
         _ => None,
     }
+}
+
+fn direct_read_decision(
+    _registry: &ProfileRegistry,
+    platform: &str,
+    event: &str,
+    action: &ToolAction,
+    matches: Vec<DirectReadMatch<'_, '_>>,
+) -> Option<HookDecision> {
+    if matches.is_empty() {
+        return None;
+    }
+    let routes = direct_read_routes(&matches);
+    let message = direct_read_decision_message(&matches, &routes);
+    Some(deny(
+        platform,
+        event,
+        ReasonKind::DirectSourceRead,
+        direct_read_language_ids(&matches),
+        subject_for_action(action),
+        routes,
+        message,
+    ))
+}
+
+type DirectReadMatch<'path, 'profile> = (&'path str, ProfileSelectorMatch<'profile>);
+
+fn collect_direct_read_matches<'path, 'profile, I>(
+    registry: &'profile ProfileRegistry,
+    paths: I,
+) -> Vec<DirectReadMatch<'path, 'profile>>
+where
+    I: IntoIterator<Item = &'path str>,
+{
+    collect_source_selector_matches(registry, paths, |profile| {
+        profile.policy.blocks_direct_source_read()
+    })
+}
+
+fn collect_content_dump_matches<'path, 'profile, I>(
+    registry: &'profile ProfileRegistry,
+    paths: I,
+) -> Vec<DirectReadMatch<'path, 'profile>>
+where
+    I: IntoIterator<Item = &'path str>,
+{
+    collect_source_selector_matches(registry, paths, |profile| {
+        profile.policy.blocks_bulk_source_dump()
+    })
+}
+
+fn collect_source_selector_matches<'path, 'profile, I, F>(
+    registry: &'profile ProfileRegistry,
+    paths: I,
+    should_block: F,
+) -> Vec<DirectReadMatch<'path, 'profile>>
+where
+    I: IntoIterator<Item = &'path str>,
+    F: Fn(&LanguageProfile) -> bool,
+{
+    let mut matches: Vec<DirectReadMatch<'path, 'profile>> = Vec::new();
+    for path in paths {
+        for matched in registry.profiles_for_selector(path) {
+            if !should_block(matched.profile) {
+                continue;
+            }
+            if matches.iter().any(|(_, existing)| {
+                existing.profile.language_id == matched.profile.language_id
+                    && existing.profile.provider_id == matched.profile.provider_id
+            }) {
+                continue;
+            }
+            matches.push((path, matched));
+        }
+    }
+    matches
+}
+
+fn direct_read_routes(matches: &[DirectReadMatch<'_, '_>]) -> Vec<DecisionRoute> {
+    matches
+        .iter()
+        .map(|(path, matched)| direct_read_route(matched.profile, path, matched.kind))
+        .collect()
+}
+
+fn direct_read_language_ids(matches: &[DirectReadMatch<'_, '_>]) -> Vec<String> {
+    matches
+        .iter()
+        .map(|(_, matched)| matched.profile.language_id.clone())
+        .collect()
+}
+
+fn direct_read_decision_message(
+    matches: &[DirectReadMatch<'_, '_>],
+    routes: &[DecisionRoute],
+) -> String {
+    let profiles = profiles_from_matches(matches);
+    if !matches
+        .iter()
+        .any(|(_, matched)| matched.kind == SourceSelectorKind::ExactPath)
+    {
+        return provider_guide_message("direct-source-read denied", &profiles);
+    }
+    let rendered_routes = routes
+        .iter()
+        .map(|route| command_line(&route.argv))
+        .collect::<Vec<_>>();
+    if rendered_routes.is_empty() {
+        return provider_guide_message("direct-source-read denied", &profiles);
+    }
+    format!(
+        "direct-source-read denied; route: {}",
+        rendered_routes.join("; ")
+    )
+}
+
+fn profiles_from_matches<'a>(matches: &[DirectReadMatch<'_, 'a>]) -> Vec<&'a LanguageProfile> {
+    matches.iter().map(|(_, matched)| matched.profile).collect()
+}
+
+fn provider_guide_message(reason: &str, profiles: &[&LanguageProfile]) -> String {
+    let mut rendered_guides = Vec::<String>::new();
+    let mut seen_providers = Vec::<(&str, &str)>::new();
+    for profile in profiles {
+        if seen_providers.iter().any(|(language_id, provider_id)| {
+            *language_id == profile.language_id && *provider_id == profile.provider_id
+        }) {
+            continue;
+        }
+        seen_providers.push((profile.language_id.as_str(), profile.provider_id.as_str()));
+        rendered_guides.push(format!(
+            "{} => {}",
+            profile.provider_id,
+            command_line(&provider_guide_argv(profile))
+        ));
+    }
+    if rendered_guides.is_empty() {
+        return format!("{reason}; provider guide unavailable");
+    }
+    format!("{reason}; provider guide: {}", rendered_guides.join("; "))
+}
+
+fn provider_guide_argv(profile: &LanguageProfile) -> Vec<String> {
+    profile
+        .commands
+        .guide
+        .as_ref()
+        .map(|template| {
+            template
+                .argv
+                .iter()
+                .map(|arg| arg.replace("{projectRoot}", "."))
+                .collect()
+        })
+        .unwrap_or_else(|| {
+            vec![
+                profile.binary.clone(),
+                "agent".to_string(),
+                "guide".to_string(),
+                ".".to_string(),
+            ]
+        })
+}
+
+fn direct_read_route(
+    profile: &LanguageProfile,
+    path: &str,
+    selector_kind: SourceSelectorKind,
+) -> DecisionRoute {
+    match selector_kind {
+        SourceSelectorKind::ExactPath => {
+            let query = direct_read_query(profile, path);
+            profile.route_from_template(
+                DecisionRouteKind::Owner,
+                &profile.commands.owner,
+                Some(path),
+                query.as_deref(),
+            )
+        }
+        SourceSelectorKind::Pattern => profile.route_from_template(
+            DecisionRouteKind::Prime,
+            &profile.commands.prime,
+            None,
+            None,
+        ),
+    }
+}
+
+fn direct_read_query(profile: &LanguageProfile, path: &str) -> Option<String> {
+    if !profile
+        .commands
+        .owner
+        .argv
+        .iter()
+        .any(|arg| arg.contains("{query}"))
+    {
+        return None;
+    }
+    infer_query_from_path(path)
+}
+
+fn infer_query_from_path(path: &str) -> Option<String> {
+    let normalized = path.trim().trim_end_matches('/');
+    let file_name = normalized.rsplit('/').next()?;
+    let stem = file_name
+        .rsplit_once('.')
+        .map_or(file_name, |(stem, _)| stem);
+    let base = if matches!(stem, "index" | "mod" | "__init__") {
+        normalized.rsplit('/').nth(1).unwrap_or(stem)
+    } else {
+        stem
+    };
+    query_variants(base)
+}
+
+fn query_variants(base: &str) -> Option<String> {
+    let raw = base.trim_matches(|ch: char| !ch.is_ascii_alphanumeric());
+    if raw.is_empty() {
+        return None;
+    }
+    let pascal = title_case_identifier(raw);
+    let camel = lower_first_ascii(&pascal);
+    let mut variants = Vec::new();
+    push_unique(&mut variants, raw.to_string());
+    if !pascal.is_empty() {
+        push_unique(&mut variants, pascal);
+    }
+    if !camel.is_empty() {
+        push_unique(&mut variants, camel);
+    }
+    Some(variants.join("|"))
+}
+
+fn title_case_identifier(value: &str) -> String {
+    value
+        .split(|ch: char| !ch.is_ascii_alphanumeric())
+        .filter(|part| !part.is_empty())
+        .map(uppercase_first_ascii)
+        .collect::<String>()
+}
+
+fn uppercase_first_ascii(value: &str) -> String {
+    let mut chars = value.chars();
+    let Some(first) = chars.next() else {
+        return String::new();
+    };
+    let mut output = String::new();
+    output.push(first.to_ascii_uppercase());
+    output.extend(chars);
+    output
+}
+
+fn lower_first_ascii(value: &str) -> String {
+    let mut chars = value.chars();
+    let Some(first) = chars.next() else {
+        return String::new();
+    };
+    let mut output = String::new();
+    output.push(first.to_ascii_lowercase());
+    output.extend(chars);
+    output
+}
+
+fn push_unique(values: &mut Vec<String>, value: String) {
+    if !values.iter().any(|existing| existing == &value) {
+        values.push(value);
+    }
+}
+
+fn command_line(argv: &[String]) -> String {
+    argv.iter()
+        .map(|arg| shell_quote_arg(arg))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn shell_quote_arg(arg: &str) -> String {
+    if arg.chars().all(|character| {
+        character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.' | '/' | ':')
+    }) {
+        return arg.to_string();
+    }
+    format!("'{}'", arg.replace('\'', "'\\''"))
 }
 
 fn classify_raw_search_command(
@@ -336,12 +619,12 @@ fn classify_raw_search_command(
     }
     let raw_search_profiles = profiles_for_raw_search(registry, tokens)
         .into_iter()
-        .filter(|profile| profile.policy.block_broad_raw_search)
+        .filter(|profile| profile.policy.blocks_raw_source_search())
         .collect::<Vec<_>>();
     if raw_search_profiles.is_empty() || contains_ingest_pipe(tokens, &raw_search_profiles) {
         return None;
     }
-    let routes = raw_search_profiles
+    let routes: Vec<DecisionRoute> = raw_search_profiles
         .iter()
         .map(|profile| {
             profile.route_from_template(
@@ -352,6 +635,7 @@ fn classify_raw_search_command(
             )
         })
         .collect();
+    let message = provider_guide_message("raw-broad-search denied", &raw_search_profiles);
     Some(deny(
         platform,
         event,
@@ -359,7 +643,7 @@ fn classify_raw_search_command(
         language_ids(&raw_search_profiles),
         subject_for_action(action),
         routes,
-        "Pipe broad raw search candidates into semantic search ingest.".to_string(),
+        message,
     ))
 }
 

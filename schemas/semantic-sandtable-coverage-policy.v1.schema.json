@@ -52,7 +52,9 @@
           "codex-hooks",
           "codex-wrapper",
           "desktop-hooks",
-          "cli-hooks"
+          "cli-hooks",
+          "real-trigger",
+          "large-library"
         ]
       }
     }

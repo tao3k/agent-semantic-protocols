@@ -13,7 +13,7 @@
     "relative": "."
   },
   "budgets": {
-    "maxCommands": 5,
+    "maxCommands": 7,
     "maxTotalLinesWarn": 180,
     "maxTotalStdoutBytesWarn": 22000
   },
@@ -22,14 +22,7 @@
       "id": "wrapper-rust-rg-deny",
       "kind": "hook-replay",
       "command": [
-        "cargo",
-        "run",
-        "--manifest-path",
-        "Cargo.toml",
-        "--quiet",
-        "--package",
         "semantic-agent-hook",
-        "--",
         "hook",
         "--client",
         "codex",
@@ -51,17 +44,35 @@
       }
     },
     {
+      "id": "exact-typescript-rg-deny",
+      "kind": "hook-replay",
+      "command": [
+        "semantic-agent-hook",
+        "hook",
+        "--client",
+        "codex",
+        "pre-tool",
+        "--emit",
+        "decision"
+      ],
+      "stdin": "{\"tool_name\":\"functions.exec_command\",\"tool_input\":{\"cmd\":\"rg -n \\\"TypeScriptReasoningTree\\\" languages/typescript-lang-project-harness/src/model.ts\"}}",
+      "expect": {
+        "stdoutJsonSchema": "schemas/semantic-agent-hook-decision.v1.schema.json",
+        "stdoutJsonEquals": {
+          "decision": "deny",
+          "reasonKind": "raw-broad-search",
+          "languageIds.0": "typescript",
+          "routes.0.kind": "ingest",
+          "routes.0.providerId": "ts-harness"
+        },
+        "maxElapsedMsWarn": 6000
+      }
+    },
+    {
       "id": "parallel-exec-rtk-read-deny",
       "kind": "hook-replay",
       "command": [
-        "cargo",
-        "run",
-        "--manifest-path",
-        "Cargo.toml",
-        "--quiet",
-        "--package",
         "semantic-agent-hook",
-        "--",
         "hook",
         "--client",
         "codex",
@@ -83,17 +94,37 @@
       }
     },
     {
+      "id": "namespaced-typescript-read-tool-deny",
+      "kind": "hook-replay",
+      "command": [
+        "semantic-agent-hook",
+        "hook",
+        "--client",
+        "codex",
+        "pre-tool",
+        "--emit",
+        "decision"
+      ],
+      "stdin": "{\"toolName\":\"functions.read_file\",\"toolInput\":{\"path\":\"languages/typescript-lang-project-harness/src/cli/semantic-search/types.ts\"}}",
+      "expect": {
+        "stdoutJsonSchema": "schemas/semantic-agent-hook-decision.v1.schema.json",
+        "stdoutJsonEquals": {
+          "decision": "deny",
+          "reasonKind": "direct-source-read",
+          "languageIds.0": "typescript",
+          "subject.toolName": "functions.read_file",
+          "subject.paths.0": "languages/typescript-lang-project-harness/src/cli/semantic-search/types.ts",
+          "routes.0.kind": "owner",
+          "routes.0.providerId": "ts-harness"
+        },
+        "maxElapsedMsWarn": 6000
+      }
+    },
+    {
       "id": "markdown-search-allow",
       "kind": "hook-replay",
       "command": [
-        "cargo",
-        "run",
-        "--manifest-path",
-        "Cargo.toml",
-        "--quiet",
-        "--package",
         "semantic-agent-hook",
-        "--",
         "hook",
         "--client",
         "codex",
@@ -115,14 +146,7 @@
       "id": "fd-typescript-deny",
       "kind": "hook-replay",
       "command": [
-        "cargo",
-        "run",
-        "--manifest-path",
-        "Cargo.toml",
-        "--quiet",
-        "--package",
         "semantic-agent-hook",
-        "--",
         "hook",
         "--client",
         "codex",
@@ -147,14 +171,7 @@
       "id": "find-rust-deny",
       "kind": "hook-replay",
       "command": [
-        "cargo",
-        "run",
-        "--manifest-path",
-        "Cargo.toml",
-        "--quiet",
-        "--package",
         "semantic-agent-hook",
-        "--",
         "hook",
         "--client",
         "codex",

@@ -1,0 +1,418 @@
+#+TITLE: 31.01 TypeScript Search Composition Research Report
+#+DATE: 2026-05-31
+#+STATUS: active
+#+JOHNNY_DECIMAL: 31.01
+#+AREA: 30-39 Research
+#+CATEGORY: 31 Search Flow Research
+
+* Purpose
+
+This report records the observed TypeScript search-loop failure where an agent
+expanded into many sequential =ts-harness search text= calls while trying to
+understand the semantic-search packet implementation.
+
+The goal is to preserve the problem evidence and define a small fix sequence
+that reduces token cost, search turns, and agent guessing without widening the
+shared protocol too early.
+
+* Replayed Trace
+
+The trace began with a composed command:
+
+#+begin_src shell
+ts-harness search owner src/cli/semantic-search/types.ts items --view seeds .
+#+end_src
+
+The command failed:
+
+#+begin_src text
+expected at most one PROJECT_ROOT argument
+#+end_src
+
+The agent then expanded into many narrower searches:
+
+#+begin_src shell
+ts-harness search owner src/cli/semantic-search/types.ts .
+ts-harness search text "SemanticSearchPacket" owner .
+ts-harness search text "readonly owners" owner .
+ts-harness search text "interface SemanticSearch" owner .
+ts-harness search text "SemanticSearchOwner" owner .
+ts-harness search text "searchSynthesis" owner .
+ts-harness search text "buildPrimePacket" owner .
+ts-harness search api basePacket .
+#+end_src
+
+* Observed Problems
+
+** Pipe grammar mismatch
+
+The TypeScript provider does not accept =owner ... items=, so =items= is parsed
+as a positional project root. The final =.= becomes a second project root and
+the command exits before any useful packet is produced.
+
+This is especially costly because the command shape is reasonable from the
+agent's perspective. Rust-style search flows have trained the agent to ask for
+an owner plus a smaller item projection.
+
+** Owner output is graph-heavy and item-light
+
+=search owner src/cli/semantic-search/types.ts .= returns many import edges and
+an owner export summary, but the most useful declarations are not surfaced as
+first-class item evidence.
+
+Observed owner summary:
+
+#+begin_src text
+|owner src/cli/semantic-search/types.ts ... exp=MAX_FINDINGS,MAX_IMPORT_HITS,...
+#+end_src
+
+The output leads with constants instead of the important packet interfaces:
+
+#+begin_src text
+SemanticSearchPacket
+SemanticSearchPacketPayload
+SemanticSearchOwner
+SemanticSearchNextAction
+#+end_src
+
+The agent compensates by guessing text queries for interface names and fields.
+
+** Next-action hints are too weak
+
+The compact output often suggests the first exported constant or function:
+
+#+begin_src text
+next=text:MAX_FINDINGS
+next=text:buildOwnerPacket
+#+end_src
+
+These hints are syntactically valid but strategically poor. They encourage a
+single-token follow-up instead of a composed query over the co-located semantic
+items.
+
+** API view lacks implementation shape
+
+=search api basePacket .= gives the function signature and complexity facts, but
+it does not show the return object shape or spread sources.
+
+The agent then searches for implementation fragments:
+
+#+begin_src shell
+ts-harness search text "return basePacket" owner .
+ts-harness search text "...payload" owner .
+ts-harness search text "packages: payload" owner .
+#+end_src
+
+For exported packet builders, the return object shape is part of the semantic
+API surface the agent needs.
+
+** Schema and docs are outside parser-visible text
+
+When the agent needs JSON Schema details, =search text= may miss because schema
+files are not parser-owned TypeScript source. The current fallback is direct
+file reading or external =rg= followed by =search ingest=.
+
+This behavior is correct for generic text search, but schema lookup should
+eventually have a typed route because schema files are first-class protocol
+contracts.
+
+* Root Cause
+
+The current TS search protocol gives the agent enough primitives, but not enough
+composition guidance.
+
+The failure is not that the agent asked too many questions. The failure is that
+the first high-signal composed question was rejected, and the fallback packet did
+not expose the next bounded composed question.
+
+In short:
+
+#+begin_src text
+invalid composed query
+  -> broad owner graph
+  -> weak next hints
+  -> guessed text terms
+  -> repeated owner/text/api searches
+#+end_src
+
+* Schema Ownership Decision
+
+** Current common schema status
+
+The root =schemas/semantic-search-packet.v1.schema.json= already supports:
+
+- packet-level =items=
+- =queryComposition.merge= containing =items=
+- extension =fields= on structured objects
+
+The root =schemas/semantic-language-registry.v1.schema.json= models
+=acceptedPipes= as a string array, so adding =items= as a provider pipe does not
+require a common schema change.
+
+** What can land in TypeScript first
+
+The following changes are provider behavior and can land in the TS harness first:
+
+- accept =owner items= as a legal pipe
+- emit =items= for owner packets
+- rank interface/type items before constants in seed-oriented output
+- include command-shaped guidance in =nextAction.fields=
+
+** What must update root schema first
+
+The following should update the root protocol schema before provider adoption:
+
+- adding a top-level =nextAction.command= field
+- adding a new =nextAction.kind= such as =query-set=
+- adding a new first-class =items= search view
+- making pipe names a finite common enum rather than provider strings
+- adding a first-class =schema= search view
+
+* Proposed Fix Sequence
+
+** 31.01-A Accept owner items
+
+Make this command valid:
+
+#+begin_src shell
+ts-harness search owner src/cli/semantic-search/types.ts items --view seeds .
+#+end_src
+
+Expected behavior:
+
+- =owner= remains the primary view.
+- =items= is parsed as a pipe, not as =PROJECT_ROOT=.
+- =.= remains the only project root.
+- JSON output continues to validate against the existing packet schema.
+
+** 31.01-B Emit parser-owned owner items
+
+Owner packets should include item rows for top-level public items in the selected
+owner.
+
+Example compact projection:
+
+#+begin_src text
+|item interface SemanticSearchPacket owner=src/cli/semantic-search/types.ts line=42 exported=true
+|item interface SemanticSearchPacketPayload owner=src/cli/semantic-search/types.ts line=73 exported=true
+|item interface SemanticSearchOwner owner=src/cli/semantic-search/types.ts line=192 exported=true
+#+end_src
+
+The source of truth should be parser-collected public item facts, not regex over
+rendered source text.
+
+** 31.01-C Improve seed ranking
+
+For =--view seeds=, owner item seeds should prefer:
+
+1. interface
+2. type
+3. class
+4. function
+5. enum
+6. namespace
+7. variable
+
+This keeps protocol shape declarations ahead of helper constants.
+
+** 31.01-D Add composed next guidance
+
+When an owner has several related exported items, emit a command-shaped next
+hint through existing structured =fields=.
+
+Example:
+
+#+begin_src text
+|next text:SemanticSearchPacket(owner=src/cli/semantic-search/types.ts)
+#+end_src
+
+JSON should carry the richer form:
+
+#+begin_src json
+{
+  "kind": "text",
+  "target": "SemanticSearchPacket",
+  "ownerPath": "src/cli/semantic-search/types.ts",
+  "fields": {
+    "command": "ts-harness search text --query-set SemanticSearchPacket --query-set SemanticSearchPacketPayload --query-set SemanticSearchOwner --owner src/cli/semantic-search/types.ts owner --view seeds .",
+    "composition": "query-set",
+    "reason": "co-located-owner-items"
+  }
+}
+#+end_src
+
+This uses the existing =fields= extension point, so it does not require a root
+schema change.
+
+** 31.01-E Add API return-shape projection
+
+For exported builder functions returning object literals, =search api= should
+include implementation shape facts:
+
+#+begin_src text
+|api-shape symbol=basePacket returns=object fields=schemaId,schemaVersion,protocolId,protocolVersion,languageId,providerId,binary,namespace,method,projectRoot,view,renderMode,header,nodes,edges,owners,hits,findings,nextActions,notes spreads=packageName,query,querySet,inputDetection,packages,searchSynthesis
+#+end_src
+
+This should be parser-owned and bounded. It does not replace source reading for
+large implementation changes, but it avoids text guessing for packet builders.
+
+* Success Metrics
+
+The target is to reduce the replayed investigation from more than ten searches
+to three or fewer:
+
+#+begin_src text
+1. owner + items + seeds
+2. query-set text over selected item names, scoped to owner
+3. api shape for selected builder, if implementation shape is needed
+#+end_src
+
+Secondary metrics:
+
+- no direct file read required for parser-owned TS source
+- no fallback =rg= required for parser-visible source identifiers
+- JSON packets validate against root common schema and TS local schema
+- compact output gives at least one useful composed next action
+
+* Verification Plan
+
+Add or update tests for:
+
+- =search owner <path> items --view seeds .= exits 0
+- =items= is not treated as =PROJECT_ROOT=
+- owner packet JSON contains =items=
+- compact render includes =|item= lines or equivalent seed evidence
+- seed output ranks interfaces/types before constants
+- schema validation accepts owner packets with =items=
+- composed next guidance remains inside =nextAction.fields=
+
+Run provider gates:
+
+#+begin_src shell
+npm run format:check
+npm run check:implementation
+npm run build
+node --test dist/tests/unit/cli.test.js dist/tests/unit/semantic_search_schema.test.js
+#+end_src
+
+* Implementation Status
+
+** 2026-05-31 TypeScript minimum closed loop
+
+The first TypeScript provider slice has been implemented and validated.
+
+Implemented behavior:
+
+- =search owner <path> items= is parsed as an owner query plus =items= pipe.
+- owner packets can carry parser-owned =items= without changing the root common schema.
+- compact and seed renderers emit bounded =|item= rows for owner items.
+- item ordering prefers interfaces, types, classes, functions, enums, namespaces, and variables, using source order inside the same declaration class.
+- =items= pipe suppresses stale single-token owner hints such as =MAX_FINDINGS=.
+- the provider emits a composed =|next-run ts-harness search text --query-set ...= hint for co-located owner items.
+
+Validated commands:
+
+#+begin_src shell
+npm run format:check
+npm run check:implementation
+npm run build
+node --test dist/tests/unit/cli.test.js dist/tests/unit/semantic_search_schema.test.js
+#+end_src
+
+Replay result:
+
+#+begin_src shell
+ts-harness search owner src/cli/semantic-search/types.ts items --view seeds .
+#+end_src
+
+The command now exits successfully and surfaces =SemanticSearchPacket=,
+=SemanticSearchPacketPayload=, and =SemanticSearchOwner= as item evidence, followed
+by a composed query-set next step.
+
+** 2026-05-31 API return-shape projection
+
+The TypeScript =api= view now emits a parser-owned return-object shape hit for
+exported functions whose body returns an object literal.
+
+Implemented behavior:
+
+- =search api basePacket .= includes an additional =reason=api-return-shape= hit.
+- the shape hit reports =returns=object=.
+- direct object fields and object fields discovered through bounded spread
+  expressions are surfaced in =fields=.
+- spread-derived fields are also surfaced in =spreads=, with =spreadCount=.
+- extraction uses the TypeScript Compiler API over the selected owner source, not
+  source-text regex.
+
+Replay result:
+
+#+begin_src shell
+ts-harness search api basePacket .
+#+end_src
+
+The command now surfaces:
+
+#+begin_src text
+reason=api-return-shape symbol=basePacket returns=object fields=schemaId,schemaVersion,protocolId,protocolVersion,languageId,providerId,binary,namespace,method,projectRoot,packageName,view,renderMode,query,querySet,queryComposition,queryCoverage,ownerResolution,searchSynthesis,avoidNextActions,header,inputDetection,packages,nodes,edges,owners,items,hits,findings,nextActions,notes spreads=packageName,query,querySet,queryComposition,queryCoverage,ownerResolution,searchSynthesis,avoidNextActions,inputDetection,packages,items
+#+end_src
+
+Validated commands remain:
+
+#+begin_src shell
+npm run format:check
+npm run check:implementation
+npm run build
+node --test dist/tests/unit/cli.test.js dist/tests/unit/semantic_search_schema.test.js
+#+end_src
+
+** 2026-05-31 Docs view for local schema contracts
+
+The TypeScript provider now implements =search docs= for local provider documentation
+contracts, starting with JSON Schema files under =schemas/=. This closes the
+trace gap where the agent had to read =semantic-search-packet.v1.schema.json=
+directly.
+
+Implemented behavior:
+
+- =search docs <query> .= searches local =*.schema.json= files.
+- schema hits are emitted as bounded =kind=text= hits with =reason=schema-contract=.
+- hits include =source=schema-json=, =surface=schema=, schema id, schema version,
+  title, and JSON pointer.
+- external docs remain out of scope and are routed through =ingest= or a future
+  docs provider.
+- this uses the existing common =docs= view, so no new common packet schema view
+  was added.
+
+Replay result:
+
+#+begin_src shell
+ts-harness search docs searchSynthesis .
+#+end_src
+
+The command now surfaces schema-owned evidence for =searchSynthesis= from
+=schemas/semantic-search-packet.v1.schema.json=, including JSON pointers such as
+=/properties/searchSynthesis= and =/$defs/searchSynthesis=.
+
+* Open Questions
+
+- Should =items= become a common finite pipe name in the root registry schema,
+  or remain provider-advertised through capability descriptors?
+- Should schema lookup be modeled as =search schema= or as a =docs/schema= pipe?
+- Should compact rendering print command-shaped next hints, or should that stay
+  JSON-only to keep line protocol short?
+
+* Current Recommendation
+
+Do not widen the root schema for the first repair.
+
+First land the TS provider minimum:
+
+#+begin_src text
+owner accepts items
+owner emits parser-owned items
+seeds prioritize semantic declarations
+nextAction.fields carries a composed query-set command
+#+end_src
+
+After the sandbox proves fewer turns and fewer tokens, promote the stable parts
+into the root registry and shared capability template.

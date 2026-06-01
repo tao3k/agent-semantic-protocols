@@ -31,6 +31,10 @@ def minimal_registry() -> dict[str, object]:
                 "sourceRoots": ["src", "tests"],
                 "ignoredPathPrefixes": ["node_modules", "dist", "coverage"],
                 "policy": {
+                    "directSourceRead": "block",
+                    "bulkSourceDump": "block",
+                    "rawSourceSearch": "block",
+                    "agentSearchJson": "block",
                     "blockDirectRead": True,
                     "blockBroadRawSearch": True,
                     "blockAgentSearchJson": True,
@@ -70,6 +74,7 @@ def minimal_registry() -> dict[str, object]:
                     "checkChanged": {
                         "argv": ["ts-harness", "check", "--changed", "."]
                     },
+                    "guide": {"argv": ["ts-harness", "agent", "guide", "."]},
                 },
             }
         ],
@@ -107,6 +112,24 @@ class SemanticAgentHookProfileSchemaTests(unittest.TestCase):
         errors = self.validation_errors(registry)
 
         self.assertTrue(any("'ingest' is a required property" in message for message in errors))
+
+    def test_guide_command_remains_optional_for_legacy_profiles(self) -> None:
+        registry = minimal_registry()
+        profile = copy.deepcopy(registry["profiles"][0])
+        del profile["commands"]["guide"]
+        registry["profiles"] = [profile]
+
+        self.assertEqual([], self.validation_errors(registry))
+
+    def test_action_policy_rejects_unknown_modes(self) -> None:
+        registry = minimal_registry()
+        profile = copy.deepcopy(registry["profiles"][0])
+        profile["policy"]["rawSourceSearch"] = "warn"
+        registry["profiles"] = [profile]
+
+        errors = self.validation_errors(registry)
+
+        self.assertTrue(any("'warn' is not one of" in message for message in errors))
 
 
 if __name__ == "__main__":

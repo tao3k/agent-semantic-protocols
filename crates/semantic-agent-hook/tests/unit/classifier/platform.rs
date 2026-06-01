@@ -22,9 +22,14 @@ fn platform_response_wraps_denied_decision_for_codex_hooks() {
         "PreToolUse"
     );
     assert_eq!(response["hookSpecificOutput"]["permissionDecision"], "deny");
-    assert_eq!(response["agentHookDecision"]["decision"], "deny");
+    assert!(response.get("agentHookDecision").is_none());
+    let context = response["hookSpecificOutput"]["additionalContext"]
+        .as_str()
+        .expect("decision context");
+    assert!(context.starts_with("[agent-hook-decision] "));
+    assert!(context.contains("\"decision\":\"deny\""));
     assert_eq!(
-        response["agentHookDecision"]["reasonKind"],
-        "direct-source-read"
+        response["hookSpecificOutput"]["permissionDecisionReason"],
+        "direct-source-read denied; route: ts-harness search owner src/cli/agent-hooks.ts items --query 'agent-hooks|AgentHooks|agentHooks' ."
     );
 }

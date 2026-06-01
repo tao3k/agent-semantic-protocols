@@ -1,0 +1,120 @@
+{
+  "id": "python.pandas-intent-matrix",
+  "language": "python",
+  "title": "pandas large-library feature/API/principle intent matrix",
+  "coverage": ["search-flow", "performance", "large-library"],
+  "tags": ["large-library", "pandas", "intent-matrix"],
+  "evidence": {
+    "source": "handwritten",
+    "fixtureTier": "large-library",
+    "targetLibrary": {
+      "language": "python",
+      "name": "pandas",
+      "package": "pandas",
+      "repository": "pandas-dev/pandas",
+      "workdirKind": "checkout"
+    },
+    "intentCases": [
+      {
+        "intentKind": "feature-implementation",
+        "intent": "Implement groupby behavior after locating compact owners and tests",
+        "stepIds": ["prime-groupby", "groupby-query-set"],
+        "queryTerms": ["groupby"]
+      },
+      {
+        "intentKind": "api-usage",
+        "intent": "Find DataFrameGroupBy API usage and callsites",
+        "stepIds": ["prime-groupby", "groupby-query-set"],
+        "queryTerms": ["DataFrameGroupBy"]
+      },
+      {
+        "intentKind": "implementation-principle",
+        "intent": "Understand BlockManager implementation paths without broad reads",
+        "stepIds": ["internals-query-set"],
+        "queryTerms": ["BlockManager"]
+      }
+    ]
+  },
+  "workdir": {
+    "env": "SANDTABLE_PY_PANDAS_ROOT",
+    "candidates": [
+      "~/ghq/github.com/pandas-dev/pandas",
+      "~/src/pandas",
+      "~/work/pandas"
+    ]
+  },
+  "budgets": {
+    "maxCommands": 3,
+    "maxTotalLinesWarn": 28,
+    "maxTotalStdoutBytesWarn": 10000
+  },
+  "steps": [
+    {
+      "id": "prime-groupby",
+      "command": [
+        "py-harness",
+        "search",
+        "prime",
+        "--package",
+        "core/groupby",
+        "--view",
+        "seeds",
+        "."
+      ],
+      "expect": {
+        "lineProtocol": true,
+        "stdoutContains": ["[search-prime]", "|seed"],
+        "maxStdoutLinesWarn": 8,
+        "maxElapsedMsWarn": 6000
+      }
+    },
+    {
+      "id": "groupby-query-set",
+      "command": [
+        "py-harness",
+        "search",
+        "text",
+        "--query-set",
+        "groupby",
+        "--query-set",
+        "DataFrameGroupBy",
+        "owner",
+        "tests",
+        "--package",
+        "core/groupby",
+        "--view",
+        "seeds",
+        "."
+      ],
+      "expect": {
+        "lineProtocol": true,
+        "stdoutContains": ["[search-text]", "querySet=2", "|seed"],
+        "maxStdoutLinesWarn": 12,
+        "maxElapsedMsWarn": 6000
+      }
+    },
+    {
+      "id": "internals-query-set",
+      "command": [
+        "py-harness",
+        "search",
+        "text",
+        "--query-set",
+        "BlockManager",
+        "owner",
+        "tests",
+        "--package",
+        "core/internals",
+        "--view",
+        "seeds",
+        "."
+      ],
+      "expect": {
+        "lineProtocol": true,
+        "stdoutContains": ["[search-text]", "querySet=1", "|seed"],
+        "maxStdoutLinesWarn": 12,
+        "maxElapsedMsWarn": 6000
+      }
+    }
+  ]
+}

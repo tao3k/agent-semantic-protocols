@@ -1,0 +1,197 @@
+{
+  "schemaId": "agent.semantic-protocols.semantic-sandtable-receipt",
+  "schemaVersion": "1",
+  "scenarioId": "rust.tokio-real-trigger-flow",
+  "language": "rust",
+  "project": {
+    "name": "tokio",
+    "package": "tokio",
+    "source": "registry",
+    "workdir": "~/.cargo/registry/src/*/tokio-[0-9]*"
+  },
+  "intent": "Implement a feature-level async IO change before selecting files to edit",
+  "recordedAt": "2026-05-31",
+  "editBoundary": "before-edit",
+  "commands": [
+    {
+      "id": "prime",
+      "kind": "search",
+      "argv": ["rs-harness", "search", "prime", "--view", "seeds", "--seeds", "8", "."],
+      "stdinShape": "none",
+      "metrics": {
+        "elapsedMs": 678,
+        "stdoutBytes": 521,
+        "stderrBytes": 0,
+        "stdoutLines": 7,
+        "stderrLines": 0,
+        "tokenCost": {
+          "unit": "token-estimate",
+          "outputTokens": 131,
+          "totalTokens": 131,
+          "basis": "stdoutBytes/4 rounded up; terminal-output estimate only"
+        }
+      },
+      "next": ["text:AsyncRead", "owner:<seed-owner>", "tests:<seed-owner>"]
+    },
+    {
+      "id": "text-async-read",
+      "kind": "search",
+      "argv": ["rs-harness", "search", "text", "AsyncRead", "--view", "seeds", "--seeds", "8", "."],
+      "stdinShape": "none",
+      "metrics": {
+        "elapsedMs": 101,
+        "stdoutBytes": 233,
+        "stderrBytes": 0,
+        "stdoutLines": 3,
+        "stderrLines": 0,
+        "tokenCost": {
+          "unit": "token-estimate",
+          "outputTokens": 59,
+          "totalTokens": 59,
+          "basis": "stdoutBytes/4 rounded up; terminal-output estimate only"
+        }
+      },
+      "next": ["owner:<async-owner>"]
+    },
+    {
+      "id": "owner-async-items",
+      "kind": "search",
+      "argv": ["rs-harness", "search", "owner", "<async-owner>", "items", "--trace", "--view", "seeds", "--seeds", "8", "."],
+      "stdinShape": "none",
+      "metrics": {
+        "elapsedMs": 40,
+        "stdoutBytes": 393,
+        "stderrBytes": 0,
+        "stdoutLines": 8,
+        "stderrLines": 0,
+        "tokenCost": {
+          "unit": "token-estimate",
+          "outputTokens": 99,
+          "totalTokens": 99,
+          "basis": "stdoutBytes/4 rounded up; terminal-output estimate only"
+        }
+      },
+      "next": ["tests:<async-owner>"]
+    },
+    {
+      "id": "tests-async-owner",
+      "kind": "search",
+      "argv": ["rs-harness", "search", "tests", "<async-owner>", "--view", "seeds", "--seeds", "4", "."],
+      "stdinShape": "none",
+      "metrics": {
+        "elapsedMs": 1054,
+        "stdoutBytes": 182,
+        "stderrBytes": 0,
+        "stdoutLines": 3,
+        "stderrLines": 0,
+        "tokenCost": {
+          "unit": "token-estimate",
+          "outputTokens": 46,
+          "totalTokens": 46,
+          "basis": "stdoutBytes/4 rounded up; terminal-output estimate only"
+        }
+      }
+    },
+    {
+      "id": "candidates-to-ingest",
+      "kind": "external-ingest",
+      "argv": ["rs-harness", "search", "ingest", "items", "tests", "--view", "seeds", "--seeds", "8", "."],
+      "stdinShape": "candidate-pipe",
+      "metrics": {
+        "elapsedMs": 43,
+        "stdoutBytes": 496,
+        "stderrBytes": 0,
+        "stdoutLines": 5,
+        "stderrLines": 0,
+        "tokenCost": {
+          "unit": "token-estimate",
+          "outputTokens": 124,
+          "totalTokens": 124,
+          "basis": "stdoutBytes/4 rounded up; terminal-output estimate only"
+        }
+      },
+      "notes": ["external candidates normalized through search ingest"]
+    },
+    {
+      "id": "raw-search-deny-guide",
+      "kind": "hook-deny",
+      "argv": ["functions.exec_command", "r\\u0067 -n \"AsyncRead\" src tests"],
+      "stdinShape": "hook-payload",
+      "decisionReasonKind": "raw-broad-search",
+      "routeKind": "ingest",
+      "metrics": {
+        "elapsedMs": 16,
+        "stdoutBytes": 1067,
+        "stderrBytes": 0,
+        "stdoutLines": 1,
+        "stderrLines": 0,
+        "tokenCost": {
+          "unit": "token-estimate",
+          "outputTokens": 267,
+          "totalTokens": 267,
+          "basis": "stdoutBytes/4 rounded up; terminal-output estimate only"
+        }
+      },
+      "next": ["pipe candidates into rs-harness search ingest"]
+    },
+    {
+      "id": "direct-read-deny-guide",
+      "kind": "hook-deny",
+      "argv": ["Read", "src/lib.rs"],
+      "stdinShape": "hook-payload",
+      "decisionReasonKind": "direct-source-read",
+      "routeKind": "owner",
+      "metrics": {
+        "elapsedMs": 22,
+        "stdoutBytes": 796,
+        "stderrBytes": 0,
+        "stdoutLines": 1,
+        "stderrLines": 0,
+        "tokenCost": {
+          "unit": "token-estimate",
+          "outputTokens": 199,
+          "totalTokens": 199,
+          "basis": "stdoutBytes/4 rounded up; terminal-output estimate only"
+        }
+      },
+      "next": ["rs-harness search owner src/lib.rs items"]
+    }
+  ],
+  "summary": {
+    "commandCount": 7,
+    "stdoutBytes": 3688,
+    "stderrBytes": 0,
+    "elapsedMs": 1954,
+    "repeatedSearches": 1,
+    "jsonSearches": 0,
+    "compactSearches": 5,
+    "tokenDelta": "lower",
+    "tokenCost": {
+      "unit": "token-estimate",
+      "outputTokens": 925,
+      "totalTokens": 925,
+      "basis": "sum of per-command stdoutBytes/4 rounded up; terminal-output estimate only"
+    }
+  },
+  "querySetOpportunities": [
+    {
+      "view": "owner",
+      "queries": 2,
+      "saveCommands": 1,
+      "selector": "exact-set",
+      "reason": "async IO owners can be merged after prime selects the axis"
+    }
+  ],
+  "findings": [
+    {
+      "kind": "prime-quality",
+      "severity": "info",
+      "message": "prime exposed the async IO axis without source reads"
+    },
+    {
+      "kind": "guide-quality",
+      "severity": "info",
+      "message": "raw candidate search denial exposed an ingest route"
+    }
+  ]
+}

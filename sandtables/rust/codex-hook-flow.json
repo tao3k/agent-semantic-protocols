@@ -22,21 +22,22 @@
     {
       "id": "direct-read-deny",
       "command": [
-        "rs-harness",
-        "agent",
+        "semantic-agent-hook",
         "hook",
         "--client",
         "codex",
         "pre-tool",
-        "."
+        "--emit",
+        "decision"
       ],
       "stdin": "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Read\",\"tool_input\":{\"path\":\"src/lib.rs\"}}",
       "expect": {
         "stdoutJsonEquals": {
-          "hookSpecificOutput.permissionDecision": "deny"
+          "decision": "deny",
+          "reasonKind": "direct-source-read"
         },
         "stdoutJsonContains": {
-          "hookSpecificOutput.permissionDecisionReason": "blocked=read-rs path=src/lib.rs"
+          "message": "rs-harness agent guide ."
         },
         "maxStdoutLinesWarn": 1,
         "maxElapsedMsWarn": 700
@@ -45,21 +46,22 @@
     {
       "id": "command-execution-read-deny",
       "command": [
-        "rs-harness",
-        "agent",
+        "semantic-agent-hook",
         "hook",
         "--client",
         "codex",
         "pre-tool",
-        "."
+        "--emit",
+        "decision"
       ],
       "stdin": "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"command_execution\",\"tool_input\":{\"command\":\"/bin/zsh -lc \\\"sed -n '1,8p' src/lib.rs\\\"\"}}",
       "expect": {
         "stdoutJsonEquals": {
-          "hookSpecificOutput.permissionDecision": "deny"
+          "decision": "deny",
+          "reasonKind": "bulk-source-dump"
         },
         "stdoutJsonContains": {
-          "hookSpecificOutput.permissionDecisionReason": "blocked=read-rs path=src/lib.rs"
+          "message": "rs-harness agent guide ."
         },
         "maxStdoutLinesWarn": 1,
         "maxElapsedMsWarn": 700
@@ -68,22 +70,22 @@
     {
       "id": "raw-rg-deny",
       "command": [
-        "rs-harness",
-        "agent",
+        "semantic-agent-hook",
         "hook",
         "--client",
         "codex",
         "pre-tool",
-        "."
+        "--emit",
+        "decision"
       ],
       "stdin": "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"functions.exec_command\",\"tool_input\":{\"cmd\":\"rg -n \\\"fn run_agent\\\" src tests\"}}",
       "expect": {
         "stdoutJsonEquals": {
-          "hookSpecificOutput.permissionDecision": "deny",
-          "agentHookDecision.reasonKind": "raw-broad-search"
+          "decision": "deny",
+          "reasonKind": "raw-broad-search"
         },
         "stdoutJsonContains": {
-          "hookSpecificOutput.permissionDecisionReason": "Raw broad Rust search"
+          "message": "rs-harness agent guide ."
         },
         "maxStdoutLinesWarn": 1,
         "maxElapsedMsWarn": 700
@@ -92,38 +94,42 @@
     {
       "id": "ingest-pipe-allow",
       "command": [
-        "rs-harness",
-        "agent",
+        "semantic-agent-hook",
         "hook",
         "--client",
         "codex",
         "pre-tool",
-        "."
+        "--emit",
+        "decision"
       ],
       "stdin": "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"rg -n \\\"fn run_agent\\\" --glob '*.rs' src tests | rs-harness search ingest items tests --view seeds --seeds 8 .\"}}",
       "expect": {
-        "stdoutEmpty": true,
+        "stdoutJsonEquals": {
+          "decision": "allow",
+          "reasonKind": "none"
+        },
         "maxElapsedMsWarn": 700
       }
     },
     {
       "id": "subagent-receipt-required",
       "command": [
-        "rs-harness",
-        "agent",
+        "semantic-agent-hook",
         "hook",
         "--client",
         "codex",
         "subagent-stop",
-        "."
+        "--emit",
+        "decision"
       ],
       "stdin": "{\"hook_event_name\":\"SubagentStop\",\"turn_id\":\"sandtable\",\"last_assistant_message\":\"done\"}",
       "expect": {
         "stdoutJsonEquals": {
-          "decision": "block"
+          "decision": "block",
+          "reasonKind": "subagent-receipt-required"
         },
         "stdoutJsonContains": {
-          "reason": "[search-subagent]"
+          "message": "[search-subagent]"
         },
         "maxStdoutLinesWarn": 1,
         "maxElapsedMsWarn": 700

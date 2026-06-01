@@ -1,0 +1,337 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-graph.v1.schema.json",
+  "title": "Semantic Graph",
+  "description": "Shared embeddable graph vocabulary for parser-owned semantic search nodes, edges, and bounded graph synthesis.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "protocolId",
+    "protocolVersion",
+    "languageId",
+    "providerId",
+    "projectRoot",
+    "graphKind",
+    "scope",
+    "nodes",
+    "edges"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.semantic-graph"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "protocolId": {
+      "const": "agent.semantic-protocols.semantic-language"
+    },
+    "protocolVersion": {
+      "const": "1"
+    },
+    "languageId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "providerId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "projectRoot": {
+      "type": "string",
+      "minLength": 1
+    },
+    "packageName": {
+      "type": "string",
+      "minLength": 1
+    },
+    "graphKind": {
+      "enum": [
+        "owner-dependency",
+        "module-tree",
+        "test-reachability",
+        "query-frontier",
+        "workspace",
+        "custom"
+      ]
+    },
+    "scope": {
+      "enum": [
+        "workspace",
+        "prime",
+        "owner",
+        "dependency",
+        "query-set",
+        "text",
+        "ingest",
+        "custom"
+      ]
+    },
+    "rootOwners": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/projectPath"
+      }
+    },
+    "nodes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/node"
+      }
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/edge"
+      }
+    },
+    "synthesis": {
+      "$ref": "#/$defs/synthesis"
+    },
+    "fields": {
+      "$ref": "#/$defs/fields"
+    }
+  },
+  "$defs": {
+    "projectPath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*)$"
+    },
+    "location": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path"],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/projectPath"
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "column": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "fields"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "enum": [
+            "package",
+            "owner",
+            "dependency",
+            "test",
+            "finding",
+            "symbol",
+            "config",
+            "tsconfig",
+            "extension",
+            "build_tool",
+            "test_surface",
+            "custom"
+          ]
+        },
+        "path": {
+          "$ref": "#/$defs/projectPath"
+        },
+        "rank": {
+          "type": "number"
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from", "kind", "to"],
+      "properties": {
+        "from": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "to": {
+          "type": "string",
+          "minLength": 1
+        },
+        "label": {
+          "type": "string"
+        },
+        "location": {
+          "$ref": "#/$defs/location"
+        },
+        "weight": {
+          "type": "number"
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "synthesis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "scope"],
+      "properties": {
+        "algorithm": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "scope": {
+          "enum": [
+            "workspace",
+            "prime",
+            "owner",
+            "dependency",
+            "query-set",
+            "text",
+            "ingest",
+            "custom"
+          ]
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ownerPath": {
+          "$ref": "#/$defs/projectPath"
+        },
+        "selectedOwners": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "selectedEdges": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "incomingOwners": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "outgoingOwners": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "highImpactOwners": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/projectPath"
+          }
+        },
+        "frontierOwners": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/projectPath"
+          }
+        },
+        "editFrontier": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/projectPath"
+          }
+        },
+        "testFrontier": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/projectPath"
+          }
+        },
+        "findingOwners": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/projectPath"
+          }
+        },
+        "seeds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nextAction"
+          }
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "nextAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "target"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ownerPath": {
+          "$ref": "#/$defs/projectPath"
+        },
+        "scope": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "fields": {
+      "type": "object",
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "number"
+          },
+          {
+            "type": "integer"
+          },
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  }
+}

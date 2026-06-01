@@ -1,0 +1,203 @@
+{
+  "id": "typescript.codex-cli-trigger-guide-flow",
+  "language": "typescript",
+  "title": "Codex CLI trigger guide for TypeScript search flow",
+  "coverage": [
+    "json-schema",
+    "search-flow",
+    "performance",
+    "codex-hooks",
+    "real-trigger"
+  ],
+  "tags": [
+    "codex-cli",
+    "codex-hooks",
+    "real-trigger",
+    "typescript",
+    "trigger-guide"
+  ],
+  "workdir": {
+    "env": "SANDTABLE_CODEX_CLI_ROOT",
+    "candidates": [
+      ".data/codex"
+    ]
+  },
+  "evidence": {
+    "source": "recorded-replay",
+    "intent": "Codex CLI explores TypeScript SDK behavior and must be guided into compact ts-harness search before reading or requesting JSON",
+    "recordedAt": "2026-06-01",
+    "receiptPath": "sandtables/receipts/typescript/codex-cli-trigger-guide-flow.receipt.json",
+    "editBoundary": "before-edit",
+    "metrics": {
+      "recordedCommandCount": 4,
+      "repeatedSearches": 0,
+      "jsonSearches": 0,
+      "compactSearches": 1,
+      "tokenDelta": "lower"
+    },
+    "findings": [
+      {
+        "kind": "codex-trigger",
+        "severity": "info",
+        "message": "Codex PreToolUse payloads are replayed directly so guide quality is tested at the client boundary"
+      },
+      {
+        "kind": "safe-search",
+        "severity": "info",
+        "message": "safe ts-harness prime search is allowed and then replayed as the search-flow boundary"
+      }
+    ]
+  },
+  "budgets": {
+    "maxCommands": 4,
+    "maxTotalLinesWarn": 60,
+    "maxTotalElapsedMsWarn": 18000,
+    "maxTotalStdoutBytesWarn": 12000
+  },
+  "steps": [
+    {
+      "id": "json-search-deny-guide",
+      "kind": "hook-replay",
+      "coverage": [
+        "json-schema",
+        "codex-hooks"
+      ],
+      "command": [
+        "semantic-agent-hook",
+        "hook",
+        "--client",
+        "codex",
+        "pre-tool",
+        "--emit",
+        "decision"
+      ],
+      "stdin": "{\"tool_name\":\"functions.exec_command\",\"tool_input\":{\"cmd\":\"ts-harness search text buildSemanticSearchPacket owner tests --json .\"}}",
+      "expect": {
+        "stdoutJsonSchema": "schemas/semantic-agent-hook-decision.v1.schema.json",
+        "stdoutJsonEquals": {
+          "decision": "deny",
+          "reasonKind": "agent-search-json",
+          "languageIds.0": "typescript",
+          "routes.0.kind": "text",
+          "routes.0.providerId": "ts-harness"
+        },
+        "guideQuality": {
+          "reasonKind": "agent-search-json",
+          "languageId": "typescript",
+          "routeKind": "text",
+          "commandContains": [
+            "ts-harness agent guide .",
+            "ts-harness",
+            "search",
+            "text",
+            "--view",
+            "seeds"
+          ],
+          "sourceLeakNotContains": [
+            "interface ProtocolArgs",
+            "const packet = buildSemanticSearchPacket"
+          ]
+        },
+        "maxStdoutBytesWarn": 1800,
+        "maxElapsedMsWarn": 4000
+      }
+    },
+    {
+      "id": "direct-sdk-read-deny-guide",
+      "kind": "hook-replay",
+      "coverage": [
+        "codex-hooks"
+      ],
+      "command": [
+        "semantic-agent-hook",
+        "hook",
+        "--client",
+        "codex",
+        "pre-tool",
+        "--emit",
+        "decision"
+      ],
+      "stdin": "{\"toolName\":\"functions.read_file\",\"toolInput\":{\"path\":\"sdk/typescript/src/codex.ts\"}}",
+      "expect": {
+        "stdoutJsonSchema": "schemas/semantic-agent-hook-decision.v1.schema.json",
+        "stdoutJsonEquals": {
+          "decision": "deny",
+          "reasonKind": "direct-source-read",
+          "languageIds.0": "typescript",
+          "routes.0.kind": "owner",
+          "routes.0.providerId": "ts-harness"
+        },
+        "guideQuality": {
+          "reasonKind": "direct-source-read",
+          "languageId": "typescript",
+          "routeKind": "owner",
+          "commandContains": [
+            "ts-harness agent guide .",
+            "ts-harness",
+            "search",
+            "owner",
+            "sdk/typescript/src/codex.ts",
+            "."
+          ],
+          "sourceLeakNotContains": [
+            "export class Codex"
+          ]
+        },
+        "maxStdoutBytesWarn": 1600,
+        "maxElapsedMsWarn": 4000
+      }
+    },
+    {
+      "id": "safe-prime-allow",
+      "kind": "hook-replay",
+      "coverage": [
+        "codex-hooks"
+      ],
+      "command": [
+        "semantic-agent-hook",
+        "hook",
+        "--client",
+        "codex",
+        "pre-tool",
+        "--emit",
+        "decision"
+      ],
+      "stdin": "{\"tool_name\":\"functions.exec_command\",\"tool_input\":{\"cmd\":\"ts-harness search prime --view seeds sdk/typescript\"}}",
+      "expect": {
+        "stdoutJsonSchema": "schemas/semantic-agent-hook-decision.v1.schema.json",
+        "stdoutJsonEquals": {
+          "decision": "allow",
+          "reasonKind": "none"
+        },
+        "maxStdoutBytesWarn": 1000,
+        "maxElapsedMsWarn": 4000
+      }
+    },
+    {
+      "id": "sdk-prime-search",
+      "coverage": [
+        "search-flow",
+        "performance"
+      ],
+      "command": [
+        "ts-harness",
+        "search",
+        "prime",
+        "--view",
+        "seeds",
+        "sdk/typescript"
+      ],
+      "expect": {
+        "lineProtocol": true,
+        "stdoutContains": [
+          "[search-prime]",
+          "package=@openai/codex-sdk",
+          "src/codex.ts",
+          "algorithm=owner-rank-frontier"
+        ],
+        "maxStdoutLinesWarn": 12,
+        "maxElapsedMsWarn": 8000
+      }
+    }
+  ]
+}

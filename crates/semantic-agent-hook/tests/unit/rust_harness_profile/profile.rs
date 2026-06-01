@@ -54,10 +54,12 @@ fn rust_harness_profile_uses_provider_identity() {
             .iter()
             .any(|extension| extension == ".rs")
     );
+    let guide = profile.commands.guide.as_ref().expect("guide command");
+    assert_eq!(guide.argv, ["rs-harness", "agent", "guide", "."]);
 }
 
 #[test]
-fn rust_harness_profile_routes_direct_reads_to_owner_search() {
+fn rust_harness_profile_routes_direct_reads_to_provider_owner_search() {
     let decision = classify_hook(
         &rust_harness_profile_registry(),
         "codex",
@@ -74,12 +76,11 @@ fn rust_harness_profile_routes_direct_reads_to_owner_search() {
         decision.routes[0].argv,
         [
             "rs-harness",
-            "search",
-            "owner",
+            "query",
+            "--from-hook",
+            "direct-source-read",
+            "--selector",
             "src/lib.rs",
-            "items",
-            "--view",
-            "seeds",
             "."
         ]
     );

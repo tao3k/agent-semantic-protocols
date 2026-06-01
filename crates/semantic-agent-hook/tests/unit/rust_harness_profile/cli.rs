@@ -56,19 +56,18 @@ fn cli_hook_emits_decision_for_root_owned_rust_profile_registry() {
     assert!(output.status.success());
     let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("hook JSON");
     assert_eq!(value["hookSpecificOutput"]["permissionDecision"], "deny");
-    assert_eq!(value["agentHookDecision"]["decision"], "deny");
+    let context = value["hookSpecificOutput"]["additionalContext"]
+        .as_str()
+        .expect("decision context");
+    assert!(context.starts_with("[agent-hook-decision] "));
+    assert!(context.contains("\"decision\":\"deny\""));
+    assert!(context.contains("\"reasonKind\":\"direct-source-read\""));
     assert_eq!(
-        value["agentHookDecision"]["reasonKind"],
-        "direct-source-read"
+        value["hookSpecificOutput"]["permissionDecisionReason"],
+        "direct-source-read denied; route: rs-harness query --from-hook direct-source-read --selector src/lib.rs ."
     );
-    assert_eq!(
-        value["agentHookDecision"]["routes"][0]["binary"],
-        "rs-harness"
-    );
-    assert_eq!(
-        value["agentHookDecision"]["routes"][0]["argv"][3],
-        "src/lib.rs"
-    );
+    assert!(context.contains("\"binary\":\"rs-harness\""));
+    assert!(context.contains("\"src/lib.rs\""));
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
 }
 
@@ -104,5 +103,46 @@ fn cli_hook_can_emit_raw_decision_for_schema_tests() {
     let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("hook JSON");
     assert_eq!(value["decision"], "deny");
     assert_eq!(value["reasonKind"], "direct-source-read");
+    std::fs::remove_dir_all(root).expect("cleanup temp project root");
+}
+
+#[test]
+fn cli_hook_blocks_subagent_stop_without_search_receipt() {
+    let root = temp_project_root("subagent-stop-profile");
+    let profile_path = write_root_owned_rust_profile_registry(&root);
+    let mut child = Command::new(env!("CARGO_BIN_EXE_semantic-agent-hook"))
+        .args([
+            "hook",
+            "--client",
+            "codex",
+            "subagent-stop",
+            "--profiles",
+            profile_path.to_str().expect("utf8 profile path"),
+            "--emit",
+            "decision",
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("run semantic-agent-hook hook");
+    child
+        .stdin
+        .as_mut()
+        .expect("hook stdin")
+        .write_all(br#"{"hook_event_name":"SubagentStop","last_assistant_message":"done"}"#)
+        .expect("write hook payload");
+
+    let output = child.wait_with_output().expect("wait for hook output");
+
+    assert!(output.status.success());
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("hook JSON");
+    assert_eq!(value["decision"], "block");
+    assert_eq!(value["reasonKind"], "subagent-receipt-required");
+    assert!(
+        value["message"]
+            .as_str()
+            .expect("message")
+            .contains("[search-subagent]")
+    );
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
 }
