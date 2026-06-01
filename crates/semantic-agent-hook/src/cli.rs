@@ -27,6 +27,9 @@ const LEGACY_BLOCKS: [(&str, &str); 3] = [
     ),
 ];
 const CODEX_TOOL_MATCHER: &str = ".*(Read|readFile|readDirectory|read_file|FsReadFile|FsReadDirectory|fs\\.read|fs\\.readDirectory|fs/readFile|fs/readDirectory|fs\\.readbin|writeFile|FsWriteFile|fs\\.write|fs/write|fs\\.writeFile|fs/writeFile|FsRemove|fs\\.remove|fs/remove|FsCopy|fs\\.copy|fs/copy|fs\\.rename|fs/rename|mcp__.*__read.*|multi_tool_use\\.parallel|multi_tool_use/parallel|multi_tool_use|Bash|exec_command|command_execution|apply_patch|Edit|Write).*";
+const PYTHON_PROFILE_REGISTRY_JSON: &str = include_str!(
+    "../../../languages/python-lang-project-harness/src/python_lang_project_harness/semantic-agent-hook-profile.py-harness.v1.json"
+);
 
 /// Run the `semantic-agent-hook` CLI using process arguments and standard IO.
 pub fn run_cli_from_env() -> Result<(), String> {
@@ -316,24 +319,9 @@ fn typescript_profile() -> Value {
 }
 
 fn python_profile() -> Value {
-    json!({
-        "languageId": "python",
-        "providerId": "py-harness",
-        "binary": "py-harness",
-        "namespace": "agent.semantic-protocols.languages.python.py-harness",
-        "sourceExtensions": [".py", ".pyi"],
-        "configFiles": ["pyproject.toml", "setup.cfg", "setup.py"],
-        "sourceRoots": ["src", "test", "tests", "packages", "languages/python-lang-project-harness/src", "languages/python-lang-project-harness/tests"],
-        "ignoredPathPrefixes": [".venv", "__pycache__", ".git", ".pytest_cache"],
-        "policy": default_policy(),
-        "commands": {
-            "prime": {"argv": ["py-harness", "search", "prime", "."]},
-            "owner": {"argv": ["py-harness", "search", "owner", "{path}", "."]},
-            "text": {"argv": ["py-harness", "search", "text", "{query}", "owner", "tests", "--view", "seeds", "."]},
-            "ingest": {"argv": ["py-harness", "search", "ingest", "."], "stdinMode": "pipe-candidates"},
-            "checkChanged": {"argv": ["py-harness", "check", "--changed", "."]}
-        }
-    })
+    let registry = serde_json::from_str::<Value>(PYTHON_PROFILE_REGISTRY_JSON)
+        .expect("Python semantic hook profile registry JSON must be valid");
+    registry["profiles"][0].clone()
 }
 
 fn default_policy() -> Value {

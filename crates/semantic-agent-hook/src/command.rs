@@ -249,20 +249,28 @@ pub(crate) fn profiles_for_command<'a>(
     }
     let mut profiles = Vec::new();
     for token in tokens {
+        if let Some(profile) = registry.profile_for_path(token) {
+            push_profile_once(&mut profiles, profile);
+            continue;
+        }
         for profile in registry
             .profiles
             .iter()
             .filter(|profile| profile.matches_search_token(token))
         {
-            if !profiles
-                .iter()
-                .any(|existing: &&LanguageProfile| existing.language_id == profile.language_id)
-            {
-                profiles.push(profile);
-            }
+            push_profile_once(&mut profiles, profile);
         }
     }
     profiles
+}
+
+fn push_profile_once<'a>(profiles: &mut Vec<&'a LanguageProfile>, profile: &'a LanguageProfile) {
+    if !profiles
+        .iter()
+        .any(|existing| existing.language_id == profile.language_id)
+    {
+        profiles.push(profile);
+    }
 }
 
 pub(crate) fn profiles_for_raw_search<'a>(
