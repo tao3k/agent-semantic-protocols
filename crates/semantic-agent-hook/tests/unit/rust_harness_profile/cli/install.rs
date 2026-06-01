@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::process::Command;
 
 use semantic_agent_hook::parse_profiles;
@@ -7,12 +8,9 @@ use crate::rust_harness_profile::support::temp_project_root;
 #[test]
 fn cli_install_writes_root_owned_codex_hook_config() {
     let root = temp_project_root("install");
-    std::fs::write(
-        root.join("Cargo.toml"),
-        "[package]\nname = \"demo\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
-    )
-    .expect("write temp Cargo.toml");
+    let provider_path = write_fake_provider_binary(&root, "rs-harness");
     let output = Command::new(env!("CARGO_BIN_EXE_semantic-agent-hook"))
+        .env("PATH", &provider_path)
         .args([
             "install",
             "--client",
@@ -77,13 +75,32 @@ fn cli_install_writes_root_owned_codex_hook_config() {
 }
 
 #[test]
+fn cli_install_requires_available_provider_binary() {
+    let root = temp_project_root("install-missing-provider-bin");
+    let output = Command::new(env!("CARGO_BIN_EXE_semantic-agent-hook"))
+        .env("PATH", "")
+        .args([
+            "install",
+            "--client",
+            "codex",
+            root.to_str().expect("utf8 temp root"),
+        ])
+        .output()
+        .expect("run semantic-agent-hook install");
+
+    assert!(!output.status.success());
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("expected PATH to contain"),
+        "install stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    std::fs::remove_dir_all(root).expect("cleanup temp project root");
+}
+
+#[test]
 fn cli_install_migrates_legacy_top_level_unified_exec_to_features() {
     let root = temp_project_root("install-unified-exec-feature");
-    std::fs::write(
-        root.join("Cargo.toml"),
-        "[package]\nname = \"demo\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
-    )
-    .expect("write temp Cargo.toml");
+    let provider_path = write_fake_provider_binary(&root, "rs-harness");
     std::fs::create_dir_all(root.join(".codex")).expect("create .codex");
     let config_path = root.join(".codex/config.toml");
     std::fs::write(
@@ -93,6 +110,7 @@ fn cli_install_migrates_legacy_top_level_unified_exec_to_features() {
     .expect("write legacy config");
 
     let output = Command::new(env!("CARGO_BIN_EXE_semantic-agent-hook"))
+        .env("PATH", &provider_path)
         .args([
             "install",
             "--client",
@@ -129,12 +147,9 @@ fn cli_install_migrates_legacy_top_level_unified_exec_to_features() {
 #[test]
 fn cli_install_writes_executable_python_ingest_route() {
     let root = temp_project_root("install-python");
-    std::fs::write(
-        root.join("pyproject.toml"),
-        "[project]\nname = \"demo-python\"\nversion = \"0.1.0\"\n",
-    )
-    .expect("write temp pyproject.toml");
+    let provider_path = write_fake_provider_binary(&root, "py-harness");
     let output = Command::new(env!("CARGO_BIN_EXE_semantic-agent-hook"))
+        .env("PATH", &provider_path)
         .args([
             "install",
             "--client",
@@ -167,16 +182,13 @@ fn cli_install_writes_executable_python_ingest_route() {
 #[test]
 fn cli_install_refuses_to_overwrite_invalid_codex_toml() {
     let root = temp_project_root("install-invalid-toml");
-    std::fs::write(
-        root.join("Cargo.toml"),
-        "[package]\nname = \"demo\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
-    )
-    .expect("write temp Cargo.toml");
+    let provider_path = write_fake_provider_binary(&root, "rs-harness");
     std::fs::create_dir_all(root.join(".codex")).expect("create .codex");
     let config_path = root.join(".codex/config.toml");
     std::fs::write(&config_path, "unified_exec = \"unterminated\n").expect("write invalid config");
 
     let output = Command::new(env!("CARGO_BIN_EXE_semantic-agent-hook"))
+        .env("PATH", &provider_path)
         .args([
             "install",
             "--client",
@@ -195,4 +207,22 @@ fn cli_install_refuses_to_overwrite_invalid_codex_toml() {
     assert_eq!(config, "unified_exec = \"unterminated\n");
     assert!(!config.contains("# BEGIN semantic-agent-hook agent hooks"));
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
+}
+
+fn write_fake_provider_binary(root: &std::path::Path, binary: &str) -> PathBuf {
+    let bin_dir = root.join(".bin");
+    std::fs::create_dir_all(&bin_dir).expect("create fake provider bin dir");
+    let path = bin_dir.join(binary);
+    std::fs::write(&path, "#!/bin/sh\nexit 0\n").expect("write fake provider binary");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        let mut permissions = std::fs::metadata(&path)
+            .expect("fake provider metadata")
+            .permissions();
+        permissions.set_mode(0o755);
+        std::fs::set_permissions(&path, permissions).expect("chmod fake provider");
+    }
+    bin_dir
 }

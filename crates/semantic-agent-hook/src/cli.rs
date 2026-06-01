@@ -237,34 +237,22 @@ fn load_profiles(path: &Path) -> Result<ProfileRegistry, String> {
     parse_profiles(&contents).map_err(|error| format!("invalid profile registry JSON: {error:?}"))
 }
 
-fn build_default_profile_registry(project_root: &Path) -> Result<Value, String> {
+fn build_default_profile_registry(_project_root: &Path) -> Result<Value, String> {
     let mut profiles = Vec::new();
-    if project_root.join("Cargo.toml").is_file()
-        || project_root
-            .join("languages/rust-lang-project-harness/Cargo.toml")
-            .is_file()
-    {
+    if provider_binary_available("rs-harness") {
         profiles.push(rust_profile());
     }
-    if project_root.join("package.json").is_file()
-        || project_root
-            .join("languages/typescript-lang-project-harness/package.json")
-            .is_file()
-    {
+    if provider_binary_available("ts-harness") {
         profiles.push(typescript_profile());
     }
-    if project_root.join("pyproject.toml").is_file()
-        || project_root
-            .join("languages/python-lang-project-harness/pyproject.toml")
-            .is_file()
-    {
+    if provider_binary_available("py-harness") {
         profiles.push(python_profile());
     }
     if profiles.is_empty() {
-        return Err(format!(
-            "no semantic hook profiles discovered under {}",
-            project_root.display()
-        ));
+        return Err(
+            "no semantic hook profiles discovered; expected PATH to contain rs-harness, ts-harness, or py-harness"
+                .to_string(),
+        );
     }
     Ok(json!({
         "schemaId": crate::PROFILE_REGISTRY_SCHEMA_ID,
@@ -274,6 +262,26 @@ fn build_default_profile_registry(project_root: &Path) -> Result<Value, String> 
         "projectRoot": ".",
         "profiles": profiles,
     }))
+}
+
+fn provider_binary_available(binary: &str) -> bool {
+    let Some(path) = env::var_os("PATH") else {
+        return false;
+    };
+    env::split_paths(&path).any(|entry| is_executable_file(&entry.join(binary)))
+}
+
+#[cfg(unix)]
+fn is_executable_file(path: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+
+    path.metadata()
+        .is_ok_and(|metadata| metadata.is_file() && metadata.permissions().mode() & 0o111 != 0)
+}
+
+#[cfg(not(unix))]
+fn is_executable_file(path: &Path) -> bool {
+    path.is_file()
 }
 
 fn rust_profile() -> Value {
