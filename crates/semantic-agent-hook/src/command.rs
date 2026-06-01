@@ -5,6 +5,7 @@ use crate::protocol::{LanguageProfile, ProfileRegistry};
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub(crate) enum CommandIntent {
     Other,
+    DirectRead,
     ContentDump,
     RawSearch,
 }
@@ -37,20 +38,29 @@ fn shell_tokens(command: &str) -> Vec<String> {
 }
 
 pub(crate) fn semantic_shell_tokens(command: &str) -> Vec<String> {
-    let tokens = shell_tokens(command);
-    let mut normalized = Vec::new();
+    split_command_stages(shell_tokens(command))
+        .into_iter()
+        .flat_map(|stage| unwrap_command_stage(&stage))
+        .collect()
+}
+
+fn split_command_stages(tokens: Vec<String>) -> Vec<Vec<String>> {
+    let mut stages = Vec::new();
     let mut stage = Vec::new();
     for token in tokens {
         if is_separator(&token) {
-            normalized.extend(unwrap_command_stage(&stage));
-            stage.clear();
-            normalized.push(token);
+            if !stage.is_empty() {
+                stages.push(std::mem::take(&mut stage));
+            }
+            stages.push(vec![token]);
         } else {
             stage.push(token);
         }
     }
-    normalized.extend(unwrap_command_stage(&stage));
-    normalized
+    if !stage.is_empty() {
+        stages.push(stage);
+    }
+    stages
 }
 
 fn unwrap_command_stage(tokens: &[String]) -> Vec<String> {
@@ -192,9 +202,12 @@ fn push_token(tokens: &mut Vec<String>, current: &mut String) {
 
 pub(crate) fn command_intent(tokens: &[String]) -> CommandIntent {
     let command = first_stage_command(tokens);
+    if matches!(command.as_deref(), Some("read")) {
+        return CommandIntent::DirectRead;
+    }
     if matches!(
         command.as_deref(),
-        Some("cat" | "sed" | "nl" | "bat" | "head" | "tail" | "awk" | "less" | "read")
+        Some("cat" | "sed" | "nl" | "bat" | "head" | "tail" | "awk" | "less")
     ) {
         return CommandIntent::ContentDump;
     }

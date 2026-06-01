@@ -1,3 +1,5 @@
+//! CLI entrypoint for installing and replaying `semantic-agent-hook` profiles.
+
 use crate::{
     ProfileRegistry, classify_hook, merge_profile_registries, parse_payload, parse_profiles,
     render_platform_response,
@@ -24,8 +26,9 @@ const LEGACY_BLOCKS: [(&str, &str); 3] = [
         "# END rs-harness agent hooks",
     ),
 ];
-const CODEX_TOOL_MATCHER: &str = ".*(Read|readFile|readDirectory|read_file|FsReadFile|FsReadDirectory|fs\\.read|fs\\.readDirectory|fs/readFile|fs/readDirectory|fs\\.readbin|writeFile|FsWriteFile|fs\\.write|fs/write|fs\\.writeFile|fs/writeFile|FsRemove|fs\\.remove|fs/remove|FsCopy|fs\\.copy|fs/copy|fs\\.rename|fs/rename|mcp__.*__read.*|Bash|exec_command|command_execution|apply_patch|Edit|Write).*";
+const CODEX_TOOL_MATCHER: &str = ".*(Read|readFile|readDirectory|read_file|FsReadFile|FsReadDirectory|fs\\.read|fs\\.readDirectory|fs/readFile|fs/readDirectory|fs\\.readbin|writeFile|FsWriteFile|fs\\.write|fs/write|fs\\.writeFile|fs/writeFile|FsRemove|fs\\.remove|fs/remove|FsCopy|fs\\.copy|fs/copy|fs\\.rename|fs/rename|mcp__.*__read.*|multi_tool_use\\.parallel|multi_tool_use/parallel|multi_tool_use|Bash|exec_command|command_execution|apply_patch|Edit|Write).*";
 
+/// Run the `semantic-agent-hook` CLI using process arguments and standard IO.
 pub fn run_cli_from_env() -> Result<(), String> {
     run()
 }
@@ -162,6 +165,10 @@ fn run_install(args: &[String]) -> Result<(), String> {
         .map_err(|error| format!("failed to create {}: {error}", codex_dir.display()))?;
     let config_path = codex_dir.join("config.toml");
     let existing = fs::read_to_string(&config_path).unwrap_or_default();
+    if config_path.is_file() {
+        validate_codex_config_toml(&existing)
+            .map_err(|error| format!("refusing to write invalid Codex config TOML: {error}"))?;
+    }
     let merged = merge_codex_config(&existing, &codex_hook_block());
     validate_codex_config_toml(&merged)
         .map_err(|error| format!("refusing to write invalid Codex config TOML: {error}"))?;
@@ -439,15 +446,79 @@ fn merge_codex_config(existing: &str, block: &str) -> String {
         content = remove_managed_block(&content, begin, end);
     }
     content = remove_managed_block(&content, ROOT_BLOCK_BEGIN, ROOT_BLOCK_END);
-    if !content.contains("unified_exec = true") {
-        content = format!("unified_exec = true\n\n{}", content.trim());
-    }
+    content = ensure_codex_unified_exec_feature(&content);
     let prefix = content.trim();
     if prefix.is_empty() {
-        format!("unified_exec = true\n\n{}\n", block.trim_end())
+        format!("[features]\nunified_exec = true\n\n{}\n", block.trim_end())
     } else {
         format!("{}\n\n{}\n", prefix, block.trim_end())
     }
+}
+
+fn ensure_codex_unified_exec_feature(existing: &str) -> String {
+    let mut table = String::new();
+    let mut lines = existing
+        .lines()
+        .filter_map(|line| {
+            let trimmed = line.trim();
+            let skip = is_top_level_unified_exec(&table, trimmed);
+            if let Some(header) = toml_table_header(trimmed) {
+                table = header;
+            }
+            (!skip).then(|| line.to_string())
+        })
+        .collect::<Vec<_>>();
+
+    let Some(features_start) = lines
+        .iter()
+        .position(|line| toml_table_header(line.trim()).as_deref() == Some("features"))
+    else {
+        let body = lines.join("\n").trim().to_string();
+        return if body.is_empty() {
+            "[features]\nunified_exec = true".to_string()
+        } else {
+            format!("[features]\nunified_exec = true\n\n{body}")
+        };
+    };
+
+    let features_end = lines
+        .iter()
+        .enumerate()
+        .skip(features_start + 1)
+        .find_map(|(index, line)| toml_table_header(line.trim()).map(|_| index))
+        .unwrap_or(lines.len());
+
+    if let Some(unified_exec_index) = lines[features_start + 1..features_end]
+        .iter()
+        .position(|line| is_unified_exec_key(line.trim()))
+        .map(|offset| features_start + 1 + offset)
+    {
+        lines[unified_exec_index] = "unified_exec = true".to_string();
+    } else {
+        lines.insert(features_start + 1, "unified_exec = true".to_string());
+    }
+    lines.join("\n")
+}
+
+fn is_top_level_unified_exec(table: &str, trimmed: &str) -> bool {
+    table.is_empty() && is_unified_exec_key(trimmed)
+}
+
+fn is_unified_exec_key(trimmed: &str) -> bool {
+    if trimmed.is_empty() || trimmed.starts_with('#') {
+        return false;
+    }
+    trimmed
+        .split_once('=')
+        .is_some_and(|(key, _)| key.trim() == "unified_exec")
+}
+
+fn toml_table_header(trimmed: &str) -> Option<String> {
+    if !trimmed.starts_with('[') || !trimmed.ends_with(']') {
+        return None;
+    }
+    let header = trimmed.trim_matches(['[', ']']).trim();
+    (!header.is_empty()).then(|| header.to_string())
 }
 
 fn remove_managed_block(existing: &str, begin: &str, end: &str) -> String {

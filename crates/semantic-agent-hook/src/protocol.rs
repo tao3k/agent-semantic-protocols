@@ -3,16 +3,23 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+/// Schema identifier for semantic hook profile registries.
 pub const PROFILE_REGISTRY_SCHEMA_ID: &str =
     "agent.semantic-protocols.semantic-agent-hook-profile-registry";
+/// Schema version for semantic hook profile registries.
 pub const PROFILE_REGISTRY_SCHEMA_VERSION: &str = "1";
+/// Schema identifier for shared hook decision packets.
 pub const HOOK_DECISION_SCHEMA_ID: &str = "agent.semantic-protocols.agent-hook-decision";
+/// Schema version for shared hook decision packets.
 pub const HOOK_DECISION_SCHEMA_VERSION: &str = "1";
+/// Protocol identifier for the root semantic hook runtime.
 pub const HOOK_PROTOCOL_ID: &str = "agent.semantic-protocols.agent-hooks";
+/// Protocol version for the root semantic hook runtime.
 pub const HOOK_PROTOCOL_VERSION: &str = "1";
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
+/// Root registry of language hook profiles consumed by `semantic-agent-hook`.
 pub struct ProfileRegistry {
     pub schema_id: String,
     pub schema_version: String,
@@ -24,6 +31,7 @@ pub struct ProfileRegistry {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
+/// Language-owned policy and command descriptors used by the root hook runtime.
 pub struct LanguageProfile {
     pub language_id: String,
     pub provider_id: String,
@@ -44,6 +52,7 @@ pub struct LanguageProfile {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
+/// Policy switches that control how the root hook classifier handles a provider.
 pub struct HookPolicy {
     pub block_direct_read: bool,
     pub block_broad_raw_search: bool,
@@ -64,6 +73,7 @@ impl Default for HookPolicy {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
+/// Command templates that route denied tool use into semantic search.
 pub struct HookCommands {
     pub prime: CommandTemplate,
     pub owner: CommandTemplate,
@@ -74,14 +84,16 @@ pub struct HookCommands {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
+/// Argument template for a provider-owned semantic search command.
 pub struct CommandTemplate {
     pub argv: Vec<String>,
     #[serde(default)]
-    pub stdin_mode: Option<String>,
+    pub stdin_mode: Option<StdinMode>,
 }
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+/// Shared decision packet emitted before platform-specific hook rendering.
 pub struct HookDecision {
     pub schema_id: &'static str,
     pub schema_version: &'static str,
@@ -99,6 +111,7 @@ pub struct HookDecision {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
+/// Allow or deny result emitted by the hook classifier.
 pub enum DecisionKind {
     Allow,
     Deny,
@@ -106,6 +119,7 @@ pub enum DecisionKind {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
+/// Reason category for a hook decision.
 pub enum ReasonKind {
     None,
     DirectSourceRead,
@@ -114,8 +128,33 @@ pub enum ReasonKind {
     AgentSearchJson,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+/// Stdin handling contract for a semantic hook route.
+pub enum StdinMode {
+    None,
+    PipeCandidates,
+    PipeDiff,
+    Unknown,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+/// Semantic route kind suggested by a hook denial.
+pub enum DecisionRouteKind {
+    Prime,
+    Owner,
+    Text,
+    Deps,
+    Api,
+    Ingest,
+    Tests,
+    CheckChanged,
+}
+
 #[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
+/// Tool name, command, and paths that triggered a hook decision.
 pub struct DecisionSubject {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_name: Option<String>,
@@ -127,17 +166,19 @@ pub struct DecisionSubject {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+/// Provider command route that the agent should run instead of denied tool use.
 pub struct DecisionRoute {
     pub language_id: String,
     pub provider_id: String,
     pub binary: String,
-    pub kind: String,
+    pub kind: DecisionRouteKind,
     pub argv: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub stdin_mode: Option<String>,
+    pub stdin_mode: Option<StdinMode>,
 }
 
 #[derive(Debug)]
+/// Errors produced while parsing profiles, payloads, or rendered hook output.
 pub enum AgentHookError {
     InvalidProfiles(serde_json::Error),
     InvalidProfileRegistry(String),
@@ -145,6 +186,7 @@ pub enum AgentHookError {
     InvalidOutput(serde_json::Error),
 }
 
+/// Parse and validate a semantic hook profile registry.
 pub fn parse_profiles(input: &str) -> Result<ProfileRegistry, AgentHookError> {
     let registry: ProfileRegistry =
         serde_json::from_str(input).map_err(AgentHookError::InvalidProfiles)?;
@@ -152,10 +194,12 @@ pub fn parse_profiles(input: &str) -> Result<ProfileRegistry, AgentHookError> {
     Ok(registry)
 }
 
+/// Parse a platform hook payload as JSON.
 pub fn parse_payload(input: &str) -> Result<Value, AgentHookError> {
     serde_json::from_str(input).map_err(AgentHookError::InvalidPayload)
 }
 
+/// Merge provider profile registries by replacing matching language/provider pairs.
 pub fn merge_profile_registries(registries: Vec<ProfileRegistry>) -> ProfileRegistry {
     let project_root = registries
         .first()
@@ -184,6 +228,7 @@ pub fn merge_profile_registries(registries: Vec<ProfileRegistry>) -> ProfileRegi
     }
 }
 
+/// Render a shared hook decision into the selected platform response envelope.
 pub fn render_platform_response(decision: &HookDecision) -> Result<Value, AgentHookError> {
     let decision_value = serde_json::to_value(decision).map_err(AgentHookError::InvalidOutput)?;
     if decision.decision == DecisionKind::Deny {
@@ -259,7 +304,7 @@ impl LanguageProfile {
 
     pub(crate) fn route_from_template(
         &self,
-        kind: &str,
+        kind: DecisionRouteKind,
         template: &CommandTemplate,
         path: Option<&str>,
         query: Option<&str>,
@@ -277,7 +322,7 @@ impl LanguageProfile {
             language_id: self.language_id.clone(),
             provider_id: self.provider_id.clone(),
             binary: self.binary.clone(),
-            kind: kind.to_string(),
+            kind,
             argv,
             stdin_mode: template.stdin_mode.clone(),
         }

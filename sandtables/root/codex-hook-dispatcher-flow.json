@@ -1,0 +1,179 @@
+{
+  "id": "root.codex-hook-dispatcher-flow",
+  "language": "root",
+  "title": "Root semantic agent hook dispatcher classification flow",
+  "coverage": [
+    "json-schema",
+    "policy-blackbox",
+    "security",
+    "codex-hooks",
+    "codex-wrapper"
+  ],
+  "workdir": {
+    "relative": "."
+  },
+  "budgets": {
+    "maxCommands": 5,
+    "maxTotalLinesWarn": 180,
+    "maxTotalStdoutBytesWarn": 22000
+  },
+  "steps": [
+    {
+      "id": "wrapper-rust-rg-deny",
+      "kind": "hook-replay",
+      "command": [
+        "cargo",
+        "run",
+        "--manifest-path",
+        "Cargo.toml",
+        "--quiet",
+        "--package",
+        "semantic-agent-hook",
+        "--",
+        "hook",
+        "--client",
+        "codex",
+        "pre-tool",
+        "--emit",
+        "decision"
+      ],
+      "stdin": "{\"tool_name\":\"functions.exec_command\",\"tool_input\":{\"cmd\":\"direnv exec . rg -n HookDecision crates\"}}",
+      "expect": {
+        "stdoutJsonSchema": "schemas/semantic-agent-hook-decision.v1.schema.json",
+        "stdoutJsonEquals": {
+          "decision": "deny",
+          "reasonKind": "raw-broad-search",
+          "languageIds.0": "rust",
+          "routes.0.kind": "ingest",
+          "routes.0.providerId": "rs-harness"
+        },
+        "maxElapsedMsWarn": 6000
+      }
+    },
+    {
+      "id": "parallel-exec-rtk-read-deny",
+      "kind": "hook-replay",
+      "command": [
+        "cargo",
+        "run",
+        "--manifest-path",
+        "Cargo.toml",
+        "--quiet",
+        "--package",
+        "semantic-agent-hook",
+        "--",
+        "hook",
+        "--client",
+        "codex",
+        "pre-tool",
+        "--emit",
+        "decision"
+      ],
+      "stdin": "{\"tool_name\":\"multi_tool_use.parallel\",\"tool_input\":{\"tool_uses\":[{\"recipient_name\":\"functions.exec_command\",\"parameters\":{\"cmd\":\"rtk read crates/semantic-agent-hook/src/lib.rs\"}}]}}",
+      "expect": {
+        "stdoutJsonSchema": "schemas/semantic-agent-hook-decision.v1.schema.json",
+        "stdoutJsonEquals": {
+          "decision": "deny",
+          "reasonKind": "direct-source-read",
+          "subject.paths.0": "crates/semantic-agent-hook/src/lib.rs",
+          "routes.0.kind": "owner",
+          "routes.0.providerId": "rs-harness"
+        },
+        "maxElapsedMsWarn": 6000
+      }
+    },
+    {
+      "id": "markdown-search-allow",
+      "kind": "hook-replay",
+      "command": [
+        "cargo",
+        "run",
+        "--manifest-path",
+        "Cargo.toml",
+        "--quiet",
+        "--package",
+        "semantic-agent-hook",
+        "--",
+        "hook",
+        "--client",
+        "codex",
+        "pre-tool",
+        "--emit",
+        "decision"
+      ],
+      "stdin": "{\"tool_name\":\"functions.exec_command\",\"tool_input\":{\"cmd\":\"rg --files -g '*.md' src\"}}",
+      "expect": {
+        "stdoutJsonSchema": "schemas/semantic-agent-hook-decision.v1.schema.json",
+        "stdoutJsonEquals": {
+          "decision": "allow",
+          "reasonKind": "none"
+        },
+        "maxElapsedMsWarn": 6000
+      }
+    },
+    {
+      "id": "fd-typescript-deny",
+      "kind": "hook-replay",
+      "command": [
+        "cargo",
+        "run",
+        "--manifest-path",
+        "Cargo.toml",
+        "--quiet",
+        "--package",
+        "semantic-agent-hook",
+        "--",
+        "hook",
+        "--client",
+        "codex",
+        "pre-tool",
+        "--emit",
+        "decision"
+      ],
+      "stdin": "{\"tool_name\":\"functions.exec_command\",\"tool_input\":{\"cmd\":\"fd -e ts src\"}}",
+      "expect": {
+        "stdoutJsonSchema": "schemas/semantic-agent-hook-decision.v1.schema.json",
+        "stdoutJsonEquals": {
+          "decision": "deny",
+          "reasonKind": "raw-broad-search",
+          "languageIds.0": "typescript",
+          "routes.0.kind": "ingest",
+          "routes.0.providerId": "ts-harness"
+        },
+        "maxElapsedMsWarn": 6000
+      }
+    },
+    {
+      "id": "find-rust-deny",
+      "kind": "hook-replay",
+      "command": [
+        "cargo",
+        "run",
+        "--manifest-path",
+        "Cargo.toml",
+        "--quiet",
+        "--package",
+        "semantic-agent-hook",
+        "--",
+        "hook",
+        "--client",
+        "codex",
+        "pre-tool",
+        "--emit",
+        "decision"
+      ],
+      "stdin": "{\"tool_name\":\"functions.exec_command\",\"tool_input\":{\"cmd\":\"find . -name '*.rs' -print\"}}",
+      "expect": {
+        "stdoutJsonSchema": "schemas/semantic-agent-hook-decision.v1.schema.json",
+        "stdoutJsonEquals": {
+          "decision": "deny",
+          "reasonKind": "raw-broad-search",
+          "languageIds.0": "rust",
+          "routes.0.kind": "ingest",
+          "routes.0.providerId": "rs-harness"
+        },
+        "maxElapsedMsWarn": 6000
+      }
+    }
+  ]
+}

@@ -1,4 +1,4 @@
-#[path = "unit/classifier.rs"]
+#[path = "unit/classifier/mod.rs"]
 mod classifier;
 
 #[path = "unit/rust_harness_profile/mod.rs"]

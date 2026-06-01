@@ -1,4 +1,4 @@
-use semantic_agent_hook::{DecisionKind, ReasonKind, classify_hook};
+use semantic_agent_hook::{DecisionKind, DecisionRouteKind, ReasonKind, StdinMode, classify_hook};
 use serde_json::json;
 
 use super::support::rust_harness_profile_registry;
@@ -99,9 +99,9 @@ fn rust_harness_profile_routes_raw_root_search_to_ingest() {
 
     assert_eq!(decision.decision, DecisionKind::Deny);
     assert_eq!(decision.reason_kind, ReasonKind::RawBroadSearch);
-    assert_eq!(decision.routes[0].kind, "ingest");
+    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Ingest);
     assert_eq!(
-        decision.routes[0].stdin_mode.as_deref(),
-        Some("pipe-candidates")
+        decision.routes[0].stdin_mode,
+        Some(StdinMode::PipeCandidates)
     );
 }
