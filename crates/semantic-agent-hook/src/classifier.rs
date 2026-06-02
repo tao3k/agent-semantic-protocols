@@ -2,59 +2,18 @@
 
 use serde_json::Value;
 
+use crate::command::looks_like_command_transcript;
 use crate::command::{
-    CommandIntent, command_intent, contains_ingest_pipe, path_like_tokens, profiles_for_raw_search,
-    search_json_route, semantic_shell_tokens,
+    CommandIntent, command_intent, contains_ingest_pipe, infer_query_from_path, path_like_tokens,
+    raw_search_plan, search_json_route, search_query_route, semantic_shell_tokens,
 };
 use crate::protocol::{
     DecisionKind, DecisionRoute, DecisionRouteKind, DecisionSubject, HOOK_DECISION_SCHEMA_ID,
     HOOK_DECISION_SCHEMA_VERSION, HOOK_PROTOCOL_ID, HOOK_PROTOCOL_VERSION, HookDecision,
     LanguageProfile, ProfileRegistry, ProfileSelectorMatch, ReasonKind, SourceSelectorKind,
+    normalize_source_selector,
 };
-
-#[derive(Clone, Debug)]
-struct ToolAction {
-    tool_name: String,
-    command: Option<String>,
-    paths: Vec<String>,
-}
-
-fn payload_string(payload: &Value, key: &str) -> Option<String> {
-    payload.get(key).and_then(Value::as_str).map(str::to_string)
-}
-
-fn extract_command_direct(tool_name: &str, tool_input: &Value) -> Option<String> {
-    for key in ["cmd", "command"] {
-        if let Some(command) = tool_input.get(key).and_then(Value::as_str) {
-            return Some(command.to_string());
-        }
-    }
-    if tool_name == "command_execution" {
-        return tool_input
-            .get("tool_input")
-            .and_then(|value| value.get("command"))
-            .and_then(Value::as_str)
-            .map(str::to_string);
-    }
-    None
-}
-
-fn extract_paths_direct(tool_input: &Value) -> Vec<String> {
-    let mut paths = Vec::new();
-    for key in ["path", "file_path", "filePath"] {
-        if let Some(path) = tool_input.get(key).and_then(Value::as_str) {
-            paths.push(path.to_string());
-        }
-    }
-    if let Some(array) = tool_input.get("paths").and_then(Value::as_array) {
-        for value in array {
-            if let Some(path) = value.as_str() {
-                paths.push(path.to_string());
-            }
-        }
-    }
-    paths
-}
+use crate::tool_action::{ToolAction, collect_tool_actions, payload_string, subject_for_action};
 
 fn is_direct_read_tool(tool_name: &str) -> bool {
     let lower = tool_name.to_ascii_lowercase();
@@ -85,77 +44,6 @@ fn is_direct_read_tool_alias(tool_name: &str) -> bool {
             | "fsreaddirectory"
             | "mcp_read"
     )
-}
-
-fn collect_tool_actions(tool_name: &str, tool_input: &Value) -> Vec<ToolAction> {
-    let command = extract_command_direct(tool_name, tool_input);
-    let mut paths = extract_paths_direct(tool_input);
-    if let Some(command) = command.as_deref() {
-        for path in command_source_paths(command) {
-            if !paths.iter().any(|existing| existing == &path) {
-                paths.push(path);
-            }
-        }
-    }
-    let mut actions = vec![ToolAction {
-        tool_name: tool_name.to_string(),
-        command,
-        paths,
-    }];
-    for nested in nested_tool_actions(tool_input) {
-        actions.extend(collect_tool_actions(&nested.tool_name, nested.input));
-    }
-    actions
-}
-
-struct NestedToolAction<'a> {
-    tool_name: String,
-    input: &'a Value,
-}
-
-fn nested_tool_actions(tool_input: &Value) -> Vec<NestedToolAction<'_>> {
-    let mut nested = Vec::new();
-    for key in ["tool_uses", "toolUses"] {
-        let Some(tool_uses) = tool_input.get(key).and_then(Value::as_array) else {
-            continue;
-        };
-        for tool_use in tool_uses {
-            let Some(tool_name) = payload_string(tool_use, "recipient_name")
-                .or_else(|| payload_string(tool_use, "recipientName"))
-                .or_else(|| payload_string(tool_use, "tool_name"))
-                .or_else(|| payload_string(tool_use, "toolName"))
-            else {
-                continue;
-            };
-            let input = tool_use
-                .get("parameters")
-                .or_else(|| tool_use.get("tool_input"))
-                .or_else(|| tool_use.get("toolInput"))
-                .unwrap_or(&Value::Null);
-            nested.push(NestedToolAction { tool_name, input });
-        }
-    }
-    nested
-}
-
-fn command_source_paths(command: &str) -> Vec<String> {
-    let tokens = semantic_shell_tokens(command);
-    path_like_tokens(&tokens)
-        .into_iter()
-        .map(str::to_string)
-        .collect()
-}
-
-fn subject_for_action(action: &ToolAction) -> DecisionSubject {
-    DecisionSubject {
-        tool_name: if action.tool_name.is_empty() {
-            None
-        } else {
-            Some(action.tool_name.clone())
-        },
-        command: action.command.clone(),
-        paths: action.paths.clone(),
-    }
 }
 
 /// Classify one platform hook payload against a semantic profile registry.
@@ -228,7 +116,12 @@ fn classify_direct_read_action(
     event: &str,
     action: &ToolAction,
 ) -> Option<HookDecision> {
-    if !is_direct_read_tool(&action.tool_name) {
+    if !is_direct_read_tool(&action.tool_name)
+        && !action
+            .command
+            .as_deref()
+            .is_some_and(looks_like_command_transcript)
+    {
         return None;
     }
     direct_read_decision(
@@ -267,15 +160,12 @@ fn classify_search_json_command(
     if !profile.policy.blocks_agent_search_json() {
         return None;
     }
-    let routes = vec![DecisionRoute {
-        language_id: profile.language_id.clone(),
-        provider_id: profile.provider_id.clone(),
-        binary: profile.binary.clone(),
-        kind: DecisionRouteKind::Text,
-        argv,
-        stdin_mode: None,
-    }];
-    let message = provider_guide_message("agent-search-json denied", &[profile]);
+    let route = search_json_decision_route(profile, argv);
+    let message = format!(
+        "agent-search-json denied; route: {}",
+        command_line(&route.argv)
+    );
+    let routes = vec![route];
     Some(deny(
         platform,
         event,
@@ -285,6 +175,40 @@ fn classify_search_json_command(
         routes,
         message,
     ))
+}
+
+fn search_json_decision_route(profile: &LanguageProfile, argv: Vec<String>) -> DecisionRoute {
+    if let Some(path) = search_json_owner_path(&argv).map(str::to_string) {
+        let query = infer_query_from_path(&path);
+        return profile.route_from_template(
+            DecisionRouteKind::Owner,
+            &profile.commands.owner,
+            Some(&path),
+            query.as_deref(),
+        );
+    }
+    DecisionRoute {
+        language_id: profile.language_id.clone(),
+        provider_id: profile.provider_id.clone(),
+        binary: profile.binary.clone(),
+        kind: DecisionRouteKind::Text,
+        argv,
+        stdin_mode: None,
+    }
+}
+
+fn search_json_owner_path(argv: &[String]) -> Option<&str> {
+    if argv.get(1).map(String::as_str) != Some("search") {
+        return None;
+    }
+    if argv.get(2).map(String::as_str) != Some("owner") {
+        return None;
+    }
+    let path = argv.get(3)?.as_str();
+    if path == "." || path.starts_with('-') {
+        return None;
+    }
+    Some(path)
 }
 
 fn classify_source_read_command(
@@ -384,7 +308,8 @@ where
 {
     let mut matches: Vec<DirectReadMatch<'path, 'profile>> = Vec::new();
     for path in paths {
-        for matched in registry.profiles_for_selector(path) {
+        let normalized_path = normalize_source_selector(path);
+        for matched in registry.profiles_for_selector(normalized_path) {
             if !should_block(matched.profile) {
                 continue;
             }
@@ -394,7 +319,7 @@ where
             }) {
                 continue;
             }
-            matches.push((path, matched));
+            matches.push((normalized_path, matched));
         }
     }
     matches
@@ -492,15 +417,7 @@ fn direct_read_route(
     selector_kind: SourceSelectorKind,
 ) -> DecisionRoute {
     match selector_kind {
-        SourceSelectorKind::ExactPath => {
-            let query = direct_read_query(profile, path);
-            profile.route_from_template(
-                DecisionRouteKind::Owner,
-                &profile.commands.owner,
-                Some(path),
-                query.as_deref(),
-            )
-        }
+        SourceSelectorKind::ExactPath => direct_source_query_route(profile, path),
         SourceSelectorKind::Pattern => profile.route_from_template(
             DecisionRouteKind::Prime,
             &profile.commands.prime,
@@ -510,85 +427,31 @@ fn direct_read_route(
     }
 }
 
-fn direct_read_query(profile: &LanguageProfile, path: &str) -> Option<String> {
-    if !profile
-        .commands
-        .owner
-        .argv
-        .iter()
-        .any(|arg| arg.contains("{query}"))
-    {
-        return None;
+fn direct_source_query_route(profile: &LanguageProfile, path: &str) -> DecisionRoute {
+    let mut argv = provider_command_argv(profile);
+    argv.extend([
+        "query".to_string(),
+        "--from-hook".to_string(),
+        "direct-source-read".to_string(),
+        "--selector".to_string(),
+        path.to_string(),
+    ]);
+    argv.push(".".to_string());
+    DecisionRoute {
+        language_id: profile.language_id.clone(),
+        provider_id: profile.provider_id.clone(),
+        binary: profile.binary.clone(),
+        kind: DecisionRouteKind::Query,
+        argv,
+        stdin_mode: None,
     }
-    infer_query_from_path(path)
 }
 
-fn infer_query_from_path(path: &str) -> Option<String> {
-    let normalized = path.trim().trim_end_matches('/');
-    let file_name = normalized.rsplit('/').next()?;
-    let stem = file_name
-        .rsplit_once('.')
-        .map_or(file_name, |(stem, _)| stem);
-    let base = if matches!(stem, "index" | "mod" | "__init__") {
-        normalized.rsplit('/').nth(1).unwrap_or(stem)
-    } else {
-        stem
-    };
-    query_variants(base)
-}
-
-fn query_variants(base: &str) -> Option<String> {
-    let raw = base.trim_matches(|ch: char| !ch.is_ascii_alphanumeric());
-    if raw.is_empty() {
-        return None;
+fn provider_command_argv(profile: &LanguageProfile) -> Vec<String> {
+    if profile.provider_command_prefix.is_empty() {
+        return vec![profile.binary.clone()];
     }
-    let pascal = title_case_identifier(raw);
-    let camel = lower_first_ascii(&pascal);
-    let mut variants = Vec::new();
-    push_unique(&mut variants, raw.to_string());
-    if !pascal.is_empty() {
-        push_unique(&mut variants, pascal);
-    }
-    if !camel.is_empty() {
-        push_unique(&mut variants, camel);
-    }
-    Some(variants.join("|"))
-}
-
-fn title_case_identifier(value: &str) -> String {
-    value
-        .split(|ch: char| !ch.is_ascii_alphanumeric())
-        .filter(|part| !part.is_empty())
-        .map(uppercase_first_ascii)
-        .collect::<String>()
-}
-
-fn uppercase_first_ascii(value: &str) -> String {
-    let mut chars = value.chars();
-    let Some(first) = chars.next() else {
-        return String::new();
-    };
-    let mut output = String::new();
-    output.push(first.to_ascii_uppercase());
-    output.extend(chars);
-    output
-}
-
-fn lower_first_ascii(value: &str) -> String {
-    let mut chars = value.chars();
-    let Some(first) = chars.next() else {
-        return String::new();
-    };
-    let mut output = String::new();
-    output.push(first.to_ascii_lowercase());
-    output.extend(chars);
-    output
-}
-
-fn push_unique(values: &mut Vec<String>, value: String) {
-    if !values.iter().any(|existing| existing == &value) {
-        values.push(value);
-    }
+    profile.provider_command_prefix.clone()
 }
 
 fn command_line(argv: &[String]) -> String {
@@ -617,22 +480,23 @@ fn classify_raw_search_command(
     if command_intent(tokens) != CommandIntent::RawSearch {
         return None;
     }
-    let raw_search_profiles = profiles_for_raw_search(registry, tokens)
+    let plan = raw_search_plan(registry, tokens)?;
+    let raw_search_profiles = plan
+        .profiles
         .into_iter()
         .filter(|profile| profile.policy.blocks_raw_source_search())
         .collect::<Vec<_>>();
     if raw_search_profiles.is_empty() || contains_ingest_pipe(tokens, &raw_search_profiles) {
         return None;
     }
+    let terms = plan.terms;
     let routes: Vec<DecisionRoute> = raw_search_profiles
         .iter()
         .map(|profile| {
-            profile.route_from_template(
-                DecisionRouteKind::Ingest,
-                &profile.commands.ingest,
-                None,
-                None,
-            )
+            if terms.is_empty() {
+                return raw_search_ingest_route(profile);
+            }
+            search_query_route(profile, &terms).unwrap_or_else(|| raw_search_ingest_route(profile))
         })
         .collect();
     let message = provider_guide_message("raw-broad-search denied", &raw_search_profiles);
@@ -645,6 +509,15 @@ fn classify_raw_search_command(
         routes,
         message,
     ))
+}
+
+fn raw_search_ingest_route(profile: &LanguageProfile) -> DecisionRoute {
+    profile.route_from_template(
+        DecisionRouteKind::Ingest,
+        &profile.commands.ingest,
+        None,
+        None,
+    )
 }
 
 fn language_ids(profiles: &[&LanguageProfile]) -> Vec<String> {

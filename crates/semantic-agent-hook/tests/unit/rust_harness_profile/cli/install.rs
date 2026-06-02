@@ -39,6 +39,7 @@ fn cli_install_writes_root_owned_codex_hook_config() {
     assert!(skill.contains("rs-harness agent guide ."));
     assert!(skill.contains("ts-harness agent guide ."));
     assert!(skill.contains("py-harness agent guide ."));
+    assert!(skill.contains("julia --project=languages/JuliaLangProjectHarness.jl"));
     assert!(skill.contains("Do not add `--json` during agent exploration."));
     assert!(
         !root
@@ -181,6 +182,30 @@ fn cli_install_requires_executable_provider_binary() {
     assert!(!output.status.success());
     assert!(
         String::from_utf8_lossy(&output.stderr).contains("expected PATH to contain"),
+        "install stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    std::fs::remove_dir_all(root).expect("cleanup temp project root");
+}
+
+#[test]
+fn cli_install_requires_provider_agent_guide_support() {
+    let root = temp_project_root("install-stale-provider-bin");
+    let provider_path = write_stale_provider_binary(&root, "py-harness");
+    let output = Command::new(env!("CARGO_BIN_EXE_semantic-agent-hook"))
+        .env("PATH", &provider_path)
+        .env("CODEX_HOME", root.join(".codex-home"))
+        .args([
+            "install",
+            "--client",
+            "codex",
+            root.to_str().expect("utf8 temp root"),
+        ])
+        .output()
+        .expect("run semantic-agent-hook install");
+    assert!(!output.status.success());
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("agent guide support"),
         "install stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
@@ -333,11 +358,43 @@ fn write_fake_provider_binary(root: &std::path::Path, binary: &str) -> PathBuf {
     write_fake_provider_file(root, binary, 0o755)
 }
 
+fn write_stale_provider_binary(root: &std::path::Path, binary: &str) -> PathBuf {
+    let bin_dir = root.join(".bin");
+    std::fs::create_dir_all(&bin_dir).expect("create fake provider bin dir");
+    let path = bin_dir.join(binary);
+    std::fs::write(&path, "#!/bin/sh\nexit 0\n").expect("write stale provider binary");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut permissions = std::fs::metadata(&path)
+            .expect("stale provider metadata")
+            .permissions();
+        permissions.set_mode(0o755);
+        std::fs::set_permissions(&path, permissions).expect("chmod stale provider");
+    }
+    bin_dir
+}
+
 fn write_fake_provider_file(root: &std::path::Path, binary: &str, mode: u32) -> PathBuf {
     let bin_dir = root.join(".bin");
     std::fs::create_dir_all(&bin_dir).expect("create fake provider bin dir");
     let path = bin_dir.join(binary);
-    std::fs::write(&path, "#!/bin/sh\nexit 0\n").expect("write fake provider binary");
+    let guide_marker = match binary {
+        "rs-harness" => {
+            "[agent-guide] runtime=semantic-agent-hook language=rust provider=rs-harness"
+        }
+        "ts-harness" => "[ts-harness-guide]",
+        "py-harness" => "[py-harness-guide]",
+        _ => "[agent-guide]",
+    };
+    std::fs::write(
+        &path,
+        format!(
+            "#!/bin/sh\nif [ \"$1\" = \"agent\" ] && [ \"$2\" = \"guide\" ]; then\n  printf '%s\\n' '{}'\n  exit 0\nfi\nexit 0\n",
+            guide_marker
+        ),
+    )
+    .expect("write fake provider binary");
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;

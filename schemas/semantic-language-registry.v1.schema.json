@@ -44,10 +44,10 @@
     },
     "method": {
       "type": "string",
-      "pattern": "^(search|check|agent)/[a-z][a-z0-9_-]*$"
+      "pattern": "^(search|query|check|proof|review|evidence|agent)/[a-z][a-z0-9_-]*$"
     },
     "command": {
-      "enum": ["search", "check", "agent"]
+      "enum": ["search", "query", "check", "proof", "review", "evidence", "agent"]
     },
     "outputSchemaId": {
       "type": "string",
@@ -70,6 +70,30 @@
         },
         "name": {
           "$ref": "#/$defs/identifier"
+        }
+      }
+    },
+    "fallbackDescriptor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "trigger"],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/identifier"
+        },
+        "trigger": {
+          "enum": ["query-miss", "item-query-miss", "path-only-owner"]
+        },
+        "appliesToPipes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "maxItems": {
+          "type": "integer",
+          "minimum": 1
         }
       }
     },
@@ -113,6 +137,14 @@
         },
         "binary": {
           "$ref": "#/$defs/identifier"
+        },
+        "providerCommandPrefix": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
         },
         "namespace": {
           "$ref": "#/$defs/namespace"
@@ -181,6 +213,30 @@
           "if": {
             "properties": {
               "method": {
+                "pattern": "^query/"
+              }
+            },
+            "required": ["method"]
+          },
+          "then": {
+            "required": ["outputSchemaIds"],
+            "properties": {
+              "command": {
+                "const": "query"
+              },
+              "outputSchemaIds": {
+                "minItems": 1
+              }
+            },
+            "not": {
+              "required": ["view"]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
                 "pattern": "^check/"
               }
             },
@@ -210,6 +266,78 @@
             "properties": {
               "command": {
                 "const": "agent"
+              }
+            },
+            "not": {
+              "required": ["view"]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "pattern": "^proof/"
+              }
+            },
+            "required": ["method"]
+          },
+          "then": {
+            "required": ["outputSchemaIds"],
+            "properties": {
+              "command": {
+                "const": "proof"
+              },
+              "outputSchemaIds": {
+                "minItems": 1
+              }
+            },
+            "not": {
+              "required": ["view"]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "pattern": "^review/"
+              }
+            },
+            "required": ["method"]
+          },
+          "then": {
+            "required": ["outputSchemaIds"],
+            "properties": {
+              "command": {
+                "const": "review"
+              },
+              "outputSchemaIds": {
+                "minItems": 1
+              }
+            },
+            "not": {
+              "required": ["view"]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "pattern": "^evidence/"
+              }
+            },
+            "required": ["method"]
+          },
+          "then": {
+            "required": ["outputSchemaIds"],
+            "properties": {
+              "command": {
+                "const": "evidence"
+              },
+              "outputSchemaIds": {
+                "minItems": 1
               }
             },
             "not": {
@@ -273,7 +401,7 @@
           "type": "array",
           "uniqueItems": true,
           "items": {
-            "enum": ["exact-set", "prefix-set", "stdin-path-set"]
+            "enum": ["exact-set", "prefix-set", "fuzzy-set", "stdin-path-set"]
           }
         },
         "querySetScopes": {
@@ -305,6 +433,13 @@
             "$ref": "#/$defs/capabilityDescriptor"
           }
         },
+        "fallbacks": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/fallbackDescriptor"
+          }
+        },
         "clients": {
           "type": "array",
           "uniqueItems": true,
@@ -323,6 +458,13 @@
         "input": {
           "type": "string",
           "minLength": 1
+        },
+        "outputModes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": ["compact", "json", "code", "names", "outline", "read-packet"]
+          }
         },
         "supportsJson": {
           "type": "boolean"

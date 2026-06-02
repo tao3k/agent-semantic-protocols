@@ -1,4 +1,4 @@
-use crate::protocol::LanguageProfile;
+use crate::protocol::{LanguageProfile, normalize_source_selector};
 
 use super::shell::is_separator;
 
@@ -6,8 +6,9 @@ pub(crate) fn path_like_tokens(tokens: &[String]) -> Vec<&str> {
     tokens
         .iter()
         .filter_map(|token| {
-            if is_path_like_token(token) {
-                Some(token.as_str())
+            let normalized = normalize_source_selector(token);
+            if is_path_like_token(normalized) {
+                Some(normalized)
             } else {
                 None
             }

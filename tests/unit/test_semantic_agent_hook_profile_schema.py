@@ -93,6 +93,24 @@ class SemanticAgentHookProfileSchemaTests(unittest.TestCase):
     def test_minimal_profile_registry_is_valid(self) -> None:
         self.assertEqual([], self.validation_errors(minimal_registry()))
 
+    def test_provider_command_prefix_supports_workspace_managed_provider(self) -> None:
+        registry = minimal_registry()
+        profile = copy.deepcopy(registry["profiles"][0])
+        profile["languageId"] = "julia"
+        profile["providerId"] = "julia-project-harness"
+        profile["binary"] = "julia-project-harness"
+        profile["providerCommandPrefix"] = [
+            "julia",
+            "--project=languages/JuliaLangProjectHarness.jl",
+            "languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl",
+        ]
+        profile["namespace"] = (
+            "agent.semantic-protocols.languages.julia.julia-project-harness"
+        )
+        profile["sourceExtensions"] = [".jl"]
+        registry["profiles"] = [profile]
+        self.assertEqual([], self.validation_errors(registry))
+
     def test_absolute_config_files_are_rejected(self) -> None:
         registry = minimal_registry()
         profile = copy.deepcopy(registry["profiles"][0])

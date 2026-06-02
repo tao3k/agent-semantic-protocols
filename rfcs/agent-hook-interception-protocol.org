@@ -156,6 +156,11 @@ as a repository-local TOML snippet:
   aliases, but the hook stdin payload contains the canonical =tool_name= and
   =tool_input=.  Therefore match broadly in TOML and classify the normalized
   payload in =semantic-agent-hook=.
+- Codex Desktop API entries such as =functions.exec_command= and nested
+  =multi_tool_use.parallel= calls must be replayed as first-class hook payloads,
+  then smoke-tested through the real runtime.  Wrapper paths such as
+  =path.rs:10-20= and =path.rs:10:4= must be normalized before both policy
+  matching and provider route construction.
 - Codex hook output is schema-strict.  Unknown top-level fields can make the
   output fail to parse and convert an intended denial into no blocking action.
   The shared decision packet must either be emitted with =--emit decision= for
@@ -247,6 +252,7 @@ policy.agentSearchJson = block | allow | advisory
 primeCommand
 ownerCommand(path)
 textPipeCommand(query)
+queryCommand(selector, termArgs)
 ingestCommand(stdinKind)
 checkChangedCommand
 guideCommand
@@ -348,7 +354,7 @@ next actions.
 Exact source-file raw search such as =rg -n Foo src/model.ts= is still raw
 source exploration.  It should be denied with the same provider-owned guide
 instead of being treated as a safe exception; use =search owner= or a scoped
-=search text= packet when the owner is already known.
+=search fzf= packet when the owner is already known.
 
 Semantic search JSON is not the agent-facing exploration surface.  A
 provider-binary =search ... --json= command is allowed only when the caller is a
@@ -366,7 +372,8 @@ The decision order is:
    search command;
 2. block prompt-facing =search ... --json= exploration unless the invocation is
    a registered machine-consumer context;
-3. block broad content dumps and broad raw searches unless they pipe to ingest;
+3. block broad content dumps and broad raw searches unless they pipe to ingest
+   or route to a provider-declared hook query command;
 4. block broad edits to language-profile files before prime/search evidence;
 5. allow exact-file edits before prime only when policy enables the exception;
 6. record semantic-search evidence in post-tool state;
@@ -374,36 +381,58 @@ The decision order is:
 8. require compact subagent receipt shape at subagent stop;
 9. require changed checks at stop when dirty profile files exist.
 
+The raw command classifier is action-aware first and suffix/source-aware second.
+Directory names such as =docs/**= or =crates/**= are not language evidence on
+their own; source suffixes and provider-declared source roots are.
+
+| Action family | Source evidence | Term evidence | Decision |
+| Direct read/edit wrapper | exact source file | exact selector | deny with provider =query --from-hook direct-source-read --selector <path> .= route |
+| Direct read/edit wrapper | broad source suffix selector | none | deny with provider prime route |
+| Content dump (=sed=, =less=, =head=, =tail=, =nl=, =bat=) | exact source file | exact selector | deny bulk-source-dump with provider =query --from-hook direct-source-read --selector <path> .= route |
+| Content dump (=sed=, =less=, =head=, =tail=, =nl=, =bat=) | source glob | not required | deny bulk-source-dump with provider prime route |
+| Raw search (=rg=, =grep=, =fd=, =find=, =git grep=) | source suffix/root/profile match | concrete query term | deny with provider =commands.query= when declared |
+| Raw search (=rg=, =grep=, =fd=, =find=, =git grep=) | source suffix/root/profile match | no concrete term | deny with provider ingest route |
+| Raw search | non-source scope only, such as markdown/docs | any term | allow |
+| Raw search piped to provider ingest | source scope | candidates on stdin | allow |
+| Prompt-facing provider =--json= search | registered interactive shell | any | deny with compact text/owner route |
+
 Blocking decisions must include the next safe route, not only a denial.  The
-=routes= array is the machine-readable next-action source of truth.  When a
-provider has a parser-native owner query route for direct reads, the hook should
-surface that route as the default recovery command instead of falling back to a
-generic guide pointer.  For TypeScript, direct-source-read recovery therefore
-routes to the provider-owned compact query path:
+=routes= array is the machine-readable next-action source of truth.  For one
+exact project-relative source path, the hook should surface the owning
+provider's exact =query --from-hook direct-source-read= route instead of
+falling back to a generic guide pointer or source rendering.  For TypeScript,
+direct-source-read recovery therefore routes to =ts-harness query=:
 
 #+begin_example
-direct-source-read denied; route: ts-harness search owner src/components/WorkflowExecution.tsx items --query WorkflowExecution .
+direct-source-read denied; route: ts-harness query --from-hook direct-source-read --selector src/components/WorkflowExecution.tsx .
 #+end_example
 
-The root hook may infer a lightweight query term from the exact project path
-when the provider route template declares ={query}=.  This is only route
-materialization: the language provider still owns parser matching, exact item
-selection, and compact code rendering.  For file names with separators, the hook
-may include raw, PascalCase, and camelCase variants in one provider-native query
-expression, for example =agent-hooks|AgentHooks|agentHooks=.
+The hook only materializes the exact selector route; the language provider
+owns parser matching, owner ranking, exact item selection, and compact owner
+context rendering.
 
 For broad or pattern-based denials that do not carry one exact source path, the
-=message= field remains an agent-facing guide pointer.  In that case, it should
-wrap the provider-owned guide command in a compact form such as:
+=message= field remains an agent-facing guide pointer.  If the matched profile
+declares =commands.query= and the raw search contains concrete terms, the route
+should use that query template with ={selector}= and ={termArgs}= expanded from
+profile suffixes and shell-tokenized search terms.  Otherwise, it should wrap
+the provider-owned guide command in a compact form such as:
 
 #+begin_example
 direct-source-read denied; provider guide: rs-harness => rs-harness agent guide .; py-harness => py-harness agent guide .
 raw-broad-search denied; provider guide: ts-harness => ts-harness agent guide .
 #+end_example
 
-The root hook must not maintain a parser/query engine.  It may render the exact
-provider route already present in the decision packet, while provider ids and
-binaries select the provider guide command for broader recovery.
+The root hook must not maintain a parser/query engine.  Exact selected source
+paths route back to the owning provider's =query --from-hook
+direct-source-read= surface, while provider ids and binaries select the
+provider guide/search commands for broader recovery.
+
+If a provider wants to return bounded source windows after that route, it may
+emit =semantic-read-packet.v1= from its =query/*= method with
+=protocolId=agent.semantic-protocols.semantic-language=.  The root hook still
+emits only a hook decision packet and a =kind=query= route; it must not expose
+or emulate =semantic-agent-hook read=.
 
 * Decision Packet
 
@@ -446,10 +475,10 @@ the platform's expected output:
       "providerId": "ts-harness",
       "binary": "ts-harness",
       "kind": "owner",
-      "argv": ["ts-harness", "search", "owner", "src/components/WorkflowExecution.tsx", "items", "--query", "WorkflowExecution", "."]
+      "argv": ["ts-harness", "query", "--from-hook", "direct-source-read", "--selector", "src/cli/agent-hooks.ts", "."]
     }
   ],
-  "message": "direct-source-read denied; route: ts-harness search owner src/components/WorkflowExecution.tsx items --query WorkflowExecution ."
+  "message": "direct-source-read denied; route: ts-harness query --from-hook direct-source-read --selector src/cli/agent-hooks.ts ."
 }
 #+end_src
 
@@ -468,7 +497,7 @@ Output-mode denial example:
   "languageIds": ["typescript"],
   "subject": {
     "toolName": "Bash",
-    "command": "ts-harness search text location.path owner tests --json ."
+    "command": "ts-harness search fzf location.path owner tests --json ."
   },
   "routes": [
     {
@@ -479,9 +508,13 @@ Output-mode denial example:
       "argv": ["ts-harness", "search", "text", "location.path", "owner", "tests", "--view", "seeds", "."]
     }
   ],
-  "message": "agent-search-json denied; provider guide: ts-harness => ts-harness agent guide ."
+  "message": "agent-search-json denied; route: ts-harness search fzf location.path owner tests --view seeds ."
 }
 #+end_src
+
+When the rejected JSON-output command already includes an owner path, the
+route should use the provider's owner query command instead of a generic guide.
+The route shape is =search owner <path> items --query <derived-query> .=.
 
 * Downstream Plan
 
@@ -507,7 +540,8 @@ Output-mode denial example:
    - export a Python profile descriptor;
    - keep the transitional =py-harness agent hook= wrapper strict enough to
      deny direct Python source reads with =reasonKind=direct-source-read= and a
-     concrete =py-harness search owner <path> .= route;
+     concrete =py-harness query --from-hook direct-source-read --selector <path> .=
+     route when the root runtime is installed;
    - continue moving shared classification into root =semantic-agent-hook= for
      raw-search-to-ingest, edit-before-prime, changed-check, subagent, and stop
      gates.

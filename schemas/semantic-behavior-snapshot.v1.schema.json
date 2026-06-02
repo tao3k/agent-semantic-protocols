@@ -1,0 +1,212 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-behavior-snapshot.v1.schema.json",
+  "title": "Semantic Behavior Snapshot",
+  "description": "Shared observable-behavior snapshot contract for expect-test style assertions, golden outputs, and API behavior review.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "protocolId",
+    "protocolVersion",
+    "snapshotId",
+    "producer",
+    "subject",
+    "status",
+    "observations"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.semantic-behavior-snapshot"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "protocolId": {
+      "const": "agent.semantic-protocols.behavior-snapshot"
+    },
+    "protocolVersion": {
+      "const": "1"
+    },
+    "snapshotId": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "producer": {
+      "$ref": "#/$defs/producer"
+    },
+    "subject": {
+      "$ref": "#/$defs/subject"
+    },
+    "status": {
+      "$ref": "#/$defs/status"
+    },
+    "observedAt": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "observations": {
+      "items": {
+        "$ref": "#/$defs/observation"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "expected": {
+      "$ref": "#/$defs/snapshotValue"
+    },
+    "actual": {
+      "$ref": "#/$defs/snapshotValue"
+    },
+    "diff": {
+      "$ref": "#/$defs/snapshotValue"
+    },
+    "receiptIds": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "candidateIds": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "fields": {
+      "$ref": "#/$defs/fields"
+    }
+  },
+  "$defs": {
+    "producer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["languageId", "providerId", "namespace"],
+      "properties": {
+        "languageId": {
+          "pattern": "^[a-z][a-z0-9_-]*$",
+          "type": "string"
+        },
+        "providerId": {
+          "pattern": "^[a-z][a-z0-9_-]*$",
+          "type": "string"
+        },
+        "namespace": {
+          "minLength": 1,
+          "type": "string"
+        }
+      }
+    },
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "path"],
+      "properties": {
+        "kind": {
+          "enum": ["public-api", "function", "method", "module", "cli", "test", "custom"]
+        },
+        "path": {
+          "$ref": "#/$defs/projectPath"
+        },
+        "symbol": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "command": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "status": {
+      "enum": ["matched", "changed", "missing", "skipped", "error"]
+    },
+    "observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "message"],
+      "properties": {
+        "kind": {
+          "enum": ["stdout", "stderr", "return-value", "snapshot", "diff", "diagnostic", "note"]
+        },
+        "message": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "path": {
+          "$ref": "#/$defs/projectPath"
+        },
+        "line": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "snapshotValue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["format", "value"],
+      "properties": {
+        "format": {
+          "enum": ["text", "json", "debug", "bytes", "unknown"]
+        },
+        "value": {
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "type": "string"
+        },
+        "artifactUri": {
+          "minLength": 1,
+          "type": "string"
+        }
+      }
+    },
+    "projectPath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*)$"
+    },
+    "fields": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/scalar"
+      }
+    },
+    "scalar": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "integer"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/scalar"
+          }
+        }
+      ]
+    }
+  }
+}

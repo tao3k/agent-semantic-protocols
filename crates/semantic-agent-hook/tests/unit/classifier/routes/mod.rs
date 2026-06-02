@@ -70,3 +70,31 @@ fn registry_with_rust_and_python() -> ProfileRegistry {
     }));
     parse_profiles(&value.to_string()).unwrap()
 }
+
+fn registry_with_workspace_julia() -> ProfileRegistry {
+    let mut value = super::registry_value();
+    value["profiles"].as_array_mut().unwrap().push(json!({
+        "languageId": "julia",
+        "providerId": "julia-project-harness",
+        "binary": "julia-project-harness",
+        "providerCommandPrefix": [
+            "julia",
+            "--project=languages/JuliaLangProjectHarness.jl",
+            "languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl"
+        ],
+        "namespace": "agent.semantic-protocols.languages.julia.julia-project-harness",
+        "sourceExtensions": [".jl"],
+        "configFiles": ["Project.toml", "Manifest.toml"],
+        "sourceRoots": ["src", "test"],
+        "ignoredPathPrefixes": [".git", ".julia"],
+        "commands": {
+            "prime": {"argv": ["julia", "--project=languages/JuliaLangProjectHarness.jl", "languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl", "search", "prime", "--view", "seeds", "."]},
+            "owner": {"argv": ["julia", "--project=languages/JuliaLangProjectHarness.jl", "languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl", "search", "owner", "{path}", "--view", "seeds", "."]},
+            "text": {"argv": ["julia", "--project=languages/JuliaLangProjectHarness.jl", "languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl", "search", "text", "{query}", "owner", "tests", "--view", "seeds", "."]},
+            "ingest": {"argv": ["julia", "--project=languages/JuliaLangProjectHarness.jl", "languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl", "search", "ingest", "owner", "tests", "--view", "seeds", "."], "stdinMode": "pipe-candidates"},
+            "checkChanged": {"argv": ["julia", "--project=languages/JuliaLangProjectHarness.jl", "languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl", "check", "--changed", "."]},
+            "guide": {"argv": ["julia", "--project=languages/JuliaLangProjectHarness.jl", "languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl", "agent", "guide", "."]}
+        }
+    }));
+    parse_profiles(&value.to_string()).unwrap()
+}

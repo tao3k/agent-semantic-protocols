@@ -114,7 +114,7 @@
       "expect": {
         "lineProtocol": true,
         "stdoutContains": [
-          "[search-text]",
+          "[search-fzf]",
           "querySet=3",
           "src/runtime/task/abort.rs",
           "src/task/join_set.rs"

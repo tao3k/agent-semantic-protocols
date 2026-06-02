@@ -82,6 +82,14 @@
         "binary": {
           "$ref": "#/$defs/identifier"
         },
+        "providerCommandPrefix": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
         "namespace": {
           "$ref": "#/$defs/namespace"
         },
@@ -170,6 +178,9 @@
           "$ref": "#/$defs/commandTemplate"
         },
         "text": {
+          "$ref": "#/$defs/commandTemplate"
+        },
+        "query": {
           "$ref": "#/$defs/commandTemplate"
         },
         "ingest": {

@@ -43,7 +43,7 @@
       {
         "kind": "flag-like-query",
         "severity": "info",
-        "message": "search text --json is now parsed as a literal text query when it is the first query positional"
+        "message": "search fzf --json is now parsed as a literal text query when it is the first query positional"
       },
       {
         "kind": "tests-association",
@@ -118,7 +118,7 @@
       "expect": {
         "lineProtocol": true,
         "stdoutContains": [
-          "[search-text]",
+          "[search-fzf]",
           "querySet=2",
           "src/cli/protocol.ts",
           "tests/unit/cli.test.ts"
@@ -146,7 +146,7 @@
       "expect": {
         "stdoutJsonSchema": "schemas/semantic-search-packet.v1.schema.json",
         "stdoutJsonEquals": {
-          "method": "search/text",
+          "method": "search/fzf",
           "queryComposition.mode": "query-set",
           "queryCoverage.0.value": "AgentHookEvent",
           "queryCoverage.0.status": "miss",
@@ -223,7 +223,7 @@
       "expect": {
         "lineProtocol": true,
         "stdoutContains": [
-          "[search-text] q=--json",
+          "[search-fzf] q=--json",
           "|flow prime->owner|deps|symbol|tests"
         ],
         "maxStdoutLinesWarn": 8,

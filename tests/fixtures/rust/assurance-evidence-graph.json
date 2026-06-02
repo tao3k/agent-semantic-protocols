@@ -1,0 +1,91 @@
+{
+  "schemaId": "agent.semantic-protocols.semantic-evidence-graph",
+  "schemaVersion": "1",
+  "protocolId": "agent.semantic-protocols.evidence-graph",
+  "protocolVersion": "1",
+  "graphId": "rust.fixture.assurance",
+  "producer": {
+    "languageId": "rust",
+    "providerId": "rs-harness",
+    "namespace": "agent.semantic-protocols.languages.rust.rs-harness"
+  },
+  "project": {
+    "root": "."
+  },
+  "summary": {
+    "nodes": 4,
+    "edges": 3,
+    "owners": 1,
+    "claims": 1,
+    "staleItems": 1,
+    "gaps": 1
+  },
+  "nodes": [
+    {
+      "nodeId": "invariant:agent-r027",
+      "kind": "invariant-candidate",
+      "label": "semantic fields need named type",
+      "ownerPath": "src/model.rs",
+      "candidateId": "agent-r027:src.model.rs:42",
+      "status": "changed",
+      "summary": "public data shape should not expose stringly fields",
+      "fields": {
+        "sourceRuleId": "AGENT-R027",
+        "severity": "warning"
+      }
+    },
+    {
+      "nodeId": "behavior:src-model",
+      "kind": "behavior-snapshot",
+      "label": "expect-test output changed",
+      "status": "changed"
+    },
+    {
+      "nodeId": "waiver:agent-r027",
+      "kind": "waiver",
+      "label": "stale expect-test waiver",
+      "status": "stale"
+    },
+    {
+      "nodeId": "action:run-expect-test",
+      "kind": "review-action",
+      "label": "Run expect-test for AGENT-R027",
+      "actionId": "run-receipt.agent-r027.expect-test",
+      "fields": {
+        "targetId": "agent-r027:src.model.rs:42",
+        "priority": "p0"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "edgeId": "edge:observed",
+      "kind": "observed-by",
+      "fromNodeId": "invariant:agent-r027",
+      "toNodeId": "behavior:src-model"
+    },
+    {
+      "edgeId": "edge:waived",
+      "kind": "waived-by",
+      "fromNodeId": "invariant:agent-r027",
+      "toNodeId": "waiver:agent-r027"
+    },
+    {
+      "edgeId": "edge:requires",
+      "kind": "requires-evidence",
+      "fromNodeId": "action:run-expect-test",
+      "toNodeId": "invariant:agent-r027"
+    }
+  ],
+  "gaps": [
+    {
+      "gapId": "gap:expect-test",
+      "ownerPath": "src/model.rs",
+      "summary": "missing expect-test receipt",
+      "severity": "warning",
+      "fields": {
+        "invariantId": "agent-r027:src.model.rs:42"
+      }
+    }
+  ]
+}

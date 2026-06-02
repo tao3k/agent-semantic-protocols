@@ -10,3 +10,9 @@
 [submodule "languages/python-lang-project-harness"]
 	path = languages/python-lang-project-harness
 	url = https://github.com/tao3k/python-lang-project-harness
+[submodule "analyzers/WendaoGraph.jl"]
+	path = analyzers/WendaoGraph.jl
+	url = git@github.com:tao3k/WendaoGraph.jl.git
+[submodule "analyzers/ScienceResearch.jl"]
+	path = analyzers/ScienceResearch.jl
+	url = git@github.com:tao3k/ScienceResearch.jl.git

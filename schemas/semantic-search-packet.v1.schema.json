@@ -80,13 +80,16 @@
         "symbol",
         "callsite",
         "import",
+        "query",
         "cfg",
         "patterns",
         "pattern",
         "docs",
         "api",
         "public-external-types",
+        "policy",
         "tests",
+        "fzf",
         "text",
         "ingest"
       ]
@@ -177,6 +180,30 @@
       "type": "array",
       "items": {
         "$ref": "#/$defs/item"
+      }
+    },
+    "typeSurfaces": {
+      "type": "array",
+      "items": {
+        "$ref": "semantic-type-surface.v1.schema.json#/$defs/typeSurface"
+      }
+    },
+    "invariantCandidates": {
+      "type": "array",
+      "items": {
+        "$ref": "semantic-invariant-candidate.v1.schema.json#/$defs/invariantCandidate"
+      }
+    },
+    "semanticHandles": {
+      "type": "array",
+      "items": {
+        "$ref": "semantic-handle.v1.schema.json#/$defs/semanticHandle"
+      }
+    },
+    "nativeSyntaxFacts": {
+      "type": "array",
+      "items": {
+        "$ref": "semantic-native-syntax-fact-index.v1.schema.json#/$defs/nativeSyntaxFact"
       }
     },
     "hits": {
@@ -306,7 +333,7 @@
           ]
         },
         "selector": {
-          "enum": ["exact", "prefix", "stdin-path"]
+          "enum": ["exact", "prefix", "fuzzy", "stdin-path"]
         },
         "fields": {
           "$ref": "#/$defs/fields"
@@ -326,7 +353,7 @@
           "pattern": "^[a-z][a-z0-9_-]*$"
         },
         "selector": {
-          "enum": ["single", "exact-set", "prefix-set", "stdin-path-set"]
+          "enum": ["single", "exact-set", "prefix-set", "fuzzy-set", "stdin-path-set"]
         },
         "scope": {
           "$ref": "#/$defs/queryScope"
@@ -342,6 +369,9 @@
               "edges",
               "owners",
               "items",
+              "typeSurfaces",
+              "invariantCandidates",
+              "nativeSyntaxFacts",
               "hits",
               "findings",
               "nextActions",
@@ -377,7 +407,7 @@
           ]
         },
         "selector": {
-          "enum": ["exact", "prefix", "stdin-path"]
+          "enum": ["exact", "prefix", "fuzzy", "stdin-path"]
         },
         "status": {
           "enum": ["hit", "miss", "partial", "error"]
@@ -602,7 +632,10 @@
             "prime",
             "owner",
             "dependency",
+            "policy",
+            "query",
             "query-set",
+            "fzf",
             "text",
             "ingest",
             "custom"
@@ -655,6 +688,12 @@
             "$ref": "#/$defs/projectPath"
           }
         },
+        "windowSet": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/windowSetTarget"
+          }
+        },
         "findingOwners": {
           "type": "array",
           "items": {
@@ -666,6 +705,33 @@
           "items": {
             "$ref": "#/$defs/nextAction"
           }
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "windowSetTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "target"],
+      "properties": {
+        "kind": {
+          "enum": ["owner", "tests", "read"]
+        },
+        "target": {
+          "$ref": "#/$defs/projectPath"
+        },
+        "query": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ownerPath": {
+          "$ref": "#/$defs/projectPath"
         },
         "fields": {
           "$ref": "#/$defs/fields"

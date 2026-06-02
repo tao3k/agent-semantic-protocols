@@ -23,6 +23,82 @@ slice that lets the LLM choose the next focused search. The graph schema exists
 to keep that embedded vocabulary aligned across providers, not to introduce a
 separate `search graph` or top-level graph exploration workflow.
 
+`semantic-type-surface.v1.schema.json` is the shared vocabulary for
+language-neutral public type surface facts. It owns the facts that agents need
+to compare across Rust, TypeScript, Python, Julia, and future providers: type
+name, kind, role, owner path, visibility, member shape, external origin, and
+version scope. It does not model a complete language type system. Compiler,
+AST, checker, lifetime, variance, overload, or typing-module details stay in
+provider-owned `fields` maps or provider-local schemas. Search packets may
+embed these facts through optional `typeSurfaces` when views such as
+`search/api`, `search/public-external-types`, or provider-native query output
+need a contract-visible type surface.
+
+`semantic-invariant-candidate.v1.schema.json` is the shared vocabulary for
+machine-facing invariant candidates raised from parser-owned findings before
+test, receipt, proof, or review evaluation. Findings remain the human-facing
+diagnostic surface; invariant candidates carry stable ids, source rule ids,
+candidate kind, concrete location, evidence, and required receipt hints. P0
+providers should emit candidates additively, without deleting or parsing
+finding summaries. P1 receipt schemas, P2 behavior snapshots, P4 proof pilots,
+and P5 review packets consume this shared candidate shape.
+
+`semantic-verification-receipt.v1.schema.json` is the shared executable
+evidence receipt emitted by tool adapters. It records the producer, tool
+adapter, command argv, status, exit code, duration, compact observations,
+candidate ids, task fingerprints, and artifact references. It is distinct from
+the Rust harness verification lifecycle receipt: lifecycle receipts answer
+"does this configured task clear"; verification receipts answer "what tool ran
+and what evidence did it produce". P1 covers receipt command shaping for
+`cargo-check`, `cargo-test`, `clippy`, `expect-test`, `proptest`,
+`cargo-fuzz`, `kani`, `creusot`, and `verus`; P4 decides which formal proof
+harnesses should be trusted as project rules.
+
+`semantic-behavior-snapshot.v1.schema.json` is the shared observable-behavior
+snapshot contract for expect-test outputs, golden public API shapes, CLI
+observations, and review-visible behavior diffs. It records the producer,
+subject, status, compact observations, optional expected/actual/diff values,
+and links back to verification receipt ids or invariant candidates. P2 uses it
+to let agents see behavior, not only type shape.
+
+`semantic-determinism-readiness.v1.schema.json` is the shared readiness
+contract for direct nondeterminism sources. It records parser-owned
+observations for clock, random, filesystem, network, environment, and
+global-state access, plus review-visible suggestions such as trait injection or
+explicit parameter boundaries. P3 uses it to make determinism blockers concrete
+before any larger simulation or mocking strategy is considered.
+
+`semantic-formal-proof-pilot.v1.schema.json` is the shared proof-pilot
+contract for bounded or formal evidence that a harness rule judgment is
+reliable. It records the target rule surface, proof method, claims, concrete
+checks, model counts, and optional verification receipt links. P4 uses it for
+small focused pilots such as dependency graph acyclicity before widening to
+Kani, Creusot, or Verus-backed receipts.
+
+`semantic-review-packet.v1.schema.json` is the shared reviewer-first artifact
+that consumes the new evidence APIs: invariant candidates, verification
+receipts, behavior snapshots, determinism readiness packets, proof pilots, and
+explicit review-packet waiver evidence. P5 uses it to summarize changed
+invariants, changed behavior, missing receipts, stale waivers, determinism
+observations, proof claims, and prioritized reviewer actions without depending
+on legacy lifecycle waiver/task objects.
+
+`semantic-evidence-graph.v1.schema.json` is the shared portable graph artifact
+over reviewer evidence. P6.1 uses it to link review packets, invariant
+candidates, receipts, behavior snapshots, determinism readiness summaries,
+proof pilots, waivers, and review actions as explicit nodes and edges. It is an
+artifact contract, not a database or long-lived storage layer: providers can
+emit it from current evidence packets, reviewers can inspect it, and later
+assurance-case renderers can consume it without inventing a new evidence
+vocabulary.
+
+`semantic-assurance-case.v1.schema.json` is the shared reviewer-first assurance
+artifact derived from an evidence graph. P6.2 uses it to turn graph nodes and
+edges into claims, supporting evidence references, review actions, stale waiver
+references, and open gaps. It deliberately keeps references by graph node id
+instead of embedding another full graph, so assurance rendering stays portable
+without becoming a storage or visualization layer.
+
 `semantic-query-packet.v1.schema.json` is the shared JSON contract for
 provider-native parser queries that return compact code by default. Query is a
 language-provider capability, not a root hook capability: Rust, TypeScript,
@@ -30,6 +106,38 @@ Python, and future providers own AST/parser lookup, exact item matching,
 multi-term expressions such as `fun1|fun2|fun3`, and compact code extraction.
 Root hooks should route source access back to provider `search owner <path>
 items [--query SYMBOL]`; they should not maintain a parallel read/query engine.
+The query packet also supports owner-local discovery without source windows:
+`outputMode=names` or `outline` may omit match `code`, while `queryCoverage`
+and bounded `candidateItems` explain missed terms and parser-owned repair
+candidates.
+
+`semantic-handle.v1.schema.json` is the shared contract for stable semantic
+facts that agents need to query but that are not necessarily parser items. It
+covers policy rule ids, schema fixtures, test cases, config keys, command
+surfaces, dependency APIs, provider capabilities, and similar handles across
+Rust, TypeScript, Python, Julia, and future providers. Search and query packets
+may embed these facts as optional `semanticHandles`; language-specific details
+stay in provider-owned `fields`.
+
+`semantic-native-syntax-fact-index.v1.schema.json` is the shared contract for
+parser-owned syntax facts. It exists so code-shaped queries such as `pub use
+rules`, `fn format_field`, `struct PacketCollections`, `import {Foo}`, or
+`def run` are routed through native parser facts before semantic text search.
+The root schema owns only the portable fact envelope: fact id, kind, source,
+owner path, location, visibility, query keys, relations, and extension fields.
+Rust, TypeScript, Python, Julia, and future providers own their concrete fact
+builders and provider-local schema refinements. Search and query packets may
+embed these facts as optional `nativeSyntaxFacts`.
+
+`semantic-finder-tools.v1.schema.json` is the shared contract for
+provider-approved finder pipelines behind `search fzf`, compatibility
+`search fzf`, `search ingest`, and `search pattern`. It describes tool catalogs
+and pipelines such as `rg+fzf` without exposing raw shell argv to agents. `rg`
+owns lexical candidate generation, `fzf` owns headless fuzzy filtering/ranking,
+and the language provider owns path normalization, owner resolution,
+nearest-item resolution, test frontier selection, deduplication, caps, and
+packet rendering. `ast-grep` is modeled as a structural recipe/search tool, not
+as a fuzzy text backend or a replacement for native provider `query`.
 
 `semantic-sandtable-scenario.v1.schema.json` is the shared scenario descriptor
 for replaying bounded search flows against real harness binaries. It owns the
@@ -81,6 +189,23 @@ hook response. It standardizes normalized event names, deny/context decisions,
 language/provider routes, and state updates while provider repositories own only
 their language profile descriptors and semantic search/check commands.
 
+`semantic-read-packet.v1.schema.json` is an optional provider-owned packet for
+bounded exact source windows selected by the language query layer. It is not a
+root hook command surface and does not reintroduce `semantic-agent-hook read`.
+Providers may emit it from `query/*` methods, for example an exact
+`query --from-hook direct-source-read --selector <path>` recovery with
+`outputMode=read-packet`. The packet records parser-owned selection evidence:
+project-relative selectors, owner paths, optional item facts, bounded line
+windows, truncation state, and notes. Broad discovery still stays in provider
+search, prime, ingest, or normal query repair.
+
+`semantic-search-packet.v1.schema.json` owns the search-synthesis frontier that
+precedes read packets. `searchSynthesis.editFrontier` names source owners,
+`searchSynthesis.testFrontier` names coupled tests, and
+`searchSynthesis.windowSet` names typed `{kind,target}` owner/test/read windows
+that an agent may inspect with bounded read transport after the provider has
+selected the semantic axis.
+
 The TypeScript provider registers as:
 
 ```json
@@ -122,6 +247,20 @@ point at registry output schemas such as
 that emit structured decisions must instead advertise
 `agent.semantic-protocols.agent-hook-decision`, so providers can render
 platform-specific hook payloads without changing the shared decision contract.
+Query descriptors use `query/*` methods, advertise packet schemas such as
+`agent.semantic-protocols.semantic-query-packet` and optional
+`agent.semantic-protocols.semantic-read-packet`, and describe owner-local inputs
+such as `input="owner-path"`, required options such as `--term`, and supported
+`outputModes` including compact, JSON, code, names, outline, and read-packet.
+They must not reuse a search `view`; query is the parser-owned item lookup
+surface that lets an agent repair stale symbol probes without escalating to
+source reads.
+When a search packet embeds shared sub-schema content, descriptors list both
+the packet schema and the embedded sub-schema. For example,
+`search/public-external-types` advertises
+`agent.semantic-protocols.semantic-search-packet` plus
+`agent.semantic-protocols.semantic-type-surface` because its JSON packet may
+populate `typeSurfaces`.
 For search methods, `requiresQuery`, `acceptsStdin`, and `supportsPackageScope`
 define the v1 public input shape: one optional/required query positional, stdin
 participation, and `--package <package-id>`. Additional public controls must be
@@ -142,7 +281,7 @@ expanded through `rg`/`fd` or another external source and normalized through
 notes or falling back to raw shell output.
 Search descriptors can also carry `acceptedPipes`, a provider-advertised list of
 final-only pipe names accepted by that method, such as TypeScript's
-`search/text` accepting `owner` and `tests`.
+`search/fzf` accepting `owner` and `tests`.
 
 Registry invariants mirror Language Server Protocol naming discipline without
 copying LSP transport. `languageId` identifies the source language,
@@ -169,11 +308,20 @@ The stable envelope is language-neutral:
 - `method`: namespaced method, such as `search/prime`, `search/dependency`,
   or `search/deps`
 - `view`: one semantic-search view, such as `workspace`, `prime`, `owner`,
-  `dependency`, `deps`, `symbol`, `callsite`, `import`, `cfg`,
-  `patterns`, `pattern`, `docs`, `api`, `public-external-types`, `tests`,
-  `text`, or `ingest`
+  `dependency`, `deps`, `symbol`, `callsite`, `import`, `query`, `cfg`,
+  `patterns`, `pattern`, `docs`, `api`, `public-external-types`, `policy`,
+  `tests`, `fzf`, `text`, or `ingest`
 - `header`, `packages`, `nodes`, `edges`, `owners`, `items`, `hits`,
   `findings`, `nextActions`, and `notes`
+- optional `typeSurfaces` for shared public API and dependency type surface
+  facts
+- optional `invariantCandidates` for shared test/proof/review candidate facts
+  raised from provider-owned findings
+- optional `semanticHandles` for stable non-code semantic facts such as policy
+  rules, schema fixtures, test cases, config keys, and provider capabilities
+- optional `nativeSyntaxFacts` for parser-owned syntax facts from
+  `semantic-native-syntax-fact-index.v1`, used by code-shaped query routing
+  before broad text search
 - optional `querySet` and `queryComposition` for homogeneous same-view
   query-set packets
 - optional `queryCoverage`, `ownerResolution`, `searchSynthesis`, and
@@ -219,7 +367,7 @@ Owner-scoped TypeScript text searches are the motivating case: once
 `search owner src/cli/semantic-search/render.ts .` has selected the owner,
 repeated text probes such as `location.path`, `location.column`,
 `location.line`, and `renderLocation` should become one
-`search/text` query-set packet with `scope.ownerPath`, not several separate
+`search/fzf` query-set packet with `scope.ownerPath`, not several separate
 text packets or a comma-joined literal query.
 Project-scoped TypeScript text query-sets are also valid when the owner has not
 been selected yet and the repeated probes are still the same text axis.
@@ -252,8 +400,8 @@ reports coarse cache and parser reuse facts such as `cacheStatus`, `elapsedMs`,
 follow-up search planning; provider-specific compiler details still belong in
 `fields`.
 
-For `search text`, a flag-like first query positional remains literal. For
-example, `ts-harness search text --json --view seeds .` searches for the token
+For `search fzf`, a flag-like first query positional remains literal. For
+example, `ts-harness search fzf --json --view seeds .` searches for the token
 `--json`; request JSON output by placing `--json` after the query.
 
 This repository's `schemas/` directory is the protocol source of truth.
@@ -306,13 +454,13 @@ ts-harness search symbol OrderStatus --json .
 ts-harness search callsite OrderStatus --json .
 ts-harness search import ./order --json .
 ts-harness search tests src/domain/order.ts --json .
-ts-harness search text OrderStatus --json .
+ts-harness search fzf OrderStatus --json .
 rg -n "OrderStatus" src tests | ts-harness search ingest --json .
 ```
 
 Those JSON examples are contract checks, not an agent exploration recipe. A
 prompt-facing agent should use compact line protocol, for example
-`ts-harness search text OrderStatus --view seeds .`, and reserve `--json` for
+`ts-harness search fzf OrderStatus --view seeds .`, and reserve `--json` for
 tests, receipts, validators, IDE/Flowhub, or other machine consumers.
 
 For TypeScript, `search owner` resolves reasoning owners first, then
@@ -322,14 +470,14 @@ outside the reasoning owner graph are represented with
 metadata, line counts, validity, and diagnostic counts. Existing paths outside
 the parser module set are still represented as path-only owners with
 `fields.source=path-only`, `fields.parserOwner=false`, and
-`nextActions=[{kind:"ingest", target:<path>}]`. `search text` indexes
+`nextActions=[{kind:"ingest", target:<path>}]`. `search fzf` indexes
 parser-visible source text, owner paths, and exports; docs, schema files, and
 other non-parser text should be expanded with `rg` or `fd` and normalized
 through `search ingest`. The TypeScript registry advertises this directly:
 `search/owner` carries TypeScript-scoped
 `parser-visible-module-owner-search`, `test-owner-search`, and
 `ingestRequiredFor=[{languageId:"typescript",namespace:"typescript",name:"non-parser-path"}]`;
-`search/text` carries TypeScript-scoped
+`search/fzf` carries TypeScript-scoped
 `parser-visible-source-text-search` and TypeScript-scoped ingest surfaces for
 non-parser text, docs text, schema JSON, and generated artifacts.
 `search/api` projects TypeScript parser-owned exported/public API facts from the
@@ -359,6 +507,6 @@ py-harness search symbol PythonHarnessReport --json .
 py-harness search callsite PythonHarnessReport --json .
 py-harness search import python_lang_project_harness --json .
 py-harness search tests src/python_lang_project_harness/_cli.py --json .
-py-harness search text PythonHarnessReport --json .
+py-harness search fzf PythonHarnessReport --json .
 rg -n "PythonHarnessReport" src tests | py-harness search ingest --json .
 ```

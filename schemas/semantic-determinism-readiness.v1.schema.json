@@ -1,0 +1,251 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-determinism-readiness.v1.schema.json",
+  "title": "Semantic Determinism Readiness",
+  "description": "Shared determinism readiness contract for direct clock, random, filesystem, network, environment, and global-state observations plus injection suggestions.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "protocolId",
+    "protocolVersion",
+    "readinessId",
+    "producer",
+    "project",
+    "status",
+    "observations",
+    "suggestions"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.semantic-determinism-readiness"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "protocolId": {
+      "const": "agent.semantic-protocols.determinism-readiness"
+    },
+    "protocolVersion": {
+      "const": "1"
+    },
+    "readinessId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_.:-]*$"
+    },
+    "producer": {
+      "$ref": "#/$defs/producer"
+    },
+    "project": {
+      "$ref": "#/$defs/project"
+    },
+    "status": {
+      "$ref": "#/$defs/status"
+    },
+    "observedAt": {
+      "type": "string",
+      "minLength": 1
+    },
+    "observations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/observation"
+      }
+    },
+    "suggestions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/suggestion"
+      }
+    },
+    "candidateIds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "fields": {
+      "$ref": "#/$defs/fields"
+    }
+  },
+  "$defs": {
+    "producer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["languageId", "providerId", "namespace"],
+      "properties": {
+        "languageId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "providerId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "namespace": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*(\\.[a-z][a-z0-9_-]*)+$"
+        }
+      }
+    },
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["root"],
+      "properties": {
+        "root": {
+          "$ref": "#/$defs/projectPath"
+        },
+        "package": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "status": {
+      "enum": ["ready", "needs-injection", "blocked", "unknown"]
+    },
+    "category": {
+      "enum": [
+        "clock",
+        "random",
+        "filesystem",
+        "network",
+        "environment",
+        "global-state"
+      ]
+    },
+    "evidenceKind": {
+      "enum": ["function-call", "macro-invocation", "path-reference", "static-item"]
+    },
+    "severity": {
+      "enum": ["info", "warning", "error"]
+    },
+    "observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "observationId",
+        "category",
+        "evidenceKind",
+        "severity",
+        "summary",
+        "path",
+        "line",
+        "direct"
+      ],
+      "properties": {
+        "observationId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.:-]*$"
+        },
+        "category": {
+          "$ref": "#/$defs/category"
+        },
+        "evidenceKind": {
+          "$ref": "#/$defs/evidenceKind"
+        },
+        "severity": {
+          "$ref": "#/$defs/severity"
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "path": {
+          "$ref": "#/$defs/projectPath"
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "symbol": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expression": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sourceLine": {
+          "type": "string"
+        },
+        "direct": {
+          "type": "boolean"
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "suggestion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "category", "message"],
+      "properties": {
+        "kind": {
+          "enum": ["trait-injection", "explicit-parameter", "state-handle", "test-fixture"]
+        },
+        "category": {
+          "$ref": "#/$defs/category"
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        },
+        "path": {
+          "$ref": "#/$defs/projectPath"
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "traitName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "projectPath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*)$"
+    },
+    "fields": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/scalar"
+      }
+    },
+    "scalar": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "integer"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/scalar"
+          }
+        }
+      ]
+    }
+  }
+}

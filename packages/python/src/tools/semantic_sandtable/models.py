@@ -120,21 +120,11 @@ class CoverageReport:
         missing: dict[str, list[str]] = {}
         required_intents = set(LARGE_LIBRARY_INTENT_KINDS)
         for language, expected in self.language_expected_surfaces.items():
-            if "large-library" not in expected:
-                continue
-            targets = self.large_library_targets.get(language, {})
-            language_missing: list[str] = []
-            if len(targets) < LARGE_LIBRARY_MIN_TARGETS_PER_LANGUAGE:
-                language_missing.append(
-                    "libraries="
-                    f"{len(targets)}/{LARGE_LIBRARY_MIN_TARGETS_PER_LANGUAGE}"
-                )
-            for package, target in sorted(targets.items()):
-                missing_intents = sorted(required_intents - target.intent_kinds)
-                if missing_intents:
-                    language_missing.append(
-                        f"{package}:intents={','.join(missing_intents)}"
-                    )
+            language_missing = _large_library_missing_for_language(
+                expected,
+                self.large_library_targets.get(language, {}),
+                required_intents,
+            )
             if language_missing:
                 missing[language] = language_missing
         return missing
@@ -145,6 +135,38 @@ class CoverageReport:
             for name, surface in self.surfaces.items()
             if language in surface.languages
         }
+
+
+def _large_library_missing_for_language(
+    expected_surfaces: list[str],
+    targets: dict[str, LargeLibraryTarget],
+    required_intents: set[str],
+) -> list[str]:
+    if "large-library" not in expected_surfaces:
+        return []
+    return [
+        *_large_library_count_gap(targets),
+        *_large_library_intent_gaps(targets, required_intents),
+    ]
+
+
+def _large_library_count_gap(
+    targets: dict[str, LargeLibraryTarget],
+) -> list[str]:
+    if len(targets) >= LARGE_LIBRARY_MIN_TARGETS_PER_LANGUAGE:
+        return []
+    return [f"libraries={len(targets)}/{LARGE_LIBRARY_MIN_TARGETS_PER_LANGUAGE}"]
+
+
+def _large_library_intent_gaps(
+    targets: dict[str, LargeLibraryTarget],
+    required_intents: set[str],
+) -> list[str]:
+    return [
+        f"{package}:intents={','.join(missing_intents)}"
+        for package, target in sorted(targets.items())
+        if (missing_intents := sorted(required_intents - target.intent_kinds))
+    ]
 
 
 @dataclass

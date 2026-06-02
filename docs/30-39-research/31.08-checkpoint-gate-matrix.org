@@ -1,0 +1,160 @@
+#+TITLE: 31.08 Checkpoint And Gate Matrix
+#+DATE: 2026-06-02
+#+STATUS: active
+#+JOHNNY_DECIMAL: 31.08
+#+AREA: 30-39 Research
+#+CATEGORY: 31 Search Flow Research
+
+* Purpose
+
+This checkpoint prevents the hook/query/search work from spreading into one
+unreviewable change set.  The current repository has root protocol changes,
+root hook runtime changes, sandtable changes, and nested provider changes in
+flight at the same time.  Future work should close one checkpoint group at a
+time and keep validation evidence attached to that group.
+
+* Checkpoint Groups
+
+| Group | Scope | Status | Required proof |
+|-------+-------+--------+----------------|
+| hook-query-route | exact direct reads, wrapper line locators, decision route =kind=query= | ready for root gate | root hook tests, decision schema tests, real hook replay |
+| query-window-set | =semantic-query-packet=, owner-local query repair, =windowSet= line protocol | partial | root schema tests, sandtable real provider replay, provider query tests |
+| handle-policy | =semantic-handle=, =search policy=, provider registry descriptors | partial | Python reference gate first, then Rust/TS/Julia provider gates |
+| evidence-layer | behavior snapshot, determinism, proof, review, type surface, verification receipts | design only | schema tests and RFC review before provider coupling |
+
+* Root Gate
+
+Run after root hook/schema/sandtable edits:
+
+#+begin_src shell
+direnv exec . cargo test -p semantic-agent-hook
+python -m pytest \
+  tests/unit/test_semantic_agent_hook_decision_schema.py \
+  tests/unit/semantic_sandtable/test_line_protocol_paths.py \
+  tests/unit/semantic_sandtable/test_raw_search_query_packet.py
+git diff --check -- \
+  crates/semantic-agent-hook \
+  docs/30-39-research \
+  rfcs \
+  schemas \
+  tests/unit
+#+end_src
+
+The root gate is not enough for provider alignment.  It proves that the root
+runtime, shared schema tests, and root sandtable fixtures are coherent.
+
+* 2026-06-02 Root Gate Result
+
+The root gate was replayed after the checkpoint documentation updates and after
+fixing the Rust provider dev-dependency compile break in
+=languages/rust-lang-project-harness/src/verification/review_packet/model.rs=.
+The break was caused by crate-internal tuple newtypes whose fields were too
+private for the sibling packet builder module.
+
+#+begin_src text
+direnv exec . cargo test -p semantic-agent-hook
+  result: pass, 80 tests
+
+python -m pytest tests/unit/test_semantic_agent_hook_decision_schema.py \
+  tests/unit/semantic_sandtable/test_line_protocol_paths.py \
+  tests/unit/semantic_sandtable/test_raw_search_query_packet.py
+  result: pass, 15 tests
+
+git diff --check -- docs/30-39-research/31.02-hook-read-window-trigger-report.org \
+  docs/30-39-research/31.06-cross-language-semantic-handle-plan.org \
+  docs/30-39-research/31.08-checkpoint-gate-matrix.org \
+  languages/rust-lang-project-harness/src/verification/review_packet/model.rs \
+  languages/rust-lang-project-harness/src/verification/review_packet/mod.rs
+  result: pass
+#+end_src
+
+* Provider Gate Matrix
+
+** Rust Provider
+
+#+begin_src shell
+direnv exec . cargo test --manifest-path languages/rust-lang-project-harness/Cargo.toml --features cli,search
+direnv exec . cargo test --manifest-path languages/rust-lang-project-harness/Cargo.toml --features cli,search cli_search_views_render_rfc_line_protocol -- --nocapture
+#+end_src
+
+Required evidence:
+
+- =query/owner-items= is advertised in the registry
+- =semantic-query-packet.v1= validates for owner-local miss and names-only hits
+- =window_set= is emitted and accepted by the sandtable line-protocol validator
+
+** TypeScript Provider
+
+Run TypeScript package gates serially.  The package build cleans =dist=, so
+parallel =npm= gates can create false failures.
+
+#+begin_src shell
+direnv exec . npm --prefix languages/typescript-lang-project-harness run check:implementation
+direnv exec . npm --prefix languages/typescript-lang-project-harness run build
+direnv exec . node --test \
+  languages/typescript-lang-project-harness/dist/tests/unit/cli_item_query.test.js \
+  languages/typescript-lang-project-harness/dist/tests/unit/cli_item_query_code.test.js \
+  languages/typescript-lang-project-harness/dist/tests/unit/cli_item_query_fallback.test.js \
+  languages/typescript-lang-project-harness/dist/tests/unit/cli_search_policy.test.js \
+  languages/typescript-lang-project-harness/dist/tests/unit/cli_search_query.test.js \
+  languages/typescript-lang-project-harness/dist/tests/unit/semantic_search_schema.test.js
+#+end_src
+
+Required evidence:
+
+- top-level =query= supports repeated =--term= and =--names-only=
+- owner item =--code= is only used after owner and query are known
+- schema fixture and policy handles do not fall back to class-sized code dumps
+
+** Python Provider
+
+#+begin_src shell
+direnv exec . uv run --project languages/python-lang-project-harness --frozen python -m pytest \
+  languages/python-lang-project-harness/tests/unit/harness/test_semantic_cli_query_set.py \
+  languages/python-lang-project-harness/tests/unit/harness/test_semantic_cli_owner_items.py \
+  languages/python-lang-project-harness/tests/unit/harness/test_semantic_cli_policy.py \
+  languages/python-lang-project-harness/tests/unit/harness/test_semantic_schema_registry.py
+#+end_src
+
+Required evidence:
+
+- =search policy PY-PROJ-R001 owner tests= returns a stable handle, owner, and tests
+- =search policy PY-AGENT-R008 owner tests= does not require guessed helper names
+- broad test/schema queries can return names-only or outline output before code
+
+** Julia Provider
+
+Julia is workspace-managed and is not a bin parity target.  Do not add,
+document, or validate a bare global =julia-project-harness= executable.
+
+#+begin_src shell
+direnv exec . julia --project=languages/JuliaLangProjectHarness.jl -e 'using Pkg; Pkg.test()'
+direnv exec . julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl agent guide languages/JuliaLangProjectHarness.jl
+direnv exec . julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl search prime --view seeds languages/JuliaLangProjectHarness.jl
+direnv exec . julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl search owner src/cli.jl --view seeds languages/JuliaLangProjectHarness.jl
+direnv exec . julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl search text run_julia_project_harness_cli owner tests --view seeds languages/JuliaLangProjectHarness.jl
+printf 'src/cli.jl:1\n' | direnv exec . julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl search ingest owner tests --view seeds languages/JuliaLangProjectHarness.jl
+#+end_src
+
+Required evidence:
+
+- compact =windowSet= remains valid
+- provider output filtering is allowed only for the full workspace command prefix
+- arbitrary =julia -e ... | rg ...= remains denied as raw broad search
+
+* Execution Order
+
+1. Close =hook-query-route= first because it is already root-validated and
+   protects every provider from direct source-read escapes.
+2. Close =query-window-set= next because it turns hook denials into useful,
+   bounded provider evidence instead of repeated owner/text searches.
+3. Close =handle-policy= after provider gates prove that policy ids, schema
+   fixtures, and test cases are first-class facts.
+4. Keep =evidence-layer= schemas separate until their provider adapters and
+   tests are intentionally selected.
+
+* Worktree Rule
+
+Do not mix root protocol commits with nested provider commits.  If a provider
+repo under =languages/= is dirty, validate and checkpoint that provider inside
+its own repository before advancing the root pointer or root schema copies.

@@ -1,0 +1,411 @@
+#+TITLE: 31.04 Rust Owner-Local Query Loop Report
+#+DATE: 2026-06-01
+#+STATUS: active
+#+JOHNNY_DECIMAL: 31.04
+#+AREA: 30-39 Research
+#+CATEGORY: 31 Search Flow Research
+
+* Purpose
+
+This report records a real Rust workflow where the agent obeyed the project
+skill by using =rs-harness= query/search instead of raw source reads, but still
+fell into many repeated owner-local symbol probes.
+
+The trace matters because graph synthesis has already improved cross-owner
+planning.  The remaining waste is inside one selected owner: the agent does not
+have enough parser-owned item-discovery evidence to stop guessing function
+names.
+
+* Replayed Trace
+
+The agent first selected the relevant owner:
+
+#+begin_src shell
+direnv exec . rs-harness query crates/semantic-agent-hook/src/command/raw_search.rs --query RawSearchScope crates/semantic-agent-hook
+direnv exec . rs-harness query crates/semantic-agent-hook/src/command/raw_search.rs --query terms_for_raw_search crates/semantic-agent-hook
+direnv exec . rs-harness query crates/semantic-agent-hook/src/command/raw_search.rs --query raw_search_stage crates/semantic-agent-hook
+direnv exec . rs-harness query crates/semantic-agent-hook/src/command/raw_search.rs --query profiles_for_raw_search crates/semantic-agent-hook
+direnv exec . rs-harness search owner crates/semantic-agent-hook/src/command/raw_search.rs items --view seeds crates/semantic-agent-hook
+#+end_src
+
+It then probed guessed parser helper names:
+
+#+begin_src shell
+direnv exec . rs-harness query src/command/raw_search.rs --query parse_git_grep_scope .
+direnv exec . rs-harness query src/command/raw_search.rs --query parse_ripgrep_scope .
+direnv exec . rs-harness query src/command/raw_search.rs --query parse_fd_scope .
+direnv exec . rs-harness query src/command/raw_search.rs --query parse_find_scope .
+direnv exec . rs-harness query src/command/raw_search.rs --query matching_profiles .
+#+end_src
+
+The important reproduced outputs were:
+
+#+begin_src text
+[search-owner] q=crates/semantic-agent-hook/src/command/raw_search.rs pkg=. own=1 item=30
+|seed symbol:RawSearchScope,RawSearchCommandKind,fd_terms,push_type,clean_term
+|note seeds_truncated=25 limit=8
+#+end_src
+
+and:
+
+#+begin_src text
+[search-owner] q=crates/semantic-agent-hook/src/command/raw_search.rs pkg=. own=1 item=0 itemQuery=parse_ripgrep_scope
+|query itemQuery=parse_ripgrep_scope status=miss match=none item=0 reason=parser-item-miss next=revise-query
+#+end_src
+
+The provider could answer the useful broader query:
+
+#+begin_src text
+[search-owner] ... itemQuery=parse_
+|query itemQuery=parse_ status=hit match=fallback-contains item=6 reason=parser-item-fallback next=code
+|item parse_ripgrep_like_scope ...
+|item parse_grep_like_scope ...
+|item parse_fd_scope ...
+|item parse_find_scope ...
+|item parse_git_grep_scope ...
+|item parse_git_ls_files_scope ...
+#+end_src
+
+* Observed Problems
+
+** Owner selection succeeded, item discovery did not
+
+The selected owner was stable: =src/command/raw_search.rs=.  Repeated commands
+were not discovering new project areas; they were guessing top-level item names
+inside an already selected owner.
+
+** Symbol seeds are too shallow for large owners
+
+=owner items --view seeds= reported =item=30= but only emitted five symbol
+seeds before truncation.  That leaves the agent with incomplete evidence and
+encourages guessed queries such as =parse_ripgrep_scope=.
+
+** Miss packets do not repair the query
+
+=status=miss match=none next=revise-query= is correct but underspecified.  The
+agent needs parser-owned nearby candidates, prefix candidates, or a suggested
+broader query.  Without that, it repeats narrow symbol probes.
+
+** Multi-term owner-local query is missing
+
+The sequence was one logical owner-local question:
+
+#+begin_src text
+RawSearchScope | terms_for_raw_search | matching_profiles | parse_* helpers
+#+end_src
+
+The protocol should support one owner-local query-set that returns per-term
+coverage.  It should not force one process startup and parse pass per guessed
+symbol.
+
+** Shell syntax leaks into protocol usage
+
+=--query RawSearchScope|terms_for_raw_search= is dangerous unless quoted; the
+shell treats =|= as a pipe.  A first-class repeated =--term= flag is safer for
+agent-generated commands and easier to explain in hook guidance.
+
+* Root Cause
+
+The search contract has matured at the owner graph level, but query still lacks
+an owner-local planning layer.
+
+#+begin_src text
+selected owner
+  -> incomplete item seeds
+  -> guessed exact query
+  -> miss without candidates
+  -> another guessed exact query
+  -> repeated direnv/provider startup
+#+end_src
+
+The latency is not mainly Rust parser cost.  It is repeated process startup and
+repeated parsing caused by a contract that makes the agent ask the same owner
+question many times.
+
+* Improvement Direction
+
+** 31.04-A Add owner-local query-set terms
+
+Provider query commands should accept repeated terms:
+
+#+begin_src shell
+rs-harness query src/command/raw_search.rs \
+  --term RawSearchScope \
+  --term terms_for_raw_search \
+  --term matching_profiles \
+  crates/semantic-agent-hook
+#+end_src
+
+Each term should return coverage:
+
+#+begin_src text
+|query term=RawSearchScope status=hit match=exact item=1
+|query term=parse_ripgrep_scope status=miss match=none candidate=parse_ripgrep_like_scope next=query:parse_
+#+end_src
+
+** 31.04-B Add miss candidates
+
+When an exact/contains owner item query misses, the provider should return a
+small, parser-owned candidate list.  Candidate ranking can stay conservative:
+
+1. exact case-insensitive item name
+2. common prefix or suffix token overlap
+3. normalized separator/camel/snake similarity
+4. high-ranked owner-local top-level declarations
+
+Candidate output must not invent names from raw text.  It should only name
+parser-owned items.
+
+** 31.04-C Add names-only/outline mode
+
+For broad terms such as =parse_=, returning code for six functions is useful
+but expensive.  Agents first need an item index, then exact code for the chosen
+items.
+
+Expected compact shape:
+
+#+begin_src text
+[query] owner=src/command/raw_search.rs terms=1 mode=names-only match=fallback-contains item=6
+|query term=parse_ status=hit match=fallback-contains item=6 next=code
+|item parse_ripgrep_like_scope kind=fn line=463 endLine=544
+|item parse_grep_like_scope kind=fn line=546 endLine=590
+#+end_src
+
+** 31.04-D Canonicalize owner paths
+
+If the command is run with project root =crates/semantic-agent-hook= and selector
+=crates/semantic-agent-hook/src/command/raw_search.rs=, the provider should
+surface the canonical owner =src/command/raw_search.rs= in a structured field.
+This prevents the agent from treating =parserOwner=false= as a reason to
+restart discovery.
+
+* Protocol Impact
+
+This belongs in the query contract, not in hook-private logic:
+
+- RFC: document owner-local query-set, names-only mode, and miss candidates.
+- Schema: extend =semantic-query-packet.v1= with =queryCoverage=,
+  =candidateItems=, and =renderMode=.
+- Rust provider: implement repeated =--term=, =--names-only=, miss candidates,
+  and canonical owner fields.
+- Tests: validate compact output, JSON packet shape, and raw_search real trigger
+  reduction.
+
+* Success Criteria
+
+A raw_search implementation turn should not need a dozen single-symbol probes.
+The expected bounded flow is:
+
+#+begin_src shell
+rs-harness search owner crates/semantic-agent-hook/src/command/raw_search.rs items --view seeds crates/semantic-agent-hook
+rs-harness query src/command/raw_search.rs --term parse_ripgrep_scope --term parse_ --names-only crates/semantic-agent-hook
+rs-harness query src/command/raw_search.rs --term parse_ripgrep_like_scope --term parse_fd_scope crates/semantic-agent-hook
+#+end_src
+
+The first query packet should explain the miss and name the candidate.  The
+second should render compact code only for selected exact items.
+
+* 2026-06-01 Landing Notes
+
+The first implementation pass moved the raw_search loop from repeated exact
+symbol probes toward an owner-local discovery phase.
+
+** Implemented contract changes
+
+- RFC 005 now documents owner-local repeated =--term= queries, names-only item
+  discovery, and parser-owned miss candidates.
+- =semantic-query-packet.v1= now allows =outputMode= =code|names|outline=,
+  =queryCoverage= entries, bounded =candidateItems=, and matches without
+  =code= when the packet is a names/outline discovery response.
+- Rust =rs-harness search owner ... items --query ... --names-only= and
+  =rs-harness query <owner> --term ... --names-only= now keep item discovery
+  inside the selected owner.
+
+** Real raw_search replay
+
+The stale guessed symbol no longer returns only =next=revise-query=:
+
+#+begin_src text
+[search-owner] q=crates/semantic-agent-hook/src/command/raw_search.rs pkg=. own=1 item=0 itemQuery=parse_ripgrep_scope
+|query itemQuery=parse_ripgrep_scope status=miss match=none item=0 reason=parser-item-miss output=names candidates=parse_ripgrep_like,parse_fd,parse_find,parse_git_grep,parse_git_ls_files next=query:parse_ripgrep_like
+#+end_src
+
+The broad parser prefix no longer dumps six code windows:
+
+#+begin_src text
+[search-owner] q=crates/semantic-agent-hook/src/command/raw_search.rs pkg=. own=1 item=6 itemQuery=parse_
+|query itemQuery=parse_ status=hit match=fallback-contains item=6 reason=parser-item-fallback output=names next=code
+|item parse_ripgrep_like kind=fn line=97 endLine=201 read=src/command/raw_search.rs:97-201
+|item parse_grep_like kind=fn line=203 endLine=266 read=src/command/raw_search.rs:203-266
+#+end_src
+
+** Remaining optimization space
+
+The candidate ranking is intentionally conservative and owner-local.  It still
+needs cross-language schema adoption and sandtable measurement, but it already
+removes the worst loop:
+
+#+begin_src text
+miss without repair -> guessed exact query -> miss again
+#+end_src
+
+** 2026-06-01 JSON query packet follow-up
+
+Rust owner item =query --json= now emits the shared
+=semantic-query-packet.v1= envelope instead of wrapping the result in a search
+packet.  For the raw_search miss replay, the packet validates against
+=schemas/semantic-query-packet.v1.schema.json= and carries the same repair
+evidence as the line protocol:
+
+#+begin_src text
+schemaId=agent.semantic-protocols.semantic-query-packet
+queryCoverage[0].candidateNames[0]=parse_ripgrep_like
+candidateItems[0].name=parse_ripgrep_like
+#+end_src
+
+** 2026-06-01 Sandtable regression
+
+The raw_search trigger is now covered by a sandtable-style unit scenario in
+=tests/unit/semantic_sandtable/test_raw_search_query_packet.py=.  It runs the
+real Rust provider command through =cargo run=, validates the JSON stdout
+against =semantic-query-packet.v1=, asserts the first candidate is
+=parse_ripgrep_like=, and checks that the broad =parse_= names-only phase does
+not emit =|code= lines.
+
+That makes the optimized flow executable evidence instead of just a report:
+
+#+begin_src text
+owner-local miss -> semantic-query-packet candidates -> names-only item index -> exact code follow-up
+#+end_src
+
+** 2026-06-01 Registry visibility follow-up
+
+The query packet is now advertised through the provider registry instead of
+remaining an implementation detail.  =semantic-language-registry.v1= accepts
+=query/*= methods and =command="query"=, and the Rust provider registers
+=query/owner-items= with:
+
+#+begin_src text
+input=owner-path
+requiredOptions=--term
+outputSchemaIds=agent.semantic-protocols.semantic-query-packet
+outputModes=compact,json,code,names
+querySetScopes=owner
+#+end_src
+
+This matters for the real raw_search loop because the parent agent can discover
+the owner-local query surface from =rs-harness agent doctor --json= before it
+starts guessing source reads or single-symbol commands.
+
+The installed =rs-harness= also confirms the combined-term replacement for the
+original repeated probes.  A stale four-term query returns one miss packet with
+parser-owned repair candidates:
+
+#+begin_src shell
+rs-harness query crates/semantic-agent-hook/src/command/raw_search.rs \
+  --term parse_git_grep_scope \
+  --term parse_ripgrep_scope \
+  --term parse_fd_scope \
+  --term parse_find_scope \
+  --names-only crates/semantic-agent-hook
+#+end_src
+
+#+begin_src text
+|query itemQuery=parse_git_grep_scope|parse_ripgrep_scope|parse_fd_scope|parse_find_scope status=miss match=none item=0 reason=parser-item-miss output=names candidates=parse_ripgrep_like,parse_fd,parse_find,parse_git_grep,parse_git_ls_files next=query:parse_ripgrep_like
+#+end_src
+
+Following those candidates collapses four exact symbol reads into one
+names-only owner item index:
+
+#+begin_src shell
+rs-harness query crates/semantic-agent-hook/src/command/raw_search.rs \
+  --term parse_ripgrep_like \
+  --term parse_fd \
+  --term parse_find \
+  --term parse_git_grep \
+  --names-only crates/semantic-agent-hook
+#+end_src
+
+#+begin_src text
+|query itemQuery=parse_ripgrep_like|parse_fd|parse_find|parse_git_grep status=hit match=exact item=4 reason=parser-item-exact output=names next=code
+|item parse_ripgrep_like kind=fn line=97 endLine=201 read=src/command/raw_search.rs:97-201
+|item parse_git_grep kind=fn line=268 endLine=277 read=src/command/raw_search.rs:268-277
+|item parse_fd kind=fn line=311 endLine=358 read=src/command/raw_search.rs:311-358
+|item parse_find kind=fn line=360 endLine=384 read=src/command/raw_search.rs:360-384
+#+end_src
+
+** 2026-06-01 TypeScript and Python provider alignment
+
+The root cause of the repeated real-project trigger was not only a missing Rust
+query primitive.  The protocol also needed the other maintained providers to
+advertise the same owner-local shape so agents can learn one query workflow
+instead of language-specific fallbacks.
+
+TypeScript and Python now both expose =query/owner-items= through
+=agent doctor --json= and implement a top-level =query= command with repeated
+=--term=, =--names-only=, =--code=, and =--json= modes.  The JSON form emits
+=semantic-query-packet.v1=, and names-only mode suppresses =|code= lines while
+retaining parser-owned item locations:
+
+#+begin_src shell
+ts-harness query src/cli/semantic-language.ts \
+  --term semanticLanguageRegistryDocument \
+  --names-only .
+
+py-harness query src/python_lang_project_harness/_semantic_language.py \
+  --term semantic_language_registry_document \
+  --names-only .
+#+end_src
+
+This is the cross-language contract that prevents agents from falling back to a
+chain of broad =search text= probes followed by whole-file reads.  A provider
+can now answer the narrow question:
+
+#+begin_src text
+inside this owner, which parser-owned items match these terms, and what exact
+read locators should the agent use next?
+#+end_src
+
+Validation evidence:
+
+#+begin_src text
+npm --prefix languages/typescript-lang-project-harness run test:implementation
+# 250 passed
+
+uv run --project . --frozen pytest -q
+# 274 passed, run from languages/python-lang-project-harness
+
+DIRENV_SILENCE=1 direnv exec . pytest -q \
+  tests/unit/test_semantic_language_registry_schema.py \
+  tests/unit/test_semantic_query_packet_schema.py \
+  tests/unit/semantic_sandtable/test_raw_search_query_packet.py \
+  tests/unit/semantic_sandtable/test_json_expectations.py
+# 12 passed
+
+DIRENV_SILENCE=1 direnv exec . \
+  uv run --project languages/python-lang-project-harness --frozen \
+  py-harness check --full .
+# exit 0; non-blocking policy advice may still be printed
+
+DIRENV_SILENCE=1 direnv exec . rs-harness check --changed .
+# [ok] rust
+#+end_src
+
+The raw_search sandtable now executes the optimized two-command flow and keeps
+the original real-trigger fan-out as scenario evidence:
+
+#+begin_src text
+recordedCommandCount=22
+repeatedSearches=18
+optimizedSteps=2
+querySetOpportunity.saveCommands=20
+#+end_src
+
+The regression asserts that the optimized runtime steps are fewer than the
+recorded trace commands, that repeated searches are non-zero in the original
+trace, and that the executed provider steps produce measured latency and stdout
+byte counts.
+
+The remaining optimization loop is measurement, not contract invention: replay
+real traces, count command fan-out before and after =query/owner-items=, and
+only then tune ranking or graph hints inside parser-owned facts.

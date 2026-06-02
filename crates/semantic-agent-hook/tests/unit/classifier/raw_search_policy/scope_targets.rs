@@ -77,6 +77,20 @@ fn raw_search_globs_without_suffix_are_not_language_evidence() {
 }
 
 #[test]
+fn non_source_scoped_raw_search_stays_allowed() {
+    for command in [
+        "rg -n WorkflowExecution docs README.md",
+        "rg -n WorkflowExecution -g '*.md' docs",
+        "fd WorkflowExecution docs",
+        "fd README docs",
+        "find docs -name '*.md' -print",
+        "git grep WorkflowExecution -- docs README.md",
+    ] {
+        assert_allowed(command);
+    }
+}
+
+#[test]
 fn global_suffix_glob_raw_search_targets_matching_language_profiles() {
     let decision = classify_hook(
         &polyglot_registry(),
@@ -119,7 +133,7 @@ fn non_search_git_commands_are_allowed() {
 }
 
 #[test]
-fn broad_raw_search_routes_to_ingest() {
+fn broad_raw_search_routes_to_profile_query_when_supported() {
     let decision = classify_hook(
         &polyglot_registry(),
         "codex",
@@ -132,7 +146,7 @@ fn broad_raw_search_routes_to_ingest() {
 
     assert_eq!(decision.decision, DecisionKind::Deny);
     assert_eq!(decision.reason_kind, ReasonKind::RawBroadSearch);
-    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Ingest);
+    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Text);
 }
 
 #[test]

@@ -51,6 +51,7 @@
           "security",
           "codex-hooks",
           "codex-wrapper",
+          "evidence-assurance",
           "desktop-hooks",
           "cli-hooks",
           "real-trigger",

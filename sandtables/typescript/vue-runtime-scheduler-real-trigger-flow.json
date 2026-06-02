@@ -110,7 +110,7 @@
       "expect": {
         "lineProtocol": true,
         "stdoutContains": [
-          "[search-text]",
+          "[search-fzf]",
           "querySet=3",
           "owner=src/scheduler.ts",
           "tests:src/scheduler.ts"

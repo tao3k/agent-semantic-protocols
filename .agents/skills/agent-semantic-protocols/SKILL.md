@@ -1,33 +1,71 @@
 ---
 name: agent-semantic-protocols
-description: Use when working with the language provider binaries maintained by agent-semantic-protocols, including rs-harness, ts-harness, py-harness, semantic-agent-hook installs, compact semantic search flow, and non-JSON agent command guidance.
+description: Use when working with the language provider commands maintained by agent-semantic-protocols, including rs-harness, ts-harness, py-harness, the workspace-managed Julia provider, semantic-agent-hook installs, compact semantic search flow, and non-JSON agent command guidance.
 ---
 
 # Agent Semantic Protocols
 
 ## Rules
 
-- Choose the bin from the project language: Rust uses `rs-harness`, TypeScript uses `ts-harness`, Python uses `py-harness`.
-- Start with `<bin> agent guide .` when unsure; it prints the provider-owned command menu.
+- Choose the provider command from the project language: Rust uses `rs-harness`, TypeScript uses `ts-harness`, Python uses `py-harness`.
+- Julia is workspace-managed, not a bin parity target. Do not design or require an installed/global Julia provider binary; LLVM/JIT warm-up makes that a poor short-lived agent surface. Use `julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl`.
+- Start with the selected provider command's `agent guide .` when unsure; it prints the provider-owned command menu.
 - Do not add `--json` during agent exploration. `--json` is only for schema tests, validators, receipts, or IDE integrations.
 - `semantic-agent-hook install --client codex .` installs hooks, profiles, and this skill at `.agents/skills/agent-semantic-protocols/SKILL.md`.
 
 ## Command Shapes
 
-- Map the project: `<bin> search prime --view seeds .`
-- Resolve an owner: `<bin> search owner <owner-path> --view seeds .`
-- Search local text with tests: `<bin> search text <term> owner tests --view seeds .`
-- Search external API/deps: `<bin> search deps <dep[/subpath][@version][::api]> .`
-- Query parser items with compact code: `<bin> query <path> --query <symbol-or-a|b|c> .`
-- Follow a hook direct-read route: `<bin> query --from-hook direct-source-read --selector <path> .`
-- Pipe candidate lines: `rg -n '<term>' src tests | <bin> search ingest --view seeds .`
-- Check changed work: `<bin> check --changed .`
+- Map the project: `<provider> search prime --view seeds .`
+- Resolve an owner: `<provider> search owner <owner-path> --view seeds .`
+- Search local fuzzy text with tests: `<provider> search fzf <term> owner tests --view seeds .`
+- Search external API/deps: `<provider> search deps <dep[/subpath][@version][::api]> .`
+- Query parser items with compact code: `<provider> search owner <path> items --query '<symbol-or-a|b|c>' .`
+- Discover owner-local item names before code: `<provider> query <path> --term <candidate> --names-only .`
+- Follow a hook exact direct-read route: `<provider> query --from-hook direct-source-read --selector <path> .`
+- Follow a hook wildcard direct-read route: `<provider> search query --from-hook direct-source-read --selector <glob-or-path> --term <term> --surface owner,tests --view seeds .`
+- Pipe candidate lines: `rg -n '<term>' src tests | <provider> search ingest --view seeds .`
+- Check changed work: `<provider> check --changed .`
+
+Hook rule of thumb: source-suffix reads and content dumps are denied; exact
+source paths should follow the provider `query --from-hook direct-source-read`
+route; raw
+`rg`/`grep`/`fd`/`find` with a concrete source term should follow the hook
+`search query` route; source file listings without terms should pipe candidates
+to `search ingest`; non-source docs/README/markdown searches should be allowed.
+
+When the provider guide advertises handle-aware search, use it before code for
+stable non-code facts such as policy rule ids, schema fixtures, test cases,
+config keys, command surfaces, dependency APIs, or capabilities:
+`<provider> search policy <rule-id-or-alias> owner tests --view seeds .` or
+`<provider> search owner <owner-path> handles --query <term> .`
+
+Owner item query output includes a `|query` line with `status=hit|miss` and
+`match=exact|fallback-contains|none`. Treat `status=miss` as a wrong or stale
+symbol query to revise, not as permission to keep raw-searching the file. If a
+miss line includes `candidates=...`, follow the parser-owned candidate instead
+of guessing another symbol. Use `--names-only` for broad owner-local prefixes
+such as `parse_` so the provider returns item names and read locators without
+dumping code windows.
+
+When `searchSynthesis.windowSet` appears, treat it as the provider-selected
+bounded read plan. Read those exact owner/test targets with
+the provider `query --from-hook direct-source-read --selector <path> .` route
+only when source owner context is needed; do not restart broad discovery from
+the same terms.
 
 Rust owner and ingest accept extra scopes:
 
 ```sh
 rs-harness search owner src/lib.rs items --view seeds .
 rg -n 'HookDecision' src tests | rs-harness search ingest items tests --view seeds .
+```
+
+Julia owner and ingest use the workspace-managed provider command in this
+repository:
+
+```sh
+julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl search owner src/cli.jl --view seeds languages/JuliaLangProjectHarness.jl
+printf 'src/cli.jl:1\n' | julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl search ingest owner tests --view seeds languages/JuliaLangProjectHarness.jl
 ```
 
 ## Flow Examples
@@ -37,7 +75,7 @@ rg -n 'HookDecision' src tests | rs-harness search ingest items tests --view see
 ```sh
 ts-harness agent guide .
 ts-harness search prime --view seeds .
-ts-harness search text runCodexAgentHook owner tests --view seeds .
+ts-harness search fzf runCodexAgentHook owner tests --view seeds .
 ts-harness search owner src/cli/agent-hooks.ts --view seeds .
 ts-harness check --changed .
 ```
@@ -49,13 +87,12 @@ Use the `owner` output to choose the edit file. Use the `tests` seeds before edi
 ```sh
 rs-harness agent guide .
 rs-harness search deps tokio::spawn public-api --view seeds .
-rs-harness search text tokio::spawn tests --view seeds .
-rs-harness search owner src/runtime.rs items --view seeds .
-rs-harness query src/runtime.rs --query RuntimeConfig .
+rs-harness search fzf tokio::spawn tests --view seeds .
+rs-harness search owner src/runtime.rs items --query RuntimeConfig .
 ```
 
 Use `deps` for external API facts. Use `owner` only after a real owner path appears.
-Use provider-native `query <path> --query <symbol>` for compact code extraction.
+Use provider-native `search owner <path> items --query <symbol>` for compact code extraction.
 Do not use raw `cat`, `sed`, `rtk read`, or editor reads for source files.
 
 3. Understand a Python implementation path:
@@ -65,33 +102,57 @@ py-harness agent guide .
 py-harness search prime --view seeds .
 rg -n 'Session' src tests | py-harness search ingest --view seeds .
 py-harness search owner src/client.py --view seeds .
+py-harness search owner src/client.py items --query 'Session|request' .
 py-harness check --changed .
 ```
 
 Use `rg` or `fd` to collect candidates, then let `py-harness` rank owners/tests.
+
+4. Understand a Julia implementation path:
+
+```sh
+julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl agent guide languages/JuliaLangProjectHarness.jl
+julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl search prime --view seeds languages/JuliaLangProjectHarness.jl
+julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl search fzf run_julia_project_harness_cli owner tests --view seeds languages/JuliaLangProjectHarness.jl
+julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl search owner src/cli.jl --view seeds languages/JuliaLangProjectHarness.jl
+julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl check --changed languages/JuliaLangProjectHarness.jl
+```
+
+Use the Julia workspace command exactly. Do not add or assume a global
+`julia-project-harness` binary for alignment work. The hook recognizes the full
+workspace command prefix, not bare `julia`.
 
 ## Combination Query Examples
 
 1. Same TypeScript question, multiple names:
 
 ```sh
-ts-harness search text --query-set runCodexAgentHook --query-set permissionDecision owner tests --view seeds .
+ts-harness search fzf --query-set runCodexAgentHook --query-set permissionDecision owner tests --view seeds .
 ```
 
 Use this when both terms describe the same hook decision path.
+For a hook-blocked wildcard read such as `Read *.ts`, use the hook query form
+when the selector is broad and the agent has concrete terms:
+
+```sh
+<provider> search query --from-hook direct-source-read --selector '**/*.{ts,tsx,js}' --term parseSearchArgs --term querySets --surface owner,tests --view seeds .
+```
+
+This emits normal search seeds and synthesis; it is not a raw source-read
+fallback.
 
 2. Same Rust concept, type plus field:
 
 ```sh
-rs-harness query --term HookDecision --term permissionDecision --view seeds .
+rs-harness search fzf --query-set HookDecision --query-set permissionDecision owner tests --view seeds .
 ```
 
-Use this when one answer should cover both aliases. Follow with `rs-harness query <path> --query <symbol> .` when a concrete owner is selected.
+Use this when one answer should cover both aliases. Follow with `rs-harness search owner <path> items --query '<symbol|otherSymbol>' .` when a concrete owner is selected.
 
 3. Same Python API, import name plus method name:
 
 ```sh
-py-harness search text --query-set requests.Session --query-set Session.request owner tests --view seeds .
+py-harness search fzf --query-set requests.Session --query-set Session.request owner tests --view seeds .
 ```
 
 Use this when API naming varies across imports/callsites.

@@ -200,7 +200,10 @@
             "prime",
             "owner",
             "dependency",
+            "policy",
+            "query",
             "query-set",
+            "fzf",
             "text",
             "ingest",
             "custom"

@@ -22,14 +22,113 @@ struct RawSearchScope {
     implicit_workspace: bool,
 }
 
-pub(crate) fn profiles_for_raw_search<'a>(
+pub(crate) struct RawSearchPlan<'a> {
+    pub(crate) profiles: Vec<&'a LanguageProfile>,
+    pub(crate) terms: Vec<String>,
+}
+
+struct ParsedRawSearch {
+    scope: RawSearchScope,
+    terms: Vec<String>,
+}
+
+pub(crate) fn raw_search_plan<'a>(
     registry: &'a ProfileRegistry,
     tokens: &[String],
-) -> Vec<&'a LanguageProfile> {
-    let Some(scope) = RawSearchScope::from_tokens(tokens) else {
-        return Vec::new();
+) -> Option<RawSearchPlan<'a>> {
+    if filters_provider_command_output(registry, tokens) {
+        return None;
+    }
+    let parsed = ParsedRawSearch::from_tokens(tokens)?;
+    Some(RawSearchPlan {
+        profiles: parsed.scope.matching_profiles(registry),
+        terms: parsed.terms,
+    })
+}
+
+fn filters_provider_command_output(registry: &ProfileRegistry, tokens: &[String]) -> bool {
+    let mut previous_stage: Option<&[String]> = None;
+    let mut separator_before_stage: Option<&str> = None;
+    let mut start = 0;
+    while start < tokens.len() {
+        while tokens.get(start).is_some_and(|token| is_separator(token)) {
+            separator_before_stage = tokens.get(start).map(String::as_str);
+            start += 1;
+        }
+        if start >= tokens.len() {
+            break;
+        }
+        let end = tokens[start..]
+            .iter()
+            .position(|token| is_separator(token))
+            .map(|offset| start + offset)
+            .unwrap_or(tokens.len());
+        let stage = &tokens[start..end];
+        if separator_before_stage == Some("|")
+            && raw_search_kind(stage).is_some()
+            && previous_stage.is_some_and(|stage| is_provider_command_stage(registry, stage))
+        {
+            return true;
+        }
+        previous_stage = Some(stage);
+        start = end;
+    }
+    false
+}
+
+fn is_provider_command_stage(registry: &ProfileRegistry, stage: &[String]) -> bool {
+    let Some(command) = stage.first().map(|token| command_name(token)) else {
+        return false;
     };
-    scope.matching_profiles(registry)
+    registry.profiles.iter().any(|profile| {
+        if profile.provider_command_prefix.is_empty() {
+            profile.binary == command
+        } else {
+            stage_matches_provider_prefix(stage, &profile.provider_command_prefix)
+        }
+    })
+}
+
+fn stage_matches_provider_prefix(stage: &[String], prefix: &[String]) -> bool {
+    if prefix.is_empty() || stage.len() < prefix.len() {
+        return false;
+    }
+    let Some((first, rest)) = prefix.split_first() else {
+        return false;
+    };
+    command_name(&stage[0]) == command_name(first)
+        && stage[1..prefix.len()]
+            .iter()
+            .zip(rest)
+            .all(|(actual, expected)| actual == expected)
+}
+
+impl ParsedRawSearch {
+    fn from_tokens(tokens: &[String]) -> Option<Self> {
+        let (stage, kind) = raw_search_stage(tokens)?;
+        let parsed = match kind {
+            RawSearchCommandKind::RipgrepLike => parse_ripgrep_like(stage),
+            RawSearchCommandKind::GrepLike => parse_grep_like(stage),
+            RawSearchCommandKind::Fd => parse_fd(stage),
+            RawSearchCommandKind::Find => parse_find(stage),
+            RawSearchCommandKind::GitGrep => parse_git_grep(stage),
+            RawSearchCommandKind::GitLsFiles => parse_git_ls_files(stage),
+        };
+        Some(parsed.normalized())
+    }
+
+    fn empty() -> Self {
+        Self {
+            scope: RawSearchScope::default(),
+            terms: Vec::new(),
+        }
+    }
+
+    fn normalized(mut self) -> Self {
+        self.scope.normalize();
+        self.terms = normalize_terms(self.terms);
+        self
+    }
 }
 
 pub(super) fn raw_search_stage(tokens: &[String]) -> Option<(&[String], RawSearchCommandKind)> {
@@ -55,21 +154,355 @@ pub(super) fn raw_search_stage(tokens: &[String]) -> Option<(&[String], RawSearc
     None
 }
 
-impl RawSearchScope {
-    fn from_tokens(tokens: &[String]) -> Option<Self> {
-        let (stage, kind) = raw_search_stage(tokens)?;
-        let mut scope = match kind {
-            RawSearchCommandKind::RipgrepLike => parse_ripgrep_like_scope(stage),
-            RawSearchCommandKind::GrepLike => parse_grep_like_scope(stage),
-            RawSearchCommandKind::Fd => parse_fd_scope(stage),
-            RawSearchCommandKind::Find => parse_find_scope(stage),
-            RawSearchCommandKind::GitGrep => parse_git_grep_scope(stage),
-            RawSearchCommandKind::GitLsFiles => parse_git_ls_files_scope(stage),
-        };
-        scope.normalize();
-        Some(scope)
+fn parse_ripgrep_like(stage: &[String]) -> ParsedRawSearch {
+    let mut parsed = ParsedRawSearch::empty();
+    let mut positional = Vec::new();
+    let mut index = 1;
+    let mut files_mode = false;
+    let mut pattern_from_flag = false;
+    while index < stage.len() {
+        let token = &stage[index];
+        if token == "--" {
+            positional.extend(stage[index + 1..].iter().cloned());
+            break;
+        }
+        if token == "--files" {
+            files_mode = true;
+            index += 1;
+            continue;
+        }
+        if matches!(
+            token.as_str(),
+            "-g" | "--glob" | "--iglob" | "-t" | "--type" | "-T" | "--type-not"
+        ) {
+            if let Some(value) = stage.get(index + 1) {
+                if matches!(token.as_str(), "-t" | "--type") {
+                    push_type(&mut parsed.scope.types, value);
+                    push_source_selector(&mut parsed.scope, value, true);
+                } else if !matches!(token.as_str(), "-T" | "--type-not") {
+                    push_source_selector(&mut parsed.scope, value, false);
+                }
+            }
+            index += 2;
+            continue;
+        }
+        if matches!(token.as_str(), "-e" | "--regexp") {
+            if let Some(value) = stage.get(index + 1) {
+                parsed.terms.push(value.clone());
+            }
+            pattern_from_flag = true;
+            index += 2;
+            continue;
+        }
+        if matches!(token.as_str(), "-f" | "--file") {
+            pattern_from_flag = true;
+            index += 2;
+            continue;
+        }
+        if let Some(value) = token.strip_prefix("--regexp=") {
+            parsed.terms.push(value.to_string());
+            pattern_from_flag = true;
+            index += 1;
+            continue;
+        }
+        if let Some(value) = token
+            .strip_prefix("--glob=")
+            .or_else(|| token.strip_prefix("--iglob="))
+        {
+            push_source_selector(&mut parsed.scope, value, false);
+            index += 1;
+            continue;
+        }
+        if let Some(value) = token.strip_prefix("--type=") {
+            push_type(&mut parsed.scope.types, value);
+            push_source_selector(&mut parsed.scope, value, true);
+            index += 1;
+            continue;
+        }
+        if token.starts_with("-g") && token.len() > 2 {
+            push_source_selector(&mut parsed.scope, &token[2..], false);
+            index += 1;
+            continue;
+        }
+        if token.starts_with("-t") && token.len() > 2 {
+            push_type(&mut parsed.scope.types, &token[2..]);
+            push_source_selector(&mut parsed.scope, &token[2..], true);
+            index += 1;
+            continue;
+        }
+        if token.strip_prefix("--type-not=").is_some() {
+            index += 1;
+            continue;
+        }
+        if raw_search_option_takes_value(token) {
+            index += 2;
+            continue;
+        }
+        if token.starts_with('-') {
+            index += 1;
+            continue;
+        }
+        positional.push(token.clone());
+        index += 1;
     }
+    if !files_mode && !pattern_from_flag {
+        if let Some(pattern) = positional.first() {
+            parsed.terms.push(pattern.clone());
+        }
+    }
+    let path_start = usize::from(!files_mode && !pattern_from_flag && !positional.is_empty());
+    for path in positional.into_iter().skip(path_start) {
+        parsed.scope.paths.push(path);
+    }
+    if parsed.scope.paths.is_empty() && !parsed.scope.has_language_filter() {
+        parsed.scope.implicit_workspace = true;
+    }
+    parsed
+}
 
+fn parse_grep_like(stage: &[String]) -> ParsedRawSearch {
+    let mut parsed = ParsedRawSearch::empty();
+    let mut positional = Vec::new();
+    let mut index = 1;
+    let mut pattern_from_flag = false;
+    while index < stage.len() {
+        let token = &stage[index];
+        if token == "--" {
+            positional.extend(stage[index + 1..].iter().cloned());
+            break;
+        }
+        if matches!(token.as_str(), "--include" | "--include-dir") {
+            if let Some(value) = stage.get(index + 1) {
+                push_source_selector(&mut parsed.scope, value, false);
+            }
+            index += 2;
+            continue;
+        }
+        if matches!(token.as_str(), "-e" | "--regexp") {
+            if let Some(value) = stage.get(index + 1) {
+                parsed.terms.push(value.clone());
+            }
+            pattern_from_flag = true;
+            index += 2;
+            continue;
+        }
+        if matches!(token.as_str(), "-f" | "--file") {
+            pattern_from_flag = true;
+            index += 2;
+            continue;
+        }
+        if let Some(value) = token.strip_prefix("--regexp=") {
+            parsed.terms.push(value.to_string());
+            pattern_from_flag = true;
+            index += 1;
+            continue;
+        }
+        if let Some(value) = token.strip_prefix("--include=") {
+            push_source_selector(&mut parsed.scope, value, false);
+            index += 1;
+            continue;
+        }
+        if raw_search_option_takes_value(token) {
+            index += 2;
+            continue;
+        }
+        if token.starts_with('-') {
+            index += 1;
+            continue;
+        }
+        positional.push(token.clone());
+        index += 1;
+    }
+    if !pattern_from_flag {
+        if let Some(pattern) = positional.first() {
+            parsed.terms.push(pattern.clone());
+        }
+    }
+    let path_start = usize::from(!pattern_from_flag && !positional.is_empty());
+    for path in positional.into_iter().skip(path_start) {
+        parsed.scope.paths.push(path);
+    }
+    parsed
+}
+
+fn parse_git_grep(stage: &[String]) -> ParsedRawSearch {
+    let Some(command_index) = git_subcommand_index(stage) else {
+        return ParsedRawSearch::empty();
+    };
+    let mut parsed = parse_grep_like(&stage[command_index..]);
+    if parsed.scope.paths.is_empty() && !parsed.scope.has_language_filter() {
+        parsed.scope.implicit_workspace = true;
+    }
+    parsed
+}
+
+fn parse_git_ls_files(stage: &[String]) -> ParsedRawSearch {
+    let mut parsed = ParsedRawSearch::empty();
+    let Some(command_index) = git_subcommand_index(stage) else {
+        return parsed;
+    };
+    let mut index = command_index + 1;
+    while index < stage.len() {
+        let token = &stage[index];
+        if token == "--" {
+            parsed
+                .scope
+                .paths
+                .extend(stage[index + 1..].iter().cloned());
+            break;
+        }
+        if raw_search_option_takes_value(token) {
+            index += 2;
+            continue;
+        }
+        if token.starts_with('-') {
+            index += 1;
+            continue;
+        }
+        parsed.scope.paths.push(token.clone());
+        index += 1;
+    }
+    if parsed.scope.paths.is_empty() {
+        parsed.scope.implicit_workspace = true;
+    }
+    parsed
+}
+
+fn parse_fd(stage: &[String]) -> ParsedRawSearch {
+    let mut parsed = ParsedRawSearch::empty();
+    let mut positional = Vec::new();
+    let mut index = 1;
+    while index < stage.len() {
+        let token = &stage[index];
+        if token == "--" {
+            positional.extend(stage[index + 1..].iter().cloned());
+            break;
+        }
+        if matches!(token.as_str(), "-e" | "--extension" | "--ext") {
+            if let Some(value) = stage.get(index + 1) {
+                push_source_selector(&mut parsed.scope, value, true);
+            }
+            index += 2;
+            continue;
+        }
+        if let Some(value) = token
+            .strip_prefix("--extension=")
+            .or_else(|| token.strip_prefix("--ext="))
+        {
+            push_source_selector(&mut parsed.scope, value, true);
+            index += 1;
+            continue;
+        }
+        if raw_search_option_takes_value(token) {
+            index += 2;
+            continue;
+        }
+        if token.starts_with('-') {
+            index += 1;
+            continue;
+        }
+        positional.push(token.clone());
+        index += 1;
+    }
+    if let Some(pattern) = positional.first() {
+        push_source_selector(&mut parsed.scope, pattern, false);
+        parsed.terms.push(pattern.clone());
+    }
+    for path in positional.into_iter().skip(1) {
+        parsed.scope.paths.push(path);
+    }
+    if parsed.scope.paths.is_empty() && !parsed.scope.has_language_filter() {
+        parsed.scope.implicit_workspace = true;
+    }
+    parsed
+}
+
+fn parse_find(stage: &[String]) -> ParsedRawSearch {
+    let mut parsed = ParsedRawSearch::empty();
+    let mut index = 1;
+    while index < stage.len() {
+        let token = &stage[index];
+        if matches!(token.as_str(), "-name" | "-iname" | "-path" | "-ipath") {
+            if let Some(value) = stage.get(index + 1) {
+                push_source_selector(&mut parsed.scope, value, false);
+                parsed.terms.push(value.clone());
+            }
+            index += 2;
+            continue;
+        }
+        if token.starts_with('-') || matches!(token.as_str(), "(" | ")" | "!" | "-o" | "-a") {
+            index += 1;
+            continue;
+        }
+        parsed.scope.paths.push(token.clone());
+        index += 1;
+    }
+    if parsed.scope.paths.is_empty() {
+        parsed.scope.implicit_workspace = true;
+    }
+    parsed
+}
+
+fn normalize_terms(terms: Vec<String>) -> Vec<String> {
+    let mut normalized = Vec::new();
+    for term in terms {
+        for value in split_term(&term) {
+            if value.len() >= 3
+                && value
+                    .chars()
+                    .any(|character| character.is_ascii_alphabetic())
+                && !normalized.iter().any(|existing| existing == &value)
+            {
+                normalized.push(value);
+            }
+            if normalized.len() >= 8 {
+                return normalized;
+            }
+        }
+    }
+    normalized
+}
+
+fn split_term(term: &str) -> Vec<String> {
+    term.split('|')
+        .filter_map(clean_term)
+        .flat_map(|term| {
+            if term.contains('*') || term.contains('?') {
+                filename_pattern_term(&term).into_iter().collect()
+            } else {
+                vec![term]
+            }
+        })
+        .collect()
+}
+
+fn clean_term(term: &str) -> Option<String> {
+    let clean = term
+        .trim()
+        .trim_matches(|character| {
+            matches!(
+                character,
+                '\'' | '"' | '`' | '/' | '^' | '$' | '(' | ')' | '[' | ']' | '{' | '}'
+            )
+        })
+        .trim();
+    (!clean.is_empty()).then(|| clean.to_string())
+}
+
+fn filename_pattern_term(pattern: &str) -> Option<String> {
+    let basename = pattern
+        .trim_end_matches('/')
+        .rsplit('/')
+        .next()
+        .unwrap_or(pattern);
+    let stem = basename
+        .rsplit_once('.')
+        .map_or(basename, |(stem, _)| stem)
+        .trim_matches(|character| matches!(character, '*' | '?' | '\'' | '"' | '`' | '[' | ']'));
+    clean_term(stem)
+}
+
+impl RawSearchScope {
     fn has_language_filter(&self) -> bool {
         !self.extensions.is_empty() || !self.types.is_empty() || !self.globs.is_empty()
     }
@@ -195,279 +628,6 @@ fn git_subcommand_index(tokens: &[String]) -> Option<usize> {
         }
     }
     None
-}
-
-fn parse_ripgrep_like_scope(stage: &[String]) -> RawSearchScope {
-    let mut scope = RawSearchScope::default();
-    let mut positional = Vec::new();
-    let mut index = 1;
-    let mut files_mode = false;
-    let mut pattern_from_flag = false;
-    while index < stage.len() {
-        let token = &stage[index];
-        if token == "--" {
-            positional.extend(stage[index + 1..].iter().cloned());
-            break;
-        }
-        if token == "--files" {
-            files_mode = true;
-            index += 1;
-            continue;
-        }
-        if matches!(
-            token.as_str(),
-            "-g" | "--glob" | "--iglob" | "-t" | "--type" | "-T" | "--type-not"
-        ) {
-            if let Some(value) = stage.get(index + 1) {
-                if matches!(token.as_str(), "-t" | "--type") {
-                    push_type(&mut scope.types, value);
-                    push_source_selector(&mut scope, value, true);
-                } else if !matches!(token.as_str(), "-T" | "--type-not") {
-                    push_source_selector(&mut scope, value, false);
-                }
-            }
-            index += 2;
-            continue;
-        }
-        if matches!(token.as_str(), "-e" | "--regexp" | "-f" | "--file") {
-            pattern_from_flag = true;
-            index += 2;
-            continue;
-        }
-        if let Some(value) = token
-            .strip_prefix("--glob=")
-            .or_else(|| token.strip_prefix("--iglob="))
-        {
-            push_source_selector(&mut scope, value, false);
-            index += 1;
-            continue;
-        }
-        if let Some(value) = token.strip_prefix("--type=") {
-            push_type(&mut scope.types, value);
-            push_source_selector(&mut scope, value, true);
-            index += 1;
-            continue;
-        }
-        if token.starts_with("-g") && token.len() > 2 {
-            push_source_selector(&mut scope, &token[2..], false);
-            index += 1;
-            continue;
-        }
-        if token.starts_with("-t") && token.len() > 2 {
-            push_type(&mut scope.types, &token[2..]);
-            push_source_selector(&mut scope, &token[2..], true);
-            index += 1;
-            continue;
-        }
-        if raw_search_option_takes_value(token) {
-            index += 2;
-            continue;
-        }
-        if token.starts_with('-') {
-            index += 1;
-            continue;
-        }
-        positional.push(token.clone());
-        index += 1;
-    }
-    let path_start = usize::from(!files_mode && !pattern_from_flag && !positional.is_empty());
-    for path in positional.into_iter().skip(path_start) {
-        scope.paths.push(path);
-    }
-    if scope.paths.is_empty() && !scope.has_language_filter() {
-        scope.implicit_workspace = true;
-    }
-    scope
-}
-
-fn parse_grep_like_scope(stage: &[String]) -> RawSearchScope {
-    let mut scope = RawSearchScope::default();
-    let mut positional = Vec::new();
-    let mut index = 1;
-    let mut pattern_from_flag = false;
-    while index < stage.len() {
-        let token = &stage[index];
-        if token == "--" {
-            positional.extend(stage[index + 1..].iter().cloned());
-            break;
-        }
-        if matches!(token.as_str(), "--include" | "--include-dir") {
-            if let Some(value) = stage.get(index + 1) {
-                push_source_selector(&mut scope, value, false);
-            }
-            index += 2;
-            continue;
-        }
-        if matches!(token.as_str(), "-e" | "--regexp" | "-f" | "--file") {
-            pattern_from_flag = true;
-            index += 2;
-            continue;
-        }
-        if let Some(value) = token.strip_prefix("--include=") {
-            push_source_selector(&mut scope, value, false);
-            index += 1;
-            continue;
-        }
-        if raw_search_option_takes_value(token) {
-            index += 2;
-            continue;
-        }
-        if token.starts_with('-') {
-            index += 1;
-            continue;
-        }
-        positional.push(token.clone());
-        index += 1;
-    }
-    let path_start = usize::from(!pattern_from_flag && !positional.is_empty());
-    for path in positional.into_iter().skip(path_start) {
-        scope.paths.push(path);
-    }
-    scope
-}
-
-fn parse_fd_scope(stage: &[String]) -> RawSearchScope {
-    let mut scope = RawSearchScope::default();
-    let mut positional = Vec::new();
-    let mut index = 1;
-    while index < stage.len() {
-        let token = &stage[index];
-        if token == "--" {
-            positional.extend(stage[index + 1..].iter().cloned());
-            break;
-        }
-        if matches!(token.as_str(), "-e" | "--extension" | "--ext") {
-            if let Some(value) = stage.get(index + 1) {
-                push_source_selector(&mut scope, value, true);
-            }
-            index += 2;
-            continue;
-        }
-        if let Some(value) = token
-            .strip_prefix("--extension=")
-            .or_else(|| token.strip_prefix("--ext="))
-        {
-            push_source_selector(&mut scope, value, true);
-            index += 1;
-            continue;
-        }
-        if raw_search_option_takes_value(token) {
-            index += 2;
-            continue;
-        }
-        if token.starts_with('-') {
-            index += 1;
-            continue;
-        }
-        positional.push(token.clone());
-        index += 1;
-    }
-    if let Some(pattern) = positional.first() {
-        push_source_selector(&mut scope, pattern, false);
-    }
-    for path in positional.into_iter().skip(1) {
-        scope.paths.push(path);
-    }
-    if scope.paths.is_empty() && !scope.has_language_filter() {
-        scope.implicit_workspace = true;
-    }
-    scope
-}
-
-fn parse_find_scope(stage: &[String]) -> RawSearchScope {
-    let mut scope = RawSearchScope::default();
-    let mut index = 1;
-    while index < stage.len() {
-        let token = &stage[index];
-        if matches!(token.as_str(), "-name" | "-iname" | "-path" | "-ipath") {
-            if let Some(value) = stage.get(index + 1) {
-                push_source_selector(&mut scope, value, false);
-            }
-            index += 2;
-            continue;
-        }
-        if token.starts_with('-') || matches!(token.as_str(), "(" | ")" | "!" | "-o" | "-a") {
-            index += 1;
-            continue;
-        }
-        scope.paths.push(token.clone());
-        index += 1;
-    }
-    if scope.paths.is_empty() {
-        scope.implicit_workspace = true;
-    }
-    scope
-}
-
-fn parse_git_grep_scope(stage: &[String]) -> RawSearchScope {
-    let mut scope = RawSearchScope::default();
-    let Some(command_index) = git_subcommand_index(stage) else {
-        return scope;
-    };
-    let mut positional = Vec::new();
-    let mut index = command_index + 1;
-    let mut pattern_from_flag = false;
-    while index < stage.len() {
-        let token = &stage[index];
-        if token == "--" {
-            positional.extend(stage[index + 1..].iter().cloned());
-            break;
-        }
-        if matches!(token.as_str(), "-e" | "--regexp" | "-f" | "--file") {
-            pattern_from_flag = true;
-            index += 2;
-            continue;
-        }
-        if raw_search_option_takes_value(token) {
-            index += 2;
-            continue;
-        }
-        if token.starts_with('-') {
-            index += 1;
-            continue;
-        }
-        positional.push(token.clone());
-        index += 1;
-    }
-    let path_start = usize::from(!pattern_from_flag && !positional.is_empty());
-    for path in positional.into_iter().skip(path_start) {
-        scope.paths.push(path);
-    }
-    if scope.paths.is_empty() && !scope.has_language_filter() {
-        scope.implicit_workspace = true;
-    }
-    scope
-}
-
-fn parse_git_ls_files_scope(stage: &[String]) -> RawSearchScope {
-    let mut scope = RawSearchScope::default();
-    let Some(command_index) = git_subcommand_index(stage) else {
-        return scope;
-    };
-    let mut index = command_index + 1;
-    while index < stage.len() {
-        let token = &stage[index];
-        if token == "--" {
-            for path in stage[index + 1..].iter().cloned() {
-                scope.paths.push(path);
-            }
-            break;
-        }
-        if raw_search_option_takes_value(token) {
-            index += 2;
-            continue;
-        }
-        if token.starts_with('-') {
-            index += 1;
-            continue;
-        }
-        scope.paths.push(token.clone());
-        index += 1;
-    }
-    if scope.paths.is_empty() {
-        scope.implicit_workspace = true;
-    }
-    scope
 }
 
 fn raw_search_option_takes_value(token: &str) -> bool {

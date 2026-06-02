@@ -124,7 +124,7 @@
       "expect": {
         "lineProtocol": true,
         "stdoutContains": [
-          "[search-text]",
+          "[search-fzf]",
           "querySet=3",
           "packages/playwright-core/src/server/fetch.ts",
           "tests:packages/playwright-core/src/server/fetch.ts"

@@ -1,0 +1,207 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-invariant-candidate.v1.schema.json",
+  "title": "Semantic Invariant Candidate",
+  "description": "Language-neutral candidate invariant raised from parser-owned findings before receipt, proof, or review evaluation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaId", "schemaVersion", "candidates"],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.semantic-invariant-candidate"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "candidates": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/invariantCandidate"
+      }
+    }
+  },
+  "$defs": {
+    "scalar": {
+      "oneOf": [
+        { "type": "string" },
+        { "type": "number" },
+        { "type": "boolean" },
+        {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              { "type": "string" },
+              { "type": "number" },
+              { "type": "boolean" }
+            ]
+          }
+        }
+      ]
+    },
+    "fields": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/scalar"
+      }
+    },
+    "projectPath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*)$"
+    },
+    "location": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/projectPath"
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "column": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "endLine": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "endColumn": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "severity": {
+      "enum": ["info", "warning", "error"]
+    },
+    "status": {
+      "enum": ["candidate", "accepted", "verified", "waived", "stale"]
+    },
+    "invariantKind": {
+      "enum": [
+        "primitive-identifier-boundary",
+        "public-data-primitive-fields",
+        "anonymous-tuple-api-surface",
+        "primitive-type-alias-boundary",
+        "stringly-state-boundary",
+        "parser-fact",
+        "public-api-shape",
+        "module-reasoning-tree",
+        "dependency-graph-acyclicity",
+        "custom"
+      ]
+    },
+    "receiptKind": {
+      "enum": [
+        "cargo-check",
+        "cargo-test",
+        "clippy",
+        "expect-test",
+        "proptest",
+        "cargo-fuzz",
+        "kani",
+        "creusot",
+        "verus",
+        "waiver"
+      ]
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "summary"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "location": {
+          "$ref": "#/$defs/location"
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "invariantCandidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "invariantId",
+        "sourceRuleId",
+        "rulePackId",
+        "kind",
+        "status",
+        "severity",
+        "title",
+        "hypothesis",
+        "location",
+        "evidence",
+        "requiredReceipts"
+      ],
+      "properties": {
+        "invariantId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.:-]*$"
+        },
+        "sourceRuleId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rulePackId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "$ref": "#/$defs/invariantKind"
+        },
+        "status": {
+          "$ref": "#/$defs/status"
+        },
+        "severity": {
+          "$ref": "#/$defs/severity"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "hypothesis": {
+          "type": "string",
+          "minLength": 1
+        },
+        "location": {
+          "$ref": "#/$defs/location"
+        },
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/evidence"
+          }
+        },
+        "requiredReceipts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/receiptKind"
+          }
+        },
+        "proofTargets": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/invariantKind"
+          }
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    }
+  }
+}

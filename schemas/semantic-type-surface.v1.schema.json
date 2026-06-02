@@ -1,0 +1,399 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-type-surface.v1.schema.json",
+  "title": "Semantic Type Surface",
+  "description": "Language-neutral public type surface facts emitted by semantic language providers.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "protocolId",
+    "protocolVersion",
+    "languageId",
+    "providerId",
+    "projectRoot",
+    "surfaces"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.semantic-type-surface"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "protocolId": {
+      "const": "agent.semantic-protocols.semantic-language"
+    },
+    "protocolVersion": {
+      "const": "1"
+    },
+    "languageId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "providerId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "projectRoot": {
+      "type": "string",
+      "minLength": 1
+    },
+    "packageName": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scope": {
+      "enum": [
+        "workspace",
+        "prime",
+        "owner",
+        "dependency",
+        "api",
+        "public-external-types",
+        "query",
+        "custom"
+      ]
+    },
+    "query": {
+      "type": "string",
+      "minLength": 1
+    },
+    "surfaces": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/typeSurface"
+      }
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/note"
+      }
+    }
+  },
+  "$defs": {
+    "scalar": {
+      "oneOf": [
+        { "type": "string" },
+        { "type": "number" },
+        { "type": "boolean" },
+        {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              { "type": "string" },
+              { "type": "number" },
+              { "type": "boolean" }
+            ]
+          }
+        }
+      ]
+    },
+    "fields": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/scalar"
+      }
+    },
+    "projectPath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*)$"
+    },
+    "location": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path"],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/projectPath"
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "column": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "endLine": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "endColumn": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "visibility": {
+      "enum": ["public", "private", "protected", "internal", "unknown"]
+    },
+    "typeKind": {
+      "enum": [
+        "alias",
+        "array",
+        "class",
+        "enum",
+        "function",
+        "generic",
+        "interface",
+        "intersection",
+        "literal",
+        "map",
+        "method",
+        "module",
+        "namespace",
+        "object",
+        "primitive",
+        "protocol",
+        "struct",
+        "trait",
+        "tuple",
+        "union",
+        "unknown",
+        "custom"
+      ]
+    },
+    "carrierKind": {
+      "enum": [
+        "alias",
+        "array",
+        "class",
+        "enum",
+        "external",
+        "function",
+        "generic",
+        "interface",
+        "literal",
+        "map",
+        "object",
+        "primitive",
+        "struct",
+        "tuple",
+        "union",
+        "unknown",
+        "custom"
+      ]
+    },
+    "typeRole": {
+      "enum": [
+        "api-input",
+        "api-output",
+        "api-field",
+        "api-error",
+        "public-data",
+        "public-type-alias",
+        "external-dependency",
+        "discriminant",
+        "effect-carrier",
+        "query-match",
+        "custom"
+      ]
+    },
+    "memberRole": {
+      "enum": [
+        "field",
+        "property",
+        "variant",
+        "parameter",
+        "return",
+        "discriminant",
+        "type-parameter",
+        "custom"
+      ]
+    },
+    "versionScope": {
+      "enum": ["current", "external", "unknown"]
+    },
+    "typeRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["carrier"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "languageName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "qualifiedName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "carrier": {
+          "$ref": "#/$defs/carrierKind"
+        },
+        "package": {
+          "type": "string",
+          "minLength": 1
+        },
+        "module": {
+          "type": "string",
+          "minLength": 1
+        },
+        "symbol": {
+          "type": "string",
+          "minLength": 1
+        },
+        "versionScope": {
+          "$ref": "#/$defs/versionScope"
+        },
+        "external": {
+          "type": "boolean"
+        },
+        "typeArguments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/typeRef"
+          }
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "typeMember": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "role", "type"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "role": {
+          "$ref": "#/$defs/memberRole"
+        },
+        "type": {
+          "$ref": "#/$defs/typeRef"
+        },
+        "visibility": {
+          "$ref": "#/$defs/visibility"
+        },
+        "optional": {
+          "type": "boolean"
+        },
+        "readonly": {
+          "type": "boolean"
+        },
+        "mutable": {
+          "type": "boolean"
+        },
+        "location": {
+          "$ref": "#/$defs/location"
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "typeSurface": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name",
+        "kind",
+        "role",
+        "ownerPath",
+        "visibility",
+        "external",
+        "fields"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "languageName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "qualifiedName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "$ref": "#/$defs/typeKind"
+        },
+        "role": {
+          "$ref": "#/$defs/typeRole"
+        },
+        "ownerPath": {
+          "$ref": "#/$defs/projectPath"
+        },
+        "location": {
+          "$ref": "#/$defs/location"
+        },
+        "visibility": {
+          "$ref": "#/$defs/visibility"
+        },
+        "external": {
+          "type": "boolean"
+        },
+        "source": {
+          "enum": ["native-parser", "metadata", "docs", "ingest", "unknown"]
+        },
+        "package": {
+          "type": "string",
+          "minLength": 1
+        },
+        "module": {
+          "type": "string",
+          "minLength": 1
+        },
+        "symbol": {
+          "type": "string",
+          "minLength": 1
+        },
+        "versionScope": {
+          "$ref": "#/$defs/versionScope"
+        },
+        "carrier": {
+          "$ref": "#/$defs/typeRef"
+        },
+        "members": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/typeMember"
+          }
+        },
+        "relatedTypes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/typeRef"
+          }
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "note": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "message"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "message": {
+          "type": "string"
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    }
+  }
+}

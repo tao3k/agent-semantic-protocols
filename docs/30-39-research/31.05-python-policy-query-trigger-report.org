@@ -1,0 +1,335 @@
+#+TITLE: 31.05 Python Policy Query Trigger Report
+#+DATE: 2026-06-01
+#+STATUS: active
+#+JOHNNY_DECIMAL: 31.05
+#+AREA: 30-39 Research
+#+CATEGORY: 31 Search Flow Research
+
+* Purpose
+
+This report records a real Python-harness agent trace where the agent followed
+the provider-owned =py-harness= search/query path, but still issued many
+near-duplicate owner queries while investigating schema packets, project layout
+policy, and agent policy rules.
+
+The important point is that the hook/search protocol was no longer failing by
+allowing raw source reads.  The remaining failure mode is subtler: the provider
+does not yet expose the right semantic handles for rule ids, schema fixtures,
+and owner-local discovery, so a compliant agent still has to guess.
+
+* Trigger Summary
+
+The trace contained four clusters.
+
+** Schema packet query loop
+
+The agent repeatedly queried schema test owners with broad names:
+
+#+begin_src shell
+py-harness search owner tests/unit/test_semantic_search_packet_query_set_schema.py items --query test .
+py-harness search owner tests/unit/test_semantic_search_packet_query_set_schema.py items --query minimal_packet .
+py-harness search owner tests/unit/test_semantic_search_packet_graph_runtime_schema.py items --query test .
+py-harness search owner tests/unit/test_semantic_search_packet_graph_runtime_schema.py items --query minimal_packet .
+#+end_src
+
+Current reproduced output shows why this fans out:
+
+#+begin_src text
+|query itemQuery=test status=hit match=fallback-contains item=4 reason=parser-item-query next=code
+|item SemanticSearchPacketQuerySetSchemaTests kind=class ...
+|item SemanticSearchPacketQuerySetSchemaTests.setUp kind=function ...
+|item SemanticSearchPacketQuerySetSchemaTests.validation_errors kind=function ...
+|item SemanticSearchPacketQuerySetSchemaTests.test_text_query_set_can_classify_fixture_hits_and_avoid_false_owner kind=function ...
+#+end_src
+
+The provider technically answers, but the answer is too broad for planning.  It
+often renders a whole test class before the agent has chosen the exact test
+method.
+
+** Project layout policy loop
+
+The agent searched for =PY-PROJ-R001= and =src layout=, then queried layout
+helpers:
+
+#+begin_src shell
+py-harness search text "PY-PROJ-R001" owner tests --view seeds languages/python-lang-project-harness
+py-harness search text "src layout" owner tests --view seeds languages/python-lang-project-harness
+py-harness search owner src/python_lang_project_harness/_project_policy_layout.py items --query _uses_src_layout languages/python-lang-project-harness
+py-harness search owner src/python_lang_project_harness/_project_policy_layout.py items --query _is_packaged_project languages/python-lang-project-harness
+py-harness search owner src/python_lang_project_harness/_project_policy_layout.py items --query _src_parent_for_package languages/python-lang-project-harness
+#+end_src
+
+The text search correctly selected the catalog or layout owner, but direct
+rule-id owner query did not:
+
+#+begin_src text
+|query itemQuery=PY_PROJ_R001 status=miss match=none item=2 reason=parser-item-query next=code
+|item python_project_policy_rules kind=function ...
+|item project_policy_rule kind=function ...
+#+end_src
+
+This is a semantic gap: =PY_PROJ_R001= is rule data, not a function/class item.
+The provider can find it via text search but cannot return a compact rule fact
+through owner item query.
+
+** Agent policy rule loop
+
+The same pattern happened for =PY-AGENT-R008=:
+
+#+begin_src shell
+py-harness search text "PY-AGENT-R008" owner tests --view seeds languages/python-lang-project-harness
+py-harness search text "broad mixed surface" owner tests --view seeds languages/python-lang-project-harness
+py-harness search owner src/python_lang_project_harness/_agent_policy_catalog.py items --query PY_AGENT_R008 languages/python-lang-project-harness
+py-harness search owner src/python_lang_project_harness/_agent_reasoning_tree.py items --query _branch_needs_owner_map languages/python-lang-project-harness
+#+end_src
+
+The catalog query reproduced as:
+
+#+begin_src text
+|query itemQuery=PY_AGENT_R008 status=miss match=none item=2 reason=parser-item-query next=code
+|item python_agent_policy_rules kind=function ...
+|item agent_policy_rule kind=function ...
+#+end_src
+
+Again, the rule id is visible as policy data but not as a parser item.  The
+agent had to jump from catalog text to implementation helper names.
+
+** Runtime trace noise
+
+The trace also included repeated UI-level entries shaped like:
+
+#+begin_src text
+Running command
+Running command
+for 2s
+$ py-harness search owner ...
+#+end_src
+
+That hides whether the agent repeated the same semantic query, retried after a
+timeout, or ran two genuinely different commands.  The current compact output
+does not provide a stable command receipt/dedup key for real-trigger research.
+
+* Observed Problems
+
+** Rule ids are not first-class semantic query targets
+
+Policy catalogs expose rule ids through data structures.  Owner item query only
+sees Python parser declarations.  Therefore =PY_PROJ_R001= and
+=PY_AGENT_R008= miss as item queries and fall back to generic helper functions.
+
+This causes the agent to do the right high-level action, =search text <rule-id>
+owner tests=, then lose precision when it tries to inspect the selected owner.
+
+** Broad test queries render too much code
+
+The generic query =test= returns classes, setup helpers, validation helpers, and
+one test method.  =minimal_packet= is better but still returns both fixture
+functions and adjacent test methods via fallback contains.  This is useful for
+humans but expensive for agents that only need an outline before choosing the
+exact method.
+
+** Project-root and owner-root forms are mixed
+
+The trace alternates between:
+
+#+begin_src shell
+py-harness search owner languages/python-lang-project-harness/src/... languages/python-lang-project-harness
+py-harness search owner src/... .
+#+end_src
+
+Both can be valid depending on the working directory, but the provider should
+emit a canonical owner path and canonical follow-up command.  Without that, the
+agent repeats searches across root spellings.
+
+** Source-layout policy is under-specified
+
+The reproduced layout helpers show the current decision shape:
+
+#+begin_src text
+_is_packaged_project := project table OR build-system table OR package roots
+_uses_src_layout := src roots exist, and either no package roots or every package root is under src
+_src_parent_for_package := walk package_root parents until a parent named src
+#+end_src
+
+This is a plausible implementation, but the trace shows the agent specifically
+looking for "src layout" misjudgment.  The policy contract should make the
+intended trigger explicit:
+
+- whether a packaged project without declared package roots should be expected
+  to use =src/=;
+- whether a project table alone is enough package evidence;
+- whether single-module projects, schema-only packages, or tooling packages
+  should be exempt;
+- whether =src= as a generic directory is different from importable package
+  roots under =src=.
+
+This gap now has explicit regression coverage.  The provider must derive source
+scope from pyproject package metadata before applying =PY-PROJ-R001=:
+
+- =tests/unit/harness/test_pyproject_package_scope.py= asserts
+  =packages/python/src/tools= becomes source root =packages/python/src=.
+- =tests/unit/harness/test_cli.py= asserts the CLI ignores an invalid root
+  =src/ignored.py= when pyproject declares =packages/python/src/tools=.
+- =tests/unit/harness/project_policy/test_layout.py= asserts
+  =PY-PROJ-R001= does not fire for a nested declared =src= package root.
+
+The intended contract is therefore parser/config owned: pyproject package roots
+define the source scope for packaged projects, and the policy must not fall back
+to root-level =src/= discovery when package metadata is explicit.
+
+** Agent policy naming hides the rule intent
+
+=PY-AGENT-R008= was found by searching "broad mixed surface" and then by
+inspecting =_branch_needs_owner_map=.  That tells us the rule is about branches
+that need owner maps, but the query path forces the agent through catalog text,
+reasoning-tree internals, and test guesses.  The rule should advertise a stable
+semantic alias such as =branch-owner-map= or =mixed-surface-branch=.
+
+* Root Cause
+
+The system has fixed the raw-source-read problem, but not the semantic-routing
+problem for non-code facts.
+
+#+begin_src text
+rule id / schema fixture / policy phrase
+  -> text search finds owner
+  -> owner item query expects declarations only
+  -> data-oriented rule ids miss
+  -> broad fallback renders helper functions or whole test classes
+  -> agent issues another guessed owner query
+#+end_src
+
+This is not a Python parser limitation.  It is a protocol boundary issue:
+policy rules, schema fixtures, and test-case outlines are semantic facts that
+need first-class query surfaces.
+
+* Improvement Direction
+
+** 31.05-A Add policy-rule query surfaces
+
+Add a provider-owned policy lookup view for Python:
+
+#+begin_src shell
+py-harness search policy PY-PROJ-R001 owner tests --view seeds .
+py-harness search policy PY-AGENT-R008 owner tests --view seeds .
+#+end_src
+
+Compact output should include:
+
+#+begin_src text
+|policy rule=PY-PROJ-R001 pack=project title=... labels=layout,src-layout owner=src/python_lang_project_harness/_project_policy_catalog.py implementation=src/python_lang_project_harness/_project_policy_layout.py tests=tests/unit/harness/project_policy/test_layout.py
+|next owner:src/python_lang_project_harness/_project_policy_layout.py,tests:...
+#+end_src
+
+The same rule fact should be available through owner query when the selected
+owner is a policy catalog:
+
+#+begin_src shell
+py-harness search owner src/python_lang_project_harness/_project_policy_catalog.py policy --query PY-PROJ-R001 .
+#+end_src
+
+This keeps rule ids data-owned instead of pretending they are Python function
+names.
+
+** 31.05-B Add owner outline before code for broad test queries
+
+For =items --query test= and =items --query minimal_packet=, the provider should
+prefer names-only/outline output unless the query is exact:
+
+#+begin_src shell
+py-harness query tests/unit/test_semantic_search_packet_query_set_schema.py --term test --names-only .
+#+end_src
+
+The response should list class/test/helper names with line ranges, no =|code=
+lines, and a recommended exact follow-up.  This is the Python equivalent of the
+Rust owner-local query loop fix in 31.04.
+
+** 31.05-C Canonicalize follow-up commands
+
+Every owner response should include the project-root-relative owner path and a
+canonical command example:
+
+#+begin_src text
+|owner ... ownerPath=src/python_lang_project_harness/_project_policy_layout.py projectRoot=languages/python-lang-project-harness
+|next-command py-harness search owner src/python_lang_project_harness/_project_policy_layout.py items --query _uses_src_layout languages/python-lang-project-harness
+#+end_src
+
+This gives the agent one root spelling to reuse and reduces duplicate
+=languages/.../src= versus =src= probes.
+
+** 31.05-D Split project layout policy semantics
+
+The src-layout rule needs a sharper contract before tuning thresholds:
+
+1. =packaged-project-detected=: identify why a project is considered packaged
+   (=project= table, =build-system= table, package roots, import package,
+   =py_modules=, or explicit config).
+2. =src-layout-recommended=: decide whether this packaging mode should prefer
+   =src/=.
+3. =src-layout-satisfied=: verify that importable package roots are under
+   =src/=.
+
+Tests should cover false-positive cases explicitly:
+
+- project metadata exists but no import package is present;
+- tooling/schema-only package with tests and scripts but no distributed module;
+- single-module project where =py_modules= is intentional;
+- existing =src= directory that is not an import root;
+- declared packages under =src= with missing =__init__.py=, which should remain
+  a separate package-root rule.
+
+** 31.05-E Give policy rules stable aliases
+
+Catalog rules should carry queryable aliases:
+
+#+begin_src text
+PY-PROJ-R001 aliases=src-layout,packaged-project-layout
+PY-AGENT-R008 aliases=branch-owner-map,mixed-surface-branch
+#+end_src
+
+Aliases should appear in compact =search text= and future =search policy=
+output.  Agents should be able to search policy concepts without guessing
+private helper names such as =_branch_needs_owner_map=.
+
+** 31.05-F Add real-trigger command receipts
+
+For sandtable and hook research, provider compact output should emit a stable
+receipt line:
+
+#+begin_src text
+|runtime commandId=... dedupKey=py-harness:search-owner:<owner>:<query> elapsedMs=... cache=...
+#+end_src
+
+This would let reports distinguish repeated intent from repeated display noise.
+
+* Next Optimization Targets
+
+1. Implement Python policy-rule facts as provider-owned search output.
+2. Add names-only owner query for Python test/schema owners.
+3. Add canonical follow-up command lines to Python owner output.
+4. Split =PY-PROJ-R001= into explicit detection/recommendation/satisfaction
+   checks or at least encode those phases in labels and test names.
+5. Rename or alias =PY-AGENT-R008= around owner-map necessity instead of broad
+   mixed surface wording.
+6. Add a sandtable fixture from this trace and assert that the optimized flow
+   needs one policy lookup plus one owner/code query, not a dozen guessed owner
+   item probes.
+
+* Success Criteria
+
+The same investigation should compress to a bounded flow:
+
+#+begin_src shell
+py-harness search policy PY-PROJ-R001 owner tests --view seeds languages/python-lang-project-harness
+py-harness search owner src/python_lang_project_harness/_project_policy_layout.py items --query '_uses_src_layout|_is_packaged_project' languages/python-lang-project-harness
+py-harness search policy PY-AGENT-R008 owner tests --view seeds languages/python-lang-project-harness
+py-harness query tests/unit/test_semantic_search_packet_query_set_schema.py --term test --names-only .
+#+end_src
+
+Expected properties:
+
+- rule ids return rule facts, implementation owner, tests, labels, and aliases;
+- broad test queries return outlines first, not class-sized code dumps;
+- owner responses give one canonical follow-up command;
+- src-layout false positives are covered by explicit fixture tests;
+- command receipts expose repeated queries and cache behavior.

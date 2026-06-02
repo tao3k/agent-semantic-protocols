@@ -141,7 +141,9 @@
           "enum": [
             "prime",
             "owner",
+            "query",
             "text",
+            "read",
             "deps",
             "api",
             "ingest",

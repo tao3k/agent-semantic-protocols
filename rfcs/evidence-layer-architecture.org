@@ -202,6 +202,167 @@ iterator method, common traits, =From=, =AsRef=, =AsMut=, and more
 [API Guidelines Checklist].  Harness already has =AGENT-R012= through
 =AGENT-R028= for public API shape advice [201_rule_catalog.md].
 
+** P0 Invariant Catalog
+
+The public API policy lane should split human-facing findings from
+machine-facing invariant candidates.
+
+Findings keep the compact repair contract: rule id, locator, source line, help,
+and contract.  They are optimized for an agent editing the current file.
+
+=InvariantCandidate= is the shared structured input for later lanes:
+
+#+begin_example
+InvariantCandidate
+  invariantId       stable candidate id
+  sourceRuleId      existing finding rule, such as AGENT-R027
+  rulePackId        owning policy pack
+  kind              primitive-type-alias-boundary, stringly-state-boundary, ...
+  status            candidate | accepted | verified | waived | stale
+  severity          info | warning | error after policy config
+  location          concrete source location
+  evidence          parser-owned finding/fact references
+  requiredReceipts  cargo-check, cargo-test, clippy, expect-test, ...
+  proofTargets      optional parser/proof surfaces for P4
+#+end_example
+
+P0 upgrades the existing =AGENT-R012=, =AGENT-R020=, =AGENT-R023=,
+=AGENT-R027=, and =AGENT-R028= findings by deriving additive candidates from
+their parser-owned findings.  The provider must not reverse-engineer facts from
+rendered summary text; it should map rule ids to stable invariant kinds and
+carry the original finding location and requirement as evidence.
+
+This catalog becomes the common input for:
+
+- P1 receipt schema and tool adapters
+- P2 behavior snapshots and =expect_test= integration
+- P4 formal verification pilots
+- P5 reviewer-first change packets
+
+** P1 Receipt Schema and Tool Adapters
+
+P1 introduces an executable evidence protocol for tools.  This is separate
+from the existing verification lifecycle receipt/waiver model:
+
+- lifecycle receipt: a configured verification task is satisfied, failed, or
+  waived for a task fingerprint
+- execution receipt: a concrete tool adapter ran a command and captured compact
+  evidence
+
+The shared =VerificationReceipt= contract owns:
+
+#+begin_example
+schemaId/protocolId      shared receipt identity
+receiptId                stable receipt instance id
+producer                 languageId, providerId, adapterId, namespace
+tool                     cargo-check | cargo-test | clippy | expect-test | ...
+status                   passed | failed | skipped | error
+command                  argv, workdir, env, outputFormat
+exitCode/durationMs      executable result facts
+observations             compact stdout/stderr/diagnostic/test/snapshot notes
+candidateIds             linked P0 InvariantCandidate ids
+taskFingerprints         linked lifecycle verification tasks
+artifacts                persisted stdout, cargo JSON, snapshots, proof logs
+#+end_example
+
+Adapters are phased:
+
+1. =cargo-check=, =cargo-test=, =clippy=, and =expect-test=.
+2. =proptest= through =cargo test= command shaping, plus =cargo-fuzz= through
+   explicit =--target= receipt command shaping.
+3. =kani= with optional =--harness=, =creusot= through =cargo creusot=,
+   and =verus= through explicit =--file= receipt command shaping.
+
+The first phase should not make cargo commands a proof of correctness by
+themselves.  They are executable evidence receipts that P2 behavior snapshots,
+P4 proof pilots, and P5 review packets can compose with invariant candidates
+and lifecycle waivers.
+
+** P2 Behavior Snapshot and Expect-Test Integration
+
+P2 introduces a shared =BehaviorSnapshot= contract for observable behavior:
+
+#+begin_example
+schemaId/protocolId      shared behavior snapshot identity
+snapshotId               stable snapshot instance id
+producer                 languageId, providerId, namespace
+subject                  public-api | function | method | module | cli | test
+status                   matched | changed | missing | skipped | error
+observations             stdout/stderr/return-value/snapshot/diff notes
+expected/actual/diff     compact text/json/debug/bytes snapshot values
+receiptIds               linked execution receipts, especially expect-test
+candidateIds             linked P0 InvariantCandidate ids
+#+end_example
+
+The first P2 slice is schema and registry alignment.  It should let adapters
+attach expect-test or golden-output behavior to the same evidence packet family
+without turning the Rust harness into a large behavior simulator.
+Rust exposes this as =rs-harness behavior snapshot --receipt-json PATH= so an
+execution receipt from =expect-test= can become a linked behavior snapshot
+without re-running or re-parsing the test output.
+
+** P3 Determinism Readiness
+
+P3 introduces a shared =DeterminismReadiness= packet for direct sources of
+nondeterminism:
+
+#+begin_example
+clock | random | filesystem | network | environment | global-state
+#+end_example
+
+The packet records parser-owned observations, not simulated behavior. A provider
+should first identify direct calls or declarations such as =SystemTime::now=,
+=rand::random=, =std::fs= access, =std::net= access, =std::env= reads, and
+=static= state. Each observation carries a project-relative path, one-based
+line, source expression, category, and whether the evidence is direct. The
+provider then emits suggestions such as trait injection, explicit parameters,
+state handles, or resettable test fixtures.
+
+This layer deliberately stops before a full mocking runtime. The review question
+is "what must be injected or made explicit before this behavior can be stable",
+not "can the harness emulate every external dependency".
+
+** P4 Formal Verification Pilot
+
+P4 introduces a shared =FormalProofPilot= packet for focused proof evidence over
+the harness's own rule judgments. The pilot target should be narrow, stable, and
+owned by parser or graph facts, for example:
+
+- parser facts
+- public API shape detection
+- module reasoning tree construction
+- dependency graph acyclicity
+
+The first Rust pilot targets =AGENT-R009= dependency graph acyclicity. The rule
+core is factored into an index-based pure graph function, and
+=rs-harness proof pilot dependency-graph-acyclicity --max-nodes N= runs an
+exhaustive small-model check. The claim is bounded but concrete: for every
+directed graph up to =N= nodes, the AGENT-R009 core reports a cycle iff an
+independent directed-cycle checker finds one. Later Kani, Creusot, or Verus
+receipts should attach to the same target rather than creating a separate proof
+vocabulary.
+
+** P5 Review Packet
+
+P5 introduces a shared =ReviewPacket= as the reviewer-first artifact over the
+new evidence APIs. It should not read legacy lifecycle task or waiver objects.
+Instead, providers build it from:
+
+- =InvariantCandidate=
+- =VerificationReceipt=
+- =BehaviorSnapshot=
+- =DeterminismReadiness=
+- =FormalProofPilot=
+- explicit review-packet waiver evidence
+
+The packet summarizes =changedInvariants=, =changedBehavior=,
+=missingReceipts=, =staleWaivers=, determinism observation counts, proof claim
+counts, and prioritized =reviewActions=. Receipt discharge is explicit: a
+receipt only clears an invariant obligation when it has =status=passed= and
+links the invariant through =candidateIds=. Waiver freshness is also explicit in
+the review-packet waiver evidence; providers should not infer staleness from an
+implicit clock unless a caller supplies a review date.
+
 Proposed additional advisory rules (=Info= or config-enabled =Warning=):
 
 | Rule ID            | Title                                                      |
@@ -220,6 +381,91 @@ Proposed additional advisory rules (=Info= or config-enabled =Warning=):
 
 These should stay =Info= by default — API quality matters for agents, but
 should not default to harder blocking than syntax/project/modularity policy.
+
+** P6 Persistent Evidence Graph and Assurance Cases
+
+P6 introduces a portable =EvidenceGraph= artifact over the evidence packets
+created by P0 through P5. The first slice is intentionally not a database,
+cache, or long-term storage engine. It is a graph-shaped packet that makes the
+relationships between reviewer evidence explicit:
+
+#+begin_example
+ReviewPacket
+InvariantCandidate
+VerificationReceipt
+BehaviorSnapshot
+DeterminismReadiness
+FormalProofPilot
+Waiver
+ReviewAction
+#+end_example
+
+The shared =EvidenceGraph= contract owns:
+
+#+begin_example
+schemaId/protocolId      shared graph identity
+graphId                  stable graph artifact id
+producer/project         language provider and project metadata
+summary                  node/edge/owner/claim/stale/gap counters
+nodes                    evidence vertices with typed ids and locations
+edges                    derived-from, requires-evidence, verified-by,
+                         observed-by, waived-by, reviewed-by,
+                         suggests-action, supports-claim
+gaps                     compact review-visible missing evidence summaries
+#+end_example
+
+P6.1 builds this graph from one or more review packets. The graph should show
+which owner declared or exposed an invariant candidate, which receipts or
+behavior snapshots support it, which waivers still apply or are stale, and which
+review actions remain. Providers should derive the graph from structured packet
+fields, not from rendered findings or summary prose.
+
+Later P6 slices can render assurance cases from the same graph, for example:
+
+#+begin_example
+Claim: AGENT-R009 dependency graph acyclicity judgment is reliable
+  supported-by: FormalProofPilot rust.proof.dependency-graph-acyclicity
+  observed-by: VerificationReceipt cargo-test proof unit tests
+  reviewed-by: ReviewPacket rust.review.packet
+  gaps: none
+#+end_example
+
+The evidence graph is the common input for assurance-case rendering, review
+packets that span several providers, and stale-waiver audits. It should stay
+portable and artifact-first; storage, visualization, and indexing are separate
+concerns.
+
+P6.2 introduces a shared =AssuranceCase= packet derived from an evidence graph.
+It does not duplicate the graph. Instead, it groups graph nodes into reviewer
+claims:
+
+#+begin_example
+caseId/claim          stable assurance claim identity
+status                supported | needs-review | blocked | unknown
+supportedBy           proof, receipt, or behavior graph node references
+observedBy            behavior or receipt graph node references
+reviewedBy            review-packet graph node references
+waivedBy              waiver graph node references
+actions               review-action graph node references
+gaps                  missing evidence or stale waiver summaries
+#+end_example
+
+The first renderer is:
+
+#+begin_example
+rs-harness evidence assurance --evidence-graph-json PATH [--json]
+#+end_example
+
+The compact output is reviewer-first:
+
+#+begin_example
+assurance-case cases=12 claims=12 supported=3 gaps=8 stale-items=2
+#+end_example
+
+Providers should create cases from graph structure, not from rendered review
+packet prose. A case with missing receipts, stale waivers, or pending review
+actions is =needs-review=. A case with failed or blocked proof evidence is
+=blocked=. A case with support and no gaps is =supported=.
 
 * Layer 4: Performance Optimization (owner-gated, evidence-required)
 

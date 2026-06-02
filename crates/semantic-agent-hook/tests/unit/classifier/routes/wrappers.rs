@@ -4,7 +4,7 @@ use serde_json::json;
 use crate::classifier::registry;
 
 #[test]
-fn wrapper_raw_search_routes_to_ingest() {
+fn wrapper_raw_search_routes_to_profile_query_when_supported() {
     for command in [
         "DIRENV_SILENCE=1 direnv exec . rg -n WorkflowExecution src",
         "direnv exec . rg -n WorkflowExecution src",
@@ -27,12 +27,12 @@ fn wrapper_raw_search_routes_to_ingest() {
 
         assert_eq!(decision.decision, DecisionKind::Deny, "{command}");
         assert_eq!(decision.reason_kind, ReasonKind::RawBroadSearch);
-        assert_eq!(decision.routes[0].kind, DecisionRouteKind::Ingest);
+        assert_eq!(decision.routes[0].kind, DecisionRouteKind::Text);
     }
 }
 
 #[test]
-fn shell_path_wrapper_routes_content_dump_to_provider_owner_search() {
+fn shell_path_wrapper_routes_content_dump_to_provider_query() {
     let decision = classify_hook(
         &registry(),
         "codex",
@@ -46,23 +46,24 @@ fn shell_path_wrapper_routes_content_dump_to_provider_owner_search() {
     assert_eq!(decision.decision, DecisionKind::Deny);
     assert_eq!(decision.reason_kind, ReasonKind::BulkSourceDump);
     assert_eq!(decision.subject.paths, ["src/cli/agent-hooks.ts"]);
+    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Query);
+    assert_eq!(decision.routes[0].provider_id, "ts-harness");
     assert_eq!(
         decision.routes[0].argv,
         [
             "ts-harness",
-            "search",
-            "owner",
+            "query",
+            "--from-hook",
+            "direct-source-read",
+            "--selector",
             "src/cli/agent-hooks.ts",
-            "items",
-            "--query",
-            "agent-hooks|AgentHooks|agentHooks",
             "."
         ]
     );
 }
 
 #[test]
-fn rtk_read_routes_to_provider_owner_search() {
+fn rtk_read_routes_to_provider_query() {
     let decision = classify_hook(
         &registry(),
         "codex",
@@ -76,23 +77,24 @@ fn rtk_read_routes_to_provider_owner_search() {
     assert_eq!(decision.decision, DecisionKind::Deny);
     assert_eq!(decision.reason_kind, ReasonKind::DirectSourceRead);
     assert_eq!(decision.subject.paths, ["src/cli/agent-hooks.ts"]);
+    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Query);
+    assert_eq!(decision.routes[0].provider_id, "ts-harness");
     assert_eq!(
         decision.routes[0].argv,
         [
             "ts-harness",
-            "search",
-            "owner",
+            "query",
+            "--from-hook",
+            "direct-source-read",
+            "--selector",
             "src/cli/agent-hooks.ts",
-            "items",
-            "--query",
-            "agent-hooks|AgentHooks|agentHooks",
             "."
         ]
     );
 }
 
 #[test]
-fn nested_parallel_exec_command_routes_to_provider_owner_search() {
+fn nested_parallel_exec_command_routes_to_provider_query() {
     let decision = classify_hook(
         &registry(),
         "codex",
@@ -119,16 +121,17 @@ fn nested_parallel_exec_command_routes_to_provider_owner_search() {
         Some("rtk read src/cli/agent-hooks.ts")
     );
     assert_eq!(decision.subject.paths, ["src/cli/agent-hooks.ts"]);
+    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Query);
+    assert_eq!(decision.routes[0].provider_id, "ts-harness");
     assert_eq!(
         decision.routes[0].argv,
         [
             "ts-harness",
-            "search",
-            "owner",
+            "query",
+            "--from-hook",
+            "direct-source-read",
+            "--selector",
             "src/cli/agent-hooks.ts",
-            "items",
-            "--query",
-            "agent-hooks|AgentHooks|agentHooks",
             "."
         ]
     );

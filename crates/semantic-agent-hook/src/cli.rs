@@ -4,6 +4,7 @@ use crate::codex_config::{
     ROOT_BLOCK_BEGIN, ROOT_BLOCK_END, codex_hook_block, codex_user_trust_state_status,
     install_codex_user_trust_state, merge_codex_config, validate_codex_config_toml,
 };
+use crate::event_state::append_hook_event_state;
 use crate::{
     ProfileRegistry, classify_hook, merge_profile_registries, parse_payload, parse_profiles,
     render_platform_response,
@@ -60,6 +61,9 @@ fn run_hook(args: &[String]) -> Result<(), String> {
     let payload =
         parse_payload(&stdin).map_err(|error| format!("invalid hook payload JSON: {error:?}"))?;
     let decision = classify_hook(&registry, client, event, &payload);
+    if let Err(error) = append_hook_event_state(&profiles_path, &decision) {
+        eprintln!("[semantic-agent-hook] failed to update hook state: {error}");
+    }
     let output_value = match emit {
         "decision" => serde_json::to_value(&decision)
             .map_err(|error| format!("failed to serialize hook decision: {error}"))?,
@@ -229,20 +233,27 @@ fn load_profiles(path: &Path) -> Result<ProfileRegistry, String> {
     parse_profiles(&contents).map_err(|error| format!("invalid profile registry JSON: {error:?}"))
 }
 
-fn build_default_profile_registry(_project_root: &Path) -> Result<Value, String> {
+fn build_default_profile_registry(project_root: &Path) -> Result<Value, String> {
     let mut profiles = Vec::new();
-    if provider_binary_available("rs-harness") {
+    if provider_agent_guide_available("rs-harness", "provider=rs-harness", project_root) {
         profiles.push(rust_profile());
     }
-    if provider_binary_available("ts-harness") {
+    if provider_agent_guide_available("ts-harness", "[ts-harness-guide]", project_root) {
         profiles.push(typescript_profile());
     }
-    if provider_binary_available("py-harness") {
+    if provider_agent_guide_available("py-harness", "[py-harness-guide]", project_root) {
         profiles.push(python_profile());
+    }
+    if provider_agent_guide_command_available(
+        &julia_workspace_harness_argv(),
+        "[julia-harness-guide]",
+        project_root,
+    ) {
+        profiles.push(julia_profile());
     }
     if profiles.is_empty() {
         return Err(
-            "no semantic hook profiles discovered; expected PATH to contain rs-harness, ts-harness, or py-harness"
+            "no semantic hook profiles discovered; expected PATH to contain rs-harness, ts-harness, py-harness, or workspace JuliaLangProjectHarness.jl with agent guide support"
                 .to_string(),
         );
     }
@@ -261,6 +272,65 @@ fn provider_binary_available(binary: &str) -> bool {
         return false;
     };
     env::split_paths(&path).any(|entry| is_executable_file(&entry.join(binary)))
+}
+
+fn provider_agent_guide_available(
+    binary: &str,
+    expected_marker: &str,
+    project_root: &Path,
+) -> bool {
+    provider_agent_guide_command_available(&[binary.to_string()], expected_marker, project_root)
+}
+
+fn provider_agent_guide_command_available(
+    argv: &[String],
+    expected_marker: &str,
+    project_root: &Path,
+) -> bool {
+    let Some(binary) = argv.first() else {
+        return false;
+    };
+    if !provider_binary_available(binary) {
+        return false;
+    }
+    if !julia_workspace_harness_exists(argv, project_root) {
+        return false;
+    }
+    let Ok(output) = std::process::Command::new(binary)
+        .args(&argv[1..])
+        .args(["agent", "guide", "."])
+        .current_dir(project_root)
+        .output()
+    else {
+        return false;
+    };
+    output.status.success() && String::from_utf8_lossy(&output.stdout).contains(expected_marker)
+}
+
+fn julia_workspace_harness_exists(argv: &[String], project_root: &Path) -> bool {
+    if argv != julia_workspace_harness_argv().as_slice() {
+        return true;
+    }
+    project_root
+        .join("languages/JuliaLangProjectHarness.jl/Project.toml")
+        .is_file()
+        && project_root
+            .join("languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl")
+            .is_file()
+}
+
+fn julia_workspace_harness_argv() -> Vec<String> {
+    vec![
+        "julia".to_string(),
+        "--project=languages/JuliaLangProjectHarness.jl".to_string(),
+        "languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl".to_string(),
+    ]
+}
+
+fn julia_workspace_harness_command(suffix: &[&str]) -> Vec<String> {
+    let mut argv = julia_workspace_harness_argv();
+    argv.extend(suffix.iter().map(|arg| (*arg).to_string()));
+    argv
 }
 
 #[cfg(unix)]
@@ -310,10 +380,11 @@ fn typescript_profile() -> Value {
         "ignoredPathPrefixes": ["node_modules", "dist", "build", "coverage", ".git"],
         "policy": default_policy(),
         "commands": {
-            "prime": {"argv": ["ts-harness", "search", "prime", "."]},
-            "owner": {"argv": ["ts-harness", "search", "owner", "{path}", "items", "--query", "{query}", "."]},
-            "text": {"argv": ["ts-harness", "search", "text", "{query}", "owner", "tests", "--view", "seeds", "."]},
-            "ingest": {"argv": ["ts-harness", "search", "ingest", "owner", "tests", "--view", "seeds", "."], "stdinMode": "pipe-candidates"},
+    "prime": {"argv": ["ts-harness", "search", "prime", "."]},
+    "owner": {"argv": ["ts-harness", "search", "owner", "{path}", "items", "--query", "{query}", "."]},
+    "text": {"argv": ["ts-harness", "search", "text", "{query}", "owner", "tests", "--view", "seeds", "."]},
+    "query": {"argv": ["ts-harness", "search", "query", "--from-hook", "direct-source-read", "--selector", "{selector}", "{termArgs}", "--surface", "owner,tests", "--view", "seeds", "."]},
+    "ingest": {"argv": ["ts-harness", "search", "ingest", "owner", "tests", "--view", "seeds", "."], "stdinMode": "pipe-candidates"},
             "checkChanged": {"argv": ["ts-harness", "check", "--changed", "."]},
             "guide": {"argv": ["ts-harness", "agent", "guide", "."]}
         }
@@ -324,6 +395,29 @@ fn python_profile() -> Value {
     let registry = serde_json::from_str::<Value>(PYTHON_PROFILE_REGISTRY_JSON)
         .expect("Python semantic hook profile registry JSON must be valid");
     registry["profiles"][0].clone()
+}
+
+fn julia_profile() -> Value {
+    json!({
+        "languageId": "julia",
+        "providerId": "julia-project-harness",
+        "binary": "julia-project-harness",
+        "providerCommandPrefix": julia_workspace_harness_argv(),
+        "namespace": "agent.semantic-protocols.languages.julia.julia-project-harness",
+        "sourceExtensions": [".jl"],
+        "configFiles": ["Project.toml", "Manifest.toml"],
+        "sourceRoots": ["src", "test", "ext", "examples", "languages/JuliaLangProjectHarness.jl/src", "languages/JuliaLangProjectHarness.jl/test"],
+        "ignoredPathPrefixes": [".git", ".julia", ".direnv", "deps", "build", ".codex/harness-state"],
+        "policy": default_policy(),
+        "commands": {
+            "prime": {"argv": julia_workspace_harness_command(&["search", "prime", "--view", "seeds", "."])},
+            "owner": {"argv": julia_workspace_harness_command(&["search", "owner", "{path}", "--view", "seeds", "."])},
+            "text": {"argv": julia_workspace_harness_command(&["search", "text", "{query}", "owner", "tests", "--view", "seeds", "."])},
+            "ingest": {"argv": julia_workspace_harness_command(&["search", "ingest", "owner", "tests", "--view", "seeds", "."]), "stdinMode": "pipe-candidates"},
+            "checkChanged": {"argv": julia_workspace_harness_command(&["check", "--changed", "."])},
+            "guide": {"argv": julia_workspace_harness_command(&["agent", "guide", "."])}
+        }
+    })
 }
 
 fn default_policy() -> Value {

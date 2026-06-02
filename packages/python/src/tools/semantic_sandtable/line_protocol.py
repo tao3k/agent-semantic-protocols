@@ -38,6 +38,7 @@ def _validate_line_path_values(result: StepResult, line: str) -> None:
         _validate_named_path_fields,
         _validate_named_path_list_fields,
         _validate_next_action_path_fields,
+        _validate_window_set_fields,
     )
     for validator in validators:
         validator(result, line)
@@ -94,7 +95,11 @@ def _validate_named_path_fields(result: StepResult, line: str) -> None:
 
 def _validate_named_path_list_fields(result: StepResult, line: str) -> None:
     for match in re.finditer(
-        r"\b(?:highImpactOwners|frontierOwners|findingOwners)=([^\s]+)",
+        (
+            r"\b(?:highImpactOwners|frontierOwners|editFrontier|testFrontier|"
+            r"findingOwners|high_impact_owners|frontier_owners|edit_frontier|"
+            r"test_frontier|finding_owners)=([^\s]+)"
+        ),
         line,
     ):
         for value in match.group(1).split(","):
@@ -112,6 +117,34 @@ def _validate_next_action_path_fields(result: StepResult, line: str) -> None:
             target = target.split("(", maxsplit=1)[0]
             _validate_project_path_field(result, target, line)
             if result.errors:
+                return
+
+
+def _validate_window_set_fields(result: StepResult, line: str) -> None:
+    for match in re.finditer(r"\b(?:windowSet|window_set)=([^\s]+)", line):
+        for action in match.group(1).split(","):
+            kind, separator, target = action.partition(":")
+            if separator != ":" or kind not in {"owner", "tests", "read"}:
+                result.errors.append(
+                    "line protocol windowSet entry must be kind:path with "
+                    f"kind owner/tests/read, got {action!r}"
+                )
+                return
+            target = target.split("(", maxsplit=1)[0]
+            _validate_project_path_field(result, target, line)
+            if result.errors:
+                return
+            if kind == "owner" and _is_test_like_path(target):
+                result.errors.append(
+                    "line protocol windowSet owner target points at test path "
+                    f"{target!r}; use tests:{target}"
+                )
+                return
+            if kind == "tests" and not _is_test_like_path(target):
+                result.errors.append(
+                    "line protocol windowSet tests target is not test-like "
+                    f"{target!r}; use owner:{target} or a concrete test path"
+                )
                 return
 
 
@@ -138,4 +171,21 @@ def _validate_project_path_token(result: StepResult, value: str, line: str) -> N
         return
     result.errors.append(
         f"line protocol invalid project path {value!r} in {line[:80]!r}"
+    )
+
+
+def _is_test_like_path(value: str) -> bool:
+    path = value.replace("\\", "/")
+    return (
+        path.startswith("test/")
+        or path.startswith("tests/")
+        or "/test/" in f"/{path}"
+        or "/tests/" in f"/{path}"
+        or "/__tests__/" in f"/{path}"
+        or path.endswith("_test.rs")
+        or path.endswith("_test.py")
+        or path.endswith(".test.ts")
+        or path.endswith(".test.tsx")
+        or path.endswith(".spec.ts")
+        or path.endswith(".spec.tsx")
     )

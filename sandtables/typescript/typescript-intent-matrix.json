@@ -64,7 +64,7 @@
       "command": ["ts-harness", "search", "text", "projectReferences", "--view", "seeds", "."],
       "expect": {
         "lineProtocol": true,
-        "stdoutContains": ["[search-text]"],
+        "stdoutContains": ["[search-fzf]"],
         "maxStdoutLinesWarn": 14,
         "maxElapsedMsWarn": 9000
       }
@@ -84,7 +84,7 @@
       "command": ["ts-harness", "search", "text", "resolveModuleName", "--view", "seeds", "."],
       "expect": {
         "lineProtocol": true,
-        "stdoutContains": ["[search-text]"],
+        "stdoutContains": ["[search-fzf]"],
         "maxStdoutLinesWarn": 16,
         "maxElapsedMsWarn": 9000
       }

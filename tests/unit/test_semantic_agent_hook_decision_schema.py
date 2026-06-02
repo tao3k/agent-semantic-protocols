@@ -25,7 +25,7 @@ def minimal_decision(reason_kind: str) -> dict[str, object]:
         "languageIds": ["typescript"],
         "subject": {
             "toolName": "Bash",
-            "command": "ts-harness search text location.path owner tests --json .",
+            "command": "ts-harness search fzf location.path owner tests --json .",
         },
         "routes": [
             {
@@ -61,6 +61,43 @@ class SemanticAgentHookDecisionSchemaTests(unittest.TestCase):
 
     def test_direct_source_read_reason_kind_is_valid(self) -> None:
         self.assertEqual([], self.validation_errors(minimal_decision("direct-source-read")))
+
+    def test_semantic_read_route_kind_is_valid(self) -> None:
+        decision = minimal_decision("direct-source-read")
+        decision["routes"][0] = {  # type: ignore[index]
+            "languageId": "typescript",
+            "providerId": "semantic-agent-hook",
+            "binary": "semantic-agent-hook",
+            "kind": "read",
+            "argv": [
+                "semantic-agent-hook",
+                "read",
+                "src/cli/agent-hooks.ts",
+                "--query",
+                "agent-hooks|AgentHooks|agentHooks",
+                ".",
+            ],
+        }
+        self.assertEqual([], self.validation_errors(decision))
+
+    def test_provider_query_route_kind_is_valid(self) -> None:
+        decision = minimal_decision("direct-source-read")
+        decision["routes"][0] = {  # type: ignore[index]
+            "languageId": "typescript",
+            "providerId": "ts-harness",
+            "binary": "ts-harness",
+            "kind": "query",
+            "argv": [
+                "ts-harness",
+                "query",
+                "--from-hook",
+                "direct-source-read",
+                "--selector",
+                "src/cli/agent-hooks.ts",
+                ".",
+            ],
+        }
+        self.assertEqual([], self.validation_errors(decision))
 
     def test_unknown_reason_kind_is_rejected(self) -> None:
         errors = self.validation_errors(minimal_decision("json-is-large"))

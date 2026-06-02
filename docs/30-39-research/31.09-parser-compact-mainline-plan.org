@@ -1,0 +1,108 @@
+#+TITLE: 31.09 Parser Compact Mainline Plan
+#+DATE: 2026-06-02
+#+STATUS: active
+#+JOHNNY_DECIMAL: 31.09
+#+AREA: 30-39 Research
+#+CATEGORY: 31 Search Flow Research
+
+* Purpose
+
+This report turns compact code into a parser-owned implementation track.  The
+current optimized Rust example is better than whitespace-trimmed source, but it
+is still only an initial projection.  The durable goal is not shorter text by
+itself; it is a stable native syntax projection that lets an agent understand
+control flow, effects, mutations, and exact expansion points with fewer
+commands.
+
+* Problem
+
+The first Rust compact pass moved item query output from source slicing to
+parser facts, but the output still exposed gaps:
+
+- branch and loop ownership were visible, but terminal nodes such as
+  =continue= and tail expressions were easy to lose
+- mutation in compact arms such as =count += 1= was not represented as a
+  mutation fact
+- macro calls were reduced to the macro name, losing bounded argument evidence
+- existing tests asserted that some lines existed, but did not snapshot the
+  complete compact projection
+
+Those gaps explain why agents keep falling back to extra owner/text/read
+searches after an apparently successful query.  The compact output must carry
+enough parser-owned evidence to make the next step obvious.
+
+* Principles
+
+1. Parser facts own compact structure.  Renderers may format, escape, or choose
+   transport, but they must not invent branches, exits, calls, or mutations.
+2. =--code= and line-protocol =|code text="..."= must serialize the same parser
+   projection.  A drift between them is a protocol bug.
+3. Compact text is for agent reasoning, not editable source replacement.  Exact
+   edits still use read locators or expansion actions.
+4. Snapshot tests are the regression boundary.  Every parser capability class
+   gets a fixed fixture before broader real-project optimization.
+
+* Capability Ladder
+
+| Step | Capability | Required parser facts |
+|------+------------+-----------------------|
+| 1 | declaration | item kind, name, visibility, signature, exact read |
+| 2 | control flow | if/else, match/case, loop boundaries, nesting depth |
+| 3 | terminal/effect | return, break, continue, throw/raise, panic, await, try/? |
+| 4 | mutation/binding | let/assignment target, ignored binding filtering, initializer summary |
+| 5 | call/macro | callee name plus bounded high-signal argument evidence |
+| 6 | expansion | node id, parent id, omitted fact, exact read, next query/read action |
+
+Rust is the current proving ground with =syn=.  TypeScript should project from
+the TypeScript compiler API.  Python should use =ast= nodes and preserve
+indentation-sensitive block ownership in a parser outline.  Julia should use
+JuliaSyntax and stay workspace-managed rather than a global-bin parity target.
+
+* Snapshot Strategy
+
+Each provider needs a small fixture suite for compact parser projection:
+
+- pure compact code: =search owner <path> items --query <symbols> --code=
+- line protocol: the same query without =--code=, proving =|code text="..."=
+  is the same projection
+- JSON packet: =projection.nodes[]=, =omitted[]=, and =expandActions[]= once the
+  provider schema exposes them
+
+The first Rust fixture locks two functions:
+
+- =branch_and_write= exercises if-let, ignored local macro call, explicit
+  return, and tail =None=
+- =match_and_loop= exercises loop ownership, match cases, =continue=, mutation,
+  and tail =count=
+
+Future fixtures should add async/effect handling, nested closures, unsafe
+blocks, struct/enum projection, impl/member boundaries, and large-item outline
+truncation.
+
+* Acceptance Gates
+
+Rust provider gate:
+
+#+begin_src shell
+direnv exec . cargo test --features cli cli::query::compact
+direnv exec . cargo test --features cli cli::query
+#+end_src
+
+Cross-language gates should follow the same shape:
+
+- provider-native parser fixture
+- snapshot for pure compact projection
+- snapshot or schema fixture for metadata-bearing packet output
+- real-project replay showing fewer repeated owner/text/read searches
+
+* Open Work
+
+- Add stable projection node ids and parent ids to Rust compact facts.
+- Promote projection nodes into =semantic-query-packet.v1= rather than only
+  string compact code.
+- Align TypeScript =--code= output to compiler-owned projection nodes instead
+  of renderer-only compact text.
+- Add Python AST compact snapshots for function, class, branch, and raise
+  flows.
+- Use real public-library sandboxes to measure command count, packet size, and
+  query retries before and after parser compact improvements.

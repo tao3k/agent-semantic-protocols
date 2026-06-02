@@ -1,0 +1,76 @@
+#+TITLE: 31.07 TypeScript Owner Item Code Projection Report
+#+DATE: 2026-06-01
+#+STATUS: active
+#+JOHNNY_DECIMAL: 31.07
+#+AREA: 30-39 Research
+#+CATEGORY: 31 Search Flow Research
+
+* Purpose
+
+This report records the query-output problem observed during TypeScript harness
+sandboxing: owner item queries can select the right parser item, but the compact
+line protocol still spends tokens on owner, item, read, and escaped =text= fields
+when the agent only needs the selected code.
+
+* Evidence
+
+The concrete command was:
+
+#+begin_src shell
+ts-harness search owner languages/typescript-lang-project-harness/src/cli/semantic-search/types.ts items --query SemanticSearchPacket .
+#+end_src
+
+It correctly selected =SemanticSearchPacket=, but the output still included:
+
+#+begin_src text
+[search-owner] ...
+|owner ...
+|item interface SemanticSearchPacket ...
+|code ... text="export
+#+end_src
+
+For a post-selection code read, these lines are redundant.  They also force the
+agent to mentally decode JSON-string escaped code instead of seeing compact code
+directly.
+
+* Decision
+
+Do not make every =--query= output pure code by default.  The default
+metadata-bearing output is still the accuracy contract during exploration:
+
+- =status=hit= and =match=exact= prove parser selection
+- fallback markers prove when the provider widened the query
+- owner/item lines preserve read locators for query repair and tests
+
+Add an explicit =--code= projection for selected owner item queries:
+
+#+begin_src shell
+ts-harness search owner <path> items --query 'fun1|fun2|fun3' --code .
+#+end_src
+
+The projection emits only compact parser-owned code.  It strips blank lines and
+per-line indentation through the provider's existing compact-code renderer, and
+it is mutually exclusive with =--json=.
+
+* Expected Effect
+
+This directly addresses the user-facing token waste without removing the
+line-protocol evidence needed by hook policy and schema tests.  It also creates a
+clean route for future hook decisions:
+
+#+begin_src text
+blocked source read
+  -> provider owner item query with evidence
+  -> if exact/fallback is acceptable, repeat with --code for edit context
+#+end_src
+
+The key improvement is not another root read surface.  The language provider
+still owns parser selection and compact code extraction.
+
+* Follow-up Checks
+
+- TypeScript registry advertises =outputModes=["compact","json","code"]= for
+  =search/owner=.
+- TypeScript capability schema includes =owner-item-code-projection=.
+- CLI rejects =--code --json=.
+- Real sandbox commands prefer =--code= only after owner and query are known.

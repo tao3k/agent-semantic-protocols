@@ -80,6 +80,38 @@
     "matchMode": {
       "enum": ["exact", "fallback-contains", "mixed", "unknown"]
     },
+    "outputMode": {
+      "description": "Agent-facing rendering mode for matches. Code mode includes compact code; names and outline modes may omit code.",
+      "enum": ["code", "names", "outline"]
+    },
+    "queryCoverage": {
+      "type": "array",
+      "description": "Per-term coverage for query-set or owner-local item queries.",
+      "items": {
+        "$ref": "#/$defs/queryCoverage"
+      }
+    },
+    "candidateItems": {
+      "type": "array",
+      "description": "Bounded parser-owned item names suggested when one or more query terms miss.",
+      "items": {
+        "$ref": "#/$defs/candidateItem"
+      }
+    },
+    "semanticHandles": {
+      "type": "array",
+      "description": "Stable non-code semantic facts, such as policy rules, schema fixtures, test cases, config keys, or provider capabilities.",
+      "items": {
+        "$ref": "semantic-handle.v1.schema.json#/$defs/semanticHandle"
+      }
+    },
+    "nativeSyntaxFacts": {
+      "type": "array",
+      "description": "Parser-owned language syntax facts used for code-shaped query repair and routing.",
+      "items": {
+        "$ref": "semantic-native-syntax-fact-index.v1.schema.json#/$defs/nativeSyntaxFact"
+      }
+    },
     "matches": {
       "type": "array",
       "items": {
@@ -131,7 +163,7 @@
     "match": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "kind", "location", "code", "truncated"],
+      "required": ["name", "kind", "location", "truncated"],
       "properties": {
         "name": {
           "type": "string",
@@ -156,7 +188,13 @@
         },
         "code": {
           "type": "string",
-          "description": "Agent-facing compact code. Blank lines are omitted and each retained line is trimmed."
+          "description": "Agent-facing compact code projection. This is parser-owned understanding text, not necessarily exact editable source. Line-protocol code text fields and --code output serialize this same projection value."
+        },
+        "projection": {
+          "$ref": "#/$defs/projection"
+        },
+        "outline": {
+          "$ref": "#/$defs/outline"
         },
         "truncated": {
           "type": "boolean"
@@ -170,6 +208,297 @@
               { "type": "boolean" }
             ]
           }
+        }
+      }
+    },
+    "projection": {
+      "type": "object",
+      "description": "How the provider projected native parser facts into agent-facing code or outline text.",
+      "additionalProperties": false,
+      "required": ["mode", "syntax", "sourceAuthority"],
+      "properties": {
+        "mode": {
+          "enum": ["names", "outline", "compact", "exact"]
+        },
+        "syntax": {
+          "enum": [
+            "token-compact",
+            "brace-block",
+            "semantic-outline",
+            "exact-source",
+            "none"
+          ]
+        },
+        "sourceAuthority": {
+          "enum": ["native-parser", "parser-index", "source-range"]
+        },
+        "sourceFingerprint": {
+          "type": "string",
+          "description": "Provider-owned fingerprint for the source slice used to build this projection. Agents use this to detect stale compact projections before editing.",
+          "minLength": 1
+        },
+        "losslessStructure": {
+          "type": "boolean",
+          "description": "Whether block ownership and control-flow structure are preserved by the projection."
+        },
+        "exactRead": {
+          "type": "string",
+          "description": "Exact source locator to use before editing.",
+          "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*):[1-9][0-9]*-[1-9][0-9]*$"
+        },
+        "nodes": {
+          "type": "array",
+          "description": "Parser-owned reasoning nodes that generated the compact text. Nodes are the reverse-navigation surface from projection back to exact source blocks.",
+          "items": {
+            "$ref": "#/$defs/projectionNode"
+          }
+        },
+        "omitted": {
+          "type": "array",
+          "description": "Facts intentionally omitted from compact text for token control, with enough metadata for an agent to decide whether to expand.",
+          "items": {
+            "$ref": "#/$defs/projectionOmission"
+          }
+        },
+        "expandActions": {
+          "type": "array",
+          "description": "Provider-native follow-up actions that expand a node, hot block, or exact source range without restarting broad search.",
+          "items": {
+            "$ref": "#/$defs/expandAction"
+          }
+        }
+      }
+    },
+    "projectionNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "label", "read"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_.:-]+$"
+        },
+        "parentId": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_.:-]+$"
+        },
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "role": {
+          "enum": [
+            "declaration",
+            "control-flow",
+            "call",
+            "terminal",
+            "mutation",
+            "effect",
+            "unknown"
+          ]
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "depth": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "read": {
+          "type": "string",
+          "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*):[1-9][0-9]*-[1-9][0-9]*$"
+        },
+        "flags": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "branch",
+              "loop",
+              "guard",
+              "call",
+              "return",
+              "raise",
+              "throw",
+              "panic",
+              "await",
+              "unsafe",
+              "mutation",
+              "effect"
+            ]
+          }
+        }
+      }
+    },
+    "projectionOmission": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "reason"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "read": {
+          "type": "string",
+          "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*):[1-9][0-9]*-[1-9][0-9]*$"
+        }
+      }
+    },
+    "expandAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "target"],
+      "properties": {
+        "kind": {
+          "enum": ["exact-read", "node-query", "hot-block", "owner-names"]
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1
+        },
+        "read": {
+          "type": "string",
+          "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*):[1-9][0-9]*-[1-9][0-9]*$"
+        },
+        "argv": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "outline": {
+      "type": "object",
+      "description": "Semantic outline for large or indentation-sensitive native parser items.",
+      "additionalProperties": false,
+      "properties": {
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "inputs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "returns": {
+          "type": "string",
+          "minLength": 1
+        },
+        "guards": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "flow": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "effects": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "hotBlocks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/hotBlock"
+          }
+        }
+      }
+    },
+    "hotBlock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["label", "read"],
+      "properties": {
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "read": {
+          "type": "string",
+          "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*):[1-9][0-9]*-[1-9][0-9]*$"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "queryCoverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value", "status", "match", "matchCount"],
+      "properties": {
+        "value": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "enum": ["hit", "miss", "partial"]
+        },
+        "match": {
+          "enum": ["exact", "fallback-contains", "candidate", "none"]
+        },
+        "matchCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "candidateNames": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "nextAction": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "candidateItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "reason"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reason": {
+          "enum": ["near-miss", "prefix", "token-overlap", "owner-rank"]
+        },
+        "term": {
+          "type": "string",
+          "minLength": 1
+        },
+        "location": {
+          "$ref": "#/$defs/location"
         }
       }
     },

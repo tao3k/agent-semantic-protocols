@@ -203,12 +203,13 @@ JSON can initially carry the concrete commands in =nextAction.fields=:
 }
 #+end_src
 
-* Is =semantic-read-packet.v1.schema.json= Necessary?
+* Historical =semantic-read-packet.v1.schema.json= Layer
 
-Yes, but it solves a different layer than the repeated-search problem.
+The earlier root read-packet design solved a different layer than the
+repeated-search problem.
 
-The current =schemas/semantic-read-packet.v1.schema.json= is necessary as the
-shared contract for bounded source-window transport:
+The =schemas/semantic-read-packet.v1.schema.json= shape was useful as a
+bounded source-window contract:
 
 - it gives hooks a safe target after denying direct source reads;
 - it validates project-relative paths instead of accepting copied display
@@ -231,30 +232,163 @@ read packet
   transports bounded source windows for concrete selected paths/ranges/queries
 #+end_src
 
-So implementation is justified when the hook runtime needs a safe replacement
-for direct =Read= or =sed= against a known source path. It is not sufficient to
-reduce the owner/text search loop by itself.
+That does not make it the current hook recovery route.  Exact source reads now
+recover through the owning provider's parser query surface, so this section is
+historical context for why bounded transport was considered.  It is not the
+active route that agents should follow.
+
+* Historical Implementation Status 2026-06-01
+
+An earlier implementation pass built the bounded read transport layer.
+
+Earlier landed behavior:
+
+- =schemas/semantic-read-packet.v1.schema.json= defines the root-owned read
+  packet with project-relative path validation, locator validation, bounded
+  windows, truncation, and notes.
+- =semantic-agent-hook read <path> [--query <term>] [--context <n>]
+  [--max-lines <n>] [PROJECT_ROOT]= emits a JSON read packet.
+- =--query= supports the same literal variant form used by hook inference, such
+  as =agent-hooks|AgentHooks|agentHooks=.
+- exact direct source reads and exact source dumps denied with
+  =DecisionRouteKind::Read= and routed to =semantic-agent-hook read ...= at
+  that point in the design.
+- source globs and broad discovery remain routed to provider =prime=, =query=,
+  or =ingest= instead of becoming broad read packets.
+- =semantic-agent-hook-decision.v1.schema.json= accepts =routes[].kind="read"=.
+
+Validation evidence:
+
+#+begin_src shell
+direnv exec . cargo test -p semantic-agent-hook
+direnv exec . python -m pytest \
+  tests/unit/test_semantic_read_packet_schema.py \
+  tests/unit/test_semantic_agent_hook_decision_schema.py
+semantic-agent-hook read crates/semantic-agent-hook/src/cli.rs \
+  --query 'cli|Cli' --context 1 --max-lines 5 --project-root .
+printf '%s' '{"tool_name":"Read","tool_input":{"path":"crates/semantic-agent-hook/src/cli.rs"}}' \
+  | direnv exec . target/debug/semantic-agent-hook hook --client codex pre-tool --emit decision
+semantic-agent-hook doctor --client codex .
+#+end_src
+
+The earlier hook decision included:
+
+#+begin_src text
+reasonKind=direct-source-read
+route=semantic-agent-hook read crates/semantic-agent-hook/src/cli.rs --query 'cli|Cli' .
+route.kind=read
+providerId=semantic-agent-hook
+#+end_src
+
+Current status after supersession:
+
+The root read transport is no longer the active recovery path for direct source
+reads.  Exact direct-source-read recovery is provider query transport:
+=<provider> query --from-hook direct-source-read --selector <path> .=.  The
+search-synthesis layer is now partially closed across providers:
+=semantic-search-packet= owns
+=searchSynthesis.windowSet=, =rs-harness= emits =window_set= alongside
+=edit_frontier=, =test_frontier=, and =seeds=, =py-harness= and =ts-harness=
+emit =windowSet= in compact line protocol and JSON packets, and
+=the Julia workspace command= emits =windowSet= in compact line protocol.
+Julia still needs a full semantic-search JSON packet path before it can
+validate the shared =searchSynthesis.windowSet= schema directly. That Julia
+alignment must stay workspace-managed: do not design, require, or install a
+standalone Julia provider bin. Julia's LLVM/JIT warm-up cost makes a short-lived
+global binary a poor agent protocol surface; use the checked-in project command
+instead:
+=julia --project=languages/JuliaLangProjectHarness.jl
+languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl=.
+
+Provider alignment evidence:
+
+#+begin_src shell
+direnv exec . cargo test --manifest-path languages/rust-lang-project-harness/Cargo.toml --features cli,search cli_search_views_render_rfc_line_protocol -- --nocapture
+direnv exec . uv run --project languages/python-lang-project-harness --frozen python -m pytest languages/python-lang-project-harness/tests/unit/harness/test_semantic_cli_query_set.py
+direnv exec . npm --prefix languages/typescript-lang-project-harness run check:implementation
+direnv exec . node --test \
+  languages/typescript-lang-project-harness/dist/tests/unit/cli_semantic_search.test.js \
+  languages/typescript-lang-project-harness/dist/tests/unit/semantic_search_schema.test.js
+direnv exec . julia --project=languages/JuliaLangProjectHarness.jl -e 'using JuliaLangProjectHarness; using Test; include("languages/JuliaLangProjectHarness.jl/test/unit/cli.jl")'
+#+end_src
+
+The real compact-provider smoke checks now emit:
+
+#+begin_src text
+rs-harness:     window_set=owner:...,tests:...
+py-harness:     windowSet=owner:...,tests:...
+ts-harness:     windowSet=owner:...,tests:...
+julia workspace: windowSet=owner:...,tests:...
+#+end_src
+
+Sandtable line-protocol validation now treats =windowSet= and Rust
+=window_set= as typed path fields, not opaque text. It validates project-relative
+paths, rejects rank-prefixed values such as =owner:0:src/a.ts=, rejects
+=owner:test/...=, and rejects =tests:src/...=. This would catch the Julia
+alignment bug where a test file was initially emitted as an owner window.
+
+#+begin_src shell
+direnv exec . python -m pytest tests/unit/semantic_sandtable/test_line_protocol_paths.py
+direnv exec . python -m pytest tests/unit/semantic_sandtable/test_raw_search_query_packet.py
+#+end_src
+
+The raw-search query-packet sandtable now includes a real
+=rs-harness search text --query-set ... --view seeds crates/semantic-agent-hook=
+step. That step validates the live =window_set= line, so the sandtable covers
+both synthetic malformed packets and the actual Rust provider output used by the
+hook/read workflow.
+
+Julia alignment note:
+
+#+begin_src text
+Do not treat Julia as a bin parity target. The alignment target is provider
+semantics and compact/search packet shape, exercised through the workspace
+project command. A future Julia JSON packet path should be designed inside that
+workspace-managed command surface, not as an installed global executable.
+#+end_src
 
 * Recommendation
 
-Implement =semantic-agent-hook read= and validate it against
-=semantic-read-packet.v1.schema.json=, but do not treat it as the primary fix for
-the repeated search trace.
+Update: the root =semantic-agent-hook read= transport described in this report
+has been superseded.  Exact direct-source-read recovery should now route to the
+owning provider's parser query surface:
+=<provider> query --from-hook direct-source-read --selector <path> .=.
+The hook decision route for that command shape is =kind=query=.  The provider
+may return owner/item/test/read-locator facts, but the client-visible recovery
+route is not =kind=owner= and must not point at a root read command.
+
+** Codex Desktop escape replay
+
+The real Desktop runtime smoke found a concrete wrapper escape:
+
+#+begin_src text
+multi_tool_use.parallel -> functions.exec_command:
+rtk read crates/semantic-agent-hook/src/classifier.rs:1-2
+#+end_src
+
+Before selector normalization, the hook recorded this as =decision=allow=
+because =path.rs:1-2= did not match the Rust source suffix.  After the fix, the
+same runtime command is denied as =direct-source-read= and the provider route is
+normalized:
+
+#+begin_src text
+rs-harness query --from-hook direct-source-read --selector crates/semantic-agent-hook/src/classifier.rs .
+#+end_src
+
+This evidence changes the hook test requirement: CLI replay tests must cover
+=functions.exec_command= and nested =multi_tool_use.parallel= payloads, and
+black-box Desktop smoke tests must verify that locator-shaped wrapper paths are
+blocked before the shell reads source.
 
 The near-term sequence should be:
 
-1. Keep =semantic-read-packet= as the bounded source-window contract.
-2. Implement root =semantic-agent-hook read= for concrete path/range/query
-   windows and JSON validation.
-3. Improve =semantic-search-packet= synthesis so query-set/owner searches emit
-   task-level =editFrontier=, =testFrontier=, and =windowSet= evidence, initially
-   through =searchSynthesis.fields=.
-4. Update hook deny guides to route concrete direct reads to
-   =semantic-agent-hook read=, but route broad discovery to provider search or
-   search ingest.
-5. Add sandtable evidence for the full loop: fewer commands, fewer repeated
-   owner searches, bounded read packet validation, and no whole-file source
-   dumps.
+1. Keep exact source path deny routes on provider =query --from-hook
+   direct-source-read=, and keep broad discovery on provider search/ingest.
+2. Keep improving provider synthesis so query-set/owner searches emit
+   schema-owned task-level =editFrontier=, =testFrontier=, and =windowSet=
+   evidence before any source windows are read.
+3. Add sandtable evidence for the full loop: fewer commands, fewer repeated
+   owner searches, route-kind validation, and no whole-file source dumps.
 
 * Success Metrics
 
@@ -262,14 +396,45 @@ For the replayed trace, the target is:
 
 #+begin_src text
 before: 8+ owner/text/read-window discovery turns
-after:  2-3 search turns plus bounded semantic-agent-hook read windows
+after:  2-3 search turns plus exact provider direct-source-read query routes
 #+end_src
 
 Required evidence:
 
 - no direct whole-file source reads
-- read packets validate against =semantic-read-packet.v1.schema.json=
+- exact direct-source-read routes use provider =query --from-hook=, not root read
+- decision packets label exact direct-source-read and wrapper line-locator
+  recovery routes as =route.kind=query=
 - search packets validate against =semantic-search-packet.v1.schema.json=
-- implementation and test frontiers are present before source windows are read
-- hook deny guide distinguishes concrete read from broad discovery
+- implementation and test frontiers are present before edits
+- hook deny guide distinguishes exact provider query from broad discovery
 
+* Post-update hook replay evidence
+
+The route-kind correction was replayed through the actual Codex hook entrypoint:
+
+#+begin_src shell
+semantic-agent-hook hook --client codex pre-tool --emit decision --profiles <profiles.json>
+#+end_src
+
+Exact source read payload:
+
+#+begin_example
+{"tool_name":"Read","tool_input":{"path":"src/lib.rs"}}
+decision=deny reasonKind=direct-source-read
+route.kind=query
+argv=rs-harness query --from-hook direct-source-read --selector src/lib.rs .
+#+end_example
+
+Wrapper line-locator payload:
+
+#+begin_example
+{"tool_name":"functions.exec_command","tool_input":{"cmd":"rtk read crates/semantic-agent-hook/src/lib.rs:10-20"}}
+decision=deny reasonKind=direct-source-read
+route.kind=query
+argv=rs-harness query --from-hook direct-source-read --selector crates/semantic-agent-hook/src/lib.rs .
+#+end_example
+
+This closes the previous ambiguity: line numbers are normalized away before
+provider matching and route construction, and exact direct-source-read recovery
+is consistently a provider query route.

@@ -1,0 +1,100 @@
+#+title: 31.03 TS Hook Query Fallback Report
+#+date: 2026-06-01
+#+startup: overview
+
+* Context
+
+The hook route-first flow now denies direct TypeScript source reads and returns
+a provider route:
+
+#+begin_src sh
+ts-harness search owner <path> items --query <path-derived-query> .
+#+end_src
+
+The route is executable, but sandbox runs showed that path-derived query terms
+can be weak.  The root hook should not grow a TypeScript parser or broaden the
+query with parent-directory terms.  The provider must absorb weak exact-path
+queries inside the requested owner.
+
+* Evidence
+
+Weak file-name queries produced empty owner item packets:
+
+#+begin_src sh
+ts-harness search owner languages/typescript-lang-project-harness/src/cli/semantic-search/types.ts items --query 'types|Types' .
+ts-harness search owner languages/typescript-lang-project-harness/src/cli/semantic-search/packet-base.ts items --query 'packet-base|PacketBase|packetBase' .
+#+end_src
+
+Both commands were owner-scoped and parser-valid, but returned =item=0= before
+the fallback.  Expanding the query with parent-directory terms fixed recall but
+over-expanded =types.ts= to 35 items:
+
+#+begin_src sh
+ts-harness search owner languages/typescript-lang-project-harness/src/cli/semantic-search/types.ts items --query 'semantic-search|SemanticSearch|semanticSearch|types|Types' .
+#+end_src
+
+That output is too large for the hook recovery path.  It also teaches agents to
+guess broader semantic terms instead of following provider-owned parser facts.
+
+* Decision
+
+Keep hook query materialization cheap and path-derived.  Add a provider-owned
+fallback for =owner items --query= miss:
+
+- exact item match first
+- contains match second
+- if both miss, return at most four owner-local top-level items
+- mark the packet with =fallback=owner-top-items=
+- keep the fallback parser-owned and scoped to the requested owner
+
+This preserves the route-first flow while avoiding empty packets for weak
+queries such as =types|Types= and =packet-base|PacketBase|packetBase=.
+
+* Protocol Implications
+
+The registry should advertise fallback behavior so agents and sandtable tests
+can reason about it without scraping compact output:
+
+#+begin_src json
+{
+  "fallbacks": [
+    {
+      "name": "owner-top-items",
+      "trigger": "item-query-miss",
+      "appliesToPipes": ["items"],
+      "maxItems": 4
+    }
+  ]
+}
+#+end_src
+
+The fallback is not a new search view.  It is a bounded behavior attached to the
+existing =search/owner= descriptor.
+
+* Follow-up Checks
+
+- registry schema accepts =fallbacks=
+- TypeScript capability schema names =owner-item-query= and
+  =owner-top-items-fallback=
+- compact output carries =fallback=owner-top-items=
+- JSON output carries the same fallback in =header.fields=
+- sandtable verifies hook route -> provider route -> non-empty bounded output
+
+* Sandtable Findings
+
+- =ts-harness search ... --json= is still denied by the hook's
+  =agent-search-json= policy for agent-facing commands.  That is acceptable for
+  token control as long as provider tests validate the JSON packet contract and
+  the hook route points agents to compact output.
+- =agent-search-json= must preserve the semantic route.  Text searches can
+  strip the JSON output flag and keep the compact seeds view; owner searches
+  with a concrete path should route to =search owner <path> items --query
+  <derived-query> .= so the next agent turn does not fall back to broad guide
+  discovery.
+- The TypeScript package build is not parallel-safe.  =npm run build= cleans
+  =dist=, so running =check=, =test:implementation=, or =test:policy= in
+  parallel can create false failures.  Run package-level npm gates serially.
+- =npm run test:policy= correctly caught =TS-MOD-R002= after schema tests
+  crossed the module-responsibility threshold.  The fix was to move registry
+  capability expectations into =tests/unit/semantic_search_registry_expectations.ts=
+  instead of raising thresholds or adding a waiver.

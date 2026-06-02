@@ -167,6 +167,36 @@ fn language_profile(
     } else {
         vec![binary, "search", "owner", "{path}", "."]
     };
+    let query_command = (language_id == "typescript").then(|| {
+        json!({
+            "argv": [
+                binary,
+                "search",
+                "query",
+                "--from-hook",
+                "direct-source-read",
+                "--selector",
+                "{selector}",
+                "{termArgs}",
+                "--surface",
+                "owner,tests",
+                "--view",
+                "seeds",
+                "."
+            ]
+        })
+    });
+    let mut commands = json!({
+        "prime": {"argv": [binary, "search", "prime", "."]},
+        "owner": {"argv": owner_argv},
+        "text": {"argv": [binary, "search", "text", "{query}", "owner", "tests", "--view", "seeds", "."]},
+        "ingest": {"argv": [binary, "search", "ingest", "owner", "tests", "--view", "seeds", "."], "stdinMode": "pipe-candidates"},
+        "checkChanged": {"argv": [binary, "check", "--changed", "."]},
+        "guide": {"argv": [binary, "agent", "guide", "."]}
+    });
+    if let Some(query_command) = query_command {
+        commands["query"] = query_command;
+    }
     json!({
         "languageId": language_id,
         "providerId": binary,
@@ -176,13 +206,6 @@ fn language_profile(
         "configFiles": config_files,
         "sourceRoots": source_roots,
         "ignoredPathPrefixes": ignored_path_prefixes,
-        "commands": {
-            "prime": {"argv": [binary, "search", "prime", "."]},
-            "owner": {"argv": owner_argv},
-            "text": {"argv": [binary, "search", "text", "{query}", "owner", "tests", "--view", "seeds", "."]},
-            "ingest": {"argv": [binary, "search", "ingest", "owner", "tests", "--view", "seeds", "."], "stdinMode": "pipe-candidates"},
-            "checkChanged": {"argv": [binary, "check", "--changed", "."]},
-            "guide": {"argv": [binary, "agent", "guide", "."]}
-        }
+        "commands": commands
     })
 }

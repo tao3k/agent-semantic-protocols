@@ -71,7 +71,7 @@
         "--emit",
         "decision"
       ],
-      "stdin": "{\"tool_name\":\"functions.exec_command\",\"tool_input\":{\"cmd\":\"ts-harness search text buildSemanticSearchPacket owner tests --json .\"}}",
+      "stdin": "{\"tool_name\":\"functions.exec_command\",\"tool_input\":{\"cmd\":\"ts-harness search fzf buildSemanticSearchPacket owner tests --json .\"}}",
       "expect": {
         "stdoutJsonSchema": "schemas/semantic-agent-hook-decision.v1.schema.json",
         "stdoutJsonEquals": {

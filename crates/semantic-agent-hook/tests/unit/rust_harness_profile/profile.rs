@@ -59,7 +59,7 @@ fn rust_harness_profile_uses_provider_identity() {
 }
 
 #[test]
-fn rust_harness_profile_routes_direct_reads_to_provider_owner_search() {
+fn rust_harness_profile_routes_direct_reads_to_provider_query() {
     let decision = classify_hook(
         &rust_harness_profile_registry(),
         "codex",
@@ -72,6 +72,8 @@ fn rust_harness_profile_routes_direct_reads_to_provider_owner_search() {
 
     assert_eq!(decision.decision, DecisionKind::Deny);
     assert_eq!(decision.reason_kind, ReasonKind::DirectSourceRead);
+    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Query);
+    assert_eq!(decision.routes[0].provider_id, "rs-harness");
     assert_eq!(
         decision.routes[0].argv,
         [

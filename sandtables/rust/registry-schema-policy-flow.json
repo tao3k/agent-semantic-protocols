@@ -11,7 +11,8 @@
     "performance",
     "security",
     "codex-hooks",
-    "codex-wrapper"
+    "codex-wrapper",
+    "evidence-assurance"
   ],
   "workdir": {
     "env": "SANDTABLE_RUST_HOOK_ROOT",
@@ -20,16 +21,16 @@
     ]
   },
   "budgets": {
-    "maxCommands": 6,
+    "maxCommands": 7,
     "maxTotalLinesWarn": 12,
     "maxTotalElapsedMsWarn": 3500,
-    "maxTotalStdoutBytesWarn": 18000
+    "maxTotalStdoutBytesWarn": 24000
   },
   "steps": [
     {
       "id": "registry-json-schema",
       "kind": "schema-contract",
-      "coverage": ["language-registry", "json-schema", "policy-whitebox"],
+      "coverage": ["language-registry", "json-schema", "policy-whitebox", "evidence-assurance"],
       "command": [
         "rs-harness",
         "agent",
@@ -47,11 +48,56 @@
           "languages.0.providerId": "rs-harness",
           "languages.0.binary": "rs-harness"
         },
+        "stdoutJsonArrayContains": {
+          "languages.0.methods": "evidence/assurance",
+          "languages.0.schemas": {
+            "schemaId": "agent.semantic-protocols.semantic-assurance-case",
+            "schemaVersion": "1",
+            "path": "schemas/semantic-assurance-case.v1.schema.json"
+          },
+          "languages.0.methodDescriptors": {
+            "method": "evidence/assurance",
+            "command": "evidence",
+            "input": "assurance"
+          }
+        },
         "stdoutNotContains": [
           "agent/guard",
           "agent/hook"
         ],
         "maxStdoutLinesWarn": 1,
+        "maxElapsedMsWarn": 800
+      }
+    },
+    {
+      "id": "assurance-case-schema",
+      "kind": "schema-contract",
+      "coverage": ["evidence-assurance", "json-schema", "performance"],
+      "command": [
+        "rs-harness",
+        "evidence",
+        "assurance",
+        "--evidence-graph-json",
+        "../agent-semantic-protocols/tests/fixtures/rust/assurance-evidence-graph.json",
+        "--json",
+        "."
+      ],
+      "expect": {
+        "stdoutJsonSchema": "schemas/semantic-assurance-case.v1.schema.json",
+        "stdoutJsonEquals": {
+          "schemaId": "agent.semantic-protocols.semantic-assurance-case",
+          "protocolId": "agent.semantic-protocols.assurance-case",
+          "cases.0.status": "needs-review",
+          "cases.0.claim.kind": "invariant"
+        },
+        "stdoutContains": [
+          "\"cases\":1",
+          "\"claims\":1",
+          "\"openGaps\":1",
+          "\"staleItems\":1"
+        ],
+        "maxStdoutLinesWarn": 1,
+        "maxStdoutBytesWarn": 2500,
         "maxElapsedMsWarn": 800
       }
     },
@@ -131,17 +177,17 @@
         "hook",
         "--client",
         "codex",
-        "pre-tool"
+        "pre-tool",
+        "--emit",
+        "decision"
       ],
       "stdin": "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Read\",\"tool_input\":{\"path\":\"src/lib.rs\"}}",
       "expect": {
-        "stdoutJsonSchemaAt": {
-          "agentHookDecision": "schemas/semantic-agent-hook-decision.v1.schema.json"
-        },
+        "stdoutJsonSchema": "schemas/semantic-agent-hook-decision.v1.schema.json",
         "stdoutJsonEquals": {
-          "hookSpecificOutput.permissionDecision": "deny",
-          "agentHookDecision.reasonKind": "direct-source-read",
-          "agentHookDecision.languageIds": ["rust"]
+          "decision": "deny",
+          "reasonKind": "direct-source-read",
+          "languageIds": ["rust"]
         },
         "stdoutNotContains": [
           "pub mod",
@@ -180,7 +226,7 @@
       }
     },
     {
-      "id": "exact-file-search-allowed",
+      "id": "raw-broad-search-denied",
       "kind": "policy-blackbox",
       "coverage": ["policy-blackbox", "security", "performance"],
       "command": [
@@ -195,8 +241,15 @@
       "stdin": "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"functions.exec_command\",\"tool_input\":{\"cmd\":\"rg -n run_agent src/cli/runner.rs\"}}",
       "expect": {
         "stdoutJsonEquals": {
-          "decision": "allow",
-          "reasonKind": "none"
+          "decision": "deny",
+          "reasonKind": "raw-broad-search"
+        },
+        "stdoutJsonArrayContains": {
+          "routes": {
+            "binary": "rs-harness",
+            "kind": "ingest",
+            "languageId": "rust"
+          }
         },
         "maxElapsedMsWarn": 800
       }

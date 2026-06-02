@@ -1,7 +1,9 @@
 use std::io::Write;
 use std::process::{Command, Stdio};
 
+mod hook;
 mod install;
+mod install_julia;
 mod profiles;
 
 use super::support::{temp_project_root, write_root_owned_rust_profile_registry};

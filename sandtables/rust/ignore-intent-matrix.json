@@ -75,7 +75,7 @@
       ],
       "expect": {
         "lineProtocol": true,
-        "stdoutContains": ["[search-text]", "querySet=3", "|seed"],
+        "stdoutContains": ["[search-fzf]", "querySet=3", "|seed"],
         "maxStdoutLinesWarn": 10,
         "maxElapsedMsWarn": 2500
       }

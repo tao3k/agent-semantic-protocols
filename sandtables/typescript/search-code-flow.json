@@ -170,7 +170,7 @@
       "expect": {
         "lineProtocol": true,
         "stdoutContains": [
-          "[search-text]",
+          "[search-fzf]",
           "querySet=2",
           "selector=exact-set",
           "scopeOwner=src/cli/semantic-search/owner-fallback.ts",

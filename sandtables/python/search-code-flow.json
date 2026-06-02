@@ -161,7 +161,7 @@
       "expect": {
         "lineProtocol": true,
         "stdoutContains": [
-          "[search-text]",
+          "[search-fzf]",
           "querySet=2",
           "selector=exact-set",
           "scopeOwner=src/python_lang_project_harness/__init__.py",
@@ -242,7 +242,7 @@
         "stdoutJsonSchema": "schemas/semantic-search-packet.v1.schema.json",
         "stdoutJsonEquals": {
           "schemaId": "agent.semantic-protocols.semantic-search-packet",
-          "method": "search/text",
+          "method": "search/fzf",
           "querySet.0.value": "_src_layout_findings",
           "querySet.1.value": "scope.source_paths",
           "queryCoverage.0.value": "_src_layout_findings",

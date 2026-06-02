@@ -37,6 +37,8 @@ pub struct LanguageProfile {
     pub language_id: String,
     pub provider_id: String,
     pub binary: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub provider_command_prefix: Vec<String>,
     pub namespace: String,
     #[serde(default)]
     pub source_extensions: Vec<String>,
@@ -146,6 +148,8 @@ pub struct HookCommands {
     pub prime: CommandTemplate,
     pub owner: CommandTemplate,
     pub text: CommandTemplate,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub query: Option<CommandTemplate>,
     pub ingest: CommandTemplate,
     pub check_changed: CommandTemplate,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -216,7 +220,9 @@ pub enum StdinMode {
 pub enum DecisionRouteKind {
     Prime,
     Owner,
+    Query,
     Text,
+    Read,
     Deps,
     Api,
     Ingest,
@@ -465,7 +471,7 @@ struct SourceSelectorMatcher<'a> {
 
 impl<'a> SourceSelectorMatcher<'a> {
     fn new(selector: &'a str) -> Self {
-        let normalized = selector.trim_start_matches("./");
+        let normalized = normalize_source_selector(selector);
         let has_glob = selector_has_glob(normalized);
         let basename = basename_pattern(normalized).to_ascii_lowercase();
         let extension_pattern = basename_extension_pattern(&basename);
@@ -516,6 +522,40 @@ fn build_glob_set(pattern: &str) -> Option<GlobSet> {
     let mut builder = GlobSetBuilder::new();
     builder.add(glob);
     builder.build().ok()
+}
+
+pub(crate) fn normalize_source_selector(selector: &str) -> &str {
+    strip_line_locator(selector.trim_start_matches("./"))
+}
+
+fn strip_line_locator(selector: &str) -> &str {
+    let Some((prefix, suffix)) = selector.rsplit_once(':') else {
+        return selector;
+    };
+    if is_line_range_locator(suffix) {
+        return prefix;
+    }
+    if is_decimal_locator(suffix)
+        && let Some((path, line)) = prefix.rsplit_once(':')
+        && is_decimal_locator(line)
+    {
+        return path;
+    }
+    selector
+}
+
+fn is_line_range_locator(locator: &str) -> bool {
+    if let Some((start, end)) = locator
+        .split_once('-')
+        .or_else(|| locator.split_once('\u{2013}'))
+    {
+        return is_decimal_locator(start) && is_decimal_locator(end);
+    }
+    is_decimal_locator(locator)
+}
+
+fn is_decimal_locator(locator: &str) -> bool {
+    !locator.is_empty() && locator.chars().all(|character| character.is_ascii_digit())
 }
 
 fn basename_pattern(selector: &str) -> &str {

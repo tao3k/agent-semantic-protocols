@@ -67,11 +67,11 @@ repository. Do not copy Python policy logic into the sandtable runner. Run the
 direct CLI form when you need the actual policy gate:
 
 ```sh
-uv run --with ./languages/python-lang-project-harness py-harness check --full .
+uv run --project languages/python-lang-project-harness --frozen py-harness check --full .
 ```
 
 If `just` is available in the active shell, `just check-python-policy` is the
 same gate and `just report-python-policy` prints the report without making the
 shell step fail. These commands delegate to `languages/python-lang-project-harness`
-so the current repository can consume the policy without changing the root
-package's Python dependency contract.
+through its own project environment so the current repository can consume the
+policy without depending on any stale root `.venv` installation.

@@ -58,7 +58,7 @@
       "expect": {
         "lineProtocol": true,
         "stdoutContains": [
-          "[search-text]",
+          "[search-fzf]",
           "|seed owner:"
         ],
         "maxStdoutLinesWarn": 8,

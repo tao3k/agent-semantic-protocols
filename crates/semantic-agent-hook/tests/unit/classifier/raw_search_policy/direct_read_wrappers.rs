@@ -26,6 +26,10 @@ fn rtk_read_scans_all_path_arguments() {
             "rtk read README.md crates/semantic-agent-hook/src/lib.rs",
             "rs-harness",
         ),
+        (
+            "rtk read README.md crates/semantic-agent-hook/src/lib.rs:10-20",
+            "rs-harness",
+        ),
         ("rtk read docs/guide.md src/cli/protocol.ts", "ts-harness"),
         (
             "rtk read README.md packages/python/src/tools/semantic_sandtable/runner.py",
@@ -34,6 +38,34 @@ fn rtk_read_scans_all_path_arguments() {
     ] {
         assert_direct_read_denied(command, binary);
     }
+}
+
+#[test]
+fn rtk_read_line_locator_routes_to_normalized_provider_query() {
+    let decision = classify_hook(
+        &polyglot_registry(),
+        "codex",
+        "pre-tool",
+        &json!({
+            "tool_name": "functions.exec_command",
+            "tool_input": {"cmd": "rtk read crates/semantic-agent-hook/src/lib.rs:10-20"}
+        }),
+    );
+
+    assert_eq!(decision.decision, DecisionKind::Deny);
+    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Query);
+    assert_eq!(
+        decision.routes[0].argv,
+        vec![
+            "rs-harness",
+            "query",
+            "--from-hook",
+            "direct-source-read",
+            "--selector",
+            "crates/semantic-agent-hook/src/lib.rs",
+            "."
+        ]
+    );
 }
 
 #[test]

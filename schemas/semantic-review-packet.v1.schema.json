@@ -1,0 +1,504 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-review-packet.v1.schema.json",
+  "title": "Semantic Review Packet",
+  "description": "Reviewer-first artifact that summarizes changed invariants, changed behavior, missing receipts, stale waivers, determinism readiness, and proof pilots.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "protocolId",
+    "protocolVersion",
+    "packetId",
+    "producer",
+    "project",
+    "summary",
+    "changedInvariants",
+    "changedBehavior",
+    "missingReceipts",
+    "staleWaivers",
+    "reviewActions"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.semantic-review-packet"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "protocolId": {
+      "const": "agent.semantic-protocols.review-packet"
+    },
+    "protocolVersion": {
+      "const": "1"
+    },
+    "packetId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_.:-]*$"
+    },
+    "producer": {
+      "$ref": "#/$defs/producer"
+    },
+    "project": {
+      "$ref": "#/$defs/project"
+    },
+    "summary": {
+      "$ref": "#/$defs/summary"
+    },
+    "changedInvariants": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/changedInvariant"
+      }
+    },
+    "changedBehavior": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/changedBehavior"
+      }
+    },
+    "missingReceipts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/missingReceipt"
+      }
+    },
+    "staleWaivers": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/waiver"
+      }
+    },
+    "determinismReadiness": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/determinismReadinessSummary"
+      }
+    },
+    "proofPilots": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/proofPilotSummary"
+      }
+    },
+    "reviewActions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/reviewAction"
+      }
+    },
+    "fields": {
+      "$ref": "#/$defs/fields"
+    }
+  },
+  "$defs": {
+    "scalar": {
+      "oneOf": [
+        { "type": "string" },
+        { "type": "number" },
+        { "type": "boolean" },
+        {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              { "type": "string" },
+              { "type": "number" },
+              { "type": "boolean" }
+            ]
+          }
+        }
+      ]
+    },
+    "fields": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/scalar"
+      }
+    },
+    "projectPath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*)$"
+    },
+    "producer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["languageId", "providerId", "namespace"],
+      "properties": {
+        "languageId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "providerId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "namespace": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*(\\.[a-z][a-z0-9_-]*)+$"
+        }
+      }
+    },
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["root"],
+      "properties": {
+        "root": {
+          "type": "string",
+          "minLength": 1
+        },
+        "package": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "changedInvariants",
+        "changedBehavior",
+        "missingReceipts",
+        "staleWaivers",
+        "determinismObservations",
+        "proofClaims"
+      ],
+      "properties": {
+        "changedInvariants": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "changedBehavior": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "missingReceipts": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "staleWaivers": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "determinismObservations": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "proofClaims": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "severity": {
+      "enum": ["info", "warning", "error"]
+    },
+    "invariantKind": {
+      "enum": [
+        "primitive-identifier-boundary",
+        "public-data-primitive-fields",
+        "anonymous-tuple-api-surface",
+        "primitive-type-alias-boundary",
+        "stringly-state-boundary",
+        "parser-fact",
+        "public-api-shape",
+        "module-reasoning-tree",
+        "dependency-graph-acyclicity",
+        "custom"
+      ]
+    },
+    "receiptKind": {
+      "enum": [
+        "cargo-check",
+        "cargo-test",
+        "clippy",
+        "expect-test",
+        "proptest",
+        "cargo-fuzz",
+        "kani",
+        "creusot",
+        "verus",
+        "waiver"
+      ]
+    },
+    "location": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/projectPath"
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "column": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "changedInvariant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "invariantId",
+        "sourceRuleId",
+        "kind",
+        "severity",
+        "title",
+        "hypothesis",
+        "location",
+        "requiredReceipts"
+      ],
+      "properties": {
+        "invariantId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.:-]*$"
+        },
+        "sourceRuleId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "$ref": "#/$defs/invariantKind"
+        },
+        "severity": {
+          "$ref": "#/$defs/severity"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "hypothesis": {
+          "type": "string",
+          "minLength": 1
+        },
+        "location": {
+          "$ref": "#/$defs/location"
+        },
+        "requiredReceipts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/receiptKind"
+          }
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "behaviorStatus": {
+      "enum": ["changed", "missing", "skipped", "error"]
+    },
+    "changedBehavior": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["snapshotId", "status", "subject", "summary"],
+      "properties": {
+        "snapshotId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.:-]*$"
+        },
+        "status": {
+          "$ref": "#/$defs/behaviorStatus"
+        },
+        "subject": {
+          "type": "string",
+          "minLength": 1
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "receiptIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "candidateIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "missingReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["invariantId", "receiptKind", "reason"],
+      "properties": {
+        "invariantId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.:-]*$"
+        },
+        "receiptKind": {
+          "$ref": "#/$defs/receiptKind"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "waiverStatus": {
+      "enum": ["current", "stale", "expired"]
+    },
+    "waiver": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["waiverId", "invariantId", "receiptKind", "status", "owner", "reason"],
+      "properties": {
+        "waiverId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.:-]*$"
+        },
+        "invariantId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.:-]*$"
+        },
+        "receiptKind": {
+          "$ref": "#/$defs/receiptKind"
+        },
+        "status": {
+          "$ref": "#/$defs/waiverStatus"
+        },
+        "owner": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expiresAt": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "determinismStatus": {
+      "enum": ["ready", "needs-injection", "blocked", "unknown"]
+    },
+    "determinismReadinessSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["readinessId", "status", "observations", "suggestions"],
+      "properties": {
+        "readinessId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.:-]*$"
+        },
+        "status": {
+          "$ref": "#/$defs/determinismStatus"
+        },
+        "observations": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "suggestions": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "proofStatus": {
+      "enum": ["proved", "proved-bounded", "failed", "skipped", "unknown"]
+    },
+    "proofPilotSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["proofId", "target", "status", "claims", "checks"],
+      "properties": {
+        "proofId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.:-]*$"
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "$ref": "#/$defs/proofStatus"
+        },
+        "claims": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "checks": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "reviewActionKind": {
+      "enum": [
+        "verify-invariant",
+        "inspect-behavior",
+        "run-receipt",
+        "refresh-waiver",
+        "address-determinism",
+        "inspect-proof"
+      ]
+    },
+    "reviewActionPriority": {
+      "enum": ["p0", "p1", "p2", "p3"]
+    },
+    "reviewAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["actionId", "kind", "priority", "summary"],
+      "properties": {
+        "actionId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.:-]*$"
+        },
+        "kind": {
+          "$ref": "#/$defs/reviewActionKind"
+        },
+        "priority": {
+          "$ref": "#/$defs/reviewActionPriority"
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "targetId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    }
+  }
+}

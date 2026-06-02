@@ -123,7 +123,7 @@
       "expect": {
         "lineProtocol": true,
         "stdoutContains": [
-          "[search-text]",
+          "[search-fzf]",
           "querySet=2",
           "|query pluginContainer status=miss",
           "owner=scripts/benchCircularImport.ts"

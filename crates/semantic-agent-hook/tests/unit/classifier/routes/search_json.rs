@@ -1,4 +1,4 @@
-use semantic_agent_hook::{DecisionKind, ReasonKind, classify_hook};
+use semantic_agent_hook::{DecisionKind, DecisionRouteKind, ReasonKind, classify_hook};
 use serde_json::json;
 
 use crate::classifier::registry;
@@ -17,6 +17,7 @@ fn search_json_routes_to_compact_search() {
 
     assert_eq!(decision.decision, DecisionKind::Deny);
     assert_eq!(decision.reason_kind, ReasonKind::AgentSearchJson);
+    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Text);
     assert_eq!(
         decision.routes[0].argv,
         [
@@ -33,6 +34,65 @@ fn search_json_routes_to_compact_search() {
     );
     assert_eq!(
         decision.message,
-        "agent-search-json denied; provider guide: ts-harness => ts-harness agent guide ."
+        "agent-search-json denied; route: ts-harness search text projectRoot owner tests --view seeds ."
     );
+}
+
+#[test]
+fn search_json_owner_routes_to_provider_owner_query() {
+    let decision = classify_hook(
+        &registry(),
+        "codex",
+        "pre-tool",
+        &json!({
+            "tool_name": "functions.exec_command",
+            "tool_input": {"cmd": "ts-harness search owner src/cli/agent-hooks.ts items --query agent-hooks --json ."}
+        }),
+    );
+
+    assert_eq!(decision.decision, DecisionKind::Deny);
+    assert_eq!(decision.reason_kind, ReasonKind::AgentSearchJson);
+    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Owner);
+    assert_eq!(
+        decision.routes[0].argv,
+        [
+            "ts-harness",
+            "search",
+            "owner",
+            "src/cli/agent-hooks.ts",
+            "items",
+            "--query",
+            "agent-hooks|AgentHooks|agentHooks",
+            "."
+        ]
+    );
+    assert_eq!(
+        decision.message,
+        "agent-search-json denied; route: ts-harness search owner src/cli/agent-hooks.ts items --query 'agent-hooks|AgentHooks|agentHooks' ."
+    );
+}
+
+#[test]
+fn patch_text_with_search_json_example_is_not_a_command() {
+    let patch_body = concat!(
+        "*** Begin Patch\n",
+        "*** Update File: docs/example.org\n",
+        "+",
+        "ts-",
+        "harness search text projectRoot owner tests ",
+        "--",
+        "json .\n",
+        "*** End Patch\n"
+    );
+    let decision = classify_hook(
+        &registry(),
+        "codex",
+        "pre-tool",
+        &json!({
+            "tool_name": "functions.apply_patch",
+            "tool_input": {"cmd": patch_body}
+        }),
+    );
+
+    assert_eq!(decision.decision, DecisionKind::Allow);
 }

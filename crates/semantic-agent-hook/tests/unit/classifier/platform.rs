@@ -30,6 +30,6 @@ fn platform_response_wraps_denied_decision_for_codex_hooks() {
     assert!(context.contains("\"decision\":\"deny\""));
     assert_eq!(
         response["hookSpecificOutput"]["permissionDecisionReason"],
-        "direct-source-read denied; route: ts-harness search owner src/cli/agent-hooks.ts items --query 'agent-hooks|AgentHooks|agentHooks' ."
+        "direct-source-read denied; route: ts-harness query --from-hook direct-source-read --selector src/cli/agent-hooks.ts ."
     );
 }

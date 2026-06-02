@@ -1,0 +1,246 @@
+#+TITLE: 31.06 Cross-Language Semantic Handle Plan
+#+DATE: 2026-06-01
+#+STATUS: active
+#+JOHNNY_DECIMAL: 31.06
+#+AREA: 30-39 Research
+#+CATEGORY: 31 Search Flow Research
+
+* Purpose
+
+The Python policy trace in 31.05 is a symptom of a cross-language gap.  The
+same pattern exists in Rust, TypeScript, Python, Julia, and future providers:
+agents need to query stable facts that are not always parser declarations.
+
+Examples:
+
+- Rust: harness policy ids, Cargo target names, feature flags, lint/config
+  decisions.
+- TypeScript: schema fixture names, package-script commands, exported API
+  contract names, tsconfig/project-reference facts.
+- Python: policy rule ids, src-layout/package findings, schema fixtures, test
+  cases.
+- Julia: package/project policy rules, extension/test target facts, public API
+  surfaces.
+
+Treating those facts as raw text or parser item names creates repeated searches,
+owner-local guessing, and weak fallback code dumps.
+
+* Target Model
+
+Add one shared semantic handle layer:
+
+#+begin_src text
+agent intent
+  -> search text / search policy / search owner handles
+  -> semanticHandles[]
+  -> owner or tests route
+  -> exact item/code query only after handle selection
+#+end_src
+
+A semantic handle is a stable, queryable fact with:
+
+- =id=: provider-stable handle id, such as =PY-PROJ-R001= or
+  =TS-SCHEMA-FIXTURE:semantic-search-packet:query-set=
+- =kind=: =policy-rule=, =schema-fixture=, =test-case=, =config-key=,
+  =dependency-api=, =capability=, etc.
+- =source=: where the provider learned it, such as =native-parser=,
+  =provider-policy=, =schema=, =manifest=, or =test-index=
+- =title=, =aliases=, =labels=: agent-facing query and repair vocabulary
+- =ownerPath=, =implementationOwnerPath=, =testPaths=, =locations=: bounded
+  follow-up routes
+- =relations= and =fields=: provider-owned detail without changing the shared
+  contract
+
+* Protocol Landing Order
+
+** 31.06-A Shared contract
+
+Landed first:
+
+- =schemas/semantic-handle.v1.schema.json=
+- optional =semanticHandles= in =semantic-search-packet.v1=
+- optional =semanticHandles= in =semantic-query-packet.v1=
+- =policy= added as a search packet view
+- registry =outputModes= accepts =names= and =outline=
+- RFC and schema README document the semantic handle layer
+
+** 31.06-B Provider registry alignment
+
+Each provider should advertise handle-aware surfaces only after it implements
+them:
+
+#+begin_src text
+search/policy
+  capabilities: policy-rule, schema-fixture, test-case, config-key
+  outputSchemaIds: semantic-search-packet, semantic-handle
+  outputModes: compact, json
+
+search/owner + handles pipe
+  acceptedPipes: items, tests, handles
+  outputSchemaIds: semantic-search-packet, semantic-handle
+  outputModes: compact, json, names, outline
+
+query/semantic-handles
+  outputSchemaIds: semantic-query-packet, semantic-handle
+  outputModes: names, outline
+#+end_src
+
+The registry must not advertise =search/policy= for a language until the binary
+actually supports it.
+
+** 31.06-C Provider implementation slices
+
+Python first slice landed as the policy-handle reference implementation:
+
+- =search/policy <rule-id-or-alias> owner tests= resolves =PY-PROJ-*= and
+  =PY-AGENT-*= policy rules through provider-owned catalogs
+- JSON packets include =semanticHandles=
+- compact packets include =|handle= lines
+- =--view seeds= emits the same =|handle= line before owner/test seeds, so
+  hook-routed agent flows keep the stable handle without falling back to owner
+  item guessing
+- =agent doctor --json= advertises =search/policy= only after the provider
+  implementation exists
+
+Rust next:
+
+- expose Rust harness policy ids and rule aliases as handles
+- add a shared Native Syntax Fact Index contract in the root schema so
+  code-shaped queries such as =pub use rules=, =fn format_field=, or
+  =struct PacketCollections= route through parser-owned facts before text
+  search
+- expose owner-local names-only/outline for broad item queries
+- emit =semanticHandles= in JSON query/search packets
+- add compact =|handle= lines
+
+Python second:
+
+- expose =PY-PROJ-*= and =PY-AGENT-*= policy rules as handles
+- split =PY-PROJ-R001= src-layout semantics into detection/recommendation/
+  satisfaction handles or labels
+- expose schema fixture/test-case handles for schema tests
+
+TypeScript third:
+
+- expose schema fixture handles and package-script/tsconfig handles
+- use handles to avoid treating fixture names as parser symbols
+
+Julia follows the same shape in two phases.  The first phase has landed:
+provider-owned guide, policy, prime, owner, text, ingest, and check commands
+exist as compact CLI surfaces.  The next phase is JSON packet parity and
+language-registry capability descriptors for the same surfaces.
+
+** 31.06-D Hook and agent behavior
+
+The root hook should not classify rule ids or schema fixture names itself.  It
+should route to provider-declared commands:
+
+#+begin_src shell
+<bin> search policy <rule-id-or-alias> owner tests --view seeds .
+<bin> search owner <catalog-or-test-owner> handles --query <term> .
+<bin> query <owner> --term <term> --names-only .
+#+end_src
+
+Agent guidance should prefer handles before code when the target is clearly a
+policy id, schema fixture, test case, config key, command surface, or capability
+name.
+
+When the target is code-shaped rather than a stable non-code handle, guidance
+must use =search query <code-shaped-query>=.  =search text= should not silently
+execute the native syntax API, because that preserves the legacy habit of
+asking broad text questions for syntax-owned facts.  It may return a compact
+=next=search-query= action so the agent can retry through the explicit API.
+The provider owns the syntax intent parser and the native fact index.
+
+** 31.06-E Sandtable evidence
+
+Add real-trigger scenarios for all languages:
+
+- Python =PY-PROJ-R001= and =PY-AGENT-R008= should resolve in one policy search
+  plus one implementation owner query.
+- Rust harness policy ids should not require repeated owner item guesses.
+- TypeScript schema fixture names should return handles before test class code.
+- Non-handle broad owner terms should still use names-only/outline before code.
+
+Success metrics:
+
+- no repeated identical owner query after a handle hit
+- no class-sized code dump for broad =test= or =minimal_packet= discovery
+- every handle packet includes implementation owner and tests when known
+- every provider exposes canonical follow-up commands or next actions
+
+** 31.06-F 2026-06-01 runtime provider alignment evidence
+
+The Rust, Python, TypeScript, and Julia workspace providers now expose
+compatible compact command shapes for policy and hook-routed search:
+
+#+begin_src shell
+rs-harness search policy RUST-PROJ-R001 owner tests --view seeds languages/rust-lang-project-harness
+py-harness search policy PY-AGENT-R008 owner tests --view seeds languages/python-lang-project-harness
+ts-harness search policy TS-AGENT-R001 owner tests --view seeds languages/typescript-lang-project-harness
+julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl search policy JULIA-PROJ-R001 owner tests --view seeds languages/JuliaLangProjectHarness.jl
+julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl search owner src/cli.jl --view seeds languages/JuliaLangProjectHarness.jl
+julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl search text run_julia_project_harness_cli owner tests --view seeds languages/JuliaLangProjectHarness.jl
+printf 'src/cli.jl:1\n' | julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl search ingest owner tests --view seeds languages/JuliaLangProjectHarness.jl
+#+end_src
+
+The Julia command is intentionally written in full.  Do not shorten this to a
+bare =julia-project-harness= binary in docs, tests, or profile descriptors.
+
+The important runtime finding was not a missing Python implementation.  A stale
+=py-harness= on =PATH= can still be discovered by =semantic-agent-hook install=
+if the installer only checks executability.  The root cause is therefore
+provider discovery based on binary presence instead of provider capability.
+
+The installer now requires each discovered provider to answer =agent guide .=
+with its provider-owned guide marker before the profile is written.  This makes
+install-time profile discovery match the public command surface that agents will
+use later.  A stale executable that exits successfully but does not advertise
+the guide is rejected.
+
+Validated commands:
+
+#+begin_src shell
+cargo test -p semantic-agent-hook
+target/debug/semantic-agent-hook install --client codex .
+target/debug/semantic-agent-hook doctor --client codex .
+#+end_src
+
+The doctor output now reports four profiles: =rust=, =typescript=, =python=,
+and =julia=.  Julia is discovered through the workspace-managed command:
+
+#+begin_src shell
+julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl agent guide .
+#+end_src
+
+The hook profile and language registry contracts now have optional
+=providerCommandPrefix=.  This is the critical safety boundary for
+workspace-managed providers: Julia commands are routed through
+=julia ... bin/julia-project-harness.jl= without treating any arbitrary
+=julia= command as provider output.  Live hook smoke tests validated both
+sides:
+
+- direct =sed= reads of =*.jl= are denied and routed to the Julia owner command
+- =julia --project=... bin/julia-project-harness.jl agent guide . | rg ...= is
+  allowed as provider-output filtering
+- =julia -e ... | rg ...= remains denied as raw broad search
+
+The Julia provider surface was validated with =Pkg.test()=, plus real CLI runs
+for =search prime=, =search owner=, =search text=, =search ingest=, and
+=check --changed=.  During validation, =src/cli.jl= exceeded Julia's owner
+budget; the search protocol rendering was split into =src/cli/search_protocol.jl=
+and owner-test seed selection was tightened from broad token detail matching to
+path-first matching with detail fallback.
+
+* Root-Cause Boundary
+
+This plan deliberately avoids putting language-specific heuristics into
+=semantic-agent-hook=.  The hook owns safe routing and policy denial.  Providers
+own facts:
+
+#+begin_src text
+hook: action/source/term classification and safe route
+provider: parser facts, policy facts, schema/test handles, canonical owners
+schema: shared packet shape for agents and tests
+sandtable: real-trigger evidence and regression budgets
+#+end_src
