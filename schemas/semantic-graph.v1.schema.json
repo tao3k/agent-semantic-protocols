@@ -204,7 +204,6 @@
             "query",
             "query-set",
             "fzf",
-            "text",
             "ingest",
             "custom"
           ]
@@ -256,6 +255,12 @@
             "$ref": "#/$defs/projectPath"
           }
         },
+        "windowSet": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/windowSetTarget"
+          }
+        },
         "findingOwners": {
           "type": "array",
           "items": {
@@ -267,6 +272,33 @@
           "items": {
             "$ref": "#/$defs/nextAction"
           }
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "windowSetTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "target"],
+      "properties": {
+        "kind": {
+          "enum": ["owner", "tests", "read"]
+        },
+        "target": {
+          "$ref": "#/$defs/projectPath"
+        },
+        "query": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ownerPath": {
+          "$ref": "#/$defs/projectPath"
         },
         "fields": {
           "$ref": "#/$defs/fields"

@@ -470,10 +470,7 @@ fn toml_table_header(trimmed: &str) -> Option<String> {
 
 fn remove_managed_block(existing: &str, begin: &str, end: &str) -> String {
     let mut content = existing.to_string();
-    loop {
-        let Some(start) = content.find(begin) else {
-            break;
-        };
+    while let Some(start) = content.find(begin) {
         let Some(relative_end) = content[start..].find(end) else {
             break;
         };

@@ -4,6 +4,8 @@ repo := "."
 rust_harness_project := "languages/rust-lang-project-harness"
 typescript_harness_project := "languages/typescript-lang-project-harness"
 python_harness_project := "languages/python-lang-project-harness"
+julia_harness_project := "languages/JuliaLangProjectHarness.jl"
+julia_harness := "julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl"
 
 default:
     @just --list
@@ -128,6 +130,50 @@ agent-hooks-doctor-py:
 
 check-sandtables:
     uv run semantic-sandtable
+
+provider-gate: provider-gate-root provider-gate-rust provider-gate-typescript provider-gate-python provider-gate-julia
+
+provider-gate-root:
+    direnv exec . cargo test -p semantic-agent-hook
+    direnv exec . python -m pytest tests/unit/test_semantic_*_schema.py tests/unit/semantic_sandtable
+
+provider-gate-rust:
+    direnv exec . cargo test --manifest-path {{rust_harness_project}}/Cargo.toml --features cli,search search
+    direnv exec . cargo test --manifest-path {{rust_harness_project}}/Cargo.toml --features cli,search query
+    direnv exec . cargo test --manifest-path {{rust_harness_project}}/Cargo.toml --features cli,search policy
+
+provider-gate-typescript:
+    direnv exec . npm --prefix {{typescript_harness_project}} run build
+    direnv exec . npm --prefix {{typescript_harness_project}} run check:implementation
+    direnv exec . node --test \
+      {{typescript_harness_project}}/dist/tests/unit/cli_compact_query_snapshot.test.js \
+      {{typescript_harness_project}}/dist/tests/unit/cli_item_query.test.js \
+      {{typescript_harness_project}}/dist/tests/unit/cli_item_query_code.test.js \
+      {{typescript_harness_project}}/dist/tests/unit/cli_item_query_fallback.test.js \
+      {{typescript_harness_project}}/dist/tests/unit/cli_search_policy.test.js \
+      {{typescript_harness_project}}/dist/tests/unit/cli_search_query.test.js \
+      {{typescript_harness_project}}/dist/tests/unit/semantic_language_registry_read_packet.test.js \
+      {{typescript_harness_project}}/dist/tests/unit/semantic_search_registry_expectations.js \
+      {{typescript_harness_project}}/dist/tests/unit/semantic_search_schema.test.js
+
+provider-gate-python:
+    direnv exec . uv run --project {{python_harness_project}} --frozen py-harness search policy PY-PROJ-R001 owner tests --view seeds {{python_harness_project}}
+    direnv exec . uv run --project {{python_harness_project}} --frozen py-harness search policy PY-AGENT-R008 owner tests --view seeds {{python_harness_project}}
+    direnv exec . uv run --project {{python_harness_project}} --frozen py-harness query src/python_lang_project_harness/_semantic_language.py --term semantic_language_registry_document --names-only {{python_harness_project}}
+    direnv exec . uv run --project {{python_harness_project}} --frozen python -m pytest \
+      {{python_harness_project}}/tests/unit/harness/test_semantic_cli_query_set.py \
+      {{python_harness_project}}/tests/unit/harness/test_semantic_cli_owner_items.py \
+      {{python_harness_project}}/tests/unit/harness/test_semantic_cli_policy.py \
+      {{python_harness_project}}/tests/unit/harness/test_semantic_schema_registry.py
+
+provider-gate-julia:
+    direnv exec . julia --project={{julia_harness_project}} -e 'using Pkg; Pkg.test()'
+    direnv exec . {{julia_harness}} agent guide {{julia_harness_project}}
+    direnv exec . {{julia_harness}} search prime --view seeds {{julia_harness_project}}
+    direnv exec . {{julia_harness}} search owner src/cli.jl --view seeds {{julia_harness_project}}
+    direnv exec . {{julia_harness}} search fzf run_julia_project_harness_cli owner tests --view seeds {{julia_harness_project}}
+    printf 'src/cli.jl:1\n' | direnv exec . {{julia_harness}} search ingest owner tests --view seeds {{julia_harness_project}}
+    direnv exec . {{julia_harness}} check --changed {{julia_harness_project}}
 
 check-python-policy:
     uv run --project {{python_harness_project}} --frozen py-harness check --full {{repo}}

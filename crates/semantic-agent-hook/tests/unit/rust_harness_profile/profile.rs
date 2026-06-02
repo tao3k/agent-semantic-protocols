@@ -1,4 +1,4 @@
-use semantic_agent_hook::{DecisionKind, DecisionRouteKind, ReasonKind, StdinMode, classify_hook};
+use semantic_agent_hook::{DecisionKind, DecisionRouteKind, ReasonKind, classify_hook};
 use serde_json::json;
 
 use super::support::rust_harness_profile_registry;
@@ -89,7 +89,7 @@ fn rust_harness_profile_routes_direct_reads_to_provider_query() {
 }
 
 #[test]
-fn rust_harness_profile_routes_raw_root_search_to_ingest() {
+fn rust_harness_profile_routes_raw_root_search_to_fzf() {
     let decision = classify_hook(
         &rust_harness_profile_registry(),
         "codex",
@@ -102,9 +102,18 @@ fn rust_harness_profile_routes_raw_root_search_to_ingest() {
 
     assert_eq!(decision.decision, DecisionKind::Deny);
     assert_eq!(decision.reason_kind, ReasonKind::RawBroadSearch);
-    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Ingest);
+    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Fzf);
     assert_eq!(
-        decision.routes[0].stdin_mode,
-        Some(StdinMode::PipeCandidates)
+        decision.routes[0].argv,
+        [
+            "rs-harness",
+            "search",
+            "fzf",
+            "HookDecision",
+            "tests",
+            "--view",
+            "seeds",
+            "."
+        ]
     );
 }

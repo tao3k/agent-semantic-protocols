@@ -191,7 +191,7 @@ fn search_json_decision_route(profile: &LanguageProfile, argv: Vec<String>) -> D
         language_id: profile.language_id.clone(),
         provider_id: profile.provider_id.clone(),
         binary: profile.binary.clone(),
-        kind: DecisionRouteKind::Text,
+        kind: DecisionRouteKind::Fzf,
         argv,
         stdin_mode: None,
     }

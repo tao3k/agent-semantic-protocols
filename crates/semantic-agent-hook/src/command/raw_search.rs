@@ -245,10 +245,11 @@ fn parse_ripgrep_like(stage: &[String]) -> ParsedRawSearch {
         positional.push(token.clone());
         index += 1;
     }
-    if !files_mode && !pattern_from_flag {
-        if let Some(pattern) = positional.first() {
-            parsed.terms.push(pattern.clone());
-        }
+    if !files_mode
+        && !pattern_from_flag
+        && let Some(pattern) = positional.first()
+    {
+        parsed.terms.push(pattern.clone());
     }
     let path_start = usize::from(!files_mode && !pattern_from_flag && !positional.is_empty());
     for path in positional.into_iter().skip(path_start) {
@@ -313,10 +314,8 @@ fn parse_grep_like(stage: &[String]) -> ParsedRawSearch {
         positional.push(token.clone());
         index += 1;
     }
-    if !pattern_from_flag {
-        if let Some(pattern) = positional.first() {
-            parsed.terms.push(pattern.clone());
-        }
+    if !pattern_from_flag && let Some(pattern) = positional.first() {
+        parsed.terms.push(pattern.clone());
     }
     let path_start = usize::from(!pattern_from_flag && !positional.is_empty());
     for path in positional.into_iter().skip(path_start) {
@@ -700,19 +699,19 @@ fn push_extension(extensions: &mut Vec<String>, token: &str, allow_bare: bool) {
         .trim_matches(|character| matches!(character, '\'' | '"' | ',' | ';'))
         .trim_start_matches('*')
         .to_ascii_lowercase();
-    if let Some(start) = clean.find(".{") {
-        if let Some(end) = clean[start + 2..].find('}') {
-            for extension in clean[start + 2..start + 2 + end].split(',') {
-                if !extension.is_empty()
-                    && extension
-                        .chars()
-                        .all(|character| character.is_ascii_alphanumeric())
-                {
-                    extensions.push(format!(".{extension}"));
-                }
+    if let Some(start) = clean.find(".{")
+        && let Some(end) = clean[start + 2..].find('}')
+    {
+        for extension in clean[start + 2..start + 2 + end].split(',') {
+            if !extension.is_empty()
+                && extension
+                    .chars()
+                    .all(|character| character.is_ascii_alphanumeric())
+            {
+                extensions.push(format!(".{extension}"));
             }
-            return;
         }
+        return;
     }
     let clean = clean.trim_start_matches('{').trim_end_matches('}');
     if allow_bare

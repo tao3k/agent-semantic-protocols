@@ -27,7 +27,7 @@ fn wrapper_raw_search_routes_to_profile_query_when_supported() {
 
         assert_eq!(decision.decision, DecisionKind::Deny, "{command}");
         assert_eq!(decision.reason_kind, ReasonKind::RawBroadSearch);
-        assert_eq!(decision.routes[0].kind, DecisionRouteKind::Text);
+        assert_eq!(decision.routes[0].kind, DecisionRouteKind::Fzf);
     }
 }
 
@@ -77,6 +77,36 @@ fn rtk_read_routes_to_provider_query() {
     assert_eq!(decision.decision, DecisionKind::Deny);
     assert_eq!(decision.reason_kind, ReasonKind::DirectSourceRead);
     assert_eq!(decision.subject.paths, ["src/cli/agent-hooks.ts"]);
+    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Query);
+    assert_eq!(decision.routes[0].provider_id, "ts-harness");
+    assert_eq!(
+        decision.routes[0].argv,
+        [
+            "ts-harness",
+            "query",
+            "--from-hook",
+            "direct-source-read",
+            "--selector",
+            "src/cli/agent-hooks.ts",
+            "."
+        ]
+    );
+}
+
+#[test]
+fn rtk_read_routes_display_locator_to_clean_provider_selector() {
+    let decision = classify_hook(
+        &registry(),
+        "codex",
+        "pre-tool",
+        &json!({
+            "tool_name": "functions.exec_command",
+            "tool_input": {"cmd": "rtk read 0:src/cli/agent-hooks.ts:190\u{2013}330"}
+        }),
+    );
+
+    assert_eq!(decision.decision, DecisionKind::Deny);
+    assert_eq!(decision.reason_kind, ReasonKind::DirectSourceRead);
     assert_eq!(decision.routes[0].kind, DecisionRouteKind::Query);
     assert_eq!(decision.routes[0].provider_id, "ts-harness");
     assert_eq!(

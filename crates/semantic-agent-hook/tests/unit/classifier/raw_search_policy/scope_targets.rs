@@ -127,8 +127,25 @@ fn raw_search_piped_to_ingest_is_allowed() {
 
 #[test]
 fn non_search_git_commands_are_allowed() {
-    for command in ["git status .", "git diff --stat", "git log --oneline -5"] {
+    for command in [
+        "git status .",
+        "git diff --stat",
+        "git diff --name-only",
+        "git diff --name-status",
+        "git log --oneline -5",
+    ] {
         assert_allowed(command);
+    }
+}
+
+#[test]
+fn git_diff_source_output_routes_to_language_provider() {
+    for command in [
+        "git diff -- languages/python-lang-project-harness/src/python_lang_project_harness/_python_compact.py",
+        "git diff --no-index /dev/null languages/python-lang-project-harness/src/python_lang_project_harness/_python_compact.py",
+        "git -C languages/python-lang-project-harness diff -- src/python_lang_project_harness/_python_compact.py",
+    ] {
+        assert_bulk_source_dump_denied(command, "py-harness");
     }
 }
 
@@ -146,7 +163,7 @@ fn broad_raw_search_routes_to_profile_query_when_supported() {
 
     assert_eq!(decision.decision, DecisionKind::Deny);
     assert_eq!(decision.reason_kind, ReasonKind::RawBroadSearch);
-    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Text);
+    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Fzf);
 }
 
 #[test]
@@ -178,3 +195,4 @@ fn action_policy_can_allow_raw_search_without_allowing_direct_reads() {
     assert_eq!(read_decision.decision, DecisionKind::Deny);
     assert_eq!(read_decision.reason_kind, ReasonKind::DirectSourceRead);
 }
+use crate::classifier::raw_search_policy::support::assert_bulk_source_dump_denied;

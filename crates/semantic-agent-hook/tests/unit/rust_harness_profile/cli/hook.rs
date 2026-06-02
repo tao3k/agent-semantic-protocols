@@ -53,7 +53,20 @@ fn cli_hook_replay_blocks_functions_exec_command_raw_search() {
         decision["subject"]["command"],
         "rg -n HookDecision src tests"
     );
-    assert_eq!(decision["routes"][0]["kind"], "ingest");
+    assert_eq!(decision["routes"][0]["kind"], "fzf");
+    assert_eq!(
+        decision["routes"][0]["argv"],
+        json!([
+            "rs-harness",
+            "search",
+            "fzf",
+            "HookDecision",
+            "tests",
+            "--view",
+            "seeds",
+            "."
+        ])
+    );
     let event = last_hook_event(&root);
     assert_eq!(event["event"], "pre-tool");
     assert_eq!(event["decision"], "deny");
@@ -123,6 +136,54 @@ fn cli_hook_replay_records_allow_decision_for_exec_command_post_tool() {
     assert_eq!(event["reasonKind"], "none");
     assert_eq!(event["subject"]["toolName"], "functions.exec_command");
 
+    std::fs::remove_dir_all(root).expect("cleanup temp project root");
+}
+
+#[test]
+fn cli_hook_fails_open_on_invalid_payload_json() {
+    let root = temp_project_root("hook-invalid-payload");
+    let profiles_path = root.join("profiles.json");
+    std::fs::write(&profiles_path, root_owned_rust_profile_registry_json())
+        .expect("write profile registry");
+    let mut child = Command::new(env!("CARGO_BIN_EXE_semantic-agent-hook"))
+        .args([
+            "hook",
+            "--client",
+            "codex",
+            "pre-tool",
+            "--emit",
+            "decision",
+            "--profiles",
+            profiles_path.to_str().expect("utf8 profiles path"),
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("run semantic-agent-hook hook");
+    child
+        .stdin
+        .as_mut()
+        .expect("hook stdin")
+        .write_all(b"{not-json")
+        .expect("write invalid hook payload");
+
+    let output = child.wait_with_output().expect("wait for hook command");
+
+    assert!(
+        output.status.success(),
+        "hook stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let decision: Value = serde_json::from_slice(&output.stdout).expect("hook decision JSON");
+    assert_eq!(decision["decision"], "allow");
+    assert_eq!(decision["reasonKind"], "none");
+    assert!(
+        decision["message"]
+            .as_str()
+            .unwrap()
+            .contains("invalid hook payload JSON")
+    );
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
 }
 

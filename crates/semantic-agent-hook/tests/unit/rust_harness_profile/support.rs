@@ -14,6 +14,21 @@ pub(super) fn temp_project_root(name: &str) -> PathBuf {
     root
 }
 
+pub(super) fn command(argv: &[&str]) -> serde_json::Value {
+    json!({
+        "text": argv.join(" "),
+        "argv": argv,
+    })
+}
+
+pub(super) fn command_with_stdin(argv: &[&str], stdin_mode: &str) -> serde_json::Value {
+    json!({
+        "text": argv.join(" "),
+        "argv": argv,
+        "stdinMode": stdin_mode,
+    })
+}
+
 pub(super) fn root_owned_rust_profile_registry_json() -> String {
     serde_json::to_string_pretty(&json!({
         "schemaId": semantic_agent_hook::PROFILE_REGISTRY_SCHEMA_ID,
@@ -37,12 +52,12 @@ pub(super) fn root_owned_rust_profile_registry_json() -> String {
                 "requirePrimeBeforeEdit": true
             },
             "commands": {
-                "prime": {"argv": ["rs-harness", "search", "prime", "--view", "seeds", "."]},
-                "owner": {"argv": ["rs-harness", "query", "--from-hook", "direct-source-read", "--selector", "{path}", "."]},
-                "text": {"argv": ["rs-harness", "search", "text", "{query}", "tests", "--view", "seeds", "."]},
-                "ingest": {"argv": ["rs-harness", "search", "ingest", "items", "tests", "--view", "seeds", "."], "stdinMode": "pipe-candidates"},
-                "checkChanged": {"argv": ["rs-harness", "check", "--changed", "."]},
-                "guide": {"argv": ["rs-harness", "agent", "guide", "."]}
+                "prime": command(&["rs-harness", "search", "prime", "--view", "seeds", "."]),
+                "owner": command(&["rs-harness", "query", "--from-hook", "direct-source-read", "--selector", "{path}", "."]),
+                "fzf": command(&["rs-harness", "search", "fzf", "{query}", "tests", "--view", "seeds", "."]),
+                "ingest": command_with_stdin(&["rs-harness", "search", "ingest", "items", "tests", "--view", "seeds", "."], "pipe-candidates"),
+                "checkChanged": command(&["rs-harness", "check", "--changed", "."]),
+                "guide": command(&["rs-harness", "agent", "guide", "."])
             }
         }]
     }))
@@ -53,6 +68,64 @@ pub(super) fn write_root_owned_rust_profile_registry(root: &std::path::Path) -> 
     let path = root.join("rust-profile-registry.json");
     std::fs::write(&path, root_owned_rust_profile_registry_json()).expect("write rust profile");
     path
+}
+
+pub(super) fn write_fake_provider_binary(root: &std::path::Path, binary: &str) -> PathBuf {
+    write_fake_provider_file(root, binary, 0o755)
+}
+
+pub(super) fn write_failing_provider_binary(root: &std::path::Path, binary: &str) -> PathBuf {
+    let bin_dir = root.join(".bin");
+    std::fs::create_dir_all(&bin_dir).expect("create fake provider bin dir");
+    let path = bin_dir.join(binary);
+    std::fs::write(
+        &path,
+        "#!/bin/sh\nprintf 'provider process should not be executed\\n' >&2\nexit 42\n",
+    )
+    .expect("write failing provider binary");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut permissions = std::fs::metadata(&path)
+            .expect("failing provider metadata")
+            .permissions();
+        permissions.set_mode(0o755);
+        std::fs::set_permissions(&path, permissions).expect("chmod failing provider");
+    }
+    bin_dir
+}
+
+pub(super) fn write_fake_provider_file(root: &std::path::Path, binary: &str, mode: u32) -> PathBuf {
+    let bin_dir = root.join(".bin");
+    std::fs::create_dir_all(&bin_dir).expect("create fake provider bin dir");
+    let path = bin_dir.join(binary);
+    let guide_marker = match binary {
+        "rs-harness" => {
+            "[agent-guide] runtime=semantic-agent-hook language=rust provider=rs-harness"
+        }
+        "ts-harness" => "[ts-harness-guide]",
+        "py-harness" => "[py-harness-guide]",
+        _ => "[agent-guide]",
+    };
+    std::fs::write(
+        &path,
+        format!(
+            "#!/bin/sh\nif [ \"$1\" = \"agent\" ] && [ \"$2\" = \"guide\" ]; then\n  printf '%s\\n' '{}'\n  exit 0\nfi\nexit 0\n",
+            guide_marker
+        ),
+    )
+    .expect("write fake provider binary");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        let mut permissions = std::fs::metadata(&path)
+            .expect("fake provider metadata")
+            .permissions();
+        permissions.set_mode(mode);
+        std::fs::set_permissions(&path, permissions).expect("chmod fake provider");
+    }
+    bin_dir
 }
 
 pub(super) fn rust_harness_profile_registry() -> ProfileRegistry {

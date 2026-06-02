@@ -90,7 +90,6 @@
         "policy",
         "tests",
         "fzf",
-        "text",
         "ingest"
       ]
     },
@@ -636,7 +635,6 @@
             "query",
             "query-set",
             "fzf",
-            "text",
             "ingest",
             "custom"
           ]

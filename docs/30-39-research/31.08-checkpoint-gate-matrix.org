@@ -27,11 +27,14 @@ time and keep validation evidence attached to that group.
 Run after root hook/schema/sandtable edits:
 
 #+begin_src shell
+direnv exec . just provider-gate-root
+#+end_src
+
+Expanded commands:
+
+#+begin_src shell
 direnv exec . cargo test -p semantic-agent-hook
-python -m pytest \
-  tests/unit/test_semantic_agent_hook_decision_schema.py \
-  tests/unit/semantic_sandtable/test_line_protocol_paths.py \
-  tests/unit/semantic_sandtable/test_raw_search_query_packet.py
+direnv exec . python -m pytest tests/unit/test_semantic_*_schema.py tests/unit/semantic_sandtable
 git diff --check -- \
   crates/semantic-agent-hook \
   docs/30-39-research \
@@ -73,8 +76,15 @@ git diff --check -- docs/30-39-research/31.02-hook-read-window-trigger-report.or
 ** Rust Provider
 
 #+begin_src shell
-direnv exec . cargo test --manifest-path languages/rust-lang-project-harness/Cargo.toml --features cli,search
-direnv exec . cargo test --manifest-path languages/rust-lang-project-harness/Cargo.toml --features cli,search cli_search_views_render_rfc_line_protocol -- --nocapture
+direnv exec . just provider-gate-rust
+#+end_src
+
+Expanded commands:
+
+#+begin_src shell
+direnv exec . cargo test --manifest-path languages/rust-lang-project-harness/Cargo.toml --features cli,search search
+direnv exec . cargo test --manifest-path languages/rust-lang-project-harness/Cargo.toml --features cli,search query
+direnv exec . cargo test --manifest-path languages/rust-lang-project-harness/Cargo.toml --features cli,search policy
 #+end_src
 
 Required evidence:
@@ -89,14 +99,23 @@ Run TypeScript package gates serially.  The package build cleans =dist=, so
 parallel =npm= gates can create false failures.
 
 #+begin_src shell
-direnv exec . npm --prefix languages/typescript-lang-project-harness run check:implementation
+direnv exec . just provider-gate-typescript
+#+end_src
+
+Expanded commands:
+
+#+begin_src shell
 direnv exec . npm --prefix languages/typescript-lang-project-harness run build
+direnv exec . npm --prefix languages/typescript-lang-project-harness run check:implementation
 direnv exec . node --test \
+  languages/typescript-lang-project-harness/dist/tests/unit/cli_compact_query_snapshot.test.js \
   languages/typescript-lang-project-harness/dist/tests/unit/cli_item_query.test.js \
   languages/typescript-lang-project-harness/dist/tests/unit/cli_item_query_code.test.js \
   languages/typescript-lang-project-harness/dist/tests/unit/cli_item_query_fallback.test.js \
   languages/typescript-lang-project-harness/dist/tests/unit/cli_search_policy.test.js \
   languages/typescript-lang-project-harness/dist/tests/unit/cli_search_query.test.js \
+  languages/typescript-lang-project-harness/dist/tests/unit/semantic_language_registry_read_packet.test.js \
+  languages/typescript-lang-project-harness/dist/tests/unit/semantic_search_registry_expectations.js \
   languages/typescript-lang-project-harness/dist/tests/unit/semantic_search_schema.test.js
 #+end_src
 
@@ -104,11 +123,21 @@ Required evidence:
 
 - top-level =query= supports repeated =--term= and =--names-only=
 - owner item =--code= is only used after owner and query are known
-- schema fixture and policy handles do not fall back to class-sized code dumps
+- schema fixture, package-script, and =tsconfig= handles do not fall back to
+  class-sized code dumps
 
 ** Python Provider
 
 #+begin_src shell
+direnv exec . just provider-gate-python
+#+end_src
+
+Expanded commands:
+
+#+begin_src shell
+direnv exec . uv run --project languages/python-lang-project-harness --frozen py-harness search policy PY-PROJ-R001 owner tests --view seeds languages/python-lang-project-harness
+direnv exec . uv run --project languages/python-lang-project-harness --frozen py-harness search policy PY-AGENT-R008 owner tests --view seeds languages/python-lang-project-harness
+direnv exec . uv run --project languages/python-lang-project-harness --frozen py-harness query src/python_lang_project_harness/_semantic_language.py --term semantic_language_registry_document --names-only languages/python-lang-project-harness
 direnv exec . uv run --project languages/python-lang-project-harness --frozen python -m pytest \
   languages/python-lang-project-harness/tests/unit/harness/test_semantic_cli_query_set.py \
   languages/python-lang-project-harness/tests/unit/harness/test_semantic_cli_owner_items.py \
@@ -128,12 +157,19 @@ Julia is workspace-managed and is not a bin parity target.  Do not add,
 document, or validate a bare global =julia-project-harness= executable.
 
 #+begin_src shell
+direnv exec . just provider-gate-julia
+#+end_src
+
+Expanded commands:
+
+#+begin_src shell
 direnv exec . julia --project=languages/JuliaLangProjectHarness.jl -e 'using Pkg; Pkg.test()'
 direnv exec . julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl agent guide languages/JuliaLangProjectHarness.jl
 direnv exec . julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl search prime --view seeds languages/JuliaLangProjectHarness.jl
 direnv exec . julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl search owner src/cli.jl --view seeds languages/JuliaLangProjectHarness.jl
-direnv exec . julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl search text run_julia_project_harness_cli owner tests --view seeds languages/JuliaLangProjectHarness.jl
+direnv exec . julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl search fzf run_julia_project_harness_cli owner tests --view seeds languages/JuliaLangProjectHarness.jl
 printf 'src/cli.jl:1\n' | direnv exec . julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl search ingest owner tests --view seeds languages/JuliaLangProjectHarness.jl
+direnv exec . julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl check --changed languages/JuliaLangProjectHarness.jl
 #+end_src
 
 Required evidence:
@@ -152,6 +188,44 @@ Required evidence:
    fixtures, and test cases are first-class facts.
 4. Keep =evidence-layer= schemas separate until their provider adapters and
    tests are intentionally selected.
+
+* Next Implementation Priority
+
+The next implementation round should be policy/handle before performance:
+
+1. Python =search policy PY-PROJ-R001 owner tests= and
+   =search policy PY-AGENT-R008 owner tests= are the reference slice.  This
+   proves that non-code facts are not treated as Python function names.
+2. TypeScript follows by exposing schema fixture, package-script, and
+   =tsconfig= handles before code windows.
+3. Rust follows with policy ids and native syntax handles, including
+   code-shaped facts that should route through parser-owned native syntax
+   indexes before fuzzy text search.
+4. Julia comes last with semantic-search JSON packet parity and registry
+   descriptors, still through the workspace-managed command only.
+
+Do not tune ranking or compact rendering until policy/handle routing proves the
+agent can stop asking guessed owner item queries for stable non-code facts.
+
+* Performance Evidence
+
+Performance work must be tied to sandtable evidence.  Reports and fixtures
+should record these fields instead of saying only that the search is "smarter":
+
+| Field | Meaning |
+|-------+---------|
+| commandCount | total provider/hook commands in the replay |
+| packetBytes | compact or JSON packet byte size |
+| latencyMs | wall-clock provider latency per command |
+| repeatedOwnerQueries | count of repeated owner item queries for the same axis |
+| wholeFileSourceDumps | count of raw whole-file source dumps |
+| editFrontierBeforeEdit | whether =editFrontier= was present before edits |
+| testFrontierBeforeEdit | whether =testFrontier= was present before edits |
+| windowSetBeforeRead | whether =windowSet= existed before exact source context |
+
+The query pipe is considered sufficient only when the replay shows bounded
+command count, no whole-file source dumps, reduced repeated owner queries, and
+pre-edit =editFrontier=, =testFrontier=, and =windowSet= evidence.
 
 * Worktree Rule
 

@@ -4,6 +4,21 @@ use semantic_agent_hook::{
 };
 use serde_json::json;
 
+fn command(argv: &[&str]) -> serde_json::Value {
+    json!({
+        "text": argv.join(" "),
+        "argv": argv,
+    })
+}
+
+fn command_with_stdin(argv: &[&str], stdin_mode: &str) -> serde_json::Value {
+    json!({
+        "text": argv.join(" "),
+        "argv": argv,
+        "stdinMode": stdin_mode,
+    })
+}
+
 pub(super) fn assert_raw_search_denied(command: &str, binary: &str) {
     let decision = classify_hook(
         &polyglot_registry(),
@@ -17,6 +32,22 @@ pub(super) fn assert_raw_search_denied(command: &str, binary: &str) {
 
     assert_eq!(decision.decision, DecisionKind::Deny, "{command}");
     assert_eq!(decision.reason_kind, ReasonKind::RawBroadSearch);
+    assert_eq!(decision.routes[0].binary, binary, "{command}");
+}
+
+pub(super) fn assert_bulk_source_dump_denied(command: &str, binary: &str) {
+    let decision = classify_hook(
+        &polyglot_registry(),
+        "codex",
+        "pre-tool",
+        &json!({
+            "tool_name": "functions.exec_command",
+            "tool_input": {"cmd": command}
+        }),
+    );
+
+    assert_eq!(decision.decision, DecisionKind::Deny, "{command}");
+    assert_eq!(decision.reason_kind, ReasonKind::BulkSourceDump);
     assert_eq!(decision.routes[0].binary, binary, "{command}");
 }
 
@@ -84,12 +115,12 @@ pub(super) fn rust_registry() -> ProfileRegistry {
                 "sourceRoots": ["src", "tests", "crates"],
                 "ignoredPathPrefixes": ["target", ".git"],
                 "commands": {
-                    "prime": {"argv": ["rs-harness", "search", "prime", "--view", "seeds", "."]},
-                    "owner": {"argv": ["rs-harness", "search", "owner", "{path}", "items", "--view", "seeds", "."]},
-                    "text": {"argv": ["rs-harness", "search", "text", "{query}", "tests", "--view", "seeds", "."]},
-                    "ingest": {"argv": ["rs-harness", "search", "ingest", "items", "tests", "--view", "seeds", "."], "stdinMode": "pipe-candidates"},
-                    "checkChanged": {"argv": ["rs-harness", "check", "--changed", "."]},
-                    "guide": {"argv": ["rs-harness", "agent", "guide", "."]}
+                    "prime": command(&["rs-harness", "search", "prime", "--view", "seeds", "."]),
+                    "owner": command(&["rs-harness", "search", "owner", "{path}", "items", "--view", "seeds", "."]),
+                    "fzf": command(&["rs-harness", "search", "fzf", "{query}", "tests", "--view", "seeds", "."]),
+                    "ingest": command_with_stdin(&["rs-harness", "search", "ingest", "items", "tests", "--view", "seeds", "."], "pipe-candidates"),
+                    "checkChanged": command(&["rs-harness", "check", "--changed", "."]),
+                    "guide": command(&["rs-harness", "agent", "guide", "."])
                 }
             }]
         })
@@ -168,31 +199,29 @@ fn language_profile(
         vec![binary, "search", "owner", "{path}", "."]
     };
     let query_command = (language_id == "typescript").then(|| {
-        json!({
-            "argv": [
-                binary,
-                "search",
-                "query",
-                "--from-hook",
-                "direct-source-read",
-                "--selector",
-                "{selector}",
-                "{termArgs}",
-                "--surface",
-                "owner,tests",
-                "--view",
-                "seeds",
-                "."
-            ]
-        })
+        command(&[
+            binary,
+            "search",
+            "query",
+            "--from-hook",
+            "direct-source-read",
+            "--selector",
+            "{selector}",
+            "{termArgs}",
+            "--surface",
+            "owner,tests",
+            "--view",
+            "seeds",
+            ".",
+        ])
     });
     let mut commands = json!({
-        "prime": {"argv": [binary, "search", "prime", "."]},
-        "owner": {"argv": owner_argv},
-        "text": {"argv": [binary, "search", "text", "{query}", "owner", "tests", "--view", "seeds", "."]},
-        "ingest": {"argv": [binary, "search", "ingest", "owner", "tests", "--view", "seeds", "."], "stdinMode": "pipe-candidates"},
-        "checkChanged": {"argv": [binary, "check", "--changed", "."]},
-        "guide": {"argv": [binary, "agent", "guide", "."]}
+        "prime": command(&[binary, "search", "prime", "."]),
+        "owner": command(&owner_argv),
+        "fzf": command(&[binary, "search", "fzf", "{query}", "owner", "tests", "--view", "seeds", "."]),
+        "ingest": command_with_stdin(&[binary, "search", "ingest", "owner", "tests", "--view", "seeds", "."], "pipe-candidates"),
+        "checkChanged": command(&[binary, "check", "--changed", "."]),
+        "guide": command(&[binary, "agent", "guide", "."])
     });
     if let Some(query_command) = query_command {
         commands["query"] = query_command;

@@ -81,10 +81,8 @@ fn unwrap_command_stage(tokens: &[String]) -> Vec<String> {
     }
     match command_name(&tokens[0]) {
         "env" => return unwrap_command_stage(&tokens[env_command_index(tokens)..]),
-        "direnv" if tokens.get(1).map(String::as_str) == Some("exec") => {
-            if tokens.len() > 3 {
-                return unwrap_command_stage(&tokens[3..]);
-            }
+        "direnv" if tokens.get(1).map(String::as_str) == Some("exec") && tokens.len() > 3 => {
+            return unwrap_command_stage(&tokens[3..]);
         }
         "rtk" => return unwrap_rtk_stage(tokens),
         "uv" if tokens.get(1).map(String::as_str) == Some("run") => {

@@ -390,11 +390,21 @@ their own; source suffixes and provider-declared source roots are.
 | Direct read/edit wrapper | broad source suffix selector | none | deny with provider prime route |
 | Content dump (=sed=, =less=, =head=, =tail=, =nl=, =bat=) | exact source file | exact selector | deny bulk-source-dump with provider =query --from-hook direct-source-read --selector <path> .= route |
 | Content dump (=sed=, =less=, =head=, =tail=, =nl=, =bat=) | source glob | not required | deny bulk-source-dump with provider prime route |
+| Content diff (=git diff=, =git diff --no-index /dev/null <path>=) | exact source file | exact selector | deny bulk-source-dump with provider =query --from-hook direct-source-read --selector <path> .= route |
+| Metadata diff (=git diff --stat=, =git diff --name-only=, =git diff --name-status=) | source or non-source scope | metadata only | allow |
 | Raw search (=rg=, =grep=, =fd=, =find=, =git grep=) | source suffix/root/profile match | concrete query term | deny with provider =commands.query= when declared |
 | Raw search (=rg=, =grep=, =fd=, =find=, =git grep=) | source suffix/root/profile match | no concrete term | deny with provider ingest route |
 | Raw search | non-source scope only, such as markdown/docs | any term | allow |
 | Raw search piped to provider ingest | source scope | candidates on stdin | allow |
 | Prompt-facing provider =--json= search | registered interactive shell | any | deny with compact text/owner route |
+
+Untracked source files do not justify raw full-file or no-index diff reads.
+If an agent needs context for a new source file that is absent from the index,
+the hook should route the exact path to the owning provider query/owner command.
+The provider must treat parser-visible untracked files inside declared source
+roots as normal query candidates; the only Git command that remains safe at
+this stage is metadata discovery such as =git status --short= or
+=git diff --name-only=.
 
 Blocking decisions must include the next safe route, not only a denial.  The
 =routes= array is the machine-readable next-action source of truth.  For one

@@ -1,0 +1,119 @@
+#+TITLE: 31.10 Untracked Source Diff Routing Report
+#+DATE: 2026-06-02
+#+STATUS: active
+#+JOHNNY_DECIMAL: 31.10
+#+AREA: 30-39 Research
+#+CATEGORY: 31 Search Flow Research
+
+* Purpose
+
+This report records a sandtable issue where an agent tried to inspect a new
+untracked Python source file through =git diff --no-index /dev/null <path>=
+after observing that normal =git diff= does not include untracked content.
+
+The trace matters because it is not a Git problem.  It is a semantic routing
+problem: untracked parser-visible source must still go through the language
+provider, not through a raw patch dump.
+
+* Replayed Trace
+
+The provider query was already sufficient for the target class:
+
+#+begin_src shell
+py-harness query src/python_lang_project_harness/_python_compact.py --term CompactPythonProjectionNode --code languages/python-lang-project-harness
+#+end_src
+
+It returned compact code for the class and its method body.  The owner search
+also produced a useful seed packet:
+
+#+begin_src shell
+py-harness search owner src/python_lang_project_harness/_python_compact.py items --view seeds languages/python-lang-project-harness
+#+end_src
+
+The risky follow-up was the agent reasoning that a full no-index diff was needed
+because the file was untracked:
+
+#+begin_src shell
+git diff --no-index /dev/null languages/python-lang-project-harness/src/python_lang_project_harness/_python_compact.py
+#+end_src
+
+That command would emit the full source content as a patch.  For hook policy it
+is equivalent to a raw source dump, even though it is spelled as a Git command.
+
+* Observed Problems
+
+** Untracked files are not second-class semantic files
+
+Git index state does not change language ownership.  A new =.py= file under a
+declared Python source root is still parser-visible to =py-harness= and should
+be queryable by owner, term, and compact code.
+
+** Diff metadata and diff content need separate classifications
+
+=git diff --stat=, =git diff --name-only=, and =git diff --name-status= are
+metadata commands.  They are useful for change inventory and should remain
+allowed.
+
+Plain =git diff -- <source>= and
+=git diff --no-index /dev/null <source>= emit source content.  They should be
+classified as =bulk-source-dump= and denied with a provider route.
+
+** Hook fallback routes still need better source-window ergonomics
+
+During this investigation, a narrow =sed -n '1,24p' ...scope_targets.rs= read
+was correctly blocked and routed to:
+
+#+begin_src shell
+rs-harness query --from-hook direct-source-read --selector <path> .
+#+end_src
+
+The route returned owner/items but not the import/header window the edit needed.
+That confirms the policy direction is right, but provider query still needs a
+more useful local-window mode for imports, attributes, and file-level setup.
+
+* Implemented Fix
+
+=semantic-agent-hook= now classifies source-content Git diff commands as
+=ContentDump=:
+
+- =git diff -- <source>=
+- =git diff --no-index /dev/null <source>=
+- =git -C <repo> diff -- <source>=
+
+Metadata-only diff commands remain allowed:
+
+- =git diff --stat=
+- =git diff --name-only=
+- =git diff --name-status=
+
+The classifier test now verifies that Python source diff output routes to
+=py-harness= with =reasonKind=bulk-source-dump=.
+
+* Next Improvements
+
+** 31.10-A Provider query should expose untracked source status
+
+Owner packets should distinguish parser-visible untracked files from tracked
+modules without changing the route:
+
+#+begin_example
+|owner src/python_lang_project_harness/_python_compact.py role=source source=parser-visible-untracked
+#+end_example
+
+This helps the agent understand why Git diff is not the semantic source of
+truth for the file.
+
+** 31.10-B Direct-source-read routes need local-window query
+
+The provider route for exact source selectors should support a compact local
+window mode for file-level imports and nearby declarations.  The output should
+remain compact code, not line-numbered raw source.
+
+** 31.10-C Agent guide should name the no-index diff trap
+
+Provider guides should explicitly state:
+
+#+begin_example
+For untracked source files, do not use git diff --no-index to recover full
+content. Use <provider> search owner ... items or <provider> query ... --code.
+#+end_example

@@ -169,15 +169,12 @@
     "commands": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["prime", "owner", "text", "ingest", "checkChanged"],
+      "required": ["prime", "owner", "fzf", "ingest", "checkChanged"],
       "properties": {
         "prime": {
           "$ref": "#/$defs/commandTemplate"
         },
         "owner": {
-          "$ref": "#/$defs/commandTemplate"
-        },
-        "text": {
           "$ref": "#/$defs/commandTemplate"
         },
         "query": {
@@ -191,14 +188,21 @@
         },
         "guide": {
           "$ref": "#/$defs/commandTemplate"
+        },
+        "fzf": {
+          "$ref": "#/$defs/commandTemplate"
         }
       }
     },
     "commandTemplate": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["argv"],
+      "required": ["text", "argv"],
       "properties": {
+        "text": {
+          "type": "string",
+          "minLength": 1
+        },
         "argv": {
           "type": "array",
           "minItems": 1,

@@ -1,30 +1,30 @@
 ---
 name: agent-semantic-protocols
-description: Use when working with the language provider commands maintained by agent-semantic-protocols, including rs-harness, ts-harness, py-harness, the workspace-managed Julia provider, semantic-agent-hook installs, compact semantic search flow, and non-JSON agent command guidance.
+description: Use when working with the language provider binaries maintained by agent-semantic-protocols, including rs-harness, ts-harness, py-harness, julia-project-harness, semantic-agent-hook installs, compact semantic search flow, and non-JSON agent command guidance.
 ---
 
 # Agent Semantic Protocols
 
 ## Rules
 
-- Choose the provider command from the project language: Rust uses `rs-harness`, TypeScript uses `ts-harness`, Python uses `py-harness`.
-- Julia is workspace-managed, not a bin parity target. Do not design or require an installed/global Julia provider binary; LLVM/JIT warm-up makes that a poor short-lived agent surface. Use `julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl`.
-- Start with the selected provider command's `agent guide .` when unsure; it prints the provider-owned command menu.
+- Choose the bin from the project language: Rust uses `rs-harness`, TypeScript uses `ts-harness`, Python uses `py-harness`, Julia uses `julia-project-harness`.
+- In this workspace, Julia is workspace-managed: use `julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl`.
+- Start with `<bin> agent guide .` when unsure; it prints the provider-owned command menu.
 - Do not add `--json` during agent exploration. `--json` is only for schema tests, validators, receipts, or IDE integrations.
 - `semantic-agent-hook install --client codex .` installs hooks, profiles, and this skill at `.agents/skills/agent-semantic-protocols/SKILL.md`.
 
 ## Command Shapes
 
-- Map the project: `<provider> search prime --view seeds .`
-- Resolve an owner: `<provider> search owner <owner-path> --view seeds .`
-- Search local fuzzy text with tests: `<provider> search fzf <term> owner tests --view seeds .`
-- Search external API/deps: `<provider> search deps <dep[/subpath][@version][::api]> .`
-- Query parser items with compact code: `<provider> search owner <path> items --query '<symbol-or-a|b|c>' .`
-- Discover owner-local item names before code: `<provider> query <path> --term <candidate> --names-only .`
-- Follow a hook exact direct-read route: `<provider> query --from-hook direct-source-read --selector <path> .`
-- Follow a hook wildcard direct-read route: `<provider> search query --from-hook direct-source-read --selector <glob-or-path> --term <term> --surface owner,tests --view seeds .`
-- Pipe candidate lines: `rg -n '<term>' src tests | <provider> search ingest --view seeds .`
-- Check changed work: `<provider> check --changed .`
+- Map the project: `<bin> search prime --view seeds .`
+- Resolve an owner: `<bin> search owner <owner-path> --view seeds .`
+- Search local fuzzy text with tests: `<bin> search fzf <term> owner tests --view seeds .`
+- Search external API/deps: `<bin> search deps <dep[/subpath][@version][::api]> .`
+- Query parser items with compact code: `<bin> search owner <path> items --query '<symbol-or-a|b|c>' .`
+- Discover owner-local item names before code: `<bin> query <path> --term <candidate> --names-only .`
+- Follow a hook exact direct-read route: `<bin> query --from-hook direct-source-read --selector <path> .`
+- Follow a hook wildcard direct-read route: `<bin> search query --from-hook direct-source-read --selector <glob-or-path> --term <term> --surface owner,tests --view seeds .`
+- Pipe candidate lines: `rg -n '<term>' src tests | <bin> search ingest --view seeds .`
+- Check changed work: `<bin> check --changed .`
 
 Hook rule of thumb: source-suffix reads and content dumps are denied; exact
 source paths should follow the provider `query --from-hook direct-source-read`
@@ -36,8 +36,8 @@ to `search ingest`; non-source docs/README/markdown searches should be allowed.
 When the provider guide advertises handle-aware search, use it before code for
 stable non-code facts such as policy rule ids, schema fixtures, test cases,
 config keys, command surfaces, dependency APIs, or capabilities:
-`<provider> search policy <rule-id-or-alias> owner tests --view seeds .` or
-`<provider> search owner <owner-path> handles --query <term> .`
+`<bin> search policy <rule-id-or-alias> owner tests --view seeds .` or
+`<bin> search owner <owner-path> handles --query <term> .`
 
 Owner item query output includes a `|query` line with `status=hit|miss` and
 `match=exact|fallback-contains|none`. Treat `status=miss` as a wrong or stale
@@ -118,9 +118,8 @@ julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectH
 julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl check --changed languages/JuliaLangProjectHarness.jl
 ```
 
-Use the Julia workspace command exactly. Do not add or assume a global
-`julia-project-harness` binary for alignment work. The hook recognizes the full
-workspace command prefix, not bare `julia`.
+Use the Julia workspace command exactly when no global `julia-project-harness`
+binary exists. The hook recognizes the full command prefix, not bare `julia`.
 
 ## Combination Query Examples
 
@@ -135,7 +134,7 @@ For a hook-blocked wildcard read such as `Read *.ts`, use the hook query form
 when the selector is broad and the agent has concrete terms:
 
 ```sh
-<provider> search query --from-hook direct-source-read --selector '**/*.{ts,tsx,js}' --term parseSearchArgs --term querySets --surface owner,tests --view seeds .
+<bin> search query --from-hook direct-source-read --selector '**/*.{ts,tsx,js}' --term parseSearchArgs --term querySets --surface owner,tests --view seeds .
 ```
 
 This emits normal search seeds and synthesis; it is not a raw source-read

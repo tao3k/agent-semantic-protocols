@@ -11,19 +11,19 @@ fn search_json_routes_to_compact_search() {
         "pre-tool",
         &json!({
             "tool_name": "functions.exec_command",
-            "tool_input": {"cmd": "ts-harness search text projectRoot owner tests --json ."}
+            "tool_input": {"cmd": "ts-harness search fzf projectRoot owner tests --json ."}
         }),
     );
 
     assert_eq!(decision.decision, DecisionKind::Deny);
     assert_eq!(decision.reason_kind, ReasonKind::AgentSearchJson);
-    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Text);
+    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Fzf);
     assert_eq!(
         decision.routes[0].argv,
         [
             "ts-harness",
             "search",
-            "text",
+            "fzf",
             "projectRoot",
             "owner",
             "tests",
@@ -34,7 +34,7 @@ fn search_json_routes_to_compact_search() {
     );
     assert_eq!(
         decision.message,
-        "agent-search-json denied; route: ts-harness search text projectRoot owner tests --view seeds ."
+        "agent-search-json denied; route: ts-harness search fzf projectRoot owner tests --view seeds ."
     );
 }
 
@@ -79,7 +79,7 @@ fn patch_text_with_search_json_example_is_not_a_command() {
         "*** Update File: docs/example.org\n",
         "+",
         "ts-",
-        "harness search text projectRoot owner tests ",
+        "harness search fzf projectRoot owner tests ",
         "--",
         "json .\n",
         "*** End Patch\n"

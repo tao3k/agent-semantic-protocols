@@ -1,6 +1,8 @@
 use semantic_agent_hook::{ProfileRegistry, parse_profiles};
 use serde_json::json;
 
+use super::{command, command_with_stdin};
+
 mod direct_read;
 mod python_priority;
 mod raw_search;
@@ -19,12 +21,12 @@ fn registry_with_python() -> ProfileRegistry {
         "sourceRoots": ["src", "tests"],
         "ignoredPathPrefixes": [".venv", "__pycache__"],
         "commands": {
-            "prime": {"argv": ["py-harness", "search", "prime", "."]},
-            "owner": {"argv": ["py-harness", "search", "owner", "{path}", "."]},
-            "text": {"argv": ["py-harness", "search", "text", "{query}", "owner", "tests", "--view", "seeds", "."]},
-            "ingest": {"argv": ["py-harness", "search", "ingest", "."], "stdinMode": "pipe-candidates"},
-            "checkChanged": {"argv": ["py-harness", "check", "--changed", "."]},
-            "guide": {"argv": ["py-harness", "agent", "guide", "."]}
+            "prime": command(&["py-harness", "search", "prime", "."]),
+            "owner": command(&["py-harness", "search", "owner", "{path}", "."]),
+            "fzf": command(&["py-harness", "search", "fzf", "{query}", "owner", "tests", "--view", "seeds", "."]),
+            "ingest": command_with_stdin(&["py-harness", "search", "ingest", "."], "pipe-candidates"),
+            "checkChanged": command(&["py-harness", "check", "--changed", "."]),
+            "guide": command(&["py-harness", "agent", "guide", "."])
         }
     }));
     parse_profiles(&value.to_string()).unwrap()
@@ -42,12 +44,12 @@ fn registry_with_rust_and_python() -> ProfileRegistry {
         "sourceRoots": ["src", "tests", "crates"],
         "ignoredPathPrefixes": ["target"],
         "commands": {
-            "prime": {"argv": ["rs-harness", "search", "prime", "."]},
-            "owner": {"argv": ["rs-harness", "search", "owner", "{path}", "."]},
-            "text": {"argv": ["rs-harness", "search", "text", "{query}", "owner", "tests", "--view", "seeds", "."]},
-            "ingest": {"argv": ["rs-harness", "search", "ingest", "."], "stdinMode": "pipe-candidates"},
-            "checkChanged": {"argv": ["rs-harness", "check", "--changed", "."]},
-            "guide": {"argv": ["rs-harness", "agent", "guide", "."]}
+            "prime": command(&["rs-harness", "search", "prime", "."]),
+            "owner": command(&["rs-harness", "search", "owner", "{path}", "."]),
+            "fzf": command(&["rs-harness", "search", "fzf", "{query}", "owner", "tests", "--view", "seeds", "."]),
+            "ingest": command_with_stdin(&["rs-harness", "search", "ingest", "."], "pipe-candidates"),
+            "checkChanged": command(&["rs-harness", "check", "--changed", "."]),
+            "guide": command(&["rs-harness", "agent", "guide", "."])
         }
     }));
     value["profiles"].as_array_mut().unwrap().push(json!({
@@ -60,12 +62,12 @@ fn registry_with_rust_and_python() -> ProfileRegistry {
         "sourceRoots": ["src", "tests"],
         "ignoredPathPrefixes": [".venv", "__pycache__"],
         "commands": {
-            "prime": {"argv": ["py-harness", "search", "prime", "."]},
-            "owner": {"argv": ["py-harness", "search", "owner", "{path}", "."]},
-            "text": {"argv": ["py-harness", "search", "text", "{query}", "owner", "tests", "--view", "seeds", "."]},
-            "ingest": {"argv": ["py-harness", "search", "ingest", "."], "stdinMode": "pipe-candidates"},
-            "checkChanged": {"argv": ["py-harness", "check", "--changed", "."]},
-            "guide": {"argv": ["py-harness", "agent", "guide", "."]}
+            "prime": command(&["py-harness", "search", "prime", "."]),
+            "owner": command(&["py-harness", "search", "owner", "{path}", "."]),
+            "fzf": command(&["py-harness", "search", "fzf", "{query}", "owner", "tests", "--view", "seeds", "."]),
+            "ingest": command_with_stdin(&["py-harness", "search", "ingest", "."], "pipe-candidates"),
+            "checkChanged": command(&["py-harness", "check", "--changed", "."]),
+            "guide": command(&["py-harness", "agent", "guide", "."])
         }
     }));
     parse_profiles(&value.to_string()).unwrap()
@@ -88,12 +90,12 @@ fn registry_with_workspace_julia() -> ProfileRegistry {
         "sourceRoots": ["src", "test"],
         "ignoredPathPrefixes": [".git", ".julia"],
         "commands": {
-            "prime": {"argv": ["julia", "--project=languages/JuliaLangProjectHarness.jl", "languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl", "search", "prime", "--view", "seeds", "."]},
-            "owner": {"argv": ["julia", "--project=languages/JuliaLangProjectHarness.jl", "languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl", "search", "owner", "{path}", "--view", "seeds", "."]},
-            "text": {"argv": ["julia", "--project=languages/JuliaLangProjectHarness.jl", "languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl", "search", "text", "{query}", "owner", "tests", "--view", "seeds", "."]},
-            "ingest": {"argv": ["julia", "--project=languages/JuliaLangProjectHarness.jl", "languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl", "search", "ingest", "owner", "tests", "--view", "seeds", "."], "stdinMode": "pipe-candidates"},
-            "checkChanged": {"argv": ["julia", "--project=languages/JuliaLangProjectHarness.jl", "languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl", "check", "--changed", "."]},
-            "guide": {"argv": ["julia", "--project=languages/JuliaLangProjectHarness.jl", "languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl", "agent", "guide", "."]}
+            "prime": command(&["julia", "--project=languages/JuliaLangProjectHarness.jl", "languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl", "search", "prime", "--view", "seeds", "."]),
+            "owner": command(&["julia", "--project=languages/JuliaLangProjectHarness.jl", "languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl", "search", "owner", "{path}", "--view", "seeds", "."]),
+            "fzf": command(&["julia", "--project=languages/JuliaLangProjectHarness.jl", "languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl", "search", "fzf", "{query}", "owner", "tests", "--view", "seeds", "."]),
+            "ingest": command_with_stdin(&["julia", "--project=languages/JuliaLangProjectHarness.jl", "languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl", "search", "ingest", "owner", "tests", "--view", "seeds", "."], "pipe-candidates"),
+            "checkChanged": command(&["julia", "--project=languages/JuliaLangProjectHarness.jl", "languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl", "check", "--changed", "."]),
+            "guide": command(&["julia", "--project=languages/JuliaLangProjectHarness.jl", "languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl", "agent", "guide", "."])
         }
     }));
     parse_profiles(&value.to_string()).unwrap()

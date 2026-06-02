@@ -1,6 +1,7 @@
 //! Shared semantic agent hook protocol models and renderers.
 
 use globset::{GlobBuilder, GlobSet, GlobSetBuilder};
+use serde::de;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -19,7 +20,7 @@ pub const HOOK_PROTOCOL_ID: &str = "agent.semantic-protocols.agent-hooks";
 pub const HOOK_PROTOCOL_VERSION: &str = "1";
 
 #[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 /// Root registry of language hook profiles consumed by `semantic-agent-hook`.
 pub struct ProfileRegistry {
     pub schema_id: String,
@@ -31,7 +32,7 @@ pub struct ProfileRegistry {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 /// Language-owned policy and command descriptors used by the root hook runtime.
 pub struct LanguageProfile {
     pub language_id: String,
@@ -66,7 +67,7 @@ pub(crate) struct ProfileSelectorMatch<'a> {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 /// Policy switches that control how the root hook classifier handles a provider.
 pub struct HookPolicy {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -142,12 +143,12 @@ fn default_true() -> bool {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 /// Command templates that route denied tool use into semantic search.
 pub struct HookCommands {
     pub prime: CommandTemplate,
     pub owner: CommandTemplate,
-    pub text: CommandTemplate,
+    pub fzf: CommandTemplate,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub query: Option<CommandTemplate>,
     pub ingest: CommandTemplate,
@@ -157,11 +158,17 @@ pub struct HookCommands {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 /// Argument template for a provider-owned semantic search command.
 pub struct CommandTemplate {
+    /// Agent-readable command text for flow guides and diagnostics.
+    pub text: String,
     pub argv: Vec<String>,
-    #[serde(default)]
+    #[serde(
+        default,
+        deserialize_with = "deserialize_optional_stdin_mode",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub stdin_mode: Option<StdinMode>,
 }
 
@@ -214,6 +221,19 @@ pub enum StdinMode {
     Unknown,
 }
 
+fn deserialize_optional_stdin_mode<'de, D>(deserializer: D) -> Result<Option<StdinMode>, D::Error>
+where
+    D: de::Deserializer<'de>,
+{
+    let value = Value::deserialize(deserializer)?;
+    if value.is_null() {
+        return Err(de::Error::custom("stdinMode must be omitted, not null"));
+    }
+    serde_json::from_value(value)
+        .map(Some)
+        .map_err(de::Error::custom)
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 /// Semantic route kind suggested by a hook denial.
@@ -221,7 +241,7 @@ pub enum DecisionRouteKind {
     Prime,
     Owner,
     Query,
-    Text,
+    Fzf,
     Read,
     Deps,
     Api,
@@ -455,7 +475,7 @@ impl LanguageProfile {
             binary: self.binary.clone(),
             kind,
             argv,
-            stdin_mode: template.stdin_mode.clone(),
+            stdin_mode: template.stdin_mode,
         }
     }
 }
@@ -525,7 +545,22 @@ fn build_glob_set(pattern: &str) -> Option<GlobSet> {
 }
 
 pub(crate) fn normalize_source_selector(selector: &str) -> &str {
-    strip_line_locator(selector.trim_start_matches("./"))
+    let selector = selector.trim_start_matches("./");
+    let selector = strip_display_rank_prefix(selector);
+    strip_line_locator(selector)
+}
+
+fn strip_display_rank_prefix(selector: &str) -> &str {
+    let Some((rank, path)) = selector.split_once(':') else {
+        return selector;
+    };
+    if rank.is_empty()
+        || path.is_empty()
+        || !rank.chars().all(|character| character.is_ascii_digit())
+    {
+        return selector;
+    }
+    path
 }
 
 fn strip_line_locator(selector: &str) -> &str {

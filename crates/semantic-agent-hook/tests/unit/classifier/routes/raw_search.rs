@@ -17,7 +17,7 @@ fn broad_raw_search_routes_to_hook_query() {
 
     assert_eq!(decision.decision, DecisionKind::Deny);
     assert_eq!(decision.reason_kind, ReasonKind::RawBroadSearch);
-    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Text);
+    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Fzf);
     assert_eq!(
         decision.routes[0].argv,
         [
@@ -125,7 +125,7 @@ fn raw_regex_alternation_routes_to_query_terms() {
 
     assert_eq!(decision.decision, DecisionKind::Deny);
     assert_eq!(decision.reason_kind, ReasonKind::RawBroadSearch);
-    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Text);
+    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Fzf);
     assert_eq!(
         decision.routes[0].argv,
         [
@@ -170,7 +170,7 @@ fn raw_search_pattern_flags_route_to_query_terms() {
 
         assert_eq!(decision.decision, DecisionKind::Deny, "{command}");
         assert_eq!(decision.reason_kind, ReasonKind::RawBroadSearch);
-        assert_eq!(decision.routes[0].kind, DecisionRouteKind::Text);
+        assert_eq!(decision.routes[0].kind, DecisionRouteKind::Fzf);
         assert!(
             decision.routes[0]
                 .argv
@@ -195,7 +195,7 @@ fn fd_filename_query_routes_to_hook_query() {
 
     assert_eq!(decision.decision, DecisionKind::Deny);
     assert_eq!(decision.reason_kind, ReasonKind::RawBroadSearch);
-    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Text);
+    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Fzf);
     assert!(
         decision.routes[0]
             .argv

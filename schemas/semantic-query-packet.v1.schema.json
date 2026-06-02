@@ -77,9 +77,9 @@
         "minLength": 1
       }
     },
-    "matchMode": {
-      "enum": ["exact", "fallback-contains", "mixed", "unknown"]
-    },
+      "matchMode": {
+        "enum": ["exact", "fallback-contains", "candidate", "mixed", "unknown"]
+      },
     "outputMode": {
       "description": "Agent-facing rendering mode for matches. Code mode includes compact code; names and outline modes may omit code.",
       "enum": ["code", "names", "outline"]

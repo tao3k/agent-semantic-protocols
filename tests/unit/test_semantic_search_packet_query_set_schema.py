@@ -24,7 +24,7 @@ def semantic_search_query_set_minimal_packet() -> dict[str, object]:
         "namespace": "agent.semantic-protocols.languages.typescript.ts-harness",
         "method": "search/fzf",
         "projectRoot": ".",
-        "view": "text",
+        "view": "fzf",
         "renderMode": "seeds",
         "header": {"kind": "search-fzf", "fields": {}},
         "nodes": [],
@@ -48,7 +48,7 @@ class SemanticSearchPacketQuerySetSchemaTests(unittest.TestCase):
     def validation_errors(self, packet: dict[str, object]) -> list[str]:
         return [error.message for error in self.validator.iter_errors(packet)]
 
-    def test_text_query_set_can_classify_fixture_hits_and_avoid_false_owner(
+    def test_fzf_query_set_can_classify_fixture_hits_and_avoid_false_owner(
         self,
     ) -> None:
         packet = semantic_search_query_set_minimal_packet()
@@ -58,7 +58,7 @@ class SemanticSearchPacketQuerySetSchemaTests(unittest.TestCase):
         ]
         packet["queryComposition"] = {
             "mode": "query-set",
-            "view": "text",
+            "view": "fzf",
             "selector": "exact-set",
             "scope": {"projectRoot": "."},
             "merge": ["owners", "hits", "nextActions", "notes"],
@@ -113,8 +113,8 @@ class SemanticSearchPacketQuerySetSchemaTests(unittest.TestCase):
             "scope": "query-set",
             "summary": "fixture string points at protocol CLI implementation axis",
             "seeds": [
-                {"kind": "text", "target": "runProtocolCli"},
-                {"kind": "text", "target": "parseProtocolArgs"},
+                {"kind": "symbol", "target": "runProtocolCli"},
+                {"kind": "symbol", "target": "parseProtocolArgs"},
                 {"kind": "owner", "target": "src/cli/protocol.ts"},
             ],
         }
@@ -136,7 +136,7 @@ class SemanticSearchPacketQuerySetSchemaTests(unittest.TestCase):
         ]
         packet["queryComposition"] = {
             "mode": "query-set",
-            "view": "text",
+            "view": "fzf",
             "selector": "exact-set",
             "merge": ["owners", "notes", "nextActions"],
         }

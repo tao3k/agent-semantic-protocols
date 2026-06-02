@@ -18,8 +18,12 @@ pub(crate) fn search_query_route(
     profile: &LanguageProfile,
     terms: &[String],
 ) -> Option<DecisionRoute> {
-    let template = profile.commands.query.as_ref()?;
     let selector = profile_source_selector(profile);
+    let template = profile
+        .commands
+        .query
+        .as_ref()
+        .unwrap_or(&profile.commands.fzf);
     let argv = template
         .argv
         .iter()
@@ -29,9 +33,9 @@ pub(crate) fn search_query_route(
         language_id: profile.language_id.clone(),
         provider_id: profile.provider_id.clone(),
         binary: profile.binary.clone(),
-        kind: DecisionRouteKind::Text,
+        kind: DecisionRouteKind::Fzf,
         argv,
-        stdin_mode: template.stdin_mode.clone(),
+        stdin_mode: template.stdin_mode,
     })
 }
 
@@ -42,8 +46,10 @@ fn expand_query_arg(arg: &str, selector: &str, terms: &[String]) -> Vec<String> 
             .flat_map(|term| ["--term".to_string(), term.clone()])
             .collect();
     }
+    let query = terms.join(",");
     vec![
         arg.replace("{selector}", selector)
+            .replace("{query}", &query)
             .replace("{projectRoot}", "."),
     ]
 }

@@ -9,6 +9,21 @@ mod profile_registry;
 mod raw_search_policy;
 mod routes;
 
+pub(crate) fn command(argv: &[&str]) -> Value {
+    json!({
+        "text": argv.join(" "),
+        "argv": argv,
+    })
+}
+
+pub(crate) fn command_with_stdin(argv: &[&str], stdin_mode: &str) -> Value {
+    json!({
+        "text": argv.join(" "),
+        "argv": argv,
+        "stdinMode": stdin_mode,
+    })
+}
+
 pub(super) fn registry_value() -> Value {
     json!({
         "schemaId": PROFILE_REGISTRY_SCHEMA_ID,
@@ -26,13 +41,13 @@ pub(super) fn registry_value() -> Value {
             "sourceRoots": ["src", "tests"],
             "ignoredPathPrefixes": ["node_modules", "dist"],
             "commands": {
-                "prime": {"argv": ["ts-harness", "search", "prime", "."]},
-                "owner": {"argv": ["ts-harness", "search", "owner", "{path}", "items", "--query", "{query}", "."]},
-                "text": {"argv": ["ts-harness", "search", "text", "{query}", "owner", "tests", "--view", "seeds", "."]},
-                "query": {"argv": ["ts-harness", "search", "query", "--from-hook", "direct-source-read", "--selector", "{selector}", "{termArgs}", "--surface", "owner,tests", "--view", "seeds", "."]},
-                "ingest": {"argv": ["ts-harness", "search", "ingest", "owner", "tests", "--view", "seeds", "."], "stdinMode": "pipe-candidates"},
-                "checkChanged": {"argv": ["ts-harness", "check", "--changed", "."]},
-                "guide": {"argv": ["ts-harness", "agent", "guide", "."]}
+                "prime": command(&["ts-harness", "search", "prime", "."]),
+                "owner": command(&["ts-harness", "search", "owner", "{path}", "items", "--query", "{query}", "."]),
+                "fzf": command(&["ts-harness", "search", "fzf", "{query}", "owner", "tests", "--view", "seeds", "."]),
+                "query": command(&["ts-harness", "search", "query", "--from-hook", "direct-source-read", "--selector", "{selector}", "{termArgs}", "--surface", "owner,tests", "--view", "seeds", "."]),
+                "ingest": command_with_stdin(&["ts-harness", "search", "ingest", "owner", "tests", "--view", "seeds", "."], "pipe-candidates"),
+                "checkChanged": command(&["ts-harness", "check", "--changed", "."]),
+                "guide": command(&["ts-harness", "agent", "guide", "."])
             }
         }]
     })

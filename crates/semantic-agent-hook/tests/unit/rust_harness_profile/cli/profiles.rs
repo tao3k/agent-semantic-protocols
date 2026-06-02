@@ -4,7 +4,7 @@ use semantic_agent_hook::parse_profiles;
 use serde_json::json;
 
 use crate::rust_harness_profile::support::{
-    root_owned_rust_profile_registry_json, temp_project_root,
+    command, command_with_stdin, root_owned_rust_profile_registry_json, temp_project_root,
 };
 
 #[test]
@@ -32,12 +32,12 @@ fn cli_profiles_merge_writes_combined_registry() {
                 "sourceRoots": ["src", "tests"],
                 "ignoredPathPrefixes": [".venv", "__pycache__"],
                 "commands": {
-                    "prime": {"argv": ["py-harness", "search", "prime", "."]},
-                    "owner": {"argv": ["py-harness", "search", "owner", "{path}", "."]},
-                    "text": {"argv": ["py-harness", "search", "text", "{query}", "owner", "tests", "--view", "seeds", "."]},
-                    "ingest": {"argv": ["py-harness", "search", "ingest", "."], "stdinMode": "pipe-candidates"},
-                    "checkChanged": {"argv": ["py-harness", "check", "--changed", "."]},
-                    "guide": {"argv": ["py-harness", "agent", "guide", "."]}
+                    "prime": command(&["py-harness", "search", "prime", "."]),
+                    "owner": command(&["py-harness", "search", "owner", "{path}", "."]),
+                    "fzf": command(&["py-harness", "search", "fzf", "{query}", "owner", "tests", "--view", "seeds", "."]),
+                    "ingest": command_with_stdin(&["py-harness", "search", "ingest", "."], "pipe-candidates"),
+                    "checkChanged": command(&["py-harness", "check", "--changed", "."]),
+                    "guide": command(&["py-harness", "agent", "guide", "."])
                 }
             }]
         }))

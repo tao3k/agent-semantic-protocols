@@ -13,6 +13,13 @@ from jsonschema import Draft202012Validator
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
+def command(argv: list[str], stdin_mode: str | None = None) -> dict[str, object]:
+    template: dict[str, object] = {"text": " ".join(argv), "argv": argv}
+    if stdin_mode is not None:
+        template["stdinMode"] = stdin_mode
+    return template
+
+
 def minimal_registry() -> dict[str, object]:
     return {
         "schemaId": "agent.semantic-protocols.semantic-agent-hook-profile-registry",
@@ -41,15 +48,15 @@ def minimal_registry() -> dict[str, object]:
                     "requirePrimeBeforeEdit": True,
                 },
                 "commands": {
-                    "prime": {"argv": ["ts-harness", "search", "prime", "."]},
-                    "owner": {
-                        "argv": ["ts-harness", "search", "owner", "{path}", "."]
-                    },
-                    "text": {
-                        "argv": [
+                    "prime": command(["ts-harness", "search", "prime", "."]),
+                    "owner": command(
+                        ["ts-harness", "search", "owner", "{path}", "."]
+                    ),
+                    "fzf": command(
+                        [
                             "ts-harness",
                             "search",
-                            "text",
+                            "fzf",
                             "{query}",
                             "owner",
                             "tests",
@@ -57,9 +64,9 @@ def minimal_registry() -> dict[str, object]:
                             "seeds",
                             ".",
                         ]
-                    },
-                    "ingest": {
-                        "argv": [
+                    ),
+                    "ingest": command(
+                        [
                             "ts-harness",
                             "search",
                             "ingest",
@@ -69,12 +76,12 @@ def minimal_registry() -> dict[str, object]:
                             "seeds",
                             ".",
                         ],
-                        "stdinMode": "pipe-candidates",
-                    },
-                    "checkChanged": {
-                        "argv": ["ts-harness", "check", "--changed", "."]
-                    },
-                    "guide": {"argv": ["ts-harness", "agent", "guide", "."]},
+                        "pipe-candidates",
+                    ),
+                    "checkChanged": command(
+                        ["ts-harness", "check", "--changed", "."]
+                    ),
+                    "guide": command(["ts-harness", "agent", "guide", "."]),
                 },
             }
         ],
@@ -131,6 +138,26 @@ class SemanticAgentHookProfileSchemaTests(unittest.TestCase):
 
         self.assertTrue(any("'ingest' is a required property" in message for message in errors))
 
+    def test_command_templates_require_agent_text(self) -> None:
+        registry = minimal_registry()
+        profile = copy.deepcopy(registry["profiles"][0])
+        del profile["commands"]["prime"]["text"]
+        registry["profiles"] = [profile]
+
+        errors = self.validation_errors(registry)
+
+        self.assertTrue(any("'text' is a required property" in message for message in errors))
+
+    def test_legacy_text_route_is_rejected(self) -> None:
+        registry = minimal_registry()
+        profile = copy.deepcopy(registry["profiles"][0])
+        profile["commands"]["text"] = profile["commands"].pop("fzf")
+        registry["profiles"] = [profile]
+
+        errors = self.validation_errors(registry)
+
+        self.assertTrue(any("'fzf' is a required property" in message for message in errors))
+
     def test_guide_command_remains_optional_for_legacy_profiles(self) -> None:
         registry = minimal_registry()
         profile = copy.deepcopy(registry["profiles"][0])
@@ -148,6 +175,19 @@ class SemanticAgentHookProfileSchemaTests(unittest.TestCase):
         errors = self.validation_errors(registry)
 
         self.assertTrue(any("'warn' is not one of" in message for message in errors))
+
+    def test_provider_profile_resources_are_canonical(self) -> None:
+        profile_paths = sorted(
+            _REPO_ROOT.glob(
+                "languages/**/semantic-agent-hook-profile.*.v1.json"
+            )
+        )
+        self.assertGreater(len(profile_paths), 0)
+        for path in profile_paths:
+            with self.subTest(path=str(path.relative_to(_REPO_ROOT))):
+                with path.open("r", encoding="utf-8") as handle:
+                    registry = json.load(handle)
+                self.assertEqual([], self.validation_errors(registry))
 
 
 if __name__ == "__main__":
