@@ -1,13 +1,12 @@
-use semantic_agent_hook::{DecisionKind, ReasonKind, classify_hook, parse_profiles};
+use semantic_agent_hook::{ActionPolicy, DecisionKind, ReasonKind, classify_hook};
 use serde_json::json;
 
-use crate::classifier::registry_value;
+use crate::classifier::registry;
 
 #[test]
 fn action_policy_can_allow_direct_source_read_without_disabling_other_policies() {
-    let mut value = registry_value();
-    value["profiles"][0]["policy"]["directSourceRead"] = json!("allow");
-    let registry = parse_profiles(&value.to_string()).unwrap();
+    let mut registry = registry();
+    registry.providers[0].policy.direct_source_read = ActionPolicy::Allow;
 
     let read_decision = classify_hook(
         &registry,

@@ -1,0 +1,39 @@
+{
+  "schemaId": "agent.semantic-protocols.parser-compact-case",
+  "schemaVersion": "1",
+  "caseId": "error-handling-basic",
+  "variantId": "python",
+  "languageId": "python",
+  "providerId": "py-harness",
+  "featureClass": "error-handling",
+  "fixtureRoot": "tests/fixtures/parser-compact/projects/error-handling/error-handling-basic/python",
+  "rawSourcePath": "src/score.py",
+  "lineCommand": [
+    "uv",
+    "run",
+    "--project",
+    "{repoRoot}/languages/python-lang-project-harness",
+    "--frozen",
+    "py-harness",
+    "query",
+    "src/score.py",
+    "--term",
+    "parse_score",
+    "--code",
+    "."
+  ],
+  "jsonCommand": [
+    "uv",
+    "run",
+    "--project",
+    "{repoRoot}/languages/python-lang-project-harness",
+    "--frozen",
+    "py-harness",
+    "query",
+    "src/score.py",
+    "--term",
+    "parse_score",
+    "--json",
+    "."
+  ]
+}

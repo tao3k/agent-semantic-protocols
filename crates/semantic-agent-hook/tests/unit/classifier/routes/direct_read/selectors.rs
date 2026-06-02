@@ -31,7 +31,7 @@ fn structured_direct_read_source_glob_routes_to_prime() {
 }
 
 #[test]
-fn structured_direct_read_language_globs_route_to_profile_prime() {
+fn structured_direct_read_language_globs_route_to_provider_prime() {
     for (selector, language_id, binary) in [
         ("*.rs", "rust", "rs-harness"),
         ("*.ts", "typescript", "ts-harness"),
@@ -104,7 +104,33 @@ fn structured_direct_read_globs_without_suffix_are_not_language_evidence() {
 }
 
 #[test]
-fn structured_direct_read_brace_glob_routes_to_all_matching_profiles() {
+fn exact_direct_read_source_suffixes_route_by_language() {
+    for (selector, language_id, binary) in [
+        ("lib.rs", "rust", "rs-harness"),
+        ("main.ts", "typescript", "ts-harness"),
+        ("main.js", "typescript", "ts-harness"),
+        ("test_receipt_token_cost.py", "python", "py-harness"),
+    ] {
+        let decision = classify_hook(
+            &registry_with_rust_and_python(),
+            "codex",
+            "pre-tool",
+            &json!({
+                "tool_name": "Read",
+                "tool_input": {"path": selector}
+            }),
+        );
+
+        assert_eq!(decision.decision, DecisionKind::Deny, "{selector}");
+        assert_eq!(decision.reason_kind, ReasonKind::DirectSourceRead);
+        assert_eq!(decision.language_ids, [language_id.to_string()]);
+        assert_eq!(decision.routes[0].kind, DecisionRouteKind::Query);
+        assert_eq!(decision.routes[0].binary, binary, "{selector}");
+    }
+}
+
+#[test]
+fn structured_direct_read_brace_glob_routes_to_all_matching_providers() {
     let decision = classify_hook(
         &registry_with_rust_and_python(),
         "codex",

@@ -1,6 +1,10 @@
-use crate::protocol::{LanguageProfile, ProfileRegistry};
+use crate::protocol_activation::{ActivatedProvider, HookRuntime};
+use crate::source_selector::{
+    provider_matches_source_extension, provider_matches_source_type, push_source_extension,
+    selector_has_glob,
+};
 
-use super::profiles::push_profile_once;
+use super::provider_candidates::push_provider_once;
 use super::shell::{command_name, is_separator};
 
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -23,7 +27,7 @@ struct RawSearchScope {
 }
 
 pub(crate) struct RawSearchPlan<'a> {
-    pub(crate) profiles: Vec<&'a LanguageProfile>,
+    pub(crate) providers: Vec<&'a ActivatedProvider>,
     pub(crate) terms: Vec<String>,
 }
 
@@ -33,7 +37,7 @@ struct ParsedRawSearch {
 }
 
 pub(crate) fn raw_search_plan<'a>(
-    registry: &'a ProfileRegistry,
+    registry: &'a HookRuntime,
     tokens: &[String],
 ) -> Option<RawSearchPlan<'a>> {
     if filters_provider_command_output(registry, tokens) {
@@ -41,12 +45,12 @@ pub(crate) fn raw_search_plan<'a>(
     }
     let parsed = ParsedRawSearch::from_tokens(tokens)?;
     Some(RawSearchPlan {
-        profiles: parsed.scope.matching_profiles(registry),
+        providers: parsed.scope.matching_providers(registry),
         terms: parsed.terms,
     })
 }
 
-fn filters_provider_command_output(registry: &ProfileRegistry, tokens: &[String]) -> bool {
+fn filters_provider_command_output(registry: &HookRuntime, tokens: &[String]) -> bool {
     let mut previous_stage: Option<&[String]> = None;
     let mut separator_before_stage: Option<&str> = None;
     let mut start = 0;
@@ -76,15 +80,15 @@ fn filters_provider_command_output(registry: &ProfileRegistry, tokens: &[String]
     false
 }
 
-fn is_provider_command_stage(registry: &ProfileRegistry, stage: &[String]) -> bool {
+fn is_provider_command_stage(registry: &HookRuntime, stage: &[String]) -> bool {
     let Some(command) = stage.first().map(|token| command_name(token)) else {
         return false;
     };
-    registry.profiles.iter().any(|profile| {
-        if profile.provider_command_prefix.is_empty() {
-            profile.binary == command
+    registry.providers.iter().any(|provider| {
+        if provider.provider_command_prefix.is_empty() {
+            provider.binary == command
         } else {
-            stage_matches_provider_prefix(stage, &profile.provider_command_prefix)
+            stage_matches_provider_prefix(stage, &provider.provider_command_prefix)
         }
     })
 }
@@ -517,77 +521,77 @@ impl RawSearchScope {
         self.paths.dedup();
     }
 
-    fn matching_profiles<'a>(&self, registry: &'a ProfileRegistry) -> Vec<&'a LanguageProfile> {
-        let mut profiles = Vec::new();
-        self.push_language_filter_profiles(registry, &mut profiles);
+    fn matching_providers<'a>(&self, registry: &'a HookRuntime) -> Vec<&'a ActivatedProvider> {
+        let mut providers = Vec::new();
+        self.push_language_filter_providers(registry, &mut providers);
 
         if self.has_language_filter() {
-            if profiles.is_empty() {
-                self.push_explicit_source_path_profiles(registry, &mut profiles);
+            if providers.is_empty() {
+                self.push_explicit_source_path_providers(registry, &mut providers);
             }
-            return profiles;
+            return providers;
         }
 
         if self.implicit_workspace || self.paths.iter().any(|path| is_workspace_root(path)) {
-            return registry.profiles.iter().collect();
+            return registry.providers.iter().collect();
         }
 
-        self.push_path_profiles(registry, &mut profiles);
-        profiles
+        self.push_path_providers(registry, &mut providers);
+        providers
     }
 
-    fn push_language_filter_profiles<'a>(
+    fn push_language_filter_providers<'a>(
         &self,
-        registry: &'a ProfileRegistry,
-        profiles: &mut Vec<&'a LanguageProfile>,
+        registry: &'a HookRuntime,
+        providers: &mut Vec<&'a ActivatedProvider>,
     ) {
-        for profile in &registry.profiles {
+        for provider in &registry.providers {
             if self
                 .extensions
                 .iter()
-                .any(|extension| profile_matches_extension(profile, extension))
+                .any(|extension| provider_matches_source_extension(provider, extension))
                 || self
                     .types
                     .iter()
-                    .any(|target_type| profile_matches_type(profile, target_type))
+                    .any(|target_type| provider_matches_source_type(provider, target_type))
             {
-                push_profile_once(profiles, profile);
+                push_provider_once(providers, provider);
             }
         }
         for glob in &self.globs {
-            for matched in registry.profiles_for_selector(glob) {
-                push_profile_once(profiles, matched.profile);
+            for matched in registry.providers_for_selector(glob) {
+                push_provider_once(providers, matched.provider);
             }
         }
     }
 
-    fn push_explicit_source_path_profiles<'a>(
+    fn push_explicit_source_path_providers<'a>(
         &self,
-        registry: &'a ProfileRegistry,
-        profiles: &mut Vec<&'a LanguageProfile>,
+        registry: &'a HookRuntime,
+        providers: &mut Vec<&'a ActivatedProvider>,
     ) {
         for path in &self.paths {
-            for matched in registry.profiles_for_selector(path) {
-                push_profile_once(profiles, matched.profile);
+            for matched in registry.providers_for_selector(path) {
+                push_provider_once(providers, matched.provider);
             }
         }
     }
 
-    fn push_path_profiles<'a>(
+    fn push_path_providers<'a>(
         &self,
-        registry: &'a ProfileRegistry,
-        profiles: &mut Vec<&'a LanguageProfile>,
+        registry: &'a HookRuntime,
+        providers: &mut Vec<&'a ActivatedProvider>,
     ) {
         for path in &self.paths {
-            for matched in registry.profiles_for_selector(path) {
-                push_profile_once(profiles, matched.profile);
+            for matched in registry.providers_for_selector(path) {
+                push_provider_once(providers, matched.provider);
             }
-            for profile in registry
-                .profiles
+            for provider in registry
+                .providers
                 .iter()
-                .filter(|profile| profile.matches_search_token(path))
+                .filter(|provider| provider.matches_search_token(path))
             {
-                push_profile_once(profiles, profile);
+                push_provider_once(providers, provider);
             }
         }
     }
@@ -651,33 +655,11 @@ fn is_workspace_root(path: &str) -> bool {
     matches!(path, "." | "./")
 }
 
-fn profile_matches_extension(profile: &LanguageProfile, extension: &str) -> bool {
-    profile
-        .source_extensions
-        .iter()
-        .any(|source| source == extension)
-}
-
-fn profile_matches_type(profile: &LanguageProfile, target_type: &str) -> bool {
-    target_type == profile.language_id
-        || target_type == profile.namespace
-        || profile
-            .source_extensions
-            .iter()
-            .any(|source| source.trim_start_matches('.') == target_type)
-}
-
 fn push_source_selector(scope: &mut RawSearchScope, token: &str, allow_bare_extension: bool) {
-    push_extension(&mut scope.extensions, token, allow_bare_extension);
+    push_source_extension(&mut scope.extensions, token, allow_bare_extension);
     if selector_has_glob(token) {
         scope.globs.push(token.to_string());
     }
-}
-
-fn selector_has_glob(token: &str) -> bool {
-    token
-        .chars()
-        .any(|character| matches!(character, '*' | '?' | '[' | ']' | '{' | '}'))
 }
 
 fn push_type(types: &mut Vec<String>, token: &str) {
@@ -691,45 +673,5 @@ fn push_type(types: &mut Vec<String>, token: &str) {
         })
     {
         types.push(clean);
-    }
-}
-
-fn push_extension(extensions: &mut Vec<String>, token: &str, allow_bare: bool) {
-    let clean = token
-        .trim_matches(|character| matches!(character, '\'' | '"' | ',' | ';'))
-        .trim_start_matches('*')
-        .to_ascii_lowercase();
-    if let Some(start) = clean.find(".{")
-        && let Some(end) = clean[start + 2..].find('}')
-    {
-        for extension in clean[start + 2..start + 2 + end].split(',') {
-            if !extension.is_empty()
-                && extension
-                    .chars()
-                    .all(|character| character.is_ascii_alphanumeric())
-            {
-                extensions.push(format!(".{extension}"));
-            }
-        }
-        return;
-    }
-    let clean = clean.trim_start_matches('{').trim_end_matches('}');
-    if allow_bare
-        && clean
-            .chars()
-            .all(|character| character.is_ascii_alphanumeric())
-    {
-        extensions.push(format!(".{clean}"));
-        return;
-    }
-    if let Some((_, extension)) = clean.rsplit_once('.') {
-        let extension = extension.trim_end_matches('}');
-        if !extension.is_empty()
-            && extension
-                .chars()
-                .all(|character| character.is_ascii_alphanumeric())
-        {
-            extensions.push(format!(".{extension}"));
-        }
     }
 }

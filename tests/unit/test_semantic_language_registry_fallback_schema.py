@@ -6,12 +6,12 @@ from pathlib import Path
 from jsonschema import Draft202012Validator
 
 
-ROOT = Path(__file__).resolve().parents[2]
+_ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_registry_schema_accepts_owner_item_query_fallback_descriptor() -> None:
     schema = json.loads(
-        (ROOT / "schemas" / "semantic-language-registry.v1.schema.json").read_text()
+        (_ROOT / "schemas" / "semantic-language-registry.v1.schema.json").read_text()
     )
     registry = {
         "registryId": "agent.semantic-protocols.semantic-language-registry",

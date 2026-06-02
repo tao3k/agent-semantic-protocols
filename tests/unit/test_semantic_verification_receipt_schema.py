@@ -1,3 +1,5 @@
+"""Validate the semantic verification receipt schema contract."""
+
 from __future__ import annotations
 
 import json
@@ -6,15 +8,15 @@ from pathlib import Path
 from jsonschema import Draft202012Validator
 
 
-ROOT = Path(__file__).resolve().parents[2]
+_ROOT = Path(__file__).resolve().parents[2]
 
 
-def load_schema(name: str) -> dict:
-    return json.loads((ROOT / "schemas" / name).read_text(encoding="utf-8"))
+def _load_schema(name: str) -> dict:
+    return json.loads((_ROOT / "schemas" / name).read_text(encoding="utf-8"))
 
 
 def test_verification_receipt_schema_accepts_cargo_check_adapter_receipt() -> None:
-    schema = load_schema("semantic-verification-receipt.v1.schema.json")
+    schema = _load_schema("semantic-verification-receipt.v1.schema.json")
     validator = Draft202012Validator(schema)
 
     validator.validate(
@@ -59,7 +61,7 @@ def test_verification_receipt_schema_accepts_cargo_check_adapter_receipt() -> No
 
 
 def test_verification_receipt_schema_lists_p1_and_future_adapters() -> None:
-    schema = load_schema("semantic-verification-receipt.v1.schema.json")
+    schema = _load_schema("semantic-verification-receipt.v1.schema.json")
     tool_values = schema["$defs"]["tool"]["enum"]
 
     assert tool_values[:4] == ["cargo-check", "cargo-test", "clippy", "expect-test"]

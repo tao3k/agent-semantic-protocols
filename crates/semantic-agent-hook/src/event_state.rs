@@ -10,10 +10,10 @@ use crate::protocol::HookDecision;
 pub(crate) const HOOK_EVENT_STATE_FILE: &str = "events.jsonl";
 
 pub(crate) fn append_hook_event_state(
-    profiles_path: &Path,
+    activation_path: &Path,
     decision: &HookDecision,
 ) -> Result<PathBuf, String> {
-    let state_dir = profiles_path.parent().unwrap_or_else(|| Path::new("."));
+    let state_dir = activation_path.parent().unwrap_or_else(|| Path::new("."));
     fs::create_dir_all(state_dir).map_err(|error| {
         format!(
             "failed to create hook state dir {}: {error}",

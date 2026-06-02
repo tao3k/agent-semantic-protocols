@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-dev-active-context.v1.schema.json",
+  "title": "Semantic Dev Active Context",
+  "description": "Short-lived development marker written by agent hook runtimes so direct provider CLI commands can inherit the latest hook/session context.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "writtenAtUtc",
+    "ttlSeconds",
+    "projectRoot",
+    "projectRootHash",
+    "platform",
+    "event",
+    "decision",
+    "sessionId",
+    "parentEventId"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.dev-active-context"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "writtenAtUtc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "ttlSeconds": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 86400
+    },
+    "projectRoot": {
+      "type": "string",
+      "minLength": 1
+    },
+    "projectRootHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{16,64}$"
+    },
+    "platform": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "event": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "decision": {
+      "enum": [
+        "allow",
+        "deny",
+        "unknown"
+      ]
+    },
+    "sessionId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "parentEventId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "hookRunId": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1
+    }
+  }
+}

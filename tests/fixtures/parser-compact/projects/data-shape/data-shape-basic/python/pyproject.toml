@@ -1,0 +1,4 @@
+[project]
+name = "parser-compact-data-shape-python"
+version = "0.1.0"
+requires-python = ">=3.11"

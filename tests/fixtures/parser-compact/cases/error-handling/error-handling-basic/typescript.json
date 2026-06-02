@@ -1,0 +1,29 @@
+{
+  "schemaId": "agent.semantic-protocols.parser-compact-case",
+  "schemaVersion": "1",
+  "caseId": "error-handling-basic",
+  "variantId": "typescript",
+  "languageId": "typescript",
+  "providerId": "ts-harness",
+  "featureClass": "error-handling",
+  "fixtureRoot": "tests/fixtures/parser-compact/projects/error-handling/error-handling-basic/typescript",
+  "rawSourcePath": "src/score.ts",
+  "lineCommand": [
+    "ts-harness",
+    "query",
+    "src/score.ts",
+    "--term",
+    "parseScore",
+    "--code",
+    "."
+  ],
+  "jsonCommand": [
+    "ts-harness",
+    "query",
+    "src/score.ts",
+    "--term",
+    "parseScore",
+    "--json",
+    "."
+  ]
+}

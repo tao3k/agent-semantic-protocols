@@ -1,0 +1,20 @@
+{
+  "caseId": "data-shape-basic",
+  "compactCodeDelta": 32,
+  "compactCodeRatio": 0.5224,
+  "compactCodeTokens": 35,
+  "compactLineDelta": 32,
+  "compactLineRatio": 0.5224,
+  "compactLineTokens": 35,
+  "featureClass": "data-shape",
+  "languageId": "typescript",
+  "providerId": "ts-harness",
+  "queryPacketDelta": -1318,
+  "queryPacketRatio": 20.6716,
+  "queryPacketTokens": 1385,
+  "rawSourceTokens": 67,
+  "schemaId": "agent.semantic-protocols.parser-compact-token-cost",
+  "schemaVersion": "1",
+  "tokenizerId": "tiktoken:o200k_base",
+  "variantId": "typescript"
+}

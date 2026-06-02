@@ -1,6 +1,6 @@
 """Command-line entrypoint for semantic sandtable scenarios."""
 
-from .runner import main
+from .runner import semantic_sandtable_main
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(semantic_sandtable_main())

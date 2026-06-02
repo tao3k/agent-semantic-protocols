@@ -123,29 +123,41 @@ def _validate_next_action_path_fields(result: StepResult, line: str) -> None:
 def _validate_window_set_fields(result: StepResult, line: str) -> None:
     for match in re.finditer(r"\b(?:windowSet|window_set)=([^\s]+)", line):
         for action in match.group(1).split(","):
-            kind, separator, target = action.partition(":")
-            if separator != ":" or kind not in {"owner", "tests", "read"}:
-                result.errors.append(
-                    "line protocol windowSet entry must be kind:path with "
-                    f"kind owner/tests/read, got {action!r}"
-                )
-                return
-            target = target.split("(", maxsplit=1)[0]
-            _validate_project_path_field(result, target, line)
+            _validate_window_set_action(result, action, line)
             if result.errors:
                 return
-            if kind == "owner" and _is_test_like_path(target):
-                result.errors.append(
-                    "line protocol windowSet owner target points at test path "
-                    f"{target!r}; use tests:{target}"
-                )
-                return
-            if kind == "tests" and not _is_test_like_path(target):
-                result.errors.append(
-                    "line protocol windowSet tests target is not test-like "
-                    f"{target!r}; use owner:{target} or a concrete test path"
-                )
-                return
+
+
+def _validate_window_set_action(result: StepResult, action: str, line: str) -> None:
+    kind, separator, target = action.partition(":")
+    if separator != ":" or kind not in {"owner", "tests", "read"}:
+        result.errors.append(
+            "line protocol windowSet entry must be kind:path with "
+            f"kind owner/tests/read, got {action!r}"
+        )
+        return
+
+    target = target.split("(", maxsplit=1)[0]
+    _validate_project_path_field(result, target, line)
+    if result.errors:
+        return
+
+    _validate_window_set_target_kind(result, kind, target)
+
+
+def _validate_window_set_target_kind(result: StepResult, kind: str, target: str) -> None:
+    if kind == "owner" and _is_test_like_path(target):
+        result.errors.append(
+            "line protocol windowSet owner target points at test path "
+            f"{target!r}; use tests:{target}"
+        )
+        return
+
+    if kind == "tests" and not _is_test_like_path(target):
+        result.errors.append(
+            "line protocol windowSet tests target is not test-like "
+            f"{target!r}; use owner:{target} or a concrete test path"
+        )
 
 
 def _validate_project_path_field(result: StepResult, value: str, line: str) -> None:

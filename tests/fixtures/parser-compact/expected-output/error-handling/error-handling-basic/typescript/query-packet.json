@@ -1,0 +1,272 @@
+{
+  "binary": "ts-harness",
+  "languageId": "typescript",
+  "matchMode": "exact",
+  "matches": [
+    {
+      "fields": {
+        "exportKind": "function",
+        "exported": true,
+        "typeOnly": false
+      },
+      "kind": "function",
+      "location": {
+        "lineRange": "1:10",
+        "path": "src/score.ts"
+      },
+      "name": "parseScore",
+      "projection": {
+        "exactRead": "src/score.ts:1:10",
+        "expandActions": [
+          {
+            "argv": [
+              "ts-harness",
+              "query",
+              "--from-hook",
+              "direct-source-read",
+              "--selector",
+              "src/score.ts:1:10",
+              "."
+            ],
+            "kind": "exact-read",
+            "read": "src/score.ts:1:10",
+            "reason": "read exact source before editing",
+            "target": "parseScore"
+          },
+          {
+            "argv": [
+              "ts-harness",
+              "query",
+              "--from-hook",
+              "direct-source-read",
+              "--selector",
+              "src/score.ts:2:2",
+              "."
+            ],
+            "kind": "exact-read",
+            "read": "src/score.ts:2:2",
+            "reason": "expand const node before editing",
+            "target": "parseScore:1"
+          },
+          {
+            "argv": [
+              "ts-harness",
+              "query",
+              "--from-hook",
+              "direct-source-read",
+              "--selector",
+              "src/score.ts:3:5",
+              "."
+            ],
+            "kind": "exact-read",
+            "read": "src/score.ts:3:5",
+            "reason": "expand if node before editing",
+            "target": "parseScore:2"
+          },
+          {
+            "argv": [
+              "ts-harness",
+              "query",
+              "--from-hook",
+              "direct-source-read",
+              "--selector",
+              "src/score.ts:4:4",
+              "."
+            ],
+            "kind": "exact-read",
+            "read": "src/score.ts:4:4",
+            "reason": "expand throw node before editing",
+            "target": "parseScore:3"
+          },
+          {
+            "argv": [
+              "ts-harness",
+              "query",
+              "--from-hook",
+              "direct-source-read",
+              "--selector",
+              "src/score.ts:6:8",
+              "."
+            ],
+            "kind": "exact-read",
+            "read": "src/score.ts:6:8",
+            "reason": "expand if node before editing",
+            "target": "parseScore:4"
+          },
+          {
+            "argv": [
+              "ts-harness",
+              "query",
+              "--from-hook",
+              "direct-source-read",
+              "--selector",
+              "src/score.ts:7:7",
+              "."
+            ],
+            "kind": "exact-read",
+            "read": "src/score.ts:7:7",
+            "reason": "expand throw node before editing",
+            "target": "parseScore:5"
+          },
+          {
+            "argv": [
+              "ts-harness",
+              "query",
+              "--from-hook",
+              "direct-source-read",
+              "--selector",
+              "src/score.ts:9:9",
+              "."
+            ],
+            "kind": "exact-read",
+            "read": "src/score.ts:9:9",
+            "reason": "expand return node before editing",
+            "target": "parseScore:6"
+          },
+          {
+            "argv": [
+              "ts-harness",
+              "query",
+              "--from-hook",
+              "direct-source-read",
+              "--selector",
+              "src/score.ts",
+              "."
+            ],
+            "kind": "owner-names",
+            "reason": "return owner-local item names without code windows",
+            "target": "src/score.ts"
+          }
+        ],
+        "losslessStructure": true,
+        "mode": "outline",
+        "nodes": [
+          {
+            "depth": 0,
+            "flags": [
+              "mutation",
+              "call",
+              "branch",
+              "throw",
+              "return"
+            ],
+            "id": "parseScore",
+            "kind": "function",
+            "label": "export function parseScore(text: string): number",
+            "read": "src/score.ts:1:10",
+            "role": "declaration"
+          },
+          {
+            "depth": 1,
+            "flags": [
+              "mutation"
+            ],
+            "id": "parseScore:1",
+            "kind": "const",
+            "label": "const value = Number.parseInt(text, 10)",
+            "parentId": "parseScore",
+            "read": "src/score.ts:2:2",
+            "role": "mutation"
+          },
+          {
+            "depth": 1,
+            "flags": [
+              "branch"
+            ],
+            "id": "parseScore:2",
+            "kind": "if",
+            "label": "if Number.isNaN(value)",
+            "parentId": "parseScore",
+            "read": "src/score.ts:3:5",
+            "role": "control-flow"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "throw"
+            ],
+            "id": "parseScore:3",
+            "kind": "throw",
+            "label": "throw new Error(\"invalid\")",
+            "parentId": "parseScore:2",
+            "read": "src/score.ts:4:4",
+            "role": "terminal"
+          },
+          {
+            "depth": 1,
+            "flags": [
+              "branch"
+            ],
+            "id": "parseScore:4",
+            "kind": "if",
+            "label": "if value < 0",
+            "parentId": "parseScore",
+            "read": "src/score.ts:6:8",
+            "role": "control-flow"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "throw"
+            ],
+            "id": "parseScore:5",
+            "kind": "throw",
+            "label": "throw new Error(\"negative\")",
+            "parentId": "parseScore:4",
+            "read": "src/score.ts:7:7",
+            "role": "terminal"
+          },
+          {
+            "depth": 1,
+            "flags": [
+              "return"
+            ],
+            "id": "parseScore:6",
+            "kind": "return",
+            "label": "return value",
+            "parentId": "parseScore",
+            "read": "src/score.ts:9:9",
+            "role": "terminal"
+          }
+        ],
+        "omitted": [
+          {
+            "count": 10,
+            "kind": "source-formatting",
+            "read": "src/score.ts:1:10",
+            "reason": "compact projection removes original whitespace and comments"
+          }
+        ],
+        "sourceAuthority": "native-parser",
+        "sourceFingerprint": "src/score.ts:1:10:212:9f427299",
+        "syntax": "semantic-outline"
+      },
+      "read": "src/score.ts:1:10",
+      "truncated": false,
+      "visibility": "public"
+    }
+  ],
+  "method": "query/owner-items",
+  "namespace": "agent.semantic-protocols.languages.typescript.ts-harness",
+  "outputMode": "code",
+  "ownerPath": "src/score.ts",
+  "projectRoot": "tests/fixtures/parser-compact/projects/error-handling/error-handling-basic/typescript",
+  "protocolId": "agent.semantic-protocols.semantic-language",
+  "protocolVersion": "1",
+  "providerId": "ts-harness",
+  "query": "parseScore",
+  "queryCoverage": [
+    {
+      "match": "exact",
+      "matchCount": 1,
+      "status": "hit",
+      "value": "parseScore"
+    }
+  ],
+  "queryTerms": [
+    "parseScore"
+  ],
+  "schemaId": "agent.semantic-protocols.semantic-query-packet",
+  "schemaVersion": "1",
+  "truncated": false
+}

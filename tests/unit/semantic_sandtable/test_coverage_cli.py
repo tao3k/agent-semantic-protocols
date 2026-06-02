@@ -9,7 +9,7 @@ from contextlib import redirect_stdout
 from io import StringIO
 from pathlib import Path
 
-from tools.semantic_sandtable.cli import main
+from tools.semantic_sandtable.cli import semantic_sandtable_main as main
 
 
 class CoverageCliTests(unittest.TestCase):

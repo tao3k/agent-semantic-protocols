@@ -1,0 +1,39 @@
+{
+  "schemaId": "agent.semantic-protocols.parser-compact-case",
+  "schemaVersion": "1",
+  "caseId": "control-flow-basic",
+  "variantId": "python",
+  "languageId": "python",
+  "providerId": "py-harness",
+  "featureClass": "control-flow",
+  "fixtureRoot": "tests/fixtures/parser-compact/projects/control-flow/control-flow-basic/python",
+  "rawSourcePath": "src/control_flow.py",
+  "lineCommand": [
+    "uv",
+    "run",
+    "--project",
+    "{repoRoot}/languages/python-lang-project-harness",
+    "--frozen",
+    "py-harness",
+    "query",
+    "src/control_flow.py",
+    "--term",
+    "decide",
+    "--code",
+    "."
+  ],
+  "jsonCommand": [
+    "uv",
+    "run",
+    "--project",
+    "{repoRoot}/languages/python-lang-project-harness",
+    "--frozen",
+    "py-harness",
+    "query",
+    "src/control_flow.py",
+    "--term",
+    "decide",
+    "--json",
+    "."
+  ]
+}

@@ -1,0 +1,293 @@
+{
+  "binary": "py-harness",
+  "languageId": "python",
+  "matchMode": "exact",
+  "matches": [
+    {
+      "doc": false,
+      "fields": {
+        "public": true,
+        "reason": "item-query"
+      },
+      "kind": "function",
+      "location": {
+        "lineRange": "4:11",
+        "path": "src/score.py"
+      },
+      "name": "parse_score",
+      "outline": {
+        "hotBlocks": [
+          {
+            "label": "parse_score",
+            "read": "src/score.py:4:11",
+            "reason": "parser-item-query"
+          }
+        ],
+        "summary": "function parse_score"
+      },
+      "projection": {
+        "exactRead": "src/score.py:4:11",
+        "expandActions": [
+          {
+            "argv": [
+              "py-harness",
+              "query",
+              "--from-hook",
+              "direct-source-read",
+              "--selector",
+              "src/score.py:4:11",
+              "."
+            ],
+            "kind": "exact-read",
+            "read": "src/score.py:4:11",
+            "reason": "read exact source before editing",
+            "target": "parse_score"
+          },
+          {
+            "argv": [
+              "py-harness",
+              "query",
+              "--from-hook",
+              "direct-source-read",
+              "--selector",
+              "src/score.py:5:8",
+              "."
+            ],
+            "kind": "exact-read",
+            "read": "src/score.py:5:8",
+            "reason": "expand try node before editing",
+            "target": "parse_score:1"
+          },
+          {
+            "argv": [
+              "py-harness",
+              "query",
+              "--from-hook",
+              "direct-source-read",
+              "--selector",
+              "src/score.py:6:6",
+              "."
+            ],
+            "kind": "exact-read",
+            "read": "src/score.py:6:6",
+            "reason": "expand assign node before editing",
+            "target": "parse_score:2"
+          },
+          {
+            "argv": [
+              "py-harness",
+              "query",
+              "--from-hook",
+              "direct-source-read",
+              "--selector",
+              "src/score.py:7:8",
+              "."
+            ],
+            "kind": "exact-read",
+            "read": "src/score.py:7:8",
+            "reason": "expand except node before editing",
+            "target": "parse_score:3"
+          },
+          {
+            "argv": [
+              "py-harness",
+              "query",
+              "--from-hook",
+              "direct-source-read",
+              "--selector",
+              "src/score.py:8:8",
+              "."
+            ],
+            "kind": "exact-read",
+            "read": "src/score.py:8:8",
+            "reason": "expand raise node before editing",
+            "target": "parse_score:4"
+          },
+          {
+            "argv": [
+              "py-harness",
+              "query",
+              "--from-hook",
+              "direct-source-read",
+              "--selector",
+              "src/score.py:9:10",
+              "."
+            ],
+            "kind": "exact-read",
+            "read": "src/score.py:9:10",
+            "reason": "expand if node before editing",
+            "target": "parse_score:5"
+          },
+          {
+            "argv": [
+              "py-harness",
+              "query",
+              "--from-hook",
+              "direct-source-read",
+              "--selector",
+              "src/score.py:10:10",
+              "."
+            ],
+            "kind": "exact-read",
+            "read": "src/score.py:10:10",
+            "reason": "expand raise node before editing",
+            "target": "parse_score:6"
+          },
+          {
+            "argv": [
+              "py-harness",
+              "query",
+              "--from-hook",
+              "direct-source-read",
+              "--selector",
+              "src/score.py:11:11",
+              "."
+            ],
+            "kind": "exact-read",
+            "read": "src/score.py:11:11",
+            "reason": "expand return node before editing",
+            "target": "parse_score:7"
+          },
+          {
+            "argv": [
+              "py-harness",
+              "query",
+              "--from-hook",
+              "direct-source-read",
+              "--selector",
+              "src/score.py",
+              "."
+            ],
+            "kind": "owner-names",
+            "reason": "return owner-local item names without code windows",
+            "target": "src/score.py"
+          }
+        ],
+        "losslessStructure": true,
+        "mode": "outline",
+        "nodes": [
+          {
+            "depth": 0,
+            "id": "parse_score",
+            "kind": "function",
+            "label": "def parse_score",
+            "read": "src/score.py:4:11",
+            "role": "declaration"
+          },
+          {
+            "depth": 1,
+            "id": "parse_score:1",
+            "kind": "try",
+            "label": "try",
+            "parentId": "parse_score",
+            "read": "src/score.py:5:8",
+            "role": "control-flow"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "mutation"
+            ],
+            "id": "parse_score:2",
+            "kind": "assign",
+            "label": "assign value",
+            "parentId": "parse_score:1",
+            "read": "src/score.py:6:6",
+            "role": "mutation"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "branch"
+            ],
+            "id": "parse_score:3",
+            "kind": "except",
+            "label": "except ValueError as error",
+            "parentId": "parse_score:1",
+            "read": "src/score.py:7:8",
+            "role": "control-flow"
+          },
+          {
+            "depth": 3,
+            "flags": [
+              "raise"
+            ],
+            "id": "parse_score:4",
+            "kind": "raise",
+            "label": "raise ValueError('invalid')",
+            "parentId": "parse_score:3",
+            "read": "src/score.py:8:8",
+            "role": "terminal"
+          },
+          {
+            "depth": 1,
+            "flags": [
+              "branch"
+            ],
+            "id": "parse_score:5",
+            "kind": "if",
+            "label": "if value < 0",
+            "parentId": "parse_score",
+            "read": "src/score.py:9:10",
+            "role": "control-flow"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "raise"
+            ],
+            "id": "parse_score:6",
+            "kind": "raise",
+            "label": "raise ValueError('negative')",
+            "parentId": "parse_score:5",
+            "read": "src/score.py:10:10",
+            "role": "terminal"
+          },
+          {
+            "depth": 1,
+            "flags": [
+              "return"
+            ],
+            "id": "parse_score:7",
+            "kind": "return",
+            "label": "return value",
+            "parentId": "parse_score",
+            "read": "src/score.py:11:11",
+            "role": "terminal"
+          }
+        ],
+        "omitted": [],
+        "sourceAuthority": "native-parser",
+        "sourceFingerprint": "src/score.py:4:11:180:2bc12a08",
+        "syntax": "semantic-outline"
+      },
+      "read": "src/score.py:4:11",
+      "truncated": false,
+      "visibility": "public"
+    }
+  ],
+  "method": "query/owner-items",
+  "namespace": "agent.semantic-protocols.languages.python.py-harness",
+  "notes": [],
+  "outputMode": "code",
+  "ownerPath": "src/score.py",
+  "projectRoot": "tests/fixtures/parser-compact/projects/error-handling/error-handling-basic/python",
+  "protocolId": "agent.semantic-protocols.semantic-language",
+  "protocolVersion": "1",
+  "providerId": "py-harness",
+  "query": "parse_score",
+  "queryCoverage": [
+    {
+      "match": "exact",
+      "matchCount": 1,
+      "status": "hit",
+      "value": "parse_score"
+    }
+  ],
+  "queryTerms": [
+    "parse_score"
+  ],
+  "schemaId": "agent.semantic-protocols.semantic-query-packet",
+  "schemaVersion": "1",
+  "truncated": false
+}

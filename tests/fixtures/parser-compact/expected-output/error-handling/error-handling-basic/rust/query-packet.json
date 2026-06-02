@@ -1,0 +1,129 @@
+{
+  "binary": "rs-harness",
+  "languageId": "rust",
+  "matchMode": "exact",
+  "matches": [
+    {
+      "doc": false,
+      "kind": "fn",
+      "location": {
+        "lineRange": "1:9",
+        "path": "src/lib.rs"
+      },
+      "name": "parse_score",
+      "projection": {
+        "exactRead": "src/lib.rs:1:9",
+        "expandActions": [
+          {
+            "kind": "hot-block",
+            "read": "src/lib.rs:2:4",
+            "reason": "parser-projection-mutation",
+            "target": "n1"
+          },
+          {
+            "kind": "hot-block",
+            "read": "src/lib.rs:5:7",
+            "reason": "parser-projection-control-flow",
+            "target": "n2"
+          },
+          {
+            "kind": "hot-block",
+            "read": "src/lib.rs:6:6",
+            "reason": "parser-projection-terminal",
+            "target": "n3"
+          }
+        ],
+        "losslessStructure": true,
+        "mode": "compact",
+        "nodes": [
+          {
+            "depth": 0,
+            "id": "n0",
+            "kind": "fn",
+            "label": "pub fn parse_score(text: &str) -> Result<i32, String>",
+            "read": "src/lib.rs:1:9",
+            "role": "declaration"
+          },
+          {
+            "depth": 1,
+            "flags": [
+              "mutation"
+            ],
+            "id": "n1",
+            "kind": "let",
+            "label": "let value = map_err?",
+            "parentId": "n0",
+            "read": "src/lib.rs:2:4",
+            "role": "mutation"
+          },
+          {
+            "depth": 1,
+            "flags": [
+              "branch",
+              "guard"
+            ],
+            "id": "n2",
+            "kind": "if",
+            "label": "if value<0",
+            "parentId": "n0",
+            "read": "src/lib.rs:5:7",
+            "role": "control-flow"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "return"
+            ],
+            "id": "n3",
+            "kind": "return",
+            "label": "return Err(\"negative\".to_string())",
+            "parentId": "n2",
+            "read": "src/lib.rs:6:6",
+            "role": "terminal"
+          },
+          {
+            "depth": 1,
+            "flags": [
+              "call"
+            ],
+            "id": "n4",
+            "kind": "call",
+            "label": "call Ok",
+            "parentId": "n0",
+            "read": "src/lib.rs:8:8",
+            "role": "call"
+          }
+        ],
+        "sourceAuthority": "native-parser",
+        "syntax": "semantic-outline"
+      },
+      "read": "src/lib.rs:1:9",
+      "truncated": false,
+      "visibility": "public"
+    }
+  ],
+  "method": "query/owner-items",
+  "namespace": "agent.semantic-protocols.languages.rust.rs-harness",
+  "outputMode": "code",
+  "ownerPath": "src/lib.rs",
+  "projectRoot": ".",
+  "protocolId": "agent.semantic-protocols.semantic-language",
+  "protocolVersion": "1",
+  "providerId": "rs-harness",
+  "query": "parse_score",
+  "queryCoverage": [
+    {
+      "match": "exact",
+      "matchCount": 1,
+      "nextAction": "code",
+      "status": "hit",
+      "value": "parse_score"
+    }
+  ],
+  "queryTerms": [
+    "parse_score"
+  ],
+  "schemaId": "agent.semantic-protocols.semantic-query-packet",
+  "schemaVersion": "1",
+  "truncated": false
+}

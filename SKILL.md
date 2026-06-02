@@ -1,17 +1,18 @@
 ---
 name: agent-semantic-protocols
-description: Use when working with the language provider binaries maintained by agent-semantic-protocols, including rs-harness, ts-harness, py-harness, julia-project-harness, semantic-agent-hook installs, compact semantic search flow, and non-JSON agent command guidance.
+description: Use when working with the language provider binaries maintained by agent-semantic-protocols, including rs-harness, ts-harness, py-harness, semantic-agent-hook installs, compact semantic search flow, and non-JSON agent command guidance.
 ---
 
 # Agent Semantic Protocols
 
 ## Rules
 
-- Choose the bin from the project language: Rust uses `rs-harness`, TypeScript uses `ts-harness`, Python uses `py-harness`, Julia uses `julia-project-harness`.
-- In this workspace, Julia is workspace-managed: use `julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl`.
+- Choose the bin from the project language: Rust uses `rs-harness`, TypeScript uses `ts-harness`, Python uses `py-harness`.
+- Julia is intentionally skipped for bin parity and cross-language search alignment for now. Do not require, install, document, or validate a standalone `julia-project-harness` binary.
+- If Julia evidence is explicitly requested, use the workspace-managed command `julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl`; otherwise skip Julia in provider parity audits.
 - Start with `<bin> agent guide .` when unsure; it prints the provider-owned command menu.
 - Do not add `--json` during agent exploration. `--json` is only for schema tests, validators, receipts, or IDE integrations.
-- `semantic-agent-hook install --client codex .` installs hooks, profiles, and this skill at `.agents/skills/agent-semantic-protocols/SKILL.md`.
+- `semantic-agent-hook install --client codex .` installs hooks, provider activation, and this skill at `.agents/skills/agent-semantic-protocols/SKILL.md`.
 
 ## Command Shapes
 
@@ -21,17 +22,20 @@ description: Use when working with the language provider binaries maintained by 
 - Search external API/deps: `<bin> search deps <dep[/subpath][@version][::api]> .`
 - Query parser items with compact code: `<bin> search owner <path> items --query '<symbol-or-a|b|c>' .`
 - Discover owner-local item names before code: `<bin> query <path> --term <candidate> --names-only .`
-- Follow a hook exact direct-read route: `<bin> query --from-hook direct-source-read --selector <path> .`
+- Follow a hook exact direct-read route: `<bin> query --from-hook direct-source-read --selector <path[:line-range]> [--code] .`
 - Follow a hook wildcard direct-read route: `<bin> search query --from-hook direct-source-read --selector <glob-or-path> --term <term> --surface owner,tests --view seeds .`
 - Pipe candidate lines: `rg -n '<term>' src tests | <bin> search ingest --view seeds .`
 - Check changed work: `<bin> check --changed .`
 
 Hook rule of thumb: source-suffix reads and content dumps are denied; exact
-source paths should follow the provider `query --from-hook direct-source-read`
-route; raw
+source paths should follow the provider `query --from-hook direct-source-read
+--selector <path[:line-range]> [--code] .` route; raw
 `rg`/`grep`/`fd`/`find` with a concrete source term should follow the hook
 `search query` route; source file listings without terms should pipe candidates
 to `search ingest`; non-source docs/README/markdown searches should be allowed.
+Exact direct-read may return either `read-owner` source windows or a `read-plan`
+with `code=false`. When it returns `read-plan`, follow the provider-selected
+`|symbol read=...` or search repair action instead of forcing a raw source dump.
 
 When the provider guide advertises handle-aware search, use it before code for
 stable non-code facts such as policy rule ids, schema fixtures, test cases,
@@ -49,7 +53,7 @@ dumping code windows.
 
 When `searchSynthesis.windowSet` appears, treat it as the provider-selected
 bounded read plan. Read those exact owner/test targets with
-the provider `query --from-hook direct-source-read --selector <path> .` route
+the provider `query --from-hook direct-source-read --selector <path[:line-range]> [--code] .` route
 only when source owner context is needed; do not restart broad discovery from
 the same terms.
 
@@ -60,8 +64,8 @@ rs-harness search owner src/lib.rs items --view seeds .
 rg -n 'HookDecision' src tests | rs-harness search ingest items tests --view seeds .
 ```
 
-Julia owner and ingest use the workspace-managed provider command in this
-repository:
+Julia is skipped in bin parity audits. Only use the workspace-managed provider
+command when a Julia-specific task explicitly asks for Julia evidence:
 
 ```sh
 julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl search owner src/cli.jl --view seeds languages/JuliaLangProjectHarness.jl
@@ -108,18 +112,10 @@ py-harness check --changed .
 
 Use `rg` or `fd` to collect candidates, then let `py-harness` rank owners/tests.
 
-4. Understand a Julia implementation path:
-
-```sh
-julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl agent guide languages/JuliaLangProjectHarness.jl
-julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl search prime --view seeds languages/JuliaLangProjectHarness.jl
-julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl search fzf run_julia_project_harness_cli owner tests --view seeds languages/JuliaLangProjectHarness.jl
-julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl search owner src/cli.jl --view seeds languages/JuliaLangProjectHarness.jl
-julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl check --changed languages/JuliaLangProjectHarness.jl
-```
-
-Use the Julia workspace command exactly when no global `julia-project-harness`
-binary exists. The hook recognizes the full command prefix, not bare `julia`.
+Julia is out of scope for bin-parity flows. Do not use a bare
+`julia-project-harness` command in docs, tests, hook activations, or provider
+parity audits. Julia remains workspace-managed until a separate Julia-specific
+lane is reopened.
 
 ## Combination Query Examples
 

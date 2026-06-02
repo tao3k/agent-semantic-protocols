@@ -1,4 +1,6 @@
-use crate::protocol::{DecisionRoute, DecisionRouteKind, LanguageProfile};
+use crate::protocol::{DecisionRoute, DecisionRouteKind};
+use crate::protocol_activation::ActivatedProvider;
+use crate::source_selector::provider_source_selector;
 
 pub(crate) fn infer_query_from_path(path: &str) -> Option<String> {
     let normalized = path.trim().trim_end_matches('/');
@@ -15,28 +17,45 @@ pub(crate) fn infer_query_from_path(path: &str) -> Option<String> {
 }
 
 pub(crate) fn search_query_route(
-    profile: &LanguageProfile,
+    provider: &ActivatedProvider,
     terms: &[String],
 ) -> Option<DecisionRoute> {
-    let selector = profile_source_selector(profile);
-    let template = profile
-        .commands
+    let selector = provider_source_selector(provider);
+    let template = provider
+        .routes
         .query
         .as_ref()
-        .unwrap_or(&profile.commands.fzf);
+        .unwrap_or(&provider.routes.fzf);
     let argv = template
         .argv
         .iter()
         .flat_map(|arg| expand_query_arg(arg, &selector, terms))
         .collect();
+    let argv = apply_provider_command_prefix(provider, argv);
     Some(DecisionRoute {
-        language_id: profile.language_id.clone(),
-        provider_id: profile.provider_id.clone(),
-        binary: profile.binary.clone(),
-        kind: DecisionRouteKind::Fzf,
+        language_id: provider.language_id.clone(),
+        provider_id: provider.provider_id.clone(),
+        binary: provider.binary.clone(),
+        kind: DecisionRouteKind::Query,
         argv,
         stdin_mode: template.stdin_mode,
     })
+}
+
+fn apply_provider_command_prefix(provider: &ActivatedProvider, argv: Vec<String>) -> Vec<String> {
+    if !provider.provider_command_prefix.is_empty()
+        && argv
+            .first()
+            .is_some_and(|command| command == &provider.binary)
+    {
+        return provider
+            .provider_command_prefix
+            .iter()
+            .cloned()
+            .chain(argv.into_iter().skip(1))
+            .collect();
+    }
+    argv
 }
 
 fn expand_query_arg(arg: &str, selector: &str, terms: &[String]) -> Vec<String> {
@@ -52,22 +71,6 @@ fn expand_query_arg(arg: &str, selector: &str, terms: &[String]) -> Vec<String> 
             .replace("{query}", &query)
             .replace("{projectRoot}", "."),
     ]
-}
-
-fn profile_source_selector(profile: &LanguageProfile) -> String {
-    let mut extensions = profile
-        .source_extensions
-        .iter()
-        .map(|extension| extension.trim_start_matches('.').to_string())
-        .filter(|extension| !extension.is_empty())
-        .collect::<Vec<_>>();
-    extensions.sort();
-    extensions.dedup();
-    match extensions.as_slice() {
-        [] => "**/*".to_string(),
-        [extension] => format!("**/*.{extension}"),
-        extensions => format!("**/*.{{{}}}", extensions.join(",")),
-    }
 }
 
 fn query_variants(base: &str) -> Option<String> {

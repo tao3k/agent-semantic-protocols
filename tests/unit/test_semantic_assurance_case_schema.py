@@ -1,20 +1,22 @@
+"""Validate the semantic assurance case schema contract."""
+
 import json
 from pathlib import Path
 
 from jsonschema import Draft202012Validator
 
 
-def load_schema() -> dict:
+def _load_schema() -> dict:
     path = Path(__file__).resolve().parents[2] / "schemas" / "semantic-assurance-case.v1.schema.json"
     return json.loads(path.read_text())
 
 
 def test_semantic_assurance_case_schema_is_valid() -> None:
-    Draft202012Validator.check_schema(load_schema())
+    Draft202012Validator.check_schema(_load_schema())
 
 
 def test_semantic_assurance_case_accepts_graph_derived_cases() -> None:
-    schema = load_schema()
+    schema = _load_schema()
     value = {
         "schemaId": "agent.semantic-protocols.semantic-assurance-case",
         "schemaVersion": "1",
@@ -95,7 +97,7 @@ def test_semantic_assurance_case_accepts_graph_derived_cases() -> None:
 
 
 def test_semantic_assurance_case_rejects_absolute_owner_paths() -> None:
-    schema = load_schema()
+    schema = _load_schema()
     value = {
         "schemaId": "agent.semantic-protocols.semantic-assurance-case",
         "schemaVersion": "1",

@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/parser-compact-case.v1.schema.json",
+  "title": "Parser Compact Case",
+  "description": "Shared case manifest for parser-owned compact output snapshots. The manifest classifies the case and defines provider commands; real and expected output paths are derived from featureClass/caseId/variantId.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "caseId",
+    "variantId",
+    "languageId",
+    "providerId",
+    "featureClass",
+    "fixtureRoot",
+    "rawSourcePath",
+    "lineCommand",
+    "jsonCommand"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.parser-compact-case"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "caseId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "variantId": {
+      "description": "Provider variant under the language-neutral compact case, such as rust, typescript, python, or julia.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "languageId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "providerId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "featureClass": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "fixtureRoot": {
+      "$ref": "#/$defs/repoPath"
+    },
+    "rawSourcePath": {
+      "$ref": "#/$defs/relativePath"
+    },
+    "lineCommand": {
+      "$ref": "#/$defs/providerCommand"
+    },
+    "jsonCommand": {
+      "$ref": "#/$defs/providerCommand"
+    }
+  },
+  "$defs": {
+    "providerCommand": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?![A-Za-z]:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s\\\\]+(?:/[^\\s\\\\]+)*$"
+    },
+    "repoPath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?![A-Za-z]:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s\\\\]+(?:/[^\\s\\\\]+)*$"
+    }
+  }
+}

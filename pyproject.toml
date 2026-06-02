@@ -6,10 +6,17 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
   "jsonschema>=4.23,<5",
+  "tiktoken>=0.9,<1",
 ]
 
 [project.scripts]
-semantic-sandtable = "tools.semantic_sandtable.runner:main"
+parser-compact-snapshots = "tools.parser_compact_snapshots:main"
+semantic-sandtable = "tools.semantic_sandtable.runner:semantic_sandtable_main"
+
+[dependency-groups]
+dev = [
+  "pytest>=9,<10",
+]
 
 [build-system]
 requires = ["hatchling>=1.26"]
@@ -20,6 +27,31 @@ packages = ["packages/python/src/tools"]
 
 [tool.uv]
 package = true
+
+[tool.python-lang-project-harness]
+ignored_dir_names = [
+  ".git",
+  ".cache",
+  ".data",
+  ".devenv",
+  ".direnv",
+  ".hg",
+  ".mypy_cache",
+  ".pytest_cache",
+  ".ruff_cache",
+  ".run",
+  ".tox",
+  ".venv",
+  "__pycache__",
+  "build",
+  "dist",
+  "expected-output",
+  "node_modules",
+  "real-output",
+  "result",
+  "target",
+  "venv",
+]
 
 [tool.pytest.ini_options]
 pythonpath = ["packages/python/src"]

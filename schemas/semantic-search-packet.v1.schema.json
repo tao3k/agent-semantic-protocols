@@ -94,7 +94,12 @@
       ]
     },
     "renderMode": {
-      "enum": ["graph", "hits", "both", "seeds"]
+      "enum": [
+        "graph",
+        "hits",
+        "both",
+        "seeds"
+      ]
     },
     "query": {
       "type": "string"
@@ -138,6 +143,9 @@
     },
     "searchSynthesis": {
       "$ref": "#/$defs/searchSynthesis"
+    },
+    "finder": {
+      "$ref": "#/$defs/finder"
     },
     "avoidNextActions": {
       "type": "array",
@@ -233,16 +241,28 @@
   "$defs": {
     "scalar": {
       "oneOf": [
-        { "type": "string" },
-        { "type": "number" },
-        { "type": "boolean" },
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
         {
           "type": "array",
           "items": {
             "oneOf": [
-              { "type": "string" },
-              { "type": "number" },
-              { "type": "boolean" }
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              }
             ]
           }
         }
@@ -268,11 +288,144 @@
           "minLength": 1
         },
         "versionScope": {
-          "enum": ["current", "external", "unknown"]
+          "enum": [
+            "current",
+            "external",
+            "unknown"
+          ]
         }
       },
       "additionalProperties": {
         "$ref": "#/$defs/scalar"
+      }
+    },
+    "finder": {
+      "type": "object",
+      "description": "Provider-owned finder pipeline provenance for lexical/fuzzy search surfaces such as search fzf. This records normalized agent-requested finder options; it is not raw shell argv.",
+      "additionalProperties": false,
+      "required": [
+        "engine",
+        "surface",
+        "options",
+        "acceptedArgs",
+        "rejectedArgs"
+      ],
+      "properties": {
+        "engine": {
+          "enum": [
+            "fzf",
+            "rg",
+            "rg-fzf",
+            "provider"
+          ]
+        },
+        "surface": {
+          "enum": [
+            "search-fzf",
+            "search-ingest",
+            "search-pattern",
+            "search-custom"
+          ]
+        },
+        "pipelineId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "options": {
+          "$ref": "#/$defs/finderOptions"
+        },
+        "acceptedArgs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "rejectedArgs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/finderRejectedArg"
+          }
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "finderOptions": {
+      "type": "object",
+      "description": "Normalized, provider-approved finder options that can be mapped to headless finder behavior across language providers.",
+      "additionalProperties": false,
+      "properties": {
+        "matchMode": {
+          "enum": [
+            "fuzzy",
+            "exact"
+          ]
+        },
+        "caseMode": {
+          "enum": [
+            "smart",
+            "ignore",
+            "respect"
+          ]
+        },
+        "nth": {
+          "type": "string",
+          "minLength": 1
+        },
+        "delimiter": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tiebreak": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "score",
+              "begin",
+              "end",
+              "index",
+              "length",
+              "chunk",
+              "pathname"
+            ]
+          }
+        },
+        "scheme": {
+          "enum": [
+            "default",
+            "path",
+            "history"
+          ]
+        },
+        "nativeArgs": {
+          "type": "array",
+          "description": "The provider-normalized fzf-native argument tokens accepted for this headless run.",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "finderRejectedArg": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "value",
+        "reason"
+      ],
+      "properties": {
+        "value": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
       }
     },
     "surfaceKind": {
@@ -287,22 +440,32 @@
     },
     "projectPath": {
       "type": "string",
+      "description": "Canonical project-root-relative path. This is a path value, not a display locator: no rank prefixes, URI schemes, command prefixes, line ranges, columns, absolute paths, parent segments, backslashes, or numeric node slots.",
       "minLength": 1,
       "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*)$"
     },
     "queryTerm": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["value", "kind", "selector"],
+      "required": [
+        "value",
+        "kind",
+        "selector"
+      ],
       "allOf": [
         {
           "if": {
             "properties": {
               "kind": {
-                "enum": ["owner", "path"]
+                "enum": [
+                  "owner",
+                  "path"
+                ]
               }
             },
-            "required": ["kind"]
+            "required": [
+              "kind"
+            ]
           },
           "then": {
             "properties": {
@@ -332,7 +495,12 @@
           ]
         },
         "selector": {
-          "enum": ["exact", "prefix", "fuzzy", "stdin-path"]
+          "enum": [
+            "exact",
+            "prefix",
+            "fuzzy",
+            "stdin-path"
+          ]
         },
         "fields": {
           "$ref": "#/$defs/fields"
@@ -342,17 +510,31 @@
     "queryComposition": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["mode", "view", "selector", "merge"],
+      "required": [
+        "mode",
+        "view",
+        "selector",
+        "merge"
+      ],
       "properties": {
         "mode": {
-          "enum": ["single", "query-set"]
+          "enum": [
+            "single",
+            "query-set"
+          ]
         },
         "view": {
           "type": "string",
           "pattern": "^[a-z][a-z0-9_-]*$"
         },
         "selector": {
-          "enum": ["single", "exact-set", "prefix-set", "fuzzy-set", "stdin-path-set"]
+          "enum": [
+            "single",
+            "exact-set",
+            "prefix-set",
+            "fuzzy-set",
+            "stdin-path-set"
+          ]
         },
         "scope": {
           "$ref": "#/$defs/queryScope"
@@ -386,7 +568,12 @@
     "queryCoverage": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["value", "kind", "status", "hitCount"],
+      "required": [
+        "value",
+        "kind",
+        "status",
+        "hitCount"
+      ],
       "properties": {
         "value": {
           "type": "string",
@@ -406,10 +593,20 @@
           ]
         },
         "selector": {
-          "enum": ["exact", "prefix", "fuzzy", "stdin-path"]
+          "enum": [
+            "exact",
+            "prefix",
+            "fuzzy",
+            "stdin-path"
+          ]
         },
         "status": {
-          "enum": ["hit", "miss", "partial", "error"]
+          "enum": [
+            "hit",
+            "miss",
+            "partial",
+            "error"
+          ]
         },
         "hitCount": {
           "type": "integer",
@@ -442,7 +639,11 @@
     "ownerResolution": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["target", "status", "realOwner"],
+      "required": [
+        "target",
+        "status",
+        "realOwner"
+      ],
       "properties": {
         "target": {
           "$ref": "#/$defs/projectPath"
@@ -481,13 +682,21 @@
     "sourceCoverage": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["scope", "status"],
+      "required": [
+        "scope",
+        "status"
+      ],
       "properties": {
         "scope": {
           "$ref": "#/$defs/queryScope"
         },
         "status": {
-          "enum": ["complete", "partial", "missing", "unknown"]
+          "enum": [
+            "complete",
+            "partial",
+            "missing",
+            "unknown"
+          ]
         },
         "coverageKind": {
           "enum": [
@@ -558,7 +767,10 @@
     "testResolution": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["targetOwner", "status"],
+      "required": [
+        "targetOwner",
+        "status"
+      ],
       "properties": {
         "targetOwner": {
           "$ref": "#/$defs/projectPath"
@@ -619,7 +831,10 @@
     "searchSynthesis": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["algorithm", "scope"],
+      "required": [
+        "algorithm",
+        "scope"
+      ],
       "properties": {
         "algorithm": {
           "type": "string",
@@ -712,10 +927,17 @@
     "windowSetTarget": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind", "target"],
+      "required": [
+        "kind",
+        "target"
+      ],
       "properties": {
         "kind": {
-          "enum": ["owner", "tests", "read"]
+          "enum": [
+            "owner",
+            "tests",
+            "read"
+          ]
         },
         "target": {
           "$ref": "#/$defs/projectPath"
@@ -739,7 +961,11 @@
     "avoidNextAction": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind", "target", "reason"],
+      "required": [
+        "kind",
+        "target",
+        "reason"
+      ],
       "properties": {
         "kind": {
           "type": "string",
@@ -764,10 +990,18 @@
     "runtimeCost": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["cacheStatus"],
+      "required": [
+        "cacheStatus"
+      ],
       "properties": {
         "cacheStatus": {
-          "enum": ["cold", "warm", "reused", "disabled", "unknown"]
+          "enum": [
+            "cold",
+            "warm",
+            "reused",
+            "disabled",
+            "unknown"
+          ]
         },
         "elapsedMs": {
           "type": "integer",
@@ -827,33 +1061,28 @@
     "location": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["path"],
+      "required": [
+        "path",
+        "lineRange"
+      ],
       "properties": {
         "path": {
           "$ref": "#/$defs/projectPath"
         },
-        "line": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "column": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "endLine": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "endColumn": {
-          "type": "integer",
-          "minimum": 1
+        "lineRange": {
+          "type": "string",
+          "description": "Compact source line range as start:end, for example 10:43.",
+          "pattern": "^[1-9][0-9]*:[1-9][0-9]*$"
         }
       }
     },
     "header": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind", "fields"],
+      "required": [
+        "kind",
+        "fields"
+      ],
       "properties": {
         "kind": {
           "type": "string",
@@ -867,7 +1096,11 @@
     "inputDetection": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["source", "lineCount", "byteCount"],
+      "required": [
+        "source",
+        "lineCount",
+        "byteCount"
+      ],
       "properties": {
         "source": {
           "enum": [
@@ -896,7 +1129,10 @@
     "fact": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "fields"],
+      "required": [
+        "id",
+        "fields"
+      ],
       "properties": {
         "id": {
           "type": "string",
@@ -910,7 +1146,11 @@
     "node": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "kind", "fields"],
+      "required": [
+        "id",
+        "kind",
+        "fields"
+      ],
       "properties": {
         "id": {
           "type": "string",
@@ -946,7 +1186,11 @@
     "edge": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["from", "kind", "to"],
+      "required": [
+        "from",
+        "kind",
+        "to"
+      ],
       "properties": {
         "from": {
           "type": "string",
@@ -977,7 +1221,12 @@
     "owner": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["path", "role", "public", "fields"],
+      "required": [
+        "path",
+        "role",
+        "public",
+        "fields"
+      ],
       "properties": {
         "path": {
           "$ref": "#/$defs/projectPath"
@@ -1011,7 +1260,12 @@
     "item": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "kind", "ownerPath", "fields"],
+      "required": [
+        "name",
+        "kind",
+        "ownerPath",
+        "fields"
+      ],
       "properties": {
         "name": {
           "type": "string"
@@ -1033,7 +1287,13 @@
     "hit": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind", "ownerPath", "location", "score", "reason"],
+      "required": [
+        "kind",
+        "ownerPath",
+        "location",
+        "score",
+        "reason"
+      ],
       "properties": {
         "kind": {
           "type": "string"
@@ -1076,13 +1336,22 @@
     "finding": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["ruleId", "severity", "count", "location"],
+      "required": [
+        "ruleId",
+        "severity",
+        "count",
+        "location"
+      ],
       "properties": {
         "ruleId": {
           "type": "string"
         },
         "severity": {
-          "enum": ["info", "warning", "error"]
+          "enum": [
+            "info",
+            "warning",
+            "error"
+          ]
         },
         "count": {
           "type": "integer",
@@ -1102,7 +1371,10 @@
     "nextAction": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind", "target"],
+      "required": [
+        "kind",
+        "target"
+      ],
       "properties": {
         "kind": {
           "type": "string",
@@ -1126,7 +1398,10 @@
     "note": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind", "message"],
+      "required": [
+        "kind",
+        "message"
+      ],
       "properties": {
         "kind": {
           "type": "string",

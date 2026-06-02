@@ -29,7 +29,7 @@ fn camelcase_namespaced_direct_read_glob_routes_to_prime() {
 }
 
 #[test]
-fn mcp_direct_read_glob_routes_to_profile_prime() {
+fn mcp_direct_read_glob_routes_to_provider_prime() {
     let decision = classify_hook(
         &registry_with_rust_and_python(),
         "codex",
@@ -50,7 +50,7 @@ fn mcp_direct_read_glob_routes_to_profile_prime() {
 }
 
 #[test]
-fn command_direct_read_source_glob_routes_to_profile_prime() {
+fn command_direct_read_source_glob_routes_to_provider_prime() {
     let decision = classify_hook(
         &registry_with_rust_and_python(),
         "codex",

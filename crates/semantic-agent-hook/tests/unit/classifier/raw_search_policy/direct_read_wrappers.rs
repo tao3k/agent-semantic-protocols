@@ -4,7 +4,7 @@ use serde_json::json;
 use super::support::{assert_allowed, assert_direct_read_denied, polyglot_registry};
 
 #[test]
-fn rtk_read_source_globs_are_denied_for_each_profile() {
+fn rtk_read_source_globs_are_denied_for_each_provider() {
     for (command, binary) in [
         ("rtk read -n *.rs", "rs-harness"),
         ("rtk read *.ts", "ts-harness"),
@@ -17,6 +17,35 @@ fn rtk_read_source_globs_are_denied_for_each_profile() {
     ] {
         assert_direct_read_denied(command, binary);
     }
+}
+
+#[test]
+fn rtk_read_brace_glob_targets_all_matching_language_providers() {
+    let decision = classify_hook(
+        &polyglot_registry(),
+        "codex",
+        "pre-tool",
+        &json!({
+            "tool_name": "functions.exec_command",
+            "tool_input": {"cmd": "rtk read -n '*.{rs,py,js,ts}'"}
+        }),
+    );
+
+    assert_eq!(decision.decision, DecisionKind::Deny);
+    assert_eq!(
+        decision.language_ids,
+        vec![
+            "typescript".to_string(),
+            "rust".to_string(),
+            "python".to_string()
+        ]
+    );
+    assert!(
+        decision
+            .routes
+            .iter()
+            .all(|route| { route.kind == DecisionRouteKind::Prime })
+    );
 }
 
 #[test]
@@ -41,7 +70,7 @@ fn rtk_read_scans_all_path_arguments() {
 }
 
 #[test]
-fn rtk_read_line_locator_routes_to_normalized_provider_query() {
+fn rtk_read_line_locator_routes_to_provider_query_with_range() {
     let decision = classify_hook(
         &polyglot_registry(),
         "codex",
@@ -53,6 +82,10 @@ fn rtk_read_line_locator_routes_to_normalized_provider_query() {
     );
 
     assert_eq!(decision.decision, DecisionKind::Deny);
+    assert_eq!(
+        decision.subject.paths,
+        ["crates/semantic-agent-hook/src/lib.rs:10-20"]
+    );
     assert_eq!(decision.routes[0].kind, DecisionRouteKind::Query);
     assert_eq!(
         decision.routes[0].argv,
@@ -62,7 +95,8 @@ fn rtk_read_line_locator_routes_to_normalized_provider_query() {
             "--from-hook",
             "direct-source-read",
             "--selector",
-            "crates/semantic-agent-hook/src/lib.rs",
+            "crates/semantic-agent-hook/src/lib.rs:10-20",
+            "--code",
             "."
         ]
     );

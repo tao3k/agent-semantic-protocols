@@ -1,0 +1,31 @@
+{
+  "schemaId": "agent.semantic-protocols.parser-compact-case",
+  "schemaVersion": "1",
+  "caseId": "data-shape-basic",
+  "variantId": "rust",
+  "languageId": "rust",
+  "providerId": "rs-harness",
+  "featureClass": "data-shape",
+  "fixtureRoot": "tests/fixtures/parser-compact/projects/data-shape/data-shape-basic/rust",
+  "rawSourcePath": "src/lib.rs",
+  "lineCommand": [
+    "rs-harness",
+    "search",
+    "owner",
+    "src/lib.rs",
+    "items",
+    "--query",
+    "UserSummary",
+    "--code",
+    "."
+  ],
+  "jsonCommand": [
+    "rs-harness",
+    "query",
+    "src/lib.rs",
+    "--query",
+    "UserSummary",
+    "--json",
+    "."
+  ]
+}

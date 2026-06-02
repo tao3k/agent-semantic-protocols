@@ -5,7 +5,11 @@
   "description": "Language-neutral candidate invariant raised from parser-owned findings before receipt, proof, or review evaluation.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaId", "schemaVersion", "candidates"],
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "candidates"
+  ],
   "properties": {
     "schemaId": {
       "const": "agent.semantic-protocols.semantic-invariant-candidate"
@@ -23,16 +27,28 @@
   "$defs": {
     "scalar": {
       "oneOf": [
-        { "type": "string" },
-        { "type": "number" },
-        { "type": "boolean" },
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
         {
           "type": "array",
           "items": {
             "oneOf": [
-              { "type": "string" },
-              { "type": "number" },
-              { "type": "boolean" }
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              }
             ]
           }
         }
@@ -56,29 +72,28 @@
         "path": {
           "$ref": "#/$defs/projectPath"
         },
-        "line": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "column": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "endLine": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "endColumn": {
-          "type": "integer",
-          "minimum": 0
+        "lineRange": {
+          "type": "string",
+          "description": "Compact source line range as start:end, for example 10:43.",
+          "pattern": "^[1-9][0-9]*:[1-9][0-9]*$"
         }
       }
     },
     "severity": {
-      "enum": ["info", "warning", "error"]
+      "enum": [
+        "info",
+        "warning",
+        "error"
+      ]
     },
     "status": {
-      "enum": ["candidate", "accepted", "verified", "waived", "stale"]
+      "enum": [
+        "candidate",
+        "accepted",
+        "verified",
+        "waived",
+        "stale"
+      ]
     },
     "invariantKind": {
       "enum": [
@@ -111,7 +126,10 @@
     "evidence": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind", "summary"],
+      "required": [
+        "kind",
+        "summary"
+      ],
       "properties": {
         "kind": {
           "type": "string",

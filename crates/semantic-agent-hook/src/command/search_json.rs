@@ -1,21 +1,21 @@
-use crate::protocol::{LanguageProfile, ProfileRegistry};
+use crate::protocol_activation::{ActivatedProvider, HookRuntime};
 
 use super::shell::is_separator;
 
-pub(crate) fn contains_ingest_pipe(tokens: &[String], profiles: &[&LanguageProfile]) -> bool {
-    profiles.iter().any(|profile| {
+pub(crate) fn contains_ingest_pipe(tokens: &[String], providers: &[&ActivatedProvider]) -> bool {
+    providers.iter().any(|provider| {
         tokens.windows(3).any(|window| {
-            window[0] == profile.binary && window[1] == "search" && window[2] == "ingest"
+            window[0] == provider.binary && window[1] == "search" && window[2] == "ingest"
         })
     })
 }
 
 pub(crate) fn search_json_route<'a>(
-    registry: &'a ProfileRegistry,
+    registry: &'a HookRuntime,
     tokens: &[String],
-) -> Option<(&'a LanguageProfile, Vec<String>)> {
-    for profile in &registry.profiles {
-        let Some(binary_index) = tokens.iter().position(|token| token == &profile.binary) else {
+) -> Option<(&'a ActivatedProvider, Vec<String>)> {
+    for provider in &registry.providers {
+        let Some(binary_index) = tokens.iter().position(|token| token == &provider.binary) else {
             continue;
         };
         if tokens.get(binary_index + 1).map(String::as_str) != Some("search") {
@@ -37,7 +37,7 @@ pub(crate) fn search_json_route<'a>(
                 ["--view".to_string(), "seeds".to_string()],
             );
         }
-        return Some((profile, argv));
+        return Some((provider, argv));
     }
     None
 }

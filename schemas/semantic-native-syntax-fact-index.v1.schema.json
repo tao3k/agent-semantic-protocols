@@ -83,16 +83,28 @@
   "$defs": {
     "scalar": {
       "oneOf": [
-        { "type": "string" },
-        { "type": "number" },
-        { "type": "boolean" },
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
         {
           "type": "array",
           "items": {
             "oneOf": [
-              { "type": "string" },
-              { "type": "number" },
-              { "type": "boolean" }
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              }
             ]
           }
         }
@@ -112,26 +124,18 @@
     "location": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["path"],
+      "required": [
+        "path",
+        "lineRange"
+      ],
       "properties": {
         "path": {
           "$ref": "#/$defs/projectPath"
         },
-        "line": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "column": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "endLine": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "endColumn": {
-          "type": "integer",
-          "minimum": 1
+        "lineRange": {
+          "type": "string",
+          "description": "Compact source line range as start:end, for example 10:43.",
+          "pattern": "^[1-9][0-9]*:[1-9][0-9]*$"
         }
       }
     },
@@ -189,7 +193,10 @@
     "queryIntent": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind", "term"],
+      "required": [
+        "kind",
+        "term"
+      ],
       "properties": {
         "kind": {
           "type": "string",
@@ -211,7 +218,10 @@
     "relation": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind", "target"],
+      "required": [
+        "kind",
+        "target"
+      ],
       "properties": {
         "kind": {
           "enum": [
@@ -239,7 +249,12 @@
     "nativeSyntaxFact": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "kind", "source", "ownerPath"],
+      "required": [
+        "id",
+        "kind",
+        "source",
+        "ownerPath"
+      ],
       "properties": {
         "id": {
           "type": "string",
@@ -300,7 +315,10 @@
     "indexDescriptor": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "factKinds"],
+      "required": [
+        "name",
+        "factKinds"
+      ],
       "properties": {
         "name": {
           "type": "string",
@@ -328,7 +346,10 @@
     "note": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind", "message"],
+      "required": [
+        "kind",
+        "message"
+      ],
       "properties": {
         "kind": {
           "type": "string",

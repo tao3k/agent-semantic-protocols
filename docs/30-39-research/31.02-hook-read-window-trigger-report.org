@@ -142,7 +142,7 @@ Minimum useful fields can remain under existing =searchSynthesis.fields= first:
         "crates/semantic-agent-hook/src/classifier.rs"
       ],
       "testFrontier": [
-        "crates/semantic-agent-hook/tests/unit/rust_harness_profile/cli.rs",
+        "crates/semantic-agent-hook/tests/unit/rust_harness_activation/cli.rs",
         "crates/semantic-agent-hook/tests/unit/classifier/routes/direct_read.rs"
       ],
       "windowGroups": [
@@ -171,7 +171,7 @@ Expected compact shape:
 #+begin_src text
 |owner crates/semantic-agent-hook/src/cli.rs ...
 |item fn run_install ...
-|test crates/semantic-agent-hook/tests/unit/rust_harness_profile/cli/install.rs reason=cli-install
+|test crates/semantic-agent-hook/tests/unit/rust_harness_activation/cli/install.rs reason=cli-install
 |next text:read,hook,pre-tool scope=change-frontier
 #+end_src
 
@@ -197,7 +197,7 @@ JSON can initially carry the concrete commands in =nextAction.fields=:
     "commands": [
       "semantic-agent-hook read crates/semantic-agent-hook/src/cli.rs --query run_install .",
       "semantic-agent-hook read crates/semantic-agent-hook/src/protocol.rs --query semantic-read-packet .",
-      "semantic-agent-hook read crates/semantic-agent-hook/tests/unit/rust_harness_profile/cli/install.rs --query install ."
+      "semantic-agent-hook read crates/semantic-agent-hook/tests/unit/rust_harness_activation/cli/install.rs --query install ."
     ]
   }
 }
@@ -414,7 +414,7 @@ Required evidence:
 The route-kind correction was replayed through the actual Codex hook entrypoint:
 
 #+begin_src shell
-semantic-agent-hook hook --client codex pre-tool --emit decision --profiles <profiles.json>
+semantic-agent-hook hook --client codex pre-tool --emit decision --activation <activation.json>
 #+end_src
 
 Exact source read payload:

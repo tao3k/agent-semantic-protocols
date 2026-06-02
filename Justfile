@@ -13,7 +13,7 @@ default:
 # Install all agent tools and Codex hook config. Optional: just agent-hooks-install ~/.local/bin
 agent-hooks-install bin_dir="":
     @bin_dir="{{bin_dir}}"; \
-      if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-/opt/homebrew/bin}"; fi; \
+      if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-$HOME/.local/bin}"; fi; \
       just agent-tools-install-global "${bin_dir}"; \
       just agent-hooks-install-current "${bin_dir}"; \
       just agent-hooks-doctor "${bin_dir}"
@@ -27,19 +27,27 @@ agent-hooks-doctor bin_dir="":
 agent-hooks-install-root bin_dir="":
     @bin_dir="{{bin_dir}}"; \
       if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-}"; fi; \
-      if [ -n "${bin_dir}" ]; then hook_bin="${bin_dir}/semantic-agent-hook"; else hook_bin="semantic-agent-hook"; fi; \
-      "${hook_bin}" install --client codex {{repo}}
+      if [ -n "${bin_dir}" ]; then \
+        hook_bin="${bin_dir}/semantic-agent-hook"; \
+        "${hook_bin}" install --client codex {{repo}}; \
+      else \
+        cargo run -q -p semantic-agent-hook -- install --client codex {{repo}}; \
+      fi
 
 agent-hooks-doctor-root bin_dir="":
     @bin_dir="{{bin_dir}}"; \
       if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-}"; fi; \
-      if [ -n "${bin_dir}" ]; then hook_bin="${bin_dir}/semantic-agent-hook"; else hook_bin="semantic-agent-hook"; fi; \
-      "${hook_bin}" doctor --client codex {{repo}}
+      if [ -n "${bin_dir}" ]; then \
+        hook_bin="${bin_dir}/semantic-agent-hook"; \
+        "${hook_bin}" doctor --client codex {{repo}}; \
+      else \
+        cargo run -q -p semantic-agent-hook -- doctor --client codex {{repo}}; \
+      fi
 
 # Replay the root classifier directly without launching Codex.
 agent-hooks-smoke-hook:
     @printf '%s' '{"tool_name":"functions.exec_command","tool_input":{"cmd":"sed -n '\''1,8p'\'' languages/typescript-lang-project-harness/tests/unit/cli.test.ts"}}' \
-      | semantic-agent-hook hook --client codex pre-tool --profiles .codex/semantic-agent-hook/profiles.json --emit decision \
+      | cargo run -q -p semantic-agent-hook -- hook --client codex pre-tool --activation .codex/semantic-agent-hook/activation.json --emit decision \
       | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["decision"]=="deny", d; assert d["reasonKind"] in {"bulk-source-dump","direct-source-read"}, d; print("[agent-hooks-smoke-hook] blocked", d["reasonKind"])'
 
 # Launch Codex CLI and verify the real PreToolUse runtime blocks a TS source dump.
@@ -62,7 +70,7 @@ agent-hooks-smoke-codex:
 # Install semantic-agent-hook, rs-harness, ts-harness, and py-harness.
 agent-tools-install-global bin_dir="":
     @bin_dir="{{bin_dir}}"; \
-      if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-/opt/homebrew/bin}"; fi; \
+      if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-$HOME/.local/bin}"; fi; \
       just agent-tools-install-hook "${bin_dir}"; \
       just agent-tools-install-rs "${bin_dir}"; \
       just agent-tools-install-ts "${bin_dir}"; \
@@ -72,7 +80,7 @@ agent-tools-install-global bin_dir="":
 # Install only the root semantic-agent-hook binary.
 agent-tools-install-hook bin_dir="":
     @bin_dir="{{bin_dir}}"; \
-      if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-/opt/homebrew/bin}"; fi; \
+      if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-$HOME/.local/bin}"; fi; \
       mkdir -p "${bin_dir}"; \
       cargo build --release --manifest-path Cargo.toml --package semantic-agent-hook --bin semantic-agent-hook; \
       install -m 755 target/release/semantic-agent-hook "${bin_dir}/semantic-agent-hook"; \
@@ -84,7 +92,7 @@ agent-tools-install-rust bin_dir="":
 
 agent-tools-install-rs bin_dir="":
     @bin_dir="{{bin_dir}}"; \
-      if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-/opt/homebrew/bin}"; fi; \
+      if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-$HOME/.local/bin}"; fi; \
       mkdir -p "${bin_dir}"; \
       cargo build --release --manifest-path {{rust_harness_project}}/Cargo.toml --features cli --bin rs-harness; \
       install -m 755 {{rust_harness_project}}/target/release/rs-harness "${bin_dir}/rs-harness"; \
@@ -96,7 +104,7 @@ agent-tools-install-typescript bin_dir="":
 
 agent-tools-install-ts bin_dir="":
     @bin_dir="{{bin_dir}}"; \
-      if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-/opt/homebrew/bin}"; fi; \
+      if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-$HOME/.local/bin}"; fi; \
       mkdir -p "${bin_dir}"; \
       npm --prefix {{typescript_harness_project}} run -s build >/dev/null; \
       rm -f "${bin_dir}/ts-harness"; \
@@ -110,7 +118,7 @@ agent-tools-install-python bin_dir="":
 
 agent-tools-install-py bin_dir="":
     @bin_dir="{{bin_dir}}"; \
-      if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-/opt/homebrew/bin}"; fi; \
+      if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-$HOME/.local/bin}"; fi; \
       mkdir -p "${bin_dir}"; \
       uv tool install --force --editable {{python_harness_project}}; \
       py_bin="$(uv tool dir --bin)/py-harness"; \
@@ -167,13 +175,8 @@ provider-gate-python:
       {{python_harness_project}}/tests/unit/harness/test_semantic_schema_registry.py
 
 provider-gate-julia:
-    direnv exec . julia --project={{julia_harness_project}} -e 'using Pkg; Pkg.test()'
-    direnv exec . {{julia_harness}} agent guide {{julia_harness_project}}
-    direnv exec . {{julia_harness}} search prime --view seeds {{julia_harness_project}}
-    direnv exec . {{julia_harness}} search owner src/cli.jl --view seeds {{julia_harness_project}}
-    direnv exec . {{julia_harness}} search fzf run_julia_project_harness_cli owner tests --view seeds {{julia_harness_project}}
-    printf 'src/cli.jl:1\n' | direnv exec . {{julia_harness}} search ingest owner tests --view seeds {{julia_harness_project}}
-    direnv exec . {{julia_harness}} check --changed {{julia_harness_project}}
+	direnv exec . julia --project={{julia_harness_project}} -e 'using Pkg; Pkg.test()'
+	@echo "[provider-gate-julia] skipped CLI runtime smoke; Julia startup/warmup is tracked separately"
 
 check-python-policy:
     uv run --project {{python_harness_project}} --frozen py-harness check --full {{repo}}

@@ -76,16 +76,28 @@
   "$defs": {
     "scalar": {
       "oneOf": [
-        { "type": "string" },
-        { "type": "number" },
-        { "type": "boolean" },
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
         {
           "type": "array",
           "items": {
             "oneOf": [
-              { "type": "string" },
-              { "type": "number" },
-              { "type": "boolean" }
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              }
             ]
           }
         }
@@ -105,31 +117,29 @@
     "location": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["path"],
+      "required": [
+        "path",
+        "lineRange"
+      ],
       "properties": {
         "path": {
           "$ref": "#/$defs/projectPath"
         },
-        "line": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "column": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "endLine": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "endColumn": {
-          "type": "integer",
-          "minimum": 1
+        "lineRange": {
+          "type": "string",
+          "description": "Compact source line range as start:end, for example 10:43.",
+          "pattern": "^[1-9][0-9]*:[1-9][0-9]*$"
         }
       }
     },
     "visibility": {
-      "enum": ["public", "private", "protected", "internal", "unknown"]
+      "enum": [
+        "public",
+        "private",
+        "protected",
+        "internal",
+        "unknown"
+      ]
     },
     "typeKind": {
       "enum": [
@@ -206,12 +216,18 @@
       ]
     },
     "versionScope": {
-      "enum": ["current", "external", "unknown"]
+      "enum": [
+        "current",
+        "external",
+        "unknown"
+      ]
     },
     "typeRef": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["carrier"],
+      "required": [
+        "carrier"
+      ],
       "properties": {
         "name": {
           "type": "string",
@@ -260,7 +276,11 @@
     "typeMember": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "role", "type"],
+      "required": [
+        "name",
+        "role",
+        "type"
+      ],
       "properties": {
         "name": {
           "type": "string",
@@ -341,7 +361,13 @@
           "type": "boolean"
         },
         "source": {
-          "enum": ["native-parser", "metadata", "docs", "ingest", "unknown"]
+          "enum": [
+            "native-parser",
+            "metadata",
+            "docs",
+            "ingest",
+            "unknown"
+          ]
         },
         "package": {
           "type": "string",
@@ -381,7 +407,10 @@
     "note": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind", "message"],
+      "required": [
+        "kind",
+        "message"
+      ],
       "properties": {
         "kind": {
           "type": "string",

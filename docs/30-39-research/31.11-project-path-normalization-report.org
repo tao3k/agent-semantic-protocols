@@ -1,0 +1,135 @@
+#+TITLE: 31.11 Project Path Normalization Report
+#+DATE: 2026-06-02
+#+STATUS: active
+#+JOHNNY_DECIMAL: 31.11
+#+AREA: 30-39 Research
+#+CATEGORY: 31 Search Flow Research
+
+* Purpose
+
+This report records the path-normalization failure observed during sandbox use
+of provider search output.  The agent copied a provider-rendered short path or
+display locator into a later read command, then executed that command relative
+to the wrong root.
+
+The failure mode is token-expensive because the next agent step usually tries a
+second broad search or a raw read to recover.  It is also policy-relevant:
+incorrect path values push the agent away from provider-owned query/search
+routes and toward shell fallbacks.
+
+* Observed Trace
+
+A focused TypeScript owner search returned compact evidence, but the output
+mixed graph/display identity and command-ready path values:
+
+#+begin_src shell
+ts-harness search owner src/components/WorkflowExecution.tsx .
+#+end_src
+
+The rendered edge and finding lines carried values shaped like:
+
+#+begin_example
+0:src/components/WorkflowExecution.tsx
+at=0:src/components/WorkflowExecution.tsx
+owner:src/components/WorkflowExecution.tsx
+#+end_example
+
+The agent then attempted follow-up reads using root-relative assumptions that
+were not guaranteed by the rendered value.  Similar drift appears when a Rust
+provider emits package-local =src/...= paths while the workspace command needs a
+longer root-relative path.
+
+* Root Cause
+
+Provider output was treating three different concepts as one string:
+
+- command-ready project-root-relative path;
+- package-local owner path;
+- graph/display locator with rank, node kind, or line range.
+
+The shared schema already models =projectPath= as a canonical
+project-root-relative path.  The missing piece was making that rule explicit in
+tests and provider-facing documentation, so language harnesses cannot present
+display locators as copyable paths.
+
+* Contract
+
+Agent-facing path fields are canonical project-root-relative paths:
+
+#+begin_example
+src/components/WorkflowExecution.tsx
+packages/typescript/src/cli/search.ts
+crates/semantic-agent-hook/src/cli.rs
+#+end_example
+
+The following are not path values:
+
+#+begin_example
+0:src/components/WorkflowExecution.tsx
+owner:src/components/WorkflowExecution.tsx
+src/components/WorkflowExecution.tsx:10-20
+/Users/example/project/src/components/WorkflowExecution.tsx
+src\components\WorkflowExecution.tsx
+../src/components/WorkflowExecution.tsx
+#+end_example
+
+If a provider needs package-local or display information, it must put that in a
+separate field such as =package=, =packageRoot=, =packagePath=, =rank=, or
+=node=.  Fields that agents copy into commands, including =ownerPath=,
+=location.path=, =querySet.value= for =owner/path= terms, and route selectors,
+must remain project-root-relative.
+
+* Implemented Fix
+
+The shared search and graph schema =projectPath= definitions now describe this
+contract directly.  The search packet schema test adds negative cases for rank
+prefixes, command prefixes, line ranges, absolute paths, backslash paths, and
+parent-directory paths.
+
+This makes the root repository schema fail before a provider can ship JSON that
+encourages root drift.
+
+TypeScript and Python compact renderers now also render policy findings as
+path-first lines:
+
+#+begin_example
+|find RULE xN path=src/a.ts line=10 column=3 node=O:src/a.ts severity=info
+#+end_example
+
+The graph node remains available for graph attachment, but the first copyable
+path-shaped field is a canonical project-root-relative path.  Python adds a
+unit test for this shape, and TypeScript full =npm test= covers the renderer and
+self-apply policy after splitting an oversized schema test fixture.
+
+* Next Improvements
+
+** 31.11-A Provider renderers should separate path and locator fields
+
+Rust, TypeScript, and Python renderers should stop emitting graph locators in
+path-shaped fields.  Text output should prefer:
+
+#+begin_example
+|edge O:src/a.ts -import-> O:src/b.ts
+|hit path=src/a.ts line=10 column=3
+|find TS-AGENT-R007 x1 path=src/a.ts node=O:src/a.ts
+#+end_example
+
+over:
+
+#+begin_example
+|edge 0:src/a.ts -import-> 0:src/b.ts
+|find TS-AGENT-R007 x1 at=0:src/a.ts
+#+end_example
+
+** 31.11-B Provider queries should accept exact project paths only
+
+Exact owner/query commands should reject display locators instead of silently
+normalizing them.  Provider errors should suggest the command-ready project path
+when it can be derived.
+
+** 31.11-C Hook routes should continue stripping wrapper line locators
+
+=semantic-agent-hook= already strips wrapper locators such as
+=path.rs:10-20= before constructing provider query routes.  That behavior
+should remain hook-local for unsafe shell/read wrappers, while provider packet
+fields should avoid emitting such locators in the first place.

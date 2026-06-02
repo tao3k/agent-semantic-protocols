@@ -77,12 +77,22 @@
         "minLength": 1
       }
     },
-      "matchMode": {
-        "enum": ["exact", "fallback-contains", "candidate", "mixed", "unknown"]
-      },
+    "matchMode": {
+      "enum": [
+        "exact",
+        "fallback-contains",
+        "candidate",
+        "mixed",
+        "unknown"
+      ]
+    },
     "outputMode": {
       "description": "Agent-facing rendering mode for matches. Code mode includes compact code; names and outline modes may omit code.",
-      "enum": ["code", "names", "outline"]
+      "enum": [
+        "code",
+        "names",
+        "outline"
+      ]
     },
     "queryCoverage": {
       "type": "array",
@@ -137,33 +147,30 @@
     "location": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["path", "line", "endLine"],
+      "required": [
+        "path",
+        "lineRange"
+      ],
       "properties": {
         "path": {
           "$ref": "#/$defs/projectPath"
         },
-        "line": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "endLine": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "column": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "endColumn": {
-          "type": "integer",
-          "minimum": 1
+        "lineRange": {
+          "type": "string",
+          "description": "Compact source line range as start:end, for example 10:43.",
+          "pattern": "^[1-9][0-9]*:[1-9][0-9]*$"
         }
       }
     },
     "match": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "kind", "location", "truncated"],
+      "required": [
+        "name",
+        "kind",
+        "location",
+        "truncated"
+      ],
       "properties": {
         "name": {
           "type": "string",
@@ -174,7 +181,11 @@
           "minLength": 1
         },
         "visibility": {
-          "enum": ["public", "private", "unknown"]
+          "enum": [
+            "public",
+            "private",
+            "unknown"
+          ]
         },
         "doc": {
           "type": "boolean"
@@ -184,7 +195,7 @@
         },
         "read": {
           "type": "string",
-          "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*):[1-9][0-9]*-[1-9][0-9]*$"
+          "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*):[1-9][0-9]*:[1-9][0-9]*$"
         },
         "code": {
           "type": "string",
@@ -203,9 +214,15 @@
           "type": "object",
           "additionalProperties": {
             "oneOf": [
-              { "type": "string" },
-              { "type": "number" },
-              { "type": "boolean" }
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              }
             ]
           }
         }
@@ -215,10 +232,19 @@
       "type": "object",
       "description": "How the provider projected native parser facts into agent-facing code or outline text.",
       "additionalProperties": false,
-      "required": ["mode", "syntax", "sourceAuthority"],
+      "required": [
+        "mode",
+        "syntax",
+        "sourceAuthority"
+      ],
       "properties": {
         "mode": {
-          "enum": ["names", "outline", "compact", "exact"]
+          "enum": [
+            "names",
+            "outline",
+            "compact",
+            "exact"
+          ]
         },
         "syntax": {
           "enum": [
@@ -230,7 +256,11 @@
           ]
         },
         "sourceAuthority": {
-          "enum": ["native-parser", "parser-index", "source-range"]
+          "enum": [
+            "native-parser",
+            "parser-index",
+            "source-range"
+          ]
         },
         "sourceFingerprint": {
           "type": "string",
@@ -244,7 +274,7 @@
         "exactRead": {
           "type": "string",
           "description": "Exact source locator to use before editing.",
-          "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*):[1-9][0-9]*-[1-9][0-9]*$"
+          "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*):[1-9][0-9]*:[1-9][0-9]*$"
         },
         "nodes": {
           "type": "array",
@@ -272,7 +302,12 @@
     "projectionNode": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "kind", "label", "read"],
+      "required": [
+        "id",
+        "kind",
+        "label",
+        "read"
+      ],
       "properties": {
         "id": {
           "type": "string",
@@ -307,7 +342,7 @@
         },
         "read": {
           "type": "string",
-          "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*):[1-9][0-9]*-[1-9][0-9]*$"
+          "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*):[1-9][0-9]*:[1-9][0-9]*$"
         },
         "flags": {
           "type": "array",
@@ -321,6 +356,7 @@
               "raise",
               "throw",
               "panic",
+              "async",
               "await",
               "unsafe",
               "mutation",
@@ -333,7 +369,10 @@
     "projectionOmission": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind", "reason"],
+      "required": [
+        "kind",
+        "reason"
+      ],
       "properties": {
         "kind": {
           "type": "string",
@@ -349,17 +388,25 @@
         },
         "read": {
           "type": "string",
-          "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*):[1-9][0-9]*-[1-9][0-9]*$"
+          "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*):[1-9][0-9]*:[1-9][0-9]*$"
         }
       }
     },
     "expandAction": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind", "target"],
+      "required": [
+        "kind",
+        "target"
+      ],
       "properties": {
         "kind": {
-          "enum": ["exact-read", "node-query", "hot-block", "owner-names"]
+          "enum": [
+            "exact-read",
+            "node-query",
+            "hot-block",
+            "owner-names"
+          ]
         },
         "target": {
           "type": "string",
@@ -367,7 +414,7 @@
         },
         "read": {
           "type": "string",
-          "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*):[1-9][0-9]*-[1-9][0-9]*$"
+          "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*):[1-9][0-9]*:[1-9][0-9]*$"
         },
         "argv": {
           "type": "array",
@@ -433,7 +480,10 @@
     "hotBlock": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["label", "read"],
+      "required": [
+        "label",
+        "read"
+      ],
       "properties": {
         "label": {
           "type": "string",
@@ -441,7 +491,7 @@
         },
         "read": {
           "type": "string",
-          "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*):[1-9][0-9]*-[1-9][0-9]*$"
+          "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*):[1-9][0-9]*:[1-9][0-9]*$"
         },
         "reason": {
           "type": "string",
@@ -452,17 +502,31 @@
     "queryCoverage": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["value", "status", "match", "matchCount"],
+      "required": [
+        "value",
+        "status",
+        "match",
+        "matchCount"
+      ],
       "properties": {
         "value": {
           "type": "string",
           "minLength": 1
         },
         "status": {
-          "enum": ["hit", "miss", "partial"]
+          "enum": [
+            "hit",
+            "miss",
+            "partial"
+          ]
         },
         "match": {
-          "enum": ["exact", "fallback-contains", "candidate", "none"]
+          "enum": [
+            "exact",
+            "fallback-contains",
+            "candidate",
+            "none"
+          ]
         },
         "matchCount": {
           "type": "integer",
@@ -484,14 +548,22 @@
     "candidateItem": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "reason"],
+      "required": [
+        "name",
+        "reason"
+      ],
       "properties": {
         "name": {
           "type": "string",
           "minLength": 1
         },
         "reason": {
-          "enum": ["near-miss", "prefix", "token-overlap", "owner-rank"]
+          "enum": [
+            "near-miss",
+            "prefix",
+            "token-overlap",
+            "owner-rank"
+          ]
         },
         "term": {
           "type": "string",
@@ -505,7 +577,10 @@
     "note": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind", "message"],
+      "required": [
+        "kind",
+        "message"
+      ],
       "properties": {
         "kind": {
           "type": "string",

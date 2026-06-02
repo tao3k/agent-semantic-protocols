@@ -1,23 +1,23 @@
-//! CLI entrypoint for installing and replaying `semantic-agent-hook` profiles.
+//! CLI entrypoint for installing and replaying `semantic-agent-hook` activations.
 
+use crate::activation_store::{
+    default_activation_path, load_activation, load_or_sync_activation, write_activation,
+};
 use crate::codex_config::{
     ROOT_BLOCK_BEGIN, ROOT_BLOCK_END, codex_hook_block, codex_user_trust_state_status,
     install_codex_user_trust_state, merge_codex_config, validate_codex_config_toml,
 };
 use crate::event_state::append_hook_event_state;
+use crate::provider_manifest::{build_default_activation, provider_binary_available};
 use crate::{
-    DecisionKind, DecisionSubject, HookDecision, ProfileRegistry, ReasonKind, classify_hook,
-    merge_profile_registries, parse_payload, parse_profiles, render_platform_response,
+    DecisionKind, DecisionSubject, HookDecision, ReasonKind, classify_hook, parse_payload,
+    render_platform_response,
 };
-use serde_json::{Value, json};
 use std::env;
 use std::fs;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 
-const PYTHON_PROFILE_REGISTRY_JSON: &str = include_str!(
-    "../../../languages/python-lang-project-harness/src/python_lang_project_harness/semantic-agent-hook-profile.py-harness.v1.json"
-);
 const AGENT_SEMANTIC_PROTOCOLS_SKILL_MD: &str = include_str!("../../../SKILL.md");
 
 /// Run the `semantic-agent-hook` CLI using process arguments and standard IO.
@@ -31,9 +31,8 @@ fn run() -> Result<(), String> {
         Some("hook") => run_hook(&args[1..]),
         Some("doctor") => run_doctor(&args[1..]),
         Some("install") => run_install(&args[1..]),
-        Some("profiles") => run_profiles(&args[1..]),
         _ => Err(
-            "usage: semantic-agent-hook <install|doctor|hook|profiles> --client codex [PROJECT_ROOT]"
+            "usage: semantic-agent-hook <install|doctor|hook> --client codex [PROJECT_ROOT]"
                 .to_string(),
         ),
     }
@@ -44,13 +43,13 @@ fn run_hook(args: &[String]) -> Result<(), String> {
         .ok_or_else(|| "missing required --client <client>".to_string())?;
     let emit = flag_value(args, "--emit").unwrap_or("platform");
     let event = first_positional(args).ok_or_else(|| "missing hook event".to_string())?;
-    let profiles_path = flag_value(args, "--profiles")
+    let activation_path = flag_value(args, "--activation")
         .map(PathBuf::from)
-        .unwrap_or_else(|| default_profile_registry_path(&PathBuf::from(".")));
-    let registry = match load_profiles(&profiles_path) {
+        .unwrap_or_else(|| default_activation_path(&PathBuf::from(".")));
+    let runtime = match load_activation(&activation_path) {
         Ok(registry) => registry,
         Err(error) => {
-            emit_profile_load_failure(client, event, emit, &profiles_path, &error)?;
+            emit_activation_load_failure(client, event, emit, &activation_path, &error)?;
             return Ok(());
         }
     };
@@ -76,8 +75,9 @@ fn run_hook(args: &[String]) -> Result<(), String> {
             return Ok(());
         }
     };
-    let decision = classify_hook(&registry, client, event, &payload);
-    if let Err(error) = append_hook_event_state(&profiles_path, &decision) {
+    let decision = classify_hook(&runtime, client, event, &payload);
+    crate::dev_context::record_active_context(&activation_path, client, event, &payload, &decision);
+    if let Err(error) = append_hook_event_state(&activation_path, &decision) {
         eprintln!("[semantic-agent-hook] failed to update hook state: {error}");
     }
     let output_value = match emit {
@@ -97,23 +97,23 @@ fn run_hook(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-fn emit_profile_load_failure(
+fn emit_activation_load_failure(
     client: &str,
     event: &str,
     emit: &str,
-    profiles_path: &Path,
+    activation_path: &Path,
     error: &str,
 ) -> Result<(), String> {
     eprintln!(
-        "[semantic-agent-hook] profile registry disabled for this hook event: {}: {error}",
-        profiles_path.display()
+        "[semantic-agent-hook] activation disabled for this hook event: {}: {error}",
+        activation_path.display()
     );
     emit_hook_runtime_failure(
         client,
         event,
         emit,
         &format!(
-            "Semantic hook profiles could not be loaded; allowing tool use so the registry can be repaired: {error}"
+            "Semantic hook activation could not be loaded; allowing tool use so activation can be repaired: {error}"
         ),
     )
 }
@@ -159,10 +159,10 @@ fn run_doctor(args: &[String]) -> Result<(), String> {
     let client = flag_value(args, "--client").unwrap_or("codex");
     ensure_codex_client(client)?;
     let project_root = project_root_arg(args);
-    let profiles_path = flag_value(args, "--profiles")
+    let activation_path = flag_value(args, "--activation")
         .map(PathBuf::from)
-        .unwrap_or_else(|| default_profile_registry_path(&project_root));
-    let registry = load_or_sync_profiles(&profiles_path, &project_root)?;
+        .unwrap_or_else(|| default_activation_path(&project_root));
+    let runtime = load_or_sync_activation(&activation_path, &project_root)?;
     let config_path = project_root.join(".codex").join("config.toml");
     let config = fs::read_to_string(&config_path).unwrap_or_default();
     let root_hook = config.contains(ROOT_BLOCK_BEGIN) && config.contains(ROOT_BLOCK_END);
@@ -174,9 +174,9 @@ fn run_doctor(args: &[String]) -> Result<(), String> {
         .map(|status| status.trust_config_path.display().to_string())
         .unwrap_or_else(|| "unavailable".to_string());
     println!(
-        "[agent-doctor] status=ok client={client} profiles={} profileRegistry={} config={} hook={} trust={} trustConfig={} binary={} protocol={}",
-        registry.profiles.len(),
-        display_path(&project_root, &profiles_path),
+        "[agent-doctor] status=ok client={client} providers={} activation={} config={} hook={} trust={} trustConfig={} binary={} protocol={}",
+        runtime.providers.len(),
+        display_path(&project_root, &activation_path),
         config_path.is_file(),
         root_hook,
         trust,
@@ -189,14 +189,14 @@ fn run_doctor(args: &[String]) -> Result<(), String> {
     {
         println!("|trust missing={}", status.missing_events.join(","));
     }
-    for profile in registry.profiles {
+    for provider in runtime.providers {
         println!(
-            "|profile language={} provider={} binary={} roots={} extensions={}",
-            profile.language_id,
-            profile.provider_id,
-            profile.binary,
-            profile.source_roots.join(","),
-            profile.source_extensions.join(","),
+            "|provider language={} provider={} binary={} roots={} extensions={}",
+            provider.language_id,
+            provider.provider_id,
+            provider.binary,
+            provider.source_roots.join(","),
+            provider.source_extensions.join(","),
         );
     }
     Ok(())
@@ -207,23 +207,13 @@ fn run_install(args: &[String]) -> Result<(), String> {
     ensure_codex_client(client)?;
     let project_root = project_root_arg(args);
     let codex_dir = project_root.join(".codex");
-    let profiles_path = default_profile_registry_path(&project_root);
-    if let Some(parent) = profiles_path.parent() {
+    let activation_path = default_activation_path(&project_root);
+    if let Some(parent) = activation_path.parent() {
         fs::create_dir_all(parent)
             .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
     }
-    let profiles = if let Some(path) = flag_value(args, "--profiles") {
-        fs::read_to_string(path)
-            .map_err(|error| format!("failed to read profile registry {path}: {error}"))?
-    } else {
-        serde_json::to_string_pretty(&build_default_profile_registry(&project_root)?)
-            .map_err(|error| format!("failed to serialize profile registry: {error}"))?
-    };
-    let registry = parse_profiles(&profiles)
-        .map_err(|error| format!("invalid profile registry before install: {error:?}"))?;
-    let profiles = serde_json::to_string_pretty(&registry)
-        .map_err(|error| format!("failed to serialize normalized profile registry: {error}"))?;
-    write_profile_registry(&profiles_path, &profiles)?;
+    let activation = build_default_activation(&project_root)?;
+    write_activation(&activation_path, &activation)?;
     let skill_path = install_agent_semantic_protocols_skill(&project_root)?;
 
     fs::create_dir_all(&codex_dir)
@@ -242,299 +232,13 @@ fn run_install(args: &[String]) -> Result<(), String> {
     let user_config_path = install_codex_user_trust_state(&config_path)?;
 
     println!(
-        "[agent-install] client={client} profiles={} config={} trustConfig={} skill={} binary=semantic-agent-hook mode=updated",
-        display_path(&project_root, &profiles_path),
+        "[agent-install] client={client} activation={} config={} trustConfig={} skill={} binary=semantic-agent-hook mode=updated",
+        display_path(&project_root, &activation_path),
         display_path(&project_root, &config_path),
         user_config_path.display(),
         display_path(&project_root, &skill_path),
     );
     Ok(())
-}
-
-fn run_profiles(args: &[String]) -> Result<(), String> {
-    match args.first().map(String::as_str) {
-        Some("merge") => run_profiles_merge(&args[1..]),
-        _ => Err(
-            "usage: semantic-agent-hook profiles merge --output <path> <profile-registry>..."
-                .to_string(),
-        ),
-    }
-}
-
-fn run_profiles_merge(args: &[String]) -> Result<(), String> {
-    let output_path = flag_value(args, "--output")
-        .ok_or_else(|| "missing required --output <path>".to_string())?;
-    let input_paths = positionals(args);
-    if input_paths.is_empty() {
-        return Err("profiles merge requires at least one profile registry input".to_string());
-    }
-    let registries = input_paths
-        .iter()
-        .map(|path| load_profiles(Path::new(path)))
-        .collect::<Result<Vec<_>, _>>()?;
-    let merged = merge_profile_registries(registries);
-    let output = serde_json::to_string_pretty(&merged)
-        .map_err(|error| format!("failed to serialize merged profile registry: {error}"))?;
-    if let Some(parent) = Path::new(output_path).parent()
-        && !parent.as_os_str().is_empty()
-    {
-        fs::create_dir_all(parent)
-            .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
-    }
-    fs::write(output_path, format!("{output}\n"))
-        .map_err(|error| format!("failed to write {output_path}: {error}"))?;
-    println!(
-        "[profiles-merge] output={} profiles={}",
-        output_path,
-        merged.profiles.len()
-    );
-    Ok(())
-}
-
-fn load_profiles(path: &Path) -> Result<ProfileRegistry, String> {
-    let contents = fs::read_to_string(path).map_err(|error| {
-        format!(
-            "failed to read profile registry {}: {error}",
-            path.display()
-        )
-    })?;
-    parse_profiles(&contents).map_err(|error| format!("invalid profile registry JSON: {error:?}"))
-}
-
-fn load_or_sync_profiles(
-    profiles_path: &Path,
-    project_root: &Path,
-) -> Result<ProfileRegistry, String> {
-    match load_profiles(profiles_path) {
-        Ok(registry) => Ok(registry),
-        Err(load_error) if is_generated_profile_registry_path(profiles_path) => {
-            eprintln!(
-                "[semantic-agent-hook] syncing generated profile registry {}: {load_error}",
-                profiles_path.display()
-            );
-            sync_profile_registry(project_root, profiles_path).map_err(|sync_error| {
-                format!(
-                    "{load_error}; failed to sync generated profile registry {}: {sync_error}",
-                    profiles_path.display()
-                )
-            })
-        }
-        Err(error) => Err(error),
-    }
-}
-
-fn sync_profile_registry(
-    project_root: &Path,
-    profiles_path: &Path,
-) -> Result<ProfileRegistry, String> {
-    let value = build_default_profile_registry(project_root)?;
-    let registry = parse_profiles(&value.to_string())
-        .map_err(|error| format!("invalid generated profile registry: {error:?}"))?;
-    let output = serde_json::to_string_pretty(&registry)
-        .map_err(|error| format!("failed to serialize generated profile registry: {error}"))?;
-    write_profile_registry(profiles_path, &output)?;
-    Ok(registry)
-}
-
-fn write_profile_registry(path: &Path, profiles: &str) -> Result<(), String> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
-    }
-    fs::write(path, format!("{}\n", profiles.trim_end()))
-        .map_err(|error| format!("failed to write {}: {error}", path.display()))
-}
-
-fn build_default_profile_registry(project_root: &Path) -> Result<Value, String> {
-    let mut profiles = Vec::new();
-    if provider_binary_available("rs-harness") {
-        profiles.push(rust_profile());
-    }
-    if provider_binary_available("ts-harness") {
-        profiles.push(typescript_profile());
-    }
-    if provider_binary_available("py-harness") {
-        profiles.push(python_profile());
-    }
-    if provider_binary_available("julia") && julia_workspace_harness_exists(project_root) {
-        profiles.push(julia_profile());
-    }
-    if profiles.is_empty() {
-        return Err(
-            "no semantic hook profiles discovered; expected PATH to contain rs-harness, ts-harness, py-harness, or julia with workspace JuliaLangProjectHarness.jl files"
-                .to_string(),
-        );
-    }
-    Ok(json!({
-        "schemaId": crate::PROFILE_REGISTRY_SCHEMA_ID,
-        "schemaVersion": crate::PROFILE_REGISTRY_SCHEMA_VERSION,
-        "protocolId": crate::HOOK_PROTOCOL_ID,
-        "protocolVersion": crate::HOOK_PROTOCOL_VERSION,
-        "projectRoot": ".",
-        "profiles": profiles,
-    }))
-}
-
-fn provider_binary_available(binary: &str) -> bool {
-    let Some(path) = env::var_os("PATH") else {
-        return false;
-    };
-    env::split_paths(&path).any(|entry| is_executable_file(&entry.join(binary)))
-}
-
-fn julia_workspace_harness_exists(project_root: &Path) -> bool {
-    project_root
-        .join("languages/JuliaLangProjectHarness.jl/Project.toml")
-        .is_file()
-        && project_root
-            .join("languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl")
-            .is_file()
-}
-
-fn julia_workspace_harness_argv() -> Vec<String> {
-    vec![
-        "julia".to_string(),
-        "--project=languages/JuliaLangProjectHarness.jl".to_string(),
-        "languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl".to_string(),
-    ]
-}
-
-fn julia_workspace_harness_command(suffix: &[&str]) -> Vec<String> {
-    let mut argv = julia_workspace_harness_argv();
-    argv.extend(suffix.iter().map(|arg| (*arg).to_string()));
-    argv
-}
-
-fn command_args(args: &[&str]) -> Vec<String> {
-    args.iter().map(|arg| (*arg).to_string()).collect()
-}
-
-fn command_template(argv: Vec<String>) -> Value {
-    json!({
-        "text": argv.join(" "),
-        "argv": argv,
-    })
-}
-
-fn command_template_with_stdin(argv: Vec<String>, stdin_mode: &str) -> Value {
-    json!({
-        "text": argv.join(" "),
-        "argv": argv,
-        "stdinMode": stdin_mode,
-    })
-}
-
-#[cfg(unix)]
-fn is_executable_file(path: &Path) -> bool {
-    use std::os::unix::fs::PermissionsExt;
-
-    path.metadata()
-        .is_ok_and(|metadata| metadata.is_file() && metadata.permissions().mode() & 0o111 != 0)
-}
-
-#[cfg(not(unix))]
-fn is_executable_file(path: &Path) -> bool {
-    path.is_file()
-}
-
-fn rust_profile() -> Value {
-    json!({
-        "languageId": "rust",
-        "providerId": "rs-harness",
-        "binary": "rs-harness",
-        "namespace": "agent.semantic-protocols.languages.rust.rs-harness",
-        "sourceExtensions": [".rs"],
-        "configFiles": ["Cargo.toml", "Cargo.lock"],
-        "sourceRoots": ["src", "tests", "crates", "examples", "benches", "languages/rust-lang-project-harness/src", "languages/rust-lang-project-harness/tests"],
-        "ignoredPathPrefixes": [".cache", ".direnv", ".git", ".idea", ".jj", ".run", ".vscode", "node_modules", "target", ".codex/harness-state", ".codex/rs-harness"],
-        "policy": default_policy(),
-        "commands": {
-            "prime": command_template(command_args(&["rs-harness", "search", "prime", "--view", "seeds", "."])),
-            "owner": command_template(command_args(&["rs-harness", "query", "--from-hook", "direct-source-read", "--selector", "{path}", "."])),
-            "fzf": command_template(command_args(&["rs-harness", "search", "fzf", "{query}", "tests", "--view", "seeds", "."])),
-            "ingest": command_template_with_stdin(command_args(&["rs-harness", "search", "ingest", "items", "tests", "--view", "seeds", "."]), "pipe-candidates"),
-            "checkChanged": command_template(command_args(&["rs-harness", "check", "--changed", "."])),
-            "guide": command_template(command_args(&["rs-harness", "agent", "guide", "."]))
-        }
-    })
-}
-
-fn typescript_profile() -> Value {
-    json!({
-        "languageId": "typescript",
-        "providerId": "ts-harness",
-        "binary": "ts-harness",
-        "namespace": "agent.semantic-protocols.languages.typescript.ts-harness",
-        "sourceExtensions": [".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs"],
-        "configFiles": ["package.json", "tsconfig.json", "tsconfig.base.json"],
-        "sourceRoots": ["src", "test", "tests", "__tests__", "packages", "apps", "lib", "languages/typescript-lang-project-harness/src", "languages/typescript-lang-project-harness/tests"],
-        "ignoredPathPrefixes": ["node_modules", "dist", "build", "coverage", ".git"],
-        "policy": default_policy(),
-        "commands": {
-            "prime": command_template(command_args(&["ts-harness", "search", "prime", "."])),
-            "owner": command_template(command_args(&["ts-harness", "search", "owner", "{path}", "items", "--query", "{query}", "."])),
-            "fzf": command_template(command_args(&["ts-harness", "search", "fzf", "{query}", "owner", "tests", "--view", "seeds", "."])),
-            "query": command_template(command_args(&["ts-harness", "search", "query", "--from-hook", "direct-source-read", "--selector", "{selector}", "{termArgs}", "--surface", "owner,tests", "--view", "seeds", "."])),
-            "ingest": command_template_with_stdin(command_args(&["ts-harness", "search", "ingest", "owner", "tests", "--view", "seeds", "."]), "pipe-candidates"),
-            "checkChanged": command_template(command_args(&["ts-harness", "check", "--changed", "."])),
-            "guide": command_template(command_args(&["ts-harness", "agent", "guide", "."]))
-        }
-    })
-}
-
-fn python_profile() -> Value {
-    let registry = parse_profiles(PYTHON_PROFILE_REGISTRY_JSON)
-        .expect("Python semantic hook profile registry JSON must be valid");
-    serde_json::to_value(&registry.profiles[0])
-        .expect("Python semantic hook profile must serialize")
-}
-
-fn julia_profile() -> Value {
-    json!({
-        "languageId": "julia",
-        "providerId": "julia-project-harness",
-        "binary": "julia-project-harness",
-        "providerCommandPrefix": julia_workspace_harness_argv(),
-        "namespace": "agent.semantic-protocols.languages.julia.julia-project-harness",
-        "sourceExtensions": [".jl"],
-        "configFiles": ["Project.toml", "Manifest.toml"],
-        "sourceRoots": ["src", "test", "ext", "examples", "languages/JuliaLangProjectHarness.jl/src", "languages/JuliaLangProjectHarness.jl/test"],
-        "ignoredPathPrefixes": [".git", ".julia", ".direnv", "deps", "build", ".codex/harness-state"],
-        "policy": default_policy(),
-        "commands": {
-            "prime": command_template(julia_workspace_harness_command(&["search", "prime", "--view", "seeds", "."])),
-            "owner": command_template(julia_workspace_harness_command(&["search", "owner", "{path}", "--view", "seeds", "."])),
-            "fzf": command_template(julia_workspace_harness_command(&["search", "fzf", "{query}", "owner", "tests", "--view", "seeds", "."])),
-            "ingest": command_template_with_stdin(julia_workspace_harness_command(&["search", "ingest", "owner", "tests", "--view", "seeds", "."]), "pipe-candidates"),
-            "checkChanged": command_template(julia_workspace_harness_command(&["check", "--changed", "."])),
-            "guide": command_template(julia_workspace_harness_command(&["agent", "guide", "."]))
-        }
-    })
-}
-
-fn default_policy() -> Value {
-    json!({
-        "directSourceRead": "block",
-        "bulkSourceDump": "block",
-        "rawSourceSearch": "block",
-        "agentSearchJson": "block",
-        "blockDirectRead": true,
-        "blockBroadRawSearch": true,
-        "blockAgentSearchJson": true,
-        "requirePrimeBeforeEdit": true,
-    })
-}
-
-fn default_profile_registry_path(project_root: &Path) -> PathBuf {
-    project_root
-        .join(".codex")
-        .join("semantic-agent-hook")
-        .join("profiles.json")
-}
-
-fn is_generated_profile_registry_path(path: &Path) -> bool {
-    let normalized = path.to_string_lossy().replace('\\', "/");
-    normalized.ends_with(".codex/semantic-agent-hook/profiles.json")
 }
 
 fn default_agent_skill_path(project_root: &Path) -> PathBuf {
@@ -601,7 +305,7 @@ fn positionals(args: &[String]) -> Vec<&str> {
         }
         if matches!(
             arg.as_str(),
-            "--client" | "--profiles" | "--emit" | "--output"
+            "--client" | "--activation" | "--emit" | "--output"
         ) {
             skip_next = true;
             continue;

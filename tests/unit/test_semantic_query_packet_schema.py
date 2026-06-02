@@ -40,16 +40,16 @@ def semantic_query_minimal_packet() -> dict[str, object]:
                 "kind": "fn",
                 "visibility": "public",
                 "doc": False,
-                "location": {"path": "src/lib.rs", "line": 6, "endLine": 6},
-                "read": "src/lib.rs:6-6",
+                "location": {"path": "src/lib.rs", "lineRange": "6:6"},
+                "read": "src/lib.rs:6:6",
                 "code": "pub fn load() -> Thing { domain::make_thing() }",
                 "projection": {
                     "mode": "compact",
                     "syntax": "brace-block",
                     "sourceAuthority": "native-parser",
-                    "sourceFingerprint": "src/lib.rs:6-6:39",
+                    "sourceFingerprint": "src/lib.rs:6:6:39",
                     "losslessStructure": True,
-                    "exactRead": "src/lib.rs:6-6",
+                    "exactRead": "src/lib.rs:6:6",
                     "nodes": [
                         {
                             "id": "load",
@@ -57,7 +57,7 @@ def semantic_query_minimal_packet() -> dict[str, object]:
                             "role": "declaration",
                             "label": "load",
                             "depth": 0,
-                            "read": "src/lib.rs:6-6",
+                            "read": "src/lib.rs:6:6",
                             "flags": ["call", "return"],
                         }
                     ],
@@ -66,14 +66,14 @@ def semantic_query_minimal_packet() -> dict[str, object]:
                             "kind": "body-detail",
                             "reason": "single-line compact projection keeps exact source behind read locator",
                             "count": 1,
-                            "read": "src/lib.rs:6-6",
+                            "read": "src/lib.rs:6:6",
                         }
                     ],
                     "expandActions": [
                         {
                             "kind": "exact-read",
                             "target": "load",
-                            "read": "src/lib.rs:6-6",
+                            "read": "src/lib.rs:6:6",
                             "argv": [
                                 "rs-harness",
                                 "query",
@@ -139,7 +139,7 @@ class SemanticQueryPacketSchemaTests(unittest.TestCase):
             "syntax": "semantic-outline",
             "sourceAuthority": "native-parser",
             "losslessStructure": True,
-            "exactRead": "src/lib.rs:6-24",
+            "exactRead": "src/lib.rs:6:24",
         }
         packet["matches"][0]["outline"] = {  # type: ignore[index]
             "summary": "load constructs Thing through the domain factory",
@@ -151,7 +151,7 @@ class SemanticQueryPacketSchemaTests(unittest.TestCase):
             "hotBlocks": [
                 {
                     "label": "factory-return",
-                    "read": "src/lib.rs:6-6",
+                    "read": "src/lib.rs:6:6",
                     "reason": "exact item body",
                 }
             ],
@@ -160,7 +160,7 @@ class SemanticQueryPacketSchemaTests(unittest.TestCase):
 
     def test_read_locator_rejects_rank_prefix_path(self) -> None:
         packet = semantic_query_minimal_packet()
-        packet["matches"][0]["read"] = "0:src/lib.rs:6-6"  # type: ignore[index]
+        packet["matches"][0]["read"] = "0:src/lib.rs:6:6"  # type: ignore[index]
 
         errors = self.validation_errors(packet)
 

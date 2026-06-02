@@ -1,0 +1,310 @@
+{
+  "binary": "ts-harness",
+  "languageId": "typescript",
+  "matchMode": "exact",
+  "matches": [
+    {
+      "fields": {
+        "exportKind": "function",
+        "exported": true,
+        "typeOnly": false
+      },
+      "kind": "function",
+      "location": {
+        "lineRange": "1:13",
+        "path": "src/control-flow.ts"
+      },
+      "name": "decide",
+      "projection": {
+        "exactRead": "src/control-flow.ts:1:13",
+        "expandActions": [
+          {
+            "argv": [
+              "ts-harness",
+              "query",
+              "--from-hook",
+              "direct-source-read",
+              "--selector",
+              "src/control-flow.ts:1:13",
+              "."
+            ],
+            "kind": "exact-read",
+            "read": "src/control-flow.ts:1:13",
+            "reason": "read exact source before editing",
+            "target": "decide"
+          },
+          {
+            "argv": [
+              "ts-harness",
+              "query",
+              "--from-hook",
+              "direct-source-read",
+              "--selector",
+              "src/control-flow.ts:2:2",
+              "."
+            ],
+            "kind": "exact-read",
+            "read": "src/control-flow.ts:2:2",
+            "reason": "expand let node before editing",
+            "target": "decide:1"
+          },
+          {
+            "argv": [
+              "ts-harness",
+              "query",
+              "--from-hook",
+              "direct-source-read",
+              "--selector",
+              "src/control-flow.ts:3:8",
+              "."
+            ],
+            "kind": "exact-read",
+            "read": "src/control-flow.ts:3:8",
+            "reason": "expand for node before editing",
+            "target": "decide:2"
+          },
+          {
+            "argv": [
+              "ts-harness",
+              "query",
+              "--from-hook",
+              "direct-source-read",
+              "--selector",
+              "src/control-flow.ts:4:6",
+              "."
+            ],
+            "kind": "exact-read",
+            "read": "src/control-flow.ts:4:6",
+            "reason": "expand if node before editing",
+            "target": "decide:3"
+          },
+          {
+            "argv": [
+              "ts-harness",
+              "query",
+              "--from-hook",
+              "direct-source-read",
+              "--selector",
+              "src/control-flow.ts:5:5",
+              "."
+            ],
+            "kind": "exact-read",
+            "read": "src/control-flow.ts:5:5",
+            "reason": "expand return node before editing",
+            "target": "decide:4"
+          },
+          {
+            "argv": [
+              "ts-harness",
+              "query",
+              "--from-hook",
+              "direct-source-read",
+              "--selector",
+              "src/control-flow.ts:7:7",
+              "."
+            ],
+            "kind": "exact-read",
+            "read": "src/control-flow.ts:7:7",
+            "reason": "expand assign node before editing",
+            "target": "decide:5"
+          },
+          {
+            "argv": [
+              "ts-harness",
+              "query",
+              "--from-hook",
+              "direct-source-read",
+              "--selector",
+              "src/control-flow.ts:9:11",
+              "."
+            ],
+            "kind": "exact-read",
+            "read": "src/control-flow.ts:9:11",
+            "reason": "expand if node before editing",
+            "target": "decide:6"
+          },
+          {
+            "argv": [
+              "ts-harness",
+              "query",
+              "--from-hook",
+              "direct-source-read",
+              "--selector",
+              "src/control-flow.ts:10:10",
+              "."
+            ],
+            "kind": "exact-read",
+            "read": "src/control-flow.ts:10:10",
+            "reason": "expand return node before editing",
+            "target": "decide:7"
+          },
+          {
+            "argv": [
+              "ts-harness",
+              "query",
+              "--from-hook",
+              "direct-source-read",
+              "--selector",
+              "src/control-flow.ts",
+              "."
+            ],
+            "kind": "owner-names",
+            "reason": "return owner-local item names without code windows",
+            "target": "src/control-flow.ts"
+          }
+        ],
+        "losslessStructure": true,
+        "mode": "outline",
+        "nodes": [
+          {
+            "depth": 0,
+            "flags": [
+              "mutation",
+              "loop",
+              "branch",
+              "return"
+            ],
+            "id": "decide",
+            "kind": "function",
+            "label": "export function decide(flag: boolean, values: number[]): number | null",
+            "read": "src/control-flow.ts:1:13",
+            "role": "declaration"
+          },
+          {
+            "depth": 1,
+            "flags": [
+              "mutation"
+            ],
+            "id": "decide:1",
+            "kind": "let",
+            "label": "let total = 0",
+            "parentId": "decide",
+            "read": "src/control-flow.ts:2:2",
+            "role": "mutation"
+          },
+          {
+            "depth": 1,
+            "flags": [
+              "loop"
+            ],
+            "id": "decide:2",
+            "kind": "for",
+            "label": "for const value of values",
+            "parentId": "decide",
+            "read": "src/control-flow.ts:3:8",
+            "role": "control-flow"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "branch"
+            ],
+            "id": "decide:3",
+            "kind": "if",
+            "label": "if value < 0",
+            "parentId": "decide:2",
+            "read": "src/control-flow.ts:4:6",
+            "role": "control-flow"
+          },
+          {
+            "depth": 3,
+            "flags": [
+              "return"
+            ],
+            "id": "decide:4",
+            "kind": "return",
+            "label": "return null",
+            "parentId": "decide:3",
+            "read": "src/control-flow.ts:5:5",
+            "role": "terminal"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "mutation"
+            ],
+            "id": "decide:5",
+            "kind": "assign",
+            "label": "total += value",
+            "parentId": "decide:2",
+            "read": "src/control-flow.ts:7:7",
+            "role": "mutation"
+          },
+          {
+            "depth": 1,
+            "flags": [
+              "branch"
+            ],
+            "id": "decide:6",
+            "kind": "if",
+            "label": "if flag && total > 10",
+            "parentId": "decide",
+            "read": "src/control-flow.ts:9:11",
+            "role": "control-flow"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "return"
+            ],
+            "id": "decide:7",
+            "kind": "return",
+            "label": "return total",
+            "parentId": "decide:6",
+            "read": "src/control-flow.ts:10:10",
+            "role": "terminal"
+          },
+          {
+            "depth": 1,
+            "flags": [
+              "return"
+            ],
+            "id": "decide:8",
+            "kind": "return",
+            "label": "return 0",
+            "parentId": "decide",
+            "read": "src/control-flow.ts:12:12",
+            "role": "terminal"
+          }
+        ],
+        "omitted": [
+          {
+            "count": 13,
+            "kind": "source-formatting",
+            "read": "src/control-flow.ts:1:13",
+            "reason": "compact projection removes original whitespace and comments"
+          }
+        ],
+        "sourceAuthority": "native-parser",
+        "sourceFingerprint": "src/control-flow.ts:1:13:221:6f724929",
+        "syntax": "semantic-outline"
+      },
+      "read": "src/control-flow.ts:1:13",
+      "truncated": false,
+      "visibility": "public"
+    }
+  ],
+  "method": "query/owner-items",
+  "namespace": "agent.semantic-protocols.languages.typescript.ts-harness",
+  "outputMode": "code",
+  "ownerPath": "src/control-flow.ts",
+  "projectRoot": "tests/fixtures/parser-compact/projects/control-flow/control-flow-basic/typescript",
+  "protocolId": "agent.semantic-protocols.semantic-language",
+  "protocolVersion": "1",
+  "providerId": "ts-harness",
+  "query": "decide",
+  "queryCoverage": [
+    {
+      "match": "exact",
+      "matchCount": 1,
+      "status": "hit",
+      "value": "decide"
+    }
+  ],
+  "queryTerms": [
+    "decide"
+  ],
+  "schemaId": "agent.semantic-protocols.semantic-query-packet",
+  "schemaVersion": "1",
+  "truncated": false
+}

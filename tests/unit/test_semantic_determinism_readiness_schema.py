@@ -1,3 +1,5 @@
+"""Validate the semantic determinism readiness schema contract."""
+
 from __future__ import annotations
 
 import json
@@ -6,19 +8,19 @@ from pathlib import Path
 from jsonschema import Draft202012Validator
 
 
-ROOT = Path(__file__).resolve().parents[2]
+_ROOT = Path(__file__).resolve().parents[2]
 
 
-def load_schema() -> dict:
+def _load_schema() -> dict:
     return json.loads(
-        (ROOT / "schemas" / "semantic-determinism-readiness.v1.schema.json").read_text(
+        (_ROOT / "schemas" / "semantic-determinism-readiness.v1.schema.json").read_text(
             encoding="utf-8"
         )
     )
 
 
 def test_determinism_readiness_schema_accepts_direct_clock_observation() -> None:
-    schema = load_schema()
+    schema = _load_schema()
     validator = Draft202012Validator(schema)
 
     validator.validate(
@@ -65,7 +67,7 @@ def test_determinism_readiness_schema_accepts_direct_clock_observation() -> None
 
 
 def test_determinism_readiness_rejects_absolute_observation_paths() -> None:
-    schema = load_schema()
+    schema = _load_schema()
     validator = Draft202012Validator(schema)
 
     errors = list(

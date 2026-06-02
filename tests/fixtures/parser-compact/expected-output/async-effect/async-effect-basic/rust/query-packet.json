@@ -1,0 +1,147 @@
+{
+  "binary": "rs-harness",
+  "languageId": "rust",
+  "matchMode": "exact",
+  "matches": [
+    {
+      "doc": false,
+      "kind": "fn",
+      "location": {
+        "lineRange": "26:33",
+        "path": "src/lib.rs"
+      },
+      "name": "load_user",
+      "projection": {
+        "exactRead": "src/lib.rs:26:33",
+        "expandActions": [
+          {
+            "kind": "hot-block",
+            "read": "src/lib.rs:27:27",
+            "reason": "parser-projection-mutation",
+            "target": "n1"
+          },
+          {
+            "kind": "hot-block",
+            "read": "src/lib.rs:28:30",
+            "reason": "parser-projection-control-flow",
+            "target": "n2"
+          },
+          {
+            "kind": "hot-block",
+            "read": "src/lib.rs:29:29",
+            "reason": "parser-projection-terminal",
+            "target": "n3"
+          },
+          {
+            "kind": "hot-block",
+            "read": "src/lib.rs:31:31",
+            "reason": "parser-projection-mutation",
+            "target": "n4"
+          }
+        ],
+        "losslessStructure": true,
+        "mode": "compact",
+        "nodes": [
+          {
+            "depth": 0,
+            "id": "n0",
+            "kind": "fn",
+            "label": "pub async fn load_user(client: &Client, user_id: u64) -> Result<String, String>",
+            "read": "src/lib.rs:26:33",
+            "role": "declaration"
+          },
+          {
+            "depth": 1,
+            "flags": [
+              "mutation"
+            ],
+            "id": "n1",
+            "kind": "let",
+            "label": "let response = fetch.await?",
+            "parentId": "n0",
+            "read": "src/lib.rs:27:27",
+            "role": "mutation"
+          },
+          {
+            "depth": 1,
+            "flags": [
+              "branch",
+              "guard"
+            ],
+            "id": "n2",
+            "kind": "if",
+            "label": "if ! response.ok",
+            "parentId": "n0",
+            "read": "src/lib.rs:28:30",
+            "role": "control-flow"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "return"
+            ],
+            "id": "n3",
+            "kind": "return",
+            "label": "return Err(\"missing\".to_string())",
+            "parentId": "n2",
+            "read": "src/lib.rs:29:29",
+            "role": "terminal"
+          },
+          {
+            "depth": 1,
+            "flags": [
+              "mutation"
+            ],
+            "id": "n4",
+            "kind": "let",
+            "label": "let body = text.await",
+            "parentId": "n0",
+            "read": "src/lib.rs:31:31",
+            "role": "mutation"
+          },
+          {
+            "depth": 1,
+            "flags": [
+              "call"
+            ],
+            "id": "n5",
+            "kind": "call",
+            "label": "call Ok",
+            "parentId": "n0",
+            "read": "src/lib.rs:32:32",
+            "role": "call"
+          }
+        ],
+        "sourceAuthority": "native-parser",
+        "syntax": "semantic-outline"
+      },
+      "read": "src/lib.rs:26:33",
+      "truncated": false,
+      "visibility": "public"
+    }
+  ],
+  "method": "query/owner-items",
+  "namespace": "agent.semantic-protocols.languages.rust.rs-harness",
+  "outputMode": "code",
+  "ownerPath": "src/lib.rs",
+  "projectRoot": ".",
+  "protocolId": "agent.semantic-protocols.semantic-language",
+  "protocolVersion": "1",
+  "providerId": "rs-harness",
+  "query": "load_user",
+  "queryCoverage": [
+    {
+      "match": "exact",
+      "matchCount": 1,
+      "nextAction": "code",
+      "status": "hit",
+      "value": "load_user"
+    }
+  ],
+  "queryTerms": [
+    "load_user"
+  ],
+  "schemaId": "agent.semantic-protocols.semantic-query-packet",
+  "schemaVersion": "1",
+  "truncated": false
+}

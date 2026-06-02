@@ -28,6 +28,38 @@ fn direct_read_routes_to_provider_query() {
             "direct-source-read",
             "--selector",
             "src/cli/agent-hooks.ts",
+            "--code",
+            "."
+        ]
+    );
+}
+
+#[test]
+fn direct_read_line_range_routes_to_provider_query_with_range() {
+    let decision = classify_hook(
+        &registry(),
+        "codex",
+        "pre-tool",
+        &json!({
+            "tool_name": "Read",
+            "tool_input": {"path": "src/cli/agent-hooks.ts:10-20"}
+        }),
+    );
+
+    assert_eq!(decision.decision, DecisionKind::Deny);
+    assert_eq!(decision.reason_kind, ReasonKind::DirectSourceRead);
+    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Query);
+    assert_eq!(decision.routes[0].provider_id, "ts-harness");
+    assert_eq!(
+        decision.routes[0].argv,
+        [
+            "ts-harness",
+            "query",
+            "--from-hook",
+            "direct-source-read",
+            "--selector",
+            "src/cli/agent-hooks.ts:10-20",
+            "--code",
             "."
         ]
     );
@@ -63,6 +95,7 @@ fn namespaced_direct_read_routes_to_provider_query() {
             "direct-source-read",
             "--selector",
             "src/cli/agent-hooks.ts",
+            "--code",
             "."
         ]
     );
@@ -92,6 +125,7 @@ fn typescript_direct_read_infers_pascal_case_query_from_component_path() {
             "direct-source-read",
             "--selector",
             "src/components/WorkflowExecution.tsx",
+            "--code",
             "."
         ]
     );
@@ -123,6 +157,7 @@ fn command_transcript_with_source_path_routes_to_provider_query() {
             "direct-source-read",
             "--selector",
             "packages/rust/crates/xiuxian-security/src/public_plane.rs",
+            "--code",
             "."
         ]
     );

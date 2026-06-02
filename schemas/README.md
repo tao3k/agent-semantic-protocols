@@ -68,6 +68,20 @@ global-state access, plus review-visible suggestions such as trait injection or
 explicit parameter boundaries. P3 uses it to make determinism blockers concrete
 before any larger simulation or mocking strategy is considered.
 
+`semantic-dev-command-log.v1.schema.json` is the development-only JSONL event
+contract emitted by providers when `SEMANTIC_PROTOCOL_DEV_MODE=1` is enabled.
+It records command argv, project identity, normalized method/view/query facts,
+session ordering, start/end timestamps, exit code, elapsed time, and
+stdout/stderr byte counts under `$PRJ_CACHE_HOME/semantic_protocol` or
+`SEMANTIC_PROTOCOL_TRACE_DIR`. It does not record full stdout or stderr
+content, so normal agent exploration remains compact and source-safe.
+
+`semantic-dev-active-context.v1.schema.json` is the short-lived marker contract
+written by hook runtimes under `semantic_protocol/dev-context/`. Providers read
+it as a best-effort development trace aid so direct `*-harness` commands can be
+attached to the latest hook/session context without requiring every command to
+receive hook environment variables.
+
 `semantic-formal-proof-pilot.v1.schema.json` is the shared proof-pilot
 contract for bounded or formal evidence that a harness rule judgment is
 reliable. It records the target rule surface, proof method, claims, concrete
@@ -110,6 +124,14 @@ The query packet also supports owner-local discovery without source windows:
 `outputMode=names` or `outline` may omit match `code`, while `queryCoverage`
 and bounded `candidateItems` explain missed terms and parser-owned repair
 candidates.
+
+`parser-compact-case.v1.schema.json` and
+`parser-compact-token-cost.v1.schema.json` are the root fixture contracts for
+parser compact snapshots. A case manifest names the language, fixture project,
+raw source path, provider commands, and expected artifacts. The token-cost
+report records raw source, compact line output, and query packet size for a
+specific tokenizer. These schemas keep parser compact changes comparable across
+language providers before search-flow optimization claims are accepted.
 
 `semantic-handle.v1.schema.json` is the shared contract for stable semantic
 facts that agents need to query but that are not necessarily parser items. It
@@ -175,28 +197,35 @@ basis string so sandtable evidence is not confused with model billing.
 `--receipt <path>`, and scenarios can link a receipt through
 `evidence.receiptPath`.
 
-`semantic-agent-hook-profile.v1.schema.json` is the profile registry consumed by
-the root `semantic-agent-hook` runtime. It standardizes language-owned source
-extensions, config files, ignored path prefixes, route command templates, and
-policy toggles without making the hook classifier language-specific. Profiles
-may also advertise a `commands.guide` template; deny messages should point to
-that provider-owned `agent guide` command instead of reconstructing searchflow
-instructions from route argv.
+`semantic-agent-hook-provider-manifest.v1.schema.json` is the static provider
+manifest contract consumed by `semantic-agent-hook` after a workspace activation
+selects that provider. It standardizes language-owned source defaults, policy
+defaults, and route argv templates without making the hook classifier
+language-specific. It does not store independent command display text; command
+text is rendered from argv when needed.
+
+`semantic-agent-hook-activation.v1.schema.json` is the generated workspace
+activation contract. It records which provider manifests are active in the
+current project, their resolved command prefixes, manifest digests, and
+coverage roots. It does not repeat provider routes or policies, so a stale
+activation cannot drift into an alternate command registry.
 
 `semantic-agent-hook-decision.v1.schema.json` is the shared decision packet for
 the root hook classifier before it renders a platform-specific Codex or Claude
 hook response. It standardizes normalized event names, deny/context decisions,
 language/provider routes, and state updates while provider repositories own only
-their language profile descriptors and semantic search/check commands.
+their provider manifests and semantic search/check commands.
 
 `semantic-read-packet.v1.schema.json` is an optional provider-owned packet for
-bounded exact source windows selected by the language query layer. It is not a
-root hook command surface and does not reintroduce `semantic-agent-hook read`.
-Providers may emit it from `query/*` methods, for example an exact
-`query --from-hook direct-source-read --selector <path>` recovery with
-`outputMode=read-packet`. The packet records parser-owned selection evidence:
-project-relative selectors, owner paths, optional item facts, bounded line
-windows, truncation state, and notes. Broad discovery still stays in provider
+bounded exact source windows or read repair plans selected by the language query
+layer. It is not a root hook command surface and does not reintroduce
+`semantic-agent-hook read`. Providers may emit it from `query/*` methods, for
+example an exact `query --from-hook direct-source-read --selector <path[:range]>`
+recovery with `outputMode=read-packet`. The packet records parser-owned
+selection evidence: project-relative selectors or source locators, owner paths,
+optional item facts, bounded line windows, truncation state, and notes. When a
+selector is broad or low-signal, providers should emit `readPlan` with
+`code=false` instead of `sourceWindows`; broad discovery still stays in provider
 search, prime, ingest, or normal query repair.
 
 `semantic-search-packet.v1.schema.json` owns the search-synthesis frontier that
@@ -388,7 +417,10 @@ facts. The shared schema owns the graph algorithm name, scope, high-impact
 owners, frontier owners, and finding owners as explicit `searchSynthesis`
 properties; derived follow-up routes belong in `searchSynthesis.seeds`. These
 facts rank and explain parser-owned owner/dependency/test edges but do not
-introduce a second source of truth.
+introduce a second source of truth. In agent-facing compact output, RFC 006
+maps `searchSynthesis.algorithm` to `alg=`, selected order to `rank=`, and
+`searchSynthesis.seeds` to `frontier=`. Providers should not render seed or
+synthesis as a second independent prompt protocol.
 
 Large-library packets should keep source and runtime limits explicit instead
 of forcing the agent to discover them through repeated commands.

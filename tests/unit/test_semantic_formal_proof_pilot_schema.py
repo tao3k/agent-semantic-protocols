@@ -1,3 +1,5 @@
+"""Validate the semantic formal proof pilot schema contract."""
+
 from __future__ import annotations
 
 import json
@@ -6,19 +8,19 @@ from pathlib import Path
 from jsonschema import Draft202012Validator
 
 
-ROOT = Path(__file__).resolve().parents[2]
+_ROOT = Path(__file__).resolve().parents[2]
 
 
-def load_schema() -> dict:
+def _load_schema() -> dict:
     return json.loads(
-        (ROOT / "schemas" / "semantic-formal-proof-pilot.v1.schema.json").read_text(
+        (_ROOT / "schemas" / "semantic-formal-proof-pilot.v1.schema.json").read_text(
             encoding="utf-8"
         )
     )
 
 
 def test_formal_proof_pilot_schema_accepts_dependency_graph_pilot() -> None:
-    schema = load_schema()
+    schema = _load_schema()
     validator = Draft202012Validator(schema)
 
     validator.validate(

@@ -1,3 +1,5 @@
+"""Validate the semantic review packet schema contract."""
+
 from __future__ import annotations
 
 import json
@@ -6,17 +8,17 @@ from pathlib import Path
 from jsonschema import Draft202012Validator
 
 
-def load_schema() -> dict:
+def _load_schema() -> dict:
     path = Path(__file__).resolve().parents[2] / "schemas" / "semantic-review-packet.v1.schema.json"
     return json.loads(path.read_text())
 
 
 def test_semantic_review_packet_schema_is_valid() -> None:
-    Draft202012Validator.check_schema(load_schema())
+    Draft202012Validator.check_schema(_load_schema())
 
 
 def test_semantic_review_packet_accepts_reviewer_first_artifact() -> None:
-    schema = load_schema()
+    schema = _load_schema()
     value = {
         "schemaId": "agent.semantic-protocols.semantic-review-packet",
         "schemaVersion": "1",
@@ -109,7 +111,7 @@ def test_semantic_review_packet_accepts_reviewer_first_artifact() -> None:
 
 
 def test_semantic_review_packet_rejects_absolute_invariant_paths() -> None:
-    schema = load_schema()
+    schema = _load_schema()
     value = {
         "schemaId": "agent.semantic-protocols.semantic-review-packet",
         "schemaVersion": "1",

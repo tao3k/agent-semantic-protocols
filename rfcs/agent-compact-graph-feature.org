@@ -1,0 +1,343 @@
+#+TITLE: RFC: Agent Compact Graph Feature
+#+AUTHOR: agent-semantic-protocols
+#+DATE: 2026-06-02
+#+RFC: 006
+#+STATUS: draft
+#+DEPENDS: rfcs/cli-first-harness-ux.org (005), schemas/semantic-graph.v1.schema.json, schemas/semantic-search-packet.v1.schema.json
+
+* One-sentence summary
+
+Every agent-facing =search= response carries a graph feature: schema-owned
+semantic graph facts are projected into typed aliases, grouped relation edges,
+algorithm-owned rank, inline next actions, exact locators, and explicit
+omission/avoidance facts.
+
+* Problem
+
+The current compact search output started as line protocol:
+
+#+begin_src text
+|owner src/tool_action.rs role=source ...
+|item command_source_paths kind=fn read=src/tool_action.rs:221:241
+|code path=src/tool_action.rs lineRange=221:241 nodes=... text="..."
+|synthesis algorithm=bounded-reachability-depth1 ...
+#+end_src
+
+That shape is better than raw source, but it still repeats paths, field names,
+and owner context.  More importantly, it makes the agent reconstruct graph
+relations from flat lines.  The hidden graph is already present in
+=semantic-graph.v1= and =searchSynthesis=, but the prompt-facing rendering does
+not expose the graph as the agent's attention surface.
+
+Human formatting is the wrong target.  An LLM does not need a pretty diagram,
+a Markdown report, or a source-like outline.  It needs a minimal structure that
+preserves the next reasoning decision.  That structure must be part of the
+whole =search= interface, not a special =owner= view.
+
+* LLM reasoning model
+
+For code work, the useful prompt-facing unit is not a line of source text.  It
+is a decision node connected to other nodes by typed relations:
+
+- owner, package, dependency, item, block, test, finding, and read window nodes
+- relation labels such as =contains=, =imports=, =covers=, =calls=, =guards=,
+  =returns=, =writes=, and =frontier=
+- graph-derived attention order
+- executable follow-up actions
+- exact locators for expansion or edit preparation
+- explicit omission and anti-action facts
+
+This is a code reasoning graph, not a visual graph.  The provider should
+compress repeated syntax, but it must not compress away relation labels,
+rank order, next actions, locators, or omission reasons.
+
+* Non-goals
+
+This RFC does not introduce a new top-level =graph= command.  Discovery remains
+=search= with views such as =seeds=, =hits=, =graph=, and =both=.
+
+This RFC does not make graph projection an =owner= special case.  Prime, owner,
+dependency, query-set, ingest, tests, policy, and item-oriented search/query
+surfaces should all expose graph facts when they can produce parser-owned nodes,
+edges, rank, or next actions.
+
+This RFC does not make Mermaid, DOT, Graphviz, or Markdown diagrams a prompt
+protocol.  Those formats are trained priors, but they are diagram-first and
+too verbose for the harness's agent path.
+
+This RFC does not replace JSON schema packets.  =semantic-graph.v1= and
+=semantic-search-packet.v1= remain the canonical machine contract.
+
+* Canonical data boundary
+
+The graph feature is a renderer over schema-owned facts:
+
+#+begin_src text
+provider parser facts
+  -> semantic-search-packet nodes/edges/searchSynthesis
+  -> agent compact graph feature
+#+end_src
+
+Provider-private maps must not determine prompt-visible rank, relation labels,
+or next actions.  If a relation or action changes the agent's decision, it must
+be representable in the JSON packet before it is rendered in compact graph
+output.
+
+* Projection grammar
+
+The projection has one header line and a small set of compact fact lines:
+
+#+begin_src text
+[search-graph] mode=<prime|owner|dependency|query-set|ingest|tests|policy|query> root=<path-or-.> alg=<searchSynthesis.algorithm> [base=<path>]
+ID=type:target[!action]
+SRC>{DST:relation,DST:relation}
+(SRC,SRC)>DST:relation
+rank=ID,ID,ID
+frontier=ID.action,ID.action
+omit=<omitted-semantic>[,<omitted-semantic>]
+avoid=<anti-action>[,<anti-action>]
+#+end_src
+
+The same shape applies to code-level graphs:
+
+#+begin_src text
+[search-graph] mode=query root=<path> q=<query> alg=<algorithm>
+ID=type:name@start:end[!action]
+SRC>{DST:relation,DST:relation}
+rank=ID,ID,ID
+frontier=ID.action,ID.action
+omit=<omitted-semantic>[,<omitted-semantic>]
+#+end_src
+
+Alias ids are packet-local.  They are stable only within one rendered packet
+and must not be copied into source paths, JSON paths, or edit commands.
+=!action= declares an action available from a node.  =frontier= selects the
+seed actions for this packet from those node actions.
+
+* Owner search example
+
+#+begin_src text
+[search-graph] mode=owner root=src/classifier.rs alg=bounded-reachability-depth1 base=tests/unit/classifier/routes
+C=owner:self!items
+M=owner:src/command/mod.rs!owner
+P=owner:src/protocol.rs
+W=test:wrappers.rs!tests
+R=test:raw_search.rs!tests
+C>{M:imports,P:decision}
+(W,R)>C:covers
+rank=C,W,R,M,P
+frontier=C.items,M.owner,W.tests,R.tests
+avoid=raw-read
+#+end_src
+
+This says:
+
+- =C= is the selected owner and its next action is =items=
+- =M= and =P= are frontier owners
+- =W= and =R= are tests that cover =C=
+- the attention order is =C,W,R,M,P=
+- the selected seed actions are =C.items,M.owner,W.tests,R.tests=
+- raw source reads are explicitly not the next action
+
+The paths appear once.  The owner/test roles appear once.  Same-relation test
+edges are grouped.  The agent does not have to infer rank from output order.
+
+* Query item example
+
+#+begin_src text
+[search-graph] mode=query root=src/tool_action.rs q=command_source_paths alg=exact-item
+I=fn:command_source_paths@221:241!code
+G=guard:range_paths.nonempty@224:226!read
+L=loop:path_like_tokens@228:239!read
+B=branch:embedded.empty@230:233
+P=branch:embedded.present@234:238
+I>{G:return,L:collect}
+L>{B:push_path,P:push_embedded}
+rank=I,G,L,B,P
+frontier=I.code,G.read,L.read
+omit=trivia,comments,blank-lines
+#+end_src
+
+For same-file code graphs, =@start:end= inherits =root=.  Cross-file nodes
+must include a project-root-relative path before the range, for example:
+
+#+begin_src text
+T=test:tests/tool_action.rs@12:30!tests
+#+end_src
+
+The compact graph is not an editable source replacement.  It is a reasoning
+surface that tells the agent which item or block to expand through provider
+query/read actions.
+
+* Prime search example
+
+#+begin_src text
+[search-graph] mode=prime root=. alg=owner-rank-frontier
+L=owner:src/lib.rs!owner
+C=owner:src/classifier.rs!owner
+T=owner:src/tool_action.rs!owner
+U=test:tests/unit_test.rs!tests
+L>{C:exports,T:exports}
+U>{C:covers,T:covers}
+rank=L,C,T,U
+frontier=L.owner,C.owner,T.owner,U.tests
+#+end_src
+
+Prime output still avoids full dependency or callsite expansion.  The graph
+feature names the selected owner map and next frontier so the agent can choose a
+focused owner/test action instead of fanning out through paths.
+
+* Compression rules
+
+Compression may remove repeated syntax.  It must not remove decision
+semantics.
+
+Allowed compression:
+
+- move shared path context into =root= or =base=
+- use =self= for the root owner
+- replace repeated paths with packet-local aliases
+- group same-relation edges
+- attach next action with =!action=
+- select seed actions with =frontier=
+- omit default/healthy facts
+- pack large packets with semicolons in dense mode
+
+Forbidden compression:
+
+- remove relation labels such as =imports=, =covers=, =guards=, or =returns=
+- remove =rank=
+- hide next or seed actions inside prose
+- render seed actions from a path list that is not derived from the graph
+- drop exact read locators for hot nodes
+- use alias ids as path values
+- invent relation labels that are not backed by parser/schema facts
+- shorten semantic words without a declared legend and enough packet size to
+  amortize that legend
+
+* Compact and dense modes
+
+Compact mode is the default for agent exploration.  It keeps one alias line per
+high-impact node and one edge line per source or grouped relation.
+
+Dense mode may pack aliases and edges with semicolons:
+
+#+begin_src text
+C=owner:self!items;M=owner:src/command/mod.rs!owner;P=owner:src/protocol.rs;W=test:wrappers.rs!tests;R=test:raw_search.rs!tests
+C>{M:imports,P:decision};(W,R)>C:covers
+rank=C,W,R,M,P
+frontier=C.items,M.owner,W.tests,R.tests
+#+end_src
+
+Dense mode is valid only when it preserves the same relation labels, rank,
+actions, frontier actions, locators, =omit=, and =avoid= facts as compact mode.
+Providers should prefer compact mode for small packets because line boundaries
+are useful LLM anchors.  Dense mode is for high-volume graph output where path
+and field-name deduplication saves more tokens than the lost line anchors cost.
+
+* Search interface mapping
+
+Graph is a feature of the whole search interface.  The provider should compute
+schema-backed graph nodes, edges, rank, and next actions whenever the selected
+search surface can justify them.
+
+=--view seeds= should render the minimal graph feature needed for action
+selection: header, aliases for selected/frontier nodes, enough edges to justify
+the frontier, =rank=, =frontier=, and =avoid= when relevant.  It is not a
+separate seed protocol.
+
+=--view graph= should render the fuller compact graph projection: aliases,
+grouped edges, =rank=, =frontier=, =omit=, =avoid=, and any graph facts needed
+to explain the selected search surface.
+
+=--view both= may render the graph feature followed by bounded hit, item,
+finding, or code facts that are not yet compactly represented by aliases and
+edges.  Those extra facts must reference the same graph nodes or locators; they
+must not introduce an independent ranking or seed set.
+
+* Seed and synthesis integration
+
+=seed= is not an independent line family in this RFC.  A seed is a selected
+frontier action over a graph node.  Compact output renders it as
+=frontier=ID.action,ID.action=, where each =ID.action= must correspond to a
+node alias that declares =!action= or to an action represented in the JSON
+packet.
+
+=synthesis= is not an independent prose summary in this RFC.  Synthesis is the
+graph algorithm evidence that selects the rank, frontier, omit/avoid facts, and
+next actions:
+
+#+begin_src text
+searchSynthesis.algorithm -> header alg=
+searchSynthesis selected/order/frontier -> rank= and frontier=
+searchSynthesis edit/test/window/finding frontier -> typed aliases and edges
+searchSynthesis.seeds -> frontier=
+avoidNextActions -> avoid=
+#+end_src
+
+RFC 006 does not define independent =|seed= or =|synthesis= prompt-facing
+rows.  Providers that still emit them are pre-RFC-006 implementations and must
+converge on the graph-integrated form.  Renderer tests should assert =rank=,
+=frontier=, aliases, grouped edges, and =avoid= instead of accepting duplicate
+seed/synthesis rows as a second contract.
+
+* Rank semantics
+
+=rank= is not cosmetic output order.  It is the agent attention order selected
+by =searchSynthesis.algorithm=.
+
+Renderers must not sort aliases alphabetically, by path length, by file system
+order, or by original source order when the graph algorithm provides a frontier
+or attention order.  If several nodes have equal algorithmic rank, the provider
+may keep parser/source order inside that tie.
+
+* Schema implications
+
+Before implementing this renderer broadly, verify that the shared schemas can
+represent every prompt-visible fact:
+
+- node alias source: =nodes[]=
+- typed relations: =edges[]=
+- rank algorithm and order: =searchSynthesis=
+- frontier seed actions: =searchSynthesis.seeds= or graph/search synthesis
+  action fields
+- node-local next actions: =nextActions= or graph/search synthesis action
+  fields
+- anti-actions: =avoidNextActions=
+- omitted facts and expansion locators: query/read projection metadata
+
+If a field is missing, extend the schema before provider-specific rendering.
+Do not hide projection-only decisions in language-private =fields= maps.
+
+* Implementation order
+
+1. Keep this RFC as the language-neutral contract.
+2. Audit =semantic-graph.v1= and =semantic-search-packet.v1= for alias,
+   action, rank, frontier seed, synthesis, omission, and avoid coverage.
+3. Add schema tests for any missing fields.
+4. Implement Rust renderer tests that prove prime, owner, query-set, ingest,
+   tests, and item query outputs derive their compact lines from the graph
+   feature.
+5. Replace renderer assertions that target independent =|seed= or
+   =|synthesis= rows with assertions over =rank=, =frontier=, =avoid=, aliases,
+   and grouped edges.
+6. Align TypeScript and Python renderer tests to the same examples and surface
+   classes.
+7. Add sandtable scenarios that measure command count, token size, repeated
+   search loops, and hook-recovery clarity.
+8. Use real-project traces before changing default =--view seeds= rendering
+   syntax, but require its seeds to remain graph-derived from the start.
+
+* Acceptance criteria
+
+- The compact graph output can be parsed by an agent without a legend in small
+  packets.
+- The output has fewer repeated paths and field names than legacy line protocol.
+- Relation labels, rank order, frontier seed actions, node-local next actions,
+  exact locators, and omission facts remain visible.
+- The JSON packet remains the source of truth for graph data.
+- =seed= and =synthesis= are represented through graph aliases, =rank=,
+  =frontier=, and =avoid= rather than as independent prompt-facing protocols.
+- Providers produce the same graph meaning across Rust, TypeScript, and Python.
+- Julia remains out of bin-parity requirements for this lane unless a separate
+  Julia-specific workspace-managed effort is opened.

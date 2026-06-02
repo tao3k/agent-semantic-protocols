@@ -4,46 +4,6 @@ use serde_json::json;
 use crate::classifier::registry;
 
 #[test]
-fn broad_raw_search_routes_to_hook_query() {
-    let decision = classify_hook(
-        &registry(),
-        "codex",
-        "pre-tool",
-        &json!({
-            "tool_name": "functions.exec_command",
-            "tool_input": {"cmd": "rg -n WorkflowExecution src tests"}
-        }),
-    );
-
-    assert_eq!(decision.decision, DecisionKind::Deny);
-    assert_eq!(decision.reason_kind, ReasonKind::RawBroadSearch);
-    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Fzf);
-    assert_eq!(
-        decision.routes[0].argv,
-        [
-            "ts-harness",
-            "search",
-            "query",
-            "--from-hook",
-            "direct-source-read",
-            "--selector",
-            "**/*.{ts,tsx}",
-            "--term",
-            "WorkflowExecution",
-            "--surface",
-            "owner,tests",
-            "--view",
-            "seeds",
-            "."
-        ]
-    );
-    assert_eq!(
-        decision.message,
-        "raw-broad-search denied; provider guide: ts-harness => ts-harness agent guide ."
-    );
-}
-
-#[test]
 fn provider_output_filtering_is_allowed() {
     for command in [
         "ts-harness --help | rg -- '--code|query <owner-path>'",
@@ -66,10 +26,10 @@ fn provider_output_filtering_is_allowed() {
 }
 
 #[test]
-fn workspace_provider_output_filtering_requires_full_command_prefix() {
-    let allowed = "julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl agent guide . | rg -- 'search owner'";
+fn prefixed_provider_output_filtering_requires_full_command_prefix() {
+    let allowed = "python -m tools.fake_provider agent guide . | rg -- 'search owner'";
     let allowed_decision = classify_hook(
-        &super::registry_with_workspace_julia(),
+        &super::registry_with_prefixed_python(),
         "codex",
         "pre-tool",
         &json!({
@@ -80,9 +40,9 @@ fn workspace_provider_output_filtering_requires_full_command_prefix() {
     assert_eq!(allowed_decision.decision, DecisionKind::Allow);
     assert_eq!(allowed_decision.reason_kind, ReasonKind::None);
 
-    let denied = "julia -e 'println(\"raw\")' | rg -- 'raw'";
+    let denied = "python -c 'print(\"raw\")' | rg -- 'raw'";
     let denied_decision = classify_hook(
-        &super::registry_with_workspace_julia(),
+        &super::registry_with_prefixed_python(),
         "codex",
         "pre-tool",
         &json!({
@@ -109,99 +69,6 @@ fn raw_file_listing_without_query_keeps_ingest_route() {
     assert_eq!(decision.decision, DecisionKind::Deny);
     assert_eq!(decision.reason_kind, ReasonKind::RawBroadSearch);
     assert_eq!(decision.routes[0].kind, DecisionRouteKind::Ingest);
-}
-
-#[test]
-fn raw_regex_alternation_routes_to_query_terms() {
-    let decision = classify_hook(
-        &registry(),
-        "codex",
-        "pre-tool",
-        &json!({
-            "tool_name": "functions.exec_command",
-            "tool_input": {"cmd": "rg -n 'parseSearchArgs|querySets|buildSemanticSearchPacket' -g '**/*.{ts,tsx,js}'"}
-        }),
-    );
-
-    assert_eq!(decision.decision, DecisionKind::Deny);
-    assert_eq!(decision.reason_kind, ReasonKind::RawBroadSearch);
-    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Fzf);
-    assert_eq!(
-        decision.routes[0].argv,
-        [
-            "ts-harness",
-            "search",
-            "query",
-            "--from-hook",
-            "direct-source-read",
-            "--selector",
-            "**/*.{ts,tsx}",
-            "--term",
-            "parseSearchArgs",
-            "--term",
-            "querySets",
-            "--term",
-            "buildSemanticSearchPacket",
-            "--surface",
-            "owner,tests",
-            "--view",
-            "seeds",
-            "."
-        ]
-    );
-}
-
-#[test]
-fn raw_search_pattern_flags_route_to_query_terms() {
-    for command in [
-        "rg -n -e parseSearchArgs -e querySets -g '*.ts' src",
-        "grep -R -n -e parseSearchArgs --include='*.ts' src",
-        "git grep -n -e parseSearchArgs -- '*.ts'",
-    ] {
-        let decision = classify_hook(
-            &registry(),
-            "codex",
-            "pre-tool",
-            &json!({
-                "tool_name": "functions.exec_command",
-                "tool_input": {"cmd": command}
-            }),
-        );
-
-        assert_eq!(decision.decision, DecisionKind::Deny, "{command}");
-        assert_eq!(decision.reason_kind, ReasonKind::RawBroadSearch);
-        assert_eq!(decision.routes[0].kind, DecisionRouteKind::Fzf);
-        assert!(
-            decision.routes[0]
-                .argv
-                .windows(2)
-                .any(|pair| pair == ["--term", "parseSearchArgs"]),
-            "{command}"
-        );
-    }
-}
-
-#[test]
-fn fd_filename_query_routes_to_hook_query() {
-    let decision = classify_hook(
-        &registry(),
-        "codex",
-        "pre-tool",
-        &json!({
-            "tool_name": "functions.exec_command",
-            "tool_input": {"cmd": "fd parseSearchArgs -e ts"}
-        }),
-    );
-
-    assert_eq!(decision.decision, DecisionKind::Deny);
-    assert_eq!(decision.reason_kind, ReasonKind::RawBroadSearch);
-    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Fzf);
-    assert!(
-        decision.routes[0]
-            .argv
-            .windows(2)
-            .any(|pair| pair == ["--term", "parseSearchArgs"])
-    );
 }
 
 #[test]

@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/parser-compact-token-cost.v1.schema.json",
+  "title": "Parser Compact Token Cost",
+  "description": "Token-cost measurement for a parser compact snapshot case.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "caseId",
+    "variantId",
+    "languageId",
+    "providerId",
+    "featureClass",
+    "tokenizerId",
+    "rawSourceTokens",
+    "compactLineTokens",
+    "compactCodeTokens",
+    "queryPacketTokens",
+    "compactLineDelta",
+    "compactCodeDelta",
+    "queryPacketDelta",
+    "compactLineRatio",
+    "compactCodeRatio",
+    "queryPacketRatio"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.parser-compact-token-cost"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "caseId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "variantId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "languageId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "providerId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "featureClass": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "tokenizerId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "rawSourceTokens": {
+      "$ref": "#/$defs/nonNegativeInteger"
+    },
+    "compactLineTokens": {
+      "$ref": "#/$defs/nonNegativeInteger"
+    },
+    "compactCodeTokens": {
+      "$ref": "#/$defs/nonNegativeInteger"
+    },
+    "queryPacketTokens": {
+      "$ref": "#/$defs/nonNegativeInteger"
+    },
+    "compactLineDelta": {
+      "type": "integer"
+    },
+    "compactCodeDelta": {
+      "type": "integer"
+    },
+    "queryPacketDelta": {
+      "type": "integer"
+    },
+    "compactLineRatio": {
+      "$ref": "#/$defs/nonNegativeNumber"
+    },
+    "compactCodeRatio": {
+      "$ref": "#/$defs/nonNegativeNumber"
+    },
+    "queryPacketRatio": {
+      "$ref": "#/$defs/nonNegativeNumber"
+    }
+  },
+  "$defs": {
+    "nonNegativeInteger": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "nonNegativeNumber": {
+      "type": "number",
+      "minimum": 0
+    }
+  }
+}

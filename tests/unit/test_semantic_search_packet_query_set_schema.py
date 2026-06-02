@@ -69,8 +69,7 @@ class SemanticSearchPacketQuerySetSchemaTests(unittest.TestCase):
                 "ownerPath": "tests/unit/cli.test.ts",
                 "location": {
                     "path": "tests/unit/cli.test.ts",
-                    "line": 505,
-                    "column": 17,
+                    "lineRange": "505:505",
                 },
                 "score": 2,
                 "reason": "source-text",
@@ -127,6 +126,65 @@ class SemanticSearchPacketQuerySetSchemaTests(unittest.TestCase):
         ]
 
         self.assertEqual([], self.validation_errors(packet))
+
+    def test_project_paths_are_canonical_not_display_locators(self) -> None:
+        owner_path = "src/components/WorkflowExecution.tsx"
+        packet = semantic_search_query_set_minimal_packet()
+        packet["querySet"] = [
+            {"value": owner_path, "kind": "owner", "selector": "exact"}
+        ]
+        packet["owners"] = [
+            {"path": owner_path, "role": "source", "public": False, "fields": {}}
+        ]
+        packet["items"] = [
+            {
+                "name": "WorkflowExecution",
+                "kind": "component",
+                "ownerPath": owner_path,
+                "location": {"path": owner_path, "lineRange": "1:1"},
+                "fields": {},
+            }
+        ]
+        packet["hits"] = [
+            {
+                "kind": "text",
+                "ownerPath": owner_path,
+                "location": {"path": owner_path, "lineRange": "1:1"},
+                "score": 1,
+                "reason": "owner-match",
+            }
+        ]
+        packet["nextActions"] = [
+            {"kind": "owner", "target": owner_path, "ownerPath": owner_path}
+        ]
+        self.assertEqual([], self.validation_errors(packet))
+
+        invalid_paths = [
+            "0:src/components/WorkflowExecution.tsx",
+            "owner:src/components/WorkflowExecution.tsx",
+            "src/components/WorkflowExecution.tsx:10:20",
+            "/Users/example/project/src/components/WorkflowExecution.tsx",
+            "src\\components\\WorkflowExecution.tsx",
+            "../src/components/WorkflowExecution.tsx",
+        ]
+        slots = [
+            ("querySet", 0, "value"),
+            ("owners", 0, "path"),
+            ("items", 0, "ownerPath"),
+            ("hits", 0, "ownerPath"),
+            ("nextActions", 0, "ownerPath"),
+        ]
+        for invalid_path in invalid_paths:
+            for section, index, key in slots:
+                with self.subTest(invalid_path=invalid_path, section=section):
+                    bad_packet = json.loads(json.dumps(packet))
+                    bad_packet[section][index][key] = invalid_path
+                    self.assertTrue(self.validation_errors(bad_packet))
+
+            with self.subTest(invalid_path=invalid_path, section="location"):
+                bad_packet = json.loads(json.dumps(packet))
+                bad_packet["hits"][0]["location"]["path"] = invalid_path
+                self.assertTrue(self.validation_errors(bad_packet))
 
     def test_query_set_change_frontier_synthesis_is_schema_owned(self) -> None:
         packet = semantic_search_query_set_minimal_packet()

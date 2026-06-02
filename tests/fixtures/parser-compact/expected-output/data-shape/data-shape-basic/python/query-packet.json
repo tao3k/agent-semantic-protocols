@@ -1,0 +1,278 @@
+{
+  "binary": "py-harness",
+  "languageId": "python",
+  "matchMode": "exact",
+  "matches": [
+    {
+      "doc": false,
+      "fields": {
+        "public": true,
+        "reason": "item-query"
+      },
+      "kind": "class",
+      "location": {
+        "lineRange": "7:15",
+        "path": "src/user_summary.py"
+      },
+      "name": "UserSummary",
+      "outline": {
+        "hotBlocks": [
+          {
+            "label": "UserSummary",
+            "read": "src/user_summary.py:7:15",
+            "reason": "parser-item-query"
+          }
+        ],
+        "summary": "class UserSummary"
+      },
+      "projection": {
+        "exactRead": "src/user_summary.py:7:15",
+        "expandActions": [
+          {
+            "argv": [
+              "py-harness",
+              "query",
+              "--from-hook",
+              "direct-source-read",
+              "--selector",
+              "src/user_summary.py:7:15",
+              "."
+            ],
+            "kind": "exact-read",
+            "read": "src/user_summary.py:7:15",
+            "reason": "read exact source before editing",
+            "target": "UserSummary"
+          },
+          {
+            "argv": [
+              "py-harness",
+              "query",
+              "--from-hook",
+              "direct-source-read",
+              "--selector",
+              "src/user_summary.py:8:8",
+              "."
+            ],
+            "kind": "exact-read",
+            "read": "src/user_summary.py:8:8",
+            "reason": "expand assign node before editing",
+            "target": "UserSummary:1"
+          },
+          {
+            "argv": [
+              "py-harness",
+              "query",
+              "--from-hook",
+              "direct-source-read",
+              "--selector",
+              "src/user_summary.py:9:9",
+              "."
+            ],
+            "kind": "exact-read",
+            "read": "src/user_summary.py:9:9",
+            "reason": "expand assign node before editing",
+            "target": "UserSummary:2"
+          },
+          {
+            "argv": [
+              "py-harness",
+              "query",
+              "--from-hook",
+              "direct-source-read",
+              "--selector",
+              "src/user_summary.py:10:10",
+              "."
+            ],
+            "kind": "exact-read",
+            "read": "src/user_summary.py:10:10",
+            "reason": "expand assign node before editing",
+            "target": "UserSummary:3"
+          },
+          {
+            "argv": [
+              "py-harness",
+              "query",
+              "--from-hook",
+              "direct-source-read",
+              "--selector",
+              "src/user_summary.py:13:14",
+              "."
+            ],
+            "kind": "exact-read",
+            "read": "src/user_summary.py:13:14",
+            "reason": "expand if node before editing",
+            "target": "UserSummary:5"
+          },
+          {
+            "argv": [
+              "py-harness",
+              "query",
+              "--from-hook",
+              "direct-source-read",
+              "--selector",
+              "src/user_summary.py:14:14",
+              "."
+            ],
+            "kind": "exact-read",
+            "read": "src/user_summary.py:14:14",
+            "reason": "expand return node before editing",
+            "target": "UserSummary:6"
+          },
+          {
+            "argv": [
+              "py-harness",
+              "query",
+              "--from-hook",
+              "direct-source-read",
+              "--selector",
+              "src/user_summary.py:15:15",
+              "."
+            ],
+            "kind": "exact-read",
+            "read": "src/user_summary.py:15:15",
+            "reason": "expand return node before editing",
+            "target": "UserSummary:7"
+          },
+          {
+            "argv": [
+              "py-harness",
+              "query",
+              "--from-hook",
+              "direct-source-read",
+              "--selector",
+              "src/user_summary.py",
+              "."
+            ],
+            "kind": "owner-names",
+            "reason": "return owner-local item names without code windows",
+            "target": "src/user_summary.py"
+          }
+        ],
+        "losslessStructure": true,
+        "mode": "outline",
+        "nodes": [
+          {
+            "depth": 0,
+            "id": "UserSummary",
+            "kind": "class",
+            "label": "class UserSummary",
+            "read": "src/user_summary.py:7:15",
+            "role": "declaration"
+          },
+          {
+            "depth": 1,
+            "flags": [
+              "mutation"
+            ],
+            "id": "UserSummary:1",
+            "kind": "assign",
+            "label": "assign user_id",
+            "parentId": "UserSummary",
+            "read": "src/user_summary.py:8:8",
+            "role": "mutation"
+          },
+          {
+            "depth": 1,
+            "flags": [
+              "mutation"
+            ],
+            "id": "UserSummary:2",
+            "kind": "assign",
+            "label": "assign name",
+            "parentId": "UserSummary",
+            "read": "src/user_summary.py:9:9",
+            "role": "mutation"
+          },
+          {
+            "depth": 1,
+            "flags": [
+              "mutation"
+            ],
+            "id": "UserSummary:3",
+            "kind": "assign",
+            "label": "assign active",
+            "parentId": "UserSummary",
+            "read": "src/user_summary.py:10:10",
+            "role": "mutation"
+          },
+          {
+            "depth": 1,
+            "id": "UserSummary:4",
+            "kind": "function",
+            "label": "def label",
+            "parentId": "UserSummary",
+            "read": "src/user_summary.py:12:15",
+            "role": "declaration"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "branch"
+            ],
+            "id": "UserSummary:5",
+            "kind": "if",
+            "label": "if self.active",
+            "parentId": "UserSummary:4",
+            "read": "src/user_summary.py:13:14",
+            "role": "control-flow"
+          },
+          {
+            "depth": 3,
+            "flags": [
+              "return"
+            ],
+            "id": "UserSummary:6",
+            "kind": "return",
+            "label": "return f'{self.name}#{self.user_id}'",
+            "parentId": "UserSummary:5",
+            "read": "src/user_summary.py:14:14",
+            "role": "terminal"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "return"
+            ],
+            "id": "UserSummary:7",
+            "kind": "return",
+            "label": "return 'inactive'",
+            "parentId": "UserSummary:4",
+            "read": "src/user_summary.py:15:15",
+            "role": "terminal"
+          }
+        ],
+        "omitted": [],
+        "sourceAuthority": "native-parser",
+        "sourceFingerprint": "src/user_summary.py:7:15:171:622045fd",
+        "syntax": "semantic-outline"
+      },
+      "read": "src/user_summary.py:7:15",
+      "truncated": false,
+      "visibility": "public"
+    }
+  ],
+  "method": "query/owner-items",
+  "namespace": "agent.semantic-protocols.languages.python.py-harness",
+  "notes": [],
+  "outputMode": "code",
+  "ownerPath": "src/user_summary.py",
+  "projectRoot": "tests/fixtures/parser-compact/projects/data-shape/data-shape-basic/python",
+  "protocolId": "agent.semantic-protocols.semantic-language",
+  "protocolVersion": "1",
+  "providerId": "py-harness",
+  "query": "UserSummary",
+  "queryCoverage": [
+    {
+      "match": "exact",
+      "matchCount": 1,
+      "status": "hit",
+      "value": "UserSummary"
+    }
+  ],
+  "queryTerms": [
+    "UserSummary"
+  ],
+  "schemaId": "agent.semantic-protocols.semantic-query-packet",
+  "schemaVersion": "1",
+  "truncated": false
+}

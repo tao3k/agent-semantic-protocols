@@ -1,23 +1,25 @@
+"""Validate the semantic behavior snapshot schema contract."""
+
 import json
 from pathlib import Path
 
 from jsonschema import Draft202012Validator
 
 
-ROOT = Path(__file__).resolve().parents[2]
-SCHEMA_PATH = ROOT / "schemas" / "semantic-behavior-snapshot.v1.schema.json"
+_ROOT = Path(__file__).resolve().parents[2]
+SCHEMA_PATH = _ROOT / "schemas" / "semantic-behavior-snapshot.v1.schema.json"
 
 
-def load_schema() -> dict:
+def _load_schema() -> dict:
     return json.loads(SCHEMA_PATH.read_text())
 
 
 def test_semantic_behavior_snapshot_schema_is_valid() -> None:
-    Draft202012Validator.check_schema(load_schema())
+    Draft202012Validator.check_schema(_load_schema())
 
 
 def test_semantic_behavior_snapshot_accepts_expect_test_snapshot() -> None:
-    schema = load_schema()
+    schema = _load_schema()
     value = {
         "schemaId": "agent.semantic-protocols.semantic-behavior-snapshot",
         "schemaVersion": "1",
@@ -58,7 +60,7 @@ def test_semantic_behavior_snapshot_accepts_expect_test_snapshot() -> None:
 
 
 def test_semantic_behavior_snapshot_rejects_absolute_paths() -> None:
-    schema = load_schema()
+    schema = _load_schema()
     value = {
         "schemaId": "agent.semantic-protocols.semantic-behavior-snapshot",
         "schemaVersion": "1",

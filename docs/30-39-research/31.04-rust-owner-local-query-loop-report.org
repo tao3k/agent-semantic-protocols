@@ -24,7 +24,7 @@ The agent first selected the relevant owner:
 direnv exec . rs-harness query crates/semantic-agent-hook/src/command/raw_search.rs --query RawSearchScope crates/semantic-agent-hook
 direnv exec . rs-harness query crates/semantic-agent-hook/src/command/raw_search.rs --query terms_for_raw_search crates/semantic-agent-hook
 direnv exec . rs-harness query crates/semantic-agent-hook/src/command/raw_search.rs --query raw_search_stage crates/semantic-agent-hook
-direnv exec . rs-harness query crates/semantic-agent-hook/src/command/raw_search.rs --query profiles_for_raw_search crates/semantic-agent-hook
+direnv exec . rs-harness query crates/semantic-agent-hook/src/command/raw_search.rs --query matching_providers crates/semantic-agent-hook
 direnv exec . rs-harness search owner crates/semantic-agent-hook/src/command/raw_search.rs items --view seeds crates/semantic-agent-hook
 #+end_src
 
@@ -35,7 +35,7 @@ direnv exec . rs-harness query src/command/raw_search.rs --query parse_git_grep_
 direnv exec . rs-harness query src/command/raw_search.rs --query parse_ripgrep_scope .
 direnv exec . rs-harness query src/command/raw_search.rs --query parse_fd_scope .
 direnv exec . rs-harness query src/command/raw_search.rs --query parse_find_scope .
-direnv exec . rs-harness query src/command/raw_search.rs --query matching_profiles .
+direnv exec . rs-harness query src/command/raw_search.rs --query matching_providers .
 #+end_src
 
 The important reproduced outputs were:
@@ -91,7 +91,7 @@ broader query.  Without that, it repeats narrow symbol probes.
 The sequence was one logical owner-local question:
 
 #+begin_src text
-RawSearchScope | terms_for_raw_search | matching_profiles | parse_* helpers
+RawSearchScope | terms_for_raw_search | matching_providers | parse_* helpers
 #+end_src
 
 The protocol should support one owner-local query-set that returns per-term
@@ -132,7 +132,7 @@ Provider query commands should accept repeated terms:
 rs-harness query src/command/raw_search.rs \
   --term RawSearchScope \
   --term terms_for_raw_search \
-  --term matching_profiles \
+  --term matching_providers \
   crates/semantic-agent-hook
 #+end_src
 
@@ -167,8 +167,8 @@ Expected compact shape:
 #+begin_src text
 [query] owner=src/command/raw_search.rs terms=1 mode=names-only match=fallback-contains item=6
 |query term=parse_ status=hit match=fallback-contains item=6 next=code
-|item parse_ripgrep_like_scope kind=fn line=463 endLine=544
-|item parse_grep_like_scope kind=fn line=546 endLine=590
+|item parse_ripgrep_like_scope kind=fn lineRange=463:544
+|item parse_grep_like_scope kind=fn lineRange=546:590
 #+end_src
 
 ** 31.04-D Canonicalize owner paths
@@ -235,8 +235,8 @@ The broad parser prefix no longer dumps six code windows:
 #+begin_src text
 [search-owner] q=crates/semantic-agent-hook/src/command/raw_search.rs pkg=. own=1 item=6 itemQuery=parse_
 |query itemQuery=parse_ status=hit match=fallback-contains item=6 reason=parser-item-fallback output=names next=code
-|item parse_ripgrep_like kind=fn line=97 endLine=201 read=src/command/raw_search.rs:97-201
-|item parse_grep_like kind=fn line=203 endLine=266 read=src/command/raw_search.rs:203-266
+|item parse_ripgrep_like kind=fn lineRange=97:201 read=src/command/raw_search.rs:97:201
+|item parse_grep_like kind=fn lineRange=203:266 read=src/command/raw_search.rs:203:266
 #+end_src
 
 ** Remaining optimization space
@@ -328,10 +328,10 @@ rs-harness query crates/semantic-agent-hook/src/command/raw_search.rs \
 
 #+begin_src text
 |query itemQuery=parse_ripgrep_like|parse_fd|parse_find|parse_git_grep status=hit match=exact item=4 reason=parser-item-exact output=names next=code
-|item parse_ripgrep_like kind=fn line=97 endLine=201 read=src/command/raw_search.rs:97-201
-|item parse_git_grep kind=fn line=268 endLine=277 read=src/command/raw_search.rs:268-277
-|item parse_fd kind=fn line=311 endLine=358 read=src/command/raw_search.rs:311-358
-|item parse_find kind=fn line=360 endLine=384 read=src/command/raw_search.rs:360-384
+|item parse_ripgrep_like kind=fn lineRange=97:201 read=src/command/raw_search.rs:97:201
+|item parse_git_grep kind=fn lineRange=268:277 read=src/command/raw_search.rs:268:277
+|item parse_fd kind=fn lineRange=311:358 read=src/command/raw_search.rs:311:358
+|item parse_find kind=fn lineRange=360:384 read=src/command/raw_search.rs:360:384
 #+end_src
 
 ** 2026-06-01 TypeScript and Python provider alignment

@@ -8,8 +8,8 @@
 
 Agent hooks should be a thin, platform-adapted enforcement layer over the
 semantic language CLI registry.  The root protocol owns the normalized hook
-decision shape and classification algorithm; language harnesses own their
-language profile descriptors and provider commands.
+decision shape, activation algorithm, and classification algorithm; language
+harnesses own provider manifests and semantic commands.
 
 * Problem
 
@@ -49,28 +49,27 @@ runtime named =semantic-agent-hook=.  Provider repositories still own the
 language-native pieces:
 
 - source extensions and config files;
-- project roots and ignored directories;
-- provider binary and method descriptors;
+- source root detector defaults and ignored directories;
+- provider binary and route descriptors;
 - check command;
 - search guide commands.
 
-Provider-level =agent hook= commands are transitional wrappers.  They may remain
-for one release as compatibility shims that emit or locate a profile descriptor,
-but they must not keep independent Codex/Claude payload parsing, shell
-classification, stop/subagent state machines, or deny-guide rendering.  Those
-belong to the root runtime.
+Provider-level =agent hook= commands must not keep independent Codex/Claude
+payload parsing, shell classification, stop/subagent state machines, or
+deny-guide rendering.  Those belong to the root runtime.  Providers expose
+static manifests; the project installer activates those manifests for one
+workspace.
 
 * Root Rust Runtime
 
 The v1 implementation target is a small Rust binary in this repository:
 
 #+begin_src text
-semantic-agent-hook hook --client codex pre-tool --profiles .codex/agent-hook-profiles.json
-semantic-agent-hook hook --client claude pre-tool --profiles .claude/agent-hook-profiles.json
-semantic-agent-hook hook --client codex pre-tool --profiles .codex/agent-hook-profiles.json --emit decision
-semantic-agent-hook doctor --profiles .codex/agent-hook-profiles.json
-semantic-agent-hook install --client codex --profiles .codex/agent-hook-profiles.json .
-semantic-agent-hook profiles merge --output .codex/agent-hook-profiles.json rs.json ts.json py.json
+semantic-agent-hook hook --client codex pre-tool --activation .codex/semantic-agent-hook/activation.json
+semantic-agent-hook hook --client claude pre-tool --activation .claude/semantic-agent-hook/activation.json
+semantic-agent-hook hook --client codex pre-tool --activation .codex/semantic-agent-hook/activation.json --emit decision
+semantic-agent-hook doctor --activation .codex/semantic-agent-hook/activation.json .
+semantic-agent-hook install --client codex .
 #+end_src
 
 The runtime is intentionally language-neutral:
@@ -78,28 +77,27 @@ The runtime is intentionally language-neutral:
 - parse platform hook JSON from stdin;
 - normalize Codex/Claude event names and tool payloads;
 - tokenize shell commands into command stages rather than substring matching;
-- route paths and root-scoped broad searches through the enabled profile
-  descriptors;
+- route paths and root-scoped broad searches through the project activation
+  and provider manifests;
 - emit =schemas/semantic-agent-hook-decision.v1.schema.json= before rendering
   the platform-specific response;
 - default to platform hook payload output for =hook=, with =--emit decision=
   reserved for schema tests, receipts, and machine validation;
 - own =.codex/config.toml= hook blocks that invoke =semantic-agent-hook=
-  directly; provider installers should write or merge profile registry entries
-  instead of installing provider-private hook classifiers;
-- merge provider-owned single-language profile registries into one workspace
-  registry without provider-private Codex hook blocks;
-- maintain only shared hook state: prime/search evidence, dirty profile paths,
+  directly;
+- generate one project activation file that records enabled providers and
+  workspace coverage, without copying provider route templates;
+- maintain only shared hook state: prime/search evidence, dirty activation paths,
   changed-check evidence, and subagent receipt evidence.
 
 The runtime must not call compiler parsers or inspect language syntax.  It
-constructs safe next commands from profile descriptors and lets the provider
+constructs safe next commands from provider manifests and lets the provider
 binary own search/check semantics.
 
-Provider crates may be linked only in build/dev contexts to generate profile
+Provider crates may be linked only in build/dev contexts to generate manifest
 fixtures and black-box runtime tests.  They must not become normal
 =semantic-agent-hook= runtime dependencies; production classification consumes
-profile JSON, not provider APIs.
+the project activation plus static manifests, not provider APIs.
 
 * Platform Facts
 
@@ -117,12 +115,13 @@ keeps matcher aliases as client-side compatibility inputs.  For example,
 match legacy =Agent= aliases, while dynamic/deferred tools can be introduced
 through =tool_search=.  The durable boundary is therefore not a long
 tool-name regex in =config.toml=; the config should dispatch broadly and let
-=semantic-agent-hook= classify the normalized payload against profile schemas.
+=semantic-agent-hook= classify the normalized payload against project activation
+and provider manifests.
 
 The installed Codex hook command should also invoke =semantic-agent-hook=
 through =PATH=.  Copying a per-repository binary into
 =.codex/semantic-agent-hook/bin= makes the runtime stale and easy to bypass:
-the profile registry and config block are repository-owned, but the classifier
+the activation file and config block are repository-owned, but the classifier
 binary is a global toolchain component.
 
 Public Codex issue threads also document that =updatedInput= rewrite should
@@ -159,7 +158,7 @@ as a repository-local TOML snippet:
 - Codex Desktop API entries such as =functions.exec_command= and nested
   =multi_tool_use.parallel= calls must be replayed as first-class hook payloads,
   then smoke-tested through the real runtime.  Wrapper paths such as
-  =path.rs:10-20= and =path.rs:10:4= must be normalized before both policy
+  =path.rs:10:20= and =path.rs:10:4= must be normalized before both policy
   matching and provider route construction.
 - Codex hook output is schema-strict.  Unknown top-level fields can make the
   output fail to parse and convert an intended denial into no blocking action.
@@ -167,8 +166,8 @@ as a repository-local TOML snippet:
   tests/receipts, or embedded inside an accepted platform field such as
   =hookSpecificOutput.additionalContext=.
 - The installed command must resolve =semantic-agent-hook= through =PATH= so
-  upgrades affect every repository.  The repository owns profiles and config;
-  the classifier binary is a toolchain component.
+  upgrades affect every repository.  The repository owns activation config and
+  provider manifests; the classifier binary is a toolchain component.
 
 This is the concrete root-cause model for the low escape cost observed during
 the Codex CLI audit: a narrow matcher, a stale repo-local binary, missing hook
@@ -223,57 +222,96 @@ The adapter is intentionally dumb.  It extracts strings and paths, but it does
 not decide whether a path is Rust, TypeScript, Python, or Julia.  It also does
 not try to infer agent intent.
 
-* Language Profile Descriptor
+* Provider Manifest And Project Activation
 
-Each language provider supplies a profile descriptor derived from the semantic
-language registry.  The shared JSON shape is:
+The hook runtime does not use a generated command registry as its source of
+truth.  Provider truth and project activation are separate contracts.
+
+Provider manifests are static descriptors owned by the provider package or by
+the root runtime's built-in provider registry.  The shared JSON shape is:
 
 #+begin_src text
-schemas/semantic-agent-hook-profile.v1.schema.json
+schemas/semantic-agent-hook-provider-manifest.v1.schema.json
 #+end_src
 
-One root config file can contain all enabled profiles for a workspace.  The
-runtime consumes that profile registry directly; it does not shell out to each
-provider just to classify a tool payload.
+A provider manifest records only stable provider facts:
 
 #+begin_src text
+manifestId
+manifestVersion
 languageId
 providerId
-binary
 namespace
-sourceExtensions[]
-configFiles[]
-sourceRoots[]
-ignoredPathPrefixes[]
+binary
+source.defaultExtensions[]
+source.defaultConfigFiles[]
+source.defaultSourceRoots[]
+source.defaultIgnoredPathPrefixes[]
 policy.directSourceRead = block | allow | advisory
 policy.bulkSourceDump = block | allow | advisory
 policy.rawSourceSearch = block | allow | advisory
 policy.agentSearchJson = block | allow | advisory
-primeCommand
-ownerCommand(path)
-textPipeCommand(query)
-queryCommand(selector, termArgs)
-ingestCommand(stdinKind)
-checkChangedCommand
-guideCommand
+routes.prime(argv)
+routes.owner(argv)
+routes.query(argv)?
+routes.ingest(argv, stdinMode)
+routes.checkChanged(argv)
+routes.guide(argv)?
 #+end_src
 
-The descriptor is not a global enum in the common schema.  Language-specific
-repositories own language-specific capability names, while the root protocol
-only requires that provider routes are explicit and machine-readable.
+The manifest is not a workspace cache.  It must not be regenerated under
+=.codex=.  Command display text is derived from =argv= at render time and is
+not stored as an independent field.
 
-The action policy fields are the durable policy surface.  The legacy
-=blockDirectRead=, =blockBroadRawSearch=, =blockAgentSearchJson=, and
-=requirePrimeBeforeEdit= booleans remain accepted for v1 compatibility, but
-new profiles should use the action fields.  =block= denies with a provider
-guide, =allow= bypasses the policy, and =advisory= is non-blocking but keeps the
-profile-visible intent available for future state/reporting surfaces.
+Project activation is the repository-local generated file.  The shared JSON
+shape is:
+
+#+begin_src text
+schemas/semantic-agent-hook-activation.v1.schema.json
+#+end_src
+
+Activation records only which provider manifests are enabled in this workspace
+and what coverage the installer resolved:
+
+#+begin_src text
+projectRoot
+generatedBy.runtime = semantic-agent-hook
+generatedBy.version
+generatedAt
+providers[].manifestId
+providers[].providerId
+providers[].languageId
+providers[].binary
+providers[].providerCommandPrefix[]
+providers[].coverage.packageRoots[]
+providers[].coverage.sourceRoots[]
+providers[].coverage.configFiles[]
+providers[].coverage.sourceExtensions[]
+providers[].coverage.ignoredPathPrefixes[]
+providers[].manifestDigest
+#+end_src
+
+Activation does not repeat command templates, policies, or guide text.  The
+hook hot path loads activation, resolves each =manifestId= against static
+manifests, then builds an in-memory dispatch index:
+
+#+begin_example
+extension/config/glob/source-root -> activated provider manifest
+hook intent -> provider route kind -> argv rendered from manifest + activation
+#+end_example
+
+If activation is missing, malformed, or references an unknown manifest, the
+hook event fails open and reports the repair command.  =doctor= and =install=
+are strict: they rebuild activation, verify manifest digests, and fail if no
+provider can be activated.  They must not run provider =agent guide= or any
+other provider command during discovery; PATH executable checks and static
+workspace detector facts are enough.
 
 * Classifier
 
 The classifier is deterministic and evidence-first.  It evaluates one
-normalized invocation against the enabled language profiles and current hook
-state.
+normalized invocation against the activated provider dispatch index and current
+hook state.
 
 ** Tool intent
 
@@ -302,30 +340,30 @@ Bare names such as =Read= and =read_file=, namespaced deferred tools such as
 =functions.read_file=, and MCP read aliases are the same hook intent when they
 carry a source path.
 
-** Profile routing
+** Activation routing
 
-Paths route to profiles by descriptor:
+Paths route to activated providers through manifest and activation facts:
 
-- source extension or config file -> matching language profile;
-- source root plus source glob -> matching profile through a compiled glob
-  selector, not ad hoc suffix string matching;
+- source extension or config file -> matching activated provider;
+- source root plus source glob -> matching activated provider through a
+  compiled glob selector, not ad hoc suffix string matching;
 - ignored path prefixes such as =target/=, =node_modules/=, =dist/=,
-  =coverage/=, and generated cache roots -> no profile;
-- root-scoped search such as =rg ... .= or =fd ... .= -> every enabled profile
-  unless narrowed by globs.
+  =coverage/=, and generated cache roots -> no provider;
+- root-scoped search such as =rg ... .= or =fd ... .= -> every activated
+  provider unless narrowed by globs.
 
 The classifier should maintain one shared source-selector matcher.  Structured
 read tools, wrappers such as =rtk read=, content dumps, and raw search scopes
-all consult the same profile-owned =sourceExtensions=, =sourceRoots=, and
-=configFiles=.  Adding another language should normally require changing those
-profile fields and provider routes only; the classifier algorithm should not
-gain a language-specific branch.
+all consult the same activated =sourceExtensions=, =sourceRoots=, and
+=configFiles=.  Adding another language should normally require adding a
+provider manifest and workspace detector only; the classifier algorithm should
+not gain a language-specific branch.
 
 For performance, a selector is normalized and parsed once per classifier pass:
 the matcher owns glob detection, basename extension matching, config filename
-matching, literal prefix extraction, and compiled globsets.  Profiles consume
-that parsed selector rather than compiling glob patterns inside every
-profile-extension pair.
+matching, literal prefix extraction, and compiled globsets.  Classifier actions
+consume that parsed selector rather than compiling glob patterns inside every
+provider-extension pair.
 
 Glob-like selectors such as =*.rs=, =src/**/*.tsx=,
 =packages/*/src/**/*.py=, =crates/**/lib.rs=, =*.{ts,py}=, and =*.[jt]s=
@@ -334,17 +372,17 @@ still owns argument roles: =rg -e runner.py docs= treats =runner.py= as the
 search pattern, not as a Python source selector, while =rg -g '*.py' docs= or
 =git ls-files '*.py'= are source selectors.
 
-Selectors without a source suffix are still policy-relevant when they target a
-profile source root or the whole workspace.  For example =src/**= matches
-profiles that declare =src=, =crates/**= matches profiles that declare
-=crates=, and =**/*= is treated as all enabled source profiles.  A non-source
-root such as =docs/**= remains allowed unless it also matches a profile-owned
-extension, config file, or source root.
+Selectors without a source suffix are still policy-relevant when they target an
+activated source root or the whole workspace.  For example =src/**= matches
+providers activated for =src=, =crates/**= matches providers activated for
+=crates=, and =**/*= is treated as all activated source providers.  A
+non-source root such as =docs/**= remains allowed unless it also matches an
+activated extension, config file, or source root.
 
 Raw shell search is allowed only when one of these is true:
 
 - it is piped into the matching provider's =search ingest= command;
-- it is outside enabled language profiles;
+- it is outside activated language providers;
 - the policy explicitly marks it advisory.
 
 This is the key token-saving rule: root-scoped =rg= may collect candidates, but
@@ -374,12 +412,12 @@ The decision order is:
    a registered machine-consumer context;
 3. block broad content dumps and broad raw searches unless they pipe to ingest
    or route to a provider-declared hook query command;
-4. block broad edits to language-profile files before prime/search evidence;
+4. block broad edits to activated provider files before prime/search evidence;
 5. allow exact-file edits before prime only when policy enables the exception;
 6. record semantic-search evidence in post-tool state;
 7. record changed checks in post-tool state;
 8. require compact subagent receipt shape at subagent stop;
-9. require changed checks at stop when dirty profile files exist.
+9. require changed checks at stop when dirty activated provider files exist.
 
 The raw command classifier is action-aware first and suffix/source-aware second.
 Directory names such as =docs/**= or =crates/**= are not language evidence on
@@ -392,8 +430,8 @@ their own; source suffixes and provider-declared source roots are.
 | Content dump (=sed=, =less=, =head=, =tail=, =nl=, =bat=) | source glob | not required | deny bulk-source-dump with provider prime route |
 | Content diff (=git diff=, =git diff --no-index /dev/null <path>=) | exact source file | exact selector | deny bulk-source-dump with provider =query --from-hook direct-source-read --selector <path> .= route |
 | Metadata diff (=git diff --stat=, =git diff --name-only=, =git diff --name-status=) | source or non-source scope | metadata only | allow |
-| Raw search (=rg=, =grep=, =fd=, =find=, =git grep=) | source suffix/root/profile match | concrete query term | deny with provider =commands.query= when declared |
-| Raw search (=rg=, =grep=, =fd=, =find=, =git grep=) | source suffix/root/profile match | no concrete term | deny with provider ingest route |
+| Raw search (=rg=, =grep=, =fd=, =find=, =git grep=) | source suffix/root/provider match | concrete query term | deny with provider query route when declared |
+| Raw search (=rg=, =grep=, =fd=, =find=, =git grep=) | source suffix/root/provider match | no concrete term | deny with provider ingest route |
 | Raw search | non-source scope only, such as markdown/docs | any term | allow |
 | Raw search piped to provider ingest | source scope | candidates on stdin | allow |
 | Prompt-facing provider =--json= search | registered interactive shell | any | deny with compact text/owner route |
@@ -422,10 +460,10 @@ owns parser matching, owner ranking, exact item selection, and compact owner
 context rendering.
 
 For broad or pattern-based denials that do not carry one exact source path, the
-=message= field remains an agent-facing guide pointer.  If the matched profile
-declares =commands.query= and the raw search contains concrete terms, the route
-should use that query template with ={selector}= and ={termArgs}= expanded from
-profile suffixes and shell-tokenized search terms.  Otherwise, it should wrap
+=message= field remains an agent-facing guide pointer.  If the matched provider
+manifest declares a query route and the raw search contains concrete terms, the
+route should use that route with ={selector}= and ={termArgs}= expanded from
+activated suffixes and shell-tokenized search terms.  Otherwise, it should wrap
 the provider-owned guide command in a compact form such as:
 
 #+begin_example
@@ -529,25 +567,26 @@ The route shape is =search owner <path> items --query <derived-query> .=.
 * Downstream Plan
 
 1. Root protocol:
-   - keep the shared decision schema and profile registry schema;
+   - keep the shared decision schema, provider manifest schema, and activation
+     schema;
    - ship the Rust =semantic-agent-hook= runtime as the only classifier;
    - keep sandtable drills for hook payload fixtures and shell-tokenizer
      conformance.
 
 2. Rust provider:
-   - export a Rust profile descriptor;
+   - export a Rust provider manifest;
    - move current state-machine behavior into root-runtime tests;
    - remove provider-private Codex payload parsing once the root runtime covers
      direct reads, raw search, edit-before-prime, stop, and subagent receipts.
 
 3. TypeScript provider:
-   - export a TypeScript profile descriptor;
+   - export a TypeScript provider manifest;
    - delete the standalone Codex classifier or replace it with a thin wrapper
      that invokes =semantic-agent-hook=;
    - keep TypeScript-specific source/config ownership local.
 
 4. Python provider:
-   - export a Python profile descriptor;
+   - export a Python provider manifest;
    - keep the transitional =py-harness agent hook= wrapper strict enough to
      deny direct Python source reads with =reasonKind=direct-source-read= and a
      concrete =py-harness query --from-hook direct-source-read --selector <path> .=
@@ -557,7 +596,7 @@ The route shape is =search owner <path> items --query <derived-query> .=.
      gates.
 
 5. Julia provider:
-   - export profile descriptors before adding provider-owned hook code;
+   - export a Julia provider manifest before adding provider-owned hook code;
    - rely on root =semantic-agent-hook= for direct-read, raw-search-to-ingest,
      edit-before-prime, changed-check, subagent, and stop gates.
 

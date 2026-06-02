@@ -1,0 +1,29 @@
+{
+  "schemaId": "agent.semantic-protocols.parser-compact-case",
+  "schemaVersion": "1",
+  "caseId": "control-flow-basic",
+  "variantId": "typescript",
+  "languageId": "typescript",
+  "providerId": "ts-harness",
+  "featureClass": "control-flow",
+  "fixtureRoot": "tests/fixtures/parser-compact/projects/control-flow/control-flow-basic/typescript",
+  "rawSourcePath": "src/control-flow.ts",
+  "lineCommand": [
+    "ts-harness",
+    "query",
+    "src/control-flow.ts",
+    "--term",
+    "decide",
+    "--code",
+    "."
+  ],
+  "jsonCommand": [
+    "ts-harness",
+    "query",
+    "src/control-flow.ts",
+    "--term",
+    "decide",
+    "--json",
+    "."
+  ]
+}

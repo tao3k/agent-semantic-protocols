@@ -1,0 +1,206 @@
+{
+  "binary": "ts-harness",
+  "languageId": "typescript",
+  "matchMode": "exact",
+  "matches": [
+    {
+      "fields": {
+        "exportKind": "class",
+        "exported": true,
+        "typeOnly": false
+      },
+      "kind": "class",
+      "location": {
+        "lineRange": "1:14",
+        "path": "src/user-summary.ts"
+      },
+      "name": "UserSummary",
+      "projection": {
+        "exactRead": "src/user-summary.ts:1:14",
+        "expandActions": [
+          {
+            "argv": [
+              "ts-harness",
+              "query",
+              "--from-hook",
+              "direct-source-read",
+              "--selector",
+              "src/user-summary.ts:1:14",
+              "."
+            ],
+            "kind": "exact-read",
+            "read": "src/user-summary.ts:1:14",
+            "reason": "read exact source before editing",
+            "target": "UserSummary"
+          },
+          {
+            "argv": [
+              "ts-harness",
+              "query",
+              "--from-hook",
+              "direct-source-read",
+              "--selector",
+              "src/user-summary.ts:9:11",
+              "."
+            ],
+            "kind": "exact-read",
+            "read": "src/user-summary.ts:9:11",
+            "reason": "expand if node before editing",
+            "target": "UserSummary:3"
+          },
+          {
+            "argv": [
+              "ts-harness",
+              "query",
+              "--from-hook",
+              "direct-source-read",
+              "--selector",
+              "src/user-summary.ts:10:10",
+              "."
+            ],
+            "kind": "exact-read",
+            "read": "src/user-summary.ts:10:10",
+            "reason": "expand return node before editing",
+            "target": "UserSummary:4"
+          },
+          {
+            "argv": [
+              "ts-harness",
+              "query",
+              "--from-hook",
+              "direct-source-read",
+              "--selector",
+              "src/user-summary.ts:12:12",
+              "."
+            ],
+            "kind": "exact-read",
+            "read": "src/user-summary.ts:12:12",
+            "reason": "expand return node before editing",
+            "target": "UserSummary:5"
+          },
+          {
+            "argv": [
+              "ts-harness",
+              "query",
+              "--from-hook",
+              "direct-source-read",
+              "--selector",
+              "src/user-summary.ts",
+              "."
+            ],
+            "kind": "owner-names",
+            "reason": "return owner-local item names without code windows",
+            "target": "src/user-summary.ts"
+          }
+        ],
+        "losslessStructure": true,
+        "mode": "outline",
+        "nodes": [
+          {
+            "depth": 0,
+            "flags": [
+              "branch",
+              "return"
+            ],
+            "id": "UserSummary",
+            "kind": "class",
+            "label": "export class UserSummary",
+            "read": "src/user-summary.ts:1:14",
+            "role": "declaration"
+          },
+          {
+            "depth": 1,
+            "id": "UserSummary:1",
+            "kind": "constructor",
+            "label": "constructor",
+            "parentId": "UserSummary",
+            "read": "src/user-summary.ts:2:6",
+            "role": "declaration"
+          },
+          {
+            "depth": 1,
+            "id": "UserSummary:2",
+            "kind": "method",
+            "label": "label(): string",
+            "parentId": "UserSummary",
+            "read": "src/user-summary.ts:8:13",
+            "role": "declaration"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "branch"
+            ],
+            "id": "UserSummary:3",
+            "kind": "if",
+            "label": "if this.active",
+            "parentId": "UserSummary:2",
+            "read": "src/user-summary.ts:9:11",
+            "role": "control-flow"
+          },
+          {
+            "depth": 3,
+            "flags": [
+              "return"
+            ],
+            "id": "UserSummary:4",
+            "kind": "return",
+            "label": "return `${this.name}#${this.userId}`",
+            "parentId": "UserSummary:3",
+            "read": "src/user-summary.ts:10:10",
+            "role": "terminal"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "return"
+            ],
+            "id": "UserSummary:5",
+            "kind": "return",
+            "label": "return \"inactive\"",
+            "parentId": "UserSummary:2",
+            "read": "src/user-summary.ts:12:12",
+            "role": "terminal"
+          }
+        ],
+        "omitted": [
+          {
+            "count": 14,
+            "kind": "source-formatting",
+            "read": "src/user-summary.ts:1:14",
+            "reason": "compact projection removes original whitespace and comments"
+          }
+        ],
+        "sourceAuthority": "native-parser",
+        "sourceFingerprint": "src/user-summary.ts:1:14:239:9299f4fe",
+        "syntax": "semantic-outline"
+      },
+      "read": "src/user-summary.ts:1:14",
+      "truncated": false,
+      "visibility": "public"
+    }
+  ],
+  "method": "query/owner-items",
+  "namespace": "agent.semantic-protocols.languages.typescript.ts-harness",
+  "outputMode": "code",
+  "ownerPath": "src/user-summary.ts",
+  "projectRoot": "tests/fixtures/parser-compact/projects/data-shape/data-shape-basic/typescript",
+  "protocolId": "agent.semantic-protocols.semantic-language",
+  "protocolVersion": "1",
+  "providerId": "ts-harness",
+  "query": "UserSummary",
+  "queryCoverage": [
+    {
+      "match": "exact",
+      "matchCount": 1,
+      "status": "hit",
+      "value": "UserSummary"
+    }
+  ],
+  "queryTerms": [
+    "UserSummary"
+  ],
+  "schemaId": "agent.semantic-protocols.semantic-query-packet",
+  "schemaVersion": "1",
+  "truncated": false
+}

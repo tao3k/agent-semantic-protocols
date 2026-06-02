@@ -1,0 +1,20 @@
+{
+  "caseId": "async-effect-basic",
+  "compactCodeDelta": 101,
+  "compactCodeRatio": 0.3267,
+  "compactCodeTokens": 49,
+  "compactLineDelta": 101,
+  "compactLineRatio": 0.3267,
+  "compactLineTokens": 49,
+  "featureClass": "async-effect",
+  "languageId": "python",
+  "providerId": "py-harness",
+  "queryPacketDelta": -1630,
+  "queryPacketRatio": 11.8667,
+  "queryPacketTokens": 1780,
+  "rawSourceTokens": 150,
+  "schemaId": "agent.semantic-protocols.parser-compact-token-cost",
+  "schemaVersion": "1",
+  "tokenizerId": "tiktoken:o200k_base",
+  "variantId": "python"
+}

@@ -1,0 +1,467 @@
+#+TITLE: 31.12 Native Syntax Fact Folding Report
+#+DATE: 2026-06-02
+#+STATUS: active
+#+JOHNNY_DECIMAL: 31.12
+#+AREA: 30-39 Research
+#+CATEGORY: 31 Search Flow Research
+
+* Purpose
+
+This report records the next Rust native-syntax query optimization after
+parser-owned =--code=: compact =|fact= line folding.
+
+The motivating trace is:
+
+#+begin_src shell
+rs-harness search query 'pub use rules' owner --view seeds languages/rust-lang-project-harness
+#+end_src
+
+Current output repeats several values per fact:
+
+#+begin_example
+|query intent=rust-use term=rules status=hit routed=native-syntax hit=24 selected=5
+|fact rust:src/lib.rs:178:reexport:rust_agent_policy_rules kind=reexport source=native-parser owner=src/lib.rs line=178 visibility=public name=rust_agent_policy_rules qualifiedName=rules::rust_agent_policy_rules languageKind=use exported=true query=rules
+#+end_example
+
+The =query= line already carries the search term.  The fact id already carries
+owner path, line, fact kind, and exposed name.  Repeating those fields in every
+fact line wastes tokens and makes native syntax query look closer to a raw text
+dump than to a compact parser packet.
+
+* Target Shape
+
+The compact line should fold repeated fields into the fact id:
+
+#+begin_example
+|fact rust:src/lib.rs:178:reexport:rust_agent_policy_rules visibility=public qn=rules::rust_agent_policy_rules
+#+end_example
+
+Structured JSON should remain complete.  The JSON parser can derive these
+fields from the id:
+
+| Field | Source |
+|-------+--------|
+| =ownerPath= | =rust:<path>:<line>:<kind>:<name>= |
+| =location.line= | same |
+| =kind= | same |
+| =name= | same |
+| =source= | native syntax query default |
+| =queryKeys[0]= | parent =|query term=...= |
+| =languageKind= | parent =intent=rust-use= |
+
+* Sandtable Finding
+
+An attempted implementation exposed a tooling gap before the formatter change
+could be completed safely: the compact test assertion lives inside a Rust test
+function, but the provider does not yet support a useful
+=query <path:line-end> --code= local-window mode.  The hook correctly blocks
+raw reads, and the suggested provider route currently returns owner items
+instead of the exact bounded local window.
+
+That means a routine compact-line assertion edit still pushes the agent toward
+raw =rg=, =sed=, or full-source reads.  This is the same class of issue as
+31.10 direct-source-read range routing: the hook can preserve the range, but
+the language provider must make the range useful.
+
+* Self-Apply Finding
+
+During the =semantic-agent-hook= activation/manifest split, the hook crate added
+=src/command/provider_candidates.rs= under an existing =src/command/mod.rs=
+module tree.  The hook package build gate failed with =RUST-MOD-R009= and
+reported the new file as orphaned even though the provider owner output showed:
+
+#+begin_example
+|item provider_candidates kind=mod read=src/command/mod.rs:4-4
+#+end_example
+
+The root cause was in Rust harness native module resolution: child modules of
+=src/foo/mod.rs= used the ordinary file base directory and looked under
+=src/foo/mod/<child>.rs=.  For Rust =mod.rs= layout, the child module base must
+be the parent directory, so =src/foo/mod.rs= resolves =mod child;= to
+=src/foo/child.rs= or =src/foo/child/mod.rs=.
+
+This is a useful self-apply signal: =semantic-agent-hook= did not need a local
+policy waiver or a hidden module layout exception.  The language provider's
+parser-owned module tree needed to model Rust's native layout more accurately.
+
+The fix was applied in =languages/rust-lang-project-harness= and verified by
+both the consuming hook crate and the provider itself:
+
+#+begin_src shell
+direnv exec . cargo test -p semantic-agent-hook --no-fail-fast
+(cd languages/rust-lang-project-harness && direnv exec ../.. cargo test --no-fail-fast)
+#+end_src
+
+The first command passed 83 hook tests and exercised the build-script
+self-apply gate.  The second passed the Rust harness lib/unit suites.
+
+* Implementation Order
+
+1. Add provider local-window query:
+
+   #+begin_src shell
+   rs-harness query --from-hook direct-source-read --selector tests/unit/cli/search_query.rs:20-28 --code languages/rust-lang-project-harness
+   #+end_src
+
+   It should return bounded compact source/projection for the selected range,
+   not whole-owner item names.
+
+2. Update =semantic_search_json= to parse compact =|fact= ids and parent query
+   context so line protocol can drop repeated per-fact fields while JSON stays
+   complete.
+
+3. Fold Rust =search query= fact lines and update
+   =cli_search_query_routes_code_shaped_use_through_native_syntax_facts=.
+
+4. Apply the same contract to TypeScript and Python native syntax fact output
+   after their query packet builders expose equivalent parent query context.
+
+* Acceptance Gates
+
+#+begin_src shell
+direnv exec . cargo test --features cli cli_search_query
+direnv exec . cargo test --features cli cli_query_parser
+#+end_src
+
+The first gate protects line-protocol and JSON native syntax facts.  The second
+gate protects parser-owned =--code= output so fact folding does not regress the
+core query/code loop.
+
+* 2026-06-02 Update: Hook Selector Local Window
+
+Rust now supports the hook route form:
+
+#+begin_src shell
+rs-harness query --from-hook direct-source-read --selector tests/unit/cli/search_query.rs:20-28 --code .
+#+end_src
+
+It returns a bounded compact window, not =search-owner= metadata:
+
+#+begin_example
+assert!(
+query.contains("|fact rust:src/lib.rs:4:reexport:Thing ... query=Thing"),
+"{query}"
+);
+#+end_example
+
+This unlocks safe assertion repair after a denied =rtk read= / =sed= local
+read.  Positional shorthand remains open:
+
+#+begin_src shell
+rs-harness query tests/unit/cli/search_query.rs:20-28 --code .
+#+end_src
+
+The current positional parser treats the hyphenated selector as an extra
+project-root argument.  That should be fixed after the hook route is stable.
+
+* 2026-06-02 Update: Direct Read Plan Gate
+
+The real Python hook recovery case exposed a design defect:
+
+#+begin_src shell
+py-harness query --from-hook direct-source-read --selector src/python_lang_project_harness/_semantic_search_item_direct_read.py:115:240 languages/python-lang-project-harness
+#+end_src
+
+The old provider behavior treated the selector as a symbol-overlap request and
+then clipped the overlapping symbol to the requested range.  When the selector
+started near the end of a function, the provider returned only closing
+parentheses.  That was safe from a bulk-dump perspective but still wrong for
+agent search: it spent tokens on a low-information code window and gave no
+repair action.
+
+The direct-read recovery contract is now three-state:
+
+1. =sourceWindows=: small, parser-owned, high-signal local windows may return
+   compact source.
+2. =readPlan mode=range-outline code=false=: wide selectors or low-signal
+   clipped windows must return path/range/symbol evidence without source.
+3. =readPlan mode=search-repair code=false=: broad hook recovery without terms
+   should route the agent back to provider search/query planning.
+
+The shared =semantic-read-packet= schema now allows either =sourceWindows= or
+=readPlan=, and =selector= accepts both project paths and source locators such as
+=src/lib.rs:10:20=.  Python implements the first range-outline gate with two
+checks: selectors over 40 lines are =wide-selector=, and windows whose clipped
+text has no alphanumeric or underscore characters are =low-signal-window=.  The
+line protocol mirrors the schema with =read-plan=, =range=, and =symbol= records.
+Range records keep three separate line ranges: =requested= is the original
+selector range, =selected= is the provider-clipped local window, and =matched= is
+the parser symbol range.
+
+This is the root fix for the token-waste class: the hook may deny and route, but
+the provider must still decide whether the routed selector is source transport or
+semantic repair.  Rust, TypeScript, Python, and Julia should implement the same
+read-plan gate before treating =direct-source-read= as a code window.
+
+** Rust, TypeScript, Python, and Julia alignment
+
+Rust now applies the same first gate in =rs-harness query --from-hook
+direct-source-read --selector <path:range> --code=: selectors over 40 lines
+return =read-plan mode=range-outline code=false= instead of falling through to a
+large local-window source/projection dump.  Its agent guide now documents
+=[--code]= rather than implying hook recovery must always request code.
+
+TypeScript now applies the same gate in both line protocol and JSON read-packet
+paths.  =ts-harness query --from-hook direct-source-read --selector
+<path:range> --code= returns =read-plan= for wide ranges, and
+=--json --view read-packet= emits =readPlan= without =sourceWindows=.  The
+package-local TypeScript schema copy is synchronized with the shared
+=semantic-read-packet= schema, including =readPlan= and source-locator selectors.
+Python and Julia now use provider-native parser facts for the same
+=direct-source-read --selector <path:range> --code= route.  Python projects the
+range through its =ast= compact renderer.  Julia projects the range through
+JuliaSyntax-derived facts in =src/cli/query_code.jl=; the output is compact code
+text only, with no owner-seed fallback and no repeated =line= or =endLine=
+metadata.  Julia remains workspace-command managed rather than a global bin
+parity target, so the root provider gate still skips short-lived CLI runtime
+smoke while the Julia package test covers the provider behavior.
+
+** Broad item query code budget
+
+Real hook sandboxing showed another token sink:
+
+#+begin_src shell
+rs-harness search owner crates/semantic-agent-hook/src/tool_action.rs items \
+  --query 'command_intent|ContentDump|sed|awk|head|tail|nl|bat|less' \
+  crates/semantic-agent-hook
+#+end_src
+
+The query is not a selected symbol read.  It is a broad fallback intent over
+several shell-read concepts, but the old renderer emitted every matching item as
+=|item= plus =|code ... text="..."=.  That forced the agent to pay for twelve
+compact code windows before it had chosen whether =sed=, =awk=, =head/tail=, or
+=ContentDump= was the next axis.
+
+Rust now applies a small code budget for owner item queries: if a pipe-delimited
+item query matches more than three items, the owner view automatically switches
+to names-only output.  The query line records =output=names= and the provider
+keeps item read locators, so the next step can select a precise symbol and ask
+for code.  The same command dropped from repeated =|code text= blocks to a
+single query summary plus twelve item locators.
+
+The next real case exposed a different failure mode:
+
+#+begin_src shell
+rs-harness search owner languages/rust-lang-project-harness/src/cli/semantic_query_json.rs items \
+  --query 'render_semantic_query_json|projection_from_code_line|projection_node|expandActions' \
+  languages/rust-lang-project-harness
+#+end_src
+
+This is not just broad; it mixes stale names, schema/camelCase terms, and one
+valid broad Rust prefix.  The provider should not leave the agent to infer why
+only =projection_node*= items returned.  Rust now emits term-level revisions on
+fallback item queries.  The query summary becomes:
+
+#+begin_example
+|query ... output=names revise=render_semantic_query_json->render_query_json,projection_from_code_line->projection_nodes_from_compact_code,expandActions->projection_expand_actions next=select-item
+#+end_example
+
+The camelCase =expandActions= case is normalized through a snake_case alias for
+candidate scoring, because agents often carry field names from JSON/schema
+surfaces into Rust symbol search.  =next=select-item= is used for multi-item
+names-only output; single-item names-only results still keep =next=code=.
+
+Remaining protocol cleanup:
+
+- =next=select-item= is still a coarse hint; a future line protocol should be
+  able to point to a preferred =next=query:<symbol>= when candidate confidence is
+  high enough.
+- Rust =semantic-read-packet= currently returned no =sourceWindows= for a small
+  provider-owned selector while compact query could still render parser facts.
+  That weakens the provider-approved patch-context path.
+- The hook raw-search route surfaced =--surface owners,tests= while some docs
+  examples use singular =owner,tests=.  Surface naming should be normalized so
+  route replay is copyable.
+
+** Cross-language item-query alignment
+
+The same mixed-query failure exists outside Rust, but each language sits at a
+different capability level.
+
+#+begin_src shell
+ts-harness search owner src/cli/semantic-search/item-query.ts items \
+  --query 'render_semantic_query_json|projection_from_code_line|projection_node|expandActions' \
+  languages/typescript-lang-project-harness
+#+end_src
+
+TypeScript previously selected =compactExpandActions= and immediately emitted a
+=|code= block even though three of the four terms were stale or cross-surface
+names.  It now auto-switches to names-only for mixed multi-term item queries:
+
+#+begin_example
+|query ... status=hit match=mixed item=1 output=names revise=expandActions->compactExpandActions next=select-item
+|item function compactExpandActions ... read=src/cli/semantic-search/item-query.ts:415:474
+#+end_example
+
+The =--names-only= flag was also wired through the =search owner ... items=
+execution path so the help text and implementation agree.  Exact small queries
+still emit compact code by default, and explicit =--code= remains the pure code
+transport.
+
+Python had the more dangerous fallback form:
+
+#+begin_src shell
+py-harness search owner src/python_lang_project_harness/_semantic_search_item_direct_read.py items \
+  --query 'render_semantic_query_json|projection_from_code_line|projection_node|expandActions' \
+  languages/python-lang-project-harness
+#+end_src
+
+It now keeps fallback top-items names-only:
+
+#+begin_example
+|query ... status=miss match=none item=4 output=names next=revise-query
+|item owner_item_direct_read_lines kind=function read=...
+#+end_example
+
+Python still lacks term-level =revise= candidates.  The next Python alignment
+step is parser-owned normalized-name scoring, not text search.
+
+Julia is intentionally skipped in this owner-items/bin parity audit.  The
+current Julia provider is workspace-managed only and must not be treated as a
+standalone =julia-project-harness= bin target.  Do not add =query/owner-items=
+or compact item parity requirements to Julia in this slice; reopen a separate
+Julia-specific lane if that provider becomes active again.
+
+Cross-language rule:
+
+| provider | mixed item query | miss/fallback | next gap |
+| Rust | names-only + term-level =revise= | names-only | more precise =next=query:<symbol>= |
+| TypeScript | names-only + selected-item =revise= | names-only | owner-wide normalized candidates |
+| Python | names-only | names-only | term-level =revise= |
+| Julia | skipped | skipped | workspace-managed only; no standalone bin parity |
+
+** Python large descriptor compacting
+
+The Python catalog query exposed a separate AST compact failure:
+
+#+begin_src shell
+py-harness query src/python_lang_project_harness/_semantic_language_catalog.py \
+  --term 'python_search_view_descriptors|owner|acceptedPipes|requiresQuery' \
+  --code languages/python-lang-project-harness
+#+end_src
+
+The item spans more than the previous raw code window, so the provider sliced
+the function first, failed to parse the incomplete slice, and then returned a
+large =truncated=true= raw descriptor fragment.  That is backwards for an
+agent-facing compact path.  The provider should first parse the complete item
+and render parser-owned compact code; line limits only apply to fallback raw
+text when native parsing fails.
+
+Python now parses the full item before applying fallback limits.  Large
+return-list descriptors render as a structural sequence summary:
+
+#+begin_example
+def python_search_view_descriptors() -> list[dict[str, Any]]:
+  return list[14] items=_view:workspace,_view:prime,_view:owner,_view:dependency,_view:deps,_view:api,...+8
+#+end_example
+
+This keeps the high-signal facts the agent needs: descriptor count, constructor
+name, and the first view ids.  Nested fields such as =acceptedPipes= and
+=requiresQuery= remain available through the selected descriptor implementation
+or exact follow-up query instead of being dumped as a broad source fragment.
+
+** Hook extractor evidence
+
+The provider read-plan gate only helps if the hook preserves the selector range.
+The real =functions.exec_command= case showed a separate extractor defect:
+
+#+begin_src shell
+sed -n '115,240p' languages/python-lang-project-harness/src/python_lang_project_harness/_semantic_search_item_direct_read.py
+#+end_src
+
+Before the fix, the hook decision routed only the project path and forced the
+provider to recover from =src/python_lang_project_harness/_semantic_search_item_direct_read.py=.
+After the fix, the same command produces a denied =bulk-source-dump= decision
+with a provider route that preserves the local range:
+
+#+begin_example
+py-harness query --from-hook direct-source-read \
+  --selector src/python_lang_project_harness/_semantic_search_item_direct_read.py:115:240 \
+  --code languages/python-lang-project-harness
+#+end_example
+
+The routed provider command now returns =read-plan mode=range-outline
+code=false reason=wide-selector= with parser-selected symbol ranges instead of
+source windows.  The Rust replay test also locks the command-level extractor:
+=sed -n '1,40p' src/lib.rs= must route to =src/lib.rs:1:40=.  This closes the
+escape where a shell content-dump action was denied but lost the range needed
+for a low-token semantic recovery.
+
+** Common shell range extractors
+
+The same selector-preservation rule now applies to other common shell read
+surfaces when the command itself provides a deterministic line range:
+
+#+begin_example
+awk 'NR>=115 && NR<=240' src/lib.rs        -> src/lib.rs:115:240
+awk 'NR==42' src/lib.rs                   -> src/lib.rs:42:42
+head -n 40 src/lib.rs                     -> src/lib.rs:1:40
+head -n 240 src/lib.rs | tail -n 126      -> src/lib.rs:115:240
+tail -n +115 src/lib.rs | head -n 126     -> src/lib.rs:115:240
+nl -ba src/lib.rs | sed -n '115,240p'     -> src/lib.rs:115:240
+#+end_example
+
+Plain =tail -n 40 src/lib.rs= intentionally remains a path-only route because
+the hook cannot know the file's total line count without reading the file.  Glob
+selectors also avoid range suffixes so broad content dumps still route through
+provider prime/search behavior instead of fabricating an invalid
+=glob:start:end= selector.  This keeps the mechanism source-selector preserving
+only where the range is exact.
+
+The range extractor now lives in the dedicated
+=semantic-agent-hook/src/source_dump_range.rs= module instead of the generic
+tool-action extractor.  =tool_action.rs= only asks the range module for
+deterministic source selectors before falling back to ordinary path extraction.
+The module is covered by source-backed unit tests mounted from
+=tests/unit/source_dump_range.rs=, including the negative case
+=tail -40 src/lib.rs | head -n 10=.  That command remains path-only because
+=tail -40= means "last 40 lines", and the hook cannot know its start line
+without reading the file.
+
+The hook test suite now also has a central surface matrix in
+=crates/semantic-agent-hook/tests/unit/rust_harness_activation/cli/hook/surface_matrix.rs=.
+That table verifies the shared blocking contract across direct =Read= calls,
+wrapper commands, nested =multi_tool_use.parallel= payloads, encoded JSON
+tool-input payloads, source globs, non-source reads, and underdetermined
+path-only tail forms.  This is the audit entry point for future hook surfaces:
+new shells, wrappers, or source suffix families should add a matrix row before
+specialized replay cases.
+
+The matrix is Rust-activation scoped by design; cross-language routing remains
+owned by classifier coverage and real activation replay.  Current global-hook
+replay confirms exact TypeScript and Python source reads route to provider
+queries, while broad TypeScript source globs route to provider prime:
+
+#+begin_example
+Read languages/typescript-lang-project-harness/src/cli/protocol.ts
+  -> ts-harness query --selector src/cli/protocol.ts --code languages/typescript-lang-project-harness
+
+Read languages/python-lang-project-harness/src/python_lang_project_harness/_semantic_search_item_direct_read.py
+  -> py-harness query --selector src/python_lang_project_harness/_semantic_search_item_direct_read.py --code languages/python-lang-project-harness
+
+Read languages/typescript-lang-project-harness/src/**/*.ts
+  -> ts-harness search prime --view seeds languages/typescript-lang-project-harness
+#+end_example
+
+Cross-language classifier coverage now locks the same behavior for Rust,
+TypeScript, JavaScript, and Python source suffixes.  Real global-hook replay also
+confirms nested provider roots are preserved correctly:
+
+#+begin_example
+head -n 80 languages/typescript-lang-project-harness/src/cli/protocol.ts
+  -> ts-harness query --selector src/cli/protocol.ts:1:80 --code languages/typescript-lang-project-harness
+
+awk 'NR>=10 && NR<=30' languages/typescript-lang-project-harness/src/cli/protocol.ts
+  -> ts-harness query --selector src/cli/protocol.ts:10:30 --code languages/typescript-lang-project-harness
+
+tail -n +115 languages/python-lang-project-harness/src/python_lang_project_harness/_semantic_search_item_direct_read.py | head -n 126
+  -> py-harness query --selector src/python_lang_project_harness/_semantic_search_item_direct_read.py:115:240 --code languages/python-lang-project-harness
+
+nl -ba languages/python-lang-project-harness/src/python_lang_project_harness/_semantic_search_item_direct_read.py | sed -n '115,240p'
+  -> py-harness query --selector src/python_lang_project_harness/_semantic_search_item_direct_read.py:115:240 --code languages/python-lang-project-harness
+#+end_example
+
+Both routed provider commands then return =read-plan code=false= for wide
+ranges, so the hook and provider form a full recovery path: shell range
+extraction, provider-local selector normalization, and parser-owned read-plan
+projection.

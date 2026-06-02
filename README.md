@@ -14,7 +14,8 @@ aligned.
 - `rfcs/`: protocol intent and change process. Start here before changing
   search behavior or hook behavior.
 - `schemas/`: shared JSON contracts for search packets, language registries,
-  hook decisions, hook profiles, sandtable scenarios, and receipts.
+  hook decisions, hook activations, provider manifests, sandtable scenarios,
+  and receipts.
 - `crates/semantic-agent-hook/`: Rust root hook runtime for Codex/agent hook
   classification and provider routing.
 - `packages/python/src/tools/semantic_sandtable/`: sandtable runner for
@@ -78,15 +79,15 @@ semantic-agent-hook install --client codex .
 semantic-agent-hook doctor --client codex .
 ```
 
-`semantic-agent-hook install` writes the root Codex hook block and merged
-profile registry for this repository. It does not build or install
+`semantic-agent-hook install` writes the root Codex hook block, activation
+state, and provider manifests for this repository. It does not build or install
 `semantic-agent-hook`, `rs-harness`, `ts-harness`, or `py-harness`; use the
 `just agent-tools-install-*` commands for those binaries.
 
-`doctor` checks the project hook block, PATH binary, profile registry, and
-Codex user-level hook trust state. It does not prove that the already-running
-agent thread has reloaded the hook config. After changing hooks, start a fresh
-Codex session or run a live smoke:
+`doctor` checks the project hook block, PATH binary, activation/provider
+manifest sync, and Codex user-level hook trust state. It does not prove that
+the already-running agent thread has reloaded the hook config. After changing
+hooks, start a fresh Codex session or run a live smoke:
 
 ```sh
 just agent-hooks-smoke-hook

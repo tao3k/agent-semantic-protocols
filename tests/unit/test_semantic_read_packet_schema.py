@@ -33,11 +33,9 @@ def semantic_read_minimal_packet() -> dict[str, object]:
                 "ownerPath": "src/lib.rs",
                 "itemName": "load",
                 "itemKind": "fn",
-                "location": {"path": "src/lib.rs", "line": 6, "endLine": 6},
-                "read": "src/lib.rs:6-6",
-                "startLine": 6,
-                "endLine": 6,
-                "lineCount": 1,
+                "location": {"path": "src/lib.rs", "lineRange": "6:6"},
+                "read": "src/lib.rs:6:6",
+                        "lineCount": 1,
                 "reason": "direct-selector",
                 "text": "pub fn load() -> Thing { domain::make_thing() }",
                 "truncated": False,
@@ -60,6 +58,35 @@ class SemanticReadPacketSchemaTests(unittest.TestCase):
     def test_minimal_provider_read_packet_is_valid(self) -> None:
         self.assertEqual([], self.validation_errors(semantic_read_minimal_packet()))
 
+    def test_read_plan_packet_is_valid_without_source_windows(self) -> None:
+        packet = semantic_read_minimal_packet()
+        packet.pop("sourceWindows")
+        packet["selector"] = "src/lib.rs:115-240"
+        packet["readPlan"] = {
+            "mode": "range-outline",
+            "code": False,
+            "reason": "wide-selector",
+            "ranges": [
+                {
+                    "path": "src/lib.rs",
+                    "requested": "115:120",
+                    "selected": "115:120",
+                    "matched": "110:120",
+                    "coverage": "tail-only",
+                    "density": "normal",
+                }
+            ],
+            "symbols": [
+                {
+                    "itemName": "load",
+                    "itemKind": "fn",
+                    "lineRange": "110:120",
+                    "read": "src/lib.rs:110:120",
+                }
+            ],
+        }
+        self.assertEqual([], self.validation_errors(packet))
+
     def test_read_packet_rejects_root_hook_protocol(self) -> None:
         packet = semantic_read_minimal_packet()
         packet["protocolId"] = "agent.semantic-protocols.agent-hooks"
@@ -76,7 +103,13 @@ class SemanticReadPacketSchemaTests(unittest.TestCase):
         packet = semantic_read_minimal_packet()
         packet["selector"] = "0:src/lib.rs"
         errors = self.validation_errors(packet)
-        self.assertTrue(any("does not match" in message for message in errors))
+        self.assertTrue(
+            any(
+                "does not match" in message
+                or "is not valid under any of the given schemas" in message
+                for message in errors
+            )
+        )
 
     def test_window_read_locator_rejects_rank_prefix_path(self) -> None:
         packet = semantic_read_minimal_packet()
@@ -84,7 +117,7 @@ class SemanticReadPacketSchemaTests(unittest.TestCase):
         assert isinstance(windows, list)
         window = windows[0]
         assert isinstance(window, dict)
-        window["read"] = "0:src/lib.rs:6-6"
+        window["read"] = "0:src/lib.rs:6:6"
         errors = self.validation_errors(packet)
         self.assertTrue(any("does not match" in message for message in errors))
 

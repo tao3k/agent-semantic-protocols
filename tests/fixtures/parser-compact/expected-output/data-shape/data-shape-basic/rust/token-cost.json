@@ -1,0 +1,20 @@
+{
+  "caseId": "data-shape-basic",
+  "compactCodeDelta": 69,
+  "compactCodeRatio": 0.0676,
+  "compactCodeTokens": 5,
+  "compactLineDelta": 69,
+  "compactLineRatio": 0.0676,
+  "compactLineTokens": 5,
+  "featureClass": "data-shape",
+  "languageId": "rust",
+  "providerId": "rs-harness",
+  "queryPacketDelta": -341,
+  "queryPacketRatio": 5.6081,
+  "queryPacketTokens": 415,
+  "rawSourceTokens": 74,
+  "schemaId": "agent.semantic-protocols.parser-compact-token-cost",
+  "schemaVersion": "1",
+  "tokenizerId": "tiktoken:o200k_base",
+  "variantId": "rust"
+}

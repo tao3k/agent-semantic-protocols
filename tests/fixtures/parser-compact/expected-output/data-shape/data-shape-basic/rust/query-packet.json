@@ -1,0 +1,60 @@
+{
+  "binary": "rs-harness",
+  "languageId": "rust",
+  "matchMode": "exact",
+  "matches": [
+    {
+      "doc": false,
+      "kind": "struct",
+      "location": {
+        "lineRange": "1:5",
+        "path": "src/lib.rs"
+      },
+      "name": "UserSummary",
+      "projection": {
+        "exactRead": "src/lib.rs:1:5",
+        "losslessStructure": true,
+        "mode": "compact",
+        "nodes": [
+          {
+            "depth": 0,
+            "id": "n0",
+            "kind": "struct",
+            "label": "pub struct UserSummary",
+            "read": "src/lib.rs:1:5",
+            "role": "declaration"
+          }
+        ],
+        "sourceAuthority": "native-parser",
+        "syntax": "semantic-outline"
+      },
+      "read": "src/lib.rs:1:5",
+      "truncated": false,
+      "visibility": "public"
+    }
+  ],
+  "method": "query/owner-items",
+  "namespace": "agent.semantic-protocols.languages.rust.rs-harness",
+  "outputMode": "code",
+  "ownerPath": "src/lib.rs",
+  "projectRoot": ".",
+  "protocolId": "agent.semantic-protocols.semantic-language",
+  "protocolVersion": "1",
+  "providerId": "rs-harness",
+  "query": "UserSummary",
+  "queryCoverage": [
+    {
+      "match": "exact",
+      "matchCount": 1,
+      "nextAction": "code",
+      "status": "hit",
+      "value": "UserSummary"
+    }
+  ],
+  "queryTerms": [
+    "UserSummary"
+  ],
+  "schemaId": "agent.semantic-protocols.semantic-query-packet",
+  "schemaVersion": "1",
+  "truncated": false
+}

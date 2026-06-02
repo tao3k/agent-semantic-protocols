@@ -1,0 +1,20 @@
+{
+  "caseId": "control-flow-basic",
+  "compactCodeDelta": 13,
+  "compactCodeRatio": 0.8289,
+  "compactCodeTokens": 63,
+  "compactLineDelta": 13,
+  "compactLineRatio": 0.8289,
+  "compactLineTokens": 63,
+  "featureClass": "control-flow",
+  "languageId": "typescript",
+  "providerId": "ts-harness",
+  "queryPacketDelta": -1955,
+  "queryPacketRatio": 26.7237,
+  "queryPacketTokens": 2031,
+  "rawSourceTokens": 76,
+  "schemaId": "agent.semantic-protocols.parser-compact-token-cost",
+  "schemaVersion": "1",
+  "tokenizerId": "tiktoken:o200k_base",
+  "variantId": "typescript"
+}

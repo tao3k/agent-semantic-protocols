@@ -24,7 +24,7 @@ from .scenario_runner import run_scenario
 from .utils import resolve_path
 
 
-def main(argv: list[str] | None = None) -> int:
+def semantic_sandtable_main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="semantic-sandtable",
         description="Run semantic language harness sandtable scenarios.",

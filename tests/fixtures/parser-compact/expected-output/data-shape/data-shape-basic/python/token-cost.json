@@ -1,0 +1,20 @@
+{
+  "caseId": "data-shape-basic",
+  "compactCodeDelta": 23,
+  "compactCodeRatio": 0.6849,
+  "compactCodeTokens": 50,
+  "compactLineDelta": 23,
+  "compactLineRatio": 0.6849,
+  "compactLineTokens": 50,
+  "featureClass": "data-shape",
+  "languageId": "python",
+  "providerId": "py-harness",
+  "queryPacketDelta": -1748,
+  "queryPacketRatio": 24.9452,
+  "queryPacketTokens": 1821,
+  "rawSourceTokens": 73,
+  "schemaId": "agent.semantic-protocols.parser-compact-token-cost",
+  "schemaVersion": "1",
+  "tokenizerId": "tiktoken:o200k_base",
+  "variantId": "python"
+}

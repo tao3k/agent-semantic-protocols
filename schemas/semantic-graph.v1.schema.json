@@ -97,6 +97,7 @@
   "$defs": {
     "projectPath": {
       "type": "string",
+      "description": "Canonical project-root-relative path. This is a path value, not a display locator: no rank prefixes, URI schemes, command prefixes, line ranges, columns, absolute paths, parent segments, backslashes, or numeric node slots.",
       "minLength": 1,
       "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*)$"
     },

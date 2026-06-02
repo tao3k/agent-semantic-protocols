@@ -58,18 +58,17 @@ Plain =git diff -- <source>= and
 =git diff --no-index /dev/null <source>= emit source content.  They should be
 classified as =bulk-source-dump= and denied with a provider route.
 
-** Hook fallback routes still need better source-window ergonomics
+** Hook fallback routes need compact source-window ergonomics
 
 During this investigation, a narrow =sed -n '1,24p' ...scope_targets.rs= read
-was correctly blocked and routed to:
+was correctly blocked.  The preferred provider route is now:
 
 #+begin_src shell
-rs-harness query --from-hook direct-source-read --selector <path> .
+rs-harness query --from-hook direct-source-read --selector <path[:line-range]> --code .
 #+end_src
 
-The route returned owner/items but not the import/header window the edit needed.
-That confirms the policy direction is right, but provider query still needs a
-more useful local-window mode for imports, attributes, and file-level setup.
+This should return a compact bounded window, not owner/items metadata.  That is
+the hook recovery path for imports, attributes, assertions, and file-level setup.
 
 * Implemented Fix
 
@@ -108,6 +107,20 @@ truth for the file.
 The provider route for exact source selectors should support a compact local
 window mode for file-level imports and nearby declarations.  The output should
 remain compact code, not line-numbered raw source.
+
+2026-06-02 route fix: =semantic-agent-hook= now preserves exact line-range
+selectors when routing direct reads to the provider.  Matching still strips the
+range to identify the language profile, but the provider receives the original
+bounded selector:
+
+#+begin_example
+rtk read crates/semantic-agent-hook/src/lib.rs:10-20
+=> rs-harness query --from-hook direct-source-read --selector crates/semantic-agent-hook/src/lib.rs:10-20 --code .
+#+end_example
+
+This prevents the hook from turning a precise local read into a whole-owner
+query and reduces the chance that agents retry with raw =sed=, =cat=, or
+=git diff --no-index=.
 
 ** 31.10-C Agent guide should name the no-index diff trap
 

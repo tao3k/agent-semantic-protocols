@@ -1,14 +1,12 @@
 use semantic_agent_hook::{
-    DecisionKind, DecisionRouteKind, ReasonKind, classify_hook, parse_profiles,
+    ActionPolicy, DecisionKind, DecisionRouteKind, ReasonKind, classify_hook,
 };
 use serde_json::json;
-
-use crate::classifier::registry_value;
 
 use super::support::{assert_allowed, polyglot_registry, rust_registry};
 
 #[test]
-fn workspace_wide_raw_search_without_scope_is_denied_for_all_profiles() {
+fn workspace_wide_raw_search_without_scope_is_denied_for_all_providers() {
     for command in [
         "rg -n WorkflowExecution",
         "rg --files .",
@@ -91,7 +89,7 @@ fn non_source_scoped_raw_search_stays_allowed() {
 }
 
 #[test]
-fn global_suffix_glob_raw_search_targets_matching_language_profiles() {
+fn global_suffix_glob_raw_search_targets_matching_language_providers() {
     let decision = classify_hook(
         &polyglot_registry(),
         "codex",
@@ -150,7 +148,7 @@ fn git_diff_source_output_routes_to_language_provider() {
 }
 
 #[test]
-fn broad_raw_search_routes_to_profile_query_when_supported() {
+fn broad_raw_search_routes_to_provider_query_when_supported() {
     let decision = classify_hook(
         &polyglot_registry(),
         "codex",
@@ -163,14 +161,13 @@ fn broad_raw_search_routes_to_profile_query_when_supported() {
 
     assert_eq!(decision.decision, DecisionKind::Deny);
     assert_eq!(decision.reason_kind, ReasonKind::RawBroadSearch);
-    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Fzf);
+    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Query);
 }
 
 #[test]
 fn action_policy_can_allow_raw_search_without_allowing_direct_reads() {
-    let mut value = registry_value();
-    value["profiles"][0]["policy"]["rawSourceSearch"] = json!("allow");
-    let registry = parse_profiles(&value.to_string()).unwrap();
+    let mut registry = crate::classifier::registry();
+    registry.providers[0].policy.raw_source_search = ActionPolicy::Allow;
 
     let search_decision = classify_hook(
         &registry,

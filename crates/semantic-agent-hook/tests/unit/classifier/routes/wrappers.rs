@@ -4,7 +4,7 @@ use serde_json::json;
 use crate::classifier::registry;
 
 #[test]
-fn wrapper_raw_search_routes_to_profile_query_when_supported() {
+fn wrapper_raw_search_routes_to_provider_query_when_supported() {
     for command in [
         "DIRENV_SILENCE=1 direnv exec . rg -n WorkflowExecution src",
         "direnv exec . rg -n WorkflowExecution src",
@@ -27,7 +27,7 @@ fn wrapper_raw_search_routes_to_profile_query_when_supported() {
 
         assert_eq!(decision.decision, DecisionKind::Deny, "{command}");
         assert_eq!(decision.reason_kind, ReasonKind::RawBroadSearch);
-        assert_eq!(decision.routes[0].kind, DecisionRouteKind::Fzf);
+        assert_eq!(decision.routes[0].kind, DecisionRouteKind::Query);
     }
 }
 
@@ -57,6 +57,7 @@ fn shell_path_wrapper_routes_content_dump_to_provider_query() {
             "direct-source-read",
             "--selector",
             "src/cli/agent-hooks.ts",
+            "--code",
             "."
         ]
     );
@@ -88,6 +89,7 @@ fn rtk_read_routes_to_provider_query() {
             "direct-source-read",
             "--selector",
             "src/cli/agent-hooks.ts",
+            "--code",
             "."
         ]
     );
@@ -118,6 +120,7 @@ fn rtk_read_routes_display_locator_to_clean_provider_selector() {
             "direct-source-read",
             "--selector",
             "src/cli/agent-hooks.ts",
+            "--code",
             "."
         ]
     );
@@ -162,6 +165,7 @@ fn nested_parallel_exec_command_routes_to_provider_query() {
             "direct-source-read",
             "--selector",
             "src/cli/agent-hooks.ts",
+            "--code",
             "."
         ]
     );

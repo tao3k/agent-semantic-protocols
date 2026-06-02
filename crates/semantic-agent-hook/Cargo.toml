@@ -2,7 +2,7 @@
 name = "semantic-agent-hook"
 version = "0.1.0"
 edition = "2024"
-description = "Root semantic agent hook runtime for language harness profiles."
+description = "Root semantic agent hook runtime for provider manifests and project activations."
 license = "MIT"
 
 [dependencies]

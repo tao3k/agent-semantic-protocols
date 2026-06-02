@@ -1,0 +1,20 @@
+{
+  "caseId": "error-handling-basic",
+  "compactCodeDelta": 9,
+  "compactCodeRatio": 0.8594,
+  "compactCodeTokens": 55,
+  "compactLineDelta": 9,
+  "compactLineRatio": 0.8594,
+  "compactLineTokens": 55,
+  "featureClass": "error-handling",
+  "languageId": "typescript",
+  "providerId": "ts-harness",
+  "queryPacketDelta": -1723,
+  "queryPacketRatio": 27.9219,
+  "queryPacketTokens": 1787,
+  "rawSourceTokens": 64,
+  "schemaId": "agent.semantic-protocols.parser-compact-token-cost",
+  "schemaVersion": "1",
+  "tokenizerId": "tiktoken:o200k_base",
+  "variantId": "typescript"
+}

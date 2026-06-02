@@ -1,0 +1,294 @@
+{
+  "binary": "ts-harness",
+  "languageId": "typescript",
+  "matchMode": "exact",
+  "matches": [
+    {
+      "fields": {
+        "exportKind": "function",
+        "exported": true,
+        "typeOnly": false
+      },
+      "kind": "function",
+      "location": {
+        "lineRange": "10:17",
+        "path": "src/async-effect.ts"
+      },
+      "name": "loadUser",
+      "projection": {
+        "exactRead": "src/async-effect.ts:10:17",
+        "expandActions": [
+          {
+            "argv": [
+              "ts-harness",
+              "query",
+              "--from-hook",
+              "direct-source-read",
+              "--selector",
+              "src/async-effect.ts:10:17",
+              "."
+            ],
+            "kind": "exact-read",
+            "read": "src/async-effect.ts:10:17",
+            "reason": "read exact source before editing",
+            "target": "loadUser"
+          },
+          {
+            "argv": [
+              "ts-harness",
+              "query",
+              "--from-hook",
+              "direct-source-read",
+              "--selector",
+              "src/async-effect.ts:11:11",
+              "."
+            ],
+            "kind": "exact-read",
+            "read": "src/async-effect.ts:11:11",
+            "reason": "expand const node before editing",
+            "target": "loadUser:1"
+          },
+          {
+            "argv": [
+              "ts-harness",
+              "query",
+              "--from-hook",
+              "direct-source-read",
+              "--selector",
+              "src/async-effect.ts:12:14",
+              "."
+            ],
+            "kind": "exact-read",
+            "read": "src/async-effect.ts:12:14",
+            "reason": "expand if node before editing",
+            "target": "loadUser:4"
+          },
+          {
+            "argv": [
+              "ts-harness",
+              "query",
+              "--from-hook",
+              "direct-source-read",
+              "--selector",
+              "src/async-effect.ts:13:13",
+              "."
+            ],
+            "kind": "exact-read",
+            "read": "src/async-effect.ts:13:13",
+            "reason": "expand throw node before editing",
+            "target": "loadUser:5"
+          },
+          {
+            "argv": [
+              "ts-harness",
+              "query",
+              "--from-hook",
+              "direct-source-read",
+              "--selector",
+              "src/async-effect.ts:15:15",
+              "."
+            ],
+            "kind": "exact-read",
+            "read": "src/async-effect.ts:15:15",
+            "reason": "expand const node before editing",
+            "target": "loadUser:6"
+          },
+          {
+            "argv": [
+              "ts-harness",
+              "query",
+              "--from-hook",
+              "direct-source-read",
+              "--selector",
+              "src/async-effect.ts:16:16",
+              "."
+            ],
+            "kind": "exact-read",
+            "read": "src/async-effect.ts:16:16",
+            "reason": "expand return node before editing",
+            "target": "loadUser:9"
+          },
+          {
+            "argv": [
+              "ts-harness",
+              "query",
+              "--from-hook",
+              "direct-source-read",
+              "--selector",
+              "src/async-effect.ts",
+              "."
+            ],
+            "kind": "owner-names",
+            "reason": "return owner-local item names without code windows",
+            "target": "src/async-effect.ts"
+          }
+        ],
+        "losslessStructure": true,
+        "mode": "outline",
+        "nodes": [
+          {
+            "depth": 0,
+            "flags": [
+              "mutation",
+              "await",
+              "call",
+              "branch",
+              "throw",
+              "return"
+            ],
+            "id": "loadUser",
+            "kind": "function",
+            "label": "export async function loadUser(client: Client, userId: string): Promise<string>",
+            "read": "src/async-effect.ts:10:17",
+            "role": "declaration"
+          },
+          {
+            "depth": 1,
+            "flags": [
+              "mutation"
+            ],
+            "id": "loadUser:1",
+            "kind": "const",
+            "label": "const response = await client.fetch(userId)",
+            "parentId": "loadUser",
+            "read": "src/async-effect.ts:11:11",
+            "role": "mutation"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "await"
+            ],
+            "id": "loadUser:2",
+            "kind": "await",
+            "label": "await",
+            "parentId": "loadUser:1",
+            "read": "src/async-effect.ts:11:11",
+            "role": "effect"
+          },
+          {
+            "depth": 3,
+            "flags": [
+              "call"
+            ],
+            "id": "loadUser:3",
+            "kind": "call",
+            "label": "fetch",
+            "parentId": "loadUser:2",
+            "read": "src/async-effect.ts:11:11",
+            "role": "call"
+          },
+          {
+            "depth": 1,
+            "flags": [
+              "branch"
+            ],
+            "id": "loadUser:4",
+            "kind": "if",
+            "label": "if !response.ok",
+            "parentId": "loadUser",
+            "read": "src/async-effect.ts:12:14",
+            "role": "control-flow"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "throw"
+            ],
+            "id": "loadUser:5",
+            "kind": "throw",
+            "label": "throw new Error(\"missing\")",
+            "parentId": "loadUser:4",
+            "read": "src/async-effect.ts:13:13",
+            "role": "terminal"
+          },
+          {
+            "depth": 1,
+            "flags": [
+              "mutation"
+            ],
+            "id": "loadUser:6",
+            "kind": "const",
+            "label": "const body = await response.text()",
+            "parentId": "loadUser",
+            "read": "src/async-effect.ts:15:15",
+            "role": "mutation"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "await"
+            ],
+            "id": "loadUser:7",
+            "kind": "await",
+            "label": "await",
+            "parentId": "loadUser:6",
+            "read": "src/async-effect.ts:15:15",
+            "role": "effect"
+          },
+          {
+            "depth": 3,
+            "flags": [
+              "call"
+            ],
+            "id": "loadUser:8",
+            "kind": "call",
+            "label": "text",
+            "parentId": "loadUser:7",
+            "read": "src/async-effect.ts:15:15",
+            "role": "call"
+          },
+          {
+            "depth": 1,
+            "flags": [
+              "return"
+            ],
+            "id": "loadUser:9",
+            "kind": "return",
+            "label": "return body",
+            "parentId": "loadUser",
+            "read": "src/async-effect.ts:16:16",
+            "role": "terminal"
+          }
+        ],
+        "omitted": [
+          {
+            "count": 8,
+            "kind": "source-formatting",
+            "read": "src/async-effect.ts:10:17",
+            "reason": "compact projection removes original whitespace and comments"
+          }
+        ],
+        "sourceAuthority": "native-parser",
+        "sourceFingerprint": "src/async-effect.ts:10:17:227:709b8fd1",
+        "syntax": "semantic-outline"
+      },
+      "read": "src/async-effect.ts:10:17",
+      "truncated": false,
+      "visibility": "public"
+    }
+  ],
+  "method": "query/owner-items",
+  "namespace": "agent.semantic-protocols.languages.typescript.ts-harness",
+  "outputMode": "code",
+  "ownerPath": "src/async-effect.ts",
+  "projectRoot": "tests/fixtures/parser-compact/projects/async-effect/async-effect-basic/typescript",
+  "protocolId": "agent.semantic-protocols.semantic-language",
+  "protocolVersion": "1",
+  "providerId": "ts-harness",
+  "query": "loadUser",
+  "queryCoverage": [
+    {
+      "match": "exact",
+      "matchCount": 1,
+      "status": "hit",
+      "value": "loadUser"
+    }
+  ],
+  "queryTerms": [
+    "loadUser"
+  ],
+  "schemaId": "agent.semantic-protocols.semantic-query-packet",
+  "schemaVersion": "1",
+  "truncated": false
+}

@@ -1,0 +1,29 @@
+{
+  "schemaId": "agent.semantic-protocols.parser-compact-case",
+  "schemaVersion": "1",
+  "caseId": "data-shape-basic",
+  "variantId": "typescript",
+  "languageId": "typescript",
+  "providerId": "ts-harness",
+  "featureClass": "data-shape",
+  "fixtureRoot": "tests/fixtures/parser-compact/projects/data-shape/data-shape-basic/typescript",
+  "rawSourcePath": "src/user-summary.ts",
+  "lineCommand": [
+    "ts-harness",
+    "query",
+    "src/user-summary.ts",
+    "--term",
+    "UserSummary",
+    "--code",
+    "."
+  ],
+  "jsonCommand": [
+    "ts-harness",
+    "query",
+    "src/user-summary.ts",
+    "--term",
+    "UserSummary",
+    "--json",
+    "."
+  ]
+}

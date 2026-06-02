@@ -45,7 +45,7 @@ fn source_extension_raw_search_is_suffix_driven() {
 }
 
 #[test]
-fn exact_source_file_raw_search_is_denied_for_each_profile() {
+fn exact_source_file_raw_search_is_denied_for_each_provider() {
     for (command, binary) in [
         ("rg -n WorkflowExecution src/cli/protocol.ts", "ts-harness"),
         (
@@ -73,14 +73,14 @@ fn source_like_pattern_text_does_not_create_language_match() {
 }
 
 #[test]
-fn brace_glob_targets_all_matching_language_profiles() {
+fn brace_glob_targets_all_matching_language_providers() {
     let decision = classify_hook(
         &polyglot_registry(),
         "codex",
         "pre-tool",
         &json!({
             "tool_name": "functions.exec_command",
-            "tool_input": {"cmd": "rg --files -g '*.{ts,py}' packages"}
+            "tool_input": {"cmd": "rg --files -g '**/*.{rs,py,js,ts}' packages"}
         }),
     );
 
@@ -88,6 +88,10 @@ fn brace_glob_targets_all_matching_language_profiles() {
     assert_eq!(decision.reason_kind, ReasonKind::RawBroadSearch);
     assert_eq!(
         decision.language_ids,
-        vec!["typescript".to_string(), "python".to_string()]
+        vec![
+            "typescript".to_string(),
+            "rust".to_string(),
+            "python".to_string()
+        ]
     );
 }
