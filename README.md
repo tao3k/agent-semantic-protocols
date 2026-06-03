@@ -16,8 +16,10 @@ aligned.
 - `schemas/`: shared JSON contracts for search packets, language registries,
   hook decisions, hook activations, provider manifests, sandtable scenarios,
   and receipts.
+- `crates/semantic-agent-protocol/`: shared Rust CLI entrypoint for protocol
+  commands such as `hook` and `ast-patch`.
 - `crates/semantic-agent-hook/`: Rust root hook runtime for Codex/agent hook
-  classification and provider routing.
+  classification and provider routing, used by `semantic-agent-protocol hook`.
 - `packages/python/src/tools/semantic_sandtable/`: sandtable runner for
   replaying real provider commands and validating scenario evidence.
 - `sandtables/`: cross-language replay scenarios for search flows, hook denial
@@ -66,6 +68,7 @@ just agent-hooks-doctor "$HOME/.local/bin"
 Install individual agent tools when only one boundary changed:
 
 ```sh
+just agent-tools-install-protocol "$HOME/.local/bin"
 just agent-tools-install-hook "$HOME/.local/bin"
 just agent-tools-install-rust "$HOME/.local/bin"
 just agent-tools-install-typescript "$HOME/.local/bin"
@@ -75,14 +78,27 @@ just agent-tools-install-python "$HOME/.local/bin"
 Refresh only the Codex hook config after the binaries already exist:
 
 ```sh
+semantic-agent-protocol hook install --client codex .
+semantic-agent-protocol hook doctor --client codex .
 semantic-agent-hook install --client codex .
 semantic-agent-hook doctor --client codex .
 ```
 
-`semantic-agent-hook install` writes the root Codex hook block, activation
-state, and provider manifests for this repository. It does not build or install
+`semantic-agent-protocol hook install` delegates to `semantic-agent-hook` and
+writes the root Codex hook block, activation state, and provider manifests for
+this repository. It does not build or install `semantic-agent-protocol`,
 `semantic-agent-hook`, `rs-harness`, `ts-harness`, or `py-harness`; use the
 `just agent-tools-install-*` commands for those binaries.
+
+Verify a compact AST patch intent without enabling mutation:
+
+```sh
+semantic-agent-protocol ast-patch verify --packet ast-patch.json .
+semantic-agent-protocol ast-patch dry-run --packet ast-patch.json .
+```
+
+For the Codex adapter, `ast-patch` emits a receipt with
+`mutationAvailable=false`; apply code changes through Codex `apply_patch`.
 
 `doctor` checks the project hook block, PATH binary, activation/provider
 manifest sync, and Codex user-level hook trust state. It does not prove that
@@ -101,6 +117,7 @@ actual Codex CLI and verifies that a TypeScript source dump is blocked by
 Run the root hook tests:
 
 ```sh
+cargo test -p semantic-agent-protocol
 cargo test -p semantic-agent-hook
 ```
 
@@ -120,8 +137,9 @@ just check-python-policy
 ## Notes For Agents
 
 - Prefer compact provider search output over raw source reads.
-- Treat `semantic-agent-hook` as the shared classifier; provider hooks should
-  publish profile descriptors instead of duplicating platform parsing.
+- Treat `semantic-agent-protocol` as the public shared CLI and
+  `semantic-agent-hook` as the shared classifier implementation; provider hooks
+  should publish profile descriptors instead of duplicating platform parsing.
 - Use sandtable receipts and real-trigger scenarios to prove that a workflow
   saves commands, bytes, latency, or repeated searches.
 - Keep README short. Put design detail in `rfcs/`, `schemas/README.md`, or

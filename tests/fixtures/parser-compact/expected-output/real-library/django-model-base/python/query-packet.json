@@ -1,0 +1,417 @@
+{
+  "binary": "py-harness",
+  "languageId": "python",
+  "matchMode": "exact",
+  "matches": [
+    {
+      "doc": true,
+      "fields": {
+        "public": true,
+        "reason": "item-query"
+      },
+      "kind": "class",
+      "location": {
+        "lineRange": "95:459",
+        "path": "src/base.py"
+      },
+      "name": "ModelBase",
+      "outline": {
+        "hotBlocks": [
+          {
+            "label": "ModelBase",
+            "read": "src/base.py:95:459",
+            "reason": "parser-item-query"
+          }
+        ],
+        "summary": "class ModelBase"
+      },
+      "patchSafety": {
+        "exactRead": "src/base.py:95:459",
+        "level": "read-safe",
+        "reason": "read exact source locator before editing this compact match"
+      },
+      "projection": {
+        "exactRead": "src/base.py:95:459",
+        "expandActions": [
+          {
+            "kind": "exact-read",
+            "read": "src/base.py:95:459",
+            "reason": "read exact source before editing",
+            "target": "ModelBase"
+          },
+          {
+            "kind": "exact-read",
+            "read": "src/base.py:99:99",
+            "reason": "expand assign node before editing",
+            "target": "ModelBase:2"
+          },
+          {
+            "kind": "exact-read",
+            "read": "src/base.py:103:103",
+            "reason": "expand assign node before editing",
+            "target": "ModelBase:3"
+          },
+          {
+            "kind": "exact-read",
+            "read": "src/base.py:104:105",
+            "reason": "expand if node before editing",
+            "target": "ModelBase:4"
+          },
+          {
+            "kind": "exact-read",
+            "read": "src/base.py:105:105",
+            "reason": "expand return node before editing",
+            "target": "ModelBase:5"
+          },
+          {
+            "kind": "exact-read",
+            "read": "src/base.py:108:108",
+            "reason": "expand assign node before editing",
+            "target": "ModelBase:6"
+          },
+          {
+            "kind": "exact-read",
+            "read": "src/base.py:109:109",
+            "reason": "expand assign node before editing",
+            "target": "ModelBase:7"
+          },
+          {
+            "kind": "exact-read",
+            "read": "src/base.py:110:110",
+            "reason": "expand assign node before editing",
+            "target": "ModelBase:8"
+          },
+          {
+            "kind": "owner-names",
+            "reason": "return owner-local item names without code windows",
+            "target": "src/base.py"
+          }
+        ],
+        "losslessStructure": false,
+        "mode": "outline",
+        "nodeCount": 80,
+        "nodeLimit": 24,
+        "nodes": [
+          {
+            "depth": 0,
+            "id": "ModelBase",
+            "kind": "class",
+            "label": "class ModelBase",
+            "read": "src/base.py:95:459",
+            "role": "declaration"
+          },
+          {
+            "depth": 1,
+            "id": "ModelBase:1",
+            "kind": "function",
+            "label": "def __new__",
+            "parentId": "ModelBase",
+            "read": "src/base.py:98:390",
+            "role": "declaration"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "mutation"
+            ],
+            "id": "ModelBase:2",
+            "kind": "assign",
+            "label": "assign super_new",
+            "parentId": "ModelBase:1",
+            "read": "src/base.py:99:99",
+            "role": "mutation"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "mutation"
+            ],
+            "id": "ModelBase:3",
+            "kind": "assign",
+            "label": "assign parents",
+            "parentId": "ModelBase:1",
+            "read": "src/base.py:103:103",
+            "role": "mutation"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "branch"
+            ],
+            "id": "ModelBase:4",
+            "kind": "if",
+            "label": "if not parents",
+            "parentId": "ModelBase:1",
+            "read": "src/base.py:104:105",
+            "role": "control-flow"
+          },
+          {
+            "depth": 3,
+            "flags": [
+              "return"
+            ],
+            "id": "ModelBase:5",
+            "kind": "return",
+            "label": "return super_new",
+            "parentId": "ModelBase:4",
+            "read": "src/base.py:105:105",
+            "role": "terminal"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "mutation"
+            ],
+            "id": "ModelBase:6",
+            "kind": "assign",
+            "label": "assign module",
+            "parentId": "ModelBase:1",
+            "read": "src/base.py:108:108",
+            "role": "mutation"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "mutation"
+            ],
+            "id": "ModelBase:7",
+            "kind": "assign",
+            "label": "assign new_attrs",
+            "parentId": "ModelBase:1",
+            "read": "src/base.py:109:109",
+            "role": "mutation"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "mutation"
+            ],
+            "id": "ModelBase:8",
+            "kind": "assign",
+            "label": "assign classcell",
+            "parentId": "ModelBase:1",
+            "read": "src/base.py:110:110",
+            "role": "mutation"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "branch"
+            ],
+            "id": "ModelBase:9",
+            "kind": "if",
+            "label": "if classcell is not None",
+            "parentId": "ModelBase:1",
+            "read": "src/base.py:111:112",
+            "role": "control-flow"
+          },
+          {
+            "depth": 3,
+            "flags": [
+              "mutation"
+            ],
+            "id": "ModelBase:10",
+            "kind": "assign",
+            "label": "assign new_attrs['__classcell__']",
+            "parentId": "ModelBase:9",
+            "read": "src/base.py:112:112",
+            "role": "mutation"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "mutation"
+            ],
+            "id": "ModelBase:11",
+            "kind": "assign",
+            "label": "assign attr_meta",
+            "parentId": "ModelBase:1",
+            "read": "src/base.py:113:113",
+            "role": "mutation"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "mutation"
+            ],
+            "id": "ModelBase:12",
+            "kind": "assign",
+            "label": "assign contributable_attrs",
+            "parentId": "ModelBase:1",
+            "read": "src/base.py:117:117",
+            "role": "mutation"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "loop"
+            ],
+            "id": "ModelBase:13",
+            "kind": "for",
+            "label": "for (obj_name, obj) in items",
+            "parentId": "ModelBase:1",
+            "read": "src/base.py:118:122",
+            "role": "control-flow"
+          },
+          {
+            "depth": 3,
+            "flags": [
+              "branch"
+            ],
+            "id": "ModelBase:14",
+            "kind": "if",
+            "label": "if _has_contribute_to_class",
+            "parentId": "ModelBase:13",
+            "read": "src/base.py:119:122",
+            "role": "control-flow"
+          },
+          {
+            "depth": 4,
+            "flags": [
+              "mutation"
+            ],
+            "id": "ModelBase:15",
+            "kind": "assign",
+            "label": "assign contributable_attrs[obj_name]",
+            "parentId": "ModelBase:14",
+            "read": "src/base.py:120:120",
+            "role": "mutation"
+          },
+          {
+            "depth": 4,
+            "flags": [
+              "mutation"
+            ],
+            "id": "ModelBase:16",
+            "kind": "assign",
+            "label": "assign new_attrs[obj_name]",
+            "parentId": "ModelBase:14",
+            "read": "src/base.py:122:122",
+            "role": "mutation"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "mutation"
+            ],
+            "id": "ModelBase:17",
+            "kind": "assign",
+            "label": "assign new_class",
+            "parentId": "ModelBase:1",
+            "read": "src/base.py:123:123",
+            "role": "mutation"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "mutation"
+            ],
+            "id": "ModelBase:18",
+            "kind": "assign",
+            "label": "assign abstract",
+            "parentId": "ModelBase:1",
+            "read": "src/base.py:125:125",
+            "role": "mutation"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "mutation"
+            ],
+            "id": "ModelBase:19",
+            "kind": "assign",
+            "label": "assign meta",
+            "parentId": "ModelBase:1",
+            "read": "src/base.py:126:126",
+            "role": "mutation"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "mutation"
+            ],
+            "id": "ModelBase:20",
+            "kind": "assign",
+            "label": "assign base_meta",
+            "parentId": "ModelBase:1",
+            "read": "src/base.py:127:127",
+            "role": "mutation"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "mutation"
+            ],
+            "id": "ModelBase:21",
+            "kind": "assign",
+            "label": "assign app_label",
+            "parentId": "ModelBase:1",
+            "read": "src/base.py:129:129",
+            "role": "mutation"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "mutation"
+            ],
+            "id": "ModelBase:22",
+            "kind": "assign",
+            "label": "assign app_config",
+            "parentId": "ModelBase:1",
+            "read": "src/base.py:132:132",
+            "role": "mutation"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "branch"
+            ],
+            "id": "ModelBase:23",
+            "kind": "if",
+            "label": "if getattr(meta, 'app_label', None) is None",
+            "parentId": "ModelBase:1",
+            "read": "src/base.py:134:144",
+            "role": "control-flow"
+          }
+        ],
+        "nodesTruncated": true,
+        "omitted": [],
+        "sourceAuthority": "native-parser",
+        "sourceFingerprint": "src/base.py:95:459:4877:88d0ae0e",
+        "syntax": "semantic-outline"
+      },
+      "read": "src/base.py:95:459",
+      "truncated": false,
+      "visibility": "public"
+    }
+  ],
+  "method": "query/owner-items",
+  "namespace": "agent.semantic-protocols.languages.python.py-harness",
+  "notes": [],
+  "outputMode": "code",
+  "ownerPath": "src/base.py",
+  "patchSafety": {
+    "level": "read-safe",
+    "nextAction": "query --from-hook direct-source-read",
+    "reason": "compact query packet is not a mutation authority"
+  },
+  "projectRoot": "tests/fixtures/parser-compact/projects/real-library/django-model-base/python",
+  "protocolId": "agent.semantic-protocols.semantic-language",
+  "protocolVersion": "1",
+  "providerId": "py-harness",
+  "query": "ModelBase",
+  "queryCoverage": [
+    {
+      "match": "exact",
+      "matchCount": 1,
+      "status": "hit",
+      "value": "ModelBase"
+    }
+  ],
+  "queryTerms": [
+    "ModelBase"
+  ],
+  "schemaId": "agent.semantic-protocols.semantic-query-packet",
+  "schemaVersion": "1",
+  "truncated": false
+}

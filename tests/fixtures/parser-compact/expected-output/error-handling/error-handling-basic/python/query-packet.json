@@ -25,139 +25,63 @@
         ],
         "summary": "function parse_score"
       },
+      "patchSafety": {
+        "exactRead": "src/score.py:4:11",
+        "level": "read-safe",
+        "reason": "read exact source locator before editing this compact match"
+      },
       "projection": {
         "exactRead": "src/score.py:4:11",
         "expandActions": [
           {
-            "argv": [
-              "py-harness",
-              "query",
-              "--from-hook",
-              "direct-source-read",
-              "--selector",
-              "src/score.py:4:11",
-              "."
-            ],
             "kind": "exact-read",
             "read": "src/score.py:4:11",
             "reason": "read exact source before editing",
             "target": "parse_score"
           },
           {
-            "argv": [
-              "py-harness",
-              "query",
-              "--from-hook",
-              "direct-source-read",
-              "--selector",
-              "src/score.py:5:8",
-              "."
-            ],
             "kind": "exact-read",
             "read": "src/score.py:5:8",
             "reason": "expand try node before editing",
             "target": "parse_score:1"
           },
           {
-            "argv": [
-              "py-harness",
-              "query",
-              "--from-hook",
-              "direct-source-read",
-              "--selector",
-              "src/score.py:6:6",
-              "."
-            ],
             "kind": "exact-read",
             "read": "src/score.py:6:6",
             "reason": "expand assign node before editing",
             "target": "parse_score:2"
           },
           {
-            "argv": [
-              "py-harness",
-              "query",
-              "--from-hook",
-              "direct-source-read",
-              "--selector",
-              "src/score.py:7:8",
-              "."
-            ],
             "kind": "exact-read",
             "read": "src/score.py:7:8",
             "reason": "expand except node before editing",
             "target": "parse_score:3"
           },
           {
-            "argv": [
-              "py-harness",
-              "query",
-              "--from-hook",
-              "direct-source-read",
-              "--selector",
-              "src/score.py:8:8",
-              "."
-            ],
             "kind": "exact-read",
             "read": "src/score.py:8:8",
             "reason": "expand raise node before editing",
             "target": "parse_score:4"
           },
           {
-            "argv": [
-              "py-harness",
-              "query",
-              "--from-hook",
-              "direct-source-read",
-              "--selector",
-              "src/score.py:9:10",
-              "."
-            ],
             "kind": "exact-read",
             "read": "src/score.py:9:10",
             "reason": "expand if node before editing",
             "target": "parse_score:5"
           },
           {
-            "argv": [
-              "py-harness",
-              "query",
-              "--from-hook",
-              "direct-source-read",
-              "--selector",
-              "src/score.py:10:10",
-              "."
-            ],
             "kind": "exact-read",
             "read": "src/score.py:10:10",
             "reason": "expand raise node before editing",
             "target": "parse_score:6"
           },
           {
-            "argv": [
-              "py-harness",
-              "query",
-              "--from-hook",
-              "direct-source-read",
-              "--selector",
-              "src/score.py:11:11",
-              "."
-            ],
             "kind": "exact-read",
             "read": "src/score.py:11:11",
             "reason": "expand return node before editing",
             "target": "parse_score:7"
           },
           {
-            "argv": [
-              "py-harness",
-              "query",
-              "--from-hook",
-              "direct-source-read",
-              "--selector",
-              "src/score.py",
-              "."
-            ],
             "kind": "owner-names",
             "reason": "return owner-local item names without code windows",
             "target": "src/score.py"
@@ -165,6 +89,8 @@
         ],
         "losslessStructure": true,
         "mode": "outline",
+        "nodeCount": 8,
+        "nodeLimit": 24,
         "nodes": [
           {
             "depth": 0,
@@ -214,7 +140,7 @@
             ],
             "id": "parse_score:4",
             "kind": "raise",
-            "label": "raise ValueError('invalid')",
+            "label": "raise ValueError:invalid",
             "parentId": "parse_score:3",
             "read": "src/score.py:8:8",
             "role": "terminal"
@@ -238,7 +164,7 @@
             ],
             "id": "parse_score:6",
             "kind": "raise",
-            "label": "raise ValueError('negative')",
+            "label": "raise ValueError:negative",
             "parentId": "parse_score:5",
             "read": "src/score.py:10:10",
             "role": "terminal"
@@ -256,9 +182,10 @@
             "role": "terminal"
           }
         ],
+        "nodesTruncated": false,
         "omitted": [],
         "sourceAuthority": "native-parser",
-        "sourceFingerprint": "src/score.py:4:11:180:2bc12a08",
+        "sourceFingerprint": "src/score.py:4:11:160:23ab2f02",
         "syntax": "semantic-outline"
       },
       "read": "src/score.py:4:11",
@@ -271,6 +198,11 @@
   "notes": [],
   "outputMode": "code",
   "ownerPath": "src/score.py",
+  "patchSafety": {
+    "level": "read-safe",
+    "nextAction": "query --from-hook direct-source-read",
+    "reason": "compact query packet is not a mutation authority"
+  },
   "projectRoot": "tests/fixtures/parser-compact/projects/error-handling/error-handling-basic/python",
   "protocolId": "agent.semantic-protocols.semantic-language",
   "protocolVersion": "1",

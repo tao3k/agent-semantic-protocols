@@ -30,11 +30,13 @@
       "stdin": "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"functions.exec_command\",\"tool_input\":{\"cmd\":\"rtk read src/lib.rs\"}}",
       "expect": {
         "stdoutJsonEquals": {
-          "hookSpecificOutput.permissionDecision": "deny",
-          "agentHookDecision.reasonKind": "direct-source-read",
-          "agentHookDecision.subject.paths.0": "src/lib.rs",
-          "agentHookDecision.routes.0.providerId": "rs-harness"
+          "hookSpecificOutput.permissionDecision": "deny"
         },
+        "stdoutContains": [
+          "\"permissionDecisionReason\":\"direct-source-read denied",
+          "\\\"paths\\\":[\\\"src/lib.rs\\\"]",
+          "\\\"providerId\\\":\\\"rs-harness\\\""
+        ],
         "stdoutNotContains": [
           "codex-desktop-smoke-fixture"
         ],
@@ -54,11 +56,13 @@
       "stdin": "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"functions.exec_command\",\"tool_input\":{\"cmd\":\"rtk rg -n smoke src tests\"}}",
       "expect": {
         "stdoutJsonEquals": {
-          "hookSpecificOutput.permissionDecision": "deny",
-          "agentHookDecision.reasonKind": "raw-broad-search",
-          "agentHookDecision.routes.0.kind": "ingest",
-          "agentHookDecision.routes.0.stdinMode": "pipe-candidates"
+          "hookSpecificOutput.permissionDecision": "deny"
         },
+        "stdoutContains": [
+          "\"permissionDecisionReason\":\"raw-broad-search denied",
+          "\\\"reasonKind\\\":\\\"raw-broad-search\\\"",
+          "\\\"kind\\\":\\\"query\\\""
+        ],
         "stdoutNotContains": [
           "codex-desktop-smoke-fixture"
         ],
@@ -78,10 +82,12 @@
       "stdin": "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"multi_tool_use.parallel\",\"tool_input\":{\"tool_uses\":[{\"recipient_name\":\"functions.exec_command\",\"parameters\":{\"cmd\":\"rtk read src/lib.rs\"}}]}}",
       "expect": {
         "stdoutJsonEquals": {
-          "hookSpecificOutput.permissionDecision": "deny",
-          "agentHookDecision.reasonKind": "direct-source-read",
-          "agentHookDecision.subject.paths.0": "src/lib.rs"
+          "hookSpecificOutput.permissionDecision": "deny"
         },
+        "stdoutContains": [
+          "\"permissionDecisionReason\":\"direct-source-read denied",
+          "\\\"paths\\\":[\\\"src/lib.rs\\\"]"
+        ],
         "stdoutNotContains": [
           "codex-desktop-smoke-fixture"
         ],
@@ -101,10 +107,12 @@
       "stdin": "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"functions.exec_command\",\"tool_input\":{\"cmd\":\"sed -n '1,40p' src/lib.rs\"}}",
       "expect": {
         "stdoutJsonEquals": {
-          "hookSpecificOutput.permissionDecision": "deny",
-          "agentHookDecision.reasonKind": "bulk-source-dump",
-          "agentHookDecision.subject.paths.0": "src/lib.rs"
+          "hookSpecificOutput.permissionDecision": "deny"
         },
+        "stdoutContains": [
+          "\"permissionDecisionReason\":\"bulk-source-dump denied",
+          "\\\"paths\\\":[\\\"src/lib.rs:1:40\\\"]"
+        ],
         "stdoutNotContains": [
           "codex-desktop-smoke-fixture"
         ],
@@ -153,8 +161,7 @@
         "stdoutJsonEquals": {
           "decision": "deny",
           "reasonKind": "raw-broad-search",
-          "routes.0.kind": "ingest",
-          "routes.0.stdinMode": "pipe-candidates"
+          "routes.0.kind": "query"
         },
         "stdoutNotContains": [
           "codex-desktop-smoke-fixture"
@@ -179,7 +186,7 @@
         "stdoutJsonEquals": {
           "decision": "deny",
           "reasonKind": "bulk-source-dump",
-          "subject.paths.0": "src/lib.rs"
+          "subject.paths.0": "src/lib.rs:1:40"
         },
         "stdoutNotContains": [
           "codex-desktop-smoke-fixture"
@@ -202,8 +209,9 @@
       "stdin": "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"functions.exec_command\",\"tool_input\":{\"cmd\":\"rg -n smoke src/lib.rs\"}}",
       "expect": {
         "stdoutJsonEquals": {
-          "decision": "allow",
-          "reasonKind": "none"
+          "decision": "deny",
+          "reasonKind": "raw-broad-search",
+          "routes.0.kind": "query"
         },
         "maxElapsedMsWarn": 500
       }

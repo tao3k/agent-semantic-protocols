@@ -1,0 +1,424 @@
+#+TITLE: RFC: Semantic AST Apply Patch Protocol
+#+AUTHOR: agent-semantic-protocols
+#+DATE: 2026-06-02
+#+RFC: 007
+#+DEPENDS: rfcs/code-intelligence-lane.org (003), rfcs/cli-first-harness-ux.org (005)
+#+SEE_ALSO: docs/30-39-research/31.13-ast-apply-patch-direction-report.org
+
+* One-sentence summary
+
+=semantic-agent-protocol= should expose an AST-backed patch verification
+protocol for small structural edits.  Language providers own native AST
+adapters, while the shared binary owns schema validation, receipts, hook
+integration, and Codex-safe verification.
+
+* Motivation
+
+The current agent loop has a gap between understanding and editing:
+
+#+begin_example
+search/query finds the right owner and symbol
+  -> compact code output omits source details
+  -> agent guesses a text patch
+  -> apply_patch may fail or produce syntax drift
+#+end_example
+
+Codex's text =apply_patch= is a strong fallback, but it is still text matching.
+It cannot know whether a snippet is valid in a TypeScript argument list, a Rust
+impl block, a Python class body, or a Julia module.  This project already has
+language-native parsers.  The provider should own structural edits that can be
+validated before any file content changes.
+
+* Non-goals
+
+- Do not replace =apply_patch= for arbitrary text edits.
+- Do not make the LLM write full files.
+- Do not expose raw AST dumps to the prompt.
+- Do not require one shared AST implementation across languages.
+- Do not let fuzzy search or compact outline output become mutation authority.
+
+* Protocol roles
+
+| Layer | Responsibility |
+|-------+----------------|
+| =search= | discover owners, symbols, tests, graph frontiers |
+| =query= | return parser-owned compact outline, node locators, patch affordances |
+| =semantic-agent-protocol ast-patch= | validate one structural edit intent and emit a receipt |
+| provider AST adapter | resolve native AST nodes and parse operation snippets |
+| =apply_patch= | text fallback, audit backend, or final diff application |
+| =check= | verify project policy after the edit |
+
+The critical split is:
+
+#+begin_example
+compact outline may be lossy
+ast patch target must be lossless enough to validate
+#+end_example
+
+* Public CLI shape
+
+The public agent-facing entrypoint is a shared binary, not one public AST patch
+surface per language:
+
+#+begin_src shell
+semantic-agent-protocol ast-patch verify --packet <ast-patch.json> .
+semantic-agent-protocol ast-patch dry-run --packet <ast-patch.json> .
+#+end_src
+
+For the current Codex adapter, =ast-patch= is verification-only.  It must not
+pretend to replace Codex's built-in mutation tool.  A successful dry-run proves
+that compact/query output is patchable and may emit a text diff proposal, but
+the actual file mutation still goes through Codex =apply_patch=.
+
+Future non-Codex runtimes may add:
+
+#+begin_src shell
+semantic-agent-protocol ast-patch apply --packet <ast-patch.json> .
+#+end_src
+
+That command is out of scope for the first Codex-compatible implementation.
+
+Language providers expose a narrow internal adapter surface behind the shared
+binary.  This adapter may be a CLI subcommand, library API, or crate call, but
+it is not the first thing agents learn:
+
+#+begin_src shell
+<lang-harness> ast-patch verify --packet <ast-patch.json> .
+#+end_src
+
+The shared binary normalizes provider discovery, schema validation, receipts,
+failure kinds, and follow-up checks.
+
+* Unified crate and policy boundary
+
+The implementation root should be a new Rust crate:
+
+#+begin_example
+crates/semantic-agent-protocol
+├── command/hook.rs
+├── command/ast_patch.rs
+├── command/compact_verify.rs
+├── protocol/
+└── receipt/
+#+end_example
+
+=semantic-agent-hook= remains a first-class dependency of this crate.  It is
+not deleted or folded away.  The shared binary should route hook commands to
+the existing hook implementation:
+
+#+begin_src shell
+semantic-agent-protocol hook install --client codex .
+semantic-agent-protocol hook pre-tool ...
+semantic-agent-protocol hook stop ...
+#+end_src
+
+This keeps the current Codex adapter stable while letting the public binary grow
+into the broader semantic protocol surface.
+
+The new crate must self-apply the Rust language-project policy.  Do not copy
+Rust policy logic into =semantic-agent-protocol=.  Depend on the existing
+=rust-lang-project-harness= policy/check surface the same way this repository
+already treats language providers as policy owners.  The acceptance gate for
+this crate is therefore:
+
+#+begin_src shell
+rs-harness check --changed crates/semantic-agent-protocol
+#+end_src
+
+If the crate touches hook integration, also run the existing
+=semantic-agent-hook= tests because the hook crate remains the implementation
+dependency.
+
+* AST patch packet
+
+The shared packet should be language-neutral at the envelope level and
+provider-specific only where syntax requires it:
+
+#+begin_src json
+{
+  "schemaId": "agent.semantic-protocols.semantic-ast-patch",
+  "schemaVersion": "1",
+  "languageId": "typescript",
+  "projectRoot": ".",
+  "target": {
+    "ownerPath": "src/cli/semantic-search/render.ts",
+    "locator": "src/cli/semantic-search/render.ts#fn:renderSemanticSearchSeedPacket#if:packet.searchSynthesis",
+    "read": "src/cli/semantic-search/render.ts:120:180",
+    "nodeKind": "if_statement",
+    "role": "body"
+  },
+  "operation": {
+    "op": "append_to_block",
+    "snippet": "lines.push(renderSearchGraphLine(packet.searchSynthesis.graph));"
+  },
+  "precondition": {
+    "targetHash": "sha256:...",
+    "worktreeHash": "sha256:...",
+    "parserVersion": "typescript:..."
+  }
+}
+#+end_src
+
+Line locations use the existing compact source-locator form =path:10:43=.
+Do not introduce =startLine= / =endLine= fields in this protocol.
+
+* Patch affordances
+
+Compact query results should not merely expose a function outline.  They should
+also expose supported structural operations for selected nodes:
+
+#+begin_example
+|patch target=src/cli/semantic-search/render.ts#fn:renderSemanticSearchSeedPacket read=src/cli/semantic-search/render.ts:120:180 ops=append_to_block,replace_call_arg,insert_before_statement patchable=true
+#+end_example
+
+When output is only a lossy outline, providers must say so:
+
+#+begin_example
+|patch target=... patchable=false reason=lossy-outline next=query --patch-affordances
+#+end_example
+
+The shared =semantic-query-packet.v1= contract exposes this as =patchSafety= at
+packet and match scope.  Packet scope is the default safety level for the
+query result; match scope overrides it for a concrete parser item.
+
+| Level | Meaning | Agent behavior |
+|-------+---------+----------------|
+| =navigation-safe= | output only identifies owners, items, or follow-up searches | do not patch; issue a narrower query or exact read |
+| =read-safe= | output is suitable for understanding and bounded source reads | do not patch from compact text; read the exact locator before editing |
+| =patch-verify-safe= | compact output has a stable parser target and stale-check metadata | may build a =semantic-ast-patch= packet and run =ast-patch verify/dry-run= |
+| =ast-patch-safe= | provider can validate and later apply a structural edit | may use native AST patch apply when the adapter supports mutation |
+
+=patch-verify-safe= and =ast-patch-safe= entries must include:
+
+- =target.ownerPath=
+- =target.locator=
+- =target.read= using the =path:10:43= source-locator grammar
+- =target.location.path= and =target.location.lineRange=
+- =sourceFingerprint=
+- =parserVersion=
+- non-empty =allowedOperations=
+
+They must not include legacy =startLine= or =endLine= fields.  When compact
+projection is lossy, the provider should emit =navigation-safe= or =read-safe=
+with a =reason= and =nextAction= instead of letting an agent infer braces,
+commas, or statement anchors from outline text.
+
+* Operation vocabulary
+
+Version 1 should stay small:
+
+| Operation | Required target | Snippet parse context |
+|-----------+-----------------+-----------------------|
+| =append_to_block= | block-like node | statement |
+| =insert_before_statement= | statement node | statement |
+| =insert_after_statement= | statement node | statement |
+| =replace_statement= | statement node | statement |
+| =replace_expression= | expression node | expression |
+| =replace_call_arg= | call expression | expression |
+| =insert_import= | module/file root | import declaration |
+| =remove_import= | import declaration | none |
+| =remove_statement= | statement node | none |
+| =remove_item= | item/module member node | none |
+| =replace_item= | item/module member node | item |
+
+Providers may expose additional operations under provider-owned fields, but the
+shared vocabulary above must be enough for cross-language agent guidance.
+
+* Large mechanical edits
+
+=ast-patch= is especially valuable when a human or LLM would otherwise repeat a
+fragile text edit across many structurally identical sites.  Examples:
+
+- delete a bounded set of debug/logging statements selected by parser-owned
+  query results
+- replace a family of statement or item nodes after a symbol/API migration
+- insert or remove imports across a known owner/test frontier
+- remove generated compatibility shims once the parser can prove every target
+  is the same syntactic role
+
+Large mechanical edits must be opt-in.  A packet that wants large-change safety
+sets:
+
+#+begin_src json
+{
+  "operation": {
+    "op": "remove_statement",
+    "expectedSnippet": "console.log(value);",
+    "mechanicalKind": "bounded-multi-node",
+    "maxEdits": 20,
+    "allowLargeMechanicalEdit": true
+  }
+}
+#+end_src
+
+The shared verifier only proves the packet is structurally bounded and
+audit-ready.  Provider-native AST dry-run should then resolve exact affected
+nodes and emit a receipt with =mechanicalEditPlan=.  In the Codex adapter,
+=mutationAvailable=false= remains mandatory, so the final mutation still goes
+through Codex =apply_patch= or a later trusted provider-native apply backend.
+
+Do not use large mechanical AST patching for prose edits, formatting-only
+changes, uncertain targets, or regex-shaped rewrites.  Unknown operations must
+fail with =unsupported operation= instead of silently becoming text search and
+replace.
+
+* Validation stages
+
+Every AST patch attempt has the same stages:
+
+1. Resolve project root from native anchors such as =Cargo.toml=,
+   =package.json=, or =pyproject.toml=, bounded by the repository root.
+2. Resolve the target locator to exactly one parser node.
+3. Verify the target hash/precondition if supplied.
+4. Parse the snippet in the target operation's grammar context.
+5. Apply the structural transform to an in-memory syntax tree.
+6. Print or splice the changed file.
+7. Re-parse the changed file.
+8. Verify the target owner/symbol still resolves, unless the operation
+   intentionally removes it.
+9. Emit a receipt containing changed ranges and a textual diff.
+
+If any stage fails, the provider must not mutate files.
+
+* Receipt
+
+The dry-run and apply result should share one receipt shape:
+
+#+begin_src json
+{
+  "schemaId": "agent.semantic-protocols.semantic-ast-patch-receipt",
+  "schemaVersion": "1",
+  "status": "applied",
+  "languageId": "typescript",
+  "target": {
+    "ownerPath": "src/cli/semantic-search/render.ts",
+    "locator": "src/cli/semantic-search/render.ts#fn:renderSemanticSearchSeedPacket#if:packet.searchSynthesis",
+    "read": "src/cli/semantic-search/render.ts:120:180"
+  },
+  "operation": "append_to_block",
+  "changed": [
+    {
+      "path": "src/cli/semantic-search/render.ts",
+      "before": "src/cli/semantic-search/render.ts:140:145",
+      "after": "src/cli/semantic-search/render.ts:140:146"
+    }
+  ],
+  "diff": "...",
+  "verification": [
+    "target-resolved",
+    "snippet-parsed",
+    "file-reparsed",
+    "symbol-resolved"
+  ],
+  "next": "ts-harness check --changed ."
+}
+#+end_src
+
+Failure receipts should be equally structured:
+
+#+begin_src json
+{
+  "status": "failed",
+  "failureKind": "snippet-parse-error",
+  "message": "expected statement",
+  "repair": {
+    "next": "query",
+    "selector": "src/cli/semantic-search/render.ts:120:180"
+  }
+}
+#+end_src
+
+* Language provider boundaries
+
+** TypeScript
+
+Use the TypeScript Compiler API for target resolution and snippet parsing.
+The first implementation should support function/block statement insertion,
+call argument replacement, and import insertion/removal.
+
+** Rust
+
+Use the Rust provider's native parser stack.  The first implementation should
+support item insertion in modules, statement insertion in blocks, and expression
+replacement.  Rust formatting can be delegated to the formatter gate after the
+provider proves parseability.
+
+** Python
+
+Python should prefer a lossless or formatting-preserving parser layer when
+available.  The built-in =ast= module is useful for validation but not enough for
+round-tripping comments and whitespace.  Provider output must disclose whether
+an operation is lossless.
+
+** Julia
+
+Julia should use JuliaSyntax-derived facts when this lane reopens.  Julia is not
+a global bin parity target, so its AST patch support remains workspace-managed.
+
+* Interaction with RFC 003 mutation boundary
+
+RFC 003 states that code-intelligence lanes plan and validate, while the client
+runtime owns workspace mutation.  This RFC does not remove that boundary.
+
+The Codex-compatible implementation starts as verification/dry-run only:
+
+#+begin_example
+provider validates AST edit
+  -> provider emits receipt + diff
+client mutation tool applies diff
+  -> provider check validates result
+#+end_example
+
+Only trusted local runtimes should later expose =ast-patch apply=.
+
+* Interaction with Codex apply_patch
+
+Codex =apply_patch= remains a useful reference and fallback.  The parts to
+mirror are:
+
+- typed parse stage before application
+- separate parse and apply failures
+- preimage/context validation
+- deterministic replacement ordering
+- affected-path delta receipt
+
+The part not to mirror as the primary strategy is line-hunk editing for
+syntax-shaped changes.  Parser-owned providers should use AST node identity and
+grammar-context snippet parsing instead of asking the LLM to infer missing
+braces, commas, or sibling anchors from compact text.
+
+* Acceptance gates
+
+1. =semantic-agent-protocol hook install --client codex .= delegates to the
+   existing =semantic-agent-hook= implementation.
+2. =rs-harness check --changed crates/semantic-agent-protocol= passes after the
+   new crate is introduced.
+3. TypeScript dry-run can append one statement inside
+   =renderSemanticSearchSeedPacket= from a compact query target without reading
+   the full source file into the prompt.
+4. A malformed TypeScript snippet returns =snippet-parse-error= and leaves the
+   worktree unchanged.
+5. A stale target hash returns =target-stale= and suggests a repair query.
+6. The emitted textual diff can be applied by the existing client mutation tool
+   and then passes =ts-harness check --changed .=.
+7. Rust and Python providers reject unsupported operations with structured
+   =unsupported-operation= receipts rather than falling back to raw text edits.
+
+* Rollout order
+
+1. Add this RFC and the 31.13 research note.
+2. Introduce =crates/semantic-agent-protocol= as the shared binary crate.
+3. Add =semantic-agent-hook= as a dependency and expose hook subcommands through
+   =semantic-agent-protocol hook ...= without changing hook behavior.
+4. Wire the crate into Rust language-project policy checks instead of copying
+   policy rules.
+5. Define =semantic-ast-patch-packet.v1.schema.json= and
+   =semantic-ast-patch-receipt.v1.schema.json=.
+6. Add provider registry capability descriptors for AST patch verify/dry-run
+   support.
+7. Implement TypeScript adapter dry-run for the
+   =renderSemanticSearchSeedPacket= case.
+8. Add sandtable traces for compact query -> AST patch dry-run -> Codex
+   =apply_patch= -> check.
+9. Align Rust and Python with unsupported-operation receipts first, then add
+   native operations.

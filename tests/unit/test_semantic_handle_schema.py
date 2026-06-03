@@ -28,7 +28,7 @@ def minimal_policy_handle() -> dict[str, object]:
         "locations": [
             {
                 "path": "src/python_lang_project_harness/_project_policy_catalog.py",
-                "line": 14,
+                "lineRange": "14:14",
             }
         ],
         "queryTerms": ["PY-PROJ-R001", "src-layout"],

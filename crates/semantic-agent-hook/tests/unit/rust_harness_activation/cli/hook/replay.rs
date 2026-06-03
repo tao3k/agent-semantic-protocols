@@ -95,6 +95,7 @@ fn cli_hook_replay_blocks_functions_exec_command_raw_search_to_query_route() {
         decision["routes"][0]["argv"],
         json!([
             "rs-harness",
+            "search",
             "query",
             "--from-hook",
             "direct-source-read",
@@ -103,7 +104,7 @@ fn cli_hook_replay_blocks_functions_exec_command_raw_search_to_query_route() {
             "--term",
             "HookDecision",
             "--surface",
-            "owners,tests",
+            "owner,tests",
             "--view",
             "seeds",
             "."

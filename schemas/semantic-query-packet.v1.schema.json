@@ -122,6 +122,9 @@
         "$ref": "semantic-native-syntax-fact-index.v1.schema.json#/$defs/nativeSyntaxFact"
       }
     },
+    "patchSafety": {
+      "$ref": "#/$defs/patchSafety"
+    },
     "matches": {
       "type": "array",
       "items": {
@@ -207,6 +210,9 @@
         "outline": {
           "$ref": "#/$defs/outline"
         },
+        "patchSafety": {
+          "$ref": "#/$defs/patchSafety"
+        },
         "truncated": {
           "type": "boolean"
         },
@@ -227,6 +233,132 @@
           }
         }
       }
+    },
+    "sourceLocator": {
+      "type": "string",
+      "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*):[1-9][0-9]*:[1-9][0-9]*$"
+    },
+    "patchSafety": {
+      "description": "Whether compact query output is safe only for navigation/read, or is stable enough to feed semantic-agent-protocol ast-patch verification.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "level",
+            "reason"
+          ],
+          "properties": {
+            "level": {
+              "enum": [
+                "navigation-safe",
+                "read-safe"
+              ]
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1
+            },
+            "nextAction": {
+              "type": "string",
+              "minLength": 1
+            },
+            "exactRead": {
+              "$ref": "#/$defs/sourceLocator"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "level",
+            "target",
+            "sourceFingerprint",
+            "parserVersion",
+            "allowedOperations"
+          ],
+          "properties": {
+            "level": {
+              "enum": [
+                "patch-verify-safe",
+                "ast-patch-safe"
+              ]
+            },
+            "target": {
+              "$ref": "#/$defs/patchTarget"
+            },
+            "sourceFingerprint": {
+              "type": "string",
+              "minLength": 1
+            },
+            "parserVersion": {
+              "type": "string",
+              "minLength": 1
+            },
+            "allowedOperations": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/$defs/patchOperation"
+              },
+              "uniqueItems": true
+            },
+            "losslessStructure": {
+              "const": true
+            },
+            "notes": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "patchTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ownerPath",
+        "locator",
+        "read",
+        "location"
+      ],
+      "properties": {
+        "ownerPath": {
+          "$ref": "#/$defs/projectPath"
+        },
+        "locator": {
+          "type": "string",
+          "minLength": 1
+        },
+        "read": {
+          "$ref": "#/$defs/sourceLocator"
+        },
+        "location": {
+          "$ref": "#/$defs/location"
+        },
+        "itemName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "itemKind": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "patchOperation": {
+      "enum": [
+        "append_to_block",
+        "insert_before_statement",
+        "insert_after_statement",
+        "replace_statement",
+        "replace_expression"
+      ]
     },
     "projection": {
       "type": "object",
@@ -276,17 +408,31 @@
           "description": "Exact source locator to use before editing.",
           "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*):[1-9][0-9]*:[1-9][0-9]*$"
         },
-        "nodes": {
-          "type": "array",
-          "description": "Parser-owned reasoning nodes that generated the compact text. Nodes are the reverse-navigation surface from projection back to exact source blocks.",
-          "items": {
-            "$ref": "#/$defs/projectionNode"
-          }
-        },
-        "omitted": {
-          "type": "array",
-          "description": "Facts intentionally omitted from compact text for token control, with enough metadata for an agent to decide whether to expand.",
-          "items": {
+    "nodes": {
+      "type": "array",
+      "description": "Parser-owned reasoning nodes that generated the compact text. Nodes are the reverse-navigation surface from projection back to exact source blocks.",
+      "items": {
+        "$ref": "#/$defs/projectionNode"
+      }
+    },
+    "nodeCount": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Total provider-owned projection node count before any token-control truncation."
+    },
+    "nodeLimit": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Maximum number of projection nodes serialized in this packet."
+    },
+    "nodesTruncated": {
+      "type": "boolean",
+      "description": "Whether projection nodes were truncated for token control. Use exactRead or expandActions for full source navigation."
+    },
+    "omitted": {
+      "type": "array",
+      "description": "Facts intentionally omitted from compact text for token control, with enough metadata for an agent to decide whether to expand.",
+      "items": {
             "$ref": "#/$defs/projectionOmission"
           }
         },
@@ -349,11 +495,14 @@
           "type": "array",
           "items": {
             "enum": [
-              "branch",
-              "loop",
-              "guard",
-              "call",
-              "return",
+            "branch",
+            "loop",
+            "break",
+            "continue",
+            "guard",
+            "call",
+                "field",
+                "return",
               "raise",
               "throw",
               "panic",

@@ -15,124 +15,57 @@
         "path": "src/score.ts"
       },
       "name": "parseScore",
+      "patchSafety": {
+        "exactRead": "src/score.ts:1:10",
+        "level": "read-safe",
+        "reason": "read exact source locator before editing this compact match"
+      },
       "projection": {
         "exactRead": "src/score.ts:1:10",
         "expandActions": [
           {
-            "argv": [
-              "ts-harness",
-              "query",
-              "--from-hook",
-              "direct-source-read",
-              "--selector",
-              "src/score.ts:1:10",
-              "."
-            ],
             "kind": "exact-read",
             "read": "src/score.ts:1:10",
             "reason": "read exact source before editing",
             "target": "parseScore"
           },
           {
-            "argv": [
-              "ts-harness",
-              "query",
-              "--from-hook",
-              "direct-source-read",
-              "--selector",
-              "src/score.ts:2:2",
-              "."
-            ],
             "kind": "exact-read",
             "read": "src/score.ts:2:2",
             "reason": "expand const node before editing",
             "target": "parseScore:1"
           },
           {
-            "argv": [
-              "ts-harness",
-              "query",
-              "--from-hook",
-              "direct-source-read",
-              "--selector",
-              "src/score.ts:3:5",
-              "."
-            ],
             "kind": "exact-read",
             "read": "src/score.ts:3:5",
             "reason": "expand if node before editing",
             "target": "parseScore:2"
           },
           {
-            "argv": [
-              "ts-harness",
-              "query",
-              "--from-hook",
-              "direct-source-read",
-              "--selector",
-              "src/score.ts:4:4",
-              "."
-            ],
             "kind": "exact-read",
             "read": "src/score.ts:4:4",
             "reason": "expand throw node before editing",
             "target": "parseScore:3"
           },
           {
-            "argv": [
-              "ts-harness",
-              "query",
-              "--from-hook",
-              "direct-source-read",
-              "--selector",
-              "src/score.ts:6:8",
-              "."
-            ],
             "kind": "exact-read",
             "read": "src/score.ts:6:8",
             "reason": "expand if node before editing",
             "target": "parseScore:4"
           },
           {
-            "argv": [
-              "ts-harness",
-              "query",
-              "--from-hook",
-              "direct-source-read",
-              "--selector",
-              "src/score.ts:7:7",
-              "."
-            ],
             "kind": "exact-read",
             "read": "src/score.ts:7:7",
             "reason": "expand throw node before editing",
             "target": "parseScore:5"
           },
           {
-            "argv": [
-              "ts-harness",
-              "query",
-              "--from-hook",
-              "direct-source-read",
-              "--selector",
-              "src/score.ts:9:9",
-              "."
-            ],
             "kind": "exact-read",
             "read": "src/score.ts:9:9",
             "reason": "expand return node before editing",
             "target": "parseScore:6"
           },
           {
-            "argv": [
-              "ts-harness",
-              "query",
-              "--from-hook",
-              "direct-source-read",
-              "--selector",
-              "src/score.ts",
-              "."
-            ],
             "kind": "owner-names",
             "reason": "return owner-local item names without code windows",
             "target": "src/score.ts"
@@ -152,7 +85,7 @@
             ],
             "id": "parseScore",
             "kind": "function",
-            "label": "export function parseScore(text: string): number",
+            "label": "function parseScore",
             "read": "src/score.ts:1:10",
             "role": "declaration"
           },
@@ -163,7 +96,7 @@
             ],
             "id": "parseScore:1",
             "kind": "const",
-            "label": "const value = Number.parseInt(text, 10)",
+            "label": "assign value",
             "parentId": "parseScore",
             "read": "src/score.ts:2:2",
             "role": "mutation"
@@ -187,7 +120,7 @@
             ],
             "id": "parseScore:3",
             "kind": "throw",
-            "label": "throw new Error(\"invalid\")",
+            "label": "throw new Error",
             "parentId": "parseScore:2",
             "read": "src/score.ts:4:4",
             "role": "terminal"
@@ -211,7 +144,7 @@
             ],
             "id": "parseScore:5",
             "kind": "throw",
-            "label": "throw new Error(\"negative\")",
+            "label": "throw new Error",
             "parentId": "parseScore:4",
             "read": "src/score.ts:7:7",
             "role": "terminal"
@@ -250,6 +183,11 @@
   "namespace": "agent.semantic-protocols.languages.typescript.ts-harness",
   "outputMode": "code",
   "ownerPath": "src/score.ts",
+  "patchSafety": {
+    "level": "read-safe",
+    "nextAction": "query --from-hook direct-source-read",
+    "reason": "compact query packet is not a mutation authority"
+  },
   "projectRoot": "tests/fixtures/parser-compact/projects/error-handling/error-handling-basic/typescript",
   "protocolId": "agent.semantic-protocols.semantic-language",
   "protocolVersion": "1",

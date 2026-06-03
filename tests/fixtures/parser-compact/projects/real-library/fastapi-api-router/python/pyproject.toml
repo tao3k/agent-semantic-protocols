@@ -1,0 +1,4 @@
+[project]
+name = "parser-compact-real-fastapi-api-router"
+version = "0.0.0"
+import-names = ["routing"]

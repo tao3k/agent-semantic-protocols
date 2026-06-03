@@ -33,10 +33,18 @@
         "lineProtocol": true,
         "stdoutContains": [
           "[search-prime]",
-          "|seed"
+          "alias: graph:{G=search",
+          "G=search:result!query",
+          "G>{",
+          "rank=",
+          "frontier="
         ],
         "maxStdoutLinesWarn": 10,
-        "maxElapsedMsWarn": 1500
+        "maxElapsedMsWarn": 1500,
+        "stdoutNotContains": [
+          "|seed",
+          "|synthesis"
+        ]
       }
     },
     {
@@ -44,7 +52,7 @@
       "command": [
         "rs-harness",
         "search",
-        "text",
+        "fzf",
         "BytesMut",
         "--view",
         "seeds",
@@ -59,10 +67,18 @@
         "lineProtocol": true,
         "stdoutContains": [
           "[search-fzf]",
-          "|seed owner:"
+          "alias: graph:{G=search",
+          "G=search:result!query",
+          "G>{",
+          "rank=",
+          "frontier="
         ],
         "maxStdoutLinesWarn": 8,
-        "maxElapsedMsWarn": 1500
+        "maxElapsedMsWarn": 1500,
+        "stdoutNotContains": [
+          "|seed",
+          "|synthesis"
+        ]
       }
     },
     {
@@ -84,10 +100,18 @@
         "lineProtocol": true,
         "stdoutContains": [
           "[search-owner]",
-          "|seed"
+          "alias: graph:{G=search",
+          "G=search:result!query",
+          "G>{",
+          "rank=",
+          "frontier="
         ],
         "maxStdoutLinesWarn": 18,
-        "maxElapsedMsWarn": 1800
+        "maxElapsedMsWarn": 1800,
+        "stdoutNotContains": [
+          "|seed",
+          "|synthesis"
+        ]
       }
     },
     {

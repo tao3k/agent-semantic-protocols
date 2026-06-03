@@ -4,8 +4,8 @@ field pub name: String
 field pub active: bool
 
 impl UserSummary
-pub fn label(&self) -> String
+fn label
 if self.active
-call format!("{}#{}", self.name, self.user_id)
+return format!
 else
-call to_string
+return to_string

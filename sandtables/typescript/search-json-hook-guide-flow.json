@@ -68,7 +68,7 @@
             "ts-harness agent guide .",
             "ts-harness",
             "search",
-            "text",
+            "fzf",
             "--view",
             "seeds"
           ],

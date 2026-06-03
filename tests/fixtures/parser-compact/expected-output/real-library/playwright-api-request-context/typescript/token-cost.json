@@ -1,0 +1,28 @@
+{
+  "caseId": "playwright-api-request-context",
+  "compactCodeDelta": 3609,
+  "compactCodeRatio": 0.0353,
+  "compactCodeTokens": 132,
+  "compactLineDelta": 3609,
+  "compactLineRatio": 0.0353,
+  "compactLineTokens": 132,
+  "featureClass": "real-library",
+  "languageId": "typescript",
+  "providerId": "ts-harness",
+  "queryPacketDelta": 807,
+  "queryPacketRatio": 0.7843,
+  "queryPacketTokens": 2934,
+  "rawSourceTokens": 3741,
+  "schemaId": "agent.semantic-protocols.parser-compact-token-cost",
+  "schemaVersion": "1",
+  "sourceOrigin": {
+    "kind": "real-project",
+    "license": "Apache-2.0",
+    "note": "Real Playwright API request context used to stress class lifecycle compacting.",
+    "ref": "3edc77fc943a",
+    "repository": "microsoft/playwright",
+    "sourcePath": "packages/playwright-core/src/client/fetch.ts"
+  },
+  "tokenizerId": "tiktoken:o200k_base",
+  "variantId": "typescript"
+}

@@ -16,10 +16,73 @@ def validate_line_protocol(result: StepResult, stdout: str) -> None:
     if not lines[0].startswith("["):
         result.errors.append("first stdout line does not start with '['")
     for line in lines[1:]:
-        if not (line.startswith("|") or line.startswith("[")):
+        if not (
+            line.startswith("|")
+            or line.startswith("[")
+            or _is_compact_graph_line(line)
+        ):
             result.errors.append(f"line protocol stray line: {line[:80]!r}")
             return
     _validate_line_protocol_path_values(result, lines)
+
+
+def _is_compact_graph_line(line: str) -> bool:
+    if line.startswith("alias: graph:{"):
+        return _looks_like_compact_graph_legend_line(line)
+    if line.startswith("rank="):
+        return " frontier=" in line
+    if ">{" in line and line.endswith("}"):
+        return _looks_like_compact_graph_edge_line(line)
+    return _looks_like_compact_graph_alias_line(line)
+
+
+def _looks_like_compact_graph_legend_line(line: str) -> bool:
+    if not line.endswith("}"):
+        return False
+    entries = line.removeprefix("alias: graph:{")[:-1].split(",")
+    if not entries:
+        return False
+    for entry in entries:
+        alias, sep, node_type = entry.partition("=")
+        if not sep or not _looks_like_compact_graph_alias_id(alias):
+            return False
+        if not node_type.replace("_", "").isalnum():
+            return False
+    return True
+
+
+def _looks_like_compact_graph_edge_line(line: str) -> bool:
+    source, _, edge_targets = line.partition(">{")
+    if not _looks_like_compact_graph_alias_id(source):
+        return False
+    edge_targets = edge_targets[:-1]
+    if not edge_targets:
+        return False
+    for edge in edge_targets.split(","):
+        target, sep, relation = edge.partition(":")
+        if not sep or not _looks_like_compact_graph_alias_id(target):
+            return False
+        if not relation.replace("_", "").isalnum():
+            return False
+    return True
+
+
+def _looks_like_compact_graph_alias_line(line: str) -> bool:
+    for entry in line.split(";"):
+        alias, sep, fact = entry.partition("=")
+        if not sep or not alias:
+            return False
+        if not _looks_like_compact_graph_alias_id(alias):
+            return False
+        if ":" not in fact or "!" not in fact:
+            return False
+    return True
+
+
+def _looks_like_compact_graph_alias_id(value: str) -> bool:
+    if not value or not value[0].isalpha():
+        return False
+    return value.replace("_", "").isalnum()
 
 
 def _validate_line_protocol_path_values(result: StepResult, lines: list[str]) -> None:

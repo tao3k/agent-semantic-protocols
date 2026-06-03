@@ -1,0 +1,39 @@
+{
+  "schemaId": "agent.semantic-protocols.parser-compact-case",
+  "schemaVersion": "1",
+  "caseId": "fastapi-api-router",
+  "variantId": "python",
+  "languageId": "python",
+  "providerId": "py-harness",
+  "featureClass": "real-library",
+  "sourceOrigin": {
+    "kind": "real-project",
+    "repository": "fastapi/fastapi",
+    "ref": "0ee8a2424953",
+    "sourcePath": "fastapi/routing.py",
+    "license": "MIT",
+    "note": "Real FastAPI APIRouter used to stress route registration and nested decorator compacting."
+  },
+  "fixtureRoot": "tests/fixtures/parser-compact/projects/real-library/fastapi-api-router/python",
+  "rawSourcePath": "src/routing.py",
+  "lineCommand": [
+    "py-harness",
+    "search",
+    "owner",
+    "src/routing.py",
+    "items",
+    "--query",
+    "APIRouter",
+    "--code",
+    "."
+  ],
+  "jsonCommand": [
+    "py-harness",
+    "query",
+    "src/routing.py",
+    "--term",
+    "APIRouter",
+    "--json",
+    "."
+  ]
+}

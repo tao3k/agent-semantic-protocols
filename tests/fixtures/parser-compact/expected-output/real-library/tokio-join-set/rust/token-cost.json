@@ -1,0 +1,28 @@
+{
+  "caseId": "tokio-join-set",
+  "compactCodeDelta": 6989,
+  "compactCodeRatio": 0.0523,
+  "compactCodeTokens": 386,
+  "compactLineDelta": 6989,
+  "compactLineRatio": 0.0523,
+  "compactLineTokens": 386,
+  "featureClass": "real-library",
+  "languageId": "rust",
+  "providerId": "rs-harness",
+  "queryPacketDelta": 1346,
+  "queryPacketRatio": 0.8175,
+  "queryPacketTokens": 6029,
+  "rawSourceTokens": 7375,
+  "schemaId": "agent.semantic-protocols.parser-compact-token-cost",
+  "schemaVersion": "1",
+  "sourceOrigin": {
+    "kind": "real-project",
+    "license": "MIT",
+    "note": "Real Tokio JoinSet implementation used to stress async/task outline compacting.",
+    "ref": "2de86e557c57",
+    "repository": "tokio-rs/tokio",
+    "sourcePath": "tokio/src/task/join_set.rs"
+  },
+  "tokenizerId": "tiktoken:o200k_base",
+  "variantId": "rust"
+}

@@ -21,7 +21,7 @@ def native_syntax_fact() -> dict[str, object]:
         "name": "rules",
         "qualifiedName": "crate::rules",
         "ownerPath": "src/lib.rs",
-        "location": {"path": "src/lib.rs", "line": 4, "column": 1},
+        "location": {"path": "src/lib.rs", "lineRange": "4:4"},
         "visibility": "public",
         "exported": True,
         "queryKeys": ["pub use rules", "rules", "crate::rules"],

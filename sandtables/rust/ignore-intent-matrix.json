@@ -2,8 +2,17 @@
   "id": "rust.ignore-intent-matrix",
   "language": "rust",
   "title": "ignore large-library feature/API/principle intent matrix",
-  "coverage": ["search-flow", "deps-query", "performance", "large-library"],
-  "tags": ["large-library", "ignore", "intent-matrix"],
+  "coverage": [
+    "search-flow",
+    "deps-query",
+    "performance",
+    "large-library"
+  ],
+  "tags": [
+    "large-library",
+    "ignore",
+    "intent-matrix"
+  ],
   "evidence": {
     "source": "handwritten",
     "fixtureTier": "large-library",
@@ -18,26 +27,43 @@
       {
         "intentKind": "feature-implementation",
         "intent": "Implement an override or gitignore matching feature while preserving compact search boundaries",
-        "stepIds": ["prime", "intent-query-set"],
-        "queryTerms": ["OverrideBuilder"]
+        "stepIds": [
+          "prime",
+          "intent-query-set"
+        ],
+        "queryTerms": [
+          "OverrideBuilder"
+        ]
       },
       {
         "intentKind": "api-usage",
         "intent": "Find WalkBuilder API usage and dependency-facing paths",
-        "stepIds": ["prime", "intent-query-set"],
-        "queryTerms": ["WalkBuilder"]
+        "stepIds": [
+          "prime",
+          "intent-query-set"
+        ],
+        "queryTerms": [
+          "WalkBuilder"
+        ]
       },
       {
         "intentKind": "implementation-principle",
         "intent": "Understand how gitignore matching is organized internally",
-        "stepIds": ["prime", "intent-query-set"],
-        "queryTerms": ["gitignore"]
+        "stepIds": [
+          "prime",
+          "intent-query-set"
+        ],
+        "queryTerms": [
+          "gitignore"
+        ]
       }
     ]
   },
   "workdir": {
     "env": "SANDTABLE_RUST_IGNORE_ROOT",
-    "candidates": ["~/.cargo/registry/src/*/ignore-[0-9]*"]
+    "candidates": [
+      "~/.cargo/registry/src/*/ignore-[0-9]*"
+    ]
   },
   "budgets": {
     "maxCommands": 2,
@@ -47,12 +73,32 @@
   "steps": [
     {
       "id": "prime",
-      "command": ["rs-harness", "search", "prime", "--view", "seeds", "--seeds", "4", "."],
+      "command": [
+        "rs-harness",
+        "search",
+        "prime",
+        "--view",
+        "seeds",
+        "--seeds",
+        "4",
+        "."
+      ],
       "expect": {
         "lineProtocol": true,
-        "stdoutContains": ["[search-prime]", "|seed"],
+        "stdoutContains": [
+          "[search-prime]",
+          "alias: graph:{G=search",
+          "G=search:result!query",
+          "G>{",
+          "rank=",
+          "frontier="
+        ],
         "maxStdoutLinesWarn": 10,
-        "maxElapsedMsWarn": 2500
+        "maxElapsedMsWarn": 2500,
+        "stdoutNotContains": [
+          "|seed",
+          "|synthesis"
+        ]
       }
     },
     {
@@ -60,7 +106,7 @@
       "command": [
         "rs-harness",
         "search",
-        "text",
+        "fzf",
         "--query-set",
         "OverrideBuilder",
         "--query-set",
@@ -75,9 +121,21 @@
       ],
       "expect": {
         "lineProtocol": true,
-        "stdoutContains": ["[search-fzf]", "querySet=3", "|seed"],
+        "stdoutContains": [
+          "[search-fzf]",
+          "querySet=3",
+          "alias: graph:{G=search",
+          "G=search:result!query",
+          "G>{",
+          "rank=",
+          "frontier="
+        ],
         "maxStdoutLinesWarn": 10,
-        "maxElapsedMsWarn": 2500
+        "maxElapsedMsWarn": 2500,
+        "stdoutNotContains": [
+          "|seed",
+          "|synthesis"
+        ]
       }
     }
   ]

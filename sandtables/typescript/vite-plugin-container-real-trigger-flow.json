@@ -109,7 +109,7 @@
       "command": [
         "ts-harness",
         "search",
-        "text",
+        "fzf",
         "--query-set",
         "pluginContainer",
         "--query-set",

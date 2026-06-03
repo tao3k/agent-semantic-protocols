@@ -1,0 +1,4 @@
+[project]
+name = "parser-compact-real-requests-session"
+version = "0.0.0"
+import-names = ["sessions"]

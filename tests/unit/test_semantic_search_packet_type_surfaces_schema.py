@@ -44,7 +44,7 @@ def packet_with_type_surface() -> dict[str, object]:
                 "kind": "alias",
                 "role": "api-input",
                 "ownerPath": "src/api.ts",
-                "location": {"path": "src/api.ts", "line": 12, "column": 17},
+                "location": {"path": "src/api.ts", "lineRange": "12:12"},
                 "visibility": "public",
                 "external": True,
                 "source": "native-parser",

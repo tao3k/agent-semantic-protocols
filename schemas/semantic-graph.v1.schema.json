@@ -63,8 +63,12 @@
         "prime",
         "owner",
         "dependency",
+        "policy",
+        "query",
         "query-set",
+        "fzf",
         "text",
+        "tests",
         "ingest",
         "custom"
       ]
@@ -205,6 +209,7 @@
             "query",
             "query-set",
             "fzf",
+            "tests",
             "ingest",
             "custom"
           ]

@@ -2,8 +2,16 @@
   "id": "rust.bytes-intent-matrix",
   "language": "rust",
   "title": "bytes large-library feature/API/principle intent matrix",
-  "coverage": ["search-flow", "performance", "large-library"],
-  "tags": ["large-library", "bytes", "intent-matrix"],
+  "coverage": [
+    "search-flow",
+    "performance",
+    "large-library"
+  ],
+  "tags": [
+    "large-library",
+    "bytes",
+    "intent-matrix"
+  ],
   "evidence": {
     "source": "handwritten",
     "fixtureTier": "large-library",
@@ -18,26 +26,43 @@
       {
         "intentKind": "feature-implementation",
         "intent": "Implement a BytesMut capacity or reserve behavior change from compact owner seeds",
-        "stepIds": ["prime", "intent-query-set"],
-        "queryTerms": ["reserve"]
+        "stepIds": [
+          "prime",
+          "intent-query-set"
+        ],
+        "queryTerms": [
+          "reserve"
+        ]
       },
       {
         "intentKind": "api-usage",
         "intent": "Find how BytesMut is exposed and used",
-        "stepIds": ["prime", "intent-query-set"],
-        "queryTerms": ["BytesMut"]
+        "stepIds": [
+          "prime",
+          "intent-query-set"
+        ],
+        "queryTerms": [
+          "BytesMut"
+        ]
       },
       {
         "intentKind": "implementation-principle",
         "intent": "Understand BufMut implementation principles without reading the whole crate",
-        "stepIds": ["prime", "intent-query-set"],
-        "queryTerms": ["BufMut"]
+        "stepIds": [
+          "prime",
+          "intent-query-set"
+        ],
+        "queryTerms": [
+          "BufMut"
+        ]
       }
     ]
   },
   "workdir": {
     "env": "SANDTABLE_RUST_BYTES_ROOT",
-    "candidates": ["~/.cargo/registry/src/*/bytes-[0-9]*"]
+    "candidates": [
+      "~/.cargo/registry/src/*/bytes-[0-9]*"
+    ]
   },
   "budgets": {
     "maxCommands": 2,
@@ -47,12 +72,32 @@
   "steps": [
     {
       "id": "prime",
-      "command": ["rs-harness", "search", "prime", "--view", "seeds", "--seeds", "4", "."],
+      "command": [
+        "rs-harness",
+        "search",
+        "prime",
+        "--view",
+        "seeds",
+        "--seeds",
+        "4",
+        "."
+      ],
       "expect": {
         "lineProtocol": true,
-        "stdoutContains": ["[search-prime]", "|seed"],
+        "stdoutContains": [
+          "[search-prime]",
+          "alias: graph:{G=search",
+          "G=search:result!query",
+          "G>{",
+          "rank=",
+          "frontier="
+        ],
         "maxStdoutLinesWarn": 10,
-        "maxElapsedMsWarn": 2500
+        "maxElapsedMsWarn": 2500,
+        "stdoutNotContains": [
+          "|seed",
+          "|synthesis"
+        ]
       }
     },
     {
@@ -60,7 +105,7 @@
       "command": [
         "rs-harness",
         "search",
-        "text",
+        "fzf",
         "--query-set",
         "reserve",
         "--query-set",
@@ -75,9 +120,21 @@
       ],
       "expect": {
         "lineProtocol": true,
-        "stdoutContains": ["[search-fzf]", "querySet=3", "|seed"],
+        "stdoutContains": [
+          "[search-fzf]",
+          "querySet=3",
+          "alias: graph:{G=search",
+          "G=search:result!query",
+          "G>{",
+          "rank=",
+          "frontier="
+        ],
         "maxStdoutLinesWarn": 10,
-        "maxElapsedMsWarn": 2500
+        "maxElapsedMsWarn": 2500,
+        "stdoutNotContains": [
+          "|seed",
+          "|synthesis"
+        ]
       }
     }
   ]

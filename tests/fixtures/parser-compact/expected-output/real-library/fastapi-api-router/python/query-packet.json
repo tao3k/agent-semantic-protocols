@@ -1,0 +1,417 @@
+{
+  "binary": "py-harness",
+  "languageId": "python",
+  "matchMode": "exact",
+  "matches": [
+    {
+      "doc": true,
+      "fields": {
+        "public": true,
+        "reason": "item-query"
+      },
+      "kind": "class",
+      "location": {
+        "lineRange": "1005:4956",
+        "path": "src/routing.py"
+      },
+      "name": "APIRouter",
+      "outline": {
+        "hotBlocks": [
+          {
+            "label": "APIRouter",
+            "read": "src/routing.py:1005:4956",
+            "reason": "parser-item-query"
+          }
+        ],
+        "summary": "class APIRouter"
+      },
+      "patchSafety": {
+        "exactRead": "src/routing.py:1005:4956",
+        "level": "read-safe",
+        "reason": "read exact source locator before editing this compact match"
+      },
+      "projection": {
+        "exactRead": "src/routing.py:1005:4956",
+        "expandActions": [
+          {
+            "kind": "exact-read",
+            "read": "src/routing.py:1005:4956",
+            "reason": "read exact source before editing",
+            "target": "APIRouter"
+          },
+          {
+            "kind": "exact-read",
+            "read": "src/routing.py:1271:1279",
+            "reason": "expand if node before editing",
+            "target": "APIRouter:2"
+          },
+          {
+            "kind": "exact-read",
+            "read": "src/routing.py:1273:1273",
+            "reason": "expand assign node before editing",
+            "target": "APIRouter:3"
+          },
+          {
+            "kind": "exact-read",
+            "read": "src/routing.py:1274:1279",
+            "reason": "expand if node before editing",
+            "target": "APIRouter:4"
+          },
+          {
+            "kind": "exact-read",
+            "read": "src/routing.py:1275:1275",
+            "reason": "expand assign node before editing",
+            "target": "APIRouter:5"
+          },
+          {
+            "kind": "exact-read",
+            "read": "src/routing.py:1276:1279",
+            "reason": "expand if node before editing",
+            "target": "APIRouter:6"
+          },
+          {
+            "kind": "exact-read",
+            "read": "src/routing.py:1277:1277",
+            "reason": "expand assign node before editing",
+            "target": "APIRouter:7"
+          },
+          {
+            "kind": "exact-read",
+            "read": "src/routing.py:1279:1279",
+            "reason": "expand assign node before editing",
+            "target": "APIRouter:8"
+          },
+          {
+            "kind": "owner-names",
+            "reason": "return owner-local item names without code windows",
+            "target": "src/routing.py"
+          }
+        ],
+        "losslessStructure": false,
+        "mode": "outline",
+        "nodeCount": 80,
+        "nodeLimit": 24,
+        "nodes": [
+          {
+            "depth": 0,
+            "id": "APIRouter",
+            "kind": "class",
+            "label": "class APIRouter",
+            "read": "src/routing.py:1005:4956",
+            "role": "declaration"
+          },
+          {
+            "depth": 1,
+            "id": "APIRouter:1",
+            "kind": "function",
+            "label": "def __init__",
+            "parentId": "APIRouter",
+            "read": "src/routing.py:1032:1315",
+            "role": "declaration"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "branch"
+            ],
+            "id": "APIRouter:2",
+            "kind": "if",
+            "label": "if lifespan is None",
+            "parentId": "APIRouter:1",
+            "read": "src/routing.py:1271:1279",
+            "role": "control-flow"
+          },
+          {
+            "depth": 3,
+            "flags": [
+              "mutation"
+            ],
+            "id": "APIRouter:3",
+            "kind": "assign",
+            "label": "assign lifespan_context",
+            "parentId": "APIRouter:2",
+            "read": "src/routing.py:1273:1273",
+            "role": "mutation"
+          },
+          {
+            "depth": 3,
+            "flags": [
+              "branch"
+            ],
+            "id": "APIRouter:4",
+            "kind": "if",
+            "label": "if isasyncgenfunction",
+            "parentId": "APIRouter:2",
+            "read": "src/routing.py:1274:1279",
+            "role": "control-flow"
+          },
+          {
+            "depth": 4,
+            "flags": [
+              "mutation"
+            ],
+            "id": "APIRouter:5",
+            "kind": "assign",
+            "label": "assign lifespan_context",
+            "parentId": "APIRouter:4",
+            "read": "src/routing.py:1275:1275",
+            "role": "mutation"
+          },
+          {
+            "depth": 4,
+            "flags": [
+              "branch"
+            ],
+            "id": "APIRouter:6",
+            "kind": "if",
+            "label": "if isgeneratorfunction",
+            "parentId": "APIRouter:4",
+            "read": "src/routing.py:1276:1279",
+            "role": "control-flow"
+          },
+          {
+            "depth": 5,
+            "flags": [
+              "mutation"
+            ],
+            "id": "APIRouter:7",
+            "kind": "assign",
+            "label": "assign lifespan_context",
+            "parentId": "APIRouter:6",
+            "read": "src/routing.py:1277:1277",
+            "role": "mutation"
+          },
+          {
+            "depth": 5,
+            "flags": [
+              "mutation"
+            ],
+            "id": "APIRouter:8",
+            "kind": "assign",
+            "label": "assign lifespan_context",
+            "parentId": "APIRouter:6",
+            "read": "src/routing.py:1279:1279",
+            "role": "mutation"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "mutation"
+            ],
+            "id": "APIRouter:9",
+            "kind": "assign",
+            "label": "assign self.lifespan_context",
+            "parentId": "APIRouter:1",
+            "read": "src/routing.py:1280:1280",
+            "role": "mutation"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "call"
+            ],
+            "id": "APIRouter:10",
+            "kind": "call",
+            "label": "call __init__",
+            "parentId": "APIRouter:1",
+            "read": "src/routing.py:1282:1287",
+            "role": "call"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "branch"
+            ],
+            "id": "APIRouter:11",
+            "kind": "if",
+            "label": "if prefix",
+            "parentId": "APIRouter:1",
+            "read": "src/routing.py:1288:1292",
+            "role": "control-flow"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "mutation"
+            ],
+            "id": "APIRouter:12",
+            "kind": "assign",
+            "label": "assign self.on_startup",
+            "parentId": "APIRouter:1",
+            "read": "src/routing.py:1297:1299",
+            "role": "mutation"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "mutation"
+            ],
+            "id": "APIRouter:13",
+            "kind": "assign",
+            "label": "assign self.on_shutdown",
+            "parentId": "APIRouter:1",
+            "read": "src/routing.py:1300:1302",
+            "role": "mutation"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "mutation"
+            ],
+            "id": "APIRouter:14",
+            "kind": "assign",
+            "label": "assign self.prefix",
+            "parentId": "APIRouter:1",
+            "read": "src/routing.py:1304:1304",
+            "role": "mutation"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "mutation"
+            ],
+            "id": "APIRouter:15",
+            "kind": "assign",
+            "label": "assign self.tags",
+            "parentId": "APIRouter:1",
+            "read": "src/routing.py:1305:1305",
+            "role": "mutation"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "mutation"
+            ],
+            "id": "APIRouter:16",
+            "kind": "assign",
+            "label": "assign self.dependencies",
+            "parentId": "APIRouter:1",
+            "read": "src/routing.py:1306:1306",
+            "role": "mutation"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "mutation"
+            ],
+            "id": "APIRouter:17",
+            "kind": "assign",
+            "label": "assign self.deprecated",
+            "parentId": "APIRouter:1",
+            "read": "src/routing.py:1307:1307",
+            "role": "mutation"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "mutation"
+            ],
+            "id": "APIRouter:18",
+            "kind": "assign",
+            "label": "assign self.include_in_schema",
+            "parentId": "APIRouter:1",
+            "read": "src/routing.py:1308:1308",
+            "role": "mutation"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "mutation"
+            ],
+            "id": "APIRouter:19",
+            "kind": "assign",
+            "label": "assign self.responses",
+            "parentId": "APIRouter:1",
+            "read": "src/routing.py:1309:1309",
+            "role": "mutation"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "mutation"
+            ],
+            "id": "APIRouter:20",
+            "kind": "assign",
+            "label": "assign self.callbacks",
+            "parentId": "APIRouter:1",
+            "read": "src/routing.py:1310:1310",
+            "role": "mutation"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "mutation"
+            ],
+            "id": "APIRouter:21",
+            "kind": "assign",
+            "label": "assign self.dependency_overrides_provider",
+            "parentId": "APIRouter:1",
+            "read": "src/routing.py:1311:1311",
+            "role": "mutation"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "mutation"
+            ],
+            "id": "APIRouter:22",
+            "kind": "assign",
+            "label": "assign self.route_class",
+            "parentId": "APIRouter:1",
+            "read": "src/routing.py:1312:1312",
+            "role": "mutation"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "mutation"
+            ],
+            "id": "APIRouter:23",
+            "kind": "assign",
+            "label": "assign self.default_response_class",
+            "parentId": "APIRouter:1",
+            "read": "src/routing.py:1313:1313",
+            "role": "mutation"
+          }
+        ],
+        "nodesTruncated": true,
+        "omitted": [],
+        "sourceAuthority": "native-parser",
+        "sourceFingerprint": "src/routing.py:1005:4956:3955:bdd86dd9",
+        "syntax": "semantic-outline"
+      },
+      "read": "src/routing.py:1005:4956",
+      "truncated": false,
+      "visibility": "public"
+    }
+  ],
+  "method": "query/owner-items",
+  "namespace": "agent.semantic-protocols.languages.python.py-harness",
+  "notes": [],
+  "outputMode": "code",
+  "ownerPath": "src/routing.py",
+  "patchSafety": {
+    "level": "read-safe",
+    "nextAction": "query --from-hook direct-source-read",
+    "reason": "compact query packet is not a mutation authority"
+  },
+  "projectRoot": "tests/fixtures/parser-compact/projects/real-library/fastapi-api-router/python",
+  "protocolId": "agent.semantic-protocols.semantic-language",
+  "protocolVersion": "1",
+  "providerId": "py-harness",
+  "query": "APIRouter",
+  "queryCoverage": [
+    {
+      "match": "exact",
+      "matchCount": 1,
+      "status": "hit",
+      "value": "APIRouter"
+    }
+  ],
+  "queryTerms": [
+    "APIRouter"
+  ],
+  "schemaId": "agent.semantic-protocols.semantic-query-packet",
+  "schemaVersion": "1",
+  "truncated": false
+}

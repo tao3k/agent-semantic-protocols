@@ -15,79 +15,39 @@
         "path": "src/user-summary.ts"
       },
       "name": "UserSummary",
+      "patchSafety": {
+        "exactRead": "src/user-summary.ts:1:14",
+        "level": "read-safe",
+        "reason": "read exact source locator before editing this compact match"
+      },
       "projection": {
         "exactRead": "src/user-summary.ts:1:14",
         "expandActions": [
           {
-            "argv": [
-              "ts-harness",
-              "query",
-              "--from-hook",
-              "direct-source-read",
-              "--selector",
-              "src/user-summary.ts:1:14",
-              "."
-            ],
             "kind": "exact-read",
             "read": "src/user-summary.ts:1:14",
             "reason": "read exact source before editing",
             "target": "UserSummary"
           },
           {
-            "argv": [
-              "ts-harness",
-              "query",
-              "--from-hook",
-              "direct-source-read",
-              "--selector",
-              "src/user-summary.ts:9:11",
-              "."
-            ],
             "kind": "exact-read",
             "read": "src/user-summary.ts:9:11",
             "reason": "expand if node before editing",
-            "target": "UserSummary:3"
+            "target": "UserSummary:6"
           },
           {
-            "argv": [
-              "ts-harness",
-              "query",
-              "--from-hook",
-              "direct-source-read",
-              "--selector",
-              "src/user-summary.ts:10:10",
-              "."
-            ],
             "kind": "exact-read",
             "read": "src/user-summary.ts:10:10",
             "reason": "expand return node before editing",
-            "target": "UserSummary:4"
+            "target": "UserSummary:7"
           },
           {
-            "argv": [
-              "ts-harness",
-              "query",
-              "--from-hook",
-              "direct-source-read",
-              "--selector",
-              "src/user-summary.ts:12:12",
-              "."
-            ],
             "kind": "exact-read",
             "read": "src/user-summary.ts:12:12",
             "reason": "expand return node before editing",
-            "target": "UserSummary:5"
+            "target": "UserSummary:8"
           },
           {
-            "argv": [
-              "ts-harness",
-              "query",
-              "--from-hook",
-              "direct-source-read",
-              "--selector",
-              "src/user-summary.ts",
-              "."
-            ],
             "kind": "owner-names",
             "reason": "return owner-local item names without code windows",
             "target": "src/user-summary.ts"
@@ -99,12 +59,13 @@
           {
             "depth": 0,
             "flags": [
+              "field",
               "branch",
               "return"
             ],
             "id": "UserSummary",
             "kind": "class",
-            "label": "export class UserSummary",
+            "label": "class UserSummary",
             "read": "src/user-summary.ts:1:14",
             "role": "declaration"
           },
@@ -118,10 +79,46 @@
             "role": "declaration"
           },
           {
-            "depth": 1,
+            "depth": 2,
+            "flags": [
+              "field"
+            ],
             "id": "UserSummary:2",
+            "kind": "field",
+            "label": "field readonly userId: number",
+            "parentId": "UserSummary:1",
+            "read": "src/user-summary.ts:3:3",
+            "role": "field"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "field"
+            ],
+            "id": "UserSummary:3",
+            "kind": "field",
+            "label": "field readonly name: string",
+            "parentId": "UserSummary:1",
+            "read": "src/user-summary.ts:4:4",
+            "role": "field"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "field"
+            ],
+            "id": "UserSummary:4",
+            "kind": "field",
+            "label": "field readonly active: boolean",
+            "parentId": "UserSummary:1",
+            "read": "src/user-summary.ts:5:5",
+            "role": "field"
+          },
+          {
+            "depth": 1,
+            "id": "UserSummary:5",
             "kind": "method",
-            "label": "label(): string",
+            "label": "method label",
             "parentId": "UserSummary",
             "read": "src/user-summary.ts:8:13",
             "role": "declaration"
@@ -131,10 +128,10 @@
             "flags": [
               "branch"
             ],
-            "id": "UserSummary:3",
+            "id": "UserSummary:6",
             "kind": "if",
             "label": "if this.active",
-            "parentId": "UserSummary:2",
+            "parentId": "UserSummary:5",
             "read": "src/user-summary.ts:9:11",
             "role": "control-flow"
           },
@@ -143,10 +140,10 @@
             "flags": [
               "return"
             ],
-            "id": "UserSummary:4",
+            "id": "UserSummary:7",
             "kind": "return",
-            "label": "return `${this.name}#${this.userId}`",
-            "parentId": "UserSummary:3",
+            "label": "return template",
+            "parentId": "UserSummary:6",
             "read": "src/user-summary.ts:10:10",
             "role": "terminal"
           },
@@ -155,10 +152,10 @@
             "flags": [
               "return"
             ],
-            "id": "UserSummary:5",
+            "id": "UserSummary:8",
             "kind": "return",
-            "label": "return \"inactive\"",
-            "parentId": "UserSummary:2",
+            "label": "return string",
+            "parentId": "UserSummary:5",
             "read": "src/user-summary.ts:12:12",
             "role": "terminal"
           }
@@ -184,6 +181,11 @@
   "namespace": "agent.semantic-protocols.languages.typescript.ts-harness",
   "outputMode": "code",
   "ownerPath": "src/user-summary.ts",
+  "patchSafety": {
+    "level": "read-safe",
+    "nextAction": "query --from-hook direct-source-read",
+    "reason": "compact query packet is not a mutation authority"
+  },
   "projectRoot": "tests/fixtures/parser-compact/projects/data-shape/data-shape-basic/typescript",
   "protocolId": "agent.semantic-protocols.semantic-language",
   "protocolVersion": "1",

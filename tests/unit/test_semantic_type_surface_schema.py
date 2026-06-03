@@ -23,7 +23,7 @@ def minimal_type_surface() -> dict[str, object]:
         "kind": "object",
         "role": "api-field",
         "ownerPath": "src/lib.rs",
-        "location": {"path": "src/lib.rs", "line": 12},
+        "location": {"path": "src/lib.rs", "lineRange": "12:12"},
         "visibility": "public",
         "external": True,
         "source": "native-parser",

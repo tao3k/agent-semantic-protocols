@@ -35,5 +35,11 @@
     "parse_score",
     "--json",
     "."
-  ]
+  ],
+  "sourceOrigin": {
+    "kind": "synthetic",
+    "repository": "agent-semantic-protocols",
+    "sourcePath": "src/score.py",
+    "note": "Synthetic compact fixture kept for language parity smoke coverage."
+  }
 }

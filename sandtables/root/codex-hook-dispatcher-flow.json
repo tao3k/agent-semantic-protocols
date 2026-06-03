@@ -37,7 +37,7 @@
           "decision": "deny",
           "reasonKind": "raw-broad-search",
           "languageIds.0": "rust",
-          "routes.0.kind": "ingest",
+          "routes.0.kind": "query",
           "routes.0.providerId": "rs-harness"
         },
         "maxElapsedMsWarn": 6000
@@ -62,7 +62,7 @@
           "decision": "deny",
           "reasonKind": "raw-broad-search",
           "languageIds.0": "typescript",
-          "routes.0.kind": "ingest",
+          "routes.0.kind": "query",
           "routes.0.providerId": "ts-harness"
         },
         "maxElapsedMsWarn": 6000
@@ -87,7 +87,7 @@
           "decision": "deny",
           "reasonKind": "direct-source-read",
           "subject.paths.0": "crates/semantic-agent-hook/src/lib.rs",
-          "routes.0.kind": "owner",
+          "routes.0.kind": "query",
           "routes.0.providerId": "rs-harness"
         },
         "maxElapsedMsWarn": 6000
@@ -114,7 +114,7 @@
           "languageIds.0": "typescript",
           "subject.toolName": "functions.read_file",
           "subject.paths.0": "languages/typescript-lang-project-harness/src/cli/semantic-search/types.ts",
-          "routes.0.kind": "owner",
+          "routes.0.kind": "query",
           "routes.0.providerId": "ts-harness"
         },
         "maxElapsedMsWarn": 6000

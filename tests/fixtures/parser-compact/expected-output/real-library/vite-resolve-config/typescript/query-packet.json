@@ -1,0 +1,423 @@
+{
+  "binary": "ts-harness",
+  "languageId": "typescript",
+  "matchMode": "exact",
+  "matches": [
+    {
+      "fields": {
+        "exportKind": "function",
+        "exported": true,
+        "typeOnly": false
+      },
+      "kind": "function",
+      "location": {
+        "lineRange": "1379:2164",
+        "path": "src/config.ts"
+      },
+      "name": "resolveConfig",
+      "patchSafety": {
+        "exactRead": "src/config.ts:1379:2164",
+        "level": "read-safe",
+        "reason": "read exact source locator before editing this compact match"
+      },
+      "projection": {
+        "exactRead": "src/config.ts:1379:2164",
+        "expandActions": [
+          {
+            "kind": "exact-read",
+            "read": "src/config.ts:1379:2164",
+            "reason": "read exact source before editing",
+            "target": "resolveConfig"
+          },
+          {
+            "kind": "exact-read",
+            "read": "src/config.ts:1390:1390",
+            "reason": "expand let node before editing",
+            "target": "resolveConfig:1"
+          },
+          {
+            "kind": "exact-read",
+            "read": "src/config.ts:1392:1392",
+            "reason": "expand call node before editing",
+            "target": "resolveConfig:2"
+          },
+          {
+            "kind": "exact-read",
+            "read": "src/config.ts:1394:1394",
+            "reason": "expand call node before editing",
+            "target": "resolveConfig:3"
+          },
+          {
+            "kind": "exact-read",
+            "read": "src/config.ts:1396:1396",
+            "reason": "expand call node before editing",
+            "target": "resolveConfig:4"
+          },
+          {
+            "kind": "exact-read",
+            "read": "src/config.ts:1397:1400",
+            "reason": "expand if node before editing",
+            "target": "resolveConfig:5"
+          },
+          {
+            "kind": "exact-read",
+            "read": "src/config.ts:1402:1402",
+            "reason": "expand let node before editing",
+            "target": "resolveConfig:6"
+          },
+          {
+            "kind": "exact-read",
+            "read": "src/config.ts:1403:1403",
+            "reason": "expand let node before editing",
+            "target": "resolveConfig:7"
+          },
+          {
+            "kind": "owner-names",
+            "reason": "return owner-local item names without code windows",
+            "target": "src/config.ts"
+          }
+        ],
+        "losslessStructure": true,
+        "mode": "outline",
+        "nodes": [
+          {
+            "depth": 0,
+            "flags": [
+              "mutation",
+              "call",
+              "branch",
+              "await",
+              "return",
+              "throw",
+              "loop",
+              "field"
+            ],
+            "id": "resolveConfig",
+            "kind": "function",
+            "label": "async function resolveConfig",
+            "read": "src/config.ts:1379:2164",
+            "role": "declaration"
+          },
+          {
+            "depth": 1,
+            "flags": [
+              "mutation"
+            ],
+            "id": "resolveConfig:1",
+            "kind": "let",
+            "label": "assign config",
+            "parentId": "resolveConfig",
+            "read": "src/config.ts:1390:1390",
+            "role": "mutation"
+          },
+          {
+            "depth": 1,
+            "flags": [
+              "call"
+            ],
+            "id": "resolveConfig:2",
+            "kind": "call",
+            "label": "setupRollupOptionCompat",
+            "parentId": "resolveConfig",
+            "read": "src/config.ts:1392:1392",
+            "role": "call"
+          },
+          {
+            "depth": 1,
+            "flags": [
+              "call"
+            ],
+            "id": "resolveConfig:3",
+            "kind": "call",
+            "label": "setupRollupOptionCompat",
+            "parentId": "resolveConfig",
+            "read": "src/config.ts:1394:1394",
+            "role": "call"
+          },
+          {
+            "depth": 1,
+            "flags": [
+              "call"
+            ],
+            "id": "resolveConfig:4",
+            "kind": "call",
+            "label": "setupRollupOptionCompat",
+            "parentId": "resolveConfig",
+            "read": "src/config.ts:1396:1396",
+            "role": "call"
+          },
+          {
+            "depth": 1,
+            "flags": [
+              "branch"
+            ],
+            "id": "resolveConfig:5",
+            "kind": "if",
+            "label": "if config.ssr",
+            "parentId": "resolveConfig",
+            "read": "src/config.ts:1397:1400",
+            "role": "control-flow"
+          },
+          {
+            "depth": 1,
+            "flags": [
+              "mutation"
+            ],
+            "id": "resolveConfig:6",
+            "kind": "let",
+            "label": "assign configFileDependencies",
+            "parentId": "resolveConfig",
+            "read": "src/config.ts:1402:1402",
+            "role": "mutation"
+          },
+          {
+            "depth": 1,
+            "flags": [
+              "mutation"
+            ],
+            "id": "resolveConfig:7",
+            "kind": "let",
+            "label": "assign mode",
+            "parentId": "resolveConfig",
+            "read": "src/config.ts:1403:1403",
+            "role": "mutation"
+          },
+          {
+            "depth": 1,
+            "flags": [
+              "mutation"
+            ],
+            "id": "resolveConfig:8",
+            "kind": "const",
+            "label": "assign isNodeEnvSet",
+            "parentId": "resolveConfig",
+            "read": "src/config.ts:1404:1404",
+            "role": "mutation"
+          },
+          {
+            "depth": 1,
+            "flags": [
+              "mutation"
+            ],
+            "id": "resolveConfig:9",
+            "kind": "const",
+            "label": "assign packageCache",
+            "parentId": "resolveConfig",
+            "read": "src/config.ts:1405:1405",
+            "role": "mutation"
+          },
+          {
+            "depth": 1,
+            "flags": [
+              "branch"
+            ],
+            "id": "resolveConfig:10",
+            "kind": "if",
+            "label": "if !isNodeEnvSet",
+            "parentId": "resolveConfig",
+            "read": "src/config.ts:1409:1411",
+            "role": "control-flow"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "mutation"
+            ],
+            "id": "resolveConfig:11",
+            "kind": "assign",
+            "label": "process.env.NODE_ENV = defaultNodeEnv",
+            "parentId": "resolveConfig:10",
+            "read": "src/config.ts:1410:1410",
+            "role": "mutation"
+          },
+          {
+            "depth": 1,
+            "flags": [
+              "mutation"
+            ],
+            "id": "resolveConfig:12",
+            "kind": "const",
+            "label": "assign configEnv",
+            "parentId": "resolveConfig",
+            "read": "src/config.ts:1413:1418",
+            "role": "mutation"
+          },
+          {
+            "depth": 1,
+            "flags": [
+              "mutation"
+            ],
+            "id": "resolveConfig:13",
+            "kind": "let",
+            "label": "assign { configFile }",
+            "parentId": "resolveConfig",
+            "read": "src/config.ts:1420:1420",
+            "role": "mutation"
+          },
+          {
+            "depth": 1,
+            "flags": [
+              "branch"
+            ],
+            "id": "resolveConfig:14",
+            "kind": "if",
+            "label": "if configFile !== false",
+            "parentId": "resolveConfig",
+            "read": "src/config.ts:1421:1435",
+            "role": "control-flow"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "mutation"
+            ],
+            "id": "resolveConfig:15",
+            "kind": "const",
+            "label": "assign loadResult",
+            "parentId": "resolveConfig:14",
+            "read": "src/config.ts:1422:1429",
+            "role": "mutation"
+          },
+          {
+            "depth": 3,
+            "flags": [
+              "await"
+            ],
+            "id": "resolveConfig:16",
+            "kind": "await",
+            "label": "await",
+            "parentId": "resolveConfig:15",
+            "read": "src/config.ts:1422:1429",
+            "role": "effect"
+          },
+          {
+            "depth": 4,
+            "flags": [
+              "call"
+            ],
+            "id": "resolveConfig:17",
+            "kind": "call",
+            "label": "loadConfigFromFile",
+            "parentId": "resolveConfig:16",
+            "read": "src/config.ts:1422:1429",
+            "role": "call"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "branch"
+            ],
+            "id": "resolveConfig:18",
+            "kind": "if",
+            "label": "if loadResult",
+            "parentId": "resolveConfig:14",
+            "read": "src/config.ts:1430:1434",
+            "role": "control-flow"
+          },
+          {
+            "depth": 3,
+            "flags": [
+              "mutation"
+            ],
+            "id": "resolveConfig:19",
+            "kind": "assign",
+            "label": "config = mergeConfig(loadResult.config, config)",
+            "parentId": "resolveConfig:18",
+            "read": "src/config.ts:1431:1431",
+            "role": "mutation"
+          },
+          {
+            "depth": 3,
+            "flags": [
+              "mutation"
+            ],
+            "id": "resolveConfig:20",
+            "kind": "assign",
+            "label": "configFile = loadResult.path",
+            "parentId": "resolveConfig:18",
+            "read": "src/config.ts:1432:1432",
+            "role": "mutation"
+          },
+          {
+            "depth": 3,
+            "flags": [
+              "mutation"
+            ],
+            "id": "resolveConfig:21",
+            "kind": "assign",
+            "label": "configFileDependencies = loadResult.dependencies",
+            "parentId": "resolveConfig:18",
+            "read": "src/config.ts:1433:1433",
+            "role": "mutation"
+          },
+          {
+            "depth": 1,
+            "flags": [
+              "mutation"
+            ],
+            "id": "resolveConfig:22",
+            "kind": "assign",
+            "label": "mode = inlineConfig.mode || config.mode || mode",
+            "parentId": "resolveConfig",
+            "read": "src/config.ts:1438:1438",
+            "role": "mutation"
+          },
+          {
+            "depth": 1,
+            "flags": [
+              "mutation"
+            ],
+            "id": "resolveConfig:23",
+            "kind": "assign",
+            "label": "configEnv.mode = mode",
+            "parentId": "resolveConfig",
+            "read": "src/config.ts:1439:1439",
+            "role": "mutation"
+          }
+        ],
+        "omitted": [
+          {
+            "count": 786,
+            "kind": "source-formatting",
+            "read": "src/config.ts:1379:2164",
+            "reason": "compact projection removes original whitespace and comments"
+          }
+        ],
+        "sourceAuthority": "native-parser",
+        "sourceFingerprint": "src/config.ts:1379:2164:22503:b6c52115",
+        "syntax": "semantic-outline"
+      },
+      "read": "src/config.ts:1379:2164",
+      "truncated": false,
+      "visibility": "public"
+    }
+  ],
+  "method": "query/owner-items",
+  "namespace": "agent.semantic-protocols.languages.typescript.ts-harness",
+  "outputMode": "code",
+  "ownerPath": "src/config.ts",
+  "patchSafety": {
+    "level": "read-safe",
+    "nextAction": "query --from-hook direct-source-read",
+    "reason": "compact query packet is not a mutation authority"
+  },
+  "projectRoot": "tests/fixtures/parser-compact/projects/real-library/vite-resolve-config/typescript",
+  "protocolId": "agent.semantic-protocols.semantic-language",
+  "protocolVersion": "1",
+  "providerId": "ts-harness",
+  "query": "resolveConfig",
+  "queryCoverage": [
+    {
+      "match": "exact",
+      "matchCount": 1,
+      "status": "hit",
+      "value": "resolveConfig"
+    }
+  ],
+  "queryTerms": [
+    "resolveConfig"
+  ],
+  "schemaId": "agent.semantic-protocols.semantic-query-packet",
+  "schemaVersion": "1",
+  "truncated": false
+}

@@ -1,0 +1,28 @@
+{
+  "caseId": "django-model-base",
+  "compactCodeDelta": 17838,
+  "compactCodeRatio": 0.0576,
+  "compactCodeTokens": 1090,
+  "compactLineDelta": 17838,
+  "compactLineRatio": 0.0576,
+  "compactLineTokens": 1090,
+  "featureClass": "real-library",
+  "languageId": "python",
+  "providerId": "py-harness",
+  "queryPacketDelta": 16030,
+  "queryPacketRatio": 0.1531,
+  "queryPacketTokens": 2898,
+  "rawSourceTokens": 18928,
+  "schemaId": "agent.semantic-protocols.parser-compact-token-cost",
+  "schemaVersion": "1",
+  "sourceOrigin": {
+    "kind": "real-project",
+    "license": "BSD-3-Clause",
+    "note": "Real Django ModelBase metaclass used to stress long class construction compacting.",
+    "ref": "09fdc06346b1",
+    "repository": "django/django",
+    "sourcePath": "django/db/models/base.py"
+  },
+  "tokenizerId": "tiktoken:o200k_base",
+  "variantId": "python"
+}

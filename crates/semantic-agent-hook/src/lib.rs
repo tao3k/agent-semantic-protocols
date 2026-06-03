@@ -15,7 +15,7 @@ mod tool_action;
 
 pub use crate::activation_store::parse_hook_activation;
 pub use classifier::classify_hook;
-pub use cli::run_cli_from_env;
+pub use cli::{run_cli_args, run_cli_from_env};
 pub use protocol::{
     ActionPolicy, AgentHookError, CommandTemplate, DecisionKind, DecisionRoute, DecisionRouteKind,
     DecisionSubject, HOOK_ACTIVATION_SCHEMA_ID, HOOK_ACTIVATION_SCHEMA_VERSION,

@@ -10,7 +10,11 @@
     "performance",
     "real-trigger"
   ],
-  "tags": ["query-composition", "python-layout", "real-trigger"],
+  "tags": [
+    "query-composition",
+    "python-layout",
+    "real-trigger"
+  ],
   "workdir": {
     "relative": "languages/python-lang-project-harness"
   },
@@ -23,7 +27,10 @@
     {
       "id": "registry-json-schema",
       "kind": "schema-contract",
-      "coverage": ["language-registry", "json-schema"],
+      "coverage": [
+        "language-registry",
+        "json-schema"
+      ],
       "command": [
         ".venv/bin/py-harness",
         "agent",
@@ -53,7 +60,11 @@
     {
       "id": "prime-json-schema",
       "kind": "schema-contract",
-      "coverage": ["json-schema", "search-flow", "performance"],
+      "coverage": [
+        "json-schema",
+        "search-flow",
+        "performance"
+      ],
       "command": [
         ".venv/bin/py-harness",
         "search",
@@ -79,7 +90,11 @@
     {
       "id": "dependency-json-schema",
       "kind": "schema-contract",
-      "coverage": ["json-schema", "deps-query", "performance"],
+      "coverage": [
+        "json-schema",
+        "deps-query",
+        "performance"
+      ],
       "command": [
         ".venv/bin/py-harness",
         "search",
@@ -125,18 +140,27 @@
         ".venv/bin/py-harness",
         "search",
         "prime",
+        "--view",
+        "seeds",
         "."
       ],
       "expect": {
         "lineProtocol": true,
         "stdoutContains": [
           "[search-prime]",
-          "|owner",
-          "|synthesis algorithm=owner-rank-frontier scope=prime",
-          "highImpactOwners="
+          "alg=owner-rank-frontier",
+          "alias: graph:{G=search",
+          "G=search:result!query",
+          "G>{",
+          "rank=",
+          "frontier="
         ],
         "maxStdoutLinesWarn": 18,
-        "maxElapsedMsWarn": 3000
+        "maxElapsedMsWarn": 3000,
+        "stdoutNotContains": [
+          "|seed",
+          "|synthesis"
+        ]
       }
     },
     {
@@ -144,7 +168,7 @@
       "command": [
         ".venv/bin/py-harness",
         "search",
-        "text",
+        "fzf",
         "--query-set",
         "PythonSemanticSearchOptions",
         "--query-set",
@@ -163,7 +187,7 @@
         "stdoutContains": [
           "[search-fzf]",
           "querySet=2",
-          "selector=exact-set",
+          "selector=fuzzy-set",
           "scopeOwner=src/python_lang_project_harness/__init__.py",
           "pipes=owner,tests",
           "source=parser-visible-source",
@@ -179,7 +203,7 @@
       "command": [
         ".venv/bin/py-harness",
         "search",
-        "text",
+        "fzf",
         "--query-set",
         "metadata",
         "--query-set",
@@ -204,31 +228,43 @@
         "ValueError",
         "owner",
         "tests",
+        "--view",
+        "seeds",
         "."
       ],
       "expect": {
         "lineProtocol": true,
         "stdoutContains": [
+          "[search-fzf]",
           "querySet=11",
-          "|query _src_layout_findings",
-          "|query scope.source_paths",
-          "owner=src/python_lang_project_harness/_project_policy_layout.py",
-          "|synthesis",
-          "owner:src/python_lang_project_harness/_project_policy_layout.py"
+          "owner:src/python_lang_project_harness/_project_policy_layout.py",
+          "alias: graph:{G=search",
+          "G=search:result!query",
+          "G>{",
+          "rank=",
+          "frontier="
         ],
         "maxStdoutLinesWarn": 38,
         "maxStdoutBytesWarn": 16000,
-        "maxElapsedMsWarn": 7000
+        "maxElapsedMsWarn": 7000,
+        "stdoutNotContains": [
+          "|seed",
+          "|synthesis"
+        ]
       }
     },
     {
       "id": "layout-query-set-json-schema",
       "kind": "schema-contract",
-      "coverage": ["json-schema", "search-flow", "real-trigger"],
+      "coverage": [
+        "json-schema",
+        "search-flow",
+        "real-trigger"
+      ],
       "command": [
         ".venv/bin/py-harness",
         "search",
-        "text",
+        "fzf",
         "--query-set",
         "_src_layout_findings",
         "--query-set",
@@ -260,17 +296,26 @@
         "search",
         "owner",
         "{pyOwner}",
+        "--view",
+        "seeds",
         "."
       ],
       "expect": {
         "lineProtocol": true,
         "stdoutContains": [
           "[search-owner]",
-          "|owner",
-          "|synthesis algorithm=bounded-reachability-depth1 scope=owner"
+          "alias: graph:{G=search",
+          "G=search:result!query",
+          "G>{",
+          "rank=",
+          "frontier="
         ],
         "maxStdoutLinesWarn": 12,
-        "maxElapsedMsWarn": 2500
+        "maxElapsedMsWarn": 2500,
+        "stdoutNotContains": [
+          "|seed",
+          "|synthesis"
+        ]
       }
     },
     {

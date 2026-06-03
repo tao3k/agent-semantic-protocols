@@ -28,20 +28,30 @@ agent-hooks-install-root bin_dir="":
     @bin_dir="{{bin_dir}}"; \
       if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-}"; fi; \
       if [ -n "${bin_dir}" ]; then \
+        protocol_bin="${bin_dir}/semantic-agent-protocol"; \
         hook_bin="${bin_dir}/semantic-agent-hook"; \
-        "${hook_bin}" install --client codex {{repo}}; \
+        if [ -x "${protocol_bin}" ]; then \
+          "${protocol_bin}" hook install --client codex {{repo}}; \
+        else \
+          "${hook_bin}" install --client codex {{repo}}; \
+        fi; \
       else \
-        cargo run -q -p semantic-agent-hook -- install --client codex {{repo}}; \
+        cargo run -q -p semantic-agent-protocol -- hook install --client codex {{repo}}; \
       fi
 
 agent-hooks-doctor-root bin_dir="":
     @bin_dir="{{bin_dir}}"; \
       if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-}"; fi; \
       if [ -n "${bin_dir}" ]; then \
+        protocol_bin="${bin_dir}/semantic-agent-protocol"; \
         hook_bin="${bin_dir}/semantic-agent-hook"; \
-        "${hook_bin}" doctor --client codex {{repo}}; \
+        if [ -x "${protocol_bin}" ]; then \
+          "${protocol_bin}" hook doctor --client codex {{repo}}; \
+        else \
+          "${hook_bin}" doctor --client codex {{repo}}; \
+        fi; \
       else \
-        cargo run -q -p semantic-agent-hook -- doctor --client codex {{repo}}; \
+        cargo run -q -p semantic-agent-protocol -- hook doctor --client codex {{repo}}; \
       fi
 
 # Replay the root classifier directly without launching Codex.
@@ -67,15 +77,25 @@ agent-hooks-smoke-codex:
       fi; \
       rm -f "${out}"
 
-# Install semantic-agent-hook, rs-harness, ts-harness, and py-harness.
+# Install semantic-agent-protocol, semantic-agent-hook, rs-harness, ts-harness, and py-harness.
 agent-tools-install-global bin_dir="":
     @bin_dir="{{bin_dir}}"; \
       if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-$HOME/.local/bin}"; fi; \
+      just agent-tools-install-protocol "${bin_dir}"; \
       just agent-tools-install-hook "${bin_dir}"; \
       just agent-tools-install-rs "${bin_dir}"; \
       just agent-tools-install-ts "${bin_dir}"; \
       just agent-tools-install-py "${bin_dir}"; \
-      echo "[agent-tools-install-global] installed semantic-agent-hook, rs-harness, ts-harness, and py-harness into ${bin_dir}"
+      echo "[agent-tools-install-global] installed semantic-agent-protocol, semantic-agent-hook, rs-harness, ts-harness, and py-harness into ${bin_dir}"
+
+# Install only the shared semantic-agent-protocol binary.
+agent-tools-install-protocol bin_dir="":
+    @bin_dir="{{bin_dir}}"; \
+      if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-$HOME/.local/bin}"; fi; \
+      mkdir -p "${bin_dir}"; \
+      cargo build --release --manifest-path Cargo.toml --package semantic-agent-protocol --bin semantic-agent-protocol; \
+      install -m 755 target/release/semantic-agent-protocol "${bin_dir}/semantic-agent-protocol"; \
+      test -x "${bin_dir}/semantic-agent-protocol"
 
 # Install only the root semantic-agent-hook binary.
 agent-tools-install-hook bin_dir="":

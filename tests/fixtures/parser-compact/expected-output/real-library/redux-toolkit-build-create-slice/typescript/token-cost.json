@@ -1,0 +1,28 @@
+{
+  "caseId": "redux-toolkit-build-create-slice",
+  "compactCodeDelta": 7420,
+  "compactCodeRatio": 0.0185,
+  "compactCodeTokens": 140,
+  "compactLineDelta": 7420,
+  "compactLineRatio": 0.0185,
+  "compactLineTokens": 140,
+  "featureClass": "real-library",
+  "languageId": "typescript",
+  "providerId": "ts-harness",
+  "queryPacketDelta": 4579,
+  "queryPacketRatio": 0.3943,
+  "queryPacketTokens": 2981,
+  "rawSourceTokens": 7560,
+  "schemaId": "agent.semantic-protocols.parser-compact-token-cost",
+  "schemaVersion": "1",
+  "sourceOrigin": {
+    "kind": "real-project",
+    "license": "MIT",
+    "note": "Real Redux Toolkit createSlice builder used to expose function-expression return compacting.",
+    "ref": "7c49510ff5dc",
+    "repository": "reduxjs/redux-toolkit",
+    "sourcePath": "packages/toolkit/src/createSlice.ts"
+  },
+  "tokenizerId": "tiktoken:o200k_base",
+  "variantId": "typescript"
+}

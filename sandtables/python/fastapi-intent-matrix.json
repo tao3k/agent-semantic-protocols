@@ -64,7 +64,7 @@
       "command": [
         "py-harness",
         "search",
-        "text",
+        "fzf",
         "--query-set",
         "lifespan",
         "--query-set",

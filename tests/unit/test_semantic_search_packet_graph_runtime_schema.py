@@ -71,7 +71,7 @@ class SemanticSearchPacketGraphRuntimeSchemaTests(unittest.TestCase):
                 "kind": "test",
                 "to": "O:tests/lib.rs",
                 "weight": 1,
-                "location": {"path": "tests/lib.rs", "line": 4, "column": 1},
+                "location": {"path": "tests/lib.rs", "lineRange": "4:4"},
                 "fields": {},
             }
         ]
@@ -84,6 +84,19 @@ class SemanticSearchPacketGraphRuntimeSchemaTests(unittest.TestCase):
         }
 
         self.assertEqual([], self.validation_errors(packet))
+
+    def test_search_synthesis_accepts_agent_facing_graph_scopes(self) -> None:
+        for scope in ("policy", "query", "query-set", "fzf", "tests", "ingest"):
+            with self.subTest(scope=scope):
+                packet = semantic_search_graph_runtime_minimal_packet()
+                packet["searchSynthesis"] = {
+                    "algorithm": "owner-rank-frontier",
+                    "scope": scope,
+                    "seeds": [{"kind": "tests", "target": "tests/lib.rs"}],
+                    "windowSet": [{"kind": "tests", "target": "tests/lib.rs"}],
+                }
+
+                self.assertEqual([], self.validation_errors(packet))
 
     def test_large_library_packet_can_report_coverage_tests_and_runtime(self) -> None:
         packet = semantic_search_graph_runtime_minimal_packet()

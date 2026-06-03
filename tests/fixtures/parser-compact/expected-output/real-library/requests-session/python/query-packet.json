@@ -1,0 +1,417 @@
+{
+  "binary": "py-harness",
+  "languageId": "python",
+  "matchMode": "exact",
+  "matches": [
+    {
+      "doc": true,
+      "fields": {
+        "public": true,
+        "reason": "item-query"
+      },
+      "kind": "class",
+      "location": {
+        "lineRange": "395:905",
+        "path": "src/sessions.py"
+      },
+      "name": "Session",
+      "outline": {
+        "hotBlocks": [
+          {
+            "label": "Session",
+            "read": "src/sessions.py:395:905",
+            "reason": "parser-item-query"
+          }
+        ],
+        "summary": "class Session"
+      },
+      "patchSafety": {
+        "exactRead": "src/sessions.py:395:905",
+        "level": "read-safe",
+        "reason": "read exact source locator before editing this compact match"
+      },
+      "projection": {
+        "exactRead": "src/sessions.py:395:905",
+        "expandActions": [
+          {
+            "kind": "exact-read",
+            "read": "src/sessions.py:395:905",
+            "reason": "read exact source before editing",
+            "target": "Session"
+          },
+          {
+            "kind": "exact-read",
+            "read": "src/sessions.py:446:446",
+            "reason": "expand assign node before editing",
+            "target": "Session:15"
+          },
+          {
+            "kind": "exact-read",
+            "read": "src/sessions.py:450:450",
+            "reason": "expand assign node before editing",
+            "target": "Session:16"
+          },
+          {
+            "kind": "exact-read",
+            "read": "src/sessions.py:455:455",
+            "reason": "expand assign node before editing",
+            "target": "Session:17"
+          },
+          {
+            "kind": "exact-read",
+            "read": "src/sessions.py:458:458",
+            "reason": "expand assign node before editing",
+            "target": "Session:18"
+          },
+          {
+            "kind": "exact-read",
+            "read": "src/sessions.py:463:463",
+            "reason": "expand assign node before editing",
+            "target": "Session:19"
+          },
+          {
+            "kind": "exact-read",
+            "read": "src/sessions.py:466:466",
+            "reason": "expand assign node before editing",
+            "target": "Session:20"
+          },
+          {
+            "kind": "exact-read",
+            "read": "src/sessions.py:478:478",
+            "reason": "expand assign node before editing",
+            "target": "Session:21"
+          },
+          {
+            "kind": "owner-names",
+            "reason": "return owner-local item names without code windows",
+            "target": "src/sessions.py"
+          }
+        ],
+        "losslessStructure": false,
+        "mode": "outline",
+        "nodeCount": 80,
+        "nodeLimit": 24,
+        "nodes": [
+          {
+            "depth": 0,
+            "id": "Session",
+            "kind": "class",
+            "label": "class Session",
+            "read": "src/sessions.py:395:905",
+            "role": "declaration"
+          },
+          {
+            "depth": 1,
+            "flags": [
+              "field"
+            ],
+            "id": "Session:1",
+            "kind": "field",
+            "label": "field headers: CaseInsensitiveDict[str]",
+            "parentId": "Session",
+            "read": "src/sessions.py:414:414",
+            "role": "field"
+          },
+          {
+            "depth": 1,
+            "flags": [
+              "field"
+            ],
+            "id": "Session:2",
+            "kind": "field",
+            "label": "field auth: _t.AuthType",
+            "parentId": "Session",
+            "read": "src/sessions.py:415:415",
+            "role": "field"
+          },
+          {
+            "depth": 1,
+            "flags": [
+              "field"
+            ],
+            "id": "Session:3",
+            "kind": "field",
+            "label": "field proxies: dict[str, str]",
+            "parentId": "Session",
+            "read": "src/sessions.py:416:416",
+            "role": "field"
+          },
+          {
+            "depth": 1,
+            "flags": [
+              "field"
+            ],
+            "id": "Session:4",
+            "kind": "field",
+            "label": "field hooks: dict[str, list[_t.HookType]]",
+            "parentId": "Session",
+            "read": "src/sessions.py:417:417",
+            "role": "field"
+          },
+          {
+            "depth": 1,
+            "flags": [
+              "field"
+            ],
+            "id": "Session:5",
+            "kind": "field",
+            "label": "field params: MutableMapping[str, Any]",
+            "parentId": "Session",
+            "read": "src/sessions.py:418:418",
+            "role": "field"
+          },
+          {
+            "depth": 1,
+            "flags": [
+              "field"
+            ],
+            "id": "Session:6",
+            "kind": "field",
+            "label": "field stream: bool",
+            "parentId": "Session",
+            "read": "src/sessions.py:419:419",
+            "role": "field"
+          },
+          {
+            "depth": 1,
+            "flags": [
+              "field"
+            ],
+            "id": "Session:7",
+            "kind": "field",
+            "label": "field verify: _t.VerifyType",
+            "parentId": "Session",
+            "read": "src/sessions.py:420:420",
+            "role": "field"
+          },
+          {
+            "depth": 1,
+            "flags": [
+              "field"
+            ],
+            "id": "Session:8",
+            "kind": "field",
+            "label": "field cert: _t.CertType",
+            "parentId": "Session",
+            "read": "src/sessions.py:421:421",
+            "role": "field"
+          },
+          {
+            "depth": 1,
+            "flags": [
+              "field"
+            ],
+            "id": "Session:9",
+            "kind": "field",
+            "label": "field max_redirects: int",
+            "parentId": "Session",
+            "read": "src/sessions.py:422:422",
+            "role": "field"
+          },
+          {
+            "depth": 1,
+            "flags": [
+              "field"
+            ],
+            "id": "Session:10",
+            "kind": "field",
+            "label": "field trust_env: bool",
+            "parentId": "Session",
+            "read": "src/sessions.py:423:423",
+            "role": "field"
+          },
+          {
+            "depth": 1,
+            "flags": [
+              "field"
+            ],
+            "id": "Session:11",
+            "kind": "field",
+            "label": "field cookies: RequestsCookieJar",
+            "parentId": "Session",
+            "read": "src/sessions.py:424:424",
+            "role": "field"
+          },
+          {
+            "depth": 1,
+            "flags": [
+              "field"
+            ],
+            "id": "Session:12",
+            "kind": "field",
+            "label": "field adapters: MutableMapping[str, BaseAdapter]",
+            "parentId": "Session",
+            "read": "src/sessions.py:425:425",
+            "role": "field"
+          },
+          {
+            "depth": 1,
+            "flags": [
+              "field"
+            ],
+            "id": "Session:13",
+            "kind": "field",
+            "label": "field __attrs__: list[str]",
+            "parentId": "Session",
+            "read": "src/sessions.py:427:440",
+            "role": "field"
+          },
+          {
+            "depth": 1,
+            "id": "Session:14",
+            "kind": "function",
+            "label": "def __init__",
+            "parentId": "Session",
+            "read": "src/sessions.py:442:503",
+            "role": "declaration"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "mutation"
+            ],
+            "id": "Session:15",
+            "kind": "assign",
+            "label": "assign self.headers",
+            "parentId": "Session:14",
+            "read": "src/sessions.py:446:446",
+            "role": "mutation"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "mutation"
+            ],
+            "id": "Session:16",
+            "kind": "assign",
+            "label": "assign self.auth",
+            "parentId": "Session:14",
+            "read": "src/sessions.py:450:450",
+            "role": "mutation"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "mutation"
+            ],
+            "id": "Session:17",
+            "kind": "assign",
+            "label": "assign self.proxies",
+            "parentId": "Session:14",
+            "read": "src/sessions.py:455:455",
+            "role": "mutation"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "mutation"
+            ],
+            "id": "Session:18",
+            "kind": "assign",
+            "label": "assign self.hooks",
+            "parentId": "Session:14",
+            "read": "src/sessions.py:458:458",
+            "role": "mutation"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "mutation"
+            ],
+            "id": "Session:19",
+            "kind": "assign",
+            "label": "assign self.params",
+            "parentId": "Session:14",
+            "read": "src/sessions.py:463:463",
+            "role": "mutation"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "mutation"
+            ],
+            "id": "Session:20",
+            "kind": "assign",
+            "label": "assign self.stream",
+            "parentId": "Session:14",
+            "read": "src/sessions.py:466:466",
+            "role": "mutation"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "mutation"
+            ],
+            "id": "Session:21",
+            "kind": "assign",
+            "label": "assign self.verify",
+            "parentId": "Session:14",
+            "read": "src/sessions.py:478:478",
+            "role": "mutation"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "mutation"
+            ],
+            "id": "Session:22",
+            "kind": "assign",
+            "label": "assign self.cert",
+            "parentId": "Session:14",
+            "read": "src/sessions.py:482:482",
+            "role": "mutation"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "mutation"
+            ],
+            "id": "Session:23",
+            "kind": "assign",
+            "label": "assign self.max_redirects",
+            "parentId": "Session:14",
+            "read": "src/sessions.py:488:488",
+            "role": "mutation"
+          }
+        ],
+        "nodesTruncated": true,
+        "omitted": [],
+        "sourceAuthority": "native-parser",
+        "sourceFingerprint": "src/sessions.py:395:905:3310:56e19b04",
+        "syntax": "semantic-outline"
+      },
+      "read": "src/sessions.py:395:905",
+      "truncated": false,
+      "visibility": "public"
+    }
+  ],
+  "method": "query/owner-items",
+  "namespace": "agent.semantic-protocols.languages.python.py-harness",
+  "notes": [],
+  "outputMode": "code",
+  "ownerPath": "src/sessions.py",
+  "patchSafety": {
+    "level": "read-safe",
+    "nextAction": "query --from-hook direct-source-read",
+    "reason": "compact query packet is not a mutation authority"
+  },
+  "projectRoot": "tests/fixtures/parser-compact/projects/real-library/requests-session/python",
+  "protocolId": "agent.semantic-protocols.semantic-language",
+  "protocolVersion": "1",
+  "providerId": "py-harness",
+  "query": "Session",
+  "queryCoverage": [
+    {
+      "match": "exact",
+      "matchCount": 1,
+      "status": "hit",
+      "value": "Session"
+    }
+  ],
+  "queryTerms": [
+    "Session"
+  ],
+  "schemaId": "agent.semantic-protocols.semantic-query-packet",
+  "schemaVersion": "1",
+  "truncated": false
+}

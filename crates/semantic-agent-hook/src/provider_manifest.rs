@@ -249,6 +249,7 @@ fn provider_routes(binary: &str) -> HookRoutes {
         ]),
         query: Some(command_template(&[
             binary,
+            "search",
             "query",
             "--from-hook",
             "direct-source-read",
@@ -256,7 +257,7 @@ fn provider_routes(binary: &str) -> HookRoutes {
             "{selector}",
             "{termArgs}",
             "--surface",
-            "owners,tests",
+            "owner,tests",
             "--view",
             "seeds",
             "{projectRoot}",

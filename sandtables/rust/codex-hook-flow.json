@@ -36,9 +36,6 @@
           "decision": "deny",
           "reasonKind": "direct-source-read"
         },
-        "stdoutJsonContains": {
-          "message": "rs-harness agent guide ."
-        },
         "maxStdoutLinesWarn": 1,
         "maxElapsedMsWarn": 700
       }

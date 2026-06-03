@@ -66,6 +66,13 @@ pub(crate) fn default_activation_path(project_root: &Path) -> PathBuf {
         .join("activation.json")
 }
 
+pub(crate) fn discover_activation_path(start: &Path) -> Option<PathBuf> {
+    start
+        .ancestors()
+        .map(default_activation_path)
+        .find(|path| path.is_file())
+}
+
 pub(crate) fn is_generated_activation_path(path: &Path) -> bool {
     let normalized = path.to_string_lossy().replace('\\', "/");
     normalized.ends_with(".codex/semantic-agent-hook/activation.json")

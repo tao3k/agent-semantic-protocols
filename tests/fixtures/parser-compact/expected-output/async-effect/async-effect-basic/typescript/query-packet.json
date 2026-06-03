@@ -15,109 +15,51 @@
         "path": "src/async-effect.ts"
       },
       "name": "loadUser",
+      "patchSafety": {
+        "exactRead": "src/async-effect.ts:10:17",
+        "level": "read-safe",
+        "reason": "read exact source locator before editing this compact match"
+      },
       "projection": {
         "exactRead": "src/async-effect.ts:10:17",
         "expandActions": [
           {
-            "argv": [
-              "ts-harness",
-              "query",
-              "--from-hook",
-              "direct-source-read",
-              "--selector",
-              "src/async-effect.ts:10:17",
-              "."
-            ],
             "kind": "exact-read",
             "read": "src/async-effect.ts:10:17",
             "reason": "read exact source before editing",
             "target": "loadUser"
           },
           {
-            "argv": [
-              "ts-harness",
-              "query",
-              "--from-hook",
-              "direct-source-read",
-              "--selector",
-              "src/async-effect.ts:11:11",
-              "."
-            ],
             "kind": "exact-read",
             "read": "src/async-effect.ts:11:11",
             "reason": "expand const node before editing",
             "target": "loadUser:1"
           },
           {
-            "argv": [
-              "ts-harness",
-              "query",
-              "--from-hook",
-              "direct-source-read",
-              "--selector",
-              "src/async-effect.ts:12:14",
-              "."
-            ],
             "kind": "exact-read",
             "read": "src/async-effect.ts:12:14",
             "reason": "expand if node before editing",
             "target": "loadUser:4"
           },
           {
-            "argv": [
-              "ts-harness",
-              "query",
-              "--from-hook",
-              "direct-source-read",
-              "--selector",
-              "src/async-effect.ts:13:13",
-              "."
-            ],
             "kind": "exact-read",
             "read": "src/async-effect.ts:13:13",
             "reason": "expand throw node before editing",
             "target": "loadUser:5"
           },
           {
-            "argv": [
-              "ts-harness",
-              "query",
-              "--from-hook",
-              "direct-source-read",
-              "--selector",
-              "src/async-effect.ts:15:15",
-              "."
-            ],
             "kind": "exact-read",
             "read": "src/async-effect.ts:15:15",
             "reason": "expand const node before editing",
             "target": "loadUser:6"
           },
           {
-            "argv": [
-              "ts-harness",
-              "query",
-              "--from-hook",
-              "direct-source-read",
-              "--selector",
-              "src/async-effect.ts:16:16",
-              "."
-            ],
             "kind": "exact-read",
             "read": "src/async-effect.ts:16:16",
             "reason": "expand return node before editing",
             "target": "loadUser:9"
           },
           {
-            "argv": [
-              "ts-harness",
-              "query",
-              "--from-hook",
-              "direct-source-read",
-              "--selector",
-              "src/async-effect.ts",
-              "."
-            ],
             "kind": "owner-names",
             "reason": "return owner-local item names without code windows",
             "target": "src/async-effect.ts"
@@ -138,7 +80,7 @@
             ],
             "id": "loadUser",
             "kind": "function",
-            "label": "export async function loadUser(client: Client, userId: string): Promise<string>",
+            "label": "async function loadUser",
             "read": "src/async-effect.ts:10:17",
             "role": "declaration"
           },
@@ -149,7 +91,7 @@
             ],
             "id": "loadUser:1",
             "kind": "const",
-            "label": "const response = await client.fetch(userId)",
+            "label": "assign response",
             "parentId": "loadUser",
             "read": "src/async-effect.ts:11:11",
             "role": "mutation"
@@ -197,7 +139,7 @@
             ],
             "id": "loadUser:5",
             "kind": "throw",
-            "label": "throw new Error(\"missing\")",
+            "label": "throw new Error",
             "parentId": "loadUser:4",
             "read": "src/async-effect.ts:13:13",
             "role": "terminal"
@@ -209,7 +151,7 @@
             ],
             "id": "loadUser:6",
             "kind": "const",
-            "label": "const body = await response.text()",
+            "label": "assign body",
             "parentId": "loadUser",
             "read": "src/async-effect.ts:15:15",
             "role": "mutation"
@@ -272,6 +214,11 @@
   "namespace": "agent.semantic-protocols.languages.typescript.ts-harness",
   "outputMode": "code",
   "ownerPath": "src/async-effect.ts",
+  "patchSafety": {
+    "level": "read-safe",
+    "nextAction": "query --from-hook direct-source-read",
+    "reason": "compact query packet is not a mutation authority"
+  },
   "projectRoot": "tests/fixtures/parser-compact/projects/async-effect/async-effect-basic/typescript",
   "protocolId": "agent.semantic-protocols.semantic-language",
   "protocolVersion": "1",

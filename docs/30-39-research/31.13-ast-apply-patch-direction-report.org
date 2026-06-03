@@ -1,0 +1,233 @@
+#+TITLE: 31.13 AST Apply Patch Direction Report
+#+DATE: 2026-06-02
+#+STATUS: active
+#+JOHNNY_DECIMAL: 31.13
+#+AREA: 30-39 Research
+#+CATEGORY: 31 Search Flow Research
+#+RFC: rfcs/semantic-ast-apply-patch-protocol.org
+
+* Purpose
+
+This report records the real agent-edit failures that motivate a first-class
+=ast_apply_patch= protocol.  It is research evidence for
+=rfcs/semantic-ast-apply-patch-protocol.org=, not an implementation plan.
+
+The key distinction is:
+
+#+begin_example
+compact query      -> understand and route
+ast_apply_patch    -> structurally edit
+apply_patch        -> text fallback and audit comparison
+#+end_example
+
+Text patches are still useful, but they are not the root answer for parser-owned
+language providers.  The provider already owns native parser facts, owner
+boundaries, and post-edit checks.  The edit protocol should use that authority.
+
+* Trigger: Compact Code Was Not Patchable
+
+The concrete TypeScript command was:
+
+#+begin_src shell
+ts-harness query src/cli/semantic-search/render.ts \
+  --term renderSemanticSearchSeedPacket \
+  --code languages/typescript-lang-project-harness
+#+end_src
+
+The provider selected the right function, but the output was a lossy control
+outline:
+
+#+begin_example
+function renderSemanticSearchSeedPacket
+  if (packet.items?.length ?? 0) > 0
+    return renderSemanticSearchItemPacket(packet)
+  assign lines
+  push
+    renderQueryCoverageLines
+  assign itemContextOwnerPath
+  for item of renderedItems(packet)
+    renderedItems
+      renderItemLine
+  for handle of packet.semanticHandles ?? []
+      renderSemanticHandleLine
+  for [kind, targets] of seedGroups(packet)
+    seedGroups
+      join
+  for note of packet.notes
+      escapeFieldValue
+  if packet.searchSynthesis !== undefined
+  assign runtimeLine
+#+end_example
+
+This is good compact understanding, but it is not safe patch context.  It omits
+the actual source text, nearby braces, argument lists, exact insertion anchors,
+and the local formatting surface.  An agent cannot safely construct a text hunk
+from this output without falling back to raw source reads or =git diff=.
+
+This exposes a contract bug: =--code= currently means "compact source-like
+projection" in some providers, but edit tooling needs "lossless patchable
+window" or an explicit =patchable=false= receipt.
+
+* Trigger: Range Read Plan Blocked Patch Context
+
+While studying Codex's =apply_patch= implementation in the local checkout:
+
+#+begin_src shell
+git clone --depth 1 https://github.com/openai/codex.git .data/openai-codex
+#+end_src
+
+the provider correctly found =codex-rs/apply-patch= and its relevant symbols:
+
+- =src/parser.rs= owns =parse_patch=, =parse_one_hunk=, and
+  =parse_update_file_chunk=
+- =src/lib.rs= owns =apply_patch=, =compute_replacements=, and
+  =apply_replacements=
+
+Small exact ranges returned code, for example:
+
+#+begin_src shell
+rs-harness query --from-hook direct-source-read \
+  --selector src/lib.rs:275:312 --code .
+#+end_src
+
+But wider function-level ranges returned =read-plan mode=range-outline
+code=false=:
+
+#+begin_example
+[read-plan] q=src/lib.rs selector=src/lib.rs:275:550 mode=range-outline code=false reason=wide-selector window=1
+|range path=src/lib.rs requested=275:550 selected=275:550 matched=275:550 coverage=full density=unknown
+|symbol item=local-window kind=range lineRange=275:550 read=src/lib.rs:275:550
+#+end_example
+
+This is a good anti-bulk-read safety gate, but it leaves no safe edit path for a
+large semantic function.  The missing layer is not "allow bigger source dumps".
+The missing layer is a provider-owned edit operation that can target an AST node
+without transporting the whole function through the prompt.
+
+* What Codex apply_patch Teaches
+
+Codex's =apply_patch= implementation is text based, but its architecture is the
+right shape:
+
+1. Parse patch intent into typed hunks.
+2. Validate patch grammar separately from file application.
+3. Match context or old lines against current file content.
+4. Compute replacements before applying them.
+5. Apply replacements in reverse order so earlier edits do not shift later
+   offsets.
+6. Return parse/apply failures and affected-path deltas.
+
+The part to copy is the transaction model, not the text hunk model.  In this
+project, the language providers can replace "match text context" with "resolve
+parser node identity" and replace "compute line replacements" with "compute
+syntax-preserving edit operations".
+
+* Why Text Patch Fails In Real Agent Loops
+
+The repeated failure pattern is not that agents cannot write a diff.  It is that
+they write a diff from incomplete context:
+
+- one missing line in a multi-line call or object literal
+- one missing closing brace/parenthesis after a compact outline
+- insertion at the wrong sibling because the anchor was a repeated text line
+- stale preimage after the worktree changed between query and patch
+- formatting drift that makes the next parser query miss the intended symbol
+
+Text patching can detect some of these after the fact, but it cannot guarantee
+that the requested edit is valid for the syntax position.  Parser-native
+providers can.
+
+* Direction
+
+Add an =ast_apply_patch= protocol orchestrated by a shared
+=semantic-agent-protocol= binary.  The language provider owns native AST
+resolution, but the shared binary owns schema validation, receipts, Codex hook
+integration, and command stability:
+
+#+begin_example
+query compact outline
+  -> provider returns stable node locator and supported edit operations
+agent emits ast patch intent
+  -> provider resolves node, parses snippet in target context, applies edit
+provider emits textual diff + edit receipt
+  -> normal check --changed validates the result
+#+end_example
+
+For the current Codex adapter this is a verification path, not a mutation path:
+
+#+begin_example
+semantic-agent-protocol ast-patch dry-run
+  -> validates AST target and snippet
+  -> emits receipt and optional text diff
+Codex apply_patch
+  -> remains the actual file mutation tool
+#+end_example
+
+The hook layer should also move under the same public binary:
+
+#+begin_src shell
+semantic-agent-protocol hook install --client codex .
+semantic-agent-protocol hook pre-tool ...
+semantic-agent-protocol hook stop ...
+#+end_src
+
+=semantic-agent-hook= remains the implementation dependency for these hook
+commands.  It is not removed.
+
+The edit operation must be smaller than a file and higher-level than a line
+hunk.  Examples:
+
+#+begin_src json
+{
+  "op": "append_to_block",
+  "target": "src/cli/semantic-search/render.ts#fn:renderSemanticSearchSeedPacket#if:packet.searchSynthesis",
+  "snippet": "lines.push(renderSearchGraphLine(packet.searchSynthesis.graph));"
+}
+#+end_src
+
+#+begin_src json
+{
+  "op": "replace_call_arg",
+  "target": "src/cli/semantic-search/render.ts#call:renderItemLine",
+  "arg": 2,
+  "snippet": "itemContextOwnerPath"
+}
+#+end_src
+
+* Open Research Questions
+
+1. Should =ast_apply_patch= be a top-level command or a =query= subcommand?
+   The current recommendation is a top-level
+   =semantic-agent-protocol ast-patch= command because it validates a mutation
+   intent and emits an audit receipt, even when Codex performs the final write.
+
+2. Should providers mutate files directly?  RFC 003 says the lane should not
+   mutate files.  The AST patch protocol can preserve that by returning an
+   audited text diff plus receipt first.  A later trusted runtime can apply the
+   diff if the receipt matches.
+
+3. How stable should node locators be?  Line ranges are not enough.  A target
+   should include owner path, symbol path, node kind, structural role, optional
+   text fingerprint, and the source range string such as =path:10:43=.
+
+4. How much formatting should providers own?  The provider should at least
+   preserve parseability and local syntax.  Full project formatting can stay a
+   post-edit check or language formatter gate.
+
+* Acceptance Evidence For The RFC
+
+The first implementation should prove three cases:
+
+1. =semantic-agent-protocol hook install --client codex .= delegates to
+   =semantic-agent-hook= and preserves current hook behavior.
+2. =semantic-agent-protocol= passes Rust language-project policy checks instead
+   of embedding local policy shortcuts.
+3. TypeScript can append a statement to a selected function/block without
+   reading the whole function as prompt text.
+4. A malformed snippet fails before file mutation with a parser-owned error.
+5. A stale target locator fails before file mutation and reports the nearest
+   repair query.
+
+The =renderSemanticSearchSeedPacket= case should be the TypeScript regression
+fixture because it is exactly where compact understanding succeeded while patch
+context failed.

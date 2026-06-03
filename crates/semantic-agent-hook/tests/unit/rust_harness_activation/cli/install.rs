@@ -11,6 +11,13 @@ fn cli_install_writes_root_owned_codex_hook_config() {
     let root = temp_project_root("install");
     let codex_home = root.join(".codex-home");
     let provider_path = write_fake_provider_binary(&root, "rs-harness");
+    let legacy_profiles_dir = root.join(".codex/semantic-agent-hook");
+    std::fs::create_dir_all(&legacy_profiles_dir).expect("create legacy profiles dir");
+    std::fs::write(
+        legacy_profiles_dir.join("profiles.ts-harness.json"),
+        r#"{"stale":true}"#,
+    )
+    .expect("write stale provider profile shard");
     let output = Command::new(env!("CARGO_BIN_EXE_semantic-agent-hook"))
         .env("PATH", &provider_path)
         .env("CODEX_HOME", &codex_home)
@@ -43,6 +50,42 @@ fn cli_install_writes_root_owned_codex_hook_config() {
     assert!(skill.contains("Julia is intentionally skipped"));
     assert!(skill.contains("Do not add `--json` during agent exploration."));
     assert!(!skill.contains("profiles"));
+    let profiles_text =
+        std::fs::read_to_string(root.join(".codex/semantic-agent-hook/profiles.json"))
+            .expect("installed profile registry");
+    let profiles: serde_json::Value =
+        serde_json::from_str(&profiles_text).expect("profile registry JSON");
+    assert_eq!(
+        profiles["schemaId"],
+        "agent.semantic-protocols.semantic-agent-hook-profile-registry"
+    );
+    assert_eq!(profiles["projectRoot"], ".");
+    let profile_entries = profiles["profiles"].as_array().expect("profile entries");
+    assert_eq!(profile_entries.len(), 1);
+    assert_eq!(profile_entries[0]["providerId"], "rs-harness");
+    assert_eq!(
+        profile_entries[0]["commands"]["query"]["argv"],
+        serde_json::json!([
+            "rs-harness",
+            "search",
+            "query",
+            "--from-hook",
+            "direct-source-read",
+            "--selector",
+            "{selector}",
+            "{termArgs}",
+            "--surface",
+            "owner,tests",
+            "--view",
+            "seeds",
+            "."
+        ])
+    );
+    assert!(
+        !root
+            .join(".codex/semantic-agent-hook/profiles.ts-harness.json")
+            .exists()
+    );
     assert!(
         !root
             .join(".codex/skills/agent-semantic-protocols/SKILL.md")

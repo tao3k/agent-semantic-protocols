@@ -128,6 +128,7 @@ def build_token_report(
         "languageId": case.language_id,
         "providerId": case.provider_id,
         "featureClass": case.feature_class,
+        "sourceOrigin": case.source_origin,
         "tokenizerId": tokenizer.tokenizer_id,
         "rawSourceTokens": raw_tokens,
         "compactLineTokens": line_tokens,

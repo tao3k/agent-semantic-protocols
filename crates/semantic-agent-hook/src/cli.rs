@@ -1,14 +1,19 @@
 //! CLI entrypoint for installing and replaying `semantic-agent-hook` activations.
 
 use crate::activation_store::{
-    default_activation_path, load_activation, load_or_sync_activation, write_activation,
+    default_activation_path, discover_activation_path, load_activation, load_or_sync_activation,
+    write_activation,
 };
 use crate::codex_config::{
     ROOT_BLOCK_BEGIN, ROOT_BLOCK_END, codex_hook_block, codex_user_trust_state_status,
     install_codex_user_trust_state, merge_codex_config, validate_codex_config_toml,
 };
 use crate::event_state::append_hook_event_state;
-use crate::provider_manifest::{build_default_activation, provider_binary_available};
+use crate::protocol::{CommandTemplate, HOOK_PROTOCOL_ID, HOOK_PROTOCOL_VERSION, HookRoutes};
+use crate::protocol_activation::{ActivatedProviderConfig, HookActivation, ProviderManifest};
+use crate::provider_manifest::{
+    build_default_activation, provider_binary_available, provider_manifests,
+};
 use crate::{
     DecisionKind, DecisionSubject, HookDecision, ReasonKind, classify_hook, parse_payload,
     render_platform_response,
@@ -22,11 +27,19 @@ const AGENT_SEMANTIC_PROTOCOLS_SKILL_MD: &str = include_str!("../../../SKILL.md"
 
 /// Run the `semantic-agent-hook` CLI using process arguments and standard IO.
 pub fn run_cli_from_env() -> Result<(), String> {
-    run()
+    run_cli_args(env::args().skip(1))
 }
 
-fn run() -> Result<(), String> {
-    let args = env::args().skip(1).collect::<Vec<_>>();
+/// Run the `semantic-agent-hook` CLI using caller-provided arguments.
+pub fn run_cli_args<I, S>(args: I) -> Result<(), String>
+where
+    I: IntoIterator<Item = S>,
+    S: Into<String>,
+{
+    run(args.into_iter().map(Into::into).collect())
+}
+
+fn run(args: Vec<String>) -> Result<(), String> {
     match args.first().map(String::as_str) {
         Some("hook") => run_hook(&args[1..]),
         Some("doctor") => run_doctor(&args[1..]),
@@ -45,7 +58,7 @@ fn run_hook(args: &[String]) -> Result<(), String> {
     let event = first_positional(args).ok_or_else(|| "missing hook event".to_string())?;
     let activation_path = flag_value(args, "--activation")
         .map(PathBuf::from)
-        .unwrap_or_else(|| default_activation_path(&PathBuf::from(".")));
+        .unwrap_or_else(default_or_discovered_activation_path);
     let runtime = match load_activation(&activation_path) {
         Ok(registry) => registry,
         Err(error) => {
@@ -95,6 +108,11 @@ fn run_hook(args: &[String]) -> Result<(), String> {
         .map_err(|error| format!("failed to serialize hook response: {error}"))?;
     println!("{output}");
     Ok(())
+}
+
+fn default_or_discovered_activation_path() -> PathBuf {
+    let cwd = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    discover_activation_path(&cwd).unwrap_or_else(|| default_activation_path(&PathBuf::from(".")))
 }
 
 fn emit_activation_load_failure(
@@ -214,6 +232,7 @@ fn run_install(args: &[String]) -> Result<(), String> {
     }
     let activation = build_default_activation(&project_root)?;
     write_activation(&activation_path, &activation)?;
+    write_profile_registry(&project_root, &activation)?;
     let skill_path = install_agent_semantic_protocols_skill(&project_root)?;
 
     fs::create_dir_all(&codex_dir)
@@ -238,6 +257,169 @@ fn run_install(args: &[String]) -> Result<(), String> {
         user_config_path.display(),
         display_path(&project_root, &skill_path),
     );
+    Ok(())
+}
+
+fn write_profile_registry(
+    project_root: &Path,
+    activation: &HookActivation,
+) -> Result<PathBuf, String> {
+    let profiles_dir = project_root.join(".codex").join("semantic-agent-hook");
+    fs::create_dir_all(&profiles_dir)
+        .map_err(|error| format!("failed to create {}: {error}", profiles_dir.display()))?;
+
+    let manifests = provider_manifests();
+    let mut profiles = Vec::new();
+    for activated in &activation.providers {
+        let manifest = manifests
+            .iter()
+            .find(|manifest| manifest.manifest_id == activated.manifest_id)
+            .ok_or_else(|| {
+                format!(
+                    "missing provider manifest for activated provider {}",
+                    activated.manifest_id
+                )
+            })?;
+        profiles.push(profile_entry(activated, manifest));
+    }
+
+    let registry = serde_json::json!({
+        "schemaId": "agent.semantic-protocols.semantic-agent-hook-profile-registry",
+        "schemaVersion": "1",
+        "protocolId": HOOK_PROTOCOL_ID,
+        "protocolVersion": HOOK_PROTOCOL_VERSION,
+        "projectRoot": ".",
+        "profiles": profiles,
+    });
+    let output = serde_json::to_string_pretty(&registry)
+        .map_err(|error| format!("failed to serialize provider profiles: {error}"))?;
+    let profile_path = profiles_dir.join("profiles.json");
+    fs::write(&profile_path, format!("{output}\n").as_bytes())
+        .map_err(|error| format!("failed to write {}: {error}", profile_path.display()))?;
+    remove_legacy_profile_shards(&profiles_dir)?;
+    Ok(profile_path)
+}
+
+fn profile_entry(
+    activated: &ActivatedProviderConfig,
+    manifest: &ProviderManifest,
+) -> serde_json::Value {
+    serde_json::json!({
+        "languageId": activated.language_id,
+        "providerId": activated.provider_id,
+        "binary": activated.binary,
+        "namespace": manifest.namespace,
+        "sourceExtensions": activated.coverage.source_extensions,
+        "configFiles": activated.coverage.config_files,
+        "sourceRoots": activated.coverage.source_roots,
+        "ignoredPathPrefixes": activated.coverage.ignored_path_prefixes,
+        "policy": manifest.policy,
+        "commands": profile_commands(&manifest.routes, &activated.binary, &activated.provider_command_prefix),
+    })
+}
+
+fn profile_commands(
+    routes: &HookRoutes,
+    binary: &str,
+    provider_command_prefix: &[String],
+) -> serde_json::Value {
+    let mut commands = serde_json::Map::new();
+    commands.insert(
+        "prime".to_string(),
+        profile_command(&routes.prime, binary, provider_command_prefix),
+    );
+    commands.insert(
+        "owner".to_string(),
+        profile_command(&routes.owner, binary, provider_command_prefix),
+    );
+    commands.insert(
+        "fzf".to_string(),
+        profile_command(&routes.fzf, binary, provider_command_prefix),
+    );
+    if let Some(query) = &routes.query {
+        commands.insert(
+            "query".to_string(),
+            profile_command(query, binary, provider_command_prefix),
+        );
+    }
+    commands.insert(
+        "ingest".to_string(),
+        profile_command(&routes.ingest, binary, provider_command_prefix),
+    );
+    commands.insert(
+        "checkChanged".to_string(),
+        profile_command(&routes.check_changed, binary, provider_command_prefix),
+    );
+    if let Some(guide) = &routes.guide {
+        commands.insert(
+            "guide".to_string(),
+            profile_command(guide, binary, provider_command_prefix),
+        );
+    }
+    serde_json::Value::Object(commands)
+}
+
+fn profile_command(
+    command: &CommandTemplate,
+    binary: &str,
+    provider_command_prefix: &[String],
+) -> serde_json::Value {
+    let argv = profile_command_argv(command, binary, provider_command_prefix);
+    let mut value = serde_json::Map::new();
+    value.insert(
+        "text".to_string(),
+        serde_json::Value::String(argv.join(" ")),
+    );
+    value.insert("argv".to_string(), serde_json::json!(argv));
+    if let Some(stdin_mode) = command.stdin_mode {
+        value.insert("stdinMode".to_string(), serde_json::json!(stdin_mode));
+    }
+    serde_json::Value::Object(value)
+}
+
+fn profile_command_argv(
+    command: &CommandTemplate,
+    binary: &str,
+    provider_command_prefix: &[String],
+) -> Vec<String> {
+    let mut argv = if !provider_command_prefix.is_empty()
+        && command
+            .argv
+            .first()
+            .is_some_and(|command| command == binary)
+    {
+        provider_command_prefix
+            .iter()
+            .cloned()
+            .chain(command.argv.iter().skip(1).cloned())
+            .collect()
+    } else {
+        command.argv.clone()
+    };
+    for argument in &mut argv {
+        if argument == "{projectRoot}" {
+            *argument = ".".to_string();
+        }
+    }
+    argv
+}
+
+fn remove_legacy_profile_shards(profiles_dir: &Path) -> Result<(), String> {
+    for entry in fs::read_dir(profiles_dir)
+        .map_err(|error| format!("failed to read {}: {error}", profiles_dir.display()))?
+    {
+        let entry =
+            entry.map_err(|error| format!("failed to read profile registry entry: {error}"))?;
+        let file_name = entry.file_name();
+        let file_name = file_name.to_string_lossy();
+        if file_name != "profiles.json"
+            && file_name.starts_with("profiles.")
+            && file_name.ends_with(".json")
+        {
+            fs::remove_file(entry.path())
+                .map_err(|error| format!("failed to remove {}: {error}", entry.path().display()))?;
+        }
+    }
     Ok(())
 }
 

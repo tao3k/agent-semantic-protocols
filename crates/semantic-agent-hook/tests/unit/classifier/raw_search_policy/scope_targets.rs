@@ -162,6 +162,42 @@ fn broad_raw_search_routes_to_provider_query_when_supported() {
     assert_eq!(decision.decision, DecisionKind::Deny);
     assert_eq!(decision.reason_kind, ReasonKind::RawBroadSearch);
     assert_eq!(decision.routes[0].kind, DecisionRouteKind::Query);
+    assert_eq!(
+        decision.routes[0].argv,
+        [
+            "ts-harness",
+            "search",
+            "query",
+            "--from-hook",
+            "direct-source-read",
+            "--selector",
+            "**/*.{cjs,cts,js,jsx,mjs,mts,ts,tsx}",
+            "--term",
+            "WorkflowExecution",
+            "--surface",
+            "owner,tests",
+            "--view",
+            "seeds",
+            ".",
+        ]
+    );
+}
+
+#[test]
+fn fd_extension_source_path_listing_routes_to_ingest() {
+    let decision = classify_hook(
+        &polyglot_registry(),
+        "codex",
+        "pre-tool",
+        &json!({
+            "tool_name": "functions.exec_command",
+            "tool_input": {"cmd": "fd -e ts src"}
+        }),
+    );
+    assert_eq!(decision.decision, DecisionKind::Deny);
+    assert_eq!(decision.reason_kind, ReasonKind::RawBroadSearch);
+    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Ingest);
+    assert_eq!(decision.routes[0].provider_id, "ts-harness");
 }
 
 #[test]

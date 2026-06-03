@@ -52,19 +52,33 @@
           },
           {
             "kind": "hot-block",
+            "read": "src/lib.rs:10:10",
+            "reason": "parser-projection-terminal",
+            "target": "n7"
+          },
+          {
+            "kind": "hot-block",
             "read": "src/lib.rs:11:13",
             "reason": "parser-projection-control-flow",
             "target": "n8"
+          },
+          {
+            "kind": "hot-block",
+            "read": "src/lib.rs:12:12",
+            "reason": "parser-projection-terminal",
+            "target": "n9"
           }
         ],
         "losslessStructure": true,
         "mode": "compact",
+        "nodeCount": 10,
+        "nodeLimit": 24,
         "nodes": [
           {
             "depth": 0,
             "id": "n0",
             "kind": "fn",
-            "label": "pub fn decide(flag: bool, values: &[i32]) -> Option<i32>",
+            "label": "fn decide",
             "read": "src/lib.rs:1:14",
             "role": "declaration"
           },
@@ -75,7 +89,7 @@
             ],
             "id": "n1",
             "kind": "let",
-            "label": "let mut total = 0",
+            "label": "assign total",
             "parentId": "n0",
             "read": "src/lib.rs:2:2",
             "role": "mutation"
@@ -100,7 +114,7 @@
             ],
             "id": "n3",
             "kind": "if",
-            "label": "if * value<0",
+            "label": "if * value < 0",
             "parentId": "n2",
             "read": "src/lib.rs:4:6",
             "role": "control-flow"
@@ -137,7 +151,7 @@
             ],
             "id": "n6",
             "kind": "if",
-            "label": "if flag &&total> 10",
+            "label": "if flag && total > 10",
             "parentId": "n0",
             "read": "src/lib.rs:9:13",
             "role": "control-flow"
@@ -145,14 +159,14 @@
           {
             "depth": 2,
             "flags": [
-              "call"
+              "return"
             ],
             "id": "n7",
-            "kind": "call",
-            "label": "call Some",
+            "kind": "return",
+            "label": "return Some",
             "parentId": "n6",
             "read": "src/lib.rs:10:10",
-            "role": "call"
+            "role": "terminal"
           },
           {
             "depth": 1,
@@ -169,16 +183,17 @@
           {
             "depth": 2,
             "flags": [
-              "call"
+              "return"
             ],
             "id": "n9",
-            "kind": "call",
-            "label": "call Some",
+            "kind": "return",
+            "label": "return Some",
             "parentId": "n8",
             "read": "src/lib.rs:12:12",
-            "role": "call"
+            "role": "terminal"
           }
         ],
+        "nodesTruncated": false,
         "sourceAuthority": "native-parser",
         "syntax": "semantic-outline"
       },

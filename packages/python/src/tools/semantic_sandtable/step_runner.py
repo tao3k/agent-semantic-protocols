@@ -50,6 +50,7 @@ def _run_valid_step(
     command = _resolve_step_command(step, scenario_id, step_id, captures)
     if isinstance(command, StepResult):
         return command
+    command = _workspace_dev_command(repo_root, command)
     stdin = resolve_stdin(step, workdir, scenario_id, env, captures)
     if isinstance(stdin, StepResult):
         return stdin
@@ -110,6 +111,32 @@ def _resolve_step_command(
             "step.command must be a non-empty string array",
         )
     return command
+
+
+def _workspace_dev_command(repo_root: Path, command: list[str]) -> list[str]:
+    if command[0] != "semantic-agent-hook":
+        return command
+    rewritten = [
+        "cargo",
+        "run",
+        "--quiet",
+        "--manifest-path",
+        str(repo_root / "crates" / "semantic-agent-hook" / "Cargo.toml"),
+        "--",
+        *command[1:],
+    ]
+    if _is_hook_command(command) and "--activation" not in command:
+        rewritten.extend(
+            [
+                "--activation",
+                str(repo_root / ".codex" / "semantic-agent-hook" / "activation.json"),
+            ]
+        )
+    return rewritten
+
+
+def _is_hook_command(command: list[str]) -> bool:
+    return len(command) > 1 and command[1] == "hook"
 
 
 def _run_step_process(

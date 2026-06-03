@@ -94,6 +94,16 @@ class SemanticGraphSchemaTests(unittest.TestCase):
     def test_embedded_search_graph_slice_is_valid(self) -> None:
         self.assertEqual([], self.validation_errors(minimal_graph()))
 
+    def test_graph_agent_facing_scopes_match_synthesis_scopes(self) -> None:
+        for scope in ("policy", "query", "query-set", "fzf", "tests", "ingest"):
+            with self.subTest(scope=scope):
+                graph = minimal_graph()
+                graph["scope"] = scope
+                graph["synthesis"] = copy.deepcopy(graph["synthesis"])
+                graph["synthesis"]["scope"] = scope
+
+                self.assertEqual([], self.validation_errors(graph))
+
     def test_rank_prefixed_node_path_is_rejected(self) -> None:
         graph = minimal_graph()
         graph["nodes"] = copy.deepcopy(graph["nodes"])

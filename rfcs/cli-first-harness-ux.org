@@ -5,6 +5,11 @@
 #+DEPENDS: rfcs/code-intelligence-lane.org (003), rfcs/structural-quality-config-policy.org (004)
 #+SEE_ALSO: rfcs/agent-compact-graph-feature.org (006) — graph feature
 #+  defaults for the whole agent-facing =search= interface.
+#+SEE_ALSO: rfcs/semantic-ast-apply-patch-protocol.org (007) — parser-owned
+#+  structural edit receipts after =query= finds a patchable AST target.
+#+SEE_ALSO: rfcs/aslp-agent-client-backend-protocol.org (008) — one
+#+  cross-language =aslp= client surface over native provider CLI and Cloud
+#+  Flight execution routes.
 
 * One-sentence summary
 
@@ -79,7 +84,10 @@ surface. Julia alignment should use the workspace-managed command
 =julia --project=languages/JuliaLangProjectHarness.jl
 languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl= and should
 not design a standalone =julia-project-harness= bin as part of provider
-alignment.
+alignment.  RFC 008 may let =aslp-agent-client= cache validated
+workspace-managed Julia provider exports and serve repeated searches from the
+Rust client cache, but that cache is an execution optimization, not a new Julia
+bin-parity requirement or a Rust-owned Julia parser.
 
 The agent sees four language-provider top-level commands:
 
@@ -89,6 +97,10 @@ The agent sees four language-provider top-level commands:
 <lang-harness> check ...           # policy / style / changed / full
 <lang-harness> agent ...           # agent-client install and diagnostics
 #+end_src
+
+RFC 007 adds the shared =semantic-agent-protocol ast-patch= verification path.
+Language providers still own AST adapters, but agents should use the shared
+binary for schema validation, receipts, and Codex-safe dry-run behavior.
 
 ** =search= — discovery and candidate acquisition
 
@@ -1768,10 +1780,13 @@ line, feature, target, and seed caps are provider-owned deterministic limits
 unless a future =methodDescriptor= explicitly advertises them for that method.
 They are not shared semantic-language flags.
 
-There is no shared =--backend= flag today.  Backend selection is fully
+There is no shared =--backend= flag today.  Execution-route selection is fully
 internal unless a method descriptor later advertises bounded text match modes.
 Even then, the agent client chooses intent-level match semantics, not raw tool
-execution.
+execution.  RFC 008 extends this boundary to the cross-language =aslp= client:
+local native provider CLI, Cloud Flight, and hybrid route selection are client
+configuration and diagnostics state, not search/query flags agents must pick
+during normal exploration.
 
 * External candidate adapters: =search ingest=
 
@@ -2691,32 +2706,31 @@ after the owner/scope is known, lets the provider de-duplicate hits and tests,
 and gives the agent one next action instead of encouraging token-fragment
 probing.
 
-For compact =--view seeds= output, a query-set packet should also carry a
-change-frontier graph feature when the provider can derive it from
-parser-visible owners and tests.  This is the root fix for traces that
-alternate between text, owner, tests, and raw reads: the first same-axis
-query-set packet must identify the source edit frontier, the test frontier, and
-typed =frontier= actions.
+For compact =--view seeds= output, a query-set packet should expose the graph
+frontier when the provider can derive a change frontier from parser-visible
+owners and tests.  This is the root fix for traces that alternate between text,
+owner, tests, and raw reads: the first same-axis query-set packet must identify
+the source edit frontier, the test frontier, and typed follow-up actions
+without teaching the agent a second prompt protocol.
 
 #+begin_src text
 [search-fzf] q=load,Thing querySet=2 selector=exact-set pkg=. own=3
 [search-graph] mode=query-set root=. alg=change-frontier-query-set
-T=test:tests/domain.rs!tests
-D=owner:src/domain/mod.rs!owner
-L=owner:src/lib.rs!owner
-T>{D:covers,L:covers}
-rank=D,L,T
-frontier=D.owner,L.owner,T.tests
+O1=owner:src/domain/mod.rs!owner
+O2=owner:src/lib.rs!owner
+T3=test:tests/domain.rs!tests
+rank=O1,O2,T3
+frontier=O1.owner,O2.owner,T3.tests
 #+end_src
 
-The corresponding JSON uses schema-owned fields, not provider-private maps:
+The corresponding JSON uses schema-owned fields for the explanation graph and
+keeps graph frontier actions as the only prompt-facing follow-up contract:
 
 #+begin_src json
 {
   "searchSynthesis": {
     "algorithm": "change-frontier-query-set",
     "scope": "query-set",
-    "selectedOwners": 3,
     "editFrontier": ["src/domain/mod.rs", "src/lib.rs"],
     "testFrontier": ["tests/domain.rs"],
     "windowSet": [
@@ -3696,6 +3710,19 @@ repo-maintained language-bin skill into
 =.agents/skills/agent-semantic-protocols/SKILL.md=.  The skill is concise and
 agent-facing: it describes =rs-harness=, =ts-harness=, and =py-harness= command
 flows, and tells agents not to use =--json= for exploratory searches.
+
+The long-term public binary is =semantic-agent-protocol=.  It should expose:
+
+#+begin_src shell
+semantic-agent-protocol hook install --client codex .
+semantic-agent-protocol hook pre-tool ...
+semantic-agent-protocol hook stop ...
+semantic-agent-protocol ast-patch dry-run --packet <ast-patch.json> .
+#+end_src
+
+=semantic-agent-hook= remains the dependency that implements the hook subcommands
+inside =semantic-agent-protocol=.  The migration is a command-surface
+consolidation, not a deletion of the hook crate.
 
 If an agent-client integration bundle is desired, it contains:
 

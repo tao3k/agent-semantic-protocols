@@ -31,16 +31,24 @@
             "read": "src/lib.rs:6:6",
             "reason": "parser-projection-terminal",
             "target": "n3"
+          },
+          {
+            "kind": "hot-block",
+            "read": "src/lib.rs:8:8",
+            "reason": "parser-projection-terminal",
+            "target": "n4"
           }
         ],
         "losslessStructure": true,
         "mode": "compact",
+        "nodeCount": 5,
+        "nodeLimit": 24,
         "nodes": [
           {
             "depth": 0,
             "id": "n0",
             "kind": "fn",
-            "label": "pub fn parse_score(text: &str) -> Result<i32, String>",
+            "label": "fn parse_score",
             "read": "src/lib.rs:1:9",
             "role": "declaration"
           },
@@ -51,7 +59,7 @@
             ],
             "id": "n1",
             "kind": "let",
-            "label": "let value = map_err?",
+            "label": "assign value",
             "parentId": "n0",
             "read": "src/lib.rs:2:4",
             "role": "mutation"
@@ -64,7 +72,7 @@
             ],
             "id": "n2",
             "kind": "if",
-            "label": "if value<0",
+            "label": "if value < 0",
             "parentId": "n0",
             "read": "src/lib.rs:5:7",
             "role": "control-flow"
@@ -84,16 +92,17 @@
           {
             "depth": 1,
             "flags": [
-              "call"
+              "return"
             ],
             "id": "n4",
-            "kind": "call",
-            "label": "call Ok",
+            "kind": "return",
+            "label": "return Ok",
             "parentId": "n0",
             "read": "src/lib.rs:8:8",
-            "role": "call"
+            "role": "terminal"
           }
         ],
+        "nodesTruncated": false,
         "sourceAuthority": "native-parser",
         "syntax": "semantic-outline"
       },

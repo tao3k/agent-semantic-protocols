@@ -1,0 +1,28 @@
+{
+  "caseId": "serde-deserialize-body",
+  "compactCodeDelta": 7761,
+  "compactCodeRatio": 0.0232,
+  "compactCodeTokens": 184,
+  "compactLineDelta": 7761,
+  "compactLineRatio": 0.0232,
+  "compactLineTokens": 184,
+  "featureClass": "real-library",
+  "languageId": "rust",
+  "providerId": "rs-harness",
+  "queryPacketDelta": 4794,
+  "queryPacketRatio": 0.3966,
+  "queryPacketTokens": 3151,
+  "rawSourceTokens": 7945,
+  "schemaId": "agent.semantic-protocols.parser-compact-token-cost",
+  "schemaVersion": "1",
+  "sourceOrigin": {
+    "kind": "real-project",
+    "license": "MIT OR Apache-2.0",
+    "note": "Real serde derive deserialize dispatcher used to stress match and return projection.",
+    "ref": "5f0f18b92117",
+    "repository": "serde-rs/serde",
+    "sourcePath": "serde_derive/src/de.rs"
+  },
+  "tokenizerId": "tiktoken:o200k_base",
+  "variantId": "rust"
+}

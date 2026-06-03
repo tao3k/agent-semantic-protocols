@@ -25,7 +25,7 @@
           "reasonKind": "bulk-source-dump",
           "languageIds.0": "python",
           "routes.0.providerId": "py-harness",
-          "routes.0.kind": "owner"
+          "routes.0.kind": "query"
         },
         "stdoutJsonContains": {
           "message": "py-harness agent guide .",
@@ -51,10 +51,9 @@
           "decision": "deny",
           "reasonKind": "direct-source-read",
           "languageIds.0": "python",
-          "routes.0.argv.3": "src/tools/semantic_sandtable/guide_quality.py"
-        },
-        "stdoutJsonContains": {
-          "message": "py-harness agent guide ."
+          "routes.0.kind": "query",
+          "routes.0.argv.3": "direct-source-read",
+          "routes.0.argv.5": "src/tools/semantic_sandtable/guide_quality.py"
         }
       }
     },
@@ -77,10 +76,9 @@
           "reasonKind": "direct-source-read",
           "languageIds.0": "python",
           "subject.toolName": "functions.read_file",
-          "routes.0.argv.3": "src/tools/semantic_sandtable/guide_quality.py"
-        },
-        "stdoutJsonContains": {
-          "message": "py-harness agent guide ."
+          "routes.0.kind": "query",
+          "routes.0.argv.3": "direct-source-read",
+          "routes.0.argv.5": "src/tools/semantic_sandtable/guide_quality.py"
         }
       }
     }

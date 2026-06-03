@@ -1,0 +1,248 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-ast-patch.v1.schema.json",
+  "title": "Semantic AST Patch Request",
+  "description": "Language-neutral request packet for verifying a parser-owned AST patch intent before an agent edits code. Codex adapters use this as a compact-mode safety verifier; mutation is deliberately outside the v1 Codex boundary.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "protocolId",
+    "protocolVersion",
+    "languageId",
+    "target",
+    "operation"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.semantic-ast-patch"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "protocolId": {
+      "const": "agent.semantic-protocols.ast-patch"
+    },
+    "protocolVersion": {
+      "const": "1"
+    },
+    "languageId": {
+      "$ref": "#/$defs/identifier"
+    },
+    "providerId": {
+      "$ref": "#/$defs/identifier"
+    },
+    "binary": {
+      "$ref": "#/$defs/identifier"
+    },
+    "namespace": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*(\\.[a-z][a-z0-9_-]*)+$"
+    },
+    "projectRoot": {
+      "type": "string",
+      "minLength": 1
+    },
+    "target": {
+      "$ref": "#/$defs/target"
+    },
+    "operation": {
+      "$ref": "#/$defs/operation"
+    },
+    "verificationHints": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "fields": {
+      "$ref": "#/$defs/fields"
+    }
+  },
+  "$defs": {
+    "operationName": {
+      "type": "string",
+      "enum": [
+        "append_to_block",
+        "insert_before_statement",
+        "insert_after_statement",
+        "replace_statement",
+        "replace_expression",
+        "replace_call_arg",
+        "insert_import",
+        "remove_import",
+        "remove_statement",
+        "remove_item",
+        "replace_item"
+      ]
+    },
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "projectPath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*)$"
+    },
+    "sourceLocator": {
+      "type": "string",
+      "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*):[1-9][0-9]*:[1-9][0-9]*$"
+    },
+    "lineRange": {
+      "type": "string",
+      "pattern": "^[1-9][0-9]*:[1-9][0-9]*$"
+    },
+    "location": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "lineRange"],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/projectPath"
+        },
+        "lineRange": {
+          "$ref": "#/$defs/lineRange"
+        }
+      }
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ownerPath", "locator", "read"],
+      "properties": {
+        "ownerPath": {
+          "$ref": "#/$defs/projectPath"
+        },
+        "locator": {
+          "type": "string",
+          "minLength": 1
+        },
+        "read": {
+          "$ref": "#/$defs/sourceLocator"
+        },
+        "location": {
+          "$ref": "#/$defs/location"
+        },
+        "itemName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "itemKind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "operation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op"],
+      "properties": {
+        "op": {
+          "$ref": "#/$defs/operationName"
+        },
+        "snippet": {
+          "type": "string"
+        },
+        "anchor": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expectedSnippet": {
+          "type": "string"
+        },
+        "mechanicalKind": {
+          "type": "string",
+          "enum": [
+            "single-node",
+            "bounded-multi-node",
+            "import-list",
+            "block-statements"
+          ]
+        },
+        "maxEdits": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000
+        },
+        "allowLargeMechanicalEdit": {
+          "type": "boolean"
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "op": {
+                "enum": [
+                  "append_to_block",
+                  "insert_before_statement",
+                  "insert_after_statement",
+                  "replace_statement",
+                  "replace_expression",
+                  "replace_call_arg",
+                  "insert_import",
+                  "replace_item"
+                ]
+              }
+            },
+            "required": ["op"]
+          },
+          "then": {
+            "required": ["snippet"]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "allowLargeMechanicalEdit": {
+                "const": true
+              }
+            },
+            "required": ["allowLargeMechanicalEdit"]
+          },
+          "then": {
+            "required": ["expectedSnippet", "maxEdits", "mechanicalKind"],
+            "properties": {
+              "mechanicalKind": {
+                "enum": ["bounded-multi-node", "import-list", "block-statements"]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "scalar": {
+      "oneOf": [
+        { "type": "string" },
+        { "type": "number" },
+        { "type": "boolean" },
+        {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              { "type": "string" },
+              { "type": "number" },
+              { "type": "boolean" }
+            ]
+          }
+        }
+      ]
+    },
+    "fields": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/scalar"
+      }
+    }
+  }
+}

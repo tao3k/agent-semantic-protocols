@@ -73,6 +73,47 @@ fn cli_hook_emits_decision_for_root_owned_rust_activation() {
 }
 
 #[test]
+fn cli_hook_discovers_parent_activation_from_child_workdir() {
+    let root = temp_project_root("hook-parent-activation");
+    let activation_path = write_root_owned_rust_activation(&root);
+    let default_activation_path = root
+        .join(".codex")
+        .join("semantic-agent-hook")
+        .join("activation.json");
+    std::fs::create_dir_all(default_activation_path.parent().expect("activation parent"))
+        .expect("create activation directory");
+    std::fs::copy(&activation_path, &default_activation_path).expect("copy activation");
+    let child_dir = root.join("nested").join("agent");
+    std::fs::create_dir_all(&child_dir).expect("create child workdir");
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_semantic-agent-hook"))
+        .current_dir(&child_dir)
+        .args(["hook", "--client", "codex", "pre-tool"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("run semantic-agent-hook hook");
+    child
+        .stdin
+        .as_mut()
+        .expect("hook stdin")
+        .write_all(br#"{"tool_name":"Read","tool_input":{"path":"src/lib.rs"}}"#)
+        .expect("write hook payload");
+
+    let output = child.wait_with_output().expect("wait for hook output");
+
+    assert!(output.status.success());
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("hook JSON");
+    assert_eq!(value["hookSpecificOutput"]["permissionDecision"], "deny");
+    let context = value["hookSpecificOutput"]["additionalContext"]
+        .as_str()
+        .expect("decision context");
+    assert!(context.contains("\"reasonKind\":\"direct-source-read\""));
+    assert!(context.contains("\"src/lib.rs\""));
+    std::fs::remove_dir_all(root).expect("cleanup temp project root");
+}
+
+#[test]
 fn cli_hook_can_emit_raw_decision_for_schema_tests() {
     let root = temp_project_root("hook-decision-activation");
     let activation_path = write_root_owned_rust_activation(&root);

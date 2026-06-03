@@ -35,6 +35,8 @@
         ],
         "losslessStructure": true,
         "mode": "compact",
+        "nodeCount": 4,
+        "nodeLimit": 24,
         "nodes": [
           {
             "depth": 0,
@@ -72,6 +74,7 @@
             "role": "field"
           }
         ],
+        "nodesTruncated": false,
         "sourceAuthority": "native-parser",
         "syntax": "semantic-outline"
       },
@@ -98,13 +101,27 @@
           },
           {
             "kind": "hot-block",
+            "read": "src/lib.rs:10:10",
+            "reason": "parser-projection-terminal",
+            "target": "n3"
+          },
+          {
+            "kind": "hot-block",
             "read": "src/lib.rs:11:13",
             "reason": "parser-projection-control-flow",
             "target": "n4"
+          },
+          {
+            "kind": "hot-block",
+            "read": "src/lib.rs:12:12",
+            "reason": "parser-projection-terminal",
+            "target": "n5"
           }
         ],
         "losslessStructure": true,
         "mode": "compact",
+        "nodeCount": 6,
+        "nodeLimit": 24,
         "nodes": [
           {
             "depth": 0,
@@ -118,7 +135,7 @@
             "depth": 1,
             "id": "n1",
             "kind": "fn",
-            "label": "pub fn label(&self) -> String",
+            "label": "fn label",
             "parentId": "n0",
             "read": "src/lib.rs:8:14",
             "role": "declaration"
@@ -139,14 +156,14 @@
           {
             "depth": 3,
             "flags": [
-              "call"
+              "return"
             ],
             "id": "n3",
-            "kind": "macro",
-            "label": "call format!(\"{}#{}\", self.name, self.user_id)",
+            "kind": "return",
+            "label": "return format!",
             "parentId": "n2",
             "read": "src/lib.rs:10:10",
-            "role": "call"
+            "role": "terminal"
           },
           {
             "depth": 2,
@@ -163,16 +180,17 @@
           {
             "depth": 3,
             "flags": [
-              "call"
+              "return"
             ],
             "id": "n5",
-            "kind": "call",
-            "label": "call to_string",
+            "kind": "return",
+            "label": "return to_string",
             "parentId": "n4",
             "read": "src/lib.rs:12:12",
-            "role": "call"
+            "role": "terminal"
           }
         ],
+        "nodesTruncated": false,
         "sourceAuthority": "native-parser",
         "syntax": "semantic-outline"
       },

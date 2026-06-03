@@ -13,6 +13,7 @@
     "languageId",
     "providerId",
     "featureClass",
+    "sourceOrigin",
     "tokenizerId",
     "rawSourceTokens",
     "compactLineTokens",
@@ -52,6 +53,9 @@
       "type": "string",
       "pattern": "^[a-z][a-z0-9_-]*$"
     },
+    "sourceOrigin": {
+      "$ref": "#/$defs/sourceOrigin"
+    },
     "tokenizerId": {
       "type": "string",
       "minLength": 1
@@ -88,6 +92,36 @@
     }
   },
   "$defs": {
+    "sourceOrigin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "repository", "sourcePath"],
+      "properties": {
+        "kind": {
+          "enum": ["synthetic", "real-project"]
+        },
+        "repository": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sourcePath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "license": {
+          "type": "string",
+          "minLength": 1
+        },
+        "note": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
     "nonNegativeInteger": {
       "type": "integer",
       "minimum": 0

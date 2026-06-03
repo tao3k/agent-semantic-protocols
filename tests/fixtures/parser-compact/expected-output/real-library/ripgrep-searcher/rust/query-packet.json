@@ -1,0 +1,854 @@
+{
+  "binary": "rs-harness",
+  "languageId": "rust",
+  "matchMode": "exact",
+  "matches": [
+    {
+      "doc": true,
+      "kind": "struct",
+      "location": {
+        "lineRange": "589:625",
+        "path": "src/lib.rs"
+      },
+      "name": "Searcher",
+      "projection": {
+        "exactRead": "src/lib.rs:589:625",
+        "expandActions": [
+          {
+            "kind": "hot-block",
+            "read": "src/lib.rs:598:603",
+            "reason": "parser-projection-field",
+            "target": "n1"
+          },
+          {
+            "kind": "hot-block",
+            "read": "src/lib.rs:604:610",
+            "reason": "parser-projection-field",
+            "target": "n2"
+          },
+          {
+            "kind": "hot-block",
+            "read": "src/lib.rs:611:612",
+            "reason": "parser-projection-field",
+            "target": "n3"
+          },
+          {
+            "kind": "hot-block",
+            "read": "src/lib.rs:613:619",
+            "reason": "parser-projection-field",
+            "target": "n4"
+          },
+          {
+            "kind": "hot-block",
+            "read": "src/lib.rs:620:624",
+            "reason": "parser-projection-field",
+            "target": "n5"
+          }
+        ],
+        "losslessStructure": true,
+        "mode": "compact",
+        "nodeCount": 6,
+        "nodeLimit": 24,
+        "nodes": [
+          {
+            "depth": 0,
+            "id": "n0",
+            "kind": "struct",
+            "label": "pub struct Searcher",
+            "read": "src/lib.rs:589:625",
+            "role": "declaration"
+          },
+          {
+            "depth": 1,
+            "id": "n1",
+            "kind": "field",
+            "label": "field config: Config",
+            "parentId": "n0",
+            "read": "src/lib.rs:598:603",
+            "role": "field"
+          },
+          {
+            "depth": 1,
+            "id": "n2",
+            "kind": "field",
+            "label": "field decode_builder: DecodeReaderBytesBuilder",
+            "parentId": "n0",
+            "read": "src/lib.rs:604:610",
+            "role": "field"
+          },
+          {
+            "depth": 1,
+            "id": "n3",
+            "kind": "field",
+            "label": "field decode_buffer: RefCell<Vec<u8>>",
+            "parentId": "n0",
+            "read": "src/lib.rs:611:612",
+            "role": "field"
+          },
+          {
+            "depth": 1,
+            "id": "n4",
+            "kind": "field",
+            "label": "field line_buffer: RefCell<LineBuffer>",
+            "parentId": "n0",
+            "read": "src/lib.rs:613:619",
+            "role": "field"
+          },
+          {
+            "depth": 1,
+            "id": "n5",
+            "kind": "field",
+            "label": "field multi_line_buffer: RefCell<Vec<u8>>",
+            "parentId": "n0",
+            "read": "src/lib.rs:620:624",
+            "role": "field"
+          }
+        ],
+        "nodesTruncated": false,
+        "sourceAuthority": "native-parser",
+        "syntax": "semantic-outline"
+      },
+      "read": "src/lib.rs:589:625",
+      "truncated": false,
+      "visibility": "public"
+    },
+    {
+      "doc": false,
+      "kind": "impl",
+      "location": {
+        "lineRange": "627:828",
+        "path": "src/lib.rs"
+      },
+      "name": "Searcher",
+      "projection": {
+        "exactRead": "src/lib.rs:627:828",
+        "expandActions": [
+          {
+            "kind": "hot-block",
+            "read": "src/lib.rs:633:633",
+            "reason": "parser-projection-terminal",
+            "target": "n2"
+          },
+          {
+            "kind": "hot-block",
+            "read": "src/lib.rs:654:654",
+            "reason": "parser-projection-mutation",
+            "target": "n4"
+          },
+          {
+            "kind": "hot-block",
+            "read": "src/lib.rs:655:655",
+            "reason": "parser-projection-mutation",
+            "target": "n5"
+          },
+          {
+            "kind": "hot-block",
+            "read": "src/lib.rs:656:656",
+            "reason": "parser-projection-terminal",
+            "target": "n6"
+          },
+          {
+            "kind": "hot-block",
+            "read": "src/lib.rs:675:675",
+            "reason": "parser-projection-terminal",
+            "target": "n8"
+          },
+          {
+            "kind": "hot-block",
+            "read": "src/lib.rs:689:692",
+            "reason": "parser-projection-control-flow",
+            "target": "n10"
+          },
+          {
+            "kind": "hot-block",
+            "read": "src/lib.rs:691:691",
+            "reason": "parser-projection-terminal",
+            "target": "n12"
+          },
+          {
+            "kind": "hot-block",
+            "read": "src/lib.rs:696:713",
+            "reason": "parser-projection-control-flow",
+            "target": "n13"
+          },
+          {
+            "kind": "hot-block",
+            "read": "src/lib.rs:701:701",
+            "reason": "parser-projection-effect",
+            "target": "n15"
+          },
+          {
+            "kind": "hot-block",
+            "read": "src/lib.rs:703:709",
+            "reason": "parser-projection-terminal",
+            "target": "n18"
+          },
+          {
+            "kind": "hot-block",
+            "read": "src/lib.rs:710:713",
+            "reason": "parser-projection-control-flow",
+            "target": "n19"
+          },
+          {
+            "kind": "hot-block",
+            "read": "src/lib.rs:712:712",
+            "reason": "parser-projection-terminal",
+            "target": "n21"
+          },
+          {
+            "kind": "hot-block",
+            "read": "src/lib.rs:738:738",
+            "reason": "parser-projection-effect",
+            "target": "n23"
+          }
+        ],
+        "losslessStructure": false,
+        "mode": "compact",
+        "nodeCount": 64,
+        "nodeLimit": 24,
+        "nodes": [
+          {
+            "depth": 0,
+            "id": "n0",
+            "kind": "impl",
+            "label": "impl Searcher",
+            "read": "src/lib.rs:627:828",
+            "role": "declaration"
+          },
+          {
+            "depth": 1,
+            "id": "n1",
+            "kind": "fn",
+            "label": "fn new",
+            "parentId": "n0",
+            "read": "src/lib.rs:628:634",
+            "role": "declaration"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "return"
+            ],
+            "id": "n2",
+            "kind": "return",
+            "label": "return build",
+            "parentId": "n1",
+            "read": "src/lib.rs:633:633",
+            "role": "terminal"
+          },
+          {
+            "depth": 1,
+            "id": "n3",
+            "kind": "fn",
+            "label": "fn search_path",
+            "parentId": "n0",
+            "read": "src/lib.rs:636:657",
+            "role": "declaration"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "mutation"
+            ],
+            "id": "n4",
+            "kind": "let",
+            "label": "assign path",
+            "parentId": "n3",
+            "read": "src/lib.rs:654:654",
+            "role": "mutation"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "mutation"
+            ],
+            "id": "n5",
+            "kind": "let",
+            "label": "assign file",
+            "parentId": "n3",
+            "read": "src/lib.rs:655:655",
+            "role": "mutation"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "return"
+            ],
+            "id": "n6",
+            "kind": "return",
+            "label": "return search_file_maybe_path",
+            "parentId": "n3",
+            "read": "src/lib.rs:656:656",
+            "role": "terminal"
+          },
+          {
+            "depth": 1,
+            "id": "n7",
+            "kind": "fn",
+            "label": "fn search_file",
+            "parentId": "n0",
+            "read": "src/lib.rs:659:676",
+            "role": "declaration"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "return"
+            ],
+            "id": "n8",
+            "kind": "return",
+            "label": "return search_file_maybe_path",
+            "parentId": "n7",
+            "read": "src/lib.rs:675:675",
+            "role": "terminal"
+          },
+          {
+            "depth": 1,
+            "id": "n9",
+            "kind": "fn",
+            "label": "fn search_file_maybe_path",
+            "parentId": "n0",
+            "read": "src/lib.rs:678:714",
+            "role": "declaration"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "branch",
+              "guard"
+            ],
+            "id": "n10",
+            "kind": "if",
+            "label": "if let Some(mmap) = self.config.mmap.open(file, path)",
+            "parentId": "n9",
+            "read": "src/lib.rs:689:692",
+            "role": "control-flow"
+          },
+          {
+            "depth": 3,
+            "flags": [
+              "call"
+            ],
+            "id": "n11",
+            "kind": "macro",
+            "label": "call log::trace!(\"{:?}: searching via memory map\", path)",
+            "parentId": "n10",
+            "read": "src/lib.rs:690:690",
+            "role": "call"
+          },
+          {
+            "depth": 3,
+            "flags": [
+              "return"
+            ],
+            "id": "n12",
+            "kind": "return",
+            "label": "return self.search_slice(matcher,&mmap, write_to)",
+            "parentId": "n10",
+            "read": "src/lib.rs:691:691",
+            "role": "terminal"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "branch",
+              "guard"
+            ],
+            "id": "n13",
+            "kind": "if",
+            "label": "if self.multi_line_with_matcher(&matcher)",
+            "parentId": "n9",
+            "read": "src/lib.rs:696:713",
+            "role": "control-flow"
+          },
+          {
+            "depth": 3,
+            "flags": [
+              "call"
+            ],
+            "id": "n14",
+            "kind": "macro",
+            "label": "call log::trace!(\"{:?}: reading entire file on to heap for mulitline\", path)",
+            "parentId": "n13",
+            "read": "src/lib.rs:697:700",
+            "role": "call"
+          },
+          {
+            "depth": 3,
+            "flags": [
+              "effect"
+            ],
+            "id": "n15",
+            "kind": "try",
+            "label": "try self.fill_multi_line_buffer_from_file::<S>(file)",
+            "parentId": "n13",
+            "read": "src/lib.rs:701:701",
+            "role": "effect"
+          },
+          {
+            "depth": 4,
+            "flags": [
+              "call"
+            ],
+            "id": "n16",
+            "kind": "call",
+            "label": "call fill_multi_line_buffer_from_file",
+            "parentId": "n15",
+            "read": "src/lib.rs:701:701",
+            "role": "call"
+          },
+          {
+            "depth": 3,
+            "flags": [
+              "call"
+            ],
+            "id": "n17",
+            "kind": "macro",
+            "label": "call log::trace!(\"{:?}: searching via multiline strategy\", path)",
+            "parentId": "n13",
+            "read": "src/lib.rs:702:702",
+            "role": "call"
+          },
+          {
+            "depth": 3,
+            "flags": [
+              "return"
+            ],
+            "id": "n18",
+            "kind": "return",
+            "label": "return run",
+            "parentId": "n13",
+            "read": "src/lib.rs:703:709",
+            "role": "terminal"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "branch"
+            ],
+            "id": "n19",
+            "kind": "else",
+            "label": "else",
+            "parentId": "n9",
+            "read": "src/lib.rs:710:713",
+            "role": "control-flow"
+          },
+          {
+            "depth": 3,
+            "flags": [
+              "call"
+            ],
+            "id": "n20",
+            "kind": "macro",
+            "label": "call log::trace!(\"{:?}: searching using generic reader\", path)",
+            "parentId": "n19",
+            "read": "src/lib.rs:711:711",
+            "role": "call"
+          },
+          {
+            "depth": 3,
+            "flags": [
+              "return"
+            ],
+            "id": "n21",
+            "kind": "return",
+            "label": "return search_reader",
+            "parentId": "n19",
+            "read": "src/lib.rs:712:712",
+            "role": "terminal"
+          },
+          {
+            "depth": 1,
+            "id": "n22",
+            "kind": "fn",
+            "label": "fn search_reader",
+            "parentId": "n0",
+            "read": "src/lib.rs:716:765",
+            "role": "declaration"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "effect"
+            ],
+            "id": "n23",
+            "kind": "try",
+            "label": "try self.check_config(&matcher).map_err(S::Error::error_config)",
+            "parentId": "n22",
+            "read": "src/lib.rs:738:738",
+            "role": "effect"
+          }
+        ],
+        "nodesTruncated": true,
+        "sourceAuthority": "native-parser",
+        "syntax": "semantic-outline"
+      },
+      "read": "src/lib.rs:627:828",
+      "truncated": true,
+      "visibility": "private"
+    },
+    {
+      "doc": false,
+      "kind": "impl",
+      "location": {
+        "lineRange": "830:1029",
+        "path": "src/lib.rs"
+      },
+      "name": "Searcher",
+      "projection": {
+        "exactRead": "src/lib.rs:830:1029",
+        "expandActions": [
+          {
+            "kind": "hot-block",
+            "read": "src/lib.rs:897:899",
+            "reason": "parser-projection-control-flow",
+            "target": "n9"
+          },
+          {
+            "kind": "hot-block",
+            "read": "src/lib.rs:898:898",
+            "reason": "parser-projection-terminal",
+            "target": "n10"
+          },
+          {
+            "kind": "hot-block",
+            "read": "src/lib.rs:900:904",
+            "reason": "parser-projection-control-flow",
+            "target": "n11"
+          },
+          {
+            "kind": "hot-block",
+            "read": "src/lib.rs:901:903",
+            "reason": "parser-projection-control-flow",
+            "target": "n12"
+          },
+          {
+            "kind": "hot-block",
+            "read": "src/lib.rs:902:902",
+            "reason": "parser-projection-terminal",
+            "target": "n13"
+          },
+          {
+            "kind": "hot-block",
+            "read": "src/lib.rs:905:913",
+            "reason": "parser-projection-control-flow",
+            "target": "n14"
+          },
+          {
+            "kind": "hot-block",
+            "read": "src/lib.rs:910:912",
+            "reason": "parser-projection-control-flow",
+            "target": "n15"
+          },
+          {
+            "kind": "hot-block",
+            "read": "src/lib.rs:911:911",
+            "reason": "parser-projection-terminal",
+            "target": "n16"
+          },
+          {
+            "kind": "hot-block",
+            "read": "src/lib.rs:914:914",
+            "reason": "parser-projection-terminal",
+            "target": "n17"
+          },
+          {
+            "kind": "hot-block",
+            "read": "src/lib.rs:946:946",
+            "reason": "parser-projection-mutation",
+            "target": "n23"
+          }
+        ],
+        "losslessStructure": false,
+        "mode": "compact",
+        "nodeCount": 64,
+        "nodeLimit": 24,
+        "nodes": [
+          {
+            "depth": 0,
+            "id": "n0",
+            "kind": "impl",
+            "label": "impl Searcher",
+            "read": "src/lib.rs:830:1029",
+            "role": "declaration"
+          },
+          {
+            "depth": 1,
+            "id": "n1",
+            "kind": "fn",
+            "label": "fn line_terminator",
+            "parentId": "n0",
+            "read": "src/lib.rs:834:838",
+            "role": "declaration"
+          },
+          {
+            "depth": 1,
+            "id": "n2",
+            "kind": "fn",
+            "label": "fn binary_detection",
+            "parentId": "n0",
+            "read": "src/lib.rs:840:844",
+            "role": "declaration"
+          },
+          {
+            "depth": 1,
+            "id": "n3",
+            "kind": "fn",
+            "label": "fn invert_match",
+            "parentId": "n0",
+            "read": "src/lib.rs:846:852",
+            "role": "declaration"
+          },
+          {
+            "depth": 1,
+            "id": "n4",
+            "kind": "fn",
+            "label": "fn line_number",
+            "parentId": "n0",
+            "read": "src/lib.rs:854:859",
+            "role": "declaration"
+          },
+          {
+            "depth": 1,
+            "id": "n5",
+            "kind": "fn",
+            "label": "fn multi_line",
+            "parentId": "n0",
+            "read": "src/lib.rs:861:866",
+            "role": "declaration"
+          },
+          {
+            "depth": 1,
+            "id": "n6",
+            "kind": "fn",
+            "label": "fn stop_on_nonmatch",
+            "parentId": "n0",
+            "read": "src/lib.rs:868:873",
+            "role": "declaration"
+          },
+          {
+            "depth": 1,
+            "id": "n7",
+            "kind": "fn",
+            "label": "fn max_matches",
+            "parentId": "n0",
+            "read": "src/lib.rs:875:887",
+            "role": "declaration"
+          },
+          {
+            "depth": 1,
+            "id": "n8",
+            "kind": "fn",
+            "label": "fn multi_line_with_matcher",
+            "parentId": "n0",
+            "read": "src/lib.rs:889:915",
+            "role": "declaration"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "branch",
+              "guard"
+            ],
+            "id": "n9",
+            "kind": "if",
+            "label": "if ! self.multi_line()",
+            "parentId": "n8",
+            "read": "src/lib.rs:897:899",
+            "role": "control-flow"
+          },
+          {
+            "depth": 3,
+            "flags": [
+              "return"
+            ],
+            "id": "n10",
+            "kind": "return",
+            "label": "return false",
+            "parentId": "n9",
+            "read": "src/lib.rs:898:898",
+            "role": "terminal"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "branch",
+              "guard"
+            ],
+            "id": "n11",
+            "kind": "if",
+            "label": "if let Some(line_term) = matcher.line_terminator()",
+            "parentId": "n8",
+            "read": "src/lib.rs:900:904",
+            "role": "control-flow"
+          },
+          {
+            "depth": 3,
+            "flags": [
+              "branch",
+              "guard"
+            ],
+            "id": "n12",
+            "kind": "if",
+            "label": "if line_term == self.line_terminator()",
+            "parentId": "n11",
+            "read": "src/lib.rs:901:903",
+            "role": "control-flow"
+          },
+          {
+            "depth": 4,
+            "flags": [
+              "return"
+            ],
+            "id": "n13",
+            "kind": "return",
+            "label": "return false",
+            "parentId": "n12",
+            "read": "src/lib.rs:902:902",
+            "role": "terminal"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "branch",
+              "guard"
+            ],
+            "id": "n14",
+            "kind": "if",
+            "label": "if let Some(non_matching) = matcher.non_matching_bytes()",
+            "parentId": "n8",
+            "read": "src/lib.rs:905:913",
+            "role": "control-flow"
+          },
+          {
+            "depth": 3,
+            "flags": [
+              "branch",
+              "guard"
+            ],
+            "id": "n15",
+            "kind": "if",
+            "label": "if non_matching.contains(self.line_terminator().as_byte())",
+            "parentId": "n14",
+            "read": "src/lib.rs:910:912",
+            "role": "control-flow"
+          },
+          {
+            "depth": 4,
+            "flags": [
+              "return"
+            ],
+            "id": "n16",
+            "kind": "return",
+            "label": "return false",
+            "parentId": "n15",
+            "read": "src/lib.rs:911:911",
+            "role": "terminal"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "return"
+            ],
+            "id": "n17",
+            "kind": "return",
+            "label": "return true",
+            "parentId": "n8",
+            "read": "src/lib.rs:914:914",
+            "role": "terminal"
+          },
+          {
+            "depth": 1,
+            "id": "n18",
+            "kind": "fn",
+            "label": "fn after_context",
+            "parentId": "n0",
+            "read": "src/lib.rs:917:922",
+            "role": "declaration"
+          },
+          {
+            "depth": 1,
+            "id": "n19",
+            "kind": "fn",
+            "label": "fn before_context",
+            "parentId": "n0",
+            "read": "src/lib.rs:924:929",
+            "role": "declaration"
+          },
+          {
+            "depth": 1,
+            "id": "n20",
+            "kind": "fn",
+            "label": "fn passthru",
+            "parentId": "n0",
+            "read": "src/lib.rs:931:935",
+            "role": "declaration"
+          },
+          {
+            "depth": 1,
+            "id": "n21",
+            "kind": "fn",
+            "label": "fn fill_multi_line_buffer_from_file",
+            "parentId": "n0",
+            "read": "src/lib.rs:937:969",
+            "role": "declaration"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "call"
+            ],
+            "id": "n22",
+            "kind": "macro",
+            "label": "call assert!(self.config.multi_line)",
+            "parentId": "n21",
+            "read": "src/lib.rs:944:944",
+            "role": "call"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "mutation"
+            ],
+            "id": "n23",
+            "kind": "let",
+            "label": "assign decode_buffer",
+            "parentId": "n21",
+            "read": "src/lib.rs:946:946",
+            "role": "mutation"
+          }
+        ],
+        "nodesTruncated": true,
+        "sourceAuthority": "native-parser",
+        "syntax": "semantic-outline"
+      },
+      "read": "src/lib.rs:830:1029",
+      "truncated": true,
+      "visibility": "private"
+    }
+  ],
+  "method": "query/owner-items",
+  "namespace": "agent.semantic-protocols.languages.rust.rs-harness",
+  "outputMode": "code",
+  "ownerPath": "src/lib.rs",
+  "projectRoot": ".",
+  "protocolId": "agent.semantic-protocols.semantic-language",
+  "protocolVersion": "1",
+  "providerId": "rs-harness",
+  "query": "Searcher",
+  "queryCoverage": [
+    {
+      "match": "exact",
+      "matchCount": 3,
+      "nextAction": "code",
+      "status": "hit",
+      "value": "Searcher"
+    }
+  ],
+  "queryTerms": [
+    "Searcher"
+  ],
+  "schemaId": "agent.semantic-protocols.semantic-query-packet",
+  "schemaVersion": "1",
+  "truncated": false
+}

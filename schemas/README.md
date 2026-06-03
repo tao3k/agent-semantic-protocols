@@ -23,6 +23,15 @@ slice that lets the LLM choose the next focused search. The graph schema exists
 to keep that embedded vocabulary aligned across providers, not to introduce a
 separate `search graph` or top-level graph exploration workflow.
 
+`semantic-compact-graph-render.v1.schema.json` is the shared prompt-facing
+render template for compact graph search output. It owns the view-native
+header grammar, alias line grammar, dense alias separator, combined
+`rank=... frontier=...` line, search-root alias, and source-kind to
+node/action/relation vocabulary used by Rust, TypeScript, Python, and future
+providers. Providers still derive facts
+from `semantic-search-packet.v1.schema.json`; this schema prevents each
+language from hand-inventing a different compact text template.
+
 `semantic-type-surface.v1.schema.json` is the shared vocabulary for
 language-neutral public type surface facts. It owns the facts that agents need
 to compare across Rust, TypeScript, Python, Julia, and future providers: type
@@ -228,6 +237,15 @@ selector is broad or low-signal, providers should emit `readPlan` with
 `code=false` instead of `sourceWindows`; broad discovery still stays in provider
 search, prime, ingest, or normal query repair.
 
+`semantic-ast-patch.v1.schema.json` and
+`semantic-ast-patch-receipt.v1.schema.json` define the compact AST patch
+verification boundary for `semantic-agent-protocol ast-patch`. The request owns
+the language, provider, parser locator, `read` locator, and operation intent
+using compact `path:start:end` and `lineRange` strings, not
+`startLine`/`endLine` fields. The receipt records whether the packet is well
+formed and, for Codex adapters, explicitly keeps `mutationAvailable=false` so
+Codex still applies edits through its native `apply_patch` tool.
+
 `semantic-search-packet.v1.schema.json` owns the search-synthesis frontier that
 precedes read packets. `searchSynthesis.editFrontier` names source owners,
 `searchSynthesis.testFrontier` names coupled tests, and
@@ -417,10 +435,11 @@ facts. The shared schema owns the graph algorithm name, scope, high-impact
 owners, frontier owners, and finding owners as explicit `searchSynthesis`
 properties; derived follow-up routes belong in `searchSynthesis.seeds`. These
 facts rank and explain parser-owned owner/dependency/test edges but do not
-introduce a second source of truth. In agent-facing compact output, RFC 006
-maps `searchSynthesis.algorithm` to `alg=`, selected order to `rank=`, and
-`searchSynthesis.seeds` to `frontier=`. Providers should not render seed or
-synthesis as a second independent prompt protocol.
+introduce a second source of truth. In agent-facing `--view seeds` output,
+providers render derived follow-up routes through the RFC 006 compact graph
+projection: `[search-graph]`, typed aliases, `rank=`, and `frontier=`.
+Providers should not render seed or synthesis as a second independent prompt
+protocol.
 
 Large-library packets should keep source and runtime limits explicit instead
 of forcing the agent to discover them through repeated commands.

@@ -107,6 +107,7 @@ fn rust_harness_activation_routes_raw_root_search_to_hook_query() {
         decision.routes[0].argv,
         [
             "rs-harness",
+            "search",
             "query",
             "--from-hook",
             "direct-source-read",
@@ -115,7 +116,7 @@ fn rust_harness_activation_routes_raw_root_search_to_hook_query() {
             "--term",
             "HookDecision",
             "--surface",
-            "owners,tests",
+            "owner,tests",
             "--view",
             "seeds",
             "."

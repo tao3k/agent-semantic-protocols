@@ -120,10 +120,10 @@ class RawSearchQueryPacketTests(unittest.TestCase):
                                 },
                             },
                             {
-                                "id": "query-set-window-set-line-protocol",
+                                "id": "query-set-compact-frontier",
                                 "command": _cargo_run_command(
                                     "search",
-                                    "text",
+                                    "fzf",
                                     "--query-set",
                                     "DecisionRouteKind::Read",
                                     "--query-set",
@@ -135,11 +135,11 @@ class RawSearchQueryPacketTests(unittest.TestCase):
                                     "crates/semantic-agent-hook",
                                 ),
                                 "expect": {
-                                    "lineProtocol": True,
                                     "stdoutContains": [
-                                        "window_set=",
-                                        "owner:src/classifier.rs",
-                                        "tests:tests/unit/classifier/routes/direct_read/exact.rs",
+                                        "[search-fzf]",
+                                        "O=owner:src/classifier.rs!owner",
+                                        "T3=test:tests/unit/classifier/routes/direct_read/exact.rs!tests",
+                                        "rank=O,T,T2,T3",
                                     ],
                                 },
                             },

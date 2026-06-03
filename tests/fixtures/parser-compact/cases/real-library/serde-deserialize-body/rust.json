@@ -1,0 +1,39 @@
+{
+  "schemaId": "agent.semantic-protocols.parser-compact-case",
+  "schemaVersion": "1",
+  "caseId": "serde-deserialize-body",
+  "variantId": "rust",
+  "languageId": "rust",
+  "providerId": "rs-harness",
+  "featureClass": "real-library",
+  "sourceOrigin": {
+    "kind": "real-project",
+    "repository": "serde-rs/serde",
+    "ref": "5f0f18b92117",
+    "sourcePath": "serde_derive/src/de.rs",
+    "license": "MIT OR Apache-2.0",
+    "note": "Real serde derive deserialize dispatcher used to stress match and return projection."
+  },
+  "fixtureRoot": "tests/fixtures/parser-compact/projects/real-library/serde-deserialize-body/rust",
+  "rawSourcePath": "src/lib.rs",
+  "lineCommand": [
+    "rs-harness",
+    "search",
+    "owner",
+    "src/lib.rs",
+    "items",
+    "--query",
+    "deserialize_body",
+    "--code",
+    "."
+  ],
+  "jsonCommand": [
+    "rs-harness",
+    "query",
+    "src/lib.rs",
+    "--query",
+    "deserialize_body",
+    "--json",
+    "."
+  ]
+}

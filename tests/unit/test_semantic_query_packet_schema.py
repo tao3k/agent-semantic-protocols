@@ -124,7 +124,11 @@ class SemanticQueryPacketSchemaTests(unittest.TestCase):
             }
         ]
         packet["candidateItems"] = [
-            {"name": "parse_ripgrep_like", "reason": "prefix", "term": "parse_ripgrep_scope"}
+            {
+                "name": "parse_ripgrep_like",
+                "reason": "prefix",
+                "term": "parse_ripgrep_scope",
+            }
         ]
         del packet["matches"][0]["code"]  # type: ignore[index]
         del packet["matches"][0]["projection"]  # type: ignore[index]
@@ -157,6 +161,70 @@ class SemanticQueryPacketSchemaTests(unittest.TestCase):
             ],
         }
         self.assertEqual([], self.validation_errors(packet))
+
+    def test_compact_match_can_declare_patch_verify_safety(self) -> None:
+        packet = semantic_query_minimal_packet()
+        packet["patchSafety"] = {
+            "level": "read-safe",
+            "reason": "packet default requires exact source read before editing",
+            "exactRead": "src/lib.rs:6:6",
+        }
+        packet["matches"][0]["patchSafety"] = {  # type: ignore[index]
+            "level": "patch-verify-safe",
+            "target": {
+                "ownerPath": "src/lib.rs",
+                "locator": "src/lib.rs#fn:load",
+                "read": "src/lib.rs:6:6",
+                "location": {"path": "src/lib.rs", "lineRange": "6:6"},
+                "itemName": "load",
+                "itemKind": "fn",
+            },
+            "sourceFingerprint": "sha256:abc123",
+            "parserVersion": "rust:rust-lang-project-harness",
+            "allowedOperations": ["replace_statement", "append_to_block"],
+            "losslessStructure": True,
+        }
+
+        self.assertEqual([], self.validation_errors(packet))
+
+    def test_patch_verify_safety_rejects_start_line_end_line(self) -> None:
+        packet = semantic_query_minimal_packet()
+        packet["matches"][0]["patchSafety"] = {  # type: ignore[index]
+            "level": "patch-verify-safe",
+            "target": {
+                "ownerPath": "src/lib.rs",
+                "locator": "src/lib.rs#fn:load",
+                "read": "src/lib.rs:6:6",
+                "location": {"path": "src/lib.rs", "lineRange": "6:6"},
+                "startLine": 6,
+                "endLine": 6,
+            },
+            "sourceFingerprint": "sha256:abc123",
+            "parserVersion": "rust:rust-lang-project-harness",
+            "allowedOperations": ["replace_statement"],
+        }
+
+        errors = self.validation_errors(packet)
+
+        self.assertNotEqual([], errors)
+
+    def test_patch_verify_safety_requires_source_fingerprint(self) -> None:
+        packet = semantic_query_minimal_packet()
+        packet["matches"][0]["patchSafety"] = {  # type: ignore[index]
+            "level": "patch-verify-safe",
+            "target": {
+                "ownerPath": "src/lib.rs",
+                "locator": "src/lib.rs#fn:load",
+                "read": "src/lib.rs:6:6",
+                "location": {"path": "src/lib.rs", "lineRange": "6:6"},
+            },
+            "parserVersion": "rust:rust-lang-project-harness",
+            "allowedOperations": ["replace_statement"],
+        }
+
+        errors = self.validation_errors(packet)
+
+        self.assertNotEqual([], errors)
 
     def test_read_locator_rejects_rank_prefix_path(self) -> None:
         packet = semantic_query_minimal_packet()

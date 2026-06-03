@@ -108,7 +108,7 @@
       "command": [
         "ts-harness",
         "search",
-        "text",
+        "fzf",
         "--query-set",
         "APIRequestContext",
         "--query-set",

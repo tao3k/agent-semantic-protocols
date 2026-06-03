@@ -2,8 +2,16 @@
   "id": "rust.tokio-intent-matrix",
   "language": "rust",
   "title": "Tokio large-library feature/API/principle intent matrix",
-  "coverage": ["search-flow", "performance", "large-library"],
-  "tags": ["large-library", "tokio", "intent-matrix"],
+  "coverage": [
+    "search-flow",
+    "performance",
+    "large-library"
+  ],
+  "tags": [
+    "large-library",
+    "tokio",
+    "intent-matrix"
+  ],
   "evidence": {
     "source": "handwritten",
     "fixtureTier": "large-library",
@@ -18,26 +26,43 @@
       {
         "intentKind": "feature-implementation",
         "intent": "Implement an io-uring related async IO feature without opening large owners directly",
-        "stepIds": ["prime", "intent-query-set"],
-        "queryTerms": ["io_uring"]
+        "stepIds": [
+          "prime",
+          "intent-query-set"
+        ],
+        "queryTerms": [
+          "io_uring"
+        ]
       },
       {
         "intentKind": "api-usage",
         "intent": "Find how AsyncRead is exposed and used before choosing owners",
-        "stepIds": ["prime", "intent-query-set"],
-        "queryTerms": ["AsyncRead"]
+        "stepIds": [
+          "prime",
+          "intent-query-set"
+        ],
+        "queryTerms": [
+          "AsyncRead"
+        ]
       },
       {
         "intentKind": "implementation-principle",
         "intent": "Understand the runtime scheduler implementation path from compact search packets",
-        "stepIds": ["prime", "intent-query-set"],
-        "queryTerms": ["scheduler"]
+        "stepIds": [
+          "prime",
+          "intent-query-set"
+        ],
+        "queryTerms": [
+          "scheduler"
+        ]
       }
     ]
   },
   "workdir": {
     "env": "SANDTABLE_RUST_TOKIO_ROOT",
-    "candidates": ["~/.cargo/registry/src/*/tokio-[0-9]*"]
+    "candidates": [
+      "~/.cargo/registry/src/*/tokio-[0-9]*"
+    ]
   },
   "budgets": {
     "maxCommands": 2,
@@ -47,12 +72,32 @@
   "steps": [
     {
       "id": "prime",
-      "command": ["rs-harness", "search", "prime", "--view", "seeds", "--seeds", "4", "."],
+      "command": [
+        "rs-harness",
+        "search",
+        "prime",
+        "--view",
+        "seeds",
+        "--seeds",
+        "4",
+        "."
+      ],
       "expect": {
         "lineProtocol": true,
-        "stdoutContains": ["[search-prime]", "|seed"],
+        "stdoutContains": [
+          "[search-prime]",
+          "alias: graph:{G=search",
+          "G=search:result!query",
+          "G>{",
+          "rank=",
+          "frontier="
+        ],
         "maxStdoutLinesWarn": 10,
-        "maxElapsedMsWarn": 2500
+        "maxElapsedMsWarn": 2500,
+        "stdoutNotContains": [
+          "|seed",
+          "|synthesis"
+        ]
       }
     },
     {
@@ -60,7 +105,7 @@
       "command": [
         "rs-harness",
         "search",
-        "text",
+        "fzf",
         "--query-set",
         "io_uring",
         "--query-set",
@@ -75,9 +120,21 @@
       ],
       "expect": {
         "lineProtocol": true,
-        "stdoutContains": ["[search-fzf]", "querySet=3", "|seed"],
+        "stdoutContains": [
+          "[search-fzf]",
+          "querySet=3",
+          "alias: graph:{G=search",
+          "G=search:result!query",
+          "G>{",
+          "rank=",
+          "frontier="
+        ],
         "maxStdoutLinesWarn": 10,
-        "maxElapsedMsWarn": 2500
+        "maxElapsedMsWarn": 2500,
+        "stdoutNotContains": [
+          "|seed",
+          "|synthesis"
+        ]
       }
     }
   ]

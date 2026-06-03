@@ -1,0 +1,408 @@
+{
+  "binary": "ts-harness",
+  "languageId": "typescript",
+  "matchMode": "exact",
+  "matches": [
+    {
+      "fields": {
+        "exportKind": "class",
+        "exported": true,
+        "typeOnly": false
+      },
+      "kind": "class",
+      "location": {
+        "lineRange": "89:274",
+        "path": "src/fetch.ts"
+      },
+      "name": "APIRequestContext",
+      "patchSafety": {
+        "exactRead": "src/fetch.ts:89:274",
+        "level": "read-safe",
+        "reason": "read exact source locator before editing this compact match"
+      },
+      "projection": {
+        "exactRead": "src/fetch.ts:89:274",
+        "expandActions": [
+          {
+            "kind": "exact-read",
+            "read": "src/fetch.ts:89:274",
+            "reason": "read exact source before editing",
+            "target": "APIRequestContext"
+          },
+          {
+            "kind": "exact-read",
+            "read": "src/fetch.ts:96:96",
+            "reason": "expand return node before editing",
+            "target": "APIRequestContext:6"
+          },
+          {
+            "kind": "exact-read",
+            "read": "src/fetch.ts:100:100",
+            "reason": "expand call node before editing",
+            "target": "APIRequestContext:8"
+          },
+          {
+            "kind": "exact-read",
+            "read": "src/fetch.ts:101:101",
+            "reason": "expand assign node before editing",
+            "target": "APIRequestContext:9"
+          },
+          {
+            "kind": "exact-read",
+            "read": "src/fetch.ts:102:102",
+            "reason": "expand assign node before editing",
+            "target": "APIRequestContext:10"
+          },
+          {
+            "kind": "exact-read",
+            "read": "src/fetch.ts:106:106",
+            "reason": "expand await node before editing",
+            "target": "APIRequestContext:12"
+          },
+          {
+            "kind": "exact-read",
+            "read": "src/fetch.ts:110:110",
+            "reason": "expand assign node before editing",
+            "target": "APIRequestContext:16"
+          },
+          {
+            "kind": "exact-read",
+            "read": "src/fetch.ts:111:111",
+            "reason": "expand await node before editing",
+            "target": "APIRequestContext:17"
+          },
+          {
+            "kind": "owner-names",
+            "reason": "return owner-local item names without code windows",
+            "target": "src/fetch.ts"
+          }
+        ],
+        "losslessStructure": true,
+        "mode": "outline",
+        "nodes": [
+          {
+            "depth": 0,
+            "flags": [
+              "field",
+              "return",
+              "call",
+              "mutation",
+              "await",
+              "branch",
+              "throw",
+              "loop"
+            ],
+            "id": "APIRequestContext",
+            "kind": "class",
+            "label": "class APIRequestContext",
+            "read": "src/fetch.ts:89:274",
+            "role": "declaration"
+          },
+          {
+            "depth": 1,
+            "flags": [
+              "field"
+            ],
+            "id": "APIRequestContext:1",
+            "kind": "field",
+            "label": "field _request?: APIRequest",
+            "parentId": "APIRequestContext",
+            "read": "src/fetch.ts:90:90",
+            "role": "field"
+          },
+          {
+            "depth": 1,
+            "flags": [
+              "field"
+            ],
+            "id": "APIRequestContext:2",
+            "kind": "field",
+            "label": "field readonly tracing: Tracing",
+            "parentId": "APIRequestContext",
+            "read": "src/fetch.ts:91:91",
+            "role": "field"
+          },
+          {
+            "depth": 1,
+            "flags": [
+              "field"
+            ],
+            "id": "APIRequestContext:3",
+            "kind": "field",
+            "label": "field _closeReason: string | undefined",
+            "parentId": "APIRequestContext",
+            "read": "src/fetch.ts:92:92",
+            "role": "field"
+          },
+          {
+            "depth": 1,
+            "flags": [
+              "field"
+            ],
+            "id": "APIRequestContext:4",
+            "kind": "field",
+            "label": "field _timeoutSettings: TimeoutSettings",
+            "parentId": "APIRequestContext",
+            "read": "src/fetch.ts:93:93",
+            "role": "field"
+          },
+          {
+            "depth": 1,
+            "id": "APIRequestContext:5",
+            "kind": "method",
+            "label": "method from",
+            "parentId": "APIRequestContext",
+            "read": "src/fetch.ts:95:97",
+            "role": "declaration"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "return"
+            ],
+            "id": "APIRequestContext:6",
+            "kind": "return",
+            "label": "return _object",
+            "parentId": "APIRequestContext:5",
+            "read": "src/fetch.ts:96:96",
+            "role": "terminal"
+          },
+          {
+            "depth": 1,
+            "id": "APIRequestContext:7",
+            "kind": "constructor",
+            "label": "constructor",
+            "parentId": "APIRequestContext",
+            "read": "src/fetch.ts:99:103",
+            "role": "declaration"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "call"
+            ],
+            "id": "APIRequestContext:8",
+            "kind": "call",
+            "label": "call",
+            "parentId": "APIRequestContext:7",
+            "read": "src/fetch.ts:100:100",
+            "role": "call"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "mutation"
+            ],
+            "id": "APIRequestContext:9",
+            "kind": "assign",
+            "label": "this.tracing = Tracing.from(initializer.tracing)",
+            "parentId": "APIRequestContext:7",
+            "read": "src/fetch.ts:101:101",
+            "role": "mutation"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "mutation"
+            ],
+            "id": "APIRequestContext:10",
+            "kind": "assign",
+            "label": "this._timeoutSettings = new TimeoutSettings(this._platform)",
+            "parentId": "APIRequestContext:7",
+            "read": "src/fetch.ts:102:102",
+            "role": "mutation"
+          },
+          {
+            "depth": 1,
+            "id": "APIRequestContext:11",
+            "kind": "method",
+            "label": "async method [Symbol.asyncDispose]",
+            "parentId": "APIRequestContext",
+            "read": "src/fetch.ts:105:107",
+            "role": "declaration"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "await"
+            ],
+            "id": "APIRequestContext:12",
+            "kind": "await",
+            "label": "await",
+            "parentId": "APIRequestContext:11",
+            "read": "src/fetch.ts:106:106",
+            "role": "effect"
+          },
+          {
+            "depth": 3,
+            "flags": [
+              "call"
+            ],
+            "id": "APIRequestContext:13",
+            "kind": "call",
+            "label": "dispose",
+            "parentId": "APIRequestContext:12",
+            "read": "src/fetch.ts:106:106",
+            "role": "call"
+          },
+          {
+            "depth": 1,
+            "id": "APIRequestContext:14",
+            "kind": "method",
+            "label": "async method dispose",
+            "parentId": "APIRequestContext",
+            "read": "src/fetch.ts:109:122",
+            "role": "declaration"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "field"
+            ],
+            "id": "APIRequestContext:15",
+            "kind": "field",
+            "label": "field reason?: string",
+            "parentId": "APIRequestContext:14",
+            "read": "src/fetch.ts:109:109",
+            "role": "field"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "mutation"
+            ],
+            "id": "APIRequestContext:16",
+            "kind": "assign",
+            "label": "this._closeReason = options.reason",
+            "parentId": "APIRequestContext:14",
+            "read": "src/fetch.ts:110:110",
+            "role": "mutation"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "await"
+            ],
+            "id": "APIRequestContext:17",
+            "kind": "await",
+            "label": "await",
+            "parentId": "APIRequestContext:14",
+            "read": "src/fetch.ts:111:111",
+            "role": "effect"
+          },
+          {
+            "depth": 3,
+            "flags": [
+              "call"
+            ],
+            "id": "APIRequestContext:18",
+            "kind": "call",
+            "label": "runBeforeCloseRequestContext",
+            "parentId": "APIRequestContext:17",
+            "read": "src/fetch.ts:111:111",
+            "role": "call"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "await"
+            ],
+            "id": "APIRequestContext:19",
+            "kind": "await",
+            "label": "await",
+            "parentId": "APIRequestContext:14",
+            "read": "src/fetch.ts:112:112",
+            "role": "effect"
+          },
+          {
+            "depth": 3,
+            "flags": [
+              "call"
+            ],
+            "id": "APIRequestContext:20",
+            "kind": "call",
+            "label": "_exportAllHars",
+            "parentId": "APIRequestContext:19",
+            "read": "src/fetch.ts:112:112",
+            "role": "call"
+          },
+          {
+            "depth": 2,
+            "id": "APIRequestContext:21",
+            "kind": "try",
+            "label": "try",
+            "parentId": "APIRequestContext:14",
+            "read": "src/fetch.ts:113:119",
+            "role": "control-flow"
+          },
+          {
+            "depth": 3,
+            "flags": [
+              "await"
+            ],
+            "id": "APIRequestContext:22",
+            "kind": "await",
+            "label": "await",
+            "parentId": "APIRequestContext:21",
+            "read": "src/fetch.ts:114:114",
+            "role": "effect"
+          },
+          {
+            "depth": 4,
+            "flags": [
+              "call"
+            ],
+            "id": "APIRequestContext:23",
+            "kind": "call",
+            "label": "dispose",
+            "parentId": "APIRequestContext:22",
+            "read": "src/fetch.ts:114:114",
+            "role": "call"
+          }
+        ],
+        "omitted": [
+          {
+            "count": 186,
+            "kind": "source-formatting",
+            "read": "src/fetch.ts:89:274",
+            "reason": "compact projection removes original whitespace and comments"
+          }
+        ],
+        "sourceAuthority": "native-parser",
+        "sourceFingerprint": "src/fetch.ts:89:274:6447:37041db9",
+        "syntax": "semantic-outline"
+      },
+      "read": "src/fetch.ts:89:274",
+      "truncated": false,
+      "visibility": "public"
+    }
+  ],
+  "method": "query/owner-items",
+  "namespace": "agent.semantic-protocols.languages.typescript.ts-harness",
+  "outputMode": "code",
+  "ownerPath": "src/fetch.ts",
+  "patchSafety": {
+    "level": "read-safe",
+    "nextAction": "query --from-hook direct-source-read",
+    "reason": "compact query packet is not a mutation authority"
+  },
+  "projectRoot": "tests/fixtures/parser-compact/projects/real-library/playwright-api-request-context/typescript",
+  "protocolId": "agent.semantic-protocols.semantic-language",
+  "protocolVersion": "1",
+  "providerId": "ts-harness",
+  "query": "APIRequestContext",
+  "queryCoverage": [
+    {
+      "match": "exact",
+      "matchCount": 1,
+      "status": "hit",
+      "value": "APIRequestContext"
+    }
+  ],
+  "queryTerms": [
+    "APIRequestContext"
+  ],
+  "schemaId": "agent.semantic-protocols.semantic-query-packet",
+  "schemaVersion": "1",
+  "truncated": false
+}

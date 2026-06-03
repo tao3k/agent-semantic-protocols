@@ -27,6 +27,7 @@ class ParserCompactCase:
     language_id: str
     provider_id: str
     feature_class: str
+    source_origin: dict[str, object]
     fixture_root: Path
     raw_source_path: Path
     line_command: list[str]
@@ -45,6 +46,7 @@ def load_case(case_path: Path) -> ParserCompactCase:
         language_id=data["languageId"],
         provider_id=data["providerId"],
         feature_class=data["featureClass"],
+        source_origin=dict(data["sourceOrigin"]),
         fixture_root=fixture_root,
         raw_source_path=fixture_root / data["rawSourcePath"],
         line_command=list(data["lineCommand"]),
@@ -60,7 +62,7 @@ def load_case(case_path: Path) -> ParserCompactCase:
 def output_set(root: Path, language_id: str) -> ParserCompactOutputSet:
     return ParserCompactOutputSet(
         root=root,
-        line=root / "line.txt",
+        line=root / f"line.{code_extension(language_id)}",
         code=root / f"code.{code_extension(language_id)}",
         query_packet=root / "query-packet.json",
         token_cost=root / "token-cost.json",

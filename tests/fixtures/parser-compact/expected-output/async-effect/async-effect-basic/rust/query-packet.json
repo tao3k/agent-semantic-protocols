@@ -37,16 +37,24 @@
             "read": "src/lib.rs:31:31",
             "reason": "parser-projection-mutation",
             "target": "n4"
+          },
+          {
+            "kind": "hot-block",
+            "read": "src/lib.rs:32:32",
+            "reason": "parser-projection-terminal",
+            "target": "n5"
           }
         ],
         "losslessStructure": true,
         "mode": "compact",
+        "nodeCount": 6,
+        "nodeLimit": 24,
         "nodes": [
           {
             "depth": 0,
             "id": "n0",
             "kind": "fn",
-            "label": "pub async fn load_user(client: &Client, user_id: u64) -> Result<String, String>",
+            "label": "async fn load_user",
             "read": "src/lib.rs:26:33",
             "role": "declaration"
           },
@@ -57,7 +65,7 @@
             ],
             "id": "n1",
             "kind": "let",
-            "label": "let response = fetch.await?",
+            "label": "assign response",
             "parentId": "n0",
             "read": "src/lib.rs:27:27",
             "role": "mutation"
@@ -94,7 +102,7 @@
             ],
             "id": "n4",
             "kind": "let",
-            "label": "let body = text.await",
+            "label": "assign body",
             "parentId": "n0",
             "read": "src/lib.rs:31:31",
             "role": "mutation"
@@ -102,16 +110,17 @@
           {
             "depth": 1,
             "flags": [
-              "call"
+              "return"
             ],
             "id": "n5",
-            "kind": "call",
-            "label": "call Ok",
+            "kind": "return",
+            "label": "return Ok",
             "parentId": "n0",
             "read": "src/lib.rs:32:32",
-            "role": "call"
+            "role": "terminal"
           }
         ],
+        "nodesTruncated": false,
         "sourceAuthority": "native-parser",
         "syntax": "semantic-outline"
       },

@@ -13,6 +13,7 @@
     "languageId",
     "providerId",
     "featureClass",
+    "sourceOrigin",
     "fixtureRoot",
     "rawSourcePath",
     "lineCommand",
@@ -46,6 +47,9 @@
       "type": "string",
       "pattern": "^[a-z][a-z0-9_-]*$"
     },
+    "sourceOrigin": {
+      "$ref": "#/$defs/sourceOrigin"
+    },
     "fixtureRoot": {
       "$ref": "#/$defs/repoPath"
     },
@@ -60,6 +64,35 @@
     }
   },
   "$defs": {
+    "sourceOrigin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "repository", "sourcePath"],
+      "properties": {
+        "kind": {
+          "enum": ["synthetic", "real-project"]
+        },
+        "repository": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sourcePath": {
+          "$ref": "#/$defs/relativePath"
+        },
+        "license": {
+          "type": "string",
+          "minLength": 1
+        },
+        "note": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
     "providerCommand": {
       "type": "array",
       "minItems": 2,

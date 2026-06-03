@@ -35,5 +35,11 @@
     "decide",
     "--json",
     "."
-  ]
+  ],
+  "sourceOrigin": {
+    "kind": "synthetic",
+    "repository": "agent-semantic-protocols",
+    "sourcePath": "src/control_flow.py",
+    "note": "Synthetic compact fixture kept for language parity smoke coverage."
+  }
 }

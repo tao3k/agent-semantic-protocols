@@ -233,7 +233,10 @@ EditPlan
 #+end_src
 
 This is NOT a patch — it's a /semantic edit operation/.  The Rust agent-core
-(or the LLM) decides how to apply it.
+(or the LLM) decides how to apply it.  RFC 007
+(=rfcs/semantic-ast-apply-patch-protocol.org=) refines this lane with an
+AST-native dry-run/apply receipt for cases where parser-owned structural edits
+are safer than text hunks.
 
 ** =edit/validate=
 
@@ -382,8 +385,8 @@ Starting from:
    })
    → lane returns related config/service files
 
-4. Rust edit_file / apply_patch
-   → modifies source
+4. Rust edit_file / apply_patch, or RFC 007 =ast_apply_patch=
+   → modifies source after a mutation receipt or text patch is accepted
 
 5. validate_code_edit(plan_id)
    → plan satisfied? true/false

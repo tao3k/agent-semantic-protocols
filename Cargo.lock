@@ -205,6 +205,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "semantic-agent-protocol"
+version = "0.1.0"
+dependencies = [
+ "rust-lang-project-harness",
+ "semantic-agent-hook",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "serde"
 version = "1.0.228"
 source = "registry+https://github.com/rust-lang/crates.io-index"

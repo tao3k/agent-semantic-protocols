@@ -1,0 +1,28 @@
+{
+  "caseId": "vite-resolve-config",
+  "compactCodeDelta": 19903,
+  "compactCodeRatio": 0.0073,
+  "compactCodeTokens": 146,
+  "compactLineDelta": 19903,
+  "compactLineRatio": 0.0073,
+  "compactLineTokens": 146,
+  "featureClass": "real-library",
+  "languageId": "typescript",
+  "providerId": "ts-harness",
+  "queryPacketDelta": 17080,
+  "queryPacketRatio": 0.1481,
+  "queryPacketTokens": 2969,
+  "rawSourceTokens": 20049,
+  "schemaId": "agent.semantic-protocols.parser-compact-token-cost",
+  "schemaVersion": "1",
+  "sourceOrigin": {
+    "kind": "real-project",
+    "license": "MIT",
+    "note": "Real Vite config resolver used to stress async configuration flow compacting.",
+    "ref": "8d1b0195fd18",
+    "repository": "vitejs/vite",
+    "sourcePath": "packages/vite/src/node/config.ts"
+  },
+  "tokenizerId": "tiktoken:o200k_base",
+  "variantId": "typescript"
+}

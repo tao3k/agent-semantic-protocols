@@ -1,0 +1,28 @@
+{
+  "caseId": "ripgrep-searcher",
+  "compactCodeDelta": 8529,
+  "compactCodeRatio": 0.0785,
+  "compactCodeTokens": 727,
+  "compactLineDelta": 8529,
+  "compactLineRatio": 0.0785,
+  "compactLineTokens": 727,
+  "featureClass": "real-library",
+  "languageId": "rust",
+  "providerId": "rs-harness",
+  "queryPacketDelta": 3322,
+  "queryPacketRatio": 0.6411,
+  "queryPacketTokens": 5934,
+  "rawSourceTokens": 9256,
+  "schemaId": "agent.semantic-protocols.parser-compact-token-cost",
+  "schemaVersion": "1",
+  "sourceOrigin": {
+    "kind": "real-project",
+    "license": "Unlicense OR MIT",
+    "note": "Real ripgrep searcher implementation used to expose large impl and duplicate compact risks.",
+    "ref": "4857d6fa67db",
+    "repository": "BurntSushi/ripgrep",
+    "sourcePath": "crates/searcher/src/searcher/mod.rs"
+  },
+  "tokenizerId": "tiktoken:o200k_base",
+  "variantId": "rust"
+}

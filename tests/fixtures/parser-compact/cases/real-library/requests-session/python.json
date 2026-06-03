@@ -1,0 +1,39 @@
+{
+  "schemaId": "agent.semantic-protocols.parser-compact-case",
+  "schemaVersion": "1",
+  "caseId": "requests-session",
+  "variantId": "python",
+  "languageId": "python",
+  "providerId": "py-harness",
+  "featureClass": "real-library",
+  "sourceOrigin": {
+    "kind": "real-project",
+    "repository": "psf/requests",
+    "ref": "3be097d450ee",
+    "sourcePath": "src/requests/sessions.py",
+    "license": "Apache-2.0",
+    "note": "Real Requests Session used to stress public HTTP client method compacting."
+  },
+  "fixtureRoot": "tests/fixtures/parser-compact/projects/real-library/requests-session/python",
+  "rawSourcePath": "src/sessions.py",
+  "lineCommand": [
+    "py-harness",
+    "search",
+    "owner",
+    "src/sessions.py",
+    "items",
+    "--query",
+    "Session",
+    "--code",
+    "."
+  ],
+  "jsonCommand": [
+    "py-harness",
+    "query",
+    "src/sessions.py",
+    "--term",
+    "Session",
+    "--json",
+    "."
+  ]
+}

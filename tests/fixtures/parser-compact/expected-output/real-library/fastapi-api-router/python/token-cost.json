@@ -1,0 +1,28 @@
+{
+  "caseId": "fastapi-api-router",
+  "compactCodeDelta": 36245,
+  "compactCodeRatio": 0.0226,
+  "compactCodeTokens": 838,
+  "compactLineDelta": 36245,
+  "compactLineRatio": 0.0226,
+  "compactLineTokens": 838,
+  "featureClass": "real-library",
+  "languageId": "python",
+  "providerId": "py-harness",
+  "queryPacketDelta": 34019,
+  "queryPacketRatio": 0.0826,
+  "queryPacketTokens": 3064,
+  "rawSourceTokens": 37083,
+  "schemaId": "agent.semantic-protocols.parser-compact-token-cost",
+  "schemaVersion": "1",
+  "sourceOrigin": {
+    "kind": "real-project",
+    "license": "MIT",
+    "note": "Real FastAPI APIRouter used to stress route registration and nested decorator compacting.",
+    "ref": "0ee8a2424953",
+    "repository": "fastapi/fastapi",
+    "sourcePath": "fastapi/routing.py"
+  },
+  "tokenizerId": "tiktoken:o200k_base",
+  "variantId": "python"
+}

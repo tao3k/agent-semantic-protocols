@@ -1,0 +1,39 @@
+{
+  "schemaId": "agent.semantic-protocols.parser-compact-case",
+  "schemaVersion": "1",
+  "caseId": "tokio-join-set",
+  "variantId": "rust",
+  "languageId": "rust",
+  "providerId": "rs-harness",
+  "featureClass": "real-library",
+  "sourceOrigin": {
+    "kind": "real-project",
+    "repository": "tokio-rs/tokio",
+    "ref": "2de86e557c57",
+    "sourcePath": "tokio/src/task/join_set.rs",
+    "license": "MIT",
+    "note": "Real Tokio JoinSet implementation used to stress async/task outline compacting."
+  },
+  "fixtureRoot": "tests/fixtures/parser-compact/projects/real-library/tokio-join-set/rust",
+  "rawSourcePath": "src/lib.rs",
+  "lineCommand": [
+    "rs-harness",
+    "search",
+    "owner",
+    "src/lib.rs",
+    "items",
+    "--query",
+    "JoinSet",
+    "--code",
+    "."
+  ],
+  "jsonCommand": [
+    "rs-harness",
+    "query",
+    "src/lib.rs",
+    "--query",
+    "JoinSet",
+    "--json",
+    "."
+  ]
+}

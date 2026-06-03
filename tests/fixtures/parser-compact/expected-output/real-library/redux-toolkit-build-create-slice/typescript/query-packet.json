@@ -1,0 +1,412 @@
+{
+  "binary": "ts-harness",
+  "languageId": "typescript",
+  "matchMode": "exact",
+  "matches": [
+    {
+      "fields": {
+        "exportKind": "function",
+        "exported": true,
+        "typeOnly": false
+      },
+      "kind": "function",
+      "location": {
+        "lineRange": "568:821",
+        "path": "src/createSlice.ts"
+      },
+      "name": "buildCreateSlice",
+      "patchSafety": {
+        "exactRead": "src/createSlice.ts:568:821",
+        "level": "read-safe",
+        "reason": "read exact source locator before editing this compact match"
+      },
+      "projection": {
+        "exactRead": "src/createSlice.ts:568:821",
+        "expandActions": [
+          {
+            "kind": "exact-read",
+            "read": "src/createSlice.ts:568:821",
+            "reason": "read exact source before editing",
+            "target": "buildCreateSlice"
+          },
+          {
+            "kind": "exact-read",
+            "read": "src/createSlice.ts:569:569",
+            "reason": "expand const node before editing",
+            "target": "buildCreateSlice:1"
+          },
+          {
+            "kind": "exact-read",
+            "read": "src/createSlice.ts:570:820",
+            "reason": "expand return node before editing",
+            "target": "buildCreateSlice:2"
+          },
+          {
+            "kind": "exact-read",
+            "read": "src/createSlice.ts:585:585",
+            "reason": "expand const node before editing",
+            "target": "buildCreateSlice:3"
+          },
+          {
+            "kind": "exact-read",
+            "read": "src/createSlice.ts:586:588",
+            "reason": "expand if node before editing",
+            "target": "buildCreateSlice:4"
+          },
+          {
+            "kind": "exact-read",
+            "read": "src/createSlice.ts:587:587",
+            "reason": "expand throw node before editing",
+            "target": "buildCreateSlice:5"
+          },
+          {
+            "kind": "exact-read",
+            "read": "src/createSlice.ts:590:599",
+            "reason": "expand if node before editing",
+            "target": "buildCreateSlice:6"
+          },
+          {
+            "kind": "exact-read",
+            "read": "src/createSlice.ts:594:598",
+            "reason": "expand if node before editing",
+            "target": "buildCreateSlice:7"
+          },
+          {
+            "kind": "owner-names",
+            "reason": "return owner-local item names without code windows",
+            "target": "src/createSlice.ts"
+          }
+        ],
+        "losslessStructure": true,
+        "mode": "outline",
+        "nodes": [
+          {
+            "depth": 0,
+            "flags": [
+              "mutation",
+              "return",
+              "branch",
+              "throw",
+              "call",
+              "loop"
+            ],
+            "id": "buildCreateSlice",
+            "kind": "function",
+            "label": "function buildCreateSlice",
+            "read": "src/createSlice.ts:568:821",
+            "role": "declaration"
+          },
+          {
+            "depth": 1,
+            "flags": [
+              "mutation"
+            ],
+            "id": "buildCreateSlice:1",
+            "kind": "const",
+            "label": "assign cAT",
+            "parentId": "buildCreateSlice",
+            "read": "src/createSlice.ts:569:569",
+            "role": "mutation"
+          },
+          {
+            "depth": 1,
+            "flags": [
+              "return"
+            ],
+            "id": "buildCreateSlice:2",
+            "kind": "return",
+            "label": "return function createSlice",
+            "parentId": "buildCreateSlice",
+            "read": "src/createSlice.ts:570:820",
+            "role": "terminal"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "mutation"
+            ],
+            "id": "buildCreateSlice:3",
+            "kind": "const",
+            "label": "assign { name, reducerPath = name as unknown as ReducerPath }",
+            "parentId": "buildCreateSlice:2",
+            "read": "src/createSlice.ts:585:585",
+            "role": "mutation"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "branch"
+            ],
+            "id": "buildCreateSlice:4",
+            "kind": "if",
+            "label": "if !name",
+            "parentId": "buildCreateSlice:2",
+            "read": "src/createSlice.ts:586:588",
+            "role": "control-flow"
+          },
+          {
+            "depth": 3,
+            "flags": [
+              "throw"
+            ],
+            "id": "buildCreateSlice:5",
+            "kind": "throw",
+            "label": "throw new Error",
+            "parentId": "buildCreateSlice:4",
+            "read": "src/createSlice.ts:587:587",
+            "role": "terminal"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "branch"
+            ],
+            "id": "buildCreateSlice:6",
+            "kind": "if",
+            "label": "if typeof process !== 'undefined' && process.env.NODE_ENV === 'development'",
+            "parentId": "buildCreateSlice:2",
+            "read": "src/createSlice.ts:590:599",
+            "role": "control-flow"
+          },
+          {
+            "depth": 3,
+            "flags": [
+              "branch"
+            ],
+            "id": "buildCreateSlice:7",
+            "kind": "if",
+            "label": "if options.initialState === undefined",
+            "parentId": "buildCreateSlice:6",
+            "read": "src/createSlice.ts:594:598",
+            "role": "control-flow"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "mutation"
+            ],
+            "id": "buildCreateSlice:8",
+            "kind": "const",
+            "label": "assign reducers",
+            "parentId": "buildCreateSlice:2",
+            "read": "src/createSlice.ts:601:604",
+            "role": "mutation"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "mutation"
+            ],
+            "id": "buildCreateSlice:9",
+            "kind": "const",
+            "label": "assign reducerNames",
+            "parentId": "buildCreateSlice:2",
+            "read": "src/createSlice.ts:606:606",
+            "role": "mutation"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "mutation"
+            ],
+            "id": "buildCreateSlice:10",
+            "kind": "const",
+            "label": "assign context",
+            "parentId": "buildCreateSlice:2",
+            "read": "src/createSlice.ts:608:613",
+            "role": "mutation"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "mutation"
+            ],
+            "id": "buildCreateSlice:11",
+            "kind": "const",
+            "label": "assign contextMethods",
+            "parentId": "buildCreateSlice:2",
+            "read": "src/createSlice.ts:615:650",
+            "role": "mutation"
+          },
+          {
+            "depth": 3,
+            "id": "buildCreateSlice:12",
+            "kind": "method",
+            "label": "method addCase",
+            "parentId": "buildCreateSlice:11",
+            "read": "src/createSlice.ts:616:637",
+            "role": "declaration"
+          },
+          {
+            "depth": 4,
+            "flags": [
+              "mutation"
+            ],
+            "id": "buildCreateSlice:13",
+            "kind": "const",
+            "label": "assign type",
+            "parentId": "buildCreateSlice:12",
+            "read": "src/createSlice.ts:620:623",
+            "role": "mutation"
+          },
+          {
+            "depth": 4,
+            "flags": [
+              "branch"
+            ],
+            "id": "buildCreateSlice:14",
+            "kind": "if",
+            "label": "if !type",
+            "parentId": "buildCreateSlice:12",
+            "read": "src/createSlice.ts:624:628",
+            "role": "control-flow"
+          },
+          {
+            "depth": 5,
+            "flags": [
+              "throw"
+            ],
+            "id": "buildCreateSlice:15",
+            "kind": "throw",
+            "label": "throw new Error",
+            "parentId": "buildCreateSlice:14",
+            "read": "src/createSlice.ts:625:627",
+            "role": "terminal"
+          },
+          {
+            "depth": 4,
+            "flags": [
+              "branch"
+            ],
+            "id": "buildCreateSlice:16",
+            "kind": "if",
+            "label": "if type in context.sliceCaseReducersByType",
+            "parentId": "buildCreateSlice:12",
+            "read": "src/createSlice.ts:629:634",
+            "role": "control-flow"
+          },
+          {
+            "depth": 5,
+            "flags": [
+              "throw"
+            ],
+            "id": "buildCreateSlice:17",
+            "kind": "throw",
+            "label": "throw new Error",
+            "parentId": "buildCreateSlice:16",
+            "read": "src/createSlice.ts:630:633",
+            "role": "terminal"
+          },
+          {
+            "depth": 4,
+            "flags": [
+              "mutation"
+            ],
+            "id": "buildCreateSlice:18",
+            "kind": "assign",
+            "label": "context.sliceCaseReducersByType[type] = reducer",
+            "parentId": "buildCreateSlice:12",
+            "read": "src/createSlice.ts:635:635",
+            "role": "mutation"
+          },
+          {
+            "depth": 4,
+            "flags": [
+              "return"
+            ],
+            "id": "buildCreateSlice:19",
+            "kind": "return",
+            "label": "return contextMethods",
+            "parentId": "buildCreateSlice:12",
+            "read": "src/createSlice.ts:636:636",
+            "role": "terminal"
+          },
+          {
+            "depth": 3,
+            "id": "buildCreateSlice:20",
+            "kind": "method",
+            "label": "method addMatcher",
+            "parentId": "buildCreateSlice:11",
+            "read": "src/createSlice.ts:638:641",
+            "role": "declaration"
+          },
+          {
+            "depth": 4,
+            "flags": [
+              "call"
+            ],
+            "id": "buildCreateSlice:21",
+            "kind": "call",
+            "label": "push",
+            "parentId": "buildCreateSlice:20",
+            "read": "src/createSlice.ts:639:639",
+            "role": "call"
+          },
+          {
+            "depth": 4,
+            "flags": [
+              "return"
+            ],
+            "id": "buildCreateSlice:22",
+            "kind": "return",
+            "label": "return contextMethods",
+            "parentId": "buildCreateSlice:20",
+            "read": "src/createSlice.ts:640:640",
+            "role": "terminal"
+          },
+          {
+            "depth": 3,
+            "id": "buildCreateSlice:23",
+            "kind": "method",
+            "label": "method exposeAction",
+            "parentId": "buildCreateSlice:11",
+            "read": "src/createSlice.ts:642:645",
+            "role": "declaration"
+          }
+        ],
+        "omitted": [
+          {
+            "count": 254,
+            "kind": "source-formatting",
+            "read": "src/createSlice.ts:568:821",
+            "reason": "compact projection removes original whitespace and comments"
+          }
+        ],
+        "sourceAuthority": "native-parser",
+        "sourceFingerprint": "src/createSlice.ts:568:821:5987:27ee1d2d",
+        "syntax": "semantic-outline"
+      },
+      "read": "src/createSlice.ts:568:821",
+      "truncated": false,
+      "visibility": "public"
+    }
+  ],
+  "method": "query/owner-items",
+  "namespace": "agent.semantic-protocols.languages.typescript.ts-harness",
+  "outputMode": "code",
+  "ownerPath": "src/createSlice.ts",
+  "patchSafety": {
+    "level": "read-safe",
+    "nextAction": "query --from-hook direct-source-read",
+    "reason": "compact query packet is not a mutation authority"
+  },
+  "projectRoot": "tests/fixtures/parser-compact/projects/real-library/redux-toolkit-build-create-slice/typescript",
+  "protocolId": "agent.semantic-protocols.semantic-language",
+  "protocolVersion": "1",
+  "providerId": "ts-harness",
+  "query": "buildCreateSlice",
+  "queryCoverage": [
+    {
+      "match": "exact",
+      "matchCount": 1,
+      "status": "hit",
+      "value": "buildCreateSlice"
+    }
+  ],
+  "queryTerms": [
+    "buildCreateSlice"
+  ],
+  "schemaId": "agent.semantic-protocols.semantic-query-packet",
+  "schemaVersion": "1",
+  "truncated": false
+}

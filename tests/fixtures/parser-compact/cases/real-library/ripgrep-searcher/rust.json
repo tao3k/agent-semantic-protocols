@@ -1,0 +1,39 @@
+{
+  "schemaId": "agent.semantic-protocols.parser-compact-case",
+  "schemaVersion": "1",
+  "caseId": "ripgrep-searcher",
+  "variantId": "rust",
+  "languageId": "rust",
+  "providerId": "rs-harness",
+  "featureClass": "real-library",
+  "sourceOrigin": {
+    "kind": "real-project",
+    "repository": "BurntSushi/ripgrep",
+    "ref": "4857d6fa67db",
+    "sourcePath": "crates/searcher/src/searcher/mod.rs",
+    "license": "Unlicense OR MIT",
+    "note": "Real ripgrep searcher implementation used to expose large impl and duplicate compact risks."
+  },
+  "fixtureRoot": "tests/fixtures/parser-compact/projects/real-library/ripgrep-searcher/rust",
+  "rawSourcePath": "src/lib.rs",
+  "lineCommand": [
+    "rs-harness",
+    "search",
+    "owner",
+    "src/lib.rs",
+    "items",
+    "--query",
+    "Searcher",
+    "--code",
+    "."
+  ],
+  "jsonCommand": [
+    "rs-harness",
+    "query",
+    "src/lib.rs",
+    "--query",
+    "Searcher",
+    "--json",
+    "."
+  ]
+}

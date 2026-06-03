@@ -244,13 +244,13 @@
           "decision": "deny",
           "reasonKind": "raw-broad-search"
         },
-        "stdoutJsonArrayContains": {
-          "routes": {
-            "binary": "rs-harness",
-            "kind": "ingest",
-            "languageId": "rust"
-          }
-        },
+    "stdoutJsonArrayContains": {
+      "routes": {
+        "binary": "rs-harness",
+        "kind": "query",
+        "languageId": "rust"
+      }
+    },
         "maxElapsedMsWarn": 800
       }
     }

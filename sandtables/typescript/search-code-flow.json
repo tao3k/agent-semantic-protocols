@@ -21,7 +21,10 @@
     {
       "id": "registry-json-schema",
       "kind": "schema-contract",
-      "coverage": ["language-registry", "json-schema"],
+      "coverage": [
+        "language-registry",
+        "json-schema"
+      ],
       "command": [
         "node",
         "dist/src/cli/main.js",
@@ -46,7 +49,11 @@
     {
       "id": "prime-json-schema",
       "kind": "schema-contract",
-      "coverage": ["json-schema", "search-flow", "performance"],
+      "coverage": [
+        "json-schema",
+        "search-flow",
+        "performance"
+      ],
       "command": [
         "node",
         "dist/src/cli/main.js",
@@ -65,11 +72,11 @@
           "searchSynthesis.algorithm": "owner-rank-frontier",
           "searchSynthesis.scope": "prime"
         },
-        "stdoutJsonArrayContains": {
-          "searchSynthesis.highImpactOwners": "src/cli/semantic-search/build.ts",
-          "searchSynthesis.frontierOwners": "src/cli/semantic-search/types.ts",
-          "searchSynthesis.seeds": {
-            "kind": "owner",
+    "stdoutJsonArrayContains": {
+      "searchSynthesis.highImpactOwners": "src/cli/protocol.ts",
+      "searchSynthesis.frontierOwners": "src/cli/semantic-search/types.ts",
+      "searchSynthesis.seeds": {
+        "kind": "owner",
             "target": "src/cli/semantic-search/types.ts"
           }
         },
@@ -81,7 +88,11 @@
     {
       "id": "dependency-json-schema",
       "kind": "schema-contract",
-      "coverage": ["json-schema", "deps-query", "performance"],
+      "coverage": [
+        "json-schema",
+        "deps-query",
+        "performance"
+      ],
       "command": [
         "node",
         "dist/src/cli/main.js",
@@ -131,20 +142,27 @@
         "dist/src/cli/main.js",
         "search",
         "prime",
+        "--view",
+        "seeds",
         "."
       ],
       "expect": {
         "lineProtocol": true,
         "stdoutContains": [
           "[search-prime]",
-          "|owner",
-          "|synthesis",
-          "algorithm=owner-rank-frontier",
-          "frontierOwners=src/cli/semantic-search/types.ts",
-          "seeds=owner:src/cli/semantic-search/types.ts"
+          "alg=owner-rank-frontier",
+          "alias: graph:{G=search",
+          "G=search:result!query",
+          "G>{",
+          "rank=",
+          "frontier="
         ],
         "maxStdoutLinesWarn": 16,
-        "maxElapsedMsWarn": 5500
+        "maxElapsedMsWarn": 5500,
+        "stdoutNotContains": [
+          "|seed",
+          "|synthesis"
+        ]
       }
     },
     {
@@ -153,7 +171,7 @@
         "node",
         "dist/src/cli/main.js",
         "search",
-        "text",
+        "fzf",
         "--query-set",
         "SemanticSearchOwnerFallback",
         "--query-set",
@@ -162,24 +180,34 @@
         "tests",
         "--owner",
         "src/cli/semantic-search/owner-fallback.ts",
+        "--view",
+        "seeds",
         "."
-      ],
-      "capture": {
-        "tsOwner": "\\|next owner:([^,\\s]+)"
-      },
+  ],
+  "capture": {
+    "tsOwner": "owner:([^!\\s;]+)!owner"
+  },
       "expect": {
         "lineProtocol": true,
         "stdoutContains": [
           "[search-fzf]",
           "querySet=2",
-          "selector=exact-set",
-          "scopeOwner=src/cli/semantic-search/owner-fallback.ts",
-          "pipes=owner,tests",
-          "source=parser-visible-source",
-          "|next owner:"
+          "selector=fuzzy-set",
+          "scope=src/cli/semantic-search/owner-fallback.ts",
+          "alg=query-set-owner-resolution",
+          "alias: graph:{G=search",
+          "G=search:result!query",
+          "G>{",
+          "rank=",
+          "frontier=",
+          "owner:src/cli/semantic-search/owner-fallback.ts"
         ],
         "maxStdoutLinesWarn": 20,
-        "maxElapsedMsWarn": 4500
+        "maxElapsedMsWarn": 4500,
+        "stdoutNotContains": [
+          "|seed",
+          "|synthesis"
+        ]
       }
     },
     {
@@ -190,48 +218,56 @@
         "search",
         "owner",
         "{tsOwner}",
+        "--view",
+        "seeds",
         "."
       ],
       "expect": {
         "lineProtocol": true,
         "stdoutContains": [
           "[search-owner]",
-          "|owner",
-          "|synthesis",
-          "algorithm=bounded-reachability-depth1",
-          "scope=owner"
+          "alias: graph:{G=search",
+          "G=search:result!query",
+          "G>{",
+          "rank=",
+          "frontier="
         ],
         "maxStdoutLinesWarn": 12,
-        "maxElapsedMsWarn": 7000
+        "maxElapsedMsWarn": 7000,
+        "stdoutNotContains": [
+          "|seed",
+          "|synthesis"
+        ]
       }
     },
-    {
-      "id": "rg-to-ingest",
-      "stdinCommand": [
-        "rg",
-        "-n",
-        "sourceText|parserOwner|semantic-search-packet",
-        "src",
-        "tests",
-        "docs",
-        "README.md"
-      ],
-      "stdinCommandAllowNonZero": true,
-      "command": [
-        "node",
+  {
+    "id": "rg-to-ingest",
+    "stdin": "src/cli/semantic-search/owner-fallback.ts:11:export interface SemanticSearchOwnerFallback {\ntests/unit/cli_semantic_search.test.ts:1:SemanticSearchOwnerFallback\n",
+    "command": [
+      "node",
         "dist/src/cli/main.js",
         "search",
         "ingest",
+        "--view",
+        "seeds",
         "."
       ],
       "expect": {
         "lineProtocol": true,
         "stdoutContains": [
           "[search-ingest]",
-          "|owner"
+          "alias: graph:{G=search",
+          "G=search:result!query",
+          "G>{",
+          "rank=",
+          "frontier="
         ],
         "maxStdoutLinesWarn": 18,
-        "maxElapsedMsWarn": 5000
+        "maxElapsedMsWarn": 5000,
+        "stdoutNotContains": [
+          "|seed",
+          "|synthesis"
+        ]
       }
     }
   ]

@@ -1,0 +1,806 @@
+#+TITLE: RFC: ASLP Agent Client Backend Protocol
+#+AUTHOR: agent-semantic-protocols
+#+DATE: 2026-06-02
+#+STATUS: draft
+#+RFC: 008
+#+DEPENDS: rfcs/code-intelligence-lane.org (003), rfcs/cli-first-harness-ux.org (005)
+#+SEE_ALSO: rfcs/agent-hook-interception-protocol.org - hook routing over provider manifests.
+#+SEE_ALSO: rfcs/semantic-ast-apply-patch-protocol.org (007) - shared binary growth path.
+
+* One-sentence summary
+
+=aslp-agent-client= is the local-first agent client over native semantic
+language providers.  It exposes one stable =aslp= command surface while routing
+to local provider CLIs, Cloud Flight, or both behind the same compact prompt
+contract.
+
+* Motivation
+
+The current protocol has two intentionally separate ideas:
+
+- RFC 005 makes the language harness CLI the public agent protocol for
+  =search=, =query=, =check=, and =agent=.
+- RFC 003 describes typed Flight lanes for high-performance code intelligence.
+
+The next product step needs a bridge between them.  Agents need one
+cross-language client that can cache repeated semantic search, route to the
+right provider, render compact output, write machine artifacts, and optionally
+use a paid or enterprise Cloud Flight backend.  That bridge must not make Codex
+learn two command families or turn cloud service availability into a
+precondition for local semantic search.
+
+The user-visible rule is:
+
+#+begin_example
+Codex / agent sees: aslp search, aslp query, aslp check, aslp doctor
+Routing mode: local CLI, Cloud Flight, or hybrid, selected by config
+Fact authority: native language providers under languages/ or provider repos
+Prompt output: compact text by default
+Machine output: JSON, Arrow, or parquet artifacts outside the prompt
+#+end_example
+
+* Design decisions
+
+1. /Native parser authority is non-negotiable./  Rust =syn= / compiler facts,
+   the TypeScript Compiler API, Python =ast=, JuliaSyntax, and equivalent
+   language-owned implementations are the source of search/query/check facts.
+   =aslp-agent-client= coordinates providers; it must not infer semantic facts
+   from raw text, cached rows, cloud index rows, or backend-specific ranking.
+
+2. /One client core, multiple execution capabilities./  =aslp-agent-client=
+   owns routing, cache, compact rendering, artifacts, and execution-route
+   selection.  It is not two separate clients named local and cloud.
+
+3. /Local-first remains the community default./  The local client works with
+   installed provider CLIs such as =ts-harness=, =rs-harness=, and =py-harness=.
+   It must not require the private server submodule, Arrow Flight, cloud auth,
+   or a network connection.
+
+4. /Cloud is an optional backend, not a new agent protocol./  Paid or
+   enterprise users may enable =CloudFlightBackend=.  The commands and compact
+   stdout remain the same.  Cloud results must still be derived from
+   provider-owned native parser packets or native index exports.
+
+5. /Provider CLIs remain parser authority./  Rust, TypeScript, Python, and
+   workspace-managed Julia providers own native parser facts, project config,
+   owner graphs, item queries, policy checks, and compact code projection.
+   =aslp-agent-client= must not recreate language semantics from text.
+
+6. /Execution-route selection is not a search flag./  Normal agent search commands do
+   not accept a shared =--backend= flag.  Backend mode is configuration and
+   diagnostics state.  This preserves RFC 005's intent-level command surface.
+
+7. /Compact text is the prompt surface./  Agents should not request provider
+   JSON during interactive exploration.  =aslp-agent-client= may use structured
+   provider packets internally for cache and artifacts, then render compact
+   text to stdout.
+
+8. /Provider export and client cache are global, not Julia-only./  Every native
+   provider may expose machine index exports derived from its parser-owned
+   facts.  =aslp-agent-client= validates those exports, writes normalized cache
+   rows, and serves repeated search/query from the Rust client hot path.  Julia
+   is the first high-pressure proof because process start-up is expensive, but
+   the design applies to Rust, TypeScript, Python, Julia, and future providers.
+
+9. /Avoid generic fallback language./  Hybrid mode may reroute because a cache
+   entry is missing, a cloud endpoint is unavailable, or policy disallows
+   upload.  That is availability routing.  It is not semantic fallback,
+   parser widening, lexical rescue, or a license for the client to invent facts.
+   If no native provider can prove the requested fact, the client returns a
+   visible miss or unsupported-method receipt.
+
+* Architecture
+
+#+begin_example
+Codex / user
+  |
+  v
+aslp CLI command surface
+  |
+  v
+aslp-agent-client core
+  |-- provider registry
+  |-- local parquet cache
+  |-- compact renderer
+  |-- artifact and receipt store
+  `-- execution router
+       |-- LocalNativeCliBackend
+       |    |-- ts-harness CLI
+       |    |-- rs-harness CLI
+       |    `-- py-harness CLI
+       |
+       `-- CloudFlightBackend
+            `-- private aslp-agent-server repo or submodule
+                 |-- cloud semantic index
+                 |-- Arrow Flight routes
+                 |-- ranking and graph algorithms
+                 `-- cross-repo or team cache
+#+end_example
+
+The command surface is deliberately boring:
+
+#+begin_src shell
+aslp guide
+aslp doctor
+aslp providers
+aslp search workspace "ParserService cacheDir"
+aslp search owner src/services/parser/ParserService.ts
+aslp query src/services/parser/ParserService.ts --term ParserService
+aslp check
+aslp cache status
+aslp cache prime --language typescript
+aslp cloud login
+aslp cloud enable --mode semantic-index
+aslp cloud status
+#+end_src
+
+The short =aslp= command is the agent-facing UX name.  The implementation must
+not force all behavior into one crate.  A thin CLI may route into smaller
+crates, but parser, cache, local CLI execution, Flight client, server, and hook
+logic must keep separate ownership boundaries.
+
+* Role split
+
+| Component | Owns |
+|-----------+------|
+| =ts-harness=, =rs-harness=, =py-harness= | native parser facts, provider commands, compact search/query/check packets |
+| workspace-managed Julia provider | JuliaSyntax-native facts, explicit workspace-managed evidence, index exports for cache refresh, not global bin parity |
+| =semantic-agent-hook= | agent platform event classification and provider route guidance |
+| =aslp-agent-client= | cross-language routing, execution-route choice, cache, compact rendering, artifacts |
+| =tao3k/agent-semantic-protocols-server= | private optional high-performance index, Cloud Flight routes, org/team cache |
+
+=aslp-agent-client= is not a replacement for language harnesses.  It calls them
+locally or consumes their cloud-indexed facts remotely.
+
+The Cloud server implementation is not part of the open protocol/client
+surface.  =tao3k/agent-semantic-protocols-server= is a private repository.  It
+may be checked out as an optional git submodule for integrated development and
+Cloud sandtable runs, but the public protocol/client workspace must build,
+test, and support local mode without that submodule.
+
+* Implementation topology
+
+The architecture should be implemented as a small crate graph, not a single
+catch-all crate:
+
+#+begin_example
+crates/
+  semantic-agent-protocol/        shared command facade, schema/receipt validation
+  semantic-agent-hook/            platform hook runtime and classifier
+  aslp-agent-client-core/         request model, provider registry, execution router
+  aslp-agent-client-cache/        parquet cache, provenance, invalidation
+  aslp-agent-client-local-cli/    native provider CLI execution
+  aslp-agent-client-flight/       Arrow Flight client and upload receipts
+
+optional private submodule:
+  servers/agent-semantic-protocols-server/  git@github.com:tao3k/agent-semantic-protocols-server.git
+#+end_example
+
+Language-native parser implementations stay in the language provider projects
+under =languages/= or their provider repositories.  The ASLP crates may depend
+on shared packet schemas and provider registry descriptors, but they must not
+link language parser implementations into the client core.  This keeps the
+client deployable, keeps provider ownership clear, and prevents a cloud/cache
+crate from becoming an accidental semantic engine.
+
+The intended dependency direction is:
+
+#+begin_example
+aslp CLI
+  -> aslp-agent-client-core
+       -> aslp-agent-client-cache
+       -> aslp-agent-client-local-cli
+       -> aslp-agent-client-flight
+       -> semantic-agent-protocol schemas/receipts
+
+private server submodule or sibling checkout
+  -> semantic-agent-protocol schemas/receipts
+  -> cloud storage / Flight runtime
+
+language providers
+  -> semantic-agent-protocol schemas
+  -> their native parser stack
+#+end_example
+
+There must be no reverse dependency from provider parser implementations into
+the client core.  Providers can expose CLI commands, registry descriptors, and
+index exports; the client consumes those contracts.
+
+There must also be no required dependency from the open protocol/client crates
+to the private server submodule.  Cloud client code may define the Flight
+client protocol and upload receipts in the open workspace, but server runtime,
+storage engines, ranking services, billing/auth integration, and enterprise
+deployment code belong in =tao3k/agent-semantic-protocols-server=.  CI and
+sandtables that require this private submodule must be explicitly labeled and
+skipped when the submodule is absent.
+
+* Execution adapter contract
+
+The client core depends on an execution backend trait shaped like:
+
+#+begin_src text
+ExecutionBackend.call(method, request) -> SemanticResponse
+#+end_src
+
+Where =method= is one of the shared agent-facing methods:
+
+#+begin_example
+search/workspace
+search/owner
+search/fzf
+search/ingest
+query/owner-item
+query/direct-source-read
+check/changed
+check/full
+provider/guide
+provider/registry
+#+end_example
+
+Execution backends may return structured packets, Arrow batches, cache
+references, or compact text plus receipt metadata.  Every response must carry
+native-provider provenance.  The client core normalizes the response into:
+
+- compact stdout for the agent;
+- schema-valid artifacts for tests, receipts, and cache;
+- command receipts that explain which execution route was used and why.
+
+** LocalNativeCliBackend
+
+Local mode shells out to installed native provider CLIs by reading the provider
+registry and project activation.  It must prefer provider JSON or packet export
+only for machine reuse.  The user-facing output remains compact text.
+
+Local flow:
+
+#+begin_example
+aslp search workspace "ParserService cacheDir"
+  -> resolve project and provider set
+  -> check local cache
+  -> on exact cache hit: render compact output
+  -> on cache miss: call provider CLI
+  -> validate provider packet
+  -> update parquet cache and artifacts
+  -> render compact output
+#+end_example
+
+Provider command construction must remain registry-owned.  =aslp-agent-client=
+must not invent provider commands from string templates when a registry
+descriptor exists.  A cache miss always delegates to a native provider or
+returns a visible miss.  It must not trigger generic text search inside the
+client.
+
+** CloudFlightBackend
+
+Cloud mode calls the private server implementation through Arrow Flight.  The
+server provides high-performance lookup over native-provider index rows, remote
+ranking, cross-repo search, team cache, and optional Julia or graph-heavy
+ranking engines.  Cloud must not become a second parser implementation unless
+it is running the same language-owned provider code or consuming its exported
+native facts.
+
+The agent command does not change:
+
+#+begin_src shell
+aslp search workspace "ParserService cacheDir"
+#+end_src
+
+Only the execution route changes:
+
+#+begin_example
+LocalNativeCliBackend -> CloudFlightBackend
+#+end_example
+
+Cloud routes are machine routes, not prompt routes:
+
+#+begin_example
+DoExchange /search
+DoExchange /query
+DoExchange /check
+DoPut      /index/upload
+DoGet      /artifact/{id}
+Action     health
+Action     invalidate_project
+#+end_example
+
+** Hybrid mode
+
+Hybrid mode is the recommended paid default:
+
+#+begin_src toml
+[aslp.backend]
+mode = "hybrid" # local | cloud | hybrid
+
+[aslp.hybrid]
+local_cache_first = true
+cloud_lookup_on_cache_miss = true
+local_native_on_cloud_unavailable = true
+upload_policy = "semantic-index"
+#+end_src
+
+Flow:
+
+#+begin_example
+aslp search
+  -> local parquet cache hit?
+       yes: render local compact output
+       no:
+         -> cloud enabled and allowed?
+              yes: CloudFlight query, write local cache, render compact output
+              no: LocalNativeCliBackend, write local cache, render compact output
+#+end_example
+
+This is availability routing.  It must be recorded as cache/cloud/local-native
+route selection in the client receipt, never as a semantic fallback.  Semantic
+misses remain provider-owned misses.
+
+* Local cache contract
+
+The local cache is the community edition's main performance asset.  Flight is
+not required for repeated searches to improve.
+
+Recommended layout:
+
+#+begin_example
+$PRJ_CACHE_HOME/semantic_protocol/
+  activation.json
+  providers/
+    ts-harness.manifest.json
+    rs-harness.manifest.json
+    py-harness.manifest.json
+  indexes/
+    typescript/
+      manifest.parquet
+      file_hashes.parquet
+      owners.parquet
+      symbols.parquet
+      native_syntax_facts.parquet
+      semantic_handles.parquet
+      search_packets.parquet
+      query_packets.parquet
+      diagnostics.parquet
+      receipts.parquet
+  artifacts/
+    search/<id>.json
+    query/<id>.json
+    check/<id>.json
+#+end_example
+
+Cache rows must be derived from provider-owned packets or provider-owned index
+exports.  The client may denormalize rows for speed, but each row should retain
+enough provenance to answer:
+
+- which provider emitted the fact;
+- which schema version validated it;
+- which project root and package root it belongs to;
+- which file hash or index generation it depends on;
+- whether raw source was involved;
+- which compact artifact or receipt was rendered from it.
+
+The default cache must not store raw source files.  Exact source windows remain
+provider query results and may appear only in bounded artifacts when the user or
+platform explicitly allows them.
+
+** Global provider export/cache model
+
+The local cache model is language-neutral.  Native providers export parser-owned
+facts and packet artifacts; =aslp-agent-client= validates those artifacts,
+normalizes them into local rows, and serves repeated agent requests from the
+Rust client cache when the cache generation is fresh.
+
+The global execution shape is:
+
+#+begin_example
+aslp search/query/check
+  -> resolve project and provider registry
+  -> check local cache generation for project root / provider / schema version
+  -> on cache hit:
+       Rust client queries validated cache rows
+       Rust client renders compact output and receipt
+  -> on cache miss or stale generation:
+       call registry-advertised native provider export or packet command
+       validate provider-owned facts against shared/provider schemas
+       write normalized local cache rows and receipt artifacts
+       render compact output from validated rows
+#+end_example
+
+The Rust client may build denormalized owner, symbol, native fact, handle,
+diagnostic, search packet, and query packet tables from provider exports.  It
+must not parse language source, reconstruct language semantics from text, or
+invent facts that the native provider did not emit.  Cache rows must retain
+native provenance:
+
+- stable language id and provider id;
+- provider version and export method;
+- schema id/version used to validate the export;
+- project root, package root, and file hashes;
+- whether raw source or source windows were involved;
+- source packet or artifact id used to derive the cache row.
+
+Provider-specific fields belong in provider-owned sub-schemas advertised by the
+registry.  Do not widen =semantic-search-packet.v1= only to support a cache
+optimization.
+
+** Julia warm-up adaptation
+
+Julia is the first local-mode proof where the global cache is required for
+acceptable agent latency rather than only a convenience.  A short-lived Julia
+process pays LLVM/JIT and package loading cost even when the underlying search
+is small.  Therefore the =aslp= hot path for Julia must be the global Rust-side
+cache/query/render path, with Julia invoked only to refresh parser-owned facts.
+
+The execution shape is:
+
+#+begin_example
+aslp search fzf "parser"
+  -> resolve workspace-managed Julia provider
+  -> check local cache generation for project root / schema / provider version
+  -> on cache hit:
+       Rust client queries cached native fact rows
+       Rust client renders compact search output and receipt
+  -> on cache miss or stale generation:
+       call julia --project=languages/JuliaLangProjectHarness.jl \
+         languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl
+       request provider-owned index export
+       validate export against shared schema
+       write local cache generation
+       render compact output from the validated rows
+#+end_example
+
+The initial Julia export should reuse the shared native fact/index contracts
+where possible, such as =semantic-native-syntax-fact-index= inside validated
+search/query artifacts.  If Julia needs fields that cannot be represented
+without language leakage, define a provider-owned Julia sub-schema and advertise
+it through the provider registry.  Do not change
+=semantic-search-packet.v1= in place for this optimization.
+
+This adaptation does not make Julia a bin-parity target and does not make Rust
+the Julia parser.  The provider command remains workspace-managed.  =aslp= is
+the stable agent command; Julia is a native fact refresh backend for the global
+cache model.
+
+* Performance calibration
+
+Performance is a protocol surface because the main product value is reducing
+repeated agent search loops without weakening native parser authority.  The
+client must measure and optimize around provider-owned facts, not add private
+text heuristics.
+
+The calibration ladder is:
+
+1. /Cold native baseline./  Measure each provider command with no reusable
+   client cache.  The provider may still use its own parser or daemon cache,
+   but the receipt must mark the client cache as cold.
+2. /Warm native baseline./  Repeat the same command after provider-native
+   parser caches are warm.  This separates language parser cost from ASLP
+   cache cost.
+3. /Client cache hit./  Replay the same request from local parquet rows and
+   prove that the compact output is derived from schema-valid provider packets
+   or provider index exports.
+4. /Cloud semantic lookup./  For enabled cloud modes, measure query latency,
+   upload bytes, and local cache write-back while preserving the same compact
+   prompt shape.
+5. /Hybrid availability routing./  Disable or reject cloud and prove the
+   client routes back to native provider CLI execution without changing search
+   semantics or calling generic text search.
+
+Every measurement should record:
+
+- =route= as one of =local-native=, =local-cache=, =cloud-flight=, or
+  =hybrid-reroute=;
+- provider id, language id, schema ids, packet ids, and native parser
+  provenance;
+- cache status: =cold=, =warm-provider=, =hit=, =miss=, =stale=, or
+  =invalidated=;
+- elapsed time split into client routing, provider command, cloud request,
+  cache read/write, validation, and compact render where available;
+- provider command count and provider processes spawned;
+- stdout bytes, compact output bytes, packet bytes, parquet read/write bytes,
+  and upload bytes;
+- source file count, changed file count, and invalidation reason;
+- repeated-trigger grouping key so repeated agent searches can be merged or
+  query-set optimized later.
+
+The client may optimize:
+
+- exact cache hits over validated provider packets;
+- provider process spawn reduction through command batching when registry
+  descriptors advertise equivalent native methods;
+- parquet column selection for owner, symbol, handle, and native syntax fact
+  queries;
+- compact render reuse from artifact ids;
+- cloud write-back into local cache after semantic-index hits;
+- upload deduplication by provider packet id or file hash.
+
+The client must not optimize by:
+
+- treating cached lexical text as a semantic fact;
+- widening a miss into raw grep/fzf without an explicit provider =search fzf=
+  or =search ingest= route;
+- inventing owner, symbol, test, policy, or graph facts from parquet row names;
+- accepting a cloud ranking result that lacks provider packet provenance;
+- hiding stale-cache or invalidation failures behind a successful compact
+  render.
+
+Calibration targets should be expressed as budgets, not guesses.  Initial
+budgets belong in sandtable scenarios and can be tightened after real-project
+evidence:
+
+#+begin_example
+local-cache-hit:
+  providerCommandsAvoided >= 1
+  compactOutputParity = true
+  nativeProvenancePresent = true
+  staleHitCount = 0
+
+repeated-search:
+  repeatedTriggerGroupCount decreases
+  commandCount decreases
+  packetBytes does not increase without new evidence
+
+hybrid-cloud-unavailable:
+  route = hybrid-reroute
+  semanticWidening = false
+  clientInventedFacts = false
+  finalNativeProvider = present
+  compactOutputParityWithLocalNative = true
+#+end_example
+
+Performance claims are not accepted until they pass the same representative
+real-project loop used for search protocol changes: command count, packet size,
+latency, repeated-trigger patterns, missing facts, and confusing next actions
+must be captured before provider behavior is optimized.
+
+* Configuration
+
+Backend configuration lives in user or project config.  Agent search commands
+stay stable.
+
+#+begin_src toml
+[aslp.backend]
+mode = "local"
+
+[aslp.local]
+providers = ["ts-harness", "rs-harness", "py-harness"]
+
+[aslp.cloud]
+endpoint = "grpc+tls://api.aslp.dev:443"
+auth = "device"
+
+[aslp.privacy]
+upload_policy = "none" # none | semantic-index | source-index
+#+end_src
+
+Project config may narrow providers or cloud policy.  User config may carry
+credentials.  A project must be able to force =mode = "local"= or
+=upload_policy = "none"= for private or offline work.
+
+* Privacy modes
+
+** Mode A: local-only
+
+#+begin_example
+No cloud connection.
+No upload.
+Local provider CLIs plus local parquet cache only.
+#+end_example
+
+This mode is the default for community, open-source, personal, and offline
+work.
+
+** Mode B: cloud-semantic-index
+
+#+begin_example
+Upload provider-generated semantic packets or index rows.
+Do not upload raw source by default.
+Cloud handles ranking, search, cache, and cross-project retrieval.
+#+end_example
+
+Allowed examples:
+
+#+begin_example
+owners.parquet
+symbols.parquet
+native_syntax_facts.parquet
+semantic_handles.parquet
+diagnostics.parquet
+search/query/check receipts
+#+end_example
+
+Disallowed by default:
+
+#+begin_example
+raw source file
+full source windows
+private stdout/stderr content
+unredacted command arguments containing secrets
+#+end_example
+
+** Mode C: cloud-source-index
+
+#+begin_example
+Explicit opt-in.
+Source or source windows may be uploaded for full code intelligence.
+Appropriate for self-hosted enterprise or clearly authorized cloud indexing.
+#+end_example
+
+The mode must be visible in =aslp cloud status= and in upload receipts.
+
+* Hook and skill contract
+
+Codex hooks and project skills should not need to know whether local or cloud
+handled a request.  They should guide inefficient behavior to the stable
+command surface:
+
+#+begin_example
+aslp search workspace "<query>"
+aslp search owner <path>
+aslp query <owner-path> --term <symbol>
+aslp check
+#+end_example
+
+Hooks still block raw source dumps, broad source searches, and interactive
+agent requests for provider JSON.  If a hook denial recommends =aslp=, the
+client must render compact output.  It must not respond with pretty JSON, full
+AST dumps, or raw source.
+
+* Schema impact
+
+This RFC intentionally changes the client execution layer before provider
+implementation.  The next schema step should add shared machine contracts for
+client-side state, while keeping existing search/query packets stable and
+making native-provider provenance explicit:
+
+- =semantic-agent-client-config.v1= for route mode, provider set, privacy
+  mode, and cloud endpoint references.
+- =semantic-agent-client-cache-manifest.v1= for cache generations, provider
+  packet provenance, native parser provenance, file hashes, and schema
+  versions.
+- =semantic-agent-client-receipt.v1= for execution-route selection, cache
+  hit/miss, provider command count, cloud request id, upload policy, native
+  provenance, compact artifact ids, and performance calibration metrics.
+- Optional =semantic-cloud-index-upload.v1= for Cloud Flight upload receipts.
+
+Provider registries should also advertise explicit machine export capabilities
+needed by the cache.  Each export descriptor must list every output schema id
+used by the export, including provider-owned sub-schemas.  For Julia, the
+relevant first capability is an index export method that emits
+JuliaSyntax-owned native facts for cache refresh.  =aslp-agent-client= may only
+call registry-advertised methods; it must not synthesize provider export
+commands from string templates.
+
+These schemas must not duplicate =semantic-search-packet.v1=,
+=semantic-query-packet.v1=, or provider capability schemas.  They describe the
+client/cache/execution envelope around those packets.
+
+* Sandtable evidence
+
+Local and cloud modes require separate evidence.
+
+** Local mode evidence
+
+Scenarios should measure:
+
+- command count;
+- compact stdout bytes;
+- cache hit rate;
+- cold native baseline versus warm native baseline;
+- provider CLI calls avoided;
+- provider process spawn count;
+- cache invalidation correctness;
+- repeated search reduction;
+- packet validation results;
+- hook reroute quality.
+
+The first local scenarios should replay real provider binaries without a
+server.  They should prove that =aslp= does not make Codex learn
+=ts-harness=, =rs-harness=, or =py-harness= for common search/query/check
+flows, while still preserving provider-owned parser facts.
+
+Local-mode evidence for each cached provider should include both paths:
+
+- cold refresh through the native provider;
+- repeated search/query through Rust-side cache without starting the provider
+  when the provider process is not required for exact source windows or checks.
+
+Julia local-mode evidence must include both paths:
+
+- cold refresh through the workspace-managed Julia provider;
+- repeated search/query through Rust-side cache without starting Julia.
+
+The receipt should report provider command count, cache generation, cache
+hit/miss, compact stdout bytes, and elapsed time for both paths.  The target is
+not to make Julia a short-lived provider binary; the target is to prove that
+repeated Julia search avoids provider process startup while preserving
+JuliaSyntax-owned facts.
+
+** Cloud mode evidence
+
+Cloud scenarios should measure:
+
+- query latency;
+- cloud cache hit rate;
+- upload bytes by privacy mode;
+- local-native availability reroute correctness when cloud is unavailable;
+- compact output parity with local mode;
+- cache write-back after cloud hits.
+- native-provider provenance on cloud results.
+
+Cloud tests must compare prompt-facing compact output, not only Arrow batch
+shape.  Agent behavior should remain stable across backend modes.
+
+* Implementation sequence
+
+Follow the same protocol-first order used by search work:
+
+1. Finalize this RFC and the minimal cross-links in RFC 005.
+2. Add shared schemas for client config, cache manifest, and client receipts.
+3. Update provider registry descriptors only where =aslp-agent-client= needs
+   explicit machine packet or index-export capabilities.
+4. Implement the split local =aslp= client crate graph and
+   =LocalNativeCliBackend=.
+5. Add local cache prime/status/invalidate commands.
+6. Add provider registry descriptors for machine index export capabilities,
+   using one shared descriptor shape across providers and starting with
+   workspace-managed Julia index export as the performance proof.
+7. Prove local Julia repeated-search acceleration through Rust-side cache before
+   adding cloud behavior.
+8. Add performance calibration receipts and local sandtable scenarios for cold
+   native, warm native, local cache hit, invalidation, and repeated
+   real-trigger searches.
+9. Implement =CloudFlightBackend= in the open client workspace and implement
+   server routes in the private =tao3k/agent-semantic-protocols-server= repo,
+   optionally mounted as =servers/agent-semantic-protocols-server=.
+10. Add cloud/hybrid sandtable evidence, availability-reroute calibration, and
+   privacy-mode upload receipts; mark private-server scenarios as requiring the
+   optional server submodule.
+11. Exercise a representative real project and feed gaps back through RFC and
+   schemas before provider optimizations.
+
+* Non-goals
+
+- Do not require cloud service for the normal Codex semantic search loop.
+- Do not require the private server submodule for local/community build, test,
+  install, or documentation checks.
+- Do not create separate =aslp-local-search= and =aslp-cloud-search= commands.
+- Do not add a shared provider =--backend= flag for normal search/query.
+- Do not replace language harness parser authority with text heuristics in the
+  client.
+- Do not expose full JSON, AST, or source as the default prompt surface.
+- Do not require a standalone Julia provider binary for bin parity.
+- Do not turn the protocol into MCP or a dynamic tool-discovery layer.
+- Do not upload source by default.
+
+* Success criteria
+
+The RFC is implemented when:
+
+- a fresh local workspace can install =aslp= plus provider CLIs and run
+  =aslp doctor= successfully without a server;
+- the public protocol/client workspace passes local tests when
+  =servers/agent-semantic-protocols-server= is absent;
+- =aslp search=, =aslp query=, and =aslp check= render compact output by
+  default;
+- repeated searches use local cache and reduce provider CLI calls;
+- repeated Julia search can be served from Rust-side cache without starting a
+  Julia process, while preserving JuliaSyntax provenance;
+- performance receipts prove cold native, warm native, local cache hit, cloud,
+  and hybrid availability-reroute paths without losing native provenance;
+- machine artifacts validate against shared schemas;
+- cloud/hybrid mode changes execution route without changing agent commands;
+- privacy mode is visible in receipts and status output;
+- sandtable scenarios prove local, cloud, and cloud-unavailable recovery paths;
+- at least one real project run records command count, packet size, latency,
+  repeated-trigger reduction, and confusing next actions.
+
+* Open decisions
+
+1. Whether the installed short command is always =aslp= or an alias to
+   =semantic-agent-protocol= during the first implementation, without folding
+   client/cache/Flight/server behavior into that shared command facade crate.
+2. Whether local parquet tables are written directly by =aslp-agent-client= or
+   exported by provider CLIs and only coordinated by the client.
+3. Which Cloud Flight auth flow ships first: device auth, API token, or
+   enterprise mTLS.
+4. How much cache state belongs in project cache versus user cache when the
+   same repository is used by multiple agent clients.

@@ -1,0 +1,465 @@
+{
+  "binary": "rs-harness",
+  "languageId": "rust",
+  "matchMode": "exact",
+  "matches": [
+    {
+      "doc": false,
+      "kind": "fn",
+      "location": {
+        "lineRange": "306:330",
+        "path": "src/lib.rs"
+      },
+      "name": "deserialize_body",
+      "projection": {
+        "exactRead": "src/lib.rs:306:330",
+        "expandActions": [
+          {
+            "kind": "hot-block",
+            "read": "src/lib.rs:307:329",
+            "reason": "parser-projection-control-flow",
+            "target": "n1"
+          },
+          {
+            "kind": "hot-block",
+            "read": "src/lib.rs:308:308",
+            "reason": "parser-projection-terminal",
+            "target": "n2"
+          },
+          {
+            "kind": "hot-block",
+            "read": "src/lib.rs:309:329",
+            "reason": "parser-projection-control-flow",
+            "target": "n3"
+          },
+          {
+            "kind": "hot-block",
+            "read": "src/lib.rs:309:329",
+            "reason": "parser-projection-control-flow",
+            "target": "n4"
+          },
+          {
+            "kind": "hot-block",
+            "read": "src/lib.rs:310:310",
+            "reason": "parser-projection-terminal",
+            "target": "n5"
+          },
+          {
+            "kind": "hot-block",
+            "read": "src/lib.rs:311:329",
+            "reason": "parser-projection-control-flow",
+            "target": "n6"
+          },
+          {
+            "kind": "hot-block",
+            "read": "src/lib.rs:311:329",
+            "reason": "parser-projection-control-flow",
+            "target": "n7"
+          },
+          {
+            "kind": "hot-block",
+            "read": "src/lib.rs:312:312",
+            "reason": "parser-projection-terminal",
+            "target": "n8"
+          },
+          {
+            "kind": "hot-block",
+            "read": "src/lib.rs:313:329",
+            "reason": "parser-projection-control-flow",
+            "target": "n9"
+          },
+          {
+            "kind": "hot-block",
+            "read": "src/lib.rs:313:329",
+            "reason": "parser-projection-control-flow",
+            "target": "n10"
+          },
+          {
+            "kind": "hot-block",
+            "read": "src/lib.rs:314:323",
+            "reason": "parser-projection-control-flow",
+            "target": "n11"
+          },
+          {
+            "kind": "hot-block",
+            "read": "src/lib.rs:315:315",
+            "reason": "parser-projection-control-flow",
+            "target": "n12"
+          },
+          {
+            "kind": "hot-block",
+            "read": "src/lib.rs:316:316",
+            "reason": "parser-projection-control-flow",
+            "target": "n14"
+          },
+          {
+            "kind": "hot-block",
+            "read": "src/lib.rs:317:317",
+            "reason": "parser-projection-terminal",
+            "target": "n15"
+          },
+          {
+            "kind": "hot-block",
+            "read": "src/lib.rs:319:319",
+            "reason": "parser-projection-control-flow",
+            "target": "n16"
+          },
+          {
+            "kind": "hot-block",
+            "read": "src/lib.rs:320:320",
+            "reason": "parser-projection-terminal",
+            "target": "n17"
+          },
+          {
+            "kind": "hot-block",
+            "read": "src/lib.rs:322:322",
+            "reason": "parser-projection-control-flow",
+            "target": "n18"
+          },
+          {
+            "kind": "hot-block",
+            "read": "src/lib.rs:324:329",
+            "reason": "parser-projection-control-flow",
+            "target": "n20"
+          },
+          {
+            "kind": "hot-block",
+            "read": "src/lib.rs:325:328",
+            "reason": "parser-projection-control-flow",
+            "target": "n21"
+          },
+          {
+            "kind": "hot-block",
+            "read": "src/lib.rs:326:326",
+            "reason": "parser-projection-control-flow",
+            "target": "n22"
+          }
+        ],
+        "losslessStructure": false,
+        "mode": "compact",
+        "nodeCount": 26,
+        "nodeLimit": 24,
+        "nodes": [
+          {
+            "depth": 0,
+            "id": "n0",
+            "kind": "fn",
+            "label": "fn deserialize_body",
+            "read": "src/lib.rs:306:330",
+            "role": "declaration"
+          },
+          {
+            "depth": 1,
+            "flags": [
+              "branch",
+              "guard"
+            ],
+            "id": "n1",
+            "kind": "if",
+            "label": "if cont.attrs.transparent()",
+            "parentId": "n0",
+            "read": "src/lib.rs:307:329",
+            "role": "control-flow"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "return"
+            ],
+            "id": "n2",
+            "kind": "return",
+            "label": "return deserialize_transparent",
+            "parentId": "n1",
+            "read": "src/lib.rs:308:308",
+            "role": "terminal"
+          },
+          {
+            "depth": 1,
+            "flags": [
+              "branch"
+            ],
+            "id": "n3",
+            "kind": "else",
+            "label": "else",
+            "parentId": "n0",
+            "read": "src/lib.rs:309:329",
+            "role": "control-flow"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "branch",
+              "guard"
+            ],
+            "id": "n4",
+            "kind": "if",
+            "label": "if let Some(type_from) = cont.attrs.type_from()",
+            "parentId": "n3",
+            "read": "src/lib.rs:309:329",
+            "role": "control-flow"
+          },
+          {
+            "depth": 3,
+            "flags": [
+              "return"
+            ],
+            "id": "n5",
+            "kind": "return",
+            "label": "return deserialize_from",
+            "parentId": "n4",
+            "read": "src/lib.rs:310:310",
+            "role": "terminal"
+          },
+          {
+            "depth": 2,
+            "flags": [
+              "branch"
+            ],
+            "id": "n6",
+            "kind": "else",
+            "label": "else",
+            "parentId": "n3",
+            "read": "src/lib.rs:311:329",
+            "role": "control-flow"
+          },
+          {
+            "depth": 3,
+            "flags": [
+              "branch",
+              "guard"
+            ],
+            "id": "n7",
+            "kind": "if",
+            "label": "if let Some(type_try_from) = cont.attrs.type_try_from()",
+            "parentId": "n6",
+            "read": "src/lib.rs:311:329",
+            "role": "control-flow"
+          },
+          {
+            "depth": 4,
+            "flags": [
+              "return"
+            ],
+            "id": "n8",
+            "kind": "return",
+            "label": "return deserialize_try_from",
+            "parentId": "n7",
+            "read": "src/lib.rs:312:312",
+            "role": "terminal"
+          },
+          {
+            "depth": 3,
+            "flags": [
+              "branch"
+            ],
+            "id": "n9",
+            "kind": "else",
+            "label": "else",
+            "parentId": "n6",
+            "read": "src/lib.rs:313:329",
+            "role": "control-flow"
+          },
+          {
+            "depth": 4,
+            "flags": [
+              "branch",
+              "guard"
+            ],
+            "id": "n10",
+            "kind": "if",
+            "label": "if let attr::Identifier::No = cont.attrs.identifier()",
+            "parentId": "n9",
+            "read": "src/lib.rs:313:329",
+            "role": "control-flow"
+          },
+          {
+            "depth": 5,
+            "flags": [
+              "branch"
+            ],
+            "id": "n11",
+            "kind": "match",
+            "label": "match &cont.data",
+            "parentId": "n10",
+            "read": "src/lib.rs:314:323",
+            "role": "control-flow"
+          },
+          {
+            "depth": 6,
+            "flags": [
+              "branch"
+            ],
+            "id": "n12",
+            "kind": "case",
+            "label": "case Data::Enum(variants)",
+            "parentId": "n11",
+            "read": "src/lib.rs:315:315",
+            "role": "control-flow"
+          },
+          {
+            "depth": 7,
+            "flags": [
+              "call"
+            ],
+            "id": "n13",
+            "kind": "call",
+            "label": "call enum_::deserialize",
+            "parentId": "n12",
+            "read": "src/lib.rs:315:315",
+            "role": "call"
+          },
+          {
+            "depth": 6,
+            "flags": [
+              "branch"
+            ],
+            "id": "n14",
+            "kind": "case",
+            "label": "case Data::Struct(Style::Struct, fields)",
+            "parentId": "n11",
+            "read": "src/lib.rs:316:316",
+            "role": "control-flow"
+          },
+          {
+            "depth": 7,
+            "flags": [
+              "return"
+            ],
+            "id": "n15",
+            "kind": "return",
+            "label": "return struct_::deserialize",
+            "parentId": "n14",
+            "read": "src/lib.rs:317:317",
+            "role": "terminal"
+          },
+          {
+            "depth": 6,
+            "flags": [
+              "branch"
+            ],
+            "id": "n16",
+            "kind": "case",
+            "label": "case Data::Struct(Style::Tuple, fields) | Data::Struct(Style::Newtype, fields)",
+            "parentId": "n11",
+            "read": "src/lib.rs:319:319",
+            "role": "control-flow"
+          },
+          {
+            "depth": 7,
+            "flags": [
+              "return"
+            ],
+            "id": "n17",
+            "kind": "return",
+            "label": "return tuple::deserialize",
+            "parentId": "n16",
+            "read": "src/lib.rs:320:320",
+            "role": "terminal"
+          },
+          {
+            "depth": 6,
+            "flags": [
+              "branch"
+            ],
+            "id": "n18",
+            "kind": "case",
+            "label": "case Data::Struct(Style::Unit, _)",
+            "parentId": "n11",
+            "read": "src/lib.rs:322:322",
+            "role": "control-flow"
+          },
+          {
+            "depth": 7,
+            "flags": [
+              "call"
+            ],
+            "id": "n19",
+            "kind": "call",
+            "label": "call unit::deserialize",
+            "parentId": "n18",
+            "read": "src/lib.rs:322:322",
+            "role": "call"
+          },
+          {
+            "depth": 4,
+            "flags": [
+              "branch"
+            ],
+            "id": "n20",
+            "kind": "else",
+            "label": "else",
+            "parentId": "n9",
+            "read": "src/lib.rs:324:329",
+            "role": "control-flow"
+          },
+          {
+            "depth": 5,
+            "flags": [
+              "branch"
+            ],
+            "id": "n21",
+            "kind": "match",
+            "label": "match &cont.data",
+            "parentId": "n20",
+            "read": "src/lib.rs:325:328",
+            "role": "control-flow"
+          },
+          {
+            "depth": 6,
+            "flags": [
+              "branch"
+            ],
+            "id": "n22",
+            "kind": "case",
+            "label": "case Data::Enum(variants)",
+            "parentId": "n21",
+            "read": "src/lib.rs:326:326",
+            "role": "control-flow"
+          },
+          {
+            "depth": 7,
+            "flags": [
+              "call"
+            ],
+            "id": "n23",
+            "kind": "call",
+            "label": "call identifier::deserialize_custom",
+            "parentId": "n22",
+            "read": "src/lib.rs:326:326",
+            "role": "call"
+          }
+        ],
+        "nodesTruncated": true,
+        "sourceAuthority": "native-parser",
+        "syntax": "semantic-outline"
+      },
+      "read": "src/lib.rs:306:330",
+      "truncated": false,
+      "visibility": "private"
+    }
+  ],
+  "method": "query/owner-items",
+  "namespace": "agent.semantic-protocols.languages.rust.rs-harness",
+  "outputMode": "code",
+  "ownerPath": "src/lib.rs",
+  "projectRoot": ".",
+  "protocolId": "agent.semantic-protocols.semantic-language",
+  "protocolVersion": "1",
+  "providerId": "rs-harness",
+  "query": "deserialize_body",
+  "queryCoverage": [
+    {
+      "match": "exact",
+      "matchCount": 1,
+      "nextAction": "code",
+      "status": "hit",
+      "value": "deserialize_body"
+    }
+  ],
+  "queryTerms": [
+    "deserialize_body"
+  ],
+  "schemaId": "agent.semantic-protocols.semantic-query-packet",
+  "schemaVersion": "1",
+  "truncated": false
+}

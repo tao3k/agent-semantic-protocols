@@ -2,15 +2,15 @@
 #+AUTHOR: agent-semantic-protocols
 #+DATE: 2026-06-02
 #+RFC: 006
-#+STATUS: draft
-#+DEPENDS: rfcs/cli-first-harness-ux.org (005), schemas/semantic-graph.v1.schema.json, schemas/semantic-search-packet.v1.schema.json
+#+STATUS: active-implementation
+#+DEPENDS: rfcs/cli-first-harness-ux.org (005), schemas/semantic-graph.v1.schema.json, schemas/semantic-search-packet.v1.schema.json, schemas/semantic-compact-graph-render.v1.schema.json
 
 * One-sentence summary
 
 Every agent-facing =search= response carries a graph feature: schema-owned
 semantic graph facts are projected into typed aliases, grouped relation edges,
-algorithm-owned rank, inline next actions, exact locators, and explicit
-omission/avoidance facts.
+an explicit search-root alias, algorithm-owned rank, inline next actions, exact
+locators, and explicit omission/avoidance facts.
 
 * Problem
 
@@ -85,27 +85,35 @@ output.
 
 * Projection grammar
 
-The projection has one header line and a small set of compact fact lines:
+The projection has one view-native header line and a small set of compact fact
+lines:
 
 #+begin_src text
-[search-graph] mode=<prime|owner|dependency|query-set|ingest|tests|policy|query> root=<path-or-.> alg=<searchSynthesis.algorithm> [base=<path>]
+[search-<view>] (q=<query>|root=<path-or-.>) [querySet=<n>] [selector=<selector>] [scope=<scope>] alg=<searchSynthesis.algorithm>
+alias: graph:{G=search,...}
+G=search:result!query
 ID=type:target[!action]
+G>{ID:relation,ID:relation}
 SRC>{DST:relation,DST:relation}
 (SRC,SRC)>DST:relation
-rank=ID,ID,ID
-frontier=ID.action,ID.action
+rank=ID,ID,ID frontier=ID.action,ID.action
 omit=<omitted-semantic>[,<omitted-semantic>]
 avoid=<anti-action>[,<anti-action>]
 #+end_src
 
+This graph projection is schema-derived and prompt-facing.  The default
+agent-facing =--view seeds= output renders the minimal graph frontier as
+view-native =search= output, aliases, and the combined =rank= / =frontier=
+line.  It must not also render independent =|seed= or =|synthesis= rows as a
+second action protocol.
+
 The same shape applies to code-level graphs:
 
 #+begin_src text
-[search-graph] mode=query root=<path> q=<query> alg=<algorithm>
+[search-query] q=<query> selector=<path> alg=<algorithm>
 ID=type:name@start:end[!action]
 SRC>{DST:relation,DST:relation}
-rank=ID,ID,ID
-frontier=ID.action,ID.action
+rank=ID,ID,ID frontier=ID.action,ID.action
 omit=<omitted-semantic>[,<omitted-semantic>]
 #+end_src
 
@@ -114,19 +122,29 @@ and must not be copied into source paths, JSON paths, or edit commands.
 =!action= declares an action available from a node.  =frontier= selects the
 seed actions for this packet from those node actions.
 
+=G= is the packet-local search root.  It gives synthesis-derived edges a real
+source node without making the rank/frontier line act as a graph node.  =G= is
+not a recommended follow-up action and must not appear in =rank= or =frontier=.
+When a provider has no parser-owned =imports=, =calls=, or =covers= edges for a
+surface, it may still render honest synthesis-derived relations from =G= such
+as =selects=, =matches=, =covers=, =uses=, =imports=, =contains=, =explains=,
+=flags=, and =gates=.
+
 * Owner search example
 
 #+begin_src text
-[search-graph] mode=owner root=src/classifier.rs alg=bounded-reachability-depth1 base=tests/unit/classifier/routes
+[search-owner] q=src/classifier.rs scope=tests/unit/classifier/routes alg=bounded-reachability-depth1
+alias: graph:{G=search,C=owner,M=owner,P=owner,W=test,R=test}
+G=search:result!query
 C=owner:self!items
 M=owner:src/command/mod.rs!owner
 P=owner:src/protocol.rs
 W=test:wrappers.rs!tests
 R=test:raw_search.rs!tests
+G>{C:selects,W:covers,R:covers,M:selects,P:selects}
 C>{M:imports,P:decision}
 (W,R)>C:covers
-rank=C,W,R,M,P
-frontier=C.items,M.owner,W.tests,R.tests
+rank=C,W,R,M,P frontier=C.items,M.owner,W.tests,R.tests
 avoid=raw-read
 #+end_src
 
@@ -135,6 +153,8 @@ This says:
 - =C= is the selected owner and its next action is =items=
 - =M= and =P= are frontier owners
 - =W= and =R= are tests that cover =C=
+- =G= tells the agent these nodes were selected by this search result, not by
+  source-order adjacency
 - the attention order is =C,W,R,M,P=
 - the selected seed actions are =C.items,M.owner,W.tests,R.tests=
 - raw source reads are explicitly not the next action
@@ -145,16 +165,18 @@ edges are grouped.  The agent does not have to infer rank from output order.
 * Query item example
 
 #+begin_src text
-[search-graph] mode=query root=src/tool_action.rs q=command_source_paths alg=exact-item
+[search-query] q=command_source_paths selector=src/tool_action.rs alg=exact-item
+alias: graph:{G=search,I=item,A=item,L=item,B=item,P=item}
+G=search:result!query
 I=fn:command_source_paths@221:241!code
-G=guard:range_paths.nonempty@224:226!read
+A=guard:range_paths.nonempty@224:226!read
 L=loop:path_like_tokens@228:239!read
 B=branch:embedded.empty@230:233
 P=branch:embedded.present@234:238
-I>{G:return,L:collect}
+G>{I:selects,A:contains,L:contains}
+I>{A:return,L:collect}
 L>{B:push_path,P:push_embedded}
-rank=I,G,L,B,P
-frontier=I.code,G.read,L.read
+rank=I,A,L,B,P frontier=I.code,A.read,L.read
 omit=trivia,comments,blank-lines
 #+end_src
 
@@ -172,15 +194,17 @@ query/read actions.
 * Prime search example
 
 #+begin_src text
-[search-graph] mode=prime root=. alg=owner-rank-frontier
+[search-prime] root=. alg=owner-rank-frontier
+alias: graph:{G=search,L=owner,C=owner,T=owner,U=test}
+G=search:result!query
 L=owner:src/lib.rs!owner
 C=owner:src/classifier.rs!owner
 T=owner:src/tool_action.rs!owner
 U=test:tests/unit_test.rs!tests
+G>{L:selects,C:selects,T:selects,U:covers}
 L>{C:exports,T:exports}
 U>{C:covers,T:covers}
-rank=L,C,T,U
-frontier=L.owner,C.owner,T.owner,U.tests
+rank=L,C,T,U frontier=L.owner,C.owner,T.owner,U.tests
 #+end_src
 
 Prime output still avoids full dependency or callsite expansion.  The graph
@@ -224,9 +248,10 @@ Dense mode may pack aliases and edges with semicolons:
 
 #+begin_src text
 C=owner:self!items;M=owner:src/command/mod.rs!owner;P=owner:src/protocol.rs;W=test:wrappers.rs!tests;R=test:raw_search.rs!tests
-C>{M:imports,P:decision};(W,R)>C:covers
-rank=C,W,R,M,P
-frontier=C.items,M.owner,W.tests,R.tests
+alias: graph:{G=search,C=owner,M=owner,P=owner,W=test,R=test}
+G=search:result!query
+G>{C:selects,W:covers,R:covers,M:selects,P:selects};C>{M:imports,P:decision};(W,R)>C:covers
+rank=C,W,R,M,P frontier=C.items,M.owner,W.tests,R.tests
 #+end_src
 
 Dense mode is valid only when it preserves the same relation labels, rank,
@@ -258,9 +283,9 @@ must not introduce an independent ranking or seed set.
 * Seed and synthesis integration
 
 =seed= is not an independent line family in this RFC.  A seed is a selected
-frontier action over a graph node.  Compact output renders it as
-=frontier=ID.action,ID.action=, where each =ID.action= must correspond to a
-node alias that declares =!action= or to an action represented in the JSON
+frontier action over a graph node.  Compact output renders it inside the
+combined =rank=... frontier=...= line, where each =ID.action= must correspond
+to a node alias that declares =!action= or to an action represented in the JSON
 packet.
 
 =synthesis= is not an independent prose summary in this RFC.  Synthesis is the
@@ -309,24 +334,76 @@ represent every prompt-visible fact:
 If a field is missing, extend the schema before provider-specific rendering.
 Do not hide projection-only decisions in language-private =fields= maps.
 
+The prompt-facing text template is also schema-owned.  Providers must align to
+=schemas/semantic-compact-graph-render.v1.schema.json= for:
+
+- view-native header grammar
+- alias line grammar
+- dense alias separator
+- combined =rank=... frontier=...= line
+- source-kind to node/action vocabulary
+
+Rust, TypeScript, Python, and future provider renderers may implement the
+template in their native language, but they should not invent provider-private
+headers or action names.
+
 * Implementation order
 
 1. Keep this RFC as the language-neutral contract.
 2. Audit =semantic-graph.v1= and =semantic-search-packet.v1= for alias,
    action, rank, frontier seed, synthesis, omission, and avoid coverage.
-3. Add schema tests for any missing fields.
-4. Implement Rust renderer tests that prove prime, owner, query-set, ingest,
+3. Maintain =semantic-compact-graph-render.v1= as the shared prompt-facing
+   text template.
+4. Add schema tests for any missing fields or template vocabulary drift.
+5. Implement Rust renderer tests that prove prime, owner, query-set, ingest,
    tests, and item query outputs derive their compact lines from the graph
    feature.
-5. Replace renderer assertions that target independent =|seed= or
+6. Replace renderer assertions that target independent =|seed= or
    =|synthesis= rows with assertions over =rank=, =frontier=, =avoid=, aliases,
    and grouped edges.
-6. Align TypeScript and Python renderer tests to the same examples and surface
+7. Align TypeScript and Python renderer tests to the same examples and surface
    classes.
-7. Add sandtable scenarios that measure command count, token size, repeated
+8. Add sandtable scenarios that measure command count, token size, repeated
    search loops, and hook-recovery clarity.
-8. Use real-project traces before changing default =--view seeds= rendering
-   syntax, but require its seeds to remain graph-derived from the start.
+9. Use real-project traces before widening graph rendering beyond the proven
+   surfaces; require every =--view seeds= follow-up action to remain
+   graph-derived from the start.
+
+* Current implementation progress
+
+RFC 006 is in active implementation.  The current checkpoint is intentionally
+Rust-first because Rust has the most complete provider tests and is the
+reference path for validating the compact graph prompt surface before
+cross-language parity.
+
+Completed:
+
+- [X] RFC 006 exists as the independent graph feature contract.
+- [X] RFC 005 points to RFC 006 for compact graph rendering semantics.
+- [X] =semantic-compact-graph-render.v1= owns the prompt-facing render
+  template so providers do not hand-invent headers, aliases, or rank/frontier
+  line shapes.
+- [X] Rust =search fzf --query-set ... --view seeds= renders graph-frontier
+  output instead of legacy =|seed= / =|synthesis= rows.
+- [X] Rust =--view seeds= renders compact graph output from the search packet
+  instead of post-processing =|seed= rows as an independent prompt protocol.
+- [X] Rust =--json --view seeds= preserves the search packet as the
+  validation/source-of-truth shape.
+- [X] Focused Rust tests cover policy, query, fzf scoped search, dependency
+  flow, and public large-library prime/dependency graph seed flows.
+- [X] Rust prompt-facing seed views for prime, owner, policy, query, ingest,
+  fzf, and fzf query-set assert graph output instead of legacy =|seed= /
+  =|synthesis= rows.
+
+In progress:
+
+- [ ] Align TypeScript graph rendering and JSON synthesis fallback to this
+  RFC.
+- [ ] Align Python graph rendering and JSON synthesis fallback to this RFC.
+- [ ] Add sandtable scenarios that assert no prompt-facing =|seed= /
+  =|synthesis= rows for graph-enabled =--view seeds= outputs.
+- [ ] Record real-trigger metrics: command count, packet size, latency,
+  repeated-search rate, and whether frontier actions were sufficient.
 
 * Acceptance criteria
 

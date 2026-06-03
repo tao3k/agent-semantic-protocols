@@ -1,0 +1,28 @@
+{
+  "caseId": "requests-session",
+  "compactCodeDelta": 6581,
+  "compactCodeRatio": 0.1132,
+  "compactCodeTokens": 840,
+  "compactLineDelta": 6581,
+  "compactLineRatio": 0.1132,
+  "compactLineTokens": 840,
+  "featureClass": "real-library",
+  "languageId": "python",
+  "providerId": "py-harness",
+  "queryPacketDelta": 4550,
+  "queryPacketRatio": 0.3869,
+  "queryPacketTokens": 2871,
+  "rawSourceTokens": 7421,
+  "schemaId": "agent.semantic-protocols.parser-compact-token-cost",
+  "schemaVersion": "1",
+  "sourceOrigin": {
+    "kind": "real-project",
+    "license": "Apache-2.0",
+    "note": "Real Requests Session used to stress public HTTP client method compacting.",
+    "ref": "3be097d450ee",
+    "repository": "psf/requests",
+    "sourcePath": "src/requests/sessions.py"
+  },
+  "tokenizerId": "tiktoken:o200k_base",
+  "variantId": "python"
+}

@@ -25,139 +25,63 @@
         ],
         "summary": "function decide"
       },
+      "patchSafety": {
+        "exactRead": "src/control_flow.py:4:12",
+        "level": "read-safe",
+        "reason": "read exact source locator before editing this compact match"
+      },
       "projection": {
         "exactRead": "src/control_flow.py:4:12",
         "expandActions": [
           {
-            "argv": [
-              "py-harness",
-              "query",
-              "--from-hook",
-              "direct-source-read",
-              "--selector",
-              "src/control_flow.py:4:12",
-              "."
-            ],
             "kind": "exact-read",
             "read": "src/control_flow.py:4:12",
             "reason": "read exact source before editing",
             "target": "decide"
           },
           {
-            "argv": [
-              "py-harness",
-              "query",
-              "--from-hook",
-              "direct-source-read",
-              "--selector",
-              "src/control_flow.py:5:5",
-              "."
-            ],
             "kind": "exact-read",
             "read": "src/control_flow.py:5:5",
             "reason": "expand assign node before editing",
             "target": "decide:1"
           },
           {
-            "argv": [
-              "py-harness",
-              "query",
-              "--from-hook",
-              "direct-source-read",
-              "--selector",
-              "src/control_flow.py:6:9",
-              "."
-            ],
             "kind": "exact-read",
             "read": "src/control_flow.py:6:9",
             "reason": "expand for node before editing",
             "target": "decide:2"
           },
           {
-            "argv": [
-              "py-harness",
-              "query",
-              "--from-hook",
-              "direct-source-read",
-              "--selector",
-              "src/control_flow.py:7:8",
-              "."
-            ],
             "kind": "exact-read",
             "read": "src/control_flow.py:7:8",
             "reason": "expand if node before editing",
             "target": "decide:3"
           },
           {
-            "argv": [
-              "py-harness",
-              "query",
-              "--from-hook",
-              "direct-source-read",
-              "--selector",
-              "src/control_flow.py:8:8",
-              "."
-            ],
             "kind": "exact-read",
             "read": "src/control_flow.py:8:8",
             "reason": "expand return node before editing",
             "target": "decide:4"
           },
           {
-            "argv": [
-              "py-harness",
-              "query",
-              "--from-hook",
-              "direct-source-read",
-              "--selector",
-              "src/control_flow.py:9:9",
-              "."
-            ],
             "kind": "exact-read",
             "read": "src/control_flow.py:9:9",
             "reason": "expand aug_assign node before editing",
             "target": "decide:5"
           },
           {
-            "argv": [
-              "py-harness",
-              "query",
-              "--from-hook",
-              "direct-source-read",
-              "--selector",
-              "src/control_flow.py:10:11",
-              "."
-            ],
             "kind": "exact-read",
             "read": "src/control_flow.py:10:11",
             "reason": "expand if node before editing",
             "target": "decide:6"
           },
           {
-            "argv": [
-              "py-harness",
-              "query",
-              "--from-hook",
-              "direct-source-read",
-              "--selector",
-              "src/control_flow.py:11:11",
-              "."
-            ],
             "kind": "exact-read",
             "read": "src/control_flow.py:11:11",
             "reason": "expand return node before editing",
             "target": "decide:7"
           },
           {
-            "argv": [
-              "py-harness",
-              "query",
-              "--from-hook",
-              "direct-source-read",
-              "--selector",
-              "src/control_flow.py",
-              "."
-            ],
             "kind": "owner-names",
             "reason": "return owner-local item names without code windows",
             "target": "src/control_flow.py"
@@ -165,6 +89,8 @@
         ],
         "losslessStructure": true,
         "mode": "outline",
+        "nodeCount": 9,
+        "nodeLimit": 24,
         "nodes": [
           {
             "depth": 0,
@@ -271,9 +197,10 @@
             "role": "terminal"
           }
         ],
+        "nodesTruncated": false,
         "omitted": [],
         "sourceAuthority": "native-parser",
-        "sourceFingerprint": "src/control_flow.py:4:12:200:37e3cdae",
+        "sourceFingerprint": "src/control_flow.py:4:12:161:fd6fbbd5",
         "syntax": "semantic-outline"
       },
       "read": "src/control_flow.py:4:12",
@@ -286,6 +213,11 @@
   "notes": [],
   "outputMode": "code",
   "ownerPath": "src/control_flow.py",
+  "patchSafety": {
+    "level": "read-safe",
+    "nextAction": "query --from-hook direct-source-read",
+    "reason": "compact query packet is not a mutation authority"
+  },
   "projectRoot": "tests/fixtures/parser-compact/projects/control-flow/control-flow-basic/python",
   "protocolId": "agent.semantic-protocols.semantic-language",
   "protocolVersion": "1",

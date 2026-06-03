@@ -87,10 +87,18 @@
         "lineProtocol": true,
         "stdoutContains": [
           "[search-prime]",
-          "|seed"
+          "alias: graph:{G=search",
+          "G=search:result!query",
+          "G>{",
+          "rank=",
+          "frontier="
         ],
         "maxStdoutLinesWarn": 10,
-        "maxElapsedMsWarn": 3000
+        "maxElapsedMsWarn": 3000,
+        "stdoutNotContains": [
+          "|seed",
+          "|synthesis"
+        ]
       }
     },
     {
@@ -98,7 +106,7 @@
       "command": [
         "rs-harness",
         "search",
-        "text",
+        "fzf",
         "--query-set",
         "abort",
         "--query-set",

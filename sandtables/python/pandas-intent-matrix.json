@@ -73,7 +73,7 @@
       "command": [
         "py-harness",
         "search",
-        "text",
+        "fzf",
         "--query-set",
         "groupby",
         "--query-set",
@@ -98,7 +98,7 @@
       "command": [
         "py-harness",
         "search",
-        "text",
+        "fzf",
         "--query-set",
         "BlockManager",
         "owner",

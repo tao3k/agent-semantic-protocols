@@ -15,139 +15,63 @@
         "path": "src/control-flow.ts"
       },
       "name": "decide",
+      "patchSafety": {
+        "exactRead": "src/control-flow.ts:1:13",
+        "level": "read-safe",
+        "reason": "read exact source locator before editing this compact match"
+      },
       "projection": {
         "exactRead": "src/control-flow.ts:1:13",
         "expandActions": [
           {
-            "argv": [
-              "ts-harness",
-              "query",
-              "--from-hook",
-              "direct-source-read",
-              "--selector",
-              "src/control-flow.ts:1:13",
-              "."
-            ],
             "kind": "exact-read",
             "read": "src/control-flow.ts:1:13",
             "reason": "read exact source before editing",
             "target": "decide"
           },
           {
-            "argv": [
-              "ts-harness",
-              "query",
-              "--from-hook",
-              "direct-source-read",
-              "--selector",
-              "src/control-flow.ts:2:2",
-              "."
-            ],
             "kind": "exact-read",
             "read": "src/control-flow.ts:2:2",
             "reason": "expand let node before editing",
             "target": "decide:1"
           },
           {
-            "argv": [
-              "ts-harness",
-              "query",
-              "--from-hook",
-              "direct-source-read",
-              "--selector",
-              "src/control-flow.ts:3:8",
-              "."
-            ],
             "kind": "exact-read",
             "read": "src/control-flow.ts:3:8",
             "reason": "expand for node before editing",
             "target": "decide:2"
           },
           {
-            "argv": [
-              "ts-harness",
-              "query",
-              "--from-hook",
-              "direct-source-read",
-              "--selector",
-              "src/control-flow.ts:4:6",
-              "."
-            ],
             "kind": "exact-read",
             "read": "src/control-flow.ts:4:6",
             "reason": "expand if node before editing",
             "target": "decide:3"
           },
           {
-            "argv": [
-              "ts-harness",
-              "query",
-              "--from-hook",
-              "direct-source-read",
-              "--selector",
-              "src/control-flow.ts:5:5",
-              "."
-            ],
             "kind": "exact-read",
             "read": "src/control-flow.ts:5:5",
             "reason": "expand return node before editing",
             "target": "decide:4"
           },
           {
-            "argv": [
-              "ts-harness",
-              "query",
-              "--from-hook",
-              "direct-source-read",
-              "--selector",
-              "src/control-flow.ts:7:7",
-              "."
-            ],
             "kind": "exact-read",
             "read": "src/control-flow.ts:7:7",
             "reason": "expand assign node before editing",
             "target": "decide:5"
           },
           {
-            "argv": [
-              "ts-harness",
-              "query",
-              "--from-hook",
-              "direct-source-read",
-              "--selector",
-              "src/control-flow.ts:9:11",
-              "."
-            ],
             "kind": "exact-read",
             "read": "src/control-flow.ts:9:11",
             "reason": "expand if node before editing",
             "target": "decide:6"
           },
           {
-            "argv": [
-              "ts-harness",
-              "query",
-              "--from-hook",
-              "direct-source-read",
-              "--selector",
-              "src/control-flow.ts:10:10",
-              "."
-            ],
             "kind": "exact-read",
             "read": "src/control-flow.ts:10:10",
             "reason": "expand return node before editing",
             "target": "decide:7"
           },
           {
-            "argv": [
-              "ts-harness",
-              "query",
-              "--from-hook",
-              "direct-source-read",
-              "--selector",
-              "src/control-flow.ts",
-              "."
-            ],
             "kind": "owner-names",
             "reason": "return owner-local item names without code windows",
             "target": "src/control-flow.ts"
@@ -166,7 +90,7 @@
             ],
             "id": "decide",
             "kind": "function",
-            "label": "export function decide(flag: boolean, values: number[]): number | null",
+            "label": "function decide",
             "read": "src/control-flow.ts:1:13",
             "role": "declaration"
           },
@@ -177,7 +101,7 @@
             ],
             "id": "decide:1",
             "kind": "let",
-            "label": "let total = 0",
+            "label": "assign total",
             "parentId": "decide",
             "read": "src/control-flow.ts:2:2",
             "role": "mutation"
@@ -189,7 +113,7 @@
             ],
             "id": "decide:2",
             "kind": "for",
-            "label": "for const value of values",
+            "label": "for value of values",
             "parentId": "decide",
             "read": "src/control-flow.ts:3:8",
             "role": "control-flow"
@@ -261,7 +185,7 @@
             ],
             "id": "decide:8",
             "kind": "return",
-            "label": "return 0",
+            "label": "return number",
             "parentId": "decide",
             "read": "src/control-flow.ts:12:12",
             "role": "terminal"
@@ -288,6 +212,11 @@
   "namespace": "agent.semantic-protocols.languages.typescript.ts-harness",
   "outputMode": "code",
   "ownerPath": "src/control-flow.ts",
+  "patchSafety": {
+    "level": "read-safe",
+    "nextAction": "query --from-hook direct-source-read",
+    "reason": "compact query packet is not a mutation authority"
+  },
   "projectRoot": "tests/fixtures/parser-compact/projects/control-flow/control-flow-basic/typescript",
   "protocolId": "agent.semantic-protocols.semantic-language",
   "protocolVersion": "1",

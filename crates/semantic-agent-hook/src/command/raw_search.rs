@@ -407,9 +407,16 @@ fn parse_fd(stage: &[String]) -> ParsedRawSearch {
         positional.push(token.clone());
         index += 1;
     }
+    let first_positional_is_scope = positional.first().is_some_and(|pattern| {
+        fd_single_positional_is_scope(pattern, &parsed.scope, positional.len())
+    });
     if let Some(pattern) = positional.first() {
-        push_source_selector(&mut parsed.scope, pattern, false);
-        parsed.terms.push(pattern.clone());
+        if first_positional_is_scope {
+            parsed.scope.paths.push(pattern.clone());
+        } else {
+            push_source_selector(&mut parsed.scope, pattern, false);
+            parsed.terms.push(pattern.clone());
+        }
     }
     for path in positional.into_iter().skip(1) {
         parsed.scope.paths.push(path);
@@ -418,6 +425,16 @@ fn parse_fd(stage: &[String]) -> ParsedRawSearch {
         parsed.scope.implicit_workspace = true;
     }
     parsed
+}
+
+fn fd_single_positional_is_scope(
+    token: &str,
+    scope: &RawSearchScope,
+    positional_len: usize,
+) -> bool {
+    positional_len == 1
+        && (!scope.extensions.is_empty() || !scope.types.is_empty() || !scope.globs.is_empty())
+        && is_common_source_scope(token)
 }
 
 fn parse_find(stage: &[String]) -> ParsedRawSearch {
@@ -653,6 +670,13 @@ fn raw_search_option_takes_value(token: &str) -> bool {
 
 fn is_workspace_root(path: &str) -> bool {
     matches!(path, "." | "./")
+}
+
+fn is_common_source_scope(path: &str) -> bool {
+    matches!(
+        path.trim_end_matches('/'),
+        "." | "src" | "test" | "tests" | "crates" | "packages" | "languages"
+    )
 }
 
 fn push_source_selector(scope: &mut RawSearchScope, token: &str, allow_bare_extension: bool) {

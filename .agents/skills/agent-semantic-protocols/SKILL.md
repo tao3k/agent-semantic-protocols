@@ -26,6 +26,7 @@ description: Use when working with the language provider binaries maintained by 
 - Follow a hook wildcard direct-read route: `<bin> search query --from-hook direct-source-read --selector <glob-or-path> --term <term> --surface owner,tests --view seeds .`
 - Pipe candidate lines: `rg -n '<term>' src tests | <bin> search ingest --view seeds .`
 - Check changed work: `<bin> check --changed .`
+- Verify a parser-owned mechanical edit intent: `semantic-agent-protocol ast-patch dry-run --packet <semantic-ast-patch.json> .`
 
 Hook rule of thumb: source-suffix reads and content dumps are denied; exact
 source paths should follow the provider `query --from-hook direct-source-read
@@ -36,6 +37,22 @@ to `search ingest`; non-source docs/README/markdown searches should be allowed.
 Exact direct-read may return either `read-owner` source windows or a `read-plan`
 with `code=false`. When it returns `read-plan`, follow the provider-selected
 `|symbol read=...` or search repair action instead of forcing a raw source dump.
+
+Use `semantic-agent-protocol ast-patch dry-run` before large mechanical edits
+when the change is structural and repetitive: deleting many matching
+statements/items, replacing a bounded family of statements/items, or inserting
+or removing imports across a known owner set. The packet must come from
+parser-owned query/search evidence, use a `path:start:end` target read locator,
+and set `operation.allowLargeMechanicalEdit=true`,
+`operation.maxEdits`, `operation.mechanicalKind`, and
+`operation.expectedSnippet`. Treat a verified receipt as permission to proceed
+with the planned Codex `apply_patch` or a provider-native AST dry-run; it is not
+permission to mutate files directly in the Codex adapter.
+
+Do not use `ast-patch` for free-form text rewriting, formatting churn, prose
+edits, generated file refreshes, or uncertain targets. If the receipt reports
+`status=failed`, revise the query/locator or read the exact source window; do
+not fall back to broad raw source reads or regex replacement.
 
 When the provider guide advertises handle-aware search, use it before code for
 stable non-code facts such as policy rule ids, schema fixtures, test cases,

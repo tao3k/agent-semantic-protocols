@@ -51,8 +51,7 @@ def semantic_search_minimal_packet() -> dict[str, object]:
                 "ownerPath": "src/components/WorkflowExecution.tsx",
                 "location": {
                     "path": "src/components/WorkflowExecution.tsx",
-                    "line": 42,
-                    "column": 17,
+                    "lineRange": "42:42",
                 },
                 "score": 1.0,
                 "reason": "parser-visible-source",

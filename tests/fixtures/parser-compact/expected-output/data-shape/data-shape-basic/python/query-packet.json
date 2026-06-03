@@ -25,124 +25,39 @@
         ],
         "summary": "class UserSummary"
       },
+      "patchSafety": {
+        "exactRead": "src/user_summary.py:7:15",
+        "level": "read-safe",
+        "reason": "read exact source locator before editing this compact match"
+      },
       "projection": {
         "exactRead": "src/user_summary.py:7:15",
         "expandActions": [
           {
-            "argv": [
-              "py-harness",
-              "query",
-              "--from-hook",
-              "direct-source-read",
-              "--selector",
-              "src/user_summary.py:7:15",
-              "."
-            ],
             "kind": "exact-read",
             "read": "src/user_summary.py:7:15",
             "reason": "read exact source before editing",
             "target": "UserSummary"
           },
           {
-            "argv": [
-              "py-harness",
-              "query",
-              "--from-hook",
-              "direct-source-read",
-              "--selector",
-              "src/user_summary.py:8:8",
-              "."
-            ],
-            "kind": "exact-read",
-            "read": "src/user_summary.py:8:8",
-            "reason": "expand assign node before editing",
-            "target": "UserSummary:1"
-          },
-          {
-            "argv": [
-              "py-harness",
-              "query",
-              "--from-hook",
-              "direct-source-read",
-              "--selector",
-              "src/user_summary.py:9:9",
-              "."
-            ],
-            "kind": "exact-read",
-            "read": "src/user_summary.py:9:9",
-            "reason": "expand assign node before editing",
-            "target": "UserSummary:2"
-          },
-          {
-            "argv": [
-              "py-harness",
-              "query",
-              "--from-hook",
-              "direct-source-read",
-              "--selector",
-              "src/user_summary.py:10:10",
-              "."
-            ],
-            "kind": "exact-read",
-            "read": "src/user_summary.py:10:10",
-            "reason": "expand assign node before editing",
-            "target": "UserSummary:3"
-          },
-          {
-            "argv": [
-              "py-harness",
-              "query",
-              "--from-hook",
-              "direct-source-read",
-              "--selector",
-              "src/user_summary.py:13:14",
-              "."
-            ],
             "kind": "exact-read",
             "read": "src/user_summary.py:13:14",
             "reason": "expand if node before editing",
             "target": "UserSummary:5"
           },
           {
-            "argv": [
-              "py-harness",
-              "query",
-              "--from-hook",
-              "direct-source-read",
-              "--selector",
-              "src/user_summary.py:14:14",
-              "."
-            ],
             "kind": "exact-read",
             "read": "src/user_summary.py:14:14",
             "reason": "expand return node before editing",
             "target": "UserSummary:6"
           },
           {
-            "argv": [
-              "py-harness",
-              "query",
-              "--from-hook",
-              "direct-source-read",
-              "--selector",
-              "src/user_summary.py:15:15",
-              "."
-            ],
             "kind": "exact-read",
             "read": "src/user_summary.py:15:15",
             "reason": "expand return node before editing",
             "target": "UserSummary:7"
           },
           {
-            "argv": [
-              "py-harness",
-              "query",
-              "--from-hook",
-              "direct-source-read",
-              "--selector",
-              "src/user_summary.py",
-              "."
-            ],
             "kind": "owner-names",
             "reason": "return owner-local item names without code windows",
             "target": "src/user_summary.py"
@@ -150,6 +65,8 @@
         ],
         "losslessStructure": true,
         "mode": "outline",
+        "nodeCount": 8,
+        "nodeLimit": 24,
         "nodes": [
           {
             "depth": 0,
@@ -162,38 +79,38 @@
           {
             "depth": 1,
             "flags": [
-              "mutation"
+              "field"
             ],
             "id": "UserSummary:1",
-            "kind": "assign",
-            "label": "assign user_id",
+            "kind": "field",
+            "label": "field user_id: int",
             "parentId": "UserSummary",
             "read": "src/user_summary.py:8:8",
-            "role": "mutation"
+            "role": "field"
           },
           {
             "depth": 1,
             "flags": [
-              "mutation"
+              "field"
             ],
             "id": "UserSummary:2",
-            "kind": "assign",
-            "label": "assign name",
+            "kind": "field",
+            "label": "field name: str",
             "parentId": "UserSummary",
             "read": "src/user_summary.py:9:9",
-            "role": "mutation"
+            "role": "field"
           },
           {
             "depth": 1,
             "flags": [
-              "mutation"
+              "field"
             ],
             "id": "UserSummary:3",
-            "kind": "assign",
-            "label": "assign active",
+            "kind": "field",
+            "label": "field active: bool",
             "parentId": "UserSummary",
             "read": "src/user_summary.py:10:10",
-            "role": "mutation"
+            "role": "field"
           },
           {
             "depth": 1,
@@ -223,7 +140,7 @@
             ],
             "id": "UserSummary:6",
             "kind": "return",
-            "label": "return f'{self.name}#{self.user_id}'",
+            "label": "return template",
             "parentId": "UserSummary:5",
             "read": "src/user_summary.py:14:14",
             "role": "terminal"
@@ -235,15 +152,16 @@
             ],
             "id": "UserSummary:7",
             "kind": "return",
-            "label": "return 'inactive'",
+            "label": "return string",
             "parentId": "UserSummary:4",
             "read": "src/user_summary.py:15:15",
             "role": "terminal"
           }
         ],
+        "nodesTruncated": false,
         "omitted": [],
         "sourceAuthority": "native-parser",
-        "sourceFingerprint": "src/user_summary.py:7:15:171:622045fd",
+        "sourceFingerprint": "src/user_summary.py:7:15:148:24575911",
         "syntax": "semantic-outline"
       },
       "read": "src/user_summary.py:7:15",
@@ -256,6 +174,11 @@
   "notes": [],
   "outputMode": "code",
   "ownerPath": "src/user_summary.py",
+  "patchSafety": {
+    "level": "read-safe",
+    "nextAction": "query --from-hook direct-source-read",
+    "reason": "compact query packet is not a mutation authority"
+  },
   "projectRoot": "tests/fixtures/parser-compact/projects/data-shape/data-shape-basic/python",
   "protocolId": "agent.semantic-protocols.semantic-language",
   "protocolVersion": "1",

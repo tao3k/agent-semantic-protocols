@@ -25,5 +25,11 @@
     "UserSummary",
     "--json",
     "."
-  ]
+  ],
+  "sourceOrigin": {
+    "kind": "synthetic",
+    "repository": "agent-semantic-protocols",
+    "sourcePath": "src/user-summary.ts",
+    "note": "Synthetic compact fixture kept for language parity smoke coverage."
+  }
 }

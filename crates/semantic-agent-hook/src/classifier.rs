@@ -1,4 +1,6 @@
 //! Root semantic agent hook classifier over activated providers.
+#[path = "classifier_inline_source_read.rs"]
+mod inline_source_read;
 
 use serde_json::Value;
 
@@ -10,7 +12,7 @@ use crate::command::{
 use crate::protocol::{
     DecisionKind, DecisionRoute, DecisionRouteKind, DecisionSubject, HOOK_DECISION_SCHEMA_ID,
     HOOK_DECISION_SCHEMA_VERSION, HOOK_PROTOCOL_ID, HOOK_PROTOCOL_VERSION, HookDecision,
-    ReasonKind, normalize_source_route_selector,
+    ReasonKind,
 };
 use crate::protocol_activation::{ActivatedProvider, HookRuntime, SourceSelectorKind};
 use crate::source_selector::{SourceSelectorMatch, collect_source_selector_matches};
@@ -225,11 +227,11 @@ fn classify_source_read_command(
     command: &str,
     tokens: &[String],
 ) -> Option<HookDecision> {
-    let python_source_read_paths = python_source_read_paths(command, tokens);
-    if !python_source_read_paths.is_empty() {
+    let inline_source_read_paths = inline_source_read::source_read_paths(command, tokens);
+    if !inline_source_read_paths.is_empty() {
         let matches = collect_content_dump_matches(
             registry,
-            python_source_read_paths.iter().map(String::as_str),
+            inline_source_read_paths.iter().map(String::as_str),
         );
         if !matches.is_empty() {
             return Some(content_dump_decision(platform, event, action, matches));
@@ -291,72 +293,6 @@ fn content_dump_decision(
         routes,
         message,
     )
-}
-
-fn python_source_read_paths(command: &str, tokens: &[String]) -> Vec<String> {
-    if !tokens
-        .first()
-        .is_some_and(|token| is_python_interpreter_command(token))
-        || !python_source_read_api(command)
-    {
-        return Vec::new();
-    }
-    quoted_path_literals(command)
-}
-
-fn is_python_interpreter_command(token: &str) -> bool {
-    let name = token.rsplit('/').next().unwrap_or(token);
-    name == "python"
-        || name == "python3"
-        || name == "py"
-        || name
-            .strip_prefix("python3.")
-            .is_some_and(|suffix| suffix.chars().all(|ch| ch.is_ascii_digit() || ch == '.'))
-}
-
-fn python_source_read_api(command: &str) -> bool {
-    command.contains(".read_text(")
-        || command.contains(".read_bytes(")
-        || (command.contains("open(") && command.contains(".read("))
-}
-
-fn quoted_path_literals(command: &str) -> Vec<String> {
-    let mut paths = Vec::new();
-    let mut chars = command.chars().peekable();
-    while let Some(ch) = chars.next() {
-        if ch != '\'' && ch != '"' {
-            continue;
-        }
-        let quote = ch;
-        let mut literal = String::new();
-        let mut escaped = false;
-        for current in chars.by_ref() {
-            if escaped {
-                literal.push(current);
-                escaped = false;
-                continue;
-            }
-            if current == '\\' {
-                escaped = true;
-                continue;
-            }
-            if current == quote {
-                break;
-            }
-            literal.push(current);
-        }
-        let normalized = normalize_source_route_selector(&literal);
-        if is_path_like_literal(normalized) {
-            paths.push(normalized.to_string());
-        }
-    }
-    paths
-}
-
-fn is_path_like_literal(literal: &str) -> bool {
-    !literal.starts_with('-')
-        && (literal.contains('/') || literal.contains('*'))
-        && literal.contains('.')
 }
 
 fn direct_read_decision(

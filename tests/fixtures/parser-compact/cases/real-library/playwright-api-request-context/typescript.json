@@ -1,0 +1,39 @@
+{
+  "schemaId": "agent.semantic-protocols.parser-compact-case",
+  "schemaVersion": "1",
+  "caseId": "playwright-api-request-context",
+  "variantId": "typescript",
+  "languageId": "typescript",
+  "providerId": "ts-harness",
+  "featureClass": "real-library",
+  "sourceOrigin": {
+    "kind": "real-project",
+    "repository": "microsoft/playwright",
+    "ref": "3edc77fc943a",
+    "sourcePath": "packages/playwright-core/src/client/fetch.ts",
+    "license": "Apache-2.0",
+    "note": "Real Playwright API request context used to stress class lifecycle compacting."
+  },
+  "fixtureRoot": "tests/fixtures/parser-compact/projects/real-library/playwright-api-request-context/typescript",
+  "rawSourcePath": "src/fetch.ts",
+  "lineCommand": [
+    "ts-harness",
+    "search",
+    "owner",
+    "src/fetch.ts",
+    "items",
+    "--query",
+    "APIRequestContext",
+    "--code",
+    "."
+  ],
+  "jsonCommand": [
+    "ts-harness",
+    "query",
+    "src/fetch.ts",
+    "--term",
+    "APIRequestContext",
+    "--json",
+    "."
+  ]
+}

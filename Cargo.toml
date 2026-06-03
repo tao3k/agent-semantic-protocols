@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/semantic-agent-hook"]
+members = ["crates/semantic-agent-hook", "crates/semantic-agent-protocol"]
 exclude = ["languages/rust-lang-project-harness"]
 resolver = "2"
 
