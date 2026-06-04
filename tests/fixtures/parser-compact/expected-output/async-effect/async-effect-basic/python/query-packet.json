@@ -31,6 +31,13 @@
         "reason": "read exact source locator before editing this compact match"
       },
       "projection": {
+        "compactSafety": {
+          "alignment": "parser-roundtrip",
+          "exactReadRequired": true,
+          "literalPolicy": "summarize",
+          "normalization": "none",
+          "whitespacePolicy": "formatter-structural"
+        },
         "exactRead": "src/async_effect.py:20:25",
         "expandActions": [
           {
@@ -71,7 +78,7 @@
           }
         ],
         "losslessStructure": true,
-        "mode": "outline",
+        "mode": "compact",
         "nodeCount": 8,
         "nodeLimit": 24,
         "nodes": [
@@ -251,7 +258,7 @@
         ],
         "sourceAuthority": "native-parser",
         "sourceFingerprint": "src/async_effect.py:20:25:146:68dcc21c",
-        "syntax": "semantic-outline"
+        "syntax": "save-token-ruff"
       },
       "read": "src/async_effect.py:20:25",
       "truncated": false,

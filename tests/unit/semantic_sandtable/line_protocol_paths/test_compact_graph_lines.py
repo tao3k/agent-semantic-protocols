@@ -49,19 +49,19 @@ class LineProtocolCompactGraphTests(unittest.TestCase):
 
             self.assertEqual("pass", result.status)
 
-    def test_line_protocol_accepts_compact_graph_profiles(self) -> None:
+    def test_line_protocol_accepts_compact_graph_entries(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)
             scenario_path = repo_root / "scenario.json"
             scenario_path.write_text(
                 json.dumps(
                     {
-                        "id": "python.compact-graph-profiles-line-protocol",
+                        "id": "python.compact-graph-entries-line-protocol",
                         "language": "python",
                         "workdir": ".",
                         "steps": [
                             {
-                                "id": "compact-graph-profiles",
+                                "id": "compact-graph-entries",
                                 "command": [
                                     sys.executable,
                                     "-c",
@@ -72,7 +72,7 @@ class LineProtocolCompactGraphTests(unittest.TestCase):
                                         "print('O=owner:path(src/lib.rs)!owner;T=test:path(tests/lib.rs)!tests')\n"
                                         "print('G>{O:selects,T:covers}')\n"
                                         "print('rank=O,T frontier=O.owner,T.tests')\n"
-                                        "print('profiles=owner-tests(O,T),query_deps(O,T)')"
+                                        "print('entries=owner-tests(O,T=>covering-tests+fixtures),query-deps(O,T=>owners+imports)')"
                                     ),
                                 ],
                                 "expect": {"lineProtocol": True},

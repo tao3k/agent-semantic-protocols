@@ -59,7 +59,40 @@ graph_action_specs! {
 }
 
 pub(super) fn graph_actions(packet: &Value) -> Vec<GraphAction> {
+    fn header_scalar(packet: &Value, field: &str) -> Option<String> {
+        packet
+            .get("header")
+            .and_then(|header| header.get("fields"))
+            .and_then(|fields| fields.get(field))
+            .and_then(header_field_scalar)
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+    }
+
+    fn push_header_action(actions: &mut Vec<GraphAction>, kind: &str, target: Option<String>) {
+        if let Some(target) = target {
+            actions.push(GraphAction {
+                kind: kind.to_string(),
+                target,
+                locator: None,
+            });
+        }
+    }
+
     let mut actions = Vec::new();
+    if packet_view(packet) == "reasoning" {
+        push_header_action(&mut actions, "query", header_scalar(packet, "query"));
+        push_header_action(
+            &mut actions,
+            "dependency",
+            header_scalar(packet, "dependency"),
+        );
+        push_header_action(
+            &mut actions,
+            "owner",
+            header_scalar(packet, "ownerSelector"),
+        );
+    }
     if let Some(action) = packet_root_action(packet) {
         actions.push(action);
     }

@@ -1,3 +1,5 @@
+"""Schema tests for agent semantic client receipts."""
+
 from __future__ import annotations
 
 import json
@@ -59,7 +61,7 @@ class SemanticAgentClientReceiptSchemaTests(unittest.TestCase):
 
         self.assertEqual(self.validation_errors(receipt), [])
 
-    def test_cache_disabled_receipt_is_valid(self) -> None:
+    def test_cache_missing_receipt_is_valid(self) -> None:
         receipt = {
             "schemaId": "agent.semantic-protocols.client-receipt",
             "schemaVersion": "1",
@@ -67,7 +69,7 @@ class SemanticAgentClientReceiptSchemaTests(unittest.TestCase):
             "protocolVersion": "1",
             "method": "cache-status",
             "route": "local-cache",
-            "cacheStatus": "disabled",
+            "cacheStatus": "miss",
             "providerCommandCount": 0,
             "providerProcessesSpawned": 0,
             "providerCommands": [],
@@ -93,7 +95,7 @@ class SemanticAgentClientReceiptSchemaTests(unittest.TestCase):
             "protocolVersion": "1",
             "method": "cache-import",
             "route": "local-cache",
-            "cacheStatus": "disabled",
+            "cacheStatus": "warm-provider",
             "providerCommandCount": 0,
             "providerProcessesSpawned": 0,
             "providerCommands": [],
@@ -106,6 +108,32 @@ class SemanticAgentClientReceiptSchemaTests(unittest.TestCase):
             "clientDbPath": "/repo/.cache/agent-semantic-protocol/client/client.sqlite3",
             "clientDbStatus": "present",
             "clientDbGenerationCount": 1,
+            "clientDbRawSourceStored": False,
+        }
+
+        self.assertEqual(self.validation_errors(receipt), [])
+
+    def test_cache_invalidate_receipt_is_valid(self) -> None:
+        receipt = {
+            "schemaId": "agent.semantic-protocols.client-receipt",
+            "schemaVersion": "1",
+            "protocolId": "agent.semantic-protocols.client",
+            "protocolVersion": "1",
+            "method": "cache-invalidate",
+            "route": "local-cache",
+            "cacheStatus": "invalidated",
+            "providerCommandCount": 0,
+            "providerProcessesSpawned": 0,
+            "providerCommands": [],
+            "nativeProvenance": [],
+            "cacheRoot": "/repo/.cache/agent-semantic-protocol/client",
+            "cacheManifestPath": "/repo/.cache/agent-semantic-protocol/client/cache-manifest.json",
+            "cacheManifestStatus": "present",
+            "cacheGenerationCount": 1,
+            "rawSourceStored": False,
+            "clientDbPath": "/repo/.cache/agent-semantic-protocol/client/client.sqlite3",
+            "clientDbStatus": "present",
+            "clientDbGenerationCount": 0,
             "clientDbRawSourceStored": False,
         }
 

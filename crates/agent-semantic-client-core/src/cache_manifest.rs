@@ -235,6 +235,8 @@ pub struct ClientCacheGeneration {
     pub schema_ids: Vec<SemanticSchemaId>,
     pub cache_status: CacheStatus,
     pub raw_source_stored: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub request_fingerprint: Option<String>,
     pub file_hashes: Option<Vec<ClientCacheFileHash>>,
     pub artifact_ids: Option<Vec<CacheArtifactId>>,
 }
@@ -242,22 +244,25 @@ pub struct ClientCacheGeneration {
 impl ClientCacheGeneration {
     fn validate_contract(&self) -> Result<(), String> {
         if self.generation_id.is_empty() {
-            return Err("generationId must not be empty".to_string());
+            return Err("cache generation id cannot be empty".to_string());
         }
         if self.language_id.is_empty() {
-            return Err("languageId must not be empty".to_string());
+            return Err("cache language id cannot be empty".to_string());
         }
         if self.provider_id.is_empty() {
-            return Err("providerId must not be empty".to_string());
+            return Err("cache provider id cannot be empty".to_string());
         }
         if self.project_root.is_empty() {
-            return Err("projectRoot must not be empty".to_string());
+            return Err("cache projectRoot cannot be empty".to_string());
+        }
+        if matches!(self.request_fingerprint.as_deref(), Some("")) {
+            return Err("cache requestFingerprint cannot be empty".to_string());
         }
         if self.schema_ids.is_empty() {
-            return Err("schemaIds must not be empty".to_string());
+            return Err("cache schema ids cannot be empty".to_string());
         }
         if self.raw_source_stored {
-            return Err("rawSourceStored must be false".to_string());
+            return Err("raw source must not be stored".to_string());
         }
         Ok(())
     }
@@ -271,16 +276,46 @@ pub struct ClientCacheFileHash {
     pub sha256: String,
 }
 
-/// Resolve the local client cache directory for a project.
+/// Return the agent semantic client cache directory for an activated project.
+///
+/// The hook runtime owns the primary cache-root lookup. When a fixture or
+/// already-activated non-git project has a local `.cache/agent-semantic-protocol`
+/// tree, reuse that activation cache so facade-routed client calls can share
+/// the same manifest and SQLite DB.
 pub fn project_client_cache_dir(project_root: impl AsRef<Path>) -> Result<PathBuf, String> {
-    let hook_state_dir = project_hook_state_dir(project_root)?;
-    let protocol_cache_dir = hook_state_dir.parent().ok_or_else(|| {
-        format!(
-            "failed to derive agent semantic client cache directory from {}",
-            hook_state_dir.display()
-        )
-    })?;
-    Ok(protocol_cache_dir.join("client"))
+    let project_root = project_root.as_ref();
+    let project_protocol_cache_dir = project_root.join(".cache/agent-semantic-protocol");
+    if project_protocol_cache_dir
+        .join("hooks/activation.json")
+        .is_file()
+        || project_has_cache_identity(project_root)
+    {
+        return Ok(project_protocol_cache_dir.join("client"));
+    }
+
+    match project_hook_state_dir(project_root) {
+        Ok(hook_state_dir) => {
+            let protocol_cache_dir = hook_state_dir.parent().ok_or_else(|| {
+                format!(
+                    "hook state dir has no protocol cache parent: {}",
+                    hook_state_dir.display()
+                )
+            })?;
+            Ok(protocol_cache_dir.join("client"))
+        }
+        Err(error) => Err(error),
+    }
+}
+
+fn project_has_cache_identity(project_root: &Path) -> bool {
+    [
+        "Cargo.toml",
+        "package.json",
+        "pyproject.toml",
+        "Project.toml",
+    ]
+    .iter()
+    .any(|manifest| project_root.join(manifest).is_file())
 }
 
 /// Resolve the JSON cache manifest path for a project.

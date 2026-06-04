@@ -42,6 +42,29 @@ fn camelcase_namespaced_direct_read_glob_routes_to_provider_query() {
 }
 
 #[test]
+fn desktop_read_aliases_route_source_paths() {
+    for tool_name in ["readFile", "FsReadFile", "fs/readFile", "fs.readFile"] {
+        let decision = classify_hook(
+            &registry_with_rust_and_python(),
+            "codex",
+            "pre-tool",
+            &json!({
+                "tool_name": tool_name,
+                "tool_input": {"path": "crates/agent-semantic-protocol/src/command/ast_patch.rs"}
+            }),
+        );
+
+        assert_eq!(decision.decision, DecisionKind::Deny, "{tool_name}");
+        assert_eq!(
+            decision.reason_kind,
+            ReasonKind::DirectSourceRead,
+            "{tool_name}"
+        );
+        assert_eq!(decision.language_ids, ["rust".to_string()], "{tool_name}");
+    }
+}
+
+#[test]
 fn mcp_direct_read_glob_routes_to_provider_query() {
     let decision = classify_hook(
         &registry_with_rust_and_python(),

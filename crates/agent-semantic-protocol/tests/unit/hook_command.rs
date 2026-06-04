@@ -2,6 +2,8 @@
 
 #[path = "../../src/command/hook.rs"]
 mod hook;
+#[path = "../../src/command/hook_enforcement.rs"]
+mod hook_enforcement;
 #[path = "../../src/command/hook_runtime.rs"]
 mod hook_runtime;
 #[path = "../../src/command/protocol_binary.rs"]

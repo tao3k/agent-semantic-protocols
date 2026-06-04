@@ -31,6 +31,13 @@
         "reason": "read exact source locator before editing this compact match"
       },
       "projection": {
+        "compactSafety": {
+          "alignment": "parser-roundtrip",
+          "exactReadRequired": true,
+          "literalPolicy": "summarize",
+          "normalization": "none",
+          "whitespacePolicy": "formatter-structural"
+        },
         "exactRead": "src/base.py:95:459",
         "expandActions": [
           {
@@ -83,7 +90,7 @@
           }
         ],
         "losslessStructure": false,
-        "mode": "outline",
+        "mode": "compact",
         "nodeCount": 80,
         "nodeLimit": 24,
         "nodes": [
@@ -418,7 +425,14 @@
           }
         ],
         "nodesTruncated": true,
-        "omitted": [],
+        "omitted": [
+          {
+            "kind": "statement-tail",
+            "nodeId": "ModelBase",
+            "read": "src/base.py:95:459",
+            "reason": "compact projection capped a large item; expand exact read before editing"
+          }
+        ],
         "renderedNodeIds": [
           "ModelBase",
           "ModelBase:function:src-base.py-98-390:fdc36afa",
@@ -445,9 +459,155 @@
           "ModelBase:assign:src-base.py-132-132:b283e5d6",
           "ModelBase:if:src-base.py-134-144:1a543a43"
         ],
+        "renderedRows": [
+          {
+            "nodeId": "ModelBase",
+            "rowKind": "declaration",
+            "semanticWeight": 1,
+            "text": "class ModelBase"
+          },
+          {
+            "nodeId": "ModelBase:function:src-base.py-98-390:fdc36afa",
+            "rowKind": "declaration",
+            "semanticWeight": 1,
+            "text": "  def __new__"
+          },
+          {
+            "nodeId": "ModelBase:assign:src-base.py-99-99:6f8dbb86",
+            "rowKind": "mutation",
+            "semanticWeight": 2,
+            "text": "    assign super_new"
+          },
+          {
+            "nodeId": "ModelBase:assign:src-base.py-103-103:d53c22ad",
+            "rowKind": "mutation",
+            "semanticWeight": 2,
+            "text": "    assign parents"
+          },
+          {
+            "nodeId": "ModelBase:if:src-base.py-104-105:3e3c3ba2",
+            "rowKind": "control-flow",
+            "semanticWeight": 2,
+            "text": "    if not parents"
+          },
+          {
+            "nodeId": "ModelBase:return:src-base.py-105-105:31957755",
+            "rowKind": "terminal",
+            "semanticWeight": 2,
+            "text": "      return super_new"
+          },
+          {
+            "nodeId": "ModelBase:assign:src-base.py-108-108:8941384c",
+            "rowKind": "mutation",
+            "semanticWeight": 2,
+            "text": "    assign module"
+          },
+          {
+            "nodeId": "ModelBase:assign:src-base.py-109-109:d846bbe9",
+            "rowKind": "mutation",
+            "semanticWeight": 2,
+            "text": "    assign new_attrs"
+          },
+          {
+            "nodeId": "ModelBase:assign:src-base.py-110-110:d4b3ce80",
+            "rowKind": "mutation",
+            "semanticWeight": 2,
+            "text": "    assign classcell"
+          },
+          {
+            "nodeId": "ModelBase:if:src-base.py-111-112:be341647",
+            "rowKind": "control-flow",
+            "semanticWeight": 2,
+            "text": "    if classcell is not None"
+          },
+          {
+            "nodeId": "ModelBase:assign:src-base.py-112-112:1d8927c1",
+            "rowKind": "mutation",
+            "semanticWeight": 2,
+            "text": "      assign new_attrs['__classcell__']"
+          },
+          {
+            "nodeId": "ModelBase:assign:src-base.py-113-113:3040f1ad",
+            "rowKind": "mutation",
+            "semanticWeight": 2,
+            "text": "    assign attr_meta"
+          },
+          {
+            "nodeId": "ModelBase:assign:src-base.py-117-117:9839578b",
+            "rowKind": "mutation",
+            "semanticWeight": 2,
+            "text": "    assign contributable_attrs"
+          },
+          {
+            "nodeId": "ModelBase:for:src-base.py-118-122:36226bd8",
+            "rowKind": "control-flow",
+            "semanticWeight": 2,
+            "text": "    for (obj_name, obj) in items"
+          },
+          {
+            "nodeId": "ModelBase:if:src-base.py-119-122:a6a0b364",
+            "rowKind": "control-flow",
+            "semanticWeight": 2,
+            "text": "      if _has_contribute_to_class"
+          },
+          {
+            "nodeId": "ModelBase:assign:src-base.py-120-120:acfd7120",
+            "rowKind": "mutation",
+            "semanticWeight": 2,
+            "text": "        assign contributable_attrs[obj_name]"
+          },
+          {
+            "nodeId": "ModelBase:assign:src-base.py-122-122:14f14896",
+            "rowKind": "mutation",
+            "semanticWeight": 2,
+            "text": "        assign new_attrs[obj_name]"
+          },
+          {
+            "nodeId": "ModelBase:assign:src-base.py-123-123:a11f2509",
+            "rowKind": "mutation",
+            "semanticWeight": 2,
+            "text": "    assign new_class"
+          },
+          {
+            "nodeId": "ModelBase:assign:src-base.py-125-125:e8d2335a",
+            "rowKind": "mutation",
+            "semanticWeight": 2,
+            "text": "    assign abstract"
+          },
+          {
+            "nodeId": "ModelBase:assign:src-base.py-126-126:20d51ec1",
+            "rowKind": "mutation",
+            "semanticWeight": 2,
+            "text": "    assign meta"
+          },
+          {
+            "nodeId": "ModelBase:assign:src-base.py-127-127:3a1e867",
+            "rowKind": "mutation",
+            "semanticWeight": 2,
+            "text": "    assign base_meta"
+          },
+          {
+            "nodeId": "ModelBase:assign:src-base.py-129-129:da4d66a6",
+            "rowKind": "mutation",
+            "semanticWeight": 2,
+            "text": "    assign app_label"
+          },
+          {
+            "nodeId": "ModelBase:assign:src-base.py-132-132:b283e5d6",
+            "rowKind": "mutation",
+            "semanticWeight": 2,
+            "text": "    assign app_config"
+          },
+          {
+            "nodeId": "ModelBase:if:src-base.py-134-144:1a543a43",
+            "rowKind": "control-flow",
+            "semanticWeight": 2,
+            "text": "    if getattr(meta, 'app_label', None) is None"
+          }
+        ],
         "sourceAuthority": "native-parser",
         "sourceFingerprint": "src/base.py:95:459:4877:88d0ae0e",
-        "syntax": "semantic-outline"
+        "syntax": "save-token-ruff"
       },
       "read": "src/base.py:95:459",
       "truncated": false,

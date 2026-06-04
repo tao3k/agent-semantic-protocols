@@ -52,6 +52,6 @@ pub use protocol_activation::{
 pub use provider_manifest::{build_default_activation, builtin_provider_manifests};
 pub(crate) use source_selector::{SourceSelectorMatch, collect_source_selector_matches};
 pub(crate) use tool_action::{
-    ToolAction, collect_tool_actions, payload_string, subject_for_action,
+    OperationIntent, ToolAction, collect_tool_actions, payload_string, subject_for_action,
 };
 mod dev_context;

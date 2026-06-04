@@ -2,7 +2,7 @@ use serde_json::Value;
 
 use super::packet::{header_field_scalar, packet_query};
 
-pub(super) fn graph_header(
+pub(crate) fn graph_header(
     packet: &Value,
     mode: &str,
     root: &str,
@@ -26,7 +26,15 @@ pub(super) fn graph_header(
         }
         fields.push("view=seeds".to_string());
     }
-    for key in ["querySet", "selector", "scope", "view"] {
+    for key in [
+        "querySet",
+        "selector",
+        "scope",
+        "view",
+        "analysis",
+        "nativeSyntaxFacts",
+        "policyFindings",
+    ] {
         if owner_item_query_packet && matches!(key, "selector" | "view") {
             continue;
         }

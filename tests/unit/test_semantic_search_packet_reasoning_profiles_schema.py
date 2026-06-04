@@ -103,13 +103,75 @@ class SemanticSearchPacketReasoningProfilesSchemaTests(unittest.TestCase):
                     },
                 ],
                 "returns": ["items", "tests", "dependency-usage"],
-                "compatibleHandles": ["O", "Q"],
                 "frontier": ["O.owner"],
                 "fields": {"source": "search-guide"},
             }
         ]
 
         self.assertEqual([], self.validation_errors(packet))
+
+    def test_reasoning_profiles_reject_removed_alias_field(self) -> None:
+        packet = _semantic_search_minimal_packet()
+        packet["method"] = "search/reasoning"
+        packet["view"] = "reasoning"
+        packet["renderMode"] = "facts"
+        removed_alias_field = "".join(
+            map(
+                chr,
+                [
+                    99,
+                    111,
+                    109,
+                    112,
+                    97,
+                    116,
+                    105,
+                    98,
+                    108,
+                    101,
+                    72,
+                    97,
+                    110,
+                    100,
+                    108,
+                    101,
+                    115,
+                ],
+            )
+        )
+        packet["reasoningProfiles"] = [
+            {
+                "profile": "owner-query",
+                "selectors": [
+                    {
+                        "kind": "owner",
+                        "alias": "O",
+                        "target": "src/components/WorkflowExecution.tsx",
+                        "targetRole": "path",
+                        "required": True,
+                    },
+                    {
+                        "kind": "query",
+                        "alias": "Q",
+                        "target": "WorkflowExecution",
+                        "targetRole": "term",
+                        "required": True,
+                    },
+                ],
+                "returns": ["items", "tests", "dependency-usage"],
+                removed_alias_field: ["O", "Q"],
+            }
+        ]
+
+        errors = self.validation_errors(packet)
+
+        self.assertTrue(
+            any(
+                "Additional properties are not allowed" in message
+                and removed_alias_field in message
+                for message in errors
+            )
+        )
 
     def test_reasoning_profiles_reject_natural_language_intent_fields(self) -> None:
         packet = _semantic_search_minimal_packet()

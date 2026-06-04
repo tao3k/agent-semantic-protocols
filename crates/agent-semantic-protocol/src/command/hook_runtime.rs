@@ -1,5 +1,6 @@
 //! Runtime for the `asp hook` command surface.
 
+use super::hook_enforcement::codex_enforcement_report;
 use super::protocol_binary::{ensure_protocol_binary_installed_for_path, protocol_binary_on_path};
 use agent_semantic_hook::{
     ActiveContextRecord, DecisionKind, DecisionSubject, HOOK_DECISION_SCHEMA_ID,
@@ -385,7 +386,11 @@ fn run_doctor(args: &[String]) -> Result<(), String> {
         .map(PathBuf::from)
         .unwrap_or_else(|| default_activation_path(&project_root));
     let runtime = load_or_sync_activation(&activation_path, &project_root)?;
-    let config_path = project_root.join(".codex").join("config.toml");
+    let config_path = if client == "claude" {
+        default_claude_settings_path(&project_root.to_string_lossy())
+    } else {
+        project_root.join(".codex").join("config.toml")
+    };
     let config = fs::read_to_string(&config_path).unwrap_or_default();
     let client_config_path = default_client_config_path(&project_root.to_string_lossy());
     let client_config_status = if client_config_path.is_file() {
@@ -399,21 +404,38 @@ fn run_doctor(args: &[String]) -> Result<(), String> {
     } else {
         "missing"
     };
-    let root_hook = config.contains(ROOT_BLOCK_BEGIN) && config.contains(ROOT_BLOCK_END);
+    let root_hook = if client == "claude" {
+        config.contains("asp hook") && config.contains("--client claude")
+    } else {
+        config.contains(ROOT_BLOCK_BEGIN) && config.contains(ROOT_BLOCK_END)
+    };
     let hook_binary_path = protocol_binary_on_path();
     let hook_binary = hook_binary_path.is_some();
     let hook_binary_path = hook_binary_path
         .as_ref()
         .map(|path| path.display().to_string())
         .unwrap_or_else(|| "missing".to_string());
-    let trust_status = codex_user_trust_state_status(&config_path).ok();
+    let enforcement = if client == "codex" {
+        Some(codex_enforcement_report(
+            &project_root,
+            root_hook,
+            hook_binary,
+        ))
+    } else {
+        None
+    };
+    let trust_status = if client == "codex" {
+        codex_user_trust_state_status(&config_path).ok()
+    } else {
+        None
+    };
     let trust = trust_status.as_ref().is_some_and(|status| status.trusted);
     let trust_config = trust_status
         .as_ref()
         .map(|status| status.trust_config_path.display().to_string())
         .unwrap_or_else(|| "unavailable".to_string());
     println!(
-        "[agent-doctor] status=ok client={client} providers={} activation={} config={} clientConfig={} clientConfigStatus={} hook={} trust={} trustConfig={} binary={} binaryPath={} protocol={}",
+        "[agent-doctor] status=ok client={client} providers={} activation={} config={} clientConfig={} clientConfigStatus={} hook={} trust={} trustConfig={} binary={} binaryPath={} enforcement={} enforcementProbe={} enforcementReason={} protocol={}",
         runtime.providers.len(),
         display_path(&project_root, &activation_path),
         config_path.is_file(),
@@ -424,8 +446,34 @@ fn run_doctor(args: &[String]) -> Result<(), String> {
         trust_config,
         hook_binary,
         hook_binary_path,
+        enforcement
+            .as_ref()
+            .map(|report| report.status)
+            .unwrap_or("not-applicable"),
+        enforcement
+            .as_ref()
+            .map(|report| report.probe)
+            .unwrap_or("not-applicable"),
+        enforcement
+            .as_ref()
+            .map(|report| report.reason)
+            .unwrap_or("non-codex-client"),
         HOOK_PROTOCOL_ID,
     );
+    if let Some(report) = enforcement.as_ref()
+        && let Some(detail) = report.detail.as_ref()
+    {
+        println!(
+            "|enforcement status={} probe={} reason={} exitSuccess={} deny={} sentinel={} hookEvent={}",
+            report.status,
+            report.probe,
+            report.reason,
+            detail.status_success,
+            detail.saw_deny,
+            detail.saw_sentinel,
+            detail.saw_hook_event,
+        );
+    }
     if let Some(status) = trust_status.as_ref()
         && !status.missing_events.is_empty()
     {

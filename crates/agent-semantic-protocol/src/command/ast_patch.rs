@@ -325,22 +325,21 @@ fn trailing_project_root(args: &[String]) -> Option<String> {
         "--item-name",
         "--item-kind",
     ];
-    let mut values = Vec::new();
-    let mut skip_next = false;
-    for arg in args {
-        if skip_next {
-            skip_next = false;
-            continue;
-        }
-        if VALUE_FLAGS.contains(&arg.as_str()) {
-            skip_next = true;
-            continue;
-        }
-        if arg.starts_with("--") {
-            continue;
-        }
-        values.push(arg.clone());
-    }
+    let values: Vec<_> = args
+        .iter()
+        .scan(false, |skip_next, arg| {
+            if *skip_next {
+                *skip_next = false;
+                return Some(None);
+            }
+            if VALUE_FLAGS.contains(&arg.as_str()) {
+                *skip_next = true;
+                return Some(None);
+            }
+            Some((!arg.starts_with("--")).then(|| arg.clone()))
+        })
+        .flatten()
+        .collect();
     match values.as_slice() {
         [project_root] => Some(project_root.clone()),
         _ => None,

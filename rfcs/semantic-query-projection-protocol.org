@@ -324,6 +324,31 @@ Feature cases should be organized by parser capability rather than by provider:
 Each language variant keeps the same shared schema contract while preserving
 native parser semantics.
 
+** Semantic responsibilities
+
+Compact text is intentionally small and may omit source-level facts such as
+attributes, generic bounds, formatting trivia, or literal payloads.  Providers
+therefore expose =projection.semanticResponsibilities[]= as parser-owned
+functional tags.  These tags are not another rendering channel and are not text
+patch preimages.  They describe the responsibilities proven by the native parser
+or by a projection node, such as feature-gated item ownership, async item shape,
+generic bounds, state mutation, guard branches, bounded loops, early returns,
+and effects.
+
+Scenario fixtures should use these tags when they need to prove that a compact
+case represents a real feature surface rather than a long or syntactically busy
+toy function.  Node counts, depth, and token ratios remain useful residue
+checks, but they are not sufficient complexity evidence on their own.
+
+Compact text should still preserve formatter-style block ownership.  Rust
+compact rows use a save-token rustfmt dialect: parser depth renders as
+rustfmt-style four-space indentation, opening and closing braces remain visible,
+and low-value trivia or large literal payloads may be omitted or summarized.
+This indentation is structural projection data, not arbitrary whitespace copied
+from source.  Rust packets identify this dialect with
+=projection.syntax=save-token-rustfmt= and
+=compactSafety.whitespacePolicy=formatter-structural=.
+
 * Acceptance gates
 
 Changes to projection behavior are accepted only when the following gates pass:

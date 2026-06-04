@@ -1,3 +1,5 @@
+"""Schema tests for agent semantic client cache manifests."""
+
 from __future__ import annotations
 
 import json
@@ -44,6 +46,7 @@ class SemanticAgentClientCacheManifestSchemaTests(unittest.TestCase):
                     ],
                     "cacheStatus": "miss",
                     "rawSourceStored": False,
+                    "requestFingerprint": "fnv64:0123456789abcdef",
                     "fileHashes": [
                         {
                             "path": "src/lib.rs",
@@ -82,6 +85,34 @@ class SemanticAgentClientCacheManifestSchemaTests(unittest.TestCase):
         errors = self.validation_errors(manifest)
 
         self.assertTrue(any("False was expected" in error for error in errors))
+
+    def test_rejects_empty_request_fingerprint(self) -> None:
+        manifest = {
+            "schemaId": "agent.semantic-protocols.client-cache-manifest",
+            "schemaVersion": "1",
+            "protocolId": "agent.semantic-protocols.client",
+            "protocolVersion": "1",
+            "cacheRoot": "/repo/.cache/agent-semantic-protocol/client",
+            "generations": [
+                {
+                    "generationId": "rust-main-1",
+                    "languageId": "rust",
+                    "providerId": "rs-harness",
+                    "projectRoot": "/repo",
+                    "schemaIds": [
+                        "agent.semantic-protocols.client-prompt-output"
+                    ],
+                    "cacheStatus": "hit",
+                    "rawSourceStored": False,
+                    "requestFingerprint": "",
+                    "artifactIds": ["prompt-output/rust-main-1.txt"],
+                }
+            ],
+        }
+
+        errors = self.validation_errors(manifest)
+
+        self.assertTrue(any("'' should be non-empty" in error for error in errors))
 
 
 if __name__ == "__main__":

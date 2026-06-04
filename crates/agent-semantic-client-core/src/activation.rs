@@ -62,12 +62,40 @@ pub struct ProviderRegistrySnapshot {
 }
 
 impl ProviderRegistrySnapshot {
-    /// Load provider activation from the default project hook cache path.
     pub fn load(project_root: &Path) -> Result<Self, String> {
-        let activation_path = project_hook_state_dir(project_root)
-            .map_err(|error| error.to_string())?
-            .join("activation.json");
-        Self::load_from_path(&activation_path)
+        let direct_activation_path = match project_hook_state_dir(project_root) {
+            Ok(hook_state_dir) => Some(hook_state_dir.join("activation.json")),
+            Err(error) => {
+                let mut current = Some(project_root);
+                while let Some(candidate_root) = current {
+                    let candidate =
+                        candidate_root.join(".cache/agent-semantic-protocol/hooks/activation.json");
+                    if candidate.is_file() {
+                        return Self::load_from_path(&candidate);
+                    }
+                    current = candidate_root.parent();
+                }
+                return Err(error.to_string());
+            }
+        };
+
+        if let Some(activation_path) = direct_activation_path {
+            if activation_path.is_file() {
+                return Self::load_from_path(&activation_path);
+            }
+            let mut current = project_root.parent();
+            while let Some(candidate_root) = current {
+                let candidate =
+                    candidate_root.join(".cache/agent-semantic-protocol/hooks/activation.json");
+                if candidate.is_file() {
+                    return Self::load_from_path(&candidate);
+                }
+                current = candidate_root.parent();
+            }
+            return Self::load_from_path(&activation_path);
+        }
+
+        Err("provider activation path could not be resolved".to_string())
     }
 
     /// Load provider activation from an explicit `activation.json` path.

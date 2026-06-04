@@ -1,0 +1,382 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/rust-ast-patch-real-project-evidence.v1.schema.json",
+  "title": "Rust AST Patch Real Project Evidence",
+  "description": "Metadata-only evidence captured from a representative Rust project for save-token compact query output and provider-native AST patch dry-run/apply behavior. The artifact records compact metrics and receipt events, not external project source.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "capturedAt",
+    "project",
+    "query",
+    "selectedMatch",
+    "compact",
+    "dryRunReceipt",
+    "applyTempReceipt",
+    "sourceStored"
+  ],
+  "not": {
+    "anyOf": [
+      { "required": ["source"] },
+      { "required": ["sourceText"] },
+      { "required": ["preimage"] },
+      { "required": ["compactCode"] },
+      { "required": ["exactSource"] }
+    ]
+  },
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.rust-ast-patch-real-project-evidence"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "capturedAt": {
+      "type": "string",
+      "pattern": "^20[0-9]{2}-[0-9]{2}-[0-9]{2}$"
+    },
+    "project": {
+      "$ref": "#/$defs/project"
+    },
+    "query": {
+      "$ref": "#/$defs/query"
+    },
+    "selectedMatch": {
+      "$ref": "#/$defs/selectedMatch"
+    },
+    "compact": {
+      "$ref": "#/$defs/compact"
+    },
+    "dryRunReceipt": {
+      "$ref": "#/$defs/dryRunReceipt"
+    },
+    "applyTempReceipt": {
+      "$ref": "#/$defs/applyTempReceipt"
+    },
+    "sourceStored": {
+      "const": false
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "projectPath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*)$"
+    },
+    "sourceLocator": {
+      "type": "string",
+      "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*):[1-9][0-9]*:[1-9][0-9]*$"
+    },
+    "operationName": {
+      "type": "string",
+      "enum": ["replace_item"]
+    },
+    "verificationEvent": {
+      "type": "string",
+      "enum": [
+        "packet-parsed",
+        "operation-supported",
+        "target-read-valid",
+        "snippet-parsed",
+        "project-root-resolved",
+        "target-path-resolved",
+        "target-range-resolved",
+        "expected-snippet-matched",
+        "target-item-parsed",
+        "item-identity-checked",
+        "file-reparsed",
+        "rustfmt-ran",
+        "formatter-output-reparsed",
+        "file-written"
+      ]
+    },
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "repository", "commit"],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/identifier"
+        },
+        "repository": {
+          "type": "string",
+          "pattern": "^https://[^\\s]+$"
+        },
+        "commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        }
+      }
+    },
+    "query": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "projectRootKind",
+        "path",
+        "term",
+        "selectedKind",
+        "selectedName"
+      ],
+      "properties": {
+        "projectRootKind": {
+          "enum": ["crate-root"]
+        },
+        "path": {
+          "$ref": "#/$defs/projectPath"
+        },
+        "term": {
+          "type": "string",
+          "minLength": 1
+        },
+        "selectedKind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "selectedName": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "selectedMatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "name",
+        "visibility",
+        "patchSafetyLevel",
+        "allowedOperations",
+        "targetRead",
+        "sourceFingerprint"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "visibility": {
+          "enum": ["public", "private", "crate", "restricted", "unknown"]
+        },
+        "patchSafetyLevel": {
+          "const": "ast-patch-safe"
+        },
+        "allowedOperations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/operationName"
+          },
+          "contains": {
+            "const": "replace_item"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "targetRead": {
+          "$ref": "#/$defs/sourceLocator"
+        },
+        "sourceFingerprint": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "compact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "syntax",
+        "whitespacePolicy",
+        "literalPolicy",
+        "exactReadRequired",
+        "nodeCount",
+        "nodeLimit",
+        "nodesTruncated",
+        "expandActionCount",
+        "expandActionLimit",
+        "compactBytes",
+        "exactBytes",
+        "compactToExactRatio",
+        "responsibilities"
+      ],
+      "properties": {
+        "syntax": {
+          "const": "save-token-rustfmt"
+        },
+        "whitespacePolicy": {
+          "const": "formatter-structural"
+        },
+        "literalPolicy": {
+          "const": "summarize"
+        },
+        "exactReadRequired": {
+          "const": true
+        },
+        "nodeCount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "nodeLimit": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "nodesTruncated": {
+          "type": "boolean"
+        },
+        "expandActionCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "expandActionLimit": {
+          "type": ["integer", "null"],
+          "minimum": 1
+        },
+        "compactBytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "exactBytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "compactToExactRatio": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "exclusiveMaximum": 1
+        },
+        "responsibilities": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/responsibility"
+          },
+          "minItems": 1
+        }
+      }
+    },
+    "responsibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "source"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source": {
+          "enum": ["native-parser", "projection-node"]
+        }
+      }
+    },
+    "receiptSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "capability",
+        "failureKind",
+        "mutationAvailable",
+        "verificationEvents"
+      ],
+      "properties": {
+        "status": {
+          "type": "string"
+        },
+        "capability": {
+          "type": "string"
+        },
+        "failureKind": {
+          "type": ["string", "null"]
+        },
+        "mutationAvailable": {
+          "type": "boolean"
+        },
+        "verificationEvents": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/verificationEvent"
+          },
+          "minItems": 1
+        }
+      }
+    },
+    "dryRunReceipt": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/receiptSummary"
+        },
+        {
+          "properties": {
+            "status": {
+              "const": "verified"
+            },
+            "capability": {
+              "const": "provider-ast-dry-run"
+            },
+            "failureKind": {
+              "const": null
+            },
+            "mutationAvailable": {
+              "const": false
+            },
+            "verificationEvents": {
+              "contains": {
+                "const": "file-reparsed"
+              },
+              "not": {
+                "contains": {
+                  "const": "file-written"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "applyTempReceipt": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/receiptSummary"
+        },
+        {
+          "properties": {
+            "status": {
+              "const": "applied"
+            },
+            "capability": {
+              "const": "provider-ast-apply"
+            },
+            "failureKind": {
+              "const": null
+            },
+            "mutationAvailable": {
+              "const": true
+            },
+            "verificationEvents": {
+              "contains": {
+                "const": "formatter-output-reparsed"
+              },
+              "allOf": [
+                {
+                  "contains": {
+                    "const": "file-written"
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  }
+}

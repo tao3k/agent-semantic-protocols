@@ -33,7 +33,7 @@ precondition for local semantic search.
 The user-visible rule is:
 
 #+begin_example
-Codex / agent sees: asp search, asp query, asp check, asp doctor
+Codex / agent sees: asp <language> search, asp <language> query, asp <language> check, asp doctor
 Routing mode: local CLI, local SQLite client DB, Cloud Flight, or hybrid, selected by config
 Fact authority: native language providers under languages/ or provider repos
 Prompt output: compact text by default
@@ -154,12 +154,11 @@ The command surface is deliberately boring:
 asp guide
 asp doctor
 asp providers
-asp search workspace "ParserService cacheDir"
-asp search owner src/services/parser/ParserService.ts
-asp query src/services/parser/ParserService.ts --term ParserService
-asp check
+asp typescript search workspace "ParserService cacheDir"
+asp typescript search owner src/services/parser/ParserService.ts
+asp typescript query src/services/parser/ParserService.ts --term ParserService
+asp typescript check
 asp cache status
-asp cache prime --language typescript
 asp cloud login
 asp cloud enable --mode semantic-index
 asp cloud status
@@ -351,8 +350,8 @@ on repeated search.
 Local flow:
 
 #+begin_example
-asp search workspace "ParserService cacheDir"
-  -> resolve project and provider set
+asp typescript search workspace "ParserService cacheDir"
+  -> resolve project and activated TypeScript provider
   -> check local cache
   -> on exact cache hit: render compact graph output through shared renderer
   -> on cache miss: call provider CLI
@@ -360,6 +359,14 @@ asp search workspace "ParserService cacheDir"
   -> update SQLite client DB rows and artifacts
   -> render compact graph output through shared renderer
 #+end_example
+
+For =asp <language> search=, =asp <language> query=, and =asp <language> check=,
+the language facade treats the final positional =PROJECT_ROOT= argument as the
+client request root when it is =.= or points at an activated/cache-bearing
+project directory.  The same argument is still preserved in =forwarded_args= so
+provider-native command syntax remains unchanged.  Cache lookup, activation
+discovery, and receipt project metadata use the parsed client request root, not
+the shell's current working directory.
 
 Provider command construction must remain registry-owned.  =agent-semantic-client=
 must not invent provider commands from string templates when a registry
@@ -400,7 +407,7 @@ native facts.
 The agent command does not change:
 
 #+begin_src shell
-asp search workspace "ParserService cacheDir"
+asp typescript search workspace "ParserService cacheDir"
 #+end_src
 
 Only the execution route changes:
@@ -439,7 +446,7 @@ upload_policy = "semantic-index"
 Flow:
 
 #+begin_example
-asp search
+asp typescript search
   -> local SQLite client DB hit?
        yes: render local compact output
        no:
@@ -500,8 +507,8 @@ Rust client DB when the cache generation is fresh.
 The global execution shape is:
 
 #+begin_example
-asp search/query/check
-  -> resolve project and provider registry
+asp <language> search/query/check
+  -> resolve project, language facade, and provider registry
   -> check local cache generation for project root / provider / schema version
   -> on cache hit:
        Rust client queries validated cache rows
@@ -519,6 +526,7 @@ The explicit cache maintenance commands are:
 asp cache status
   -> inspect cache-manifest.json and client.sqlite3
   -> do not spawn native providers
+  -> print status=missing|unimported|available|invalid|unavailable
   -> emit method=cache-status receipt
 
 asp cache import
@@ -526,6 +534,12 @@ asp cache import
   -> write normalized generation rows into client.sqlite3
   -> do not spawn native providers or synthesize provider facts
   -> emit method=cache-import receipt
+
+asp cache invalidate
+  -> clear normalized generation rows from client.sqlite3
+  -> do not delete provider-owned cache-manifest.json or artifacts
+  -> do not spawn native providers or synthesize provider facts
+  -> emit method=cache-invalidate receipt with cacheStatus=invalidated
 #+end_example
 
 SQLite cache keys use normalized project roots so a workspace reached through
@@ -536,10 +550,14 @@ provider.  A matching generation marks the local-native receipt as
 =cacheStatus=warm-provider= and still spawns the provider when generation rows
 alone are not enough to replay compact output.  =cacheStatus=hit= is allowed
 only when the generation references a replayable provider-owned artifact.  In
-the first implementation, the only directly replayable artifact class is
-=prompt-output/*.txt= under the protocol artifact root; packet JSON artifacts
-remain provenance until the shared renderer can reconstruct the same compact
-stdout from them.
+the first implementation, =prompt-output/*.txt= under the protocol artifact root
+is the fastest replay path, =search/*.json= semantic-search-packet artifacts are
+replayable through the shared =asp graph render --packet <artifact> --view
+seeds= renderer, and =query/*.json= semantic-query-packet artifacts are
+replayable for =query/owner-items= compact query output.  If a referenced packet
+artifact is missing, unsafe, too large, unsupported for the request method, or
+cannot be rendered, the generation remains =warm-provider= and the native
+provider still supplies the output.
 
 The Rust client may build denormalized owner, symbol, native fact, handle,
 diagnostic, search packet, and query packet SQL tables from provider exports.  It
@@ -569,7 +587,7 @@ cache/query/render path, with Julia invoked only to refresh parser-owned facts.
 The execution shape is:
 
 #+begin_example
-asp search fzf "parser"
+future asp-managed Julia cache query
   -> resolve workspace-managed Julia provider
   -> check local cache generation for project root / schema / provider version
   -> on cache hit:
@@ -766,10 +784,10 @@ handled a request.  They should guide inefficient behavior to the stable
 command surface:
 
 #+begin_example
-asp search workspace "<query>"
-asp search owner <path>
-asp query <owner-path> --term <symbol>
-asp check
+asp <language> search workspace "<query>"
+asp <language> search owner <path>
+asp <language> query <owner-path> --term <symbol>
+asp <language> check
 #+end_example
 
 Hooks still block raw source dumps, broad source searches, and interactive
@@ -907,11 +925,11 @@ Follow the same protocol-first order used by search work:
 
 ** Current local implementation checkpoint
 
-The shared compact graph renderer handoff has been implemented for the local
-provider workspace:
+The local client/backend checkpoint is now executable for the local-native plus
+local-cache path:
 
-- =asp graph render --packet - --view seeds= is available
-  as the shared renderer CLI.
+- =asp graph render --packet - --view seeds= is available as the shared compact
+  graph renderer CLI.
 - =rs-harness=, =ts-harness=, and =py-harness= build canonical
   =semantic-search-packet.v1= data and invoke the shared renderer through the
   process boundary.
@@ -923,14 +941,64 @@ provider workspace:
   =agent-semantic-protocol= crate for graph rendering; it uses the same process
   boundary as TypeScript and Python.
 - =asp <rust|typescript|python> <search|query|check|agent
-  guide|ast-patch|evidence> ...= is the local transparent provider-command
+  guide|ast-patch|evidence> ...= remains the transparent provider-command
   facade.  =ast-patch= and =evidence= are bounded provider-native surfaces
-  exposed because provider guides already advertise them to agents.  This is
-  the current executable checkpoint for the future =LocalNativeCliBackend=, not
-  the final cache/Flight client.
-- Julia remains workspace-managed and out of standalone bin parity.  The agent semantic client
-  hot path for Julia is still the future Rust-side cache/query/render path over
-  validated JuliaSyntax-owned facts, not a short-lived Julia renderer binary.
+  exposed because provider guides already advertise them to agents.
+- =search=, =query=, and =check= enter the agent semantic client backend through
+  that language facade.  The facade probes the local SQLite client DB and then
+  routes through =LocalNativeCliBackend= when cache replay cannot answer the
+  request.
+- Top-level =asp search=, =asp query=, and =asp check= are not compatibility
+  aliases.  They fail fast with guidance to use =asp <language>
+  search|query|check ...= so command shape does not depend on a shared
+  =--language= flag.
+- The final positional =PROJECT_ROOT= for =asp <language> search/query/check= is
+  treated as the client request root while provider arguments are preserved for
+  the native command, so cache hits work from outside the project directory.
+- =LocalNativeCliBackend= must preserve replay-miss provider semantics.  In
+  particular, =search ingest= inherits stdin from the agent process, and
+  non-ingest =search= requests with multiple trailing existing directory scopes
+  fan out into one provider invocation per scope before stdout/stderr and
+  receipt aggregation.  Cache routing must not collapse these language-native
+  command shapes.
+- =asp cache status= inspects the provider-owned manifest and SQLite DB without
+  spawning providers.  It reports =missing=, =unimported=, =available=,
+  =invalid=, or =unavailable= in the prompt line; receipts carry the machine
+  state through =cacheStatus= plus =cacheManifestStatus= and =clientDbStatus=.
+- =asp cache import= validates =cache-manifest.json= and writes normalized
+  generation rows into =client.sqlite3= without storing raw source.
+- =asp cache invalidate= clears local SQLite generation rows and manifest
+  =generations= while preserving artifact files.  The prompt output reports
+  =manifestArtifactsDeleted=false= because artifact cleanup is a separate
+  policy, and a following =asp cache status= reports =unimported= until another
+  explicit import or future validated write-back.
+- Local cache hits can replay =prompt-output/*.txt= artifacts directly, render
+  =search/*.json= semantic-search-packet artifacts through the shared graph
+  renderer, and replay =query/*.json= semantic-query-packet artifacts for
+  =query/owner-items=.  Misses and unsupported artifacts fall through to native
+  provider execution with =cacheStatus=warm-provider= or =miss=.
+- Successful local-native =asp <language> search ... --view seeds= requests that
+  do not ask for item code, JSON, or direct code output first try to export a
+  schema-valid =semantic-search-packet= through the same provider request with
+  =--json=.  When that export validates, the client writes a =search/*.json=
+  artifact, imports it into =client.sqlite3=, and replays the next identical
+  request through the shared graph renderer without respawning the provider.
+  If packet export or validation fails, the request falls back to
+  =prompt-output/*.txt= write-back for replay-safe seed output.
+- Successful local-native =asp <language> query <owner> --term <symbol> ...=
+  requests can write back =query/*.json= artifacts only when the provider can
+  export a schema-valid =semantic-query-packet= through the same request with
+  =--json=.  Replay is keyed by =query/owner-items=, =ownerPath=, and =query=,
+  then rendered through the client artifact replay path without respawning the
+  provider.
+- Julia remains workspace-managed and out of standalone bin parity.  The agent
+  semantic client hot path for Julia is still the future Rust-side
+  cache/query/render path over validated JuliaSyntax-owned facts, not a
+  short-lived Julia renderer binary.
+
+The remaining local work is a prime command, denormalized query indexes beyond
+artifact replay, and performance receipts for cold, warm-provider, invalidated,
+write-back, and cache-hit routes.
 
 * Non-goals
 
@@ -954,8 +1022,8 @@ The RFC is implemented when:
   =asp doctor= successfully without a server;
 - the public protocol/client workspace passes local tests when
   =servers/agent-semantic-protocols-server= is absent;
-- =asp search=, =asp query=, and =asp check= render compact output by
-  default;
+- =asp <language> search=, =asp <language> query=, and =asp <language> check=
+  render compact output by default;
 - repeated searches use local cache and reduce provider CLI calls;
 - repeated Julia search can be served from Rust-side cache without starting a
   Julia process, while preserving JuliaSyntax provenance;
@@ -973,8 +1041,8 @@ The RFC is implemented when:
 1. Whether the installed short command is always =asp= or an alias to
    =agent-semantic-protocol= during the first implementation, without folding
    client/cache/Flight/server behavior into that shared command facade crate.
-2. Which SQLite table/index family ships first for client DB hits: owner/symbol
-   rows, handle rows, native syntax fact rows, or rendered packet artifact rows.
+2. Which SQLite table/index family ships after rendered packet artifact replay:
+   owner/symbol rows, handle rows, or native syntax fact rows.
 3. Which Cloud Flight auth flow ships first: device auth, API token, or
    enterprise mTLS.
 4. How much cache state belongs in project cache versus user cache when the

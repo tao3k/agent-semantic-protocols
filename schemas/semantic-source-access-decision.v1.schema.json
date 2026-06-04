@@ -32,6 +32,17 @@
           "modelVisibleBytesReturned": { "const": false }
         }
       }
+    },
+    {
+      "if": {
+        "properties": {
+          "reasonKind": { "const": "provider-authorized" }
+        },
+        "required": ["reasonKind"]
+      },
+      "then": {
+        "required": ["providerId"]
+      }
     }
   ],
   "required": [
@@ -98,6 +109,7 @@
         "direct-source-read",
         "bulk-source-dump",
         "raw-broad-search",
+        "source-directory-enumeration",
         "agent-search-json",
         "provider-authorized",
         "non-source",

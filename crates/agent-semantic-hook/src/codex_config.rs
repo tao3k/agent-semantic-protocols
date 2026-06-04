@@ -34,7 +34,7 @@ const LEGACY_BLOCKS: [(&str, &str); 5] = [
         "# END rs-harness agent hooks",
     ),
 ];
-const CODEX_TOOL_MATCHER: &str = "Read|read|read_file|functions\\.read|functions\\.read_file|mcp__.*__read|mcp__.*__read_file|apply_patch|applypatch|functions\\.apply_patch|functions.exec_command|multi_tool_use.parallel|Bash|Shell";
+const CODEX_TOOL_MATCHER: &str = r"Read|read|readFile|readDirectory|read_file|read_directory|FsReadFile|FsReadDirectory|fs\.read|fs\.readFile|fs\.readDirectory|fs/read|fs/readFile|fs/readDirectory|fs\\read|fs\\readFile|fs\\readDirectory|functions\.read|functions\.read_file|functions\.readFile|mcp__.*__read|mcp__.*__read_file|mcp__.*__readFile|apply_patch|applypatch|functions\.apply_patch|Edit|MultiEdit|Write|NotebookEdit|functions\.edit|functions\.multiEdit|functions\.write|functions\.notebookEdit|FsWriteFile|fs\.write|fs\.writeFile|fs/write|fs/writeFile|fs\\write|fs\\writeFile|FsRemove|fs\.remove|fs/remove|fs\\remove|FsCopy|fs\.copy|fs/copy|fs\\copy|FsRename|fs\.rename|fs/rename|fs\\rename|functions\.exec_command|exec_command|command_execution|multi_tool_use\.parallel|Bash|Shell";
 
 #[derive(Debug)]
 /// Status of the Codex user trust entries required for project hooks.

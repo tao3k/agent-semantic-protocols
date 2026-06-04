@@ -14,6 +14,7 @@ pub enum ClientMethod {
     Doctor,
     CacheStatus,
     CacheImport,
+    CacheInvalidate,
     Search,
     Query,
     Check,

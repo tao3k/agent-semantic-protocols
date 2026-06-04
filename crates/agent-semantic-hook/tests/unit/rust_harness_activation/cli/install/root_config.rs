@@ -260,14 +260,15 @@ fn assert_codex_config(config: &str) {
     assert!(config.contains("--activation \"$activation\""));
     assert!(config.matches("[hooks.state.").count() == 0);
     assert!(!config.contains("matcher = \".*\""));
-    assert_eq!(config.matches("functions.exec_command").count(), 5);
-    assert!(config.contains("Read|read|read_file"));
+    assert_eq!(config.matches("functions\\\\.exec_command").count(), 5);
+    assert!(config.contains("Read|read|readFile"));
+    assert!(config.contains("read_file"));
     assert!(config.contains("functions\\\\.read"));
     assert!(config.contains("functions\\\\.read_file"));
     assert!(config.contains("mcp__.*__read_file"));
-    assert!(config.contains("multi_tool_use.parallel"));
+    assert!(config.contains("multi_tool_use\\\\.parallel"));
     assert!(config.contains("Bash|Shell"));
-    assert!(!config.contains("fs\\\\.read"));
+    assert!(config.contains("fs\\\\.read"));
     assert!(!config.contains("ts-harness agent hook --client codex"));
     assert!(!config.contains("rs-harness agent hook --client codex"));
 }

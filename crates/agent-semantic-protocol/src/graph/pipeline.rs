@@ -15,6 +15,16 @@ use super::profiles::graph_profiles_line;
 const DEFAULT_SEED_LIMIT: usize = 8;
 
 pub(super) fn render_search_graph_packet(packet: &Value, options: GraphRenderOptions) -> String {
+    fn graph_avoid_line(packet: &Value) -> Option<String> {
+        let actions = packet.get("avoidNextActions")?.as_array()?;
+        let kinds = actions
+            .iter()
+            .filter_map(|action| action.get("kind").and_then(Value::as_str))
+            .filter(|kind| !kind.trim().is_empty())
+            .collect::<Vec<_>>();
+        (!kinds.is_empty()).then(|| format!("avoid={}", kinds.join(",")))
+    }
+
     let mode = packet_view(packet);
     let root = graph_root(packet, mode);
     let algorithm = packet_string(packet, &["searchSynthesis", "algorithm"])
@@ -45,6 +55,9 @@ pub(super) fn render_search_graph_packet(packet: &Value, options: GraphRenderOpt
     lines.push(format!("rank={rank} frontier={frontier}"));
     if let Some(profiles) = graph_profiles_line(packet, &aliases) {
         lines.push(profiles);
+    }
+    if let Some(avoid) = graph_avoid_line(packet) {
+        lines.push(avoid);
     }
     if owner_item_query {
         lines.push("omit=code,comments,blank-lines,nonmatching-items".to_string());

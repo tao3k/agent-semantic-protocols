@@ -153,7 +153,11 @@ agent-hooks-doctor-py:
 check-sandtables:
     uv run semantic-sandtable
 
-provider-gate: provider-gate-root provider-gate-rust provider-gate-typescript provider-gate-python provider-gate-julia
+provider-gate: check-rust-warnings provider-gate-root provider-gate-rust provider-gate-typescript provider-gate-python provider-gate-julia
+
+check-rust-warnings:
+    direnv exec . env RUSTFLAGS="-D warnings" cargo check -q -p agent-semantic-protocol
+    direnv exec . env RUSTFLAGS="-D warnings" cargo check -q --manifest-path {{rust_harness_project}}/Cargo.toml --features cli,search
 
 provider-gate-root:
     direnv exec . cargo test -p agent-semantic-hook

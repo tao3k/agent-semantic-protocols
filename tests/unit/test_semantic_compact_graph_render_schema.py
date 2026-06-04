@@ -46,7 +46,7 @@ def minimal_render_template() -> dict[str, object]:
             "edge": "<SRC>{<DST>:<relation>,...}",
             "groupedEdge": "(<SRC>,...)><DST>:<relation>",
             "rankFrontier": "rank=<ID>,... frontier=<ID>.<action>,...",
-            "profiles": "profiles=<profile>(<ID>,...),...",
+            "entries": "entries=<profile>(<ID>,...=><return>+...),...",
             "denseAliasSeparator": ";",
         },
         "locatorPolicy": {
@@ -131,18 +131,20 @@ class SemanticCompactGraphRenderSchemaTests(unittest.TestCase):
             template["lineGrammar"]["rankFrontier"],
         )
 
-    def test_profiles_line_declares_compatible_profile_handles(self) -> None:
+    def test_entries_line_declares_profile_selectors_and_returns(self) -> None:
         template = minimal_render_template()
 
         self.assertEqual(
-            "profiles=<profile>(<ID>,...),...",
-            template["lineGrammar"]["profiles"],
+            "entries=<profile>(<ID>,...=><return>+...),...",
+            template["lineGrammar"]["entries"],
         )
 
     def test_view_header_is_the_graph_packet_header(self) -> None:
         template = minimal_render_template()
 
-        self.assertEqual("[search-<view>]", template["viewHeaderContract"]["headerPrefix"])
+        self.assertEqual(
+            "[search-<view>]", template["viewHeaderContract"]["headerPrefix"]
+        )
         self.assertTrue(template["viewHeaderContract"]["headerIsGraphPacket"])
         self.assertTrue(template["viewHeaderContract"]["graphBlockRequired"])
         self.assertFalse(template["viewHeaderContract"]["legacySeedRowsAllowed"])
@@ -198,7 +200,9 @@ class SemanticCompactGraphRenderSchemaTests(unittest.TestCase):
 
         errors = self.validation_errors(template)
 
-        self.assertTrue(any("'shell-out' was expected" in message for message in errors))
+        self.assertTrue(
+            any("'shell-out' was expected" in message for message in errors)
+        )
 
     def test_unknown_action_is_rejected(self) -> None:
         template = minimal_render_template()
@@ -234,7 +238,9 @@ class SemanticCompactGraphRenderSchemaTests(unittest.TestCase):
 
         errors = self.validation_errors(template)
 
-        self.assertTrue(any("'filename' is not one of" in message for message in errors))
+        self.assertTrue(
+            any("'filename' is not one of" in message for message in errors)
+        )
 
     def test_search_root_is_not_a_standalone_alias_line(self) -> None:
         template = minimal_render_template()

@@ -1502,13 +1502,6 @@
             "pattern": "^[a-z][a-z0-9_-]*$"
           }
         },
-        "compatibleHandles": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "pattern": "^[A-Z][A-Z0-9]*$"
-          }
-        },
         "frontier": {
           "type": "array",
           "items": {

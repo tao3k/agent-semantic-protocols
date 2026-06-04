@@ -1,0 +1,64 @@
+{
+  "id": "root.claude-hook-flow",
+  "language": "root",
+  "coverage": [
+    "codex-hooks",
+    "policy-blackbox",
+    "security",
+    "real-trigger"
+  ],
+  "tags": [
+    "claude-hooks",
+    "source-directory-enumeration",
+    "real-trigger"
+  ],
+  "workdir": {
+    "relative": "."
+  },
+  "steps": [
+    {
+      "id": "claude-read-source-platform-deny",
+      "command": [
+        "asp",
+        "hook",
+        "pre-tool",
+        "--client",
+        "claude"
+      ],
+      "stdin": "{\"session_id\":\"session-claude-read\",\"transcript_path\":\"/tmp/session-claude-read.jsonl\",\"cwd\":\".\",\"hook_event_name\":\"PreToolUse\",\"tool_use_id\":\"toolu_read\",\"tool_name\":\"Read\",\"tool_input\":{\"file_path\":\"crates/agent-semantic-hook/src/classifier.rs\"}}",
+      "expect": {
+        "stdoutJsonEquals": {
+          "hookSpecificOutput.hookEventName": "PreToolUse",
+          "hookSpecificOutput.permissionDecision": "deny"
+        },
+        "stdoutContains": [
+          "direct-source-read denied"
+        ],
+        "maxElapsedMsWarn": 6500
+      }
+    },
+    {
+      "id": "claude-listfiles-source-decision-deny",
+      "command": [
+        "asp",
+        "hook",
+        "pre-tool",
+        "--client",
+        "claude",
+        "--emit",
+        "decision"
+      ],
+      "stdin": "{\"session_id\":\"session-claude-listfiles\",\"transcript_path\":\"/tmp/session-claude-listfiles.jsonl\",\"cwd\":\".\",\"hook_event_name\":\"PreToolUse\",\"tool_use_id\":\"toolu_listfiles\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"ls crates/agent-semantic-hook/src\",\"commandActions\":[{\"type\":\"listFiles\",\"command\":\"ls crates/agent-semantic-hook/src\",\"path\":\"crates/agent-semantic-hook/src\"}]}}",
+      "expect": {
+        "stdoutJsonEquals": {
+          "platform": "claude",
+          "decision": "deny",
+          "reasonKind": "source-directory-enumeration",
+          "routes.0.kind": "ingest",
+          "subject.command": "ls crates/agent-semantic-hook/src"
+        },
+        "maxElapsedMsWarn": 6500
+      }
+    }
+  ]
+}

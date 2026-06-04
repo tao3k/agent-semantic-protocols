@@ -230,7 +230,7 @@ G>{ID:relation,ID:relation}
 SRC>{DST:relation,DST:relation}
 (SRC,SRC)>DST:relation
 rank=ID,ID,ID frontier=ID.action,ID.action
-profiles=profile(ID,ID),profile(ID,ID)
+entries=profile(ID,ID=>return+return),profile(ID=>return)
 omit=<omitted-semantic>[,<omitted-semantic>]
 avoid=<anti-action>[,<anti-action>]
 #+end_src
@@ -248,7 +248,7 @@ The same shape applies to code-level graphs:
 ID=<nodeKind>:<targetRole>(<target>)[@<path-or-range>][!<action>]
 SRC>{DST:relation,DST:relation}
 rank=ID,ID,ID frontier=ID.action,ID.action
-profiles=profile(ID,ID),profile(ID,ID)
+entries=profile(ID,ID=>return+return),profile(ID=>return)
 omit=<omitted-semantic>[,<omitted-semantic>]
 #+end_src
 
@@ -257,10 +257,10 @@ and must not be copied into source paths, JSON paths, or edit commands.
 =targetRole(target)= tells the agent and parser how to interpret the target
 value.  =!action= declares an action available from a node.  =frontier=
 selects the seed actions for this packet from those node actions.  The
-=profiles= line is optional and names guide-declared reasoning profiles that
-are compatible with aliases rendered in this packet; each handle inside
-=profile(...)= is a packet-local alias id, not a reusable command argument.
-The
+=entries= line is optional and names guide-declared reasoning profiles whose
+typed selectors match aliases rendered in this packet; each selector inside
+=profile(...)= is a packet-local alias id, and the =...=>...= suffix names the
+return entries exposed by that profile.  The
 micro-legend line is the minimal grammar contract for agents that have not
 recently read this RFC.
 
@@ -420,7 +420,7 @@ G>{L:selects,C:selects,T:selects,U:covers}
 L>{C:exports,T:exports}
 U>{C:covers,T:covers}
 rank=L,C,T,U frontier=L.owner,C.owner,T.owner,U.tests
-profiles=owner-tests(L,U)
+entries=owner-tests(L=>covering-tests+test-entrypoints+fixtures)
 #+end_src
 
 Prime output still avoids full dependency or callsite expansion.  The graph
@@ -560,7 +560,7 @@ The prompt-facing text template is also schema-owned.  Providers must align to
 - alias line grammar
 - dense alias separator
 - combined =rank=... frontier=...= line
-- optional =profiles=...= compatibility hint line
+- optional =entries=...=>returns= return-entry line
 - source-kind to node/target-role/action vocabulary
 
 Rust, TypeScript, Python, and future language providers must not implement
@@ -636,8 +636,8 @@ Completed:
   owner follow-up steps.
 - [X] Rust, TypeScript, and Python adapters can carry =reasoningProfiles= in
   the search packet so the compact graph renderer can project them into a
-  packet-local =profiles=...= compatibility line, filtered to aliases that are
-  actually rendered in the current graph packet.
+  packet-local =entries=...=>returns= line, derived from typed selectors and
+  filtered to aliases whose rendered node kinds match the profile contract.
 - [X] =asp graph render --packet - --view seeds= is the
   shared renderer CLI used by language providers under =languages/=.
 - [X] Rust =rs-harness= constructs canonical search packets and shells out to

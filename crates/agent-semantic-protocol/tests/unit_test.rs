@@ -1,11 +1,19 @@
+#![recursion_limit = "256"]
+
 #[path = "unit/ast_patch.rs"]
 mod ast_patch;
+#[path = "unit/client_hook_claude_smoke.rs"]
+mod client_hook_claude_smoke;
+#[path = "unit/client_hook_codex_cli_e2e.rs"]
+mod client_hook_codex_cli_e2e;
 #[path = "unit/client_hook_config.rs"]
 mod client_hook_config;
 #[path = "unit/client_hook_config_doctor.rs"]
 mod client_hook_config_doctor;
 #[path = "unit/client_hook_config_runtime.rs"]
 mod client_hook_config_runtime;
+#[path = "unit/client_hook_desktop_smoke.rs"]
+mod client_hook_desktop_smoke;
 #[path = "unit/graph_render.rs"]
 mod graph_render;
 
@@ -15,5 +23,5 @@ mod hook_command;
 mod provider_command;
 #[path = "../../agent-semantic-hook/tests/unit/rust_harness_activation/mod.rs"]
 mod rust_harness_activation;
-#[path = "unit/source_access_command.rs"]
+#[path = "unit/source_access_command/mod.rs"]
 mod source_access_command;

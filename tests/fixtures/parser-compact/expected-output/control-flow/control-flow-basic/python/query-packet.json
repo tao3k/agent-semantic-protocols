@@ -31,6 +31,13 @@
         "reason": "read exact source locator before editing this compact match"
       },
       "projection": {
+        "compactSafety": {
+          "alignment": "parser-roundtrip",
+          "exactReadRequired": true,
+          "literalPolicy": "summarize",
+          "normalization": "none",
+          "whitespacePolicy": "formatter-structural"
+        },
         "exactRead": "src/control_flow.py:4:12",
         "expandActions": [
           {
@@ -83,7 +90,7 @@
           }
         ],
         "losslessStructure": true,
-        "mode": "outline",
+        "mode": "compact",
         "nodeCount": 9,
         "nodeLimit": 24,
         "nodes": [
@@ -281,7 +288,7 @@
         ],
         "sourceAuthority": "native-parser",
         "sourceFingerprint": "src/control_flow.py:4:12:161:fd6fbbd5",
-        "syntax": "semantic-outline"
+        "syntax": "save-token-ruff"
       },
       "read": "src/control_flow.py:4:12",
       "truncated": false,

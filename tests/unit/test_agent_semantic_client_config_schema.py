@@ -1,3 +1,5 @@
+"""Schema tests for agent semantic client configuration."""
+
 from __future__ import annotations
 
 import json

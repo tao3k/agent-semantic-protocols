@@ -364,7 +364,7 @@
                 "minItems": 1
               },
               "mutationAvailable": {
-                "const": false
+                "type": "boolean"
               }
             },
             "not": {

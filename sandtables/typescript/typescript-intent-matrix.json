@@ -27,8 +27,8 @@
         "intentKind": "feature-implementation",
         "intent": "Implement or modify project reference behavior from compact compiler owners",
         "stepIds": [
-          "prime",
-          "feature-project-reference"
+          "prime-compiler",
+          "intent-query-set"
         ],
         "queryTerms": [
           "projectReferences"
@@ -38,8 +38,8 @@
         "intentKind": "api-usage",
         "intent": "Find createProgram API usage and exported surface owners",
         "stepIds": [
-          "prime",
-          "api-create-program"
+          "prime-compiler",
+          "intent-query-set"
         ],
         "queryTerms": [
           "createProgram"
@@ -49,12 +49,19 @@
         "intentKind": "implementation-principle",
         "intent": "Understand module resolution implementation paths without broad source reads",
         "stepIds": [
-          "prime",
-          "principle-module-resolution"
+          "prime-compiler",
+          "intent-query-set"
         ],
         "queryTerms": [
           "resolveModuleName"
         ]
+      }
+    ],
+    "findings": [
+      {
+        "kind": "scoped-prime-required",
+        "severity": "warning",
+        "message": "Full-project search prime on the TypeScript compiler checkout exceeded the 30s sandtable step timeout; this matrix uses --package src/compiler to keep the first packet bounded."
       }
     ]
   },
@@ -67,17 +74,19 @@
     ]
   },
   "budgets": {
-    "maxCommands": 4,
-    "maxTotalLinesWarn": 60,
-    "maxTotalStdoutBytesWarn": 32000
+    "maxCommands": 2,
+    "maxTotalLinesWarn": 24,
+    "maxTotalStdoutBytesWarn": 10000
   },
   "steps": [
     {
-      "id": "prime",
+      "id": "prime-compiler",
       "command": [
         "ts-harness",
         "search",
         "prime",
+        "--package",
+        "src/compiler",
         "--view",
         "seeds",
         "."
@@ -85,39 +94,33 @@
       "expect": {
         "lineProtocol": true,
         "stdoutContains": [
-          "[search-prime]"
+          "[search-prime]",
+          "src/compiler",
+          "analysis=structure",
+          "nativeSyntaxFacts=skipped",
+          "policyFindings=skipped",
+          "entries=owner-query(O,Q=>items+tests+dependency-usage),owner-tests(O=>covering-tests+test-entrypoints+fixtures)"
         ],
-        "maxStdoutLinesWarn": 16,
-        "maxElapsedMsWarn": 22000
+        "maxStdoutLinesWarn": 10,
+        "maxElapsedMsWarn": 18000
       }
     },
     {
-      "id": "feature-project-reference",
+      "id": "intent-query-set",
       "command": [
         "ts-harness",
         "search",
         "fzf",
+        "--query-set",
         "projectReferences",
-        "--view",
-        "seeds",
-        "."
-      ],
-      "expect": {
-        "lineProtocol": true,
-        "stdoutContains": [
-          "[search-fzf]"
-        ],
-        "maxStdoutLinesWarn": 14,
-        "maxElapsedMsWarn": 9000
-      }
-    },
-    {
-      "id": "api-create-program",
-      "command": [
-        "ts-harness",
-        "search",
-        "api",
+        "--query-set",
         "createProgram",
+        "--query-set",
+        "resolveModuleName",
+        "owner",
+        "tests",
+        "--package",
+        "src/compiler",
         "--view",
         "seeds",
         "."
@@ -125,29 +128,11 @@
       "expect": {
         "lineProtocol": true,
         "stdoutContains": [
-          "[search-api]"
+          "[search-fzf]",
+          "querySet=3",
+          "entries=owner-query(O,Q=>items+tests+dependency-usage),owner-tests(O=>covering-tests+test-entrypoints+fixtures)"
         ],
         "maxStdoutLinesWarn": 14,
-        "maxElapsedMsWarn": 9000
-      }
-    },
-    {
-      "id": "principle-module-resolution",
-      "command": [
-        "ts-harness",
-        "search",
-        "fzf",
-        "resolveModuleName",
-        "--view",
-        "seeds",
-        "."
-      ],
-      "expect": {
-        "lineProtocol": true,
-        "stdoutContains": [
-          "[search-fzf]"
-        ],
-        "maxStdoutLinesWarn": 16,
         "maxElapsedMsWarn": 9000
       }
     }

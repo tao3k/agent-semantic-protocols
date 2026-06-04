@@ -376,7 +376,13 @@
         "insert_before_statement",
         "insert_after_statement",
         "replace_statement",
-        "replace_expression"
+        "replace_expression",
+        "replace_call_arg",
+        "insert_import",
+        "remove_import",
+        "remove_statement",
+        "remove_item",
+        "replace_item"
       ]
     },
     "projection": {
@@ -406,8 +412,59 @@
               "losslessStructure",
               "exactRead",
               "nodes",
-              "renderedNodeIds"
+              "renderedNodeIds",
+              "renderedRows",
+              "nodeCount",
+              "nodeLimit",
+              "nodesTruncated",
+              "omitted",
+              "expandActions"
             ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "syntax": {
+                "enum": [
+                  "save-token-rustfmt",
+                  "save-token-ruff"
+                ]
+              }
+            },
+            "required": [
+              "syntax"
+            ]
+          },
+          "then": {
+            "required": [
+              "compactSafety"
+            ],
+            "properties": {
+              "mode": {
+                "const": "compact"
+              },
+              "sourceAuthority": {
+                "const": "native-parser"
+              },
+              "compactSafety": {
+                "required": [
+                  "literalPolicy",
+                  "whitespacePolicy",
+                  "normalization",
+                  "alignment",
+                  "exactReadRequired"
+                ],
+                "properties": {
+                  "whitespacePolicy": {
+                    "const": "formatter-structural"
+                  },
+                  "exactReadRequired": {
+                    "const": true
+                  }
+                }
+              }
+            }
           }
         }
       ],
@@ -425,6 +482,8 @@
             "token-compact",
             "brace-block",
             "semantic-outline",
+            "save-token-rustfmt",
+            "save-token-ruff",
             "exact-source",
             "none"
           ]
@@ -458,6 +517,7 @@
               "enum": [
                 "syntax-trivia-only",
                 "semantic-outline",
+                "formatter-structural",
                 "exact-source"
               ],
               "description": "Which whitespace may be removed. syntax-trivia-only means provider tokenization proved the whitespace is outside literal payloads and indentation-sensitive source regions."
@@ -519,6 +579,14 @@
       "description": "Prompt-facing compact rows, each bound to exactly one parser-owned projection node. When matches[].code is present, providers join renderedRows[].text with newlines to produce that code string.",
       "items": {
         "$ref": "#/$defs/projectionRenderedRow"
+      }
+    },
+    "semanticResponsibilities": {
+      "type": "array",
+      "description": "Parser-owned functional responsibilities represented by this projection but not necessarily rendered in compact text. Agents use these as explicit complexity and edit-planning facts, not inferred labels.",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/projectionResponsibility"
       }
     },
     "nodeCount": {
@@ -684,6 +752,35 @@
           "type": "integer",
           "minimum": 0,
           "description": "Provider-owned row weight for token-cost and residue metrics."
+        }
+      }
+    },
+    "projectionResponsibility": {
+      "type": "object",
+      "description": "Provider-owned parser-derived responsibility tag with optional projection-node or exact-read evidence.",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "source"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source": {
+          "enum": [
+            "native-parser",
+            "projection-node"
+          ]
+        },
+        "nodeId": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_.:-]+$"
+        },
+        "read": {
+          "type": "string",
+          "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*):[1-9][0-9]*:[1-9][0-9]*$"
         }
       }
     },

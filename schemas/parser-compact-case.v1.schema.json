@@ -63,6 +63,30 @@
       "$ref": "#/$defs/providerCommand"
     }
   },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "featureClass": {
+            "const": "real-library"
+          }
+        },
+        "required": ["featureClass"]
+      },
+      "then": {
+        "properties": {
+          "sourceOrigin": {
+            "required": ["kind", "repository", "ref", "sourcePath", "license", "note"],
+            "properties": {
+              "kind": {
+                "const": "real-project"
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
   "$defs": {
     "sourceOrigin": {
       "type": "object",

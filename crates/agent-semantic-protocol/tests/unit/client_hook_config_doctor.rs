@@ -2,8 +2,12 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use agent_semantic_hook::{builtin_provider_manifests, provider_manifest_digest};
+use agent_semantic_hook::{
+    builtin_provider_manifests, codex_hook_block, merge_codex_config, provider_manifest_digest,
+};
 use serde_json::json;
+
+const PROBE_SENTINEL: &str = "ASP_CODEX_HOOK_ENFORCEMENT_PROBE_SENTINEL_DO_NOT_LEAK";
 
 #[test]
 fn doctor_reports_missing_client_hook_config() {
@@ -39,6 +43,83 @@ tool = "Bash"
     assert!(output.status.success(), "stderr: {}", stderr(&output));
     let stdout = stdout(&output);
     assert!(stdout.contains("clientConfigStatus=ok"));
+    assert!(stdout.contains("enforcement=not-run"));
+    assert!(stdout.contains("enforcementReason=probe-disabled"));
+    std::fs::remove_dir_all(root).expect("cleanup temp project root");
+}
+
+#[test]
+fn doctor_reports_enforced_when_codex_probe_observes_deny() {
+    let root = temp_project_root("doctor-codex-probe-deny");
+    let activation_path = write_activation(&root);
+    write_codex_project_config(&root);
+    write_client_config(
+        &root,
+        r#"
+[[rules]]
+id = "valid-doctor-rule"
+decision = "deny"
+"#,
+    );
+    let bin_dir = root.join(".test-bin");
+    let codex = write_executable(
+        &bin_dir,
+        "codex",
+        "#!/bin/sh\nprintf '%s\\n' '{\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"direct-source-read\"}'\n",
+    );
+    write_executable(&bin_dir, "asp", "#!/bin/sh\nexit 0\n");
+
+    let output = run_doctor_with_env(
+        &root,
+        &activation_path,
+        &[("ASP_CODEX_CLI_ENFORCEMENT_PROBE", "1")],
+        &[("ASP_CODEX_CLI", codex.to_str().expect("utf8 codex path"))],
+        Some(&bin_dir),
+    );
+
+    assert!(output.status.success(), "stderr: {}", stderr(&output));
+    let stdout = stdout(&output);
+    assert!(stdout.contains("enforcement=enforced"));
+    assert!(stdout.contains("enforcementReason=hook-deny-observed"));
+    assert!(stdout.contains("|enforcement status=enforced"));
+    std::fs::remove_dir_all(root).expect("cleanup temp project root");
+}
+
+#[test]
+fn doctor_reports_configured_but_not_enforced_when_codex_probe_leaks_source() {
+    let root = temp_project_root("doctor-codex-probe-leak");
+    let activation_path = write_activation(&root);
+    write_codex_project_config(&root);
+    write_client_config(
+        &root,
+        r#"
+[[rules]]
+id = "valid-doctor-rule"
+decision = "deny"
+"#,
+    );
+    let bin_dir = root.join(".test-bin");
+    let codex = write_executable(
+        &bin_dir,
+        "codex",
+        &format!("#!/bin/sh\nprintf '%s\\n' '{PROBE_SENTINEL}'\n"),
+    );
+    write_executable(&bin_dir, "asp", "#!/bin/sh\nexit 0\n");
+
+    let output = run_doctor_with_env(
+        &root,
+        &activation_path,
+        &[("ASP_CODEX_CLI_ENFORCEMENT_PROBE", "1")],
+        &[("ASP_CODEX_CLI", codex.to_str().expect("utf8 codex path"))],
+        Some(&bin_dir),
+    );
+
+    assert!(output.status.success(), "stderr: {}", stderr(&output));
+    let stdout = stdout(&output);
+    assert!(stdout.contains("enforcement=configured-but-not-enforced"));
+    assert!(stdout.contains("enforcementReason=source-sentinel-leaked"));
+    assert!(stdout.contains("|enforcement status=configured-but-not-enforced"));
+    assert!(stdout.contains("sentinel=true"));
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
 }
 
@@ -84,6 +165,14 @@ fn write_client_config(root: &std::path::Path, content: &str) {
     std::fs::write(config_path, content).expect("write client config");
 }
 
+fn write_codex_project_config(root: &std::path::Path) {
+    let config_path = root.join(".codex/config.toml");
+    std::fs::create_dir_all(config_path.parent().expect("project config parent"))
+        .expect("create project config dir");
+    std::fs::write(config_path, merge_codex_config("", &codex_hook_block()))
+        .expect("write project Codex config");
+}
+
 fn write_activation(root: &std::path::Path) -> PathBuf {
     let activation_path = root.join("activation.json");
     std::fs::write(&activation_path, root_owned_rust_activation_json()).expect("write activation");
@@ -91,19 +180,36 @@ fn write_activation(root: &std::path::Path) -> PathBuf {
 }
 
 fn run_doctor(root: &std::path::Path, activation_path: &std::path::Path) -> std::process::Output {
-    Command::new(env!("CARGO_BIN_EXE_asp"))
-        .current_dir(root)
-        .args([
-            "hook",
-            "doctor",
-            "--client",
-            "codex",
-            "--activation",
-            activation_path.to_str().expect("utf8 activation path"),
-            ".",
-        ])
-        .output()
-        .expect("run asp hook doctor")
+    run_doctor_with_env(root, activation_path, &[], &[], None)
+}
+
+fn run_doctor_with_env(
+    root: &std::path::Path,
+    activation_path: &std::path::Path,
+    envs: &[(&str, &str)],
+    env_paths: &[(&str, &str)],
+    path_prefix: Option<&std::path::Path>,
+) -> std::process::Output {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_asp"));
+    command.current_dir(root).args([
+        "hook",
+        "doctor",
+        "--client",
+        "codex",
+        "--activation",
+        activation_path.to_str().expect("utf8 activation path"),
+        ".",
+    ]);
+    for (key, value) in envs {
+        command.env(key, value);
+    }
+    for (key, value) in env_paths {
+        command.env(key, value);
+    }
+    if let Some(path_prefix) = path_prefix {
+        command.env("PATH", prepend_path(path_prefix));
+    }
+    command.output().expect("run asp hook doctor")
 }
 
 fn stdout(output: &std::process::Output) -> String {
@@ -122,6 +228,36 @@ fn temp_project_root(name: &str) -> PathBuf {
     let root = std::env::temp_dir().join(format!("agent-semantic-hook-{name}-{unique}"));
     std::fs::create_dir_all(&root).expect("create temp project root");
     root
+}
+
+fn write_executable(root: &std::path::Path, name: &str, content: &str) -> PathBuf {
+    std::fs::create_dir_all(root).expect("create executable dir");
+    let path = root.join(name);
+    std::fs::write(&path, content).expect("write executable");
+    make_executable(&path);
+    path
+}
+
+#[cfg(unix)]
+fn make_executable(path: &std::path::Path) {
+    use std::os::unix::fs::PermissionsExt;
+
+    let mut permissions = std::fs::metadata(path)
+        .expect("executable metadata")
+        .permissions();
+    permissions.set_mode(0o755);
+    std::fs::set_permissions(path, permissions).expect("chmod executable");
+}
+
+#[cfg(not(unix))]
+fn make_executable(_path: &std::path::Path) {}
+
+fn prepend_path(first: &std::path::Path) -> std::ffi::OsString {
+    let mut paths = vec![first.to_path_buf()];
+    if let Some(existing) = std::env::var_os("PATH") {
+        paths.extend(std::env::split_paths(&existing));
+    }
+    std::env::join_paths(paths).expect("join PATH")
 }
 
 fn root_owned_rust_activation_json() -> String {

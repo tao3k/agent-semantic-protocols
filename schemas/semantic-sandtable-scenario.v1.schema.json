@@ -6,6 +6,34 @@
   "type": "object",
   "additionalProperties": false,
   "required": ["id", "language", "workdir", "steps"],
+  "allOf": [
+    {
+      "if": {
+        "required": ["evidence"],
+        "properties": {
+          "evidence": {
+            "type": "object",
+            "required": ["fixtureTier"],
+            "properties": {
+              "fixtureTier": {
+                "const": "large-library"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "required": ["coverage"],
+        "properties": {
+          "coverage": {
+            "contains": {
+              "const": "large-library"
+            }
+          }
+        }
+      }
+    }
+  ],
   "properties": {
     "id": {
       "type": "string",
@@ -61,6 +89,69 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["source"],
+      "allOf": [
+        {
+          "if": {
+            "required": ["fixtureTier"],
+            "properties": {
+              "fixtureTier": {
+                "const": "large-library"
+              }
+            }
+          },
+          "then": {
+            "required": ["targetLibrary", "intentCases"],
+            "properties": {
+              "targetLibrary": {
+                "required": ["repository"],
+                "properties": {
+                  "workdirKind": {
+                    "enum": ["checkout", "registry"]
+                  }
+                }
+              },
+              "intentCases": {
+                "minItems": 3,
+                "allOf": [
+                  {
+                    "contains": {
+                      "type": "object",
+                      "required": ["intentKind"],
+                      "properties": {
+                        "intentKind": {
+                          "const": "feature-implementation"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "contains": {
+                      "type": "object",
+                      "required": ["intentKind"],
+                      "properties": {
+                        "intentKind": {
+                          "const": "api-usage"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "contains": {
+                      "type": "object",
+                      "required": ["intentKind"],
+                      "properties": {
+                        "intentKind": {
+                          "const": "implementation-principle"
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ],
       "properties": {
         "source": {
           "enum": ["handwritten", "real-trigger", "recorded-replay"]
@@ -467,12 +558,18 @@
           "type": "string",
           "pattern": "^[a-z][a-z0-9_-]*$"
         },
-        "commandContains": {
-          "$ref": "#/$defs/stringList"
-        },
-        "routeCommandContains": {
-          "$ref": "#/$defs/stringList"
-        },
+      "commandContains": {
+        "$ref": "#/$defs/stringList"
+      },
+      "outputContains": {
+        "$ref": "#/$defs/stringList"
+      },
+      "outputNotContains": {
+        "$ref": "#/$defs/stringList"
+      },
+      "routeCommandContains": {
+        "$ref": "#/$defs/stringList"
+      },
         "routeCommandNotContains": {
           "$ref": "#/$defs/stringList"
         },

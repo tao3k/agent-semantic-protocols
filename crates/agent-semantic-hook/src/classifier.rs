@@ -13,9 +13,9 @@ use crate::command::{
 use crate::{
     ActivatedProvider, ClientHookConfig, DecisionKind, DecisionRoute, DecisionRouteKind,
     DecisionSubject, HOOK_DECISION_SCHEMA_ID, HOOK_DECISION_SCHEMA_VERSION, HOOK_PROTOCOL_ID,
-    HOOK_PROTOCOL_VERSION, HookDecision, HookRuntime, ReasonKind, SourceSelectorKind,
-    SourceSelectorMatch, ToolAction, collect_source_selector_matches, collect_tool_actions,
-    payload_string, subject_for_action,
+    HOOK_PROTOCOL_VERSION, HookDecision, HookRuntime, OperationIntent, ReasonKind,
+    SourceSelectorKind, SourceSelectorMatch, ToolAction, collect_source_selector_matches,
+    collect_tool_actions, payload_string, subject_for_action,
 };
 
 /// Named input for hook classification with optional client policy config.
@@ -79,6 +79,12 @@ pub fn classify_hook_with_config(request: HookClassificationRequest<'_>) -> Hook
         return decision;
     }
 
+    if let Some(decision) = actions.iter().find_map(|action| {
+        classify_structured_apply_patch_action(registry, platform, event, action)
+    }) {
+        return decision;
+    }
+
     if let Some(decision) = actions
         .iter()
         .find_map(|action| classify_direct_read_action(registry, platform, event, action))
@@ -130,6 +136,137 @@ fn classify_direct_read_action(
     event: &str,
     action: &ToolAction,
 ) -> Option<HookDecision> {
+    fn directory_path_matches_provider(
+        project_root: &str,
+        provider: &ActivatedProvider,
+        path: &str,
+    ) -> bool {
+        let Some(normalized) = normalize_directory_path(path) else {
+            return false;
+        };
+
+        if let Some(project_relative) = project_relative_directory(project_root, &normalized) {
+            return directory_path_candidate_matches_provider(provider, &project_relative);
+        }
+
+        if project_root.trim().is_empty() || project_root.trim() == "." {
+            if let Ok(current_dir) = std::env::current_dir() {
+                if let Some(current_dir) = current_dir.to_str() {
+                    if let Some(project_relative) =
+                        project_relative_directory(current_dir, &normalized)
+                    {
+                        return directory_path_candidate_matches_provider(
+                            provider,
+                            &project_relative,
+                        );
+                    }
+                }
+            }
+        }
+
+        if !std::path::Path::new(&normalized).is_absolute() {
+            return directory_path_candidate_matches_provider(provider, &normalized);
+        }
+
+        provider.matches_search_token(&normalized)
+    }
+
+    fn normalize_directory_path(path: &str) -> Option<String> {
+        let path = path.trim().trim_start_matches("./").trim_end_matches('/');
+        if path.is_empty() {
+            return None;
+        }
+
+        let absolute = path.starts_with('/');
+        let mut segments = Vec::new();
+        for segment in path.split('/') {
+            match segment {
+                "" | "." => {}
+                ".." => {
+                    segments.pop()?;
+                }
+                segment => segments.push(segment),
+            }
+        }
+
+        let joined = segments.join("/");
+        if absolute {
+            Some(format!("/{joined}"))
+        } else if joined.is_empty() {
+            Some(".".to_string())
+        } else {
+            Some(joined)
+        }
+    }
+
+    fn project_relative_directory(project_root: &str, normalized: &str) -> Option<String> {
+        let project_root = normalize_directory_path(project_root)?;
+        if project_root == "." {
+            return None;
+        }
+        if normalized == project_root {
+            return Some(".".to_string());
+        }
+        normalized
+            .strip_prefix(&project_root)
+            .and_then(|path| path.strip_prefix('/'))
+            .filter(|path| !path.is_empty())
+            .map(str::to_string)
+    }
+
+    fn directory_path_candidate_matches_provider(
+        provider: &ActivatedProvider,
+        candidate: &str,
+    ) -> bool {
+        if provider.matches_search_token(candidate) {
+            return true;
+        }
+
+        provider.source_roots.iter().any(|root| {
+            let Some(root) = normalize_directory_path(root) else {
+                return false;
+            };
+            !root.is_empty()
+                && (candidate == root
+                    || candidate.starts_with(&format!("{root}/"))
+                    || candidate.ends_with(&format!("/{root}"))
+                    || candidate.contains(&format!("/{root}/")))
+        })
+    }
+
+    if action.operation == OperationIntent::DirectoryRead {
+        let providers = registry
+            .providers
+            .iter()
+            .filter(|provider| provider.policy.blocks_raw_source_search())
+            .filter(|provider| {
+                action.paths.iter().any(|path| {
+                    directory_path_matches_provider(&registry.project_root, provider, path)
+                })
+            })
+            .collect::<Vec<_>>();
+
+        if providers.is_empty() {
+            return None;
+        }
+
+        let routes = providers
+            .iter()
+            .map(|provider| raw_search_ingest_route(provider))
+            .collect();
+        let message = provider_guide_message("source-directory-enumeration denied", &providers);
+        return Some(deny_for_action(
+            platform,
+            event,
+            ReasonKind::SourceDirectoryEnumeration,
+            action,
+            language_ids(&providers),
+            subject_for_action(action),
+            routes,
+            message,
+        ));
+    }
+
     if !action.operation.is_direct_read_candidate()
         && !action
             .command
@@ -174,26 +311,89 @@ fn classify_apply_patch_command(
     if patch_paths.is_empty() {
         return None;
     }
+    classify_apply_patch_paths(registry, platform, event, action, patch_paths)
+}
+
+fn classify_structured_apply_patch_action(
+    registry: &HookRuntime,
+    platform: &str,
+    event: &str,
+    action: &ToolAction,
+) -> Option<HookDecision> {
+    if action.operation != OperationIntent::ApplyPatch || action.paths.is_empty() {
+        return None;
+    }
+    classify_apply_patch_paths(registry, platform, event, action, action.paths.clone())
+}
+
+fn classify_apply_patch_paths(
+    registry: &HookRuntime,
+    platform: &str,
+    event: &str,
+    action: &ToolAction,
+    patch_paths: Vec<String>,
+) -> Option<HookDecision> {
     let matches =
         collect_source_selector_matches(registry, patch_paths.iter().map(String::as_str), |_| true);
     if matches.is_empty() {
         return None;
     }
+
     let routes = direct_read_routes(&matches);
     let mut subject = subject_for_action(action);
     subject.paths = patch_paths;
     let languages = direct_read_language_ids(&matches);
+
+    if let Some(command) = action.command.as_deref() {
+        let patch_digest = source_apply_patch_digest(command);
+        let authorization_path = source_apply_patch_authorization_path(registry, &patch_digest);
+        if authorization_path.is_file() {
+            let mut decision = allow(platform, event, subject);
+            decision.language_ids = languages;
+            decision.message = format!(
+                "source apply_patch allowed by controlled maintenance authorization {}",
+                authorization_path.display()
+            );
+            decision.fields.insert(
+                "toolSurface".to_string(),
+                Value::String(action.surface.as_str().to_string()),
+            );
+            decision.fields.insert(
+                "operationIntent".to_string(),
+                Value::String(action.operation.as_str().to_string()),
+            );
+            decision.fields.insert(
+                "maintenancePolicy".to_string(),
+                Value::String("source-apply-patch-authorization".to_string()),
+            );
+            decision
+                .fields
+                .insert("patchDigest".to_string(), Value::String(patch_digest));
+            decision.fields.insert(
+                "authorizationPath".to_string(),
+                Value::String(authorization_path.display().to_string()),
+            );
+            return Some(decision);
+        }
+    }
+
     let language = languages
         .first()
         .map(String::as_str)
         .unwrap_or("<language>");
+    let project_root = routes
+        .first()
+        .and_then(|route| route.argv.last())
+        .filter(|arg| !arg.starts_with('-'))
+        .map(String::as_str)
+        .unwrap_or(".");
+    let route_guide = routes
+        .iter()
+        .map(|route| command_line(&route.argv))
+        .collect::<Vec<_>>()
+        .join("; ");
     let message = format!(
-        "source apply_patch denied; compact output is not patch context. Next: exact-read preimage with {}; build packet with `asp ast-patch template --language {language} --owner <owner-path> --read <path:start:end> --op <operation> --snippet '<exact source or inserted snippet>' > semantic-ast-patch.json`; then run `asp {language} ast-patch dry-run --packet semantic-ast-patch.json .`; only then retry Codex apply_patch.",
-        routes
-            .iter()
-            .map(|route| command_line(&route.argv))
-            .collect::<Vec<_>>()
-            .join("; ")
+        "source apply_patch denied; compact output is not patch context. Exact-read route: {route_guide}. Build semantic-ast-patch.json with `asp ast-patch template --language {language} --owner <owner-path> --read <path:start:end> --op <operation> --snippet '<exact source or inserted snippet>' {project_root}` and validate it with `asp {language} ast-patch dry-run --packet semantic-ast-patch.json {project_root}`. Receipt verification records edit intent; this hook does not auto-unlock source apply_patch. If provider dry-run cannot verify this operation, use a provider-native mutation route or a controlled maintenance policy."
     );
     Some(deny_for_action(
         platform,
@@ -676,4 +876,21 @@ fn deny(
         message,
         fields: std::collections::BTreeMap::new(),
     }
+}
+
+fn source_apply_patch_digest(command: &str) -> String {
+    let digest = <sha2::Sha256 as sha2::Digest>::digest(command.as_bytes());
+    format!("{digest:x}")
+}
+
+fn source_apply_patch_authorization_path(
+    registry: &HookRuntime,
+    patch_digest: &str,
+) -> std::path::PathBuf {
+    std::path::Path::new(&registry.project_root)
+        .join(".cache")
+        .join("agent-semantic-protocol")
+        .join("hooks")
+        .join("source-apply-patch")
+        .join(format!("{patch_digest}.json"))
 }

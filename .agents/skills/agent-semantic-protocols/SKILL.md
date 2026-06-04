@@ -8,7 +8,7 @@ description: Use when working with the language provider binaries maintained by 
 ## Rules
 
 - Use the protocol language facade for agent exploration: Rust uses `asp rust`, TypeScript uses `asp typescript`, Python uses `asp python`.
-- Use `asp` for the agent semantic client/backend surface: `asp guide`, `asp doctor`, `asp providers`, and `asp cache status`. The full client/backend name is agent-semantic-client; `agent-semantic-protocol` and `agent-semantic-hook` keep their protocol/runtime names.
+- Use `asp` for the agent semantic client/backend surface: `asp guide`, `asp doctor`, `asp providers`, `asp cache status`, `asp cache import`, and `asp cache invalidate`. The full client/backend name is agent-semantic-client; `agent-semantic-protocol` and `agent-semantic-hook` keep their protocol/runtime names.
 - Treat `rs-harness`, `ts-harness`, and `py-harness` as provider implementation/debug binaries, not the default agent command surface.
 - Julia is intentionally skipped for bin parity and cross-language search alignment for now. Do not require, install, document, or validate a standalone `julia-project-harness` binary.
 - If Julia evidence is explicitly requested, use the workspace-managed command `julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl`; otherwise skip Julia in provider parity audits.
@@ -16,7 +16,8 @@ description: Use when working with the language provider binaries maintained by 
 - Do not add `--json` during agent exploration. `--json` is only for schema tests, validators, receipts, or IDE integrations.
 - `asp hook install --client codex .` installs or verifies the shared `asp` binary on PATH, then installs hooks, provider activation, and this skill at `.agents/skills/agent-semantic-protocols/SKILL.md`.
 - `search --view seeds` graph rendering is shared protocol output. Rust, TypeScript, and Python providers should build canonical packets and shell out to `asp graph render`; if graph rendering fails, fix PATH or `SEMANTIC_AGENT_PROTOCOL_BIN` instead of adding provider-local renderer fallback.
-- agent semantic client-backend phase 1 routes to local native providers only. It must not invent semantic facts or hide cache state; cache output reports `status=disabled` until a real cache manifest/path lands.
+- agent semantic client-backend phase 1 probes the local SQLite client DB before local native provider execution. It must not invent semantic facts or hide cache state: `asp cache status` reports manifest/DB health as `missing`, `unimported`, `available`, `invalid`, or `unavailable`; request receipts use `cacheStatus=miss|warm-provider|hit|stale`.
+- Successful replay-safe `asp <language> search ... --view seeds` requests can write back schema-valid `search/*.json` artifacts when the provider can export the matching search packet, with prompt-output writeback as fallback; schema-valid `query/owner-items` query packets can write back and replay query artifacts when the provider can export the matching packet.
 
 ## Command Shapes
 
@@ -32,8 +33,9 @@ description: Use when working with the language provider binaries maintained by 
 - Check changed work: `asp <language> check --changed .`
 - Verify a parser-owned mechanical edit intent: `asp <language> ast-patch dry-run --packet <semantic-ast-patch.json> .`
 - Build Rust evidence graphs: `asp rust evidence graph --review-packet-json <path> --json .`
-- Inspect the agent semantic client: `asp guide`, `asp doctor`, `asp providers`, `asp cache status`.
-- Route through agent semantic client local-native provider execution: `asp search --language <rust|typescript|python> <provider-search-args>`.
+- Inspect the agent semantic client: `asp guide`, `asp doctor`, `asp providers`, `asp cache status`, `asp cache import`, `asp cache invalidate`.
+- Route through agent semantic client local-native/provider-cache execution with the language facade: `asp <language> search <provider-search-args> [PROJECT_ROOT]`, `asp <language> query <provider-query-args> [PROJECT_ROOT]`, and `asp <language> check <provider-check-args> [PROJECT_ROOT]`.
+- Do not use or document top-level `asp search|query|check --language ...`; it is not a public command surface.
 
 Hook rule of thumb: source-suffix reads and content dumps are denied; exact
 source paths should follow the protocol facade `query --from-hook direct-source-read

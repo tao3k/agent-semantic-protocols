@@ -92,6 +92,12 @@
         "rawSourceStored": {
           "const": false
         },
+        "requestFingerprint": {
+          "description": "Stable fingerprint of the normalized agent request that produced a replay-sensitive client-captured artifact. prompt-output/*.txt artifacts are only eligible for direct stdout replay when this fingerprint matches the current request.",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[a-z0-9_-]+:[a-f0-9]{16,64}$"
+        },
         "fileHashes": {
           "type": "array",
           "items": {
@@ -99,7 +105,7 @@
           }
         },
         "artifactIds": {
-          "description": "Provider-owned artifact ids relative to $PRJ_HOME_CACHE/agent-semantic-protocol/artifacts. Only prompt-output/*.txt artifacts are eligible for direct prompt stdout replay; all other ids are provenance for provider packets or rendered cache artifacts.",
+          "description": "Provider-owned artifact ids or client-captured prompt-output write-back ids relative to $PRJ_HOME_CACHE/agent-semantic-protocol/artifacts. prompt-output/*.txt artifacts are eligible for direct prompt stdout replay only when requestFingerprint matches the current request. search/*.json semantic-search-packet artifacts are eligible for replay through the shared compact graph renderer. query/*.json semantic-query-packet artifacts are eligible for query/owner-items compact query replay. Other ids remain provenance for provider packets or rendered cache artifacts.",
           "type": "array",
           "uniqueItems": true,
           "items": {

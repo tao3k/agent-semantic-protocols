@@ -1,0 +1,174 @@
+use std::env;
+use std::process::Command;
+
+use crate::provider_command::support::{
+    provider, temp_project_root, write_activation, write_echo_provider,
+};
+
+#[test]
+fn provider_command_prefix_is_used_as_full_invocation_prefix() {
+    let root = temp_project_root("provider-prefix-facade");
+    let bin_dir = root.join(".bin");
+    write_echo_provider(&bin_dir, "provider-wrapper", "wrapper");
+    write_activation(
+        &root,
+        &[provider(
+            "rust",
+            vec!["provider-wrapper".to_string(), "rs-harness".to_string()],
+        )],
+    );
+
+    let output = Command::new(env!("CARGO_BIN_EXE_asp"))
+        .current_dir(&root)
+        .env("PATH", &bin_dir)
+        .args(["rust", "query", "src/lib.rs", "."])
+        .output()
+        .expect("run asp rust query");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8(output.stdout).expect("stdout"),
+        "wrapper args=[rs-harness][query][src/lib.rs][.]\n"
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn provider_native_ast_patch_command_is_wrapped_by_language_facade() {
+    let root = temp_project_root("provider-ast-patch-facade");
+    let bin_dir = root.join(".bin");
+    write_echo_provider(&bin_dir, "rs-harness", "rs");
+    write_activation(&root, &[provider("rust", Vec::new())]);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_asp"))
+        .current_dir(&root)
+        .env("PATH", &bin_dir)
+        .args([
+            "rust",
+            "ast-patch",
+            "dry-run",
+            "--packet",
+            "packet.json",
+            ".",
+        ])
+        .output()
+        .expect("run asp rust ast-patch");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8(output.stdout).expect("stdout"),
+        "rs args=[ast-patch][dry-run][--packet][packet.json][.]\n"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+
+    let root = temp_project_root("provider-ast-patch-real-apply");
+    let bin_dir = root.join(".bin");
+    std::fs::create_dir_all(root.join("src")).expect("create src");
+    let source_path = root.join("src/lib.rs");
+    let before = "pub fn demo() -> usize {\n    1\n}\n";
+    std::fs::write(&source_path, before).expect("write source");
+    write_activation(&root, &[provider("rust", Vec::new())]);
+
+    let workspace_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(|path| path.parent())
+        .expect("workspace root");
+    let harness_root = workspace_root.join("languages/rust-lang-project-harness");
+    let harness_manifest = harness_root.join("Cargo.toml");
+    let harness_target_dir = harness_root.join("target");
+    let build_output = Command::new("cargo")
+        .arg("build")
+        .arg("--quiet")
+        .arg("--manifest-path")
+        .arg(&harness_manifest)
+        .arg("--features")
+        .arg("cli,search")
+        .arg("--bin")
+        .arg("rs-harness")
+        .env("CARGO_TARGET_DIR", &harness_target_dir)
+        .output()
+        .expect("build rs-harness");
+    assert!(
+        build_output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&build_output.stderr)
+    );
+    let harness_binary = harness_target_dir
+        .join("debug")
+        .join(format!("rs-harness{}", std::env::consts::EXE_SUFFIX));
+    assert!(harness_binary.exists(), "{}", harness_binary.display());
+    std::fs::create_dir_all(&bin_dir).expect("create bin dir");
+    let wrapper_path = bin_dir.join("rs-harness");
+    let harness_binary_quoted = harness_binary.to_string_lossy().replace('\'', "'\\''");
+    std::fs::write(
+        &wrapper_path,
+        format!("#!/bin/sh\nexec '{harness_binary_quoted}' \"$@\"\n"),
+    )
+    .expect("write rs-harness wrapper");
+    let mut wrapper_permissions = std::fs::metadata(&wrapper_path)
+        .expect("wrapper metadata")
+        .permissions();
+    std::os::unix::fs::PermissionsExt::set_mode(&mut wrapper_permissions, 0o755);
+    std::fs::set_permissions(&wrapper_path, wrapper_permissions).expect("chmod wrapper");
+
+    let packet = serde_json::json!({
+        "target": {
+            "ownerPath": "src/lib.rs",
+            "locator": "src/lib.rs#fn:demo",
+            "read": "src/lib.rs:1:3",
+            "itemName": "demo",
+            "itemKind": "fn"
+        },
+        "operation": {
+            "op": "replace_item",
+            "snippet": "pub fn demo() -> usize { 2 }",
+            "expectedSnippet": "pub fn demo",
+            "maxEdits": 1
+        }
+    })
+    .to_string();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_asp"))
+        .current_dir(&root)
+        .env("PATH", &bin_dir)
+        .args(["rust", "ast-patch", "apply", "--packet", "-", "."])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("run real provider ast-patch apply");
+    std::io::Write::write_all(child.stdin.as_mut().expect("stdin"), packet.as_bytes())
+        .expect("write packet");
+    let output = child.wait_with_output().expect("wait for ast-patch");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let receipt: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("provider ast-patch receipt");
+    assert_eq!(receipt["capability"], "provider-ast-apply");
+    assert_eq!(receipt["status"], "failed");
+    assert_eq!(receipt["failureKind"], "rustfmt-error");
+    let verification = receipt["verification"].as_array().expect("verification");
+    let has_event = |expected: &str| {
+        verification.iter().any(|entry| {
+            entry
+                .as_str()
+                .or_else(|| entry["event"].as_str())
+                .is_some_and(|event| event == expected)
+        })
+    };
+    assert!(has_event("file-reparsed"));
+    assert!(!has_event("file-written"));
+    let after = std::fs::read_to_string(&source_path).expect("read after");
+    assert_eq!(before, after);
+    let _ = std::fs::remove_dir_all(root);
+}

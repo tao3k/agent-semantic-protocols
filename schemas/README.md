@@ -13,11 +13,11 @@ deny that output-mode error with `reasonKind=agent-search-json` and guide to
 the equivalent compact command. Providers should emit JSON in a compact
 machine-oriented form, leaving readability to validators and artifact viewers
 rather than spending terminal tokens on pretty-print whitespace.
-RFC 009 adds optional `reasoningProfiles` to this packet as a typed profile
-compatibility surface for `search prime` and `search reasoning <profile>`.
-Those entries describe profile names, selector slots, returns, compatible
-graph aliases, and frontier actions; they deliberately reject natural-language
-`goal` or `intent` fields so planning stays in the agent.
+RFC 009 adds optional `reasoningProfiles` to this packet as a typed return-entry
+surface for `search prime` and `search reasoning <profile>`. Those entries
+describe profile names, selector slots, returns, and frontier actions; they
+deliberately reject natural-language `goal` or `intent` fields so planning stays
+in the agent.
 
 `semantic-graph.v1.schema.json` is the shared embeddable graph vocabulary behind
 search packets. It owns parser-proved graph nodes, graph edges, bounded
@@ -57,10 +57,11 @@ same-owner aliases use `@start:end`, while cross-owner aliases use
 `@path:start:end`.
 When a source packet carries `reasoningProfiles`, the shared compact graph
 renderer may
-emit `profiles=<profile>(<ID>,...)` after the `rank=... frontier=...` line.
-Every handle in that line is a rendered packet-local alias id, so the line is a
-compatibility hint for the current graph packet rather than a second action
-protocol.
+emit `entries=<profile>(<ID>,...=><return>+...)` after the
+`rank=... frontier=...` line. Every selector in that line is a rendered
+packet-local alias id whose node kind matches the typed profile selector, so the
+line is a return-entry catalog for the current graph packet rather than an alias
+hint or a second action protocol.
 
 `agent-semantic-client-config.v1.schema.json`,
 `agent-semantic-client-cache-manifest.v1.schema.json`, and
@@ -73,12 +74,22 @@ command counts, and native provider provenance. They do not duplicate `semantic-
 `agent-semantic-hook` still owns hook classification. agent semantic client is the
 client/backend brand. Arrow and Flight remain server/cloud capabilities rather
 than default client-cache dependencies. `cache-status` receipts are read-only
-inspections; `cache-import` receipts describe explicit SQLite imports from a
-validated provider-owned manifest. In local-native receipts, `warm-provider`
+inspections; the prompt line reports manifest/DB health as `missing`,
+`unimported`, `available`, `invalid`, or `unavailable`, while the receipt keeps
+machine routing state in `cacheStatus` plus `cacheManifestStatus` and
+`clientDbStatus`. `cache-import` receipts describe explicit SQLite imports from
+a validated provider-owned manifest. `cache-invalidate` receipts describe
+local SQLite generation-row invalidation and do not imply manifest or artifact
+deletion. In local-native receipts, `warm-provider`
 means a matching SQLite generation was found but provider execution still
 supplied the output; only `hit` means the client served output from cache. The
-initial direct replay surface is limited to provider-owned `prompt-output/*.txt`
-artifacts under the protocol artifact root.
+initial replay surface covers provider-owned `prompt-output/*.txt` artifacts,
+`search/*.json` semantic-search-packet artifacts rendered through shared compact
+graph output, and `query/*.json` semantic-query-packet artifacts for
+`query/owner-items` compact query replay under the protocol artifact root.
+The client may also capture successful replay-safe `search --view seeds`
+provider stdout as `prompt-output/*.txt` write-back artifacts for the next
+identical request; this path deliberately excludes query/code windows.
 
 `semantic-type-surface.v1.schema.json` is the shared vocabulary for
 language-neutral public type surface facts. It owns the facts that agents need
@@ -243,7 +254,8 @@ the launch intent, edit-stop boundary, receipt path, recorded metrics,
 repeated-search findings, and query-set merge opportunities. Hook replay steps
 may use `expect.guideQuality` to assert that a denial includes the reason kind,
 language route, safe command shape, ingest-pipe guidance, and no leaked source
-text. JSON stdout expectations can assert exact paths, substring containment,
+text; guide-quality output assertions can require returned compact graph
+`entries=...` facts and reject stale profile/compatibility text. JSON stdout expectations can assert exact paths, substring containment,
 schema conformance, and array membership with scalar values or object subsets.
 Large-library calibration scenarios use typed `evidence.targetLibrary`,
 `evidence.fixtureTier`, and `evidence.intentCases` metadata so every provider
@@ -346,7 +358,19 @@ the language, provider, parser locator, `read` locator, and operation intent
 using compact `path:start:end` and `lineRange` strings, not
 `startLine`/`endLine` fields. The receipt records whether the packet is well
 formed and, for Codex adapters, explicitly keeps `mutationAvailable=false` so
-Codex still applies edits through its native `apply_patch` tool.
+Codex still applies edits through its native `apply_patch` tool. Agents should
+build requests with `asp ast-patch template`, run provider
+`asp <language> ast-patch dry-run --packet semantic-ast-patch.json .`, then use
+the exact-read preimage as patch context. Receipt `next` is intentionally
+command-shaped so a hook denial does not force another schema search.
+
+`rust-ast-patch-real-project-evidence.v1.schema.json` owns metadata-only Rust
+provider evidence gathered from representative external crates. It records the
+external repository commit, provider query target, selected `ast-patch-safe`
+match, save-token rustfmt compact metrics, parser-owned responsibilities, and
+provider dry-run/temp-apply receipt events. It deliberately rejects source text
+fields and requires `sourceStored=false`, so real-project evidence can live in
+fixtures without vendoring external project code.
 
 `semantic-search-packet.v1.schema.json` owns the search-synthesis frontier that
 precedes read packets. `searchSynthesis.editFrontier` names source owners,

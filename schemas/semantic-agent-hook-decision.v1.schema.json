@@ -57,6 +57,7 @@
         "direct-source-read",
         "bulk-source-dump",
         "raw-broad-search",
+        "source-directory-enumeration",
         "agent-search-json",
         "semantic-ast-patch-required",
         "edit-before-prime",
@@ -220,7 +221,7 @@
         "toolSurface": {
           "type": "string",
           "minLength": 1,
-          "description": "Normalized client tool surface that produced the decision, for example codex-shell or codex-direct-read."
+      "description": "Normalized client tool surface that produced the decision, for example shell-command or direct-read."
         },
         "operationIntent": {
           "enum": [

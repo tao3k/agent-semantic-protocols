@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://agent-semantic-protocols.local/schemas/semantic-ast-patch-receipt.v1.schema.json",
   "title": "Semantic AST Patch Receipt",
-  "description": "Verification receipt emitted for a semantic AST patch request. In the Codex adapter this receipt proves the compact patch intent is well formed and explicitly records that mutation is unavailable.",
+  "description": "Verification, dry-run, or apply receipt emitted for a semantic AST patch request. Codex verifier receipts remain non-mutating; trusted provider-native apply receipts may record local mutation.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -37,23 +37,26 @@
     "status": {
       "enum": [
         "verified",
+        "applied",
         "failed"
       ]
     },
     "mode": {
       "enum": [
         "verify",
-        "dry-run"
+        "dry-run",
+        "apply"
       ]
     },
     "capability": {
       "enum": [
         "codex-compact-safety-verifier",
-        "provider-ast-dry-run"
+        "provider-ast-dry-run",
+        "provider-ast-apply"
       ]
     },
     "mutationAvailable": {
-      "const": false
+      "type": "boolean"
     },
     "languageId": {
       "$ref": "#/$defs/identifier"
@@ -103,6 +106,20 @@
       "enum": [
         "invalid-packet",
         "unsupported-operation",
+        "target-read-invalid",
+        "snippet-missing",
+        "snippet-parse-error",
+        "project-root-invalid",
+        "target-outside-project",
+        "source-read-error",
+        "target-range-invalid",
+        "target-preimage-mismatch",
+        "target-item-parse-error",
+        "target-item-mismatch",
+        "file-reparse-failed",
+        "source-write-error",
+        "formatter-failed",
+        "formatter-output-reparse-failed",
         null
       ]
     },
@@ -115,12 +132,75 @@
     },
     "next": {
       "type": "string",
+      "description": "Command-shaped next guidance. Receipts should name the ast-patch template command, provider dry-run/apply command, exact-read preimage command, Codex apply_patch boundary when required, or policy check as appropriate.",
       "minLength": 1
     },
     "fields": {
       "$ref": "#/$defs/fields"
     }
   },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "capability": {
+            "const": "codex-compact-safety-verifier"
+          }
+        },
+        "required": ["capability"]
+      },
+      "then": {
+        "properties": {
+          "mutationAvailable": {
+            "const": false
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "capability": {
+            "const": "provider-ast-dry-run"
+          }
+        },
+        "required": ["capability"]
+      },
+      "then": {
+        "properties": {
+          "mode": {
+            "const": "dry-run"
+          },
+          "status": {
+            "enum": ["verified", "failed"]
+          },
+          "mutationAvailable": {
+            "const": false
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "capability": {
+            "const": "provider-ast-apply"
+          }
+        },
+        "required": ["capability"]
+      },
+      "then": {
+        "properties": {
+          "mode": {
+            "const": "apply"
+          },
+          "status": {
+            "enum": ["applied", "failed"]
+          }
+        }
+      }
+    }
+  ],
   "$defs": {
     "operationName": {
       "type": "string",
@@ -201,7 +281,8 @@
         "kind": {
           "enum": [
             "codex-dry-run",
-            "provider-dry-run"
+            "provider-dry-run",
+            "provider-apply"
           ]
         },
         "operation": {
@@ -223,10 +304,10 @@
           "type": "boolean"
         },
         "mutationAvailable": {
-          "const": false
+          "type": "boolean"
         },
         "requiresCodexApplyPatch": {
-          "const": true
+          "type": "boolean"
         },
         "changedRanges": {
           "type": "array",

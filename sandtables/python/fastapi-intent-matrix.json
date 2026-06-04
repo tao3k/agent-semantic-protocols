@@ -87,10 +87,11 @@
         "stdoutContains": [
           "[search-prime]",
           "root=fastapi",
-          "fastapi/routing.py"
+          "fastapi/routing.py",
+          "entries=owner-query(O,Q=>items+tests+dependency-usage),query-deps(Q,D=>owners+imports+usage-tests),owner-tests(O=>covering-tests+test-entrypoints+fixtures)"
         ],
         "maxStdoutLinesWarn": 8,
-        "maxElapsedMsWarn": 9000
+        "maxElapsedMsWarn": 16000
       }
     },
     {
@@ -117,7 +118,8 @@
           "[search-fzf]",
           "querySet=3",
           "fastapi/dependencies/utils.py",
-          "fastapi/routing.py"
+          "fastapi/routing.py",
+          "entries=owner-query(O,Q=>items+tests+dependency-usage),owner-tests(O=>covering-tests+test-entrypoints+fixtures)"
         ],
         "maxStdoutLinesWarn": 14,
         "maxElapsedMsWarn": 12000

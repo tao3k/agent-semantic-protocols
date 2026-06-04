@@ -43,19 +43,15 @@ fn cli_hook_replay_blocks_source_apply_patch() {
 *** Begin Patch
 *** Update File: src/lib.rs
 @@
--old
-+new
+-pub fn old() {}
++pub fn new() {}
 *** End Patch
 PATCH"#;
     let decision = run_hook_decision(
         &root,
         "pre-tool",
-        json!({
-            "tool_name": "functions.exec_command",
-            "tool_input": {"cmd": command}
-        }),
+        json!({ "tool_name": "functions.exec_command", "tool_input": { "cmd": command } }),
     );
-
     assert_eq!(decision["decision"], "deny");
     assert_eq!(decision["reasonKind"], "semantic-ast-patch-required");
     assert_eq!(decision["subject"]["toolName"], "functions.exec_command");
@@ -66,18 +62,15 @@ PATCH"#;
     assert_eq!(decision["routes"][0]["argv"][1], "rust");
     assert_eq!(decision["routes"][0]["argv"][2], "query");
     assert_eq!(decision["routes"][0]["argv"][6], "src/lib.rs");
-    assert!(
-        decision["message"]
-            .as_str()
-            .unwrap()
-            .contains("asp ast-patch dry-run")
-    );
+    let message = decision["message"].as_str().unwrap();
+    assert!(message.contains("asp rust ast-patch dry-run"));
+    assert!(message.contains("does not auto-unlock source apply_patch"));
+    assert!(!message.contains("only then retry Codex apply_patch"));
     let event = last_hook_event(&root);
     assert_eq!(event["event"], "pre-tool");
     assert_eq!(event["decision"], "deny");
     assert_eq!(event["reasonKind"], "semantic-ast-patch-required");
-
-    std::fs::remove_dir_all(root).expect("cleanup temp project root");
+    std::fs::remove_dir_all(root).expect("remove temp project root")
 }
 
 #[test]

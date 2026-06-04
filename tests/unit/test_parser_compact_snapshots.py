@@ -16,6 +16,8 @@ from tools.semantic_query_projection import semantic_query_projection_errors
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _FIXTURE_ROOT = _REPO_ROOT / "tests" / "fixtures" / "parser-compact"
+_REAL_LIBRARY_LANGUAGES = ("python", "rust", "typescript")
+_MIN_REAL_LIBRARY_REPOSITORIES_PER_LANGUAGE = 3
 
 
 def _load_json(path: Path) -> dict[str, object]:
@@ -46,6 +48,21 @@ def _cases() -> list[snapshots.ParserCompactCase]:
 def test_parser_compact_case_manifest_is_valid() -> None:
     for case_path in _case_paths():
         _assert_valid("parser-compact-case.v1.schema.json", _load_json(case_path))
+
+
+def test_parser_compact_case_schema_copies_stay_synchronized() -> None:
+    root_schema = _load_json(_REPO_ROOT / "schemas/parser-compact-case.v1.schema.json")
+    schema_copies = sorted(
+        path
+        for path in (_REPO_ROOT / "languages").glob(
+            "*/schemas/parser-compact-case.v1.schema.json"
+        )
+    )
+
+    assert schema_copies
+    assert {schema_path: _load_json(schema_path) for schema_path in schema_copies} == {
+        schema_path: root_schema for schema_path in schema_copies
+    }
 
 
 @pytest.mark.parametrize("case", _cases(), ids=snapshots.case_label)
@@ -82,6 +99,37 @@ def test_parser_compact_expected_output_omits_local_absolute_paths() -> None:
         artifact_text = artifact_path.read_text(encoding="utf-8")
 
         assert str(_REPO_ROOT) not in artifact_text
+
+
+def test_parser_compact_real_library_cases_cover_three_repositories_per_language() -> None:
+    by_language: dict[str, set[str]] = {
+        language: set() for language in _REAL_LIBRARY_LANGUAGES
+    }
+    for case in _cases():
+        if case.feature_class != "real-library":
+            continue
+        origin = case.source_origin
+        assert origin["kind"] == "real-project"
+        assert origin.get("ref")
+        assert origin.get("sourcePath")
+        assert origin.get("license")
+        assert origin.get("note")
+        if case.language_id in by_language:
+            by_language[case.language_id].add(str(origin["repository"]))
+
+    assert {
+        language: sorted(repositories)
+        for language, repositories in by_language.items()
+        if len(repositories) < _MIN_REAL_LIBRARY_REPOSITORIES_PER_LANGUAGE
+    } == {}
+
+
+def test_parser_compact_real_library_fixtures_are_source_slices_not_full_projects() -> None:
+    for case in _cases():
+        if case.feature_class != "real-library":
+            continue
+        assert case.raw_source_path.is_file()
+        assert case.raw_source_path.parent == case.fixture_root / "src"
 
 
 def test_parser_compact_runner_rejects_projection_contract_drift() -> None:

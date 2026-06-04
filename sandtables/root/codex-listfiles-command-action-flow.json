@@ -1,0 +1,87 @@
+{
+  "id": "root.codex-listfiles-command-action-flow",
+  "language": "root",
+  "coverage": [
+    "codex-hooks",
+    "policy-blackbox",
+    "security",
+    "real-trigger"
+  ],
+  "tags": [
+    "codex-listfiles",
+    "source-directory-enumeration",
+    "real-trigger"
+  ],
+  "workdir": {
+    "relative": "."
+  },
+  "steps": [
+    {
+      "id": "app-server-listfiles-source-deny",
+      "command": [
+        "asp",
+        "hook",
+        "pre-tool",
+        "--client",
+        "codex",
+        "--emit",
+        "decision"
+      ],
+      "stdin": "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"command_execution\",\"tool_input\":{\"commandActions\":[{\"type\":\"listFiles\",\"command\":\"ls crates/agent-semantic-hook/src\",\"path\":\"crates/agent-semantic-hook/src\"}]}}",
+      "expect": {
+        "stdoutJsonEquals": {
+          "decision": "deny",
+          "reasonKind": "source-directory-enumeration",
+          "routes.0.kind": "ingest",
+          "subject.command": "ls crates/agent-semantic-hook/src"
+        },
+        "maxElapsedMsWarn": 6500
+      }
+    },
+    {
+      "id": "core-list-files-source-deny",
+      "command": [
+        "asp",
+        "hook",
+        "pre-tool",
+        "--client",
+        "codex",
+        "--emit",
+        "decision"
+      ],
+      "stdin": "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"command_execution\",\"tool_input\":{\"command_actions\":[{\"type\":\"list_files\",\"cmd\":\"ls crates/agent-semantic-hook/src\",\"path\":\"crates/agent-semantic-hook/src\"}]}}",
+      "expect": {
+        "stdoutJsonEquals": {
+          "decision": "deny",
+          "reasonKind": "source-directory-enumeration",
+          "routes.0.kind": "ingest",
+          "subject.command": "ls crates/agent-semantic-hook/src"
+        },
+        "maxElapsedMsWarn": 6500
+      }
+    },
+    {
+      "id": "metadata-listfiles-not-command-action",
+      "command": [
+        "asp",
+        "hook",
+        "pre-tool",
+        "--client",
+        "codex",
+        "--emit",
+        "decision"
+      ],
+      "stdin": "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"metadata_tool\",\"tool_input\":{\"metadata\":{\"type\":\"listFiles\",\"command\":\"not a command action\",\"path\":\"crates/agent-semantic-hook/src\"}}}",
+      "expect": {
+        "stdoutJsonEquals": {
+          "decision": "allow",
+          "reasonKind": "none"
+        },
+        "stdoutNotContains": [
+          "source-directory-enumeration"
+        ],
+        "maxElapsedMsWarn": 6500
+      }
+    }
+  ]
+}

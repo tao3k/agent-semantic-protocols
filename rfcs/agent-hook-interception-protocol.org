@@ -554,6 +554,7 @@ Classify the tool call into one or more intents:
 
 #+begin_src text
 direct-read       structured Read/read_file/namespaced read_file/MCP read of a source path
+directory-read    structured listFiles/list_files directory enumeration action
 content-dump      Bash content reader: cat, sed, nl, bat, head, tail, awk, less
 raw-search        rg, grep, ag, fd, find, git grep, git ls-files, ast-grep
 semantic-search   <provider-binary> search ...
@@ -575,6 +576,17 @@ Structured direct-read tool names must be normalized before classification.
 Bare names such as =Read= and =read_file=, namespaced deferred tools such as
 =functions.read_file=, and MCP read aliases are the same hook intent when they
 carry a source path.
+
+Codex app-server =CommandAction::{Read,ListFiles,Search}= and core
+=ParsedCommand::{Read,ListFiles,Search}= are parser-owned Explore evidence, not
+raw shell text.  The hook must classify structured =Read/read= as
+=direct-read=, structured =ListFiles/list_files= as =directory-read=, and
+structured =Search/search= as =raw-search= before considering the rendered
+command string.  A =ListFiles/list_files= action over an activated source root
+or source-owned path is denied with
+=reasonKind=source-directory-enumeration= and the owning provider's existing
+=ingest= route.  Directory listings outside activated source scope remain
+allowed.
 
 Source-file =apply_patch= is a special edit intent.  If a Codex direct
 =apply_patch= payload or shell heredoc contains patch hunks for activated
@@ -676,6 +688,7 @@ their own; source suffixes and provider-declared source roots are.
 | Metadata diff (=git diff --stat=, =git diff --name-only=, =git diff --name-status=) | source or non-source scope | metadata only | allow |
 | Raw search (=rg=, =grep=, =fd=, =find=, =git grep=) | source suffix/root/provider match | concrete query term | deny with provider query route when declared |
 | Raw search (=rg=, =grep=, =fd=, =find=, =git grep=) | source suffix/root/provider match | no concrete term | deny with provider ingest route |
+| Structured directory/listFiles action | activated source root/path | none | deny source-directory-enumeration with provider ingest route |
 | Raw search | non-source scope only, such as markdown/docs | any term | allow |
 | Raw search piped to provider ingest | source scope | candidates on stdin | allow |
 | Prompt-facing provider =--json= search | registered interactive shell | any | deny with compact text/owner route |

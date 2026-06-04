@@ -10,6 +10,7 @@ pub mod types;
 pub use activation::{ProviderRegistrySnapshot, ResolvedProvider};
 pub use cache_manifest::{
     AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_FILE, AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_PROTOCOL_ID,
+    AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_PROTOCOL_VERSION,
     AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_SCHEMA_ID,
     AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_SCHEMA_VERSION, CacheManifestReport, CacheManifestStatus,
     ClientCacheFileHash, ClientCacheGeneration, ClientCacheManifest, project_client_cache_dir,
@@ -26,3 +27,6 @@ pub use types::{
     ClientDbStatus, CompactArtifactId, ElapsedMillis, LanguageId, ProviderId, SemanticProtocolId,
     SemanticProtocolVersion, SemanticSchemaId, SemanticSchemaVersion,
 };
+#[cfg(test)]
+#[path = "../tests/unit/cache_manifest.rs"]
+mod cache_manifest_tests;

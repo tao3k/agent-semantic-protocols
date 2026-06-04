@@ -16,7 +16,7 @@
     pkgs.protobuf
     pkgs.just
   ];
-
+  
   languages.rust = {
     enable = true;
     channel = "stable";
@@ -51,10 +51,10 @@
   #   "myproj:setup".exec = "mytool build";
   #   "devenv:enterShell".after = [ "myproj:setup" ];
   # };
-
   # https://devenv.sh/tests/
   enterTest = "";
-
+  
+  dotenv.enable = true;
   # https://devenv.sh/git-hooks/
   git-hooks.hooks = {
     shellcheck.enable = true;

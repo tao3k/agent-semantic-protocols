@@ -142,6 +142,7 @@ pub enum ReasonKind {
     DirectSourceRead,
     BulkSourceDump,
     RawBroadSearch,
+    SourceDirectoryEnumeration,
     AgentSearchJson,
     SemanticAstPatchRequired,
     SubagentReceiptRequired,

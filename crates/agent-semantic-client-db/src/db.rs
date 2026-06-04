@@ -10,8 +10,8 @@ use rusqlite::{Connection, OpenFlags, OptionalExtension, params};
 
 /// File name used for the local SQLite client cache.
 pub const AGENT_SEMANTIC_CLIENT_DB_FILE: &str = "client.sqlite3";
-/// Current SQLite schema version for `agent-semantic-client-db`.
-pub const AGENT_SEMANTIC_CLIENT_DB_SCHEMA_VERSION: i64 = 1;
+/// Current SQLite schema version for the local agent semantic client DB.
+pub const AGENT_SEMANTIC_CLIENT_DB_SCHEMA_VERSION: i64 = 2;
 
 /// Read-only diagnostic summary for a local SQLite client DB path.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -36,6 +36,12 @@ pub struct ClientDbGenerationLookup {
 /// Matching cache generation metadata returned by a DB lookup.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ClientDbGenerationHit {
+    pub language_id: LanguageId,
+    pub provider_id: ProviderId,
+    pub project_root: PathBuf,
+    pub export_method: CacheExportMethod,
+    pub schema_ids: Vec<agent_semantic_client_core::SemanticSchemaId>,
+    pub request_fingerprint: Option<String>,
     pub artifact_ids: Vec<CacheArtifactId>,
 }
 
@@ -137,19 +143,20 @@ impl ClientDb {
                     .map_err(|error| format!("failed to serialize file hashes: {error}"))?;
             tx.execute(
                 "INSERT OR REPLACE INTO cache_generations (
-                    generation_id,
-                    language_id,
-                    provider_id,
-                    provider_version,
-                    export_method,
-                    project_root,
-                    package_root,
-                    schema_ids_json,
-                    cache_status,
-                    raw_source_stored,
-                    artifact_ids_json,
-                    file_hashes_json
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 0, ?10, ?11)",
+                generation_id,
+                language_id,
+                provider_id,
+                provider_version,
+                export_method,
+                project_root,
+                package_root,
+                schema_ids_json,
+                cache_status,
+                raw_source_stored,
+                request_fingerprint,
+                artifact_ids_json,
+                file_hashes_json
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 0, ?10, ?11, ?12)",
                 params![
                     generation.generation_id.as_str(),
                     generation.language_id.as_str(),
@@ -160,6 +167,7 @@ impl ClientDb {
                     generation.package_root.as_deref(),
                     schema_ids_json,
                     generation.cache_status.as_str(),
+                    generation.request_fingerprint.as_deref(),
                     artifact_ids_json,
                     file_hashes_json,
                 ],
@@ -169,6 +177,24 @@ impl ClientDb {
         tx.commit()
             .map_err(|error| format!("failed to commit cache generation import: {error}"))?;
         Ok(())
+    }
+
+    /// Delete all local generation rows from an existing DB without touching provider artifacts.
+    pub fn invalidate_generations(db_path: impl AsRef<Path>) -> Result<u32, String> {
+        let db_path = db_path.as_ref();
+        if !db_path.exists() {
+            return Ok(0);
+        }
+        let db = Self::open_or_create(db_path)?;
+        db.conn
+            .execute("DELETE FROM cache_generations", [])
+            .map(|count| count.min(u32::MAX as usize) as u32)
+            .map_err(|error| {
+                format!(
+                    "failed to invalidate agent semantic client db generations at {}: {error}",
+                    db.db_path.display()
+                )
+            })
     }
 
     /// Return true when a matching cache generation is present.
@@ -216,34 +242,77 @@ impl ClientDb {
         export_method: &CacheExportMethod,
     ) -> Result<Option<ClientDbGenerationHit>, String> {
         let project_root = normalized_project_root(project_root);
-        let artifact_ids_json: Option<String> = self
+        let row: Option<(
+            String,
+            String,
+            String,
+            String,
+            String,
+            Option<String>,
+            String,
+        )> = self
             .conn
             .query_row(
-                "SELECT artifact_ids_json
-                 FROM cache_generations
-                 WHERE language_id = ?1
-                   AND provider_id = ?2
-                   AND project_root = ?3
-                   AND export_method = ?4
-                   AND raw_source_stored = 0
-                 ORDER BY updated_at DESC
-                 LIMIT 1",
+                "SELECT language_id,
+                    provider_id,
+                    project_root,
+                    export_method,
+                    schema_ids_json,
+                    request_fingerprint,
+                    artifact_ids_json
+             FROM cache_generations
+             WHERE language_id = ?1
+               AND provider_id = ?2
+               AND project_root = ?3
+               AND export_method = ?4
+               AND raw_source_stored = 0
+             ORDER BY updated_at DESC
+             LIMIT 1",
                 params![
                     language_id.as_str(),
                     provider_id.as_str(),
                     project_root,
                     export_method.as_str(),
                 ],
-                |row| row.get(0),
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                        row.get(5)?,
+                        row.get(6)?,
+                    ))
+                },
             )
             .optional()
             .map_err(|error| format!("failed to read client db cache generation: {error}"))?;
-        let Some(artifact_ids_json) = artifact_ids_json else {
+        let Some((
+            language_id,
+            provider_id,
+            project_root,
+            export_method,
+            schema_ids_json,
+            request_fingerprint,
+            artifact_ids_json,
+        )) = row
+        else {
             return Ok(None);
         };
+        let schema_ids = serde_json::from_str(&schema_ids_json)
+            .map_err(|error| format!("failed to parse client db schema ids: {error}"))?;
         let artifact_ids = serde_json::from_str(&artifact_ids_json)
             .map_err(|error| format!("failed to parse client db artifact ids: {error}"))?;
-        Ok(Some(ClientDbGenerationHit { artifact_ids }))
+        Ok(Some(ClientDbGenerationHit {
+            language_id: LanguageId::from(language_id),
+            provider_id: ProviderId::from(provider_id),
+            project_root: PathBuf::from(project_root),
+            export_method: CacheExportMethod::from(export_method),
+            schema_ids,
+            request_fingerprint,
+            artifact_ids,
+        }))
     }
 
     fn open_read_only(db_path: &Path) -> Result<Self, String> {
@@ -267,40 +336,86 @@ impl ClientDb {
         self.conn
             .execute_batch(
                 "
-                PRAGMA foreign_keys = ON;
-                CREATE TABLE IF NOT EXISTS schema_meta (
-                    key TEXT PRIMARY KEY,
-                    value TEXT NOT NULL
-                );
-                INSERT OR REPLACE INTO schema_meta (key, value)
-                VALUES ('schemaVersion', '1');
-                CREATE TABLE IF NOT EXISTS cache_generations (
-                    generation_id TEXT PRIMARY KEY,
-                    language_id TEXT NOT NULL,
-                    provider_id TEXT NOT NULL,
-                    provider_version TEXT,
-                    export_method TEXT,
-                    project_root TEXT NOT NULL,
-                    package_root TEXT,
-                    schema_ids_json TEXT NOT NULL,
-                    cache_status TEXT NOT NULL,
-                    raw_source_stored INTEGER NOT NULL DEFAULT 0 CHECK(raw_source_stored IN (0, 1)),
-                    artifact_ids_json TEXT NOT NULL DEFAULT '[]',
-                    file_hashes_json TEXT NOT NULL DEFAULT '[]',
-                    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
-                );
-                CREATE INDEX IF NOT EXISTS cache_generations_provider_idx
-                  ON cache_generations(language_id, provider_id);
-                CREATE INDEX IF NOT EXISTS cache_generations_project_idx
-                  ON cache_generations(project_root, package_root);
-                ",
+            PRAGMA foreign_keys = ON;
+            CREATE TABLE IF NOT EXISTS schema_meta (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS cache_generations (
+                generation_id TEXT PRIMARY KEY,
+                language_id TEXT NOT NULL,
+                provider_id TEXT NOT NULL,
+                provider_version TEXT,
+                export_method TEXT,
+                project_root TEXT NOT NULL,
+                package_root TEXT,
+                schema_ids_json TEXT NOT NULL,
+                cache_status TEXT NOT NULL,
+                raw_source_stored INTEGER NOT NULL DEFAULT 0 CHECK(raw_source_stored IN (0, 1)),
+                request_fingerprint TEXT,
+                artifact_ids_json TEXT NOT NULL DEFAULT '[]',
+                file_hashes_json TEXT NOT NULL DEFAULT '[]',
+                updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+            );
+            CREATE INDEX IF NOT EXISTS cache_generations_provider_idx
+              ON cache_generations(language_id, provider_id);
+            CREATE INDEX IF NOT EXISTS cache_generations_project_idx
+              ON cache_generations(project_root, package_root);
+            ",
             )
             .map_err(|error| {
                 format!(
                     "failed to migrate agent semantic client db at {}: {error}",
                     self.db_path.display()
                 )
-            })
+            })?;
+        self.conn
+            .execute(
+                "INSERT OR REPLACE INTO schema_meta (key, value) VALUES ('schemaVersion', ?1)",
+                params![AGENT_SEMANTIC_CLIENT_DB_SCHEMA_VERSION.to_string()],
+            )
+            .map_err(|error| {
+                format!(
+                    "failed to write agent semantic client db schema version at {}: {error}",
+                    self.db_path.display()
+                )
+            })?;
+
+        let has_request_fingerprint = {
+            let mut statement = self
+                .conn
+                .prepare("PRAGMA table_info(cache_generations)")
+                .map_err(|error| {
+                    format!(
+                        "failed to inspect agent semantic client db at {}: {error}",
+                        self.db_path.display()
+                    )
+                })?;
+            let columns = statement
+                .query_map([], |row| row.get::<_, String>(1))
+                .map_err(|error| format!("failed to read client db columns: {error}"))?;
+            let mut found = false;
+            for column in columns {
+                if column.map_err(|error| format!("failed to read client db column: {error}"))?
+                    == "request_fingerprint"
+                {
+                    found = true;
+                    break;
+                }
+            }
+            found
+        };
+
+        if !has_request_fingerprint {
+            self.conn
+                .execute(
+                    "ALTER TABLE cache_generations ADD COLUMN request_fingerprint TEXT",
+                    [],
+                )
+                .map_err(|error| format!("failed to add request fingerprint column: {error}"))?;
+        }
+
+        Ok(())
     }
 }
 

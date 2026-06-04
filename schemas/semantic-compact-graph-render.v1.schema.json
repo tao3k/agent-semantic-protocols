@@ -127,7 +127,7 @@
         "edge",
         "groupedEdge",
         "rankFrontier",
-        "profiles",
+    "entries",
         "denseAliasSeparator"
       ],
       "properties": {
@@ -152,8 +152,8 @@
         "rankFrontier": {
           "const": "rank=<ID>,... frontier=<ID>.<action>,..."
         },
-        "profiles": {
-          "const": "profiles=<profile>(<ID>,...),..."
+        "entries": {
+          "const": "entries=<profile>(<ID>,...=><return>+...),..."
         },
         "denseAliasSeparator": {
           "const": ";"

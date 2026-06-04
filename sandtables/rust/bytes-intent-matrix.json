@@ -128,7 +128,8 @@
           "alias: graph:{G=search",
           "G>{",
           "rank=",
-          "frontier="
+          "frontier=",
+          "entries=owner-query(O,Q=>items+tests+dependency-usage),owner-tests(O=>covering-tests+test-entrypoints+fixtures)"
         ],
         "maxStdoutLinesWarn": 10,
         "maxElapsedMsWarn": 2500,

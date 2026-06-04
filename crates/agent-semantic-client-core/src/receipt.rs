@@ -146,7 +146,7 @@ impl ClientReceipt {
             protocol_version: AGENT_SEMANTIC_CLIENT_RECEIPT_PROTOCOL_VERSION.into(),
             method,
             route: ExecutionRoute::LocalCache,
-            cache_status: CacheStatus::Disabled,
+            cache_status: cache_status_for_report(cache_report),
             provider_command_count: 0,
             provider_processes_spawned: 0,
             provider_commands: Vec::new(),
@@ -171,5 +171,13 @@ impl ClientReceipt {
             client_db_generation_count: None,
             client_db_raw_source_stored: None,
         }
+    }
+}
+
+fn cache_status_for_report(cache_report: &CacheManifestReport) -> CacheStatus {
+    match cache_report.status {
+        CacheManifestStatus::Unavailable | CacheManifestStatus::Missing => CacheStatus::Miss,
+        CacheManifestStatus::Present => CacheStatus::WarmProvider,
+        CacheManifestStatus::Invalid => CacheStatus::Stale,
     }
 }

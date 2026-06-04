@@ -32,7 +32,7 @@ fn cli_hook_surface_matrix_covers_read_wrappers_nested_encoded_globs_and_non_sou
             route_kind: Some("query"),
             selector: Some("src/lib.rs"),
             route_has_code: true,
-            tool_surface: Some("codex-direct-read"),
+            tool_surface: Some("direct-read"),
             operation_intent: Some("direct-read"),
         },
         SurfaceCase {
@@ -47,7 +47,7 @@ fn cli_hook_surface_matrix_covers_read_wrappers_nested_encoded_globs_and_non_sou
             route_kind: Some("query"),
             selector: Some("src/lib.rs"),
             route_has_code: true,
-            tool_surface: Some("codex-direct-read"),
+            tool_surface: Some("direct-read"),
             operation_intent: Some("direct-read"),
         },
         SurfaceCase {
@@ -62,7 +62,7 @@ fn cli_hook_surface_matrix_covers_read_wrappers_nested_encoded_globs_and_non_sou
             route_kind: Some("query"),
             selector: Some("src/lib.rs:1-2"),
             route_has_code: true,
-            tool_surface: Some("codex-direct-read"),
+            tool_surface: Some("direct-read"),
             operation_intent: Some("direct-read"),
         },
         SurfaceCase {
@@ -77,7 +77,7 @@ fn cli_hook_surface_matrix_covers_read_wrappers_nested_encoded_globs_and_non_sou
             route_kind: Some("query"),
             selector: Some("src/lib.rs:1-2"),
             route_has_code: true,
-            tool_surface: Some("codex-shell"),
+            tool_surface: Some("shell-command"),
             operation_intent: Some("shell-command"),
         },
         SurfaceCase {
@@ -99,7 +99,7 @@ fn cli_hook_surface_matrix_covers_read_wrappers_nested_encoded_globs_and_non_sou
             route_kind: Some("query"),
             selector: Some("src/lib.rs:1-2"),
             route_has_code: true,
-            tool_surface: Some("codex-shell"),
+            tool_surface: Some("shell-command"),
             operation_intent: Some("shell-command"),
         },
         SurfaceCase {
@@ -114,7 +114,7 @@ fn cli_hook_surface_matrix_covers_read_wrappers_nested_encoded_globs_and_non_sou
             route_kind: Some("query"),
             selector: Some("src/lib.rs:1:40"),
             route_has_code: true,
-            tool_surface: Some("codex-shell"),
+            tool_surface: Some("shell-command"),
             operation_intent: Some("shell-command"),
         },
         SurfaceCase {
@@ -132,11 +132,11 @@ fn cli_hook_surface_matrix_covers_read_wrappers_nested_encoded_globs_and_non_sou
             route_kind: Some("query"),
             selector: Some("src/lib.rs:1:40"),
             route_has_code: true,
-            tool_surface: Some("codex-stdin-continuation"),
+            tool_surface: Some("stdin-continuation"),
             operation_intent: Some("stdin-continuation"),
         },
         SurfaceCase {
-            name: "codex-mcp-read-file-source",
+            name: "mcp-read-file-source",
             payload: json!({
                 "tool_name": "mcp__filesystem__read_file",
                 "tool_input": {"path": "src/lib.rs"}
@@ -147,7 +147,7 @@ fn cli_hook_surface_matrix_covers_read_wrappers_nested_encoded_globs_and_non_sou
             route_kind: Some("query"),
             selector: Some("src/lib.rs"),
             route_has_code: true,
-            tool_surface: Some("codex-mcp-read"),
+            tool_surface: Some("mcp-read"),
             operation_intent: Some("direct-read"),
         },
         SurfaceCase {
@@ -177,7 +177,7 @@ fn cli_hook_surface_matrix_covers_read_wrappers_nested_encoded_globs_and_non_sou
             route_kind: Some("query"),
             selector: Some("*.rs"),
             route_has_code: false,
-            tool_surface: Some("codex-direct-read"),
+            tool_surface: Some("direct-read"),
             operation_intent: Some("direct-read"),
         },
         SurfaceCase {
@@ -192,7 +192,7 @@ fn cli_hook_surface_matrix_covers_read_wrappers_nested_encoded_globs_and_non_sou
             route_kind: Some("query"),
             selector: Some("src/lib.rs"),
             route_has_code: true,
-            tool_surface: Some("codex-shell"),
+            tool_surface: Some("shell-command"),
             operation_intent: Some("shell-command"),
         },
         SurfaceCase {

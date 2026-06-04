@@ -4,6 +4,7 @@ mod ast_patch;
 mod dispatch;
 mod graph;
 mod hook;
+mod hook_enforcement;
 mod hook_runtime;
 mod protocol_binary;
 mod provider;

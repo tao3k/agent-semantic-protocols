@@ -73,6 +73,120 @@ class RealTriggerCodexWrappedGuideTests(unittest.TestCase):
 
         self.assertEqual("pass", result.status)
 
+    def test_guide_quality_accepts_graph_entries_and_rejects_legacy_output(
+        self,
+    ) -> None:
+        entries = (
+            "entries=owner-query(O,Q=>items+tests+dependency-usage),"
+            "owner-tests(O=>covering-tests+test-entrypoints+fixtures)"
+        )
+        legacy_profiles = "profiles" + "="
+        legacy_handles = "".join(["compatible", "Handles"])
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            scenario_path = repo_root / "scenario.json"
+            scenario_path.write_text(
+                json.dumps(
+                    {
+                        "id": "typescript.graph-guide",
+                        "language": "typescript",
+                        "workdir": ".",
+                        "steps": [
+                            {
+                                "id": "guide",
+                                "command": [
+                                    sys.executable,
+                                    "-c",
+                                    (
+                                        "import json; "
+                                        f"entries = {entries!r}; "
+                                        "decision = {"
+                                        "'reasonKind': 'raw-broad-search',"
+                                        "'languageIds': ['typescript'],"
+                                        "'routes': [{"
+                                        "'kind': 'query',"
+                                        "'argv': ['ts-harness', 'query', '--from-hook', 'direct-source-read', '--surface', 'owners,tests']"
+                                        "}],"
+                                        "'message': 'Use ts-harness query --from-hook direct-source-read.'"
+                                        "}; "
+                                        "print(json.dumps({'agentHookDecision': decision, 'searchOutput': entries}))"
+                                    ),
+                                ],
+                                "expect": {
+                                    "guideQuality": {
+                                        "reasonKind": "raw-broad-search",
+                                        "languageId": "typescript",
+                                        "routeKind": "query",
+                                        "outputContains": [entries],
+                                        "outputNotContains": [
+                                            legacy_profiles,
+                                            legacy_handles,
+                                        ],
+                                    }
+                                },
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = run_scenario(repo_root, scenario_path)
+
+        self.assertEqual("pass", result.status)
+
+    def test_guide_quality_rejects_legacy_graph_profile_output(self) -> None:
+        legacy_profiles = "profiles" + "="
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            scenario_path = repo_root / "scenario.json"
+            scenario_path.write_text(
+                json.dumps(
+                    {
+                        "id": "typescript.bad-graph-guide",
+                        "language": "typescript",
+                        "workdir": ".",
+                        "steps": [
+                            {
+                                "id": "guide",
+                                "command": [
+                                    sys.executable,
+                                    "-c",
+                                    (
+                                        "import json; "
+                                        f"bad_output = {legacy_profiles!r}; "
+                                        "decision = {"
+                                        "'reasonKind': 'raw-broad-search',"
+                                        "'languageIds': ['typescript'],"
+                                        "'routes': [{'kind': 'query', 'argv': ['ts-harness', 'query']}],"
+                                        "'message': 'Use ts-harness query.'"
+                                        "}; "
+                                        "print(json.dumps({'agentHookDecision': decision, 'searchOutput': bad_output}))"
+                                    ),
+                                ],
+                                "expect": {
+                                    "guideQuality": {
+                                        "reasonKind": "raw-broad-search",
+                                        "languageId": "typescript",
+                                        "routeKind": "query",
+                                        "outputNotContains": [legacy_profiles],
+                                    }
+                                },
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = run_scenario(repo_root, scenario_path)
+
+        self.assertEqual("fail", result.status)
+        self.assertIn(
+            f"guide output contains stale text {legacy_profiles!r}",
+            result.steps[0].errors,
+        )
+
     def test_guide_quality_rejects_stale_route_command(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)

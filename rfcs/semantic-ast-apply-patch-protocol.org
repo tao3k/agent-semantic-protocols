@@ -61,6 +61,7 @@ The public agent-facing entrypoint is a shared binary, not one public AST patch
 surface per language:
 
 #+begin_src shell
+asp ast-patch template --language <language> --owner <path> --read <path:start:end> --op <operation> --snippet '<source>' > semantic-ast-patch.json
 asp ast-patch verify --packet <ast-patch.json> .
 asp ast-patch dry-run --packet <ast-patch.json> .
 #+end_src
@@ -69,6 +70,19 @@ For the current Codex adapter, =ast-patch= is verification-only.  It must not
 pretend to replace Codex's built-in mutation tool.  A successful dry-run proves
 that compact/query output is patchable and may emit a text diff proposal, but
 the actual file mutation still goes through Codex =apply_patch=.
+=template= is the agent-facing packet builder.  It exists so a hook denial can
+tell the agent one command shape instead of causing another broad search for
+=schemaId=, =target.read=, =expectedSnippet=, or other packet fields.
+
+The normal Codex source-edit flow is:
+
+#+begin_src shell
+asp <language> query --from-hook direct-source-read --selector <path:start:end> --code .
+asp ast-patch template --language <language> --owner <path> --read <path:start:end> --op <operation> --snippet '<exact source or inserted snippet>' > semantic-ast-patch.json
+asp <language> ast-patch dry-run --packet semantic-ast-patch.json .
+# Codex apply_patch uses the exact-read preimage, not compact projection text.
+asp <language> check --changed .
+#+end_src
 
 Future non-Codex runtimes may add:
 
@@ -76,7 +90,12 @@ Future non-Codex runtimes may add:
 asp ast-patch apply --packet <ast-patch.json> .
 #+end_src
 
-That command is out of scope for the first Codex-compatible implementation.
+The first provider-native apply backend is intentionally narrower than the full
+protocol surface: Rust may expose trusted local =replace_item= mutation after
+the provider parses the replacement as a Rust item, verifies the selected
+=target.read= range is one Rust item, reparses the full file, runs =rustfmt=,
+and reparses the formatted file.  Other operations remain dry-run or
+verification-only until their parser-owned apply semantics are implemented.
 
 Language providers expose a narrow internal adapter surface behind the shared
 binary.  This adapter may be a CLI subcommand, library API, or crate call, but
@@ -95,6 +114,38 @@ Provider-native dry-run adapters may emit receipts with
 language parser and report concrete changed ranges, but they must not mutate
 files.  The Codex adapter still performs the final edit through =apply_patch=
 after the receipt proves that compact/query evidence was precise enough.
+
+* Real-project evidence artifacts
+
+Provider implementation tests may use hermetic fake projects for stable CI, but
+protocol claims about save-token compact output and native apply safety need
+representative real-project evidence.  Those artifacts must be metadata-only:
+they record repository identity, commit, query target, parser-owned
+=patchSafety= target, compact/exact byte counts, semantic responsibilities, and
+dry-run/temp-apply receipt events.  They must not store external project source
+or full compact code payloads.
+
+Rust provider real-project evidence uses
+=rust-ast-patch-real-project-evidence.v1=.  It is intentionally Rust-specific
+because the evidence includes Rust provider syntax labels such as
+=save-token-rustfmt= and Rust =replace_item= apply receipts.  The shared
+contract is still useful at the repository level: it makes evidence fixtures
+schema-validated, keeps compact token-savings measurable, and distinguishes
+non-mutating real-checkout dry-runs from temp-copy apply checks.
+
+Real-checkout repro commands should take a crate root, a source path, a query
+term, and optional match disambiguators:
+
+#+begin_src shell
+ASP_AST_PATCH_REAL_ROOT=/path/to/tokio/tokio \
+ASP_AST_PATCH_REAL_PATH=src/runtime/builder.rs \
+ASP_AST_PATCH_REAL_QUERY=Builder \
+ASP_AST_PATCH_REAL_TARGET_KIND=impl \
+ASP_AST_PATCH_REAL_APPLY_TEMP=1 \
+cargo test --features cli,search \
+  cli::ast_patch_scenarios::cli_ast_patch_real_checkout_query_target_dry_runs_from_env \
+  -- --ignored
+#+end_src
 
 * Unified crate and policy boundary
 
@@ -425,6 +476,9 @@ client mutation tool applies diff
 #+end_example
 
 Only trusted local runtimes should later expose =ast-patch apply=.
+Rust now uses that trusted-local boundary for the narrow =replace_item= path;
+Codex-compatible hook flows may still choose dry-run plus client-owned mutation
+when provider apply is not explicitly requested.
 
 * Interaction with Codex apply_patch
 
@@ -459,8 +513,9 @@ is not an automatic text-patch-to-AST conversion.  The first safe behavior is:
   =reasonKind=semantic-ast-patch-required=;
 - return provider exact-read routes so the agent can validate the source
   preimage for the selected locator;
-- instruct the agent to run =asp ast-patch dry-run= before attempting a
-  source mutation;
+- instruct the agent to build a packet with =asp ast-patch template=, run
+  provider =ast-patch dry-run=, and then use exact-read source as the Codex
+  =apply_patch= context;
 - allow non-source/prose patches to continue through ordinary Codex
   =apply_patch=.
 
@@ -483,8 +538,9 @@ patch dry-run and, later, trusted AST patch apply.
    worktree unchanged.
 5. A stale target hash returns =target-stale= and suggests a repair query.
 6. =asp hook pre-tool --client codex= denies source-file Codex =apply_patch=
-   payloads with =reasonKind=semantic-ast-patch-required= and still allows
-   non-source =README.md= patches.
+   payloads with =reasonKind=semantic-ast-patch-required=, prints an
+   executable =asp ast-patch template= -> provider =ast-patch dry-run= command
+   chain, and still allows non-source =README.md= patches.
 7. The emitted textual diff can be applied by the existing client mutation tool
    and then passes =ts-harness check --changed .=.
 8. Rust and Python providers reject unsupported operations with structured
@@ -505,7 +561,7 @@ patch dry-run and, later, trusted AST patch apply.
 7. Implement TypeScript adapter dry-run for bounded =remove_statement= packets,
    including the =renderSemanticSearchSeedPacket= safety case that triggered
    this RFC.
-8. Add sandtable traces for compact query -> AST patch dry-run -> Codex
-   =apply_patch= -> check.
+8. Add sandtable traces for compact query -> exact read -> =asp ast-patch
+   template= -> provider AST patch dry-run -> Codex =apply_patch= -> check.
 9. Align Rust and Python with unsupported-operation receipts first, then add
    native operations.

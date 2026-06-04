@@ -196,7 +196,7 @@ ASP should keep its own graph taxonomy and compact prompt surface:
 #+begin_example
 rank=O,Q,T,D
 frontier=O.owner,Q.fzf,T.tests,D.deps
-profiles=owner-query(O,Q),owner-tests(O,T),query-deps(Q,D)
+entries=owner-query(O,Q=>items+tests+dependency-usage),owner-tests(O=>covering-tests+test-entrypoints+fixtures),query-deps(Q,D=>owners+imports+usage-tests)
 omit=items,blocks,code,full-test-list
 avoid=raw-read,manual-window-scan,full-json,natural-language-intent
 #+end_example

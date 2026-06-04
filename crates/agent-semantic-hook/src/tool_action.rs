@@ -1,3 +1,7 @@
+//! Normalizes platform tool payloads into hook classifier actions.
+
+//! Converts client tool payloads into action-level source access intents.
+
 use serde_json::Value;
 
 use crate::command::{apply_patch_source_paths, path_like_tokens, semantic_shell_tokens};
@@ -90,6 +94,18 @@ impl ToolSurface {
             .next_back()
             .unwrap_or(normalized.as_str());
         match normalized.as_str() {
+            "edit"
+            | "multiedit"
+            | "write"
+            | "notebookedit"
+            | "fswritefile"
+            | "fsremove"
+            | "fscopy"
+            | "fsrename"
+            | "functions.edit"
+            | "functions.multiedit"
+            | "functions.write"
+            | "functions.notebookedit" => Self::CodexApplyPatch,
             "apply_patch" | "applypatch" => Self::CodexApplyPatch,
             "bash" | "shell" | "functions.exec_command" | "exec_command" | "command_execution" => {
                 Self::CodexShell
@@ -108,6 +124,22 @@ impl ToolSurface {
             _ if matches!(leaf, "readdirectory" | "read_directory" | "fsreaddirectory") => {
                 Self::CodexDirectoryRead
             }
+            _ if matches!(
+                leaf,
+                "write"
+                    | "writefile"
+                    | "write_file"
+                    | "remove"
+                    | "copy"
+                    | "rename"
+                    | "fswritefile"
+                    | "fsremove"
+                    | "fscopy"
+                    | "fsrename"
+            ) =>
+            {
+                Self::CodexApplyPatch
+            }
             _ if normalized.ends_with(".apply_patch") => Self::CodexApplyPatch,
             _ => Self::Unknown,
         }
@@ -115,14 +147,14 @@ impl ToolSurface {
 
     pub(crate) fn as_str(self) -> &'static str {
         match self {
-            Self::CodexApplyPatch => "codex-apply-patch",
-            Self::CodexDirectRead => "codex-direct-read",
-            Self::CodexDirectoryRead => "codex-directory-read",
-            Self::CodexFuzzyFileSearch => "codex-fuzzy-file-search",
-            Self::CodexMcpRead => "codex-mcp-read",
-            Self::CodexNestedTools => "codex-nested-tools",
-            Self::CodexShell => "codex-shell",
-            Self::CodexStdinContinuation => "codex-stdin-continuation",
+            Self::CodexApplyPatch => "apply-patch",
+            Self::CodexDirectRead => "direct-read",
+            Self::CodexDirectoryRead => "directory-read",
+            Self::CodexFuzzyFileSearch => "fuzzy-file-search",
+            Self::CodexMcpRead => "mcp-read",
+            Self::CodexNestedTools => "nested-tools",
+            Self::CodexShell => "shell-command",
+            Self::CodexStdinContinuation => "stdin-continuation",
             Self::Unknown => "unknown",
         }
     }
@@ -181,9 +213,182 @@ pub(crate) fn payload_string(payload: &Value, key: &str) -> Option<String> {
     payload.get(key).and_then(Value::as_str).map(str::to_string)
 }
 
-pub(crate) fn collect_tool_actions(tool_name: &str, tool_input: &Value) -> Vec<ToolAction> {
-    let decoded_tool_input = decoded_json_input(tool_input);
-    let tool_input = decoded_tool_input.as_ref().unwrap_or(tool_input);
+/// Collects direct, shell, nested, and Codex `CommandAction` intents.
+/// Extract source read/search/list/write intents from a client tool payload.
+pub fn collect_tool_actions(tool_name: &str, tool_input: &Value) -> Vec<ToolAction> {
+    fn codex_command_actions(tool_name: &str, value: &Value) -> Vec<ToolAction> {
+        let mut actions = Vec::new();
+        collect_codex_command_actions(tool_name, value, &mut actions, false);
+        actions
+    }
+
+    fn collect_codex_command_actions(
+        tool_name: &str,
+        value: &Value,
+        actions: &mut Vec<ToolAction>,
+        direct_action: bool,
+    ) {
+        if direct_action {
+            if let Some(action) = codex_command_action(tool_name, value) {
+                push_unique_action(actions, action);
+                return;
+            }
+        }
+
+        let Some(object) = value.as_object() else {
+            return;
+        };
+
+        for key in ["commandActions", "command_actions"] {
+            if let Some(command_actions) = object.get(key) {
+                collect_codex_command_action_values(tool_name, command_actions, actions);
+            }
+        }
+
+        if let Some(item) = object.get("item") {
+            collect_codex_item_actions(tool_name, item, actions);
+        }
+        if let Some(items) = object.get("items") {
+            collect_codex_item_actions(tool_name, items, actions);
+        }
+
+        if is_codex_command_execution_tool(tool_name) {
+            if let Some(action) = codex_command_action(tool_name, value) {
+                push_unique_action(actions, action);
+            }
+        }
+    }
+
+    fn collect_codex_command_action_values(
+        tool_name: &str,
+        value: &Value,
+        actions: &mut Vec<ToolAction>,
+    ) {
+        match value {
+            Value::Array(values) => {
+                for value in values {
+                    collect_codex_command_actions(tool_name, value, actions, true);
+                }
+            }
+            _ => collect_codex_command_actions(tool_name, value, actions, true),
+        }
+    }
+
+    fn collect_codex_item_actions(tool_name: &str, value: &Value, actions: &mut Vec<ToolAction>) {
+        match value {
+            Value::Array(values) => {
+                for value in values {
+                    collect_codex_item_actions(tool_name, value, actions);
+                }
+            }
+            Value::Object(object) => {
+                if let Some(action) = object.get("action") {
+                    collect_codex_command_actions(tool_name, action, actions, true);
+                }
+                if let Some(item) = object.get("item") {
+                    collect_codex_item_actions(tool_name, item, actions);
+                }
+                if let Some(items) = object.get("items") {
+                    collect_codex_item_actions(tool_name, items, actions);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn is_codex_command_execution_tool(tool_name: &str) -> bool {
+        let leaf = tool_name.rsplit(['.', ':']).next().unwrap_or(tool_name);
+        matches!(leaf, "command_execution" | "command-execution")
+    }
+
+    fn codex_command_action(tool_name: &str, value: &Value) -> Option<ToolAction> {
+        let object = value.as_object()?;
+        let action_type = object.get("type").and_then(Value::as_str)?;
+        let command = object
+            .get("command")
+            .or_else(|| object.get("cmd"))
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        let mut paths = Vec::new();
+        if let Some(path) = object.get("path") {
+            paths.extend(path_values(path));
+        }
+        if paths.is_empty() {
+            if let Some(name) = object.get("name").and_then(Value::as_str) {
+                push_unique_path(&mut paths, name.to_string());
+            }
+        }
+
+        let (surface, operation, command) = match action_type {
+            "read" => (
+                ToolSurface::CodexDirectRead,
+                OperationIntent::DirectRead,
+                command,
+            ),
+            "listFiles" | "list_files" => (
+                ToolSurface::CodexDirectoryRead,
+                OperationIntent::DirectoryRead,
+                command,
+            ),
+            "search" => (
+                ToolSurface::CodexShell,
+                OperationIntent::ShellCommand,
+                command.or_else(|| synthesize_codex_search_command(object)),
+            ),
+            "unknown" => (
+                ToolSurface::CodexShell,
+                OperationIntent::ShellCommand,
+                command,
+            ),
+            _ => return None,
+        };
+
+        if command.is_none() && paths.is_empty() {
+            return None;
+        }
+
+        Some(ToolAction {
+            tool_name: format!("{tool_name}.command_action.{action_type}"),
+            surface,
+            operation,
+            command,
+            paths,
+        })
+    }
+
+    fn synthesize_codex_search_command(object: &serde_json::Map<String, Value>) -> Option<String> {
+        let query = object.get("query").and_then(Value::as_str)?.trim();
+        if query.is_empty() {
+            return None;
+        }
+
+        let mut command = format!("rg {}", shell_quote_arg(query));
+        if let Some(path) = object
+            .get("path")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|path| !path.is_empty())
+        {
+            command.push(' ');
+            command.push_str(&shell_quote_arg(path));
+        }
+        Some(command)
+    }
+
+    fn push_unique_action(actions: &mut Vec<ToolAction>, action: ToolAction) {
+        if actions.iter().any(|existing| {
+            existing.tool_name == action.tool_name
+                && existing.command == action.command
+                && existing.paths == action.paths
+                && existing.operation == action.operation
+        }) {
+            return;
+        }
+        actions.push(action);
+    }
+
+    let decoded_tool_input = decoded_or_cloned(tool_input);
+    let tool_input = &decoded_tool_input;
     let surface = ToolSurface::from_tool_name(tool_name);
     let command = extract_command_direct(surface, tool_name, tool_input);
     let mut paths = extract_paths_direct(tool_input);
@@ -208,6 +413,7 @@ pub(crate) fn collect_tool_actions(tool_name: &str, tool_input: &Value) -> Vec<T
         command,
         paths,
     }];
+    actions.extend(codex_command_actions(tool_name, tool_input));
     for nested in nested_tool_actions(tool_input) {
         actions.extend(collect_tool_actions(&nested.tool_name, &nested.input));
     }

@@ -22,6 +22,7 @@ def validate_guide_quality(
         return
 
     _validate_source_leak_expectations(guide, result, stdout)
+    _validate_output_expectations(guide, result, stdout)
     decision = _guide_decision(guide, result, stdout)
     if decision is None:
         return
@@ -38,6 +39,19 @@ def _validate_source_leak_expectations(
     for needle in string_list(guide.get("sourceLeakNotContains", [])):
         if needle in stdout:
             result.errors.append(f"guide leaked source text {needle!r}")
+
+
+def _validate_output_expectations(
+    guide: dict[str, Any],
+    result: StepResult,
+    stdout: str,
+) -> None:
+    for needle in string_list(guide.get("outputContains", [])):
+        if needle not in stdout:
+            result.errors.append(f"guide output missing text {needle!r}")
+    for needle in string_list(guide.get("outputNotContains", [])):
+        if needle in stdout:
+            result.errors.append(f"guide output contains stale text {needle!r}")
 
 
 def _guide_decision(

@@ -21,9 +21,7 @@ def validate_line_protocol(result: StepResult, stdout: str) -> None:
         result.errors.append("first stdout line does not start with '['")
     for line in lines[1:]:
         if not (
-            line.startswith("|")
-            or line.startswith("[")
-            or _is_compact_graph_line(line)
+            line.startswith("|") or line.startswith("[") or _is_compact_graph_line(line)
         ):
             result.errors.append(f"line protocol stray line: {line[:80]!r}")
             return
@@ -48,14 +46,20 @@ def _validate_compact_graph_contract(result: StepResult, lines: list[str]) -> No
     if not any(line.startswith("rank=") and " frontier=" in line for line in lines):
         result.errors.append("compact graph missing rank/frontier line")
     if any(line.startswith("|seed") or line.startswith("|synthesis") for line in lines):
-        result.errors.append("compact graph output must not include legacy seed/synthesis rows")
+        result.errors.append(
+            "compact graph output must not include legacy seed/synthesis rows"
+        )
 
 
 def _requires_compact_graph_contract(command: list[str]) -> bool:
     if "search" not in command:
         return False
     for index, arg in enumerate(command):
-        if arg == "--view" and index + 1 < len(command) and command[index + 1] == "seeds":
+        if (
+            arg == "--view"
+            and index + 1 < len(command)
+            and command[index + 1] == "seeds"
+        ):
             return True
         if arg == "--view=seeds":
             return True
@@ -69,8 +73,8 @@ def _is_compact_graph_line(line: str) -> bool:
         return _looks_like_compact_graph_legend_line(line)
     if line.startswith("rank="):
         return " frontier=" in line
-    if line.startswith("profiles="):
-        return _looks_like_compact_graph_profiles_line(line)
+    if line.startswith("entries="):
+        return _looks_like_compact_graph_entries_line(line)
     if line.startswith("omit=") or line.startswith("avoid="):
         return _looks_like_compact_graph_csv_metadata_line(line)
     if ">{" in line and line.endswith("}"):
@@ -109,35 +113,53 @@ def _looks_like_compact_graph_edge_line(line: str) -> bool:
     return True
 
 
-def _looks_like_compact_graph_profiles_line(line: str) -> bool:
-    entries = line.removeprefix("profiles=").split("),")
-    if not entries:
+def _looks_like_compact_graph_entries_line(line: str) -> bool:
+    entries = _compact_graph_return_entries(line)
+    return bool(entries) and all(
+        _looks_like_compact_graph_return_entry(entry) for entry in entries
+    )
+
+
+def _compact_graph_return_entries(line: str) -> list[str]:
+    entries = line.removeprefix("entries=").split("),")
+    return [
+        f"{entry})" if index + 1 < len(entries) else entry
+        for index, entry in enumerate(entries)
+    ]
+
+
+def _looks_like_compact_graph_return_entry(entry: str) -> bool:
+    profile, sep, selector_and_returns = entry.partition("(")
+    if not sep or not profile or not selector_and_returns.endswith(")"):
         return False
-    for index, entry in enumerate(entries):
-        if index + 1 < len(entries):
-            entry += ")"
-        profile, sep, handles = entry.partition("(")
-        if not sep or not profile or not handles.endswith(")"):
-            return False
-        if not profile.replace("-", "").replace("_", "").isalnum():
-            return False
-        handles = handles[:-1]
-        if not handles:
-            return False
-        for handle in handles.split(","):
-            if not _looks_like_compact_graph_alias_id(handle):
-                return False
-    return True
+    if not _looks_like_compact_graph_metadata_value(profile):
+        return False
+    selectors, sep, returns = selector_and_returns[:-1].partition("=>")
+    if not sep:
+        return False
+    selector_values = selectors.split(",")
+    return_values = returns.split("+")
+    return (
+        bool(selector_values)
+        and bool(return_values)
+        and all(
+            _looks_like_compact_graph_alias_id(selector) for selector in selector_values
+        )
+        and all(
+            _looks_like_compact_graph_metadata_value(value) for value in return_values
+        )
+    )
 
 
 def _looks_like_compact_graph_csv_metadata_line(line: str) -> bool:
     _, sep, values = line.partition("=")
-    if not sep or not values:
-        return False
-    for value in values.split(","):
-        if not value.replace("-", "").replace("_", "").isalnum():
-            return False
-    return True
+    return bool(sep and values) and all(
+        _looks_like_compact_graph_metadata_value(value) for value in values.split(",")
+    )
+
+
+def _looks_like_compact_graph_metadata_value(value: str) -> bool:
+    return value.replace("-", "").replace("_", "").isalnum()
 
 
 def _looks_like_compact_graph_alias_line(line: str) -> bool:
@@ -281,7 +303,9 @@ def _validate_window_set_action(result: StepResult, action: str, line: str) -> N
     _validate_window_set_target_kind(result, kind, target)
 
 
-def _validate_window_set_target_kind(result: StepResult, kind: str, target: str) -> None:
+def _validate_window_set_target_kind(
+    result: StepResult, kind: str, target: str
+) -> None:
     if kind == "owner" and _is_test_like_path(target):
         result.errors.append(
             "line protocol windowSet owner target points at test path "
@@ -303,7 +327,9 @@ def _validate_project_path_field(result: StepResult, value: str, line: str) -> N
     _validate_project_path_token(result, value, line)
 
 
-def _validate_rank_prefixed_path_token(result: StepResult, value: str, line: str) -> None:
+def _validate_rank_prefixed_path_token(
+    result: StepResult, value: str, line: str
+) -> None:
     bad_locator = RANK_PREFIXED_PATH_PATTERN.fullmatch(value)
     if bad_locator is None:
         return

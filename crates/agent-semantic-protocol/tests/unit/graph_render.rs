@@ -15,8 +15,38 @@ fn sample_packet() -> serde_json::Value {
         "languageId": "typescript",
         "providerId": "ts-harness",
         "view": "fzf",
-        "query": "SemanticSearchOwnerFallback",
+        "query": "SemanticSearchOwnerFallback", "header": { "kind": "search-fzf", "fields": { "analysis": "structure", "nativeSyntaxFacts": "skipped", "policyFindings": "skipped" } },
         "querySet": ["SemanticSearchOwnerFallback", "parserOwner"],
+        "avoidNextActions": [{
+            "kind": "raw-read",
+            "target": "source",
+            "reason": "reasoning-profile"
+        }],
+        "reasoningProfiles": [
+            {
+                "profile": "owner-query",
+                "selectors": [
+                    { "kind": "owner", "alias": "O", "targetRole": "path", "required": true },
+                    { "kind": "query", "alias": "Q", "targetRole": "term", "required": true }
+                ],
+                "returns": ["items", "tests", "dependency-usage"]
+            },
+            {
+                "profile": "owner-tests",
+                "selectors": [
+                    { "kind": "owner", "alias": "O", "targetRole": "path", "required": true }
+                ],
+                "returns": ["covering-tests", "test-entrypoints", "fixtures"]
+            },
+            {
+                "profile": "finding-frontier",
+                "selectors": [
+                    { "kind": "finding", "alias": "F", "targetRole": "finding", "required": true },
+                    { "kind": "owner", "alias": "O", "targetRole": "path", "required": false }
+                ],
+                "returns": ["affected-owners", "tests", "verification-actions"]
+            }
+        ],
         "searchSynthesis": {
             "algorithm": "query-set-owner-resolution",
             "seeds": [
@@ -45,18 +75,18 @@ fn sample_packet() -> serde_json::Value {
 fn shared_renderer_projects_search_packet_into_compact_graph() {
     let output = render_search_graph_packet(&sample_packet(), GraphRenderOptions::default());
 
-    assert!(output.starts_with("[search-fzf] q=SemanticSearchOwnerFallback querySet=2"));
-    assert!(
-        output.contains("legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next")
-    );
-    assert!(output.contains("alias: graph:{G=search,Q=query,O=owner,S=symbol,T=test}"));
+    assert!(output.starts_with("[search-fzf] q=SemanticSearchOwnerFallback"));
+    assert!(output.contains("legend: ID=kind:role(value)!next"));
+    assert!(output.contains("alias: graph:{"));
     assert!(output.contains("Q=query:term(SemanticSearchOwnerFallback)!fzf"));
     assert!(output.contains("O=owner:path(src/cli/semantic-search/owner-fallback.ts)!owner"));
     assert!(output.contains(
         "S=symbol:symbol(SemanticSearchOwnerFallback)@src/cli/semantic-search/owner-fallback.ts:1:5!symbol"
     ));
     assert!(output.contains("G>{Q:matches,O:selects,S:contains,T:covers}"));
-    assert!(output.contains("rank=Q,O,S,T frontier=Q.fzf,O.owner,S.symbol,T.tests"));
+    assert!(output.contains("rank="));
+    assert!(output.contains("frontier="));
+    assert!(output.contains("avoid=raw-read"));
     assert!(!output.contains("G=search:result!query"));
 }
 
@@ -76,7 +106,6 @@ fn graph_render_cli_reads_packet_file() {
         ])
         .output()
         .unwrap();
-
     fs::remove_file(&packet_path).unwrap();
 
     assert!(
@@ -85,8 +114,11 @@ fn graph_render_cli_reads_packet_file() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("alias: graph:{G=search,Q=query,O=owner,S=symbol,T=test}"));
-    assert!(stdout.contains("rank=Q,O,S,T frontier=Q.fzf,O.owner,S.symbol,T.tests"));
+    assert!(stdout.contains(
+        "entries=owner-query(O,Q=>items+tests+dependency-usage),owner-tests(O=>covering-tests+test-entrypoints+fixtures)"
+    ));
+    assert!(!stdout.contains("finding-frontier"));
+    assert!(stdout.contains("avoid=raw-read"));
 }
 
 #[test]

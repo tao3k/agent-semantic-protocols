@@ -28,7 +28,7 @@
         "intent": "Implement a dev-server HMR feature after locating compact owners and tests",
         "stepIds": [
           "prime",
-          "feature-hmr"
+          "intent-query-set"
         ],
         "queryTerms": [
           "handleHotUpdate"
@@ -39,7 +39,7 @@
         "intent": "Find createServer API usage and public surface owners",
         "stepIds": [
           "prime",
-          "api-create-server"
+          "intent-query-set"
         ],
         "queryTerms": [
           "createServer"
@@ -50,7 +50,7 @@
         "intent": "Understand plugin container execution flow from search packets",
         "stepIds": [
           "prime",
-          "principle-plugin-container"
+          "intent-query-set"
         ],
         "queryTerms": [
           "pluginContainer"
@@ -67,9 +67,9 @@
     ]
   },
   "budgets": {
-    "maxCommands": 4,
-    "maxTotalLinesWarn": 60,
-    "maxTotalStdoutBytesWarn": 32000
+    "maxCommands": 2,
+    "maxTotalLinesWarn": 24,
+    "maxTotalStdoutBytesWarn": 16000
   },
   "steps": [
     {
@@ -85,39 +85,30 @@
       "expect": {
         "lineProtocol": true,
         "stdoutContains": [
-          "[search-prime]"
+          "[search-prime]",
+          "analysis=structure",
+          "nativeSyntaxFacts=skipped",
+          "policyFindings=skipped",
+          "entries=owner-query(O,Q=>items+tests+dependency-usage),owner-tests(O=>covering-tests+test-entrypoints+fixtures)"
         ],
         "maxStdoutLinesWarn": 16,
         "maxElapsedMsWarn": 9000
       }
     },
     {
-      "id": "feature-hmr",
+      "id": "intent-query-set",
       "command": [
         "ts-harness",
         "search",
         "fzf",
+        "--query-set",
         "handleHotUpdate",
-        "--view",
-        "seeds",
-        "."
-      ],
-      "expect": {
-        "lineProtocol": true,
-        "stdoutContains": [
-          "[search-fzf]"
-        ],
-        "maxStdoutLinesWarn": 14,
-        "maxElapsedMsWarn": 9000
-      }
-    },
-    {
-      "id": "api-create-server",
-      "command": [
-        "ts-harness",
-        "search",
-        "api",
+        "--query-set",
         "createServer",
+        "--query-set",
+        "pluginContainer",
+        "owner",
+        "tests",
         "--view",
         "seeds",
         "."
@@ -125,29 +116,11 @@
       "expect": {
         "lineProtocol": true,
         "stdoutContains": [
-          "[search-api]"
+          "[search-fzf]",
+          "querySet=3",
+          "entries=owner-query(O,Q=>items+tests+dependency-usage),owner-tests(O=>covering-tests+test-entrypoints+fixtures)"
         ],
         "maxStdoutLinesWarn": 14,
-        "maxElapsedMsWarn": 9000
-      }
-    },
-    {
-      "id": "principle-plugin-container",
-      "command": [
-        "ts-harness",
-        "search",
-        "fzf",
-        "pluginContainer",
-        "--view",
-        "seeds",
-        "."
-      ],
-      "expect": {
-        "lineProtocol": true,
-        "stdoutContains": [
-          "[search-fzf]"
-        ],
-        "maxStdoutLinesWarn": 16,
         "maxElapsedMsWarn": 9000
       }
     }

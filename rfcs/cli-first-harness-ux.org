@@ -495,6 +495,15 @@ code.  The agent should not have to choose among these layers blindly; provider
 certainty, item size, and token budget decide the projection.  =--code= is the
 explicit override after the agent has selected the item to read.
 
+Python direct-source-read queries with an exact file selector plus terms use the
+same parser compact projection as owner item queries.  They must not render a
+second ad-hoc truncated source snippet for matched functions.  Small matched
+items return =save-token-ruff= rows backed by =projection.nodes[]=,
+=renderedRows[]=, =exactRead=, and =expandActions[]=; large or ambiguous ranges
+return a read plan with exact item locators.  Literal-heavy schema fixtures
+should expose parser-owned data-shape rows such as dictionary keys and bounded
+literal values instead of raw =ast.unparse= truncation.
+
 *** Parser compact capability plan
 
 The Rust, TypeScript, and Python compact lanes must be advanced as native parser
@@ -1455,6 +1464,14 @@ docs candidates
 next hints (axes, not hits)
 #+end_src
 
+Large-library =search prime --view seeds= may run as a structural map instead
+of a policy/full-native-facts collection.  When a provider takes this optimized
+path it must say so in returned packet fields, not by relying on compatibility
+or absence inference.  The prompt-facing synthesis SHOULD include explicit
+entries such as =analysis=structure=, =nativeSyntaxFacts=skipped=, and
+=policyFindings=skipped=.  =search policy= and =check= remain the policy finding
+surfaces; optimized prime must not pretend that skipped findings were evaluated.
+
 ** Prime budget
 
 Strict internal caps — not exposed as flags:
@@ -1530,6 +1547,12 @@ frontierOwners    adjacent owners one parser-owned graph step outside the packet
 findingOwners     owners carrying grouped findings
 seeds             owner/test/dependency frontier actions derived from the graph
 #+end_src
+
+If prime skips a collection axis for latency, =findingOwners= may be empty only
+when the packet also returns the corresponding collection status in
+=searchSynthesis.fields=.  Agents must treat =policyFindings=skipped= as a
+typed next-step signal to run =search policy= or =check= when a task needs rule
+evidence, not as evidence that no findings exist.
 
 For =search owner <path> --view seeds=, providers should emit
 =bounded-reachability-depth1=: incoming owner count, outgoing owner count,
@@ -1769,6 +1792,11 @@ even when the literal text begins with a dash.  For example,
 =--json= token.  A structured output request must put the output flag after the
 query, e.g. =ts-harness search fzf OrderStatus --json .=.  This prevents a
 flag-like source token from silently becoming a prompt-facing JSON packet.
+The same literal ownership applies to explicit query flags:
+=search fzf --query --language owner tests --view seeds .= searches for the
+literal =--language= token, while =owner= and =tests= remain search surfaces.
+Providers must not route =search fzf --query <term>= into owner item-query
+state; it is the fzf query surface.
 
 If a daemon is running, the CLI internally routes through the daemon socket.
 If no daemon is running, the CLI runs the native parser directly.  The agent
@@ -3302,6 +3330,12 @@ requirements when applicable, and no leaked source text.  The route argv is a
 separate assertion surface from the human-readable message: sandtables may
 require canonical command fragments such as =query --from-hook= and reject stale
 fragments such as =search query --from-hook= or non-canonical surface names.
+Guide quality may also assert prompt-visible output facts.  When compact graph
+or search-guide optimization is under test, scenarios can require exact
+=entries=profile(selectors=>returns)= text and reject obsolete profile alias or
+compatibility fields.  These assertions are about the returned search artifact,
+not client compatibility: adding another accepted alias would create a new drift
+point and should fail the output-quality check.
 
 Sandtable summaries should make the improvement visible:
 

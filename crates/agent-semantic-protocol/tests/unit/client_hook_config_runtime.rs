@@ -92,24 +92,24 @@ fn hook_runtime_blocks_source_apply_patch_but_allows_non_source_patch() {
     let activation_path = root.join("activation.json");
     std::fs::write(&activation_path, root_owned_rust_activation_json()).expect("write activation");
     write_config(&root, "");
+
     let source_command = r#"apply_patch <<'PATCH'
 *** Begin Patch
 *** Update File: src/lib.rs
 @@
--old
-+new
+-fn old() {}
++fn new() {}
 *** End Patch
-PATCH"#;
-
+PATCH
+"#;
     let deny_decision = run_hook_decision(
         &root,
         &activation_path,
         json!({
             "tool_name": "functions.exec_command",
-            "tool_input": {"cmd": source_command}
+            "tool_input": { "cmd": source_command }
         }),
     );
-
     assert_eq!(deny_decision["decision"], "deny");
     assert_eq!(deny_decision["reasonKind"], "semantic-ast-patch-required");
     assert_eq!(deny_decision["subject"]["paths"], json!(["src/lib.rs"]));
@@ -121,7 +121,7 @@ PATCH"#;
         deny_decision["message"]
             .as_str()
             .unwrap()
-            .contains("asp ast-patch dry-run")
+            .contains("asp rust ast-patch dry-run")
     );
 
     let docs_command = r#"apply_patch <<'PATCH'
@@ -131,19 +131,19 @@ PATCH"#;
 -old
 +new
 *** End Patch
-PATCH"#;
+PATCH
+"#;
     let allow_decision = run_hook_decision(
         &root,
         &activation_path,
         json!({
             "tool_name": "functions.exec_command",
-            "tool_input": {"cmd": docs_command}
+            "tool_input": { "cmd": docs_command }
         }),
     );
-
     assert_eq!(allow_decision["decision"], "allow");
     assert_eq!(allow_decision["reasonKind"], "none");
-    std::fs::remove_dir_all(root).expect("cleanup temp project root");
+    std::fs::remove_dir_all(root).expect("remove temp project root");
 }
 
 #[test]

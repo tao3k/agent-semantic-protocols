@@ -31,6 +31,13 @@
         "reason": "read exact source locator before editing this compact match"
       },
       "projection": {
+        "compactSafety": {
+          "alignment": "parser-roundtrip",
+          "exactReadRequired": true,
+          "literalPolicy": "summarize",
+          "normalization": "none",
+          "whitespacePolicy": "formatter-structural"
+        },
         "exactRead": "src/sessions.py:395:905",
         "expandActions": [
           {
@@ -83,7 +90,7 @@
           }
         ],
         "losslessStructure": false,
-        "mode": "outline",
+        "mode": "compact",
         "nodeCount": 80,
         "nodeLimit": 24,
         "nodes": [
@@ -418,7 +425,14 @@
           }
         ],
         "nodesTruncated": true,
-        "omitted": [],
+        "omitted": [
+          {
+            "kind": "statement-tail",
+            "nodeId": "Session",
+            "read": "src/sessions.py:395:905",
+            "reason": "compact projection capped a large item; expand exact read before editing"
+          }
+        ],
         "renderedNodeIds": [
           "Session",
           "Session:field:src-sessions.py-414-414:bc26361f",
@@ -445,9 +459,155 @@
           "Session:assign:src-sessions.py-482-482:8f54797a",
           "Session:assign:src-sessions.py-488-488:ffe72718"
         ],
+        "renderedRows": [
+          {
+            "nodeId": "Session",
+            "rowKind": "declaration",
+            "semanticWeight": 1,
+            "text": "class Session"
+          },
+          {
+            "nodeId": "Session:field:src-sessions.py-414-414:bc26361f",
+            "rowKind": "field",
+            "semanticWeight": 1,
+            "text": "  field headers: CaseInsensitiveDict[str]"
+          },
+          {
+            "nodeId": "Session:field:src-sessions.py-415-415:e6dd8f76",
+            "rowKind": "field",
+            "semanticWeight": 1,
+            "text": "  field auth: _t.AuthType"
+          },
+          {
+            "nodeId": "Session:field:src-sessions.py-416-416:db9a4593",
+            "rowKind": "field",
+            "semanticWeight": 1,
+            "text": "  field proxies: dict[str, str]"
+          },
+          {
+            "nodeId": "Session:field:src-sessions.py-417-417:18e399f8",
+            "rowKind": "field",
+            "semanticWeight": 1,
+            "text": "  field hooks: dict[str, list[_t.HookType]]"
+          },
+          {
+            "nodeId": "Session:field:src-sessions.py-418-418:ddeca024",
+            "rowKind": "field",
+            "semanticWeight": 1,
+            "text": "  field params: MutableMapping[str, Any]"
+          },
+          {
+            "nodeId": "Session:field:src-sessions.py-419-419:cbefb003",
+            "rowKind": "field",
+            "semanticWeight": 1,
+            "text": "  field stream: bool"
+          },
+          {
+            "nodeId": "Session:field:src-sessions.py-420-420:b7fa6cc0",
+            "rowKind": "field",
+            "semanticWeight": 1,
+            "text": "  field verify: _t.VerifyType"
+          },
+          {
+            "nodeId": "Session:field:src-sessions.py-421-421:619dfbce",
+            "rowKind": "field",
+            "semanticWeight": 1,
+            "text": "  field cert: _t.CertType"
+          },
+          {
+            "nodeId": "Session:field:src-sessions.py-422-422:68b07396",
+            "rowKind": "field",
+            "semanticWeight": 1,
+            "text": "  field max_redirects: int"
+          },
+          {
+            "nodeId": "Session:field:src-sessions.py-423-423:7046d3d7",
+            "rowKind": "field",
+            "semanticWeight": 1,
+            "text": "  field trust_env: bool"
+          },
+          {
+            "nodeId": "Session:field:src-sessions.py-424-424:e0911fa7",
+            "rowKind": "field",
+            "semanticWeight": 1,
+            "text": "  field cookies: RequestsCookieJar"
+          },
+          {
+            "nodeId": "Session:field:src-sessions.py-425-425:87674ff4",
+            "rowKind": "field",
+            "semanticWeight": 1,
+            "text": "  field adapters: MutableMapping[str, BaseAdapter]"
+          },
+          {
+            "nodeId": "Session:field:src-sessions.py-427-440:8d03a880",
+            "rowKind": "field",
+            "semanticWeight": 1,
+            "text": "  field __attrs__: list[str]"
+          },
+          {
+            "nodeId": "Session:function:src-sessions.py-442-503:49eb366",
+            "rowKind": "declaration",
+            "semanticWeight": 1,
+            "text": "  def __init__"
+          },
+          {
+            "nodeId": "Session:assign:src-sessions.py-446-446:d58c043a",
+            "rowKind": "mutation",
+            "semanticWeight": 2,
+            "text": "    assign self.headers"
+          },
+          {
+            "nodeId": "Session:assign:src-sessions.py-450-450:1fc68186",
+            "rowKind": "mutation",
+            "semanticWeight": 2,
+            "text": "    assign self.auth"
+          },
+          {
+            "nodeId": "Session:assign:src-sessions.py-455-455:a6b71cc",
+            "rowKind": "mutation",
+            "semanticWeight": 2,
+            "text": "    assign self.proxies"
+          },
+          {
+            "nodeId": "Session:assign:src-sessions.py-458-458:4cae0d9c",
+            "rowKind": "mutation",
+            "semanticWeight": 2,
+            "text": "    assign self.hooks"
+          },
+          {
+            "nodeId": "Session:assign:src-sessions.py-463-463:928b033e",
+            "rowKind": "mutation",
+            "semanticWeight": 2,
+            "text": "    assign self.params"
+          },
+          {
+            "nodeId": "Session:assign:src-sessions.py-466-466:48a9eb8",
+            "rowKind": "mutation",
+            "semanticWeight": 2,
+            "text": "    assign self.stream"
+          },
+          {
+            "nodeId": "Session:assign:src-sessions.py-478-478:f1e6c1e5",
+            "rowKind": "mutation",
+            "semanticWeight": 2,
+            "text": "    assign self.verify"
+          },
+          {
+            "nodeId": "Session:assign:src-sessions.py-482-482:8f54797a",
+            "rowKind": "mutation",
+            "semanticWeight": 2,
+            "text": "    assign self.cert"
+          },
+          {
+            "nodeId": "Session:assign:src-sessions.py-488-488:ffe72718",
+            "rowKind": "mutation",
+            "semanticWeight": 2,
+            "text": "    assign self.max_redirects"
+          }
+        ],
         "sourceAuthority": "native-parser",
         "sourceFingerprint": "src/sessions.py:395:905:3310:56e19b04",
-        "syntax": "semantic-outline"
+        "syntax": "save-token-ruff"
       },
       "read": "src/sessions.py:395:905",
       "truncated": false,

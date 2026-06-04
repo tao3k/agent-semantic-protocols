@@ -86,8 +86,7 @@
       "expect": {
         "lineProtocol": true,
         "stdoutContains": [
-          "[search-prime]",
-          "|seed"
+          "[search-prime]"
         ],
         "maxStdoutLinesWarn": 8,
         "maxElapsedMsWarn": 6000
@@ -116,7 +115,7 @@
         "stdoutContains": [
           "[search-fzf]",
           "querySet=2",
-          "|seed"
+          "entries=owner-query(O,Q=>items+tests+dependency-usage),owner-tests(O=>covering-tests+test-entrypoints+fixtures)"
         ],
         "maxStdoutLinesWarn": 12,
         "maxElapsedMsWarn": 6000
@@ -143,7 +142,7 @@
         "stdoutContains": [
           "[search-fzf]",
           "querySet=1",
-          "|seed"
+          "entries=owner-query(O,Q=>items+tests+dependency-usage),owner-tests(O=>covering-tests+test-entrypoints+fixtures)"
         ],
         "maxStdoutLinesWarn": 12,
         "maxElapsedMsWarn": 6000

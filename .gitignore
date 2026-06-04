@@ -9,3 +9,6 @@ target/
 __pycache__/
 *.py[cod]
 .pytest_cache/
+
+.env
+.claude/settings.local.json

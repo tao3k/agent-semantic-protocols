@@ -69,6 +69,43 @@ class SemanticSourceAccessDecisionSchemaTests(unittest.TestCase):
     def test_hard_codex_fs_deny_is_valid(self) -> None:
         self.assertEqual([], self.validation_errors(hard_fs_deny()))
 
+    def test_read_directory_source_enumeration_reason_kind_is_valid(self) -> None:
+        decision = hard_fs_deny()
+        decision.update(
+            {
+                "boundary": "codex-tool-action",
+                "operation": "read-directory",
+                "reasonKind": "source-directory-enumeration",
+                "subject": {
+                    "toolName": "command_execution.command_action.listFiles",
+                    "command": "ls crates/agent-semantic-hook/src",
+                    "paths": ["crates/agent-semantic-hook/src"],
+                },
+                "routes": [
+                    {
+                        "languageId": "rust",
+                        "providerId": "rs-harness",
+                        "binary": "asp",
+                        "kind": "ingest",
+                        "argv": [
+                            "asp",
+                            "rust",
+                            "search",
+                            "ingest",
+                            "items",
+                            "tests",
+                            "--view",
+                            "seeds",
+                            ".",
+                        ],
+                    }
+                ],
+                "message": "source-directory-enumeration denied; route: asp rust search ingest items tests --view seeds .",
+            }
+        )
+
+        self.assertEqual([], self.validation_errors(decision))
+
     def test_shell_egress_suppression_can_hide_subprocess_source_output(self) -> None:
         decision = hard_fs_deny()
         decision.update(
@@ -130,6 +167,53 @@ class SemanticSourceAccessDecisionSchemaTests(unittest.TestCase):
         errors = self.validation_errors(decision)
 
         self.assertTrue(any("False was expected" in error for error in errors))
+
+    def test_suppress_cannot_return_model_visible_source_bytes(self) -> None:
+        decision = hard_fs_deny()
+        decision.update(
+            {
+                "boundary": "codex-shell-egress",
+                "operation": "tool-output",
+                "enforcement": "egress",
+                "decision": "suppress",
+                "reasonKind": "bulk-source-dump",
+                "sourceBytesReturned": True,
+                "modelVisibleBytesReturned": True,
+                "subject": {
+                    "toolName": "Bash",
+                    "command": "sed -n '1,120p' src/lib.rs",
+                    "paths": ["src/lib.rs"],
+                    "outputDigest": "sha256:source-like-output",
+                },
+            }
+        )
+        errors = self.validation_errors(decision)
+
+        self.assertTrue(any("False was expected" in error for error in errors))
+
+    def test_provider_authorized_requires_top_level_provider_id(self) -> None:
+        decision = hard_fs_deny()
+        decision.update(
+            {
+                "boundary": "codex-tool-action",
+                "operation": "read-file",
+                "decision": "allow",
+                "reasonKind": "provider-authorized",
+                "sourceBytesReturned": True,
+                "modelVisibleBytesReturned": True,
+                "authorization": "provider-capability",
+                "subject": {
+                    "toolName": "asp",
+                    "command": "asp rust query --from-hook direct-source-read --selector src/lib.rs --code .",
+                    "paths": ["src/lib.rs"],
+                },
+            }
+        )
+        errors = self.validation_errors(decision)
+
+        self.assertTrue(
+            any("'providerId' is a required property" in error for error in errors)
+        )
 
     def test_unknown_enforcement_mode_is_rejected(self) -> None:
         decision = hard_fs_deny()

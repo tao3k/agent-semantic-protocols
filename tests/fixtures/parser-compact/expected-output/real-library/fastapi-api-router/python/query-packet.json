@@ -31,6 +31,13 @@
         "reason": "read exact source locator before editing this compact match"
       },
       "projection": {
+        "compactSafety": {
+          "alignment": "parser-roundtrip",
+          "exactReadRequired": true,
+          "literalPolicy": "summarize",
+          "normalization": "none",
+          "whitespacePolicy": "formatter-structural"
+        },
         "exactRead": "src/routing.py:1005:4956",
         "expandActions": [
           {
@@ -83,7 +90,7 @@
           }
         ],
         "losslessStructure": false,
-        "mode": "outline",
+        "mode": "compact",
         "nodeCount": 80,
         "nodeLimit": 24,
         "nodes": [
@@ -418,7 +425,14 @@
           }
         ],
         "nodesTruncated": true,
-        "omitted": [],
+        "omitted": [
+          {
+            "kind": "statement-tail",
+            "nodeId": "APIRouter",
+            "read": "src/routing.py:1005:4956",
+            "reason": "compact projection capped a large item; expand exact read before editing"
+          }
+        ],
         "renderedNodeIds": [
           "APIRouter",
           "APIRouter:function:src-routing.py-1032-1315:49eb366",
@@ -445,9 +459,155 @@
           "APIRouter:assign:src-routing.py-1312-1312:8723e55e",
           "APIRouter:assign:src-routing.py-1313-1313:a740455a"
         ],
+        "renderedRows": [
+          {
+            "nodeId": "APIRouter",
+            "rowKind": "declaration",
+            "semanticWeight": 1,
+            "text": "class APIRouter"
+          },
+          {
+            "nodeId": "APIRouter:function:src-routing.py-1032-1315:49eb366",
+            "rowKind": "declaration",
+            "semanticWeight": 1,
+            "text": "  def __init__"
+          },
+          {
+            "nodeId": "APIRouter:if:src-routing.py-1271-1279:c0a78b72",
+            "rowKind": "control-flow",
+            "semanticWeight": 2,
+            "text": "    if lifespan is None"
+          },
+          {
+            "nodeId": "APIRouter:assign:src-routing.py-1273-1273:70aeac12",
+            "rowKind": "mutation",
+            "semanticWeight": 2,
+            "text": "      assign lifespan_context"
+          },
+          {
+            "nodeId": "APIRouter:if:src-routing.py-1274-1279:c6c3d910",
+            "rowKind": "control-flow",
+            "semanticWeight": 2,
+            "text": "      if isasyncgenfunction"
+          },
+          {
+            "nodeId": "APIRouter:assign:src-routing.py-1275-1275:70aeac12",
+            "rowKind": "mutation",
+            "semanticWeight": 2,
+            "text": "        assign lifespan_context"
+          },
+          {
+            "nodeId": "APIRouter:if:src-routing.py-1276-1279:7911846b",
+            "rowKind": "control-flow",
+            "semanticWeight": 2,
+            "text": "        if isgeneratorfunction"
+          },
+          {
+            "nodeId": "APIRouter:assign:src-routing.py-1277-1277:70aeac12",
+            "rowKind": "mutation",
+            "semanticWeight": 2,
+            "text": "          assign lifespan_context"
+          },
+          {
+            "nodeId": "APIRouter:assign:src-routing.py-1279-1279:70aeac12",
+            "rowKind": "mutation",
+            "semanticWeight": 2,
+            "text": "          assign lifespan_context"
+          },
+          {
+            "nodeId": "APIRouter:assign:src-routing.py-1280-1280:7345f4b6",
+            "rowKind": "mutation",
+            "semanticWeight": 2,
+            "text": "    assign self.lifespan_context"
+          },
+          {
+            "nodeId": "APIRouter:call:src-routing.py-1282-1287:953edc95",
+            "rowKind": "call",
+            "semanticWeight": 2,
+            "text": "    call __init__"
+          },
+          {
+            "nodeId": "APIRouter:if:src-routing.py-1288-1292:72079236",
+            "rowKind": "control-flow",
+            "semanticWeight": 2,
+            "text": "    if prefix"
+          },
+          {
+            "nodeId": "APIRouter:assign:src-routing.py-1297-1299:7705e90f",
+            "rowKind": "mutation",
+            "semanticWeight": 2,
+            "text": "    assign self.on_startup"
+          },
+          {
+            "nodeId": "APIRouter:assign:src-routing.py-1300-1302:9ebac56c",
+            "rowKind": "mutation",
+            "semanticWeight": 2,
+            "text": "    assign self.on_shutdown"
+          },
+          {
+            "nodeId": "APIRouter:assign:src-routing.py-1304-1304:3ef86c44",
+            "rowKind": "mutation",
+            "semanticWeight": 2,
+            "text": "    assign self.prefix"
+          },
+          {
+            "nodeId": "APIRouter:assign:src-routing.py-1305-1305:98535871",
+            "rowKind": "mutation",
+            "semanticWeight": 2,
+            "text": "    assign self.tags"
+          },
+          {
+            "nodeId": "APIRouter:assign:src-routing.py-1306-1306:5a303cb5",
+            "rowKind": "mutation",
+            "semanticWeight": 2,
+            "text": "    assign self.dependencies"
+          },
+          {
+            "nodeId": "APIRouter:assign:src-routing.py-1307-1307:d2529d91",
+            "rowKind": "mutation",
+            "semanticWeight": 2,
+            "text": "    assign self.deprecated"
+          },
+          {
+            "nodeId": "APIRouter:assign:src-routing.py-1308-1308:87bab960",
+            "rowKind": "mutation",
+            "semanticWeight": 2,
+            "text": "    assign self.include_in_schema"
+          },
+          {
+            "nodeId": "APIRouter:assign:src-routing.py-1309-1309:484a33dc",
+            "rowKind": "mutation",
+            "semanticWeight": 2,
+            "text": "    assign self.responses"
+          },
+          {
+            "nodeId": "APIRouter:assign:src-routing.py-1310-1310:af1ffb40",
+            "rowKind": "mutation",
+            "semanticWeight": 2,
+            "text": "    assign self.callbacks"
+          },
+          {
+            "nodeId": "APIRouter:assign:src-routing.py-1311-1311:f9997df9",
+            "rowKind": "mutation",
+            "semanticWeight": 2,
+            "text": "    assign self.dependency_overrides_provider"
+          },
+          {
+            "nodeId": "APIRouter:assign:src-routing.py-1312-1312:8723e55e",
+            "rowKind": "mutation",
+            "semanticWeight": 2,
+            "text": "    assign self.route_class"
+          },
+          {
+            "nodeId": "APIRouter:assign:src-routing.py-1313-1313:a740455a",
+            "rowKind": "mutation",
+            "semanticWeight": 2,
+            "text": "    assign self.default_response_class"
+          }
+        ],
         "sourceAuthority": "native-parser",
         "sourceFingerprint": "src/routing.py:1005:4956:3955:bdd86dd9",
-        "syntax": "semantic-outline"
+        "syntax": "save-token-ruff"
       },
       "read": "src/routing.py:1005:4956",
       "truncated": false,

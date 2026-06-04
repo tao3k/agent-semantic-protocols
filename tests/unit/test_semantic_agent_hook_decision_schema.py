@@ -68,6 +68,13 @@ class SemanticAgentHookDecisionSchemaTests(unittest.TestCase):
             self.validation_errors(minimal_decision("semantic-ast-patch-required")),
         )
 
+    def test_source_directory_enumeration_reason_kind_is_valid(self) -> None:
+        decision = minimal_decision("source-directory-enumeration")
+        decision["fields"] = {"operationIntent": "directory-read"}
+        decision["routes"][0]["kind"] = "ingest"  # type: ignore[index]
+
+        self.assertEqual([], self.validation_errors(decision))
+
     def test_semantic_read_route_kind_is_valid(self) -> None:
         decision = minimal_decision("direct-source-read")
         decision["routes"][0] = {  # type: ignore[index]
