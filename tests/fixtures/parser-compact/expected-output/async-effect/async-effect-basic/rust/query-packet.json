@@ -11,6 +11,11 @@
         "path": "src/lib.rs"
       },
       "name": "load_user",
+      "patchSafety": {
+        "exactRead": "src/lib.rs:26:33",
+        "level": "read-safe",
+        "reason": "read exact source locator before editing this compact match"
+      },
       "projection": {
         "exactRead": "src/lib.rs:26:33",
         "expandActions": [
@@ -18,31 +23,31 @@
             "kind": "hot-block",
             "read": "src/lib.rs:27:27",
             "reason": "parser-projection-mutation",
-            "target": "n1"
+            "target": "let-27-27-cc8ba503"
           },
           {
             "kind": "hot-block",
             "read": "src/lib.rs:28:30",
             "reason": "parser-projection-control-flow",
-            "target": "n2"
+            "target": "if-28-30-cca11db4"
           },
           {
             "kind": "hot-block",
             "read": "src/lib.rs:29:29",
             "reason": "parser-projection-terminal",
-            "target": "n3"
+            "target": "return-29-29-3b34eb1"
           },
           {
             "kind": "hot-block",
             "read": "src/lib.rs:31:31",
             "reason": "parser-projection-mutation",
-            "target": "n4"
+            "target": "let-31-31-b142fda0"
           },
           {
             "kind": "hot-block",
             "read": "src/lib.rs:32:32",
             "reason": "parser-projection-terminal",
-            "target": "n5"
+            "target": "return-32-32-4cced937"
           }
         ],
         "losslessStructure": true,
@@ -52,23 +57,27 @@
         "nodes": [
           {
             "depth": 0,
-            "id": "n0",
+            "id": "fn-26-33-f5aa1003",
             "kind": "fn",
             "label": "async fn load_user",
+            "nativeId": "rust-fn-26-33-f5aa1003",
             "read": "src/lib.rs:26:33",
-            "role": "declaration"
+            "role": "declaration",
+            "structuralFingerprint": "fn-declaration-26-33-f5aa1003"
           },
           {
             "depth": 1,
             "flags": [
               "mutation"
             ],
-            "id": "n1",
+            "id": "let-27-27-cc8ba503",
             "kind": "let",
             "label": "assign response",
-            "parentId": "n0",
+            "nativeId": "rust-let-27-27-cc8ba503",
+            "parentId": "fn-26-33-f5aa1003",
             "read": "src/lib.rs:27:27",
-            "role": "mutation"
+            "role": "mutation",
+            "structuralFingerprint": "let-mutation-27-27-cc8ba503"
           },
           {
             "depth": 1,
@@ -76,52 +85,115 @@
               "branch",
               "guard"
             ],
-            "id": "n2",
+            "id": "if-28-30-cca11db4",
             "kind": "if",
             "label": "if ! response.ok",
-            "parentId": "n0",
+            "nativeId": "rust-if-28-30-cca11db4",
+            "parentId": "fn-26-33-f5aa1003",
             "read": "src/lib.rs:28:30",
-            "role": "control-flow"
+            "role": "control-flow",
+            "structuralFingerprint": "if-control-flow-28-30-cca11db4"
           },
           {
             "depth": 2,
             "flags": [
               "return"
             ],
-            "id": "n3",
+            "id": "return-29-29-3b34eb1",
             "kind": "return",
             "label": "return Err(\"missing\".to_string())",
-            "parentId": "n2",
+            "nativeId": "rust-return-29-29-3b34eb1",
+            "parentId": "if-28-30-cca11db4",
             "read": "src/lib.rs:29:29",
-            "role": "terminal"
+            "role": "terminal",
+            "structuralFingerprint": "return-terminal-29-29-3b34eb1"
           },
           {
             "depth": 1,
             "flags": [
               "mutation"
             ],
-            "id": "n4",
+            "id": "let-31-31-b142fda0",
             "kind": "let",
             "label": "assign body",
-            "parentId": "n0",
+            "nativeId": "rust-let-31-31-b142fda0",
+            "parentId": "fn-26-33-f5aa1003",
             "read": "src/lib.rs:31:31",
-            "role": "mutation"
+            "role": "mutation",
+            "structuralFingerprint": "let-mutation-31-31-b142fda0"
           },
           {
             "depth": 1,
             "flags": [
               "return"
             ],
-            "id": "n5",
+            "id": "return-32-32-4cced937",
             "kind": "return",
             "label": "return Ok",
-            "parentId": "n0",
+            "nativeId": "rust-return-32-32-4cced937",
+            "parentId": "fn-26-33-f5aa1003",
             "read": "src/lib.rs:32:32",
-            "role": "terminal"
+            "role": "terminal",
+            "structuralFingerprint": "return-terminal-32-32-4cced937"
           }
         ],
         "nodesTruncated": false,
+        "omitted": [
+          {
+            "kind": "source-formatting",
+            "nodeId": "fn-26-33-f5aa1003",
+            "read": "src/lib.rs:26:33",
+            "reason": "compact projection removes original whitespace and comments"
+          }
+        ],
+        "renderedNodeIds": [
+          "fn-26-33-f5aa1003",
+          "let-27-27-cc8ba503",
+          "if-28-30-cca11db4",
+          "return-29-29-3b34eb1",
+          "let-31-31-b142fda0",
+          "return-32-32-4cced937"
+        ],
+        "renderedRows": [
+          {
+            "nodeId": "fn-26-33-f5aa1003",
+            "rowKind": "declaration",
+            "semanticWeight": 1,
+            "text": "async fn load_user"
+          },
+          {
+            "nodeId": "let-27-27-cc8ba503",
+            "rowKind": "mutation",
+            "semanticWeight": 2,
+            "text": "assign response"
+          },
+          {
+            "nodeId": "if-28-30-cca11db4",
+            "rowKind": "control-flow",
+            "semanticWeight": 2,
+            "text": "if ! response.ok"
+          },
+          {
+            "nodeId": "return-29-29-3b34eb1",
+            "rowKind": "terminal",
+            "semanticWeight": 2,
+            "text": "return Err(\"missing\".to_string())"
+          },
+          {
+            "nodeId": "let-31-31-b142fda0",
+            "rowKind": "mutation",
+            "semanticWeight": 2,
+            "text": "assign body"
+          },
+          {
+            "nodeId": "return-32-32-4cced937",
+            "rowKind": "terminal",
+            "semanticWeight": 2,
+            "text": "return Ok"
+          }
+        ],
         "sourceAuthority": "native-parser",
+        "sourceFingerprint": "src/lib.rs:26:33:107:ccba8da5104292b9",
         "syntax": "semantic-outline"
       },
       "read": "src/lib.rs:26:33",
@@ -133,6 +205,11 @@
   "namespace": "agent.semantic-protocols.languages.rust.rs-harness",
   "outputMode": "code",
   "ownerPath": "src/lib.rs",
+  "patchSafety": {
+    "level": "read-safe",
+    "nextAction": "query --from-hook direct-source-read",
+    "reason": "compact query packet is not a mutation authority"
+  },
   "projectRoot": ".",
   "protocolId": "agent.semantic-protocols.semantic-language",
   "protocolVersion": "1",

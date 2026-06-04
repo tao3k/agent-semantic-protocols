@@ -1,7 +1,7 @@
 #+TITLE: RFC: Agent Hook Interception Protocol
 #+AUTHOR: agent-semantic-protocols
 #+DATE: 2026-05-31
-#+STATUS: draft
+#+STATUS: implemented-single-bin-configurable-client-hook
 #+DEPENDS: rfcs/cli-first-harness-ux.org (005)
 
 * One-sentence summary
@@ -10,6 +10,10 @@ Agent hooks should be a thin, platform-adapted enforcement layer over the
 semantic language CLI registry.  The root protocol owns the normalized hook
 decision shape, activation algorithm, and classification algorithm; language
 harnesses own provider manifests and semantic commands.
+
+Status note: the single =agent-semantic-protocol= binary and configurable
+client-hook lane is implemented and closed by the gates in [[*RFC Closure Gates]].
+The downstream provider-convergence plan remains tracked separately below.
 
 * Problem
 
@@ -37,7 +41,7 @@ The hook protocol has three layers:
 
 #+begin_example
 agent platform event
-  -> root Rust semantic-agent-hook platform adapter
+  -> root Rust agent-semantic-hook platform adapter
   -> normalized hook invocation
   -> root Rust classification algorithm
   -> language provider routes
@@ -45,7 +49,7 @@ agent platform event
 #+end_example
 
 The root repository owns the platform adapter and classifier as a single Rust
-runtime named =semantic-agent-hook=.  Provider repositories still own the
+runtime named =agent-semantic-hook=.  Provider repositories still own the
 language-native pieces:
 
 - source extensions and config files;
@@ -62,14 +66,15 @@ workspace.
 
 * Root Rust Runtime
 
-The v1 implementation target is a small Rust binary in this repository:
+The v1 implementation target is the shared protocol binary in this repository.
+The hook runtime itself stays in the =agent-semantic-hook= library crate:
 
 #+begin_src text
-semantic-agent-hook hook --client codex pre-tool --activation .codex/semantic-agent-hook/activation.json
-semantic-agent-hook hook --client claude pre-tool --activation .claude/semantic-agent-hook/activation.json
-semantic-agent-hook hook --client codex pre-tool --activation .codex/semantic-agent-hook/activation.json --emit decision
-semantic-agent-hook doctor --activation .codex/semantic-agent-hook/activation.json .
-semantic-agent-hook install --client codex .
+asp hook pre-tool --client codex --activation .cache/agent-semantic-protocol/hooks/activation.json
+asp hook pre-tool --client claude --activation .cache/agent-semantic-protocol/hooks/activation.json
+asp hook pre-tool --client codex --activation .cache/agent-semantic-protocol/hooks/activation.json --emit decision
+asp hook doctor --client codex --activation .cache/agent-semantic-protocol/hooks/activation.json .
+asp hook install --client codex .
 #+end_src
 
 The runtime is intentionally language-neutral:
@@ -83,8 +88,8 @@ The runtime is intentionally language-neutral:
   the platform-specific response;
 - default to platform hook payload output for =hook=, with =--emit decision=
   reserved for schema tests, receipts, and machine validation;
-- own =.codex/config.toml= hook blocks that invoke =semantic-agent-hook=
-  directly;
+- own =.codex/config.toml= hook blocks that invoke
+  =asp hook= directly;
 - generate one project activation file that records enabled providers and
   workspace coverage, without copying provider route templates;
 - maintain only shared hook state: prime/search evidence, dirty activation paths,
@@ -96,7 +101,7 @@ binary own search/check semantics.
 
 Provider crates may be linked only in build/dev contexts to generate manifest
 fixtures and black-box runtime tests.  They must not become normal
-=semantic-agent-hook= runtime dependencies; production classification consumes
+=agent-semantic-hook= runtime dependencies; production classification consumes
 the project activation plus static manifests, not provider APIs.
 
 * Platform Facts
@@ -115,14 +120,21 @@ keeps matcher aliases as client-side compatibility inputs.  For example,
 match legacy =Agent= aliases, while dynamic/deferred tools can be introduced
 through =tool_search=.  The durable boundary is therefore not a long
 tool-name regex in =config.toml=; the config should dispatch broadly and let
-=semantic-agent-hook= classify the normalized payload against project activation
+=agent-semantic-hook= classify the normalized payload against project activation
 and provider manifests.
 
-The installed Codex hook command should also invoke =semantic-agent-hook=
+The installed Codex hook command should also invoke =agent-semantic-protocol=
 through =PATH=.  Copying a per-repository binary into
-=.codex/semantic-agent-hook/bin= makes the runtime stale and easy to bypass:
+=.codex/agent-semantic-hook/bin= makes the runtime stale and easy to bypass:
 the activation file and config block are repository-owned, but the classifier
 binary is a global toolchain component.
+
+=.codex/agent-semantic-protocol/hooks= is durable project hook policy.  The
+versioned client policy lives at =config.toml= there.  Generated activation,
+provider profile registries, and hook event logs must live under
+=${PRJ_HOME_CACHE}/agent-semantic-protocol/hooks= when =PRJ_HOME_CACHE= is set,
+otherwise under the git toplevel =.cache/agent-semantic-protocol/hooks=
+directory.
 
 Public Codex issue threads also document that =updatedInput= rewrite should
 not be treated as portable and that tool coverage has changed over recent
@@ -133,11 +145,181 @@ Therefore v1 must be conservative:
 - do not rely on input rewriting;
 - do not rely on =PreToolUse= context injection;
 - keep Codex hook matchers broad and perform language/policy classification in
-  =semantic-agent-hook= instead of encoding tool-name allowlists in TOML;
+  the =agent-semantic-hook= library behind =asp hook=
+  instead of encoding tool-name allowlists in TOML;
 - use deny-with-guide for unsafe actions;
 - use =SessionStart=, =UserPromptSubmit=, =SubagentStart=, =PostToolUse=, and
   =Stop= for context/state when the platform supports them;
 - use =stop_hook_active= / equivalent loop guards when present.
+
+** Codex source audit: tool surface is not filesystem enforcement
+
+A local source audit of =.data/codex/codex-rs= found that Codex =PreToolUse=
+is a tool-registry hook, not a universal file-system interception layer:
+
+- =core/src/tools/registry.rs= only calls =run_pre_tool_use_hooks= when a tool
+  handler returns =pre_tool_use_payload=.
+- =core/src/hook_runtime.rs= blocks only when the hook result has
+  =should_block=true= and a non-empty block reason.  A malformed deny, missing
+  reason, invalid JSON output, or unsupported decision shape degrades to
+  continue/fail-open behavior at the Codex boundary.
+- =core/src/tools/handlers/unified_exec/exec_command.rs= maps shell execution to
+  the canonical =Bash= hook payload with a raw command string.
+- =core/src/tools/handlers/unified_exec/write_stdin.rs= intentionally returns
+  no =PreToolUse= payload.  A long-lived shell therefore has a second input
+  surface that the hook cannot reclassify unless the original session launch was
+  already constrained.
+- =app-server-protocol= and =exec-server= expose =fs/readFile=,
+  =fs/readDirectory=, =fuzzyFileSearch/*=, =command/exec=, and
+  =process/spawn= RPC surfaces outside the ordinary model tool registry.  These
+  are app/exec-server APIs, not guaranteed =PreToolUse= events.
+
+The root classifier must therefore describe hook coverage explicitly instead of
+pretending every source read is enforceable through the same event.
+
+#+begin_src text
+surface                        hook coverage     normalized operation
+Bash / exec_command             pre-tool          shell-command
+apply_patch                     pre-tool          apply-patch
+mcp__*__read*                   pre-tool          direct-read
+Read / read_file                pre-tool if tool  direct-read
+multi_tool_use.parallel         pre-tool wrapper  nested-tools
+write_stdin                     no pre-tool       stdin-continuation
+fs/readFile                     app RPC           direct-read
+fs/readDirectory                app RPC           directory-read
+fuzzyFileSearch/*               app RPC           file-search
+command/exec                    app RPC           shell-command
+process/spawn                   app RPC           shell-command
+#+end_src
+
+** Codex Source Access Layer without a daemon
+
+The Codex-internal route should be specified as a source-access layer, not as a
+larger hook matcher.  In the no-daemon lane, the goal is to prevent
+unbrokered source bytes from entering the model-visible transcript and to route
+the agent back to provider-owned compact search/query commands.  It is not a
+kernel monitor and it does not claim to intercept arbitrary subprocess
+=open=/=read= calls.
+
+MCP surfaces are out of scope for this v1 source-access layer.  MCP tools,
+resources, and server-owned reads may still be classified opportunistically by
+the hook runtime when their payloads are visible, but they are not part of the
+Codex-internal enforcement guarantee.  This keeps the first contract focused on
+Codex-owned APIs and avoids treating external MCP servers as if they were
+controlled by the Codex process.
+
+The enforcement contract is:
+
+#+begin_src text
+boundary                  operation              enforcement        transcript guarantee
+codex-fs-api              read-file              hard               no source bytes returned
+codex-fs-api              read-directory         hard               no source listing returned
+codex-tool-action         read-file              hard               no source bytes returned
+codex-shell-preflight     spawn-process          preflight          deny obvious raw reads before spawn
+codex-shell-preflight     process-stdin          advisory           guide when stdin is visible
+codex-shell-egress        tool-output            egress             suppress source dumps before model
+subprocess open/read      arbitrary              not-enforced       no no-daemon guarantee
+#+end_src
+
+The source-access decision packet is separate from the hook decision packet:
+
+#+begin_src text
+schemas/semantic-source-access-decision.v1.schema.json
+#+end_src
+
+The packet records the Codex boundary, normalized operation, enforcement mode,
+whether source bytes were returned by the local action, whether any bytes became
+model-visible, and the provider route that should be used instead.  For shell
+commands, =sourceBytesReturned=true= with =modelVisibleBytesReturned=false= is
+a valid egress suppression result: the subprocess may have produced a source
+dump, but Codex did not place it into the agent transcript.  For hard FS API
+denials, both values must be false.
+
+The root CLI exposes an internal no-daemon probe so Codex integration tests can
+exercise this packet without installing app-server patches first:
+
+#+begin_src text
+asp source-access read-file --activation <activation.json> --rpc-method fs/readFile <path>
+asp source-access shell-egress --activation <activation.json> --command <command> --output-digest <digest> <path>
+#+end_src
+
+This command is a black-box policy probe for Codex-owned integration points.  It
+is not an agent exploration surface and it does not replace provider
+=asp <language> query/search= commands.
+
+Provider reads are authorized only through an explicit provider/broker
+capability, normally surfaced as =asp <language> query/search=.  Raw Codex reads
+and provider-owned compact reads therefore have different policy identities:
+
+#+begin_src text
+Codex Read src/lib.rs                  => deny, direct-source-read guide
+shell sed -n 1,120p src/lib.rs         => deny preflight or suppress egress
+asp rust query --from-hook ...         => allow provider-capability
+#+end_src
+
+The public status/doctor surface should report enforcement honestly:
+
+#+begin_src text
+fsApi=enforced
+toolAction=enforced
+shellPreflight=best-effort
+shellOutput=egress-enforced
+subprocessOpen=not-enforced
+mcp=out-of-scope
+daemon=not-used
+#+end_src
+
+The shared decision packet should carry normalized =fields.toolSurface= and
+=fields.operationIntent= for action-derived decisions.  These fields make
+receipts explain the client/tool surface that triggered the route, and they let
+black-box tests distinguish "blocked by hook" from "known app RPC surface that
+needs a lower enforcement layer".
+
+The classifier must operate primarily at the action layer:
+
+- structured tool payloads are normalized by extracting action fields such as
+  =path=, =file=, =files=, =uri=, =resource=, =document=, and nested tool calls;
+- an unknown tool with a source selector path is treated as source access and
+  routed through the same direct-source-read policy as Codex's built-in =Read=;
+- known tool names are hints for platform surface reporting, not the policy
+  authority;
+- shell commands are parsed with the Bash grammar through =tree-sitter-bash=
+  before direct-read, content-dump, raw-search, provider-output-pipe, and
+  wrapper-unwrapping decisions are made;
+- source selector matching remains provider-owned through activated coverage and
+  =globset=, so Rust, TypeScript, Python, and later providers share the same
+  action detector and only differ in coverage/route manifests.
+
+Client-side hook customization is a typed config file, not a server process:
+
+- default Codex path: =.codex/agent-semantic-protocol/hooks/config.toml=;
+- install behavior: =asp hook install --client codex=
+  creates this file when missing, with schema metadata plus commented examples,
+  and preserves an existing valid project config;
+- schema: =schemas/semantic-agent-hook-client-config.v1.schema.json=;
+- load timing: every =asp hook= invocation;
+- loader: the Rust runtime uses typed =serde= extraction through =figment=
+  =Toml::file=; no live-reload, watcher, daemon, or server affordance is
+  enabled in this client lane;
+- language filtering: rule =languageIds= match action paths through activated
+  provider coverage for the project;
+- rule ordering: higher =priority= wins, and equal priorities keep config file
+  order so the tie-break is deterministic and reviewable;
+- rule id contract: rule ids are unique across the loaded config because they
+  become machine receipts;
+- rule receipts: config-derived decisions set =fields.configRuleId= to the
+  matching rule id;
+- runtime schema mirror: the loader rejects schema-shape errors before
+  classification, including invalid identifiers, empty min-length strings,
+  unsupported events/platforms, duplicate =languageIds=, empty route =argv=,
+  and invalid route binary names;
+- doctor: =asp hook doctor --client codex= reports the
+  client config path and =clientConfigStatus= (=missing= or =ok=), and fails
+  when the config is invalid;
+- failure mode: invalid config emits a block decision so policy cannot silently
+  degrade;
+- no watcher, daemon, or background server behavior belongs to the client hook
+  runtime.
 
 ** Codex runtime constraints
 
@@ -154,25 +336,35 @@ as a repository-local TOML snippet:
 - =PreToolUse= matcher selection uses the canonical tool name plus compatibility
   aliases, but the hook stdin payload contains the canonical =tool_name= and
   =tool_input=.  Therefore match broadly in TOML and classify the normalized
-  payload in =semantic-agent-hook=.
+  payload in the =agent-semantic-hook= library behind
+  =asp hook=.
 - Codex Desktop API entries such as =functions.exec_command= and nested
   =multi_tool_use.parallel= calls must be replayed as first-class hook payloads,
   then smoke-tested through the real runtime.  Wrapper paths such as
   =path.rs:10:20= and =path.rs:10:4= must be normalized before both policy
   matching and provider route construction.
+- Codex Desktop and deferred-tool read payloads are not stable enough to trust
+  only one field spelling.  The platform adapter must extract paths from the
+  language-neutral field family =path=, =file=, =file_name=, =fileName=,
+  =file_path=, =filePath=, =absolute_path=, =absolutePath=,
+  =relative_path=, =relativePath=, =uri=, =paths=, =files=, =resource=,
+  =resources=, =uris=, =document=, =documents=, =text_document=, and
+  =textDocument=, including arrays and nested objects.  =file://= URIs are
+  normalized to project paths before source selector matching.
 - Codex hook output is schema-strict.  Unknown top-level fields can make the
   output fail to parse and convert an intended denial into no blocking action.
   The shared decision packet must either be emitted with =--emit decision= for
   tests/receipts, or embedded inside an accepted platform field such as
   =hookSpecificOutput.additionalContext=.
-- The installed command must resolve =semantic-agent-hook= through =PATH= so
-  upgrades affect every repository.  The repository owns activation config and
-  provider manifests; the classifier binary is a toolchain component.
+- The installed command must resolve =asp= through =PATH= so upgrades affect
+  every repository.  The repository owns activation config and provider
+  manifests; the classifier binary is a toolchain component.
 
 This is the concrete root-cause model for the low escape cost observed during
 the Codex CLI audit: a narrow matcher, a stale repo-local binary, missing hook
-feature enablement, project-local self-trust, or a schema-invalid output can
-each make the hook non-enforcing before language policy is even evaluated.
+feature enablement, project-local self-trust, schema-invalid output, or a
+payload path field outside the adapter's field family can each make the hook
+non-enforcing before language policy is even evaluated.
 
 #+begin_src mermaid
 flowchart TD
@@ -182,13 +374,15 @@ flowchart TD
   C -- "no" --> Z
   C -- "yes" --> D{"matcher matches canonical tool name or alias?"}
   D -- "no" --> Z
-  D -- "yes" --> E["semantic-agent-hook receives canonical tool_name + tool_input"]
-  E --> F{"payload classifies to unsafe semantic action?"}
-  F -- "direct source read or source dump" --> G["deny: route to provider owner/search"]
-  F -- "broad rg/fd/find/git source search" --> H{"piped to provider search ingest?"}
+  D -- "yes" --> E["agent-semantic-hook receives canonical tool_name + tool_input"]
+  E --> F{"payload path fields normalize to source selectors?"}
+  F -- "no unsafe selector" --> I
+  F -- "yes" --> M{"payload classifies to unsafe semantic action?"}
+  M -- "direct source read or source dump" --> G["deny: route to asp <language> query/search"]
+  M -- "broad rg/fd/find/git source search" --> H{"piped to provider search ingest?"}
   H -- "yes" --> I["allow"]
   H -- "no" --> J["deny: route to provider ingest"]
-  F -- "non-source rg/fd/find or docs search" --> I
+  M -- "non-source rg/fd/find or docs search" --> I
   G --> K{"Codex output schema valid?"}
   J --> K
   K -- "yes" --> L["blocked by PreToolUse"]
@@ -275,7 +469,7 @@ and what coverage the installer resolved:
 
 #+begin_src text
 projectRoot
-generatedBy.runtime = semantic-agent-hook
+generatedBy.runtime = agent-semantic-hook
 generatedBy.version
 generatedAt
 providers[].manifestId
@@ -301,11 +495,52 @@ hook intent -> provider route kind -> argv rendered from manifest + activation
 #+end_example
 
 If activation is missing, malformed, or references an unknown manifest, the
-hook event fails open and reports the repair command.  =doctor= and =install=
-are strict: they rebuild activation, verify manifest digests, and fail if no
-provider can be activated.  They must not run provider =agent guide= or any
-other provider command during discovery; PATH executable checks and static
-workspace detector facts are enough.
+hook event must still fail closed for source-like direct reads and source
+dumps that can be classified from the raw platform payload.  The denial route
+may degrade to a repair-oriented guide when no provider route can be trusted,
+but activation errors must not turn obvious source reads into allow decisions.
+=doctor= and =install= are strict: they rebuild activation, verify manifest
+digests, and fail if no provider can be activated.  They must not run provider
+=agent guide= or any other provider command during discovery; PATH executable
+checks and static workspace detector facts are enough.
+
+* Shared Hook State
+
+Generated hook state is diagnostic and routing evidence, not a source of
+provider truth.  It lives under
+=${PRJ_HOME_CACHE}/agent-semantic-protocol/hooks= when =PRJ_HOME_CACHE= is set,
+otherwise under the git toplevel =.cache/agent-semantic-protocol/hooks=.
+
+The append-only event log is =events.jsonl=.  Each non-empty line must be one
+complete JSON object with:
+
+#+begin_src text
+schemaId = agent.semantic-protocols.hook.event
+schemaVersion = 1
+protocolId = agent.semantic-protocols.hook
+protocolVersion = 1
+platform
+event
+decision
+reasonKind
+languageIds[]
+subject
+routeKinds[]
+recordedAtUnixMs
+#+end_src
+
+Hook invocations may overlap because agent clients can execute tools in
+parallel.  Event writes therefore must be serialized with an operating-system
+file lock or an equivalent process-safe append protocol.  A JSONL write is not
+valid unless the reader can parse every line independently; interleaved partial
+writes are a protocol violation, not only a logging defect.
+
+=asp hook install= and =asp hook doctor= must treat incompatible or corrupted
+event logs as migratable cache, not durable policy.  If an existing
+=events.jsonl= contains a non-empty line with a legacy =schemaId=, legacy
+=protocolId=, or invalid JSON, install may remove that generated file and
+start a new current-protocol log.  The versioned project policy remains
+=.codex/agent-semantic-protocol/hooks/config.toml=.
 
 * Classifier
 
@@ -325,6 +560,7 @@ semantic-search   <provider-binary> search ...
 search-json       <provider-binary> search ... --json during agent exploration
 changed-check     <provider-binary> check --changed
 edit              apply_patch, Edit, Write, or shell patch/write command
+ast-patch-gate    source-file apply_patch requires semantic AST patch validation
 subagent-receipt  SubagentStop final message
 stop              Stop event
 #+end_src
@@ -339,6 +575,14 @@ Structured direct-read tool names must be normalized before classification.
 Bare names such as =Read= and =read_file=, namespaced deferred tools such as
 =functions.read_file=, and MCP read aliases are the same hook intent when they
 carry a source path.
+
+Source-file =apply_patch= is a special edit intent.  If a Codex direct
+=apply_patch= payload or shell heredoc contains patch hunks for activated
+provider source paths, the classifier should deny with
+=reasonKind=semantic-ast-patch-required= and return the same exact-read route
+used by direct source reads.  This does not validate or rewrite patch hunks.
+It only prevents compact AST projection output from being used as text patch
+context.  Non-source patches remain ordinary edit tool calls.
 
 ** Activation routing
 
@@ -449,10 +693,11 @@ Blocking decisions must include the next safe route, not only a denial.  The
 exact project-relative source path, the hook should surface the owning
 provider's exact =query --from-hook direct-source-read= route instead of
 falling back to a generic guide pointer or source rendering.  For TypeScript,
-direct-source-read recovery therefore routes to =ts-harness query=:
+direct-source-read recovery therefore routes through the public =asp=
+language facade while preserving =providerId=ts-harness=:
 
 #+begin_example
-direct-source-read denied; route: ts-harness query --from-hook direct-source-read --selector src/components/WorkflowExecution.tsx .
+direct-source-read denied; route: asp typescript query --from-hook direct-source-read --selector src/components/WorkflowExecution.tsx --code .
 #+end_example
 
 The hook only materializes the exact selector route; the language provider
@@ -467,20 +712,22 @@ activated suffixes and shell-tokenized search terms.  Otherwise, it should wrap
 the provider-owned guide command in a compact form such as:
 
 #+begin_example
-direct-source-read denied; provider guide: rs-harness => rs-harness agent guide .; py-harness => py-harness agent guide .
-raw-broad-search denied; provider guide: ts-harness => ts-harness agent guide .
+direct-source-read denied; provider guide: rust => asp rust agent guide .; python => asp python agent guide .
+raw-broad-search denied; provider guide: typescript => asp typescript agent guide .
 #+end_example
 
 The root hook must not maintain a parser/query engine.  Exact selected source
 paths route back to the owning provider's =query --from-hook
-direct-source-read= surface, while provider ids and binaries select the
-provider guide/search commands for broader recovery.
+direct-source-read= surface through =asp <language>=, while =providerId=
+records the native provider identity such as =rs-harness=, =ts-harness=, or
+=py-harness=.  Hook routes must not expose provider implementation binaries as
+the executable command surface.
 
 If a provider wants to return bounded source windows after that route, it may
 emit =semantic-read-packet.v1= from its =query/*= method with
 =protocolId=agent.semantic-protocols.semantic-language=.  The root hook still
 emits only a hook decision packet and a =kind=query= route; it must not expose
-or emulate =semantic-agent-hook read=.
+or emulate a root read command.
 
 * Decision Packet
 
@@ -504,9 +751,9 @@ the platform's expected output:
 
 #+begin_src json
 {
-  "schemaId": "agent.semantic-protocols.agent-hook-decision",
+  "schemaId": "agent.semantic-protocols.hook.decision",
   "schemaVersion": "1",
-  "protocolId": "agent.semantic-protocols.agent-hooks",
+  "protocolId": "agent.semantic-protocols.hook",
   "protocolVersion": "1",
   "platform": "codex",
   "event": "pre-tool",
@@ -521,12 +768,12 @@ the platform's expected output:
     {
       "languageId": "typescript",
       "providerId": "ts-harness",
-      "binary": "ts-harness",
-      "kind": "owner",
-      "argv": ["ts-harness", "query", "--from-hook", "direct-source-read", "--selector", "src/cli/agent-hooks.ts", "."]
+      "binary": "asp",
+      "kind": "query",
+      "argv": ["asp", "typescript", "query", "--from-hook", "direct-source-read", "--selector", "src/cli/agent-hooks.ts", "--code", "."]
     }
   ],
-  "message": "direct-source-read denied; route: ts-harness query --from-hook direct-source-read --selector src/cli/agent-hooks.ts ."
+  "message": "direct-source-read denied; route: asp typescript query --from-hook direct-source-read --selector src/cli/agent-hooks.ts --code ."
 }
 #+end_src
 
@@ -534,9 +781,9 @@ Output-mode denial example:
 
 #+begin_src json
 {
-  "schemaId": "agent.semantic-protocols.agent-hook-decision",
+  "schemaId": "agent.semantic-protocols.hook.decision",
   "schemaVersion": "1",
-  "protocolId": "agent.semantic-protocols.agent-hooks",
+  "protocolId": "agent.semantic-protocols.hook",
   "protocolVersion": "1",
   "platform": "codex",
   "event": "pre-tool",
@@ -545,18 +792,18 @@ Output-mode denial example:
   "languageIds": ["typescript"],
   "subject": {
     "toolName": "Bash",
-    "command": "ts-harness search fzf location.path owner tests --json ."
+    "command": "asp typescript search fzf location.path owner tests --json ."
   },
   "routes": [
     {
       "languageId": "typescript",
       "providerId": "ts-harness",
-      "binary": "ts-harness",
-      "kind": "text",
-      "argv": ["ts-harness", "search", "text", "location.path", "owner", "tests", "--view", "seeds", "."]
+      "binary": "asp",
+      "kind": "fzf",
+      "argv": ["asp", "typescript", "search", "fzf", "location.path", "owner", "tests", "--view", "seeds", "."]
     }
   ],
-  "message": "agent-search-json denied; route: ts-harness search fzf location.path owner tests --view seeds ."
+  "message": "agent-search-json denied; route: asp typescript search fzf location.path owner tests --view seeds ."
 }
 #+end_src
 
@@ -564,12 +811,59 @@ When the rejected JSON-output command already includes an owner path, the
 route should use the provider's owner query command instead of a generic guide.
 The route shape is =search owner <path> items --query <derived-query> .=.
 
+* RFC Closure Gates
+
+This RFC is closed for the single-protocol-bin configurable client-hook lane
+when the following implementation gates pass:
+
+1. =agent-semantic-hook= is no longer an install-facing binary target.  Cargo
+   metadata must show only =lib=, =test=, and =custom-build= targets for that
+   crate, while =agent-semantic-protocol= owns the only hook-facing bin target.
+2. Generated Codex config uses
+   =exec asp hook <event> --client codex= for every
+   installed event: =session-start=, =user-prompt=, =pre-tool=,
+   =permission-request=, =post-tool=, =subagent-start=, =subagent-stop=, and
+   =stop=.
+3. Generated config, skill text, docs, schemas, and fixtures do not instruct
+   users to run retired =agent-semantic-hook= command forms.  Automated scans
+   should keep exact legacy executable strings out of human-facing artifacts.
+4. Missing client config preserves the built-in classifier behavior; invalid
+   config fails closed with a structured block decision; doctor reports
+   =clientConfig= and =clientConfigStatus= and rejects invalid config.
+5. Config-derived decisions emit =fields.configRuleId=, duplicate rule ids are
+   rejected before classification, higher priority wins, and equal-priority
+   rules keep config order.
+6. Runtime config validation mirrors the shared schema shape for identifiers,
+   min-length strings, event/platform enums, language id uniqueness, route
+   =argv=, and route binary names.
+7. Config changes are observed on the next =asp hook=
+   process invocation without any watcher, daemon, or server loop.
+8. Validation gates pass:
+   - =cargo test -p agent-semantic-hook=
+   - =cargo test -p agent-semantic-protocol=
+   - schema tests for =agent-semantic-hook-decision= and
+     =agent-semantic-hook-client-config=
+   - =rs-harness check --changed crates/agent-semantic-hook=
+   - =rs-harness check --changed crates/agent-semantic-protocol=
+9. Direct-read payload field-family coverage is tested through the classifier
+   and through the real =asp hook pre-tool= runtime for at least these Codex
+   shapes: =path=, =file=, =absolutePath=, nested =resource.path=,
+   =resources[].filePath=, and =file://= URI lists.  Each source match denies
+   with =reasonKind=direct-source-read= and a route shaped as
+   =asp <language> query --from-hook direct-source-read --selector <path> --code .=.
+10. Concurrent hook invocations cannot corrupt =events.jsonl=.  Unit tests must
+    exercise overlapping appends, and a real-runtime smoke must prove that
+    every event log line parses as JSON with
+    =schemaId=agent.semantic-protocols.hook.event= and
+    =protocolId=agent.semantic-protocols.hook=.
+
 * Downstream Plan
 
 1. Root protocol:
    - keep the shared decision schema, provider manifest schema, and activation
      schema;
-   - ship the Rust =semantic-agent-hook= runtime as the only classifier;
+   - ship the Rust =agent-semantic-hook= library runtime behind the
+     =agent-semantic-protocol= binary as the only classifier;
    - keep sandtable drills for hook payload fixtures and shell-tokenizer
      conformance.
 
@@ -582,23 +876,25 @@ The route shape is =search owner <path> items --query <derived-query> .=.
 3. TypeScript provider:
    - export a TypeScript provider manifest;
    - delete the standalone Codex classifier or replace it with a thin wrapper
-     that invokes =semantic-agent-hook=;
+     that invokes =asp hook=;
    - keep TypeScript-specific source/config ownership local.
 
 4. Python provider:
    - export a Python provider manifest;
-   - keep the transitional =py-harness agent hook= wrapper strict enough to
-     deny direct Python source reads with =reasonKind=direct-source-read= and a
-     concrete =py-harness query --from-hook direct-source-read --selector <path> .=
+   - replace any transitional provider-owned hook wrapper with =asp hook=, or
+     keep only a thin compatibility wrapper that invokes =asp hook=;
+   - deny direct Python source reads with =reasonKind=direct-source-read= and a
+     concrete =asp python query --from-hook direct-source-read --selector <path> --code .=
      route when the root runtime is installed;
-   - continue moving shared classification into root =semantic-agent-hook= for
-     raw-search-to-ingest, edit-before-prime, changed-check, subagent, and stop
-     gates.
+   - continue moving shared classification into the root hook runtime behind
+     =asp hook= for raw-search-to-ingest, edit-before-prime,
+     changed-check, subagent, and stop gates.
 
 5. Julia provider:
    - export a Julia provider manifest before adding provider-owned hook code;
-   - rely on root =semantic-agent-hook= for direct-read, raw-search-to-ingest,
-     edit-before-prime, changed-check, subagent, and stop gates.
+   - rely on =asp hook= for direct-read,
+     raw-search-to-ingest, edit-before-prime, changed-check, subagent, and stop
+     gates.
 
 * Open Questions
 

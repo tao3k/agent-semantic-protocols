@@ -1,18 +1,18 @@
 {
   "caseId": "playwright-api-request-context",
-  "compactCodeDelta": 3609,
-  "compactCodeRatio": 0.0353,
-  "compactCodeTokens": 132,
-  "compactLineDelta": 3609,
-  "compactLineRatio": 0.0353,
-  "compactLineTokens": 132,
+  "compactCodeDelta": 15906,
+  "compactCodeRatio": 0.0338,
+  "compactCodeTokens": 557,
+  "compactLineDelta": 15906,
+  "compactLineRatio": 0.0338,
+  "compactLineTokens": 557,
   "featureClass": "real-library",
   "languageId": "typescript",
   "providerId": "ts-harness",
-  "queryPacketDelta": 807,
-  "queryPacketRatio": 0.7843,
-  "queryPacketTokens": 2934,
-  "rawSourceTokens": 3741,
+  "queryPacketDelta": -5057,
+  "queryPacketRatio": 1.3072,
+  "queryPacketTokens": 21520,
+  "rawSourceTokens": 16463,
   "schemaId": "agent.semantic-protocols.parser-compact-token-cost",
   "schemaVersion": "1",
   "sourceOrigin": {
@@ -23,6 +23,6 @@
     "repository": "microsoft/playwright",
     "sourcePath": "packages/playwright-core/src/client/fetch.ts"
   },
-  "tokenizerId": "tiktoken:o200k_base",
+  "tokenizerId": "byte",
   "variantId": "typescript"
 }

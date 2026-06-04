@@ -42,7 +42,7 @@
           "languages.0.binary": "ts-harness"
         },
         "maxStdoutLinesWarn": 12,
-        "maxStdoutBytesWarn": 10000,
+        "maxStdoutBytesWarn": 15000,
         "maxElapsedMsWarn": 3500
       }
     },
@@ -72,11 +72,11 @@
           "searchSynthesis.algorithm": "owner-rank-frontier",
           "searchSynthesis.scope": "prime"
         },
-    "stdoutJsonArrayContains": {
-      "searchSynthesis.highImpactOwners": "src/cli/protocol.ts",
-      "searchSynthesis.frontierOwners": "src/cli/semantic-search/types.ts",
-      "searchSynthesis.seeds": {
-        "kind": "owner",
+        "stdoutJsonArrayContains": {
+          "searchSynthesis.highImpactOwners": "src/cli/protocol.ts",
+          "searchSynthesis.frontierOwners": "src/cli/semantic-search/types.ts",
+          "searchSynthesis.seeds": {
+            "kind": "owner",
             "target": "src/cli/semantic-search/types.ts"
           }
         },
@@ -151,8 +151,8 @@
         "stdoutContains": [
           "[search-prime]",
           "alg=owner-rank-frontier",
+          "legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next",
           "alias: graph:{G=search",
-          "G=search:result!query",
           "G>{",
           "rank=",
           "frontier="
@@ -161,7 +161,8 @@
         "maxElapsedMsWarn": 5500,
         "stdoutNotContains": [
           "|seed",
-          "|synthesis"
+          "|synthesis",
+          "G=search:result!query"
         ]
       }
     },
@@ -183,30 +184,31 @@
         "--view",
         "seeds",
         "."
-  ],
-  "capture": {
-    "tsOwner": "owner:([^!\\s;]+)!owner"
-  },
+      ],
+      "capture": {
+        "tsOwner": "owner:path\\(([^)]+)\\)!owner"
+      },
       "expect": {
         "lineProtocol": true,
         "stdoutContains": [
           "[search-fzf]",
           "querySet=2",
           "selector=fuzzy-set",
-          "scope=src/cli/semantic-search/owner-fallback.ts",
+          "view=hits",
           "alg=query-set-owner-resolution",
+          "legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next",
           "alias: graph:{G=search",
-          "G=search:result!query",
           "G>{",
           "rank=",
           "frontier=",
-          "owner:src/cli/semantic-search/owner-fallback.ts"
+          "owner:path(src/cli/semantic-search/owner-fallback.ts)!owner"
         ],
         "maxStdoutLinesWarn": 20,
         "maxElapsedMsWarn": 4500,
         "stdoutNotContains": [
           "|seed",
-          "|synthesis"
+          "|synthesis",
+          "G=search:result!query"
         ]
       }
     },
@@ -226,8 +228,8 @@
         "lineProtocol": true,
         "stdoutContains": [
           "[search-owner]",
+          "legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next",
           "alias: graph:{G=search",
-          "G=search:result!query",
           "G>{",
           "rank=",
           "frontier="
@@ -236,15 +238,16 @@
         "maxElapsedMsWarn": 7000,
         "stdoutNotContains": [
           "|seed",
-          "|synthesis"
+          "|synthesis",
+          "G=search:result!query"
         ]
       }
     },
-  {
-    "id": "rg-to-ingest",
-    "stdin": "src/cli/semantic-search/owner-fallback.ts:11:export interface SemanticSearchOwnerFallback {\ntests/unit/cli_semantic_search.test.ts:1:SemanticSearchOwnerFallback\n",
-    "command": [
-      "node",
+    {
+      "id": "rg-to-ingest",
+      "stdin": "src/cli/semantic-search/owner-fallback.ts:11:export interface SemanticSearchOwnerFallback {\ntests/unit/cli_semantic_search.test.ts:1:SemanticSearchOwnerFallback\n",
+      "command": [
+        "node",
         "dist/src/cli/main.js",
         "search",
         "ingest",
@@ -256,8 +259,8 @@
         "lineProtocol": true,
         "stdoutContains": [
           "[search-ingest]",
+          "legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next",
           "alias: graph:{G=search",
-          "G=search:result!query",
           "G>{",
           "rank=",
           "frontier="
@@ -266,7 +269,8 @@
         "maxElapsedMsWarn": 5000,
         "stdoutNotContains": [
           "|seed",
-          "|synthesis"
+          "|synthesis",
+          "G=search:result!query"
         ]
       }
     }

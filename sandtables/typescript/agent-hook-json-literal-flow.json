@@ -32,11 +32,11 @@
     },
     "querySetOpportunities": [
       {
-        "view": "text",
+        "view": "fzf",
         "queries": 2,
         "saveCommands": 1,
         "selector": "exact-set",
-        "reason": "parseProtocolArgs and runProtocolCli are same CLI protocol text-axis probes"
+        "reason": "parseProtocolArgs and runProtocolCli are same CLI protocol fuzzy-query probes"
       }
     ],
     "findings": [
@@ -63,7 +63,7 @@
       {
         "kind": "search-synthesis",
         "severity": "info",
-        "message": "provider synthesizes runProtocolCli/parseProtocolArgs and owner:src/cli/protocol.ts from the fixture context"
+        "message": "provider reports fixture paths through ownerResolution and routes the visible test owner through windowSet"
       }
     ]
   },
@@ -92,7 +92,7 @@
         "lineProtocol": true,
         "stdoutContains": [
           "[search-prime]",
-          "src/cli/semantic-search/build.ts"
+          "src/cli/protocol.ts"
         ],
         "maxStdoutLinesWarn": 10,
         "maxElapsedMsWarn": 6000
@@ -121,7 +121,7 @@
           "[search-fzf]",
           "querySet=2",
           "src/cli/protocol.ts",
-          "tests/unit/cli.test.ts"
+          "tests/unit/cli_query_hook_surface.test.ts"
         ],
         "maxStdoutLinesWarn": 10,
         "maxElapsedMsWarn": 6000
@@ -152,7 +152,7 @@
           "queryCoverage.0.status": "miss",
           "queryCoverage.1.value": "runCodexAgentHook",
           "avoidNextActions.0.target": "src/cli/agent-hooks.ts",
-          "searchSynthesis.seeds.0.target": "runProtocolCli"
+          "searchSynthesis.windowSet.0.target": "tests/unit/cli_semantic_search.test.ts"
         },
         "stdoutJsonContains": {
           "queryCoverage.1.surfaces": "test-fixture-string",
@@ -180,7 +180,7 @@
         "lineProtocol": true,
         "stdoutContains": [
           "[search-owner]",
-          "runProtocolCli"
+          "CliStreams"
         ],
         "maxStdoutLinesWarn": 8,
         "maxElapsedMsWarn": 6000
@@ -202,7 +202,7 @@
         "lineProtocol": true,
         "stdoutContains": [
           "[search-tests]",
-          "tests/unit/cli.test.ts"
+          "tests/unit/cli_query_hook_surface.test.ts"
         ],
         "maxStdoutLinesWarn": 8,
         "maxElapsedMsWarn": 6000
@@ -224,7 +224,8 @@
         "lineProtocol": true,
         "stdoutContains": [
           "[search-fzf] q=--json",
-          "|flow prime->owner|deps|symbol|tests"
+          "alg=native-syntax-query",
+          "tests/unit/cli_semantic_search.test.ts"
         ],
         "maxStdoutLinesWarn": 8,
         "maxStdoutBytesWarn": 3000,

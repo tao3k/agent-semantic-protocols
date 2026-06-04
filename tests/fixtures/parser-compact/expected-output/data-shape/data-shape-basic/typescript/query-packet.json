@@ -33,24 +33,19 @@
             "kind": "exact-read",
             "read": "src/user-summary.ts:9:11",
             "reason": "expand if node before editing",
-            "target": "UserSummary:6"
+            "target": "UserSummary:if:9:11:4fd58fc6"
           },
           {
             "kind": "exact-read",
             "read": "src/user-summary.ts:10:10",
             "reason": "expand return node before editing",
-            "target": "UserSummary:7"
+            "target": "UserSummary:return:10:10:5b26e2d3"
           },
           {
             "kind": "exact-read",
             "read": "src/user-summary.ts:12:12",
             "reason": "expand return node before editing",
-            "target": "UserSummary:8"
-          },
-          {
-            "kind": "owner-names",
-            "reason": "return owner-local item names without code windows",
-            "target": "src/user-summary.ts"
+            "target": "UserSummary:return:12:12:31c1ce80"
           }
         ],
         "losslessStructure": true,
@@ -66,110 +61,196 @@
             "id": "UserSummary",
             "kind": "class",
             "label": "class UserSummary",
+            "nativeId": "typescript:class:1:14:3ddd3166",
             "read": "src/user-summary.ts:1:14",
-            "role": "declaration"
+            "role": "declaration",
+            "structuralFingerprint": "class:declaration:1:14:b579a6fe"
           },
           {
             "depth": 1,
-            "id": "UserSummary:1",
+            "id": "UserSummary:constructor:2:6:f25d9f4f",
             "kind": "constructor",
             "label": "constructor",
+            "nativeId": "typescript:Constructor:2:6:f25d9f4f",
             "parentId": "UserSummary",
             "read": "src/user-summary.ts:2:6",
-            "role": "declaration"
+            "role": "declaration",
+            "structuralFingerprint": "constructor:declaration:2:6:fe62052f"
           },
           {
             "depth": 2,
             "flags": [
               "field"
             ],
-            "id": "UserSummary:2",
+            "id": "UserSummary:field:3:3:285001f8",
             "kind": "field",
             "label": "field readonly userId: number",
-            "parentId": "UserSummary:1",
+            "nativeId": "typescript:Parameter:3:3:285001f8",
+            "parentId": "UserSummary:constructor:2:6:f25d9f4f",
             "read": "src/user-summary.ts:3:3",
-            "role": "field"
+            "role": "field",
+            "structuralFingerprint": "field:field:3:3:5b5278a2"
           },
           {
             "depth": 2,
             "flags": [
               "field"
             ],
-            "id": "UserSummary:3",
+            "id": "UserSummary:field:4:4:e9dca12d",
             "kind": "field",
             "label": "field readonly name: string",
-            "parentId": "UserSummary:1",
+            "nativeId": "typescript:Parameter:4:4:e9dca12d",
+            "parentId": "UserSummary:constructor:2:6:f25d9f4f",
             "read": "src/user-summary.ts:4:4",
-            "role": "field"
+            "role": "field",
+            "structuralFingerprint": "field:field:4:4:6d19d3b7"
           },
           {
             "depth": 2,
             "flags": [
               "field"
             ],
-            "id": "UserSummary:4",
+            "id": "UserSummary:field:5:5:1de31997",
             "kind": "field",
             "label": "field readonly active: boolean",
-            "parentId": "UserSummary:1",
+            "nativeId": "typescript:Parameter:5:5:1de31997",
+            "parentId": "UserSummary:constructor:2:6:f25d9f4f",
             "read": "src/user-summary.ts:5:5",
-            "role": "field"
+            "role": "field",
+            "structuralFingerprint": "field:field:5:5:cdd8b809"
           },
           {
             "depth": 1,
-            "id": "UserSummary:5",
+            "id": "UserSummary:method:8:13:20d756ce",
             "kind": "method",
             "label": "method label",
+            "nativeId": "typescript:MethodDeclaration:8:13:20d756ce",
             "parentId": "UserSummary",
             "read": "src/user-summary.ts:8:13",
-            "role": "declaration"
+            "role": "declaration",
+            "structuralFingerprint": "method:declaration:8:13:a6fde21c"
           },
           {
             "depth": 2,
             "flags": [
               "branch"
             ],
-            "id": "UserSummary:6",
+            "id": "UserSummary:if:9:11:4fd58fc6",
             "kind": "if",
             "label": "if this.active",
-            "parentId": "UserSummary:5",
+            "nativeId": "typescript:IfStatement:9:11:4fd58fc6",
+            "parentId": "UserSummary:method:8:13:20d756ce",
             "read": "src/user-summary.ts:9:11",
-            "role": "control-flow"
+            "role": "control-flow",
+            "structuralFingerprint": "if:control-flow:9:11:6ec60f9c"
           },
           {
             "depth": 3,
             "flags": [
               "return"
             ],
-            "id": "UserSummary:7",
+            "id": "UserSummary:return:10:10:5b26e2d3",
             "kind": "return",
             "label": "return template",
-            "parentId": "UserSummary:6",
+            "nativeId": "typescript:ReturnStatement:10:10:5b26e2d3",
+            "parentId": "UserSummary:if:9:11:4fd58fc6",
             "read": "src/user-summary.ts:10:10",
-            "role": "terminal"
+            "role": "terminal",
+            "structuralFingerprint": "return:terminal:10:10:1ce05e99"
           },
           {
             "depth": 2,
             "flags": [
               "return"
             ],
-            "id": "UserSummary:8",
+            "id": "UserSummary:return:12:12:31c1ce80",
             "kind": "return",
             "label": "return string",
-            "parentId": "UserSummary:5",
+            "nativeId": "typescript:ReturnStatement:12:12:31c1ce80",
+            "parentId": "UserSummary:method:8:13:20d756ce",
             "read": "src/user-summary.ts:12:12",
-            "role": "terminal"
+            "role": "terminal",
+            "structuralFingerprint": "return:terminal:12:12:44566d68"
           }
         ],
         "omitted": [
           {
             "count": 14,
             "kind": "source-formatting",
+            "nodeId": "UserSummary",
             "read": "src/user-summary.ts:1:14",
             "reason": "compact projection removes original whitespace and comments"
           }
         ],
+        "renderedNodeIds": [
+          "UserSummary",
+          "UserSummary:constructor:2:6:f25d9f4f",
+          "UserSummary:field:3:3:285001f8",
+          "UserSummary:field:4:4:e9dca12d",
+          "UserSummary:field:5:5:1de31997",
+          "UserSummary:method:8:13:20d756ce",
+          "UserSummary:if:9:11:4fd58fc6",
+          "UserSummary:return:10:10:5b26e2d3",
+          "UserSummary:return:12:12:31c1ce80"
+        ],
+        "renderedRows": [
+          {
+            "nodeId": "UserSummary",
+            "rowKind": "declaration",
+            "semanticWeight": 1,
+            "text": "class UserSummary"
+          },
+          {
+            "nodeId": "UserSummary:constructor:2:6:f25d9f4f",
+            "rowKind": "declaration",
+            "semanticWeight": 1,
+            "text": "  constructor"
+          },
+          {
+            "nodeId": "UserSummary:field:3:3:285001f8",
+            "rowKind": "field",
+            "semanticWeight": 1,
+            "text": "    field readonly userId: number"
+          },
+          {
+            "nodeId": "UserSummary:field:4:4:e9dca12d",
+            "rowKind": "field",
+            "semanticWeight": 1,
+            "text": "    field readonly name: string"
+          },
+          {
+            "nodeId": "UserSummary:field:5:5:1de31997",
+            "rowKind": "field",
+            "semanticWeight": 1,
+            "text": "    field readonly active: boolean"
+          },
+          {
+            "nodeId": "UserSummary:method:8:13:20d756ce",
+            "rowKind": "declaration",
+            "semanticWeight": 1,
+            "text": "  method label"
+          },
+          {
+            "nodeId": "UserSummary:if:9:11:4fd58fc6",
+            "rowKind": "control-flow",
+            "semanticWeight": 2,
+            "text": "    if this.active"
+          },
+          {
+            "nodeId": "UserSummary:return:10:10:5b26e2d3",
+            "rowKind": "terminal",
+            "semanticWeight": 2,
+            "text": "      return template"
+          },
+          {
+            "nodeId": "UserSummary:return:12:12:31c1ce80",
+            "rowKind": "terminal",
+            "semanticWeight": 2,
+            "text": "    return string"
+          }
+        ],
         "sourceAuthority": "native-parser",
-        "sourceFingerprint": "src/user-summary.ts:1:14:239:9299f4fe",
+        "sourceFingerprint": "src/user-summary.ts:1:14:233:914f47a9",
         "syntax": "semantic-outline"
       },
       "read": "src/user-summary.ts:1:14",

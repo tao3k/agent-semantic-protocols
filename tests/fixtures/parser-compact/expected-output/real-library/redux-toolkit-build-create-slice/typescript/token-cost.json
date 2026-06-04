@@ -1,18 +1,18 @@
 {
   "caseId": "redux-toolkit-build-create-slice",
-  "compactCodeDelta": 7420,
-  "compactCodeRatio": 0.0185,
-  "compactCodeTokens": 140,
-  "compactLineDelta": 7420,
-  "compactLineRatio": 0.0185,
-  "compactLineTokens": 140,
+  "compactCodeDelta": 31954,
+  "compactCodeRatio": 0.0197,
+  "compactCodeTokens": 641,
+  "compactLineDelta": 31954,
+  "compactLineRatio": 0.0197,
+  "compactLineTokens": 641,
   "featureClass": "real-library",
   "languageId": "typescript",
   "providerId": "ts-harness",
-  "queryPacketDelta": 4579,
-  "queryPacketRatio": 0.3943,
-  "queryPacketTokens": 2981,
-  "rawSourceTokens": 7560,
+  "queryPacketDelta": 10226,
+  "queryPacketRatio": 0.6863,
+  "queryPacketTokens": 22369,
+  "rawSourceTokens": 32595,
   "schemaId": "agent.semantic-protocols.parser-compact-token-cost",
   "schemaVersion": "1",
   "sourceOrigin": {
@@ -23,6 +23,6 @@
     "repository": "reduxjs/redux-toolkit",
     "sourcePath": "packages/toolkit/src/createSlice.ts"
   },
-  "tokenizerId": "tiktoken:o200k_base",
+  "tokenizerId": "byte",
   "variantId": "typescript"
 }

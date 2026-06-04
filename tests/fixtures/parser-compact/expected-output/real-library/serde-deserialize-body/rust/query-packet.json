@@ -11,130 +11,66 @@
         "path": "src/lib.rs"
       },
       "name": "deserialize_body",
+      "patchSafety": {
+        "exactRead": "src/lib.rs:306:330",
+        "level": "read-safe",
+        "reason": "read exact source locator before editing this compact match"
+      },
       "projection": {
         "exactRead": "src/lib.rs:306:330",
+        "expandActionCount": 20,
+        "expandActionLimit": 8,
         "expandActions": [
           {
             "kind": "hot-block",
             "read": "src/lib.rs:307:329",
             "reason": "parser-projection-control-flow",
-            "target": "n1"
+            "target": "if-307-329-3a9cb80f"
           },
           {
             "kind": "hot-block",
             "read": "src/lib.rs:308:308",
             "reason": "parser-projection-terminal",
-            "target": "n2"
+            "target": "return-308-308-e185241"
           },
           {
             "kind": "hot-block",
             "read": "src/lib.rs:309:329",
             "reason": "parser-projection-control-flow",
-            "target": "n3"
+            "target": "else-309-329-bdbf5bf0"
           },
           {
             "kind": "hot-block",
             "read": "src/lib.rs:309:329",
             "reason": "parser-projection-control-flow",
-            "target": "n4"
+            "target": "if-309-329-26430e0e"
           },
           {
             "kind": "hot-block",
             "read": "src/lib.rs:310:310",
             "reason": "parser-projection-terminal",
-            "target": "n5"
+            "target": "return-310-310-3c93cc45"
           },
           {
             "kind": "hot-block",
             "read": "src/lib.rs:311:329",
             "reason": "parser-projection-control-flow",
-            "target": "n6"
+            "target": "else-311-329-bdbf5bf0"
           },
           {
             "kind": "hot-block",
             "read": "src/lib.rs:311:329",
             "reason": "parser-projection-control-flow",
-            "target": "n7"
+            "target": "if-311-329-3503328a"
           },
           {
             "kind": "hot-block",
             "read": "src/lib.rs:312:312",
             "reason": "parser-projection-terminal",
-            "target": "n8"
-          },
-          {
-            "kind": "hot-block",
-            "read": "src/lib.rs:313:329",
-            "reason": "parser-projection-control-flow",
-            "target": "n9"
-          },
-          {
-            "kind": "hot-block",
-            "read": "src/lib.rs:313:329",
-            "reason": "parser-projection-control-flow",
-            "target": "n10"
-          },
-          {
-            "kind": "hot-block",
-            "read": "src/lib.rs:314:323",
-            "reason": "parser-projection-control-flow",
-            "target": "n11"
-          },
-          {
-            "kind": "hot-block",
-            "read": "src/lib.rs:315:315",
-            "reason": "parser-projection-control-flow",
-            "target": "n12"
-          },
-          {
-            "kind": "hot-block",
-            "read": "src/lib.rs:316:316",
-            "reason": "parser-projection-control-flow",
-            "target": "n14"
-          },
-          {
-            "kind": "hot-block",
-            "read": "src/lib.rs:317:317",
-            "reason": "parser-projection-terminal",
-            "target": "n15"
-          },
-          {
-            "kind": "hot-block",
-            "read": "src/lib.rs:319:319",
-            "reason": "parser-projection-control-flow",
-            "target": "n16"
-          },
-          {
-            "kind": "hot-block",
-            "read": "src/lib.rs:320:320",
-            "reason": "parser-projection-terminal",
-            "target": "n17"
-          },
-          {
-            "kind": "hot-block",
-            "read": "src/lib.rs:322:322",
-            "reason": "parser-projection-control-flow",
-            "target": "n18"
-          },
-          {
-            "kind": "hot-block",
-            "read": "src/lib.rs:324:329",
-            "reason": "parser-projection-control-flow",
-            "target": "n20"
-          },
-          {
-            "kind": "hot-block",
-            "read": "src/lib.rs:325:328",
-            "reason": "parser-projection-control-flow",
-            "target": "n21"
-          },
-          {
-            "kind": "hot-block",
-            "read": "src/lib.rs:326:326",
-            "reason": "parser-projection-control-flow",
-            "target": "n22"
+            "target": "return-312-312-8d18770f"
           }
         ],
+        "expandActionsTruncated": true,
         "losslessStructure": false,
         "mode": "compact",
         "nodeCount": 26,
@@ -142,11 +78,13 @@
         "nodes": [
           {
             "depth": 0,
-            "id": "n0",
+            "id": "fn-306-330-ca917caf",
             "kind": "fn",
             "label": "fn deserialize_body",
+            "nativeId": "rust-fn-306-330-ca917caf",
             "read": "src/lib.rs:306:330",
-            "role": "declaration"
+            "role": "declaration",
+            "structuralFingerprint": "fn-declaration-306-330-ca917caf"
           },
           {
             "depth": 1,
@@ -154,36 +92,42 @@
               "branch",
               "guard"
             ],
-            "id": "n1",
+            "id": "if-307-329-3a9cb80f",
             "kind": "if",
             "label": "if cont.attrs.transparent()",
-            "parentId": "n0",
+            "nativeId": "rust-if-307-329-3a9cb80f",
+            "parentId": "fn-306-330-ca917caf",
             "read": "src/lib.rs:307:329",
-            "role": "control-flow"
+            "role": "control-flow",
+            "structuralFingerprint": "if-control-flow-307-329-3a9cb80f"
           },
           {
             "depth": 2,
             "flags": [
               "return"
             ],
-            "id": "n2",
+            "id": "return-308-308-e185241",
             "kind": "return",
             "label": "return deserialize_transparent",
-            "parentId": "n1",
+            "nativeId": "rust-return-308-308-e185241",
+            "parentId": "if-307-329-3a9cb80f",
             "read": "src/lib.rs:308:308",
-            "role": "terminal"
+            "role": "terminal",
+            "structuralFingerprint": "return-terminal-308-308-e185241"
           },
           {
             "depth": 1,
             "flags": [
               "branch"
             ],
-            "id": "n3",
+            "id": "else-309-329-bdbf5bf0",
             "kind": "else",
             "label": "else",
-            "parentId": "n0",
+            "nativeId": "rust-else-309-329-bdbf5bf0",
+            "parentId": "fn-306-330-ca917caf",
             "read": "src/lib.rs:309:329",
-            "role": "control-flow"
+            "role": "control-flow",
+            "structuralFingerprint": "else-control-flow-309-329-bdbf5bf0"
           },
           {
             "depth": 2,
@@ -191,36 +135,42 @@
               "branch",
               "guard"
             ],
-            "id": "n4",
+            "id": "if-309-329-26430e0e",
             "kind": "if",
             "label": "if let Some(type_from) = cont.attrs.type_from()",
-            "parentId": "n3",
+            "nativeId": "rust-if-309-329-26430e0e",
+            "parentId": "else-309-329-bdbf5bf0",
             "read": "src/lib.rs:309:329",
-            "role": "control-flow"
+            "role": "control-flow",
+            "structuralFingerprint": "if-control-flow-309-329-26430e0e"
           },
           {
             "depth": 3,
             "flags": [
               "return"
             ],
-            "id": "n5",
+            "id": "return-310-310-3c93cc45",
             "kind": "return",
             "label": "return deserialize_from",
-            "parentId": "n4",
+            "nativeId": "rust-return-310-310-3c93cc45",
+            "parentId": "if-309-329-26430e0e",
             "read": "src/lib.rs:310:310",
-            "role": "terminal"
+            "role": "terminal",
+            "structuralFingerprint": "return-terminal-310-310-3c93cc45"
           },
           {
             "depth": 2,
             "flags": [
               "branch"
             ],
-            "id": "n6",
+            "id": "else-311-329-bdbf5bf0",
             "kind": "else",
             "label": "else",
-            "parentId": "n3",
+            "nativeId": "rust-else-311-329-bdbf5bf0",
+            "parentId": "else-309-329-bdbf5bf0",
             "read": "src/lib.rs:311:329",
-            "role": "control-flow"
+            "role": "control-flow",
+            "structuralFingerprint": "else-control-flow-311-329-bdbf5bf0"
           },
           {
             "depth": 3,
@@ -228,36 +178,42 @@
               "branch",
               "guard"
             ],
-            "id": "n7",
+            "id": "if-311-329-3503328a",
             "kind": "if",
             "label": "if let Some(type_try_from) = cont.attrs.type_try_from()",
-            "parentId": "n6",
+            "nativeId": "rust-if-311-329-3503328a",
+            "parentId": "else-311-329-bdbf5bf0",
             "read": "src/lib.rs:311:329",
-            "role": "control-flow"
+            "role": "control-flow",
+            "structuralFingerprint": "if-control-flow-311-329-3503328a"
           },
           {
             "depth": 4,
             "flags": [
               "return"
             ],
-            "id": "n8",
+            "id": "return-312-312-8d18770f",
             "kind": "return",
             "label": "return deserialize_try_from",
-            "parentId": "n7",
+            "nativeId": "rust-return-312-312-8d18770f",
+            "parentId": "if-311-329-3503328a",
             "read": "src/lib.rs:312:312",
-            "role": "terminal"
+            "role": "terminal",
+            "structuralFingerprint": "return-terminal-312-312-8d18770f"
           },
           {
             "depth": 3,
             "flags": [
               "branch"
             ],
-            "id": "n9",
+            "id": "else-313-329-bdbf5bf0",
             "kind": "else",
             "label": "else",
-            "parentId": "n6",
+            "nativeId": "rust-else-313-329-bdbf5bf0",
+            "parentId": "else-311-329-bdbf5bf0",
             "read": "src/lib.rs:313:329",
-            "role": "control-flow"
+            "role": "control-flow",
+            "structuralFingerprint": "else-control-flow-313-329-bdbf5bf0"
           },
           {
             "depth": 4,
@@ -265,172 +221,381 @@
               "branch",
               "guard"
             ],
-            "id": "n10",
+            "id": "if-313-329-b0e8e561",
             "kind": "if",
             "label": "if let attr::Identifier::No = cont.attrs.identifier()",
-            "parentId": "n9",
+            "nativeId": "rust-if-313-329-b0e8e561",
+            "parentId": "else-313-329-bdbf5bf0",
             "read": "src/lib.rs:313:329",
-            "role": "control-flow"
+            "role": "control-flow",
+            "structuralFingerprint": "if-control-flow-313-329-b0e8e561"
           },
           {
             "depth": 5,
             "flags": [
               "branch"
             ],
-            "id": "n11",
+            "id": "match-314-323-cf5db6e",
             "kind": "match",
             "label": "match &cont.data",
-            "parentId": "n10",
+            "nativeId": "rust-match-314-323-cf5db6e",
+            "parentId": "if-313-329-b0e8e561",
             "read": "src/lib.rs:314:323",
-            "role": "control-flow"
+            "role": "control-flow",
+            "structuralFingerprint": "match-control-flow-314-323-cf5db6e"
           },
           {
             "depth": 6,
             "flags": [
               "branch"
             ],
-            "id": "n12",
+            "id": "case-315-315-95371527",
             "kind": "case",
             "label": "case Data::Enum(variants)",
-            "parentId": "n11",
+            "nativeId": "rust-case-315-315-95371527",
+            "parentId": "match-314-323-cf5db6e",
             "read": "src/lib.rs:315:315",
-            "role": "control-flow"
+            "role": "control-flow",
+            "structuralFingerprint": "case-control-flow-315-315-95371527"
           },
           {
             "depth": 7,
             "flags": [
               "call"
             ],
-            "id": "n13",
+            "id": "call-315-315-f59c143a",
             "kind": "call",
             "label": "call enum_::deserialize",
-            "parentId": "n12",
+            "nativeId": "rust-call-315-315-f59c143a",
+            "parentId": "case-315-315-95371527",
             "read": "src/lib.rs:315:315",
-            "role": "call"
+            "role": "call",
+            "structuralFingerprint": "call-call-315-315-f59c143a"
           },
           {
             "depth": 6,
             "flags": [
               "branch"
             ],
-            "id": "n14",
+            "id": "case-316-316-f053912e",
             "kind": "case",
             "label": "case Data::Struct(Style::Struct, fields)",
-            "parentId": "n11",
+            "nativeId": "rust-case-316-316-f053912e",
+            "parentId": "match-314-323-cf5db6e",
             "read": "src/lib.rs:316:316",
-            "role": "control-flow"
+            "role": "control-flow",
+            "structuralFingerprint": "case-control-flow-316-316-f053912e"
           },
           {
             "depth": 7,
             "flags": [
               "return"
             ],
-            "id": "n15",
+            "id": "return-317-317-e64163d0",
             "kind": "return",
             "label": "return struct_::deserialize",
-            "parentId": "n14",
+            "nativeId": "rust-return-317-317-e64163d0",
+            "parentId": "case-316-316-f053912e",
             "read": "src/lib.rs:317:317",
-            "role": "terminal"
+            "role": "terminal",
+            "structuralFingerprint": "return-terminal-317-317-e64163d0"
           },
           {
             "depth": 6,
             "flags": [
               "branch"
             ],
-            "id": "n16",
+            "id": "case-319-319-ba94f565",
             "kind": "case",
             "label": "case Data::Struct(Style::Tuple, fields) | Data::Struct(Style::Newtype, fields)",
-            "parentId": "n11",
+            "nativeId": "rust-case-319-319-ba94f565",
+            "parentId": "match-314-323-cf5db6e",
             "read": "src/lib.rs:319:319",
-            "role": "control-flow"
+            "role": "control-flow",
+            "structuralFingerprint": "case-control-flow-319-319-ba94f565"
           },
           {
             "depth": 7,
             "flags": [
               "return"
             ],
-            "id": "n17",
+            "id": "return-320-320-8494dfb4",
             "kind": "return",
             "label": "return tuple::deserialize",
-            "parentId": "n16",
+            "nativeId": "rust-return-320-320-8494dfb4",
+            "parentId": "case-319-319-ba94f565",
             "read": "src/lib.rs:320:320",
-            "role": "terminal"
+            "role": "terminal",
+            "structuralFingerprint": "return-terminal-320-320-8494dfb4"
           },
           {
             "depth": 6,
             "flags": [
               "branch"
             ],
-            "id": "n18",
+            "id": "case-322-322-3f55bcbd",
             "kind": "case",
             "label": "case Data::Struct(Style::Unit, _)",
-            "parentId": "n11",
+            "nativeId": "rust-case-322-322-3f55bcbd",
+            "parentId": "match-314-323-cf5db6e",
             "read": "src/lib.rs:322:322",
-            "role": "control-flow"
+            "role": "control-flow",
+            "structuralFingerprint": "case-control-flow-322-322-3f55bcbd"
           },
           {
             "depth": 7,
             "flags": [
               "call"
             ],
-            "id": "n19",
+            "id": "call-322-322-8110842c",
             "kind": "call",
             "label": "call unit::deserialize",
-            "parentId": "n18",
+            "nativeId": "rust-call-322-322-8110842c",
+            "parentId": "case-322-322-3f55bcbd",
             "read": "src/lib.rs:322:322",
-            "role": "call"
+            "role": "call",
+            "structuralFingerprint": "call-call-322-322-8110842c"
           },
           {
             "depth": 4,
             "flags": [
               "branch"
             ],
-            "id": "n20",
+            "id": "else-324-329-bdbf5bf0",
             "kind": "else",
             "label": "else",
-            "parentId": "n9",
+            "nativeId": "rust-else-324-329-bdbf5bf0",
+            "parentId": "else-313-329-bdbf5bf0",
             "read": "src/lib.rs:324:329",
-            "role": "control-flow"
+            "role": "control-flow",
+            "structuralFingerprint": "else-control-flow-324-329-bdbf5bf0"
           },
           {
             "depth": 5,
             "flags": [
               "branch"
             ],
-            "id": "n21",
+            "id": "match-325-328-cf5db6e",
             "kind": "match",
             "label": "match &cont.data",
-            "parentId": "n20",
+            "nativeId": "rust-match-325-328-cf5db6e",
+            "parentId": "else-324-329-bdbf5bf0",
             "read": "src/lib.rs:325:328",
-            "role": "control-flow"
+            "role": "control-flow",
+            "structuralFingerprint": "match-control-flow-325-328-cf5db6e"
           },
           {
             "depth": 6,
             "flags": [
               "branch"
             ],
-            "id": "n22",
+            "id": "case-326-326-95371527",
             "kind": "case",
             "label": "case Data::Enum(variants)",
-            "parentId": "n21",
+            "nativeId": "rust-case-326-326-95371527",
+            "parentId": "match-325-328-cf5db6e",
             "read": "src/lib.rs:326:326",
-            "role": "control-flow"
+            "role": "control-flow",
+            "structuralFingerprint": "case-control-flow-326-326-95371527"
           },
           {
             "depth": 7,
             "flags": [
               "call"
             ],
-            "id": "n23",
+            "id": "call-326-326-d97d345f",
             "kind": "call",
             "label": "call identifier::deserialize_custom",
-            "parentId": "n22",
+            "nativeId": "rust-call-326-326-d97d345f",
+            "parentId": "case-326-326-95371527",
             "read": "src/lib.rs:326:326",
-            "role": "call"
+            "role": "call",
+            "structuralFingerprint": "call-call-326-326-d97d345f"
           }
         ],
         "nodesTruncated": true,
+        "omitted": [
+          {
+            "kind": "source-formatting",
+            "nodeId": "fn-306-330-ca917caf",
+            "read": "src/lib.rs:306:330",
+            "reason": "compact projection removes original whitespace and comments"
+          }
+        ],
+        "renderedNodeIds": [
+          "fn-306-330-ca917caf",
+          "if-307-329-3a9cb80f",
+          "return-308-308-e185241",
+          "else-309-329-bdbf5bf0",
+          "if-309-329-26430e0e",
+          "return-310-310-3c93cc45",
+          "else-311-329-bdbf5bf0",
+          "if-311-329-3503328a",
+          "return-312-312-8d18770f",
+          "else-313-329-bdbf5bf0",
+          "if-313-329-b0e8e561",
+          "match-314-323-cf5db6e",
+          "case-315-315-95371527",
+          "call-315-315-f59c143a",
+          "case-316-316-f053912e",
+          "return-317-317-e64163d0",
+          "case-319-319-ba94f565",
+          "return-320-320-8494dfb4",
+          "case-322-322-3f55bcbd",
+          "call-322-322-8110842c",
+          "else-324-329-bdbf5bf0",
+          "match-325-328-cf5db6e",
+          "case-326-326-95371527",
+          "call-326-326-d97d345f"
+        ],
+        "renderedRows": [
+          {
+            "nodeId": "fn-306-330-ca917caf",
+            "rowKind": "declaration",
+            "semanticWeight": 1,
+            "text": "fn deserialize_body"
+          },
+          {
+            "nodeId": "if-307-329-3a9cb80f",
+            "rowKind": "control-flow",
+            "semanticWeight": 2,
+            "text": "if cont.attrs.transparent()"
+          },
+          {
+            "nodeId": "return-308-308-e185241",
+            "rowKind": "terminal",
+            "semanticWeight": 2,
+            "text": "return deserialize_transparent"
+          },
+          {
+            "nodeId": "else-309-329-bdbf5bf0",
+            "rowKind": "control-flow",
+            "semanticWeight": 2,
+            "text": "else"
+          },
+          {
+            "nodeId": "if-309-329-26430e0e",
+            "rowKind": "control-flow",
+            "semanticWeight": 2,
+            "text": "if let Some(type_from) = cont.attrs.type_from()"
+          },
+          {
+            "nodeId": "return-310-310-3c93cc45",
+            "rowKind": "terminal",
+            "semanticWeight": 2,
+            "text": "return deserialize_from"
+          },
+          {
+            "nodeId": "else-311-329-bdbf5bf0",
+            "rowKind": "control-flow",
+            "semanticWeight": 2,
+            "text": "else"
+          },
+          {
+            "nodeId": "if-311-329-3503328a",
+            "rowKind": "control-flow",
+            "semanticWeight": 2,
+            "text": "if let Some(type_try_from) = cont.attrs.type_try_from()"
+          },
+          {
+            "nodeId": "return-312-312-8d18770f",
+            "rowKind": "terminal",
+            "semanticWeight": 2,
+            "text": "return deserialize_try_from"
+          },
+          {
+            "nodeId": "else-313-329-bdbf5bf0",
+            "rowKind": "control-flow",
+            "semanticWeight": 2,
+            "text": "else"
+          },
+          {
+            "nodeId": "if-313-329-b0e8e561",
+            "rowKind": "control-flow",
+            "semanticWeight": 2,
+            "text": "if let attr::Identifier::No = cont.attrs.identifier()"
+          },
+          {
+            "nodeId": "match-314-323-cf5db6e",
+            "rowKind": "control-flow",
+            "semanticWeight": 2,
+            "text": "match &cont.data"
+          },
+          {
+            "nodeId": "case-315-315-95371527",
+            "rowKind": "control-flow",
+            "semanticWeight": 2,
+            "text": "case Data::Enum(variants)"
+          },
+          {
+            "nodeId": "call-315-315-f59c143a",
+            "rowKind": "call",
+            "semanticWeight": 2,
+            "text": "call enum_::deserialize"
+          },
+          {
+            "nodeId": "case-316-316-f053912e",
+            "rowKind": "control-flow",
+            "semanticWeight": 2,
+            "text": "case Data::Struct(Style::Struct, fields)"
+          },
+          {
+            "nodeId": "return-317-317-e64163d0",
+            "rowKind": "terminal",
+            "semanticWeight": 2,
+            "text": "return struct_::deserialize"
+          },
+          {
+            "nodeId": "case-319-319-ba94f565",
+            "rowKind": "control-flow",
+            "semanticWeight": 2,
+            "text": "case Data::Struct(Style::Tuple, fields) | Data::Struct(Style::Newtype, fields)"
+          },
+          {
+            "nodeId": "return-320-320-8494dfb4",
+            "rowKind": "terminal",
+            "semanticWeight": 2,
+            "text": "return tuple::deserialize"
+          },
+          {
+            "nodeId": "case-322-322-3f55bcbd",
+            "rowKind": "control-flow",
+            "semanticWeight": 2,
+            "text": "case Data::Struct(Style::Unit, _)"
+          },
+          {
+            "nodeId": "call-322-322-8110842c",
+            "rowKind": "call",
+            "semanticWeight": 2,
+            "text": "call unit::deserialize"
+          },
+          {
+            "nodeId": "else-324-329-bdbf5bf0",
+            "rowKind": "control-flow",
+            "semanticWeight": 2,
+            "text": "else"
+          },
+          {
+            "nodeId": "match-325-328-cf5db6e",
+            "rowKind": "control-flow",
+            "semanticWeight": 2,
+            "text": "match &cont.data"
+          },
+          {
+            "nodeId": "case-326-326-95371527",
+            "rowKind": "control-flow",
+            "semanticWeight": 2,
+            "text": "case Data::Enum(variants)"
+          },
+          {
+            "nodeId": "call-326-326-d97d345f",
+            "rowKind": "call",
+            "semanticWeight": 2,
+            "text": "call identifier::deserialize_custom"
+          }
+        ],
         "sourceAuthority": "native-parser",
+        "sourceFingerprint": "src/lib.rs:306:330:764:c09d2872080c0304",
         "syntax": "semantic-outline"
       },
       "read": "src/lib.rs:306:330",
@@ -442,6 +607,11 @@
   "namespace": "agent.semantic-protocols.languages.rust.rs-harness",
   "outputMode": "code",
   "ownerPath": "src/lib.rs",
+  "patchSafety": {
+    "level": "read-safe",
+    "nextAction": "query --from-hook direct-source-read",
+    "reason": "compact query packet is not a mutation authority"
+  },
   "projectRoot": ".",
   "protocolId": "agent.semantic-protocols.semantic-language",
   "protocolVersion": "1",

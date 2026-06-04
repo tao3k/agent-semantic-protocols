@@ -53,14 +53,17 @@ def semantic_query_minimal_packet() -> dict[str, object]:
                     "nodes": [
                         {
                             "id": "load",
+                            "nativeId": "rust:fn:load",
                             "kind": "fn",
                             "role": "declaration",
                             "label": "load",
                             "depth": 0,
                             "read": "src/lib.rs:6:6",
+                            "structuralFingerprint": "fn:declaration:load",
                             "flags": ["call", "return"],
                         }
                     ],
+                    "renderedNodeIds": ["load"],
                     "omitted": [
                         {
                             "kind": "body-detail",
@@ -80,7 +83,7 @@ def semantic_query_minimal_packet() -> dict[str, object]:
                                 "--from-hook",
                                 "direct-source-read",
                                 "--selector",
-                                "src/lib.rs",
+                                "src/lib.rs:6:6",
                                 ".",
                             ],
                             "reason": "read exact source before editing",
@@ -106,6 +109,17 @@ class SemanticQueryPacketSchemaTests(unittest.TestCase):
 
     def test_minimal_query_packet_is_valid(self) -> None:
         self.assertEqual([], self.validation_errors(semantic_query_minimal_packet()))
+
+    def test_projection_schema_keeps_formatter_profile_provider_owned(self) -> None:
+        projection_schema = self.validator.schema["$defs"]["projection"]
+        projection_properties = projection_schema["properties"]
+
+        self.assertNotIn("formatter", projection_properties)
+        self.assertNotIn("formatterProfile", projection_properties)
+        self.assertNotIn(
+            "formatter-normalized",
+            projection_properties["sourceAuthority"]["enum"],
+        )
 
     def test_names_only_query_packet_can_omit_code_and_report_candidates(self) -> None:
         packet = semantic_query_minimal_packet()
@@ -162,6 +176,158 @@ class SemanticQueryPacketSchemaTests(unittest.TestCase):
         }
         self.assertEqual([], self.validation_errors(packet))
 
+    def test_projection_rejects_owner_name_routing_action(self) -> None:
+        packet = semantic_query_minimal_packet()
+        packet["matches"][0]["projection"] = {  # type: ignore[index]
+            "mode": "compact",
+            "syntax": "semantic-outline",
+            "sourceAuthority": "native-parser",
+            "losslessStructure": True,
+            "exactRead": "src/lib.rs:6:6",
+            "expandActions": [
+                {
+                    "kind": "owner-names",
+                    "target": "src/lib.rs",
+                    "reason": "return owner-local item names without code windows",
+                }
+            ],
+        }
+
+        errors = self.validation_errors(packet)
+
+        self.assertNotEqual([], errors)
+
+    def test_projection_exact_read_action_requires_read_locator(self) -> None:
+        packet = semantic_query_minimal_packet()
+        packet["matches"][0]["projection"] = {  # type: ignore[index]
+            "mode": "compact",
+            "syntax": "semantic-outline",
+            "sourceAuthority": "native-parser",
+            "losslessStructure": True,
+            "exactRead": "src/lib.rs:6:6",
+            "expandActions": [
+                {
+                    "kind": "exact-read",
+                    "target": "load",
+                    "reason": "read exact source before editing",
+                }
+            ],
+        }
+
+        errors = self.validation_errors(packet)
+
+        self.assertNotEqual([], errors)
+
+    def test_projection_hot_block_action_requires_read_locator(self) -> None:
+        packet = semantic_query_minimal_packet()
+        packet["matches"][0]["projection"] = {  # type: ignore[index]
+            "mode": "compact",
+            "syntax": "semantic-outline",
+            "sourceAuthority": "native-parser",
+            "losslessStructure": True,
+            "exactRead": "src/lib.rs:6:6",
+            "expandActions": [
+                {
+                    "kind": "hot-block",
+                    "target": "load:branch",
+                    "reason": "expand hot control-flow block",
+                }
+            ],
+        }
+
+        errors = self.validation_errors(packet)
+
+        self.assertNotEqual([], errors)
+
+    def test_projection_node_query_action_requires_argv(self) -> None:
+        packet = semantic_query_minimal_packet()
+        packet["matches"][0]["projection"] = {  # type: ignore[index]
+            "mode": "compact",
+            "syntax": "semantic-outline",
+            "sourceAuthority": "native-parser",
+            "losslessStructure": True,
+            "exactRead": "src/lib.rs:6:6",
+            "expandActions": [
+                {
+                    "kind": "node-query",
+                    "target": "load:branch",
+                    "reason": "expand node through provider query",
+                }
+            ],
+        }
+
+        errors = self.validation_errors(packet)
+
+        self.assertNotEqual([], errors)
+
+    def test_projection_node_query_action_rejects_empty_argv(self) -> None:
+        packet = semantic_query_minimal_packet()
+        packet["matches"][0]["projection"] = {  # type: ignore[index]
+            "mode": "compact",
+            "syntax": "semantic-outline",
+            "sourceAuthority": "native-parser",
+            "losslessStructure": True,
+            "exactRead": "src/lib.rs:6:6",
+            "expandActions": [
+                {
+                    "kind": "node-query",
+                    "target": "load:branch",
+                    "argv": [],
+                    "reason": "expand node through provider query",
+                }
+            ],
+        }
+
+        errors = self.validation_errors(packet)
+
+        self.assertNotEqual([], errors)
+
+    def test_projection_node_query_action_rejects_read_locator(self) -> None:
+        packet = semantic_query_minimal_packet()
+        packet["matches"][0]["projection"] = {  # type: ignore[index]
+            "mode": "compact",
+            "syntax": "semantic-outline",
+            "sourceAuthority": "native-parser",
+            "losslessStructure": True,
+            "exactRead": "src/lib.rs:6:6",
+            "expandActions": [
+                {
+                    "kind": "node-query",
+                    "target": "load:branch",
+                    "read": "src/lib.rs:6:6",
+                    "argv": ["rs-harness", "search", "owner", "src/lib.rs", "items", "."],
+                    "reason": "node queries must use provider argv, not read locators",
+                }
+            ],
+        }
+
+        errors = self.validation_errors(packet)
+
+        self.assertNotEqual([], errors)
+
+    def test_compact_projection_requires_navigation_metadata(self) -> None:
+        packet = semantic_query_minimal_packet()
+        packet["matches"][0]["projection"] = {  # type: ignore[index]
+            "mode": "compact",
+            "syntax": "semantic-outline",
+            "sourceAuthority": "native-parser",
+        }
+
+        errors = self.validation_errors(packet)
+
+        self.assertNotEqual([], errors)
+
+    def test_compact_projection_node_requires_native_identity_metadata(self) -> None:
+        for field_name in ("nativeId", "structuralFingerprint"):
+            with self.subTest(field_name=field_name):
+                packet = semantic_query_minimal_packet()
+                node = packet["matches"][0]["projection"]["nodes"][0]  # type: ignore[index]
+                del node[field_name]  # type: ignore[index]
+
+                errors = self.validation_errors(packet)
+
+                self.assertNotEqual([], errors)
+
     def test_compact_match_can_declare_patch_verify_safety(self) -> None:
         packet = semantic_query_minimal_packet()
         packet["patchSafety"] = {
@@ -179,6 +345,7 @@ class SemanticQueryPacketSchemaTests(unittest.TestCase):
                 "itemName": "load",
                 "itemKind": "fn",
             },
+            "preimageSource": "exact-read",
             "sourceFingerprint": "sha256:abc123",
             "parserVersion": "rust:rust-lang-project-harness",
             "allowedOperations": ["replace_statement", "append_to_block"],
@@ -186,6 +353,25 @@ class SemanticQueryPacketSchemaTests(unittest.TestCase):
         }
 
         self.assertEqual([], self.validation_errors(packet))
+
+    def test_patch_verify_safety_requires_exact_read_preimage_source(self) -> None:
+        packet = semantic_query_minimal_packet()
+        packet["matches"][0]["patchSafety"] = {  # type: ignore[index]
+            "level": "patch-verify-safe",
+            "target": {
+                "ownerPath": "src/lib.rs",
+                "locator": "src/lib.rs#fn:load",
+                "read": "src/lib.rs:6:6",
+                "location": {"path": "src/lib.rs", "lineRange": "6:6"},
+            },
+            "sourceFingerprint": "sha256:abc123",
+            "parserVersion": "rust:rust-lang-project-harness",
+            "allowedOperations": ["replace_statement"],
+        }
+
+        errors = self.validation_errors(packet)
+
+        self.assertNotEqual([], errors)
 
     def test_patch_verify_safety_rejects_start_line_end_line(self) -> None:
         packet = semantic_query_minimal_packet()
@@ -199,6 +385,7 @@ class SemanticQueryPacketSchemaTests(unittest.TestCase):
                 "startLine": 6,
                 "endLine": 6,
             },
+            "preimageSource": "exact-read",
             "sourceFingerprint": "sha256:abc123",
             "parserVersion": "rust:rust-lang-project-harness",
             "allowedOperations": ["replace_statement"],

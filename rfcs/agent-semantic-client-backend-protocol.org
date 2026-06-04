@@ -1,0 +1,981 @@
+#+TITLE: RFC: Agent Semantic Client Backend Protocol
+#+AUTHOR: agent-semantic-protocols
+#+DATE: 2026-06-02
+#+STATUS: draft
+#+RFC: 008
+#+DEPENDS: rfcs/code-intelligence-lane.org (003), rfcs/cli-first-harness-ux.org (005)
+#+SEE_ALSO: rfcs/agent-hook-interception-protocol.org - hook routing over provider manifests.
+#+SEE_ALSO: rfcs/semantic-ast-apply-patch-protocol.org (007) - shared binary growth path.
+#+SEE_ALSO: rfcs/agent-compact-graph-feature.org (006) - shared compact graph render contract.
+
+* One-sentence summary
+
+=agent-semantic-client= is the local-first agent client over native semantic
+language providers.  It exposes one stable =asp= command surface while routing
+to local provider CLIs, Cloud Flight, or both behind the same compact prompt
+contract.
+
+* Motivation
+
+The current protocol has two intentionally separate ideas:
+
+- RFC 005 makes the language harness CLI the public agent protocol for
+  =search=, =query=, =check=, and =agent=.
+- RFC 003 describes typed Flight lanes for high-performance code intelligence.
+
+The next product step needs a bridge between them.  Agents need one
+cross-language client that can cache repeated semantic search, route to the
+right provider, render compact output, write machine artifacts, and optionally
+use a paid or enterprise Cloud Flight backend.  That bridge must not make Codex
+learn two command families or turn cloud service availability into a
+precondition for local semantic search.
+
+The user-visible rule is:
+
+#+begin_example
+Codex / agent sees: asp search, asp query, asp check, asp doctor
+Routing mode: local CLI, local SQLite client DB, Cloud Flight, or hybrid, selected by config
+Fact authority: native language providers under languages/ or provider repos
+Prompt output: compact text by default
+Machine output: compact JSON artifacts and local SQL rows outside the prompt; Arrow/Flight is a server/cloud capability
+#+end_example
+
+* Design decisions
+
+1. /Native parser authority is non-negotiable./  Rust =syn= / compiler facts,
+   the TypeScript Compiler API, Python =ast=, JuliaSyntax, and equivalent
+   language-owned implementations are the source of search/query/check facts.
+   =agent-semantic-client= coordinates providers; it must not infer semantic facts
+   from raw text, cached rows, cloud index rows, or backend-specific ranking.
+
+2. /One client core, multiple execution capabilities./  =agent-semantic-client=
+   owns routing, cache, compact rendering, artifacts, and execution-route
+   selection.  It is not two separate clients named local and cloud.
+
+3. /Local-first remains the community default./  The local client works with
+   installed provider CLIs such as =ts-harness=, =rs-harness=, and
+   =py-harness=, but the default agent-facing command surface is the
+   =asp <language>= facade for =search=, =query=, =check=,
+   =agent guide=, and bounded provider-native surfaces such as =ast-patch= and
+   =evidence=.  It must not require the private server submodule, Arrow Flight,
+   cloud auth, or a network connection.
+
+4. /Cloud is an optional backend, not a new agent protocol./  Paid or
+   enterprise users may enable =CloudFlightBackend=.  The commands and compact
+   stdout remain the same.  Cloud results must still be derived from
+   provider-owned native parser packets or native index exports.
+
+4a. /agent semantic client brand belongs to client/backend, not the hook runtime./
+   =asp= and =agent-semantic-client-*= name the product-facing local/cloud client
+   layer.  =agent-semantic-protocol= remains the shared protocol facade and
+   renderer owner; =agent-semantic-hook= remains the platform hook runtime and
+   classifier.  New client/cache/receipt schemas use the =agent-semantic-client-*=
+   prefix so client-backend contracts do not drift into a second client
+   namespace.
+
+5. /Provider CLIs remain parser authority./  Rust, TypeScript, Python, and
+   workspace-managed Julia providers own native parser facts, project config,
+   owner graphs, item queries, policy checks, and compact code projection.
+   =agent-semantic-client= must not recreate language semantics from text.
+
+6. /Execution-route selection is not a search flag./  Normal agent search commands do
+   not accept a shared =--backend= flag.  Backend mode is configuration and
+   diagnostics state.  This preserves RFC 005's intent-level command surface.
+
+7. /Compact text is the prompt surface./  Agents should not request provider
+   JSON during interactive exploration.  =agent-semantic-client= may use structured
+   provider packets internally for cache and artifacts, then render compact
+   text to stdout.
+
+8. /Compact graph rendering is shared protocol logic./  Native providers emit
+   schema-valid search/query packets and parser-owned facts.  The compact graph
+   projection is implemented by =agent-semantic-protocol= and invoked by
+   =agent-semantic-client= during response normalization.  Language providers under
+   =languages/= integrate through the =asp graph render=
+   shell-out boundary and must not depend on the renderer crate.  The target hot
+   path is Rust-side agent semantic client cache/query/render over validated provider artifacts,
+   not provider-local renderer libraries.
+
+9. /The protocol language facade is a seed for LocalNativeCliBackend, not the
+   cache engine./  =asp rust search ...=,
+   =asp typescript query ...=, and
+   =asp python check ...= read project activation, select
+   the activated provider, and exec the provider-owned command.  They do not
+   infer facts, own cache invalidation, or implement Flight routing.  The
+   durable turbo path remains =agent-semantic-client=: check validated cache rows,
+   call the native provider only on miss or stale generation, validate packets,
+   and render through shared protocol logic.
+
+10. /Provider export and client cache are global, not Julia-only./  Every native
+   provider may expose machine index exports derived from its parser-owned
+   facts.  =agent-semantic-client= validates those exports, writes normalized cache
+   rows, and serves repeated search/query from the Rust client hot path.  Julia
+   is the first high-pressure proof because process start-up is expensive, but
+   the design applies to Rust, TypeScript, Python, Julia, and future providers.
+
+11. /Avoid generic fallback language./  Hybrid mode may reroute because a cache
+   entry is missing, a cloud endpoint is unavailable, or policy disallows
+   upload.  That is availability routing.  It is not semantic fallback,
+   parser widening, lexical rescue, or a license for the client to invent facts.
+   If no native provider can prove the requested fact, the client returns a
+   visible miss or unsupported-method receipt.
+
+* Architecture
+
+#+begin_example
+Codex / user
+  |
+  v
+asp CLI command surface
+  |
+  v
+agent-semantic-client core
+  |-- provider registry
+  |-- local SQLite client DB
+  |-- compact graph renderer adapter (agent-semantic-protocol)
+  |-- artifact and receipt store
+  `-- execution router
+       |-- LocalNativeCliBackend
+       |    |-- ts-harness CLI
+       |    |-- rs-harness CLI
+       |    `-- py-harness CLI
+       |
+       `-- CloudFlightBackend
+           `-- private agent-semantic-server repo or submodule
+                 |-- cloud semantic index
+                 |-- Arrow Flight routes
+                 |-- ranking and graph algorithms
+                 `-- cross-repo or team cache
+#+end_example
+
+The command surface is deliberately boring:
+
+#+begin_src shell
+asp guide
+asp doctor
+asp providers
+asp search workspace "ParserService cacheDir"
+asp search owner src/services/parser/ParserService.ts
+asp query src/services/parser/ParserService.ts --term ParserService
+asp check
+asp cache status
+asp cache prime --language typescript
+asp cloud login
+asp cloud enable --mode semantic-index
+asp cloud status
+#+end_src
+
+The short =asp= command is the agent-facing UX name.  The implementation must
+not force all behavior into one crate.  A thin CLI may route into smaller
+crates, but parser, cache, local CLI execution, Flight client, server, and hook
+logic must keep separate ownership boundaries.
+
+* Role split
+
+| Component | Owns |
+|-----------+------|
+| =ts-harness=, =rs-harness=, =py-harness= | native parser facts, provider commands, schema-valid search/query/check packets and provider-native receipts |
+| workspace-managed Julia provider | JuliaSyntax-native facts, explicit workspace-managed evidence, index exports for cache refresh, not global bin parity |
+| =agent-semantic-protocol= | shared schemas/receipts, compact graph render algorithm, graph render validation, provider shell-out =graph render= CLI |
+| =agent-semantic-hook= | agent platform event classification and provider route guidance |
+| =agent-semantic-client= | cross-language routing, execution-route choice, cache, renderer invocation, artifacts |
+| =tao3k/agent-semantic-protocols-server= | private optional high-performance index, Cloud Flight routes, org/team cache |
+
+=agent-semantic-client= is not a replacement for language harnesses.  It calls them
+locally or consumes their cloud-indexed facts remotely.
+
+The Cloud server implementation is not part of the open protocol/client
+surface.  =tao3k/agent-semantic-protocols-server= is a private repository.  It
+may be checked out as an optional git submodule for integrated development and
+Cloud sandtable runs, but the public protocol/client workspace must build,
+test, and support local mode without that submodule.
+
+* Implementation topology
+
+The architecture should be implemented as a small crate graph, not a single
+catch-all crate:
+
+#+begin_example
+crates/
+  agent-semantic-protocol/        shared command facade, schema/receipt validation, graph renderer
+  agent-semantic-hook/            platform hook runtime and classifier
+  agent-semantic-client-core/         request model, provider registry, execution router
+  agent-semantic-client-db/           SQLite client DB, cache generations, provenance, invalidation
+  agent-semantic-client-local-cli/    native provider CLI execution
+  agent-semantic-client-flight/       Arrow Flight client and upload receipts
+
+optional private submodule:
+  servers/agent-semantic-protocols-server/  git@github.com:tao3k/agent-semantic-protocols-server.git
+#+end_example
+
+Language-native parser implementations stay in the language provider projects
+under =languages/= or their provider repositories.  The agent-semantic-client crates may depend
+on shared packet schemas and provider registry descriptors, but they must not
+link language parser implementations into the client core.  This keeps the
+client deployable, keeps provider ownership clear, and prevents a cloud/cache
+crate from becoming an accidental semantic engine.
+
+The intended dependency direction is:
+
+#+begin_example
+asp CLI
+  -> agent-semantic-client-core
+       -> agent-semantic-client-db
+       -> agent-semantic-client-local-cli
+       -> agent-semantic-client-flight
+       -> agent-semantic-protocol schemas/receipts/graph-render
+
+private server submodule or sibling checkout
+  -> agent-semantic-protocol schemas/receipts/graph-render
+  -> cloud storage / Flight runtime
+
+language providers
+  -> agent-semantic-protocol schemas
+  -> their native parser stack
+#+end_example
+
+There must be no reverse dependency from provider parser implementations into
+the client core.  Providers can expose CLI commands, registry descriptors, and
+index exports; the client consumes those contracts.
+
+There must also be no required dependency from the open protocol/client crates
+to the private server submodule.  Cloud client code may define the Flight
+client protocol and upload receipts in the open workspace, but server runtime,
+storage engines, ranking services, billing/auth integration, and enterprise
+deployment code belong in =tao3k/agent-semantic-protocols-server=.  CI and
+sandtables that require this private submodule must be explicitly labeled and
+skipped when the submodule is absent.
+
+* Execution adapter contract
+
+The client core depends on an execution backend trait shaped like:
+
+#+begin_src text
+ExecutionBackend.call(method, request) -> SemanticResponse
+#+end_src
+
+Where =method= is one of the shared agent-facing methods:
+
+#+begin_example
+search/workspace
+search/owner
+search/fzf
+search/ingest
+query/owner-item
+query/direct-source-read
+check/changed
+check/full
+provider/guide
+provider/registry
+#+end_example
+
+Execution backends may return structured packets, SQLite cache references,
+Cloud Arrow batches, or compact text plus receipt metadata.  Every response
+must carry native-provider provenance.  The client core normalizes the response
+into:
+
+- compact graph stdout for the agent through the shared
+  =agent-semantic-protocol= renderer;
+- schema-valid artifacts for tests, receipts, and cache;
+- command receipts that explain which execution route was used and why.
+
+** Compact graph render normalization
+
+Compact graph rendering is a response-normalization step, not a provider-owned
+semantic step.  Native providers and cloud/cache backends return
+=semantic-search-packet=, =semantic-query-packet=, or validated index rows with
+native-provider provenance.  The client then invokes the shared graph renderer
+owned by =agent-semantic-protocol=:
+
+#+begin_example
+provider packet or cache rows
+  -> validate shared/provider schemas
+  -> normalize into semantic-search-packet or query packet artifact
+  -> asp graph render
+  -> compact graph stdout
+  -> client receipt with route/cache/render metrics
+#+end_example
+
+The language-provider adapter is a process boundary:
+
+#+begin_src shell
+asp graph render --packet - --view seeds
+#+end_src
+
+All providers under =languages/= use that shell-out boundary when they need the
+shared prompt-facing renderer.  They must not add a compile-time dependency on
+=agent-semantic-protocol= for graph rendering, including
+=languages/rust-lang-project-harness=.  In local-cache and cloud-cache hit
+paths, =agent-semantic-client= may call the Rust graph-render library directly over
+validated packet artifacts or cache rows.  That makes provider process startup
+and renderer process startup avoidable on repeated searches without coupling
+language harness builds to the protocol crate.
+
+Providers must not keep independent prompt-facing graph renderers once the
+shared renderer covers their packet shape.  They may keep adapter code that
+builds the packet and invokes =asp graph render=.
+The renderer must not infer owners, symbols, tests, dependencies, or relations
+from text; every rendered node, edge, rank, frontier, profile, omit, or avoid
+fact must be present in the validated packet or cache row provenance.  Provider
+packets and cache artifacts use one canonical schema vocabulary; the renderer
+must not accept provider-specific field aliases such as =locator= versus
+=read=, because alias compatibility hides packet drift and makes agent semantic client cache
+rows ambiguous.
+
+** LocalNativeCliBackend
+
+Local mode shells out to installed native provider CLIs by reading the provider
+registry and project activation.  It must prefer provider JSON or packet export
+only for machine reuse.  The user-facing output remains compact text.
+
+The first implementation checkpoint is a protocol-owned transparent facade:
+
+#+begin_src shell
+asp rust search prime --view seeds .
+asp typescript query --from-hook direct-source-read --selector src/cli.ts .
+asp python check --changed .
+asp rust ast-patch dry-run --packet semantic-ast-patch.json .
+#+end_src
+
+This facade is deliberately smaller than =agent-semantic-client=.  It reads
+=.cache/agent-semantic-protocol/hooks/activation.json=, selects the activated provider by
+canonical =languageId=, applies =providerCommandPrefix= if configured, and
+execs =search=, =query=, =check=, =agent guide=, =ast-patch=, or =evidence=.
+The advanced provider-native surfaces are explicit allow-list entries, not an
+open provider command tunnel.  It preserves provider stdout/stderr and
+parser-owned semantics.  It must not add compatibility aliases such as =rs=,
+=ts=, or =py=, and it must not add a Julia global binary facade.  Julia stays
+workspace-managed until the agent semantic client cache path can avoid short-lived Julia startup
+on repeated search.
+
+Local flow:
+
+#+begin_example
+asp search workspace "ParserService cacheDir"
+  -> resolve project and provider set
+  -> check local cache
+  -> on exact cache hit: render compact graph output through shared renderer
+  -> on cache miss: call provider CLI
+  -> validate provider packet
+  -> update SQLite client DB rows and artifacts
+  -> render compact graph output through shared renderer
+#+end_example
+
+Provider command construction must remain registry-owned.  =agent-semantic-client=
+must not invent provider commands from string templates when a registry
+descriptor exists.  A cache miss always delegates to a native provider or
+returns a visible miss.  It must not trigger generic text search inside the
+client.
+
+*** Receipt stream contract
+
+The prompt stream and machine receipt stream are separate protocol surfaces.
+For interactive agent output, provider stdout remains the compact prompt
+surface.  Provider stderr may be passed through only when the caller did not
+request a machine receipt.
+
+When =--receipt-json= is set:
+
+- stdout is reserved for provider compact stdout;
+- stderr is reserved for exactly one =agent-semantic-client-receipt.v1= JSON
+  object;
+- provider stderr is captured for =stderrBytes= and per-command
+  =providerCommands[].stderrBytes=, but is not replayed into the stderr stream;
+- non-zero provider exit still returns the provider exit code after the receipt
+  is emitted.
+
+This keeps validators, IDE integrations, sandtables, and cache calibration from
+having to parse an ad hoc mixed stream.  Humans who need raw provider stderr can
+rerun the same command without =--receipt-json=.
+
+** CloudFlightBackend
+
+Cloud mode calls the private server implementation through Arrow Flight.  The
+server provides high-performance lookup over native-provider index rows, remote
+ranking, cross-repo search, team cache, and optional Julia or graph-heavy
+ranking engines.  Cloud must not become a second parser implementation unless
+it is running the same language-owned provider code or consuming its exported
+native facts.
+
+The agent command does not change:
+
+#+begin_src shell
+asp search workspace "ParserService cacheDir"
+#+end_src
+
+Only the execution route changes:
+
+#+begin_example
+LocalNativeCliBackend -> CloudFlightBackend
+#+end_example
+
+Cloud routes are machine routes, not prompt routes:
+
+#+begin_example
+DoExchange /search
+DoExchange /query
+DoExchange /check
+DoPut      /index/upload
+DoGet      /artifact/{id}
+Action     health
+Action     invalidate_project
+#+end_example
+
+** Hybrid mode
+
+Hybrid mode is the recommended paid default:
+
+#+begin_src toml
+[agent-semantic-client.backend]
+mode = "hybrid" # local | cloud | hybrid
+
+[agent-semantic-client.hybrid]
+local_cache_first = true
+cloud_lookup_on_cache_miss = true
+local_native_on_cloud_unavailable = true
+upload_policy = "semantic-index"
+#+end_src
+
+Flow:
+
+#+begin_example
+asp search
+  -> local SQLite client DB hit?
+       yes: render local compact output
+       no:
+         -> cloud enabled and allowed?
+              yes: CloudFlight query, write local SQLite cache, render compact output
+              no: LocalNativeCliBackend, write local SQLite cache, render compact output
+#+end_example
+
+This is availability routing.  It must be recorded as cache/cloud/local-native
+route selection in the client receipt, never as a semantic fallback.  Semantic
+misses remain provider-owned misses.
+
+* Local cache contract
+
+The local cache is the community edition's main performance asset.  Flight is
+not required for repeated searches to improve.
+
+Recommended layout:
+
+#+begin_example
+$PRJ_HOME_CACHE/agent-semantic-protocol/
+  hooks/
+    activation.json
+  client/
+    cache-manifest.json
+    client.sqlite3
+  artifacts/
+    search/<id>.json
+    query/<id>.json
+    check/<id>.json
+    prompt-output/<id>.txt
+#+end_example
+
+Cache rows must be derived from provider-owned packets or provider-owned index
+exports.  The client DB uses SQLite by default so the local client can do
+indexed SQL lookups without Arrow, Flight, DataFusion, or a server runtime.
+The client may denormalize SQL rows for speed, but each row should retain
+enough provenance to answer:
+
+- which provider emitted the fact;
+- which schema version validated it;
+- which project root and package root it belongs to;
+- which file hash or index generation it depends on;
+- whether raw source was involved;
+- which compact artifact or receipt was rendered from it.
+
+The default cache must not store raw source files.  Exact source windows remain
+provider query results and may appear only in bounded artifacts when the user or
+platform explicitly allows them.
+
+** Global provider export/cache model
+
+The local cache model is language-neutral.  Native providers export parser-owned
+facts and packet artifacts; =agent-semantic-client= validates those artifacts,
+normalizes them into SQLite rows, and serves repeated agent requests from the
+Rust client DB when the cache generation is fresh.
+
+The global execution shape is:
+
+#+begin_example
+asp search/query/check
+  -> resolve project and provider registry
+  -> check local cache generation for project root / provider / schema version
+  -> on cache hit:
+       Rust client queries validated cache rows
+       Rust client renders compact output and receipt
+  -> on cache miss or stale generation:
+       call registry-advertised native provider export or packet command
+       validate provider-owned facts against shared/provider schemas
+       write normalized SQLite rows and receipt artifacts
+       render compact output from validated rows
+#+end_example
+
+The explicit cache maintenance commands are:
+
+#+begin_example
+asp cache status
+  -> inspect cache-manifest.json and client.sqlite3
+  -> do not spawn native providers
+  -> emit method=cache-status receipt
+
+asp cache import
+  -> validate provider-owned cache-manifest.json
+  -> write normalized generation rows into client.sqlite3
+  -> do not spawn native providers or synthesize provider facts
+  -> emit method=cache-import receipt
+#+end_example
+
+SQLite cache keys use normalized project roots so a workspace reached through
+equivalent paths, for example =/var= and =/private/var= on macOS, does not split
+the same provider generation.  During the first client DB phase, =asp
+search/query/check= probes these generation rows before invoking the native
+provider.  A matching generation marks the local-native receipt as
+=cacheStatus=warm-provider= and still spawns the provider when generation rows
+alone are not enough to replay compact output.  =cacheStatus=hit= is allowed
+only when the generation references a replayable provider-owned artifact.  In
+the first implementation, the only directly replayable artifact class is
+=prompt-output/*.txt= under the protocol artifact root; packet JSON artifacts
+remain provenance until the shared renderer can reconstruct the same compact
+stdout from them.
+
+The Rust client may build denormalized owner, symbol, native fact, handle,
+diagnostic, search packet, and query packet SQL tables from provider exports.  It
+must not parse language source, reconstruct language semantics from text, or
+invent facts that the native provider did not emit.  Cache rows must retain
+native provenance:
+
+- stable language id and provider id;
+- provider version and export method;
+- schema id/version used to validate the export;
+- project root, package root, and file hashes;
+- whether raw source or source windows were involved;
+- source packet or artifact id used to derive the cache row.
+
+Provider-specific fields belong in provider-owned sub-schemas advertised by the
+registry.  Do not widen =semantic-search-packet.v1= only to support a cache
+optimization.
+
+** Julia warm-up adaptation
+
+Julia is the first local-mode proof where the global cache is required for
+acceptable agent latency rather than only a convenience.  A short-lived Julia
+process pays LLVM/JIT and package loading cost even when the underlying search
+is small.  Therefore the =asp= hot path for Julia must be the global Rust-side
+cache/query/render path, with Julia invoked only to refresh parser-owned facts.
+
+The execution shape is:
+
+#+begin_example
+asp search fzf "parser"
+  -> resolve workspace-managed Julia provider
+  -> check local cache generation for project root / schema / provider version
+  -> on cache hit:
+       Rust client queries cached native fact rows
+       Rust client renders compact search output and receipt
+  -> on cache miss or stale generation:
+       call julia --project=languages/JuliaLangProjectHarness.jl \
+         languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl
+       request provider-owned index export
+       validate export against shared schema
+       write SQLite cache generation
+       render compact output from the validated rows
+#+end_example
+
+The initial Julia export should reuse the shared native fact/index contracts
+where possible, such as =semantic-native-syntax-fact-index= inside validated
+search/query artifacts.  If Julia needs fields that cannot be represented
+without language leakage, define a provider-owned Julia sub-schema and advertise
+it through the provider registry.  Do not change
+=semantic-search-packet.v1= in place for this optimization.
+
+This adaptation does not make Julia a bin-parity target and does not make Rust
+the Julia parser.  The provider command remains workspace-managed.  =asp= is
+the stable agent command; Julia is a native fact refresh backend for the global
+cache model.
+
+* Performance calibration
+
+Performance is a protocol surface because the main product value is reducing
+repeated agent search loops without weakening native parser authority.  The
+client must measure and optimize around provider-owned facts, not add private
+text heuristics.
+
+The calibration ladder is:
+
+1. /Cold native baseline./  Measure each provider command with no reusable
+   client cache.  The provider may still use its own parser or daemon cache,
+   but the receipt must mark the client cache as cold.
+2. /Warm native baseline./  Repeat the same command after provider-native
+   parser caches are warm.  This separates language parser cost from agent semantic client
+   cache cost.
+3. /Client cache hit./  Replay the same request from local SQLite rows and
+   prove that the compact output is derived from schema-valid provider packets
+   or provider index exports.
+4. /Cloud semantic lookup./  For enabled cloud modes, measure query latency,
+   upload bytes, and local cache write-back while preserving the same compact
+   prompt shape.
+5. /Hybrid availability routing./  Disable or reject cloud and prove the
+   client routes back to native provider CLI execution without changing search
+   semantics or calling generic text search.
+
+Every measurement should record:
+
+- =route= as one of =local-native=, =local-cache=, =cloud-flight=, or
+  =hybrid-reroute=;
+- provider id, language id, schema ids, packet ids, and native parser
+  provenance;
+- cache status: =cold=, =warm-provider=, =hit=, =miss=, =stale=, or
+  =invalidated=;
+- elapsed time split into client routing, provider command, cloud request,
+  cache read/write, validation, and compact render where available;
+- provider command count and provider processes spawned;
+- stdout bytes, compact output bytes, packet bytes, SQLite read/write counts,
+  and upload bytes;
+- source file count, changed file count, and invalidation reason;
+- repeated-trigger grouping key so repeated agent searches can be merged or
+  query-set optimized later.
+
+The client may optimize:
+
+- exact cache hits over validated provider packets;
+- provider process spawn reduction through command batching when registry
+  descriptors advertise equivalent native methods;
+- SQL index selection for owner, symbol, handle, and native syntax fact
+  queries;
+- compact render reuse from artifact ids;
+- cloud write-back into local cache after semantic-index hits;
+- upload deduplication by provider packet id or file hash.
+
+The client must not optimize by:
+
+- treating cached lexical text as a semantic fact;
+- widening a miss into raw grep/fzf without an explicit provider =search fzf=
+  or =search ingest= route;
+- inventing owner, symbol, test, policy, or graph facts from SQL row names;
+- accepting a cloud ranking result that lacks provider packet provenance;
+- hiding stale-cache or invalidation failures behind a successful compact
+  render.
+
+Calibration targets should be expressed as budgets, not guesses.  Initial
+budgets belong in sandtable scenarios and can be tightened after real-project
+evidence:
+
+#+begin_example
+local-cache-hit:
+  providerCommandsAvoided >= 1
+  compactOutputParity = true
+  nativeProvenancePresent = true
+  staleHitCount = 0
+
+repeated-search:
+  repeatedTriggerGroupCount decreases
+  commandCount decreases
+  packetBytes does not increase without new evidence
+
+hybrid-cloud-unavailable:
+  route = hybrid-reroute
+  semanticWidening = false
+  clientInventedFacts = false
+  finalNativeProvider = present
+  compactOutputParityWithLocalNative = true
+#+end_example
+
+Performance claims are not accepted until they pass the same representative
+real-project loop used for search protocol changes: command count, packet size,
+latency, repeated-trigger patterns, missing facts, and confusing next actions
+must be captured before provider behavior is optimized.
+
+* Configuration
+
+Backend configuration lives in user or project config.  Agent search commands
+stay stable.
+
+#+begin_src toml
+[agent-semantic-client.backend]
+mode = "local"
+
+[agent-semantic-client.local]
+providers = ["ts-harness", "rs-harness", "py-harness"]
+
+[agent-semantic-client.cloud]
+endpoint = "grpc+tls://api.agent-semantic-protocols.dev:443"
+auth = "device"
+
+[agent-semantic-client.privacy]
+upload_policy = "none" # none | semantic-index | source-index
+#+end_src
+
+Project config may narrow providers or cloud policy.  User config may carry
+credentials.  A project must be able to force =mode = "local"= or
+=upload_policy = "none"= for private or offline work.
+
+* Privacy modes
+
+** Mode A: local-only
+
+#+begin_example
+No cloud connection.
+No upload.
+Local provider CLIs plus local SQLite client DB only.
+#+end_example
+
+This mode is the default for community, open-source, personal, and offline
+work.
+
+** Mode B: cloud-semantic-index
+
+#+begin_example
+Upload provider-generated semantic packets or index rows.
+Do not upload raw source by default.
+Cloud handles ranking, search, cache, and cross-project retrieval.
+#+end_example
+
+Allowed examples:
+
+#+begin_example
+SQLite owner/symbol/native_syntax_fact/semantic_handle/diagnostic rows
+search/query/check receipts
+#+end_example
+
+Disallowed by default:
+
+#+begin_example
+raw source file
+full source windows
+private stdout/stderr content
+unredacted command arguments containing secrets
+#+end_example
+
+** Mode C: cloud-source-index
+
+#+begin_example
+Explicit opt-in.
+Source or source windows may be uploaded for full code intelligence.
+Appropriate for self-hosted enterprise or clearly authorized cloud indexing.
+#+end_example
+
+The mode must be visible in =asp cloud status= and in upload receipts.
+
+* Hook and skill contract
+
+Codex hooks and project skills should not need to know whether local or cloud
+handled a request.  They should guide inefficient behavior to the stable
+command surface:
+
+#+begin_example
+asp search workspace "<query>"
+asp search owner <path>
+asp query <owner-path> --term <symbol>
+asp check
+#+end_example
+
+Hooks still block raw source dumps, broad source searches, and interactive
+agent requests for provider JSON.  If a hook denial recommends =asp=, the
+client must render compact output.  It must not respond with pretty JSON, full
+AST dumps, or raw source.
+
+* Schema impact
+
+This RFC intentionally changes the client execution layer before provider
+implementation.  The next schema step should add shared machine contracts for
+client-side state, while keeping existing search/query packets stable and
+making native-provider provenance explicit:
+
+- =agent-semantic-client-config.v1= for route mode, provider set, privacy
+  mode, and cloud endpoint references.
+- =agent-semantic-client-cache-manifest.v1= for cache generations, provider
+  packet provenance, native parser provenance, file hashes, and schema
+  versions.
+- =agent-semantic-client-receipt.v1= for execution-route selection, cache
+  hit/miss, provider command count, cloud request id, upload policy, native
+  provenance, compact artifact ids, and performance calibration metrics.
+- =semantic-compact-graph-render.v1= owns the shared renderer contract:
+  renderer owner, =asp graph render= migration adapter,
+  Rust library hot path, required graph packet header, and the rule that
+  provider-local compact graph renderer implementations are replaced by packet
+  construction plus shell-out adapters rather than kept as compatibility
+  fallback.
+- Optional =semantic-cloud-index-upload.v1= for Cloud Flight upload receipts.
+
+Provider registries should also advertise explicit machine export capabilities
+needed by the cache.  Each export descriptor must list every output schema id
+used by the export, including provider-owned sub-schemas.  For Julia, the
+relevant first capability is an index export method that emits
+JuliaSyntax-owned native facts for cache refresh.  =agent-semantic-client= may only
+call registry-advertised methods; it must not synthesize provider export
+commands from string templates.
+
+These schemas must not duplicate =semantic-search-packet.v1=,
+=semantic-query-packet.v1=, or provider capability schemas.  They describe the
+client/cache/execution envelope around those packets.
+
+* Sandtable evidence
+
+Local and cloud modes require separate evidence.
+
+** Local mode evidence
+
+Scenarios should measure:
+
+- command count;
+- compact stdout bytes;
+- cache hit rate;
+- cold native baseline versus warm native baseline;
+- provider CLI calls avoided;
+- provider process spawn count;
+- cache invalidation correctness;
+- repeated search reduction;
+- packet validation results;
+- hook reroute quality.
+
+The first local scenarios should replay real provider binaries without a
+server.  They should prove that =asp <language>= and later
+=asp= do not make Codex learn =ts-harness=, =rs-harness=, or =py-harness= for
+common search/query/check and bounded provider-native flows, while still
+preserving provider-owned parser facts.
+
+Local-mode evidence for each cached provider should include both paths:
+
+- cold refresh through the native provider;
+- repeated search/query through Rust-side cache without starting the provider
+  when the provider process is not required for exact source windows or checks.
+
+Julia local-mode evidence must include both paths:
+
+- cold refresh through the workspace-managed Julia provider;
+- repeated search/query through Rust-side cache without starting Julia.
+
+The receipt should report provider command count, cache generation, cache
+hit/miss, compact stdout bytes, and elapsed time for both paths.  The target is
+not to make Julia a short-lived provider binary; the target is to prove that
+repeated Julia search avoids provider process startup while preserving
+JuliaSyntax-owned facts.
+
+** Cloud mode evidence
+
+Cloud scenarios should measure:
+
+- query latency;
+- cloud cache hit rate;
+- upload bytes by privacy mode;
+- local-native availability reroute correctness when cloud is unavailable;
+- compact output parity with local mode;
+- cache write-back after cloud hits.
+- native-provider provenance on cloud results.
+
+Cloud tests must compare prompt-facing compact output, not only Arrow batch
+shape.  Agent behavior should remain stable across backend modes.
+
+* Implementation sequence
+
+Follow the same protocol-first order used by search work:
+
+1. Finalize this RFC and the minimal cross-links in RFC 005 and RFC 006.
+2. Update =semantic-compact-graph-render.v1= so shared renderer ownership,
+   language-provider shell-out behavior, provider dependency limits, and agent semantic client
+   hot-path rendering are contract-visible.
+3. Add =asp graph render --packet <path-or-> --view seeds=
+   as the shared renderer CLI and library API.
+4. Add shared schemas for client config, cache manifest, and client receipts.
+5. Update provider registry descriptors only where =agent-semantic-client= needs
+   explicit machine packet or index-export capabilities.
+6. Replace provider-local compact graph renderers with packet construction plus
+   shell-out to =asp graph render= for every provider under
+   =languages/=.
+7. Implement the split local =asp= client crate graph and
+   =LocalNativeCliBackend=.
+8. Add local cache prime/status/invalidate commands.
+9. Add provider registry descriptors for machine index export capabilities,
+   using one shared descriptor shape across providers and starting with
+   workspace-managed Julia index export as the performance proof.
+10. Prove local Julia repeated-search acceleration through Rust-side cache before
+   adding cloud behavior.
+11. Add performance calibration receipts and local sandtable scenarios for cold
+   native, warm native, local cache hit, invalidation, and repeated
+   real-trigger searches.
+12. Implement =CloudFlightBackend= in the open client workspace and implement
+   server routes in the private =tao3k/agent-semantic-protocols-server= repo,
+   optionally mounted as =servers/agent-semantic-protocols-server=.
+13. Add cloud/hybrid sandtable evidence, availability-reroute calibration, and
+   privacy-mode upload receipts; mark private-server scenarios as requiring the
+   optional server submodule.
+14. Exercise a representative real project and feed gaps back through RFC and
+   schemas before provider optimizations.
+
+** Current local implementation checkpoint
+
+The shared compact graph renderer handoff has been implemented for the local
+provider workspace:
+
+- =asp graph render --packet - --view seeds= is available
+  as the shared renderer CLI.
+- =rs-harness=, =ts-harness=, and =py-harness= build canonical
+  =semantic-search-packet.v1= data and invoke the shared renderer through the
+  process boundary.
+- Language providers under =languages/= do not keep provider-local compact
+  graph rendering algorithms as fallback.  Their renderer code is limited to a
+  shell-out adapter plus tests for command shape, stdin packet forwarding, and
+  missing-binary failure.
+- =languages/rust-lang-project-harness= does not depend on the
+  =agent-semantic-protocol= crate for graph rendering; it uses the same process
+  boundary as TypeScript and Python.
+- =asp <rust|typescript|python> <search|query|check|agent
+  guide|ast-patch|evidence> ...= is the local transparent provider-command
+  facade.  =ast-patch= and =evidence= are bounded provider-native surfaces
+  exposed because provider guides already advertise them to agents.  This is
+  the current executable checkpoint for the future =LocalNativeCliBackend=, not
+  the final cache/Flight client.
+- Julia remains workspace-managed and out of standalone bin parity.  The agent semantic client
+  hot path for Julia is still the future Rust-side cache/query/render path over
+  validated JuliaSyntax-owned facts, not a short-lived Julia renderer binary.
+
+* Non-goals
+
+- Do not require cloud service for the normal Codex semantic search loop.
+- Do not require the private server submodule for local/community build, test,
+  install, or documentation checks.
+- Do not create separate =asp-local-search= and =asp-cloud-search= commands.
+- Do not add a shared provider =--backend= flag for normal search/query.
+- Do not replace language harness parser authority with text heuristics in the
+  client.
+- Do not expose full JSON, AST, or source as the default prompt surface.
+- Do not require a standalone Julia provider binary for bin parity.
+- Do not turn the protocol into MCP or a dynamic tool-discovery layer.
+- Do not upload source by default.
+
+* Success criteria
+
+The RFC is implemented when:
+
+- a fresh local workspace can install =asp= plus provider CLIs and run
+  =asp doctor= successfully without a server;
+- the public protocol/client workspace passes local tests when
+  =servers/agent-semantic-protocols-server= is absent;
+- =asp search=, =asp query=, and =asp check= render compact output by
+  default;
+- repeated searches use local cache and reduce provider CLI calls;
+- repeated Julia search can be served from Rust-side cache without starting a
+  Julia process, while preserving JuliaSyntax provenance;
+- performance receipts prove cold native, warm native, local cache hit, cloud,
+  and hybrid availability-reroute paths without losing native provenance;
+- machine artifacts validate against shared schemas;
+- cloud/hybrid mode changes execution route without changing agent commands;
+- privacy mode is visible in receipts and status output;
+- sandtable scenarios prove local, cloud, and cloud-unavailable recovery paths;
+- at least one real project run records command count, packet size, latency,
+  repeated-trigger reduction, and confusing next actions.
+
+* Open decisions
+
+1. Whether the installed short command is always =asp= or an alias to
+   =agent-semantic-protocol= during the first implementation, without folding
+   client/cache/Flight/server behavior into that shared command facade crate.
+2. Which SQLite table/index family ships first for client DB hits: owner/symbol
+   rows, handle rows, native syntax fact rows, or rendered packet artifact rows.
+3. Which Cloud Flight auth flow ships first: device auth, API token, or
+   enterprise mTLS.
+4. How much cache state belongs in project cache versus user cache when the
+   same repository is used by multiple agent clients.

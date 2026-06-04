@@ -2,8 +2,16 @@
   "id": "typescript.vite-intent-matrix",
   "language": "typescript",
   "title": "Vite large-library feature/API/principle intent matrix",
-  "coverage": ["search-flow", "performance", "large-library"],
-  "tags": ["large-library", "vite", "intent-matrix"],
+  "coverage": [
+    "search-flow",
+    "performance",
+    "large-library"
+  ],
+  "tags": [
+    "large-library",
+    "vite",
+    "intent-matrix"
+  ],
   "evidence": {
     "source": "handwritten",
     "fixtureTier": "large-library",
@@ -18,20 +26,35 @@
       {
         "intentKind": "feature-implementation",
         "intent": "Implement a dev-server HMR feature after locating compact owners and tests",
-        "stepIds": ["prime", "feature-hmr"],
-        "queryTerms": ["handleHotUpdate"]
+        "stepIds": [
+          "prime",
+          "feature-hmr"
+        ],
+        "queryTerms": [
+          "handleHotUpdate"
+        ]
       },
       {
         "intentKind": "api-usage",
         "intent": "Find createServer API usage and public surface owners",
-        "stepIds": ["prime", "api-create-server"],
-        "queryTerms": ["createServer"]
+        "stepIds": [
+          "prime",
+          "api-create-server"
+        ],
+        "queryTerms": [
+          "createServer"
+        ]
       },
       {
         "intentKind": "implementation-principle",
         "intent": "Understand plugin container execution flow from search packets",
-        "stepIds": ["prime", "principle-plugin-container"],
-        "queryTerms": ["pluginContainer"]
+        "stepIds": [
+          "prime",
+          "principle-plugin-container"
+        ],
+        "queryTerms": [
+          "pluginContainer"
+        ]
       }
     ]
   },
@@ -51,40 +74,79 @@
   "steps": [
     {
       "id": "prime",
-      "command": ["ts-harness", "search", "prime", "--view", "seeds", "."],
+      "command": [
+        "ts-harness",
+        "search",
+        "prime",
+        "--view",
+        "seeds",
+        "."
+      ],
       "expect": {
         "lineProtocol": true,
-        "stdoutContains": ["[search-prime]"],
+        "stdoutContains": [
+          "[search-prime]"
+        ],
         "maxStdoutLinesWarn": 16,
         "maxElapsedMsWarn": 9000
       }
     },
     {
       "id": "feature-hmr",
-      "command": ["ts-harness", "search", "text", "handleHotUpdate", "--view", "seeds", "."],
+      "command": [
+        "ts-harness",
+        "search",
+        "fzf",
+        "handleHotUpdate",
+        "--view",
+        "seeds",
+        "."
+      ],
       "expect": {
         "lineProtocol": true,
-        "stdoutContains": ["[search-fzf]"],
+        "stdoutContains": [
+          "[search-fzf]"
+        ],
         "maxStdoutLinesWarn": 14,
         "maxElapsedMsWarn": 9000
       }
     },
     {
       "id": "api-create-server",
-      "command": ["ts-harness", "search", "api", "createServer", "--view", "seeds", "."],
+      "command": [
+        "ts-harness",
+        "search",
+        "api",
+        "createServer",
+        "--view",
+        "seeds",
+        "."
+      ],
       "expect": {
         "lineProtocol": true,
-        "stdoutContains": ["[search-api]"],
+        "stdoutContains": [
+          "[search-api]"
+        ],
         "maxStdoutLinesWarn": 14,
         "maxElapsedMsWarn": 9000
       }
     },
     {
       "id": "principle-plugin-container",
-      "command": ["ts-harness", "search", "text", "pluginContainer", "--view", "seeds", "."],
+      "command": [
+        "ts-harness",
+        "search",
+        "fzf",
+        "pluginContainer",
+        "--view",
+        "seeds",
+        "."
+      ],
       "expect": {
         "lineProtocol": true,
-        "stdoutContains": ["[search-fzf]"],
+        "stdoutContains": [
+          "[search-fzf]"
+        ],
         "maxStdoutLinesWarn": 16,
         "maxElapsedMsWarn": 9000
       }

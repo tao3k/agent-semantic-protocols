@@ -7,6 +7,10 @@ import re
 from .constants import PROJECT_PATH_PATTERN, RANK_PREFIXED_PATH_PATTERN
 from .models import StepResult
 
+COMPACT_GRAPH_MICRO_LEGEND = (
+    "legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next"
+)
+
 
 def validate_line_protocol(result: StepResult, stdout: str) -> None:
     lines = [line for line in stdout.splitlines() if line.strip()]
@@ -23,14 +27,52 @@ def validate_line_protocol(result: StepResult, stdout: str) -> None:
         ):
             result.errors.append(f"line protocol stray line: {line[:80]!r}")
             return
+    _validate_compact_graph_contract(result, lines)
     _validate_line_protocol_path_values(result, lines)
 
 
+def _validate_compact_graph_contract(result: StepResult, lines: list[str]) -> None:
+    if not _requires_compact_graph_contract(result.command) and not any(
+        _is_compact_graph_line(line) for line in lines
+    ):
+        return
+    if COMPACT_GRAPH_MICRO_LEGEND not in lines:
+        result.errors.append("compact graph missing micro-legend line")
+    alias_lines = [line for line in lines if line.startswith("alias: graph:{")]
+    if not alias_lines:
+        result.errors.append("compact graph missing alias legend line")
+    elif "G=search" not in alias_lines[0]:
+        result.errors.append("compact graph alias legend missing G=search")
+    if not any(line.startswith("G>{") for line in lines):
+        result.errors.append("compact graph missing root edge line")
+    if not any(line.startswith("rank=") and " frontier=" in line for line in lines):
+        result.errors.append("compact graph missing rank/frontier line")
+    if any(line.startswith("|seed") or line.startswith("|synthesis") for line in lines):
+        result.errors.append("compact graph output must not include legacy seed/synthesis rows")
+
+
+def _requires_compact_graph_contract(command: list[str]) -> bool:
+    if "search" not in command:
+        return False
+    for index, arg in enumerate(command):
+        if arg == "--view" and index + 1 < len(command) and command[index + 1] == "seeds":
+            return True
+        if arg == "--view=seeds":
+            return True
+    return False
+
+
 def _is_compact_graph_line(line: str) -> bool:
+    if line == COMPACT_GRAPH_MICRO_LEGEND:
+        return True
     if line.startswith("alias: graph:{"):
         return _looks_like_compact_graph_legend_line(line)
     if line.startswith("rank="):
         return " frontier=" in line
+    if line.startswith("profiles="):
+        return _looks_like_compact_graph_profiles_line(line)
+    if line.startswith("omit=") or line.startswith("avoid="):
+        return _looks_like_compact_graph_csv_metadata_line(line)
     if ">{" in line and line.endswith("}"):
         return _looks_like_compact_graph_edge_line(line)
     return _looks_like_compact_graph_alias_line(line)
@@ -57,12 +99,43 @@ def _looks_like_compact_graph_edge_line(line: str) -> bool:
         return False
     edge_targets = edge_targets[:-1]
     if not edge_targets:
-        return False
+        return source == "G"
     for edge in edge_targets.split(","):
         target, sep, relation = edge.partition(":")
         if not sep or not _looks_like_compact_graph_alias_id(target):
             return False
         if not relation.replace("_", "").isalnum():
+            return False
+    return True
+
+
+def _looks_like_compact_graph_profiles_line(line: str) -> bool:
+    entries = line.removeprefix("profiles=").split("),")
+    if not entries:
+        return False
+    for index, entry in enumerate(entries):
+        if index + 1 < len(entries):
+            entry += ")"
+        profile, sep, handles = entry.partition("(")
+        if not sep or not profile or not handles.endswith(")"):
+            return False
+        if not profile.replace("-", "").replace("_", "").isalnum():
+            return False
+        handles = handles[:-1]
+        if not handles:
+            return False
+        for handle in handles.split(","):
+            if not _looks_like_compact_graph_alias_id(handle):
+                return False
+    return True
+
+
+def _looks_like_compact_graph_csv_metadata_line(line: str) -> bool:
+    _, sep, values = line.partition("=")
+    if not sep or not values:
+        return False
+    for value in values.split(","):
+        if not value.replace("-", "").replace("_", "").isalnum():
             return False
     return True
 

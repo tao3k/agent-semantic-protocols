@@ -21,11 +21,11 @@
       "id": "rtk-rust-glob-read-deny",
       "kind": "hook-replay",
       "command": [
-        "semantic-agent-hook",
+        "asp",
         "hook",
+        "pre-tool",
         "--client",
         "codex",
-        "pre-tool",
         "--emit",
         "decision"
       ],
@@ -36,7 +36,7 @@
           "decision": "deny",
           "reasonKind": "direct-source-read",
           "languageIds.0": "rust",
-          "routes.0.kind": "prime",
+          "routes.0.kind": "query",
           "routes.0.providerId": "rs-harness"
         },
         "stdoutJsonContains": {
@@ -49,11 +49,11 @@
       "id": "rtk-python-package-glob-read-deny",
       "kind": "hook-replay",
       "command": [
-        "semantic-agent-hook",
+        "asp",
         "hook",
+        "pre-tool",
         "--client",
         "codex",
-        "pre-tool",
         "--emit",
         "decision"
       ],
@@ -64,7 +64,7 @@
           "decision": "deny",
           "reasonKind": "direct-source-read",
           "languageIds.0": "python",
-          "routes.0.kind": "prime",
+          "routes.0.kind": "query",
           "routes.0.providerId": "py-harness"
         },
         "stdoutJsonContains": {
@@ -77,11 +77,11 @@
       "id": "rg-charclass-glob-deny",
       "kind": "hook-replay",
       "command": [
-        "semantic-agent-hook",
+        "asp",
         "hook",
+        "pre-tool",
         "--client",
         "codex",
-        "pre-tool",
         "--emit",
         "decision"
       ],
@@ -105,11 +105,11 @@
       "id": "rg-pattern-source-like-text-allow",
       "kind": "hook-replay",
       "command": [
-        "semantic-agent-hook",
+        "asp",
         "hook",
+        "pre-tool",
         "--client",
         "codex",
-        "pre-tool",
         "--emit",
         "decision"
       ],

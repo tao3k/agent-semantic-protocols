@@ -157,6 +157,30 @@ class SemanticLanguageRegistrySchemaTests(unittest.TestCase):
 
         self.assertIn("'outputSchemaIds' is a required property", errors)
 
+    def test_ast_patch_dry_run_method_declares_non_mutating_receipt(self) -> None:
+        registry = registry_with_descriptor(
+            {
+                "method": "ast-patch/dry-run",
+                "command": "ast-patch",
+                "input": "semantic-ast-patch packet",
+                "requiredOptions": ["--packet"],
+                "outputSchemaIds": [
+                    "agent.semantic-protocols.semantic-ast-patch-receipt"
+                ],
+                "supportsJson": True,
+                "supportsCompact": False,
+                "mutationAvailable": False,
+            },
+            schemas=[
+                {
+                    "schemaId": "agent.semantic-protocols.semantic-ast-patch-receipt",
+                    "schemaVersion": "1",
+                    "path": "schemas/semantic-ast-patch-receipt.v1.schema.json",
+                },
+            ],
+        )
+        self.assertEqual([], self.registry_validation_errors(registry))
+
     def test_query_method_can_declare_query_packet_schema(self) -> None:
         registry = registry_with_descriptor(
             {

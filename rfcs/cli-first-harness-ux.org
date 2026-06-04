@@ -7,9 +7,13 @@
 #+  defaults for the whole agent-facing =search= interface.
 #+SEE_ALSO: rfcs/semantic-ast-apply-patch-protocol.org (007) — parser-owned
 #+  structural edit receipts after =query= finds a patchable AST target.
-#+SEE_ALSO: rfcs/aslp-agent-client-backend-protocol.org (008) — one
-#+  cross-language =aslp= client surface over native provider CLI and Cloud
+#+SEE_ALSO: rfcs/agent-semantic-client-backend-protocol.org (008) — one
+#+  cross-language =asp= client surface over native provider CLI and Cloud
 #+  Flight execution routes.
+#+SEE_ALSO: rfcs/graph-reasoning-code-research.org (009) — search guide,
+#+  prime frontier, and typed reasoning profile research for large codebases.
+#+SEE_ALSO: rfcs/semantic-query-projection-protocol.org (010) — parser-owned
+#+  query projection nodes, omissions, expansion actions, and exact reads.
 
 * One-sentence summary
 
@@ -84,7 +88,7 @@ surface. Julia alignment should use the workspace-managed command
 =julia --project=languages/JuliaLangProjectHarness.jl
 languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl= and should
 not design a standalone =julia-project-harness= bin as part of provider
-alignment.  RFC 008 may let =aslp-agent-client= cache validated
+alignment.  RFC 008 may let =agent-semantic-client= cache validated
 workspace-managed Julia provider exports and serve repeated searches from the
 Rust client cache, but that cache is an execution optimization, not a new Julia
 bin-parity requirement or a Rust-owned Julia parser.
@@ -98,7 +102,7 @@ The agent sees four language-provider top-level commands:
 <lang-harness> agent ...           # agent-client install and diagnostics
 #+end_src
 
-RFC 007 adds the shared =semantic-agent-protocol ast-patch= verification path.
+RFC 007 adds the shared =asp ast-patch= verification path.
 Language providers still own AST adapters, but agents should use the shared
 binary for schema validation, receipts, and Codex-safe dry-run behavior.
 
@@ -131,7 +135,7 @@ a provider-invented =text= abstraction.  The provider still owns the pipeline:
 equivalent scorer ranks them headlessly, then the provider groups by owner,
 deduplicates, caps, and renders compact seeds.
 
-Do not expose =search text= as a compatibility view.  Exact lexical matching,
+Do not expose the old text-named compatibility view.  Exact lexical matching,
 fixed-string matching, and fuzzy matching are modes of =search fzf= or provider
 finder pipelines, not separate public views.  =search fzf= is not a language
 query: code-shaped questions, known owners, symbols, declarations, parser
@@ -190,6 +194,16 @@ Provider-native item query is the default code extraction path for agents:
 
 The language provider owns parser/AST lookup, exact item matching, multi-term
 query expressions, hook reroute normalization, and compact code rendering.
+Even when Julia stays workspace-managed rather than bin-parity, its owner-local
+item query must use this same shared =semantic-query-packet= contract for JSON
+output:
+
+#+begin_src shell
+julia --project=languages/JuliaLangProjectHarness.jl \
+  languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl \
+  query src/CliExample.jl --term run --json languages/JuliaLangProjectHarness.jl
+#+end_src
+
 For an exact =direct-source-read= selector with =--code=, the provider should
 return a bounded compact local window for that path/range, not owner metadata.
 The compact output is parser-owned code text only; the selector already carries
@@ -197,6 +211,20 @@ the path/range, so =--code= must not repeat =line= or =endLine= metadata or retu
 owner seeds.  Rust, TypeScript, Python, and Julia all use their native parser
 facts for this surface; Julia uses the workspace-managed provider command
 rather than a global short-lived binary.
+If the selector is too wide for bounded code transport, the provider returns a
+=read-plan= frontier, not a denial-only outline.  The active contract is
+=semantic-read-packet=: =readPlan.mode= is =range-frontier= or =search-repair=,
+=readPlan.frontier= names executable next actions, and =readPlan.avoid= names forbidden next actions such as =repeat-wide-read=,
+=manual-window-scan=, and =raw-read=.  A range-only plan must use =windows= and
+=frontier= entries; it must not synthesize a fake =symbol= such as
+=local-window=.  Parser-owned symbols are preferred when available, and
+mechanical range splits are only the fallback.  Every frontier =code= action
+must map back to:
+
+#+begin_src shell
+<lang-harness> query --from-hook direct-source-read --selector <path[:line-range]> --code .
+#+end_src
+
 For exact selectors without =--code=, the provider may normalize to
 =search owner <path> items= rather than owner seeds.  That gives the agent
 parser-owned item names, read locators carrying line ranges, and test
@@ -260,6 +288,16 @@ compaction layer at line-render time; that hides AST structure, makes
 =text="..."= diverge from =--code=, and pushes agents back into repeated local
 reads.
 
+Provider compact code must also preserve literal payload semantics.  Whitespace
+inside Rust raw strings, Python triple-quoted strings, JavaScript template
+literals, Julia string macros, and equivalent language-owned literal regions is
+not syntax trivia.  A provider may compact whitespace only outside such
+payloads, or it must summarize/omit the payload and route the agent to an exact
+read locator.  JSON query packets expose this decision as
+=projection.compactSafety=; line protocol =--code= users see the same compact
+text and must not infer original indentation from it unless
+=compactSafety.whitespacePolicy= is =exact-source=.
+
 Line-protocol =|code= rows may include a parser-owned =nodes= field before
 =text=.  The field is a comma-separated compact node list:
 =id:kind:role:depth:start:end=.  The JSON query renderer must prefer this
@@ -308,12 +346,147 @@ and how to expand it.
 parser AST -> projection.nodes[] -> compact/outline text -> expandActions[] -> exact read
 #+end_example
 
+Formatter-assisted compaction is allowed only after the native parser has
+proved the structure.  The provider may use the language formatter to choose a
+workspace/style-owned source dialect before projection or after an edit
+dry-run, because formatter-normalized text lets the compact renderer remove
+whitespace, blank lines, and local trivia without guessing semantics.  The
+formatter is not the source of AST facts.  It is a safety gate for printable
+text that still follows the native AST.
+
+This intentionally separates formatter language from formatted source.  The
+original purpose of formatters is human readability: indentation, vertical
+spacing, alignment, and style conventions make code comfortable for people to
+scan.  Those same choices waste tokens for an agent.  However, LLMs are trained
+mostly on formatted code, so the formatter's canonical spelling is still a
+useful prior for code understanding.  Compact AST should therefore reuse the
+formatter dialect, not the full formatted layout.  Providers may normalize
+syntax with the formatter, then project the parser facts into a shorter
+agent-facing form that drops human-only layout while keeping grammar,
+ownership, and edit locators.
+
+The protocol must not assume one fixed formatter style.  Different Rust,
+Python, TypeScript, JavaScript, and future provider workspaces may choose
+different formatter tools, versions, line widths, import styles, or plugin
+settings.  Those choices are user/workspace policy.  The provider records the
+formatter profile it discovered and treats the exact style as opaque; the
+shared invariant is that the formatted output still parses to the same
+language-native structure.  The shared query projection schema must not expose
+formatter names or styles as a cross-language enum; formatter profile belongs
+to provider registry/capability metadata or provider-local diagnostics.
+
+Formatter alignment is fail-closed.  If a provider declares that compact output
+uses formatter-normalized syntax, the original parser facts and the formatted
+parser facts must align through native node identity, symbol path, structural
+role, and structural fingerprints.  Token fingerprints may help diagnose
+alignment, but they are not the primary contract because formatter styles are
+not stable across workspaces.  If AST alignment fails, the provider must not
+silently return parser-only compact output as a fallback.  It should emit a
+structured failure or diagnostic receipt and stop the formatter-assisted path.
+Parser-only compact projection is valid only as an explicitly declared
+capability mode before formatter normalization is attempted; it is not a
+recovery path after formatter/core AST disagreement.
+
+The formatter stage is language-owned:
+
+- Rust uses =rustfmt=.
+- Python uses =ruff format= for formatting; =ruff check --fix= is a separate
+  lint-fix or organize-imports capability, not formatting.
+- TypeScript and JavaScript use the workspace-declared formatter from
+  =package.json= or provider registry facts, such as =prettier=, =biome=, or
+  =oxfmt=.
+- Julia remains skipped for bin parity.  If the Julia lane reopens, it should
+  use =JuliaFormatter.jl= as a workspace-managed capability.
+
+Compact AST output must not break the normal agent edit loop.  The agent reads
+compact projection to understand and choose a target, then expands an exact
+read locator before writing code.  The compact projection is not an editable
+source replacement and must never be the only path back to source.  It is also
+not a text patch context: compact renderers may remove indentation, punctuation
+lines, comments, or formatter layout.  =apply_patch= preimages and other
+text-hunk contexts must come from an exact source window selected by the
+projection's =read=/=exactRead= locator.  A provider that relies on
+formatter-normalized text for maximum compression must still return stable node
+ids, locators, omitted facts, and expansion actions.
+
+Standalone layout punctuation is never a useful compact line.  Lines such as
+=}=, =})=, =});=, =];=, or =,= are formatter/source-layout residue, not
+agent-facing facts.  A provider may keep punctuation inside a semantic line
+when it helps expression understanding, such as =.map((value) => ({=, but it
+must not emit punctuation-only lines as compact code.  If block structure
+matters, it belongs in parser nodes, depth, edges, or exact expand actions.
+
+Compact rendering must also be node-unique: one native AST node id produces at
+most one rendered row in a given projection.  Nested owners, local classes,
+closures, or visitor methods may be summarized under their parent or exposed as
+expandable descendants, but the renderer must not emit the same descendant both
+inline and as a sibling row.
+
+**** AST projection identity and uniqueness
+
+AST projection uniqueness is a protocol invariant, not a renderer preference.
+Within one query/search packet, every projected native AST node must have one
+stable projection identity and at most one primary rendered row.
+
+The provider owns the concrete native identity, but the shared projection
+identity must be derived from parser facts, not text formatting.  A projection
+node identity should include enough provider-owned material to distinguish the
+node within the source fingerprint:
+
+- owner path and owner/item identity
+- native node kind
+- structural role
+- parent projection id or structural parent path
+- source range or parser-owned stable span
+- same-kind ordinal when the language parser requires it
+- optional structural fingerprint for diagnostics
+
+In the packet contract this is not optional metadata.  Every compact projection
+node must carry =nativeId=, =role=, =depth=, =read=, and
+=structuralFingerprint= so the agent can distinguish parser-native identity,
+rendering hierarchy, exact source expansion, and stale/ambiguous projections
+without guessing from formatted text.
+
+Rendered compact rows are views over projection nodes:
+
+- one rendered row has one primary =nodeId=
+- one native AST node may not be rendered as two primary rows
+- child nodes may be referenced inline only as labels, edges, or summaries
+- repeated semantic references such as callee, type, binding, or symbol use are
+  references, not duplicate projection nodes
+- =omitted[]= and =expandActions[]= must reference existing projection node ids
+  or exact read locators instead of re-rendering hidden code
+- owner-local name discovery, fallback candidates, and routing actions such as
+  =owner-names= belong to query/candidate output, not to compact AST
+  =projection.expandActions=
+- every projection action must be executable without guessing: =exact-read=
+  and =hot-block= actions carry a =read= locator; =node-query= actions carry
+  provider =argv= and must target an existing projection node rather than a
+  read locator
+- if an =exact-read= or =hot-block= action also emits provider =argv=, its
+  =--selector= argument must be the same canonical =read= locator; it must not
+  widen back to an owner path or glob
+
+Nested owners need an explicit mode.  A provider may either summarize a nested
+function/class/closure under its parent or expose it as a child projection node
+with =parentId= and an expansion action.  It must not do both in the same
+projection.  If a provider cannot assign unique parser-owned projection ids for
+the requested item, it must not claim compact-AST output for that item.  It may
+return a weaker, explicitly declared surface such as owner names or outline,
+but not a duplicate or ambiguous compact AST projection.
+
 This is the core parser loop.  Native parsers should improve the compact
 algorithm and the expansion metadata together: if a provider learns to omit
 large match cases, helper bodies, closures, decorators, or type clauses, it
 must also emit the omitted fact and the next exact read/query action.  A
 projection without reverse navigation is only a display optimization; a
 projection with nodes and expansion actions is an agent reasoning interface.
+Therefore =mode=compact= requires =sourceFingerprint=, =losslessStructure=,
+=exactRead=, =nodes[]=, and =renderedNodeIds[]=.  A provider that cannot
+populate those fields must use a weaker mode such as =outline= or =names=.
+For compact mode, =exactRead= is the same canonical locator as the match-level
+=read= field, and =sourceFingerprint= must bind that locator so stale compact
+projections can be diagnosed without comparing arbitrary formatted text.
 
 An exact small item hit should produce compact AST code.  A broad, mixed, or
 missed query should produce parser-owned names/candidates.  An exact but large
@@ -441,6 +614,36 @@ Parser compact snapshots must use this =query --json= form; using
 =search ... --json= records the wrong packet class and hides compact-query
 cost behind search-packet fields.
 
+Workspace-managed Julia search still uses the shared search packet for search
+JSON:
+
+#+begin_src shell
+julia --project=languages/JuliaLangProjectHarness.jl \
+  languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl \
+  search fzf run owner tests --view seeds --json languages/JuliaLangProjectHarness.jl
+#+end_src
+
+The hook wildcard form uses the same packet class when a client needs a cached
+search frontier rather than compact text:
+
+#+begin_src shell
+julia --project=languages/JuliaLangProjectHarness.jl \
+  languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl \
+  query --from-hook direct-source-read \
+    --selector '**/*.jl' \
+    --term render_julia_search_packet \
+    --surface owners,tests \
+    --view seeds \
+    --json languages/JuliaLangProjectHarness.jl
+#+end_src
+
+That packet is for validators, IDEs, and Rust-client cache reuse.  It should
+mirror the compact search line protocol with =owners=, =hits=, =nextActions=,
+=querySet= and =queryCoverage= when terms were provided, =searchSynthesis=,
+optional =nativeSyntaxFacts=, and optional =semanticHandles=.  It does not
+replace the agent-facing compact default, and it must not invent a
+Julia-private search payload.
+
 Providers may additionally expose a =read-packet= query output mode for exact
 selected source windows:
 
@@ -448,7 +651,7 @@ selected source windows:
 <lang-harness> query --from-hook direct-source-read --selector <project-path> --view read-packet .
 #+end_src
 
-That mode emits =semantic-read-packet.v1= under the normal
+That mode emits =semantic-read-packet= under the normal
 =agent.semantic-protocols.semantic-language= protocol.  It is provider-owned
 parser transport, not a root hook command.  The packet should only carry
 bounded exact windows that the provider can justify with parser-owned owner,
@@ -491,11 +694,12 @@ the normalized intent and facts:
 |query intent=syntax.import term=rules status=hit routed=native-syntax selected=1
 |fact id=rust:src/lib.rs:4:reexport:rules kind=reexport source=native-parser owner=src/lib.rs line=4 visibility=public name=rules languageKind=use
 [search-graph] mode=query root=. alg=native-syntax-query
-L=owner:src/lib.rs!owner
-F=fact:rust:src/lib.rs:4:reexport:rules
+legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next
+alias: graph:{G=search,L=owner,F=fact}
+L=owner:path(src/lib.rs)!owner
+F=fact:symbol(rust:src/lib.rs:4:reexport:rules)
 L>{F:contains}
-rank=L,F
-frontier=L.owner
+rank=L,F frontier=L.owner
 #+end_example
 
 The root protocol owns the shared =semantic-native-syntax-fact-index.v1=
@@ -506,6 +710,14 @@ builders and language-specific fields under the common schema.  The shared
 schema is intentionally not a lowest-common-denominator AST; it is the
 agent-facing index of facts that can answer search/query flows without raw text
 scans.
+
+The shared fact kind vocabulary must be broad enough for providers to expose
+useful native facts without leaking their AST wholesale.  It therefore includes
+portable items such as =owner=, =module=, =function=, =method=, =struct=,
+=type=, =import=, =export=, =call=, =test=, =doc=, =include=, =field=,
+=binding=, =constant=, =argument=, and =macro=.  Language-specific categories
+stay in =languageKind=, while provider detail, parser text, tags, and
+language-only fields stay under =fields=.
 
 =search fzf= covers fuzzy lexical candidates: source text, owner paths, string
 literals, comments, docs, schema files, generated artifacts, config keys,
@@ -649,16 +861,18 @@ The durable discovery path is parser-native =search= output.  Providers should
 return compact parser-owned evidence: owners, items, tests, dependency edges,
 findings, and =searchSynthesis=.  Once the hook has one exact selected source
 path, the root runtime must route back to the owning provider's parser query
-surface.  The earlier =semantic-agent-hook read= / =semantic-read-packet.v1=
-root transport is superseded and must not be advertised as the recovery route.
-If =semantic-read-packet.v1= is useful, it is emitted by the language provider
-as an optional =query/*= output schema after that route has been followed.
+surface.  Root-level read recovery is removed and must not be advertised as the
+recovery route.  If
+=semantic-read-packet= is useful, it is emitted by the language provider as an
+optional =query/*= output schema after that route has been followed.  The
+read-plan frontier shape is part of the active provider-owned read-packet
+contract; providers must not advertise a separate legacy recovery route.
 
 Direct source reads and exact wrapper reads should be denied and rerouted to a
 compact code window:
 
 #+begin_src shell
-<provider> query --from-hook direct-source-read --selector <project-path[:line-range]> --code .
+asp <language> query --from-hook direct-source-read --selector <project-path[:line-range]> --code .
 #+end_src
 
 The hook decision packet must label that recovery route as =kind=query=.
@@ -679,21 +893,22 @@ owner is known, for example =Read *.ts= or =less **/*.tsx= paired with concrete
 terms from the agent's intent:
 
 #+begin_src shell
-<lang-harness> query --from-hook direct-source-read \
+asp <language> query --from-hook direct-source-read \
   --selector '**/*.{ts,tsx,js}' \
   --intent inspect-cli-search \
   --term parseSearchArgs \
   --term querySets \
-  --surface owner,tests \
+  --surface owners,tests \
   --view seeds .
 #+end_src
 
 It is a compact route into the provider's parser-owned query layer.  It should
 emit bounded query evidence: query coverage, owner candidates, item candidates,
 test seeds when requested, and any visible runtime prefilter cost.  It must not
-expand the matched files into source text.  Existing =search query --from-hook=
-forms are compatibility shims only; new guidance and provider descriptors
-should prefer top-level =query=.
+expand the matched files into source text.  =query --from-hook= is the only
+agent-facing wildcard direct-read recovery route.  Providers must not advertise
+or accept =search query --from-hook= as a compatibility alias; keeping both
+forms creates route drift and breaks guide-quality replay.
 
 When the selector is one exact project-relative source path and the agent has no
 reliable item query yet, top-level =query --from-hook direct-source-read
@@ -1326,11 +1541,12 @@ superseded by graph-integrated rank and frontier facts:
 
 #+begin_src text
 [search-graph] mode=prime root=. alg=owner-rank-frontier
-L=owner:src/lib.rs!owner
-T=owner:src/tests.rs!owner
+legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next
+alias: graph:{G=search,L=owner,T=owner}
+L=owner:path(src/lib.rs)!owner
+T=owner:path(src/tests.rs)!owner
 L>{T:frontier}
-rank=L,T
-frontier=L.owner,T.owner
+rank=L,T frontier=L.owner,T.owner
 #+end_src
 
 Agent-facing graph feature semantics are specified separately in RFC 006,
@@ -1534,8 +1750,8 @@ the semantic route, explain that agent search commands must not use =--json=,
 and remove only the output-mode error.  For example:
 
 #+begin_src text
-denied: ts-harness search fzf location.path owner tests --json .
-guide:  ts-harness search fzf location.path owner tests --view seeds .
+denied: asp typescript search fzf location.path owner tests --json .
+guide:  asp typescript search fzf location.path owner tests --view seeds .
 #+end_src
 
 If the rejected JSON-output command already carries a concrete owner path, the
@@ -1544,7 +1760,7 @@ provider's owner query command and derive the compact query from the path or
 provider-owned query fields, using this shape:
 
 #+begin_src text
-search owner <path> items --query <derived-query> .
+asp <language> search owner <path> items --query <derived-query> .
 #+end_src
 
 For =search fzf=, the first required query positional is owned by the query,
@@ -1783,7 +1999,7 @@ They are not shared semantic-language flags.
 There is no shared =--backend= flag today.  Execution-route selection is fully
 internal unless a method descriptor later advertises bounded text match modes.
 Even then, the agent client chooses intent-level match semantics, not raw tool
-execution.  RFC 008 extends this boundary to the cross-language =aslp= client:
+execution.  RFC 008 extends this boundary to the cross-language =asp= client:
 local native provider CLI, Cloud Flight, and hybrid route selection are client
 configuration and diagnostics state, not search/query flags agents must pick
 during normal exploration.
@@ -2716,11 +2932,12 @@ without teaching the agent a second prompt protocol.
 #+begin_src text
 [search-fzf] q=load,Thing querySet=2 selector=exact-set pkg=. own=3
 [search-graph] mode=query-set root=. alg=change-frontier-query-set
-O1=owner:src/domain/mod.rs!owner
-O2=owner:src/lib.rs!owner
-T3=test:tests/domain.rs!tests
-rank=O1,O2,T3
-frontier=O1.owner,O2.owner,T3.tests
+legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next
+alias: graph:{G=search,O1=owner,O2=owner,T3=test}
+O1=owner:path(src/domain/mod.rs)!owner
+O2=owner:path(src/lib.rs)!owner
+T3=test:path(tests/domain.rs)!tests
+rank=O1,O2,T3 frontier=O1.owner,O2.owner,T3.tests
 #+end_src
 
 The corresponding JSON uses schema-owned fields for the explanation graph and
@@ -2829,14 +3046,15 @@ In compact output this should be visible without JSON:
 |query AgentHookEvent hit=0 status=miss
 |query runCodexAgentHook hit=2 surface=test-fixture-string owner=tests/unit/cli.test.ts fixturePath=src/cli/agent-hooks.ts
 [search-graph] mode=query-set root=. alg=fixture-owner-resolution
-T=test:tests/unit/cli.test.ts
-A=owner:src/cli/agent-hooks.ts!owner
-O=owner:src/cli/protocol.ts!owner
-R=text:runProtocolCli!query
-P=text:parseProtocolArgs!query
+legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next
+alias: graph:{G=search,T=test,A=owner,O=owner,R=query,P=query}
+T=test:path(tests/unit/cli.test.ts)
+A=owner:path(src/cli/agent-hooks.ts)!owner
+O=owner:path(src/cli/protocol.ts)!owner
+R=query:term(runProtocolCli)!query
+P=query:term(parseProtocolArgs)!query
 T>{A:fixture-string}
-rank=T,O,R,P,A
-frontier=R.query,P.query,O.owner
+rank=T,O,R,P,A frontier=R.query,P.query,O.owner
 avoid=A.owner
 #+end_src
 
@@ -3062,7 +3280,7 @@ complete real-trigger sandtable can therefore have both:
 
 #+begin_src text
 client trigger: Codex PreToolUse -> hook deny/allow guide
-target replay:  <lang-harness> search prime/text/owner/tests/ingest
+target replay:  <lang-harness> search prime/fzf/owner/tests/ingest
 #+end_src
 
 This prevents a large target-library replay from being mistaken for the Codex
@@ -3080,7 +3298,10 @@ Real-trigger evidence feeds two optimization loops:
 Hook denials in these scenarios test guide quality, not only enforcement.  A
 useful denial must include the reason category, language/provider route, next
 safe command, pipe shape for =search ingest= when needed, subagent receipt
-requirements when applicable, and no leaked source text.
+requirements when applicable, and no leaked source text.  The route argv is a
+separate assertion surface from the human-readable message: sandtables may
+require canonical command fragments such as =query --from-hook= and reject stale
+fragments such as =search query --from-hook= or non-canonical surface names.
 
 Sandtable summaries should make the improvement visible:
 
@@ -3165,6 +3386,17 @@ terms must still fall back to a file-list/path-match pass.  The packet should
 make this visible with fields such as =fileListPasses= and
 =candidateFileBasis= so audits can distinguish exact all-file counts from
 source-matched lower bounds.
+
+For large TypeScript workspaces, =search fzf --query-set ... owner tests= must
+rank parser-visible implementation owners above broad declaration, generated,
+or fixture-heavy owners when the implementation owner has owner-local exported
+symbol/type matches for multiple query terms.  A query-set such as
+=APIRequestContext,BrowserContextAPIRequestContext,fetch= should keep the owner
+that declares the matching request context classes in the first frontier even
+when generated =.d.ts= files or top-level tests have more lexical occurrences.
+This is still a fuzzy search result: the provider may use =rg+fzf= or another
+prefilter to find candidates, but the final rank must be parser-owned and must
+prefer owner-local exported item evidence over weak path/text frequency.
 
 Coverage audit reports this matrix explicitly:
 
@@ -3705,24 +3937,24 @@ repo
 
 * Agent integration bundle structure (future)
 
-For Codex clients, =semantic-agent-hook install --client codex= installs the
+For Codex clients, =asp hook install --client codex= installs the
 repo-maintained language-bin skill into
 =.agents/skills/agent-semantic-protocols/SKILL.md=.  The skill is concise and
 agent-facing: it describes =rs-harness=, =ts-harness=, and =py-harness= command
 flows, and tells agents not to use =--json= for exploratory searches.
 
-The long-term public binary is =semantic-agent-protocol=.  It should expose:
+The public binary is =agent-semantic-protocol=.  It exposes:
 
 #+begin_src shell
-semantic-agent-protocol hook install --client codex .
-semantic-agent-protocol hook pre-tool ...
-semantic-agent-protocol hook stop ...
-semantic-agent-protocol ast-patch dry-run --packet <ast-patch.json> .
+asp hook install --client codex .
+asp hook pre-tool ...
+asp hook stop ...
+asp ast-patch dry-run --packet <ast-patch.json> .
 #+end_src
 
-=semantic-agent-hook= remains the dependency that implements the hook subcommands
-inside =semantic-agent-protocol=.  The migration is a command-surface
-consolidation, not a deletion of the hook crate.
+=agent-semantic-hook= remains the library dependency that implements the hook
+subcommands inside =agent-semantic-protocol=.  The migration is a command-surface
+consolidation, not a deletion of the hook runtime crate.
 
 If an agent-client integration bundle is desired, it contains:
 
@@ -3885,8 +4117,8 @@ The Python harness now exposes the same CLI-first protocol lane:
   parser facts, including fallback matching against function bodies.
 - Transitional Codex hooks deny direct Python source reads, including shell
   content readers such as =sed ... file.py= and tool-native =Read= calls, with
-  =reasonKind=direct-source-read= plus a concrete provider
-  =py-harness query --from-hook direct-source-read --selector <path> --code .= route.
+  =reasonKind=direct-source-read= plus a concrete public hook route
+  =asp python query --from-hook direct-source-read --selector <path> --code .=.
 - A provider registry emitted by =py-harness agent doctor --json=
 - Python-local capability schema:
   =schemas/python-semantic-capabilities.v1.schema.json=

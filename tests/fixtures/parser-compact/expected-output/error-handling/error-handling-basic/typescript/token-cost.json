@@ -1,18 +1,18 @@
 {
   "caseId": "error-handling-basic",
-  "compactCodeDelta": 32,
-  "compactCodeRatio": 0.5,
-  "compactCodeTokens": 32,
-  "compactLineDelta": 32,
-  "compactLineRatio": 0.5,
-  "compactLineTokens": 32,
+  "compactCodeDelta": 123,
+  "compactCodeRatio": 0.4721,
+  "compactCodeTokens": 110,
+  "compactLineDelta": 123,
+  "compactLineRatio": 0.4721,
+  "compactLineTokens": 110,
   "featureClass": "error-handling",
   "languageId": "typescript",
   "providerId": "ts-harness",
-  "queryPacketDelta": -1429,
-  "queryPacketRatio": 23.3281,
-  "queryPacketTokens": 1493,
-  "rawSourceTokens": 64,
+  "queryPacketDelta": -8168,
+  "queryPacketRatio": 36.0558,
+  "queryPacketTokens": 8401,
+  "rawSourceTokens": 233,
   "schemaId": "agent.semantic-protocols.parser-compact-token-cost",
   "schemaVersion": "1",
   "sourceOrigin": {
@@ -21,6 +21,6 @@
     "repository": "agent-semantic-protocols",
     "sourcePath": "src/score.ts"
   },
-  "tokenizerId": "tiktoken:o200k_base",
+  "tokenizerId": "byte",
   "variantId": "typescript"
 }

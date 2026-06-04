@@ -105,6 +105,37 @@
       "minLength": 1,
       "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*)$"
     },
+    "targetRole": {
+      "enum": [
+        "path",
+        "range",
+        "symbol",
+        "term",
+        "pkg",
+        "dep",
+        "test",
+        "finding",
+        "result",
+        "self",
+        "feature",
+        "cfg",
+        "value",
+        "custom"
+      ]
+    },
+    "windowTarget": {
+      "description": "A window-set target is either a canonical project path or a graph frontier token such as feature:cli, cfg:unix, or import:serde. It is not a display locator or rank-prefixed path.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/projectPath"
+        },
+        {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[a-z][a-z0-9_-]*:[^\\s:\\\\][^\\s\\\\]*$"
+        }
+      ]
+    },
     "location": {
       "type": "object",
       "additionalProperties": false,
@@ -153,6 +184,9 @@
         },
         "rank": {
           "type": "number"
+        },
+        "targetRole": {
+          "$ref": "#/$defs/targetRole"
         },
         "fields": {
           "$ref": "#/$defs/fields"
@@ -290,10 +324,27 @@
       "required": ["kind", "target"],
       "properties": {
         "kind": {
-          "enum": ["owner", "tests", "read"]
+          "enum": [
+            "owner",
+            "tests",
+            "read",
+            "query",
+            "fzf",
+            "deps",
+            "dependency",
+            "docs",
+            "features",
+            "cfg",
+            "import",
+            "items",
+            "code",
+            "symbol",
+            "finding",
+            "custom"
+          ]
         },
         "target": {
-          "$ref": "#/$defs/projectPath"
+          "$ref": "#/$defs/windowTarget"
         },
         "query": {
           "type": "string",

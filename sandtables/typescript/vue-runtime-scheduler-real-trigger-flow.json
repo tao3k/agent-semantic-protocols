@@ -30,7 +30,7 @@
     },
     "querySetOpportunities": [
       {
-        "view": "text",
+        "view": "fzf",
         "queries": 3,
         "saveCommands": 2,
         "selector": "exact-set",
@@ -47,12 +47,12 @@
     "findings": [
       {
         "kind": "tests-ranking",
-        "severity": "warning",
+        "severity": "info",
         "message": "package-root tests search misses __tests__/scheduler.spec.ts, while root tests search finds it with many unrelated compat/vue tests"
       },
       {
         "kind": "query-composition",
-        "severity": "warning",
+        "severity": "info",
         "message": "TypeScript tests view does not yet support --query-set"
       }
     ]
@@ -112,8 +112,8 @@
         "stdoutContains": [
           "[search-fzf]",
           "querySet=3",
-          "owner=src/scheduler.ts",
-          "tests:src/scheduler.ts"
+          "owner:path(src/scheduler.ts)",
+          "test:path(src/scheduler.ts)"
         ],
         "maxStdoutLinesWarn": 12,
         "maxElapsedMsWarn": 5000
@@ -132,7 +132,6 @@
         "packages/runtime-core"
       ],
       "expect": {
-        "lineProtocol": true,
         "stdoutContains": [
           "[search-owner]",
           "function queueJob",
@@ -157,8 +156,8 @@
         "lineProtocol": true,
         "stdoutContains": [
           "[search-tests]",
-          "test=0",
-          "src/scheduler.ts"
+          "test:path(src/scheduler.ts)",
+          "owner:path(src/scheduler.ts)"
         ],
         "maxStdoutLinesWarn": 8,
         "maxElapsedMsWarn": 5000

@@ -1,6 +1,7 @@
 .codex/harness-state
-.codex/semantic-agent-hook/
 .codex/rs-harness/
+.bin/
+.cache
 .data/
 .devenv/
 target/

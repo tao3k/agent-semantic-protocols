@@ -13,6 +13,11 @@ deny that output-mode error with `reasonKind=agent-search-json` and guide to
 the equivalent compact command. Providers should emit JSON in a compact
 machine-oriented form, leaving readability to validators and artifact viewers
 rather than spending terminal tokens on pretty-print whitespace.
+RFC 009 adds optional `reasoningProfiles` to this packet as a typed profile
+compatibility surface for `search prime` and `search reasoning <profile>`.
+Those entries describe profile names, selector slots, returns, compatible
+graph aliases, and frontier actions; they deliberately reject natural-language
+`goal` or `intent` fields so planning stays in the agent.
 
 `semantic-graph.v1.schema.json` is the shared embeddable graph vocabulary behind
 search packets. It owns parser-proved graph nodes, graph edges, bounded
@@ -25,12 +30,55 @@ separate `search graph` or top-level graph exploration workflow.
 
 `semantic-compact-graph-render.v1.schema.json` is the shared prompt-facing
 render template for compact graph search output. It owns the view-native
-header grammar, alias line grammar, dense alias separator, combined
-`rank=... frontier=...` line, search-root alias, and source-kind to
-node/action/relation vocabulary used by Rust, TypeScript, Python, and future
-providers. Providers still derive facts
-from `semantic-search-packet.v1.schema.json`; this schema prevents each
-language from hand-inventing a different compact text template.
+header contract, micro-legend grammar, role-typed alias line grammar, dense
+alias separator, combined `rank=... frontier=...` line, legend-declared search
+root, renderer ownership, and source-kind to node/target-role/action/relation
+vocabulary used by Rust, TypeScript, Python, and future providers. The
+`[search-<view>]` header in `search --view seeds` is the compact graph packet
+header; the graph block is required, not an optional feature row, and legacy
+`|seed` / `|synthesis` rows must not become a second prompt-facing action
+protocol. Providers still derive facts from
+`semantic-search-packet.v1.schema.json`; `agent-semantic-protocol` owns the
+shared graph renderer, and language providers under `languages/` call it through
+`asp graph render` instead of adding renderer library
+dependencies. The agent semantic client hot path may call the Rust renderer library over
+validated provider artifacts or cache rows instead of asking every language to
+maintain a separate compact graph renderer. Input packets use one canonical
+field vocabulary: query-set count comes from root-level `querySet`, and graph
+frontier source locators use `searchSynthesis.seeds[].read`; provider-specific
+field aliases are schema violations rather than renderer compatibility cases.
+Owner-local item search must retain `owner=`, `selector=items`, term count,
+and `view=seeds` in the header, declare every packet-local alias id in the
+legend, split search-match and owner-containment edges, rank matched symbols
+before the already-expanded owner, and emit `omit` / `avoid` facts that steer
+agents away from repeat owner searches, raw reads, and full JSON.
+Its `!code` symbol aliases must also carry parser-owned read locators:
+same-owner aliases use `@start:end`, while cross-owner aliases use
+`@path:start:end`.
+When a source packet carries `reasoningProfiles`, the shared compact graph
+renderer may
+emit `profiles=<profile>(<ID>,...)` after the `rank=... frontier=...` line.
+Every handle in that line is a rendered packet-local alias id, so the line is a
+compatibility hint for the current graph packet rather than a second action
+protocol.
+
+`agent-semantic-client-config.v1.schema.json`,
+`agent-semantic-client-cache-manifest.v1.schema.json`, and
+`agent-semantic-client-receipt.v1.schema.json` own the agent semantic client/backend
+envelope. They describe route mode, provider set, privacy policy, cache
+generation provenance, SQLite client DB status, execution route, provider
+command counts, and native provider provenance. They do not duplicate `semantic-search-packet` or
+`semantic-query-packet`, and they do not rename the lower layers:
+`agent-semantic-protocol` still owns shared protocol rendering and
+`agent-semantic-hook` still owns hook classification. agent semantic client is the
+client/backend brand. Arrow and Flight remain server/cloud capabilities rather
+than default client-cache dependencies. `cache-status` receipts are read-only
+inspections; `cache-import` receipts describe explicit SQLite imports from a
+validated provider-owned manifest. In local-native receipts, `warm-provider`
+means a matching SQLite generation was found but provider execution still
+supplied the output; only `hit` means the client served output from cache. The
+initial direct replay surface is limited to provider-owned `prompt-output/*.txt`
+artifacts under the protocol artifact root.
 
 `semantic-type-surface.v1.schema.json` is the shared vocabulary for
 language-neutral public type surface facts. It owns the facts that agents need
@@ -132,7 +180,19 @@ items [--query SYMBOL]`; they should not maintain a parallel read/query engine.
 The query packet also supports owner-local discovery without source windows:
 `outputMode=names` or `outline` may omit match `code`, while `queryCoverage`
 and bounded `candidateItems` explain missed terms and parser-owned repair
-candidates.
+candidates. Julia remains workspace-managed for performance reasons, but its
+`query <owner-path> --term <symbol> --json` output uses this same packet shape
+so the Rust client can cache and reuse provider facts without inventing a
+Julia-private search payload.
+Compact AST projections use `projection.nodes[].id` as their shared reference
+keys. `renderedNodeIds` records which nodes own primary compact rows, while
+`omitted[].nodeId` and `expandActions[].target` should refer back to nodes or
+exact read locators instead of duplicating hidden code. JSON Schema covers the
+field shape and direct uniqueness such as `renderedNodeIds`; cross-field
+projection identity invariants are enforced by
+`test_semantic_query_packet_projection_uniqueness.py`. The protocol semantics
+for these fields are owned by
+`rfcs/semantic-query-projection-protocol.org`.
 
 `parser-compact-case.v1.schema.json` and
 `parser-compact-token-cost.v1.schema.json` are the root fixture contracts for
@@ -156,9 +216,12 @@ rules`, `fn format_field`, `struct PacketCollections`, `import {Foo}`, or
 `def run` are routed through native parser facts before semantic text search.
 The root schema owns only the portable fact envelope: fact id, kind, source,
 owner path, location, visibility, query keys, relations, and extension fields.
-Rust, TypeScript, Python, Julia, and future providers own their concrete fact
-builders and provider-local schema refinements. Search and query packets may
-embed these facts as optional `nativeSyntaxFacts`.
+Portable fact kinds cover owners, modules, public APIs, imports, calls, tests,
+docs, includes, fields, bindings, constants, arguments, and macros; provider
+specific syntax remains in `languageKind` and `fields`. Rust, TypeScript,
+Python, Julia, and future providers own their concrete fact builders and
+provider-local schema refinements. Search and query packets may embed these
+facts as optional `nativeSyntaxFacts`.
 
 `semantic-finder-tools.v1.schema.json` is the shared contract for
 provider-approved finder pipelines behind `search fzf`, compatibility
@@ -207,7 +270,7 @@ basis string so sandtable evidence is not confused with model billing.
 `evidence.receiptPath`.
 
 `semantic-agent-hook-provider-manifest.v1.schema.json` is the static provider
-manifest contract consumed by `semantic-agent-hook` after a workspace activation
+manifest contract consumed by `agent-semantic-hook` after a workspace activation
 selects that provider. It standardizes language-owned source defaults, policy
 defaults, and route argv templates without making the hook classifier
 language-specific. It does not store independent command display text; command
@@ -219,27 +282,66 @@ current project, their resolved command prefixes, manifest digests, and
 coverage roots. It does not repeat provider routes or policies, so a stale
 activation cannot drift into an alternate command registry.
 
+`semantic-agent-hook-client-config.v1.schema.json` is the optional client-side
+configuration contract loaded by `asp hook` on each hook
+invocation. Codex installs seed `.codex/agent-semantic-protocol/hooks/config.toml` with
+schema metadata and commented examples while preserving any existing valid
+project config. `.codex/agent-semantic-protocol/hooks` is durable project
+policy; generated activation, profile registries, and hook event logs are cache
+artifacts under `${PRJ_HOME_CACHE}/agent-semantic-protocol/hooks` or the git
+toplevel `.cache/agent-semantic-protocol/hooks`. It
+standardizes typed rule matchers, priorities, decisions, and routes without
+introducing a client watch loop or server runtime. Rule
+`languageIds` are matching filters resolved through activated provider coverage,
+not just labels copied into the emitted decision. Config-derived decisions set
+`fields.configRuleId`, so runtime loading rejects duplicate rule ids before
+classification and mirrors schema-shape checks for identifiers, min-length
+strings, events, platforms, language id uniqueness, route argv, and route
+binary names. `asp hook doctor` reports the same path
+through `clientConfig` and `clientConfigStatus`; missing config is reported as
+`missing`, valid config as `ok`, and invalid config is a doctor failure.
+
 `semantic-agent-hook-decision.v1.schema.json` is the shared decision packet for
 the root hook classifier before it renders a platform-specific Codex or Claude
 hook response. It standardizes normalized event names, deny/context decisions,
 language/provider routes, and state updates while provider repositories own only
-their provider manifests and semantic search/check commands.
+their provider manifests. Config-derived decisions use `fields.configRuleId` to
+identify the matching typed rule without parsing the message. Action-derived
+decisions may also include `fields.toolSurface` and `fields.operationIntent` so
+black-box tests can distinguish the client surface from the provider route.
 
-`semantic-read-packet.v1.schema.json` is an optional provider-owned packet for
-bounded exact source windows or read repair plans selected by the language query
-layer. It is not a root hook command surface and does not reintroduce
-`semantic-agent-hook read`. Providers may emit it from `query/*` methods, for
-example an exact `query --from-hook direct-source-read --selector <path[:range]>`
-recovery with `outputMode=read-packet`. The packet records parser-owned
-selection evidence: project-relative selectors or source locators, owner paths,
-optional item facts, bounded line windows, truncation state, and notes. When a
-selector is broad or low-signal, providers should emit `readPlan` with
-`code=false` instead of `sourceWindows`; broad discovery still stays in provider
-search, prime, ingest, or normal query repair.
+`semantic-source-access-decision.v1.schema.json` is the Codex-internal
+source-access decision packet for the no-daemon lane. It is separate from hook
+decisions and records the Codex boundary, normalized operation, enforcement
+mode, whether source bytes were returned locally, and whether any source bytes
+became model-visible. In v1 it covers Codex-owned FS API, tool-action,
+shell-preflight, shell-egress, and subprocess-open status reporting. MCP
+surfaces are intentionally out of scope. Hard FS API denials require
+`sourceBytesReturned=false` and `modelVisibleBytesReturned=false`; shell egress
+suppression may report `sourceBytesReturned=true` while keeping
+`modelVisibleBytesReturned=false`. The internal probe command
+`asp source-access read-file|shell-egress --activation <activation.json> ...`
+emits this packet for Codex integration tests; it is not an agent exploration
+surface.
+
+`semantic-read-packet.v1.schema.json` is the active provider-owned packet for
+bounded exact source windows or actionable read-plan frontiers selected by the
+language query layer. Its `schemaVersion` remains the current fixed contract
+value while the read-plan frontier shape is refined. It is not a root hook
+command surface and does not reintroduce a root read command. Providers
+may emit it from `query/*` methods, for example an exact
+`query --from-hook direct-source-read --selector <path[:range]>` recovery with
+`outputMode=read-packet`. The packet records parser-owned selection evidence:
+project-relative selectors or source locators, owner paths, optional item facts,
+bounded line windows, truncation state, and notes. When a selector is broad or
+low-signal, providers should emit `readPlan` with `code=false`,
+`mode=range-frontier`, executable `frontier` entries, bounded `windows`, and
+`avoid` actions instead of `sourceWindows`; broad discovery still stays in
+provider search, prime, ingest, or normal query repair.
 
 `semantic-ast-patch.v1.schema.json` and
 `semantic-ast-patch-receipt.v1.schema.json` define the compact AST patch
-verification boundary for `semantic-agent-protocol ast-patch`. The request owns
+verification boundary for `asp ast-patch`. The request owns
 the language, provider, parser locator, `read` locator, and operation intent
 using compact `path:start:end` and `lineRange` strings, not
 `startLine`/`endLine` fields. The receipt records whether the packet is well
@@ -251,7 +353,14 @@ precedes read packets. `searchSynthesis.editFrontier` names source owners,
 `searchSynthesis.testFrontier` names coupled tests, and
 `searchSynthesis.windowSet` names typed `{kind,target}` owner/test/read windows
 that an agent may inspect with bounded read transport after the provider has
-selected the semantic axis.
+selected the semantic axis. Julia remains workspace-managed for startup-cost
+reasons, but `search ... --json` still emits this shared packet so agent semantic clients
+can cache search frontiers without parsing Julia-specific line text. Julia's
+hook wildcard `query --from-hook direct-source-read --selector <glob>
+--term <term> --surface owners,tests --view seeds --json` form uses the same packet with `querySet`,
+`queryCoverage`, `sourceCoverage`, hits, frontier owners, and native syntax
+facts; exact source-window JSON remains a provider `query/*` read/query packet,
+not a search packet.
 
 The TypeScript provider registers as:
 
@@ -292,7 +401,7 @@ descriptors intentionally do not advertise a search view; agent descriptors can
 point at registry output schemas such as
 `agent.semantic-protocols.semantic-language-registry`. Agent hook descriptors
 that emit structured decisions must instead advertise
-`agent.semantic-protocols.agent-hook-decision`, so providers can render
+`agent.semantic-protocols.hook.decision`, so providers can render
 platform-specific hook payloads without changing the shared decision contract.
 Query descriptors use `query/*` methods, advertise packet schemas such as
 `agent.semantic-protocols.semantic-query-packet` and optional
@@ -437,7 +546,9 @@ properties; derived follow-up routes belong in `searchSynthesis.seeds`. These
 facts rank and explain parser-owned owner/dependency/test edges but do not
 introduce a second source of truth. In agent-facing `--view seeds` output,
 providers render derived follow-up routes through the RFC 006 compact graph
-projection: `[search-graph]`, typed aliases, `rank=`, and `frontier=`.
+projection: the view-native `[search-<view>]` header, the micro-legend,
+`alias: graph:{...}`, role-typed aliases, `G>{...}` edges, `rank=`, and
+`frontier=`.
 Providers should not render seed or synthesis as a second independent prompt
 protocol.
 

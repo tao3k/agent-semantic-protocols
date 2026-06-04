@@ -44,10 +44,10 @@
     },
     "method": {
       "type": "string",
-      "pattern": "^(search|query|check|proof|review|evidence|agent)/[a-z][a-z0-9_-]*$"
+      "pattern": "^(search|query|check|proof|review|evidence|ast-patch|agent)/[a-z][a-z0-9_-]*$"
     },
     "command": {
-      "enum": ["search", "query", "check", "proof", "review", "evidence", "agent"]
+      "enum": ["search", "query", "check", "proof", "review", "evidence", "ast-patch", "agent"]
     },
     "outputSchemaId": {
       "type": "string",
@@ -349,6 +349,33 @@
           "if": {
             "properties": {
               "method": {
+                "pattern": "^ast-patch/"
+              }
+            },
+            "required": ["method"]
+          },
+          "then": {
+            "required": ["outputSchemaIds", "mutationAvailable"],
+            "properties": {
+              "command": {
+                "const": "ast-patch"
+              },
+              "outputSchemaIds": {
+                "minItems": 1
+              },
+              "mutationAvailable": {
+                "const": false
+              }
+            },
+            "not": {
+              "required": ["view"]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
                 "pattern": "^agent/"
               },
               "supportsJson": {
@@ -470,6 +497,9 @@
           "type": "boolean"
         },
         "supportsCompact": {
+          "type": "boolean"
+        },
+        "mutationAvailable": {
           "type": "boolean"
         }
       }

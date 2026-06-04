@@ -1,18 +1,18 @@
 {
   "caseId": "serde-deserialize-body",
-  "compactCodeDelta": 7761,
-  "compactCodeRatio": 0.0232,
-  "compactCodeTokens": 184,
-  "compactLineDelta": 7761,
-  "compactLineRatio": 0.0232,
-  "compactLineTokens": 184,
+  "compactCodeDelta": 33359,
+  "compactCodeRatio": 0.0201,
+  "compactCodeTokens": 686,
+  "compactLineDelta": 33280,
+  "compactLineRatio": 0.0225,
+  "compactLineTokens": 765,
   "featureClass": "real-library",
   "languageId": "rust",
   "providerId": "rs-harness",
-  "queryPacketDelta": 4794,
-  "queryPacketRatio": 0.3966,
-  "queryPacketTokens": 3151,
-  "rawSourceTokens": 7945,
+  "queryPacketDelta": 13119,
+  "queryPacketRatio": 0.6147,
+  "queryPacketTokens": 20926,
+  "rawSourceTokens": 34045,
   "schemaId": "agent.semantic-protocols.parser-compact-token-cost",
   "schemaVersion": "1",
   "sourceOrigin": {
@@ -23,6 +23,6 @@
     "repository": "serde-rs/serde",
     "sourcePath": "serde_derive/src/de.rs"
   },
-  "tokenizerId": "tiktoken:o200k_base",
+  "tokenizerId": "byte",
   "variantId": "rust"
 }

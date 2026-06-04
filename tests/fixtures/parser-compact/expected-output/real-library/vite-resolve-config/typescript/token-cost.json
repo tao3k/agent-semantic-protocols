@@ -1,18 +1,18 @@
 {
   "caseId": "vite-resolve-config",
-  "compactCodeDelta": 19903,
-  "compactCodeRatio": 0.0073,
-  "compactCodeTokens": 146,
-  "compactLineDelta": 19903,
-  "compactLineRatio": 0.0073,
-  "compactLineTokens": 146,
+  "compactCodeDelta": 84160,
+  "compactCodeRatio": 0.0071,
+  "compactCodeTokens": 604,
+  "compactLineDelta": 84160,
+  "compactLineRatio": 0.0071,
+  "compactLineTokens": 604,
   "featureClass": "real-library",
   "languageId": "typescript",
   "providerId": "ts-harness",
-  "queryPacketDelta": 17080,
-  "queryPacketRatio": 0.1481,
-  "queryPacketTokens": 2969,
-  "rawSourceTokens": 20049,
+  "queryPacketDelta": 62575,
+  "queryPacketRatio": 0.2618,
+  "queryPacketTokens": 22189,
+  "rawSourceTokens": 84764,
   "schemaId": "agent.semantic-protocols.parser-compact-token-cost",
   "schemaVersion": "1",
   "sourceOrigin": {
@@ -23,6 +23,6 @@
     "repository": "vitejs/vite",
     "sourcePath": "packages/vite/src/node/config.ts"
   },
-  "tokenizerId": "tiktoken:o200k_base",
+  "tokenizerId": "byte",
   "variantId": "typescript"
 }

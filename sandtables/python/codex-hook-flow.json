@@ -2,18 +2,24 @@
   "id": "python.codex-hook-flow",
   "language": "python",
   "title": "Python Codex hook denies direct source reads",
-  "coverage": ["codex-hooks", "cli-hooks"],
-  "tags": ["agent-hooks", "direct-source-read"],
+  "coverage": [
+    "codex-hooks",
+    "cli-hooks"
+  ],
+  "tags": [
+    "agent-hooks",
+    "direct-source-read"
+  ],
   "workdir": ".",
   "steps": [
     {
       "id": "direct-python-read-deny",
       "command": [
-        "semantic-agent-hook",
+        "asp",
         "hook",
+        "pre-tool",
         "--client",
         "codex",
-        "pre-tool",
         "--emit",
         "decision"
       ],
@@ -36,11 +42,11 @@
     {
       "id": "direct-python-read-tool-deny",
       "command": [
-        "semantic-agent-hook",
+        "asp",
         "hook",
+        "pre-tool",
         "--client",
         "codex",
-        "pre-tool",
         "--emit",
         "decision"
       ],
@@ -60,11 +66,11 @@
     {
       "id": "namespaced-python-read-tool-deny",
       "command": [
-        "semantic-agent-hook",
+        "asp",
         "hook",
+        "pre-tool",
         "--client",
         "codex",
-        "pre-tool",
         "--emit",
         "decision"
       ],

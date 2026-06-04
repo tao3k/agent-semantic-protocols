@@ -31,7 +31,7 @@ Add one shared semantic handle layer:
 
 #+begin_src text
 agent intent
-  -> search text / search policy / search owner handles
+  -> search fzf / search policy / search owner handles
   -> semanticHandles[]
   -> owner or tests route
   -> exact item/code query only after handle selection
@@ -146,7 +146,7 @@ policy id, schema fixture, test case, config key, command surface, or capability
 name.
 
 When the target is code-shaped rather than a stable non-code handle, guidance
-must use =search query <code-shaped-query>=.  =search text= should not silently
+must use =search query <code-shaped-query>=.  =search fzf= should not silently
 execute the native syntax API, because that preserves the legacy habit of
 asking broad text questions for syntax-owned facts.  It may return a compact
 =next=search-query= action so the agent can retry through the explicit API.
@@ -180,7 +180,7 @@ py-harness search policy PY-AGENT-R008 owner tests --view seeds languages/python
 ts-harness search policy TS-AGENT-R001 owner tests --view seeds languages/typescript-lang-project-harness
 julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl search policy JULIA-PROJ-R001 owner tests --view seeds languages/JuliaLangProjectHarness.jl
 julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl search owner src/cli.jl --view seeds languages/JuliaLangProjectHarness.jl
-julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl search text run_julia_project_harness_cli owner tests --view seeds languages/JuliaLangProjectHarness.jl
+julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl search fzf run_julia_project_harness_cli owner tests --view seeds languages/JuliaLangProjectHarness.jl
 printf 'src/cli.jl:1\n' | julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl search ingest owner tests --view seeds languages/JuliaLangProjectHarness.jl
 #+end_src
 
@@ -188,7 +188,7 @@ The Julia command is intentionally written in full.  Do not shorten this to a
 bare =julia-project-harness= binary in docs, tests, or profile descriptors.
 
 The important runtime finding was not a missing Python implementation.  A stale
-=py-harness= on =PATH= can still be discovered by =semantic-agent-hook install=
+=py-harness= on =PATH= can still be discovered by =semantic-agent-protocol hook install=
 if the installer only checks executability.  The root cause is therefore
 provider discovery based on binary presence instead of provider capability.
 
@@ -202,8 +202,8 @@ Validated commands:
 
 #+begin_src shell
 cargo test -p semantic-agent-hook
-target/debug/semantic-agent-hook install --client codex .
-target/debug/semantic-agent-hook doctor --client codex .
+target/debug/semantic-agent-protocol hook install --client codex .
+target/debug/semantic-agent-protocol hook doctor --client codex .
 #+end_src
 
 The doctor output now reports four profiles: =rust=, =typescript=, =python=,
@@ -226,7 +226,7 @@ sides:
 - =julia -e ... | rg ...= remains denied as raw broad search
 
 The Julia provider surface was validated with =Pkg.test()=, plus real CLI runs
-for =search prime=, =search owner=, =search text=, =search ingest=, and
+for =search prime=, =search owner=, =search fzf=, =search ingest=, and
 =check --changed=.  During validation, =src/cli.jl= exceeded Julia's owner
 budget; the search protocol rendering was split into =src/cli/search_protocol.jl=
 and owner-test seed selection was tightened from broad token detail matching to

@@ -90,6 +90,7 @@
         "policy",
         "tests",
         "fzf",
+        "reasoning",
         "ingest"
       ]
     },
@@ -98,7 +99,8 @@
         "graph",
         "hits",
         "both",
-        "seeds"
+        "seeds",
+        "facts"
       ]
     },
     "query": {
@@ -205,6 +207,12 @@
       "type": "array",
       "items": {
         "$ref": "semantic-handle.v1.schema.json#/$defs/semanticHandle"
+      }
+    },
+    "reasoningProfiles": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/reasoningProfile"
       }
     },
     "nativeSyntaxFacts": {
@@ -438,11 +446,42 @@
         "unknown"
       ]
     },
+    "targetRole": {
+      "enum": [
+        "path",
+        "range",
+        "symbol",
+        "term",
+        "pkg",
+        "dep",
+        "test",
+        "finding",
+        "result",
+        "self",
+        "feature",
+        "cfg",
+        "value",
+        "custom"
+      ]
+    },
     "projectPath": {
       "type": "string",
       "description": "Canonical project-root-relative path. This is a path value, not a display locator: no rank prefixes, URI schemes, command prefixes, line ranges, columns, absolute paths, parent segments, backslashes, or numeric node slots.",
       "minLength": 1,
       "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*)$"
+    },
+    "windowTarget": {
+      "description": "A window-set target is either a canonical project path or a graph frontier token such as feature:cli, cfg:unix, or import:serde. It is not a display locator or rank-prefixed path.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/projectPath"
+        },
+        {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[a-z][a-z0-9_-]*:[^\\s:\\\\][^\\s\\\\]*$"
+        }
+      ]
     },
     "queryTerm": {
       "type": "object",
@@ -937,11 +976,24 @@
           "enum": [
             "owner",
             "tests",
-            "read"
+            "read",
+            "query",
+            "fzf",
+            "deps",
+            "dependency",
+            "docs",
+            "features",
+            "cfg",
+            "import",
+            "items",
+            "code",
+            "symbol",
+            "finding",
+            "custom"
           ]
         },
         "target": {
-          "$ref": "#/$defs/projectPath"
+          "$ref": "#/$defs/windowTarget"
         },
         "query": {
           "type": "string",
@@ -953,6 +1005,11 @@
         },
         "ownerPath": {
           "$ref": "#/$defs/projectPath"
+        },
+        "read": {
+          "type": "string",
+          "description": "Canonical source read locator for graph/code frontier actions, formatted as project/path:start:end.",
+          "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*):[1-9][0-9]*:[1-9][0-9]*$"
         },
         "fields": {
           "$ref": "#/$defs/fields"
@@ -982,6 +1039,11 @@
         },
         "ownerPath": {
           "$ref": "#/$defs/projectPath"
+        },
+        "read": {
+          "type": "string",
+          "description": "Canonical source read locator for graph/code frontier actions, formatted as project/path:start:end.",
+          "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*):[1-9][0-9]*:[1-9][0-9]*$"
         },
         "fields": {
           "$ref": "#/$defs/fields"
@@ -1178,6 +1240,9 @@
         },
         "rank": {
           "type": "number"
+        },
+        "targetRole": {
+          "$ref": "#/$defs/targetRole"
         },
         "fields": {
           "$ref": "#/$defs/fields"
@@ -1385,11 +1450,110 @@
           "type": "string",
           "minLength": 1
         },
+        "targetRole": {
+          "$ref": "#/$defs/targetRole"
+        },
         "scope": {
           "type": "string"
         },
         "ownerPath": {
           "$ref": "#/$defs/projectPath"
+        },
+        "read": {
+          "type": "string",
+          "description": "Canonical source read locator for graph/code frontier actions, formatted as project/path:start:end.",
+          "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*):[1-9][0-9]*:[1-9][0-9]*$"
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "reasoningProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile",
+        "selectors",
+        "returns"
+      ],
+      "properties": {
+        "profile": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "selectors": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/reasoningProfileSelector"
+          }
+        },
+        "returns": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]*$"
+          }
+        },
+        "compatibleHandles": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9]*$"
+          }
+        },
+        "frontier": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9]*\\.[a-z][a-z0-9_-]*$"
+          }
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "reasoningProfileSelector": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "alias"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "owner",
+            "query",
+            "dependency",
+            "test",
+            "finding",
+            "import",
+            "feature",
+            "custom"
+          ]
+        },
+        "alias": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9]*$"
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1
+        },
+        "targetRole": {
+          "$ref": "#/$defs/targetRole"
+        },
+        "required": {
+          "type": "boolean"
         },
         "fields": {
           "$ref": "#/$defs/fields"

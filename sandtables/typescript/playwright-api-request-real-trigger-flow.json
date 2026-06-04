@@ -30,7 +30,7 @@
     },
     "querySetOpportunities": [
       {
-        "view": "text",
+        "view": "fzf",
         "queries": 3,
         "saveCommands": 2,
         "selector": "exact-set",
@@ -45,8 +45,8 @@
       },
       {
         "kind": "tests-ranking",
-        "severity": "warning",
-        "message": "tests search does not link API request implementation owners to top-level tests/library/global-fetch.spec.ts"
+        "severity": "info",
+        "message": "fzf query-set owner coverage preserves packages/playwright-core/src/server/fetch.ts in the first owner frontier"
       }
     ]
   },
@@ -96,7 +96,7 @@
         "lineProtocol": true,
         "stdoutContains": [
           "[search-prime]",
-          "package=playwright-internal",
+          "root=playwright-internal",
           "packages/playwright-core/src/server/fetch.ts"
         ],
         "maxStdoutLinesWarn": 8,
@@ -127,7 +127,8 @@
           "[search-fzf]",
           "querySet=3",
           "packages/playwright-core/src/server/fetch.ts",
-          "tests:packages/playwright-core/src/server/fetch.ts"
+          "tests/playwright-test/playwright.spec.ts",
+          "packages/playwright-core/src/server/dispatchers/tracingDispatcher.ts"
         ],
         "maxStdoutLinesWarn": 12,
         "maxElapsedMsWarn": 8000
@@ -146,7 +147,6 @@
         "."
       ],
       "expect": {
-        "lineProtocol": true,
         "stdoutContains": [
           "[search-owner]",
           "class APIRequestContext",
@@ -171,8 +171,8 @@
         "lineProtocol": true,
         "stdoutContains": [
           "[search-tests]",
-          "test=0",
-          "packages/playwright-core/src/server/fetch.ts"
+          "test:path(packages/playwright-core/src/server/fetch.ts)",
+          "owner:path(packages/playwright-core/src/server/fetch.ts)"
         ],
         "maxStdoutLinesWarn": 8,
         "maxElapsedMsWarn": 8000
@@ -200,7 +200,7 @@
         "lineProtocol": true,
         "stdoutContains": [
           "[search-ingest]",
-          "src=rg-n",
+          "root=.",
           "tests/library/global-fetch.spec.ts"
         ],
         "maxStdoutLinesWarn": 6,

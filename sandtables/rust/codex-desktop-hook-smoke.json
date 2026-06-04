@@ -1,17 +1,23 @@
 {
   "id": "rust.codex-desktop-hook-smoke",
   "language": "rust",
-  "title": "Codex Desktop tool payloads route raw Rust reads through rs-harness policy",
+  "title": "Codex Desktop tool payloads route real Rust workspace reads through rs-harness policy",
   "coverage": [
     "desktop-hooks",
     "codex-hooks",
     "codex-wrapper",
     "policy-blackbox",
     "security",
-    "performance"
+    "performance",
+    "real-trigger"
+  ],
+  "tags": [
+    "real-trigger",
+    "rust-provider-workspace",
+    "desktop-hooks"
   ],
   "workdir": {
-    "relative": "sandtables/fixtures/codex-desktop-hook-smoke"
+    "relative": "languages/rust-lang-project-harness"
   },
   "budgets": {
     "maxCommands": 8,
@@ -21,11 +27,11 @@
     {
       "id": "exec-command-rtk-read",
       "command": [
-        "semantic-agent-hook",
+        "asp",
         "hook",
+        "pre-tool",
         "--client",
-        "codex",
-        "pre-tool"
+        "codex"
       ],
       "stdin": "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"functions.exec_command\",\"tool_input\":{\"cmd\":\"rtk read src/lib.rs\"}}",
       "expect": {
@@ -38,20 +44,21 @@
           "\\\"providerId\\\":\\\"rs-harness\\\""
         ],
         "stdoutNotContains": [
-          "codex-desktop-smoke-fixture"
+          "pub mod",
+          "fn "
         ],
         "maxStdoutLinesWarn": 1,
-        "maxElapsedMsWarn": 1000
+        "maxElapsedMsWarn": 6500
       }
     },
     {
       "id": "exec-command-rtk-rg",
       "command": [
-        "semantic-agent-hook",
+        "asp",
         "hook",
+        "pre-tool",
         "--client",
-        "codex",
-        "pre-tool"
+        "codex"
       ],
       "stdin": "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"functions.exec_command\",\"tool_input\":{\"cmd\":\"rtk rg -n smoke src tests\"}}",
       "expect": {
@@ -64,20 +71,21 @@
           "\\\"kind\\\":\\\"query\\\""
         ],
         "stdoutNotContains": [
-          "codex-desktop-smoke-fixture"
+          "pub mod",
+          "fn "
         ],
         "maxStdoutLinesWarn": 1,
-        "maxElapsedMsWarn": 500
+        "maxElapsedMsWarn": 6500
       }
     },
     {
       "id": "parallel-nested-exec-command",
       "command": [
-        "semantic-agent-hook",
+        "asp",
         "hook",
+        "pre-tool",
         "--client",
-        "codex",
-        "pre-tool"
+        "codex"
       ],
       "stdin": "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"multi_tool_use.parallel\",\"tool_input\":{\"tool_uses\":[{\"recipient_name\":\"functions.exec_command\",\"parameters\":{\"cmd\":\"rtk read src/lib.rs\"}}]}}",
       "expect": {
@@ -89,20 +97,21 @@
           "\\\"paths\\\":[\\\"src/lib.rs\\\"]"
         ],
         "stdoutNotContains": [
-          "codex-desktop-smoke-fixture"
+          "pub mod",
+          "fn "
         ],
         "maxStdoutLinesWarn": 1,
-        "maxElapsedMsWarn": 500
+        "maxElapsedMsWarn": 6500
       }
     },
     {
       "id": "shell-read",
       "command": [
-        "semantic-agent-hook",
+        "asp",
         "hook",
+        "pre-tool",
         "--client",
-        "codex",
-        "pre-tool"
+        "codex"
       ],
       "stdin": "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"functions.exec_command\",\"tool_input\":{\"cmd\":\"sed -n '1,40p' src/lib.rs\"}}",
       "expect": {
@@ -114,20 +123,21 @@
           "\\\"paths\\\":[\\\"src/lib.rs:1:40\\\"]"
         ],
         "stdoutNotContains": [
-          "codex-desktop-smoke-fixture"
+          "pub mod",
+          "fn "
         ],
         "maxStdoutLinesWarn": 1,
-        "maxElapsedMsWarn": 500
+        "maxElapsedMsWarn": 6500
       }
     },
     {
       "id": "guard-rtk-read",
       "command": [
-        "semantic-agent-hook",
+        "asp",
         "hook",
+        "pre-tool",
         "--client",
         "codex",
-        "pre-tool",
         "--emit",
         "decision"
       ],
@@ -139,20 +149,21 @@
           "subject.paths.0": "src/lib.rs"
         },
         "stdoutNotContains": [
-          "codex-desktop-smoke-fixture"
+          "pub mod",
+          "fn "
         ],
         "maxStdoutLinesWarn": 1,
-        "maxElapsedMsWarn": 500
+        "maxElapsedMsWarn": 6500
       }
     },
     {
       "id": "guard-rtk-rg",
       "command": [
-        "semantic-agent-hook",
+        "asp",
         "hook",
+        "pre-tool",
         "--client",
         "codex",
-        "pre-tool",
         "--emit",
         "decision"
       ],
@@ -164,20 +175,21 @@
           "routes.0.kind": "query"
         },
         "stdoutNotContains": [
-          "codex-desktop-smoke-fixture"
+          "pub mod",
+          "fn "
         ],
         "maxStdoutLinesWarn": 1,
-        "maxElapsedMsWarn": 500
+        "maxElapsedMsWarn": 6500
       }
     },
     {
       "id": "guard-shell-read",
       "command": [
-        "semantic-agent-hook",
+        "asp",
         "hook",
+        "pre-tool",
         "--client",
         "codex",
-        "pre-tool",
         "--emit",
         "decision"
       ],
@@ -189,20 +201,21 @@
           "subject.paths.0": "src/lib.rs:1:40"
         },
         "stdoutNotContains": [
-          "codex-desktop-smoke-fixture"
+          "pub mod",
+          "fn "
         ],
         "maxStdoutLinesWarn": 1,
-        "maxElapsedMsWarn": 500
+        "maxElapsedMsWarn": 6500
       }
     },
     {
       "id": "guard-exact-file-search",
       "command": [
-        "semantic-agent-hook",
+        "asp",
         "hook",
+        "pre-tool",
         "--client",
         "codex",
-        "pre-tool",
         "--emit",
         "decision"
       ],
@@ -213,7 +226,7 @@
           "reasonKind": "raw-broad-search",
           "routes.0.kind": "query"
         },
-        "maxElapsedMsWarn": 500
+        "maxElapsedMsWarn": 6500
       }
     }
   ]

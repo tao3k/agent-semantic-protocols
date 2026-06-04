@@ -1,0 +1,17 @@
+[package]
+name = "agent-semantic-client-db"
+version = "0.1.0"
+edition = "2024"
+description = "SQLite-backed local database for the agent semantic client cache."
+license = "MIT"
+
+[dependencies]
+agent-semantic-client-core = { path = "../agent-semantic-client-core" }
+rusqlite = { workspace = true }
+serde_json = { workspace = true }
+
+[build-dependencies]
+rust-lang-project-harness = { workspace = true }
+
+[dev-dependencies]
+rust-lang-project-harness = { workspace = true }

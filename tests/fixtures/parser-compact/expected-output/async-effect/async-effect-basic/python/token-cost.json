@@ -1,18 +1,18 @@
 {
   "caseId": "async-effect-basic",
-  "compactCodeDelta": 112,
-  "compactCodeRatio": 0.2533,
-  "compactCodeTokens": 38,
-  "compactLineDelta": 112,
-  "compactLineRatio": 0.2533,
-  "compactLineTokens": 38,
+  "compactCodeDelta": 485,
+  "compactCodeRatio": 0.2326,
+  "compactCodeTokens": 147,
+  "compactLineDelta": 485,
+  "compactLineRatio": 0.2326,
+  "compactLineTokens": 147,
   "featureClass": "async-effect",
   "languageId": "python",
   "providerId": "py-harness",
-  "queryPacketDelta": -1415,
-  "queryPacketRatio": 10.4333,
-  "queryPacketTokens": 1565,
-  "rawSourceTokens": 150,
+  "queryPacketDelta": -9556,
+  "queryPacketRatio": 16.1203,
+  "queryPacketTokens": 10188,
+  "rawSourceTokens": 632,
   "schemaId": "agent.semantic-protocols.parser-compact-token-cost",
   "schemaVersion": "1",
   "sourceOrigin": {
@@ -21,6 +21,6 @@
     "repository": "agent-semantic-protocols",
     "sourcePath": "src/async_effect.py"
   },
-  "tokenizerId": "tiktoken:o200k_base",
+  "tokenizerId": "byte",
   "variantId": "python"
 }

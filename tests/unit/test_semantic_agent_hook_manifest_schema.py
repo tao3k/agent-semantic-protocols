@@ -15,9 +15,9 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 
 def minimal_provider_manifest() -> dict[str, object]:
     return {
-        "schemaId": "agent.semantic-protocols.semantic-agent-hook-provider-manifest",
+        "schemaId": "agent.semantic-protocols.hook.provider-manifest",
         "schemaVersion": "1",
-        "protocolId": "agent.semantic-protocols.agent-hooks",
+        "protocolId": "agent.semantic-protocols.hook",
         "protocolVersion": "1",
         "manifestId": "agent.semantic-protocols.languages.typescript.ts-harness",
         "manifestVersion": "v1",
@@ -85,13 +85,13 @@ def minimal_provider_manifest() -> dict[str, object]:
 
 def minimal_activation() -> dict[str, object]:
     return {
-        "schemaId": "agent.semantic-protocols.semantic-agent-hook-activation",
+        "schemaId": "agent.semantic-protocols.hook.activation",
         "schemaVersion": "1",
-        "protocolId": "agent.semantic-protocols.agent-hooks",
+        "protocolId": "agent.semantic-protocols.hook",
         "protocolVersion": "1",
         "projectRoot": ".",
         "generatedBy": {
-            "runtime": "semantic-agent-hook",
+            "runtime": "agent-semantic-hook",
             "version": "0.1.0",
         },
         "providers": [
@@ -138,6 +138,14 @@ class SemanticAgentHookManifestSchemaTests(unittest.TestCase):
 
     def test_minimal_provider_manifest_is_valid(self) -> None:
         self.assertEqual([], self.manifest_errors(minimal_provider_manifest()))
+
+    def test_provider_manifest_accepts_export_index_route(self) -> None:
+        manifest = minimal_provider_manifest()
+        routes = copy.deepcopy(manifest["routes"])
+        routes["exportIndex"] = {"argv": ["ts-harness", "export", "index", "."]}
+        manifest["routes"] = routes
+
+        self.assertEqual([], self.manifest_errors(manifest))
 
     def test_provider_manifest_rejects_absolute_source_defaults(self) -> None:
         manifest = minimal_provider_manifest()

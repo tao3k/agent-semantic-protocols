@@ -78,12 +78,12 @@ class RawSearchQueryPacketTests(unittest.TestCase):
                                 "id": "miss-json",
                                 "command": _cargo_run_command(
                                     "query",
-                                    "crates/semantic-agent-hook/src/command/raw_search.rs",
+                                    "crates/agent-semantic-hook/src/command/raw_search.rs",
                                     "--term",
                                     "parse_ripgrep_scope",
                                     "--names-only",
                                     "--json",
-                                    "crates/semantic-agent-hook",
+                                    "crates/agent-semantic-hook",
                                 ),
                                 "expect": {
                                     "stdoutJsonSchema": (
@@ -105,11 +105,11 @@ class RawSearchQueryPacketTests(unittest.TestCase):
                                 "id": "prefix-names-only",
                                 "command": _cargo_run_command(
                                     "query",
-                                    "crates/semantic-agent-hook/src/command/raw_search.rs",
+                                    "crates/agent-semantic-hook/src/command/raw_search.rs",
                                     "--term",
                                     "parse_",
                                     "--names-only",
-                                    "crates/semantic-agent-hook",
+                                    "crates/agent-semantic-hook",
                                 ),
                                 "expect": {
                                     "stdoutContains": [
@@ -132,14 +132,16 @@ class RawSearchQueryPacketTests(unittest.TestCase):
                                     "direct-source-read",
                                     "--view",
                                     "seeds",
-                                    "crates/semantic-agent-hook",
+                                    "crates/agent-semantic-hook",
                                 ),
                                 "expect": {
                                     "stdoutContains": [
                                         "[search-fzf]",
-                                        "O=owner:src/classifier.rs!owner",
-                                        "T3=test:tests/unit/classifier/routes/direct_read/exact.rs!tests",
-                                        "rank=O,T,T2,T3",
+                                        "alias: graph:{G=search",
+                                        "Q=query:term(DecisionRouteKind::Read,window_set,direct-source-read)!fzf",
+                                        "test:path(tests/unit/classifier/routes/direct_read/exact.rs)!tests",
+                                        "G>{Q:matches",
+                                        "frontier=Q.fzf",
                                     ],
                                 },
                             },

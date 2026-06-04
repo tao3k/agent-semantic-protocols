@@ -1,18 +1,18 @@
 {
   "caseId": "async-effect-basic",
-  "compactCodeDelta": 54,
-  "compactCodeRatio": 0.4066,
-  "compactCodeTokens": 37,
-  "compactLineDelta": 54,
-  "compactLineRatio": 0.4066,
-  "compactLineTokens": 37,
+  "compactCodeDelta": 264,
+  "compactCodeRatio": 0.3481,
+  "compactCodeTokens": 141,
+  "compactLineDelta": 264,
+  "compactLineRatio": 0.3481,
+  "compactLineTokens": 141,
   "featureClass": "async-effect",
   "languageId": "typescript",
   "providerId": "ts-harness",
-  "queryPacketDelta": -1611,
-  "queryPacketRatio": 18.7033,
-  "queryPacketTokens": 1702,
-  "rawSourceTokens": 91,
+  "queryPacketDelta": -10090,
+  "queryPacketRatio": 25.9136,
+  "queryPacketTokens": 10495,
+  "rawSourceTokens": 405,
   "schemaId": "agent.semantic-protocols.parser-compact-token-cost",
   "schemaVersion": "1",
   "sourceOrigin": {
@@ -21,6 +21,6 @@
     "repository": "agent-semantic-protocols",
     "sourcePath": "src/async-effect.ts"
   },
-  "tokenizerId": "tiktoken:o200k_base",
+  "tokenizerId": "byte",
   "variantId": "typescript"
 }

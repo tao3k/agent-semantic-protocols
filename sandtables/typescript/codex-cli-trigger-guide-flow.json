@@ -63,11 +63,11 @@
         "codex-hooks"
       ],
       "command": [
-        "semantic-agent-hook",
+        "asp",
         "hook",
+        "pre-tool",
         "--client",
         "codex",
-        "pre-tool",
         "--emit",
         "decision"
       ],
@@ -78,15 +78,14 @@
           "decision": "deny",
           "reasonKind": "agent-search-json",
           "languageIds.0": "typescript",
-          "routes.0.kind": "text",
+          "routes.0.kind": "fzf",
           "routes.0.providerId": "ts-harness"
         },
         "guideQuality": {
           "reasonKind": "agent-search-json",
           "languageId": "typescript",
-          "routeKind": "text",
+          "routeKind": "fzf",
           "commandContains": [
-            "ts-harness agent guide .",
             "ts-harness",
             "search",
             "fzf",
@@ -109,11 +108,11 @@
         "codex-hooks"
       ],
       "command": [
-        "semantic-agent-hook",
+        "asp",
         "hook",
+        "pre-tool",
         "--client",
         "codex",
-        "pre-tool",
         "--emit",
         "decision"
       ],
@@ -124,20 +123,22 @@
           "decision": "deny",
           "reasonKind": "direct-source-read",
           "languageIds.0": "typescript",
-          "routes.0.kind": "owner",
+          "routes.0.kind": "query",
           "routes.0.providerId": "ts-harness"
         },
         "guideQuality": {
           "reasonKind": "direct-source-read",
           "languageId": "typescript",
-          "routeKind": "owner",
+          "routeKind": "query",
           "commandContains": [
-            "ts-harness agent guide .",
             "ts-harness",
-            "search",
-            "owner",
+            "query",
+            "--from-hook",
+            "direct-source-read",
+            "--selector",
             "sdk/typescript/src/codex.ts",
-            "."
+            "--code",
+            "languages/typescript-lang-project-harness"
           ],
           "sourceLeakNotContains": [
             "export class Codex"
@@ -154,11 +155,11 @@
         "codex-hooks"
       ],
       "command": [
-        "semantic-agent-hook",
+        "asp",
         "hook",
+        "pre-tool",
         "--client",
         "codex",
-        "pre-tool",
         "--emit",
         "decision"
       ],
@@ -191,9 +192,9 @@
         "lineProtocol": true,
         "stdoutContains": [
           "[search-prime]",
-          "package=@openai/codex-sdk",
-          "src/codex.ts",
-          "algorithm=owner-rank-frontier"
+          "root=@openai/codex-sdk",
+          "src/index.ts",
+          "alg=owner-rank-frontier"
         ],
         "maxStdoutLinesWarn": 12,
         "maxElapsedMsWarn": 8000

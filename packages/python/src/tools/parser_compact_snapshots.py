@@ -47,7 +47,7 @@ def _parse_cli_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--case", dest="case_id")
     parser.add_argument("--language", dest="language_id")
-    parser.add_argument("--tokenizer", default="tiktoken:o200k_base")
+    parser.add_argument("--tokenizer", default="byte")
     parser.add_argument("--refresh", action="store_true")
     parser.add_argument("--check-provider", action="store_true")
     return parser.parse_args(argv)

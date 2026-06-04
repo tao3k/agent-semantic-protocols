@@ -24,13 +24,18 @@
     "maxCommands": 7,
     "maxTotalLinesWarn": 12,
     "maxTotalElapsedMsWarn": 3500,
-    "maxTotalStdoutBytesWarn": 24000
+    "maxTotalStdoutBytesWarn": 30000
   },
   "steps": [
     {
       "id": "registry-json-schema",
       "kind": "schema-contract",
-      "coverage": ["language-registry", "json-schema", "policy-whitebox", "evidence-assurance"],
+      "coverage": [
+        "language-registry",
+        "json-schema",
+        "policy-whitebox",
+        "evidence-assurance"
+      ],
       "command": [
         "rs-harness",
         "agent",
@@ -72,7 +77,11 @@
     {
       "id": "assurance-case-schema",
       "kind": "schema-contract",
-      "coverage": ["evidence-assurance", "json-schema", "performance"],
+      "coverage": [
+        "evidence-assurance",
+        "json-schema",
+        "performance"
+      ],
       "command": [
         "rs-harness",
         "evidence",
@@ -104,7 +113,11 @@
     {
       "id": "prime-search-packet-schema",
       "kind": "schema-contract",
-      "coverage": ["json-schema", "search-flow", "performance"],
+      "coverage": [
+        "json-schema",
+        "search-flow",
+        "performance"
+      ],
       "command": [
         "rs-harness",
         "search",
@@ -133,7 +146,12 @@
     {
       "id": "dependency-query-set-packet-schema",
       "kind": "schema-contract",
-      "coverage": ["json-schema", "search-flow", "deps-query", "performance"],
+      "coverage": [
+        "json-schema",
+        "search-flow",
+        "deps-query",
+        "performance"
+      ],
       "command": [
         "rs-harness",
         "search",
@@ -171,13 +189,18 @@
     {
       "id": "hook-decision-schema",
       "kind": "hook-replay",
-      "coverage": ["codex-hooks", "json-schema", "policy-blackbox", "security"],
+      "coverage": [
+        "codex-hooks",
+        "json-schema",
+        "policy-blackbox",
+        "security"
+      ],
       "command": [
-        "semantic-agent-hook",
+        "asp",
         "hook",
+        "pre-tool",
         "--client",
         "codex",
-        "pre-tool",
         "--emit",
         "decision"
       ],
@@ -187,7 +210,9 @@
         "stdoutJsonEquals": {
           "decision": "deny",
           "reasonKind": "direct-source-read",
-          "languageIds": ["rust"]
+          "languageIds": [
+            "rust"
+          ]
         },
         "stdoutNotContains": [
           "pub mod",
@@ -200,13 +225,18 @@
     {
       "id": "guard-decision-schema",
       "kind": "wrapper",
-      "coverage": ["codex-wrapper", "json-schema", "policy-blackbox", "security"],
+      "coverage": [
+        "codex-wrapper",
+        "json-schema",
+        "policy-blackbox",
+        "security"
+      ],
       "command": [
-        "semantic-agent-hook",
+        "asp",
         "hook",
+        "pre-tool",
         "--client",
         "codex",
-        "pre-tool",
         "--emit",
         "decision"
       ],
@@ -228,13 +258,17 @@
     {
       "id": "raw-broad-search-denied",
       "kind": "policy-blackbox",
-      "coverage": ["policy-blackbox", "security", "performance"],
+      "coverage": [
+        "policy-blackbox",
+        "security",
+        "performance"
+      ],
       "command": [
-        "semantic-agent-hook",
+        "asp",
         "hook",
+        "pre-tool",
         "--client",
         "codex",
-        "pre-tool",
         "--emit",
         "decision"
       ],
@@ -244,13 +278,13 @@
           "decision": "deny",
           "reasonKind": "raw-broad-search"
         },
-    "stdoutJsonArrayContains": {
-      "routes": {
-        "binary": "rs-harness",
-        "kind": "query",
-        "languageId": "rust"
-      }
-    },
+        "stdoutJsonArrayContains": {
+          "routes": {
+            "binary": "rs-harness",
+            "kind": "query",
+            "languageId": "rust"
+          }
+        },
         "maxElapsedMsWarn": 800
       }
     }

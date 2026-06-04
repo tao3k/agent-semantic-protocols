@@ -114,14 +114,14 @@ def _resolve_step_command(
 
 
 def _workspace_dev_command(repo_root: Path, command: list[str]) -> list[str]:
-    if command[0] != "semantic-agent-hook":
+    if command[0] != "asp":
         return command
     rewritten = [
         "cargo",
         "run",
         "--quiet",
         "--manifest-path",
-        str(repo_root / "crates" / "semantic-agent-hook" / "Cargo.toml"),
+        str(repo_root / "crates" / "agent-semantic-protocol" / "Cargo.toml"),
         "--",
         *command[1:],
     ]
@@ -129,7 +129,13 @@ def _workspace_dev_command(repo_root: Path, command: list[str]) -> list[str]:
         rewritten.extend(
             [
                 "--activation",
-                str(repo_root / ".codex" / "semantic-agent-hook" / "activation.json"),
+                str(
+                    repo_root
+                    / ".cache"
+                    / "agent-semantic-protocol"
+                    / "hooks"
+                    / "activation.json"
+                ),
             ]
         )
     return rewritten

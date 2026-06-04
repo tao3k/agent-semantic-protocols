@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/agent-semantic-client-config.v1.schema.json",
+  "title": "Agent Semantic Client Config",
+  "description": "agent semantic client route, provider, privacy, and cloud endpoint configuration. This config selects execution capabilities; it does not define provider semantics.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.client-config"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "protocolId": {
+      "const": "agent.semantic-protocols.client"
+    },
+    "protocolVersion": {
+      "const": "1"
+    },
+    "backend": {
+      "$ref": "#/$defs/backend"
+    },
+    "local": {
+      "$ref": "#/$defs/local"
+    },
+    "cloud": {
+      "$ref": "#/$defs/cloud"
+    },
+    "privacy": {
+      "$ref": "#/$defs/privacy"
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "backend": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "enum": ["local", "cloud", "hybrid"]
+        }
+      }
+    },
+    "local": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "providers": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        }
+      }
+    },
+    "cloud": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "endpoint": {
+          "type": "string",
+          "pattern": "^(grpc|grpc\\+tls)://[^\\s]+$"
+        },
+        "auth": {
+          "enum": ["device", "api-token", "mtls"]
+        }
+      }
+    },
+    "privacy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "uploadPolicy": {
+          "enum": ["none", "semantic-index", "source-index"]
+        }
+      }
+    }
+  }
+}

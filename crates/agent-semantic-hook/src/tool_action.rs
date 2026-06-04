@@ -1,0 +1,488 @@
+use serde_json::Value;
+
+use crate::command::{apply_patch_source_paths, path_like_tokens, semantic_shell_tokens};
+use crate::protocol::DecisionSubject;
+
+const PATH_SCALAR_KEYS: &[&str] = &[
+    "path",
+    "file",
+    "file_name",
+    "fileName",
+    "file_path",
+    "filePath",
+    "absolute_path",
+    "absolutePath",
+    "relative_path",
+    "relativePath",
+    "uri",
+];
+const PATH_CONTAINER_KEYS: &[&str] = &[
+    "paths",
+    "files",
+    "resource",
+    "resources",
+    "uris",
+    "document",
+    "documents",
+    "text_document",
+    "textDocument",
+];
+const PATH_VALUE_KEYS: &[&str] = &[
+    "path",
+    "file",
+    "file_name",
+    "fileName",
+    "file_path",
+    "filePath",
+    "absolute_path",
+    "absolutePath",
+    "relative_path",
+    "relativePath",
+    "uri",
+    "paths",
+    "files",
+    "resource",
+    "resources",
+    "uris",
+    "document",
+    "documents",
+    "text_document",
+    "textDocument",
+];
+
+#[derive(Clone, Debug)]
+pub(crate) struct ToolAction {
+    pub(crate) tool_name: String,
+    pub(crate) surface: ToolSurface,
+    pub(crate) operation: OperationIntent,
+    pub(crate) command: Option<String>,
+    pub(crate) paths: Vec<String>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ToolSurface {
+    CodexApplyPatch,
+    CodexDirectRead,
+    CodexDirectoryRead,
+    CodexFuzzyFileSearch,
+    CodexMcpRead,
+    CodexNestedTools,
+    CodexShell,
+    CodexStdinContinuation,
+    Unknown,
+}
+
+impl ToolSurface {
+    pub(crate) fn from_tool_name(tool_name: &str) -> Self {
+        let lower = tool_name.to_ascii_lowercase();
+        if lower.starts_with("mcp__") && lower.contains("__read") {
+            return Self::CodexMcpRead;
+        }
+        let normalized = lower
+            .chars()
+            .map(|ch| match ch {
+                '-' | '/' | ':' => '.',
+                _ => ch,
+            })
+            .collect::<String>();
+        let leaf = normalized
+            .split('.')
+            .next_back()
+            .unwrap_or(normalized.as_str());
+        match normalized.as_str() {
+            "apply_patch" | "applypatch" => Self::CodexApplyPatch,
+            "bash" | "shell" | "functions.exec_command" | "exec_command" | "command_execution" => {
+                Self::CodexShell
+            }
+            "grep" | "glob" => Self::CodexFuzzyFileSearch,
+            "multi_tool_use.parallel" => Self::CodexNestedTools,
+            "write_stdin" | "writestdin" | "process.write_stdin" | "process.writestdin" => {
+                Self::CodexStdinContinuation
+            }
+            "fuzzyfilesearch"
+            | "fuzzyfilesearch.sessionstart"
+            | "fuzzyfilesearch.sessionupdate" => Self::CodexFuzzyFileSearch,
+            _ if matches!(leaf, "read" | "readfile" | "read_file" | "fsreadfile") => {
+                Self::CodexDirectRead
+            }
+            _ if matches!(leaf, "readdirectory" | "read_directory" | "fsreaddirectory") => {
+                Self::CodexDirectoryRead
+            }
+            _ if normalized.ends_with(".apply_patch") => Self::CodexApplyPatch,
+            _ => Self::Unknown,
+        }
+    }
+
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::CodexApplyPatch => "codex-apply-patch",
+            Self::CodexDirectRead => "codex-direct-read",
+            Self::CodexDirectoryRead => "codex-directory-read",
+            Self::CodexFuzzyFileSearch => "codex-fuzzy-file-search",
+            Self::CodexMcpRead => "codex-mcp-read",
+            Self::CodexNestedTools => "codex-nested-tools",
+            Self::CodexShell => "codex-shell",
+            Self::CodexStdinContinuation => "codex-stdin-continuation",
+            Self::Unknown => "unknown",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum OperationIntent {
+    ApplyPatch,
+    DirectoryRead,
+    DirectRead,
+    FileSearch,
+    NestedTools,
+    ShellCommand,
+    StdinContinuation,
+    Unknown,
+}
+
+impl OperationIntent {
+    pub(crate) fn from_action(
+        surface: ToolSurface,
+        command: Option<&str>,
+        paths: &[String],
+    ) -> Self {
+        match surface {
+            ToolSurface::CodexApplyPatch => Self::ApplyPatch,
+            ToolSurface::CodexDirectRead | ToolSurface::CodexMcpRead => Self::DirectRead,
+            ToolSurface::CodexDirectoryRead => Self::DirectoryRead,
+            ToolSurface::CodexFuzzyFileSearch => Self::FileSearch,
+            ToolSurface::CodexNestedTools => Self::NestedTools,
+            ToolSurface::CodexShell if command.is_some() => Self::ShellCommand,
+            ToolSurface::CodexStdinContinuation if command.is_some() => Self::StdinContinuation,
+            ToolSurface::Unknown if command.is_none() && !paths.is_empty() => Self::DirectRead,
+            _ => Self::Unknown,
+        }
+    }
+
+    pub(crate) fn is_direct_read_candidate(self) -> bool {
+        matches!(self, Self::DirectRead | Self::DirectoryRead)
+    }
+
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::ApplyPatch => "apply-patch",
+            Self::DirectoryRead => "directory-read",
+            Self::DirectRead => "direct-read",
+            Self::FileSearch => "file-search",
+            Self::NestedTools => "nested-tools",
+            Self::ShellCommand => "shell-command",
+            Self::StdinContinuation => "stdin-continuation",
+            Self::Unknown => "unknown",
+        }
+    }
+}
+
+pub(crate) fn payload_string(payload: &Value, key: &str) -> Option<String> {
+    payload.get(key).and_then(Value::as_str).map(str::to_string)
+}
+
+pub(crate) fn collect_tool_actions(tool_name: &str, tool_input: &Value) -> Vec<ToolAction> {
+    let decoded_tool_input = decoded_json_input(tool_input);
+    let tool_input = decoded_tool_input.as_ref().unwrap_or(tool_input);
+    let surface = ToolSurface::from_tool_name(tool_name);
+    let command = extract_command_direct(surface, tool_name, tool_input);
+    let mut paths = extract_paths_direct(tool_input);
+    if let Some(command) = command.as_deref() {
+        let patch_paths = apply_patch_source_paths(tool_name, command);
+        let command_paths = if patch_paths.is_empty() {
+            command_source_paths(command)
+        } else {
+            patch_paths
+        };
+        for path in command_paths {
+            if !paths.iter().any(|existing| existing == &path) {
+                paths.push(path);
+            }
+        }
+    }
+    let operation = OperationIntent::from_action(surface, command.as_deref(), &paths);
+    let mut actions = vec![ToolAction {
+        tool_name: tool_name.to_string(),
+        surface,
+        operation,
+        command,
+        paths,
+    }];
+    for nested in nested_tool_actions(tool_input) {
+        actions.extend(collect_tool_actions(&nested.tool_name, &nested.input));
+    }
+    actions
+}
+
+pub(crate) fn subject_for_action(action: &ToolAction) -> DecisionSubject {
+    DecisionSubject {
+        tool_name: if action.tool_name.is_empty() {
+            None
+        } else {
+            Some(action.tool_name.clone())
+        },
+        command: action.command.clone(),
+        paths: action.paths.clone(),
+    }
+}
+
+fn extract_command_direct(
+    surface: ToolSurface,
+    tool_name: &str,
+    tool_input: &Value,
+) -> Option<String> {
+    let normalized_tool_name = tool_name.to_ascii_lowercase();
+    if surface == ToolSurface::CodexApplyPatch {
+        if let Some(patch) = tool_input.as_str() {
+            return Some(patch.to_string());
+        }
+        for key in ["patch", "input", "text", "command"] {
+            if let Some(patch) = tool_input.get(key).and_then(Value::as_str) {
+                return Some(patch.to_string());
+            }
+        }
+    }
+    if surface == ToolSurface::CodexStdinContinuation {
+        return tool_input
+            .get("chars")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|chars| !chars.is_empty())
+            .map(str::to_string);
+    }
+    if surface == ToolSurface::CodexFuzzyFileSearch {
+        return extract_file_search_command(&normalized_tool_name, tool_input);
+    }
+    if surface != ToolSurface::CodexShell {
+        return None;
+    }
+    for key in ["cmd", "command"] {
+        if let Some(command) = tool_input.get(key).and_then(Value::as_str) {
+            return Some(command.to_string());
+        }
+    }
+    if let Some(command) = tool_input
+        .get("args")
+        .and_then(Value::as_array)
+        .and_then(|values| string_array_command(values))
+    {
+        return Some(command);
+    }
+    if normalized_tool_name == "command_execution" {
+        return tool_input
+            .get("tool_input")
+            .and_then(|value| value.get("command"))
+            .and_then(Value::as_str)
+            .map(str::to_string);
+    }
+    None
+}
+
+fn extract_file_search_command(tool_name: &str, tool_input: &Value) -> Option<String> {
+    match tool_name {
+        "grep" => {
+            let pattern = payload_string(tool_input, "pattern")?;
+            let mut command = vec!["rg".to_string()];
+            if let Some(glob) = payload_string(tool_input, "glob") {
+                command.push("--glob".to_string());
+                command.push(shell_quote_arg(&glob));
+            }
+            command.push(shell_quote_arg(&pattern));
+            if let Some(path) = payload_string(tool_input, "path") {
+                command.push(shell_quote_arg(&path));
+            }
+            Some(command.join(" "))
+        }
+        "glob" => {
+            let pattern = payload_string(tool_input, "pattern")?;
+            let mut command = vec!["fd".to_string(), shell_quote_arg(&pattern)];
+            if let Some(path) = payload_string(tool_input, "path") {
+                command.push(shell_quote_arg(&path));
+            }
+            Some(command.join(" "))
+        }
+        _ => None,
+    }
+}
+
+fn extract_paths_direct(tool_input: &Value) -> Vec<String> {
+    let mut paths = path_values_for_keys(tool_input, PATH_SCALAR_KEYS);
+    paths.extend(path_values_for_keys(tool_input, PATH_CONTAINER_KEYS));
+    paths
+}
+
+fn path_values_for_keys(tool_input: &Value, keys: &[&str]) -> Vec<String> {
+    keys.iter()
+        .filter_map(|key| tool_input.get(*key))
+        .flat_map(path_values)
+        .collect()
+}
+
+fn path_values(value: &Value) -> Vec<String> {
+    if let Some(path) = value.as_str() {
+        return vec![normalize_path_value(path)];
+    }
+    if value.is_object() {
+        return path_values_for_keys(value, PATH_VALUE_KEYS);
+    }
+    value
+        .as_array()
+        .into_iter()
+        .flatten()
+        .flat_map(path_values)
+        .collect()
+}
+
+fn normalize_path_value(path: &str) -> String {
+    let Some(uri_path) = path.strip_prefix("file://") else {
+        return path.to_string();
+    };
+    if let Some(localhost_path) = uri_path.strip_prefix("localhost/") {
+        return format!("/{localhost_path}");
+    }
+    uri_path.to_string()
+}
+
+struct NestedToolAction {
+    tool_name: String,
+    input: Value,
+}
+
+fn nested_tool_actions(tool_input: &Value) -> Vec<NestedToolAction> {
+    let mut nested = Vec::new();
+    if let Some(action) = nested_function_action(tool_input) {
+        nested.push(action);
+    }
+    for key in ["tool_uses", "toolUses", "tools", "tool_calls", "toolCalls"] {
+        let Some(tool_uses) = tool_input.get(key).and_then(Value::as_array) else {
+            continue;
+        };
+        for tool_use in tool_uses {
+            if let Some(action) = nested_action_from_tool_use(tool_use) {
+                nested.push(action);
+            }
+        }
+    }
+    nested
+}
+
+fn nested_action_from_tool_use(tool_use: &Value) -> Option<NestedToolAction> {
+    if let Some(action) = nested_function_action(tool_use) {
+        return Some(action);
+    }
+    let tool_name = payload_string(tool_use, "recipient_name")
+        .or_else(|| payload_string(tool_use, "recipientName"))
+        .or_else(|| payload_string(tool_use, "tool_name"))
+        .or_else(|| payload_string(tool_use, "toolName"))
+        .or_else(|| payload_string(tool_use, "name"))?;
+    Some(NestedToolAction {
+        tool_name,
+        input: nested_input_value(tool_use),
+    })
+}
+
+fn nested_function_action(value: &Value) -> Option<NestedToolAction> {
+    let function = value.get("function")?;
+    let tool_name = payload_string(function, "name")?;
+    let input = function
+        .get("arguments")
+        .or_else(|| function.get("parameters"))
+        .or_else(|| function.get("input"))
+        .map(decoded_or_cloned)
+        .unwrap_or(Value::Null);
+    Some(NestedToolAction { tool_name, input })
+}
+
+fn nested_input_value(tool_use: &Value) -> Value {
+    tool_use
+        .get("parameters")
+        .or_else(|| tool_use.get("tool_input"))
+        .or_else(|| tool_use.get("toolInput"))
+        .or_else(|| tool_use.get("input"))
+        .or_else(|| tool_use.get("arguments"))
+        .map(decoded_or_cloned)
+        .unwrap_or(Value::Null)
+}
+
+fn decoded_or_cloned(value: &Value) -> Value {
+    decoded_json_input(value).unwrap_or_else(|| value.clone())
+}
+
+fn decoded_json_input(value: &Value) -> Option<Value> {
+    let text = value.as_str()?;
+    serde_json::from_str::<Value>(text).ok()
+}
+
+fn string_array_command(values: &[Value]) -> Option<String> {
+    let mut parts = Vec::new();
+    for value in values {
+        parts.push(shell_quote_arg(value.as_str()?));
+    }
+    if parts.is_empty() {
+        None
+    } else {
+        Some(parts.join(" "))
+    }
+}
+
+fn shell_quote_arg(value: &str) -> String {
+    if value.chars().any(char::is_whitespace) {
+        format!("'{}'", value.replace('\'', "'\"'\"'"))
+    } else {
+        value.to_string()
+    }
+}
+
+fn command_source_paths(command: &str) -> Vec<String> {
+    let tokens = semantic_shell_tokens(command);
+    let range_paths = crate::source_dump_range::line_range_source_paths(command);
+    if !range_paths.is_empty() {
+        return range_paths;
+    }
+    let mut paths = Vec::new();
+    for token in path_like_tokens(&tokens) {
+        let embedded = embedded_source_path_candidates(token);
+        if embedded.is_empty() {
+            if !looks_like_code_call_token(token) {
+                push_unique_path(&mut paths, token.to_string());
+            }
+        } else {
+            for path in embedded {
+                push_unique_path(&mut paths, path);
+            }
+        }
+    }
+    paths
+}
+
+fn looks_like_code_call_token(token: &str) -> bool {
+    token.contains('(') || token.contains(')')
+}
+
+fn embedded_source_path_candidates(token: &str) -> Vec<String> {
+    let mut paths = Vec::new();
+    let mut current = String::new();
+    for ch in token.chars().chain(std::iter::once(' ')) {
+        if ch.is_ascii_alphanumeric() || matches!(ch, '/' | '.' | '_' | '-' | '*' | ':' | '~') {
+            current.push(ch);
+            continue;
+        }
+        if is_embedded_source_path_candidate(&current) {
+            push_unique_path(&mut paths, current.clone());
+        }
+        current.clear();
+    }
+    paths
+}
+
+fn is_embedded_source_path_candidate(candidate: &str) -> bool {
+    !candidate.starts_with('-')
+        && (candidate.contains('/') || candidate.contains('*'))
+        && candidate.contains('.')
+}
+
+fn push_unique_path(paths: &mut Vec<String>, path: String) {
+    if !paths.iter().any(|existing| existing == &path) {
+        paths.push(path);
+    }
+}

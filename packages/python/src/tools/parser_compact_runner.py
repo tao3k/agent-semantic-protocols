@@ -15,6 +15,10 @@ from tools.parser_compact_model import (
     case_label,
 )
 from tools.parser_compact_tokenizers import Tokenizer
+from tools.semantic_query_projection import (
+    compact_code_text_layout_errors,
+    semantic_query_projection_errors,
+)
 
 
 @dataclass(frozen=True)
@@ -183,7 +187,19 @@ def normalize_text(text: str) -> str:
 
 def query_packet_artifacts(text: str, case: ParserCompactCase) -> tuple[str, str]:
     packet = normalize_snapshot_paths(json.loads(text), case)
+    projection_errors = semantic_query_projection_errors(packet)
+    if projection_errors:
+        raise ValueError(
+            "query packet projection contract failed:\n"
+            + "\n".join(f"- {error}" for error in projection_errors)
+        )
     code_text = compact_code_text(packet)
+    code_errors = compact_code_text_layout_errors(code_text)
+    if code_errors:
+        raise ValueError(
+            "compact code artifact contract failed:\n"
+            + "\n".join(f"- {error}" for error in code_errors)
+        )
     for match in packet.get("matches", []):
         if isinstance(match, dict):
             match.pop("code", None)

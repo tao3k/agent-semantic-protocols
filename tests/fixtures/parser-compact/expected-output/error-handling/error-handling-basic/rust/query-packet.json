@@ -11,6 +11,11 @@
         "path": "src/lib.rs"
       },
       "name": "parse_score",
+      "patchSafety": {
+        "exactRead": "src/lib.rs:1:9",
+        "level": "read-safe",
+        "reason": "read exact source locator before editing this compact match"
+      },
       "projection": {
         "exactRead": "src/lib.rs:1:9",
         "expandActions": [
@@ -18,25 +23,25 @@
             "kind": "hot-block",
             "read": "src/lib.rs:2:4",
             "reason": "parser-projection-mutation",
-            "target": "n1"
+            "target": "let-2-4-576340dd"
           },
           {
             "kind": "hot-block",
             "read": "src/lib.rs:5:7",
             "reason": "parser-projection-control-flow",
-            "target": "n2"
+            "target": "if-5-7-115c14f"
           },
           {
             "kind": "hot-block",
             "read": "src/lib.rs:6:6",
             "reason": "parser-projection-terminal",
-            "target": "n3"
+            "target": "return-6-6-1ce7c9de"
           },
           {
             "kind": "hot-block",
             "read": "src/lib.rs:8:8",
             "reason": "parser-projection-terminal",
-            "target": "n4"
+            "target": "return-8-8-4cced937"
           }
         ],
         "losslessStructure": true,
@@ -46,23 +51,27 @@
         "nodes": [
           {
             "depth": 0,
-            "id": "n0",
+            "id": "fn-1-9-1db9ef0b",
             "kind": "fn",
             "label": "fn parse_score",
+            "nativeId": "rust-fn-1-9-1db9ef0b",
             "read": "src/lib.rs:1:9",
-            "role": "declaration"
+            "role": "declaration",
+            "structuralFingerprint": "fn-declaration-1-9-1db9ef0b"
           },
           {
             "depth": 1,
             "flags": [
               "mutation"
             ],
-            "id": "n1",
+            "id": "let-2-4-576340dd",
             "kind": "let",
             "label": "assign value",
-            "parentId": "n0",
+            "nativeId": "rust-let-2-4-576340dd",
+            "parentId": "fn-1-9-1db9ef0b",
             "read": "src/lib.rs:2:4",
-            "role": "mutation"
+            "role": "mutation",
+            "structuralFingerprint": "let-mutation-2-4-576340dd"
           },
           {
             "depth": 1,
@@ -70,40 +79,94 @@
               "branch",
               "guard"
             ],
-            "id": "n2",
+            "id": "if-5-7-115c14f",
             "kind": "if",
             "label": "if value < 0",
-            "parentId": "n0",
+            "nativeId": "rust-if-5-7-115c14f",
+            "parentId": "fn-1-9-1db9ef0b",
             "read": "src/lib.rs:5:7",
-            "role": "control-flow"
+            "role": "control-flow",
+            "structuralFingerprint": "if-control-flow-5-7-115c14f"
           },
           {
             "depth": 2,
             "flags": [
               "return"
             ],
-            "id": "n3",
+            "id": "return-6-6-1ce7c9de",
             "kind": "return",
             "label": "return Err(\"negative\".to_string())",
-            "parentId": "n2",
+            "nativeId": "rust-return-6-6-1ce7c9de",
+            "parentId": "if-5-7-115c14f",
             "read": "src/lib.rs:6:6",
-            "role": "terminal"
+            "role": "terminal",
+            "structuralFingerprint": "return-terminal-6-6-1ce7c9de"
           },
           {
             "depth": 1,
             "flags": [
               "return"
             ],
-            "id": "n4",
+            "id": "return-8-8-4cced937",
             "kind": "return",
             "label": "return Ok",
-            "parentId": "n0",
+            "nativeId": "rust-return-8-8-4cced937",
+            "parentId": "fn-1-9-1db9ef0b",
             "read": "src/lib.rs:8:8",
-            "role": "terminal"
+            "role": "terminal",
+            "structuralFingerprint": "return-terminal-8-8-4cced937"
           }
         ],
         "nodesTruncated": false,
+        "omitted": [
+          {
+            "kind": "source-formatting",
+            "nodeId": "fn-1-9-1db9ef0b",
+            "read": "src/lib.rs:1:9",
+            "reason": "compact projection removes original whitespace and comments"
+          }
+        ],
+        "renderedNodeIds": [
+          "fn-1-9-1db9ef0b",
+          "let-2-4-576340dd",
+          "if-5-7-115c14f",
+          "return-6-6-1ce7c9de",
+          "return-8-8-4cced937"
+        ],
+        "renderedRows": [
+          {
+            "nodeId": "fn-1-9-1db9ef0b",
+            "rowKind": "declaration",
+            "semanticWeight": 1,
+            "text": "fn parse_score"
+          },
+          {
+            "nodeId": "let-2-4-576340dd",
+            "rowKind": "mutation",
+            "semanticWeight": 2,
+            "text": "assign value"
+          },
+          {
+            "nodeId": "if-5-7-115c14f",
+            "rowKind": "control-flow",
+            "semanticWeight": 2,
+            "text": "if value < 0"
+          },
+          {
+            "nodeId": "return-6-6-1ce7c9de",
+            "rowKind": "terminal",
+            "semanticWeight": 2,
+            "text": "return Err(\"negative\".to_string())"
+          },
+          {
+            "nodeId": "return-8-8-4cced937",
+            "rowKind": "terminal",
+            "semanticWeight": 2,
+            "text": "return Ok"
+          }
+        ],
         "sourceAuthority": "native-parser",
+        "sourceFingerprint": "src/lib.rs:1:9:85:924168ab166f5abd",
         "syntax": "semantic-outline"
       },
       "read": "src/lib.rs:1:9",
@@ -115,6 +178,11 @@
   "namespace": "agent.semantic-protocols.languages.rust.rs-harness",
   "outputMode": "code",
   "ownerPath": "src/lib.rs",
+  "patchSafety": {
+    "level": "read-safe",
+    "nextAction": "query --from-hook direct-source-read",
+    "reason": "compact query packet is not a mutation authority"
+  },
   "projectRoot": ".",
   "protocolId": "agent.semantic-protocols.semantic-language",
   "protocolVersion": "1",

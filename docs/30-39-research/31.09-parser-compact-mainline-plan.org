@@ -14,6 +14,11 @@ itself; it is a stable native syntax projection that lets an agent understand
 control flow, effects, mutations, and exact expansion points with fewer
 commands.
 
+The protocol home for this work is
+=rfcs/semantic-query-projection-protocol.org=.  This report remains the
+implementation and measurement plan; the RFC owns the shared
+=semantic-query-packet.v1= projection contract.
+
 * Problem
 
 The first Rust compact pass moved item query output from source slicing to
@@ -141,6 +146,148 @@ the semantic facts the agent needs: declaration, branch, effect call, explicit
 return, and tail value.  The next parser work is not renderer compaction; it is
 projection metadata: stable node ids, parent ids, exact read locators per node,
 and omitted/expand actions.
+
+Formatter-assisted compact output is acceptable when it stays behind native
+parser facts.  The formatter gives the provider a canonical source spelling,
+which lets compact projection remove more trivia without guessing.  It does not
+turn compact output into writable source.  After reading compact AST output, an
+agent must still expand an exact locator before editing; after an AST patch,
+the provider must run the declared language formatter and reparse before
+emitting a receipt.
+
+This is a deliberate compromise with formatter design.  Formatters were made
+for people, so their output spends tokens on readability.  Agents do not need
+that layout, but LLMs do benefit from formatter-normalized syntax because most
+training code is formatted.  The compact path should preserve the formatter's
+language prior and discard human-only style noise.
+
+This cannot assume one global formatter style.  Formatter selection, version,
+line width, plugins, and import style are workspace-owned.  Compact projection
+should treat the formatter profile as an opaque fact and verify structural AST
+alignment, not exact token layout.
+
+Formatter-assisted compact projection is not allowed to hide core failures.
+If the original AST and formatter-normalized AST do not align, the provider
+should fail the formatter-assisted path and record the failure.  Parser-only
+projection can be a declared capability level, but it is not a fallback after
+formatter alignment fails.
+
+** 2026-06-03 concept proof: compact value must be measured
+
+The root compact problem is token budget, not only AST/formatter alignment.
+=tests/unit/test_formatter_compact_ast_concept.py= now includes a small Python
+concept proof that compares formatted source with compact AST projection.
+
+The formatted sample includes a declaration, docstring, comment, two branches,
+an effect call, blank lines, and terminal returns.  The compact projection is:
+
+#+begin_example
+def classify(value: int, debug: bool = False) -> int
+if debug
+call print('debug', value)
+if value > 10
+return value + 1
+return 0
+#+end_example
+
+Measured by the test's stable prompt-budget proxy:
+
+#+begin_example
+raw_chars=322 compact_chars=128 char_savings_percent=60
+raw_prompt_tokens=89 compact_prompt_tokens=41 prompt_token_savings_percent=53
+retained_agent_facts=declaration,branch,effect-call,terminal-return
+#+end_example
+
+This is the intended acceptance shape for future provider fixtures: compact
+output must show a measurable budget reduction and must explicitly retain the
+agent facts needed for the next decision.  Alignment alone is not enough.
+
+The same concept proof also measures remaining waste inside the code-like
+compact projection.  The code-like projection is useful because it stays close
+to LLM training priors, but it still spends tokens on source-shaped syntax:
+
+- full role words: =def=, =if=, =call=, =return=
+- human expression spelling: spaces around operators, parentheses, commas, and
+  string quotes
+- signature detail such as type annotations and defaults when the current task
+  only needs arity or owner identity
+- repeated identifiers such as =value= across branches and returns
+- exact call arguments when the next decision only needs callee and arity
+
+An AST fact projection can keep the same next-decision facts with a role-code
+legend: =F=function=, =B=branch=, =E=effect call=, =R=return=.
+
+#+begin_example
+F classify/2->int
+B debug
+E print/2
+B value>int
+R value+int
+R int
+#+end_example
+
+Measured against the same sample:
+
+#+begin_example
+raw_chars=322 raw_prompt_tokens=89
+compact_code_chars=128 compact_code_prompt_tokens=41
+ast_fact_chars=65 ast_fact_prompt_tokens=27
+extra_savings_vs_compact_code_chars=49
+extra_savings_vs_compact_code_prompt_tokens=34
+#+end_example
+
+This suggests two prompt surfaces, not one.  Code-like compact projection is
+good when the agent needs expression-level reasoning.  AST fact projection is
+better for search, ranking, navigation, and "what should I inspect next"
+decisions.  Direct edits still require exact locator expansion.
+
+Validation through =asp python query --from-hook
+direct-source-read --selector tests/unit/test_formatter_compact_ast_concept.py:1:260
+--code .= exposed one implementation risk: nested visitor classes can be
+projected both inline under their enclosing function and again as child method
+facts if the provider walks owner and descendant nodes independently.  The
+compact renderer must keep one rendered row per native AST node id and preserve
+parent/child boundaries.  Otherwise compact output spends tokens twice and
+creates a false sibling graph for the agent.
+
+The RFC now treats AST projection uniqueness as an invariant.  Future
+parser-compact fixtures should assert:
+
+- every =projection.nodes[].id= is unique within the packet
+- every rendered compact row has one primary =nodeId=
+- no native AST node appears as two primary rendered rows
+- nested owners choose one mode: summarized under parent or child node with
+  =parentId=, not both
+- =omitted[]= and =expandActions[]= reference existing node ids or exact read
+  locators instead of duplicating hidden code
+- providers that cannot assign unique parser-owned ids must not claim
+  compact-AST output for that item
+
+This uniqueness rule is separate from token savings.  A projection that saves
+tokens by duplicating descendants creates false evidence and should fail the
+compact fixture even if its byte count is smaller than raw source.
+
+** 2026-06-03 regression: standalone punctuation is layout residue
+
+The TypeScript source-line compact path previously preserved trimmed non-empty
+source lines.  That can leak lines such as =})=, =});=, =}=, or =];= as their
+own compact rows after chained calls, object literals, and callbacks.  Those
+rows are pure layout residue: they spend tokens without adding an agent fact.
+
+The regression rule is now:
+
+#+begin_example
+compact code may keep punctuation inside semantic lines
+compact code must omit punctuation-only lines
+block structure must come from parser nodes/depth/expand actions
+#+end_example
+
+The focused TypeScript test is
+=tests/unit/cli_compact_punctuation.test.ts=.  It verifies that
+=search owner ... items --query ... --json= still reports meaningful compact
+lines such as =return values=, =.map((value) => ({=, and
+=return item.label.length > 0;=, but no standalone punctuation line matching
+=^[{}()[\].,;:]+$=.
 
 ** 2026-06-02 follow-up: parser node metadata on =|code=
 

@@ -87,8 +87,8 @@
         "lineProtocol": true,
         "stdoutContains": [
           "[search-prime]",
+          "legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next",
           "alias: graph:{G=search",
-          "G=search:result!query",
           "G>{",
           "rank=",
           "frontier="
@@ -97,7 +97,8 @@
         "maxElapsedMsWarn": 2500,
         "stdoutNotContains": [
           "|seed",
-          "|synthesis"
+          "|synthesis",
+          "G=search:result!query"
         ]
       }
     },
@@ -124,8 +125,8 @@
         "stdoutContains": [
           "[search-fzf]",
           "querySet=3",
+          "legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next",
           "alias: graph:{G=search",
-          "G=search:result!query",
           "G>{",
           "rank=",
           "frontier="
@@ -134,7 +135,8 @@
         "maxElapsedMsWarn": 2500,
         "stdoutNotContains": [
           "|seed",
-          "|synthesis"
+          "|synthesis",
+          "G=search:result!query"
         ]
       }
     }

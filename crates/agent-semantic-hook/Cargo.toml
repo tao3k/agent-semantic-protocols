@@ -1,0 +1,23 @@
+[package]
+name = "agent-semantic-hook"
+version = "0.1.0"
+edition = "2024"
+description = "Root semantic agent hook runtime for provider manifests and project activations."
+license = "MIT"
+
+[dependencies]
+figment = { version = "0.10.19", features = ["toml"] }
+fs2 = { workspace = true }
+globset = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+toml = { workspace = true }
+tree-sitter = { workspace = true }
+tree-sitter-bash = { workspace = true }
+
+[build-dependencies]
+rust-lang-project-harness = { workspace = true }
+
+[dev-dependencies]
+rust-lang-project-harness = { workspace = true }

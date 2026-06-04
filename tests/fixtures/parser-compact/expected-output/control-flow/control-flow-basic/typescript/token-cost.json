@@ -1,18 +1,18 @@
 {
   "caseId": "control-flow-basic",
-  "compactCodeDelta": 30,
-  "compactCodeRatio": 0.6053,
-  "compactCodeTokens": 46,
-  "compactLineDelta": 30,
-  "compactLineRatio": 0.6053,
-  "compactLineTokens": 46,
+  "compactCodeDelta": 92,
+  "compactCodeRatio": 0.6406,
+  "compactCodeTokens": 164,
+  "compactLineDelta": 92,
+  "compactLineRatio": 0.6406,
+  "compactLineTokens": 164,
   "featureClass": "control-flow",
   "languageId": "typescript",
   "providerId": "ts-harness",
-  "queryPacketDelta": -1618,
-  "queryPacketRatio": 22.2895,
-  "queryPacketTokens": 1694,
-  "rawSourceTokens": 76,
+  "queryPacketDelta": -10005,
+  "queryPacketRatio": 40.082,
+  "queryPacketTokens": 10261,
+  "rawSourceTokens": 256,
   "schemaId": "agent.semantic-protocols.parser-compact-token-cost",
   "schemaVersion": "1",
   "sourceOrigin": {
@@ -21,6 +21,6 @@
     "repository": "agent-semantic-protocols",
     "sourcePath": "src/control-flow.ts"
   },
-  "tokenizerId": "tiktoken:o200k_base",
+  "tokenizerId": "byte",
   "variantId": "typescript"
 }

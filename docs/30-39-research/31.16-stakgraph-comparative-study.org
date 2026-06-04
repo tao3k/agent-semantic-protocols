@@ -1,0 +1,253 @@
+#+TITLE: 31.16 StakGraph Comparative Study
+#+DATE: 2026-06-03
+#+STATUS: research
+#+JOHNNY_DECIMAL: 31.16
+#+AREA: 30-39 Research
+#+CATEGORY: 31 Search Flow Research
+#+RFC: rfcs/graph-reasoning-code-research.org
+
+* Purpose
+
+This note studies StakGraph as an external graph-navigation system and extracts
+only the parts that strengthen ASP's own protocol direction.
+
+The useful lesson is not "copy Neo4j" or "make MCP the protocol."  The useful
+lesson is that code structure can be the agent navigation substrate:
+
+#+begin_example
+source
+  -> parser and resolver facts
+  -> code entity graph
+  -> overview, map, deps, shortest path, code retrieval
+  -> agent navigates graph before reading bounded code
+#+end_example
+
+For ASP, the stronger framing is not a surface-to-surface mapping.  ASP
+already has advantages that should stay primary:
+
+#+begin_example
+native provider parser facts
+  -> schema-backed packets
+  -> hook-deny recovery guides
+  -> compact graph/code rendering
+  -> token-cost and command-count sandtable evidence
+#+end_example
+
+StakGraph should pressure our graph vocabulary and recovery flow; it should not
+rename ASP's command model.
+
+* What StakGraph Solves
+
+StakGraph frames the product problem directly: agents waste tokens repeatedly
+reading source files, so the tool provides a code graph instead.  Its README
+describes parsing source into functions, classes, endpoints, data models,
+tests, and relationships using tree-sitter, with CLI, MCP, and graph server
+surfaces.
+
+The ASP analogue is the real command-inflation trace recorded in 31.15:
+
+#+begin_example
+agent does not know the next read boundary
+  -> wide read is protected by read-plan
+  -> agent manually slices windows
+  -> command count and prompt tokens grow
+#+end_example
+
+The direct protocol lesson is:
+
+#+begin_example
+protecting raw read is not enough;
+the denial or read-plan packet must return an executable graph frontier.
+#+end_example
+
+For wide reads, the prompt-facing packet should bias toward:
+
+#+begin_example
+rank=S,W,T
+frontier=S.code,W.code,T.tests
+avoid=repeat-wide-read,manual-window-scan,raw-read
+#+end_example
+
+* Architecture Boundary
+
+StakGraph exposes several surfaces: a CLI, a TypeScript MCP server, a Rust
+HTTP server backed by Neo4j for large-scale indexing, and a core Rust AST
+engine that uses tree-sitter and optional LSP support.
+
+ASP should absorb the substrate ideas and preserve its own stronger boundary:
+
+| External signal | ASP lesson |
+|-----------------+-------------|
+| parser-owned code graph | keep native parser facts as authority |
+| resolver/LSP enrichment | add deeper relation evidence only when provider-owned |
+| graph cache/server | keep indexing behind the provider, not in the prompt |
+| staged graph navigation | keep outputs as bounded frontiers, not source dumps |
+| MCP/NL agents | useful product proof, not ASP's protocol boundary |
+| graph visualization | useful for humans, not the agent prompt surface |
+
+The provider must continue to accept typed selectors, not natural-language
+goals.  Codex or another LLM client owns intent interpretation.
+
+* Entity And Relation Vocabulary
+
+StakGraph's README names node families such as Function, Endpoint, Request,
+DataModel, Class, Trait, Test, and Import, and relation families such as Calls,
+Handler, Contains, Operand, Implements, and ParentOf.
+
+ASP should use that as vocabulary pressure for graph layers, not as a prime
+dump:
+
+#+begin_example
+G0 prime/search:
+  owner, query, dependency, test, finding
+
+G1 code entity:
+  symbol, function, struct, enum, trait, impl, import, endpoint, request,
+  data_model
+
+G2 code relation:
+  contains, calls, imports, implements, handles, covers, references, reads,
+  writes
+
+G3 read-plan:
+  range, window, symbol, remainder, split, matches
+
+G4 evidence:
+  finding, receipt, test_result, waiver, validates, fixes, impacts
+#+end_example
+
+Only high-value handles from these layers should reach =search prime=.  Expanded
+entities belong to =search reasoning= or =query= after the agent chooses a
+direction.
+
+* Selective Lessons From Tool Taxonomy
+
+StakGraph's public tool split is useful because it separates overview, graph
+navigation, dependency tracing, path finding, and code retrieval.
+
+That split should not become an ASP command translation table.  The useful
+lesson is the question taxonomy:
+
+| Question type | ASP-compatible direction |
+|---------------+---------------------------|
+| What are the high-value graph entry points? | prime/frontier ranking |
+| What entities are near this selected handle? | relation-frontier evidence |
+| What owners/tests are affected by this entity? | impact evidence |
+| What dependency/API surface is involved? | dependency evidence |
+| What bounded code locator is safe to read? | query/read-plan frontier |
+| What historical clue explains this owner? | evidence-layer clue |
+
+The shortest-path category is especially important for agents.  Many real
+questions are path questions, not broad search questions:
+
+#+begin_example
+which path connects this CLI flag to this config writer?
+which path connects this failing test to the target owner?
+which path connects this dependency usage to this endpoint or request?
+#+end_example
+
+The ASP implementation should derive this through provider-owned typed
+selectors and schemas after the relation facts exist.  It should not publish a
+StakGraph-shaped command before route replay and schema validation pass.
+
+* Read-Plan Frontier
+
+The read-plan boundary is where the StakGraph lesson is most concrete.
+
+A wide selector should not only say =code=false=.  It should give the LLM
+frontier choices that are smaller than a source dump and stronger than manual
+window slicing:
+
+#+begin_example
+[read-plan] mode=range-frontier code=false reason=wide-selector
+R=range:requested(path@1:120)!outline
+S=symbol:fn(run_install)@path:25:74!code
+W=window:range(path@75:99)!code
+T=test:path(tests/unit/cli/install.rs)!tests
+R>{S:contains,W:contains,T:covered_by}
+rank=S,T,W
+frontier=S.code,T.tests,W.code
+avoid=repeat-wide-read,manual-window-scan,raw-read
+#+end_example
+
+The recovery path becomes:
+
+#+begin_example
+read-plan frontier
+  -> selected symbol or test handle
+  -> bounded query --code
+#+end_example
+
+That is the ASP version of graph-first navigation before code retrieval.
+
+* What Not To Copy
+
+ASP should not copy:
+
+- MCP as the primary protocol boundary.
+- provider-side natural-language planning.
+- =--goal=, =--intent=, or =--prompt= search commands.
+- built-in explore agents inside harness providers.
+- raw Neo4j or visualization dumps as prompt-facing protocol.
+- large vector result lists in =search prime=.
+
+ASP should keep its own graph taxonomy and compact prompt surface:
+
+#+begin_example
+rank=O,Q,T,D
+frontier=O.owner,Q.fzf,T.tests,D.deps
+profiles=owner-query(O,Q),owner-tests(O,T),query-deps(Q,D)
+omit=items,blocks,code,full-test-list
+avoid=raw-read,manual-window-scan,full-json,natural-language-intent
+#+end_example
+
+* Candidate Research Axes
+
+RFC 009 already defines the first executable profile set:
+=owner-query=, =query-deps=, =owner-tests=, =finding-frontier=, and
+=import-surface=.
+
+StakGraph suggests useful question types, not command names.  Candidate ASP
+research axes are:
+
+| Research axis | Selectors | Returns |
+|---------------+-----------+---------|
+| relation-frontier | selected typed handle, optional depth | bounded neighbor evidence |
+| causal-path | two typed handles | shortest provider-owned relation path |
+| change-impact | owner, symbol, or dependency handle | affected owners, tests, findings |
+| dependency-surface | owner, symbol, or dependency handle | import/API usage frontier |
+| read-frontier | range handle | symbol/window/test frontier without code |
+| evidence-clues | owner plus optional query handle | history or feature clues linked to code |
+
+These axes should live in research/RFC first.  They should enter the runtime
+guide only after the provider has executable, replay-tested routes.  They
+should not be implemented as natural-language routing.
+
+* Evaluation Metrics
+
+The comparative benchmark should measure whether graph-first navigation reduces
+manual search loops:
+
+| Metric | Meaning |
+|--------+---------|
+| command count | provider/search/read commands before first useful code locator |
+| prompt token count | rendered packet plus follow-up token cost |
+| raw-read fallback count | denied or repeated raw source attempts |
+| manual-window-scan count | repeated line-range slicing after read-plan |
+| two-search evidence success | prime plus one reasoning call reaches evidence |
+| relation-frontier success | relation evidence reaches the correct owner/test/code locator |
+| guide replay success | hook-deny routes execute against the active binary |
+
+The main success condition is:
+
+#+begin_example
+search prime
+  + one search reasoning profile
+  + optional bounded query --code
+reaches sufficient evidence without manual source-window scans.
+#+end_example
+
+* Sources
+
+- StakGraph README. https://github.com/stakwork/stakgraph
+- StakGraph AGENTS.md. https://github.com/stakwork/stakgraph/blob/main/AGENTS.md

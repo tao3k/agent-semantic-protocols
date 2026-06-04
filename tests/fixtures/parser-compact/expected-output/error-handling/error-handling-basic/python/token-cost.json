@@ -1,18 +1,18 @@
 {
   "caseId": "error-handling-basic",
-  "compactCodeDelta": 22,
-  "compactCodeRatio": 0.6615,
-  "compactCodeTokens": 43,
-  "compactLineDelta": 22,
-  "compactLineRatio": 0.6615,
-  "compactLineTokens": 43,
+  "compactCodeDelta": 126,
+  "compactCodeRatio": 0.561,
+  "compactCodeTokens": 161,
+  "compactLineDelta": 126,
+  "compactLineRatio": 0.561,
+  "compactLineTokens": 161,
   "featureClass": "error-handling",
   "languageId": "python",
   "providerId": "py-harness",
-  "queryPacketDelta": -1557,
-  "queryPacketRatio": 24.9538,
-  "queryPacketTokens": 1622,
-  "rawSourceTokens": 65,
+  "queryPacketDelta": -9812,
+  "queryPacketRatio": 35.1882,
+  "queryPacketTokens": 10099,
+  "rawSourceTokens": 287,
   "schemaId": "agent.semantic-protocols.parser-compact-token-cost",
   "schemaVersion": "1",
   "sourceOrigin": {
@@ -21,6 +21,6 @@
     "repository": "agent-semantic-protocols",
     "sourcePath": "src/score.py"
   },
-  "tokenizerId": "tiktoken:o200k_base",
+  "tokenizerId": "byte",
   "variantId": "python"
 }

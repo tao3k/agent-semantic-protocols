@@ -33,48 +33,43 @@
             "kind": "exact-read",
             "read": "src/createSlice.ts:569:569",
             "reason": "expand const node before editing",
-            "target": "buildCreateSlice:1"
+            "target": "buildCreateSlice:const:569:569:72e79fa8"
           },
           {
             "kind": "exact-read",
             "read": "src/createSlice.ts:570:820",
             "reason": "expand return node before editing",
-            "target": "buildCreateSlice:2"
+            "target": "buildCreateSlice:return:570:820:a355a0fb"
           },
           {
             "kind": "exact-read",
             "read": "src/createSlice.ts:585:585",
             "reason": "expand const node before editing",
-            "target": "buildCreateSlice:3"
+            "target": "buildCreateSlice:const:585:585:6a9d5701"
           },
           {
             "kind": "exact-read",
             "read": "src/createSlice.ts:586:588",
             "reason": "expand if node before editing",
-            "target": "buildCreateSlice:4"
+            "target": "buildCreateSlice:if:586:588:59c762"
           },
           {
             "kind": "exact-read",
             "read": "src/createSlice.ts:587:587",
             "reason": "expand throw node before editing",
-            "target": "buildCreateSlice:5"
+            "target": "buildCreateSlice:throw:587:587:a6c35ff3"
           },
           {
             "kind": "exact-read",
             "read": "src/createSlice.ts:590:599",
             "reason": "expand if node before editing",
-            "target": "buildCreateSlice:6"
+            "target": "buildCreateSlice:if:590:599:6e542363"
           },
           {
             "kind": "exact-read",
             "read": "src/createSlice.ts:594:598",
             "reason": "expand if node before editing",
-            "target": "buildCreateSlice:7"
-          },
-          {
-            "kind": "owner-names",
-            "reason": "return owner-local item names without code windows",
-            "target": "src/createSlice.ts"
+            "target": "buildCreateSlice:if:594:598:5881a436"
           }
         ],
         "losslessStructure": true,
@@ -93,287 +88,487 @@
             "id": "buildCreateSlice",
             "kind": "function",
             "label": "function buildCreateSlice",
+            "nativeId": "typescript:function:568:821:898f99e5",
             "read": "src/createSlice.ts:568:821",
-            "role": "declaration"
+            "role": "declaration",
+            "structuralFingerprint": "function:declaration:568:821:67dcbf1a"
           },
           {
             "depth": 1,
             "flags": [
               "mutation"
             ],
-            "id": "buildCreateSlice:1",
+            "id": "buildCreateSlice:const:569:569:72e79fa8",
             "kind": "const",
             "label": "assign cAT",
+            "nativeId": "typescript:FirstStatement:569:569:72e79fa8",
             "parentId": "buildCreateSlice",
             "read": "src/createSlice.ts:569:569",
-            "role": "mutation"
+            "role": "mutation",
+            "structuralFingerprint": "const:mutation:569:569:2aaa4ca5"
           },
           {
             "depth": 1,
             "flags": [
               "return"
             ],
-            "id": "buildCreateSlice:2",
+            "id": "buildCreateSlice:return:570:820:a355a0fb",
             "kind": "return",
             "label": "return function createSlice",
+            "nativeId": "typescript:ReturnStatement:570:820:a355a0fb",
             "parentId": "buildCreateSlice",
             "read": "src/createSlice.ts:570:820",
-            "role": "terminal"
+            "role": "terminal",
+            "structuralFingerprint": "return:terminal:570:820:f8d233b1"
           },
           {
             "depth": 2,
             "flags": [
               "mutation"
             ],
-            "id": "buildCreateSlice:3",
+            "id": "buildCreateSlice:const:585:585:6a9d5701",
             "kind": "const",
             "label": "assign { name, reducerPath = name as unknown as ReducerPath }",
-            "parentId": "buildCreateSlice:2",
+            "nativeId": "typescript:FirstStatement:585:585:6a9d5701",
+            "parentId": "buildCreateSlice:return:570:820:a355a0fb",
             "read": "src/createSlice.ts:585:585",
-            "role": "mutation"
+            "role": "mutation",
+            "structuralFingerprint": "const:mutation:585:585:b217645e"
           },
           {
             "depth": 2,
             "flags": [
               "branch"
             ],
-            "id": "buildCreateSlice:4",
+            "id": "buildCreateSlice:if:586:588:59c762",
             "kind": "if",
             "label": "if !name",
-            "parentId": "buildCreateSlice:2",
+            "nativeId": "typescript:IfStatement:586:588:59c762",
+            "parentId": "buildCreateSlice:return:570:820:a355a0fb",
             "read": "src/createSlice.ts:586:588",
-            "role": "control-flow"
+            "role": "control-flow",
+            "structuralFingerprint": "if:control-flow:586:588:25e2abd8"
           },
           {
             "depth": 3,
             "flags": [
               "throw"
             ],
-            "id": "buildCreateSlice:5",
+            "id": "buildCreateSlice:throw:587:587:a6c35ff3",
             "kind": "throw",
             "label": "throw new Error",
-            "parentId": "buildCreateSlice:4",
+            "nativeId": "typescript:ThrowStatement:587:587:a6c35ff3",
+            "parentId": "buildCreateSlice:if:586:588:59c762",
             "read": "src/createSlice.ts:587:587",
-            "role": "terminal"
+            "role": "terminal",
+            "structuralFingerprint": "throw:terminal:587:587:ac8d41ed"
           },
           {
             "depth": 2,
             "flags": [
               "branch"
             ],
-            "id": "buildCreateSlice:6",
+            "id": "buildCreateSlice:if:590:599:6e542363",
             "kind": "if",
             "label": "if typeof process !== 'undefined' && process.env.NODE_ENV === 'development'",
-            "parentId": "buildCreateSlice:2",
+            "nativeId": "typescript:IfStatement:590:599:6e542363",
+            "parentId": "buildCreateSlice:return:570:820:a355a0fb",
             "read": "src/createSlice.ts:590:599",
-            "role": "control-flow"
+            "role": "control-flow",
+            "structuralFingerprint": "if:control-flow:590:599:636437d3"
           },
           {
             "depth": 3,
             "flags": [
               "branch"
             ],
-            "id": "buildCreateSlice:7",
+            "id": "buildCreateSlice:if:594:598:5881a436",
             "kind": "if",
             "label": "if options.initialState === undefined",
-            "parentId": "buildCreateSlice:6",
+            "nativeId": "typescript:IfStatement:594:598:5881a436",
+            "parentId": "buildCreateSlice:if:590:599:6e542363",
             "read": "src/createSlice.ts:594:598",
-            "role": "control-flow"
+            "role": "control-flow",
+            "structuralFingerprint": "if:control-flow:594:598:ffa4dfac"
           },
           {
             "depth": 2,
             "flags": [
               "mutation"
             ],
-            "id": "buildCreateSlice:8",
+            "id": "buildCreateSlice:const:601:604:f1a05489",
             "kind": "const",
             "label": "assign reducers",
-            "parentId": "buildCreateSlice:2",
+            "nativeId": "typescript:FirstStatement:601:604:f1a05489",
+            "parentId": "buildCreateSlice:return:570:820:a355a0fb",
             "read": "src/createSlice.ts:601:604",
-            "role": "mutation"
+            "role": "mutation",
+            "structuralFingerprint": "const:mutation:601:604:f14f0a46"
           },
           {
             "depth": 2,
             "flags": [
               "mutation"
             ],
-            "id": "buildCreateSlice:9",
+            "id": "buildCreateSlice:const:606:606:77dff9f0",
             "kind": "const",
             "label": "assign reducerNames",
-            "parentId": "buildCreateSlice:2",
+            "nativeId": "typescript:FirstStatement:606:606:77dff9f0",
+            "parentId": "buildCreateSlice:return:570:820:a355a0fb",
             "read": "src/createSlice.ts:606:606",
-            "role": "mutation"
+            "role": "mutation",
+            "structuralFingerprint": "const:mutation:606:606:60cbe7ad"
           },
           {
             "depth": 2,
             "flags": [
               "mutation"
             ],
-            "id": "buildCreateSlice:10",
+            "id": "buildCreateSlice:const:608:613:70f30387",
             "kind": "const",
             "label": "assign context",
-            "parentId": "buildCreateSlice:2",
+            "nativeId": "typescript:FirstStatement:608:613:70f30387",
+            "parentId": "buildCreateSlice:return:570:820:a355a0fb",
             "read": "src/createSlice.ts:608:613",
-            "role": "mutation"
+            "role": "mutation",
+            "structuralFingerprint": "const:mutation:608:613:63eded64"
           },
           {
             "depth": 2,
             "flags": [
               "mutation"
             ],
-            "id": "buildCreateSlice:11",
+            "id": "buildCreateSlice:const:615:650:c5f69b47",
             "kind": "const",
             "label": "assign contextMethods",
-            "parentId": "buildCreateSlice:2",
+            "nativeId": "typescript:FirstStatement:615:650:c5f69b47",
+            "parentId": "buildCreateSlice:return:570:820:a355a0fb",
             "read": "src/createSlice.ts:615:650",
-            "role": "mutation"
+            "role": "mutation",
+            "structuralFingerprint": "const:mutation:615:650:39c2caa4"
           },
           {
             "depth": 3,
-            "id": "buildCreateSlice:12",
+            "id": "buildCreateSlice:method:616:637:b6dc0b6f",
             "kind": "method",
             "label": "method addCase",
-            "parentId": "buildCreateSlice:11",
+            "nativeId": "typescript:MethodDeclaration:616:637:b6dc0b6f",
+            "parentId": "buildCreateSlice:const:615:650:c5f69b47",
             "read": "src/createSlice.ts:616:637",
-            "role": "declaration"
+            "role": "declaration",
+            "structuralFingerprint": "method:declaration:616:637:3165d6cf"
           },
           {
             "depth": 4,
             "flags": [
               "mutation"
             ],
-            "id": "buildCreateSlice:13",
+            "id": "buildCreateSlice:const:620:623:c8d9bf8c",
             "kind": "const",
             "label": "assign type",
-            "parentId": "buildCreateSlice:12",
+            "nativeId": "typescript:FirstStatement:620:623:c8d9bf8c",
+            "parentId": "buildCreateSlice:method:616:637:b6dc0b6f",
             "read": "src/createSlice.ts:620:623",
-            "role": "mutation"
+            "role": "mutation",
+            "structuralFingerprint": "const:mutation:620:623:7cb700f1"
           },
           {
             "depth": 4,
             "flags": [
               "branch"
             ],
-            "id": "buildCreateSlice:14",
+            "id": "buildCreateSlice:if:624:628:c0e5ce1",
             "kind": "if",
             "label": "if !type",
-            "parentId": "buildCreateSlice:12",
+            "nativeId": "typescript:IfStatement:624:628:c0e5ce1",
+            "parentId": "buildCreateSlice:method:616:637:b6dc0b6f",
             "read": "src/createSlice.ts:624:628",
-            "role": "control-flow"
+            "role": "control-flow",
+            "structuralFingerprint": "if:control-flow:624:628:b96c5d49"
           },
           {
             "depth": 5,
             "flags": [
               "throw"
             ],
-            "id": "buildCreateSlice:15",
+            "id": "buildCreateSlice:throw:625:627:a6c35ff3",
             "kind": "throw",
             "label": "throw new Error",
-            "parentId": "buildCreateSlice:14",
+            "nativeId": "typescript:ThrowStatement:625:627:a6c35ff3",
+            "parentId": "buildCreateSlice:if:624:628:c0e5ce1",
             "read": "src/createSlice.ts:625:627",
-            "role": "terminal"
+            "role": "terminal",
+            "structuralFingerprint": "throw:terminal:625:627:ac8d41ed"
           },
           {
             "depth": 4,
             "flags": [
               "branch"
             ],
-            "id": "buildCreateSlice:16",
+            "id": "buildCreateSlice:if:629:634:169cf712",
             "kind": "if",
             "label": "if type in context.sliceCaseReducersByType",
-            "parentId": "buildCreateSlice:12",
+            "nativeId": "typescript:IfStatement:629:634:169cf712",
+            "parentId": "buildCreateSlice:method:616:637:b6dc0b6f",
             "read": "src/createSlice.ts:629:634",
-            "role": "control-flow"
+            "role": "control-flow",
+            "structuralFingerprint": "if:control-flow:629:634:7e811268"
           },
           {
             "depth": 5,
             "flags": [
               "throw"
             ],
-            "id": "buildCreateSlice:17",
+            "id": "buildCreateSlice:throw:630:633:a6c35ff3",
             "kind": "throw",
             "label": "throw new Error",
-            "parentId": "buildCreateSlice:16",
+            "nativeId": "typescript:ThrowStatement:630:633:a6c35ff3",
+            "parentId": "buildCreateSlice:if:629:634:169cf712",
             "read": "src/createSlice.ts:630:633",
-            "role": "terminal"
+            "role": "terminal",
+            "structuralFingerprint": "throw:terminal:630:633:ac8d41ed"
           },
           {
             "depth": 4,
             "flags": [
               "mutation"
             ],
-            "id": "buildCreateSlice:18",
+            "id": "buildCreateSlice:assign:635:635:5ee63987",
             "kind": "assign",
             "label": "context.sliceCaseReducersByType[type] = reducer",
-            "parentId": "buildCreateSlice:12",
+            "nativeId": "typescript:BinaryExpression:635:635:5ee63987",
+            "parentId": "buildCreateSlice:method:616:637:b6dc0b6f",
             "read": "src/createSlice.ts:635:635",
-            "role": "mutation"
+            "role": "mutation",
+            "structuralFingerprint": "assign:mutation:635:635:da4a2f64"
           },
           {
             "depth": 4,
             "flags": [
               "return"
             ],
-            "id": "buildCreateSlice:19",
+            "id": "buildCreateSlice:return:636:636:41dcf0fa",
             "kind": "return",
             "label": "return contextMethods",
-            "parentId": "buildCreateSlice:12",
+            "nativeId": "typescript:ReturnStatement:636:636:41dcf0fa",
+            "parentId": "buildCreateSlice:method:616:637:b6dc0b6f",
             "read": "src/createSlice.ts:636:636",
-            "role": "terminal"
+            "role": "terminal",
+            "structuralFingerprint": "return:terminal:636:636:2e0c1f66"
           },
           {
             "depth": 3,
-            "id": "buildCreateSlice:20",
+            "id": "buildCreateSlice:method:638:641:7d15e6b3",
             "kind": "method",
             "label": "method addMatcher",
-            "parentId": "buildCreateSlice:11",
+            "nativeId": "typescript:MethodDeclaration:638:641:7d15e6b3",
+            "parentId": "buildCreateSlice:const:615:650:c5f69b47",
             "read": "src/createSlice.ts:638:641",
-            "role": "declaration"
+            "role": "declaration",
+            "structuralFingerprint": "method:declaration:638:641:7279e9ab"
           },
           {
             "depth": 4,
             "flags": [
               "call"
             ],
-            "id": "buildCreateSlice:21",
+            "id": "buildCreateSlice:call:639:639:876fffdd",
             "kind": "call",
             "label": "push",
-            "parentId": "buildCreateSlice:20",
+            "nativeId": "typescript:CallExpression:639:639:876fffdd",
+            "parentId": "buildCreateSlice:method:638:641:7d15e6b3",
             "read": "src/createSlice.ts:639:639",
-            "role": "call"
+            "role": "call",
+            "structuralFingerprint": "call:call:639:639:41b12389"
           },
           {
             "depth": 4,
             "flags": [
               "return"
             ],
-            "id": "buildCreateSlice:22",
+            "id": "buildCreateSlice:return:640:640:41dcf0fa",
             "kind": "return",
             "label": "return contextMethods",
-            "parentId": "buildCreateSlice:20",
+            "nativeId": "typescript:ReturnStatement:640:640:41dcf0fa",
+            "parentId": "buildCreateSlice:method:638:641:7d15e6b3",
             "read": "src/createSlice.ts:640:640",
-            "role": "terminal"
+            "role": "terminal",
+            "structuralFingerprint": "return:terminal:640:640:2e0c1f66"
           },
           {
             "depth": 3,
-            "id": "buildCreateSlice:23",
+            "id": "buildCreateSlice:method:642:645:67422bd6",
             "kind": "method",
             "label": "method exposeAction",
-            "parentId": "buildCreateSlice:11",
+            "nativeId": "typescript:MethodDeclaration:642:645:67422bd6",
+            "parentId": "buildCreateSlice:const:615:650:c5f69b47",
             "read": "src/createSlice.ts:642:645",
-            "role": "declaration"
+            "role": "declaration",
+            "structuralFingerprint": "method:declaration:642:645:792b2484"
           }
         ],
         "omitted": [
           {
             "count": 254,
             "kind": "source-formatting",
+            "nodeId": "buildCreateSlice",
             "read": "src/createSlice.ts:568:821",
             "reason": "compact projection removes original whitespace and comments"
           }
         ],
+        "renderedNodeIds": [
+          "buildCreateSlice",
+          "buildCreateSlice:const:569:569:72e79fa8",
+          "buildCreateSlice:return:570:820:a355a0fb",
+          "buildCreateSlice:const:585:585:6a9d5701",
+          "buildCreateSlice:if:586:588:59c762",
+          "buildCreateSlice:throw:587:587:a6c35ff3",
+          "buildCreateSlice:if:590:599:6e542363",
+          "buildCreateSlice:if:594:598:5881a436",
+          "buildCreateSlice:const:601:604:f1a05489",
+          "buildCreateSlice:const:606:606:77dff9f0",
+          "buildCreateSlice:const:608:613:70f30387",
+          "buildCreateSlice:const:615:650:c5f69b47",
+          "buildCreateSlice:method:616:637:b6dc0b6f",
+          "buildCreateSlice:const:620:623:c8d9bf8c",
+          "buildCreateSlice:if:624:628:c0e5ce1",
+          "buildCreateSlice:if:629:634:169cf712",
+          "buildCreateSlice:assign:635:635:5ee63987",
+          "buildCreateSlice:return:636:636:41dcf0fa",
+          "buildCreateSlice:method:638:641:7d15e6b3",
+          "buildCreateSlice:call:639:639:876fffdd",
+          "buildCreateSlice:method:642:645:67422bd6"
+        ],
+        "renderedRows": [
+          {
+            "nodeId": "buildCreateSlice",
+            "rowKind": "declaration",
+            "semanticWeight": 1,
+            "text": "function buildCreateSlice"
+          },
+          {
+            "nodeId": "buildCreateSlice:const:569:569:72e79fa8",
+            "rowKind": "mutation",
+            "semanticWeight": 2,
+            "text": "  assign cAT"
+          },
+          {
+            "nodeId": "buildCreateSlice:return:570:820:a355a0fb",
+            "rowKind": "terminal",
+            "semanticWeight": 2,
+            "text": "  return function createSlice"
+          },
+          {
+            "nodeId": "buildCreateSlice:const:585:585:6a9d5701",
+            "rowKind": "mutation",
+            "semanticWeight": 2,
+            "text": "    assign { name, reducerPath = name as unknown as ReducerPath }"
+          },
+          {
+            "nodeId": "buildCreateSlice:if:586:588:59c762",
+            "rowKind": "control-flow",
+            "semanticWeight": 2,
+            "text": "    if !name"
+          },
+          {
+            "nodeId": "buildCreateSlice:throw:587:587:a6c35ff3",
+            "rowKind": "terminal",
+            "semanticWeight": 2,
+            "text": "      throw new Error"
+          },
+          {
+            "nodeId": "buildCreateSlice:if:590:599:6e542363",
+            "rowKind": "control-flow",
+            "semanticWeight": 2,
+            "text": "    if typeof process !== 'undefined' && process.env.NODE_ENV === 'development'"
+          },
+          {
+            "nodeId": "buildCreateSlice:if:594:598:5881a436",
+            "rowKind": "control-flow",
+            "semanticWeight": 2,
+            "text": "      if options.initialState === undefined"
+          },
+          {
+            "nodeId": "buildCreateSlice:const:601:604:f1a05489",
+            "rowKind": "mutation",
+            "semanticWeight": 2,
+            "text": "    assign reducers"
+          },
+          {
+            "nodeId": "buildCreateSlice:const:606:606:77dff9f0",
+            "rowKind": "mutation",
+            "semanticWeight": 2,
+            "text": "    assign reducerNames"
+          },
+          {
+            "nodeId": "buildCreateSlice:const:608:613:70f30387",
+            "rowKind": "mutation",
+            "semanticWeight": 2,
+            "text": "    assign context"
+          },
+          {
+            "nodeId": "buildCreateSlice:const:615:650:c5f69b47",
+            "rowKind": "mutation",
+            "semanticWeight": 2,
+            "text": "    assign contextMethods"
+          },
+          {
+            "nodeId": "buildCreateSlice:method:616:637:b6dc0b6f",
+            "rowKind": "declaration",
+            "semanticWeight": 1,
+            "text": "      method addCase"
+          },
+          {
+            "nodeId": "buildCreateSlice:const:620:623:c8d9bf8c",
+            "rowKind": "mutation",
+            "semanticWeight": 2,
+            "text": "        assign type"
+          },
+          {
+            "nodeId": "buildCreateSlice:if:624:628:c0e5ce1",
+            "rowKind": "control-flow",
+            "semanticWeight": 2,
+            "text": "        if !type"
+          },
+          {
+            "nodeId": "buildCreateSlice:if:629:634:169cf712",
+            "rowKind": "control-flow",
+            "semanticWeight": 2,
+            "text": "        if type in context.sliceCaseReducersByType"
+          },
+          {
+            "nodeId": "buildCreateSlice:assign:635:635:5ee63987",
+            "rowKind": "mutation",
+            "semanticWeight": 2,
+            "text": "        context.sliceCaseReducersByType[type] = reducer"
+          },
+          {
+            "nodeId": "buildCreateSlice:return:636:636:41dcf0fa",
+            "rowKind": "terminal",
+            "semanticWeight": 2,
+            "text": "        return contextMethods"
+          },
+          {
+            "nodeId": "buildCreateSlice:method:638:641:7d15e6b3",
+            "rowKind": "declaration",
+            "semanticWeight": 1,
+            "text": "      method addMatcher"
+          },
+          {
+            "nodeId": "buildCreateSlice:call:639:639:876fffdd",
+            "rowKind": "call",
+            "semanticWeight": 2,
+            "text": "        push"
+          },
+          {
+            "nodeId": "buildCreateSlice:method:642:645:67422bd6",
+            "rowKind": "declaration",
+            "semanticWeight": 1,
+            "text": "      method exposeAction"
+          }
+        ],
         "sourceAuthority": "native-parser",
-        "sourceFingerprint": "src/createSlice.ts:568:821:5987:27ee1d2d",
+        "sourceFingerprint": "src/createSlice.ts:568:821:5882:e31dcd35",
         "syntax": "semantic-outline"
       },
       "read": "src/createSlice.ts:568:821",

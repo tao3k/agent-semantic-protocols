@@ -1,18 +1,18 @@
 {
   "caseId": "data-shape-basic",
-  "compactCodeDelta": 33,
-  "compactCodeRatio": 0.5479,
-  "compactCodeTokens": 40,
-  "compactLineDelta": 33,
-  "compactLineRatio": 0.5479,
-  "compactLineTokens": 40,
+  "compactCodeDelta": 167,
+  "compactCodeRatio": 0.4715,
+  "compactCodeTokens": 149,
+  "compactLineDelta": 167,
+  "compactLineRatio": 0.4715,
+  "compactLineTokens": 149,
   "featureClass": "data-shape",
   "languageId": "python",
   "providerId": "py-harness",
-  "queryPacketDelta": -1353,
-  "queryPacketRatio": 19.5342,
-  "queryPacketTokens": 1426,
-  "rawSourceTokens": 73,
+  "queryPacketDelta": -9269,
+  "queryPacketRatio": 30.3323,
+  "queryPacketTokens": 9585,
+  "rawSourceTokens": 316,
   "schemaId": "agent.semantic-protocols.parser-compact-token-cost",
   "schemaVersion": "1",
   "sourceOrigin": {
@@ -21,6 +21,6 @@
     "repository": "agent-semantic-protocols",
     "sourcePath": "src/user_summary.py"
   },
-  "tokenizerId": "tiktoken:o200k_base",
+  "tokenizerId": "byte",
   "variantId": "python"
 }

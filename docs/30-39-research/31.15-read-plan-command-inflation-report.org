@@ -1,0 +1,448 @@
+#+TITLE: 31.15 Read Plan Command Inflation Report
+#+DATE: 2026-06-03
+#+STATUS: active
+#+JOHNNY_DECIMAL: 31.15
+#+AREA: 30-39 Research
+#+CATEGORY: 31 Search Flow Research
+#+RFC: rfcs/cli-first-harness-ux.org
+
+* Purpose
+
+This report records a real Codex Desktop trigger where =rs-harness= correctly
+protected broad Rust source reads by returning =read-plan= packets, but the
+agent still spent twenty follow-up commands to collect source context before a
+narrow edit.
+
+The important distinction is:
+
+#+begin_example
+read-plan returned       -> expected provider protection
+twenty follow-up queries -> command-inflation failure
+#+end_example
+
+The task is not to weaken =direct-source-read= protection.  The task is to make
+the recovery path copyable enough that a real agent follows the provider's
+semantic plan instead of manually bisecting source windows.
+
+* Trigger
+
+The real trace started after a broad Rust source read was denied and rerouted to
+=rs-harness query --from-hook direct-source-read=.  The agent then ran twenty
+provider commands:
+
+#+begin_example
+17 direct-source-read line-window commands
+  crates/semantic-agent-hook/src/cli.rs:1:80
+  crates/semantic-agent-hook/src/cli.rs:80:180
+  crates/semantic-agent-hook/src/codex_config.rs:1:120
+  crates/semantic-agent-hook/src/classifier.rs:1:120
+  crates/semantic-agent-protocol/src/command/hook.rs:1:70
+  crates/semantic-agent-hook/src/cli.rs:1:25
+  crates/semantic-agent-hook/src/main.rs:1:8
+  crates/semantic-agent-hook/src/cli.rs:70:130
+  crates/semantic-agent-hook/src/cli.rs:25:70
+  crates/semantic-agent-hook/src/cli.rs:130:210
+  crates/semantic-agent-hook/src/codex_config.rs:1:80
+  crates/semantic-agent-hook/src/codex_config.rs:80:180
+  crates/semantic-agent-hook/src/cli.rs:25:49
+  crates/semantic-agent-hook/src/cli.rs:50:74
+  crates/semantic-agent-hook/src/cli.rs:75:99
+  crates/semantic-agent-hook/src/codex_config.rs:1:24
+  crates/semantic-agent-hook/src/codex_config.rs:25:49
+
+3 owner-local symbol/code queries
+  src/cli.rs --query run_install --code
+  src/codex_config.rs --query render|merge|hook|semantic-agent-hook|CODEX_TOOL_MATCHER --code
+  src/classifier.rs --query classify_hook --code
+#+end_example
+
+The agent eventually identified useful edit strings in the hook CLI usage text
+and Codex config block markers.  The problem is the path taken to get there:
+wide read-plan recovery degraded into repeated local-window source transport.
+
+* Reproduced Evidence
+
+** Read-plan protection works
+
+A wide selector returns a plan, not source text:
+
+#+begin_src shell
+direnv exec . rs-harness query --from-hook direct-source-read \
+  --selector crates/semantic-agent-hook/src/cli.rs:1:80 \
+  --code .
+#+end_src
+
+#+begin_example
+[read-plan] q=crates/semantic-agent-hook/src/cli.rs selector=crates/semantic-agent-hook/src/cli.rs:1:80 mode=range-outline code=false reason=wide-selector window=1
+|range path=crates/semantic-agent-hook/src/cli.rs requested=1:80 selected=1:80 matched=1:80 coverage=full density=unknown
+|symbol item=local-window kind=range lineRange=1:80 read=crates/semantic-agent-hook/src/cli.rs:1:80
+#+end_example
+
+A small selector still returns bounded source context:
+
+#+begin_src shell
+direnv exec . rs-harness query --from-hook direct-source-read \
+  --selector crates/semantic-agent-hook/src/cli.rs:1:25 \
+  --code .
+#+end_src
+
+That confirms the wide-selector gate is the intended protection boundary.
+
+** Owner-local compression is available
+
+The repeated =cli.rs= probes can collapse into one names-only owner-local query:
+
+#+begin_src shell
+direnv exec . rs-harness query crates/semantic-agent-hook/src/cli.rs \
+  --term run_install \
+  --term install \
+  --names-only .
+#+end_src
+
+#+begin_example
+[search-owner] q=crates/semantic-agent-hook/src/cli.rs pkg=crates/semantic-agent-hook own=1 item=1 itemQuery=run_install|install
+|owner src/cli.rs role=source source=parser-visible-module lines=500 imports=36
+|query itemQuery=run_install|install status=hit match=exact item=1 reason=parser-item-exact output=names next=code
+|item run_install kind=fn next=symbol:run_install read=src/cli.rs:223:261
+#+end_example
+
+The provider already has the read locator that the agent should select next.
+The real trace did not use this as the first compression step; it split source
+windows manually.
+
+** Broad hook-query guidance is not copyable enough
+
+The current Rust CLI guide supports top-level =query --from-hook=:
+
+#+begin_src shell
+direnv exec . rs-harness query --help
+#+end_src
+
+#+begin_example
+rs-harness query --from-hook KIND --selector SELECTOR [--query SYMBOL | --term TERM] [--names-only | --code] [PROJECT_ROOT]
+rs-harness query --term TERM [--term TERM...] [--surface PIPE] [--view seeds] [PROJECT_ROOT]
+#+end_example
+
+But the installed =search= surface does not accept the older wildcard route
+shape:
+
+#+begin_src shell
+direnv exec . rs-harness search query --from-hook direct-source-read \
+  --selector '**/*.rs' \
+  --term read-plan .
+#+end_src
+
+#+begin_example
+unknown search option: --from-hook
+#+end_example
+
+There is also a surface-name mismatch.  The singular form used in some guidance
+is rejected:
+
+#+begin_src shell
+direnv exec . rs-harness query --from-hook direct-source-read \
+  --selector '**/*.rs' \
+  --term read-plan \
+  --surface owner,tests \
+  --view seeds .
+#+end_src
+
+#+begin_example
+unknown query surface: owner
+#+end_example
+
+The plural form works:
+
+#+begin_src shell
+direnv exec . rs-harness query --from-hook direct-source-read \
+  --selector '**/*.rs' \
+  --term read-plan \
+  --term direct-source-read \
+  --term windowSet \
+  --surface owners,tests \
+  --view seeds .
+#+end_src
+
+#+begin_example
+[search-fzf] q=read-plan,direct-source-read,windowSet querySet=3 selector=fuzzy-set mode=fuzzy backend=provider pkg=crates/semantic-agent-hook own=20
+|seed owner:src/classifier.rs
+|seed tests:tests/unit/cli/query/hook/mod.rs,tests/unit/cli/query/hook/range.rs,tests/unit/cli/search/views.rs
+#+end_example
+
+This is a guide-quality problem: a denied hook decision can be semantically
+correct and still waste commands if the suggested route is not directly
+copyable against the active provider binary.
+
+* Root Cause
+
+** 31.15-A The agent treated =read-plan= as a source-window queue
+
+The =read-plan= line named a safe range and =code=false=.  In the real trace the
+agent responded by slicing the same owners into smaller =--code= windows:
+
+#+begin_example
+wide range -> read-plan -> smaller line windows -> more smaller line windows
+#+end_example
+
+That defeats the intent of =read-plan=.  The recovery rule should be:
+
+#+begin_example
+read-plan code=false
+  -> follow symbol/read locator only when the selector is already the chosen edit context
+  -> otherwise switch to names-only owner-local query or query-set search
+#+end_example
+
+** 31.15-B Route guidance has drifted from the active CLI
+
+The root RFC now prefers top-level =query --from-hook= for broad selector
+reroutes, while older skill/hook examples still mention =search query
+--from-hook=.  The active Rust binary rejects that older shape.
+
+The same drift appears in surface spelling.  =owner,tests= is natural English,
+but the active query parser expects =owners,tests=.  That small mismatch costs a
+failed command and encourages the agent to fall back to exact window reads.
+
+** 31.15-C Missing command receipts hide repeated same-axis work
+
+The trace has one logical question:
+
+#+begin_example
+install/codex hook naming changes across cli.rs, codex_config.rs, classifier.rs,
+and hook command protocol surfaces
+#+end_example
+
+The executed commands do not carry a stable receipt that says:
+
+- these ranges are all the same =direct-source-read= recovery attempt;
+- these owner-local queries all concern the same hook install/rename axis;
+- this names-only packet supersedes these line-window reads;
+- this route failed because the guide command shape was stale.
+
+Without that receipt, the parent agent cannot reliably fan in repeated probes or
+measure that it spent seventeen range reads on a single semantic axis.
+
+* Improvement Direction
+
+** 31.15-A Tighten guide-quality assertions
+
+Real-trigger guide-quality should assert route replay, not only route presence:
+
+- the static route argv must contain the canonical command shape and must not
+  contain known stale command fragments;
+- every hook-deny route must be executable against the active provider binary;
+- wildcard direct-read recovery should prefer top-level =query --from-hook=;
+- accepted surfaces should be canonicalized before rendering;
+- sandtable assertions should fail when a suggested command exits with a parser
+  usage error such as =unknown search option= or =unknown query surface=.
+
+This belongs in the sandtable guide-quality loop before tuning ranking.
+
+** 31.15-B Add read-plan follow-up semantics to compact output
+
+A =read-plan= packet should make the next step explicit:
+
+#+begin_example
+next=select-symbol|names-only|query-set|small-window
+#+end_example
+
+For wide local ranges, the useful default is usually =names-only= or
+=query-set=, not =small-window=.  =small-window= should be reserved for cases
+where the plan can point to one high-signal parser-owned symbol or a selected
+edit context.
+
+** 31.15-C Record command-inflation metrics
+
+The real-trigger receipt should include:
+
+| metric | meaning |
+|--------+---------|
+| =recordedCommandCount= | all provider/search/read commands before edit |
+| =readPlanCount= | =read-plan code=false= responses |
+| =rangeReadCount= | follow-up =direct-source-read --selector path:range --code= calls |
+| =sameOwnerRangeRepeats= | repeated range reads against one owner |
+| =routeReplayFailures= | suggested provider routes that exit with usage errors |
+| =namesOnlyOpportunities= | repeated symbol/range probes that one names-only query could replace |
+
+For the observed trace, the first baseline is:
+
+#+begin_example
+recordedCommandCount=20
+rangeReadCount=17
+ownerSymbolQueryCount=3
+routeReplayFailures>=2
+namesOnlyOpportunities>=2
+#+end_example
+
+The exact counts should be computed from recorded command receipts rather than
+manually inferred from a chat transcript.
+
+** 31.15-D Keep the protocol path durable
+
+This report is research evidence.  If the fix changes shared search behavior,
+the implementation path remains:
+
+#+begin_example
+RFC -> shared schema -> language alignment -> Rust implementation/tests ->
+sandtable alignment -> real-project evidence -> optimization loop
+#+end_example
+
+Likely RFC/schema follow-ups:
+
+- document top-level =query --from-hook= as the canonical wildcard
+  direct-read recovery route;
+- define canonical =surface= values or aliases;
+- add =readPlan.next= / =followUp= metadata to the read/query packet boundary;
+- add guide-quality replay fields for route copyability;
+- add command-inflation counters to real-trigger receipts.
+
+* Success Metrics
+
+A repeat of this hook install/rename context should have a bounded flow:
+
+#+begin_src shell
+rs-harness query --from-hook direct-source-read \
+  --selector crates/semantic-agent-hook/src/cli.rs:1:80 \
+  --code .
+rs-harness query crates/semantic-agent-hook/src/cli.rs \
+  --term run_install \
+  --term install \
+  --names-only .
+rs-harness query crates/semantic-agent-hook/src/cli.rs \
+  --term run_install \
+  --code .
+rs-harness query --from-hook direct-source-read \
+  --selector '**/*.rs' \
+  --term semantic-agent-hook \
+  --term codex \
+  --surface owners,tests \
+  --view seeds .
+#+end_src
+
+Target outcome:
+
+#+begin_example
+before: 20 commands, including 17 range reads
+after:  4-6 commands, with no stale route usage errors
+#+end_example
+
+Required evidence:
+
+- broad selectors still return =read-plan code=false= instead of source dumps;
+- no fallback to raw source reads;
+- route suggestions execute successfully against the active provider binary;
+- names-only owner-local packets provide read locators before code windows;
+- sandtable receipts report command count, repeated range reads, route replay
+  failures, and names-only compression opportunities.
+
+* 2026-06-03 P0 Landing Direction
+
+The first implementation slice turns =read-plan= from a denial-only outline into
+an explicit read frontier:
+
+- The existing =semantic-read-packet= contract carries new read-plan frontier
+  output without an arbitrary =schemaVersion= bump.
+- =readPlan= requires =frontier= and =avoid=, while =symbols= is no longer
+  required.  Range-only plans use =windows= instead of fake symbols.
+- Rust wide =direct-source-read --code= output now emits =mode=range-frontier=,
+  =rank=, =frontier=, =avoid=, and bounded =|window= records.
+- Rust no longer emits =|symbol item=local-window kind=range= for wide read
+  plans.
+- Old =search query --from-hook= guidance is removed from active docs and must
+  not be accepted as a compatibility alias.
+
+* 2026-06-03 P1 Landing Direction
+
+Rust read-plan output now prefers parser-owned symbol frontier before range
+split:
+
+- A wide exact selector first parses the selected source file and collects
+  top-level parser items that overlap the requested range.
+- Items longer than the configured max window are not exposed as =code=
+  frontiers, because following them would trigger another wide read-plan.
+- The compact line protocol emits =alg=symbol-frontier=, =S/S2/...= aliases,
+  =rank=, =frontier=, and =|symbol ... reason=parser-item= records.
+- If parser item extraction fails or produces no bounded items, the provider
+  falls back to =alg=range-split= with bounded =|window= records.
+- Root schema tests now validate both symbol-only and window-only read-plan
+  frontier packets.
+
+* 2026-06-03 P2 Landing Direction
+
+Rust provider JSON routing now carries the same frontier contract:
+
+- =query --from-hook direct-source-read --selector path:range --code --json
+  --view read-packet= no longer early-returns compact line protocol for wide
+  selectors.
+- The local-window fast path now routes read-plan output through
+  =semantic_read_json::render_read_json= when the requested output mode is
+  =read-packet=.
+- Wide symbol-frontier packets keep the current =schemaVersion= and include
+  =readPlan.algorithm=symbol-frontier=, =symbols=, =frontier=, and no
+  =sourceWindows=.
+- Wide parser-failure packets include =readPlan.algorithm=range-split=,
+  bounded =windows=, =frontier=, and no fake =local-window= symbol.
+- Focused Rust hook tests cover both JSON envelopes and the compact text output.
+
+* 2026-06-03 P3 Landing Direction
+
+The hook decision route template no longer emits the old query API:
+
+- Built-in provider manifests now render raw-search recovery routes as
+  =<bin> query --from-hook direct-source-read ... --surface owners,tests ...=.
+- =<bin> search query --from-hook= is not preserved as a compatibility alias.
+- Classifier raw-search tests now assert that generated routes never contain
+  adjacent =search query= argv tokens.
+- Classifier raw-search tests now assert that any rendered =--surface= value is
+  the canonical =owners,tests= spelling.
+
+The installed hook binary in a developer environment must still be refreshed
+before live Codex hook denials stop showing the old route.  Source and tests now
+reject the old route; reinstalling the hook is an operational rollout step, not
+a compatibility layer.
+
+Remaining work is command-inflation receipt accounting and live route execution:
+
+- Real-trigger receipts should report command-inflation metrics so future
+  regressions show up as evidence, not chat-transcript archaeology.
+- Sandtable guide-quality can later execute generated hook-deny routes against
+  active provider binaries; today it statically rejects known stale argv shapes.
+
+* 2026-06-03 P4 Landing Direction
+
+TypeScript and Python now follow the same no-new-version read-plan direction:
+
+- TypeScript guide output uses =query --from-hook direct-source-read ... --surface
+  owners,tests= and no longer advertises =search query --from-hook=.
+- TypeScript wide direct-read read-packets keep =schemaVersion=1= while emitting
+  =mode=range-frontier=, =algorithm=symbol-frontier=, symbol =frontier= entries,
+  =avoid=, and no =sourceWindows=.
+- TypeScript accepts =--code --json --view read-packet= for hook read-packet
+  output; this mirrors the real hook recovery command shape without opening a
+  raw source path.
+- Python guide output now advertises the canonical top-level hook query route.
+- Python compact wide direct-read output emits =mode=range-frontier=,
+  =alg=symbol-frontier=, =frontier=S.code,...=, =avoid=, and
+  =reason=parser-item= on =|symbol= records.
+
+The versioning correction is explicit: frontier fields were folded into the
+current read-packet contract, and the implementation must not create or
+advertise a new versioned read-packet file until the project has a real
+versioning decision.
+
+* 2026-06-03 P5 Landing Direction
+
+Sandtable guide-quality now has route-command copyability assertions:
+
+- =schemas/semantic-sandtable-scenario.v1.schema.json= adds
+  =routeCommandContains= and =routeCommandNotContains= under =guideQuality=.
+  This is additive schema growth inside the current v1 file, not a version bump.
+- =validate_guide_quality= projects each decision route's =argv= into command
+  text and checks the route command separately from message/stdout text.
+- A wrapped Codex decision test now fails when routes still contain
+  =search query= or =--surface owner,tests= even if the human-readable message
+  mentions the new top-level =query --from-hook= route.
+- A focused schema test validates the new guide-quality fields.
+
+This is a static route-copyability gate.  It prevents known stale route drift
+from landing in scenarios, while full provider execution replay remains a later
+evidence loop.

@@ -11,6 +11,11 @@
         "path": "src/lib.rs"
       },
       "name": "Searcher",
+      "patchSafety": {
+        "exactRead": "src/lib.rs:589:625",
+        "level": "read-safe",
+        "reason": "read exact source locator before editing this compact match"
+      },
       "projection": {
         "exactRead": "src/lib.rs:589:625",
         "expandActions": [
@@ -18,31 +23,31 @@
             "kind": "hot-block",
             "read": "src/lib.rs:598:603",
             "reason": "parser-projection-field",
-            "target": "n1"
+            "target": "field-598-603-5fe26707"
           },
           {
             "kind": "hot-block",
             "read": "src/lib.rs:604:610",
             "reason": "parser-projection-field",
-            "target": "n2"
+            "target": "field-604-610-1497b40a"
           },
           {
             "kind": "hot-block",
             "read": "src/lib.rs:611:612",
             "reason": "parser-projection-field",
-            "target": "n3"
+            "target": "field-611-612-19979688"
           },
           {
             "kind": "hot-block",
             "read": "src/lib.rs:613:619",
             "reason": "parser-projection-field",
-            "target": "n4"
+            "target": "field-613-619-59bb94eb"
           },
           {
             "kind": "hot-block",
             "read": "src/lib.rs:620:624",
             "reason": "parser-projection-field",
-            "target": "n5"
+            "target": "field-620-624-80f39b4e"
           }
         ],
         "losslessStructure": true,
@@ -52,60 +57,127 @@
         "nodes": [
           {
             "depth": 0,
-            "id": "n0",
+            "id": "struct-589-625-9215d3bc",
             "kind": "struct",
             "label": "pub struct Searcher",
+            "nativeId": "rust-struct-589-625-9215d3bc",
             "read": "src/lib.rs:589:625",
-            "role": "declaration"
+            "role": "declaration",
+            "structuralFingerprint": "struct-declaration-589-625-9215d3bc"
           },
           {
             "depth": 1,
-            "id": "n1",
+            "id": "field-598-603-5fe26707",
             "kind": "field",
             "label": "field config: Config",
-            "parentId": "n0",
+            "nativeId": "rust-field-598-603-5fe26707",
+            "parentId": "struct-589-625-9215d3bc",
             "read": "src/lib.rs:598:603",
-            "role": "field"
+            "role": "field",
+            "structuralFingerprint": "field-field-598-603-5fe26707"
           },
           {
             "depth": 1,
-            "id": "n2",
+            "id": "field-604-610-1497b40a",
             "kind": "field",
             "label": "field decode_builder: DecodeReaderBytesBuilder",
-            "parentId": "n0",
+            "nativeId": "rust-field-604-610-1497b40a",
+            "parentId": "struct-589-625-9215d3bc",
             "read": "src/lib.rs:604:610",
-            "role": "field"
+            "role": "field",
+            "structuralFingerprint": "field-field-604-610-1497b40a"
           },
           {
             "depth": 1,
-            "id": "n3",
+            "id": "field-611-612-19979688",
             "kind": "field",
             "label": "field decode_buffer: RefCell<Vec<u8>>",
-            "parentId": "n0",
+            "nativeId": "rust-field-611-612-19979688",
+            "parentId": "struct-589-625-9215d3bc",
             "read": "src/lib.rs:611:612",
-            "role": "field"
+            "role": "field",
+            "structuralFingerprint": "field-field-611-612-19979688"
           },
           {
             "depth": 1,
-            "id": "n4",
+            "id": "field-613-619-59bb94eb",
             "kind": "field",
             "label": "field line_buffer: RefCell<LineBuffer>",
-            "parentId": "n0",
+            "nativeId": "rust-field-613-619-59bb94eb",
+            "parentId": "struct-589-625-9215d3bc",
             "read": "src/lib.rs:613:619",
-            "role": "field"
+            "role": "field",
+            "structuralFingerprint": "field-field-613-619-59bb94eb"
           },
           {
             "depth": 1,
-            "id": "n5",
+            "id": "field-620-624-80f39b4e",
             "kind": "field",
             "label": "field multi_line_buffer: RefCell<Vec<u8>>",
-            "parentId": "n0",
+            "nativeId": "rust-field-620-624-80f39b4e",
+            "parentId": "struct-589-625-9215d3bc",
             "read": "src/lib.rs:620:624",
-            "role": "field"
+            "role": "field",
+            "structuralFingerprint": "field-field-620-624-80f39b4e"
           }
         ],
         "nodesTruncated": false,
+        "omitted": [
+          {
+            "kind": "source-formatting",
+            "nodeId": "struct-589-625-9215d3bc",
+            "read": "src/lib.rs:589:625",
+            "reason": "compact projection removes original whitespace and comments"
+          }
+        ],
+        "renderedNodeIds": [
+          "struct-589-625-9215d3bc",
+          "field-598-603-5fe26707",
+          "field-604-610-1497b40a",
+          "field-611-612-19979688",
+          "field-613-619-59bb94eb",
+          "field-620-624-80f39b4e"
+        ],
+        "renderedRows": [
+          {
+            "nodeId": "struct-589-625-9215d3bc",
+            "rowKind": "declaration",
+            "semanticWeight": 1,
+            "text": "pub struct Searcher"
+          },
+          {
+            "nodeId": "field-598-603-5fe26707",
+            "rowKind": "field",
+            "semanticWeight": 1,
+            "text": "field config: Config"
+          },
+          {
+            "nodeId": "field-604-610-1497b40a",
+            "rowKind": "field",
+            "semanticWeight": 1,
+            "text": "field decode_builder: DecodeReaderBytesBuilder"
+          },
+          {
+            "nodeId": "field-611-612-19979688",
+            "rowKind": "field",
+            "semanticWeight": 1,
+            "text": "field decode_buffer: RefCell<Vec<u8>>"
+          },
+          {
+            "nodeId": "field-613-619-59bb94eb",
+            "rowKind": "field",
+            "semanticWeight": 1,
+            "text": "field line_buffer: RefCell<LineBuffer>"
+          },
+          {
+            "nodeId": "field-620-624-80f39b4e",
+            "rowKind": "field",
+            "semanticWeight": 1,
+            "text": "field multi_line_buffer: RefCell<Vec<u8>>"
+          }
+        ],
         "sourceAuthority": "native-parser",
+        "sourceFingerprint": "src/lib.rs:589:625:206:926bc42ad50f7972",
         "syntax": "semantic-outline"
       },
       "read": "src/lib.rs:589:625",
@@ -120,88 +192,66 @@
         "path": "src/lib.rs"
       },
       "name": "Searcher",
+      "patchSafety": {
+        "exactRead": "src/lib.rs:627:828",
+        "level": "read-safe",
+        "reason": "read exact source locator before editing this compact match"
+      },
       "projection": {
         "exactRead": "src/lib.rs:627:828",
+        "expandActionCount": 13,
+        "expandActionLimit": 8,
         "expandActions": [
           {
             "kind": "hot-block",
             "read": "src/lib.rs:633:633",
             "reason": "parser-projection-terminal",
-            "target": "n2"
+            "target": "return-633-633-edbb027b"
           },
           {
             "kind": "hot-block",
             "read": "src/lib.rs:654:654",
             "reason": "parser-projection-mutation",
-            "target": "n4"
+            "target": "let-654-654-8fd26773"
           },
           {
             "kind": "hot-block",
             "read": "src/lib.rs:655:655",
             "reason": "parser-projection-mutation",
-            "target": "n5"
+            "target": "let-655-655-6ab7ea52"
           },
           {
             "kind": "hot-block",
             "read": "src/lib.rs:656:656",
             "reason": "parser-projection-terminal",
-            "target": "n6"
+            "target": "return-656-656-7fa7f00f"
           },
           {
             "kind": "hot-block",
             "read": "src/lib.rs:675:675",
             "reason": "parser-projection-terminal",
-            "target": "n8"
+            "target": "return-675-675-7fa7f00f"
           },
           {
             "kind": "hot-block",
             "read": "src/lib.rs:689:692",
             "reason": "parser-projection-control-flow",
-            "target": "n10"
+            "target": "if-689-692-9f59e13b"
           },
           {
             "kind": "hot-block",
             "read": "src/lib.rs:691:691",
             "reason": "parser-projection-terminal",
-            "target": "n12"
+            "target": "return-691-691-159c787"
           },
           {
             "kind": "hot-block",
             "read": "src/lib.rs:696:713",
             "reason": "parser-projection-control-flow",
-            "target": "n13"
-          },
-          {
-            "kind": "hot-block",
-            "read": "src/lib.rs:701:701",
-            "reason": "parser-projection-effect",
-            "target": "n15"
-          },
-          {
-            "kind": "hot-block",
-            "read": "src/lib.rs:703:709",
-            "reason": "parser-projection-terminal",
-            "target": "n18"
-          },
-          {
-            "kind": "hot-block",
-            "read": "src/lib.rs:710:713",
-            "reason": "parser-projection-control-flow",
-            "target": "n19"
-          },
-          {
-            "kind": "hot-block",
-            "read": "src/lib.rs:712:712",
-            "reason": "parser-projection-terminal",
-            "target": "n21"
-          },
-          {
-            "kind": "hot-block",
-            "read": "src/lib.rs:738:738",
-            "reason": "parser-projection-effect",
-            "target": "n23"
+            "target": "if-696-713-7e282b9"
           }
         ],
+        "expandActionsTruncated": true,
         "losslessStructure": false,
         "mode": "compact",
         "nodeCount": 64,
@@ -209,107 +259,127 @@
         "nodes": [
           {
             "depth": 0,
-            "id": "n0",
+            "id": "impl-627-828-79068c12",
             "kind": "impl",
             "label": "impl Searcher",
+            "nativeId": "rust-impl-627-828-79068c12",
             "read": "src/lib.rs:627:828",
-            "role": "declaration"
+            "role": "declaration",
+            "structuralFingerprint": "impl-declaration-627-828-79068c12"
           },
           {
             "depth": 1,
-            "id": "n1",
+            "id": "fn-628-634-83f246af",
             "kind": "fn",
             "label": "fn new",
-            "parentId": "n0",
+            "nativeId": "rust-fn-628-634-83f246af",
+            "parentId": "impl-627-828-79068c12",
             "read": "src/lib.rs:628:634",
-            "role": "declaration"
+            "role": "declaration",
+            "structuralFingerprint": "fn-declaration-628-634-83f246af"
           },
           {
             "depth": 2,
             "flags": [
               "return"
             ],
-            "id": "n2",
+            "id": "return-633-633-edbb027b",
             "kind": "return",
             "label": "return build",
-            "parentId": "n1",
+            "nativeId": "rust-return-633-633-edbb027b",
+            "parentId": "fn-628-634-83f246af",
             "read": "src/lib.rs:633:633",
-            "role": "terminal"
+            "role": "terminal",
+            "structuralFingerprint": "return-terminal-633-633-edbb027b"
           },
           {
             "depth": 1,
-            "id": "n3",
+            "id": "fn-636-657-ade13647",
             "kind": "fn",
             "label": "fn search_path",
-            "parentId": "n0",
+            "nativeId": "rust-fn-636-657-ade13647",
+            "parentId": "impl-627-828-79068c12",
             "read": "src/lib.rs:636:657",
-            "role": "declaration"
+            "role": "declaration",
+            "structuralFingerprint": "fn-declaration-636-657-ade13647"
           },
           {
             "depth": 2,
             "flags": [
               "mutation"
             ],
-            "id": "n4",
+            "id": "let-654-654-8fd26773",
             "kind": "let",
             "label": "assign path",
-            "parentId": "n3",
+            "nativeId": "rust-let-654-654-8fd26773",
+            "parentId": "fn-636-657-ade13647",
             "read": "src/lib.rs:654:654",
-            "role": "mutation"
+            "role": "mutation",
+            "structuralFingerprint": "let-mutation-654-654-8fd26773"
           },
           {
             "depth": 2,
             "flags": [
               "mutation"
             ],
-            "id": "n5",
+            "id": "let-655-655-6ab7ea52",
             "kind": "let",
             "label": "assign file",
-            "parentId": "n3",
+            "nativeId": "rust-let-655-655-6ab7ea52",
+            "parentId": "fn-636-657-ade13647",
             "read": "src/lib.rs:655:655",
-            "role": "mutation"
+            "role": "mutation",
+            "structuralFingerprint": "let-mutation-655-655-6ab7ea52"
           },
           {
             "depth": 2,
             "flags": [
               "return"
             ],
-            "id": "n6",
+            "id": "return-656-656-7fa7f00f",
             "kind": "return",
             "label": "return search_file_maybe_path",
-            "parentId": "n3",
+            "nativeId": "rust-return-656-656-7fa7f00f",
+            "parentId": "fn-636-657-ade13647",
             "read": "src/lib.rs:656:656",
-            "role": "terminal"
+            "role": "terminal",
+            "structuralFingerprint": "return-terminal-656-656-7fa7f00f"
           },
           {
             "depth": 1,
-            "id": "n7",
+            "id": "fn-659-676-39a14e36",
             "kind": "fn",
             "label": "fn search_file",
-            "parentId": "n0",
+            "nativeId": "rust-fn-659-676-39a14e36",
+            "parentId": "impl-627-828-79068c12",
             "read": "src/lib.rs:659:676",
-            "role": "declaration"
+            "role": "declaration",
+            "structuralFingerprint": "fn-declaration-659-676-39a14e36"
           },
           {
             "depth": 2,
             "flags": [
               "return"
             ],
-            "id": "n8",
+            "id": "return-675-675-7fa7f00f",
             "kind": "return",
             "label": "return search_file_maybe_path",
-            "parentId": "n7",
+            "nativeId": "rust-return-675-675-7fa7f00f",
+            "parentId": "fn-659-676-39a14e36",
             "read": "src/lib.rs:675:675",
-            "role": "terminal"
+            "role": "terminal",
+            "structuralFingerprint": "return-terminal-675-675-7fa7f00f"
           },
           {
             "depth": 1,
-            "id": "n9",
+            "id": "fn-678-714-71c81461",
             "kind": "fn",
             "label": "fn search_file_maybe_path",
-            "parentId": "n0",
+            "nativeId": "rust-fn-678-714-71c81461",
+            "parentId": "impl-627-828-79068c12",
             "read": "src/lib.rs:678:714",
-            "role": "declaration"
+            "role": "declaration",
+            "structuralFingerprint": "fn-declaration-678-714-71c81461"
           },
           {
             "depth": 2,
@@ -317,36 +387,42 @@
               "branch",
               "guard"
             ],
-            "id": "n10",
+            "id": "if-689-692-9f59e13b",
             "kind": "if",
             "label": "if let Some(mmap) = self.config.mmap.open(file, path)",
-            "parentId": "n9",
+            "nativeId": "rust-if-689-692-9f59e13b",
+            "parentId": "fn-678-714-71c81461",
             "read": "src/lib.rs:689:692",
-            "role": "control-flow"
+            "role": "control-flow",
+            "structuralFingerprint": "if-control-flow-689-692-9f59e13b"
           },
           {
             "depth": 3,
             "flags": [
               "call"
             ],
-            "id": "n11",
+            "id": "macro-690-690-6419917",
             "kind": "macro",
             "label": "call log::trace!(\"{:?}: searching via memory map\", path)",
-            "parentId": "n10",
+            "nativeId": "rust-macro-690-690-6419917",
+            "parentId": "if-689-692-9f59e13b",
             "read": "src/lib.rs:690:690",
-            "role": "call"
+            "role": "call",
+            "structuralFingerprint": "macro-call-690-690-6419917"
           },
           {
             "depth": 3,
             "flags": [
               "return"
             ],
-            "id": "n12",
+            "id": "return-691-691-159c787",
             "kind": "return",
             "label": "return self.search_slice(matcher,&mmap, write_to)",
-            "parentId": "n10",
+            "nativeId": "rust-return-691-691-159c787",
+            "parentId": "if-689-692-9f59e13b",
             "read": "src/lib.rs:691:691",
-            "role": "terminal"
+            "role": "terminal",
+            "structuralFingerprint": "return-terminal-691-691-159c787"
           },
           {
             "depth": 2,
@@ -354,133 +430,336 @@
               "branch",
               "guard"
             ],
-            "id": "n13",
+            "id": "if-696-713-7e282b9",
             "kind": "if",
             "label": "if self.multi_line_with_matcher(&matcher)",
-            "parentId": "n9",
+            "nativeId": "rust-if-696-713-7e282b9",
+            "parentId": "fn-678-714-71c81461",
             "read": "src/lib.rs:696:713",
-            "role": "control-flow"
+            "role": "control-flow",
+            "structuralFingerprint": "if-control-flow-696-713-7e282b9"
           },
           {
             "depth": 3,
             "flags": [
               "call"
             ],
-            "id": "n14",
+            "id": "macro-697-700-403c2507",
             "kind": "macro",
             "label": "call log::trace!(\"{:?}: reading entire file on to heap for mulitline\", path)",
-            "parentId": "n13",
+            "nativeId": "rust-macro-697-700-403c2507",
+            "parentId": "if-696-713-7e282b9",
             "read": "src/lib.rs:697:700",
-            "role": "call"
+            "role": "call",
+            "structuralFingerprint": "macro-call-697-700-403c2507"
           },
           {
             "depth": 3,
             "flags": [
               "effect"
             ],
-            "id": "n15",
+            "id": "try-701-701-b5c1a4d5",
             "kind": "try",
             "label": "try self.fill_multi_line_buffer_from_file::<S>(file)",
-            "parentId": "n13",
+            "nativeId": "rust-try-701-701-b5c1a4d5",
+            "parentId": "if-696-713-7e282b9",
             "read": "src/lib.rs:701:701",
-            "role": "effect"
+            "role": "effect",
+            "structuralFingerprint": "try-effect-701-701-b5c1a4d5"
           },
           {
             "depth": 4,
             "flags": [
               "call"
             ],
-            "id": "n16",
+            "id": "call-701-701-d5aa964a",
             "kind": "call",
             "label": "call fill_multi_line_buffer_from_file",
-            "parentId": "n15",
+            "nativeId": "rust-call-701-701-d5aa964a",
+            "parentId": "try-701-701-b5c1a4d5",
             "read": "src/lib.rs:701:701",
-            "role": "call"
+            "role": "call",
+            "structuralFingerprint": "call-call-701-701-d5aa964a"
           },
           {
             "depth": 3,
             "flags": [
               "call"
             ],
-            "id": "n17",
+            "id": "macro-702-702-39195dca",
             "kind": "macro",
             "label": "call log::trace!(\"{:?}: searching via multiline strategy\", path)",
-            "parentId": "n13",
+            "nativeId": "rust-macro-702-702-39195dca",
+            "parentId": "if-696-713-7e282b9",
             "read": "src/lib.rs:702:702",
-            "role": "call"
+            "role": "call",
+            "structuralFingerprint": "macro-call-702-702-39195dca"
           },
           {
             "depth": 3,
             "flags": [
               "return"
             ],
-            "id": "n18",
+            "id": "return-703-709-13a32812",
             "kind": "return",
             "label": "return run",
-            "parentId": "n13",
+            "nativeId": "rust-return-703-709-13a32812",
+            "parentId": "if-696-713-7e282b9",
             "read": "src/lib.rs:703:709",
-            "role": "terminal"
+            "role": "terminal",
+            "structuralFingerprint": "return-terminal-703-709-13a32812"
           },
           {
             "depth": 2,
             "flags": [
               "branch"
             ],
-            "id": "n19",
+            "id": "else-710-713-bdbf5bf0",
             "kind": "else",
             "label": "else",
-            "parentId": "n9",
+            "nativeId": "rust-else-710-713-bdbf5bf0",
+            "parentId": "fn-678-714-71c81461",
             "read": "src/lib.rs:710:713",
-            "role": "control-flow"
+            "role": "control-flow",
+            "structuralFingerprint": "else-control-flow-710-713-bdbf5bf0"
           },
           {
             "depth": 3,
             "flags": [
               "call"
             ],
-            "id": "n20",
+            "id": "macro-711-711-55452dba",
             "kind": "macro",
             "label": "call log::trace!(\"{:?}: searching using generic reader\", path)",
-            "parentId": "n19",
+            "nativeId": "rust-macro-711-711-55452dba",
+            "parentId": "else-710-713-bdbf5bf0",
             "read": "src/lib.rs:711:711",
-            "role": "call"
+            "role": "call",
+            "structuralFingerprint": "macro-call-711-711-55452dba"
           },
           {
             "depth": 3,
             "flags": [
               "return"
             ],
-            "id": "n21",
+            "id": "return-712-712-36f92f15",
             "kind": "return",
             "label": "return search_reader",
-            "parentId": "n19",
+            "nativeId": "rust-return-712-712-36f92f15",
+            "parentId": "else-710-713-bdbf5bf0",
             "read": "src/lib.rs:712:712",
-            "role": "terminal"
+            "role": "terminal",
+            "structuralFingerprint": "return-terminal-712-712-36f92f15"
           },
           {
             "depth": 1,
-            "id": "n22",
+            "id": "fn-716-765-40300483",
             "kind": "fn",
             "label": "fn search_reader",
-            "parentId": "n0",
+            "nativeId": "rust-fn-716-765-40300483",
+            "parentId": "impl-627-828-79068c12",
             "read": "src/lib.rs:716:765",
-            "role": "declaration"
+            "role": "declaration",
+            "structuralFingerprint": "fn-declaration-716-765-40300483"
           },
           {
             "depth": 2,
             "flags": [
               "effect"
             ],
-            "id": "n23",
+            "id": "try-738-738-1ffa361d",
             "kind": "try",
             "label": "try self.check_config(&matcher).map_err(S::Error::error_config)",
-            "parentId": "n22",
+            "nativeId": "rust-try-738-738-1ffa361d",
+            "parentId": "fn-716-765-40300483",
             "read": "src/lib.rs:738:738",
-            "role": "effect"
+            "role": "effect",
+            "structuralFingerprint": "try-effect-738-738-1ffa361d"
           }
         ],
         "nodesTruncated": true,
+        "omitted": [
+          {
+            "kind": "source-formatting",
+            "nodeId": "impl-627-828-79068c12",
+            "read": "src/lib.rs:627:828",
+            "reason": "compact projection removes original whitespace and comments"
+          }
+        ],
+        "renderedNodeIds": [
+          "impl-627-828-79068c12",
+          "fn-628-634-83f246af",
+          "return-633-633-edbb027b",
+          "fn-636-657-ade13647",
+          "let-654-654-8fd26773",
+          "let-655-655-6ab7ea52",
+          "return-656-656-7fa7f00f",
+          "fn-659-676-39a14e36",
+          "return-675-675-7fa7f00f",
+          "fn-678-714-71c81461",
+          "if-689-692-9f59e13b",
+          "macro-690-690-6419917",
+          "return-691-691-159c787",
+          "if-696-713-7e282b9",
+          "macro-697-700-403c2507",
+          "try-701-701-b5c1a4d5",
+          "call-701-701-d5aa964a",
+          "macro-702-702-39195dca",
+          "return-703-709-13a32812",
+          "else-710-713-bdbf5bf0",
+          "macro-711-711-55452dba",
+          "return-712-712-36f92f15",
+          "fn-716-765-40300483",
+          "try-738-738-1ffa361d"
+        ],
+        "renderedRows": [
+          {
+            "nodeId": "impl-627-828-79068c12",
+            "rowKind": "declaration",
+            "semanticWeight": 1,
+            "text": "impl Searcher"
+          },
+          {
+            "nodeId": "fn-628-634-83f246af",
+            "rowKind": "declaration",
+            "semanticWeight": 1,
+            "text": "fn new"
+          },
+          {
+            "nodeId": "return-633-633-edbb027b",
+            "rowKind": "terminal",
+            "semanticWeight": 2,
+            "text": "return build"
+          },
+          {
+            "nodeId": "fn-636-657-ade13647",
+            "rowKind": "declaration",
+            "semanticWeight": 1,
+            "text": "fn search_path"
+          },
+          {
+            "nodeId": "let-654-654-8fd26773",
+            "rowKind": "mutation",
+            "semanticWeight": 2,
+            "text": "assign path"
+          },
+          {
+            "nodeId": "let-655-655-6ab7ea52",
+            "rowKind": "mutation",
+            "semanticWeight": 2,
+            "text": "assign file"
+          },
+          {
+            "nodeId": "return-656-656-7fa7f00f",
+            "rowKind": "terminal",
+            "semanticWeight": 2,
+            "text": "return search_file_maybe_path"
+          },
+          {
+            "nodeId": "fn-659-676-39a14e36",
+            "rowKind": "declaration",
+            "semanticWeight": 1,
+            "text": "fn search_file"
+          },
+          {
+            "nodeId": "return-675-675-7fa7f00f",
+            "rowKind": "terminal",
+            "semanticWeight": 2,
+            "text": "return search_file_maybe_path"
+          },
+          {
+            "nodeId": "fn-678-714-71c81461",
+            "rowKind": "declaration",
+            "semanticWeight": 1,
+            "text": "fn search_file_maybe_path"
+          },
+          {
+            "nodeId": "if-689-692-9f59e13b",
+            "rowKind": "control-flow",
+            "semanticWeight": 2,
+            "text": "if let Some(mmap) = self.config.mmap.open(file, path)"
+          },
+          {
+            "nodeId": "macro-690-690-6419917",
+            "rowKind": "call",
+            "semanticWeight": 2,
+            "text": "call log::trace!(\"{:?}: searching via memory map\", path)"
+          },
+          {
+            "nodeId": "return-691-691-159c787",
+            "rowKind": "terminal",
+            "semanticWeight": 2,
+            "text": "return self.search_slice(matcher,&mmap, write_to)"
+          },
+          {
+            "nodeId": "if-696-713-7e282b9",
+            "rowKind": "control-flow",
+            "semanticWeight": 2,
+            "text": "if self.multi_line_with_matcher(&matcher)"
+          },
+          {
+            "nodeId": "macro-697-700-403c2507",
+            "rowKind": "call",
+            "semanticWeight": 2,
+            "text": "call log::trace!(\"{:?}: reading entire file on to heap for mulitline\", path)"
+          },
+          {
+            "nodeId": "try-701-701-b5c1a4d5",
+            "rowKind": "effect",
+            "semanticWeight": 2,
+            "text": "try self.fill_multi_line_buffer_from_file::<S>(file)"
+          },
+          {
+            "nodeId": "call-701-701-d5aa964a",
+            "rowKind": "call",
+            "semanticWeight": 2,
+            "text": "call fill_multi_line_buffer_from_file"
+          },
+          {
+            "nodeId": "macro-702-702-39195dca",
+            "rowKind": "call",
+            "semanticWeight": 2,
+            "text": "call log::trace!(\"{:?}: searching via multiline strategy\", path)"
+          },
+          {
+            "nodeId": "return-703-709-13a32812",
+            "rowKind": "terminal",
+            "semanticWeight": 2,
+            "text": "return run"
+          },
+          {
+            "nodeId": "else-710-713-bdbf5bf0",
+            "rowKind": "control-flow",
+            "semanticWeight": 2,
+            "text": "else"
+          },
+          {
+            "nodeId": "macro-711-711-55452dba",
+            "rowKind": "call",
+            "semanticWeight": 2,
+            "text": "call log::trace!(\"{:?}: searching using generic reader\", path)"
+          },
+          {
+            "nodeId": "return-712-712-36f92f15",
+            "rowKind": "terminal",
+            "semanticWeight": 2,
+            "text": "return search_reader"
+          },
+          {
+            "nodeId": "fn-716-765-40300483",
+            "rowKind": "declaration",
+            "semanticWeight": 1,
+            "text": "fn search_reader"
+          },
+          {
+            "nodeId": "try-738-738-1ffa361d",
+            "rowKind": "effect",
+            "semanticWeight": 2,
+            "text": "try self.check_config(&matcher).map_err(S::Error::error_config)"
+          }
+        ],
         "sourceAuthority": "native-parser",
+        "sourceFingerprint": "src/lib.rs:627:828:1639:da1744ae96dfb7a2",
         "syntax": "semantic-outline"
       },
       "read": "src/lib.rs:627:828",
@@ -495,70 +774,66 @@
         "path": "src/lib.rs"
       },
       "name": "Searcher",
+      "patchSafety": {
+        "exactRead": "src/lib.rs:830:1029",
+        "level": "read-safe",
+        "reason": "read exact source locator before editing this compact match"
+      },
       "projection": {
         "exactRead": "src/lib.rs:830:1029",
+        "expandActionCount": 10,
+        "expandActionLimit": 8,
         "expandActions": [
           {
             "kind": "hot-block",
             "read": "src/lib.rs:897:899",
             "reason": "parser-projection-control-flow",
-            "target": "n9"
+            "target": "if-897-899-78b0f6c6"
           },
           {
             "kind": "hot-block",
             "read": "src/lib.rs:898:898",
             "reason": "parser-projection-terminal",
-            "target": "n10"
+            "target": "return-898-898-3568a3c0"
           },
           {
             "kind": "hot-block",
             "read": "src/lib.rs:900:904",
             "reason": "parser-projection-control-flow",
-            "target": "n11"
+            "target": "if-900-904-64b6d0c1"
           },
           {
             "kind": "hot-block",
             "read": "src/lib.rs:901:903",
             "reason": "parser-projection-control-flow",
-            "target": "n12"
+            "target": "if-901-903-cc19d8cc"
           },
           {
             "kind": "hot-block",
             "read": "src/lib.rs:902:902",
             "reason": "parser-projection-terminal",
-            "target": "n13"
+            "target": "return-902-902-3568a3c0"
           },
           {
             "kind": "hot-block",
             "read": "src/lib.rs:905:913",
             "reason": "parser-projection-control-flow",
-            "target": "n14"
+            "target": "if-905-913-77916d0"
           },
           {
             "kind": "hot-block",
             "read": "src/lib.rs:910:912",
             "reason": "parser-projection-control-flow",
-            "target": "n15"
+            "target": "if-910-912-2882ddaa"
           },
           {
             "kind": "hot-block",
             "read": "src/lib.rs:911:911",
             "reason": "parser-projection-terminal",
-            "target": "n16"
-          },
-          {
-            "kind": "hot-block",
-            "read": "src/lib.rs:914:914",
-            "reason": "parser-projection-terminal",
-            "target": "n17"
-          },
-          {
-            "kind": "hot-block",
-            "read": "src/lib.rs:946:946",
-            "reason": "parser-projection-mutation",
-            "target": "n23"
+            "target": "return-911-911-3568a3c0"
           }
         ],
+        "expandActionsTruncated": true,
         "losslessStructure": false,
         "mode": "compact",
         "nodeCount": 64,
@@ -566,83 +841,101 @@
         "nodes": [
           {
             "depth": 0,
-            "id": "n0",
+            "id": "impl-830-1029-79068c12",
             "kind": "impl",
             "label": "impl Searcher",
+            "nativeId": "rust-impl-830-1029-79068c12",
             "read": "src/lib.rs:830:1029",
-            "role": "declaration"
+            "role": "declaration",
+            "structuralFingerprint": "impl-declaration-830-1029-79068c12"
           },
           {
             "depth": 1,
-            "id": "n1",
+            "id": "fn-834-838-af157583",
             "kind": "fn",
             "label": "fn line_terminator",
-            "parentId": "n0",
+            "nativeId": "rust-fn-834-838-af157583",
+            "parentId": "impl-830-1029-79068c12",
             "read": "src/lib.rs:834:838",
-            "role": "declaration"
+            "role": "declaration",
+            "structuralFingerprint": "fn-declaration-834-838-af157583"
           },
           {
             "depth": 1,
-            "id": "n2",
+            "id": "fn-840-844-c94267e6",
             "kind": "fn",
             "label": "fn binary_detection",
-            "parentId": "n0",
+            "nativeId": "rust-fn-840-844-c94267e6",
+            "parentId": "impl-830-1029-79068c12",
             "read": "src/lib.rs:840:844",
-            "role": "declaration"
+            "role": "declaration",
+            "structuralFingerprint": "fn-declaration-840-844-c94267e6"
           },
           {
             "depth": 1,
-            "id": "n3",
+            "id": "fn-846-852-d4f7381",
             "kind": "fn",
             "label": "fn invert_match",
-            "parentId": "n0",
+            "nativeId": "rust-fn-846-852-d4f7381",
+            "parentId": "impl-830-1029-79068c12",
             "read": "src/lib.rs:846:852",
-            "role": "declaration"
+            "role": "declaration",
+            "structuralFingerprint": "fn-declaration-846-852-d4f7381"
           },
           {
             "depth": 1,
-            "id": "n4",
+            "id": "fn-854-859-da239203",
             "kind": "fn",
             "label": "fn line_number",
-            "parentId": "n0",
+            "nativeId": "rust-fn-854-859-da239203",
+            "parentId": "impl-830-1029-79068c12",
             "read": "src/lib.rs:854:859",
-            "role": "declaration"
+            "role": "declaration",
+            "structuralFingerprint": "fn-declaration-854-859-da239203"
           },
           {
             "depth": 1,
-            "id": "n5",
+            "id": "fn-861-866-8651e117",
             "kind": "fn",
             "label": "fn multi_line",
-            "parentId": "n0",
+            "nativeId": "rust-fn-861-866-8651e117",
+            "parentId": "impl-830-1029-79068c12",
             "read": "src/lib.rs:861:866",
-            "role": "declaration"
+            "role": "declaration",
+            "structuralFingerprint": "fn-declaration-861-866-8651e117"
           },
           {
             "depth": 1,
-            "id": "n6",
+            "id": "fn-868-873-42718036",
             "kind": "fn",
             "label": "fn stop_on_nonmatch",
-            "parentId": "n0",
+            "nativeId": "rust-fn-868-873-42718036",
+            "parentId": "impl-830-1029-79068c12",
             "read": "src/lib.rs:868:873",
-            "role": "declaration"
+            "role": "declaration",
+            "structuralFingerprint": "fn-declaration-868-873-42718036"
           },
           {
             "depth": 1,
-            "id": "n7",
+            "id": "fn-875-887-25821045",
             "kind": "fn",
             "label": "fn max_matches",
-            "parentId": "n0",
+            "nativeId": "rust-fn-875-887-25821045",
+            "parentId": "impl-830-1029-79068c12",
             "read": "src/lib.rs:875:887",
-            "role": "declaration"
+            "role": "declaration",
+            "structuralFingerprint": "fn-declaration-875-887-25821045"
           },
           {
             "depth": 1,
-            "id": "n8",
+            "id": "fn-889-915-599b5f09",
             "kind": "fn",
             "label": "fn multi_line_with_matcher",
-            "parentId": "n0",
+            "nativeId": "rust-fn-889-915-599b5f09",
+            "parentId": "impl-830-1029-79068c12",
             "read": "src/lib.rs:889:915",
-            "role": "declaration"
+            "role": "declaration",
+            "structuralFingerprint": "fn-declaration-889-915-599b5f09"
           },
           {
             "depth": 2,
@@ -650,24 +943,28 @@
               "branch",
               "guard"
             ],
-            "id": "n9",
+            "id": "if-897-899-78b0f6c6",
             "kind": "if",
             "label": "if ! self.multi_line()",
-            "parentId": "n8",
+            "nativeId": "rust-if-897-899-78b0f6c6",
+            "parentId": "fn-889-915-599b5f09",
             "read": "src/lib.rs:897:899",
-            "role": "control-flow"
+            "role": "control-flow",
+            "structuralFingerprint": "if-control-flow-897-899-78b0f6c6"
           },
           {
             "depth": 3,
             "flags": [
               "return"
             ],
-            "id": "n10",
+            "id": "return-898-898-3568a3c0",
             "kind": "return",
             "label": "return false",
-            "parentId": "n9",
+            "nativeId": "rust-return-898-898-3568a3c0",
+            "parentId": "if-897-899-78b0f6c6",
             "read": "src/lib.rs:898:898",
-            "role": "terminal"
+            "role": "terminal",
+            "structuralFingerprint": "return-terminal-898-898-3568a3c0"
           },
           {
             "depth": 2,
@@ -675,12 +972,14 @@
               "branch",
               "guard"
             ],
-            "id": "n11",
+            "id": "if-900-904-64b6d0c1",
             "kind": "if",
             "label": "if let Some(line_term) = matcher.line_terminator()",
-            "parentId": "n8",
+            "nativeId": "rust-if-900-904-64b6d0c1",
+            "parentId": "fn-889-915-599b5f09",
             "read": "src/lib.rs:900:904",
-            "role": "control-flow"
+            "role": "control-flow",
+            "structuralFingerprint": "if-control-flow-900-904-64b6d0c1"
           },
           {
             "depth": 3,
@@ -688,24 +987,28 @@
               "branch",
               "guard"
             ],
-            "id": "n12",
+            "id": "if-901-903-cc19d8cc",
             "kind": "if",
             "label": "if line_term == self.line_terminator()",
-            "parentId": "n11",
+            "nativeId": "rust-if-901-903-cc19d8cc",
+            "parentId": "if-900-904-64b6d0c1",
             "read": "src/lib.rs:901:903",
-            "role": "control-flow"
+            "role": "control-flow",
+            "structuralFingerprint": "if-control-flow-901-903-cc19d8cc"
           },
           {
             "depth": 4,
             "flags": [
               "return"
             ],
-            "id": "n13",
+            "id": "return-902-902-3568a3c0",
             "kind": "return",
             "label": "return false",
-            "parentId": "n12",
+            "nativeId": "rust-return-902-902-3568a3c0",
+            "parentId": "if-901-903-cc19d8cc",
             "read": "src/lib.rs:902:902",
-            "role": "terminal"
+            "role": "terminal",
+            "structuralFingerprint": "return-terminal-902-902-3568a3c0"
           },
           {
             "depth": 2,
@@ -713,12 +1016,14 @@
               "branch",
               "guard"
             ],
-            "id": "n14",
+            "id": "if-905-913-77916d0",
             "kind": "if",
             "label": "if let Some(non_matching) = matcher.non_matching_bytes()",
-            "parentId": "n8",
+            "nativeId": "rust-if-905-913-77916d0",
+            "parentId": "fn-889-915-599b5f09",
             "read": "src/lib.rs:905:913",
-            "role": "control-flow"
+            "role": "control-flow",
+            "structuralFingerprint": "if-control-flow-905-913-77916d0"
           },
           {
             "depth": 3,
@@ -726,100 +1031,299 @@
               "branch",
               "guard"
             ],
-            "id": "n15",
+            "id": "if-910-912-2882ddaa",
             "kind": "if",
             "label": "if non_matching.contains(self.line_terminator().as_byte())",
-            "parentId": "n14",
+            "nativeId": "rust-if-910-912-2882ddaa",
+            "parentId": "if-905-913-77916d0",
             "read": "src/lib.rs:910:912",
-            "role": "control-flow"
+            "role": "control-flow",
+            "structuralFingerprint": "if-control-flow-910-912-2882ddaa"
           },
           {
             "depth": 4,
             "flags": [
               "return"
             ],
-            "id": "n16",
+            "id": "return-911-911-3568a3c0",
             "kind": "return",
             "label": "return false",
-            "parentId": "n15",
+            "nativeId": "rust-return-911-911-3568a3c0",
+            "parentId": "if-910-912-2882ddaa",
             "read": "src/lib.rs:911:911",
-            "role": "terminal"
+            "role": "terminal",
+            "structuralFingerprint": "return-terminal-911-911-3568a3c0"
           },
           {
             "depth": 2,
             "flags": [
               "return"
             ],
-            "id": "n17",
+            "id": "return-914-914-bc04c08d",
             "kind": "return",
             "label": "return true",
-            "parentId": "n8",
+            "nativeId": "rust-return-914-914-bc04c08d",
+            "parentId": "fn-889-915-599b5f09",
             "read": "src/lib.rs:914:914",
-            "role": "terminal"
+            "role": "terminal",
+            "structuralFingerprint": "return-terminal-914-914-bc04c08d"
           },
           {
             "depth": 1,
-            "id": "n18",
+            "id": "fn-917-922-2355b9fb",
             "kind": "fn",
             "label": "fn after_context",
-            "parentId": "n0",
+            "nativeId": "rust-fn-917-922-2355b9fb",
+            "parentId": "impl-830-1029-79068c12",
             "read": "src/lib.rs:917:922",
-            "role": "declaration"
+            "role": "declaration",
+            "structuralFingerprint": "fn-declaration-917-922-2355b9fb"
           },
           {
             "depth": 1,
-            "id": "n19",
+            "id": "fn-924-929-7e7b96dc",
             "kind": "fn",
             "label": "fn before_context",
-            "parentId": "n0",
+            "nativeId": "rust-fn-924-929-7e7b96dc",
+            "parentId": "impl-830-1029-79068c12",
             "read": "src/lib.rs:924:929",
-            "role": "declaration"
+            "role": "declaration",
+            "structuralFingerprint": "fn-declaration-924-929-7e7b96dc"
           },
           {
             "depth": 1,
-            "id": "n20",
+            "id": "fn-931-935-2ef26c93",
             "kind": "fn",
             "label": "fn passthru",
-            "parentId": "n0",
+            "nativeId": "rust-fn-931-935-2ef26c93",
+            "parentId": "impl-830-1029-79068c12",
             "read": "src/lib.rs:931:935",
-            "role": "declaration"
+            "role": "declaration",
+            "structuralFingerprint": "fn-declaration-931-935-2ef26c93"
           },
           {
             "depth": 1,
-            "id": "n21",
+            "id": "fn-937-969-58364d46",
             "kind": "fn",
             "label": "fn fill_multi_line_buffer_from_file",
-            "parentId": "n0",
+            "nativeId": "rust-fn-937-969-58364d46",
+            "parentId": "impl-830-1029-79068c12",
             "read": "src/lib.rs:937:969",
-            "role": "declaration"
+            "role": "declaration",
+            "structuralFingerprint": "fn-declaration-937-969-58364d46"
           },
           {
             "depth": 2,
             "flags": [
               "call"
             ],
-            "id": "n22",
+            "id": "macro-944-944-36ae6ff",
             "kind": "macro",
             "label": "call assert!(self.config.multi_line)",
-            "parentId": "n21",
+            "nativeId": "rust-macro-944-944-36ae6ff",
+            "parentId": "fn-937-969-58364d46",
             "read": "src/lib.rs:944:944",
-            "role": "call"
+            "role": "call",
+            "structuralFingerprint": "macro-call-944-944-36ae6ff"
           },
           {
             "depth": 2,
             "flags": [
               "mutation"
             ],
-            "id": "n23",
+            "id": "let-946-946-e2a4b839",
             "kind": "let",
             "label": "assign decode_buffer",
-            "parentId": "n21",
+            "nativeId": "rust-let-946-946-e2a4b839",
+            "parentId": "fn-937-969-58364d46",
             "read": "src/lib.rs:946:946",
-            "role": "mutation"
+            "role": "mutation",
+            "structuralFingerprint": "let-mutation-946-946-e2a4b839"
           }
         ],
         "nodesTruncated": true,
+        "omitted": [
+          {
+            "kind": "source-formatting",
+            "nodeId": "impl-830-1029-79068c12",
+            "read": "src/lib.rs:830:1029",
+            "reason": "compact projection removes original whitespace and comments"
+          }
+        ],
+        "renderedNodeIds": [
+          "impl-830-1029-79068c12",
+          "fn-834-838-af157583",
+          "fn-840-844-c94267e6",
+          "fn-846-852-d4f7381",
+          "fn-854-859-da239203",
+          "fn-861-866-8651e117",
+          "fn-868-873-42718036",
+          "fn-875-887-25821045",
+          "fn-889-915-599b5f09",
+          "if-897-899-78b0f6c6",
+          "return-898-898-3568a3c0",
+          "if-900-904-64b6d0c1",
+          "if-901-903-cc19d8cc",
+          "return-902-902-3568a3c0",
+          "if-905-913-77916d0",
+          "if-910-912-2882ddaa",
+          "return-911-911-3568a3c0",
+          "return-914-914-bc04c08d",
+          "fn-917-922-2355b9fb",
+          "fn-924-929-7e7b96dc",
+          "fn-931-935-2ef26c93",
+          "fn-937-969-58364d46",
+          "macro-944-944-36ae6ff",
+          "let-946-946-e2a4b839"
+        ],
+        "renderedRows": [
+          {
+            "nodeId": "impl-830-1029-79068c12",
+            "rowKind": "declaration",
+            "semanticWeight": 1,
+            "text": "impl Searcher"
+          },
+          {
+            "nodeId": "fn-834-838-af157583",
+            "rowKind": "declaration",
+            "semanticWeight": 1,
+            "text": "fn line_terminator"
+          },
+          {
+            "nodeId": "fn-840-844-c94267e6",
+            "rowKind": "declaration",
+            "semanticWeight": 1,
+            "text": "fn binary_detection"
+          },
+          {
+            "nodeId": "fn-846-852-d4f7381",
+            "rowKind": "declaration",
+            "semanticWeight": 1,
+            "text": "fn invert_match"
+          },
+          {
+            "nodeId": "fn-854-859-da239203",
+            "rowKind": "declaration",
+            "semanticWeight": 1,
+            "text": "fn line_number"
+          },
+          {
+            "nodeId": "fn-861-866-8651e117",
+            "rowKind": "declaration",
+            "semanticWeight": 1,
+            "text": "fn multi_line"
+          },
+          {
+            "nodeId": "fn-868-873-42718036",
+            "rowKind": "declaration",
+            "semanticWeight": 1,
+            "text": "fn stop_on_nonmatch"
+          },
+          {
+            "nodeId": "fn-875-887-25821045",
+            "rowKind": "declaration",
+            "semanticWeight": 1,
+            "text": "fn max_matches"
+          },
+          {
+            "nodeId": "fn-889-915-599b5f09",
+            "rowKind": "declaration",
+            "semanticWeight": 1,
+            "text": "fn multi_line_with_matcher"
+          },
+          {
+            "nodeId": "if-897-899-78b0f6c6",
+            "rowKind": "control-flow",
+            "semanticWeight": 2,
+            "text": "if ! self.multi_line()"
+          },
+          {
+            "nodeId": "return-898-898-3568a3c0",
+            "rowKind": "terminal",
+            "semanticWeight": 2,
+            "text": "return false"
+          },
+          {
+            "nodeId": "if-900-904-64b6d0c1",
+            "rowKind": "control-flow",
+            "semanticWeight": 2,
+            "text": "if let Some(line_term) = matcher.line_terminator()"
+          },
+          {
+            "nodeId": "if-901-903-cc19d8cc",
+            "rowKind": "control-flow",
+            "semanticWeight": 2,
+            "text": "if line_term == self.line_terminator()"
+          },
+          {
+            "nodeId": "return-902-902-3568a3c0",
+            "rowKind": "terminal",
+            "semanticWeight": 2,
+            "text": "return false"
+          },
+          {
+            "nodeId": "if-905-913-77916d0",
+            "rowKind": "control-flow",
+            "semanticWeight": 2,
+            "text": "if let Some(non_matching) = matcher.non_matching_bytes()"
+          },
+          {
+            "nodeId": "if-910-912-2882ddaa",
+            "rowKind": "control-flow",
+            "semanticWeight": 2,
+            "text": "if non_matching.contains(self.line_terminator().as_byte())"
+          },
+          {
+            "nodeId": "return-911-911-3568a3c0",
+            "rowKind": "terminal",
+            "semanticWeight": 2,
+            "text": "return false"
+          },
+          {
+            "nodeId": "return-914-914-bc04c08d",
+            "rowKind": "terminal",
+            "semanticWeight": 2,
+            "text": "return true"
+          },
+          {
+            "nodeId": "fn-917-922-2355b9fb",
+            "rowKind": "declaration",
+            "semanticWeight": 1,
+            "text": "fn after_context"
+          },
+          {
+            "nodeId": "fn-924-929-7e7b96dc",
+            "rowKind": "declaration",
+            "semanticWeight": 1,
+            "text": "fn before_context"
+          },
+          {
+            "nodeId": "fn-931-935-2ef26c93",
+            "rowKind": "declaration",
+            "semanticWeight": 1,
+            "text": "fn passthru"
+          },
+          {
+            "nodeId": "fn-937-969-58364d46",
+            "rowKind": "declaration",
+            "semanticWeight": 1,
+            "text": "fn fill_multi_line_buffer_from_file"
+          },
+          {
+            "nodeId": "macro-944-944-36ae6ff",
+            "rowKind": "call",
+            "semanticWeight": 2,
+            "text": "call assert!(self.config.multi_line)"
+          },
+          {
+            "nodeId": "let-946-946-e2a4b839",
+            "rowKind": "mutation",
+            "semanticWeight": 2,
+            "text": "assign decode_buffer"
+          }
+        ],
         "sourceAuthority": "native-parser",
+        "sourceFingerprint": "src/lib.rs:830:1029:1176:1380a3743e987a26",
         "syntax": "semantic-outline"
       },
       "read": "src/lib.rs:830:1029",
@@ -831,6 +1335,11 @@
   "namespace": "agent.semantic-protocols.languages.rust.rs-harness",
   "outputMode": "code",
   "ownerPath": "src/lib.rs",
+  "patchSafety": {
+    "level": "read-safe",
+    "nextAction": "query --from-hook direct-source-read",
+    "reason": "compact query packet is not a mutation authority"
+  },
   "projectRoot": ".",
   "protocolId": "agent.semantic-protocols.semantic-language",
   "protocolVersion": "1",

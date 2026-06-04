@@ -2,8 +2,16 @@
   "id": "python.pandas-intent-matrix",
   "language": "python",
   "title": "pandas large-library feature/API/principle intent matrix",
-  "coverage": ["search-flow", "performance", "large-library"],
-  "tags": ["large-library", "pandas", "intent-matrix"],
+  "coverage": [
+    "search-flow",
+    "performance",
+    "large-library"
+  ],
+  "tags": [
+    "large-library",
+    "pandas",
+    "intent-matrix"
+  ],
   "evidence": {
     "source": "handwritten",
     "fixtureTier": "large-library",
@@ -18,20 +26,34 @@
       {
         "intentKind": "feature-implementation",
         "intent": "Implement groupby behavior after locating compact owners and tests",
-        "stepIds": ["prime-groupby", "groupby-query-set"],
-        "queryTerms": ["groupby"]
+        "stepIds": [
+          "prime-groupby",
+          "groupby-query-set"
+        ],
+        "queryTerms": [
+          "groupby"
+        ]
       },
       {
         "intentKind": "api-usage",
         "intent": "Find DataFrameGroupBy API usage and callsites",
-        "stepIds": ["prime-groupby", "groupby-query-set"],
-        "queryTerms": ["DataFrameGroupBy"]
+        "stepIds": [
+          "prime-groupby",
+          "groupby-query-set"
+        ],
+        "queryTerms": [
+          "DataFrameGroupBy"
+        ]
       },
       {
         "intentKind": "implementation-principle",
         "intent": "Understand BlockManager implementation paths without broad reads",
-        "stepIds": ["internals-query-set"],
-        "queryTerms": ["BlockManager"]
+        "stepIds": [
+          "internals-query-set"
+        ],
+        "queryTerms": [
+          "BlockManager"
+        ]
       }
     ]
   },
@@ -63,7 +85,10 @@
       ],
       "expect": {
         "lineProtocol": true,
-        "stdoutContains": ["[search-prime]", "|seed"],
+        "stdoutContains": [
+          "[search-prime]",
+          "|seed"
+        ],
         "maxStdoutLinesWarn": 8,
         "maxElapsedMsWarn": 6000
       }
@@ -88,7 +113,11 @@
       ],
       "expect": {
         "lineProtocol": true,
-        "stdoutContains": ["[search-fzf]", "querySet=2", "|seed"],
+        "stdoutContains": [
+          "[search-fzf]",
+          "querySet=2",
+          "|seed"
+        ],
         "maxStdoutLinesWarn": 12,
         "maxElapsedMsWarn": 6000
       }
@@ -111,7 +140,11 @@
       ],
       "expect": {
         "lineProtocol": true,
-        "stdoutContains": ["[search-fzf]", "querySet=1", "|seed"],
+        "stdoutContains": [
+          "[search-fzf]",
+          "querySet=1",
+          "|seed"
+        ],
         "maxStdoutLinesWarn": 12,
         "maxElapsedMsWarn": 6000
       }

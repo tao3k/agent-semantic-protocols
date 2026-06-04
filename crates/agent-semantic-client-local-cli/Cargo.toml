@@ -1,0 +1,15 @@
+[package]
+name = "agent-semantic-client-local-cli"
+version = "0.1.0"
+edition = "2024"
+description = "Local native-provider execution backend for the agent semantic client."
+license = "MIT"
+
+[dependencies]
+agent-semantic-client-core = { path = "../agent-semantic-client-core" }
+
+[build-dependencies]
+rust-lang-project-harness = { workspace = true }
+
+[dev-dependencies]
+rust-lang-project-harness = { workspace = true }

@@ -1,0 +1,563 @@
+#+TITLE: RFC: Graph Reasoning Code Search Research
+#+AUTHOR: agent-semantic-protocols
+#+DATE: 2026-06-03
+#+RFC: 009
+#+STATUS: research
+#+DEPENDS: rfcs/cli-first-harness-ux.org (005), rfcs/agent-compact-graph-feature.org (006), schemas/semantic-search-packet.v1.schema.json, schemas/semantic-compact-graph-render.v1.schema.json
+
+* One-sentence summary
+
+=search guide= teaches the LLM provider-supported typed search flows, while
+=search prime= emits a small ranked frontier of schema-backed code reasoning
+handles so the LLM can choose one or two deterministic =search reasoning
+<profile>= calls without natural-language intent parsing inside the harness.
+
+* Research thesis
+
+=search-prime= is not "more information."  It is the minimum sufficient
+frontier for the first step of agent reasoning in a large codebase.
+
+The first packet must be small enough to avoid context bloat, but complete
+enough to let the agent choose the next typed search profile.  It should expose
+ranked owner, query, dependency, test, and finding handles, not expanded code,
+full item lists, or prose plans.
+
+Compact graph rendering remains important, but it is not the research target
+of this RFC.  RFC 006 owns the prompt-facing graph render grammar.  This RFC
+owns the research question behind the graph content:
+
+#+begin_src text
+Which graph handles should the first packet expose so the agent can reach
+useful evidence or a parser-owned code locator in one or two follow-up calls?
+#+end_src
+
+* Architecture boundary
+
+The harness must not parse natural-language intent, route tasks, or plan
+subagents.  Those are agent responsibilities.  The harness provides stable
+typed evidence surfaces:
+
+#+begin_src text
+user intent
+  -> agent/LLM interprets task
+  -> agent reads search guide
+  -> agent runs search prime
+  -> agent chooses typed reasoning profile and selectors
+  -> harness returns parser/schema-backed facts
+  -> agent chooses query/read/edit/test action
+#+end_src
+
+The public boundary is:
+
+#+begin_src text
+search guide
+  provider-owned flow catalog for the LLM
+
+search prime
+  small project-level graph frontier without user intent
+
+search reasoning <profile> <typed selectors>
+  deterministic evidence acquisition for selectors chosen by the LLM
+
+query
+  parser-owned compact code or item extraction
+#+end_src
+
+* Comparative substrate: StakGraph
+
+StakGraph is a useful comparison because it treats code graphs as an agent
+navigation substrate, not only as a visualization layer.  Its public README
+describes a tree-sitter based source parser, optional LSP resolution, compact
+repo overview, graph search, dependency and impact tracing, shortest-path
+queries, code retrieval, and a Neo4j-backed graph server.
+
+The ASP lesson is:
+
+#+begin_src text
+protect raw read
+  -> return graph frontier
+  -> let the agent choose a typed reasoning profile
+  -> return bounded code only after a parser-owned locator is selected
+#+end_src
+
+This reinforces the RFC boundary.  The provider should expose a typed code
+navigation substrate, but it must not become an intent parser or built-in LLM
+planner.
+
+ASP should learn selectively:
+
+| External signal | ASP lesson |
+|-----------------+-------------|
+| parser-owned code graph | keep native provider facts as authority |
+| staged graph navigation | return bounded frontier handles before code |
+| dependency and impact tracing | make relation evidence typed and schema-backed |
+| shortest-path questions | support path-shaped evidence only after relation facts exist |
+| graph/vector cache | keep ranking/indexing behind the provider contract |
+| historical feature clues | route into evidence layer, not prime dumps |
+
+ASP's own strengths must stay primary:
+
+- CLI-first provider commands rather than MCP as the required prompt protocol.
+- Schema-backed packets before provider-specific implementation shortcuts.
+- Hook deny recovery with copyable guide routes.
+- Native parser compact code and read-plan frontiers.
+- Cross-language sandtable evidence with command count and token-cost metrics.
+
+Do not copy:
+
+- MCP as the primary protocol boundary.
+- provider-side natural-language planning.
+- =--goal=, =--intent=, or =--prompt= command shapes.
+- raw graph database or visualization dumps on the prompt path.
+- large vector hit lists in =search prime=.
+
+Use the external taxonomy as pressure on our graph vocabulary, then express
+only validated ASP facts through schema-backed compact frontier packets.
+
+Invalid command shapes:
+
+#+begin_src shell
+# DO NOT BUILD:
+<lang-harness> search reasoning --goal "fix failing pytest around Path model" .
+<lang-harness> search reasoning --intent "find the bug" .
+<lang-harness> search prime --task "change dependency API use" .
+#+end_src
+
+Valid command shapes:
+
+#+begin_src shell
+<lang-harness> search guide .
+<lang-harness> search prime --view seeds .
+
+<lang-harness> search reasoning owner-query \
+  --owner src/python_lang_project_harness/verification/model.py \
+  --query Path \
+  --dependency pytest \
+  --view facts \
+  .
+
+<lang-harness> search reasoning query-deps \
+  --query Path \
+  --dependency pytest \
+  --view facts \
+  .
+#+end_src
+
+* Prime frontier contract
+
+Prime frontier must return handles, not expanded facts.
+
+Allowed prime handles:
+
+- =owner:path(...)= for high-impact owner entrypoints
+- =query:term(...)= for lexical or semantic query handles
+- =dependency:pkg(...)= for package or API usage handles
+- =test:path(...)= for test entrypoints and coverage handles
+- =finding:rule(...)= for policy, diagnostic, or schema finding handles
+- =profile= compatibility facts connecting handles to reasoning profiles
+- =rank=, =frontier=, =avoid=, and =omit= facts
+
+Forbidden in prime:
+
+- code snippets
+- full item lists
+- full dependency graphs
+- long test lists
+- prose plans
+- JSON dumps on the agent prompt path
+- natural-language goals or explanations as selectors
+
+Formal invariant:
+
+#+begin_src text
+Given token budget B and next-search budget K <= 2, search-prime should
+maximize expected downstream evidence gain by returning ranked handles instead
+of expanded facts.
+#+end_src
+
+* Prime output shape
+
+The prime output should be graph-rendered with RFC 006 line protocol:
+
+#+begin_src text
+[search-prime] root=. alg=budgeted-frontier-v1 budget=handles:10
+legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next
+alias: graph:{G=search,O=owner,Q=query,D=dependency,T=test,F=finding}
+O=owner:path(src/python_lang_project_harness/verification/model.py)!owner
+Q=query:term(Path)!fzf
+D=dependency:pkg(pytest)!deps
+T=test:path(tests/verification/test_model.py)!tests
+G>{O:selects,Q:matches,D:uses,T:covers}
+O>{Q:contains,D:uses,T:covered_by}
+rank=O,Q,T,D frontier=O.owner,Q.fzf,T.tests,D.deps
+profiles=owner-query(O,Q),query-deps(Q,D),owner-tests(O,T)
+avoid=raw-read,full-json,broad-fzf
+omit=items,blocks,code,full-test-list
+#+end_src
+
+=profiles= is not a command plan.  It is a typed compatibility hint from the
+provider to the agent: these handles can be combined in these deterministic
+evidence profiles.  The agent still decides which profile to run based on the
+user task.
+
+* Reasoning profiles
+
+Reasoning profiles are deterministic evidence-acquisition surfaces.  They
+consume typed selectors and return schema-backed facts.  They do not parse user
+intent.
+
+Initial profile set:
+
+#+begin_src text
+owner-query
+  args: owner:path query:term [dependency:pkg]
+  returns: matching items, owner-local read locators, tests, dependency usage
+
+query-deps
+  args: query:term dependency:pkg
+  returns: owners, imports, API usage, usage tests
+
+owner-tests
+  args: owner:path
+  returns: covering tests, test entrypoints, fixture handles
+
+finding-frontier
+  args: finding:rule-id|diagnostic-id [owner:path]
+  returns: affected owners, tests, verification actions
+
+import-surface
+  args: owner:path|dependency:pkg
+  returns: import edges, external/internal boundary, owners and tests
+#+end_src
+
+Research axes inspired by graph-navigation systems:
+
+#+begin_src text
+relation-frontier
+  selectors: selected typed handle [depth:int] [direction:in|out|both]
+  returns: bounded relation frontier around the selected handle
+
+causal-path
+  selectors: from:typed-node to:typed-node
+  returns: shortest parser/resolver-owned relation path
+
+change-impact
+  selectors: owner:path|item:symbol|dependency:pkg
+  returns: affected owners, tests, findings, and verification actions
+
+dependency-surface
+  selectors: owner:path|item:symbol|dependency:pkg
+  returns: import edges, API usage, call edges, and usage tests
+
+read-frontier
+  selectors: range:path@start:end
+  returns: symbol, window, remainder, and test handles without code
+#+end_src
+
+These axes should live in research and schema design before becoming runtime
+guide commands.  A guide route is allowed only when the active provider can
+replay it without parser-usage errors.  They remain deterministic typed
+profiles, not natural-language search modes.
+
+Reasoning profile output should also use compact graph rendering when it
+returns graph facts:
+
+#+begin_src text
+[search-reasoning] profile=owner-query selector=owner+query+dependency alg=bounded-evidence-frontier
+legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next
+alias: graph:{G=search,O=owner,Q=query,D=dependency,I=item,T=test}
+O=owner:path(src/.../model.py)!owner
+Q=query:term(Path)!fzf
+D=dependency:pkg(pytest)!deps
+I=item:symbol(ModelPathPolicy)@src/.../model.py:40:88!code
+T=test:path(tests/verification/test_model.py)!tests
+G>{O:selects,Q:matches,D:uses,T:covers}
+O>{I:contains,D:uses,T:covered_by}
+Q>{I:matches,T:matches}
+rank=I,T,O,D,Q frontier=I.code,T.tests,O.owner
+omit=comments,blank-lines,trivia
+avoid=raw-read
+#+end_src
+
+* Implementation slice: Rust search guide
+
+As of 2026-06-03, the Rust provider owns the first executable slice of this
+RFC through =rs-harness search guide .=.  The guide is intentionally compact
+line protocol, not JSON and not prose.  It advertises typed reasoning profiles,
+selector aliases, returned fact families, compatible graph handles, and
+frontier actions:
+
+#+begin_src text
+[search-guide] language=rust provider=rs-harness protocol=search-guide.v1
+|rule intent=agent selectors=typed json=validator-only
+|rule natural-language-intent=deny fields=goal,intent,prompt
+|flow guide->prime->reasoning-profile->owner|deps|tests
+|profile owner-query selectors=O:owner,Q:query returns=items,tests,dependency-usage compatible=O,Q frontier=O.items,Q.owner,Q.tests
+|profile query-deps selectors=Q:query,D:dependency returns=owners,imports,usage-tests compatible=Q,D frontier=Q.owner,D.public-api,D.tests
+|profile owner-tests selectors=O:owner,T:test returns=covering-tests,test-entrypoints,fixtures compatible=O,T frontier=O.tests,T.owner
+|profile finding-frontier selectors=F:finding,O:owner? returns=affected-owners,tests,verification-actions compatible=F,O frontier=F.owner,F.tests,O.policy
+|profile read-frontier selectors=R:range returns=symbols,windows,tests,next-actions compatible=R frontier=R.symbols,R.tests,R.code
+|cmd read-frontier=rs-harness query --from-hook direct-source-read --selector <path:start:end> .
+|avoid raw-read,manual-window-scan,full-json,natural-language-intent
+#+end_src
+
+The guide does not require client features such as subagents or tool
+parallelism.  Those runtimes may use the guide to fan out independent axes, but
+the provider contract remains a deterministic typed catalog.
+
+During this slice the root hook also denied raw source diff dumps and returned
+provider routes such as =rs-harness query --from-hook direct-source-read
+--selector <path> --code .=.  That is the expected safety shape for this RFC:
+the agent may inspect exact provider-selected windows, but broad source dumps
+stay outside the prompt-facing graph reasoning flow.
+
+* Ranking semantics
+
+Prime ranking is expected downstream evidence gain, not display order.
+
+Candidate ranking algorithms to research:
+
+1. =owner-rank-frontier=
+   Current baseline.  Rank owners and tests from existing graph frontier.
+
+2. =hybrid-lexical-structural-rank=
+   Combine owner score, query match score, dependency centrality, and test
+   coverage.
+
+3. =budgeted-information-gain-rank=
+   Prefer handles that unlock the highest-value reasoning profiles under a
+   fixed token and command budget.
+
+The research hypothesis is that =budgeted-information-gain-rank= is the right
+large-project default.  An owner connected to a query term, a dependency, tests,
+and findings is more valuable than a source-order owner with no next evidence
+surface.
+
+* Budget rules
+
+Prime must stay small and structured.
+
+Initial target budget:
+
+#+begin_src text
+max owner handles: 3-5
+max query handles: 3-5
+max dependency handles: 2-3
+max test/finding handles: 2-4
+max total graph aliases: 10-14
+max output lines: 12-18
+max token budget: provider-configurable, default under 900 prompt tokens
+#+end_src
+
+Budget is not a fixed truncation rule.  The provider should spend aliases where
+they open useful reasoning profiles.  A low-value extra owner should lose to a
+dependency or test handle that lets the agent choose =query-deps= or
+=owner-tests=.
+
+* Research questions
+
+** RQ1: How many prime nodes should the first packet expose?
+
+Compare:
+
+- owner only
+- owner + query
+- owner + query + tests
+- owner + query + dependency + tests
+- owner + query + dependency + tests + finding
+
+Measure whether the agent can reach useful evidence or a code locator in two
+search calls.
+
+** RQ2: What is the right node granularity?
+
+Prime should start with coarse handles:
+
+#+begin_src text
+owner:path(...)
+query:term(...)
+dependency:pkg(...)
+test:path(...)
+finding:rule(...)
+#+end_src
+
+It should not expose =item=, =block=, or =callsite= by default.  Those belong to
+=search reasoning= or =query= after the agent has selected a direction.
+
+** RQ3: Should prime expose profile compatibility?
+
+Hypothesis: yes.  =profiles= lets the agent see which handles can be combined
+without letting the harness plan.  It is safer than =compose= or =next-plan=
+because it describes deterministic evidence profiles rather than task steps.
+
+** RQ4: Which rank algorithm gives the best downstream evidence gain?
+
+Compare =owner-rank-frontier=, =hybrid-lexical-structural-rank=, and
+=budgeted-information-gain-rank= against real agent traces.
+
+** RQ5: How should prime prevent raw-read fallback?
+
+Prime should emit anti-actions:
+
+#+begin_src text
+avoid=raw-read,full-json,broad-fzf
+#+end_src
+
+The goal is to reduce the common loop:
+
+#+begin_src text
+grep -> raw read -> grep -> raw read
+#+end_src
+
+The same rule applies to =read-plan=.  A protected wide selector should return
+ranked frontier choices such as symbols, bounded windows, tests, and
+owner-local names-only queries.  A packet that only says =code=false= still
+leaves the agent to invent manual source-window scans.
+
+** RQ6: Where is the boundary between guide and prime?
+
+=search guide= may be longer because it is read less often and teaches the
+agent profile schemas.  =search prime= is frequent and must be short.  Prime
+should refer to guide-declared profiles by name but not repeat the full guide.
+
+* Evaluation plan
+
+Do not begin with a full SWE-bench run.  Start with a repository-local mini
+benchmark over real harness tasks.
+
+Trace set:
+
+- find a model/schema/policy owner
+- find =Path= handling logic
+- find =pytest=, =ruff=, or =mypy= dependency usage
+- find tests for an owner
+- find an owner-local item by query term
+- find a finding rule's affected owners
+- find import/dependency impact surface
+- find a CLI option to model/schema path
+
+Experimental groups:
+
+- legacy prime
+- compact graph prime
+- prime with =profiles=
+- prime with =rank= but no =profiles=
+- prime with =profiles= but no =rank=
+- prime with too many handles
+
+Metrics:
+
+#+begin_src text
+prime token size
+first useful follow-up rate
+two-search evidence success rate
+repeated search count
+raw-read fallback count
+wrong profile selection count
+time/latency
+final query/code locator success
+#+end_src
+
+Primary metric:
+
+#+begin_src text
+two-search evidence success rate =
+  search prime
+  + one search reasoning profile
+  + maybe one query
+  reaches sufficient evidence or a parser-owned code locator
+#+end_src
+
+* Relationship to other RFCs
+
+RFC 005 defines the CLI-first boundary and explicitly rejects natural-language
+intent parsing inside provider commands.  This RFC extends that boundary to
+=search guide=, =search prime=, and =search reasoning <profile>=.
+
+RFC 006 owns compact graph render grammar, including =alias: graph:{...}=,
+=rank=, =frontier=, =avoid=, and line protocol atomics.  This RFC uses that
+rendering for prime and reasoning evidence but does not change the graph text
+grammar.
+
+RFC 007 owns parser-backed structural patch receipts.  This RFC stops before
+editing: it researches how the agent reaches the right evidence or query/code
+locator before a patch receipt is prepared.
+
+RFC 008 may provide a shared =asp= client surface and cache.  That can
+accelerate =guide=, =prime=, and =reasoning=, but it must not change the
+provider-owned typed selector contract.
+
+* Implementation path
+
+The concrete code plan lives in
+=docs/30-39-research/31.17-asp-graph-frontier-implementation-plan.org=.  The
+first implementation slice is deliberately narrower than the full research
+space:
+
+1. Make the =asp= facade installable, diagnosable, and safe when activation is
+   missing.
+2. Make hook-deny and provider-guide routes replay against the active binary.
+3. Implement Rust =read-frontier= for wide =direct-source-read= ranges.
+4. Align Python and TypeScript read-plan behavior to the same shared schema.
+5. Route selected frontier entries into parser-owned compact =query --code=.
+6. Add sandtable and black-box gates for command count, token cost, stale
+   routes, and manual window scans.
+7. Defer relation-frontier and causal-path commands until provider relation
+   facts and schema fields exist.
+
+Julia remains out of bin parity for this RFC.  Julia-specific evidence can use
+the workspace-managed command only if a separate Julia lane is opened.
+
+* Open questions
+
+- Should =profiles= live in =searchSynthesis=, =semanticGraph=, or a new
+  =reasoningProfiles= packet field?
+- Should dependency handles distinguish =current= vs =external= source scope in
+  prime, or only in =query-deps=?
+- Should =search guide= be a =search= view or an =agent guide= subcommand?  The
+  research preference is =search guide= because it teaches search profiles, but
+  provider implementation may continue exposing =agent guide= until the CLI
+  contract is finalized.
+- How should profile compatibility be serialized in dense mode without looking
+  like a task plan?
+
+* References
+
+- Nelson F. Liu et al., /Lost in the Middle: How Language Models Use Long
+  Contexts/, 2023. https://arxiv.org/abs/2307.03172
+- Jimenez et al., /SWE-bench: Can Language Models Resolve Real-World GitHub
+  Issues?/, 2023. https://arxiv.org/abs/2310.06770
+- Yang et al., /SWE-agent: Agent-Computer Interfaces Enable Automated Software
+  Engineering/, 2024. https://arxiv.org/abs/2405.15793
+- Liu et al., /RepoBench: Benchmarking Repository-Level Code Auto-Completion
+  Systems/, 2023. https://arxiv.org/abs/2306.03091
+- Allamanis et al., /Learning to Represent Programs with Graphs/, 2017.
+  https://arxiv.org/abs/1711.00740
+- Guo et al., /GraphCodeBERT: Pre-training Code Representations with Data
+  Flow/, 2020. https://arxiv.org/abs/2009.08366
+- Liu et al., /GraphCoder: Enhancing Repository-Level Code Completion via Code
+  Context Graph-based Retrieval and Language Model/, 2024.
+  https://arxiv.org/abs/2406.07003
+- /Code Property Graph Specification/. https://cpg.joern.io/
+- /Code Property Graph | Joern Documentation/.
+  https://docs.joern.io/code-property-graph/
+- /CodexGraph: Bridging Large Language Models and Code Repositories via Code
+  Graph Databases/, 2024. https://arxiv.org/abs/2408.03910
+- /RepoScope: Leveraging Call Chain-Aware Multi-View Context for
+  Repository-Level Code Generation/, 2025. https://arxiv.org/abs/2507.14791
+- /Codebase-Memory: Tree-Sitter-Based Knowledge Graphs for LLM Code
+  Exploration via MCP/, 2026. https://arxiv.org/abs/2603.27277
+- StakGraph README. https://github.com/stakwork/stakgraph
+- StakGraph AGENTS.md. https://github.com/stakwork/stakgraph/blob/main/AGENTS.md
+
+* Acceptance criteria
+
+- The RFC keeps natural-language intent in the agent and typed selector
+  processing in the provider.
+- The prime packet is defined as a minimal sufficient frontier, not a broad
+  context dump.
+- Reasoning profiles are deterministic evidence surfaces, not plans.
+- Prime output budgets, handle kinds, profile compatibility, and anti-actions
+  are concrete enough to guide schema and provider experiments.
+- Evaluation uses token size, tool-call count, repeated-search rate, raw-read
+  fallback, and two-search evidence success rather than only final task score.

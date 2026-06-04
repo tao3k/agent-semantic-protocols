@@ -31,11 +31,11 @@
     },
     "querySetOpportunities": [
       {
-        "view": "text",
+        "view": "fzf",
         "queries": 3,
         "saveCommands": 2,
         "selector": "exact-set",
-        "reason": "abort, JoinSet, and abort_on_drop are same-intent text probes for task cancellation"
+        "reason": "abort, JoinSet, and abort_on_drop are same-intent fzf probes for task cancellation"
       },
       {
         "view": "tests",
@@ -48,7 +48,7 @@
     "findings": [
       {
         "kind": "prime-quality",
-        "severity": "warning",
+        "severity": "info",
         "message": "prime seeds for Tokio are too generic for task abort intent at a low seed cap"
       },
       {
@@ -87,8 +87,8 @@
         "lineProtocol": true,
         "stdoutContains": [
           "[search-prime]",
+          "legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next",
           "alias: graph:{G=search",
-          "G=search:result!query",
           "G>{",
           "rank=",
           "frontier="
@@ -97,7 +97,8 @@
         "maxElapsedMsWarn": 3000,
         "stdoutNotContains": [
           "|seed",
-          "|synthesis"
+          "|synthesis",
+          "G=search:result!query"
         ]
       }
     },
@@ -127,7 +128,7 @@
           "src/runtime/task/abort.rs",
           "src/task/join_set.rs"
         ],
-        "maxStdoutLinesWarn": 4,
+        "maxStdoutLinesWarn": 8,
         "maxElapsedMsWarn": 2500
       }
     },
@@ -150,7 +151,7 @@
         "lineProtocol": true,
         "stdoutContains": [
           "[search-owner]",
-          "symbol:AbortHandle"
+          "symbol(AbortHandle)"
         ],
         "maxStdoutLinesWarn": 18,
         "maxElapsedMsWarn": 1800

@@ -33,42 +33,37 @@
             "kind": "exact-read",
             "read": "src/score.ts:2:2",
             "reason": "expand const node before editing",
-            "target": "parseScore:1"
+            "target": "parseScore:const:2:2:576340dd"
           },
           {
             "kind": "exact-read",
             "read": "src/score.ts:3:5",
             "reason": "expand if node before editing",
-            "target": "parseScore:2"
+            "target": "parseScore:if:3:5:285d2ba0"
           },
           {
             "kind": "exact-read",
             "read": "src/score.ts:4:4",
             "reason": "expand throw node before editing",
-            "target": "parseScore:3"
+            "target": "parseScore:throw:4:4:a6c35ff3"
           },
           {
             "kind": "exact-read",
             "read": "src/score.ts:6:8",
             "reason": "expand if node before editing",
-            "target": "parseScore:4"
+            "target": "parseScore:if:6:8:115c14f"
           },
           {
             "kind": "exact-read",
             "read": "src/score.ts:7:7",
             "reason": "expand throw node before editing",
-            "target": "parseScore:5"
+            "target": "parseScore:throw:7:7:a6c35ff3"
           },
           {
             "kind": "exact-read",
             "read": "src/score.ts:9:9",
             "reason": "expand return node before editing",
-            "target": "parseScore:6"
-          },
-          {
-            "kind": "owner-names",
-            "reason": "return owner-local item names without code windows",
-            "target": "src/score.ts"
+            "target": "parseScore:return:9:9:1b03c172"
           }
         ],
         "losslessStructure": true,
@@ -86,92 +81,153 @@
             "id": "parseScore",
             "kind": "function",
             "label": "function parseScore",
+            "nativeId": "typescript:function:1:10:e7fb3abc",
             "read": "src/score.ts:1:10",
-            "role": "declaration"
+            "role": "declaration",
+            "structuralFingerprint": "function:declaration:1:10:5a890bb5"
           },
           {
             "depth": 1,
             "flags": [
               "mutation"
             ],
-            "id": "parseScore:1",
+            "id": "parseScore:const:2:2:576340dd",
             "kind": "const",
             "label": "assign value",
+            "nativeId": "typescript:FirstStatement:2:2:576340dd",
             "parentId": "parseScore",
             "read": "src/score.ts:2:2",
-            "role": "mutation"
+            "role": "mutation",
+            "structuralFingerprint": "const:mutation:2:2:5fa1e522"
           },
           {
             "depth": 1,
             "flags": [
               "branch"
             ],
-            "id": "parseScore:2",
+            "id": "parseScore:if:3:5:285d2ba0",
             "kind": "if",
             "label": "if Number.isNaN(value)",
+            "nativeId": "typescript:IfStatement:3:5:285d2ba0",
             "parentId": "parseScore",
             "read": "src/score.ts:3:5",
-            "role": "control-flow"
+            "role": "control-flow",
+            "structuralFingerprint": "if:control-flow:3:5:80fb08be"
           },
           {
             "depth": 2,
             "flags": [
               "throw"
             ],
-            "id": "parseScore:3",
+            "id": "parseScore:throw:4:4:a6c35ff3",
             "kind": "throw",
             "label": "throw new Error",
-            "parentId": "parseScore:2",
+            "nativeId": "typescript:ThrowStatement:4:4:a6c35ff3",
+            "parentId": "parseScore:if:3:5:285d2ba0",
             "read": "src/score.ts:4:4",
-            "role": "terminal"
+            "role": "terminal",
+            "structuralFingerprint": "throw:terminal:4:4:ac8d41ed"
           },
           {
             "depth": 1,
             "flags": [
               "branch"
             ],
-            "id": "parseScore:4",
+            "id": "parseScore:if:6:8:115c14f",
             "kind": "if",
             "label": "if value < 0",
+            "nativeId": "typescript:IfStatement:6:8:115c14f",
             "parentId": "parseScore",
             "read": "src/score.ts:6:8",
-            "role": "control-flow"
+            "role": "control-flow",
+            "structuralFingerprint": "if:control-flow:6:8:84d1c79f"
           },
           {
             "depth": 2,
             "flags": [
               "throw"
             ],
-            "id": "parseScore:5",
+            "id": "parseScore:throw:7:7:a6c35ff3",
             "kind": "throw",
             "label": "throw new Error",
-            "parentId": "parseScore:4",
+            "nativeId": "typescript:ThrowStatement:7:7:a6c35ff3",
+            "parentId": "parseScore:if:6:8:115c14f",
             "read": "src/score.ts:7:7",
-            "role": "terminal"
+            "role": "terminal",
+            "structuralFingerprint": "throw:terminal:7:7:ac8d41ed"
           },
           {
             "depth": 1,
             "flags": [
               "return"
             ],
-            "id": "parseScore:6",
+            "id": "parseScore:return:9:9:1b03c172",
             "kind": "return",
             "label": "return value",
+            "nativeId": "typescript:ReturnStatement:9:9:1b03c172",
             "parentId": "parseScore",
             "read": "src/score.ts:9:9",
-            "role": "terminal"
+            "role": "terminal",
+            "structuralFingerprint": "return:terminal:9:9:1041d5ee"
           }
         ],
         "omitted": [
           {
             "count": 10,
             "kind": "source-formatting",
+            "nodeId": "parseScore",
             "read": "src/score.ts:1:10",
             "reason": "compact projection removes original whitespace and comments"
           }
         ],
+        "renderedNodeIds": [
+          "parseScore",
+          "parseScore:const:2:2:576340dd",
+          "parseScore:if:3:5:285d2ba0",
+          "parseScore:throw:4:4:a6c35ff3",
+          "parseScore:if:6:8:115c14f",
+          "parseScore:return:9:9:1b03c172"
+        ],
+        "renderedRows": [
+          {
+            "nodeId": "parseScore",
+            "rowKind": "declaration",
+            "semanticWeight": 1,
+            "text": "function parseScore"
+          },
+          {
+            "nodeId": "parseScore:const:2:2:576340dd",
+            "rowKind": "mutation",
+            "semanticWeight": 2,
+            "text": "  assign value"
+          },
+          {
+            "nodeId": "parseScore:if:3:5:285d2ba0",
+            "rowKind": "control-flow",
+            "semanticWeight": 2,
+            "text": "  if Number.isNaN(value)"
+          },
+          {
+            "nodeId": "parseScore:throw:4:4:a6c35ff3",
+            "rowKind": "terminal",
+            "semanticWeight": 2,
+            "text": "    throw new Error"
+          },
+          {
+            "nodeId": "parseScore:if:6:8:115c14f",
+            "rowKind": "control-flow",
+            "semanticWeight": 2,
+            "text": "  if value < 0"
+          },
+          {
+            "nodeId": "parseScore:return:9:9:1b03c172",
+            "rowKind": "terminal",
+            "semanticWeight": 2,
+            "text": "  return value"
+          }
+        ],
         "sourceAuthority": "native-parser",
-        "sourceFingerprint": "src/score.ts:1:10:212:9f427299",
+        "sourceFingerprint": "src/score.ts:1:10:206:f44af62e",
         "syntax": "semantic-outline"
       },
       "read": "src/score.ts:1:10",

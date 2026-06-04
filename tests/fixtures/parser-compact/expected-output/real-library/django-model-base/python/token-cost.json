@@ -1,18 +1,18 @@
 {
   "caseId": "django-model-base",
-  "compactCodeDelta": 17838,
-  "compactCodeRatio": 0.0576,
-  "compactCodeTokens": 1090,
-  "compactLineDelta": 17838,
-  "compactLineRatio": 0.0576,
-  "compactLineTokens": 1090,
+  "compactCodeDelta": 94475,
+  "compactCodeRatio": 0.0491,
+  "compactCodeTokens": 4878,
+  "compactLineDelta": 94475,
+  "compactLineRatio": 0.0491,
+  "compactLineTokens": 4878,
   "featureClass": "real-library",
   "languageId": "python",
   "providerId": "py-harness",
-  "queryPacketDelta": 16030,
-  "queryPacketRatio": 0.1531,
-  "queryPacketTokens": 2898,
-  "rawSourceTokens": 18928,
+  "queryPacketDelta": 80944,
+  "queryPacketRatio": 0.1853,
+  "queryPacketTokens": 18409,
+  "rawSourceTokens": 99353,
   "schemaId": "agent.semantic-protocols.parser-compact-token-cost",
   "schemaVersion": "1",
   "sourceOrigin": {
@@ -23,6 +23,6 @@
     "repository": "django/django",
     "sourcePath": "django/db/models/base.py"
   },
-  "tokenizerId": "tiktoken:o200k_base",
+  "tokenizerId": "byte",
   "variantId": "python"
 }

@@ -1,6 +1,8 @@
 {
   "binary": "rs-harness",
   "languageId": "rust",
+  "matchCount": 8,
+  "matchLimit": 4,
   "matchMode": "exact",
   "matches": [
     {
@@ -11,6 +13,11 @@
         "path": "src/lib.rs"
       },
       "name": "JoinSet",
+      "patchSafety": {
+        "exactRead": "src/lib.rs:17:66",
+        "level": "read-safe",
+        "reason": "read exact source locator before editing this compact match"
+      },
       "projection": {
         "exactRead": "src/lib.rs:17:66",
         "expandActions": [
@@ -18,7 +25,7 @@
             "kind": "hot-block",
             "read": "src/lib.rs:65:65",
             "reason": "parser-projection-field",
-            "target": "n1"
+            "target": "field-65-65-dc859cdd"
           }
         ],
         "losslessStructure": true,
@@ -28,24 +35,55 @@
         "nodes": [
           {
             "depth": 0,
-            "id": "n0",
+            "id": "struct-17-66-5e11651d",
             "kind": "struct",
             "label": "pub struct JoinSet",
+            "nativeId": "rust-struct-17-66-5e11651d",
             "read": "src/lib.rs:17:66",
-            "role": "declaration"
+            "role": "declaration",
+            "structuralFingerprint": "struct-declaration-17-66-5e11651d"
           },
           {
             "depth": 1,
-            "id": "n1",
+            "id": "field-65-65-dc859cdd",
             "kind": "field",
             "label": "field inner: IdleNotifiedSet<JoinHandle<T>>",
-            "parentId": "n0",
+            "nativeId": "rust-field-65-65-dc859cdd",
+            "parentId": "struct-17-66-5e11651d",
             "read": "src/lib.rs:65:65",
-            "role": "field"
+            "role": "field",
+            "structuralFingerprint": "field-field-65-65-dc859cdd"
           }
         ],
         "nodesTruncated": false,
+        "omitted": [
+          {
+            "kind": "source-formatting",
+            "nodeId": "struct-17-66-5e11651d",
+            "read": "src/lib.rs:17:66",
+            "reason": "compact projection removes original whitespace and comments"
+          }
+        ],
+        "renderedNodeIds": [
+          "struct-17-66-5e11651d",
+          "field-65-65-dc859cdd"
+        ],
+        "renderedRows": [
+          {
+            "nodeId": "struct-17-66-5e11651d",
+            "rowKind": "declaration",
+            "semanticWeight": 1,
+            "text": "pub struct JoinSet"
+          },
+          {
+            "nodeId": "field-65-65-dc859cdd",
+            "rowKind": "field",
+            "semanticWeight": 1,
+            "text": "field inner: IdleNotifiedSet<JoinHandle<T>>"
+          }
+        ],
         "sourceAuthority": "native-parser",
+        "sourceFingerprint": "src/lib.rs:17:66:62:985cd31c9efdbb9b",
         "syntax": "semantic-outline"
       },
       "read": "src/lib.rs:17:66",
@@ -60,6 +98,11 @@
         "path": "src/lib.rs"
       },
       "name": "JoinSet",
+      "patchSafety": {
+        "exactRead": "src/lib.rs:80:97",
+        "level": "read-safe",
+        "reason": "read exact source locator before editing this compact match"
+      },
       "projection": {
         "exactRead": "src/lib.rs:80:97",
         "expandActions": [
@@ -67,19 +110,19 @@
             "kind": "hot-block",
             "read": "src/lib.rs:83:85",
             "reason": "parser-projection-terminal",
-            "target": "n2"
+            "target": "return-83-85-d2a32ccf"
           },
           {
             "kind": "hot-block",
             "read": "src/lib.rs:90:90",
             "reason": "parser-projection-terminal",
-            "target": "n4"
+            "target": "return-90-90-4f48cba4"
           },
           {
             "kind": "hot-block",
             "read": "src/lib.rs:95:95",
             "reason": "parser-projection-terminal",
-            "target": "n6"
+            "target": "return-95-95-6e47521b"
           }
         ],
         "losslessStructure": true,
@@ -89,78 +132,154 @@
         "nodes": [
           {
             "depth": 0,
-            "id": "n0",
+            "id": "impl-80-97-85a05d0b",
             "kind": "impl",
             "label": "impl JoinSet<T>",
+            "nativeId": "rust-impl-80-97-85a05d0b",
             "read": "src/lib.rs:80:97",
-            "role": "declaration"
+            "role": "declaration",
+            "structuralFingerprint": "impl-declaration-80-97-85a05d0b"
           },
           {
             "depth": 1,
-            "id": "n1",
+            "id": "fn-81-86-83f246af",
             "kind": "fn",
             "label": "fn new",
-            "parentId": "n0",
+            "nativeId": "rust-fn-81-86-83f246af",
+            "parentId": "impl-80-97-85a05d0b",
             "read": "src/lib.rs:81:86",
-            "role": "declaration"
+            "role": "declaration",
+            "structuralFingerprint": "fn-declaration-81-86-83f246af"
           },
           {
             "depth": 2,
             "flags": [
               "return"
             ],
-            "id": "n2",
+            "id": "return-83-85-d2a32ccf",
             "kind": "return",
             "label": "return Self",
-            "parentId": "n1",
+            "nativeId": "rust-return-83-85-d2a32ccf",
+            "parentId": "fn-81-86-83f246af",
             "read": "src/lib.rs:83:85",
-            "role": "terminal"
+            "role": "terminal",
+            "structuralFingerprint": "return-terminal-83-85-d2a32ccf"
           },
           {
             "depth": 1,
-            "id": "n3",
+            "id": "fn-88-91-7420fe8e",
             "kind": "fn",
             "label": "fn len",
-            "parentId": "n0",
+            "nativeId": "rust-fn-88-91-7420fe8e",
+            "parentId": "impl-80-97-85a05d0b",
             "read": "src/lib.rs:88:91",
-            "role": "declaration"
+            "role": "declaration",
+            "structuralFingerprint": "fn-declaration-88-91-7420fe8e"
           },
           {
             "depth": 2,
             "flags": [
               "return"
             ],
-            "id": "n4",
+            "id": "return-90-90-4f48cba4",
             "kind": "return",
             "label": "return len",
-            "parentId": "n3",
+            "nativeId": "rust-return-90-90-4f48cba4",
+            "parentId": "fn-88-91-7420fe8e",
             "read": "src/lib.rs:90:90",
-            "role": "terminal"
+            "role": "terminal",
+            "structuralFingerprint": "return-terminal-90-90-4f48cba4"
           },
           {
             "depth": 1,
-            "id": "n5",
+            "id": "fn-93-96-9ab40a65",
             "kind": "fn",
             "label": "fn is_empty",
-            "parentId": "n0",
+            "nativeId": "rust-fn-93-96-9ab40a65",
+            "parentId": "impl-80-97-85a05d0b",
             "read": "src/lib.rs:93:96",
-            "role": "declaration"
+            "role": "declaration",
+            "structuralFingerprint": "fn-declaration-93-96-9ab40a65"
           },
           {
             "depth": 2,
             "flags": [
               "return"
             ],
-            "id": "n6",
+            "id": "return-95-95-6e47521b",
             "kind": "return",
             "label": "return is_empty",
-            "parentId": "n5",
+            "nativeId": "rust-return-95-95-6e47521b",
+            "parentId": "fn-93-96-9ab40a65",
             "read": "src/lib.rs:95:95",
-            "role": "terminal"
+            "role": "terminal",
+            "structuralFingerprint": "return-terminal-95-95-6e47521b"
           }
         ],
         "nodesTruncated": false,
+        "omitted": [
+          {
+            "kind": "source-formatting",
+            "nodeId": "impl-80-97-85a05d0b",
+            "read": "src/lib.rs:80:97",
+            "reason": "compact projection removes original whitespace and comments"
+          }
+        ],
+        "renderedNodeIds": [
+          "impl-80-97-85a05d0b",
+          "fn-81-86-83f246af",
+          "return-83-85-d2a32ccf",
+          "fn-88-91-7420fe8e",
+          "return-90-90-4f48cba4",
+          "fn-93-96-9ab40a65",
+          "return-95-95-6e47521b"
+        ],
+        "renderedRows": [
+          {
+            "nodeId": "impl-80-97-85a05d0b",
+            "rowKind": "declaration",
+            "semanticWeight": 1,
+            "text": "impl JoinSet<T>"
+          },
+          {
+            "nodeId": "fn-81-86-83f246af",
+            "rowKind": "declaration",
+            "semanticWeight": 1,
+            "text": "fn new"
+          },
+          {
+            "nodeId": "return-83-85-d2a32ccf",
+            "rowKind": "terminal",
+            "semanticWeight": 2,
+            "text": "return Self"
+          },
+          {
+            "nodeId": "fn-88-91-7420fe8e",
+            "rowKind": "declaration",
+            "semanticWeight": 1,
+            "text": "fn len"
+          },
+          {
+            "nodeId": "return-90-90-4f48cba4",
+            "rowKind": "terminal",
+            "semanticWeight": 2,
+            "text": "return len"
+          },
+          {
+            "nodeId": "fn-93-96-9ab40a65",
+            "rowKind": "declaration",
+            "semanticWeight": 1,
+            "text": "fn is_empty"
+          },
+          {
+            "nodeId": "return-95-95-6e47521b",
+            "rowKind": "terminal",
+            "semanticWeight": 2,
+            "text": "return is_empty"
+          }
+        ],
         "sourceAuthority": "native-parser",
+        "sourceFingerprint": "src/lib.rs:80:97:80:0e01cae8d58b3483",
         "syntax": "semantic-outline"
       },
       "read": "src/lib.rs:80:97",
@@ -175,82 +294,66 @@
         "path": "src/lib.rs"
       },
       "name": "JoinSet",
+      "patchSafety": {
+        "exactRead": "src/lib.rs:99:589",
+        "level": "read-safe",
+        "reason": "read exact source locator before editing this compact match"
+      },
       "projection": {
         "exactRead": "src/lib.rs:99:589",
+        "expandActionCount": 12,
+        "expandActionLimit": 8,
         "expandActions": [
           {
             "kind": "hot-block",
             "read": "src/lib.rs:123:126",
             "reason": "parser-projection-terminal",
-            "target": "n2"
+            "target": "return-123-126-dc4c8ef8"
           },
           {
             "kind": "hot-block",
             "read": "src/lib.rs:148:148",
             "reason": "parser-projection-terminal",
-            "target": "n4"
+            "target": "return-148-148-d679e010"
           },
           {
             "kind": "hot-block",
             "read": "src/lib.rs:167:167",
             "reason": "parser-projection-terminal",
-            "target": "n6"
+            "target": "return-167-167-d679e010"
           },
           {
             "kind": "hot-block",
             "read": "src/lib.rs:191:191",
             "reason": "parser-projection-terminal",
-            "target": "n8"
+            "target": "return-191-191-d679e010"
           },
           {
             "kind": "hot-block",
             "read": "src/lib.rs:211:211",
             "reason": "parser-projection-terminal",
-            "target": "n10"
+            "target": "return-211-211-d679e010"
           },
           {
             "kind": "hot-block",
             "read": "src/lib.rs:260:260",
             "reason": "parser-projection-terminal",
-            "target": "n12"
+            "target": "return-260-260-d679e010"
           },
           {
             "kind": "hot-block",
             "read": "src/lib.rs:275:275",
             "reason": "parser-projection-terminal",
-            "target": "n14"
+            "target": "return-275-275-d679e010"
           },
           {
             "kind": "hot-block",
             "read": "src/lib.rs:279:279",
             "reason": "parser-projection-mutation",
-            "target": "n16"
-          },
-          {
-            "kind": "hot-block",
-            "read": "src/lib.rs:280:280",
-            "reason": "parser-projection-mutation",
-            "target": "n17"
-          },
-          {
-            "kind": "hot-block",
-            "read": "src/lib.rs:283:283",
-            "reason": "parser-projection-terminal",
-            "target": "n18"
-          },
-          {
-            "kind": "hot-block",
-            "read": "src/lib.rs:284:284",
-            "reason": "parser-projection-terminal",
-            "target": "n19"
-          },
-          {
-            "kind": "hot-block",
-            "read": "src/lib.rs:297:297",
-            "reason": "parser-projection-effect",
-            "target": "n21"
+            "target": "let-279-279-136c535e"
           }
         ],
+        "expandActionsTruncated": true,
         "losslessStructure": false,
         "mode": "compact",
         "nodeCount": 64,
@@ -258,224 +361,266 @@
         "nodes": [
           {
             "depth": 0,
-            "id": "n0",
+            "id": "impl-99-589-85a05d0b",
             "kind": "impl",
             "label": "impl JoinSet<T>",
+            "nativeId": "rust-impl-99-589-85a05d0b",
             "read": "src/lib.rs:99:589",
-            "role": "declaration"
+            "role": "declaration",
+            "structuralFingerprint": "impl-declaration-99-589-85a05d0b"
           },
           {
             "depth": 1,
-            "id": "n1",
+            "id": "fn-100-127-917e4393",
             "kind": "fn",
             "label": "fn build_task",
-            "parentId": "n0",
+            "nativeId": "rust-fn-100-127-917e4393",
+            "parentId": "impl-99-589-85a05d0b",
             "read": "src/lib.rs:100:127",
-            "role": "declaration"
+            "role": "declaration",
+            "structuralFingerprint": "fn-declaration-100-127-917e4393"
           },
           {
             "depth": 2,
             "flags": [
               "return"
             ],
-            "id": "n2",
+            "id": "return-123-126-dc4c8ef8",
             "kind": "return",
             "label": "return Builder",
-            "parentId": "n1",
+            "nativeId": "rust-return-123-126-dc4c8ef8",
+            "parentId": "fn-100-127-917e4393",
             "read": "src/lib.rs:123:126",
-            "role": "terminal"
+            "role": "terminal",
+            "structuralFingerprint": "return-terminal-123-126-dc4c8ef8"
           },
           {
             "depth": 1,
-            "id": "n3",
+            "id": "fn-129-149-b9f90a6a",
             "kind": "fn",
             "label": "fn spawn",
-            "parentId": "n0",
+            "nativeId": "rust-fn-129-149-b9f90a6a",
+            "parentId": "impl-99-589-85a05d0b",
             "read": "src/lib.rs:129:149",
-            "role": "declaration"
+            "role": "declaration",
+            "structuralFingerprint": "fn-declaration-129-149-b9f90a6a"
           },
           {
             "depth": 2,
             "flags": [
               "return"
             ],
-            "id": "n4",
+            "id": "return-148-148-d679e010",
             "kind": "return",
             "label": "return insert",
-            "parentId": "n3",
+            "nativeId": "rust-return-148-148-d679e010",
+            "parentId": "fn-129-149-b9f90a6a",
             "read": "src/lib.rs:148:148",
-            "role": "terminal"
+            "role": "terminal",
+            "structuralFingerprint": "return-terminal-148-148-d679e010"
           },
           {
             "depth": 1,
-            "id": "n5",
+            "id": "fn-151-168-92a4a62a",
             "kind": "fn",
             "label": "fn spawn_on",
-            "parentId": "n0",
+            "nativeId": "rust-fn-151-168-92a4a62a",
+            "parentId": "impl-99-589-85a05d0b",
             "read": "src/lib.rs:151:168",
-            "role": "declaration"
+            "role": "declaration",
+            "structuralFingerprint": "fn-declaration-151-168-92a4a62a"
           },
           {
             "depth": 2,
             "flags": [
               "return"
             ],
-            "id": "n6",
+            "id": "return-167-167-d679e010",
             "kind": "return",
             "label": "return insert",
-            "parentId": "n5",
+            "nativeId": "rust-return-167-167-d679e010",
+            "parentId": "fn-151-168-92a4a62a",
             "read": "src/lib.rs:167:167",
-            "role": "terminal"
+            "role": "terminal",
+            "structuralFingerprint": "return-terminal-167-167-d679e010"
           },
           {
             "depth": 1,
-            "id": "n7",
+            "id": "fn-170-192-eb9edbee",
             "kind": "fn",
             "label": "fn spawn_local",
-            "parentId": "n0",
+            "nativeId": "rust-fn-170-192-eb9edbee",
+            "parentId": "impl-99-589-85a05d0b",
             "read": "src/lib.rs:170:192",
-            "role": "declaration"
+            "role": "declaration",
+            "structuralFingerprint": "fn-declaration-170-192-eb9edbee"
           },
           {
             "depth": 2,
             "flags": [
               "return"
             ],
-            "id": "n8",
+            "id": "return-191-191-d679e010",
             "kind": "return",
             "label": "return insert",
-            "parentId": "n7",
+            "nativeId": "rust-return-191-191-d679e010",
+            "parentId": "fn-170-192-eb9edbee",
             "read": "src/lib.rs:191:191",
-            "role": "terminal"
+            "role": "terminal",
+            "structuralFingerprint": "return-terminal-191-191-d679e010"
           },
           {
             "depth": 1,
-            "id": "n9",
+            "id": "fn-194-212-9692f67e",
             "kind": "fn",
             "label": "fn spawn_local_on",
-            "parentId": "n0",
+            "nativeId": "rust-fn-194-212-9692f67e",
+            "parentId": "impl-99-589-85a05d0b",
             "read": "src/lib.rs:194:212",
-            "role": "declaration"
+            "role": "declaration",
+            "structuralFingerprint": "fn-declaration-194-212-9692f67e"
           },
           {
             "depth": 2,
             "flags": [
               "return"
             ],
-            "id": "n10",
+            "id": "return-211-211-d679e010",
             "kind": "return",
             "label": "return insert",
-            "parentId": "n9",
+            "nativeId": "rust-return-211-211-d679e010",
+            "parentId": "fn-194-212-9692f67e",
             "read": "src/lib.rs:211:211",
-            "role": "terminal"
+            "role": "terminal",
+            "structuralFingerprint": "return-terminal-211-211-d679e010"
           },
           {
             "depth": 1,
-            "id": "n11",
+            "id": "fn-214-261-32a00a88",
             "kind": "fn",
             "label": "fn spawn_blocking",
-            "parentId": "n0",
+            "nativeId": "rust-fn-214-261-32a00a88",
+            "parentId": "impl-99-589-85a05d0b",
             "read": "src/lib.rs:214:261",
-            "role": "declaration"
+            "role": "declaration",
+            "structuralFingerprint": "fn-declaration-214-261-32a00a88"
           },
           {
             "depth": 2,
             "flags": [
               "return"
             ],
-            "id": "n12",
+            "id": "return-260-260-d679e010",
             "kind": "return",
             "label": "return insert",
-            "parentId": "n11",
+            "nativeId": "rust-return-260-260-d679e010",
+            "parentId": "fn-214-261-32a00a88",
             "read": "src/lib.rs:260:260",
-            "role": "terminal"
+            "role": "terminal",
+            "structuralFingerprint": "return-terminal-260-260-d679e010"
           },
           {
             "depth": 1,
-            "id": "n13",
+            "id": "fn-263-276-9abf5180",
             "kind": "fn",
             "label": "fn spawn_blocking_on",
-            "parentId": "n0",
+            "nativeId": "rust-fn-263-276-9abf5180",
+            "parentId": "impl-99-589-85a05d0b",
             "read": "src/lib.rs:263:276",
-            "role": "declaration"
+            "role": "declaration",
+            "structuralFingerprint": "fn-declaration-263-276-9abf5180"
           },
           {
             "depth": 2,
             "flags": [
               "return"
             ],
-            "id": "n14",
+            "id": "return-275-275-d679e010",
             "kind": "return",
             "label": "return insert",
-            "parentId": "n13",
+            "nativeId": "rust-return-275-275-d679e010",
+            "parentId": "fn-263-276-9abf5180",
             "read": "src/lib.rs:275:275",
-            "role": "terminal"
+            "role": "terminal",
+            "structuralFingerprint": "return-terminal-275-275-d679e010"
           },
           {
             "depth": 1,
-            "id": "n15",
+            "id": "fn-278-285-5217626",
             "kind": "fn",
             "label": "fn insert",
-            "parentId": "n0",
+            "nativeId": "rust-fn-278-285-5217626",
+            "parentId": "impl-99-589-85a05d0b",
             "read": "src/lib.rs:278:285",
-            "role": "declaration"
+            "role": "declaration",
+            "structuralFingerprint": "fn-declaration-278-285-5217626"
           },
           {
             "depth": 2,
             "flags": [
               "mutation"
             ],
-            "id": "n16",
+            "id": "let-279-279-136c535e",
             "kind": "let",
             "label": "assign abort",
-            "parentId": "n15",
+            "nativeId": "rust-let-279-279-136c535e",
+            "parentId": "fn-278-285-5217626",
             "read": "src/lib.rs:279:279",
-            "role": "mutation"
+            "role": "mutation",
+            "structuralFingerprint": "let-mutation-279-279-136c535e"
           },
           {
             "depth": 2,
             "flags": [
               "mutation"
             ],
-            "id": "n17",
+            "id": "let-280-280-7c42b6e8",
             "kind": "let",
             "label": "assign entry",
-            "parentId": "n15",
+            "nativeId": "rust-let-280-280-7c42b6e8",
+            "parentId": "fn-278-285-5217626",
             "read": "src/lib.rs:280:280",
-            "role": "mutation"
+            "role": "mutation",
+            "structuralFingerprint": "let-mutation-280-280-7c42b6e8"
           },
           {
             "depth": 2,
             "flags": [
               "return"
             ],
-            "id": "n18",
+            "id": "return-283-283-4100ffd9",
             "kind": "return",
             "label": "return with_value_and_context",
-            "parentId": "n15",
+            "nativeId": "rust-return-283-283-4100ffd9",
+            "parentId": "fn-278-285-5217626",
             "read": "src/lib.rs:283:283",
-            "role": "terminal"
+            "role": "terminal",
+            "structuralFingerprint": "return-terminal-283-283-4100ffd9"
           },
           {
             "depth": 2,
             "flags": [
               "return"
             ],
-            "id": "n19",
+            "id": "return-284-284-ef8e07c1",
             "kind": "return",
             "label": "return abort",
-            "parentId": "n15",
+            "nativeId": "rust-return-284-284-ef8e07c1",
+            "parentId": "fn-278-285-5217626",
             "read": "src/lib.rs:284:284",
-            "role": "terminal"
+            "role": "terminal",
+            "structuralFingerprint": "return-terminal-284-284-ef8e07c1"
           },
           {
             "depth": 1,
-            "id": "n20",
+            "id": "fn-287-298-44c92439",
             "kind": "fn",
             "label": "async fn join_next",
-            "parentId": "n0",
+            "nativeId": "rust-fn-287-298-44c92439",
+            "parentId": "impl-99-589-85a05d0b",
             "read": "src/lib.rs:287:298",
-            "role": "declaration"
+            "role": "declaration",
+            "structuralFingerprint": "fn-declaration-287-298-44c92439"
           },
           {
             "depth": 2,
@@ -483,37 +628,224 @@
               "await",
               "effect"
             ],
-            "id": "n21",
+            "id": "await-297-297-5f05dc49",
             "kind": "await",
             "label": "await std::future::poll_fn(| cx | self.poll_join_next(cx))",
-            "parentId": "n20",
+            "nativeId": "rust-await-297-297-5f05dc49",
+            "parentId": "fn-287-298-44c92439",
             "read": "src/lib.rs:297:297",
-            "role": "effect"
+            "role": "effect",
+            "structuralFingerprint": "await-effect-297-297-5f05dc49"
           },
           {
             "depth": 3,
             "flags": [
               "call"
             ],
-            "id": "n22",
+            "id": "call-297-297-97ae83c7",
             "kind": "call",
             "label": "call std::future::poll_fn",
-            "parentId": "n21",
+            "nativeId": "rust-call-297-297-97ae83c7",
+            "parentId": "await-297-297-5f05dc49",
             "read": "src/lib.rs:297:297",
-            "role": "call"
+            "role": "call",
+            "structuralFingerprint": "call-call-297-297-97ae83c7"
           },
           {
             "depth": 1,
-            "id": "n23",
+            "id": "fn-300-318-1e30367e",
             "kind": "fn",
             "label": "async fn join_next_with_id",
-            "parentId": "n0",
+            "nativeId": "rust-fn-300-318-1e30367e",
+            "parentId": "impl-99-589-85a05d0b",
             "read": "src/lib.rs:300:318",
-            "role": "declaration"
+            "role": "declaration",
+            "structuralFingerprint": "fn-declaration-300-318-1e30367e"
           }
         ],
         "nodesTruncated": true,
+        "omitted": [
+          {
+            "kind": "source-formatting",
+            "nodeId": "impl-99-589-85a05d0b",
+            "read": "src/lib.rs:99:589",
+            "reason": "compact projection removes original whitespace and comments"
+          }
+        ],
+        "renderedNodeIds": [
+          "impl-99-589-85a05d0b",
+          "fn-100-127-917e4393",
+          "return-123-126-dc4c8ef8",
+          "fn-129-149-b9f90a6a",
+          "return-148-148-d679e010",
+          "fn-151-168-92a4a62a",
+          "return-167-167-d679e010",
+          "fn-170-192-eb9edbee",
+          "return-191-191-d679e010",
+          "fn-194-212-9692f67e",
+          "return-211-211-d679e010",
+          "fn-214-261-32a00a88",
+          "return-260-260-d679e010",
+          "fn-263-276-9abf5180",
+          "return-275-275-d679e010",
+          "fn-278-285-5217626",
+          "let-279-279-136c535e",
+          "let-280-280-7c42b6e8",
+          "return-283-283-4100ffd9",
+          "return-284-284-ef8e07c1",
+          "fn-287-298-44c92439",
+          "await-297-297-5f05dc49",
+          "call-297-297-97ae83c7",
+          "fn-300-318-1e30367e"
+        ],
+        "renderedRows": [
+          {
+            "nodeId": "impl-99-589-85a05d0b",
+            "rowKind": "declaration",
+            "semanticWeight": 1,
+            "text": "impl JoinSet<T>"
+          },
+          {
+            "nodeId": "fn-100-127-917e4393",
+            "rowKind": "declaration",
+            "semanticWeight": 1,
+            "text": "fn build_task"
+          },
+          {
+            "nodeId": "return-123-126-dc4c8ef8",
+            "rowKind": "terminal",
+            "semanticWeight": 2,
+            "text": "return Builder"
+          },
+          {
+            "nodeId": "fn-129-149-b9f90a6a",
+            "rowKind": "declaration",
+            "semanticWeight": 1,
+            "text": "fn spawn"
+          },
+          {
+            "nodeId": "return-148-148-d679e010",
+            "rowKind": "terminal",
+            "semanticWeight": 2,
+            "text": "return insert"
+          },
+          {
+            "nodeId": "fn-151-168-92a4a62a",
+            "rowKind": "declaration",
+            "semanticWeight": 1,
+            "text": "fn spawn_on"
+          },
+          {
+            "nodeId": "return-167-167-d679e010",
+            "rowKind": "terminal",
+            "semanticWeight": 2,
+            "text": "return insert"
+          },
+          {
+            "nodeId": "fn-170-192-eb9edbee",
+            "rowKind": "declaration",
+            "semanticWeight": 1,
+            "text": "fn spawn_local"
+          },
+          {
+            "nodeId": "return-191-191-d679e010",
+            "rowKind": "terminal",
+            "semanticWeight": 2,
+            "text": "return insert"
+          },
+          {
+            "nodeId": "fn-194-212-9692f67e",
+            "rowKind": "declaration",
+            "semanticWeight": 1,
+            "text": "fn spawn_local_on"
+          },
+          {
+            "nodeId": "return-211-211-d679e010",
+            "rowKind": "terminal",
+            "semanticWeight": 2,
+            "text": "return insert"
+          },
+          {
+            "nodeId": "fn-214-261-32a00a88",
+            "rowKind": "declaration",
+            "semanticWeight": 1,
+            "text": "fn spawn_blocking"
+          },
+          {
+            "nodeId": "return-260-260-d679e010",
+            "rowKind": "terminal",
+            "semanticWeight": 2,
+            "text": "return insert"
+          },
+          {
+            "nodeId": "fn-263-276-9abf5180",
+            "rowKind": "declaration",
+            "semanticWeight": 1,
+            "text": "fn spawn_blocking_on"
+          },
+          {
+            "nodeId": "return-275-275-d679e010",
+            "rowKind": "terminal",
+            "semanticWeight": 2,
+            "text": "return insert"
+          },
+          {
+            "nodeId": "fn-278-285-5217626",
+            "rowKind": "declaration",
+            "semanticWeight": 1,
+            "text": "fn insert"
+          },
+          {
+            "nodeId": "let-279-279-136c535e",
+            "rowKind": "mutation",
+            "semanticWeight": 2,
+            "text": "assign abort"
+          },
+          {
+            "nodeId": "let-280-280-7c42b6e8",
+            "rowKind": "mutation",
+            "semanticWeight": 2,
+            "text": "assign entry"
+          },
+          {
+            "nodeId": "return-283-283-4100ffd9",
+            "rowKind": "terminal",
+            "semanticWeight": 2,
+            "text": "return with_value_and_context"
+          },
+          {
+            "nodeId": "return-284-284-ef8e07c1",
+            "rowKind": "terminal",
+            "semanticWeight": 2,
+            "text": "return abort"
+          },
+          {
+            "nodeId": "fn-287-298-44c92439",
+            "rowKind": "declaration",
+            "semanticWeight": 1,
+            "text": "async fn join_next"
+          },
+          {
+            "nodeId": "await-297-297-5f05dc49",
+            "rowKind": "effect",
+            "semanticWeight": 2,
+            "text": "await std::future::poll_fn(| cx | self.poll_join_next(cx))"
+          },
+          {
+            "nodeId": "call-297-297-97ae83c7",
+            "rowKind": "call",
+            "semanticWeight": 2,
+            "text": "call std::future::poll_fn"
+          },
+          {
+            "nodeId": "fn-300-318-1e30367e",
+            "rowKind": "declaration",
+            "semanticWeight": 1,
+            "text": "async fn join_next_with_id"
+          }
+        ],
         "sourceAuthority": "native-parser",
+        "sourceFingerprint": "src/lib.rs:99:589:953:5a3ee264376e02a1",
         "syntax": "semantic-outline"
       },
       "read": "src/lib.rs:99:589",
@@ -528,6 +860,11 @@
         "path": "src/lib.rs"
       },
       "name": "JoinSet",
+      "patchSafety": {
+        "exactRead": "src/lib.rs:591:595",
+        "level": "read-safe",
+        "reason": "read exact source locator before editing this compact match"
+      },
       "projection": {
         "exactRead": "src/lib.rs:591:595",
         "expandActions": [
@@ -535,7 +872,7 @@
             "kind": "hot-block",
             "read": "src/lib.rs:593:593",
             "reason": "parser-projection-terminal",
-            "target": "n2"
+            "target": "return-593-593-e13df571"
           }
         ],
         "losslessStructure": true,
@@ -545,327 +882,93 @@
         "nodes": [
           {
             "depth": 0,
-            "id": "n0",
+            "id": "impl-591-595-d512718f",
             "kind": "impl",
             "label": "impl Drop for JoinSet<T>",
+            "nativeId": "rust-impl-591-595-d512718f",
             "read": "src/lib.rs:591:595",
-            "role": "declaration"
+            "role": "declaration",
+            "structuralFingerprint": "impl-declaration-591-595-d512718f"
           },
           {
             "depth": 1,
-            "id": "n1",
+            "id": "fn-592-594-f7b47076",
             "kind": "fn",
             "label": "fn drop",
-            "parentId": "n0",
+            "nativeId": "rust-fn-592-594-f7b47076",
+            "parentId": "impl-591-595-d512718f",
             "read": "src/lib.rs:592:594",
-            "role": "declaration"
+            "role": "declaration",
+            "structuralFingerprint": "fn-declaration-592-594-f7b47076"
           },
           {
             "depth": 2,
             "flags": [
               "return"
             ],
-            "id": "n2",
+            "id": "return-593-593-e13df571",
             "kind": "return",
             "label": "return drain",
-            "parentId": "n1",
+            "nativeId": "rust-return-593-593-e13df571",
+            "parentId": "fn-592-594-f7b47076",
             "read": "src/lib.rs:593:593",
-            "role": "terminal"
+            "role": "terminal",
+            "structuralFingerprint": "return-terminal-593-593-e13df571"
           }
         ],
         "nodesTruncated": false,
+        "omitted": [
+          {
+            "kind": "source-formatting",
+            "nodeId": "impl-591-595-d512718f",
+            "read": "src/lib.rs:591:595",
+            "reason": "compact projection removes original whitespace and comments"
+          }
+        ],
+        "renderedNodeIds": [
+          "impl-591-595-d512718f",
+          "fn-592-594-f7b47076",
+          "return-593-593-e13df571"
+        ],
+        "renderedRows": [
+          {
+            "nodeId": "impl-591-595-d512718f",
+            "rowKind": "declaration",
+            "semanticWeight": 1,
+            "text": "impl Drop for JoinSet<T>"
+          },
+          {
+            "nodeId": "fn-592-594-f7b47076",
+            "rowKind": "declaration",
+            "semanticWeight": 1,
+            "text": "fn drop"
+          },
+          {
+            "nodeId": "return-593-593-e13df571",
+            "rowKind": "terminal",
+            "semanticWeight": 2,
+            "text": "return drain"
+          }
+        ],
         "sourceAuthority": "native-parser",
+        "sourceFingerprint": "src/lib.rs:591:595:45:6553f128ac97500c",
         "syntax": "semantic-outline"
       },
       "read": "src/lib.rs:591:595",
       "truncated": false,
       "visibility": "private"
-    },
-    {
-      "doc": false,
-      "kind": "impl",
-      "location": {
-        "lineRange": "597:601",
-        "path": "src/lib.rs"
-      },
-      "name": "JoinSet",
-      "projection": {
-        "exactRead": "src/lib.rs:597:601",
-        "expandActions": [
-          {
-            "kind": "hot-block",
-            "read": "src/lib.rs:599:599",
-            "reason": "parser-projection-terminal",
-            "target": "n2"
-          }
-        ],
-        "losslessStructure": true,
-        "mode": "compact",
-        "nodeCount": 3,
-        "nodeLimit": 24,
-        "nodes": [
-          {
-            "depth": 0,
-            "id": "n0",
-            "kind": "impl",
-            "label": "impl fmt::Debug for JoinSet<T>",
-            "read": "src/lib.rs:597:601",
-            "role": "declaration"
-          },
-          {
-            "depth": 1,
-            "id": "n1",
-            "kind": "fn",
-            "label": "fn fmt",
-            "parentId": "n0",
-            "read": "src/lib.rs:598:600",
-            "role": "declaration"
-          },
-          {
-            "depth": 2,
-            "flags": [
-              "return"
-            ],
-            "id": "n2",
-            "kind": "return",
-            "label": "return finish",
-            "parentId": "n1",
-            "read": "src/lib.rs:599:599",
-            "role": "terminal"
-          }
-        ],
-        "nodesTruncated": false,
-        "sourceAuthority": "native-parser",
-        "syntax": "semantic-outline"
-      },
-      "read": "src/lib.rs:597:601",
-      "truncated": false,
-      "visibility": "private"
-    },
-    {
-      "doc": false,
-      "kind": "impl",
-      "location": {
-        "lineRange": "603:607",
-        "path": "src/lib.rs"
-      },
-      "name": "JoinSet",
-      "projection": {
-        "exactRead": "src/lib.rs:603:607",
-        "expandActions": [
-          {
-            "kind": "hot-block",
-            "read": "src/lib.rs:605:605",
-            "reason": "parser-projection-terminal",
-            "target": "n2"
-          }
-        ],
-        "losslessStructure": true,
-        "mode": "compact",
-        "nodeCount": 3,
-        "nodeLimit": 24,
-        "nodes": [
-          {
-            "depth": 0,
-            "id": "n0",
-            "kind": "impl",
-            "label": "impl Default for JoinSet<T>",
-            "read": "src/lib.rs:603:607",
-            "role": "declaration"
-          },
-          {
-            "depth": 1,
-            "id": "n1",
-            "kind": "fn",
-            "label": "fn default",
-            "parentId": "n0",
-            "read": "src/lib.rs:604:606",
-            "role": "declaration"
-          },
-          {
-            "depth": 2,
-            "flags": [
-              "return"
-            ],
-            "id": "n2",
-            "kind": "return",
-            "label": "return Self::new",
-            "parentId": "n1",
-            "read": "src/lib.rs:605:605",
-            "role": "terminal"
-          }
-        ],
-        "nodesTruncated": false,
-        "sourceAuthority": "native-parser",
-        "syntax": "semantic-outline"
-      },
-      "read": "src/lib.rs:603:607",
-      "truncated": false,
-      "visibility": "private"
-    },
-    {
-      "doc": false,
-      "kind": "impl",
-      "location": {
-        "lineRange": "609:650",
-        "path": "src/lib.rs"
-      },
-      "name": "JoinSet",
-      "projection": {
-        "exactRead": "src/lib.rs:609:650",
-        "expandActions": [
-          {
-            "kind": "hot-block",
-            "read": "src/lib.rs:644:644",
-            "reason": "parser-projection-mutation",
-            "target": "n2"
-          },
-          {
-            "kind": "hot-block",
-            "read": "src/lib.rs:645:647",
-            "reason": "parser-projection-terminal",
-            "target": "n3"
-          },
-          {
-            "kind": "hot-block",
-            "read": "src/lib.rs:648:648",
-            "reason": "parser-projection-terminal",
-            "target": "n4"
-          }
-        ],
-        "losslessStructure": true,
-        "mode": "compact",
-        "nodeCount": 5,
-        "nodeLimit": 24,
-        "nodes": [
-          {
-            "depth": 0,
-            "id": "n0",
-            "kind": "impl",
-            "label": "impl std::iter::FromIterator<F> for JoinSet<T>",
-            "read": "src/lib.rs:609:650",
-            "role": "declaration"
-          },
-          {
-            "depth": 1,
-            "id": "n1",
-            "kind": "fn",
-            "label": "fn from_iter",
-            "parentId": "n0",
-            "read": "src/lib.rs:643:649",
-            "role": "declaration"
-          },
-          {
-            "depth": 2,
-            "flags": [
-              "mutation"
-            ],
-            "id": "n2",
-            "kind": "let",
-            "label": "assign set",
-            "parentId": "n1",
-            "read": "src/lib.rs:644:644",
-            "role": "mutation"
-          },
-          {
-            "depth": 2,
-            "flags": [
-              "return"
-            ],
-            "id": "n3",
-            "kind": "return",
-            "label": "return for_each",
-            "parentId": "n1",
-            "read": "src/lib.rs:645:647",
-            "role": "terminal"
-          },
-          {
-            "depth": 2,
-            "flags": [
-              "return"
-            ],
-            "id": "n4",
-            "kind": "return",
-            "label": "return set",
-            "parentId": "n1",
-            "read": "src/lib.rs:648:648",
-            "role": "terminal"
-          }
-        ],
-        "nodesTruncated": false,
-        "sourceAuthority": "native-parser",
-        "syntax": "semantic-outline"
-      },
-      "read": "src/lib.rs:609:650",
-      "truncated": false,
-      "visibility": "private"
-    },
-    {
-      "doc": false,
-      "kind": "impl",
-      "location": {
-        "lineRange": "652:695",
-        "path": "src/lib.rs"
-      },
-      "name": "JoinSet",
-      "projection": {
-        "exactRead": "src/lib.rs:652:695",
-        "expandActions": [
-          {
-            "kind": "hot-block",
-            "read": "src/lib.rs:691:693",
-            "reason": "parser-projection-terminal",
-            "target": "n2"
-          }
-        ],
-        "losslessStructure": true,
-        "mode": "compact",
-        "nodeCount": 3,
-        "nodeLimit": 24,
-        "nodes": [
-          {
-            "depth": 0,
-            "id": "n0",
-            "kind": "impl",
-            "label": "impl std::iter::Extend<F> for JoinSet<T>",
-            "read": "src/lib.rs:652:695",
-            "role": "declaration"
-          },
-          {
-            "depth": 1,
-            "id": "n1",
-            "kind": "fn",
-            "label": "fn extend",
-            "parentId": "n0",
-            "read": "src/lib.rs:687:694",
-            "role": "declaration"
-          },
-          {
-            "depth": 2,
-            "flags": [
-              "return"
-            ],
-            "id": "n2",
-            "kind": "return",
-            "label": "return for_each",
-            "parentId": "n1",
-            "read": "src/lib.rs:691:693",
-            "role": "terminal"
-          }
-        ],
-        "nodesTruncated": false,
-        "sourceAuthority": "native-parser",
-        "syntax": "semantic-outline"
-      },
-      "read": "src/lib.rs:652:695",
-      "truncated": false,
-      "visibility": "private"
     }
   ],
+  "matchesTruncated": true,
   "method": "query/owner-items",
   "namespace": "agent.semantic-protocols.languages.rust.rs-harness",
   "outputMode": "code",
   "ownerPath": "src/lib.rs",
+  "patchSafety": {
+    "level": "read-safe",
+    "nextAction": "query --from-hook direct-source-read",
+    "reason": "compact query packet is not a mutation authority"
+  },
   "projectRoot": ".",
   "protocolId": "agent.semantic-protocols.semantic-language",
   "protocolVersion": "1",
@@ -885,5 +988,5 @@
   ],
   "schemaId": "agent.semantic-protocols.semantic-query-packet",
   "schemaVersion": "1",
-  "truncated": false
+  "truncated": true
 }

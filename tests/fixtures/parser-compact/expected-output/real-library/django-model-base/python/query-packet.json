@@ -43,48 +43,43 @@
             "kind": "exact-read",
             "read": "src/base.py:99:99",
             "reason": "expand assign node before editing",
-            "target": "ModelBase:2"
+            "target": "ModelBase:assign:src-base.py-99-99:6f8dbb86"
           },
           {
             "kind": "exact-read",
             "read": "src/base.py:103:103",
             "reason": "expand assign node before editing",
-            "target": "ModelBase:3"
+            "target": "ModelBase:assign:src-base.py-103-103:d53c22ad"
           },
           {
             "kind": "exact-read",
             "read": "src/base.py:104:105",
             "reason": "expand if node before editing",
-            "target": "ModelBase:4"
+            "target": "ModelBase:if:src-base.py-104-105:3e3c3ba2"
           },
           {
             "kind": "exact-read",
             "read": "src/base.py:105:105",
             "reason": "expand return node before editing",
-            "target": "ModelBase:5"
+            "target": "ModelBase:return:src-base.py-105-105:31957755"
           },
           {
             "kind": "exact-read",
             "read": "src/base.py:108:108",
             "reason": "expand assign node before editing",
-            "target": "ModelBase:6"
+            "target": "ModelBase:assign:src-base.py-108-108:8941384c"
           },
           {
             "kind": "exact-read",
             "read": "src/base.py:109:109",
             "reason": "expand assign node before editing",
-            "target": "ModelBase:7"
+            "target": "ModelBase:assign:src-base.py-109-109:d846bbe9"
           },
           {
             "kind": "exact-read",
             "read": "src/base.py:110:110",
             "reason": "expand assign node before editing",
-            "target": "ModelBase:8"
-          },
-          {
-            "kind": "owner-names",
-            "reason": "return owner-local item names without code windows",
-            "target": "src/base.py"
+            "target": "ModelBase:assign:src-base.py-110-110:d4b3ce80"
           }
         ],
         "losslessStructure": false,
@@ -97,285 +92,359 @@
             "id": "ModelBase",
             "kind": "class",
             "label": "class ModelBase",
+            "nativeId": "python:class:src-base.py-95-459:63ce163f",
             "read": "src/base.py:95:459",
-            "role": "declaration"
+            "role": "declaration",
+            "structuralFingerprint": "class:declaration:src-base.py-95-459:63ce163f"
           },
           {
             "depth": 1,
-            "id": "ModelBase:1",
+            "id": "ModelBase:function:src-base.py-98-390:fdc36afa",
             "kind": "function",
             "label": "def __new__",
+            "nativeId": "python:function:src-base.py-98-390:fdc36afa",
             "parentId": "ModelBase",
             "read": "src/base.py:98:390",
-            "role": "declaration"
+            "role": "declaration",
+            "structuralFingerprint": "function:declaration:src-base.py-98-390:fdc36afa"
           },
           {
             "depth": 2,
             "flags": [
               "mutation"
             ],
-            "id": "ModelBase:2",
+            "id": "ModelBase:assign:src-base.py-99-99:6f8dbb86",
             "kind": "assign",
             "label": "assign super_new",
-            "parentId": "ModelBase:1",
+            "nativeId": "python:assign:src-base.py-99-99:6f8dbb86",
+            "parentId": "ModelBase:function:src-base.py-98-390:fdc36afa",
             "read": "src/base.py:99:99",
-            "role": "mutation"
+            "role": "mutation",
+            "structuralFingerprint": "assign:mutation:src-base.py-99-99:6f8dbb86"
           },
           {
             "depth": 2,
             "flags": [
               "mutation"
             ],
-            "id": "ModelBase:3",
+            "id": "ModelBase:assign:src-base.py-103-103:d53c22ad",
             "kind": "assign",
             "label": "assign parents",
-            "parentId": "ModelBase:1",
+            "nativeId": "python:assign:src-base.py-103-103:d53c22ad",
+            "parentId": "ModelBase:function:src-base.py-98-390:fdc36afa",
             "read": "src/base.py:103:103",
-            "role": "mutation"
+            "role": "mutation",
+            "structuralFingerprint": "assign:mutation:src-base.py-103-103:d53c22ad"
           },
           {
             "depth": 2,
             "flags": [
               "branch"
             ],
-            "id": "ModelBase:4",
+            "id": "ModelBase:if:src-base.py-104-105:3e3c3ba2",
             "kind": "if",
             "label": "if not parents",
-            "parentId": "ModelBase:1",
+            "nativeId": "python:if:src-base.py-104-105:3e3c3ba2",
+            "parentId": "ModelBase:function:src-base.py-98-390:fdc36afa",
             "read": "src/base.py:104:105",
-            "role": "control-flow"
+            "role": "control-flow",
+            "structuralFingerprint": "if:control-flow:src-base.py-104-105:3e3c3ba2"
           },
           {
             "depth": 3,
             "flags": [
               "return"
             ],
-            "id": "ModelBase:5",
+            "id": "ModelBase:return:src-base.py-105-105:31957755",
             "kind": "return",
             "label": "return super_new",
-            "parentId": "ModelBase:4",
+            "nativeId": "python:return:src-base.py-105-105:31957755",
+            "parentId": "ModelBase:if:src-base.py-104-105:3e3c3ba2",
             "read": "src/base.py:105:105",
-            "role": "terminal"
+            "role": "terminal",
+            "structuralFingerprint": "return:terminal:src-base.py-105-105:31957755"
           },
           {
             "depth": 2,
             "flags": [
               "mutation"
             ],
-            "id": "ModelBase:6",
+            "id": "ModelBase:assign:src-base.py-108-108:8941384c",
             "kind": "assign",
             "label": "assign module",
-            "parentId": "ModelBase:1",
+            "nativeId": "python:assign:src-base.py-108-108:8941384c",
+            "parentId": "ModelBase:function:src-base.py-98-390:fdc36afa",
             "read": "src/base.py:108:108",
-            "role": "mutation"
+            "role": "mutation",
+            "structuralFingerprint": "assign:mutation:src-base.py-108-108:8941384c"
           },
           {
             "depth": 2,
             "flags": [
               "mutation"
             ],
-            "id": "ModelBase:7",
+            "id": "ModelBase:assign:src-base.py-109-109:d846bbe9",
             "kind": "assign",
             "label": "assign new_attrs",
-            "parentId": "ModelBase:1",
+            "nativeId": "python:assign:src-base.py-109-109:d846bbe9",
+            "parentId": "ModelBase:function:src-base.py-98-390:fdc36afa",
             "read": "src/base.py:109:109",
-            "role": "mutation"
+            "role": "mutation",
+            "structuralFingerprint": "assign:mutation:src-base.py-109-109:d846bbe9"
           },
           {
             "depth": 2,
             "flags": [
               "mutation"
             ],
-            "id": "ModelBase:8",
+            "id": "ModelBase:assign:src-base.py-110-110:d4b3ce80",
             "kind": "assign",
             "label": "assign classcell",
-            "parentId": "ModelBase:1",
+            "nativeId": "python:assign:src-base.py-110-110:d4b3ce80",
+            "parentId": "ModelBase:function:src-base.py-98-390:fdc36afa",
             "read": "src/base.py:110:110",
-            "role": "mutation"
+            "role": "mutation",
+            "structuralFingerprint": "assign:mutation:src-base.py-110-110:d4b3ce80"
           },
           {
             "depth": 2,
             "flags": [
               "branch"
             ],
-            "id": "ModelBase:9",
+            "id": "ModelBase:if:src-base.py-111-112:be341647",
             "kind": "if",
             "label": "if classcell is not None",
-            "parentId": "ModelBase:1",
+            "nativeId": "python:if:src-base.py-111-112:be341647",
+            "parentId": "ModelBase:function:src-base.py-98-390:fdc36afa",
             "read": "src/base.py:111:112",
-            "role": "control-flow"
+            "role": "control-flow",
+            "structuralFingerprint": "if:control-flow:src-base.py-111-112:be341647"
           },
           {
             "depth": 3,
             "flags": [
               "mutation"
             ],
-            "id": "ModelBase:10",
+            "id": "ModelBase:assign:src-base.py-112-112:1d8927c1",
             "kind": "assign",
             "label": "assign new_attrs['__classcell__']",
-            "parentId": "ModelBase:9",
+            "nativeId": "python:assign:src-base.py-112-112:1d8927c1",
+            "parentId": "ModelBase:if:src-base.py-111-112:be341647",
             "read": "src/base.py:112:112",
-            "role": "mutation"
+            "role": "mutation",
+            "structuralFingerprint": "assign:mutation:src-base.py-112-112:1d8927c1"
           },
           {
             "depth": 2,
             "flags": [
               "mutation"
             ],
-            "id": "ModelBase:11",
+            "id": "ModelBase:assign:src-base.py-113-113:3040f1ad",
             "kind": "assign",
             "label": "assign attr_meta",
-            "parentId": "ModelBase:1",
+            "nativeId": "python:assign:src-base.py-113-113:3040f1ad",
+            "parentId": "ModelBase:function:src-base.py-98-390:fdc36afa",
             "read": "src/base.py:113:113",
-            "role": "mutation"
+            "role": "mutation",
+            "structuralFingerprint": "assign:mutation:src-base.py-113-113:3040f1ad"
           },
           {
             "depth": 2,
             "flags": [
               "mutation"
             ],
-            "id": "ModelBase:12",
+            "id": "ModelBase:assign:src-base.py-117-117:9839578b",
             "kind": "assign",
             "label": "assign contributable_attrs",
-            "parentId": "ModelBase:1",
+            "nativeId": "python:assign:src-base.py-117-117:9839578b",
+            "parentId": "ModelBase:function:src-base.py-98-390:fdc36afa",
             "read": "src/base.py:117:117",
-            "role": "mutation"
+            "role": "mutation",
+            "structuralFingerprint": "assign:mutation:src-base.py-117-117:9839578b"
           },
           {
             "depth": 2,
             "flags": [
               "loop"
             ],
-            "id": "ModelBase:13",
+            "id": "ModelBase:for:src-base.py-118-122:36226bd8",
             "kind": "for",
             "label": "for (obj_name, obj) in items",
-            "parentId": "ModelBase:1",
+            "nativeId": "python:for:src-base.py-118-122:36226bd8",
+            "parentId": "ModelBase:function:src-base.py-98-390:fdc36afa",
             "read": "src/base.py:118:122",
-            "role": "control-flow"
+            "role": "control-flow",
+            "structuralFingerprint": "for:control-flow:src-base.py-118-122:36226bd8"
           },
           {
             "depth": 3,
             "flags": [
               "branch"
             ],
-            "id": "ModelBase:14",
+            "id": "ModelBase:if:src-base.py-119-122:a6a0b364",
             "kind": "if",
             "label": "if _has_contribute_to_class",
-            "parentId": "ModelBase:13",
+            "nativeId": "python:if:src-base.py-119-122:a6a0b364",
+            "parentId": "ModelBase:for:src-base.py-118-122:36226bd8",
             "read": "src/base.py:119:122",
-            "role": "control-flow"
+            "role": "control-flow",
+            "structuralFingerprint": "if:control-flow:src-base.py-119-122:a6a0b364"
           },
           {
             "depth": 4,
             "flags": [
               "mutation"
             ],
-            "id": "ModelBase:15",
+            "id": "ModelBase:assign:src-base.py-120-120:acfd7120",
             "kind": "assign",
             "label": "assign contributable_attrs[obj_name]",
-            "parentId": "ModelBase:14",
+            "nativeId": "python:assign:src-base.py-120-120:acfd7120",
+            "parentId": "ModelBase:if:src-base.py-119-122:a6a0b364",
             "read": "src/base.py:120:120",
-            "role": "mutation"
+            "role": "mutation",
+            "structuralFingerprint": "assign:mutation:src-base.py-120-120:acfd7120"
           },
           {
             "depth": 4,
             "flags": [
               "mutation"
             ],
-            "id": "ModelBase:16",
+            "id": "ModelBase:assign:src-base.py-122-122:14f14896",
             "kind": "assign",
             "label": "assign new_attrs[obj_name]",
-            "parentId": "ModelBase:14",
+            "nativeId": "python:assign:src-base.py-122-122:14f14896",
+            "parentId": "ModelBase:if:src-base.py-119-122:a6a0b364",
             "read": "src/base.py:122:122",
-            "role": "mutation"
+            "role": "mutation",
+            "structuralFingerprint": "assign:mutation:src-base.py-122-122:14f14896"
           },
           {
             "depth": 2,
             "flags": [
               "mutation"
             ],
-            "id": "ModelBase:17",
+            "id": "ModelBase:assign:src-base.py-123-123:a11f2509",
             "kind": "assign",
             "label": "assign new_class",
-            "parentId": "ModelBase:1",
+            "nativeId": "python:assign:src-base.py-123-123:a11f2509",
+            "parentId": "ModelBase:function:src-base.py-98-390:fdc36afa",
             "read": "src/base.py:123:123",
-            "role": "mutation"
+            "role": "mutation",
+            "structuralFingerprint": "assign:mutation:src-base.py-123-123:a11f2509"
           },
           {
             "depth": 2,
             "flags": [
               "mutation"
             ],
-            "id": "ModelBase:18",
+            "id": "ModelBase:assign:src-base.py-125-125:e8d2335a",
             "kind": "assign",
             "label": "assign abstract",
-            "parentId": "ModelBase:1",
+            "nativeId": "python:assign:src-base.py-125-125:e8d2335a",
+            "parentId": "ModelBase:function:src-base.py-98-390:fdc36afa",
             "read": "src/base.py:125:125",
-            "role": "mutation"
+            "role": "mutation",
+            "structuralFingerprint": "assign:mutation:src-base.py-125-125:e8d2335a"
           },
           {
             "depth": 2,
             "flags": [
               "mutation"
             ],
-            "id": "ModelBase:19",
+            "id": "ModelBase:assign:src-base.py-126-126:20d51ec1",
             "kind": "assign",
             "label": "assign meta",
-            "parentId": "ModelBase:1",
+            "nativeId": "python:assign:src-base.py-126-126:20d51ec1",
+            "parentId": "ModelBase:function:src-base.py-98-390:fdc36afa",
             "read": "src/base.py:126:126",
-            "role": "mutation"
+            "role": "mutation",
+            "structuralFingerprint": "assign:mutation:src-base.py-126-126:20d51ec1"
           },
           {
             "depth": 2,
             "flags": [
               "mutation"
             ],
-            "id": "ModelBase:20",
+            "id": "ModelBase:assign:src-base.py-127-127:3a1e867",
             "kind": "assign",
             "label": "assign base_meta",
-            "parentId": "ModelBase:1",
+            "nativeId": "python:assign:src-base.py-127-127:3a1e867",
+            "parentId": "ModelBase:function:src-base.py-98-390:fdc36afa",
             "read": "src/base.py:127:127",
-            "role": "mutation"
+            "role": "mutation",
+            "structuralFingerprint": "assign:mutation:src-base.py-127-127:3a1e867"
           },
           {
             "depth": 2,
             "flags": [
               "mutation"
             ],
-            "id": "ModelBase:21",
+            "id": "ModelBase:assign:src-base.py-129-129:da4d66a6",
             "kind": "assign",
             "label": "assign app_label",
-            "parentId": "ModelBase:1",
+            "nativeId": "python:assign:src-base.py-129-129:da4d66a6",
+            "parentId": "ModelBase:function:src-base.py-98-390:fdc36afa",
             "read": "src/base.py:129:129",
-            "role": "mutation"
+            "role": "mutation",
+            "structuralFingerprint": "assign:mutation:src-base.py-129-129:da4d66a6"
           },
           {
             "depth": 2,
             "flags": [
               "mutation"
             ],
-            "id": "ModelBase:22",
+            "id": "ModelBase:assign:src-base.py-132-132:b283e5d6",
             "kind": "assign",
             "label": "assign app_config",
-            "parentId": "ModelBase:1",
+            "nativeId": "python:assign:src-base.py-132-132:b283e5d6",
+            "parentId": "ModelBase:function:src-base.py-98-390:fdc36afa",
             "read": "src/base.py:132:132",
-            "role": "mutation"
+            "role": "mutation",
+            "structuralFingerprint": "assign:mutation:src-base.py-132-132:b283e5d6"
           },
           {
             "depth": 2,
             "flags": [
               "branch"
             ],
-            "id": "ModelBase:23",
+            "id": "ModelBase:if:src-base.py-134-144:1a543a43",
             "kind": "if",
             "label": "if getattr(meta, 'app_label', None) is None",
-            "parentId": "ModelBase:1",
+            "nativeId": "python:if:src-base.py-134-144:1a543a43",
+            "parentId": "ModelBase:function:src-base.py-98-390:fdc36afa",
             "read": "src/base.py:134:144",
-            "role": "control-flow"
+            "role": "control-flow",
+            "structuralFingerprint": "if:control-flow:src-base.py-134-144:1a543a43"
           }
         ],
         "nodesTruncated": true,
         "omitted": [],
+        "renderedNodeIds": [
+          "ModelBase",
+          "ModelBase:function:src-base.py-98-390:fdc36afa",
+          "ModelBase:assign:src-base.py-99-99:6f8dbb86",
+          "ModelBase:assign:src-base.py-103-103:d53c22ad",
+          "ModelBase:if:src-base.py-104-105:3e3c3ba2",
+          "ModelBase:return:src-base.py-105-105:31957755",
+          "ModelBase:assign:src-base.py-108-108:8941384c",
+          "ModelBase:assign:src-base.py-109-109:d846bbe9",
+          "ModelBase:assign:src-base.py-110-110:d4b3ce80",
+          "ModelBase:if:src-base.py-111-112:be341647",
+          "ModelBase:assign:src-base.py-112-112:1d8927c1",
+          "ModelBase:assign:src-base.py-113-113:3040f1ad",
+          "ModelBase:assign:src-base.py-117-117:9839578b",
+          "ModelBase:for:src-base.py-118-122:36226bd8",
+          "ModelBase:if:src-base.py-119-122:a6a0b364",
+          "ModelBase:assign:src-base.py-120-120:acfd7120",
+          "ModelBase:assign:src-base.py-122-122:14f14896",
+          "ModelBase:assign:src-base.py-123-123:a11f2509",
+          "ModelBase:assign:src-base.py-125-125:e8d2335a",
+          "ModelBase:assign:src-base.py-126-126:20d51ec1",
+          "ModelBase:assign:src-base.py-127-127:3a1e867",
+          "ModelBase:assign:src-base.py-129-129:da4d66a6",
+          "ModelBase:assign:src-base.py-132-132:b283e5d6",
+          "ModelBase:if:src-base.py-134-144:1a543a43"
+        ],
         "sourceAuthority": "native-parser",
         "sourceFingerprint": "src/base.py:95:459:4877:88d0ae0e",
         "syntax": "semantic-outline"

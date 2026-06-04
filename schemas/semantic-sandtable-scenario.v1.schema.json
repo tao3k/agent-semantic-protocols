@@ -141,7 +141,7 @@
           "minLength": 1
         },
         "workdirKind": {
-          "enum": ["checkout", "registry", "fixture", "unknown"]
+          "enum": ["checkout", "registry", "unknown"]
         }
       }
     },
@@ -468,6 +468,12 @@
           "pattern": "^[a-z][a-z0-9_-]*$"
         },
         "commandContains": {
+          "$ref": "#/$defs/stringList"
+        },
+        "routeCommandContains": {
+          "$ref": "#/$defs/stringList"
+        },
+        "routeCommandNotContains": {
           "$ref": "#/$defs/stringList"
         },
         "requiresIngestPipe": {

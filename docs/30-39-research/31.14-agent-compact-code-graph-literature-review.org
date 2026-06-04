@@ -1,0 +1,160 @@
+#+TITLE: Agent Compact Code Graph Literature Review
+#+AUTHOR: agent-semantic-protocols
+#+DATE: 2026-06-03
+#+STATUS: research
+#+DEPENDS: rfcs/agent-compact-graph-feature.org, rfcs/graph-reasoning-code-research.org
+
+* Problem
+
+Alias-only compact graph lines are too ambiguous for an agent protocol:
+
+#+begin_src text
+O=owner:src/.../model.py!owner
+Q=query:Path!fzf
+D=dependency:pytest!deps
+#+end_src
+
+An LLM can often infer part of the meaning from English tokens, but the
+protocol must not depend on inference.  The agent needs to know whether the
+value is a path, query term, dependency package, symbol, range, or result
+handle before constructing the next deterministic command.
+
+RFC 006 therefore treats compact graph serialization as a typed decision
+interface rather than a visualization format:
+
+#+begin_src text
+parser/compiler/static-analysis facts
+  -> typed code/repo graph
+  -> ranked frontier
+  -> compact prompt serialization
+  -> executable next action
+#+end_src
+
+* Literature Shape
+
+** Program Graph Foundations
+
+Code Property Graph work combines AST, CFG, and PDG into an edge-labeled,
+attributed program graph.  This supports RFC 006's core split: alias lines are
+node declarations, edge lines are labeled directed relations, rank/frontier are
+graph algorithm output, and omit/avoid are projection metadata.
+
+Allamanis et al.'s program-graph learning work motivates treating code as
+syntax plus semantic graph structure rather than as a plain token stream.
+Long-range dependencies such as variable use, function calls, and control/data
+flow are exactly the facts compact graph output should expose selectively.
+
+** Code LLMs Need Structure
+
+CodeBERT is the sequence baseline: transformer representations over natural
+language and programming-language text support code search and documentation.
+GraphCodeBERT adds data-flow structure and graph-guided attention, which is the
+stronger precedent for RFC 006: important code structure should be explicit
+instead of reconstructed from surface tokens.
+
+** Repository-Level Retrieval
+
+RepoBench frames repository-level code completion as retrieval plus completion
+plus pipeline evaluation.  GraphCoder, CodexGraph, and RepoScope all point in
+the same direction: repo navigation needs structure-preserving retrieval and
+graph-derived context, not only similar text snippets.
+
+For this project, that means search output should return graph-derived owner,
+query, dependency, test, item, and finding handles with typed relations and
+ranked frontier actions.
+
+** Agent Interface
+
+SWE-agent shows that the agent-computer interface changes software engineering
+performance.  Compact graph output is therefore an interface, not just a data
+format.  It should reduce repeated search loops, raw-read fallback, wrong
+follow-up commands, and alias misuse.
+
+Lost in the Middle supports explicit rank/frontier: long contexts are
+position-sensitive, so graph-derived attention order should be part of the
+protocol instead of an incidental render order.
+
+* Protocol Proposal
+
+Default compact aliases should use target-role grammar:
+
+#+begin_src text
+ID=<nodeKind>:<targetRole>(<target>)!<nextAction>
+#+end_src
+
+Examples:
+
+#+begin_src text
+O=owner:path(src/python_lang_project_harness/verification/model.py)!owner
+Q=query:term(Path)!fzf
+D=dependency:pkg(pytest)!deps
+T=test:path(tests/verification/test_model.py)!tests
+I=item:symbol(ModelPathPolicy)@src/.../model.py:40:88!code
+#+end_src
+
+Every packet should carry the micro-legend:
+
+#+begin_src text
+legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next
+#+end_src
+
+This keeps the output compact while making alias grammar self-describing for
+both agents and tests.
+
+* Evaluation
+
+Evaluate syntax and graph projection with ablations:
+
+- role-less alias versus role-wrapped alias
+- graph without relation labels
+- graph without rank
+- graph without frontier
+- graph with shuffled rank
+- compact graph plus bounded code windows
+
+Metrics:
+
+- next-action correctness
+- alias misuse rate
+- target-role misunderstanding rate
+- command construction success rate
+- repeated-search count
+- raw-read fallback count
+- token size and latency
+- parser-owned locator success
+
+* Research References
+
+- Yamaguchi et al., /Modeling and Discovering Vulnerabilities with Code
+  Property Graphs/, 2014.
+- Allamanis et al., /Learning to Represent Programs with Graphs/, 2017.
+- Feng et al., /CodeBERT: A Pre-Trained Model for Programming and Natural
+  Languages/, 2020.
+- Guo et al., /GraphCodeBERT: Pre-training Code Representations with Data
+  Flow/, 2020.
+- Liu et al., /RepoBench: Benchmarking Repository-Level Code Auto-Completion
+  Systems/, 2023.
+- Liu et al., /GraphCoder: Enhancing Repository-Level Code Completion via Code
+  Context Graph-based Retrieval and Language Model/, 2024.
+- /CodexGraph: Bridging Large Language Models and Code Repositories via Code
+  Graph Databases/, 2024.
+- /RepoScope: Leveraging Call Chain-Aware Multi-View Context for
+  Repository-Level Code Generation/, 2025.
+- Yang et al., /SWE-agent: Agent-Computer Interfaces Enable Automated Software
+  Engineering/, 2024.
+- Liu et al., /Lost in the Middle: How Language Models Use Long Contexts/,
+  2023.
+- /Codebase-Memory: Tree-Sitter-Based Knowledge Graphs for LLM Code
+  Exploration via MCP/, 2026.
+- /CodeComp: Structural KV Cache Compression for Agentic Coding/, 2026.
+
+* Acceptance Criteria
+
+- RFC 006 owns target-role compact graph grammar and micro-legend semantics.
+- Shared schemas can represent target roles without provider-private prompt
+  decisions.
+- Rust, TypeScript, and Python renderers emit role-wrapped aliases for seed
+  views.
+- Sandtable line protocol accepts the micro-legend and role-wrapped alias
+  grammar.
+- Evaluation reports distinguish token savings from next-action accuracy.

@@ -22,7 +22,7 @@ The agent started with owner and query-set searches around hook CLI dispatch:
 
 #+begin_src shell
 rs-harness search owner crates/semantic-agent-hook/src/cli.rs items --view seeds .
-rs-harness search text --query-set "install" --query-set "hook" --query-set "pre-tool" --view seeds .
+rs-harness search fzf --query-set "install" --query-set "hook" --query-set "pre-tool" --view seeds .
 rs-harness search owner crates/semantic-agent-hook/src/lib.rs items --view seeds .
 rs-harness search owner crates/semantic-agent-hook/src/protocol.rs items --view seeds .
 #+end_src
@@ -51,7 +51,7 @@ Then it continued with more owner/text probes:
 #+begin_src shell
 rs-harness search owner crates/semantic-agent-hook/src/classifier.rs items --view seeds .
 rs-harness search owner crates/semantic-agent-hook/src/command/intent.rs items --view seeds .
-rs-harness search text --query-set "direct-source-read" --query-set "owner" --query-set "routes" --view seeds .
+rs-harness search fzf --query-set "direct-source-read" --query-set "owner" --query-set "routes" --view seeds .
 #+end_src
 
 * Observed Problems
@@ -267,8 +267,8 @@ direnv exec . python -m pytest \
 semantic-agent-hook read crates/semantic-agent-hook/src/cli.rs \
   --query 'cli|Cli' --context 1 --max-lines 5 --project-root .
 printf '%s' '{"tool_name":"Read","tool_input":{"path":"crates/semantic-agent-hook/src/cli.rs"}}' \
-  | direnv exec . target/debug/semantic-agent-hook hook --client codex pre-tool --emit decision
-semantic-agent-hook doctor --client codex .
+  | direnv exec . semantic-agent-protocol hook pre-tool --client codex --emit decision
+semantic-agent-protocol hook doctor --client codex .
 #+end_src
 
 The earlier hook decision included:
@@ -333,7 +333,7 @@ direnv exec . python -m pytest tests/unit/semantic_sandtable/test_raw_search_que
 #+end_src
 
 The raw-search query-packet sandtable now includes a real
-=rs-harness search text --query-set ... --view seeds crates/semantic-agent-hook=
+=rs-harness search fzf --query-set ... --view seeds crates/semantic-agent-hook=
 step. That step validates the live =window_set= line, so the sandtable covers
 both synthetic malformed packets and the actual Rust provider output used by the
 hook/read workflow.
@@ -414,7 +414,7 @@ Required evidence:
 The route-kind correction was replayed through the actual Codex hook entrypoint:
 
 #+begin_src shell
-semantic-agent-hook hook --client codex pre-tool --emit decision --activation <activation.json>
+semantic-agent-protocol hook pre-tool --client codex --emit decision --activation <activation.json>
 #+end_src
 
 Exact source read payload:

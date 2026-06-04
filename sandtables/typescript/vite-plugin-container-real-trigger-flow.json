@@ -30,7 +30,7 @@
     },
     "querySetOpportunities": [
       {
-        "view": "text",
+        "view": "fzf",
         "queries": 2,
         "saveCommands": 1,
         "selector": "exact-set",
@@ -40,13 +40,13 @@
     "findings": [
       {
         "kind": "source-coverage",
-        "severity": "warning",
-        "message": "Vite package prime follows packages/vite/tsconfig.json and sees only build scripts, missing nested src/node tsconfigs"
+        "severity": "info",
+        "message": "Vite package prime still surfaces build scripts, while fzf owner resolution now reaches src/node server owners"
       },
       {
         "kind": "ingest-workaround",
         "severity": "info",
-        "message": "raw candidates from rg can still be normalized through search ingest when owner is not parser-visible"
+        "message": "raw candidates from rg can still be normalized through search ingest as a fallback"
       }
     ]
   },
@@ -96,8 +96,7 @@
         "lineProtocol": true,
         "stdoutContains": [
           "[search-prime]",
-          "package=vite",
-          "sourceFiles=4",
+          "root=vite",
           "scripts/generateTarget.ts"
         ],
         "maxStdoutLinesWarn": 8,
@@ -125,8 +124,8 @@
         "stdoutContains": [
           "[search-fzf]",
           "querySet=2",
-          "|query pluginContainer status=miss",
-          "owner=scripts/benchCircularImport.ts"
+          "src/node/server/pluginContainer.ts",
+          "src/node/server/__tests__/pluginContainer.spec.ts"
         ],
         "maxStdoutLinesWarn": 12,
         "maxElapsedMsWarn": 5000
@@ -148,8 +147,7 @@
         "lineProtocol": true,
         "stdoutContains": [
           "[search-owner]",
-          "owner-not-found",
-          "ingest:src/node/server/pluginContainer.ts"
+          "src/node/server/pluginContainer.ts"
         ],
         "maxStdoutLinesWarn": 8,
         "maxElapsedMsWarn": 5000
@@ -176,7 +174,7 @@
         "lineProtocol": true,
         "stdoutContains": [
           "[search-ingest]",
-          "src=rg-n",
+          "root=.",
           "packages/vite/src/node/server/pluginContainer.ts"
         ],
         "maxStdoutLinesWarn": 6,

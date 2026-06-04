@@ -60,6 +60,90 @@ def native_syntax_index() -> dict[str, object]:
     }
 
 
+def julia_native_syntax_index() -> dict[str, object]:
+    return {
+        "schemaId": "agent.semantic-protocols.semantic-native-syntax-fact-index",
+        "schemaVersion": "1",
+        "protocolId": "agent.semantic-protocols.semantic-language",
+        "protocolVersion": "1",
+        "languageId": "julia",
+        "providerId": "julia-lang-project-harness",
+        "projectRoot": "/workspace/Example",
+        "packageName": "Example",
+        "scope": "workspace",
+        "facts": [
+            {
+                "id": "julia:src/Example.jl:4:function:run",
+                "kind": "function",
+                "source": "native-parser",
+                "languageKind": "function",
+                "name": "run",
+                "ownerPath": "src/Example.jl",
+                "location": {"path": "src/Example.jl", "lineRange": "4:4"},
+                "visibility": "public",
+                "exported": True,
+                "test": False,
+                "queryKeys": ["run", "function", "method"],
+                "relations": [
+                    {
+                        "kind": "related",
+                        "target": "owner:src/Example.jl",
+                        "fields": {"role": "owner"},
+                    },
+                    {"kind": "calls", "target": "helper"},
+                ],
+                "fields": {
+                    "juliaKind": "function",
+                    "detail": "function run(value)",
+                    "searchText": "function run(value)",
+                    "tags": ["method", "function", "public"],
+                    "column": 1,
+                },
+            },
+            {
+                "id": "julia:src/Example.jl:4:13:argument:value",
+                "kind": "argument",
+                "source": "native-parser",
+                "languageKind": "argument",
+                "name": "value",
+                "qualifiedName": "src/Example.jl::value",
+                "ownerPath": "src/Example.jl",
+                "location": {"path": "src/Example.jl", "lineRange": "4:4"},
+                "visibility": "unknown",
+                "exported": False,
+                "test": False,
+                "queryKeys": ["value", "argument", "src/Example.jl"],
+            },
+            {
+                "id": "julia:src/Example.jl:2:1:include:impl.jl",
+                "kind": "include",
+                "source": "native-parser",
+                "languageKind": "include",
+                "name": "impl.jl",
+                "qualifiedName": "src/Example.jl::impl.jl",
+                "ownerPath": "src/Example.jl",
+                "location": {"path": "src/Example.jl", "lineRange": "2:2"},
+                "queryKeys": ["impl.jl", "include", "src/Example.jl"],
+                "relations": [{"kind": "references", "target": "impl.jl"}],
+            }
+        ],
+        "indexes": [
+            {
+                "name": "julia",
+                "factKinds": ["argument", "function", "include"],
+                "queryKeys": ["name", "languageKind", "tags", "searchText"],
+                "fields": {"authority": "JuliaSyntax"},
+            }
+        ],
+        "notes": [
+            {
+                "kind": "julia-syntax-authority",
+                "message": "Facts are derived from JuliaSyntax-backed provider entries.",
+            }
+        ],
+    }
+
+
 def search_packet_with_native_syntax_fact() -> dict[str, object]:
     return {
         "schemaId": "agent.semantic-protocols.semantic-search-packet",
@@ -132,6 +216,9 @@ class SemanticNativeSyntaxFactIndexSchemaTests(unittest.TestCase):
 
     def test_native_syntax_index_accepts_parser_owned_reexport_fact(self) -> None:
         self.assertEqual([], self.index_errors(native_syntax_index()))
+
+    def test_native_syntax_index_accepts_julia_provider_fact(self) -> None:
+        self.assertEqual([], self.index_errors(julia_native_syntax_index()))
 
     def test_native_syntax_fact_rejects_rank_prefixed_owner_path(self) -> None:
         payload = copy.deepcopy(native_syntax_fact())

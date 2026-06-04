@@ -28,36 +28,34 @@ agent-hooks-install-root bin_dir="":
     @bin_dir="{{bin_dir}}"; \
       if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-}"; fi; \
       if [ -n "${bin_dir}" ]; then \
-        protocol_bin="${bin_dir}/semantic-agent-protocol"; \
-        hook_bin="${bin_dir}/semantic-agent-hook"; \
+        protocol_bin="${bin_dir}/asp"; \
         if [ -x "${protocol_bin}" ]; then \
           "${protocol_bin}" hook install --client codex {{repo}}; \
         else \
-          "${hook_bin}" install --client codex {{repo}}; \
+          cargo run -q -p agent-semantic-protocol --bin asp -- hook install --client codex {{repo}}; \
         fi; \
       else \
-        cargo run -q -p semantic-agent-protocol -- hook install --client codex {{repo}}; \
+        cargo run -q -p agent-semantic-protocol --bin asp -- hook install --client codex {{repo}}; \
       fi
 
 agent-hooks-doctor-root bin_dir="":
     @bin_dir="{{bin_dir}}"; \
       if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-}"; fi; \
       if [ -n "${bin_dir}" ]; then \
-        protocol_bin="${bin_dir}/semantic-agent-protocol"; \
-        hook_bin="${bin_dir}/semantic-agent-hook"; \
+        protocol_bin="${bin_dir}/asp"; \
         if [ -x "${protocol_bin}" ]; then \
           "${protocol_bin}" hook doctor --client codex {{repo}}; \
         else \
-          "${hook_bin}" doctor --client codex {{repo}}; \
+          cargo run -q -p agent-semantic-protocol --bin asp -- hook doctor --client codex {{repo}}; \
         fi; \
       else \
-        cargo run -q -p semantic-agent-protocol -- hook doctor --client codex {{repo}}; \
+        cargo run -q -p agent-semantic-protocol --bin asp -- hook doctor --client codex {{repo}}; \
       fi
 
 # Replay the root classifier directly without launching Codex.
 agent-hooks-smoke-hook:
     @printf '%s' '{"tool_name":"functions.exec_command","tool_input":{"cmd":"sed -n '\''1,8p'\'' languages/typescript-lang-project-harness/tests/unit/cli.test.ts"}}' \
-      | cargo run -q -p semantic-agent-hook -- hook --client codex pre-tool --activation .codex/semantic-agent-hook/activation.json --emit decision \
+      | cargo run -q -p agent-semantic-protocol --bin asp -- hook pre-tool --client codex --activation .cache/agent-semantic-protocol/hooks/activation.json --config .codex/agent-semantic-protocol/hooks/config.toml --emit decision \
       | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["decision"]=="deny", d; assert d["reasonKind"] in {"bulk-source-dump","direct-source-read"}, d; print("[agent-hooks-smoke-hook] blocked", d["reasonKind"])'
 
 # Launch Codex CLI and verify the real PreToolUse runtime blocks a TS source dump.
@@ -77,7 +75,7 @@ agent-hooks-smoke-codex:
       fi; \
       rm -f "${out}"
 
-# Install semantic-agent-protocol, semantic-agent-hook, rs-harness, ts-harness, and py-harness.
+# Install asp, rs-harness, ts-harness, and py-harness.
 agent-tools-install-global bin_dir="":
     @bin_dir="{{bin_dir}}"; \
       if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-$HOME/.local/bin}"; fi; \
@@ -86,25 +84,21 @@ agent-tools-install-global bin_dir="":
       just agent-tools-install-rs "${bin_dir}"; \
       just agent-tools-install-ts "${bin_dir}"; \
       just agent-tools-install-py "${bin_dir}"; \
-      echo "[agent-tools-install-global] installed semantic-agent-protocol, semantic-agent-hook, rs-harness, ts-harness, and py-harness into ${bin_dir}"
+      echo "[agent-tools-install-global] installed asp, rs-harness, ts-harness, and py-harness into ${bin_dir}"
 
-# Install only the shared semantic-agent-protocol binary.
+# Install only the shared asp binary.
 agent-tools-install-protocol bin_dir="":
     @bin_dir="{{bin_dir}}"; \
       if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-$HOME/.local/bin}"; fi; \
       mkdir -p "${bin_dir}"; \
-      cargo build --release --manifest-path Cargo.toml --package semantic-agent-protocol --bin semantic-agent-protocol; \
-      install -m 755 target/release/semantic-agent-protocol "${bin_dir}/semantic-agent-protocol"; \
-      test -x "${bin_dir}/semantic-agent-protocol"
+      cargo build --release --manifest-path Cargo.toml --package agent-semantic-protocol --bin asp; \
+      install -m 755 target/release/asp "${bin_dir}/asp"; \
+      test -x "${bin_dir}/asp"; \
+      "${bin_dir}/asp" guide >/dev/null
 
-# Install only the root semantic-agent-hook binary.
+# Install the shared protocol binary used by hook runtime commands.
 agent-tools-install-hook bin_dir="":
-    @bin_dir="{{bin_dir}}"; \
-      if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-$HOME/.local/bin}"; fi; \
-      mkdir -p "${bin_dir}"; \
-      cargo build --release --manifest-path Cargo.toml --package semantic-agent-hook --bin semantic-agent-hook; \
-      install -m 755 target/release/semantic-agent-hook "${bin_dir}/semantic-agent-hook"; \
-      test -x "${bin_dir}/semantic-agent-hook"
+    @just agent-tools-install-protocol "{{bin_dir}}"
 
 # Install only the Rust provider binary.
 agent-tools-install-rust bin_dir="":
@@ -162,7 +156,7 @@ check-sandtables:
 provider-gate: provider-gate-root provider-gate-rust provider-gate-typescript provider-gate-python provider-gate-julia
 
 provider-gate-root:
-    direnv exec . cargo test -p semantic-agent-hook
+    direnv exec . cargo test -p agent-semantic-hook
     direnv exec . python -m pytest tests/unit/test_semantic_*_schema.py tests/unit/semantic_sandtable
 
 provider-gate-rust:
@@ -175,6 +169,7 @@ provider-gate-typescript:
     direnv exec . npm --prefix {{typescript_harness_project}} run check:implementation
     direnv exec . node --test \
       {{typescript_harness_project}}/dist/tests/unit/cli_compact_query_snapshot.test.js \
+      {{typescript_harness_project}}/dist/tests/unit/cli_ast_patch.test.js \
       {{typescript_harness_project}}/dist/tests/unit/cli_item_query.test.js \
       {{typescript_harness_project}}/dist/tests/unit/cli_item_query_code.test.js \
       {{typescript_harness_project}}/dist/tests/unit/cli_item_query_fallback.test.js \

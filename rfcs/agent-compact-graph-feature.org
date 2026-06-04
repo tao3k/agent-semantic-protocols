@@ -4,13 +4,18 @@
 #+RFC: 006
 #+STATUS: active-implementation
 #+DEPENDS: rfcs/cli-first-harness-ux.org (005), schemas/semantic-graph.v1.schema.json, schemas/semantic-search-packet.v1.schema.json, schemas/semantic-compact-graph-render.v1.schema.json
+#+SEE_ALSO: rfcs/agent-semantic-client-backend-protocol.org (008) — ASP response normalization and shared renderer hot path.
+#+SEE_ALSO: rfcs/graph-reasoning-code-research.org (009) — search guide,
+#+  prime frontier, and typed reasoning profiles that feed this render surface.
+#+SEE_ALSO: rfcs/semantic-query-projection-protocol.org (010) — query-local
+#+  projection nodes and expansion actions consumed by graph/code frontiers.
 
 * One-sentence summary
 
-Every agent-facing =search= response carries a graph feature: schema-owned
-semantic graph facts are projected into typed aliases, grouped relation edges,
-an explicit search-root alias, algorithm-owned rank, inline next actions, exact
-locators, and explicit omission/avoidance facts.
+Every agent-facing =search= response carries a typed decision graph feature:
+schema-owned semantic graph facts are projected into role-typed aliases,
+grouped relation edges, a legend-declared search root, algorithm-owned rank,
+inline next actions, exact locators, and explicit omission/avoidance facts.
 
 * Problem
 
@@ -51,10 +56,111 @@ This is a code reasoning graph, not a visual graph.  The provider should
 compress repeated syntax, but it must not compress away relation labels,
 rank order, next actions, locators, or omission reasons.
 
+* Research line and invariants
+
+This RFC is the protocol surface for the research line:
+
+#+begin_src text
+Agent Compact Code Graph: typed decision graph for LLM code navigation
+#+end_src
+
+The claim is not that code should be made to look like a graph.  The claim is
+that agent-facing code graph serialization is a typed decision interface.  Its
+purpose is to expose the smallest graph slice that preserves:
+
+1. what entities exist
+2. why they were selected
+3. how they relate
+4. what order the agent should attend to them
+5. what executable follow-up actions are safe
+6. what source/code facts were intentionally omitted
+
+The durable pipeline is:
+
+#+begin_src text
+parser/compiler/static-analysis facts
+  -> typed code/repo graph
+  -> ranked frontier
+  -> compact prompt serialization
+  -> executable next action
+#+end_src
+
+LLMs may infer structure, but the protocol must not depend on inference for
+grammar.  Compact graph output therefore follows six invariants:
+
+- Typed Node: every alias declares a node kind.
+- Typed Target: every alias target declares a target role such as =path=,
+  =term=, =pkg=, =symbol=, or =range=.
+- Typed Edge: every relation has an explicit relation label.
+- Algorithmic Rank: =rank= comes from =searchSynthesis.algorithm=, not renderer
+  sorting.
+- Executable Frontier: every =frontier= entry maps to a provider follow-up
+  action.
+- Bounded Locator: every read/edit/query frontier has an exact locator or a
+  target that the provider can recover into one.
+
+* Agent-driven search flow boundary
+
+The compact graph renderer is part of an agent-driven search flow.  It does not
+move natural-language intent parsing into the harness.
+
+The intended flow is:
+
+#+begin_src text
+user intent
+  -> agent/LLM interprets the task
+  -> agent reads search guide and provider capabilities
+  -> agent runs search prime for the initial graph frontier
+  -> agent chooses a typed reasoning profile and selectors
+  -> provider returns schema-backed graph facts/evidence
+  -> agent chooses query/read/edit/test actions
+#+end_src
+
+=search guide= tells the agent which deterministic flows and evidence profiles
+exist.  =search prime= returns an initial graph frontier without user intent.
+=search reasoning <profile>= consumes typed selectors chosen by the agent and
+returns schema-backed facts.  None of these commands accepts natural-language
+=--goal=, =--intent=, or task prose, and none of them performs agent planning.
+
+Valid reasoning commands are shaped by guide-declared profiles:
+
+#+begin_src shell
+<lang-harness> search reasoning owner-query \
+  --owner <project-path> \
+  --query <term> \
+  [--dependency <pkg>] \
+  [--view facts|seeds|both] \
+  .
+
+<lang-harness> search reasoning query-deps \
+  --query <term> \
+  --dependency <pkg> \
+  [--view facts|seeds|both] \
+  .
+
+<lang-harness> search reasoning owner-tests \
+  --owner <project-path> \
+  [--view facts|seeds|both] \
+  .
+
+<lang-harness> search reasoning finding-frontier \
+  --finding <rule-id-or-diagnostic-id> \
+  [--owner <project-path>] \
+  [--view facts|seeds|both] \
+  .
+#+end_src
+
+The graph feature is the prompt-facing projection for guide, prime, and
+reasoning evidence.  It compresses the returned facts and frontier into a
+low-token graph, but the agent still owns intent-to-flow selection.
+
 * Non-goals
 
 This RFC does not introduce a new top-level =graph= command.  Discovery remains
 =search= with views such as =seeds=, =hits=, =graph=, and =both=.
+=asp graph render= is a machine adapter for rendering a
+validated packet; it is not an agent-facing discovery command and must not
+replace =search= in agent workflows.
 
 This RFC does not make graph projection an =owner= special case.  Prime, owner,
 dependency, query-set, ingest, tests, policy, and item-oriented search/query
@@ -75,6 +181,7 @@ The graph feature is a renderer over schema-owned facts:
 #+begin_src text
 provider parser facts
   -> semantic-search-packet nodes/edges/searchSynthesis
+  -> asp graph render
   -> agent compact graph feature
 #+end_src
 
@@ -83,20 +190,47 @@ or next actions.  If a relation or action changes the agent's decision, it must
 be representable in the JSON packet before it is rendered in compact graph
 output.
 
+Field names are canonical, not provider aliases.  For example, query-set count
+is derived from root-level =querySet=, and source read locators on graph
+frontier actions use =searchSynthesis.seeds[].read=.  The shared renderer must
+not accept alternate names such as =locator= or =readLocator= because aliases
+let providers drift while producing superficially similar prompt text.
+
+The prompt-facing graph renderer is shared protocol logic.  Native language
+providers own parser facts and schema-valid packets; they do not own separate
+long-term compact graph render algorithms.  The renderer lives in
+=agent-semantic-protocol= so Rust, TypeScript, Python, Julia cache paths, local
+ASP cache hits, and Cloud Flight results project through the same alias,
+edge, rank, frontier, profile, omit, and avoid rules.
+
+Language providers under =languages/= invoke the renderer through a process
+boundary:
+
+#+begin_src shell
+asp graph render --packet - --view seeds
+#+end_src
+
+That shell-out is the provider integration boundary, not a temporary escape
+hatch.  Provider crates and packages must not link or vendor the renderer
+library, including =languages/rust-lang-project-harness=.  The target hot path
+described by RFC 008 is ASP's Rust-side cache/query/render path over validated
+provider packet artifacts or native index rows.
+
 * Projection grammar
 
 The projection has one view-native header line and a small set of compact fact
 lines:
 
 #+begin_src text
-[search-<view>] (q=<query>|root=<path-or-.>) [querySet=<n>] [selector=<selector>] [scope=<scope>] alg=<searchSynthesis.algorithm>
+[search-<view>] (q=<query>|owner=<path>|root=<path-or-.>) [querySet=<n>|terms=<n>] [selector=<selector>] [scope=<scope>] [view=<view>] alg=<searchSynthesis.algorithm>
+legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next
 alias: graph:{G=search,...}
-G=search:result!query
-ID=type:target[!action]
+ID=<nodeKind>:<targetRole>(<target>)[!<action>]
 G>{ID:relation,ID:relation}
 SRC>{DST:relation,DST:relation}
 (SRC,SRC)>DST:relation
 rank=ID,ID,ID frontier=ID.action,ID.action
+profiles=profile(ID,ID),profile(ID,ID)
 omit=<omitted-semantic>[,<omitted-semantic>]
 avoid=<anti-action>[,<anti-action>]
 #+end_src
@@ -111,36 +245,86 @@ The same shape applies to code-level graphs:
 
 #+begin_src text
 [search-query] q=<query> selector=<path> alg=<algorithm>
-ID=type:name@start:end[!action]
+ID=<nodeKind>:<targetRole>(<target>)[@<path-or-range>][!<action>]
 SRC>{DST:relation,DST:relation}
 rank=ID,ID,ID frontier=ID.action,ID.action
+profiles=profile(ID,ID),profile(ID,ID)
 omit=<omitted-semantic>[,<omitted-semantic>]
 #+end_src
 
 Alias ids are packet-local.  They are stable only within one rendered packet
 and must not be copied into source paths, JSON paths, or edit commands.
-=!action= declares an action available from a node.  =frontier= selects the
-seed actions for this packet from those node actions.
+=targetRole(target)= tells the agent and parser how to interpret the target
+value.  =!action= declares an action available from a node.  =frontier=
+selects the seed actions for this packet from those node actions.  The
+=profiles= line is optional and names guide-declared reasoning profiles that
+are compatible with aliases rendered in this packet; each handle inside
+=profile(...)= is a packet-local alias id, not a reusable command argument.
+The
+micro-legend line is the minimal grammar contract for agents that have not
+recently read this RFC.
 
-=G= is the packet-local search root.  It gives synthesis-derived edges a real
-source node without making the rank/frontier line act as a graph node.  =G= is
-not a recommended follow-up action and must not appear in =rank= or =frontier=.
-When a provider has no parser-owned =imports=, =calls=, or =covers= edges for a
-surface, it may still render honest synthesis-derived relations from =G= such
-as =selects=, =matches=, =covers=, =uses=, =imports=, =contains=, =explains=,
-=flags=, and =gates=.
+The alias legend is strict in compact mode: every alias id that appears in
+alias lines, edges, =rank=, or =frontier= must be declared with its node kind,
+for example =alias: graph:{G=search,O=owner,S=symbol,S2=symbol}=.  A prefix
+legend such as =S*=symbol= may be introduced later as a dense-mode extension,
+but it is not the default compact grammar because it requires parser and LLM
+inheritance rules that are not otherwise needed.
+
+=G= is the packet-local search root.  It is declared by the legend entry
+=G=search= and by appearing as an edge source such as =G>{...}=.  Renderers
+must not emit a standalone root alias line such as =G=search:result!query=:
+that line repeats the legend, looks like an actionable node, and increases the
+chance that an agent treats the root as a follow-up target.  =G= gives
+synthesis-derived edges a real source node without making the =rank= /
+=frontier= line act as a graph node.  =G= is not a recommended follow-up action
+and must not appear in =rank= or =frontier=.  When a provider has no
+parser-owned =imports=, =calls=, or =covers= edges for a surface, it may still
+render honest synthesis-derived relations from =G= such as =selects=,
+=matches=, =covers=, =uses=, =imports=, =contains=, =explains=, =flags=, and
+=gates=.
+
+* Line protocol atomics
+
+Compact graph output is line protocol.  Each rendered graph fact is a complete
+line atom.  The micro-legend and alias legend lines are each valid only as one
+complete line, for example:
+
+#+begin_src text
+legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next
+alias: graph:{G=search,O=owner,T=test}
+#+end_src
+
+Renderers, schema examples, JSON fixtures, and sandtable assertions must not
+split this line into structural fragments such as:
+
+#+begin_src json
+["alias: graph:{", "G=search:result!query"]
+#+end_src
+
+That shape is invalid even though =alias: graph:{...}= itself is valid.  It
+turns an opening delimiter into a standalone assertion and makes the next line
+look like a continuation or a root alias.  The standalone root alias
+=G=search:result!query= is also forbidden by this RFC.
+
+When tests need resilient substring matching rather than exact output matching,
+they may assert a stable prefix that includes the first alias assignment, such
+as =alias: graph:{G=search=.  They must not assert only =alias: graph:{=.
+Exact-output fixtures should store the full legend line.  JSON arrays that
+model =stdoutContains= are lists of independent line substrings, not a way to
+continue a graph grammar token across elements.
 
 * Owner search example
 
 #+begin_src text
 [search-owner] q=src/classifier.rs scope=tests/unit/classifier/routes alg=bounded-reachability-depth1
+legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next
 alias: graph:{G=search,C=owner,M=owner,P=owner,W=test,R=test}
-G=search:result!query
-C=owner:self!items
-M=owner:src/command/mod.rs!owner
-P=owner:src/protocol.rs
-W=test:wrappers.rs!tests
-R=test:raw_search.rs!tests
+C=owner:self(root)!items
+M=owner:path(src/command/mod.rs)!owner
+P=owner:path(src/protocol.rs)
+W=test:path(wrappers.rs)!tests
+R=test:path(raw_search.rs)!tests
 G>{C:selects,W:covers,R:covers,M:selects,P:selects}
 C>{M:imports,P:decision}
 (W,R)>C:covers
@@ -165,14 +349,14 @@ edges are grouped.  The agent does not have to infer rank from output order.
 * Query item example
 
 #+begin_src text
-[search-query] q=command_source_paths selector=src/tool_action.rs alg=exact-item
+[search-query] q=command_source_paths selector=src/tool_action.rs terms=1 view=seeds alg=exact-item
+legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next
 alias: graph:{G=search,I=item,A=item,L=item,B=item,P=item}
-G=search:result!query
-I=fn:command_source_paths@221:241!code
-A=guard:range_paths.nonempty@224:226!read
-L=loop:path_like_tokens@228:239!read
-B=branch:embedded.empty@230:233
-P=branch:embedded.present@234:238
+I=item:symbol(command_source_paths)@221:241!code
+A=guard:range(range_paths.nonempty@224:226)!read
+L=loop:range(path_like_tokens@228:239)!read
+B=branch:range(embedded.empty@230:233)
+P=branch:range(embedded.present@234:238)
 G>{I:selects,A:contains,L:contains}
 I>{A:return,L:collect}
 L>{B:push_path,P:push_embedded}
@@ -184,27 +368,59 @@ For same-file code graphs, =@start:end= inherits =root=.  Cross-file nodes
 must include a project-root-relative path before the range, for example:
 
 #+begin_src text
-T=test:tests/tool_action.rs@12:30!tests
+T=test:range(tests/tool_action.rs@12:30)!tests
 #+end_src
 
 The compact graph is not an editable source replacement.  It is a reasoning
 surface that tells the agent which item or block to expand through provider
 query/read actions.
 
+Owner-local item search uses the same rule, but the selected owner is context
+and the matched items are the immediate frontier.  The header must preserve the
+fact that this is an owner-local item query rather than an ordinary owner
+frontier:
+
+#+begin_src text
+[search-owner] owner=src/cli/search_output/graph.rs selector=items terms=4 view=seeds alg=seed-frontier
+legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next
+alias: graph:{G=search,O=owner,S=symbol,S2=symbol,S3=symbol,S4=symbol}
+O=owner:path(src/cli/search_output/graph.rs)!owner
+S=symbol:symbol(render_search_graph_packet)@60:93!code
+S2=symbol:symbol(graph_header)@521:548!code
+S3=symbol:symbol(header_mode)@550:555!code
+S4=symbol:symbol(packet_view)@570:582!code
+G>{O:selects,S:matches,S2:matches,S3:matches,S4:matches}
+O>{S:contains,S2:contains,S3:contains,S4:contains}
+rank=S,S2,S3,S4,O frontier=S.code,S2.code,S3.code,S4.code
+omit=code,comments,blank-lines,nonmatching-items
+avoid=repeat-owner,raw-read,full-json
+#+end_src
+
+This avoids a common search loop: after =search owner <path> items --query ...=,
+the selected owner has already been expanded, so =O.owner= is not the next
+frontier action.  The owner remains in =rank= as context, but matched symbols
+rank first and their bounded =code= actions are the recommended follow-up.
+Edges keep the two meanings separate: =G>{S:matches}= says the search matched
+the symbol; =O>{S:contains}= says the owner contains it.  Because the header
+already declares the owner path, same-owner code locators use =@start:end=.
+Cross-owner item locators must use =@path:start:end= so the provider can route
+the next =code= action without a raw file read.
+
 * Prime search example
 
 #+begin_src text
 [search-prime] root=. alg=owner-rank-frontier
+legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next
 alias: graph:{G=search,L=owner,C=owner,T=owner,U=test}
-G=search:result!query
-L=owner:src/lib.rs!owner
-C=owner:src/classifier.rs!owner
-T=owner:src/tool_action.rs!owner
-U=test:tests/unit_test.rs!tests
+L=owner:path(src/lib.rs)!owner
+C=owner:path(src/classifier.rs)!owner
+T=owner:path(src/tool_action.rs)!owner
+U=test:path(tests/unit_test.rs)!tests
 G>{L:selects,C:selects,T:selects,U:covers}
 L>{C:exports,T:exports}
 U>{C:covers,T:covers}
 rank=L,C,T,U frontier=L.owner,C.owner,T.owner,U.tests
+profiles=owner-tests(L,U)
 #+end_src
 
 Prime output still avoids full dependency or callsite expansion.  The graph
@@ -247,9 +463,9 @@ high-impact node and one edge line per source or grouped relation.
 Dense mode may pack aliases and edges with semicolons:
 
 #+begin_src text
-C=owner:self!items;M=owner:src/command/mod.rs!owner;P=owner:src/protocol.rs;W=test:wrappers.rs!tests;R=test:raw_search.rs!tests
+legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next
+C=owner:self(root)!items;M=owner:path(src/command/mod.rs)!owner;P=owner:path(src/protocol.rs);W=test:path(wrappers.rs)!tests;R=test:path(raw_search.rs)!tests
 alias: graph:{G=search,C=owner,M=owner,P=owner,W=test,R=test}
-G=search:result!query
 G>{C:selects,W:covers,R:covers,M:selects,P:selects};C>{M:imports,P:decision};(W,R)>C:covers
 rank=C,W,R,M,P frontier=C.items,M.owner,W.tests,R.tests
 #+end_src
@@ -322,6 +538,8 @@ Before implementing this renderer broadly, verify that the shared schemas can
 represent every prompt-visible fact:
 
 - node alias source: =nodes[]=
+- target roles: =nodes[].targetRole=, =nextActions[].targetRole=, or
+  schema-owned render action specs
 - typed relations: =edges[]=
 - rank algorithm and order: =searchSynthesis=
 - frontier seed actions: =searchSynthesis.seeds= or graph/search synthesis
@@ -338,14 +556,19 @@ The prompt-facing text template is also schema-owned.  Providers must align to
 =schemas/semantic-compact-graph-render.v1.schema.json= for:
 
 - view-native header grammar
+- micro-legend grammar
 - alias line grammar
 - dense alias separator
 - combined =rank=... frontier=...= line
-- source-kind to node/action vocabulary
+- optional =profiles=...= compatibility hint line
+- source-kind to node/target-role/action vocabulary
 
-Rust, TypeScript, Python, and future provider renderers may implement the
-template in their native language, but they should not invent provider-private
-headers or action names.
+Rust, TypeScript, Python, and future language providers must not implement
+independent prompt-facing compact graph renderers.  They construct
+schema-valid packets and invoke the shared renderer through
+=asp graph render=.  Provider-local code may contain only a
+thin process adapter and tests that prove the adapter passes canonical packets
+to the shared renderer without fallback.
 
 * Implementation order
 
@@ -355,14 +578,15 @@ headers or action names.
 3. Maintain =semantic-compact-graph-render.v1= as the shared prompt-facing
    text template.
 4. Add schema tests for any missing fields or template vocabulary drift.
-5. Implement Rust renderer tests that prove prime, owner, query-set, ingest,
+5. Implement shared renderer tests that prove prime, owner, query-set, ingest,
    tests, and item query outputs derive their compact lines from the graph
    feature.
 6. Replace renderer assertions that target independent =|seed= or
    =|synthesis= rows with assertions over =rank=, =frontier=, =avoid=, aliases,
    and grouped edges.
-7. Align TypeScript and Python renderer tests to the same examples and surface
-   classes.
+7. Align Rust, TypeScript, and Python provider integration tests to the same
+   examples and surface classes by asserting packet construction plus shell-out
+   rendering, not provider-local renderer implementations.
 8. Add sandtable scenarios that measure command count, token size, repeated
    search loops, and hook-recovery clarity.
 9. Use real-project traces before widening graph rendering beyond the proven
@@ -371,10 +595,10 @@ headers or action names.
 
 * Current implementation progress
 
-RFC 006 is in active implementation.  The current checkpoint is intentionally
-Rust-first because Rust has the most complete provider tests and is the
-reference path for validating the compact graph prompt surface before
-cross-language parity.
+RFC 006 is in active implementation.  The current checkpoint has completed the
+shared renderer handoff for Rust, TypeScript, and Python.  Rust remains the
+reference path for packet canonicalization tests, while TypeScript and Python
+now use the same shared prompt renderer through shell-out adapters.
 
 Completed:
 
@@ -383,6 +607,9 @@ Completed:
 - [X] =semantic-compact-graph-render.v1= owns the prompt-facing render
   template so providers do not hand-invent headers, aliases, or rank/frontier
   line shapes.
+- [X] =semantic-compact-graph-render.v1= declares =[search-<view>]= as the
+  compact graph packet header for =search --view seeds= so graph output is the
+  default render contract, not an optional feature appended after a search row.
 - [X] Rust =search fzf --query-set ... --view seeds= renders graph-frontier
   output instead of legacy =|seed= / =|synthesis= rows.
 - [X] Rust =--view seeds= renders compact graph output from the search packet
@@ -394,24 +621,48 @@ Completed:
 - [X] Rust prompt-facing seed views for prime, owner, policy, query, ingest,
   fzf, and fzf query-set assert graph output instead of legacy =|seed= /
   =|synthesis= rows.
+- [X] TypeScript and Python =--view seeds= render the schema-owned
+  =alias: graph:{...}= legend, =G>{...}= root edges, aliases, and
+  =rank= / =frontier= without a standalone =G=search:result!query= line.
+- [X] TypeScript and Python sandtable scenarios assert graph output and reject
+  legacy =|seed= / =|synthesis= rows plus the obsolete standalone root alias
+  line.
+- [X] Shared JSON schemas accept graph-derived =searchSynthesis.windowSet=
+  kinds and semantic targets such as =features=, =deps=, =import=, and
+  =feature:cli= without forcing providers to disguise graph frontier facts as
+  project paths.
+- [X] Rust sandtable graph scenarios reject the obsolete standalone root alias
+  line, and graph alias capture replaces legacy =|seed owner:= capture for
+  owner follow-up steps.
+- [X] Rust, TypeScript, and Python adapters can carry =reasoningProfiles= in
+  the search packet so the compact graph renderer can project them into a
+  packet-local =profiles=...= compatibility line, filtered to aliases that are
+  actually rendered in the current graph packet.
+- [X] =asp graph render --packet - --view seeds= is the
+  shared renderer CLI used by language providers under =languages/=.
+- [X] Rust =rs-harness= constructs canonical search packets and shells out to
+  =asp graph render= without depending on the renderer
+  crate.
+- [X] Python =py-harness= constructs canonical search packets and shells out to
+  =asp graph render=; its previous local graph
+  action/template renderer modules were removed rather than kept as fallback.
+- [X] TypeScript =ts-harness= constructs canonical search packets and shells
+  out to =asp graph render=; its previous local graph
+  renderer was replaced by a thin adapter with no fallback path.
 
 In progress:
 
-- [ ] Align TypeScript graph rendering and JSON synthesis fallback to this
-  RFC.
-- [ ] Align Python graph rendering and JSON synthesis fallback to this RFC.
-- [ ] Add sandtable scenarios that assert no prompt-facing =|seed= /
-  =|synthesis= rows for graph-enabled =--view seeds= outputs.
 - [ ] Record real-trigger metrics: command count, packet size, latency,
   repeated-search rate, and whether frontier actions were sufficient.
 
 * Acceptance criteria
 
-- The compact graph output can be parsed by an agent without a legend in small
-  packets.
+- The compact graph output can be parsed by an agent through the schema-owned
+  micro-legend plus =alias: graph:{...}= legend and does not require prose to
+  explain aliases.
 - The output has fewer repeated paths and field names than legacy line protocol.
-- Relation labels, rank order, frontier seed actions, node-local next actions,
-  exact locators, and omission facts remain visible.
+- Target roles, relation labels, rank order, frontier seed actions, node-local
+  next actions, exact locators, and omission facts remain visible.
 - The JSON packet remains the source of truth for graph data.
 - =seed= and =synthesis= are represented through graph aliases, =rank=,
   =frontier=, and =avoid= rather than as independent prompt-facing protocols.

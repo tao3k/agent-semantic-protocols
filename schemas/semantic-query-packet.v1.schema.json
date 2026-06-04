@@ -131,6 +131,20 @@
         "$ref": "#/$defs/match"
       }
     },
+    "matchCount": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Total provider-owned match count before any token-control truncation."
+    },
+    "matchLimit": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Maximum number of matches serialized in this packet."
+    },
+    "matchesTruncated": {
+      "type": "boolean",
+      "description": "Whether matches were truncated for token control. Use exact owner query or a narrower item query when more matches are needed."
+    },
     "truncated": {
       "type": "boolean"
     },
@@ -239,7 +253,7 @@
       "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*):[1-9][0-9]*:[1-9][0-9]*$"
     },
     "patchSafety": {
-      "description": "Whether compact query output is safe only for navigation/read, or is stable enough to feed semantic-agent-protocol ast-patch verification.",
+    "description": "Whether compact query output is safe only for navigation/read, or is stable enough to feed asp ast-patch verification. This never makes compact code a text patch preimage; text patch context must come from exact source reads.",
       "oneOf": [
         {
           "type": "object",
@@ -271,13 +285,14 @@
         {
           "type": "object",
           "additionalProperties": false,
-          "required": [
-            "level",
-            "target",
-            "sourceFingerprint",
-            "parserVersion",
-            "allowedOperations"
-          ],
+      "required": [
+        "level",
+        "target",
+        "preimageSource",
+        "sourceFingerprint",
+        "parserVersion",
+        "allowedOperations"
+      ],
           "properties": {
             "level": {
               "enum": [
@@ -285,12 +300,16 @@
                 "ast-patch-safe"
               ]
             },
-            "target": {
-              "$ref": "#/$defs/patchTarget"
-            },
-            "sourceFingerprint": {
-              "type": "string",
-              "minLength": 1
+        "target": {
+          "$ref": "#/$defs/patchTarget"
+        },
+        "preimageSource": {
+          "const": "exact-read",
+          "description": "Source of the text preimage used for final patch context. Compact projection code is not valid patch context."
+        },
+        "sourceFingerprint": {
+          "type": "string",
+          "minLength": 1
             },
             "parserVersion": {
               "type": "string",
@@ -369,6 +388,29 @@
         "syntax",
         "sourceAuthority"
       ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "compact"
+              }
+            },
+            "required": [
+              "mode"
+            ]
+          },
+          "then": {
+            "required": [
+              "sourceFingerprint",
+              "losslessStructure",
+              "exactRead",
+              "nodes",
+              "renderedNodeIds"
+            ]
+          }
+        }
+      ],
       "properties": {
         "mode": {
           "enum": [
@@ -394,6 +436,53 @@
             "source-range"
           ]
         },
+        "compactSafety": {
+          "type": "object",
+          "description": "Provider-owned safety summary for compact text. Compact renderers may remove syntax trivia, but literal bodies and indentation-sensitive payloads must either be preserved, summarized, or routed to exactRead instead of being whitespace-minified.",
+          "additionalProperties": false,
+          "required": [
+            "literalPolicy",
+            "whitespacePolicy",
+            "exactReadRequired"
+          ],
+          "properties": {
+            "literalPolicy": {
+              "enum": [
+                "preserve",
+                "summarize",
+                "omit"
+              ],
+              "description": "How string, raw string, byte string, char, and equivalent language literal payloads are represented in compact text."
+            },
+            "whitespacePolicy": {
+              "enum": [
+                "syntax-trivia-only",
+                "semantic-outline",
+                "exact-source"
+              ],
+              "description": "Which whitespace may be removed. syntax-trivia-only means provider tokenization proved the whitespace is outside literal payloads and indentation-sensitive source regions."
+            },
+            "normalization": {
+              "enum": [
+                "none",
+                "formatter-assisted"
+              ],
+              "description": "Whether a provider used a language/workspace formatter as an opaque normalization safety stage. Formatter name, version, and style remain provider-owned metadata outside the shared enum."
+            },
+            "alignment": {
+              "enum": [
+                "not-required",
+                "parser-roundtrip",
+                "formatter-roundtrip"
+              ],
+              "description": "Strongest structural alignment check completed before trusting the compact text."
+            },
+            "exactReadRequired": {
+              "type": "boolean",
+              "description": "Whether agents must expand exactRead before relying on literal payloads, original indentation, comments, or text-patch context."
+            }
+          }
+        },
         "sourceFingerprint": {
           "type": "string",
           "description": "Provider-owned fingerprint for the source slice used to build this projection. Agents use this to detect stale compact projections before editing.",
@@ -411,8 +500,25 @@
     "nodes": {
       "type": "array",
       "description": "Parser-owned reasoning nodes that generated the compact text. Nodes are the reverse-navigation surface from projection back to exact source blocks.",
+      "uniqueItems": true,
       "items": {
         "$ref": "#/$defs/projectionNode"
+      }
+    },
+    "renderedNodeIds": {
+      "type": "array",
+      "description": "Projection node ids that own a primary rendered compact row. A node id may appear at most once here; repeated mentions in labels, edges, omitted facts, or expand actions are references, not duplicate rendered rows.",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-zA-Z0-9_.:-]+$"
+      }
+    },
+    "renderedRows": {
+      "type": "array",
+      "description": "Prompt-facing compact rows, each bound to exactly one parser-owned projection node. When matches[].code is present, providers join renderedRows[].text with newlines to produce that code string.",
+      "items": {
+        "$ref": "#/$defs/projectionRenderedRow"
       }
     },
     "nodeCount": {
@@ -428,6 +534,20 @@
     "nodesTruncated": {
       "type": "boolean",
       "description": "Whether projection nodes were truncated for token control. Use exactRead or expandActions for full source navigation."
+    },
+    "expandActionCount": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Total provider-owned expand action count before any token-control truncation."
+    },
+    "expandActionLimit": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Maximum number of expand actions serialized in this packet."
+    },
+    "expandActionsTruncated": {
+      "type": "boolean",
+      "description": "Whether expand actions were truncated for token control. Use exactRead or query the selected owner when more expansion is needed."
     },
     "omitted": {
       "type": "array",
@@ -450,19 +570,28 @@
       "additionalProperties": false,
       "required": [
         "id",
+        "nativeId",
         "kind",
+        "role",
         "label",
-        "read"
+        "depth",
+        "read",
+        "structuralFingerprint"
       ],
       "properties": {
-        "id": {
-          "type": "string",
-          "pattern": "^[a-zA-Z0-9_.:-]+$"
-        },
-        "parentId": {
-          "type": "string",
-          "pattern": "^[a-zA-Z0-9_.:-]+$"
-        },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-zA-Z0-9_.:-]+$"
+    },
+    "nativeId": {
+      "type": "string",
+      "description": "Provider-owned native parser identity for this AST node when available. This is diagnostic metadata; the packet-level projection node id remains the shared reference key.",
+      "minLength": 1
+    },
+    "parentId": {
+      "type": "string",
+      "pattern": "^[a-zA-Z0-9_.:-]+$"
+    },
         "kind": {
           "type": "string",
           "minLength": 1
@@ -487,13 +616,18 @@
           "type": "integer",
           "minimum": 0
         },
-        "read": {
-          "type": "string",
-          "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*):[1-9][0-9]*:[1-9][0-9]*$"
-        },
-        "flags": {
-          "type": "array",
-          "items": {
+    "read": {
+      "type": "string",
+      "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*):[1-9][0-9]*:[1-9][0-9]*$"
+    },
+    "structuralFingerprint": {
+      "type": "string",
+      "description": "Provider-owned structural fingerprint used to diagnose parser/formatter alignment and projection identity stability.",
+      "minLength": 1
+    },
+    "flags": {
+      "type": "array",
+      "items": {
             "enum": [
             "branch",
             "loop",
@@ -516,6 +650,43 @@
         }
       }
     },
+    "projectionRenderedRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "nodeId",
+        "rowKind",
+        "text"
+      ],
+      "properties": {
+        "nodeId": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_.:-]+$"
+        },
+        "rowKind": {
+          "enum": [
+            "declaration",
+            "mutation",
+            "call",
+            "control-flow",
+            "terminal",
+            "effect",
+            "field",
+            "omission",
+            "unknown"
+          ]
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1
+        },
+        "semanticWeight": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Provider-owned row weight for token-cost and residue metrics."
+        }
+      }
+    },
     "projectionOmission": {
       "type": "object",
       "additionalProperties": false,
@@ -532,30 +703,93 @@
           "type": "string",
           "minLength": 1
         },
-        "count": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "read": {
-          "type": "string",
-          "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*):[1-9][0-9]*:[1-9][0-9]*$"
+    "count": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "nodeId": {
+      "type": "string",
+      "description": "Projection node id this omitted fact belongs to, when the omission is node-local.",
+      "pattern": "^[a-zA-Z0-9_.:-]+$"
+    },
+    "read": {
+      "type": "string",
+      "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*):[1-9][0-9]*:[1-9][0-9]*$"
         }
       }
     },
     "expandAction": {
       "type": "object",
+      "description": "Projection-local expansion action. Routing actions such as owner-local name listing are query/candidate output, not compact AST projection actions.",
       "additionalProperties": false,
       "required": [
         "kind",
         "target"
       ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "exact-read"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "read"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "hot-block"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "read"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "node-query"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+      "then": {
+        "required": [
+          "argv"
+        ],
+        "not": {
+          "required": [
+            "read"
+          ]
+        }
+      }
+    }
+  ],
       "properties": {
         "kind": {
           "enum": [
             "exact-read",
             "node-query",
-            "hot-block",
-            "owner-names"
+            "hot-block"
           ]
         },
         "target": {
@@ -568,8 +802,10 @@
         },
         "argv": {
           "type": "array",
+          "minItems": 1,
           "items": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1
           }
         },
         "reason": {

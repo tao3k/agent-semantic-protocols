@@ -21,9 +21,9 @@ snapshots intentionally omit `matches[].code`; compact code lives in a sibling
 code expectations keep language identity without JSON escaping or duplicate
 maintenance. The runner only wraps provider commands and compares artifacts;
 compact parsing remains owned by `rs-harness`, `ts-harness`, or `py-harness`.
-Token-cost snapshots use `tiktoken:o200k_base` by default; pass
-`--tokenizer byte` only for deterministic byte-count smoke checks. Refresh
-expected output with:
+Token-cost snapshots use the deterministic `byte` tokenizer by default. Pass a
+different `--tokenizer` only when intentionally migrating the full expected
+token-cost baseline. Refresh expected output with:
 
 ```sh
 uv run parser-compact-snapshots --case <case-id> --refresh

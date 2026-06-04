@@ -89,7 +89,7 @@ and `TypeScriptReasoningTree`.
   matching exported symbol owners.
 - `search import <query>` renders import/reexport owner edges grouped by owner.
 - `search tests <owner-or-path>` renders test owners that import a source owner.
-- `search text <query>` renders owner-grouped path/export matches.
+- `search fzf <query>` renders owner-grouped path/export matches.
 - `search ingest` detects stdin shape (`rg -n`, vimgrep, path list,
   diff paths, JSONL, or unknown) and returns owner-grouped hits.
 - `check` delegates to the existing compact harness renderer or JSON report.

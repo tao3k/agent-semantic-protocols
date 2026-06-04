@@ -156,7 +156,7 @@ It preserved compact grouping and emitted schema-valid JSON.
 ** Text Search Follow-Up
 
 #+begin_src shell
-node dist/src/cli/main.js search text semantic-search-packet .
+node dist/src/cli/main.js search fzf semantic-search-packet .
 #+end_src
 
 First follow-up implementation result:
@@ -179,7 +179,7 @@ Second follow-up implementation result:
 |next owner:src/cli/protocol.ts,owner:src/cli/semantic-language.ts,owner:src/cli/semantic-search/build.ts,owner:src/cli/semantic-search/types.ts,owner:tests/unit/cli.test.ts
 #+end_src
 
-Result: =search text= now covers parser-visible TypeScript source text, owner
+Result: =search fzf= now covers parser-visible TypeScript source text, owner
 paths, and exports.  Docs, schema JSON, generated artifacts, and other
 non-parser text remain an external candidate expansion lane through
 =rg | search ingest=.
@@ -227,7 +227,7 @@ split: implementation/test gates pass, while agent-facing advice remains visible
    role/layer metadata, validity, line count, diagnostics, and semantic
    next-actions.
 
-5. =search text= now indexes parser-visible TypeScript source text, including
+5. =search fzf= now indexes parser-visible TypeScript source text, including
    test files selected by the project, while docs/schema JSON and other
    non-parser text remain =rg | search ingest= candidates.
 
@@ -247,7 +247,7 @@ capabilities instead of relying on packet notes:
 2. Current TypeScript provider behavior:
    - parser-visible modules outside the reasoning graph resolve as module owners
    - existing non-parser paths resolve as path-only owners
-   - parser-visible source text is searchable through search text
+   - parser-visible source text is searchable through search fzf
    - non-parser text misses emit explicit next=ingest guidance
 
 3. Agent guide:

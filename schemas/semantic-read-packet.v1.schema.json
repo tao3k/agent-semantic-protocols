@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://agent-semantic-protocols.local/schemas/semantic-read-packet.v1.schema.json",
   "title": "Semantic Read Packet",
-  "description": "Provider-owned parser query packet for bounded exact source windows. This is not a root hook command surface.",
+  "description": "Provider-owned parser query packet for bounded exact source windows and actionable read-plan frontiers. This is not a root hook command surface.",
   "type": "object",
   "additionalProperties": false,
   "oneOf": [
@@ -266,13 +266,13 @@
         "mode",
         "code",
         "reason",
-        "ranges",
-        "symbols"
+        "frontier",
+        "avoid"
       ],
       "properties": {
         "mode": {
           "enum": [
-            "range-outline",
+            "range-frontier",
             "search-repair"
           ]
         },
@@ -295,6 +295,13 @@
             "$ref": "#/$defs/readPlanRange"
           }
         },
+        "windows": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/readPlanWindow"
+          }
+        },
         "symbols": {
           "type": "array",
           "minItems": 1,
@@ -302,11 +309,87 @@
             "$ref": "#/$defs/readPlanSymbol"
           }
         },
+        "frontier": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/readPlanFrontier"
+          }
+        },
+        "avoid": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "enum": [
+              "repeat-wide-read",
+              "manual-window-scan",
+              "raw-read",
+              "full-json"
+            ]
+          }
+        },
+        "omit": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "code",
+              "comments",
+              "blank-lines",
+              "nonmatching-lines"
+            ]
+          }
+        },
+        "maxWindowLines": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "algorithm": {
+          "enum": [
+            "symbol-frontier",
+            "range-split",
+            "query-window-frontier",
+            "search-repair"
+          ]
+        },
         "nextActions": {
           "type": "array",
           "items": {
             "$ref": "#/$defs/readPlanNextAction"
           }
+        }
+      }
+    },
+    "readPlanWindow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "lineRange",
+        "read",
+        "lineCount",
+        "reason"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/projectPath"
+        },
+        "lineRange": {
+          "$ref": "#/$defs/lineRange"
+        },
+        "read": {
+          "$ref": "#/$defs/sourceLocator"
+        },
+        "lineCount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "reason": {
+          "enum": [
+            "split",
+            "matching-lines",
+            "item-remainder",
+            "low-signal-repair"
+          ]
         }
       }
     },
@@ -376,6 +459,74 @@
           "$ref": "#/$defs/sourceLocator"
         }
       }
+    },
+    "readPlanFrontier": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "action",
+        "rank",
+        "reason"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9]*$"
+        },
+        "kind": {
+          "enum": [
+            "symbol",
+            "window",
+            "range",
+            "query",
+            "search"
+          ]
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1
+        },
+        "read": {
+          "$ref": "#/$defs/sourceLocator"
+        },
+        "action": {
+          "enum": [
+            "code",
+            "query",
+            "search",
+            "outline"
+          ]
+        },
+        "rank": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "reason": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "code"
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "required": [
+              "read"
+            ]
+          }
+        }
+      ]
     },
     "readPlanNextAction": {
       "type": "object",

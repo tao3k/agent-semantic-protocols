@@ -43,48 +43,43 @@
             "kind": "exact-read",
             "read": "src/sessions.py:446:446",
             "reason": "expand assign node before editing",
-            "target": "Session:15"
+            "target": "Session:assign:src-sessions.py-446-446:d58c043a"
           },
           {
             "kind": "exact-read",
             "read": "src/sessions.py:450:450",
             "reason": "expand assign node before editing",
-            "target": "Session:16"
+            "target": "Session:assign:src-sessions.py-450-450:1fc68186"
           },
           {
             "kind": "exact-read",
             "read": "src/sessions.py:455:455",
             "reason": "expand assign node before editing",
-            "target": "Session:17"
+            "target": "Session:assign:src-sessions.py-455-455:a6b71cc"
           },
           {
             "kind": "exact-read",
             "read": "src/sessions.py:458:458",
             "reason": "expand assign node before editing",
-            "target": "Session:18"
+            "target": "Session:assign:src-sessions.py-458-458:4cae0d9c"
           },
           {
             "kind": "exact-read",
             "read": "src/sessions.py:463:463",
             "reason": "expand assign node before editing",
-            "target": "Session:19"
+            "target": "Session:assign:src-sessions.py-463-463:928b033e"
           },
           {
             "kind": "exact-read",
             "read": "src/sessions.py:466:466",
             "reason": "expand assign node before editing",
-            "target": "Session:20"
+            "target": "Session:assign:src-sessions.py-466-466:48a9eb8"
           },
           {
             "kind": "exact-read",
             "read": "src/sessions.py:478:478",
             "reason": "expand assign node before editing",
-            "target": "Session:21"
-          },
-          {
-            "kind": "owner-names",
-            "reason": "return owner-local item names without code windows",
-            "target": "src/sessions.py"
+            "target": "Session:assign:src-sessions.py-478-478:f1e6c1e5"
           }
         ],
         "losslessStructure": false,
@@ -97,285 +92,359 @@
             "id": "Session",
             "kind": "class",
             "label": "class Session",
+            "nativeId": "python:class:src-sessions.py-395-905:8c36343f",
             "read": "src/sessions.py:395:905",
-            "role": "declaration"
+            "role": "declaration",
+            "structuralFingerprint": "class:declaration:src-sessions.py-395-905:8c36343f"
           },
           {
             "depth": 1,
             "flags": [
               "field"
             ],
-            "id": "Session:1",
+            "id": "Session:field:src-sessions.py-414-414:bc26361f",
             "kind": "field",
             "label": "field headers: CaseInsensitiveDict[str]",
+            "nativeId": "python:field:src-sessions.py-414-414:bc26361f",
             "parentId": "Session",
             "read": "src/sessions.py:414:414",
-            "role": "field"
+            "role": "field",
+            "structuralFingerprint": "field:field:src-sessions.py-414-414:bc26361f"
           },
           {
             "depth": 1,
             "flags": [
               "field"
             ],
-            "id": "Session:2",
+            "id": "Session:field:src-sessions.py-415-415:e6dd8f76",
             "kind": "field",
             "label": "field auth: _t.AuthType",
+            "nativeId": "python:field:src-sessions.py-415-415:e6dd8f76",
             "parentId": "Session",
             "read": "src/sessions.py:415:415",
-            "role": "field"
+            "role": "field",
+            "structuralFingerprint": "field:field:src-sessions.py-415-415:e6dd8f76"
           },
           {
             "depth": 1,
             "flags": [
               "field"
             ],
-            "id": "Session:3",
+            "id": "Session:field:src-sessions.py-416-416:db9a4593",
             "kind": "field",
             "label": "field proxies: dict[str, str]",
+            "nativeId": "python:field:src-sessions.py-416-416:db9a4593",
             "parentId": "Session",
             "read": "src/sessions.py:416:416",
-            "role": "field"
+            "role": "field",
+            "structuralFingerprint": "field:field:src-sessions.py-416-416:db9a4593"
           },
           {
             "depth": 1,
             "flags": [
               "field"
             ],
-            "id": "Session:4",
+            "id": "Session:field:src-sessions.py-417-417:18e399f8",
             "kind": "field",
             "label": "field hooks: dict[str, list[_t.HookType]]",
+            "nativeId": "python:field:src-sessions.py-417-417:18e399f8",
             "parentId": "Session",
             "read": "src/sessions.py:417:417",
-            "role": "field"
+            "role": "field",
+            "structuralFingerprint": "field:field:src-sessions.py-417-417:18e399f8"
           },
           {
             "depth": 1,
             "flags": [
               "field"
             ],
-            "id": "Session:5",
+            "id": "Session:field:src-sessions.py-418-418:ddeca024",
             "kind": "field",
             "label": "field params: MutableMapping[str, Any]",
+            "nativeId": "python:field:src-sessions.py-418-418:ddeca024",
             "parentId": "Session",
             "read": "src/sessions.py:418:418",
-            "role": "field"
+            "role": "field",
+            "structuralFingerprint": "field:field:src-sessions.py-418-418:ddeca024"
           },
           {
             "depth": 1,
             "flags": [
               "field"
             ],
-            "id": "Session:6",
+            "id": "Session:field:src-sessions.py-419-419:cbefb003",
             "kind": "field",
             "label": "field stream: bool",
+            "nativeId": "python:field:src-sessions.py-419-419:cbefb003",
             "parentId": "Session",
             "read": "src/sessions.py:419:419",
-            "role": "field"
+            "role": "field",
+            "structuralFingerprint": "field:field:src-sessions.py-419-419:cbefb003"
           },
           {
             "depth": 1,
             "flags": [
               "field"
             ],
-            "id": "Session:7",
+            "id": "Session:field:src-sessions.py-420-420:b7fa6cc0",
             "kind": "field",
             "label": "field verify: _t.VerifyType",
+            "nativeId": "python:field:src-sessions.py-420-420:b7fa6cc0",
             "parentId": "Session",
             "read": "src/sessions.py:420:420",
-            "role": "field"
+            "role": "field",
+            "structuralFingerprint": "field:field:src-sessions.py-420-420:b7fa6cc0"
           },
           {
             "depth": 1,
             "flags": [
               "field"
             ],
-            "id": "Session:8",
+            "id": "Session:field:src-sessions.py-421-421:619dfbce",
             "kind": "field",
             "label": "field cert: _t.CertType",
+            "nativeId": "python:field:src-sessions.py-421-421:619dfbce",
             "parentId": "Session",
             "read": "src/sessions.py:421:421",
-            "role": "field"
+            "role": "field",
+            "structuralFingerprint": "field:field:src-sessions.py-421-421:619dfbce"
           },
           {
             "depth": 1,
             "flags": [
               "field"
             ],
-            "id": "Session:9",
+            "id": "Session:field:src-sessions.py-422-422:68b07396",
             "kind": "field",
             "label": "field max_redirects: int",
+            "nativeId": "python:field:src-sessions.py-422-422:68b07396",
             "parentId": "Session",
             "read": "src/sessions.py:422:422",
-            "role": "field"
+            "role": "field",
+            "structuralFingerprint": "field:field:src-sessions.py-422-422:68b07396"
           },
           {
             "depth": 1,
             "flags": [
               "field"
             ],
-            "id": "Session:10",
+            "id": "Session:field:src-sessions.py-423-423:7046d3d7",
             "kind": "field",
             "label": "field trust_env: bool",
+            "nativeId": "python:field:src-sessions.py-423-423:7046d3d7",
             "parentId": "Session",
             "read": "src/sessions.py:423:423",
-            "role": "field"
+            "role": "field",
+            "structuralFingerprint": "field:field:src-sessions.py-423-423:7046d3d7"
           },
           {
             "depth": 1,
             "flags": [
               "field"
             ],
-            "id": "Session:11",
+            "id": "Session:field:src-sessions.py-424-424:e0911fa7",
             "kind": "field",
             "label": "field cookies: RequestsCookieJar",
+            "nativeId": "python:field:src-sessions.py-424-424:e0911fa7",
             "parentId": "Session",
             "read": "src/sessions.py:424:424",
-            "role": "field"
+            "role": "field",
+            "structuralFingerprint": "field:field:src-sessions.py-424-424:e0911fa7"
           },
           {
             "depth": 1,
             "flags": [
               "field"
             ],
-            "id": "Session:12",
+            "id": "Session:field:src-sessions.py-425-425:87674ff4",
             "kind": "field",
             "label": "field adapters: MutableMapping[str, BaseAdapter]",
+            "nativeId": "python:field:src-sessions.py-425-425:87674ff4",
             "parentId": "Session",
             "read": "src/sessions.py:425:425",
-            "role": "field"
+            "role": "field",
+            "structuralFingerprint": "field:field:src-sessions.py-425-425:87674ff4"
           },
           {
             "depth": 1,
             "flags": [
               "field"
             ],
-            "id": "Session:13",
+            "id": "Session:field:src-sessions.py-427-440:8d03a880",
             "kind": "field",
             "label": "field __attrs__: list[str]",
+            "nativeId": "python:field:src-sessions.py-427-440:8d03a880",
             "parentId": "Session",
             "read": "src/sessions.py:427:440",
-            "role": "field"
+            "role": "field",
+            "structuralFingerprint": "field:field:src-sessions.py-427-440:8d03a880"
           },
           {
             "depth": 1,
-            "id": "Session:14",
+            "id": "Session:function:src-sessions.py-442-503:49eb366",
             "kind": "function",
             "label": "def __init__",
+            "nativeId": "python:function:src-sessions.py-442-503:49eb366",
             "parentId": "Session",
             "read": "src/sessions.py:442:503",
-            "role": "declaration"
+            "role": "declaration",
+            "structuralFingerprint": "function:declaration:src-sessions.py-442-503:49eb366"
           },
           {
             "depth": 2,
             "flags": [
               "mutation"
             ],
-            "id": "Session:15",
+            "id": "Session:assign:src-sessions.py-446-446:d58c043a",
             "kind": "assign",
             "label": "assign self.headers",
-            "parentId": "Session:14",
+            "nativeId": "python:assign:src-sessions.py-446-446:d58c043a",
+            "parentId": "Session:function:src-sessions.py-442-503:49eb366",
             "read": "src/sessions.py:446:446",
-            "role": "mutation"
+            "role": "mutation",
+            "structuralFingerprint": "assign:mutation:src-sessions.py-446-446:d58c043a"
           },
           {
             "depth": 2,
             "flags": [
               "mutation"
             ],
-            "id": "Session:16",
+            "id": "Session:assign:src-sessions.py-450-450:1fc68186",
             "kind": "assign",
             "label": "assign self.auth",
-            "parentId": "Session:14",
+            "nativeId": "python:assign:src-sessions.py-450-450:1fc68186",
+            "parentId": "Session:function:src-sessions.py-442-503:49eb366",
             "read": "src/sessions.py:450:450",
-            "role": "mutation"
+            "role": "mutation",
+            "structuralFingerprint": "assign:mutation:src-sessions.py-450-450:1fc68186"
           },
           {
             "depth": 2,
             "flags": [
               "mutation"
             ],
-            "id": "Session:17",
+            "id": "Session:assign:src-sessions.py-455-455:a6b71cc",
             "kind": "assign",
             "label": "assign self.proxies",
-            "parentId": "Session:14",
+            "nativeId": "python:assign:src-sessions.py-455-455:a6b71cc",
+            "parentId": "Session:function:src-sessions.py-442-503:49eb366",
             "read": "src/sessions.py:455:455",
-            "role": "mutation"
+            "role": "mutation",
+            "structuralFingerprint": "assign:mutation:src-sessions.py-455-455:a6b71cc"
           },
           {
             "depth": 2,
             "flags": [
               "mutation"
             ],
-            "id": "Session:18",
+            "id": "Session:assign:src-sessions.py-458-458:4cae0d9c",
             "kind": "assign",
             "label": "assign self.hooks",
-            "parentId": "Session:14",
+            "nativeId": "python:assign:src-sessions.py-458-458:4cae0d9c",
+            "parentId": "Session:function:src-sessions.py-442-503:49eb366",
             "read": "src/sessions.py:458:458",
-            "role": "mutation"
+            "role": "mutation",
+            "structuralFingerprint": "assign:mutation:src-sessions.py-458-458:4cae0d9c"
           },
           {
             "depth": 2,
             "flags": [
               "mutation"
             ],
-            "id": "Session:19",
+            "id": "Session:assign:src-sessions.py-463-463:928b033e",
             "kind": "assign",
             "label": "assign self.params",
-            "parentId": "Session:14",
+            "nativeId": "python:assign:src-sessions.py-463-463:928b033e",
+            "parentId": "Session:function:src-sessions.py-442-503:49eb366",
             "read": "src/sessions.py:463:463",
-            "role": "mutation"
+            "role": "mutation",
+            "structuralFingerprint": "assign:mutation:src-sessions.py-463-463:928b033e"
           },
           {
             "depth": 2,
             "flags": [
               "mutation"
             ],
-            "id": "Session:20",
+            "id": "Session:assign:src-sessions.py-466-466:48a9eb8",
             "kind": "assign",
             "label": "assign self.stream",
-            "parentId": "Session:14",
+            "nativeId": "python:assign:src-sessions.py-466-466:48a9eb8",
+            "parentId": "Session:function:src-sessions.py-442-503:49eb366",
             "read": "src/sessions.py:466:466",
-            "role": "mutation"
+            "role": "mutation",
+            "structuralFingerprint": "assign:mutation:src-sessions.py-466-466:48a9eb8"
           },
           {
             "depth": 2,
             "flags": [
               "mutation"
             ],
-            "id": "Session:21",
+            "id": "Session:assign:src-sessions.py-478-478:f1e6c1e5",
             "kind": "assign",
             "label": "assign self.verify",
-            "parentId": "Session:14",
+            "nativeId": "python:assign:src-sessions.py-478-478:f1e6c1e5",
+            "parentId": "Session:function:src-sessions.py-442-503:49eb366",
             "read": "src/sessions.py:478:478",
-            "role": "mutation"
+            "role": "mutation",
+            "structuralFingerprint": "assign:mutation:src-sessions.py-478-478:f1e6c1e5"
           },
           {
             "depth": 2,
             "flags": [
               "mutation"
             ],
-            "id": "Session:22",
+            "id": "Session:assign:src-sessions.py-482-482:8f54797a",
             "kind": "assign",
             "label": "assign self.cert",
-            "parentId": "Session:14",
+            "nativeId": "python:assign:src-sessions.py-482-482:8f54797a",
+            "parentId": "Session:function:src-sessions.py-442-503:49eb366",
             "read": "src/sessions.py:482:482",
-            "role": "mutation"
+            "role": "mutation",
+            "structuralFingerprint": "assign:mutation:src-sessions.py-482-482:8f54797a"
           },
           {
             "depth": 2,
             "flags": [
               "mutation"
             ],
-            "id": "Session:23",
+            "id": "Session:assign:src-sessions.py-488-488:ffe72718",
             "kind": "assign",
             "label": "assign self.max_redirects",
-            "parentId": "Session:14",
+            "nativeId": "python:assign:src-sessions.py-488-488:ffe72718",
+            "parentId": "Session:function:src-sessions.py-442-503:49eb366",
             "read": "src/sessions.py:488:488",
-            "role": "mutation"
+            "role": "mutation",
+            "structuralFingerprint": "assign:mutation:src-sessions.py-488-488:ffe72718"
           }
         ],
         "nodesTruncated": true,
         "omitted": [],
+        "renderedNodeIds": [
+          "Session",
+          "Session:field:src-sessions.py-414-414:bc26361f",
+          "Session:field:src-sessions.py-415-415:e6dd8f76",
+          "Session:field:src-sessions.py-416-416:db9a4593",
+          "Session:field:src-sessions.py-417-417:18e399f8",
+          "Session:field:src-sessions.py-418-418:ddeca024",
+          "Session:field:src-sessions.py-419-419:cbefb003",
+          "Session:field:src-sessions.py-420-420:b7fa6cc0",
+          "Session:field:src-sessions.py-421-421:619dfbce",
+          "Session:field:src-sessions.py-422-422:68b07396",
+          "Session:field:src-sessions.py-423-423:7046d3d7",
+          "Session:field:src-sessions.py-424-424:e0911fa7",
+          "Session:field:src-sessions.py-425-425:87674ff4",
+          "Session:field:src-sessions.py-427-440:8d03a880",
+          "Session:function:src-sessions.py-442-503:49eb366",
+          "Session:assign:src-sessions.py-446-446:d58c043a",
+          "Session:assign:src-sessions.py-450-450:1fc68186",
+          "Session:assign:src-sessions.py-455-455:a6b71cc",
+          "Session:assign:src-sessions.py-458-458:4cae0d9c",
+          "Session:assign:src-sessions.py-463-463:928b033e",
+          "Session:assign:src-sessions.py-466-466:48a9eb8",
+          "Session:assign:src-sessions.py-478-478:f1e6c1e5",
+          "Session:assign:src-sessions.py-482-482:8f54797a",
+          "Session:assign:src-sessions.py-488-488:ffe72718"
+        ],
         "sourceAuthority": "native-parser",
         "sourceFingerprint": "src/sessions.py:395:905:3310:56e19b04",
         "syntax": "semantic-outline"

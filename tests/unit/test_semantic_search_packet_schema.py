@@ -13,7 +13,7 @@ from jsonschema import Draft202012Validator
 _PROTOCOL_REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
-def semantic_search_minimal_packet() -> dict[str, object]:
+def _semantic_search_minimal_packet() -> dict[str, object]:
     return {
         "schemaId": "agent.semantic-protocols.semantic-search-packet",
         "schemaVersion": "1",
@@ -81,10 +81,10 @@ class SemanticSearchPacketSchemaTests(unittest.TestCase):
         return [error.message for error in self.validator.iter_errors(packet)]
 
     def test_project_root_relative_paths_are_valid(self) -> None:
-        self.assertEqual([], self.validation_errors(semantic_search_minimal_packet()))
+        self.assertEqual([], self.validation_errors(_semantic_search_minimal_packet()))
 
     def test_root_dot_path_token_is_valid(self) -> None:
-        packet = semantic_search_minimal_packet()
+        packet = _semantic_search_minimal_packet()
         packet["owners"] = [
             {
                 "path": ".",
@@ -99,7 +99,7 @@ class SemanticSearchPacketSchemaTests(unittest.TestCase):
         self.assertEqual([], self.validation_errors(packet))
 
     def test_rank_prefixed_owner_paths_are_rejected(self) -> None:
-        packet = semantic_search_minimal_packet()
+        packet = _semantic_search_minimal_packet()
         packet["owners"] = [
             {
                 "path": "0:src/components/WorkflowExecution.tsx",
@@ -114,27 +114,110 @@ class SemanticSearchPacketSchemaTests(unittest.TestCase):
         self.assertTrue(any("does not match" in message for message in errors))
 
     def test_relative_escape_location_paths_are_rejected(self) -> None:
-        packet = semantic_search_minimal_packet()
+        packet = _semantic_search_minimal_packet()
         packet["hits"] = copy.deepcopy(packet["hits"])
-        packet["hits"][0]["location"]["path"] = "../src/components/WorkflowExecution.tsx"
+        packet["hits"][0]["location"]["path"] = (
+            "../src/components/WorkflowExecution.tsx"
+        )
 
         errors = self.validation_errors(packet)
 
         self.assertTrue(any("does not match" in message for message in errors))
 
     def test_path_query_terms_are_canonical_paths(self) -> None:
-        packet = semantic_search_minimal_packet()
+        packet = _semantic_search_minimal_packet()
         packet["querySet"] = [
-            {"value": "0:src/components/WorkflowExecution.tsx", "kind": "path", "selector": "exact"}
+            {
+                "value": "0:src/components/WorkflowExecution.tsx",
+                "kind": "path",
+                "selector": "exact",
+            }
         ]
 
         errors = self.validation_errors(packet)
 
         self.assertTrue(any("does not match" in message for message in errors))
 
+    def test_window_set_accepts_graph_frontier_kinds(self) -> None:
+        packet = _semantic_search_minimal_packet()
+        packet["searchSynthesis"] = {
+            "algorithm": "owner-rank-frontier",
+            "scope": "prime",
+            "windowSet": [
+                {"kind": "features", "target": "feature:cli"},
+                {"kind": "deps", "target": "serde"},
+                {"kind": "import", "target": "src/parser.rs"},
+            ],
+        }
 
+        self.assertEqual([], self.validation_errors(packet))
 
+    def test_search_synthesis_seed_accepts_canonical_read_locator(self) -> None:
+        packet = _semantic_search_minimal_packet()
+        packet["searchSynthesis"] = {
+            "algorithm": "owner-rank-frontier",
+            "scope": "owner",
+            "seeds": [
+                {
+                    "kind": "symbol",
+                    "target": "SemanticSearchOwnerFallback",
+                    "targetRole": "symbol",
+                    "read": "src/cli/semantic-search/owner-fallback.ts:1:5",
+                }
+            ],
+        }
 
+        self.assertEqual([], self.validation_errors(packet))
+
+    def test_search_synthesis_seed_rejects_locator_alias(self) -> None:
+        packet = _semantic_search_minimal_packet()
+        packet["searchSynthesis"] = {
+            "algorithm": "owner-rank-frontier",
+            "scope": "owner",
+            "seeds": [
+                {
+                    "kind": "symbol",
+                    "target": "SemanticSearchOwnerFallback",
+                    "targetRole": "symbol",
+                    "locator": "src/cli/semantic-search/owner-fallback.ts:1:5",
+                }
+            ],
+        }
+
+        errors = self.validation_errors(packet)
+
+        self.assertTrue(
+            any("Additional properties are not allowed" in message for message in errors)
+        )
+
+    def test_unknown_window_set_kind_is_rejected(self) -> None:
+        packet = _semantic_search_minimal_packet()
+        packet["searchSynthesis"] = {
+            "algorithm": "owner-rank-frontier",
+            "scope": "prime",
+            "windowSet": [{"kind": "maybe", "target": "src/lib.rs"}],
+        }
+
+        errors = self.validation_errors(packet)
+
+        self.assertTrue(any("'maybe' is not one of" in message for message in errors))
+
+    def test_window_set_display_locators_are_rejected(self) -> None:
+        packet = _semantic_search_minimal_packet()
+        packet["searchSynthesis"] = {
+            "algorithm": "owner-rank-frontier",
+            "scope": "prime",
+            "windowSet": [{"kind": "read", "target": "src/lib.rs:12"}],
+        }
+
+        errors = self.validation_errors(packet)
+
+        self.assertTrue(
+            any(
+                "is not valid under any of the given schemas" in message
+                for message in errors
+            )
+        )
 
 
 if __name__ == "__main__":

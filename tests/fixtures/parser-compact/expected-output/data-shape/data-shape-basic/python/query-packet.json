@@ -43,24 +43,19 @@
             "kind": "exact-read",
             "read": "src/user_summary.py:13:14",
             "reason": "expand if node before editing",
-            "target": "UserSummary:5"
+            "target": "UserSummary:if:src-user_summary.py-13-14:36c77398"
           },
           {
             "kind": "exact-read",
             "read": "src/user_summary.py:14:14",
             "reason": "expand return node before editing",
-            "target": "UserSummary:6"
+            "target": "UserSummary:return:src-user_summary.py-14-14:5b26e2d3"
           },
           {
             "kind": "exact-read",
             "read": "src/user_summary.py:15:15",
             "reason": "expand return node before editing",
-            "target": "UserSummary:7"
-          },
-          {
-            "kind": "owner-names",
-            "reason": "return owner-local item names without code windows",
-            "target": "src/user_summary.py"
+            "target": "UserSummary:return:src-user_summary.py-15-15:31c1ce80"
           }
         ],
         "losslessStructure": true,
@@ -73,93 +68,169 @@
             "id": "UserSummary",
             "kind": "class",
             "label": "class UserSummary",
+            "nativeId": "python:class:src-user_summary.py-7-15:3ddd3166",
             "read": "src/user_summary.py:7:15",
-            "role": "declaration"
+            "role": "declaration",
+            "structuralFingerprint": "class:declaration:src-user_summary.py-7-15:3ddd3166"
           },
           {
             "depth": 1,
             "flags": [
               "field"
             ],
-            "id": "UserSummary:1",
+            "id": "UserSummary:field:src-user_summary.py-8-8:48800591",
             "kind": "field",
             "label": "field user_id: int",
+            "nativeId": "python:field:src-user_summary.py-8-8:48800591",
             "parentId": "UserSummary",
             "read": "src/user_summary.py:8:8",
-            "role": "field"
+            "role": "field",
+            "structuralFingerprint": "field:field:src-user_summary.py-8-8:48800591"
           },
           {
             "depth": 1,
             "flags": [
               "field"
             ],
-            "id": "UserSummary:2",
+            "id": "UserSummary:field:src-user_summary.py-9-9:15dba9db",
             "kind": "field",
             "label": "field name: str",
+            "nativeId": "python:field:src-user_summary.py-9-9:15dba9db",
             "parentId": "UserSummary",
             "read": "src/user_summary.py:9:9",
-            "role": "field"
+            "role": "field",
+            "structuralFingerprint": "field:field:src-user_summary.py-9-9:15dba9db"
           },
           {
             "depth": 1,
             "flags": [
               "field"
             ],
-            "id": "UserSummary:3",
+            "id": "UserSummary:field:src-user_summary.py-10-10:65590e5",
             "kind": "field",
             "label": "field active: bool",
+            "nativeId": "python:field:src-user_summary.py-10-10:65590e5",
             "parentId": "UserSummary",
             "read": "src/user_summary.py:10:10",
-            "role": "field"
+            "role": "field",
+            "structuralFingerprint": "field:field:src-user_summary.py-10-10:65590e5"
           },
           {
             "depth": 1,
-            "id": "UserSummary:4",
+            "id": "UserSummary:function:src-user_summary.py-12-15:a55b37a2",
             "kind": "function",
             "label": "def label",
+            "nativeId": "python:function:src-user_summary.py-12-15:a55b37a2",
             "parentId": "UserSummary",
             "read": "src/user_summary.py:12:15",
-            "role": "declaration"
+            "role": "declaration",
+            "structuralFingerprint": "function:declaration:src-user_summary.py-12-15:a55b37a2"
           },
           {
             "depth": 2,
             "flags": [
               "branch"
             ],
-            "id": "UserSummary:5",
+            "id": "UserSummary:if:src-user_summary.py-13-14:36c77398",
             "kind": "if",
             "label": "if self.active",
-            "parentId": "UserSummary:4",
+            "nativeId": "python:if:src-user_summary.py-13-14:36c77398",
+            "parentId": "UserSummary:function:src-user_summary.py-12-15:a55b37a2",
             "read": "src/user_summary.py:13:14",
-            "role": "control-flow"
+            "role": "control-flow",
+            "structuralFingerprint": "if:control-flow:src-user_summary.py-13-14:36c77398"
           },
           {
             "depth": 3,
             "flags": [
               "return"
             ],
-            "id": "UserSummary:6",
+            "id": "UserSummary:return:src-user_summary.py-14-14:5b26e2d3",
             "kind": "return",
             "label": "return template",
-            "parentId": "UserSummary:5",
+            "nativeId": "python:return:src-user_summary.py-14-14:5b26e2d3",
+            "parentId": "UserSummary:if:src-user_summary.py-13-14:36c77398",
             "read": "src/user_summary.py:14:14",
-            "role": "terminal"
+            "role": "terminal",
+            "structuralFingerprint": "return:terminal:src-user_summary.py-14-14:5b26e2d3"
           },
           {
             "depth": 2,
             "flags": [
               "return"
             ],
-            "id": "UserSummary:7",
+            "id": "UserSummary:return:src-user_summary.py-15-15:31c1ce80",
             "kind": "return",
             "label": "return string",
-            "parentId": "UserSummary:4",
+            "nativeId": "python:return:src-user_summary.py-15-15:31c1ce80",
+            "parentId": "UserSummary:function:src-user_summary.py-12-15:a55b37a2",
             "read": "src/user_summary.py:15:15",
-            "role": "terminal"
+            "role": "terminal",
+            "structuralFingerprint": "return:terminal:src-user_summary.py-15-15:31c1ce80"
           }
         ],
         "nodesTruncated": false,
         "omitted": [],
+        "renderedNodeIds": [
+          "UserSummary",
+          "UserSummary:field:src-user_summary.py-8-8:48800591",
+          "UserSummary:field:src-user_summary.py-9-9:15dba9db",
+          "UserSummary:field:src-user_summary.py-10-10:65590e5",
+          "UserSummary:function:src-user_summary.py-12-15:a55b37a2",
+          "UserSummary:if:src-user_summary.py-13-14:36c77398",
+          "UserSummary:return:src-user_summary.py-14-14:5b26e2d3",
+          "UserSummary:return:src-user_summary.py-15-15:31c1ce80"
+        ],
+        "renderedRows": [
+          {
+            "nodeId": "UserSummary",
+            "rowKind": "declaration",
+            "semanticWeight": 1,
+            "text": "class UserSummary"
+          },
+          {
+            "nodeId": "UserSummary:field:src-user_summary.py-8-8:48800591",
+            "rowKind": "field",
+            "semanticWeight": 1,
+            "text": "  field user_id: int"
+          },
+          {
+            "nodeId": "UserSummary:field:src-user_summary.py-9-9:15dba9db",
+            "rowKind": "field",
+            "semanticWeight": 1,
+            "text": "  field name: str"
+          },
+          {
+            "nodeId": "UserSummary:field:src-user_summary.py-10-10:65590e5",
+            "rowKind": "field",
+            "semanticWeight": 1,
+            "text": "  field active: bool"
+          },
+          {
+            "nodeId": "UserSummary:function:src-user_summary.py-12-15:a55b37a2",
+            "rowKind": "declaration",
+            "semanticWeight": 1,
+            "text": "  def label"
+          },
+          {
+            "nodeId": "UserSummary:if:src-user_summary.py-13-14:36c77398",
+            "rowKind": "control-flow",
+            "semanticWeight": 2,
+            "text": "    if self.active"
+          },
+          {
+            "nodeId": "UserSummary:return:src-user_summary.py-14-14:5b26e2d3",
+            "rowKind": "terminal",
+            "semanticWeight": 2,
+            "text": "      return template"
+          },
+          {
+            "nodeId": "UserSummary:return:src-user_summary.py-15-15:31c1ce80",
+            "rowKind": "terminal",
+            "semanticWeight": 2,
+            "text": "    return string"
+          }
+        ],
         "sourceAuthority": "native-parser",
         "sourceFingerprint": "src/user_summary.py:7:15:148:24575911",
         "syntax": "semantic-outline"

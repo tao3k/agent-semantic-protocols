@@ -43,48 +43,43 @@
             "kind": "exact-read",
             "read": "src/control_flow.py:5:5",
             "reason": "expand assign node before editing",
-            "target": "decide:1"
+            "target": "decide:assign:src-control_flow.py-5-5:25e389c6"
           },
           {
             "kind": "exact-read",
             "read": "src/control_flow.py:6:9",
             "reason": "expand for node before editing",
-            "target": "decide:2"
+            "target": "decide:for:src-control_flow.py-6-9:383c0066"
           },
           {
             "kind": "exact-read",
             "read": "src/control_flow.py:7:8",
             "reason": "expand if node before editing",
-            "target": "decide:3"
+            "target": "decide:if:src-control_flow.py-7-8:115c14f"
           },
           {
             "kind": "exact-read",
             "read": "src/control_flow.py:8:8",
             "reason": "expand return node before editing",
-            "target": "decide:4"
+            "target": "decide:return:src-control_flow.py-8-8:a41cd093"
           },
           {
             "kind": "exact-read",
             "read": "src/control_flow.py:9:9",
             "reason": "expand aug_assign node before editing",
-            "target": "decide:5"
+            "target": "decide:aug_assign:src-control_flow.py-9-9:85f6b097"
           },
           {
             "kind": "exact-read",
             "read": "src/control_flow.py:10:11",
             "reason": "expand if node before editing",
-            "target": "decide:6"
+            "target": "decide:if:src-control_flow.py-10-11:1296c282"
           },
           {
             "kind": "exact-read",
             "read": "src/control_flow.py:11:11",
             "reason": "expand return node before editing",
-            "target": "decide:7"
-          },
-          {
-            "kind": "owner-names",
-            "reason": "return owner-local item names without code windows",
-            "target": "src/control_flow.py"
+            "target": "decide:return:src-control_flow.py-11-11:dbedd0f5"
           }
         ],
         "losslessStructure": true,
@@ -97,108 +92,193 @@
             "id": "decide",
             "kind": "function",
             "label": "def decide",
+            "nativeId": "python:function:src-control_flow.py-4-12:82a4e494",
             "read": "src/control_flow.py:4:12",
-            "role": "declaration"
+            "role": "declaration",
+            "structuralFingerprint": "function:declaration:src-control_flow.py-4-12:82a4e494"
           },
           {
             "depth": 1,
             "flags": [
               "mutation"
             ],
-            "id": "decide:1",
+            "id": "decide:assign:src-control_flow.py-5-5:25e389c6",
             "kind": "assign",
             "label": "assign total",
+            "nativeId": "python:assign:src-control_flow.py-5-5:25e389c6",
             "parentId": "decide",
             "read": "src/control_flow.py:5:5",
-            "role": "mutation"
+            "role": "mutation",
+            "structuralFingerprint": "assign:mutation:src-control_flow.py-5-5:25e389c6"
           },
           {
             "depth": 1,
             "flags": [
               "loop"
             ],
-            "id": "decide:2",
+            "id": "decide:for:src-control_flow.py-6-9:383c0066",
             "kind": "for",
             "label": "for value in values",
+            "nativeId": "python:for:src-control_flow.py-6-9:383c0066",
             "parentId": "decide",
             "read": "src/control_flow.py:6:9",
-            "role": "control-flow"
+            "role": "control-flow",
+            "structuralFingerprint": "for:control-flow:src-control_flow.py-6-9:383c0066"
           },
           {
             "depth": 2,
             "flags": [
               "branch"
             ],
-            "id": "decide:3",
+            "id": "decide:if:src-control_flow.py-7-8:115c14f",
             "kind": "if",
             "label": "if value < 0",
-            "parentId": "decide:2",
+            "nativeId": "python:if:src-control_flow.py-7-8:115c14f",
+            "parentId": "decide:for:src-control_flow.py-6-9:383c0066",
             "read": "src/control_flow.py:7:8",
-            "role": "control-flow"
+            "role": "control-flow",
+            "structuralFingerprint": "if:control-flow:src-control_flow.py-7-8:115c14f"
           },
           {
             "depth": 3,
             "flags": [
               "return"
             ],
-            "id": "decide:4",
+            "id": "decide:return:src-control_flow.py-8-8:a41cd093",
             "kind": "return",
             "label": "return None",
-            "parentId": "decide:3",
+            "nativeId": "python:return:src-control_flow.py-8-8:a41cd093",
+            "parentId": "decide:if:src-control_flow.py-7-8:115c14f",
             "read": "src/control_flow.py:8:8",
-            "role": "terminal"
+            "role": "terminal",
+            "structuralFingerprint": "return:terminal:src-control_flow.py-8-8:a41cd093"
           },
           {
             "depth": 2,
             "flags": [
               "mutation"
             ],
-            "id": "decide:5",
+            "id": "decide:aug_assign:src-control_flow.py-9-9:85f6b097",
             "kind": "aug_assign",
             "label": "assign total += value",
-            "parentId": "decide:2",
+            "nativeId": "python:aug_assign:src-control_flow.py-9-9:85f6b097",
+            "parentId": "decide:for:src-control_flow.py-6-9:383c0066",
             "read": "src/control_flow.py:9:9",
-            "role": "mutation"
+            "role": "mutation",
+            "structuralFingerprint": "aug_assign:mutation:src-control_flow.py-9-9:85f6b097"
           },
           {
             "depth": 1,
             "flags": [
               "branch"
             ],
-            "id": "decide:6",
+            "id": "decide:if:src-control_flow.py-10-11:1296c282",
             "kind": "if",
             "label": "if flag and total > 10",
+            "nativeId": "python:if:src-control_flow.py-10-11:1296c282",
             "parentId": "decide",
             "read": "src/control_flow.py:10:11",
-            "role": "control-flow"
+            "role": "control-flow",
+            "structuralFingerprint": "if:control-flow:src-control_flow.py-10-11:1296c282"
           },
           {
             "depth": 2,
             "flags": [
               "return"
             ],
-            "id": "decide:7",
+            "id": "decide:return:src-control_flow.py-11-11:dbedd0f5",
             "kind": "return",
             "label": "return total",
-            "parentId": "decide:6",
+            "nativeId": "python:return:src-control_flow.py-11-11:dbedd0f5",
+            "parentId": "decide:if:src-control_flow.py-10-11:1296c282",
             "read": "src/control_flow.py:11:11",
-            "role": "terminal"
+            "role": "terminal",
+            "structuralFingerprint": "return:terminal:src-control_flow.py-11-11:dbedd0f5"
           },
           {
             "depth": 1,
             "flags": [
               "return"
             ],
-            "id": "decide:8",
+            "id": "decide:return:src-control_flow.py-12-12:ae74e1c7",
             "kind": "return",
             "label": "return 0",
+            "nativeId": "python:return:src-control_flow.py-12-12:ae74e1c7",
             "parentId": "decide",
             "read": "src/control_flow.py:12:12",
-            "role": "terminal"
+            "role": "terminal",
+            "structuralFingerprint": "return:terminal:src-control_flow.py-12-12:ae74e1c7"
           }
         ],
         "nodesTruncated": false,
         "omitted": [],
+        "renderedNodeIds": [
+          "decide",
+          "decide:assign:src-control_flow.py-5-5:25e389c6",
+          "decide:for:src-control_flow.py-6-9:383c0066",
+          "decide:if:src-control_flow.py-7-8:115c14f",
+          "decide:return:src-control_flow.py-8-8:a41cd093",
+          "decide:aug_assign:src-control_flow.py-9-9:85f6b097",
+          "decide:if:src-control_flow.py-10-11:1296c282",
+          "decide:return:src-control_flow.py-11-11:dbedd0f5",
+          "decide:return:src-control_flow.py-12-12:ae74e1c7"
+        ],
+        "renderedRows": [
+          {
+            "nodeId": "decide",
+            "rowKind": "declaration",
+            "semanticWeight": 1,
+            "text": "def decide"
+          },
+          {
+            "nodeId": "decide:assign:src-control_flow.py-5-5:25e389c6",
+            "rowKind": "mutation",
+            "semanticWeight": 2,
+            "text": "  assign total"
+          },
+          {
+            "nodeId": "decide:for:src-control_flow.py-6-9:383c0066",
+            "rowKind": "control-flow",
+            "semanticWeight": 2,
+            "text": "  for value in values"
+          },
+          {
+            "nodeId": "decide:if:src-control_flow.py-7-8:115c14f",
+            "rowKind": "control-flow",
+            "semanticWeight": 2,
+            "text": "    if value < 0"
+          },
+          {
+            "nodeId": "decide:return:src-control_flow.py-8-8:a41cd093",
+            "rowKind": "terminal",
+            "semanticWeight": 2,
+            "text": "      return None"
+          },
+          {
+            "nodeId": "decide:aug_assign:src-control_flow.py-9-9:85f6b097",
+            "rowKind": "mutation",
+            "semanticWeight": 2,
+            "text": "    assign total += value"
+          },
+          {
+            "nodeId": "decide:if:src-control_flow.py-10-11:1296c282",
+            "rowKind": "control-flow",
+            "semanticWeight": 2,
+            "text": "  if flag and total > 10"
+          },
+          {
+            "nodeId": "decide:return:src-control_flow.py-11-11:dbedd0f5",
+            "rowKind": "terminal",
+            "semanticWeight": 2,
+            "text": "    return total"
+          },
+          {
+            "nodeId": "decide:return:src-control_flow.py-12-12:ae74e1c7",
+            "rowKind": "terminal",
+            "semanticWeight": 2,
+            "text": "  return 0"
+          }
+        ],
         "sourceAuthority": "native-parser",
         "sourceFingerprint": "src/control_flow.py:4:12:161:fd6fbbd5",
         "syntax": "semantic-outline"

@@ -2,12 +2,12 @@
 #+AUTHOR: agent-semantic-protocols
 #+DATE: 2026-06-02
 #+RFC: 007
-#+DEPENDS: rfcs/code-intelligence-lane.org (003), rfcs/cli-first-harness-ux.org (005)
+#+DEPENDS: rfcs/code-intelligence-lane.org (003), rfcs/cli-first-harness-ux.org (005), rfcs/semantic-query-projection-protocol.org (010)
 #+SEE_ALSO: docs/30-39-research/31.13-ast-apply-patch-direction-report.org
 
 * One-sentence summary
 
-=semantic-agent-protocol= should expose an AST-backed patch verification
+=agent-semantic-protocol= should expose an AST-backed patch verification
 protocol for small structural edits.  Language providers own native AST
 adapters, while the shared binary owns schema validation, receipts, hook
 integration, and Codex-safe verification.
@@ -43,7 +43,7 @@ validated before any file content changes.
 |-------+----------------|
 | =search= | discover owners, symbols, tests, graph frontiers |
 | =query= | return parser-owned compact outline, node locators, patch affordances |
-| =semantic-agent-protocol ast-patch= | validate one structural edit intent and emit a receipt |
+| =asp ast-patch= | validate one structural edit intent and emit a receipt |
 | provider AST adapter | resolve native AST nodes and parse operation snippets |
 | =apply_patch= | text fallback, audit backend, or final diff application |
 | =check= | verify project policy after the edit |
@@ -61,8 +61,8 @@ The public agent-facing entrypoint is a shared binary, not one public AST patch
 surface per language:
 
 #+begin_src shell
-semantic-agent-protocol ast-patch verify --packet <ast-patch.json> .
-semantic-agent-protocol ast-patch dry-run --packet <ast-patch.json> .
+asp ast-patch verify --packet <ast-patch.json> .
+asp ast-patch dry-run --packet <ast-patch.json> .
 #+end_src
 
 For the current Codex adapter, =ast-patch= is verification-only.  It must not
@@ -73,7 +73,7 @@ the actual file mutation still goes through Codex =apply_patch=.
 Future non-Codex runtimes may add:
 
 #+begin_src shell
-semantic-agent-protocol ast-patch apply --packet <ast-patch.json> .
+asp ast-patch apply --packet <ast-patch.json> .
 #+end_src
 
 That command is out of scope for the first Codex-compatible implementation.
@@ -84,17 +84,24 @@ it is not the first thing agents learn:
 
 #+begin_src shell
 <lang-harness> ast-patch verify --packet <ast-patch.json> .
+<lang-harness> ast-patch dry-run --packet <ast-patch.json> .
 #+end_src
 
 The shared binary normalizes provider discovery, schema validation, receipts,
 failure kinds, and follow-up checks.
+
+Provider-native dry-run adapters may emit receipts with
+=capability=provider-ast-dry-run=.  They validate the request through the
+language parser and report concrete changed ranges, but they must not mutate
+files.  The Codex adapter still performs the final edit through =apply_patch=
+after the receipt proves that compact/query evidence was precise enough.
 
 * Unified crate and policy boundary
 
 The implementation root should be a new Rust crate:
 
 #+begin_example
-crates/semantic-agent-protocol
+crates/agent-semantic-protocol
 ├── command/hook.rs
 ├── command/ast_patch.rs
 ├── command/compact_verify.rs
@@ -102,31 +109,31 @@ crates/semantic-agent-protocol
 └── receipt/
 #+end_example
 
-=semantic-agent-hook= remains a first-class dependency of this crate.  It is
+=agent-semantic-hook= remains a first-class dependency of this crate.  It is
 not deleted or folded away.  The shared binary should route hook commands to
 the existing hook implementation:
 
 #+begin_src shell
-semantic-agent-protocol hook install --client codex .
-semantic-agent-protocol hook pre-tool ...
-semantic-agent-protocol hook stop ...
+asp hook install --client codex .
+asp hook pre-tool ...
+asp hook stop ...
 #+end_src
 
 This keeps the current Codex adapter stable while letting the public binary grow
 into the broader semantic protocol surface.
 
 The new crate must self-apply the Rust language-project policy.  Do not copy
-Rust policy logic into =semantic-agent-protocol=.  Depend on the existing
+Rust policy logic into =agent-semantic-protocol=.  Depend on the existing
 =rust-lang-project-harness= policy/check surface the same way this repository
 already treats language providers as policy owners.  The acceptance gate for
 this crate is therefore:
 
 #+begin_src shell
-rs-harness check --changed crates/semantic-agent-protocol
+rs-harness check --changed crates/agent-semantic-protocol
 #+end_src
 
 If the crate touches hook integration, also run the existing
-=semantic-agent-hook= tests because the hook crate remains the implementation
+=agent-semantic-hook= tests because the hook crate remains the implementation
 dependency.
 
 * AST patch packet
@@ -272,13 +279,56 @@ Every AST patch attempt has the same stages:
 3. Verify the target hash/precondition if supplied.
 4. Parse the snippet in the target operation's grammar context.
 5. Apply the structural transform to an in-memory syntax tree.
-6. Print or splice the changed file.
-7. Re-parse the changed file.
-8. Verify the target owner/symbol still resolves, unless the operation
+6. Print or splice the changed file from provider-owned syntax facts.
+7. Run the declared language formatter capability when available.
+8. Re-parse the formatter-normalized changed file.
+9. Verify the target owner/symbol still resolves, unless the operation
    intentionally removes it.
-9. Emit a receipt containing changed ranges and a textual diff.
+10. Emit a receipt containing changed ranges, formatter outcome, and a textual
+    diff.
 
 If any stage fails, the provider must not mutate files.
+
+The formatter stage is part of the safety model, not a display preference.  A
+native AST edit may generate awkward but parseable text; the formatter converts
+that text into the language or workspace-owned style before the provider
+re-parses it.  This lets providers compress code aggressively for agent reading
+without making the compact form writable.  The write path remains: exact
+locator, native AST transform, formatter, reparse, receipt.
+
+The goal is not to show the agent fully formatted source.  Formatters were
+designed for human readers and often add indentation, blank lines, wrapping,
+and alignment that cost prompt tokens.  The provider uses the formatter because
+the resulting spelling matches the code distribution that LLMs understand
+well, then returns compact AST projection or a receipt over exact ranges.  In
+other words: use formatter-normalized syntax as a semantic safety substrate,
+but do not expose human-oriented formatting as the default agent prompt
+surface.
+
+Formatter style is intentionally opaque to the shared protocol.  The user or
+workspace may choose a different formatter, version, line width, plugin set, or
+import style, and the provider may not know that upfront.  The provider should
+discover and record the formatter profile, then verify native AST preservation.
+The protocol cares that formatter output reparses and aligns structurally; it
+does not require a single canonical token layout across projects.
+
+Formatter/core-AST disagreement is a hard failure.  A provider must not treat
+alignment failure between the original AST and the formatter-normalized AST as
+a recoverable fallback.  The whole point of the formatter stage is to prove
+that the workspace formatter preserves the native AST target.  If node
+identity, symbol path, structural role, or structural fingerprint alignment
+fails, the AST patch attempt fails before any mutation and before any compact
+projection is trusted.  Token fingerprints may be recorded as diagnostics, but
+they cannot be the cross-workspace alignment contract.  The receipt should
+record =failureKind=formatter-alignment-failed= or an equivalent structured
+failure.
+
+Formatter ownership is language-specific.  Rust uses =rustfmt=.  Python uses
+=ruff format= for pure formatting; =ruff check --fix= is a stronger lint-fix or
+organize-imports capability and must be recorded separately.  TypeScript and
+JavaScript should use the workspace-declared formatter from =package.json= or a
+provider registry descriptor, not a hard-coded global default.  Julia remains
+workspace-managed until that lane reopens.
 
 * Receipt
 
@@ -307,6 +357,7 @@ The dry-run and apply result should share one receipt shape:
   "verification": [
     "target-resolved",
     "snippet-parsed",
+    "formatter-ran",
     "file-reparsed",
     "symbol-resolved"
   ],
@@ -334,21 +385,25 @@ Failure receipts should be equally structured:
 
 Use the TypeScript Compiler API for target resolution and snippet parsing.
 The first implementation should support function/block statement insertion,
-call argument replacement, and import insertion/removal.
+call argument replacement, and import insertion/removal.  Formatting must use
+the workspace-declared formatter capability, such as a =package.json= script,
+=prettier=, =biome=, or =oxfmt=.  The provider must disclose which formatter
+was selected.
 
 ** Rust
 
 Use the Rust provider's native parser stack.  The first implementation should
 support item insertion in modules, statement insertion in blocks, and expression
-replacement.  Rust formatting can be delegated to the formatter gate after the
-provider proves parseability.
+replacement.  Rust formatting should run through =rustfmt= after the provider
+prints or splices the changed syntax tree and before the final reparse.
 
 ** Python
 
 Python should prefer a lossless or formatting-preserving parser layer when
 available.  The built-in =ast= module is useful for validation but not enough for
 round-tripping comments and whitespace.  Provider output must disclose whether
-an operation is lossless.
+an operation is lossless.  Pure formatting should use =ruff format=; lint-fix,
+import organization, or semantic cleanups must be separate capabilities.
 
 ** Julia
 
@@ -385,13 +440,41 @@ mirror are:
 The part not to mirror as the primary strategy is line-hunk editing for
 syntax-shaped changes.  Parser-owned providers should use AST node identity and
 grammar-context snippet parsing instead of asking the LLM to infer missing
-braces, commas, or sibling anchors from compact text.
+braces, commas, sibling anchors, indentation, or other source layout from
+compact search output.  Compact projections are valid edit planning evidence,
+but they are not indentation-preserving patch preimages.  When the final
+mutation goes through Codex =apply_patch=, its context must come from an exact
+source window for the selected locator, not from compact code.
+
+** Experimental hook interception
+
+The Codex adapter may block source-file =apply_patch= calls before mutation
+when the patch text targets an activated language provider source path.  This
+is not an automatic text-patch-to-AST conversion.  The first safe behavior is:
+
+- detect Codex direct =apply_patch= payloads and shell heredocs that contain
+  =*** Begin Patch= / =*** End Patch= hunks;
+- extract =Add File=, =Delete File=, =Update File=, and =Move to= paths;
+- if any extracted path matches an activated source selector, deny with
+  =reasonKind=semantic-ast-patch-required=;
+- return provider exact-read routes so the agent can validate the source
+  preimage for the selected locator;
+- instruct the agent to run =asp ast-patch dry-run= before attempting a
+  source mutation;
+- allow non-source/prose patches to continue through ordinary Codex
+  =apply_patch=.
+
+This rule exists because compact AST projection intentionally removes layout
+that text patch engines depend on.  A compact locator may authorize the next
+semantic query, but it must not become a hunk preimage.  The hook therefore
+guards the source-mutation boundary while RFC 007 evolves provider-native AST
+patch dry-run and, later, trusted AST patch apply.
 
 * Acceptance gates
 
-1. =semantic-agent-protocol hook install --client codex .= delegates to the
-   existing =semantic-agent-hook= implementation.
-2. =rs-harness check --changed crates/semantic-agent-protocol= passes after the
+1. =asp hook install --client codex .= delegates to the
+   existing =agent-semantic-hook= implementation.
+2. =rs-harness check --changed crates/agent-semantic-protocol= passes after the
    new crate is introduced.
 3. TypeScript dry-run can append one statement inside
    =renderSemanticSearchSeedPacket= from a compact query target without reading
@@ -399,25 +482,29 @@ braces, commas, or sibling anchors from compact text.
 4. A malformed TypeScript snippet returns =snippet-parse-error= and leaves the
    worktree unchanged.
 5. A stale target hash returns =target-stale= and suggests a repair query.
-6. The emitted textual diff can be applied by the existing client mutation tool
+6. =asp hook pre-tool --client codex= denies source-file Codex =apply_patch=
+   payloads with =reasonKind=semantic-ast-patch-required= and still allows
+   non-source =README.md= patches.
+7. The emitted textual diff can be applied by the existing client mutation tool
    and then passes =ts-harness check --changed .=.
-7. Rust and Python providers reject unsupported operations with structured
+8. Rust and Python providers reject unsupported operations with structured
    =unsupported-operation= receipts rather than falling back to raw text edits.
 
 * Rollout order
 
 1. Add this RFC and the 31.13 research note.
-2. Introduce =crates/semantic-agent-protocol= as the shared binary crate.
-3. Add =semantic-agent-hook= as a dependency and expose hook subcommands through
-   =semantic-agent-protocol hook ...= without changing hook behavior.
+2. Introduce =crates/agent-semantic-protocol= as the shared binary crate.
+3. Add =agent-semantic-hook= as a dependency and expose hook subcommands through
+   =asp hook ...= without changing hook behavior.
 4. Wire the crate into Rust language-project policy checks instead of copying
    policy rules.
 5. Define =semantic-ast-patch-packet.v1.schema.json= and
    =semantic-ast-patch-receipt.v1.schema.json=.
 6. Add provider registry capability descriptors for AST patch verify/dry-run
    support.
-7. Implement TypeScript adapter dry-run for the
-   =renderSemanticSearchSeedPacket= case.
+7. Implement TypeScript adapter dry-run for bounded =remove_statement= packets,
+   including the =renderSemanticSearchSeedPacket= safety case that triggered
+   this RFC.
 8. Add sandtable traces for compact query -> AST patch dry-run -> Codex
    =apply_patch= -> check.
 9. Align Rust and Python with unsupported-operation receipts first, then add

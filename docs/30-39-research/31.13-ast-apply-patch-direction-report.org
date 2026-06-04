@@ -156,7 +156,7 @@ provider emits textual diff + edit receipt
 For the current Codex adapter this is a verification path, not a mutation path:
 
 #+begin_example
-semantic-agent-protocol ast-patch dry-run
+asp ast-patch dry-run
   -> validates AST target and snippet
   -> emits receipt and optional text diff
 Codex apply_patch
@@ -166,12 +166,12 @@ Codex apply_patch
 The hook layer should also move under the same public binary:
 
 #+begin_src shell
-semantic-agent-protocol hook install --client codex .
-semantic-agent-protocol hook pre-tool ...
-semantic-agent-protocol hook stop ...
+asp hook install --client codex .
+asp hook pre-tool ...
+asp hook stop ...
 #+end_src
 
-=semantic-agent-hook= remains the implementation dependency for these hook
+=agent-semantic-hook= remains the implementation dependency for these hook
 commands.  It is not removed.
 
 The edit operation must be smaller than a file and higher-level than a line
@@ -198,7 +198,7 @@ hunk.  Examples:
 
 1. Should =ast_apply_patch= be a top-level command or a =query= subcommand?
    The current recommendation is a top-level
-   =semantic-agent-protocol ast-patch= command because it validates a mutation
+   =asp ast-patch= command because it validates a mutation
    intent and emits an audit receipt, even when Codex performs the final write.
 
 2. Should providers mutate files directly?  RFC 003 says the lane should not
@@ -210,16 +210,21 @@ hunk.  Examples:
    should include owner path, symbol path, node kind, structural role, optional
    text fingerprint, and the source range string such as =path:10:43=.
 
-4. How much formatting should providers own?  The provider should at least
-   preserve parseability and local syntax.  Full project formatting can stay a
-   post-edit check or language formatter gate.
+4. How much formatting should providers own?  Formatter ownership should be an
+   explicit provider capability, not a loose post-edit suggestion.  Native AST
+   facts choose the edit; the language formatter canonicalizes the resulting
+   text; the provider reparses and emits a receipt.  Rust should use
+   =rustfmt=, Python should use =ruff format= for pure formatting, and
+   TypeScript/JavaScript should use the workspace-declared formatter rather
+   than a hard-coded global default.  Lint-fix or organize-imports actions are
+   stronger capabilities and should not be collapsed into formatting.
 
 * Acceptance Evidence For The RFC
 
 The first implementation should prove three cases:
 
-1. =semantic-agent-protocol hook install --client codex .= delegates to
-   =semantic-agent-hook= and preserves current hook behavior.
+1. =asp hook install --client codex .= delegates to
+   =agent-semantic-hook= and preserves current hook behavior.
 2. =semantic-agent-protocol= passes Rust language-project policy checks instead
    of embedding local policy shortcuts.
 3. TypeScript can append a statement to a selected function/block without

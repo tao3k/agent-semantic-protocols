@@ -51,11 +51,41 @@ def _guide_decision(
         result.errors.append(f"guideQuality JSON parse failed: {error.msg}")
         return None
 
-    decision = payload.get("agentHookDecision", payload)
+    decision = _decision_from_payload(payload)
     if not isinstance(decision, dict):
         result.errors.append("guideQuality missing agentHookDecision object")
         return None
     return decision
+
+
+def _decision_from_payload(payload: Any) -> dict[str, Any] | None:
+    if not isinstance(payload, dict):
+        return None
+    direct = payload.get("agentHookDecision")
+    if isinstance(direct, dict):
+        return direct
+    embedded = payload.get("hookSpecificOutput", {}).get("additionalContext")
+    if not isinstance(embedded, str):
+        return payload
+    found, decision = _decision_from_additional_context(embedded)
+    if found:
+        return decision
+    return payload
+
+
+def _decision_from_additional_context(
+    embedded: str,
+) -> tuple[bool, dict[str, Any] | None]:
+    prefix = "[agent-hook-decision] "
+    for line in embedded.splitlines():
+        if not line.startswith(prefix):
+            continue
+        try:
+            decision = json.loads(line[len(prefix) :])
+        except json.JSONDecodeError:
+            return True, None
+        return True, decision if isinstance(decision, dict) else None
+    return False, None
 
 
 def _validate_decision_fields(
@@ -103,6 +133,14 @@ def _validate_route_expectations(
         if needle not in guide_text:
             result.errors.append(f"guide missing command text {needle!r}")
 
+    route_command_text = _route_command_text(routes)
+    for needle in string_list(guide.get("routeCommandContains", [])):
+        if needle not in route_command_text:
+            result.errors.append(f"guide missing route command text {needle!r}")
+    for needle in string_list(guide.get("routeCommandNotContains", [])):
+        if needle in route_command_text:
+            result.errors.append(f"guide route contains stale command text {needle!r}")
+
     if bool(guide.get("requiresIngestPipe", False)) and not _has_ingest_pipe_route(
         routes
     ):
@@ -114,6 +152,17 @@ def _route_with_kind(routes: list[Any], expected_kind: str) -> bool:
         isinstance(route, dict) and route.get("kind") == expected_kind
         for route in routes
     )
+
+
+def _route_command_text(routes: list[Any]) -> str:
+    commands: list[str] = []
+    for route in routes:
+        if not isinstance(route, dict):
+            continue
+        argv = route.get("argv", [])
+        if isinstance(argv, list):
+            commands.append(" ".join(str(part) for part in argv))
+    return "\n".join(commands)
 
 
 def _has_ingest_pipe_route(routes: list[Any]) -> bool:

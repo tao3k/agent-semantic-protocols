@@ -22,5 +22,3 @@ else
 match &cont.data
 case Data::Enum(variants)
 call identifier::deserialize_custom
-case Data::Struct(_, _)
-call unreachable!("checked in serde_derive_internals")

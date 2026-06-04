@@ -1,18 +1,18 @@
 {
   "caseId": "requests-session",
-  "compactCodeDelta": 6581,
-  "compactCodeRatio": 0.1132,
-  "compactCodeTokens": 840,
-  "compactLineDelta": 6581,
-  "compactLineRatio": 0.1132,
-  "compactLineTokens": 840,
+  "compactCodeDelta": 30941,
+  "compactCodeRatio": 0.0967,
+  "compactCodeTokens": 3311,
+  "compactLineDelta": 30941,
+  "compactLineRatio": 0.0967,
+  "compactLineTokens": 3311,
   "featureClass": "real-library",
   "languageId": "python",
   "providerId": "py-harness",
-  "queryPacketDelta": 4550,
-  "queryPacketRatio": 0.3869,
-  "queryPacketTokens": 2871,
-  "rawSourceTokens": 7421,
+  "queryPacketDelta": 15862,
+  "queryPacketRatio": 0.5369,
+  "queryPacketTokens": 18390,
+  "rawSourceTokens": 34252,
   "schemaId": "agent.semantic-protocols.parser-compact-token-cost",
   "schemaVersion": "1",
   "sourceOrigin": {
@@ -23,6 +23,6 @@
     "repository": "psf/requests",
     "sourcePath": "src/requests/sessions.py"
   },
-  "tokenizerId": "tiktoken:o200k_base",
+  "tokenizerId": "byte",
   "variantId": "python"
 }

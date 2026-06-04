@@ -150,6 +150,42 @@ def test_ast_patch_receipt_schema_accepts_codex_verifier_receipt() -> None:
     )
 
 
+def test_ast_patch_receipt_schema_accepts_provider_ast_dry_run_receipt() -> None:
+    receipt = minimal_ast_patch_receipt()
+    receipt["mode"] = "dry-run"
+    receipt["capability"] = "provider-ast-dry-run"
+    receipt["operation"] = "remove_statement"
+    receipt["mechanicalEditPlan"] = {
+        "kind": "provider-dry-run",
+        "operation": "remove_statement",
+        "targetRead": "src/render.ts:10:43",
+        "estimatedEdits": 2,
+        "maxEdits": 20,
+        "safeForLargeChange": True,
+        "mutationAvailable": False,
+        "requiresCodexApplyPatch": True,
+        "changedRanges": ["src/render.ts:12:12", "src/render.ts:20:20"],
+        "notes": ["provider AST dry-run resolved exact remove_statement nodes"],
+    }
+
+    assert _errors("semantic-ast-patch-receipt.v1.schema.json", receipt) == []
+
+
+def test_ast_patch_receipt_schema_accepts_provider_unsupported_operation() -> None:
+    receipt = minimal_ast_patch_receipt()
+    receipt["status"] = "failed"
+    receipt["mode"] = "dry-run"
+    receipt["capability"] = "provider-ast-dry-run"
+    receipt["operation"] = None
+    receipt["supportedOperations"] = []
+    receipt["mechanicalEditPlan"] = None
+    receipt["verification"] = ["packet-parsed", "mutation-disabled"]
+    receipt["failureKind"] = "unsupported-operation"
+    receipt["failures"] = ["provider ast-patch dry-run does not support operation"]
+
+    assert _errors("semantic-ast-patch-receipt.v1.schema.json", receipt) == []
+
+
 def test_ast_patch_receipt_schema_rejects_mutation_available() -> None:
     receipt = minimal_ast_patch_receipt()
     receipt["mutationAvailable"] = True

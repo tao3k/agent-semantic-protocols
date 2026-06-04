@@ -1,18 +1,18 @@
 {
   "caseId": "tokio-join-set",
-  "compactCodeDelta": 6989,
-  "compactCodeRatio": 0.0523,
-  "compactCodeTokens": 386,
-  "compactLineDelta": 6989,
-  "compactLineRatio": 0.0523,
-  "compactLineTokens": 386,
+  "compactCodeDelta": 28069,
+  "compactCodeRatio": 0.0218,
+  "compactCodeTokens": 625,
+  "compactLineDelta": 27277,
+  "compactLineRatio": 0.0494,
+  "compactLineTokens": 1417,
   "featureClass": "real-library",
   "languageId": "rust",
   "providerId": "rs-harness",
-  "queryPacketDelta": 1346,
-  "queryPacketRatio": 0.8175,
-  "queryPacketTokens": 6029,
-  "rawSourceTokens": 7375,
+  "queryPacketDelta": -3064,
+  "queryPacketRatio": 1.1068,
+  "queryPacketTokens": 31758,
+  "rawSourceTokens": 28694,
   "schemaId": "agent.semantic-protocols.parser-compact-token-cost",
   "schemaVersion": "1",
   "sourceOrigin": {
@@ -23,6 +23,6 @@
     "repository": "tokio-rs/tokio",
     "sourcePath": "tokio/src/task/join_set.rs"
   },
-  "tokenizerId": "tiktoken:o200k_base",
+  "tokenizerId": "byte",
   "variantId": "rust"
 }

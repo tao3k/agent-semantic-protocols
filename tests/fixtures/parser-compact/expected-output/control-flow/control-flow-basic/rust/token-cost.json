@@ -1,18 +1,18 @@
 {
   "caseId": "control-flow-basic",
-  "compactCodeDelta": 37,
-  "compactCodeRatio": 0.5375,
-  "compactCodeTokens": 43,
-  "compactLineDelta": 37,
-  "compactLineRatio": 0.5375,
-  "compactLineTokens": 43,
+  "compactCodeDelta": 138,
+  "compactCodeRatio": 0.5124,
+  "compactCodeTokens": 145,
+  "compactLineDelta": 138,
+  "compactLineRatio": 0.5124,
+  "compactLineTokens": 145,
   "featureClass": "control-flow",
   "languageId": "rust",
   "providerId": "rs-harness",
-  "queryPacketDelta": -1449,
-  "queryPacketRatio": 19.1125,
-  "queryPacketTokens": 1529,
-  "rawSourceTokens": 80,
+  "queryPacketDelta": -9995,
+  "queryPacketRatio": 36.318,
+  "queryPacketTokens": 10278,
+  "rawSourceTokens": 283,
   "schemaId": "agent.semantic-protocols.parser-compact-token-cost",
   "schemaVersion": "1",
   "sourceOrigin": {
@@ -21,6 +21,6 @@
     "repository": "agent-semantic-protocols",
     "sourcePath": "src/lib.rs"
   },
-  "tokenizerId": "tiktoken:o200k_base",
+  "tokenizerId": "byte",
   "variantId": "rust"
 }

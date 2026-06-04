@@ -1,0 +1,365 @@
+#+TITLE: RFC: Semantic Query Projection Protocol
+#+AUTHOR: agent-semantic-protocols
+#+DATE: 2026-06-04
+#+RFC: 010
+#+STATUS: active-design
+#+DEPENDS: rfcs/cli-first-harness-ux.org (005), rfcs/agent-compact-graph-feature.org (006), rfcs/semantic-ast-apply-patch-protocol.org (007), schemas/semantic-query-packet.v1.schema.json
+#+SEE_ALSO: docs/30-39-research/31.09-parser-compact-mainline-plan.org
+
+* One-sentence summary
+
+=semantic-query-packet.v1= projection is the parser-owned reasoning tree that
+connects compact code or outline text back to native nodes, omitted facts,
+bounded expansion actions, and exact read locators.
+
+* Problem
+
+Projection rules currently live across the CLI UX RFC, parser compact research
+notes, schema tests, and AST patch RFC.  That made the implementation direction
+clear, but it left no single contract that tells a provider what must be true
+when it emits =match.projection=.
+
+The failure mode is expensive for agents:
+
+#+begin_example
+compact text looks useful
+  -> node identity or omissions are unclear
+  -> agent repeats owner/text/read search
+  -> exact edit locator is guessed from formatted text
+#+end_example
+
+The fix is not more query sets or a wider search command.  The query packet must
+say what the compact output is, which parser nodes own it, what was omitted, and
+which exact action expands the selected node.
+
+* Scope
+
+This RFC owns =semantic-query-packet.v1= projection semantics:
+
+- =matches[].projection=
+- =projection.nodes[]=
+- =projection.renderedNodeIds=
+- =projection.omitted[]=
+- =projection.expandActions[]=
+- =projection.exactRead= and =projection.sourceFingerprint=
+- projection token-control fields such as =nodeLimit= and
+  =expandActionLimit=
+
+It does not own =search= graph rendering.  RFC 006 owns compact graph search
+output and =search --view seeds=.  It does not own mutation authority.  RFC 007
+owns AST patch verification after query projection identifies a patchable
+target.
+
+* Mental model
+
+Projection is a progressive reasoning-tree traversal:
+
+#+begin_example
+owner
+  -> item
+  -> projection.nodes[]
+  -> compact code or semantic outline
+  -> omitted facts and expand actions
+  -> exact read
+  -> optional AST patch verification
+#+end_example
+
+The compact text is a prompt-facing view.  The projection metadata is the
+contract.  An agent may use compact text to understand the code, but it must use
+projection ids, read locators, and expansion actions to navigate or prepare an
+edit.
+
+* Packet contract
+
+** Projection modes
+
+=projection.mode= describes the strongest reasoning surface the provider can
+soundly emit for the selected match:
+
+| Mode | Meaning |
+|------+---------|
+| =names= | name discovery only; no code reasoning claim |
+| =outline= | parser-owned semantic outline with hot-block locators |
+| =compact= | compact AST projection with node identity and reverse navigation |
+| =exact= | exact source range, usually after an explicit exact read |
+
+=mode=compact= requires:
+
+- =sourceFingerprint=
+- =losslessStructure=
+- =exactRead=
+- =nodes[]=
+- =renderedNodeIds=
+
+For compact code, =exactRead= is the same canonical locator as the match-level
+=read= field.  =sourceFingerprint= must bind that locator so stale projections
+can be diagnosed without comparing arbitrary formatted text.
+
+** Native parser authority
+
+Projection facts must come from the language-native parser or parser index.
+Renderers may format, escape, rank, or choose transport, but they must not
+invent branches, calls, exits, mutations, parentage, or edit locators from text
+alone.
+
+Language-owned examples:
+
+- Rust uses =syn= or equivalent compiler/parser facts.
+- TypeScript and JavaScript use the TypeScript compiler API and workspace
+  =tsconfig= facts.
+- Python uses =ast= and must preserve indentation-sensitive block ownership in
+  projection nodes or semantic outline.
+- Julia remains workspace-managed; if it emits query packets, it uses this same
+  schema shape without requiring global bin parity.
+
+Formatter-assisted compaction is allowed only after native parser facts are
+established.  Formatter profile is provider/workspace metadata, not a shared
+projection enum.
+
+** Literal and whitespace safety
+
+Compact projection is not allowed to treat all whitespace as disposable.  A
+provider may remove whitespace only when native parser/token facts prove it is
+syntax trivia.  String, raw string, byte string, character, heredoc-like, and
+other literal payloads are opaque compact boundaries.  A compact renderer must
+choose one explicit literal policy:
+
+| Policy | Meaning |
+|--------+---------|
+| =preserve= | literal token spelling and payload whitespace are kept in compact text |
+| =summarize= | literal payload is replaced by a structural summary such as =raw-string[N lines]= |
+| =omit= | literal payload is omitted and the projection points to =exactRead= |
+
+If a provider cannot prove that whitespace is outside such payloads, it must
+not emit token-compact code for that node.  It should emit a semantic outline,
+an omission with an exact read locator, or a weaker projection mode.  This rule
+applies to =--code= as well as JSON packets because =--code= is the direct
+transport of the same projection text.
+
+The shared packet records this through =projection.compactSafety=:
+
+- =literalPolicy= says whether literal payloads are preserved, summarized, or
+  omitted.
+- =whitespacePolicy= says whether whitespace removal is limited to
+  parser-proven syntax trivia, semantic-outline rendering, or exact source.
+- =normalization= may report =formatter-assisted=, but formatter names,
+  versions, line width, and style remain provider-owned metadata.
+- =alignment= says whether parser or formatter round-trip alignment was checked.
+- =exactReadRequired=true= tells agents that compact text is sufficient for
+  navigation but not for literal inspection, indentation-sensitive reasoning,
+  or patch preimages.
+
+Rust is the first required implementation target for this safety model.  The
+Rust provider should use =rustfmt= as the formatter-assisted safety substrate
+when an item-level compact projection claims formatter normalization.  A
+lighter parser-token path is valid only when it explicitly reports
+=normalization=none= and preserves literal token spelling instead of applying
+global whitespace replacement.  The old pattern of
+=split_whitespace().join(" ")= followed by textual punctuation replacement is
+not a valid compact renderer because it can rewrite raw string indentation.
+
+* Node identity
+
+Every projected native node has one shared projection identity within a packet.
+The provider owns the native identity, but the shared node must carry enough
+parser facts for an agent to reason without guessing from compact text:
+
+- =id=
+- =nativeId=
+- =kind=
+- =role=
+- =label=
+- =depth=
+- =read=
+- =structuralFingerprint=
+- optional =parentId=
+- optional =flags=
+
+The invariants are:
+
+- =projection.nodes[].id= is unique within one match projection.
+- =renderedNodeIds= is unique and every id exists in =nodes[]=.
+- One rendered compact row has one primary =nodeId= in
+  =projection.renderedRows[]=.
+- =matches[].code= is exactly
+  =projection.renderedRows[].text= joined with newlines when compact code is
+  present.
+- One native AST node may not be rendered as two primary rows.
+- Nested functions, classes, closures, methods, and visitor bodies choose one
+  mode: summarize under the parent or expose as child nodes with =parentId=,
+  but never both in the same projection.
+- Repeated semantic mentions such as callees, field names, type references, or
+  labels are references, not duplicate projection nodes.
+
+Standalone punctuation-only compact rows are layout residue.  Block structure
+belongs in nodes, depth, edges, or exact expansion actions.
+
+** Rendered row quality
+
+=renderedRows[]= is the v1 contract that ties prompt-facing compact text back
+to parser-owned nodes.  It is additive in the JSON schema, but it is required
+by the shared projection validator whenever a compact match carries
+=matches[].code=.
+
+Each rendered row records:
+
+| Field | Meaning |
+|-------+---------|
+| =nodeId= | Existing =projection.nodes[].id= that owns the row |
+| =rowKind= | Shared semantic row kind such as =declaration=, =mutation=, =call=, =control-flow=, =terminal=, =effect=, =field=, or =omission= |
+| =text= | The exact prompt-facing row text |
+| =semanticWeight= | Integer weight for token-cost/quality reporting |
+
+Rendered row invariants:
+
+- =renderedRows[].nodeId= sequence equals =renderedNodeIds=.
+- =matches[].code= equals the newline join of =renderedRows[].text=.
+- =renderedRows[].text= is non-empty and must not be punctuation-only,
+  delimiter-only, brace-only, or formatter-only residue.
+- A row may summarize syntax, but it may not invent semantic facts that are not
+  owned by the referenced parser node.
+- Cross-language snapshot gates must assert =residueRowCount=0= for Rust,
+  TypeScript, Python, and any future provider before the compact output is
+  accepted.
+
+* Reverse navigation
+
+A projection without reverse navigation is only a display optimization.  A
+projection with nodes, omissions, and expansion actions is an agent reasoning
+interface.
+
+=omitted[]= records facts intentionally left out of the compact text.  Every
+omission must reference an existing =nodeId= or carry an exact =read= locator.
+It must not duplicate hidden source text just to explain the omission.
+
+=expandActions[]= records executable provider follow-ups.  The supported
+projection-local action kinds are:
+
+| Kind | Required target |
+|------+-----------------|
+| =exact-read= | existing node id plus exact =read= locator |
+| =hot-block= | existing node id or hot block plus exact =read= locator |
+| =node-query= | existing node id plus provider =argv= |
+
+Routing actions such as owner-local name listing, query repair candidates, or
+search-profile fanout belong to query/search synthesis fields, not to
+=projection.expandActions=.
+
+If an =exact-read= or =hot-block= action includes provider =argv= with
+=--selector=, that selector must equal the action's canonical =read= locator.
+It must not widen back to an owner path or glob.
+
+* Token control
+
+Projection must optimize prompt cost without hiding the reason for lost facts.
+When the provider truncates serialized projection nodes or expansion actions,
+it records:
+
+- =nodeCount=
+- =nodeLimit=
+- =nodesTruncated=
+- =expandActionCount=
+- =expandActionLimit=
+- =expandActionsTruncated=
+
+The packet must still preserve an exact read locator for the selected match.
+If compact mode cannot preserve unique node identity after truncation, the
+provider should return a weaker =outline= or =names= projection instead of
+claiming compact AST output.
+
+Token savings are measured in root parser-compact snapshots.  A smaller compact
+string is not successful if it duplicates nodes, drops reverse navigation, leaks
+absolute paths, or forces another broad search round.
+
+* Agent-facing transport
+
+The default query output remains evidence-bearing line protocol or compact
+graph output.  It must include enough status, match, and projection metadata for
+the agent to choose the next action.
+
+=--code= is a post-selection token optimization.  It prints the compact
+projection text directly after an owner and item have already been selected.
+It is not a replacement for the metadata-bearing query packet and must not
+diverge from the =|code text="..."= projection value.
+
+Interactive agent exploration should not request JSON.  =--json= is for schema
+tests, snapshot validators, cache artifacts, and IDE integrations.
+
+* Relation to AST patch
+
+Projection can make an AST patch target discoverable, but it is not mutation
+authority by itself.  Before an edit, the agent follows =exactRead= or a
+projection expansion action, then uses RFC 007 AST patch verification when the
+edit is structural and bounded.
+
+The bridge field is =patchSafety=.  A compact projection may be
+=navigation-safe= or =read-safe= when it is lossy.  It may advertise
+=patch-verify-safe= only when native parser identity, source fingerprint, and
+allowed operation facts are strong enough for the AST patch verifier.
+
+* Snapshot workflow
+
+Parser compact snapshots are the main regression boundary:
+
+#+begin_example
+fixture source
+  -> provider command
+  -> compact code output
+  -> semantic-query-packet.v1 JSON
+  -> parser-compact-token-cost.v1 report
+#+end_example
+
+Snapshot fixtures must avoid absolute project roots.  Expected outputs record
+project-relative paths, exact locators, projection nodes, omitted facts,
+expansion actions, and token-cost measurements.
+
+Feature cases should be organized by parser capability rather than by provider:
+
+- control flow
+- async/effect
+- data shape
+- nested owner uniqueness
+- real-library large item projection
+
+Each language variant keeps the same shared schema contract while preserving
+native parser semantics.
+
+* Acceptance gates
+
+Changes to projection behavior are accepted only when the following gates pass:
+
+1. The RFC and shared schema describe the behavior before provider changes land.
+2. =semantic-query-packet.v1= validates representative packets.
+3. Projection uniqueness tests enforce node id, rendered id, parent, omission,
+   and expand-action invariants.
+   =tests/unit/test_semantic_query_packet_projection_uniqueness.py= is the root
+   cross-field guard for these invariants.
+4. Parser compact snapshots capture compact output, query packet JSON, and
+   token-cost reports.
+5. Real-library fixtures show command-count or token-cost improvement without
+   increasing follow-up search churn.
+6. Agent-facing guides keep JSON out of interactive exploration and route exact
+   source expansion through provider-owned query/read commands.
+
+* Implementation notes
+
+As of 2026-06-04, the root Python validator
+=tools.semantic_query_projection= owns reusable cross-field projection checks
+for parser-compact fixtures and provider JSON replay.  Unit tests still keep
+focused examples in
+=tests/unit/test_semantic_query_packet_projection_uniqueness.py=, while
+=tools.parser_compact_runner.query_packet_artifacts= fails provider output
+before snapshot artifacts are written when projection invariants drift.
+
+* Open implementation work
+
+- Extend cross-field validators as new projection invariants land, especially
+  nested-owner exclusivity, truncation metadata consistency, and node/action
+  coverage for outline-mode hot blocks.
+- Keep improving Rust, TypeScript, and Python native parser projection facts
+  before renderer-only compression.
+- Add snapshot cases that expose nested owners, decorators/attributes, large
+  match/case bodies, chained calls, and punctuation-only residue.
+- Feed real search-flow receipts back into token-cost reports so projection
+  quality is measured by fewer commands, smaller prompts, and more precise next
+  actions.

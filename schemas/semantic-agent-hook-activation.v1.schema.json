@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://agent-semantic-protocols.local/schemas/semantic-agent-hook-activation.v1.schema.json",
   "title": "Semantic Agent Hook Project Activation",
-  "description": "Repository-local activation data selecting static provider manifests for the semantic-agent-hook runtime.",
+  "description": "Repository-local activation data selecting static provider manifests for the agent-semantic-hook runtime.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -16,13 +16,13 @@
   ],
   "properties": {
     "schemaId": {
-      "const": "agent.semantic-protocols.semantic-agent-hook-activation"
+      "const": "agent.semantic-protocols.hook.activation"
     },
     "schemaVersion": {
       "const": "1"
     },
     "protocolId": {
-      "const": "agent.semantic-protocols.agent-hooks"
+      "const": "agent.semantic-protocols.hook"
     },
     "protocolVersion": {
       "const": "1"
@@ -80,7 +80,7 @@
       "required": ["runtime", "version"],
       "properties": {
         "runtime": {
-          "const": "semantic-agent-hook"
+          "const": "agent-semantic-hook"
         },
         "version": {
           "type": "string",

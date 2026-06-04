@@ -1,0 +1,393 @@
+#+TITLE: 31.17 ASP Graph Frontier Implementation Plan
+#+DATE: 2026-06-03
+#+STATUS: active-plan
+#+JOHNNY_DECIMAL: 31.17
+#+AREA: 30-39 Research
+#+CATEGORY: 31 Search Flow Research
+#+RFC: rfcs/graph-reasoning-code-research.org
+
+* Purpose
+
+This plan turns the StakGraph comparative study and parser-compact research
+into ASP-owned code work.
+
+The target is not to copy StakGraph's tool surfaces.  The target is to use
+ASP's strengths:
+
+#+begin_example
+native provider parser facts
+  -> schema-backed search/read packets
+  -> hook-deny guide routes that replay
+  -> compact graph/code frontier
+  -> sandtable command-count and token-cost evidence
+#+end_example
+
+The first implementation slice must reduce real command inflation after
+=direct-source-read= denial.  Relation-frontier and causal-path research stays
+behind RFC/schema work until provider-owned relation facts exist.
+
+* Current Evidence
+
+The current repository state exposes four implementation facts:
+
+1. The crate graph owns the ASP brand.  =cargo metadata= reports
+   =agent-semantic-client*= crates and an =asp= binary from
+   =agent-semantic-protocol=.
+2. A workspace run of =asp guide= works, but =asp rust ...= can fail when the
+   provider activation file is missing.  A missing activation must not lock a
+   Codex session.
+3. The shared schemas already contain the needed contract slots:
+   =semantic-read-packet.v1= has =readPlan.frontier=, =avoid=, and
+   =nextActions=; =semantic-search-packet.v1= has =reasoningProfiles.frontier=.
+4. Provider evidence locates the Rust owner set:
+
+#+begin_example
+readPlan:
+  languages/rust-lang-project-harness/src/cli/query.rs
+  languages/rust-lang-project-harness/src/cli/semantic_read_json.rs
+  languages/rust-lang-project-harness/tests/unit/cli/query/hook/range.rs
+
+guide:
+  languages/rust-lang-project-harness/src/search/guide.rs
+  languages/rust-lang-project-harness/tests/unit/cli/search/guide.rs
+
+reasoningProfiles:
+  languages/rust-lang-project-harness/src/cli/semantic_search_json.rs
+  schemas/semantic-search-packet.v1.schema.json
+#+end_example
+
+* Implementation Slice 0: ASP Facade Safety
+
+Goal: the shared agent entrypoint must be installable and safe before provider
+frontier work depends on it.
+
+Code owners:
+
+- =crates/agent-semantic-protocol=
+- =crates/agent-semantic-client=
+- =crates/agent-semantic-client-core=
+- =crates/agent-semantic-client-local-cli=
+- =crates/agent-semantic-hook=
+
+Tasks:
+
+1. Ensure =asp= is the installed binary, not an undocumented alias.
+2. Make =asp guide=, =asp doctor=, =asp providers=, and =asp cache status= work
+   in a fresh checkout without provider activation.
+3. Make missing activation a recoverable diagnostic with copyable install or
+   provider-route guidance, not a hard session-ending failure.
+4. Make =asp hook install --client codex .= refresh activation safely and fast.
+5. Add a regression test where activation is absent and provider route lookup
+   returns a compact diagnostic instead of an OS file error.
+
+Acceptance:
+
+#+begin_src shell
+direnv exec . cargo run -q -p agent-semantic-protocol -- guide
+direnv exec . cargo run -q -p agent-semantic-protocol -- doctor
+direnv exec . cargo run -q -p agent-semantic-protocol -- providers
+direnv exec . cargo run -q -p agent-semantic-protocol -- cache status
+#+end_src
+
+After install:
+
+#+begin_src shell
+asp guide
+asp doctor
+asp providers
+asp cache status
+#+end_src
+
+None of these commands may require a language provider to parse the current
+workspace.
+
+* Implementation Slice 1: Guide Route Replay
+
+Goal: hook-deny output and provider guide output must only advertise commands
+that execute against the active binary.
+
+Code owners:
+
+- =crates/agent-semantic-hook/src/classifier.rs=
+- =crates/agent-semantic-hook/src/protocol_activation.rs=
+- =languages/rust-lang-project-harness/src/search/guide.rs=
+- sandtable guide-quality tests
+
+Tasks:
+
+1. Standardize guide routes through =asp <language>= for agent-facing output.
+2. Keep =rs-harness=, =ts-harness=, and =py-harness= available as provider
+   implementation/debug routes, not the default agent prompt route.
+3. Validate every guide command by replaying it in guide-quality tests.
+4. Reject stale forms such as =search query --from-hook=, singular
+   =--surface owner=, and agent exploration =--json=.
+5. Keep runtime guide limited to implemented commands.  Do not advertise
+   relation-frontier or causal-path command shapes until their provider routes
+   exist.
+
+Acceptance:
+
+#+begin_src shell
+asp rust search guide .
+asp rust query --from-hook direct-source-read --selector src/search/guide.rs:1:80 .
+#+end_src
+
+The second command must return a parser-owned owner/read frontier or read-plan,
+not a parser usage error.
+
+* Implementation Slice 2: Rust Read-Frontier Packet
+
+Goal: wide Rust =direct-source-read= ranges should return a symbol/window/test
+frontier, not a single =local-window= range that encourages manual scanning.
+
+Code owners:
+
+- =languages/rust-lang-project-harness/src/cli/query.rs=
+- =languages/rust-lang-project-harness/src/cli/semantic_read_json.rs=
+- =languages/rust-lang-project-harness/tests/unit/cli/query/hook/range.rs=
+
+Tasks:
+
+1. Replace =range-outline= for wide line selectors with =range-frontier= when
+   the parser can identify overlapping Rust items.
+2. Use native parser facts to collect symbols overlapping the requested range.
+   Do not infer items from string slicing.
+3. Rank frontier entries:
+   - selected item containing the range first;
+   - owner-local named items next;
+   - covering tests when available;
+   - bounded fallback windows last.
+4. Emit compact text:
+
+#+begin_example
+[read-plan] mode=range-frontier code=false reason=wide-selector maxWindow=32 alg=symbol-frontier frontier=S.code,T.tests,W.code avoid=repeat-wide-read,manual-window-scan,raw-read
+|range path=... requested=1:120 selected=...
+|symbol item=run_install kind=fn lineRange=... read=... reason=parser-item
+|window id=W lineRange=... read=... reason=bounded-remainder
+#+end_example
+
+5. Emit JSON that validates against =semantic-read-packet.v1.schema.json=:
+   =readPlan.symbols=, =readPlan.windows=, =readPlan.frontier=,
+   =readPlan.avoid=, =readPlan.omit=, =readPlan.maxWindowLines=,
+   =readPlan.algorithm=, and =readPlan.nextActions=.
+6. For no parser symbols, return =search-repair= or =range-split= with a
+   =query --from-hook ... --term ... --surface owners,tests --view seeds=
+   next action.
+
+Acceptance:
+
+#+begin_src shell
+asp rust query --from-hook direct-source-read \
+  --selector src/search/guide.rs:1:80 .
+#+end_src
+
+The output must contain =mode=range-frontier= or a schema-valid search repair
+plan.  It must not return only =item=local-window kind=range= for parser-visible
+Rust source.
+
+* Implementation Slice 3: Cross-Language Read-Frontier Alignment
+
+Goal: Rust, TypeScript, and Python use one read-plan contract.  Language
+differences stay in parser-owned facts, not command behavior.
+
+Tasks:
+
+1. Python: preserve the current symbol-frontier behavior and add schema fixture
+   coverage for =nextActions= and token-cost.
+2. TypeScript: implement equivalent range-frontier using the TypeScript
+   compiler API.  Wide =*.ts= reads should produce source-file symbols,
+   class/function/method handles, and covering tests where known.
+3. Rust: use =syn= item ranges and existing owner/test ranking.
+4. Shared: update package-local schema copies only if root schema changes.
+   Current v1 fields should be enough for the first slice.
+
+Acceptance:
+
+#+begin_src shell
+asp rust query --from-hook direct-source-read --selector <wide-rust-range> .
+asp typescript query --from-hook direct-source-read --selector <wide-ts-range> .
+asp python query --from-hook direct-source-read --selector <wide-py-range> .
+#+end_src
+
+All three must return the same high-level contract:
+=readPlan.code=false=, =frontier=, =avoid=manual-window-scan=, and at least one
+executable next action or read locator.
+
+* Implementation Slice 4: Parser Compact Expansion
+
+Goal: read-frontier should lead into compact parser output, not raw source.
+
+Tasks:
+
+1. Every =frontier= entry with action =code= must point to a bounded provider
+   locator that =query --code= can expand.
+2. =query --code= must keep using native compact projection, not raw source
+   slicing.
+3. The parser-compact snapshot runner should include read-frontier expansion
+   cases from the same real-library fixture pool.
+4. Token-cost should be recorded for:
+   - read-plan packet;
+   - selected =query --code= output;
+   - combined two-step flow;
+   - equivalent raw source range baseline.
+
+Acceptance:
+
+#+begin_example
+wide read denied
+  -> read-frontier packet
+  -> one selected query --code
+  -> compact parser projection
+#+end_example
+
+This flow should be measured as a command-count and token-count improvement
+over manual source-window scanning.
+
+* Implementation Slice 5: Sandtable And Black-Box Gates
+
+Goal: prevent the same escape and command-inflation failures from returning.
+
+Tasks:
+
+1. Add black-box hook tests for:
+   - =Read *.rs=, =Read *.py=, =Read *.ts=;
+   - =sed -n ... *.rs|*.py|*.ts=;
+   - =rtk read -n *.rs= and language variants;
+   - =git diff= / file-list patterns that become source dumps.
+2. For each deny, assert:
+   - guide routes use =asp <language>= in agent-facing output;
+   - no =--json= is suggested;
+   - no stale provider command shape is suggested;
+   - replay exits successfully.
+3. Extend real-trigger receipts with:
+   - command id;
+   - tokenCost per command;
+   - readPlanCount;
+   - manualWindowScanCount;
+   - repeatedAxisCount;
+   - firstUsefulLocatorCommandIndex.
+
+Acceptance:
+
+The sandtable should fail if a denied broad source read leaves the agent with a
+range-only plan and no executable frontier.
+
+* Deliberately Deferred
+
+Do not implement these in the first code slice:
+
+- =search reasoning path= command.
+- =search reasoning map= command.
+- graph database backend.
+- vector search ranking.
+- MCP tool surface.
+- provider-side natural-language planner.
+
+These remain research axes until relation facts, schema fields, and replayable
+routes are present.
+
+* Validation Matrix
+
+| Layer | Gate |
+|-------+------|
+| ASP facade | =cargo test -p agent-semantic-protocol= plus fresh no-activation doctor tests |
+| hook guide | black-box deny replay tests |
+| shared schema | root schema validation for read/search packets |
+| Rust provider | =direnv exec . cargo test -q --features cli,search= in =languages/rust-lang-project-harness= |
+| TypeScript provider | focused implementation tests for wide read-frontier |
+| Python provider | focused AST read-frontier/schema tests |
+| compact snapshots | =parser-compact-snapshots --check-provider= |
+| sandtable | real-trigger command-count and token-cost regression |
+| installed path | =asp guide=, =asp doctor=, =asp rust search guide .= |
+
+* Success Criteria
+
+The first complete implementation is successful when a real denied wide source
+read follows this shape:
+
+#+begin_example
+deny direct-source-read
+  -> ASP guide route
+  -> read-frontier packet with ranked parser-owned handles
+  -> one selected compact query/code expansion
+  -> no manual overlapping line-window scan
+#+end_example
+
+Measured success:
+
+- command count drops for the 31.15 trigger;
+- prompt token cost drops versus raw source windows;
+- guide replay failure count is zero;
+- stale route count is zero;
+- each language has at least one schema-valid wide-read frontier fixture.
+
+* 2026-06-03 Progress: Slice 0 Activation Diagnostics
+
+The first Slice 0 change is implemented in the ASP client/facade path:
+
+- provider methods such as =asp rust search prime .= still fail without
+  activation, but now return a compact ASP diagnostic with copyable recovery
+  commands instead of a raw OS file error;
+- diagnostic commands =asp guide=, =asp doctor=, =asp providers=, and
+  =asp cache status= do not require activation in a fresh directory;
+- =doctor= reports =status=degraded activation=missing= when no activation is
+  available, while =providers= and =cache status= return compact zero-provider
+  diagnostics;
+- focused provider-command tests and the full =agent-semantic-protocol= test
+  package pass.
+
+Fresh-directory smoke shape:
+
+#+begin_example
+asp doctor
+  -> rc=0
+  -> [asp-doctor] status=degraded ... activation=missing providers=0
+  -> |cmd install=asp hook install --client codex .
+
+asp rust search prime .
+  -> rc=2
+  -> [asp-provider] activation=missing ...
+  -> |cmd install=asp hook install --client codex .
+  -> |cmd guide=asp guide
+  -> |cmd providers=asp providers
+#+end_example
+
+Next implementation work should move to Slice 1 guide-route replay and then
+Slice 2 Rust read-frontier parity for wide =direct-source-read= ranges.
+
+* 2026-06-04 Progress: Slice 1.5 Guide Replay Hardening
+
+The guide-route replay slice is now tightened across the active provider
+surface:
+
+- TypeScript and Python =agent guide= output now advertises =asp typescript=
+  and =asp python= commands instead of =ts-harness= or =py-harness= prompt
+  routes.
+- TypeScript and Python legacy =agent install= / =agent hook= errors now point
+  to replayable =asp hook ...= commands instead of the retired root hook binary
+  name.
+- Root hook raw-search policy tests assert that denied command routes are
+  agent-facing =asp= routes and that deny messages do not contain stale
+  =*-harness agent guide= commands.
+- RFC 005 no longer contains the old text-named search view as an agent-facing
+  command literal; =search fzf= remains the lexical/fuzzy public surface.
+
+Runtime smoke evidence:
+
+#+begin_src shell
+asp typescript agent guide .
+asp python agent guide .
+printf '%s' '{"tool_name":"functions.exec_command","tool_input":{"cmd":"rg -n classify_hook -g '\''*.rs'\'' crates/agent-semantic-hook/src"}}' \
+  | asp hook pre-tool --client codex \
+      --activation .cache/agent-semantic-protocol/hooks/activation.json \
+      --config .codex/agent-semantic-protocol/hooks/config.toml
+#+end_src
+
+The hook runtime smoke returns a deny route with =argv=["asp","rust","query",
+...]= and =providerId="rs-harness"=.  The current Codex Desktop thread may
+cache hook installation state, so manual runtime replay remains the reliable
+acceptance check until a fresh session reloads project hooks.
+
+Next implementation work should move to Slice 2 Rust read-frontier JSON/schema
+coverage: multi-symbol overlap, fallback windows, =nextActions=, and
+token-cost evidence before TypeScript/Python range-frontier alignment.

@@ -1,0 +1,210 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-source-access-decision.v1.schema.json",
+  "title": "Semantic Source Access Decision",
+  "description": "Codex-internal source access decision packet for no-daemon source transcript control. This is separate from platform hook decisions and does not cover MCP surfaces in v1.",
+  "type": "object",
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "decision": { "const": "deny" }
+        },
+        "required": ["decision"]
+      },
+      "then": {
+        "properties": {
+          "sourceBytesReturned": { "const": false },
+          "modelVisibleBytesReturned": { "const": false }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "decision": { "const": "suppress" }
+        },
+        "required": ["decision"]
+      },
+      "then": {
+        "properties": {
+          "modelVisibleBytesReturned": { "const": false }
+        }
+      }
+    }
+  ],
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "protocolId",
+    "protocolVersion",
+    "client",
+    "boundary",
+    "operation",
+    "enforcement",
+    "decision",
+    "reasonKind",
+    "sourceBytesReturned",
+    "modelVisibleBytesReturned",
+    "subject",
+    "message"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.source-access.decision"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "protocolId": {
+      "const": "agent.semantic-protocols.source-access"
+    },
+    "protocolVersion": {
+      "const": "1"
+    },
+    "client": {
+      "enum": ["codex"]
+    },
+    "boundary": {
+      "enum": [
+        "codex-fs-api",
+        "codex-tool-action",
+        "codex-shell-preflight",
+        "codex-shell-egress",
+        "codex-subprocess-open"
+      ]
+    },
+    "operation": {
+      "enum": [
+        "read-file",
+        "read-directory",
+        "file-search",
+        "spawn-process",
+        "process-stdin",
+        "tool-output",
+        "unknown"
+      ]
+    },
+    "enforcement": {
+      "enum": ["hard", "preflight", "egress", "advisory", "not-enforced"]
+    },
+    "decision": {
+      "enum": ["allow", "deny", "suppress", "guide", "observe"]
+    },
+    "reasonKind": {
+      "enum": [
+        "none",
+        "direct-source-read",
+        "bulk-source-dump",
+        "raw-broad-search",
+        "agent-search-json",
+        "provider-authorized",
+        "non-source",
+        "not-enforced",
+        "policy"
+      ]
+    },
+    "sourceBytesReturned": {
+      "type": "boolean",
+      "description": "Whether the local Codex action or subprocess returned source-like bytes before policy handling."
+    },
+    "modelVisibleBytesReturned": {
+      "type": "boolean",
+      "description": "Whether source-like bytes were written into the agent-visible transcript."
+    },
+    "authorization": {
+      "enum": ["none", "provider-capability", "user-approved", "non-source"]
+    },
+    "languageIds": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/identifier"
+      }
+    },
+    "providerId": {
+      "$ref": "#/$defs/identifier"
+    },
+    "subject": {
+      "$ref": "#/$defs/subject"
+    },
+    "routes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/route"
+      }
+    },
+    "message": {
+      "type": "string",
+      "minLength": 1
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "toolName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rpcMethod": {
+          "type": "string",
+          "minLength": 1
+        },
+        "command": {
+          "type": "string"
+        },
+        "paths": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "outputDigest": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "route": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["languageId", "providerId", "binary", "kind", "argv"],
+      "properties": {
+        "languageId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "providerId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "binary": {
+          "$ref": "#/$defs/identifier"
+        },
+        "kind": {
+          "enum": ["prime", "owner", "query", "fzf", "ingest", "guide"]
+        },
+        "argv": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

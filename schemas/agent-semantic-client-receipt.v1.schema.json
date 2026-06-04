@@ -1,0 +1,217 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/agent-semantic-client-receipt.v1.schema.json",
+  "title": "Agent Semantic Client Receipt",
+  "description": "agent semantic client execution receipt for route selection, cache status, provider command counts, native-provider provenance, and captured provider stream metrics. In --receipt-json transport, provider stdout remains the prompt stream and provider stderr is recorded as byte counts instead of being mixed into the JSON receipt stream.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "protocolId",
+    "protocolVersion",
+    "method",
+    "route",
+    "cacheStatus",
+    "providerCommandCount",
+    "providerProcessesSpawned",
+    "providerCommands",
+    "nativeProvenance"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.client-receipt"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "protocolId": {
+      "const": "agent.semantic-protocols.client"
+    },
+    "protocolVersion": {
+      "const": "1"
+    },
+    "method": {
+      "enum": [
+        "guide",
+        "providers",
+        "doctor",
+        "cache-status",
+        "cache-import",
+        "search",
+        "query",
+        "check"
+      ]
+    },
+    "route": {
+      "enum": ["local-native", "local-cache", "cloud-flight", "hybrid-reroute"]
+    },
+    "cacheStatus": {
+      "enum": ["cold", "warm-provider", "hit", "miss", "stale", "invalidated", "disabled"]
+    },
+    "providerCommandCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "providerProcessesSpawned": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "providerCommands": {
+      "description": "Provider command executions captured by the client. Each entry is registry-owned and records argv plus stream byte counts without embedding provider stdout or stderr content.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/providerCommand"
+      }
+    },
+    "nativeProvenance": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/nativeProvenance"
+      }
+    },
+    "compactArtifactId": {
+      "type": ["string", "null"],
+      "minLength": 1
+    },
+    "elapsedMs": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "stdoutBytes": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "stderrBytes": {
+      "description": "Total provider stderr bytes captured across provider commands. This is not the JSON receipt stream length.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "cacheRoot": {
+      "description": "Resolved agent semantic client cache root when this receipt inspected local cache state.",
+      "type": "string",
+      "minLength": 1
+    },
+    "cacheManifestPath": {
+      "description": "Resolved cache manifest path when this receipt inspected local cache state.",
+      "type": "string",
+      "minLength": 1
+    },
+    "cacheManifestStatus": {
+      "description": "Filesystem and validation status for the cache manifest inspected by this receipt.",
+      "enum": ["unavailable", "missing", "present", "invalid"]
+    },
+    "cacheGenerationCount": {
+      "description": "Number of cache generations visible in the inspected manifest, or zero when missing/unavailable.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "rawSourceStored": {
+      "description": "Diagnostic flag indicating whether the inspected cache manifest reports raw source storage. Valid cache manifests must keep this false, but receipts may report true when diagnosing an invalid manifest.",
+      "type": "boolean"
+    },
+    "clientDbPath": {
+      "description": "Resolved SQLite client database path when this receipt inspected local cache DB state.",
+      "type": "string",
+      "minLength": 1
+    },
+    "clientDbStatus": {
+      "description": "Filesystem and schema status for the local SQLite client database inspected by this receipt.",
+      "enum": ["missing", "present", "invalid"]
+    },
+    "clientDbGenerationCount": {
+      "description": "Number of cache generations visible in the local SQLite client database.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "clientDbRawSourceStored": {
+      "description": "Diagnostic flag indicating whether the local SQLite client database contains cache rows marked as raw-source storage.",
+      "type": "boolean"
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "nativeProvenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["languageId", "providerId", "providerBinary"],
+      "properties": {
+        "languageId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "providerId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "providerBinary": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.-]+$"
+        },
+        "schemaIds": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^agent\\.semantic-protocols\\.[A-Za-z0-9_.-]+$"
+          }
+        },
+        "packetIds": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "providerCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "languageId",
+        "providerId",
+        "argv",
+        "exitCode",
+        "stdoutBytes",
+        "stderrBytes",
+        "elapsedMs"
+      ],
+      "properties": {
+        "languageId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "providerId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "argv": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "exitCode": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "stdoutBytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "stderrBytes": {
+          "description": "Provider stderr bytes captured for this command. In --receipt-json transport, these bytes are not replayed into stderr.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "elapsedMs": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

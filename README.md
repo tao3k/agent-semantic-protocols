@@ -16,10 +16,13 @@ aligned.
 - `schemas/`: shared JSON contracts for search packets, language registries,
   hook decisions, hook activations, provider manifests, sandtable scenarios,
   and receipts.
-- `crates/semantic-agent-protocol/`: shared Rust CLI entrypoint for protocol
+- `crates/agent-semantic-protocol/`: shared Rust CLI entrypoint for protocol
   commands such as `hook` and `ast-patch`.
-- `crates/semantic-agent-hook/`: Rust root hook runtime for Codex/agent hook
-  classification and provider routing, used by `semantic-agent-protocol hook`.
+- `crates/agent-semantic-hook/`: Rust root hook runtime for Codex/agent hook
+  classification and provider routing, used by `asp hook`.
+- `crates/agent-semantic-client*/`: agent semantic client/backend crates. `asp` is the
+  product-facing local/cloud client surface; hook and protocol crates keep
+  their `semantic-agent-*` names.
 - `packages/python/src/tools/semantic_sandtable/`: sandtable runner for
   replaying real provider commands and validating scenario evidence.
 - `sandtables/`: cross-language replay scenarios for search flows, hook denial
@@ -69,32 +72,41 @@ Install individual agent tools when only one boundary changed:
 
 ```sh
 just agent-tools-install-protocol "$HOME/.local/bin"
+just agent-tools-install-asp "$HOME/.local/bin"
 just agent-tools-install-hook "$HOME/.local/bin"
 just agent-tools-install-rust "$HOME/.local/bin"
 just agent-tools-install-typescript "$HOME/.local/bin"
 just agent-tools-install-python "$HOME/.local/bin"
 ```
 
+agent semantic client-backend phase 1 is local-native only:
+
+```sh
+asp guide
+asp doctor
+asp providers
+asp cache status
+asp search --language rust prime --view seeds .
+```
+
 Refresh only the Codex hook config after the binaries already exist:
 
 ```sh
-semantic-agent-protocol hook install --client codex .
-semantic-agent-protocol hook doctor --client codex .
-semantic-agent-hook install --client codex .
-semantic-agent-hook doctor --client codex .
+asp hook install --client codex .
+asp hook doctor --client codex .
 ```
 
-`semantic-agent-protocol hook install` delegates to `semantic-agent-hook` and
-writes the root Codex hook block, activation state, and provider manifests for
-this repository. It does not build or install `semantic-agent-protocol`,
-`semantic-agent-hook`, `rs-harness`, `ts-harness`, or `py-harness`; use the
-`just agent-tools-install-*` commands for those binaries.
+`asp hook install` writes the root Codex hook block, cache
+activation, versioned hook policy config, and provider manifests for this
+repository. It does not build or install `rs-harness`, `ts-harness`, or
+`py-harness`; use the `just agent-tools-install-*` commands for those
+binaries.
 
 Verify a compact AST patch intent without enabling mutation:
 
 ```sh
-semantic-agent-protocol ast-patch verify --packet ast-patch.json .
-semantic-agent-protocol ast-patch dry-run --packet ast-patch.json .
+asp ast-patch verify --packet ast-patch.json .
+asp ast-patch dry-run --packet ast-patch.json .
 ```
 
 For the Codex adapter, `ast-patch` emits a receipt with
@@ -117,8 +129,8 @@ actual Codex CLI and verifies that a TypeScript source dump is blocked by
 Run the root hook tests:
 
 ```sh
-cargo test -p semantic-agent-protocol
-cargo test -p semantic-agent-hook
+cargo test -p agent-semantic-protocol
+cargo test -p agent-semantic-hook
 ```
 
 Run sandtable scenarios:
@@ -137,8 +149,8 @@ just check-python-policy
 ## Notes For Agents
 
 - Prefer compact provider search output over raw source reads.
-- Treat `semantic-agent-protocol` as the public shared CLI and
-  `semantic-agent-hook` as the shared classifier implementation; provider hooks
+- Treat `asp` as the public shared CLI and `agent-semantic-hook` as the shared
+  classifier implementation; provider hooks
   should publish profile descriptors instead of duplicating platform parsing.
 - Use sandtable receipts and real-trigger scenarios to prove that a workflow
   saves commands, bytes, latency, or repeated searches.

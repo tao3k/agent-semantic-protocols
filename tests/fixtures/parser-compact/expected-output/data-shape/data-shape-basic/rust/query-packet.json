@@ -11,6 +11,11 @@
         "path": "src/lib.rs"
       },
       "name": "UserSummary",
+      "patchSafety": {
+        "exactRead": "src/lib.rs:1:5",
+        "level": "read-safe",
+        "reason": "read exact source locator before editing this compact match"
+      },
       "projection": {
         "exactRead": "src/lib.rs:1:5",
         "expandActions": [
@@ -18,19 +23,19 @@
             "kind": "hot-block",
             "read": "src/lib.rs:2:2",
             "reason": "parser-projection-field",
-            "target": "n1"
+            "target": "field-2-2-b28c4eb4"
           },
           {
             "kind": "hot-block",
             "read": "src/lib.rs:3:3",
             "reason": "parser-projection-field",
-            "target": "n2"
+            "target": "field-3-3-20609c78"
           },
           {
             "kind": "hot-block",
             "read": "src/lib.rs:4:4",
             "reason": "parser-projection-field",
-            "target": "n3"
+            "target": "field-4-4-f7a76fbc"
           }
         ],
         "losslessStructure": true,
@@ -40,42 +45,91 @@
         "nodes": [
           {
             "depth": 0,
-            "id": "n0",
+            "id": "struct-1-5-3500661c",
             "kind": "struct",
             "label": "pub struct UserSummary",
+            "nativeId": "rust-struct-1-5-3500661c",
             "read": "src/lib.rs:1:5",
-            "role": "declaration"
+            "role": "declaration",
+            "structuralFingerprint": "struct-declaration-1-5-3500661c"
           },
           {
             "depth": 1,
-            "id": "n1",
+            "id": "field-2-2-b28c4eb4",
             "kind": "field",
             "label": "field pub user_id: u64",
-            "parentId": "n0",
+            "nativeId": "rust-field-2-2-b28c4eb4",
+            "parentId": "struct-1-5-3500661c",
             "read": "src/lib.rs:2:2",
-            "role": "field"
+            "role": "field",
+            "structuralFingerprint": "field-field-2-2-b28c4eb4"
           },
           {
             "depth": 1,
-            "id": "n2",
+            "id": "field-3-3-20609c78",
             "kind": "field",
             "label": "field pub name: String",
-            "parentId": "n0",
+            "nativeId": "rust-field-3-3-20609c78",
+            "parentId": "struct-1-5-3500661c",
             "read": "src/lib.rs:3:3",
-            "role": "field"
+            "role": "field",
+            "structuralFingerprint": "field-field-3-3-20609c78"
           },
           {
             "depth": 1,
-            "id": "n3",
+            "id": "field-4-4-f7a76fbc",
             "kind": "field",
             "label": "field pub active: bool",
-            "parentId": "n0",
+            "nativeId": "rust-field-4-4-f7a76fbc",
+            "parentId": "struct-1-5-3500661c",
             "read": "src/lib.rs:4:4",
-            "role": "field"
+            "role": "field",
+            "structuralFingerprint": "field-field-4-4-f7a76fbc"
           }
         ],
         "nodesTruncated": false,
+        "omitted": [
+          {
+            "kind": "source-formatting",
+            "nodeId": "struct-1-5-3500661c",
+            "read": "src/lib.rs:1:5",
+            "reason": "compact projection removes original whitespace and comments"
+          }
+        ],
+        "renderedNodeIds": [
+          "struct-1-5-3500661c",
+          "field-2-2-b28c4eb4",
+          "field-3-3-20609c78",
+          "field-4-4-f7a76fbc"
+        ],
+        "renderedRows": [
+          {
+            "nodeId": "struct-1-5-3500661c",
+            "rowKind": "declaration",
+            "semanticWeight": 1,
+            "text": "pub struct UserSummary"
+          },
+          {
+            "nodeId": "field-2-2-b28c4eb4",
+            "rowKind": "field",
+            "semanticWeight": 1,
+            "text": "field pub user_id: u64"
+          },
+          {
+            "nodeId": "field-3-3-20609c78",
+            "rowKind": "field",
+            "semanticWeight": 1,
+            "text": "field pub name: String"
+          },
+          {
+            "nodeId": "field-4-4-f7a76fbc",
+            "rowKind": "field",
+            "semanticWeight": 1,
+            "text": "field pub active: bool"
+          }
+        ],
         "sourceAuthority": "native-parser",
+        "sourceFingerprint": "src/lib.rs:1:5:91:d980ab8958c07464",
         "syntax": "semantic-outline"
       },
       "read": "src/lib.rs:1:5",
@@ -90,6 +144,11 @@
         "path": "src/lib.rs"
       },
       "name": "UserSummary",
+      "patchSafety": {
+        "exactRead": "src/lib.rs:7:15",
+        "level": "read-safe",
+        "reason": "read exact source locator before editing this compact match"
+      },
       "projection": {
         "exactRead": "src/lib.rs:7:15",
         "expandActions": [
@@ -97,25 +156,25 @@
             "kind": "hot-block",
             "read": "src/lib.rs:9:13",
             "reason": "parser-projection-control-flow",
-            "target": "n2"
+            "target": "if-9-13-36c77398"
           },
           {
             "kind": "hot-block",
             "read": "src/lib.rs:10:10",
             "reason": "parser-projection-terminal",
-            "target": "n3"
+            "target": "return-10-10-88c58b61"
           },
           {
             "kind": "hot-block",
             "read": "src/lib.rs:11:13",
             "reason": "parser-projection-control-flow",
-            "target": "n4"
+            "target": "else-11-13-bdbf5bf0"
           },
           {
             "kind": "hot-block",
             "read": "src/lib.rs:12:12",
             "reason": "parser-projection-terminal",
-            "target": "n5"
+            "target": "return-12-12-f7a95d54"
           }
         ],
         "losslessStructure": true,
@@ -125,20 +184,24 @@
         "nodes": [
           {
             "depth": 0,
-            "id": "n0",
+            "id": "impl-7-15-9380528e",
             "kind": "impl",
             "label": "impl UserSummary",
+            "nativeId": "rust-impl-7-15-9380528e",
             "read": "src/lib.rs:7:15",
-            "role": "declaration"
+            "role": "declaration",
+            "structuralFingerprint": "impl-declaration-7-15-9380528e"
           },
           {
             "depth": 1,
-            "id": "n1",
+            "id": "fn-8-14-b73562b7",
             "kind": "fn",
             "label": "fn label",
-            "parentId": "n0",
+            "nativeId": "rust-fn-8-14-b73562b7",
+            "parentId": "impl-7-15-9380528e",
             "read": "src/lib.rs:8:14",
-            "role": "declaration"
+            "role": "declaration",
+            "structuralFingerprint": "fn-declaration-8-14-b73562b7"
           },
           {
             "depth": 2,
@@ -146,52 +209,115 @@
               "branch",
               "guard"
             ],
-            "id": "n2",
+            "id": "if-9-13-36c77398",
             "kind": "if",
             "label": "if self.active",
-            "parentId": "n1",
+            "nativeId": "rust-if-9-13-36c77398",
+            "parentId": "fn-8-14-b73562b7",
             "read": "src/lib.rs:9:13",
-            "role": "control-flow"
+            "role": "control-flow",
+            "structuralFingerprint": "if-control-flow-9-13-36c77398"
           },
           {
             "depth": 3,
             "flags": [
               "return"
             ],
-            "id": "n3",
+            "id": "return-10-10-88c58b61",
             "kind": "return",
             "label": "return format!",
-            "parentId": "n2",
+            "nativeId": "rust-return-10-10-88c58b61",
+            "parentId": "if-9-13-36c77398",
             "read": "src/lib.rs:10:10",
-            "role": "terminal"
+            "role": "terminal",
+            "structuralFingerprint": "return-terminal-10-10-88c58b61"
           },
           {
             "depth": 2,
             "flags": [
               "branch"
             ],
-            "id": "n4",
+            "id": "else-11-13-bdbf5bf0",
             "kind": "else",
             "label": "else",
-            "parentId": "n1",
+            "nativeId": "rust-else-11-13-bdbf5bf0",
+            "parentId": "fn-8-14-b73562b7",
             "read": "src/lib.rs:11:13",
-            "role": "control-flow"
+            "role": "control-flow",
+            "structuralFingerprint": "else-control-flow-11-13-bdbf5bf0"
           },
           {
             "depth": 3,
             "flags": [
               "return"
             ],
-            "id": "n5",
+            "id": "return-12-12-f7a95d54",
             "kind": "return",
             "label": "return to_string",
-            "parentId": "n4",
+            "nativeId": "rust-return-12-12-f7a95d54",
+            "parentId": "else-11-13-bdbf5bf0",
             "read": "src/lib.rs:12:12",
-            "role": "terminal"
+            "role": "terminal",
+            "structuralFingerprint": "return-terminal-12-12-f7a95d54"
           }
         ],
         "nodesTruncated": false,
+        "omitted": [
+          {
+            "kind": "source-formatting",
+            "nodeId": "impl-7-15-9380528e",
+            "read": "src/lib.rs:7:15",
+            "reason": "compact projection removes original whitespace and comments"
+          }
+        ],
+        "renderedNodeIds": [
+          "impl-7-15-9380528e",
+          "fn-8-14-b73562b7",
+          "if-9-13-36c77398",
+          "return-10-10-88c58b61",
+          "else-11-13-bdbf5bf0",
+          "return-12-12-f7a95d54"
+        ],
+        "renderedRows": [
+          {
+            "nodeId": "impl-7-15-9380528e",
+            "rowKind": "declaration",
+            "semanticWeight": 1,
+            "text": "impl UserSummary"
+          },
+          {
+            "nodeId": "fn-8-14-b73562b7",
+            "rowKind": "declaration",
+            "semanticWeight": 1,
+            "text": "fn label"
+          },
+          {
+            "nodeId": "if-9-13-36c77398",
+            "rowKind": "control-flow",
+            "semanticWeight": 2,
+            "text": "if self.active"
+          },
+          {
+            "nodeId": "return-10-10-88c58b61",
+            "rowKind": "terminal",
+            "semanticWeight": 2,
+            "text": "return format!"
+          },
+          {
+            "nodeId": "else-11-13-bdbf5bf0",
+            "rowKind": "control-flow",
+            "semanticWeight": 2,
+            "text": "else"
+          },
+          {
+            "nodeId": "return-12-12-f7a95d54",
+            "rowKind": "terminal",
+            "semanticWeight": 2,
+            "text": "return to_string"
+          }
+        ],
         "sourceAuthority": "native-parser",
+        "sourceFingerprint": "src/lib.rs:7:15:77:db3930d0f3c274bd",
         "syntax": "semantic-outline"
       },
       "read": "src/lib.rs:7:15",
@@ -203,6 +329,11 @@
   "namespace": "agent.semantic-protocols.languages.rust.rs-harness",
   "outputMode": "code",
   "ownerPath": "src/lib.rs",
+  "patchSafety": {
+    "level": "read-safe",
+    "nextAction": "query --from-hook direct-source-read",
+    "reason": "compact query packet is not a mutation authority"
+  },
   "projectRoot": ".",
   "protocolId": "agent.semantic-protocols.semantic-language",
   "protocolVersion": "1",

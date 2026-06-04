@@ -53,7 +53,7 @@
           }
         },
         "maxStdoutLinesWarn": 12,
-        "maxStdoutBytesWarn": 10000,
+        "maxStdoutBytesWarn": 13000,
         "maxElapsedMsWarn": 1500
       }
     },
@@ -83,7 +83,7 @@
           "searchSynthesis.scope": "prime"
         },
         "maxStdoutLinesWarn": 12,
-        "maxStdoutBytesWarn": 20000,
+        "maxStdoutBytesWarn": 22000,
         "maxElapsedMsWarn": 4000
       }
     },
@@ -113,7 +113,7 @@
           "query": "ruff"
         },
         "maxStdoutLinesWarn": 12,
-        "maxStdoutBytesWarn": 1500,
+        "maxStdoutBytesWarn": 3200,
         "maxElapsedMsWarn": 2500
       }
     },
@@ -149,8 +149,8 @@
         "stdoutContains": [
           "[search-prime]",
           "alg=owner-rank-frontier",
+          "legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next",
           "alias: graph:{G=search",
-          "G=search:result!query",
           "G>{",
           "rank=",
           "frontier="
@@ -159,7 +159,8 @@
         "maxElapsedMsWarn": 3000,
         "stdoutNotContains": [
           "|seed",
-          "|synthesis"
+          "|synthesis",
+          "G=search:result!query"
         ]
       }
     },
@@ -237,19 +238,20 @@
         "stdoutContains": [
           "[search-fzf]",
           "querySet=11",
-          "owner:src/python_lang_project_harness/_project_policy_layout.py",
+          "owner:path(src/python_lang_project_harness/_project_policy_layout.py)",
+          "legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next",
           "alias: graph:{G=search",
-          "G=search:result!query",
           "G>{",
           "rank=",
           "frontier="
         ],
         "maxStdoutLinesWarn": 38,
-        "maxStdoutBytesWarn": 16000,
+        "maxStdoutBytesWarn": 20000,
         "maxElapsedMsWarn": 7000,
         "stdoutNotContains": [
           "|seed",
-          "|synthesis"
+          "|synthesis",
+          "G=search:result!query"
         ]
       }
     },
@@ -285,7 +287,7 @@
           "searchSynthesis.seeds.0.target": "src/python_lang_project_harness/_project_policy_layout.py"
         },
         "maxStdoutLinesWarn": 12,
-        "maxStdoutBytesWarn": 16000,
+        "maxStdoutBytesWarn": 20000,
         "maxElapsedMsWarn": 7000
       }
     },
@@ -304,8 +306,8 @@
         "lineProtocol": true,
         "stdoutContains": [
           "[search-owner]",
+          "legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next",
           "alias: graph:{G=search",
-          "G=search:result!query",
           "G>{",
           "rank=",
           "frontier="
@@ -314,7 +316,8 @@
         "maxElapsedMsWarn": 2500,
         "stdoutNotContains": [
           "|seed",
-          "|synthesis"
+          "|synthesis",
+          "G=search:result!query"
         ]
       }
     },

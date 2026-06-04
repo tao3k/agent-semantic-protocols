@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://agent-semantic-protocols.local/schemas/semantic-compact-graph-render.v1.schema.json",
   "title": "Semantic Compact Graph Render Template",
-  "description": "Shared agent-facing compact graph render template for search --view seeds output. This schema owns the line grammar and action alias vocabulary that language providers implement.",
+  "description": "Shared agent-facing compact graph render template for search --view seeds output. This schema owns the line grammar, renderer ownership, and action alias vocabulary implemented by agent-semantic-protocol over provider-owned packets.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -11,8 +11,12 @@
     "protocolId",
     "protocolVersion",
     "renderKind",
+    "rendererOwner",
     "sourcePacketSchemaId",
+    "viewHeaderContract",
     "lineGrammar",
+    "locatorPolicy",
+    "searchRoot",
     "headerFields",
     "actionSpecs",
     "relationSpecs"
@@ -33,30 +37,111 @@
     "renderKind": {
       "const": "compact-graph-render-template"
     },
+    "rendererOwner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "crate",
+        "library",
+        "cli",
+        "inputPacketSchemaId",
+        "migrationAdapterAllowed",
+        "providerIntegration",
+        "providerLibraryDependencyAllowed",
+        "providerLocalRendererAllowed",
+        "targetHotPath"
+      ],
+      "properties": {
+        "crate": {
+          "const": "agent-semantic-protocol"
+        },
+        "library": {
+          "const": "agent_semantic_protocol::graph"
+        },
+        "cli": {
+          "const": "asp graph render --packet <path-or-> --view seeds"
+        },
+        "inputPacketSchemaId": {
+          "const": "agent.semantic-protocols.semantic-search-packet"
+        },
+        "migrationAdapterAllowed": {
+          "const": true
+        },
+        "providerIntegration": {
+          "const": "shell-out"
+        },
+        "providerLibraryDependencyAllowed": {
+          "const": false
+        },
+        "providerLocalRendererAllowed": {
+          "const": false
+        },
+        "targetHotPath": {
+          "const": "agent-semantic-client-cache-query-render"
+        }
+      }
+    },
     "sourcePacketSchemaId": {
       "const": "agent.semantic-protocols.semantic-search-packet"
+    },
+    "viewHeaderContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "appliesWhen",
+        "headerPrefix",
+        "headerIsGraphPacket",
+        "graphBlockRequired",
+        "legacySeedRowsAllowed",
+        "legacySynthesisRowsAllowed"
+      ],
+      "properties": {
+        "appliesWhen": {
+          "const": "search --view seeds"
+        },
+        "headerPrefix": {
+          "const": "[search-<view>]"
+        },
+        "headerIsGraphPacket": {
+          "const": true
+        },
+        "graphBlockRequired": {
+          "const": true
+        },
+        "legacySeedRowsAllowed": {
+          "const": false
+        },
+        "legacySynthesisRowsAllowed": {
+          "const": false
+        }
+      }
     },
     "lineGrammar": {
       "type": "object",
       "additionalProperties": false,
       "required": [
         "header",
+        "microLegend",
         "legend",
         "alias",
         "edge",
         "groupedEdge",
         "rankFrontier",
+        "profiles",
         "denseAliasSeparator"
       ],
       "properties": {
         "header": {
-          "const": "[search-<view>] (q=<query>|root=<root>) [querySet=<n>] [selector=<selector>] [scope=<scope>] alg=<algorithm>"
+          "const": "[search-<view>] (q=<query>|owner=<path>|root=<root>) [querySet=<n>|terms=<n>] [selector=<selector>] [scope=<scope>] [view=<view>] alg=<algorithm>"
+        },
+        "microLegend": {
+          "const": "legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next"
         },
         "legend": {
-          "const": "alias: graph:{<ID>=<nodeType>,...}"
+          "const": "alias: graph:{<ID>=<nodeType>,...}; every rendered ID is declared"
         },
         "alias": {
-          "const": "<ID>=<nodeType>:<target>!<action>"
+          "const": "<ID>=<nodeType>:<targetRole>(<target>)[@<locator>][!<action>]"
         },
         "edge": {
           "const": "<SRC>{<DST>:<relation>,...}"
@@ -67,8 +152,74 @@
         "rankFrontier": {
           "const": "rank=<ID>,... frontier=<ID>.<action>,..."
         },
+        "profiles": {
+          "const": "profiles=<profile>(<ID>,...),..."
+        },
         "denseAliasSeparator": {
           "const": ";"
+        }
+      }
+    },
+    "locatorPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ownerItemCodeFrontier",
+        "sameOwnerLocator",
+        "crossOwnerLocator"
+      ],
+      "properties": {
+        "ownerItemCodeFrontier": {
+          "const": "required"
+        },
+        "sameOwnerLocator": {
+          "const": "@<start>:<end>"
+        },
+        "crossOwnerLocator": {
+          "const": "@<path>:<start>:<end>"
+        }
+      }
+    },
+    "searchRoot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "aliasPrefix",
+        "nodeType",
+        "declaredBy",
+        "standaloneAliasLine",
+        "rankEligible",
+        "frontierEligible"
+      ],
+      "properties": {
+        "aliasPrefix": {
+          "const": "G"
+        },
+        "nodeType": {
+          "const": "search"
+        },
+        "declaredBy": {
+          "type": "array",
+          "prefixItems": [
+            {
+              "const": "legend"
+            },
+            {
+              "const": "edgeSource"
+            }
+          ],
+          "items": false,
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "standaloneAliasLine": {
+          "const": false
+        },
+        "rankEligible": {
+          "const": false
+        },
+        "frontierEligible": {
+          "const": false
         }
       }
     },
@@ -93,7 +244,7 @@
         "retained": {
           "type": "array",
           "items": {
-            "enum": ["querySet", "selector", "scope"]
+            "enum": ["querySet", "terms", "selector", "scope", "view"]
           },
           "uniqueItems": true
         }
@@ -118,7 +269,7 @@
     "actionSpec": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["sourceKind", "nodeType", "aliasPrefix", "action"],
+      "required": ["sourceKind", "nodeType", "targetRole", "aliasPrefix", "action"],
       "properties": {
         "sourceKind": {
           "type": "string",
@@ -139,6 +290,24 @@
             "finding",
             "item",
             "search",
+            "custom"
+          ]
+        },
+        "targetRole": {
+          "enum": [
+            "path",
+            "range",
+            "symbol",
+            "term",
+            "pkg",
+            "dep",
+            "test",
+            "finding",
+            "result",
+            "self",
+            "feature",
+            "cfg",
+            "value",
             "custom"
           ]
         },

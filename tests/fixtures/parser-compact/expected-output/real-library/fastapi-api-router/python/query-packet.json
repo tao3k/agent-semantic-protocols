@@ -43,48 +43,43 @@
             "kind": "exact-read",
             "read": "src/routing.py:1271:1279",
             "reason": "expand if node before editing",
-            "target": "APIRouter:2"
+            "target": "APIRouter:if:src-routing.py-1271-1279:c0a78b72"
           },
           {
             "kind": "exact-read",
             "read": "src/routing.py:1273:1273",
             "reason": "expand assign node before editing",
-            "target": "APIRouter:3"
+            "target": "APIRouter:assign:src-routing.py-1273-1273:70aeac12"
           },
           {
             "kind": "exact-read",
             "read": "src/routing.py:1274:1279",
             "reason": "expand if node before editing",
-            "target": "APIRouter:4"
+            "target": "APIRouter:if:src-routing.py-1274-1279:c6c3d910"
           },
           {
             "kind": "exact-read",
             "read": "src/routing.py:1275:1275",
             "reason": "expand assign node before editing",
-            "target": "APIRouter:5"
+            "target": "APIRouter:assign:src-routing.py-1275-1275:70aeac12"
           },
           {
             "kind": "exact-read",
             "read": "src/routing.py:1276:1279",
             "reason": "expand if node before editing",
-            "target": "APIRouter:6"
+            "target": "APIRouter:if:src-routing.py-1276-1279:7911846b"
           },
           {
             "kind": "exact-read",
             "read": "src/routing.py:1277:1277",
             "reason": "expand assign node before editing",
-            "target": "APIRouter:7"
+            "target": "APIRouter:assign:src-routing.py-1277-1277:70aeac12"
           },
           {
             "kind": "exact-read",
             "read": "src/routing.py:1279:1279",
             "reason": "expand assign node before editing",
-            "target": "APIRouter:8"
-          },
-          {
-            "kind": "owner-names",
-            "reason": "return owner-local item names without code windows",
-            "target": "src/routing.py"
+            "target": "APIRouter:assign:src-routing.py-1279-1279:70aeac12"
           }
         ],
         "losslessStructure": false,
@@ -97,285 +92,359 @@
             "id": "APIRouter",
             "kind": "class",
             "label": "class APIRouter",
+            "nativeId": "python:class:src-routing.py-1005-4956:fb6407b2",
             "read": "src/routing.py:1005:4956",
-            "role": "declaration"
+            "role": "declaration",
+            "structuralFingerprint": "class:declaration:src-routing.py-1005-4956:fb6407b2"
           },
           {
             "depth": 1,
-            "id": "APIRouter:1",
+            "id": "APIRouter:function:src-routing.py-1032-1315:49eb366",
             "kind": "function",
             "label": "def __init__",
+            "nativeId": "python:function:src-routing.py-1032-1315:49eb366",
             "parentId": "APIRouter",
             "read": "src/routing.py:1032:1315",
-            "role": "declaration"
+            "role": "declaration",
+            "structuralFingerprint": "function:declaration:src-routing.py-1032-1315:49eb366"
           },
           {
             "depth": 2,
             "flags": [
               "branch"
             ],
-            "id": "APIRouter:2",
+            "id": "APIRouter:if:src-routing.py-1271-1279:c0a78b72",
             "kind": "if",
             "label": "if lifespan is None",
-            "parentId": "APIRouter:1",
+            "nativeId": "python:if:src-routing.py-1271-1279:c0a78b72",
+            "parentId": "APIRouter:function:src-routing.py-1032-1315:49eb366",
             "read": "src/routing.py:1271:1279",
-            "role": "control-flow"
+            "role": "control-flow",
+            "structuralFingerprint": "if:control-flow:src-routing.py-1271-1279:c0a78b72"
           },
           {
             "depth": 3,
             "flags": [
               "mutation"
             ],
-            "id": "APIRouter:3",
+            "id": "APIRouter:assign:src-routing.py-1273-1273:70aeac12",
             "kind": "assign",
             "label": "assign lifespan_context",
-            "parentId": "APIRouter:2",
+            "nativeId": "python:assign:src-routing.py-1273-1273:70aeac12",
+            "parentId": "APIRouter:if:src-routing.py-1271-1279:c0a78b72",
             "read": "src/routing.py:1273:1273",
-            "role": "mutation"
+            "role": "mutation",
+            "structuralFingerprint": "assign:mutation:src-routing.py-1273-1273:70aeac12"
           },
           {
             "depth": 3,
             "flags": [
               "branch"
             ],
-            "id": "APIRouter:4",
+            "id": "APIRouter:if:src-routing.py-1274-1279:c6c3d910",
             "kind": "if",
             "label": "if isasyncgenfunction",
-            "parentId": "APIRouter:2",
+            "nativeId": "python:if:src-routing.py-1274-1279:c6c3d910",
+            "parentId": "APIRouter:if:src-routing.py-1271-1279:c0a78b72",
             "read": "src/routing.py:1274:1279",
-            "role": "control-flow"
+            "role": "control-flow",
+            "structuralFingerprint": "if:control-flow:src-routing.py-1274-1279:c6c3d910"
           },
           {
             "depth": 4,
             "flags": [
               "mutation"
             ],
-            "id": "APIRouter:5",
+            "id": "APIRouter:assign:src-routing.py-1275-1275:70aeac12",
             "kind": "assign",
             "label": "assign lifespan_context",
-            "parentId": "APIRouter:4",
+            "nativeId": "python:assign:src-routing.py-1275-1275:70aeac12",
+            "parentId": "APIRouter:if:src-routing.py-1274-1279:c6c3d910",
             "read": "src/routing.py:1275:1275",
-            "role": "mutation"
+            "role": "mutation",
+            "structuralFingerprint": "assign:mutation:src-routing.py-1275-1275:70aeac12"
           },
           {
             "depth": 4,
             "flags": [
               "branch"
             ],
-            "id": "APIRouter:6",
+            "id": "APIRouter:if:src-routing.py-1276-1279:7911846b",
             "kind": "if",
             "label": "if isgeneratorfunction",
-            "parentId": "APIRouter:4",
+            "nativeId": "python:if:src-routing.py-1276-1279:7911846b",
+            "parentId": "APIRouter:if:src-routing.py-1274-1279:c6c3d910",
             "read": "src/routing.py:1276:1279",
-            "role": "control-flow"
+            "role": "control-flow",
+            "structuralFingerprint": "if:control-flow:src-routing.py-1276-1279:7911846b"
           },
           {
             "depth": 5,
             "flags": [
               "mutation"
             ],
-            "id": "APIRouter:7",
+            "id": "APIRouter:assign:src-routing.py-1277-1277:70aeac12",
             "kind": "assign",
             "label": "assign lifespan_context",
-            "parentId": "APIRouter:6",
+            "nativeId": "python:assign:src-routing.py-1277-1277:70aeac12",
+            "parentId": "APIRouter:if:src-routing.py-1276-1279:7911846b",
             "read": "src/routing.py:1277:1277",
-            "role": "mutation"
+            "role": "mutation",
+            "structuralFingerprint": "assign:mutation:src-routing.py-1277-1277:70aeac12"
           },
           {
             "depth": 5,
             "flags": [
               "mutation"
             ],
-            "id": "APIRouter:8",
+            "id": "APIRouter:assign:src-routing.py-1279-1279:70aeac12",
             "kind": "assign",
             "label": "assign lifespan_context",
-            "parentId": "APIRouter:6",
+            "nativeId": "python:assign:src-routing.py-1279-1279:70aeac12",
+            "parentId": "APIRouter:if:src-routing.py-1276-1279:7911846b",
             "read": "src/routing.py:1279:1279",
-            "role": "mutation"
+            "role": "mutation",
+            "structuralFingerprint": "assign:mutation:src-routing.py-1279-1279:70aeac12"
           },
           {
             "depth": 2,
             "flags": [
               "mutation"
             ],
-            "id": "APIRouter:9",
+            "id": "APIRouter:assign:src-routing.py-1280-1280:7345f4b6",
             "kind": "assign",
             "label": "assign self.lifespan_context",
-            "parentId": "APIRouter:1",
+            "nativeId": "python:assign:src-routing.py-1280-1280:7345f4b6",
+            "parentId": "APIRouter:function:src-routing.py-1032-1315:49eb366",
             "read": "src/routing.py:1280:1280",
-            "role": "mutation"
+            "role": "mutation",
+            "structuralFingerprint": "assign:mutation:src-routing.py-1280-1280:7345f4b6"
           },
           {
             "depth": 2,
             "flags": [
               "call"
             ],
-            "id": "APIRouter:10",
+            "id": "APIRouter:call:src-routing.py-1282-1287:953edc95",
             "kind": "call",
             "label": "call __init__",
-            "parentId": "APIRouter:1",
+            "nativeId": "python:call:src-routing.py-1282-1287:953edc95",
+            "parentId": "APIRouter:function:src-routing.py-1032-1315:49eb366",
             "read": "src/routing.py:1282:1287",
-            "role": "call"
+            "role": "call",
+            "structuralFingerprint": "call:call:src-routing.py-1282-1287:953edc95"
           },
           {
             "depth": 2,
             "flags": [
               "branch"
             ],
-            "id": "APIRouter:11",
+            "id": "APIRouter:if:src-routing.py-1288-1292:72079236",
             "kind": "if",
             "label": "if prefix",
-            "parentId": "APIRouter:1",
+            "nativeId": "python:if:src-routing.py-1288-1292:72079236",
+            "parentId": "APIRouter:function:src-routing.py-1032-1315:49eb366",
             "read": "src/routing.py:1288:1292",
-            "role": "control-flow"
+            "role": "control-flow",
+            "structuralFingerprint": "if:control-flow:src-routing.py-1288-1292:72079236"
           },
           {
             "depth": 2,
             "flags": [
               "mutation"
             ],
-            "id": "APIRouter:12",
+            "id": "APIRouter:assign:src-routing.py-1297-1299:7705e90f",
             "kind": "assign",
             "label": "assign self.on_startup",
-            "parentId": "APIRouter:1",
+            "nativeId": "python:assign:src-routing.py-1297-1299:7705e90f",
+            "parentId": "APIRouter:function:src-routing.py-1032-1315:49eb366",
             "read": "src/routing.py:1297:1299",
-            "role": "mutation"
+            "role": "mutation",
+            "structuralFingerprint": "assign:mutation:src-routing.py-1297-1299:7705e90f"
           },
           {
             "depth": 2,
             "flags": [
               "mutation"
             ],
-            "id": "APIRouter:13",
+            "id": "APIRouter:assign:src-routing.py-1300-1302:9ebac56c",
             "kind": "assign",
             "label": "assign self.on_shutdown",
-            "parentId": "APIRouter:1",
+            "nativeId": "python:assign:src-routing.py-1300-1302:9ebac56c",
+            "parentId": "APIRouter:function:src-routing.py-1032-1315:49eb366",
             "read": "src/routing.py:1300:1302",
-            "role": "mutation"
+            "role": "mutation",
+            "structuralFingerprint": "assign:mutation:src-routing.py-1300-1302:9ebac56c"
           },
           {
             "depth": 2,
             "flags": [
               "mutation"
             ],
-            "id": "APIRouter:14",
+            "id": "APIRouter:assign:src-routing.py-1304-1304:3ef86c44",
             "kind": "assign",
             "label": "assign self.prefix",
-            "parentId": "APIRouter:1",
+            "nativeId": "python:assign:src-routing.py-1304-1304:3ef86c44",
+            "parentId": "APIRouter:function:src-routing.py-1032-1315:49eb366",
             "read": "src/routing.py:1304:1304",
-            "role": "mutation"
+            "role": "mutation",
+            "structuralFingerprint": "assign:mutation:src-routing.py-1304-1304:3ef86c44"
           },
           {
             "depth": 2,
             "flags": [
               "mutation"
             ],
-            "id": "APIRouter:15",
+            "id": "APIRouter:assign:src-routing.py-1305-1305:98535871",
             "kind": "assign",
             "label": "assign self.tags",
-            "parentId": "APIRouter:1",
+            "nativeId": "python:assign:src-routing.py-1305-1305:98535871",
+            "parentId": "APIRouter:function:src-routing.py-1032-1315:49eb366",
             "read": "src/routing.py:1305:1305",
-            "role": "mutation"
+            "role": "mutation",
+            "structuralFingerprint": "assign:mutation:src-routing.py-1305-1305:98535871"
           },
           {
             "depth": 2,
             "flags": [
               "mutation"
             ],
-            "id": "APIRouter:16",
+            "id": "APIRouter:assign:src-routing.py-1306-1306:5a303cb5",
             "kind": "assign",
             "label": "assign self.dependencies",
-            "parentId": "APIRouter:1",
+            "nativeId": "python:assign:src-routing.py-1306-1306:5a303cb5",
+            "parentId": "APIRouter:function:src-routing.py-1032-1315:49eb366",
             "read": "src/routing.py:1306:1306",
-            "role": "mutation"
+            "role": "mutation",
+            "structuralFingerprint": "assign:mutation:src-routing.py-1306-1306:5a303cb5"
           },
           {
             "depth": 2,
             "flags": [
               "mutation"
             ],
-            "id": "APIRouter:17",
+            "id": "APIRouter:assign:src-routing.py-1307-1307:d2529d91",
             "kind": "assign",
             "label": "assign self.deprecated",
-            "parentId": "APIRouter:1",
+            "nativeId": "python:assign:src-routing.py-1307-1307:d2529d91",
+            "parentId": "APIRouter:function:src-routing.py-1032-1315:49eb366",
             "read": "src/routing.py:1307:1307",
-            "role": "mutation"
+            "role": "mutation",
+            "structuralFingerprint": "assign:mutation:src-routing.py-1307-1307:d2529d91"
           },
           {
             "depth": 2,
             "flags": [
               "mutation"
             ],
-            "id": "APIRouter:18",
+            "id": "APIRouter:assign:src-routing.py-1308-1308:87bab960",
             "kind": "assign",
             "label": "assign self.include_in_schema",
-            "parentId": "APIRouter:1",
+            "nativeId": "python:assign:src-routing.py-1308-1308:87bab960",
+            "parentId": "APIRouter:function:src-routing.py-1032-1315:49eb366",
             "read": "src/routing.py:1308:1308",
-            "role": "mutation"
+            "role": "mutation",
+            "structuralFingerprint": "assign:mutation:src-routing.py-1308-1308:87bab960"
           },
           {
             "depth": 2,
             "flags": [
               "mutation"
             ],
-            "id": "APIRouter:19",
+            "id": "APIRouter:assign:src-routing.py-1309-1309:484a33dc",
             "kind": "assign",
             "label": "assign self.responses",
-            "parentId": "APIRouter:1",
+            "nativeId": "python:assign:src-routing.py-1309-1309:484a33dc",
+            "parentId": "APIRouter:function:src-routing.py-1032-1315:49eb366",
             "read": "src/routing.py:1309:1309",
-            "role": "mutation"
+            "role": "mutation",
+            "structuralFingerprint": "assign:mutation:src-routing.py-1309-1309:484a33dc"
           },
           {
             "depth": 2,
             "flags": [
               "mutation"
             ],
-            "id": "APIRouter:20",
+            "id": "APIRouter:assign:src-routing.py-1310-1310:af1ffb40",
             "kind": "assign",
             "label": "assign self.callbacks",
-            "parentId": "APIRouter:1",
+            "nativeId": "python:assign:src-routing.py-1310-1310:af1ffb40",
+            "parentId": "APIRouter:function:src-routing.py-1032-1315:49eb366",
             "read": "src/routing.py:1310:1310",
-            "role": "mutation"
+            "role": "mutation",
+            "structuralFingerprint": "assign:mutation:src-routing.py-1310-1310:af1ffb40"
           },
           {
             "depth": 2,
             "flags": [
               "mutation"
             ],
-            "id": "APIRouter:21",
+            "id": "APIRouter:assign:src-routing.py-1311-1311:f9997df9",
             "kind": "assign",
             "label": "assign self.dependency_overrides_provider",
-            "parentId": "APIRouter:1",
+            "nativeId": "python:assign:src-routing.py-1311-1311:f9997df9",
+            "parentId": "APIRouter:function:src-routing.py-1032-1315:49eb366",
             "read": "src/routing.py:1311:1311",
-            "role": "mutation"
+            "role": "mutation",
+            "structuralFingerprint": "assign:mutation:src-routing.py-1311-1311:f9997df9"
           },
           {
             "depth": 2,
             "flags": [
               "mutation"
             ],
-            "id": "APIRouter:22",
+            "id": "APIRouter:assign:src-routing.py-1312-1312:8723e55e",
             "kind": "assign",
             "label": "assign self.route_class",
-            "parentId": "APIRouter:1",
+            "nativeId": "python:assign:src-routing.py-1312-1312:8723e55e",
+            "parentId": "APIRouter:function:src-routing.py-1032-1315:49eb366",
             "read": "src/routing.py:1312:1312",
-            "role": "mutation"
+            "role": "mutation",
+            "structuralFingerprint": "assign:mutation:src-routing.py-1312-1312:8723e55e"
           },
           {
             "depth": 2,
             "flags": [
               "mutation"
             ],
-            "id": "APIRouter:23",
+            "id": "APIRouter:assign:src-routing.py-1313-1313:a740455a",
             "kind": "assign",
             "label": "assign self.default_response_class",
-            "parentId": "APIRouter:1",
+            "nativeId": "python:assign:src-routing.py-1313-1313:a740455a",
+            "parentId": "APIRouter:function:src-routing.py-1032-1315:49eb366",
             "read": "src/routing.py:1313:1313",
-            "role": "mutation"
+            "role": "mutation",
+            "structuralFingerprint": "assign:mutation:src-routing.py-1313-1313:a740455a"
           }
         ],
         "nodesTruncated": true,
         "omitted": [],
+        "renderedNodeIds": [
+          "APIRouter",
+          "APIRouter:function:src-routing.py-1032-1315:49eb366",
+          "APIRouter:if:src-routing.py-1271-1279:c0a78b72",
+          "APIRouter:assign:src-routing.py-1273-1273:70aeac12",
+          "APIRouter:if:src-routing.py-1274-1279:c6c3d910",
+          "APIRouter:assign:src-routing.py-1275-1275:70aeac12",
+          "APIRouter:if:src-routing.py-1276-1279:7911846b",
+          "APIRouter:assign:src-routing.py-1277-1277:70aeac12",
+          "APIRouter:assign:src-routing.py-1279-1279:70aeac12",
+          "APIRouter:assign:src-routing.py-1280-1280:7345f4b6",
+          "APIRouter:call:src-routing.py-1282-1287:953edc95",
+          "APIRouter:if:src-routing.py-1288-1292:72079236",
+          "APIRouter:assign:src-routing.py-1297-1299:7705e90f",
+          "APIRouter:assign:src-routing.py-1300-1302:9ebac56c",
+          "APIRouter:assign:src-routing.py-1304-1304:3ef86c44",
+          "APIRouter:assign:src-routing.py-1305-1305:98535871",
+          "APIRouter:assign:src-routing.py-1306-1306:5a303cb5",
+          "APIRouter:assign:src-routing.py-1307-1307:d2529d91",
+          "APIRouter:assign:src-routing.py-1308-1308:87bab960",
+          "APIRouter:assign:src-routing.py-1309-1309:484a33dc",
+          "APIRouter:assign:src-routing.py-1310-1310:af1ffb40",
+          "APIRouter:assign:src-routing.py-1311-1311:f9997df9",
+          "APIRouter:assign:src-routing.py-1312-1312:8723e55e",
+          "APIRouter:assign:src-routing.py-1313-1313:a740455a"
+        ],
         "sourceAuthority": "native-parser",
         "sourceFingerprint": "src/routing.py:1005:4956:3955:bdd86dd9",
         "syntax": "semantic-outline"

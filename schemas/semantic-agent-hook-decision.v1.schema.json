@@ -21,13 +21,13 @@
   ],
   "properties": {
     "schemaId": {
-      "const": "agent.semantic-protocols.agent-hook-decision"
+      "const": "agent.semantic-protocols.hook.decision"
     },
     "schemaVersion": {
       "const": "1"
     },
     "protocolId": {
-      "const": "agent.semantic-protocols.agent-hooks"
+      "const": "agent.semantic-protocols.hook"
     },
     "protocolVersion": {
       "const": "1"
@@ -58,6 +58,7 @@
         "bulk-source-dump",
         "raw-broad-search",
         "agent-search-json",
+        "semantic-ast-patch-required",
         "edit-before-prime",
         "changed-check-required",
         "subagent-receipt-required",
@@ -142,7 +143,7 @@
             "prime",
             "owner",
             "query",
-            "text",
+            "fzf",
             "read",
             "deps",
             "api",
@@ -211,6 +212,30 @@
     },
     "fields": {
       "type": "object",
+      "properties": {
+        "configRuleId": {
+          "$ref": "#/$defs/identifier",
+          "description": "Client hook config rule id that produced this decision."
+        },
+        "toolSurface": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Normalized client tool surface that produced the decision, for example codex-shell or codex-direct-read."
+        },
+        "operationIntent": {
+          "enum": [
+            "apply-patch",
+            "directory-read",
+            "direct-read",
+            "file-search",
+            "nested-tools",
+            "shell-command",
+            "stdin-continuation",
+            "unknown"
+          ],
+          "description": "Normalized operation inferred from the client tool payload before language routing."
+        }
+      },
       "additionalProperties": {
         "$ref": "#/$defs/scalar"
       }

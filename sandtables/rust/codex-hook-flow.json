@@ -22,11 +22,11 @@
     {
       "id": "direct-read-deny",
       "command": [
-        "semantic-agent-hook",
+        "asp",
         "hook",
+        "pre-tool",
         "--client",
         "codex",
-        "pre-tool",
         "--emit",
         "decision"
       ],
@@ -43,11 +43,11 @@
     {
       "id": "command-execution-read-deny",
       "command": [
-        "semantic-agent-hook",
+        "asp",
         "hook",
+        "pre-tool",
         "--client",
         "codex",
-        "pre-tool",
         "--emit",
         "decision"
       ],
@@ -67,11 +67,11 @@
     {
       "id": "raw-rg-deny",
       "command": [
-        "semantic-agent-hook",
+        "asp",
         "hook",
+        "pre-tool",
         "--client",
         "codex",
-        "pre-tool",
         "--emit",
         "decision"
       ],
@@ -91,11 +91,11 @@
     {
       "id": "ingest-pipe-allow",
       "command": [
-        "semantic-agent-hook",
+        "asp",
         "hook",
+        "pre-tool",
         "--client",
         "codex",
-        "pre-tool",
         "--emit",
         "decision"
       ],
@@ -111,11 +111,11 @@
     {
       "id": "subagent-receipt-required",
       "command": [
-        "semantic-agent-hook",
+        "asp",
         "hook",
+        "subagent-stop",
         "--client",
         "codex",
-        "subagent-stop",
         "--emit",
         "decision"
       ],

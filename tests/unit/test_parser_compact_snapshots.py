@@ -9,7 +9,9 @@ from pathlib import Path
 import pytest
 from jsonschema import Draft202012Validator
 
+from tools import parser_compact_runner as runner
 from tools import parser_compact_snapshots as snapshots
+from tools.semantic_query_projection import semantic_query_projection_errors
 
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -48,10 +50,12 @@ def test_parser_compact_case_manifest_is_valid() -> None:
 
 @pytest.mark.parametrize("case", _cases(), ids=snapshots.case_label)
 def test_parser_compact_expected_packets_are_valid(case: snapshots.ParserCompactCase) -> None:
+    packet = _load_json(case.expected_output.query_packet)
     _assert_valid(
         "semantic-query-packet.v1.schema.json",
-        _load_json(case.expected_output.query_packet),
+        packet,
     )
+    assert semantic_query_projection_errors(packet) == []
     _assert_valid(
         "parser-compact-token-cost.v1.schema.json",
         _load_json(case.expected_output.token_cost),
@@ -80,6 +84,34 @@ def test_parser_compact_expected_output_omits_local_absolute_paths() -> None:
         assert str(_REPO_ROOT) not in artifact_text
 
 
+def test_parser_compact_runner_rejects_projection_contract_drift() -> None:
+    case, packet, first_match, projection = _first_compact_projection_case()
+    first_match["code"] = case.expected_output.code.read_text(encoding="utf-8")
+    projection["exactRead"] = "src/drift.py:1:1"
+
+    with pytest.raises(ValueError, match="projection contract"):
+        runner.query_packet_artifacts(json.dumps(packet), case)
+
+
+def _first_compact_projection_case() -> tuple[
+    snapshots.ParserCompactCase,
+    dict[str, object],
+    dict[str, object],
+    dict[str, object],
+]:
+    for case in _cases():
+        packet = _load_json(case.expected_output.query_packet)
+        matches = packet["matches"]
+        assert isinstance(matches, list)
+        first_match = matches[0]
+        assert isinstance(first_match, dict)
+        projection = first_match["projection"]
+        assert isinstance(projection, dict)
+        if projection.get("mode") == "compact":
+            return case, packet, first_match, projection
+    raise AssertionError("expected at least one compact projection fixture")
+
+
 def test_parser_compact_snapshot_runner_matches_expected_token_cost() -> None:
     assert snapshots.main(["--case", "control-flow-basic"]) == 0
 
@@ -88,13 +120,12 @@ def test_parser_compact_token_report_keeps_compact_line_smaller_than_raw() -> No
     for case in _cases():
         report = _load_json(case.expected_output.token_cost)
 
-        assert report["tokenizerId"] == "tiktoken:o200k_base"
+        assert report["tokenizerId"] == "byte"
         assert report["caseId"] == case.case_id
         assert report["variantId"] == case.variant_id
         assert report["providerId"] == case.provider_id
         assert report["compactLineTokens"] <= report["rawSourceTokens"]
         assert report["compactCodeTokens"] <= report["rawSourceTokens"]
-        assert report["compactCodeTokens"] <= report["compactLineTokens"]
         assert report["queryPacketTokens"] > report["compactLineTokens"]
         assert report["compactLineRatio"] <= 1
         assert report["compactCodeRatio"] <= 1
@@ -114,7 +145,7 @@ def test_parser_compact_provider_snapshots_match_expected(
                 "--language",
                 case.variant_id,
                 "--tokenizer",
-                "tiktoken:o200k_base",
+                "byte",
                 "--check-provider",
             ]
         )

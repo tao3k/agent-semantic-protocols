@@ -2,8 +2,16 @@
   "id": "python.rich-intent-matrix",
   "language": "python",
   "title": "Rich large-library feature/API/principle intent matrix",
-  "coverage": ["search-flow", "performance", "large-library"],
-  "tags": ["large-library", "rich", "intent-matrix"],
+  "coverage": [
+    "search-flow",
+    "performance",
+    "large-library"
+  ],
+  "tags": [
+    "large-library",
+    "rich",
+    "intent-matrix"
+  ],
   "evidence": {
     "source": "handwritten",
     "fixtureTier": "large-library",
@@ -18,20 +26,35 @@
       {
         "intentKind": "feature-implementation",
         "intent": "Implement a progress rendering feature after locating owners and tests",
-        "stepIds": ["prime", "intent-query-set"],
-        "queryTerms": ["Progress"]
+        "stepIds": [
+          "prime",
+          "intent-query-set"
+        ],
+        "queryTerms": [
+          "Progress"
+        ]
       },
       {
         "intentKind": "api-usage",
         "intent": "Find Console API usage and callsites",
-        "stepIds": ["prime", "intent-query-set"],
-        "queryTerms": ["Console"]
+        "stepIds": [
+          "prime",
+          "intent-query-set"
+        ],
+        "queryTerms": [
+          "Console"
+        ]
       },
       {
         "intentKind": "implementation-principle",
         "intent": "Understand renderable protocol implementation paths from compact search packets",
-        "stepIds": ["prime", "intent-query-set"],
-        "queryTerms": ["RenderableType"]
+        "stepIds": [
+          "prime",
+          "intent-query-set"
+        ],
+        "queryTerms": [
+          "RenderableType"
+        ]
       }
     ]
   },
@@ -51,10 +74,20 @@
   "steps": [
     {
       "id": "prime",
-      "command": ["py-harness", "search", "prime", "--view", "seeds", "."],
+      "command": [
+        "py-harness",
+        "search",
+        "prime",
+        "--view",
+        "seeds",
+        "."
+      ],
       "expect": {
         "lineProtocol": true,
-        "stdoutContains": ["[search-prime]", "|seed"],
+        "stdoutContains": [
+          "[search-prime]",
+          "|seed"
+        ],
         "maxStdoutLinesWarn": 8,
         "maxElapsedMsWarn": 9000
       }
@@ -79,7 +112,11 @@
       ],
       "expect": {
         "lineProtocol": true,
-        "stdoutContains": ["[search-fzf]", "querySet=3", "|seed"],
+        "stdoutContains": [
+          "[search-fzf]",
+          "querySet=3",
+          "|seed"
+        ],
         "maxStdoutLinesWarn": 14,
         "maxElapsedMsWarn": 14000
       }

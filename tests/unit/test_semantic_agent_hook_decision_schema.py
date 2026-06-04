@@ -14,9 +14,9 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 
 def minimal_decision(reason_kind: str) -> dict[str, object]:
     return {
-        "schemaId": "agent.semantic-protocols.agent-hook-decision",
+        "schemaId": "agent.semantic-protocols.hook.decision",
         "schemaVersion": "1",
-        "protocolId": "agent.semantic-protocols.agent-hooks",
+        "protocolId": "agent.semantic-protocols.hook",
         "protocolVersion": "1",
         "platform": "codex",
         "event": "pre-tool",
@@ -32,11 +32,11 @@ def minimal_decision(reason_kind: str) -> dict[str, object]:
                 "languageId": "typescript",
                 "providerId": "ts-harness",
                 "binary": "ts-harness",
-                "kind": "text",
+                "kind": "fzf",
                 "argv": [
                     "ts-harness",
                     "search",
-                    "text",
+                    "fzf",
                     "location.path",
                     "owner",
                     "tests",
@@ -62,23 +62,59 @@ class SemanticAgentHookDecisionSchemaTests(unittest.TestCase):
     def test_direct_source_read_reason_kind_is_valid(self) -> None:
         self.assertEqual([], self.validation_errors(minimal_decision("direct-source-read")))
 
+    def test_semantic_ast_patch_required_reason_kind_is_valid(self) -> None:
+        self.assertEqual(
+            [],
+            self.validation_errors(minimal_decision("semantic-ast-patch-required")),
+        )
+
     def test_semantic_read_route_kind_is_valid(self) -> None:
         decision = minimal_decision("direct-source-read")
         decision["routes"][0] = {  # type: ignore[index]
             "languageId": "typescript",
-            "providerId": "semantic-agent-hook",
-            "binary": "semantic-agent-hook",
+            "providerId": "ts-harness",
+            "binary": "ts-harness",
             "kind": "read",
             "argv": [
-                "semantic-agent-hook",
-                "read",
+                "ts-harness",
+                "query",
+                "--from-hook",
+                "direct-source-read",
+                "--selector",
                 "src/cli/agent-hooks.ts",
-                "--query",
-                "agent-hooks|AgentHooks|agentHooks",
                 ".",
             ],
         }
         self.assertEqual([], self.validation_errors(decision))
+
+    def test_config_rule_id_field_is_valid(self) -> None:
+        decision = minimal_decision("raw-broad-search")
+        decision["fields"] = {"configRuleId": "deny-rust-rg"}
+
+        self.assertEqual([], self.validation_errors(decision))
+
+    def test_tool_surface_operation_fields_are_valid(self) -> None:
+        decision = minimal_decision("direct-source-read")
+        decision["fields"] = {
+            "toolSurface": "codex-direct-read",
+            "operationIntent": "direct-read",
+        }
+
+        self.assertEqual([], self.validation_errors(decision))
+
+    def test_unknown_operation_intent_field_is_rejected(self) -> None:
+        decision = minimal_decision("direct-source-read")
+        decision["fields"] = {"operationIntent": "read-something"}
+        errors = self.validation_errors(decision)
+
+        self.assertTrue(any("is not one of" in message for message in errors))
+
+    def test_invalid_config_rule_id_field_is_rejected(self) -> None:
+        decision = minimal_decision("raw-broad-search")
+        decision["fields"] = {"configRuleId": "DenyRustRg"}
+        errors = self.validation_errors(decision)
+
+        self.assertTrue(any("does not match" in message for message in errors))
 
     def test_provider_query_route_kind_is_valid(self) -> None:
         decision = minimal_decision("direct-source-read")

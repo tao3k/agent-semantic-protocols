@@ -8,7 +8,7 @@
 * Purpose
 
 This report records the observed TypeScript search-loop failure where an agent
-expanded into many sequential =ts-harness search text= calls while trying to
+expanded into many sequential =ts-harness search fzf= calls while trying to
 understand the semantic-search packet implementation.
 
 The goal is to preserve the problem evidence and define a small fix sequence
@@ -33,12 +33,12 @@ The agent then expanded into many narrower searches:
 
 #+begin_src shell
 ts-harness search owner src/cli/semantic-search/types.ts .
-ts-harness search text "SemanticSearchPacket" owner .
-ts-harness search text "readonly owners" owner .
-ts-harness search text "interface SemanticSearch" owner .
-ts-harness search text "SemanticSearchOwner" owner .
-ts-harness search text "searchSynthesis" owner .
-ts-harness search text "buildPrimePacket" owner .
+ts-harness search fzf "SemanticSearchPacket" owner .
+ts-harness search fzf "readonly owners" owner .
+ts-harness search fzf "interface SemanticSearch" owner .
+ts-harness search fzf "SemanticSearchOwner" owner .
+ts-harness search fzf "searchSynthesis" owner .
+ts-harness search fzf "buildPrimePacket" owner .
 ts-harness search api basePacket .
 #+end_src
 
@@ -98,9 +98,9 @@ it does not show the return object shape or spread sources.
 The agent then searches for implementation fragments:
 
 #+begin_src shell
-ts-harness search text "return basePacket" owner .
-ts-harness search text "...payload" owner .
-ts-harness search text "packages: payload" owner .
+ts-harness search fzf "return basePacket" owner .
+ts-harness search fzf "...payload" owner .
+ts-harness search fzf "packages: payload" owner .
 #+end_src
 
 For exported packet builders, the return object shape is part of the semantic
@@ -108,7 +108,7 @@ API surface the agent needs.
 
 ** Schema and docs are outside parser-visible text
 
-When the agent needs JSON Schema details, =search text= may miss because schema
+When the agent needs JSON Schema details, =search fzf= may miss because schema
 files are not parser-owned TypeScript source. The current fallback is direct
 file reading or external =rg= followed by =search ingest=.
 
@@ -234,7 +234,7 @@ JSON should carry the richer form:
   "target": "SemanticSearchPacket",
   "ownerPath": "src/cli/semantic-search/types.ts",
   "fields": {
-    "command": "ts-harness search text --query-set SemanticSearchPacket --query-set SemanticSearchPacketPayload --query-set SemanticSearchOwner --owner src/cli/semantic-search/types.ts owner --view seeds .",
+    "command": "ts-harness search fzf --query-set SemanticSearchPacket --query-set SemanticSearchPacketPayload --query-set SemanticSearchOwner --owner src/cli/semantic-search/types.ts owner --view seeds .",
     "composition": "query-set",
     "reason": "co-located-owner-items"
   }
@@ -308,7 +308,7 @@ Implemented behavior:
 - compact and seed renderers emit bounded =|item= rows for owner items.
 - item ordering prefers interfaces, types, classes, functions, enums, namespaces, and variables, using source order inside the same declaration class.
 - =items= pipe suppresses stale single-token owner hints such as =MAX_FINDINGS=.
-- the provider emits a composed =|next-run ts-harness search text --query-set ...= hint for co-located owner items.
+- the provider emits a composed =|next-run ts-harness search fzf --query-set ...= hint for co-located owner items.
 
 Validated commands:
 

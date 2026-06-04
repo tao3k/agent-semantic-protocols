@@ -18,43 +18,74 @@ def minimal_render_template() -> dict[str, object]:
         "protocolId": "agent.semantic-protocols.semantic-language",
         "protocolVersion": "1",
         "renderKind": "compact-graph-render-template",
+        "rendererOwner": {
+            "crate": "agent-semantic-protocol",
+            "library": "agent_semantic_protocol::graph",
+            "cli": "asp graph render --packet <path-or-> --view seeds",
+            "inputPacketSchemaId": "agent.semantic-protocols.semantic-search-packet",
+            "migrationAdapterAllowed": True,
+            "providerIntegration": "shell-out",
+            "providerLibraryDependencyAllowed": False,
+            "providerLocalRendererAllowed": False,
+            "targetHotPath": "agent-semantic-client-cache-query-render",
+        },
         "sourcePacketSchemaId": "agent.semantic-protocols.semantic-search-packet",
+        "viewHeaderContract": {
+            "appliesWhen": "search --view seeds",
+            "headerPrefix": "[search-<view>]",
+            "headerIsGraphPacket": True,
+            "graphBlockRequired": True,
+            "legacySeedRowsAllowed": False,
+            "legacySynthesisRowsAllowed": False,
+        },
         "lineGrammar": {
-            "header": "[search-<view>] (q=<query>|root=<root>) [querySet=<n>] [selector=<selector>] [scope=<scope>] alg=<algorithm>",
-            "legend": "alias: graph:{<ID>=<nodeType>,...}",
-            "alias": "<ID>=<nodeType>:<target>!<action>",
+            "header": "[search-<view>] (q=<query>|owner=<path>|root=<root>) [querySet=<n>|terms=<n>] [selector=<selector>] [scope=<scope>] [view=<view>] alg=<algorithm>",
+            "microLegend": "legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next",
+            "legend": "alias: graph:{<ID>=<nodeType>,...}; every rendered ID is declared",
+            "alias": "<ID>=<nodeType>:<targetRole>(<target>)[@<locator>][!<action>]",
             "edge": "<SRC>{<DST>:<relation>,...}",
             "groupedEdge": "(<SRC>,...)><DST>:<relation>",
             "rankFrontier": "rank=<ID>,... frontier=<ID>.<action>,...",
+            "profiles": "profiles=<profile>(<ID>,...),...",
             "denseAliasSeparator": ";",
+        },
+        "locatorPolicy": {
+            "ownerItemCodeFrontier": "required",
+            "sameOwnerLocator": "@<start>:<end>",
+            "crossOwnerLocator": "@<path>:<start>:<end>",
+        },
+        "searchRoot": {
+            "aliasPrefix": "G",
+            "nodeType": "search",
+            "declaredBy": ["legend", "edgeSource"],
+            "standaloneAliasLine": False,
+            "rankEligible": False,
+            "frontierEligible": False,
         },
         "headerFields": {
             "identity": ["q", "root"],
             "algorithm": "alg",
-            "retained": ["querySet", "selector", "scope"],
+            "retained": ["querySet", "terms", "selector", "scope", "view"],
         },
         "actionSpecs": [
             {
-                "sourceKind": "search-root",
-                "nodeType": "search",
-                "aliasPrefix": "G",
-                "action": "query",
-            },
-            {
                 "sourceKind": "owner",
                 "nodeType": "owner",
+                "targetRole": "path",
                 "aliasPrefix": "O",
                 "action": "owner",
             },
             {
                 "sourceKind": "tests",
                 "nodeType": "test",
+                "targetRole": "path",
                 "aliasPrefix": "T",
                 "action": "tests",
             },
             {
                 "sourceKind": "dependency",
                 "nodeType": "dependency",
+                "targetRole": "pkg",
                 "aliasPrefix": "D",
                 "action": "deps",
             },
@@ -100,6 +131,75 @@ class SemanticCompactGraphRenderSchemaTests(unittest.TestCase):
             template["lineGrammar"]["rankFrontier"],
         )
 
+    def test_profiles_line_declares_compatible_profile_handles(self) -> None:
+        template = minimal_render_template()
+
+        self.assertEqual(
+            "profiles=<profile>(<ID>,...),...",
+            template["lineGrammar"]["profiles"],
+        )
+
+    def test_view_header_is_the_graph_packet_header(self) -> None:
+        template = minimal_render_template()
+
+        self.assertEqual("[search-<view>]", template["viewHeaderContract"]["headerPrefix"])
+        self.assertTrue(template["viewHeaderContract"]["headerIsGraphPacket"])
+        self.assertTrue(template["viewHeaderContract"]["graphBlockRequired"])
+        self.assertFalse(template["viewHeaderContract"]["legacySeedRowsAllowed"])
+        self.assertFalse(template["viewHeaderContract"]["legacySynthesisRowsAllowed"])
+
+    def test_view_header_contract_rejects_optional_graph_blocks(self) -> None:
+        template = minimal_render_template()
+        template["viewHeaderContract"] = copy.deepcopy(template["viewHeaderContract"])
+        template["viewHeaderContract"]["graphBlockRequired"] = False
+
+        errors = self.validation_errors(template)
+
+        self.assertTrue(any("True was expected" in message for message in errors))
+
+    def test_renderer_owner_is_shared_protocol_crate(self) -> None:
+        template = minimal_render_template()
+
+        self.assertEqual("agent-semantic-protocol", template["rendererOwner"]["crate"])
+        self.assertEqual(
+            "agent_semantic_protocol::graph",
+            template["rendererOwner"]["library"],
+        )
+        self.assertEqual("shell-out", template["rendererOwner"]["providerIntegration"])
+        self.assertFalse(template["rendererOwner"]["providerLibraryDependencyAllowed"])
+        self.assertFalse(template["rendererOwner"]["providerLocalRendererAllowed"])
+        self.assertEqual(
+            "agent-semantic-client-cache-query-render",
+            template["rendererOwner"]["targetHotPath"],
+        )
+
+    def test_provider_local_renderer_is_not_the_contract_owner(self) -> None:
+        template = minimal_render_template()
+        template["rendererOwner"] = copy.deepcopy(template["rendererOwner"])
+        template["rendererOwner"]["providerLocalRendererAllowed"] = True
+
+        errors = self.validation_errors(template)
+
+        self.assertTrue(any("False was expected" in message for message in errors))
+
+    def test_provider_renderer_dependency_is_not_allowed(self) -> None:
+        template = minimal_render_template()
+        template["rendererOwner"] = copy.deepcopy(template["rendererOwner"])
+        template["rendererOwner"]["providerLibraryDependencyAllowed"] = True
+
+        errors = self.validation_errors(template)
+
+        self.assertTrue(any("False was expected" in message for message in errors))
+
+    def test_provider_integration_is_shell_out(self) -> None:
+        template = minimal_render_template()
+        template["rendererOwner"] = copy.deepcopy(template["rendererOwner"])
+        template["rendererOwner"]["providerIntegration"] = "library"
+
+        errors = self.validation_errors(template)
+
+        self.assertTrue(any("'shell-out' was expected" in message for message in errors))
+
     def test_unknown_action_is_rejected(self) -> None:
         template = minimal_render_template()
         template["actionSpecs"] = copy.deepcopy(template["actionSpecs"])
@@ -126,6 +226,24 @@ class SemanticCompactGraphRenderSchemaTests(unittest.TestCase):
         errors = self.validation_errors(template)
 
         self.assertTrue(any("'maybe' is not one of" in message for message in errors))
+
+    def test_unknown_target_role_is_rejected(self) -> None:
+        template = minimal_render_template()
+        template["actionSpecs"] = copy.deepcopy(template["actionSpecs"])
+        template["actionSpecs"][0]["targetRole"] = "filename"
+
+        errors = self.validation_errors(template)
+
+        self.assertTrue(any("'filename' is not one of" in message for message in errors))
+
+    def test_search_root_is_not_a_standalone_alias_line(self) -> None:
+        template = minimal_render_template()
+        template["searchRoot"] = copy.deepcopy(template["searchRoot"])
+        template["searchRoot"]["standaloneAliasLine"] = True
+
+        errors = self.validation_errors(template)
+
+        self.assertTrue(any("False was expected" in message for message in errors))
 
 
 if __name__ == "__main__":

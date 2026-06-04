@@ -44,7 +44,7 @@
       {
         "kind": "guide-quality",
         "severity": "info",
-        "message": "deny output must route raw candidates through search ingest"
+        "message": "deny output must route concrete raw search terms through provider query"
       }
     ]
   },
@@ -77,8 +77,8 @@
         "lineProtocol": true,
         "stdoutContains": [
           "[search-prime]",
+          "legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next",
           "alias: graph:{G=search",
-          "G=search:result!query",
           "G>{",
           "rank=",
           "frontier="
@@ -87,7 +87,8 @@
         "maxElapsedMsWarn": 3000,
         "stdoutNotContains": [
           "|seed",
-          "|synthesis"
+          "|synthesis",
+          "G=search:result!query"
         ]
       }
     },
@@ -105,14 +106,14 @@
         "."
       ],
       "capture": {
-        "asyncOwner": "\\|seed owner:([^,\\s]+)"
+        "asyncOwner": "owner:path\\(([^)]+)\\)!owner"
       },
       "expect": {
         "lineProtocol": true,
         "stdoutContains": [
           "[search-fzf]",
+          "legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next",
           "alias: graph:{G=search",
-          "G=search:result!query",
           "G>{",
           "rank=",
           "frontier="
@@ -121,7 +122,8 @@
         "maxElapsedMsWarn": 2500,
         "stdoutNotContains": [
           "|seed",
-          "|synthesis"
+          "|synthesis",
+          "G=search:result!query"
         ]
       }
     },
@@ -144,8 +146,8 @@
         "lineProtocol": true,
         "stdoutContains": [
           "[search-owner]",
+          "legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next",
           "alias: graph:{G=search",
-          "G=search:result!query",
           "G>{",
           "rank=",
           "frontier="
@@ -154,7 +156,8 @@
         "maxElapsedMsWarn": 1800,
         "stdoutNotContains": [
           "|seed",
-          "|synthesis"
+          "|synthesis",
+          "G=search:result!query"
         ]
       }
     },
@@ -215,18 +218,16 @@
       "id": "raw-search-deny-guide",
       "kind": "hook-replay",
       "command": [
-        "semantic-agent-hook",
+        "asp",
         "hook",
+        "pre-tool",
         "--client",
-        "codex",
-        "pre-tool"
+        "codex"
       ],
       "stdin": "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"functions.exec_command\",\"tool_input\":{\"cmd\":\"r\\u0067 -n \\\"AsyncRead\\\" src tests\"}}",
       "expect": {
         "stdoutJsonEquals": {
-          "hookSpecificOutput.permissionDecision": "deny",
-          "agentHookDecision.reasonKind": "raw-broad-search",
-          "agentHookDecision.routes.0.kind": "ingest"
+          "hookSpecificOutput.permissionDecision": "deny"
         },
         "stdoutNotContains": [
           "pub mod",
@@ -234,14 +235,14 @@
         ],
         "guideQuality": {
           "reasonKind": "raw-broad-search",
-          "routeKind": "ingest",
+          "routeKind": "query",
           "commandContains": [
             "rs-harness agent guide .",
             "rs-harness",
-            "search",
-            "ingest"
+            "query",
+            "--from-hook",
+            "direct-source-read"
           ],
-          "requiresIngestPipe": true,
           "sourceLeakNotContains": [
             "pub mod",
             "fn main"
@@ -255,18 +256,16 @@
       "id": "direct-read-deny-guide",
       "kind": "hook-replay",
       "command": [
-        "semantic-agent-hook",
+        "asp",
         "hook",
+        "pre-tool",
         "--client",
-        "codex",
-        "pre-tool"
+        "codex"
       ],
       "stdin": "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Read\",\"tool_input\":{\"path\":\"src/lib.rs\"}}",
       "expect": {
         "stdoutJsonEquals": {
-          "hookSpecificOutput.permissionDecision": "deny",
-          "agentHookDecision.reasonKind": "direct-source-read",
-          "agentHookDecision.routes.0.kind": "owner"
+          "hookSpecificOutput.permissionDecision": "deny"
         },
         "stdoutNotContains": [
           "pub mod",
@@ -274,13 +273,13 @@
         ],
         "guideQuality": {
           "reasonKind": "direct-source-read",
-          "routeKind": "owner",
+          "routeKind": "query",
           "commandContains": [
-            "rs-harness agent guide .",
             "rs-harness",
-            "search",
-            "owner",
-            "items"
+            "query",
+            "--from-hook",
+            "direct-source-read",
+            "--code"
           ],
           "sourceLeakNotContains": [
             "pub mod",

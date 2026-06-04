@@ -2,8 +2,16 @@
   "id": "python.fastapi-intent-matrix",
   "language": "python",
   "title": "FastAPI large-library feature/API/principle intent matrix",
-  "coverage": ["search-flow", "performance", "large-library"],
-  "tags": ["large-library", "fastapi", "intent-matrix"],
+  "coverage": [
+    "search-flow",
+    "performance",
+    "large-library"
+  ],
+  "tags": [
+    "large-library",
+    "fastapi",
+    "intent-matrix"
+  ],
   "evidence": {
     "source": "handwritten",
     "fixtureTier": "large-library",
@@ -18,20 +26,35 @@
       {
         "intentKind": "feature-implementation",
         "intent": "Implement lifespan or startup behavior after locating compact owners and tests",
-        "stepIds": ["prime", "intent-query-set"],
-        "queryTerms": ["lifespan"]
+        "stepIds": [
+          "prime",
+          "intent-query-set"
+        ],
+        "queryTerms": [
+          "lifespan"
+        ]
       },
       {
         "intentKind": "api-usage",
         "intent": "Find APIRouter API usage and callsites",
-        "stepIds": ["prime", "intent-query-set"],
-        "queryTerms": ["APIRouter"]
+        "stepIds": [
+          "prime",
+          "intent-query-set"
+        ],
+        "queryTerms": [
+          "APIRouter"
+        ]
       },
       {
         "intentKind": "implementation-principle",
         "intent": "Understand dependency solving implementation paths from parser-owned facts",
-        "stepIds": ["prime", "intent-query-set"],
-        "queryTerms": ["solve_dependencies"]
+        "stepIds": [
+          "prime",
+          "intent-query-set"
+        ],
+        "queryTerms": [
+          "solve_dependencies"
+        ]
       }
     ]
   },
@@ -51,10 +74,21 @@
   "steps": [
     {
       "id": "prime",
-      "command": ["py-harness", "search", "prime", "--view", "seeds", "."],
+      "command": [
+        "py-harness",
+        "search",
+        "prime",
+        "--view",
+        "seeds",
+        "."
+      ],
       "expect": {
         "lineProtocol": true,
-        "stdoutContains": ["[search-prime]", "|seed"],
+        "stdoutContains": [
+          "[search-prime]",
+          "root=fastapi",
+          "fastapi/routing.py"
+        ],
         "maxStdoutLinesWarn": 8,
         "maxElapsedMsWarn": 9000
       }
@@ -79,7 +113,12 @@
       ],
       "expect": {
         "lineProtocol": true,
-        "stdoutContains": ["[search-fzf]", "querySet=3", "|seed"],
+        "stdoutContains": [
+          "[search-fzf]",
+          "querySet=3",
+          "fastapi/dependencies/utils.py",
+          "fastapi/routing.py"
+        ],
         "maxStdoutLinesWarn": 14,
         "maxElapsedMsWarn": 12000
       }

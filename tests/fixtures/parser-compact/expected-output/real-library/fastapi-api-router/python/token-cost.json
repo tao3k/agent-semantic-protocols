@@ -1,18 +1,18 @@
 {
   "caseId": "fastapi-api-router",
-  "compactCodeDelta": 36245,
-  "compactCodeRatio": 0.0226,
-  "compactCodeTokens": 838,
-  "compactLineDelta": 36245,
-  "compactLineRatio": 0.0226,
-  "compactLineTokens": 838,
+  "compactCodeDelta": 193612,
+  "compactCodeRatio": 0.02,
+  "compactCodeTokens": 3956,
+  "compactLineDelta": 193612,
+  "compactLineRatio": 0.02,
+  "compactLineTokens": 3956,
   "featureClass": "real-library",
   "languageId": "python",
   "providerId": "py-harness",
-  "queryPacketDelta": 34019,
-  "queryPacketRatio": 0.0826,
-  "queryPacketTokens": 3064,
-  "rawSourceTokens": 37083,
+  "queryPacketDelta": 178308,
+  "queryPacketRatio": 0.0975,
+  "queryPacketTokens": 19260,
+  "rawSourceTokens": 197568,
   "schemaId": "agent.semantic-protocols.parser-compact-token-cost",
   "schemaVersion": "1",
   "sourceOrigin": {
@@ -23,6 +23,6 @@
     "repository": "fastapi/fastapi",
     "sourcePath": "fastapi/routing.py"
   },
-  "tokenizerId": "tiktoken:o200k_base",
+  "tokenizerId": "byte",
   "variantId": "python"
 }

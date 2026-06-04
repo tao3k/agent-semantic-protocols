@@ -58,14 +58,16 @@ class SemanticReadPacketSchemaTests(unittest.TestCase):
     def test_minimal_provider_read_packet_is_valid(self) -> None:
         self.assertEqual([], self.validation_errors(semantic_read_minimal_packet()))
 
-    def test_read_plan_packet_is_valid_without_source_windows(self) -> None:
+    def test_read_plan_frontier_packet_is_valid_without_source_windows_or_symbols(self) -> None:
         packet = semantic_read_minimal_packet()
         packet.pop("sourceWindows")
         packet["selector"] = "src/lib.rs:115-240"
         packet["readPlan"] = {
-            "mode": "range-outline",
+            "mode": "range-frontier",
             "code": False,
             "reason": "wide-selector",
+            "maxWindowLines": 40,
+            "algorithm": "range-split",
             "ranges": [
                 {
                     "path": "src/lib.rs",
@@ -76,20 +78,78 @@ class SemanticReadPacketSchemaTests(unittest.TestCase):
                     "density": "normal",
                 }
             ],
+            "windows": [
+                {
+                    "path": "src/lib.rs",
+                    "lineRange": "115:154",
+                    "read": "src/lib.rs:115:154",
+                    "lineCount": 40,
+                    "reason": "split",
+                }
+            ],
+            "frontier": [
+                {
+                    "id": "W",
+                    "kind": "window",
+                    "target": "src/lib.rs@115:154",
+                    "read": "src/lib.rs:115:154",
+                    "action": "code",
+                    "rank": 1,
+                    "reason": "split",
+                }
+            ],
+            "avoid": ["repeat-wide-read", "manual-window-scan", "raw-read"],
+            "omit": ["code"],
+        }
+        self.assertEqual([], self.validation_errors(packet))
+
+    def test_read_plan_symbol_frontier_packet_is_valid_without_windows(self) -> None:
+        packet = semantic_read_minimal_packet()
+        packet.pop("sourceWindows")
+        packet["selector"] = "src/lib.rs:1:80"
+        packet["readPlan"] = {
+            "mode": "range-frontier",
+            "code": False,
+            "reason": "wide-selector",
+            "maxWindowLines": 40,
+            "algorithm": "symbol-frontier",
+            "ranges": [
+                {
+                    "path": "src/lib.rs",
+                    "requested": "1:80",
+                    "selected": "1:80",
+                    "matched": "1:80",
+                    "coverage": "full",
+                    "density": "normal",
+                }
+            ],
             "symbols": [
                 {
                     "itemName": "load",
                     "itemKind": "fn",
-                    "lineRange": "110:120",
-                    "read": "src/lib.rs:110:120",
+                    "lineRange": "6:6",
+                    "read": "src/lib.rs:6:6",
                 }
             ],
+            "frontier": [
+                {
+                    "id": "S",
+                    "kind": "symbol",
+                    "target": "src/lib.rs@6:6",
+                    "read": "src/lib.rs:6:6",
+                    "action": "code",
+                    "rank": 1,
+                    "reason": "parser-item",
+                }
+            ],
+            "avoid": ["repeat-wide-read", "manual-window-scan", "raw-read"],
+            "omit": ["code"],
         }
         self.assertEqual([], self.validation_errors(packet))
 
     def test_read_packet_rejects_root_hook_protocol(self) -> None:
         packet = semantic_read_minimal_packet()
-        packet["protocolId"] = "agent.semantic-protocols.agent-hooks"
+        packet["protocolId"] = "agent.semantic-protocols.hook"
         errors = self.validation_errors(packet)
         self.assertTrue(any("was expected" in message for message in errors))
 

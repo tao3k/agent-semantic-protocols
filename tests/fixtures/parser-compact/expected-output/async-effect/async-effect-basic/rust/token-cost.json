@@ -1,18 +1,18 @@
 {
   "caseId": "async-effect-basic",
-  "compactCodeDelta": 147,
-  "compactCodeRatio": 0.1552,
-  "compactCodeTokens": 27,
-  "compactLineDelta": 147,
-  "compactLineRatio": 0.1552,
-  "compactLineTokens": 27,
+  "compactCodeDelta": 595,
+  "compactCodeRatio": 0.1536,
+  "compactCodeTokens": 108,
+  "compactLineDelta": 595,
+  "compactLineRatio": 0.1536,
+  "compactLineTokens": 108,
   "featureClass": "async-effect",
   "languageId": "rust",
   "providerId": "rs-harness",
-  "queryPacketDelta": -875,
-  "queryPacketRatio": 6.0287,
-  "queryPacketTokens": 1049,
-  "rawSourceTokens": 174,
+  "queryPacketDelta": -6325,
+  "queryPacketRatio": 9.9972,
+  "queryPacketTokens": 7028,
+  "rawSourceTokens": 703,
   "schemaId": "agent.semantic-protocols.parser-compact-token-cost",
   "schemaVersion": "1",
   "sourceOrigin": {
@@ -21,6 +21,6 @@
     "repository": "agent-semantic-protocols",
     "sourcePath": "src/lib.rs"
   },
-  "tokenizerId": "tiktoken:o200k_base",
+  "tokenizerId": "byte",
   "variantId": "rust"
 }
