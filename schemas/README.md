@@ -272,6 +272,22 @@ Predicate facts under `query.fields.predicates` use structured operands
 `{op,capture,values:[{kind,value}]}` so `string` and `capture` operands remain
 explicit across ASP cache keys and native provider projection. The `op` label is
 preserved as ABI data, including tree-sitter `any-eq` and `any-match` variants.
+The current v1 implementation boundary is tree-sitter-compatible native projection:
+packets may carry `sourceAuthority=native-parser-adapter`,
+`adapterMode=native-projection`, and `compatibilityLevel=native-only`,
+`approximate`, or `exact` without requiring a grammar-specific tree-sitter
+runtime. Complete tree-sitter-runtime matching, ASP-compiled pattern graphs,
+multi-capture match rows, and field structural selectors are next-layer
+capabilities that must remain explicit in RFC text and provider descriptors
+before consumers treat them as generally supported.
+The optional execution backend field keeps engine choice separate from packet
+shape: `executionBackend=codeql` and `adapterMode=codeql-query` are allowed for
+CodeQL-projected semantic frontier packets. CodeQL is an optional semantic
+backend rather than a new command family or a requirement for basic syntax
+query. The first CodeQL-aligned target is `flow-lite` local source/sink/path frontier,
+still rendered through frontier-first packets and exact `--code` follow-up
+selectors.
+Compact contract: CodeQL is an optional semantic backend for `flow-lite` local source/sink/path frontier.
 
 `semantic-source-location.v1.schema.json` owns the shared project-relative
 path, line range, and source locator vocabulary used by query, search, read,

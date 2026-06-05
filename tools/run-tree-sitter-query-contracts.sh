@@ -34,6 +34,8 @@ chmod +x "$shim_dir/rs-harness" "$shim_dir/ts-harness" "$shim_dir/py-harness"
 export PATH="$shim_dir:$PATH"
 export SEMANTIC_AGENT_PROTOCOL_BIN="$repo_root/target/debug/asp"
 
+"$repo_root/target/debug/asp" hook install --client codex .
+
 bash tools/validate-language-tree-sitter-runtime-boundary.sh
 bash tools/validate-tree-sitter-frontier-code-contract.sh
 bash tools/validate-search-read-plan-frontier-contract.sh

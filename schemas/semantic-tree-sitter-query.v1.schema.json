@@ -54,6 +54,16 @@
     "method": {
       "const": "query"
     },
+    "executionBackend": {
+      "description": "Engine that executed or replayed the compiled query plan. This is separate from sourceAuthority: CodeQL can be a backend while ASP still emits tree-sitter-compatible frontier packets.",
+      "enum": [
+        "native-parser",
+        "tree-sitter-runtime",
+        "codeql",
+        "hybrid",
+        "cached-replay"
+      ]
+    },
     "projectRoot": {
       "type": "string",
       "minLength": 1
@@ -75,6 +85,7 @@
         "native-parser",
         "native-parser-adapter",
         "tree-sitter-runtime",
+        "codeql",
         "hybrid",
         "cached-provider-export"
       ]
@@ -84,6 +95,7 @@
         "native-projection",
         "hybrid",
         "tree-sitter-runtime",
+        "codeql-query",
         "cached-replay"
       ]
     },

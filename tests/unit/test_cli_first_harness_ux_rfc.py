@@ -56,3 +56,23 @@ def test_cli_first_rfc_requires_shell_safe_query_literals() -> None:
     missing_terms = [term for term in required_terms if term not in text]
 
     assert missing_terms == []
+
+
+def test_cli_first_rfc_uses_guide_as_primary_agent_tool_map() -> None:
+    text = _RFC_PATH.read_text(encoding="utf-8")
+    start = text.index("Agent-facing guides must expose the syntax ABI")
+    end = text.index("Hook recovery reason text is a compact Markdown prompt")
+    guide_section = text[start:end]
+
+    required_terms = [
+        "[guide] lang=<language> provider=<asp-provider> protocol=guide.v1 root=.",
+        "=guide= is the provider's default agent-facing guide command",
+        "The spelling =agent guide= is retired",
+        "=query guide treesitter .= as a low-frequency reference",
+    ]
+
+    missing_terms = [term for term in required_terms if term not in guide_section]
+
+    assert missing_terms == []
+    assert "[agent-guide]" not in guide_section
+    assert "protocol=agent-guide.v1" not in guide_section

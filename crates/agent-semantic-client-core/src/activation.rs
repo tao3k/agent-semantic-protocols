@@ -176,7 +176,7 @@ impl ProviderRegistrySnapshot {
         let runtime_profiles = load_or_refresh_runtime_profiles(
             &runtime_profiles_path,
             &runtime_project_root,
-            &activation,
+            activation,
         )
         .ok();
         Ok(Self {

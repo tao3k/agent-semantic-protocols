@@ -1,0 +1,191 @@
+#+TITLE: Tree-sitter Query RFC Roadmap and Documentation Closure
+#+DATE: 2026-06-05
+#+STATUS: active-roadmap
+#+RFC: rfcs/semantic-tree-sitter-query-protocol.org, rfcs/cli-first-harness-ux.org, rfcs/agent-hook-interception-protocol.org
+
+* Summary
+
+The current implementation has moved beyond a raw =--treesitter-query= string
+surface.  ASP now compiles tree-sitter-compatible query input into provider
+plan facts, Rust projects native parser facts into captures, predicate
+filtering is structured, non-=--code= output is compact locator/frontier
+evidence, and =--code= is guarded by exact or unique selection.
+
+The next documentation push must make that boundary explicit: v1 is
+tree-sitter-compatible native projection, not a complete tree-sitter runtime.
+The RFC and docs should describe where the current vertical slice is strong,
+where it is intentionally incomplete, and which schema/provider layers must
+land before stronger native parser granularity can be exposed through the same
+portable syntax ABI.
+
+* Current Implementation Boundary
+
+The honest v1 packet boundary is:
+
+#+begin_example
+sourceAuthority = native-parser-adapter
+adapterMode = native-projection
+compatibilityLevel = native-only | approximate | exact
+#+end_example
+
+The provider may produce tree-sitter-compatible captures without linking a
+grammar-specific tree-sitter runtime.  Rust currently uses native facts and an
+ASP-compiled plan.  This is the mainline design, not a temporary fallback.
+
+The current Rust vertical slice covers:
+
+- query plan facts for captures, node types, fields, and structured predicates;
+- predicate operands for =eq=, =any-eq=, =any-of=, =match=, =any-match=,
+  =not-eq=, and =not-match=;
+- compact non-code frontier output;
+- pure-code extraction only behind exact or unique query selection;
+- item and selected call projection through native parser facts;
+- schema coverage in =semantic-tree-sitter-query.v1=.
+
+* CodeQL Backend Landing Slice
+
+CodeQL should be embraced as an optional semantic execution backend, not as a
+replacement for the ASP query contract.  The stable boundary remains:
+
+#+begin_example
+ASP-compiled plan -> backend execution -> frontier packet -> exact selector --code
+#+end_example
+
+The first protocol step is to make backend choice explicit with
+=executionBackend=.  Current providers can keep emitting native projection
+packets without the field, while future CodeQL-backed packets may declare:
+
+#+begin_example
+executionBackend = codeql
+sourceAuthority = codeql
+adapterMode = codeql-query
+#+end_example
+
+The first CodeQL-aligned capability should be =flow-lite=: local source,
+sink, and path frontier within a function, method, or bounded owner.  This is
+deliberately smaller than global CodeQL dataflow.  It gives agents the path
+evidence they need without forcing every workspace to create a CodeQL database
+before ordinary tree-sitter-compatible query keeps working.
+
+* Gaps To Document Before Expanding
+
+** Single-capture rows
+
+The current row model is still effectively one row per capture.  That is enough
+for =@function.name= style navigation, but it is not enough for tree-sitter
+patterns whose predicate compares two captures:
+
+#+begin_src scheme
+(pair
+  key: (property_identifier) @key.name
+  value: (identifier) @value.name
+  (#eq? @key.name @value.name))
+#+end_src
+
+Before that class is claimed as supported, the packet and provider projection
+need a multi-capture match model:
+
+#+begin_example
+SyntaxQueryMatch {
+  captures: Vec<SyntaxCapture>,
+  nativeRelations: Vec<NativeRelationRef>
+}
+#+end_example
+
+** Field semantics
+
+Fields are currently useful as capture annotations and provider mapping hints.
+The next ABI layer must treat fields as native structural selectors, so a
+pattern such as:
+
+#+begin_src scheme
+(function_item
+  name: (identifier) @function.name
+  parameters: (parameters) @function.parameters
+  return_type: (_) @function.return_type)
+#+end_src
+
+can be executed by the native provider as a structured signature query rather
+than as independent capture labels.
+
+** Pattern graph
+
+The flat =captures/nodeTypes/fields/predicates= plan should evolve into an
+ASP-owned compiled pattern graph:
+
+#+begin_example
+CompiledPatternGraph {
+  patterns: [
+    {
+      id: "p0",
+      root: { nodeType: "function_item" },
+      children: [
+        { field: "name", nodeType: "identifier", capture: "function.name" },
+        { field: "parameters", nodeType: "parameters", capture: "function.parameters" },
+        { field: "return_type", nodeType: "_", capture: "function.return_type", optional: true }
+      ],
+      predicates: [...],
+      outputTarget: "enclosing-item"
+    }
+  ]
+}
+#+end_example
+
+ASP compiles S-expression and catalog input into this graph.  Providers execute
+the typed graph through their native parser/compiler facts; they should not
+parse raw S-expression strings in provider-private ways.
+
+* Documentation Ownership Matrix
+
+| Owner | File | Scope |
+|-------+------+-------|
+| Syntax ABI | =rfcs/semantic-tree-sitter-query-protocol.org= | tree-sitter-compatible query packet, catalog/profile/corpus layout, native-projection limits, pattern graph roadmap |
+| Agent CLI | =rfcs/cli-first-harness-ux.org= | =asp <language> guide=, =query guide treesitter=, search/read-plan/code stdout contracts |
+| Hook Recovery | =rfcs/agent-hook-interception-protocol.org= | Markdown hook prompt, =Run Next= route, =Detected Binaries=, ast-patch config branch |
+| Schema Catalog | =schemas/README.md= | shared schema roles, provenance base schema, activation/runtime profile relationship |
+| Agent Skill | =SKILL.md= | embedded install template for complex flows only; no static active language list |
+| Installed Skill | =.agents/skills/agent-semantic-protocols/SKILL.md= | generated copy with do-not-edit notice and provider table from activation/runtime profile |
+
+The packet envelopes remain separate.  =semantic-search-packet=,
+=semantic-query-packet=, and =semantic-read-packet= keep their own consumer
+contracts.  Tree-sitter provenance converges through
+=semantic-tree-sitter-provenance.v1= and optional refs such as
+=syntaxQueryRef=, =syntaxMatchRefs=, =syntaxCaptureRefs=, and =syntaxAnchor=.
+
+* Rollout Plan
+
+1. RFC baseline:
+   - add current v1 native-projection boundary;
+   - record single-capture, field-selector, and pattern-graph gaps;
+   - make =guide= the primary agent command name and keep =query guide
+     treesitter= as a low-frequency reference.
+2. Schema/docs baseline:
+   - document =semantic-tree-sitter-provenance.v1= as the shared base;
+   - document =asp.toml= provider activation and runtime profile command
+     resolution;
+   - keep generated skills separate from root template source.
+3. Doc gates:
+   - assert required terms in the RFCs and schema README;
+   - reject old prompt-facing command shapes in active guide/skill docs;
+   - assert installed skill notice and rendered provider table placeholders are
+     not shipped.
+4. Real evidence:
+   - run schema/RFC tests;
+   - run hook/protocol Rust tests;
+   - rebuild release =asp=, reinstall hooks, and trigger a real hook denial;
+   - capture =Run Next=, =Detected Binaries=, =asp <language> guide .=, and
+     ast-patch disabled guidance as the smoke evidence.
+
+* Closure Criteria
+
+This documentation pass is complete when:
+
+- the three RFCs name their ownership boundaries without contradiction;
+- active guide docs no longer teach =agent guide= or =search query
+  --from-hook= as agent-facing routes;
+- root =SKILL.md= remains a template source and generated skill has the
+  do-not-edit notice;
+- tests prove tree-sitter native-projection limits and next-layer terms are in
+  the RFC;
+- a live hook denial prints runtime-profile provider command paths and the
+  current =experimental.semanticAstPatch.enabled= branch.

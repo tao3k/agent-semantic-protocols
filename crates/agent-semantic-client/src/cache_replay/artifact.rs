@@ -4,6 +4,7 @@ use std::env;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use agent_semantic_client_core::{
     ByteCount, CacheArtifactId, ClientCacheFileHash, ClientMethod, ClientRequest, LanguageId,
@@ -134,6 +135,10 @@ pub(crate) fn load_replay_artifact(
         None
     }
 
+    if !replay_file_hashes_match(&generation_hit.project_root, &generation_hit.file_hashes) {
+        return None;
+    }
+
     load_search_packet_artifact(cache_root, generation_hit, request)
         .or_else(|| load_query_packet_artifact(cache_root, generation_hit, request))
         .or_else(|| load_syntax_query_packet_artifact(cache_root, generation_hit, request))
@@ -194,7 +199,67 @@ fn load_search_packet_artifact(
     generation_hit
         .artifact_ids
         .iter()
-        .find_map(|artifact_id| render_search_packet_artifact(cache_root, artifact_id))
+        .find_map(|artifact_id| load_search_output_artifact(cache_root, artifact_id))
+        .or_else(|| {
+            generation_hit
+                .artifact_ids
+                .iter()
+                .find_map(|artifact_id| render_search_packet_artifact(cache_root, artifact_id))
+        })
+}
+
+fn load_search_output_artifact(
+    cache_root: &Path,
+    artifact_id: &CacheArtifactId,
+) -> Option<ProviderCacheReplay> {
+    let artifact_path = replay_artifact_path(cache_root, artifact_id, "search-output/", ".txt")?;
+    let metadata = fs::metadata(&artifact_path).ok()?;
+    if !metadata.is_file() || metadata.len() > MAX_CACHE_REPLAY_ARTIFACT_BYTES {
+        return None;
+    }
+    let stdout = fs::read(artifact_path).ok()?;
+    if !search_output_artifact_replay_safe(&stdout) {
+        return None;
+    }
+    Some(ProviderCacheReplay::stdout(stdout))
+}
+
+pub(crate) fn search_output_artifact_replay_safe(stdout: &[u8]) -> bool {
+    let Ok(stdout) = std::str::from_utf8(stdout) else {
+        return false;
+    };
+    stdout.contains("[search-")
+        && stdout.contains("legend: ID=kind:role(value)!next;")
+        && stdout.contains("frontier ID.next")
+        && stdout.contains("aliases: graph:{")
+        && !stdout.contains('\0')
+}
+
+pub(crate) fn render_search_packet_bytes(packet_bytes: &[u8]) -> Option<Vec<u8>> {
+    if packet_bytes.is_empty() || packet_bytes.len() as u64 > MAX_CACHE_REPLAY_ARTIFACT_BYTES {
+        return None;
+    }
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .ok()?
+        .as_nanos();
+    let packet_path = env::temp_dir().join(format!(
+        "agent-semantic-search-packet-{}-{unique}.json",
+        std::process::id()
+    ));
+    fs::write(&packet_path, packet_bytes).ok()?;
+    let output = Command::new(protocol_graph_renderer_binary())
+        .args(["graph", "render", "--packet"])
+        .arg(&packet_path)
+        .args(["--view", "seeds"])
+        .output()
+        .ok();
+    let _ = fs::remove_file(&packet_path);
+    let output = output?;
+    if !output.status.success() || !search_output_artifact_replay_safe(&output.stdout) {
+        return None;
+    }
+    Some(output.stdout)
 }
 
 fn render_search_packet_artifact(
@@ -295,7 +360,7 @@ pub(crate) fn load_syntax_query_rows_replay(
     })
     .ok()
     .flatten()?;
-    if !syntax_replay_file_hashes_match(project_root, &replay.file_hashes) {
+    if !replay_file_hashes_match(project_root, &replay.file_hashes) {
         return None;
     }
     let stdout = render_semantic_tree_sitter_query_rows_stdout(&replay);
@@ -421,10 +486,7 @@ fn request_flag_value<'a>(forwarded_args: &'a [String], flag: &str) -> Option<&'
     None
 }
 
-fn syntax_replay_file_hashes_match(
-    project_root: &Path,
-    file_hashes: &[ClientCacheFileHash],
-) -> bool {
+fn replay_file_hashes_match(project_root: &Path, file_hashes: &[ClientCacheFileHash]) -> bool {
     !file_hashes.is_empty()
         && file_hashes
             .iter()

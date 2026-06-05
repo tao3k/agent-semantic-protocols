@@ -155,7 +155,7 @@ agent-hooks-doctor-py:
 check-sandtables:
     uv run --project packages/python python -m tools sandtable
 
-provider-gate: check-rust-warnings check-schema-profiles check-tree-sitter-query-contracts check-language-workspace-search-contracts provider-gate-root provider-gate-rust provider-gate-typescript provider-gate-python provider-gate-julia
+provider-gate: check-rust-warnings check-schema-profiles check-rfc-docs check-tree-sitter-query-contracts check-language-workspace-search-contracts provider-gate-root provider-gate-rust provider-gate-typescript provider-gate-python provider-gate-julia
 
 check-rust-warnings:
     direnv exec . env RUSTFLAGS="-D warnings" cargo check -q -p agent-semantic-protocol
@@ -170,12 +170,20 @@ check-tree-sitter-query-contracts:
 check-language-workspace-search-contracts:
     direnv exec . bash tools/validate-language-workspace-search-contract.sh
 
+check-rfc-docs:
+    direnv exec . uv run --frozen pytest \
+      tests/unit/test_*rfc.py \
+      tests/unit/test_docs_rfc_skill_contracts.py \
+      -q
+
 provider-gate-root:
     direnv exec . cargo test -p agent-semantic-hook
     direnv exec . python -m pytest \
       tests/unit/test_semantic_*_schema.py \
       tests/unit/test_semantic_tree_sitter_query_rfc.py \
       tests/unit/test_cli_first_harness_ux_rfc.py \
+      tests/unit/test_agent_hook_interception_protocol_rfc.py \
+      tests/unit/test_docs_rfc_skill_contracts.py \
       tests/unit/semantic_sandtable
 
 provider-gate-rust:
@@ -216,6 +224,15 @@ provider-gate-julia:
 	direnv exec . {{julia_harness}} agent doctor --json {{julia_harness_project}} >/dev/null
 	direnv exec . {{julia_compiled_harness}} guide {{julia_harness_project}} >/dev/null
 	direnv exec . {{julia_compiled_harness}} agent doctor --json {{julia_harness_project}} >/dev/null
+
+perf-calibrate-julia-cache:
+	direnv exec . cargo build -q -p agent-semantic-protocol --bin asp
+	@tmp="$(mktemp -d)"; \
+	  asp_bin="$PWD/target/debug/asp"; \
+	  direnv exec . "${asp_bin}" cache invalidate --root {{julia_harness_project}} >/dev/null; \
+	  direnv exec . "${asp_bin}" julia search prime --view seeds {{julia_harness_project}} --receipt-json >"${tmp}/miss.out" 2>"${tmp}/miss.receipt.json"; \
+	  direnv exec . "${asp_bin}" julia search prime --view seeds {{julia_harness_project}} --receipt-json >"${tmp}/hit.out" 2>"${tmp}/hit.receipt.json"; \
+	  python3 tools/perf-calibrate-julia-cache.py "${tmp}"
 
 check-python-policy:
     uv run --project {{python_harness_project}} --frozen py-harness check --full {{repo}}

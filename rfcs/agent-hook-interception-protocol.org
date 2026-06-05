@@ -755,6 +755,40 @@ direct-source-read denied; provider guide: rust => asp rust guide .; python => a
 raw-broad-search denied; provider guide: typescript => asp typescript guide .
 #+end_example
 
+For Codex and Claude prompt surfaces, the rendered reason text is Markdown, not
+a pipe-delimited template and not a replacement for the JSON decision packet.
+The packet remains the machine-readable contract; the prompt string teaches the
+next safe agent move.  A deny message should contain these sections in order:
+
+#+begin_example
+# ASP Hook Recovery
+
+## Stop
+Do not retry raw source reads, shell source dumps, or broad raw search on the
+matched source path.
+
+## Run Next
+asp <language> query --from-hook direct-source-read ...
+
+## Detected Binaries
+- language=<language> provider=<providerId> command=<runtime-profile argv> facade=asp <language>
+
+## Agent Flow
+1. Start from asp <language> guide . when the tool map is needed.
+2. Use search prime for project mapping.
+3. Use query guide treesitter only for syntax pattern work.
+4. Use query --code only after exact selector or unique match.
+5. Patch with apply_patch unless the loaded hook config enables semantic ast-patch.
+#+end_example
+
+The =Detected Binaries= section is diagnostic, not the executable public route.
+It must use the generated runtime profile's resolved =argv= when available so
+PATH, direnv, symlink, and stale binary drift are visible.  The public route in
+=routes[].argv= still uses the =asp <language>= facade and keeps =providerId=
+as identity.  If =experimental.semanticAstPatch.enabled = false= in the loaded
+client hook config, the rendered flow must explicitly tell agents to use
+=apply_patch= and not route ordinary edits through provider =ast-patch=.
+
 The root hook must not maintain a parser/query engine.  Exact selected source
 paths route back to the owning provider's =query --from-hook
 direct-source-read= surface through =asp <language>=, while =providerId=

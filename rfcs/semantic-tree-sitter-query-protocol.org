@@ -115,6 +115,130 @@ stronger native-parser-backed language syntax search system.
    generation to be fresh, but normalized row replay must check the matched row
    generation's own AST/ABI identity and file hashes.
 
+* Current v1 boundary
+
+The first vertical slice is a tree-sitter-compatible native projection.  It is
+not a claim that every provider links a complete tree-sitter runtime or executes
+the full tree-sitter query VM.  A typical current packet should be read as:
+
+#+begin_example
+sourceAuthority = native-parser-adapter
+adapterMode = native-projection
+compatibilityLevel = native-only | approximate | exact
+#+end_example
+
+This is intentional.  The public ABI reuses tree-sitter query shape because it
+is the best portable syntax vocabulary, while the product authority remains in
+provider-native parser and compiler facts.  Rust may prove a
+=function_item/name= capture through =syn= facts; TypeScript may prove a
+=function_declaration/name= capture through the TypeScript Compiler API;
+Python may prove a =function_definition/name= capture through =ast= and
+=tokenize=.  These are tree-sitter-compatible facts, not necessarily
+tree-sitter-runtime facts.
+
+The current implementation baseline includes:
+
+- ASP-compiled plan facts for captures, node types, fields, and structured
+  predicates;
+- predicate operations =eq=, =any-eq=, =any-of=, =match=, =any-match=,
+  =not-eq=, and =not-match= with explicit string or capture operands;
+- compact non-=--code= locator/frontier output;
+- pure-code stdout only after exact selector or unique-match selection;
+- Rust native projection for item and selected call frontiers;
+- cache and receipt provenance that references validated packets or rows rather
+  than raw source inference.
+
+Provider guides and docs must describe this as
+=tree-sitter-compatible native projection=.  They must not imply complete
+tree-sitter runtime compatibility unless the packet uses
+=adapterMode=tree-sitter-runtime= or =adapterMode=hybrid= and the provider
+records that proof.
+
+* Next projection layers
+
+The next layer is not a separate =ts-query= or =syntax-query= family.  It is a
+stronger ASP-compiled query plan and native provider executor behind the same
+=asp <language> query= surface.
+
+** Pattern graph plan
+
+The flat =captures/nodeTypes/fields/predicates= plan should evolve into a
+compiled pattern graph owned by ASP:
+
+#+begin_src json
+{
+  "patterns": [
+    {
+      "id": "p0",
+      "root": { "nodeType": "function_item" },
+      "children": [
+        { "field": "name", "nodeType": "identifier", "capture": "function.name" },
+        { "field": "parameters", "nodeType": "parameters", "capture": "function.parameters" },
+        { "field": "return_type", "nodeType": "_", "capture": "function.return_type", "optional": true }
+      ],
+      "predicates": [
+        {
+          "op": "match",
+          "capture": "function.name",
+          "values": [{ "kind": "string", "value": "^render_" }]
+        }
+      ],
+      "outputTarget": "enclosing-item"
+    }
+  ]
+}
+#+end_src
+
+ASP still compiles catalog-id and S-expression inputs.  Providers execute the
+typed pattern graph through native parser/compiler facts and should not parse a
+second provider-private S-expression language.
+
+** Multi-capture match model
+
+The current row projection is sufficient for single-capture navigation such as
+=@function.name=.  It is not enough for full tree-sitter predicate semantics
+where a predicate compares captures within the same match:
+
+#+begin_src scheme
+(pair
+  key: (property_identifier) @key.name
+  value: (identifier) @value.name
+  (#eq? @key.name @value.name))
+#+end_src
+
+Before providers claim support for capture-to-capture predicates, packets and
+cache rows need an explicit multi-capture match model:
+
+#+begin_example
+SyntaxQueryMatch {
+  captures: Vec<SyntaxCapture>,
+  nativeRelations: Vec<NativeRelationRef>
+}
+#+end_example
+
+The predicate executor then evaluates =@key.name= and =@value.name= from the
+same match row instead of inferring related capture text from independent rows.
+
+** Field structural selectors
+
+Fields are not only labels for rendering.  In the stronger native projection
+layer, fields become structural selectors that providers map onto native parser
+shape:
+
+#+begin_src scheme
+(function_item
+  name: (identifier) @function.name
+  parameters: (parameters) @function.parameters
+  return_type: (_) @function.return_type)
+#+end_src
+
+For Rust this maps to =syn::ItemFn.sig= fields.  For TypeScript it maps to
+compiler AST declaration members.  For Python it maps to =ast.FunctionDef=
+attributes plus token ownership where indentation or decorators matter.  If a
+field cannot be structurally verified, the provider must return
+=compatibilityLevel=approximate= or reject the pattern as unsupported instead
+of pretending it has exact syntax proof.
+
 * Terminology
 
 ** Tree-sitter-compatible
@@ -146,12 +270,37 @@ TypeScript can use the Compiler API and still emit a
 | =native-parser= | The language provider's native parser/compiler stack proved the capture. |
 | =native-parser-adapter= | Native facts were projected through a tree-sitter-compatible mapping table. |
 | =tree-sitter-runtime= | A real tree-sitter parser/query runtime proved the capture. |
+| =codeql= | A CodeQL database/query proved the semantic relation that was projected into this frontier packet. |
 | =hybrid= | Tree-sitter-compatible candidates were verified or enriched by the native provider. |
 | =cached-provider-export= | ASP replayed a previously validated provider-owned export. |
 
 Only provider-owned native modes may claim compiler/project semantics.  A
 =tree-sitter-runtime= capture can be useful syntax evidence, but it does not
 prove type, owner, dependency, test, policy, or patch-safety facts by itself.
+
+** Execution backend
+
+=executionBackend= records which engine executed or replayed the compiled
+query plan.  It is deliberately separate from =sourceAuthority=: a packet can
+be rendered through the same tree-sitter-compatible frontier ABI while the
+backend is native parser, tree-sitter runtime, CodeQL, a hybrid path, or cached
+replay.
+
+| Backend | Purpose |
+|---------+---------|
+| =native-parser= | Default provider path.  Native parser/compiler facts execute the ASP-compiled plan. |
+| =tree-sitter-runtime= | A real tree-sitter query runtime executes the pattern. |
+| =codeql= | Optional semantic backend for local flow/path frontiers. |
+| =hybrid= | More than one engine contributes candidates or verification. |
+| =cached-replay= | ASP replays a validated provider-owned packet or normalized rows. |
+
+CodeQL is a backend, not a new prompt-facing command family.  CodeQL is an
+optional semantic backend.  It must emit the same frontier-first packet shape
+as other engines, should start with =flow-lite= local source/sink/path
+frontier, and must not require every project or provider to maintain a CodeQL
+database before basic syntax query continues to work.
+
+Compact contract: =flow-lite= local source/sink/path frontier.
 
 ** Adapter mode
 
@@ -162,6 +311,7 @@ prove type, owner, dependency, test, policy, or patch-safety facts by itself.
 | =native-projection= | Primary path.  Native parser facts are projected into the shared syntax ABI. |
 | =hybrid= | Tree-sitter-compatible query narrows candidates; native parser verifies and enriches them. |
 | =tree-sitter-runtime= | Bootstrap/debug path.  A provider directly runs tree-sitter query. |
+| =codeql-query= | CodeQL query results are projected into the shared frontier ABI. |
 | =cached-replay= | ASP renders from validated cache rows or artifacts without starting the provider. |
 
 ** Compatibility level
@@ -200,6 +350,7 @@ The core packet shape is:
   "projectRoot": ".",
   "grammarId": "tree-sitter-typescript",
   "grammarProfileVersion": "typescript-compiler-api-2026-06",
+  "executionBackend": "native-parser",
   "sourceAuthority": "native-parser",
   "adapterMode": "native-projection",
   "compatibilityLevel": "exact",

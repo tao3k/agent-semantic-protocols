@@ -24,7 +24,7 @@ acceleration cache.  MCP is explicitly excluded from the architecture.
 
 #+begin_example
 Agent client
-  ↓ reads SKILL.org
+  ↓ reads generated SKILL.md
 hooks
   ↓ call fixed commands
 ts-harness CLI
@@ -967,7 +967,7 @@ emit bounded query evidence: query coverage, owner candidates, item candidates,
 test seeds when requested, and any visible runtime prefilter cost.  It must not
 expand the matched files into source text.  =query --from-hook= is the only
 agent-facing wildcard direct-read recovery route.  Providers must not advertise
-or accept =search query --from-hook= as a compatibility alias; keeping both
+or accept the retired search-query hook form as a compatibility alias; keeping both
 forms creates route drift and breaks guide-quality replay.
 
 When the selector is one exact project-relative source path and the agent has no
@@ -1205,13 +1205,13 @@ Provider guide output should be split by use, not by implementation owner.  The
 agent-facing line protocols are:
 
 #+begin_src text
-[agent-guide] lang=<language> provider=<asp-provider> protocol=agent-guide.v1 root=.
+[guide] lang=<language> provider=<asp-provider> protocol=guide.v1 root=.
 [query-guide] lang=<language> provider=<asp-provider> protocol=query-guide.v1 root=.
 [treesitter-query-guide] lang=<language> engine=tree-sitter protocol=treesitter-query-guide.v1 root=.
 #+end_src
 
 =guide= is the provider's default agent-facing guide command and emits the
-=agent-guide.v1= protocol.  It teaches surfaces and flows, and should point
+=guide.v1= protocol.  It teaches surfaces and flows, and should point
 code-shaped syntax work to =query guide treesitter .= before an agent writes an
 inline =--treesitter-query=.  =query guide= teaches stdout contracts, read-plan
 contracts, and pure-code requirements.  =query guide treesitter= teaches
@@ -1226,6 +1226,14 @@ only as specialized reference guides when that decision is needed.
 The concrete recovery route remains
 =asp rust query --from-hook direct-source-read ...= when the hook has an exact
 selector.
+
+The spelling =agent guide= is retired for prompt-facing flows.  Providers may
+keep compatibility aliases for old tests or manual debugging, but registry
+output, generated skills, hook recovery messages, and new RFC examples must use
+=guide= as the main command name and keep =query guide treesitter .= as a low-frequency reference.
+This keeps the low-frequency tool map stable and prevents agents from reading
+multiple guide bodies before they know whether they need search, query, syntax,
+or verification detail.
 
 Hook recovery reason text is a compact Markdown prompt, not a second JSON
 schema and not a line-protocol template.  The authoritative
@@ -1983,7 +1991,7 @@ This rule prevents token explosion from files like =file-search/src/lib.rs=
 <lang-harness> agent doctor --json
 #+end_src
 
-Installs/updates =SKILL.org=, hooks, and config into the configured agent
+Installs/updates the generated =SKILL.md=, hooks, and config into the configured agent
 workspace.  =doctor= checks daemon health, protocol version, cache freshness,
 and hook integrity.  =doctor --json= emits the semantic-language registry
 contract for callable method discovery.
@@ -2828,7 +2836,7 @@ rs-harness agent doctor
 rs-harness agent doctor --json
 #+end_src
 
-=install= writes/updates =SKILL.org=, hooks, and config into the configured
+=install= writes/updates the generated =SKILL.md=, hooks, and config into the configured
 agent workspace.  =doctor= checks daemon health, protocol version, cache
 freshness, hook integrity, and schema readiness.  =doctor --json= emits the
 schema-valid semantic-language registry with =methods= and
@@ -3570,7 +3578,7 @@ safe command, pipe shape for =search ingest= when needed, subagent receipt
 requirements when applicable, and no leaked source text.  The route argv is a
 separate assertion surface from the human-readable message: sandtables may
 require canonical command fragments such as =query --from-hook= and reject stale
-fragments such as =search query --from-hook= or non-canonical surface names.
+fragments such as the retired search-query hook form or non-canonical surface names.
 Guide quality may also assert prompt-visible output facts.  When compact graph
 or search-guide optimization is under test, scenarios can require exact
 =entries=profile(selectors=>returns)= text through
@@ -4010,7 +4018,7 @@ subagent plans, and do not consume natural-language intent.
 set -euo pipefail
 
 echo "This repo uses rs-harness. Start with \`rs-harness search workspace\` for multi-package roots, then \`rs-harness search prime\`."
-echo "Use SKILL.org recipes to choose command groups."
+echo "Use the generated skill recipes to choose command groups."
 echo "For broad tasks, spawn read-only subagents yourself."
 echo ""
 
@@ -4273,7 +4281,7 @@ If an agent-client integration bundle is desired, it contains:
 
 #+begin_example
 ts-harness-agent-bundle
-├── SKILL.org
+├── SKILL.md
 ├── hooks/
 │   ├── session-start.sh
 │   ├── after-edit.sh
@@ -4336,7 +4344,7 @@ cover Tokio, rust-lang/rust, and large agent-client class projects:
 |       | Tokio allowed_external_types + rustc_middle smallvec.       |
 | M6    | Ingest auto-sniff + 8 pattern recipes.  Single command,     |
 |       | auto-detect stdin.  Always owner/item-grouped output.       |
-| M7    | SKILL.org multi-pipe flows.  8 flows with multi-pipe         |
+| M7    | Generated skill multi-pipe flows.  8 flows with multi-pipe   |
 |       | templates: dependency/feature/public-api/external-candidate/ |
 |       | namespace/finding-repair/unknown/docs-api.                  |
 
@@ -4377,7 +4385,7 @@ Step 5: Docs/API facts
     public-external-types joins parser-native public API type facts with Cargo dependency facts
     bytes::Buf / ignore::WalkBuilder fixtures
 
-Step 6: SKILL.org two-phase guide
+Step 6: generated skill two-phase guide
     Phase 1: deep prime always first (mode/source_large/api-candidate rules)
     Phase 2: parent axis selection
     Phase 3: subagent multi-pipe/ingest
@@ -4398,7 +4406,7 @@ The TypeScript harness already has:
 - =package.json= scripts: =build=, =check=, =format=, =lint=, =test=, =harness=
 - Stable protocol commands: =search=, =check=, and =agent doctor=
 - A provider registry emitted by =ts-harness agent doctor --json=
-- A =SKILL.org= guide that teaches protocol commands, not direct renderer flags
+- A generated =SKILL.md= guide that teaches protocol commands, not direct renderer flags
 - Public library surface: =renderTypeScriptProjectHarnessAgentCompactText=,
   =renderTypeScriptProjectHarnessAgentSnapshot=,
   =runTypeScriptProjectHarnessAgentSnapshot=, =runTypeScriptProjectHarness=,
@@ -4466,7 +4474,7 @@ metadata and local import usage, with =versionScope= rendered as =current=,
 * The correct division of labor
 
 #+begin_example
-SKILL.org:
+Generated skill:
   writes exploration protocol, subagent usage, command-group recipes,
   synthesis format
 
@@ -4507,7 +4515,7 @@ harness.  That is the correct harness-client boundary./
 * The bottom line
 
 #+begin_example
-SKILL.org:
+Generated skill:
   teaches agent clients how to use harness
 
 hooks:

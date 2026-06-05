@@ -24,3 +24,25 @@ def test_codex_source_access_layer_records_no_daemon_scope() -> None:
     missing_terms = [term for term in required_terms if term not in text]
 
     assert missing_terms == []
+
+
+def test_hook_rfc_defines_markdown_recovery_prompt_and_runtime_binaries() -> None:
+    text = _RFC_PATH.read_text(encoding="utf-8")
+
+    required_terms = [
+        "the rendered reason text is Markdown",
+        "# ASP Hook Recovery",
+        "## Run Next",
+        "## Detected Binaries",
+        "command=<runtime-profile argv>",
+        "Start from asp <language> guide .",
+        "runtime profile's resolved =argv=",
+        "The public route in",
+        "=routes[].argv= still uses the =asp <language>= facade",
+        "experimental.semanticAstPatch.enabled = false",
+        "=apply_patch=",
+    ]
+
+    missing_terms = [term for term in required_terms if term not in text]
+
+    assert missing_terms == []

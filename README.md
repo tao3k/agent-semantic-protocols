@@ -43,6 +43,22 @@ Do not jump from a real-project pain point directly to a provider-private fix
 when the issue changes the shared contract. Keep the durable behavior visible
 in the RFC and schema first, then align providers and sandtable evidence.
 
+## Documentation Map
+
+- `rfcs/semantic-tree-sitter-query-protocol.org` owns the portable
+  tree-sitter-compatible syntax ABI, catalog/profile/corpus layout, native
+  projection boundary, and pattern-graph roadmap.
+- `rfcs/cli-first-harness-ux.org` owns the agent-facing `asp <language> guide`,
+  search/query/read-plan stdout contracts, and syntax locate/code flows.
+- `rfcs/agent-hook-interception-protocol.org` owns hook decision packets,
+  Markdown recovery prompts, `Detected Binaries`, and ast-patch config
+  branching.
+- `schemas/README.md` owns the schema catalog and explains how query/search/read
+  packets share tree-sitter provenance without merging packet envelopes.
+- `docs/30-39-research/31.18-tree-sitter-query-rfc-roadmap.org` records the
+  current tree-sitter native-projection audit and the closure checklist for the
+  RFC/docs pass.
+
 ## Common Commands
 
 Enter the project shell first when available:
@@ -88,6 +104,12 @@ asp doctor
 asp providers
 asp cache status
 asp rust search prime --view seeds .
+```
+
+Calibrate the local Julia cache hot path after client/cache changes:
+
+```sh
+just perf-calibrate-julia-cache
 ```
 
 Refresh a client hook config after the binaries already exist:
@@ -137,6 +159,12 @@ Run the root hook tests:
 ```sh
 cargo test -p agent-semantic-protocol
 cargo test -p agent-semantic-hook
+```
+
+Run only the RFC/docs contract tests:
+
+```sh
+just check-rfc-docs
 ```
 
 Run sandtable scenarios:

@@ -30,9 +30,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
-      - name: Checkout Rust provider submodule
+      - name: Checkout provider catalog submodules
         shell: bash
-        run: git submodule update --init --depth 1 languages/rust-lang-project-harness
+        run: |
+          git submodule update --init --depth 1 \
+            languages/rust-lang-project-harness \
+            languages/typescript-lang-project-harness \
+            languages/python-lang-project-harness
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -168,6 +172,8 @@ jobs:
             tests/unit/test_semantic_tree_sitter_query_schema.py \
             tests/unit/test_semantic_tree_sitter_query_rfc.py \
             tests/unit/test_cli_first_harness_ux_rfc.py \
+            tests/unit/test_agent_hook_interception_protocol_rfc.py \
+            tests/unit/test_docs_rfc_skill_contracts.py \
             tests/unit/semantic_query_packet_schema/test_basic.py \
             tests/unit/test_semantic_search_packet_schema.py \
             tests/unit/test_semantic_read_packet_schema.py \

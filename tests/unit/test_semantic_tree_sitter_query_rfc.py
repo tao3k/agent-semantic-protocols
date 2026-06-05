@@ -55,3 +55,67 @@ def test_schema_readme_names_query_render_profiles_without_new_packet_surface() 
     missing_terms = [term for term in required_terms if term not in text]
 
     assert missing_terms == []
+
+
+def test_tree_sitter_query_rfc_names_native_projection_boundary_and_next_layers() -> None:
+    text = _RFC_PATH.read_text(encoding="utf-8")
+
+    required_terms = [
+        "* Current v1 boundary",
+        "tree-sitter-compatible native projection",
+        "not a claim that every provider links a complete tree-sitter runtime",
+        "sourceAuthority = native-parser-adapter",
+        "adapterMode = native-projection",
+        "* Next projection layers",
+        "** Pattern graph plan",
+        "** Multi-capture match model",
+        "** Field structural selectors",
+        "SyntaxQueryMatch",
+        "capture-to-capture predicates",
+        "fields become structural selectors",
+    ]
+
+    missing_terms = [term for term in required_terms if term not in text]
+
+    assert missing_terms == []
+
+
+def test_tree_sitter_query_rfc_names_codeql_as_optional_backend() -> None:
+    text = _RFC_PATH.read_text(encoding="utf-8")
+
+    required_terms = [
+        "** Execution backend",
+        "=executionBackend=",
+        "=codeql=",
+        "optional semantic backend",
+        "=flow-lite=",
+        "local source/sink/path frontier",
+        "must not require every project",
+        "=codeql-query=",
+    ]
+
+    missing_terms = [term for term in required_terms if term not in text]
+
+    assert missing_terms == []
+
+
+def test_schema_readme_records_v1_projection_boundary() -> None:
+    text = _SCHEMA_README_PATH.read_text(encoding="utf-8")
+
+    required_terms = [
+        "current v1 implementation boundary",
+        "tree-sitter-compatible native projection",
+        "`sourceAuthority=native-parser-adapter`",
+        "`adapterMode=native-projection`",
+        "ASP-compiled pattern graphs",
+        "multi-capture match rows",
+        "field structural selectors",
+        "`executionBackend=codeql`",
+        "`adapterMode=codeql-query`",
+        "optional semantic backend",
+        "`flow-lite` local source/sink/path frontier",
+    ]
+
+    missing_terms = [term for term in required_terms if term not in text]
+
+    assert missing_terms == []

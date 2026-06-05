@@ -1,6 +1,7 @@
 use crate::{
     ASP_SYNTAX_QUERY_CAPTURES_ARG, ASP_SYNTAX_QUERY_FIELDS_ARG, ASP_SYNTAX_QUERY_NODE_TYPES_ARG,
     ASP_SYNTAX_QUERY_PREDICATES_JSON_ARG, ClientMethod, LanguageId, append_syntax_query_plan_args,
+    syntax_query_ast_abi_fingerprint,
 };
 
 #[test]
@@ -38,6 +39,18 @@ fn appends_asp_syntax_query_plan_for_inline_query() {
             "name",
         ]
     );
+}
+
+#[test]
+fn syntax_query_ast_abi_fingerprint_ignores_whitespace_layout() {
+    let single_line =
+        syntax_query_ast_abi_fingerprint("(function_item name: (identifier) @function.name)")
+            .expect("single-line fingerprint");
+    let multi_line =
+        syntax_query_ast_abi_fingerprint("(function_item\n  name: (identifier) @function.name)")
+            .expect("multi-line fingerprint");
+
+    assert_eq!(single_line, multi_line);
 }
 
 #[test]

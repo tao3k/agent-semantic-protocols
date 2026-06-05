@@ -688,6 +688,12 @@ Completed:
 - [X] TypeScript =ts-harness= constructs canonical search packets and shells
   out to =asp graph render=; its previous local graph
   renderer was replaced by a thin adapter with no fallback path.
+- [X] ASP local-native packet-first miss can render a validated
+  =semantic-search-packet= through the shared graph renderer, write
+  =search/*.json= plus =search-output/*.txt= artifacts, and let local-cache
+  hits replay the rendered compact graph without starting the provider or
+  renderer.  Julia =search prime --view seeds= is the first focused calibration
+  target for this path.
 
 In progress:
 

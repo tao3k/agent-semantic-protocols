@@ -4,12 +4,15 @@ use std::env;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
-use agent_semantic_client_core::{ClientMethod, ClientRequest, ProviderRegistrySnapshot};
-use agent_semantic_client_local_cli::LocalNativeCliBackend;
+use agent_semantic_client_core::{
+    ByteCount, CacheStatus, ClientMethod, ClientRequest, ProviderRegistrySnapshot,
+};
+use agent_semantic_client_local_cli::{LocalNativeCliBackend, LocalNativeOutput};
 
 use crate::cache_cli::{
     apply_provider_cache_probe, cache_hit_receipt, provider_cache_probe,
     write_prompt_output_cache_after_provider_success,
+    write_search_packet_cache_after_provider_success,
 };
 
 /// Runs the agent semantic client CLI from process arguments.
@@ -125,28 +128,46 @@ fn run_provider_method(
         }
         return Ok(());
     }
-    let writeback_snapshot = snapshot.clone();
-    let backend = LocalNativeCliBackend::new(snapshot);
-    let mut output = backend.execute(&request)?;
-    let writeback_probe = if output.status_code == 0 {
-        write_prompt_output_cache_after_provider_success(
+    let execution_cache_status = cache_probe
+        .as_ref()
+        .map_or(CacheStatus::Miss, |probe| probe.cache_status);
+    let packet_first_output = if should_try_search_packet_first(&request) {
+        run_search_packet_first_miss(
             &parsed.project_root,
-            &writeback_snapshot,
+            &snapshot,
             &request,
-            &output.stdout,
-            &output.receipt.provider_commands,
-        )
+            execution_cache_status,
+        )?
     } else {
         None
     };
-    if let Some(cache_probe) = &cache_probe {
-        apply_provider_cache_probe(&mut output.receipt, cache_probe);
-    }
-    let execution_cache_status = output.receipt.cache_status;
-    if let Some(writeback_probe) = &writeback_probe {
-        apply_provider_cache_probe(&mut output.receipt, writeback_probe);
-        output.receipt.cache_status = execution_cache_status;
-    }
+    let mut output = if let Some(output) = packet_first_output {
+        output
+    } else {
+        let writeback_snapshot = snapshot.clone();
+        let backend = LocalNativeCliBackend::new(snapshot);
+        let mut output = backend.execute(&request)?;
+        let writeback_probe = if output.status_code == 0 {
+            write_prompt_output_cache_after_provider_success(
+                &parsed.project_root,
+                &writeback_snapshot,
+                &request,
+                &output.stdout,
+                &output.receipt.provider_commands,
+            )
+        } else {
+            None
+        };
+        if let Some(cache_probe) = &cache_probe {
+            apply_provider_cache_probe(&mut output.receipt, cache_probe);
+        }
+        let execution_cache_status = output.receipt.cache_status;
+        if let Some(writeback_probe) = &writeback_probe {
+            apply_provider_cache_probe(&mut output.receipt, writeback_probe);
+            output.receipt.cache_status = execution_cache_status;
+        }
+        output
+    };
     crate::syntax_receipt::apply_syntax_query_receipt_metadata(&mut output.receipt, &output.stdout);
     if !parsed.receipt_json {
         io::stderr()
@@ -165,6 +186,71 @@ fn run_provider_method(
         std::process::exit(output.status_code);
     }
     Ok(())
+}
+
+fn should_try_search_packet_first(request: &ClientRequest) -> bool {
+    request.method == ClientMethod::Search
+        && !request
+            .forwarded_args
+            .iter()
+            .any(|arg| arg == "items" || arg == "ingest" || arg == "--code" || arg == "--json")
+        && (request
+            .forwarded_args
+            .windows(2)
+            .any(|window| window[0] == "--view" && window[1] == "seeds")
+            || request
+                .forwarded_args
+                .iter()
+                .any(|arg| arg == "--view=seeds"))
+}
+
+fn run_search_packet_first_miss(
+    project_root: &Path,
+    snapshot: &ProviderRegistrySnapshot,
+    request: &ClientRequest,
+    execution_cache_status: CacheStatus,
+) -> Result<Option<LocalNativeOutput>, String> {
+    let Some(language_id) = request.language_id.clone() else {
+        return Ok(None);
+    };
+    let mut packet_args = request.forwarded_args.clone();
+    insert_json_flag_before_project_root(&mut packet_args);
+    let packet_request = ClientRequest::new(ClientMethod::Search, project_root.to_path_buf())
+        .with_forwarded_args(packet_args)
+        .with_language(language_id);
+    let backend = LocalNativeCliBackend::new(snapshot.clone());
+    let mut output = backend.execute(&packet_request)?;
+    if output.status_code != 0 {
+        return Ok(None);
+    }
+    let Some(rendered_stdout) = crate::cache_replay::render_search_packet_bytes(&output.stdout)
+    else {
+        return Ok(None);
+    };
+    let Some(writeback_probe) = write_search_packet_cache_after_provider_success(
+        project_root,
+        snapshot,
+        request,
+        &output.stdout,
+        &rendered_stdout,
+    ) else {
+        return Ok(None);
+    };
+    apply_provider_cache_probe(&mut output.receipt, &writeback_probe);
+    output.receipt.cache_status = execution_cache_status;
+    output.receipt.packet_bytes = Some(ByteCount::from_len(output.stdout.len()));
+    output.receipt.stdout_bytes = ByteCount::from_len(rendered_stdout.len());
+    output.stdout = rendered_stdout;
+    Ok(Some(output))
+}
+
+fn insert_json_flag_before_project_root(args: &mut Vec<String>) {
+    let insert_at = if args.last().is_some_and(|arg| arg == ".") {
+        args.len().saturating_sub(1)
+    } else {
+        args.len()
+    };
+    args.insert(insert_at, "--json".to_string());
 }
 
 fn run_providers(parsed: ParsedArgs) -> Result<(), String> {

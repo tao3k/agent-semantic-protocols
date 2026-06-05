@@ -99,14 +99,14 @@ pub(crate) fn write_prompt_output_cache_after_provider_success(
             _ => return None,
         };
         args.push(provider_method.to_string());
-        let forwarded_args = append_syntax_query_plan_args(
+        let mut forwarded_args = append_syntax_query_plan_args(
             &request.method,
             Some(&provider.language_id),
             request.forwarded_args.clone(),
         )
         .ok()?;
+        insert_json_flag_before_project_root(&mut forwarded_args);
         args.extend(forwarded_args);
-        args.push("--json".to_string());
         let output = std::process::Command::new(program)
             .current_dir(&request.project_root)
             .args(args)
@@ -223,46 +223,6 @@ pub(crate) fn write_prompt_output_cache_after_provider_success(
         }
     }
 
-    fn search_packet_file_hashes(
-        project_root: &Path,
-        provider: &ResolvedProvider,
-        request: &ClientRequest,
-        packet_bytes: &[u8],
-    ) -> Option<Vec<ClientCacheFileHash>> {
-        packet_file_hashes(packet_bytes)
-            .or_else(|| locator_file_hashes(project_root, &provider.package_roots, packet_bytes))
-            .or_else(|| search_prime_project_file_hashes(project_root, request))
-    }
-
-    fn search_prime_project_file_hashes(
-        project_root: &Path,
-        request: &ClientRequest,
-    ) -> Option<Vec<ClientCacheFileHash>> {
-        if !request
-            .forwarded_args
-            .first()
-            .is_some_and(|arg| arg == "prime")
-        {
-            return None;
-        }
-        let file_hashes = [
-            ".cache/agent-semantic-protocol/hooks/activation.json",
-            "Cargo.toml",
-            "package.json",
-            "tsconfig.json",
-            "pyproject.toml",
-            "Project.toml",
-        ]
-        .into_iter()
-        .filter_map(|path| hash_project_file(project_root, path))
-        .collect::<Vec<_>>();
-        if file_hashes.is_empty() {
-            None
-        } else {
-            Some(file_hashes)
-        }
-    }
-
     fn syntax_query_file_hashes(
         project_root: &Path,
         packet_bytes: &[u8],
@@ -339,50 +299,6 @@ pub(crate) fn write_prompt_output_cache_after_provider_success(
         )
     }
 
-    fn search_packet_generation(
-        project_root: &Path,
-        provider: &ResolvedProvider,
-        request: &ClientRequest,
-        export_method: &CacheExportMethod,
-        packet_bytes: &[u8],
-    ) -> ClientCacheGeneration {
-        let seed = format!(
-            "{}\0{}\0{}\0{}\0{}\0{}",
-            provider.language_id,
-            provider.provider_id,
-            normalized_path(project_root),
-            export_method,
-            request.forwarded_args.join("\0"),
-            stable_hash_bytes(packet_bytes)
-        );
-        let hash = stable_hash_hex(&seed);
-        let slug = slugify_cache_component(export_method.as_str());
-        let generation_id = format!("{}-{slug}-{}", provider.language_id, &hash[..12]);
-        let artifact_id = format!("search/{generation_id}.json");
-        ClientCacheGeneration {
-            generation_id: CacheGenerationId::from(generation_id),
-            language_id: provider.language_id.clone(),
-            provider_id: provider.provider_id.clone(),
-            provider_version: None,
-            export_method: Some(export_method.as_str().to_string()),
-            project_root: normalized_path(project_root),
-            package_root: Some(".".to_string()),
-            schema_ids: vec![SemanticSchemaId::from(
-                "agent.semantic-protocols.semantic-search-packet",
-            )],
-            cache_status: CacheStatus::Hit,
-            raw_source_stored: false,
-            request_fingerprint: Some(exact_request_fingerprint(
-                provider,
-                project_root,
-                export_method,
-                &request.forwarded_args,
-            )),
-            file_hashes: search_packet_file_hashes(project_root, provider, request, packet_bytes),
-            artifact_ids: Some(vec![CacheArtifactId::from(artifact_id)]),
-        }
-    }
-
     fn query_packet_generation(
         project_root: &Path,
         provider: &ResolvedProvider,
@@ -422,7 +338,9 @@ pub(crate) fn write_prompt_output_cache_after_provider_success(
                 export_method,
                 &request.forwarded_args,
             )),
-            file_hashes: packet_file_hashes(packet_bytes),
+            file_hashes: packet_file_hashes(packet_bytes).or_else(|| {
+                locator_file_hashes(project_root, &provider.package_roots, packet_bytes)
+            }),
             artifact_ids: Some(vec![CacheArtifactId::from(artifact_id)]),
         }
     }
@@ -533,12 +451,13 @@ pub(crate) fn write_prompt_output_cache_after_provider_success(
             &export_method,
             &artifact_bytes,
         ),
-        ArtifactKind::SearchPacket => search_packet_generation(
+        ArtifactKind::SearchPacket => search_packet_generation_from_packet(
             project_root,
             provider,
             request,
             &export_method,
             &artifact_bytes,
+            stdout,
         ),
         ArtifactKind::QueryPacket => query_packet_generation(
             project_root,
@@ -579,6 +498,9 @@ pub(crate) fn write_prompt_output_cache_after_provider_success(
         replay_artifact_path(cache_root, &artifact_id, artifact_prefix, artifact_suffix)?;
     fs::create_dir_all(artifact_path.parent()?).ok()?;
     fs::write(&artifact_path, &artifact_bytes).ok()?;
+    if matches!(artifact_kind, ArtifactKind::SearchPacket) {
+        maybe_write_search_output_artifact(cache_root, &mut generation, stdout);
+    }
     if let Some(command_artifact_id) = command_artifact_id {
         let command_artifact_path = replay_artifact_path(
             cache_root,
@@ -614,6 +536,321 @@ pub(crate) fn write_prompt_output_cache_after_provider_success(
     Some(probe)
 }
 
+pub(crate) fn write_search_packet_cache_after_provider_success(
+    project_root: &Path,
+    snapshot: &ProviderRegistrySnapshot,
+    request: &ClientRequest,
+    packet_bytes: &[u8],
+    rendered_stdout: &[u8],
+) -> Option<ProviderCacheProbe> {
+    let provider = selected_provider_for_request(snapshot, request)?;
+    let export_method = request_prompt_output_writeback_method(request)?;
+    validate_search_packet_for_provider(packet_bytes, provider)?;
+
+    let cache_report = ClientCacheManifest::inspect_project(project_root);
+    let cache_root = cache_report.cache_root.as_ref()?;
+    let manifest_path = cache_report.manifest_path.as_ref()?;
+    let mut manifest = match cache_report.status {
+        CacheManifestStatus::Missing => empty_cache_manifest(cache_root),
+        CacheManifestStatus::Present => ClientCacheManifest::load_from_path(manifest_path).ok()?,
+        CacheManifestStatus::Unavailable | CacheManifestStatus::Invalid => return None,
+    };
+    let mut generation = search_packet_generation_from_packet(
+        project_root,
+        provider,
+        request,
+        &export_method,
+        packet_bytes,
+        rendered_stdout,
+    );
+    let artifact_id = generation.artifact_ids.as_ref()?.first()?.clone();
+    let artifact_path = replay_artifact_path(cache_root, &artifact_id, "search/", ".json")?;
+    fs::create_dir_all(artifact_path.parent()?).ok()?;
+    fs::write(&artifact_path, packet_bytes).ok()?;
+    maybe_write_search_output_artifact(cache_root, &mut generation, rendered_stdout);
+    upsert_generation(&mut manifest, generation);
+    write_cache_manifest(manifest_path, &manifest).ok()?;
+    let db_path = ClientDb::default_path(cache_root);
+    let mut db = ClientDb::open_or_create(&db_path).ok()?;
+    db.import_manifest(&manifest).ok()?;
+    let mut probe = provider_cache_probe(project_root, snapshot, request)?;
+    probe.sqlite_write_count = 1;
+    Some(probe)
+}
+
+fn validate_search_packet_for_provider(
+    packet_bytes: &[u8],
+    provider: &ResolvedProvider,
+) -> Option<()> {
+    let packet: serde_json::Value = serde_json::from_slice(packet_bytes).ok()?;
+    if packet.get("schemaId")?.as_str()? != "agent.semantic-protocols.semantic-search-packet" {
+        return None;
+    }
+    if packet.get("languageId")?.as_str()? != provider.language_id.as_str() {
+        return None;
+    }
+    if packet.get("providerId")?.as_str()? != provider.provider_id.as_str() {
+        return None;
+    }
+    let has_search_synthesis = packet
+        .get("searchSynthesis")
+        .and_then(|value| value.as_object())
+        .is_some();
+    let has_graph = packet
+        .get("nodes")
+        .and_then(|value| value.as_array())
+        .is_some()
+        && packet
+            .get("edges")
+            .and_then(|value| value.as_array())
+            .is_some();
+    let has_frontier_lists = packet
+        .get("owners")
+        .and_then(|value| value.as_array())
+        .is_some()
+        || packet
+            .get("hits")
+            .and_then(|value| value.as_array())
+            .is_some();
+    if !has_search_synthesis && !has_graph && !has_frontier_lists {
+        return None;
+    }
+    Some(())
+}
+
+fn search_packet_generation_from_packet(
+    project_root: &Path,
+    provider: &ResolvedProvider,
+    request: &ClientRequest,
+    export_method: &CacheExportMethod,
+    packet_bytes: &[u8],
+    stdout: &[u8],
+) -> ClientCacheGeneration {
+    let seed = format!(
+        "{}\0{}\0{}\0{}\0{}\0{}",
+        provider.language_id,
+        provider.provider_id,
+        normalized_path(project_root),
+        export_method,
+        request.forwarded_args.join("\0"),
+        stable_hash_bytes(packet_bytes)
+    );
+    let hash = stable_hash_hex(&seed);
+    let slug = slugify_cache_component(export_method.as_str());
+    let generation_id = format!("{}-{slug}-{}", provider.language_id, &hash[..12]);
+    let artifact_id = format!("search/{generation_id}.json");
+    ClientCacheGeneration {
+        generation_id: CacheGenerationId::from(generation_id),
+        language_id: provider.language_id.clone(),
+        provider_id: provider.provider_id.clone(),
+        provider_version: None,
+        export_method: Some(export_method.as_str().to_string()),
+        project_root: normalized_path(project_root),
+        package_root: Some(".".to_string()),
+        schema_ids: vec![SemanticSchemaId::from(
+            "agent.semantic-protocols.semantic-search-packet",
+        )],
+        cache_status: CacheStatus::Hit,
+        raw_source_stored: false,
+        request_fingerprint: Some(exact_request_fingerprint(
+            provider,
+            project_root,
+            export_method,
+            &request.forwarded_args,
+        )),
+        file_hashes: search_output_file_hashes(project_root, &provider.package_roots, stdout)
+            .or_else(|| {
+                search_packet_file_hashes_from_packet(project_root, provider, request, packet_bytes)
+            }),
+        artifact_ids: Some(vec![CacheArtifactId::from(artifact_id)]),
+    }
+}
+
+fn search_output_file_hashes(
+    project_root: &Path,
+    package_roots: &[String],
+    stdout: &[u8],
+) -> Option<Vec<ClientCacheFileHash>> {
+    if !crate::cache_replay::search_output_artifact_replay_safe(stdout) {
+        return None;
+    }
+    locator_file_hashes_from_text(
+        project_root,
+        package_roots,
+        std::str::from_utf8(stdout).ok()?,
+    )
+}
+
+fn search_packet_file_hashes_from_packet(
+    project_root: &Path,
+    provider: &ResolvedProvider,
+    request: &ClientRequest,
+    packet_bytes: &[u8],
+) -> Option<Vec<ClientCacheFileHash>> {
+    packet_file_hashes_from_packet(packet_bytes)
+        .or_else(|| {
+            locator_file_hashes_from_packet(project_root, &provider.package_roots, packet_bytes)
+        })
+        .or_else(|| {
+            if request
+                .forwarded_args
+                .first()
+                .is_none_or(|arg| arg != "prime")
+            {
+                return None;
+            }
+            let file_hashes = [
+                ".cache/agent-semantic-protocol/hooks/activation.json",
+                "Cargo.toml",
+                "package.json",
+                "tsconfig.json",
+                "pyproject.toml",
+                "Project.toml",
+            ]
+            .into_iter()
+            .filter_map(|path| hash_project_file(project_root, path))
+            .collect::<Vec<_>>();
+            if file_hashes.is_empty() {
+                None
+            } else {
+                Some(file_hashes)
+            }
+        })
+}
+
+fn packet_file_hashes_from_packet(packet_bytes: &[u8]) -> Option<Vec<ClientCacheFileHash>> {
+    let packet: serde_json::Value = serde_json::from_slice(packet_bytes).ok()?;
+    let hashes = packet.pointer("/cache/fileHashes")?.as_array()?;
+    let mut file_hashes = Vec::with_capacity(hashes.len());
+    for hash in hashes {
+        file_hashes.push(ClientCacheFileHash {
+            path: hash.get("path")?.as_str()?.to_string(),
+            sha256: hash.get("sha256")?.as_str()?.to_string(),
+        });
+    }
+    if file_hashes.is_empty() {
+        None
+    } else {
+        Some(file_hashes)
+    }
+}
+
+fn locator_file_hashes_from_packet(
+    project_root: &Path,
+    package_roots: &[String],
+    packet_bytes: &[u8],
+) -> Option<Vec<ClientCacheFileHash>> {
+    let packet: serde_json::Value = serde_json::from_slice(packet_bytes).ok()?;
+    let mut paths = BTreeSet::new();
+    collect_json_locator_paths(&packet, &mut paths, None);
+    locator_file_hashes_from_paths(project_root, package_roots, paths)
+}
+
+fn locator_file_hashes_from_text(
+    project_root: &Path,
+    package_roots: &[String],
+    text: &str,
+) -> Option<Vec<ClientCacheFileHash>> {
+    let mut paths = BTreeSet::new();
+    text.lines()
+        .for_each(|line| collect_locator_paths(line, &mut paths));
+    locator_file_hashes_from_paths(project_root, package_roots, paths)
+}
+
+fn locator_file_hashes_from_paths(
+    project_root: &Path,
+    package_roots: &[String],
+    paths: BTreeSet<String>,
+) -> Option<Vec<ClientCacheFileHash>> {
+    let file_hashes = paths
+        .into_iter()
+        .flat_map(|path| hash_locator_file(project_root, package_roots, &path))
+        .fold(BTreeMap::new(), |mut file_hashes, file_hash| {
+            file_hashes
+                .entry(file_hash.path.clone())
+                .or_insert(file_hash);
+            file_hashes
+        })
+        .into_values()
+        .collect::<Vec<_>>();
+    if file_hashes.is_empty() {
+        None
+    } else {
+        Some(file_hashes)
+    }
+}
+
+fn collect_json_locator_paths(
+    value: &serde_json::Value,
+    paths: &mut BTreeSet<String>,
+    key: Option<&str>,
+) {
+    match value {
+        serde_json::Value::String(text) if key.is_some_and(is_locator_key) => {
+            collect_locator_paths(text, paths);
+        }
+        serde_json::Value::Array(items) => {
+            for item in items {
+                collect_json_locator_paths(item, paths, None);
+            }
+        }
+        serde_json::Value::Object(map) => {
+            for (key, value) in map {
+                collect_json_locator_paths(value, paths, Some(key));
+            }
+        }
+        _ => {}
+    }
+}
+
+fn is_locator_key(key: &str) -> bool {
+    matches!(
+        key,
+        "selector"
+            | "read"
+            | "exactRead"
+            | "path"
+            | "target"
+            | "ownerPath"
+            | "matchLocator"
+            | "captureLocator"
+    )
+}
+
+fn maybe_write_search_output_artifact(
+    cache_root: &Path,
+    generation: &mut ClientCacheGeneration,
+    stdout: &[u8],
+) {
+    if stdout.is_empty()
+        || stdout.len() as u64 > MAX_CACHE_REPLAY_ARTIFACT_BYTES
+        || !crate::cache_replay::search_output_artifact_replay_safe(stdout)
+    {
+        return;
+    }
+    let artifact_id = CacheArtifactId::from(format!(
+        "search-output/{}.txt",
+        generation.generation_id.as_str()
+    ));
+    let Some(artifact_path) =
+        replay_artifact_path(cache_root, &artifact_id, "search-output/", ".txt")
+    else {
+        return;
+    };
+    let Some(parent) = artifact_path.parent() else {
+        return;
+    };
+    if fs::create_dir_all(parent)
+        .and_then(|_| fs::write(&artifact_path, stdout))
+        .is_ok()
+    {
+        generation
+            .artifact_ids
+            .get_or_insert_with(Vec::new)
+            .push(artifact_id);
+    }
+}
+
 fn request_prompt_output_writeback_method(request: &ClientRequest) -> Option<CacheExportMethod> {
     if request.method != ClientMethod::Search
         || !is_seed_search_without_code(&request.forwarded_args)
@@ -621,6 +858,15 @@ fn request_prompt_output_writeback_method(request: &ClientRequest) -> Option<Cac
         return None;
     }
     request_export_method(request)
+}
+
+fn insert_json_flag_before_project_root(args: &mut Vec<String>) {
+    let insert_at = if args.last().is_some_and(|arg| arg == ".") {
+        args.len().saturating_sub(1)
+    } else {
+        args.len()
+    };
+    args.insert(insert_at, "--json".to_string());
 }
 
 fn is_seed_search_without_code(args: &[String]) -> bool {
@@ -767,6 +1013,15 @@ fn collect_locator_paths(line: &str, paths: &mut BTreeSet<String>) {
         let token = token.trim_matches(|character: char| {
             matches!(character, ',' | ';' | '(' | ')' | '[' | ']' | '{' | '}')
         });
+        if token.contains(';') {
+            for segment in token.split(';') {
+                collect_locator_paths(segment, paths);
+            }
+            continue;
+        }
+        if collect_compact_graph_path_tokens(token, paths) {
+            continue;
+        }
         let token = token
             .strip_prefix("owner:")
             .or_else(|| token.strip_prefix("path:"))
@@ -778,6 +1033,24 @@ fn collect_locator_paths(line: &str, paths: &mut BTreeSet<String>) {
             paths.insert(path.to_string());
         }
     }
+}
+
+fn collect_compact_graph_path_tokens(token: &str, paths: &mut BTreeSet<String>) -> bool {
+    let mut remaining = token;
+    let mut found = false;
+    while let Some(index) = remaining.find(":path(") {
+        let start = index + ":path(".len();
+        let Some(end) = remaining[start..].find(')') else {
+            break;
+        };
+        let path = &remaining[start..start + end];
+        if looks_like_source_path(path) {
+            paths.insert(path.to_string());
+            found = true;
+        }
+        remaining = &remaining[start + end + 1..];
+    }
+    found
 }
 
 fn strip_locator_suffix(value: &str) -> &str {

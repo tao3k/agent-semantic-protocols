@@ -738,11 +738,21 @@ prompt-output fallback.
 The client may optimize:
 
 - exact cache hits over validated provider packets;
+- packet-first local-native search misses where a replay-safe =search --view
+  seeds= request asks the provider for a schema-valid packet with =--json=,
+  renders compact stdout once through the shared graph renderer, and writes
+  both =search/*.json= and =search-output/*.txt= artifacts for the same cache
+  generation.  When =search-output/*.txt= is replay-safe, generation freshness
+  should be derived from the prompt-facing stdout locators before falling back
+  to full packet locator hashes, so hidden internal candidate lists do not make
+  cache hits hash more files than the replayed compact graph can expose;
 - provider process spawn reduction through command batching when registry
   descriptors advertise equivalent native methods;
 - SQL index selection for owner, symbol, handle, and native syntax fact
   queries;
-- compact render reuse from artifact ids;
+- compact render reuse from artifact ids, including direct
+  =search-output/*.txt= replay when the rendered stdout is tied to a validated
+  packet generation;
 - cloud write-back into local cache after semantic-index hits;
 - upload deduplication by provider packet id or file hash.
 
@@ -775,6 +785,15 @@ repeated-search:
   repeatedTriggerGroupCount decreases
   commandCount decreases
   packetBytes does not increase without new evidence
+
+packet-first-search-miss:
+  route = local-native
+  providerCommandCount = 1
+  providerProcessesSpawned = 1
+  providerCommands[0].argv includes --json
+  packetBytes > 0
+  sqliteWriteCount >= 1
+  compactOutputParityWithCacheHit = true
 
 hybrid-cloud-unavailable:
   route = hybrid-reroute
@@ -1071,13 +1090,20 @@ local-cache path:
   artifacts or rows fall through to native provider execution with
   =cacheStatus=warm-provider= or =miss=.
 - Successful local-native =asp <language> search ... --view seeds= requests that
-  do not ask for item code, JSON, or direct code output first try to export a
-  schema-valid =semantic-search-packet= through the same provider request with
-  =--json=.  When that export validates, the client writes a =search/*.json=
-  artifact, imports it into =client.sqlite3=, and replays the next identical
-  request through the shared graph renderer without respawning the provider.
-  If packet export or validation fails, the request falls back to
-  =prompt-output/*.txt= write-back for replay-safe seed output.
+  do not ask for ingest, item code, JSON, or direct code output now take a
+  packet-first miss path.  On miss, stale, or warm-provider replay failure, the
+  client asks the native provider for the same request with =--json=, validates
+  the returned =semantic-search-packet=, renders compact stdout once through the
+  shared graph renderer, writes =search/*.json= and =search-output/*.txt=
+  artifacts for one generation, imports that generation into =client.sqlite3=,
+  and prints the rendered compact graph stdout.  The next identical request
+  replays =search-output/*.txt= directly, with =search/*.json= retained as the
+  schema-valid packet provenance.  The generation records =fileHashes= from
+  prompt-facing compact graph locators first, falling back to validated packet
+  locators only when stdout does not provide replayable source paths.  If
+  packet export, validation, render, or
+  write-back fails, the client falls back to the prior provider compact stdout
+  path and may still write a replay-safe prompt artifact.
 - Successful local-native =asp <language> query <owner> --term <symbol> ...=
   requests can write back =query/*.json= artifacts only when the provider can
   export a schema-valid =semantic-query-packet= through the same request with
@@ -1098,11 +1124,16 @@ local-cache path:
   cache/query/render path over validated JuliaSyntax-owned facts, not a
   Rust-owned Julia parser or hidden text heuristic.
 
-The remaining local work is a prime command, denormalized query indexes beyond
-artifact replay, and performance receipts for cold, warm-provider, invalidated,
-and write-back routes.  The local-cache hit route now has receipt coverage for
-=elapsedMs=, zero provider command/process counts, and an empty
-=providerCommands= array.
+The remaining local work is denormalized query indexes beyond artifact replay,
+cloud/hybrid routing, and broader sandtable coverage for repeated real-trigger
+groups.  Local packet-first miss, write-back, invalidation, and local-cache hit
+routes now have receipt coverage for =elapsedMs=, =packetBytes=,
+=sqliteReadCount= / =sqliteWriteCount=, provider command/process counts, and
+empty =providerCommands= arrays on cache hits.  =just
+perf-calibrate-julia-cache= is the focused local proof for compiled Julia
+search: it invalidates the Julia project cache, runs miss/hit =asp julia search
+prime --view seeds=, verifies compact stdout parity, and asserts zero provider
+processes on the hit.
 
 * Non-goals
 

@@ -408,15 +408,11 @@ esac
     let search_provider_args =
         std::fs::read_to_string(&search_provider_args_log).expect("read search provider args");
     assert!(
-        search_provider_args.contains("search prime --view seeds ."),
-        "{search_provider_args}"
-    );
-    assert!(
-        search_provider_args.contains("search prime --view seeds . --json"),
+        search_provider_args.contains("search prime --view seeds --json ."),
         "{search_provider_args}"
     );
     let search_provider_arg_count = search_provider_args.lines().count();
-    assert_eq!(search_provider_arg_count, 2);
+    assert_eq!(search_provider_arg_count, 1);
     let search_manifest_text =
         std::fs::read_to_string(cache_root(&search_root).join("cache-manifest.json"))
             .expect("read search writeback manifest");
@@ -426,6 +422,10 @@ esac
     );
     assert!(
         search_manifest_text.contains("search/"),
+        "{search_manifest_text}"
+    );
+    assert!(
+        search_manifest_text.contains("search-output/"),
         "{search_manifest_text}"
     );
 
@@ -478,9 +478,7 @@ esac
     write_cache_source_fixture(&query_root);
     std::fs::write(
         &packet_path,
-        attach_cache_file_hashes(
-            r#"{"schemaId":"agent.semantic-protocols.semantic-query-packet","schemaVersion":"1","protocolId":"agent.semantic-protocols.semantic-language","protocolVersion":"1","languageId":"rust","providerId":"rs-harness","binary":"rs-harness","namespace":"agent.semantic-protocols.languages.rust.rs-harness","method":"query/owner-items","projectRoot":".","ownerPath":"src/lib.rs","outputMode":"code","query":"CacheReplay","queryTerms":["CacheReplay"],"queryCoverage":[{"value":"CacheReplay","status":"hit","match":"exact","matchCount":1,"nextAction":"code"}],"matchMode":"exact","truncated":false,"matches":[{"kind":"struct","name":"CacheReplay","visibility":"private","doc":false,"location":{"path":"src/lib.rs","lineRange":"1:3"},"read":"src/lib.rs:1:3","code":"struct CacheReplay\nfield stdout: Vec<u8>","truncated":false,"projection":{"mode":"compact","syntax":"semantic-outline","sourceAuthority":"native-parser","sourceFingerprint":"src/lib.rs:1:3:44","exactRead":"src/lib.rs:1:3","losslessStructure":true,"nodes":[{"id":"query-cache-node","kind":"struct","role":"declaration","label":"struct CacheReplay","depth":0,"nativeId":"rust:struct:CacheReplay","read":"src/lib.rs:1:3","structuralFingerprint":"struct:declaration:CacheReplay"}],"renderedNodeIds":["query-cache-node"]}}],"patchSafety":{"safeForPatch":true,"reasons":[]}}"#,
-        ),
+        r#"{"schemaId":"agent.semantic-protocols.semantic-query-packet","schemaVersion":"1","protocolId":"agent.semantic-protocols.semantic-language","protocolVersion":"1","languageId":"rust","providerId":"rs-harness","binary":"rs-harness","namespace":"agent.semantic-protocols.languages.rust.rs-harness","method":"query/owner-items","projectRoot":".","ownerPath":"src/lib.rs","outputMode":"code","query":"CacheReplay","queryTerms":["CacheReplay"],"queryCoverage":[{"value":"CacheReplay","status":"hit","match":"exact","matchCount":1,"nextAction":"code"}],"matchMode":"exact","truncated":false,"matches":[{"kind":"struct","name":"CacheReplay","visibility":"private","doc":false,"location":{"path":"src/lib.rs","lineRange":"1:3"},"read":"src/lib.rs:1:3","code":"struct CacheReplay\nfield stdout: Vec<u8>","truncated":false,"projection":{"mode":"compact","syntax":"semantic-outline","sourceAuthority":"native-parser","sourceFingerprint":"src/lib.rs:1:3:44","exactRead":"src/lib.rs:1:3","losslessStructure":true,"nodes":[{"id":"query-cache-node","kind":"struct","role":"declaration","label":"struct CacheReplay","depth":0,"nativeId":"rust:struct:CacheReplay","read":"src/lib.rs:1:3","structuralFingerprint":"struct:declaration:CacheReplay"}],"renderedNodeIds":["query-cache-node"]}}],"patchSafety":{"safeForPatch":true,"reasons":[]}}"#,
     )
     .expect("write query packet");
     std::fs::create_dir_all(&query_bin_dir).expect("create fake provider bin dir");
@@ -550,7 +548,7 @@ esac
         "{provider_args}"
     );
     assert!(
-        provider_args.contains("query src/lib.rs --term CacheReplay . --json"),
+        provider_args.contains("query src/lib.rs --term CacheReplay --json ."),
         "{provider_args}"
     );
     let provider_arg_count = provider_args.lines().count();
@@ -563,6 +561,11 @@ esac
         "{manifest_text}"
     );
     assert!(manifest_text.contains("query/"), "{manifest_text}");
+    assert!(manifest_text.contains(CACHE_SOURCE_PATH), "{manifest_text}");
+    assert!(
+        manifest_text.contains(CACHE_SOURCE_SHA256),
+        "{manifest_text}"
+    );
 
     let second_query = Command::new(env!("CARGO_BIN_EXE_asp"))
         .current_dir(&query_root)

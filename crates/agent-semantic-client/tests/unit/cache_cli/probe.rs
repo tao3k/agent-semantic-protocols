@@ -74,6 +74,7 @@ fn tree_sitter_rows_replay_when_latest_unrelated_generation_is_stale() {
         .expect("import stale manifest");
     std::fs::write(root.join("src/other.rs"), "pub fn changed() {}\n")
         .expect("mutate stale source");
+    drop(db);
 
     let snapshot = ProviderRegistrySnapshot {
         activation_path: root.join(".cache/agent-semantic-protocol/hooks/activation.json"),

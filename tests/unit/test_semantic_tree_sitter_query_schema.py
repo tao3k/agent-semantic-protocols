@@ -86,6 +86,28 @@ def test_binary_embedded_catalog_query_packet_is_valid() -> None:
     assert tree_sitter_query_validation_errors(semantic_tree_sitter_query_packet()) == []
 
 
+def test_accepts_codeql_as_optional_execution_backend() -> None:
+    packet = semantic_tree_sitter_query_packet()
+    packet["executionBackend"] = "codeql"
+    packet["sourceAuthority"] = "codeql"
+    packet["adapterMode"] = "codeql-query"
+    packet["compatibilityLevel"] = "approximate"
+    packet["query"]["fields"]["flowScope"] = "local"
+    packet["query"]["fields"]["frontierKind"] = "source-sink-path"
+
+    assert tree_sitter_query_validation_errors(packet) == []
+
+
+def test_rejects_unknown_execution_backend() -> None:
+    packet = semantic_tree_sitter_query_packet()
+    packet["executionBackend"] = "grep"
+
+    assert any(
+        "'grep' is not one of" in error
+        for error in tree_sitter_query_validation_errors(packet)
+    )
+
+
 def test_query_object_accepts_grammar_profile_path() -> None:
     packet = semantic_tree_sitter_query_packet()
 

@@ -1,9 +1,10 @@
 use crate::cache_replay::load_replay_artifact;
 use agent_semantic_client_core::{
-    CacheArtifactId, CacheExportMethod, ClientCacheGeneration, ClientCacheManifest, ClientMethod,
-    ClientRequest, LanguageId, ProviderId, SemanticSchemaId,
+    CacheArtifactId, CacheExportMethod, ClientCacheFileHash, ClientCacheGeneration,
+    ClientCacheManifest, ClientMethod, ClientRequest, LanguageId, ProviderId, SemanticSchemaId,
+    syntax_query_ast_abi_fingerprint,
 };
-use agent_semantic_client_db::{ClientDb, ClientDbGenerationHit};
+use agent_semantic_client_db::{ClientDb, ClientDbGenerationHit, ClientDbSyntaxQueryLookup};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -24,6 +25,19 @@ fn semantic_tree_sitter_query_replay_falls_back_to_rows_when_artifact_is_missing
     db.import_manifest(&manifest).expect("import manifest");
     db.import_semantic_tree_sitter_query_packet(&generation, &packet_bytes)
         .expect("import syntax rows");
+    let direct_replay = ClientDb::lookup_syntax_query_replay(&ClientDbSyntaxQueryLookup {
+        db_path: db_path.clone(),
+        language_id: LanguageId::from("rust"),
+        provider_id: ProviderId::from("rs-harness"),
+        project_root: root.clone(),
+        query_ast_fingerprint: syntax_query_ast_abi_fingerprint(
+            "(function_item\n  name: (identifier) @function.name)",
+        )
+        .expect("query AST fingerprint"),
+        selector: Some("src/lib.rs:1:80".to_string()),
+    })
+    .expect("direct row lookup");
+    assert!(direct_replay.is_some(), "syntax query rows should replay");
 
     let replay = load_replay_artifact(
         &cache_root,
@@ -122,6 +136,7 @@ fn semantic_tree_sitter_query_row_replay_does_not_fallback_to_prompt_stdout() {
 fn prompt_output_replay_rejects_legacy_compact_graph_grammar() {
     let root = temp_root("prompt-output-legacy-graph");
     let cache_root = root.join("client");
+    write_syntax_replay_sources(&root);
     let request = ClientRequest::new(ClientMethod::Search, ".").with_forwarded_args(vec![
         "fzf".to_string(),
         "GraphAlias".to_string(),
@@ -141,6 +156,83 @@ rank=Q frontier=Q.fzf\n",
     let hit = prompt_generation_hit(&root, &request, "search/fzf");
 
     assert!(load_replay_artifact(&cache_root, &hit, &request).is_none());
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn prompt_output_replay_rejects_stale_generation_file_hashes() {
+    let root = temp_root("prompt-output-stale-generation-hash");
+    let cache_root = root.join("client");
+    write_syntax_replay_sources(&root);
+    let request = ClientRequest::new(ClientMethod::Search, ".").with_forwarded_args(vec![
+        "fzf".to_string(),
+        "parse_query".to_string(),
+        "--view".to_string(),
+        "seeds".to_string(),
+        ".".to_string(),
+    ]);
+    write_prompt_output_artifact(&root, "owner:src/lib.rs read=src/lib.rs:1:3\n");
+    let hit = prompt_generation_hit(&root, &request, "search/fzf");
+
+    std::fs::write(root.join("src/lib.rs"), "pub fn changed() {}\n").expect("mutate source");
+
+    assert!(load_replay_artifact(&cache_root, &hit, &request).is_none());
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn search_packet_replay_prefers_cached_search_stdout_artifact() {
+    let root = temp_root("search-output-replay");
+    let cache_root = root.join("client");
+    write_syntax_replay_sources(&root);
+    let request = ClientRequest::new(ClientMethod::Search, ".").with_forwarded_args(vec![
+        "fzf".to_string(),
+        "cache".to_string(),
+        "--view".to_string(),
+        "seeds".to_string(),
+        ".".to_string(),
+    ]);
+    let stdout = "[search-fzf] q=cache view=fzf alg=seed-frontier\n\
+legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next\n\
+aliases: graph:{G=search,Q=query}\n\
+Q=query:term(cache)!fzf\n\
+G>{Q:matches}\n\
+rank=Q frontier=Q.fzf\n";
+    write_search_output_artifact(&root, stdout);
+    assert!(crate::cache_replay::search_output_artifact_replay_safe(
+        stdout.as_bytes()
+    ));
+    assert!(
+        crate::cache_replay::replay_artifact_path(
+            &cache_root,
+            &CacheArtifactId::from("search-output/cached.txt"),
+            "search-output/",
+            ".txt",
+        )
+        .expect("search output artifact path")
+        .is_file()
+    );
+
+    let hit = ClientDbGenerationHit {
+        language_id: LanguageId::from("rust"),
+        provider_id: ProviderId::from("rs-harness"),
+        project_root: root.to_path_buf(),
+        export_method: CacheExportMethod::from("search/fzf"),
+        schema_ids: vec![SemanticSchemaId::from(
+            "agent.semantic-protocols.semantic-search-packet",
+        )],
+        request_fingerprint: None,
+        file_hashes: syntax_replay_client_file_hashes(&root),
+        artifact_ids: vec![
+            CacheArtifactId::from("search/missing.json"),
+            CacheArtifactId::from("search-output/cached.txt"),
+        ],
+    };
+
+    let replay = load_replay_artifact(&cache_root, &hit, &request).expect("search stdout replay");
+
+    assert_eq!(String::from_utf8(replay.stdout).expect("utf8"), stdout);
+    assert_eq!(replay.sqlite_read_count, 0);
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -168,7 +260,7 @@ fn syntax_generation_hit(root: &std::path::Path) -> ClientDbGenerationHit {
             "agent.semantic-protocols.semantic-tree-sitter-query",
         )],
         request_fingerprint: Some("fnv64:syntax-row".to_string()),
-        file_hashes: Vec::new(),
+        file_hashes: syntax_replay_client_file_hashes(root),
         artifact_ids: vec![CacheArtifactId::from(
             "semantic-tree-sitter-query/missing.json",
         )],
@@ -193,7 +285,7 @@ fn prompt_generation_hit(
             request,
             export_method,
         )),
-        file_hashes: Vec::new(),
+        file_hashes: syntax_replay_client_file_hashes(root),
         artifact_ids: vec![CacheArtifactId::from("prompt-output/stale.txt")],
     }
 }
@@ -228,14 +320,26 @@ fn write_syntax_replay_sources(root: &std::path::Path) {
 }
 
 fn syntax_replay_file_hashes(root: &std::path::Path) -> Vec<Value> {
+    syntax_replay_client_file_hashes(root)
+        .into_iter()
+        .map(|file_hash| json!({"path": file_hash.path, "sha256": file_hash.sha256}))
+        .collect()
+}
+
+fn syntax_replay_client_file_hashes(root: &std::path::Path) -> Vec<ClientCacheFileHash> {
     ["src/lib.rs", "src/main.rs"]
         .into_iter()
-        .map(|path| {
-            let bytes = std::fs::read(root.join(path)).expect("read syntax replay source");
-            let digest = Sha256::digest(&bytes);
-            json!({"path": path, "sha256": format!("{digest:x}")})
-        })
+        .filter_map(|path| client_file_hash(root, path))
         .collect()
+}
+
+fn client_file_hash(root: &std::path::Path, path: &str) -> Option<ClientCacheFileHash> {
+    let bytes = std::fs::read(root.join(path)).ok()?;
+    let digest = Sha256::digest(&bytes);
+    Some(ClientCacheFileHash {
+        path: path.to_string(),
+        sha256: format!("{digest:x}"),
+    })
 }
 
 fn manifest_from_generation(
@@ -341,6 +445,13 @@ fn write_prompt_output_artifact(root: &std::path::Path, stdout: &str) {
     std::fs::write(prompt_dir.join("stale.txt"), stdout).expect("write prompt artifact");
 }
 
+fn write_search_output_artifact(root: &std::path::Path, stdout: &str) {
+    let search_output_dir = root.join("artifacts/search-output");
+    std::fs::create_dir_all(&search_output_dir).expect("create search output artifact dir");
+    std::fs::write(search_output_dir.join("cached.txt"), stdout)
+        .expect("write search output artifact");
+}
+
 fn prompt_output_request_fingerprint(
     root: &std::path::Path,
     request: &ClientRequest,
@@ -352,12 +463,13 @@ fn prompt_output_request_fingerprint(
         .display()
         .to_string();
     let seed = format!(
-        "{}\0{}\0{}\0{}\0{}",
+        "{}\0{}\0{}\0{}\0{}\0{}",
         "rust",
         "rs-harness",
         project_root,
         export_method,
-        request.forwarded_args.join("\0")
+        request.forwarded_args.join("\0"),
+        "syntax-query-ast-abi:none"
     );
     format!("fnv64:{}", stable_hash_hex(&seed))
 }
