@@ -30,6 +30,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
+      - name: Checkout Rust provider submodule
+        shell: bash
+        run: git submodule update --init --depth 1 languages/rust-lang-project-harness
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -108,6 +112,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Checkout provider submodules
+        run: |
+          git submodule update --init --depth 1 \
+            languages/rust-lang-project-harness \
+            languages/typescript-lang-project-harness \
+            languages/python-lang-project-harness \
+            languages/JuliaLangProjectHarness.jl
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
