@@ -95,29 +95,14 @@ def query_packet_with_handle() -> dict[str, object]:
 class SemanticPacketHandlesSchemaTests(unittest.TestCase):
     def setUp(self) -> None:
         schema_dir = _REPO_ROOT / "schemas"
-        with (schema_dir / "semantic-search-packet.v1.schema.json").open(
-            "r", encoding="utf-8"
-        ) as handle:
-            self.search_schema = json.load(handle)
-        with (schema_dir / "semantic-query-packet.v1.schema.json").open(
-            "r", encoding="utf-8"
-        ) as handle:
-            self.query_schema = json.load(handle)
-        with (schema_dir / "semantic-handle.v1.schema.json").open(
-            "r", encoding="utf-8"
-        ) as handle:
-            handle_schema = json.load(handle)
-        registry = Registry().with_resources(
-            [
-                (self.search_schema["$id"], Resource.from_contents(self.search_schema)),
-                (self.query_schema["$id"], Resource.from_contents(self.query_schema)),
-                (handle_schema["$id"], Resource.from_contents(handle_schema)),
-            ]
+        from unit.schema_validation import schema_validator_for
+
+        self.search_validator = schema_validator_for(
+            schema_dir / "semantic-search-packet.v1.schema.json"
         )
-        self.search_validator = Draft202012Validator(
-            self.search_schema, registry=registry
+        self.query_validator = schema_validator_for(
+            schema_dir / "semantic-query-packet.v1.schema.json"
         )
-        self.query_validator = Draft202012Validator(self.query_schema, registry=registry)
 
     def search_errors(self, packet: dict[str, object]) -> list[str]:
         return [error.message for error in self.search_validator.iter_errors(packet)]

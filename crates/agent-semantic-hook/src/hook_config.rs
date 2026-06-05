@@ -399,8 +399,8 @@ fn compile_config(config: ConfigFile) -> Result<ClientHookConfig, String> {
         .filter(|rule| rule.enabled)
         .map(CompiledHookRule::try_from)
         .collect::<Result<Vec<_>, _>>()?;
-    // `sort_by` is stable, so equal-priority rules keep config file order.
-    rules.sort_by(|left, right| right.priority.cmp(&left.priority));
+    // `sort_by_key` is stable, so equal-priority rules keep config file order.
+    rules.sort_by_key(|rule| std::cmp::Reverse(rule.priority));
     Ok(ClientHookConfig {
         rules,
         semantic_ast_patch_disabled: !semantic_ast_patch_enabled,

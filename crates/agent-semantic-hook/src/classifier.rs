@@ -79,12 +79,12 @@ pub fn classify_hook_with_config(request: HookClassificationRequest<'_>) -> Hook
         return decision;
     }
 
-    if config.semantic_ast_patch_enabled() {
-        if let Some(decision) = actions.iter().find_map(|action| {
+    if config.semantic_ast_patch_enabled()
+        && let Some(decision) = actions.iter().find_map(|action| {
             classify_structured_apply_patch_action(registry, platform, event, action)
-        }) {
-            return decision;
-        }
+        })
+    {
+        return decision;
     }
 
     if let Some(decision) = actions
@@ -156,19 +156,12 @@ fn classify_direct_read_action(
             return directory_path_candidate_matches_provider(provider, &project_relative);
         }
 
-        if project_root.trim().is_empty() || project_root.trim() == "." {
-            if let Ok(current_dir) = std::env::current_dir() {
-                if let Some(current_dir) = current_dir.to_str() {
-                    if let Some(project_relative) =
-                        project_relative_directory(current_dir, &normalized)
-                    {
-                        return directory_path_candidate_matches_provider(
-                            provider,
-                            &project_relative,
-                        );
-                    }
-                }
-            }
+        if (project_root.trim().is_empty() || project_root.trim() == ".")
+            && let Ok(current_dir) = std::env::current_dir()
+            && let Some(current_dir) = current_dir.to_str()
+            && let Some(project_relative) = project_relative_directory(current_dir, &normalized)
+        {
+            return directory_path_candidate_matches_provider(provider, &project_relative);
         }
 
         if !std::path::Path::new(&normalized).is_absolute() {
@@ -833,6 +826,7 @@ fn allow(platform: &str, event: &str, subject: DecisionSubject) -> HookDecision 
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn deny_for_action(
     platform: &str,
     event: &str,

@@ -228,11 +228,9 @@ pub fn collect_tool_actions(tool_name: &str, tool_input: &Value) -> Vec<ToolActi
         actions: &mut Vec<ToolAction>,
         direct_action: bool,
     ) {
-        if direct_action {
-            if let Some(action) = codex_command_action(tool_name, value) {
-                push_unique_action(actions, action);
-                return;
-            }
+        if direct_action && let Some(action) = codex_command_action(tool_name, value) {
+            push_unique_action(actions, action);
+            return;
         }
 
         let Some(object) = value.as_object() else {
@@ -252,10 +250,10 @@ pub fn collect_tool_actions(tool_name: &str, tool_input: &Value) -> Vec<ToolActi
             collect_codex_item_actions(tool_name, items, actions);
         }
 
-        if is_codex_command_execution_tool(tool_name) {
-            if let Some(action) = codex_command_action(tool_name, value) {
-                push_unique_action(actions, action);
-            }
+        if is_codex_command_execution_tool(tool_name)
+            && let Some(action) = codex_command_action(tool_name, value)
+        {
+            push_unique_action(actions, action);
         }
     }
 
@@ -313,10 +311,10 @@ pub fn collect_tool_actions(tool_name: &str, tool_input: &Value) -> Vec<ToolActi
         if let Some(path) = object.get("path") {
             paths.extend(path_values(path));
         }
-        if paths.is_empty() {
-            if let Some(name) = object.get("name").and_then(Value::as_str) {
-                push_unique_path(&mut paths, name.to_string());
-            }
+        if paths.is_empty()
+            && let Some(name) = object.get("name").and_then(Value::as_str)
+        {
+            push_unique_path(&mut paths, name.to_string());
         }
 
         let (surface, operation, command) = match action_type {

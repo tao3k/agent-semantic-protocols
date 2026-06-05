@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+#[allow(clippy::module_inception)]
 #[path = "../../src/command/ast_patch.rs"]
 mod ast_patch;
 

@@ -17,6 +17,19 @@ _REASONING_PROFILE_NAMES = {
     "feature-cfg",
 }
 
+_PROFILE_SELECTOR_NODE_KINDS = {
+    "owner-query": {"owner", "query"},
+    "query-deps": {"query", "dependency"},
+    "owner-tests": {"owner"},
+    "finding-frontier": {"finding", "owner"},
+    "feature-cfg": {"feature"},
+}
+
+
+from .compact_graph_profiles import (
+    COMPACT_GRAPH_ENTRY_PROFILE_CONTRACTS,
+    compact_graph_entry_selector_summary,
+)
 
 def validate_guide_quality(
     expect: dict[str, Any],
@@ -108,8 +121,15 @@ def _validate_prime_entries(
     result: StepResult,
     stdout: str,
 ) -> None:
+    guide_output = _guide_output_text(stdout)
+    requires_typed_aliases = bool(prime_output.get("requiresTypedEntryAliases", False))
+    graph_aliases = _graph_aliases(guide_output) if requires_typed_aliases else {}
+    if requires_typed_aliases and not graph_aliases:
+        result.errors.append("guide prime output missing alias graph for typed entries")
     for entry in string_list(prime_output.get("entries", [])):
         _validate_prime_entry(entry, result, stdout)
+        if requires_typed_aliases:
+            _validate_prime_entry_aliases(entry, result, graph_aliases)
 
 
 def _validate_prime_entry(entry: str, result: StepResult, stdout: str) -> None:
@@ -131,6 +151,53 @@ def _validate_prime_entry_profiles(entry: str, result: StepResult) -> None:
             )
 
 
+def _validate_prime_entry_aliases(
+    entry: str,
+    result: StepResult,
+    graph_aliases: dict[str, str],
+) -> None:
+    for profile_name, aliases in _entry_profile_aliases(entry):
+        expected_contract = COMPACT_GRAPH_ENTRY_PROFILE_CONTRACTS.get(profile_name)
+        if expected_contract is None:
+            continue
+        if (
+            len(aliases) < expected_contract.required_selector_count
+            or len(aliases) > len(expected_contract.selectors)
+        ):
+            expected = compact_graph_entry_selector_summary(expected_contract)
+            result.errors.append(
+                f"guide prime output entry profile {profile_name!r} selector count {len(aliases)} does not match schema contract {expected}"
+            )
+            return
+        for index, alias in enumerate(aliases):
+            _validate_prime_entry_alias(
+                profile_name,
+                alias,
+                expected_contract.selectors[index].kind,
+                result,
+                graph_aliases,
+            )
+
+def _validate_prime_entry_alias(
+    profile_name: str,
+    alias: str,
+    expected: str,
+    result: StepResult,
+    graph_aliases: dict[str, str],
+) -> None:
+    node_kind = graph_aliases.get(alias)
+    if node_kind is None:
+        result.errors.append(
+            f"guide prime output entry alias {alias!r} missing from alias graph"
+        )
+        return
+    if node_kind == expected:
+        return
+    result.errors.append(
+        f"guide prime output entry alias {alias!r} for profile {profile_name!r} resolves to {node_kind!r}, expected {expected!r}"
+    )
+
+
 def _entry_profile_names(entry_line: str) -> list[str]:
     if not entry_line.startswith("entries=") or entry_line == "entries=":
         return []
@@ -150,6 +217,66 @@ def _entry_profile_names(entry_line: str) -> list[str]:
     if segment:
         segments.append("".join(segment))
     return [segment.split("(", 1)[0] for segment in segments if "(" in segment]
+
+def _entry_profile_aliases(entry_line: str) -> list[tuple[str, list[str]]]:
+    results: list[tuple[str, list[str]]] = []
+    for segment in _entry_profile_segments(entry_line):
+        if "(" not in segment:
+            continue
+        profile_name, rest = segment.split("(", 1)
+        selector_text = rest.split("=>", 1)[0]
+        aliases = [alias.strip() for alias in selector_text.split(",") if alias.strip()]
+        results.append((profile_name, aliases))
+    return results
+
+
+def _entry_profile_segments(entry_line: str) -> list[str]:
+    if not entry_line.startswith("entries=") or entry_line == "entries=":
+        return []
+    segments: list[str] = []
+    segment = []
+    depth = 0
+    for char in entry_line.removeprefix("entries="):
+        if char == "(":
+            depth += 1
+        elif char == ")" and depth > 0:
+            depth -= 1
+        if char == "," and depth == 0:
+            segments.append("".join(segment))
+            segment = []
+            continue
+        segment.append(char)
+    if segment:
+        segments.append("".join(segment))
+    return segments
+
+
+def _graph_aliases(stdout: str) -> dict[str, str]:
+    aliases: dict[str, str] = {}
+    for line in stdout.splitlines():
+        if not line.startswith("alias: graph:{") or not line.endswith("}"):
+            continue
+        body = line.removeprefix("alias: graph:{").removesuffix("}")
+        for entry in body.split(","):
+            if "=" not in entry:
+                continue
+            alias, node_kind = entry.split("=", 1)
+            aliases[alias.strip()] = node_kind.strip()
+    return aliases
+
+
+def _guide_output_text(stdout: str) -> str:
+    try:
+        payload = json.loads(stdout)
+    except json.JSONDecodeError:
+        return stdout
+    if not isinstance(payload, dict):
+        return stdout
+    search_output = payload.get("searchOutput")
+    if isinstance(search_output, str):
+        return search_output
+    return stdout
+
 
 def _guide_decision(
     guide: dict[str, Any],

@@ -12,6 +12,11 @@ COMPACT_GRAPH_MICRO_LEGEND = (
 )
 
 
+from .compact_graph_profiles import (
+    COMPACT_GRAPH_ENTRY_PROFILE_CONTRACTS,
+    compact_graph_entry_selector_summary,
+)
+
 def validate_line_protocol(result: StepResult, stdout: str) -> None:
     lines = [line for line in stdout.splitlines() if line.strip()]
     if not lines:
@@ -45,6 +50,8 @@ def _validate_compact_graph_contract(result: StepResult, lines: list[str]) -> No
         result.errors.append("compact graph missing root edge line")
     if not any(line.startswith("rank=") and " frontier=" in line for line in lines):
         result.errors.append("compact graph missing rank/frontier line")
+    if alias_lines:
+        _validate_compact_graph_entries_contract(result, lines, alias_lines[0])
     if any(line.startswith("|seed") or line.startswith("|synthesis") for line in lines):
         result.errors.append(
             "compact graph output must not include legacy seed/synthesis rows"
@@ -127,6 +134,67 @@ def _compact_graph_return_entries(line: str) -> list[str]:
         for index, entry in enumerate(entries)
     ]
 
+
+def _validate_compact_graph_entries_contract(
+    result: StepResult,
+    lines: list[str],
+    alias_line: str,
+) -> None:
+    graph_aliases = _compact_graph_legend_aliases(alias_line)
+    for line in lines:
+        if not line.startswith("entries="):
+            continue
+        for entry in _compact_graph_return_entries(line):
+            _validate_compact_graph_entry_contract(result, entry, graph_aliases)
+            if result.errors:
+                return
+
+def _compact_graph_legend_aliases(alias_line: str) -> dict[str, str]:
+    aliases: dict[str, str] = {}
+    body = alias_line.removeprefix("alias: graph:{").removesuffix("}")
+    for entry in body.split(","):
+        alias, sep, node_kind = entry.partition("=")
+        if sep:
+            aliases[alias] = node_kind
+    return aliases
+
+def _validate_compact_graph_entry_contract(
+    result: StepResult,
+    entry: str,
+    graph_aliases: dict[str, str],
+) -> None:
+    profile, selectors, _returns = _compact_graph_return_entry_parts(entry)
+    expected_contract = COMPACT_GRAPH_ENTRY_PROFILE_CONTRACTS.get(profile)
+    if expected_contract is not None:
+        if (
+            len(selectors) < expected_contract.required_selector_count
+            or len(selectors) > len(expected_contract.selectors)
+        ):
+            expected = compact_graph_entry_selector_summary(expected_contract)
+            result.errors.append(
+                f"compact graph entry profile {profile!r} selector count {len(selectors)} does not match schema contract {expected}"
+            )
+            return
+    for index, selector in enumerate(selectors):
+        node_kind = graph_aliases.get(selector)
+        if node_kind is None:
+            result.errors.append(
+                f"compact graph entry selector alias {selector!r} missing from alias graph"
+            )
+            return
+        if expected_contract is None:
+            continue
+        expected_node_kind = expected_contract.selectors[index].kind
+        if node_kind != expected_node_kind:
+            result.errors.append(
+                f"compact graph entry selector alias {selector!r} for profile {profile!r} resolves to {node_kind!r}, expected {expected_node_kind!r}"
+            )
+            return
+
+def _compact_graph_return_entry_parts(entry: str) -> tuple[str, list[str], list[str]]:
+    profile, _sep, selector_and_returns = entry.partition("(")
+    selectors, _sep, returns = selector_and_returns[:-1].partition("=>")
+    return profile, selectors.split(","), returns.split("+")
 
 def _looks_like_compact_graph_return_entry(entry: str) -> bool:
     profile, sep, selector_and_returns = entry.partition("(")

@@ -18,6 +18,17 @@ fn extracts_and_normalizes_capture_names_from_scm() {
 }
 
 #[test]
+fn extract_capture_names_ignores_comments_and_predicate_strings() {
+    let source = r#"
+        ; @comment.capture must not be part of the ABI
+        ((identifier) @local.name
+          (#match? @local.name "@string.capture"))
+    "#;
+
+    assert_eq!(extract_capture_names(source), vec!["local.name"]);
+}
+
+#[test]
 fn loaded_catalog_keeps_declared_and_discovered_captures_separate() {
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -49,6 +60,37 @@ fn loaded_catalog_keeps_declared_and_discovered_captures_separate() {
         vec!["call.expression", "call.target"]
     );
     assert!(loaded.fingerprint.starts_with("syntax-catalog:"));
+
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn load_catalog_rejects_malformed_query_source() {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock")
+        .as_nanos();
+    let dir = std::env::temp_dir().join(format!("agent-semantic-tree-sitter-test-{nonce}"));
+    let catalog_dir = dir.join("tree-sitter/tree-sitter-rust");
+    fs::create_dir_all(&catalog_dir).expect("mkdir");
+    fs::write(
+        catalog_dir.join("broken.scm"),
+        "(function_item name: (identifier) @function.name",
+    )
+    .expect("write catalog");
+    let descriptor = SyntaxCatalogDescriptor {
+        id: "broken".to_string(),
+        path: PathBuf::from("tree-sitter/tree-sitter-rust/broken.scm"),
+        declared_captures: vec!["function.name".to_string()],
+    };
+
+    let error = load_syntax_catalog(&dir, &descriptor).expect_err("malformed query source");
+
+    assert!(
+        error.contains("failed to compile syntax query catalog"),
+        "{error}"
+    );
+    assert!(error.contains("unclosed query pattern"), "{error}");
 
     let _ = fs::remove_dir_all(dir);
 }

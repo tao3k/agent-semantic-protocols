@@ -194,6 +194,7 @@ def _validate_json_value_against_schema(
         return
     try:
         from jsonschema import Draft202012Validator
+        from referencing import Registry, Resource
     except ImportError:
         result.errors.append("stdout JSON schema validation requires jsonschema")
         return
@@ -203,8 +204,21 @@ def _validate_json_value_against_schema(
     except (OSError, json.JSONDecodeError) as error:
         result.errors.append(f"stdout JSON schema load failed {schema_path_text!r}: {error}")
         return
+    local_schemas = []
+    try:
+        for local_schema_path in sorted(schema_path.parent.glob("*.schema.json")):
+            with local_schema_path.open("r", encoding="utf-8") as handle:
+                local_schemas.append(json.load(handle))
+    except (OSError, json.JSONDecodeError) as error:
+        result.errors.append(f"stdout JSON schema registry load failed: {error}")
+        return
+    registry = Registry().with_resources(
+        (local_schema["$id"], Resource.from_contents(local_schema))
+        for local_schema in local_schemas
+        if "$id" in local_schema
+    )
     errors = sorted(
-        Draft202012Validator(schema).iter_errors(value),
+        Draft202012Validator(schema, registry=registry).iter_errors(value),
         key=lambda error: list(error.path),
     )
     for error in errors[:3]:

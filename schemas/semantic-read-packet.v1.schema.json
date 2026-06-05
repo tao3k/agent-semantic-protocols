@@ -124,28 +124,16 @@
       }
     },
     "syntaxQueryRef": {
-      "type": "string",
-      "description": "Reference to the semantic-tree-sitter-query artifact that selected or repaired the read window.",
-      "minLength": 1
+      "$ref": "semantic-tree-sitter-provenance.v1.schema.json#/$defs/syntaxQueryRef"
     },
     "syntaxMatchRefs": {
-      "type": "array",
-      "description": "Match ids from a semantic-tree-sitter-query artifact that selected or repaired the read window.",
-      "items": {
-        "type": "string",
-        "minLength": 1
-      }
+      "$ref": "semantic-tree-sitter-provenance.v1.schema.json#/$defs/syntaxMatchRefs"
     },
     "syntaxCaptureRefs": {
-      "type": "array",
-      "description": "Capture ids from a semantic-tree-sitter-query artifact that selected or repaired the read window.",
-      "items": {
-        "type": "string",
-        "minLength": 1
-      }
+      "$ref": "semantic-tree-sitter-provenance.v1.schema.json#/$defs/syntaxCaptureRefs"
     },
     "syntaxAnchor": {
-      "$ref": "#/$defs/syntaxAnchor"
+      "$ref": "semantic-tree-sitter-provenance.v1.schema.json#/$defs/syntaxAnchor"
     },
     "nativeSyntaxFacts": {
       "type": "array",
@@ -166,59 +154,16 @@
   },
   "$defs": {
     "projectPath": {
-      "type": "string",
-      "minLength": 1,
-      "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*)$"
+      "$ref": "semantic-source-location.v1.schema.json#/$defs/projectPath"
     },
     "lineRange": {
-      "type": "string",
-      "description": "Compact source line range as start:end, for example 10:43.",
-      "pattern": "^[1-9][0-9]*:[1-9][0-9]*$"
+      "$ref": "semantic-source-location.v1.schema.json#/$defs/lineRange"
     },
     "sourceLocator": {
-      "type": "string",
-      "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*):[1-9][0-9]*(?:(?::|-)[1-9][0-9]*)?$"
+      "$ref": "semantic-source-location.v1.schema.json#/$defs/sourceLocator"
     },
     "location": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "path",
-        "lineRange"
-      ],
-      "properties": {
-        "path": {
-          "$ref": "#/$defs/projectPath"
-        },
-        "lineRange": {
-          "$ref": "#/$defs/lineRange"
-        }
-      }
-    },
-    "syntaxAnchor": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "nodeType",
-        "location"
-      ],
-      "properties": {
-        "nodeType": {
-          "type": "string",
-          "minLength": 1
-        },
-        "field": {
-          "type": "string",
-          "minLength": 1
-        },
-        "capture": {
-          "type": "string",
-          "minLength": 1
-        },
-        "location": {
-          "$ref": "#/$defs/location"
-        }
-      }
+      "$ref": "semantic-source-location.v1.schema.json#/$defs/location"
     },
     "line": {
       "type": "object",

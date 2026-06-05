@@ -1,12 +1,12 @@
-"""Semantic tree-sitter query packet schema tests."""
+"""Validate the shared semantic tree-sitter query ABI schema."""
+
+from __future__ import annotations
 
 import copy
-import json
-import unittest
 from pathlib import Path
 from typing import Any
 
-from jsonschema import Draft202012Validator
+from unit.schema_validation import schema_validator_for
 
 
 def semantic_tree_sitter_query_packet() -> dict[str, Any]:
@@ -55,89 +55,98 @@ def semantic_tree_sitter_query_packet() -> dict[str, Any]:
     }
 
 
-class SemanticTreeSitterQuerySchemaTests(unittest.TestCase):
-    def setUp(self) -> None:
-        schema_path = (
-            Path(__file__).resolve().parents[2]
-            / "schemas"
-            / "semantic-tree-sitter-query.v1.schema.json"
-        )
-        with schema_path.open("r", encoding="utf-8") as handle:
-            self.validator = Draft202012Validator(json.load(handle))
+def tree_sitter_query_validation_errors(packet: dict[str, Any]) -> list[str]:
+    schema_path = (
+        Path(__file__).resolve().parents[2]
+        / "schemas"
+        / "semantic-tree-sitter-query.v1.schema.json"
+    )
+    validator = schema_validator_for(schema_path)
+    return [error.message for error in validator.iter_errors(packet)]
 
-    def validation_errors(self, packet: dict[str, Any]) -> list[str]:
-        return [error.message for error in self.validator.iter_errors(packet)]
 
-    def test_binary_embedded_catalog_query_packet_is_valid(self) -> None:
-        packet = semantic_tree_sitter_query_packet()
+def test_binary_embedded_catalog_query_packet_is_valid() -> None:
+    assert tree_sitter_query_validation_errors(semantic_tree_sitter_query_packet()) == []
 
-        assert self.validation_errors(packet) == []
 
-    def test_query_object_accepts_grammar_profile_path(self) -> None:
-        packet = semantic_tree_sitter_query_packet()
+def test_query_object_accepts_grammar_profile_path() -> None:
+    packet = semantic_tree_sitter_query_packet()
 
-        assert packet["query"]["grammarProfilePath"]
-        assert self.validation_errors(packet) == []
+    assert packet["query"]["grammarProfilePath"]
+    assert tree_sitter_query_validation_errors(packet) == []
 
-    def test_accepts_native_projected_matches_and_capture_enrichment(self) -> None:
-        packet = copy.deepcopy(semantic_tree_sitter_query_packet())
-        native_ref = "rust:item:src/lib.rs:1:3:exposed"
-        packet["nativeFactRefs"] = [native_ref]
-        packet["matches"] = [
-            {
-                "id": "match.1",
-                "patternIndex": 0,
-                "range": {"path": "src/lib.rs", "lineRange": "1:3"},
-                "captures": [
-                    {
-                        "id": "capture.1",
-                        "name": "function.name",
-                        "nodeType": "function_item",
-                        "field": "name",
-                        "named": True,
-                        "range": {"path": "src/lib.rs", "lineRange": "1:1"},
-                        "nativeFactRefs": [native_ref],
-                        "semanticHandleRefs": ["symbol:exposed"],
-                        "fields": {
-                            "symbol": "exposed",
-                            "read": "src/lib.rs:1:1",
-                            "itemRead": "src/lib.rs:1:3",
-                            "sourceAuthority": "native-parser",
-                            "nativeNodeType": "function_item",
-                            "semanticKind": "function",
-                        },
-                    }
-                ],
-                "nativeFactRefs": [native_ref],
-                "semanticHandleRefs": ["symbol:exposed"],
-                "fields": {
-                    "symbol": "exposed",
-                    "read": "src/lib.rs:1:1",
-                    "itemRead": "src/lib.rs:1:3",
+
+def test_accepts_native_projected_matches_and_capture_enrichment() -> None:
+    packet = copy.deepcopy(semantic_tree_sitter_query_packet())
+    native_ref = "rust:item:src/lib.rs:1:3:exposed"
+    packet["nativeFactRefs"] = [native_ref]
+    packet["matches"] = [
+        {
+            "id": "match.1",
+            "patternIndex": 0,
+            "range": {"path": "src/lib.rs", "lineRange": "1:3"},
+            "sourceLocation": {
+                "path": "src/lib.rs",
+                "lineRange": "1:3",
+                "location": {"path": "src/lib.rs", "lineRange": "1:3"},
+                "sourceLocator": "src/lib.rs:1:3",
+                "sourceSpanLocator": "src/lib.rs:1:3",
+            },
+            "captures": [
+                {
+                    "id": "capture.1",
+                    "name": "function.name",
                     "nodeType": "function_item",
-                    "captureCount": 1,
-                },
-            }
-        ]
+                    "field": "name",
+                    "named": True,
+                    "range": {"path": "src/lib.rs", "lineRange": "1:1"},
+                    "sourceLocation": {
+                        "path": "src/lib.rs",
+                        "lineRange": "1:1",
+                        "location": {"path": "src/lib.rs", "lineRange": "1:1"},
+                        "sourceLocator": "src/lib.rs:1:1",
+                        "sourceSpanLocator": "src/lib.rs:1:1",
+                    },
+                    "nativeFactRefs": [native_ref],
+                    "semanticHandleRefs": ["symbol:exposed"],
+                    "fields": {
+                        "symbol": "exposed",
+                        "read": "src/lib.rs:1:1",
+                        "itemRead": "src/lib.rs:1:3",
+                        "sourceAuthority": "native-parser",
+                        "nativeNodeType": "function_item",
+                        "semanticKind": "function",
+                    },
+                }
+            ],
+            "nativeFactRefs": [native_ref],
+            "semanticHandleRefs": ["symbol:exposed"],
+            "fields": {
+                "symbol": "exposed",
+                "read": "src/lib.rs:1:1",
+                "itemRead": "src/lib.rs:1:3",
+                "nodeType": "function_item",
+                "captureCount": 1,
+            },
+        }
+    ]
 
-        assert self.validation_errors(packet) == []
-
-    def test_rejects_unknown_query_object_property(self) -> None:
-        packet = semantic_tree_sitter_query_packet()
-        packet["query"]["sourceDelivery"] = "provider-binary-embedded"
-
-        assert any(
-            "Additional properties are not allowed" in error
-            and "sourceDelivery" in error
-            for error in self.validation_errors(packet)
-        )
-
-    def test_catalog_embedded_is_a_scalar_field_not_a_new_packet_surface(self) -> None:
-        packet = copy.deepcopy(semantic_tree_sitter_query_packet())
-        packet["query"]["fields"]["catalogEmbedded"] = True
-
-        assert self.validation_errors(packet) == []
+    assert tree_sitter_query_validation_errors(packet) == []
 
 
-if __name__ == "__main__":
-    unittest.main()
+def test_rejects_unknown_query_object_property() -> None:
+    packet = semantic_tree_sitter_query_packet()
+    packet["query"]["sourceDelivery"] = "provider-binary-embedded"
+
+    assert any(
+        "Additional properties are not allowed" in error
+        and "sourceDelivery" in error
+        for error in tree_sitter_query_validation_errors(packet)
+    )
+
+
+def test_catalog_embedded_is_a_scalar_field_not_a_new_packet_surface() -> None:
+    packet = copy.deepcopy(semantic_tree_sitter_query_packet())
+    packet["query"]["fields"]["catalogEmbedded"] = True
+
+    assert tree_sitter_query_validation_errors(packet) == []

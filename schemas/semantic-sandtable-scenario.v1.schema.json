@@ -571,10 +571,13 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "requiresStructureStatus": {
-              "type": "boolean"
-            },
-            "entries": {
+              "requiresStructureStatus": {
+                "type": "boolean"
+              },
+              "requiresTypedEntryAliases": {
+                "type": "boolean"
+              },
+              "entries": {
               "type": "array",
               "minItems": 1,
               "items": {

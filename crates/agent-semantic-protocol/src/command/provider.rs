@@ -286,24 +286,24 @@ fn explicit_positional_project_root(
     args: &[String],
     invocation_root: &Path,
 ) -> Option<(PathBuf, Vec<String>)> {
-    let value = args.last()?;
-    if value.starts_with('-') {
-        return None;
+    for (index, value) in args.iter().enumerate().rev() {
+        if value.starts_with('-') || arg_is_option_value(args, index) {
+            continue;
+        }
+        let path = PathBuf::from(value);
+        let absolute = if path.is_absolute() {
+            path
+        } else {
+            invocation_root.join(path)
+        };
+        if !positional_project_root_marker(&absolute) {
+            continue;
+        }
+        let mut normalized_args = args.to_vec();
+        normalized_args[index] = ".".to_string();
+        return Some((absolute, normalized_args));
     }
-    let path = PathBuf::from(value);
-    let absolute = if path.is_absolute() {
-        path
-    } else {
-        invocation_root.join(path)
-    };
-    if !positional_project_root_marker(&absolute) {
-        return None;
-    }
-    let mut normalized_args = args.to_vec();
-    if let Some(last) = normalized_args.last_mut() {
-        *last = ".".to_string();
-    }
-    Some((absolute, normalized_args))
+    None
 }
 
 fn positional_project_root_marker(path: &Path) -> bool {
@@ -315,6 +315,19 @@ fn positional_project_root_marker(path: &Path) -> bool {
         || invocation_root_is_provider_project(path)
         || path.join("Project.toml").is_file()
         || path.join("JuliaProject.toml").is_file()
+}
+
+fn arg_is_option_value(args: &[String], index: usize) -> bool {
+    let Some(previous) = index.checked_sub(1).and_then(|previous| args.get(previous)) else {
+        return false;
+    };
+    if !previous.starts_with("--") || previous.contains('=') {
+        return false;
+    }
+    !matches!(
+        previous.as_str(),
+        "--changed" | "--code" | "--full" | "--json" | "--names-only" | "--receipt-json"
+    )
 }
 
 fn invocation_root_is_provider_project(invocation_root: &Path) -> bool {
@@ -428,7 +441,7 @@ fn search_scope_arg_sets(args: &[String], project_root: &Path) -> Vec<Vec<String
 
 fn is_search_scope_fanout_candidate(args: &[String]) -> bool {
     args.first().is_some_and(|command| command == "search")
-        && !args.get(1).is_some_and(|subcommand| subcommand == "ingest")
+        && args.get(1).is_none_or(|subcommand| subcommand != "ingest")
 }
 
 fn is_existing_directory_arg(project_root: &Path, arg: &str) -> bool {

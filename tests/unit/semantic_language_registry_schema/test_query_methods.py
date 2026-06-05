@@ -13,6 +13,15 @@ def test_query_method_can_declare_query_packet_schema() -> None:
             "outputSchemaIds": [
                 "agent.semantic-protocols.semantic-query-packet"
             ],
+            "packetSchemas": [
+                "semantic-query-packet.v1",
+                "semantic-tree-sitter-query.v1",
+            ],
+            "grammarId": "tree-sitter-rust",
+            "grammarProfileVersion": "2026-06-04.v1",
+            "grammarProfileSchema": "semantic-tree-sitter-grammar-profile.v1",
+            "grammarProfilePath": "tree-sitter/tree-sitter-rust/grammar-profile.json",
+            "cacheReplay": True,
             "supportsJson": True,
             "supportsCompact": True,
             "supportsQuerySet": True,
@@ -43,6 +52,17 @@ def test_query_method_can_declare_provider_read_packet_schema() -> None:
                 "agent.semantic-protocols.semantic-query-packet",
                 "agent.semantic-protocols.semantic-read-packet",
             ],
+            "packetSchemas": [
+                "semantic-query-packet.v1",
+                "semantic-read-packet.v1",
+                "semantic-tree-sitter-query.v1",
+            ],
+            "grammarId": "tree-sitter-rust",
+            "grammarProfileVersion": "2026-06-04.v1",
+            "grammarProfileSchema": "semantic-tree-sitter-grammar-profile.v1",
+            "grammarProfilePath": "tree-sitter/tree-sitter-rust/grammar-profile.json",
+            "queryInputForms": ["selector"],
+            "cacheReplay": True,
             "supportsJson": True,
             "supportsCompact": True,
             "outputModes": ["compact", "json", "names", "read-packet"],

@@ -263,6 +263,16 @@ typed selectors match aliases rendered in this packet; each selector inside
 return entries exposed by that profile.  The
 micro-legend line is the minimal grammar contract for agents that have not
 recently read this RFC.
+Every selector alias used by an =entries= row must resolve to the current
+packet's =alias: graph:{...}= declaration, and known shared profile selectors
+must resolve to the profile's node-kind catalog.  For example,
+=owner-query(O,Q=>...)= requires =O= to resolve to an =owner= alias and =Q= to
+resolve to a =query= alias; =query-deps(O,T=>...)= is invalid even if =O= and
+=T= are otherwise valid graph aliases.  This is a parser-checkable contract, not
+a compatibility hint for the model to infer.  The structured catalog lives in
+=semantic-compact-graph-render.v1.schema.json= as =reasoningProfileContracts=,
+and =semantic-search-packet.v1.schema.json= validates implemented profile
+packets against the same selector order and return-entry contract.
 
 Profile names are shared protocol catalog entries, not compatibility aliases or
 provider-private labels.  The initial catalog is =owner-query=, =query-deps=,

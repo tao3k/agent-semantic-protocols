@@ -1,5 +1,7 @@
 //! Cache request classification helpers.
 
+use std::path::Path;
+
 use agent_semantic_client_core::{
     CacheExportMethod, ClientMethod, ClientRequest, ProviderRegistrySnapshot, ResolvedProvider,
 };
@@ -45,9 +47,51 @@ fn query_export_method(args: &[String]) -> String {
         .any(|window| window[0] == "--from-hook" && window[1] == "direct-source-read")
     {
         "query/direct-source-read".to_string()
+    } else if has_tree_sitter_query(args) {
+        "query/tree-sitter".to_string()
     } else {
         "query/owner-items".to_string()
     }
+}
+
+pub(super) fn has_tree_sitter_query(args: &[String]) -> bool {
+    args.iter()
+        .any(|arg| arg == "--treesitter-query" || arg.starts_with("--treesitter-query="))
+}
+
+pub(super) fn request_lookup_fingerprint(
+    provider: &ResolvedProvider,
+    project_root: &Path,
+    export_method: &CacheExportMethod,
+    request: &ClientRequest,
+) -> Option<String> {
+    if export_method.as_str() == "query/tree-sitter" {
+        Some(exact_request_fingerprint(
+            provider,
+            project_root,
+            export_method,
+            &request.forwarded_args,
+        ))
+    } else {
+        None
+    }
+}
+
+pub(super) fn exact_request_fingerprint(
+    provider: &ResolvedProvider,
+    project_root: &Path,
+    export_method: &CacheExportMethod,
+    forwarded_args: &[String],
+) -> String {
+    let seed = format!(
+        "{}\0{}\0{}\0{}\0{}",
+        provider.language_id,
+        provider.provider_id,
+        normalized_path(project_root),
+        export_method,
+        forwarded_args.join("\0")
+    );
+    format!("fnv64:{}", stable_hash_hex(&seed))
 }
 
 fn check_export_method(args: &[String]) -> String {
@@ -61,4 +105,24 @@ fn check_export_method(args: &[String]) -> String {
     } else {
         "check".to_string()
     }
+}
+
+fn normalized_path(path: &Path) -> String {
+    path.canonicalize()
+        .unwrap_or_else(|_| path.to_path_buf())
+        .display()
+        .to_string()
+}
+
+fn stable_hash_bytes(bytes: &[u8]) -> String {
+    let mut hash = 0xcbf29ce484222325u64;
+    for byte in bytes {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    format!("{hash:016x}")
+}
+
+fn stable_hash_hex(value: &str) -> String {
+    stable_hash_bytes(value.as_bytes())
 }

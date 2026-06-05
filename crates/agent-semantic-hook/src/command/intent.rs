@@ -42,7 +42,7 @@ fn git_diff_outputs_source(tokens: &[String]) -> bool {
 
 fn git_subcommand(tokens: &[String]) -> Option<&str> {
     let mut iter = tokens.iter().map(String::as_str);
-    while let Some(token) = iter.next() {
+    for token in iter.by_ref() {
         if is_separator(token) {
             continue;
         }

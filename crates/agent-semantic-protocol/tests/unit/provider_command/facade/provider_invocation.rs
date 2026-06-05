@@ -25,6 +25,8 @@ printf 'runtime=%s
 ' "$ASP_RUNTIME_BIN_DIR"
 printf 'path0=%s
 ' "${PATH%%:*}"
+printf 'renderer=%s
+' "$SEMANTIC_AGENT_PROTOCOL_BIN"
 "#,
     )
     .expect("write provider wrapper");
@@ -43,6 +45,7 @@ printf 'path0=%s
 
     let output = asp_command(&root)
         .env("PATH", prepend_path(&bin_dir))
+        .env_remove("SEMANTIC_AGENT_PROTOCOL_BIN")
         .args(["rust", "query", "src/lib.rs", "."])
         .output()
         .expect("run asp rust query");
@@ -58,10 +61,11 @@ printf 'path0=%s
     assert_eq!(
         String::from_utf8(output.stdout).expect("stdout"),
         format!(
-            "wrapper args=[rs-harness][query][src/lib.rs][.]\ncache={}\nruntime={}\npath0={}\n",
+            "wrapper args=[rs-harness][query][src/lib.rs][.]\ncache={}\nruntime={}\npath0={}\nrenderer={}\n",
             cache_home.display(),
             runtime_bin.display(),
-            runtime_bin.display()
+            runtime_bin.display(),
+            env!("CARGO_BIN_EXE_asp")
         )
     );
 
@@ -92,10 +96,11 @@ printf 'path0=%s
     assert_eq!(
         String::from_utf8(output.stdout).expect("stdout"),
         format!(
-            "wrapper args=[rs-harness][check][--changed][.]\ncache={}\nruntime={}\npath0={}\n",
+            "wrapper args=[rs-harness][check][--changed][.]\ncache={}\nruntime={}\npath0={}\nrenderer={}\n",
             cache_home.display(),
             runtime_bin.display(),
-            runtime_bin.display()
+            runtime_bin.display(),
+            env!("CARGO_BIN_EXE_asp")
         )
     );
     let _ = std::fs::remove_dir_all(root);

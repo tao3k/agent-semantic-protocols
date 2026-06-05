@@ -1143,6 +1143,11 @@ maps native search packets to the shared =semantic-search= wire contract when
 #+begin_src text
 schemas/semantic-language-registry.v1.schema.json
 schemas/semantic-search-packet.v1.schema.json
+schemas/semantic-query-packet.v1.schema.json
+schemas/semantic-read-packet.v1.schema.json
+schemas/semantic-source-location.v1.schema.json
+schemas/semantic-tree-sitter-query.v1.schema.json
+schemas/semantic-tree-sitter-provenance.v1.schema.json
 #+end_src
 
 The protocol repository's =schemas/= directory is the source of truth.
@@ -1150,6 +1155,35 @@ Provider packages that run their own CI from independent checkouts may carry
 package-local copies at the same relative paths.  Their tests should validate
 against the package-local files, and monorepo/submodule checkouts should compare
 the package-local copies with the repository source schemas to prevent drift.
+
+Tree-sitter query is the portable syntax ABI for query/search/read provenance,
+but it is not a reason to collapse the three packet envelopes into one generic
+packet.  =semantic-query-packet=, =semantic-search-packet=, and
+=semantic-read-packet= keep separate required fields and consumer semantics.
+Shared path/range fields such as =projectPath=, =lineRange=, =location=, and
+=sourceLocator= converge through =semantic-source-location.v1.schema.json=.
+Shared syntax provenance fields such as =syntaxQueryRef=, =syntaxMatchRefs=,
+=syntaxCaptureRefs=, and =syntaxAnchor= must converge through
+=semantic-tree-sitter-provenance.v1.schema.json= so providers do not maintain
+parallel copies of the same tree-sitter reference shape.
+
+Agent-facing guides must expose the syntax ABI as routes, not as another
+packet family or a cache inspection workflow.  The compact guide route rows are
+the public decision contract:
+
+#+begin_src text
+|route syntax-locate selectors=S:tree-sitter-query,R:range returns=locator,capture,frontier code=false
+|route syntax-code selectors=S:tree-sitter-query,R:exact-selector returns=code code=pure
+|route read-plan selectors=R:selector,T:term returns=owners,tests,window-set code=false
+|route query-code selectors=O:owner,Q:symbol returns=code code=pure
+#+end_src
+
+=--treesitter-query= is precise syntax locate/capture/frontier.  Adding
+=--code= to an exact selector turns it into pure code extraction.  Search and
+read-plan flows must return locators/frontier rather than inline code.  Plain
+=query --code= writes only code to stdout.  JSON artifacts, SQLite cache ids,
+and receipts are debugging/integration surfaces and should not appear in the
+default agent guide or non-JSON query output.
 
 Schema evolution rules:
 
@@ -3374,6 +3408,11 @@ a prompt-visible =reasoningProfiles= line before listing commands.  That line
 should name runnable reasoning rows as =entries= and non-profile direct-read or
 frontier repair actions as =routes=, so catalog-only profiles do not become
 implicit commands.
+Provider =agent guide= command rows SHOULD assume commands are run from the
+advertised project root and use trailing =.= for that root.  The header may
+carry the absolute =project= once, but command rows should not repeat long
+absolute paths.  This keeps the guide usable as a prompt-visible command ABI
+instead of a token-heavy transcript.
 When a provider implements =finding-frontier= or =feature-cfg= without adding
 new selector flags, the public command should keep the existing typed =--query=
 slot as the selector carrier rather than introducing compatibility aliases such

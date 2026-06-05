@@ -114,7 +114,9 @@ def semantic_query_packet_with_projection() -> dict[str, Any]:
 
 def semantic_query_schema_validator() -> Draft202012Validator:
     schema_path = _REPO_ROOT / "schemas" / "semantic-query-packet.v1.schema.json"
-    return Draft202012Validator(json.loads(schema_path.read_text(encoding="utf-8")))
+    from unit.schema_validation import schema_validator_for
+
+    return schema_validator_for(schema_path)
 
 
 def repo_relative_path(path: Path) -> Path:

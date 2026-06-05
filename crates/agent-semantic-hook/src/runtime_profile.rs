@@ -162,12 +162,11 @@ pub fn load_or_refresh_runtime_profiles(
     project_root: &Path,
     runtime: &HookRuntime,
 ) -> Result<RuntimeProfiles, String> {
-    if let Ok(profiles) = load_runtime_profiles(path) {
-        if profiles_match_runtime(&profiles, runtime)
-            && profiles_have_usable_commands(&profiles, runtime)
-        {
-            return Ok(profiles);
-        }
+    if let Ok(profiles) = load_runtime_profiles(path)
+        && profiles_match_runtime(&profiles, runtime)
+        && profiles_have_usable_commands(&profiles, runtime)
+    {
+        return Ok(profiles);
     }
     write_runtime_profiles_for_runtime(path, project_root, runtime)
 }

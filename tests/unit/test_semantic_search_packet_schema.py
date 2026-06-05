@@ -71,11 +71,12 @@ def _semantic_search_minimal_packet() -> dict[str, object]:
 
 class SemanticSearchPacketSchemaTests(unittest.TestCase):
     def setUp(self) -> None:
+        from unit.schema_validation import schema_validator_for
+
         schema_path = (
             _PROTOCOL_REPO_ROOT / "schemas" / "semantic-search-packet.v1.schema.json"
         )
-        with schema_path.open("r", encoding="utf-8") as handle:
-            self.validator = Draft202012Validator(json.load(handle))
+        self.validator = schema_validator_for(schema_path)
 
     def validation_errors(self, packet: dict[str, object]) -> list[str]:
         return [error.message for error in self.validator.iter_errors(packet)]
@@ -236,3 +237,71 @@ class SemanticSearchPacketSchemaTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+class SemanticSearchReasoningProfileContractSchemaTests(unittest.TestCase):
+    def setUp(self) -> None:
+        from unit.schema_validation import schema_validator_for
+
+        schema_path = (
+            _PROTOCOL_REPO_ROOT / "schemas" / "semantic-search-packet.v1.schema.json"
+        )
+        self.validator = schema_validator_for(schema_path)
+
+    def validation_errors(self, packet: dict[str, object]) -> list[str]:
+        return [error.message for error in self.validator.iter_errors(packet)]
+
+    def test_reasoning_profile_accepts_schema_owned_owner_query_contract(self) -> None:
+        packet = _semantic_search_minimal_packet()
+        packet["reasoningProfiles"] = [
+            {
+                "profile": "owner-query",
+                "selectors": [
+                    {"kind": "owner", "alias": "O"},
+                    {"kind": "query", "alias": "Q"},
+                ],
+                "returns": ["items", "tests", "dependency-usage"],
+            }
+        ]
+
+        self.assertEqual([], self.validation_errors(packet))
+
+    def test_reasoning_profile_rejects_query_deps_selector_drift(self) -> None:
+        packet = _semantic_search_minimal_packet()
+        packet["reasoningProfiles"] = [
+            {
+                "profile": "query-deps",
+                "selectors": [
+                    {"kind": "owner", "alias": "O"},
+                    {"kind": "test", "alias": "T"},
+                ],
+                "returns": ["owners", "imports", "usage-tests"],
+            }
+        ]
+
+        self.assertTrue(self.validation_errors(packet))
+
+    def test_reasoning_profile_rejects_owner_tests_extra_selector(self) -> None:
+        packet = _semantic_search_minimal_packet()
+        packet["reasoningProfiles"] = [
+            {
+                "profile": "owner-tests",
+                "selectors": [
+                    {"kind": "owner", "alias": "O"},
+                    {"kind": "test", "alias": "T"},
+                ],
+                "returns": ["covering-tests", "test-entrypoints", "fixtures"],
+            }
+        ]
+
+        self.assertTrue(self.validation_errors(packet))
+
+    def test_reasoning_profile_rejects_return_entry_drift(self) -> None:
+        packet = _semantic_search_minimal_packet()
+        packet["reasoningProfiles"] = [
+            {
+                "profile": "feature-cfg",
+                "selectors": [{"kind": "feature", "alias": "F"}],
+                "returns": ["cfg-gates", "owners", "checks"],
+            }
+        ]
+
+        self.assertTrue(self.validation_errors(packet))

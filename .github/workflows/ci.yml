@@ -1,0 +1,197 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - "codex/**"
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  asp-rust:
+    name: ASP Rust / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Install sccache
+        uses: taiki-e/install-action@v2
+        with:
+          tool: sccache
+
+      - name: Configure sccache backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "${ACTIONS_CACHE_URL:-}" && -n "${ACTIONS_RUNTIME_TOKEN:-}" ]]; then
+            echo "SCCACHE_GHA_ENABLED=true" >> "$GITHUB_ENV"
+          else
+            echo "SCCACHE_GHA_ENABLED=false" >> "$GITHUB_ENV"
+            echo "SCCACHE_DIR=${{ github.workspace }}/.sccache" >> "$GITHUB_ENV"
+          fi
+          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+
+      - name: Restore sccache cache (fallback)
+        if: ${{ env.SCCACHE_GHA_ENABLED != 'true' }}
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ github.workspace }}/.sccache/
+          key: asp-rust-sccache-${{ runner.os }}-${{ github.job }}-${{ hashFiles('Cargo.toml', 'Cargo.lock', '.github/workflows/ci.yml') }}-${{ github.run_id }}
+          restore-keys: |
+            asp-rust-sccache-${{ runner.os }}-${{ github.job }}-${{ hashFiles('Cargo.toml', 'Cargo.lock', '.github/workflows/ci.yml') }}-
+            asp-rust-sccache-${{ runner.os }}-${{ hashFiles('Cargo.toml', 'Cargo.lock', '.github/workflows/ci.yml') }}-
+            asp-rust-sccache-${{ runner.os }}-
+
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+          shared-key: asp-rust-ci-${{ runner.os }}
+          cache-on-failure: true
+
+      - name: Fetch cargo dependencies
+        run: cargo fetch
+
+      - name: Check formatting
+        if: ${{ matrix.os == 'ubuntu-latest' }}
+        run: cargo fmt --all -- --check
+
+      - name: Run tests
+        run: cargo test --workspace --all-targets --all-features
+
+      - name: Run clippy
+        if: ${{ matrix.os == 'ubuntu-latest' }}
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+      - name: Build asp binary
+        run: cargo build --bin asp
+
+      - name: Run asp binary smoke
+        run: cargo run --quiet --bin asp -- guide
+
+      - name: Save sccache cache (fallback)
+        if: ${{ always() && !cancelled() && env.SCCACHE_GHA_ENABLED != 'true' }}
+        continue-on-error: true
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ github.workspace }}/.sccache/
+          key: asp-rust-sccache-${{ runner.os }}-${{ github.job }}-${{ hashFiles('Cargo.toml', 'Cargo.lock', '.github/workflows/ci.yml') }}-${{ github.run_id }}
+
+      - name: sccache summary
+        if: ${{ always() }}
+        shell: bash
+        run: sccache --show-stats || true
+
+  schema-and-provider-gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: languages/typescript-lang-project-harness/package-lock.json
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            languages/rust-lang-project-harness -> languages/rust-lang-project-harness/target
+          shared-key: asp-rust-ci-${{ runner.os }}
+          cache-on-failure: true
+
+      - name: Fetch Rust dependencies
+        run: |
+          cargo fetch
+          cargo fetch --manifest-path languages/rust-lang-project-harness/Cargo.toml
+
+      - name: Root schema gates
+        run: |
+          uv run --frozen pytest \
+            tests/unit/test_semantic_common_schema_copy_sync.py \
+            tests/unit/test_semantic_source_location_schema.py \
+            tests/unit/test_semantic_tree_sitter_provenance_schema.py \
+            tests/unit/semantic_query_packet_schema/test_basic.py \
+            tests/unit/test_semantic_search_packet_schema.py \
+            tests/unit/test_semantic_read_packet_schema.py \
+            tests/unit/semantic_native_syntax_fact_index_schema \
+            tests/unit/semantic_language_registry_schema/test_query_methods.py \
+            tests/unit/semantic_language_registry_schema/test_search_methods.py \
+            -q
+
+      - name: Python provider schema gates
+        run: |
+          uv run --frozen pytest \
+            tests/unit/harness/test_semantic_cli_direct_read_registry.py \
+            tests/unit/harness/test_semantic_schema_registry.py \
+            -q
+        working-directory: languages/python-lang-project-harness
+
+      - name: Python provider policy gate
+        run: uv run --project languages/python-lang-project-harness --frozen py-harness check --full .
+
+      - name: Build asp binary
+        run: cargo build --bin asp
+
+      - name: Rust provider graph-render smoke gates
+        run: |
+          SEMANTIC_AGENT_PROTOCOL_BIN="$PWD/target/debug/asp" \
+            cargo test --manifest-path languages/rust-lang-project-harness/Cargo.toml \
+              --workspace --all-targets --all-features --quiet \
+              cli_search_graph_profiles_filter_to_rendered_aliases
+          SEMANTIC_AGENT_PROTOCOL_BIN="$PWD/target/debug/asp" \
+            cargo test --manifest-path languages/rust-lang-project-harness/Cargo.toml \
+              --workspace --all-targets --all-features --quiet \
+              cli_search_policy_renders_semantic_handles
+
+      - name: Rust provider schema gates
+        run: cargo test --manifest-path languages/rust-lang-project-harness/Cargo.toml schema --features cli --quiet
+
+      - name: TypeScript provider schema gates
+        run: |
+          npm ci
+          npm run build
+          node --test \
+            dist/tests/unit/semantic_search_schema.test.js \
+            dist/tests/unit/semantic_language_registry_read_packet.test.js
+        working-directory: languages/typescript-lang-project-harness

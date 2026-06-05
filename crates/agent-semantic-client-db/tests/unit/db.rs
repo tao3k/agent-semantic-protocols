@@ -64,6 +64,7 @@ fn has_generation_matches_language_provider_project_and_export_method() {
             provider_id: ProviderId::from("rs-harness"),
             project_root: root.clone(),
             export_method: CacheExportMethod::from("search/prime"),
+            request_fingerprint: None,
         })
         .expect("has generation")
     );
@@ -73,6 +74,7 @@ fn has_generation_matches_language_provider_project_and_export_method() {
         provider_id: ProviderId::from("rs-harness"),
         project_root: root.clone(),
         export_method: CacheExportMethod::from("search/prime"),
+        request_fingerprint: None,
     })
     .expect("lookup generation")
     .expect("generation hit");
@@ -94,6 +96,7 @@ fn has_generation_matches_language_provider_project_and_export_method() {
             provider_id: ProviderId::from("rs-harness"),
             project_root: root.clone(),
             export_method: CacheExportMethod::from("search/owner"),
+            request_fingerprint: None,
         })
         .expect("missing generation")
     );
@@ -116,6 +119,7 @@ fn invalidate_generations_clears_rows_without_deleting_db() {
         provider_id: ProviderId::from("rs-harness"),
         project_root: root.clone(),
         export_method: CacheExportMethod::from("search/prime"),
+        request_fingerprint: None,
     })
     .expect("generation lookup after invalidate");
 

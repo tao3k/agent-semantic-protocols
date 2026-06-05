@@ -117,27 +117,10 @@
       }
     },
     "projectPath": {
-      "type": "string",
-      "minLength": 1,
-      "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*)$"
+      "$ref": "semantic-source-location.v1.schema.json#/$defs/projectPath"
     },
     "location": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "path",
-        "lineRange"
-      ],
-      "properties": {
-        "path": {
-          "$ref": "#/$defs/projectPath"
-        },
-        "lineRange": {
-          "type": "string",
-          "description": "Compact source line range as start:end, for example 10:43.",
-          "pattern": "^[1-9][0-9]*:[1-9][0-9]*$"
-        }
-      }
+      "$ref": "semantic-source-location.v1.schema.json#/$defs/location"
     },
     "factKind": {
       "enum": [
@@ -308,28 +291,17 @@
             "minLength": 1
           }
         },
-        "syntaxQueryRef": {
-          "type": "string",
-          "minLength": 1
-        },
-        "syntaxMatchRefs": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": {
-            "type": "string",
-            "minLength": 1
-          }
-        },
-        "syntaxCaptureRefs": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": {
-            "type": "string",
-            "minLength": 1
-          }
+          "syntaxQueryRef": {
+            "$ref": "semantic-tree-sitter-provenance.v1.schema.json#/$defs/syntaxQueryRef"
+          },
+          "syntaxMatchRefs": {
+            "$ref": "semantic-tree-sitter-provenance.v1.schema.json#/$defs/syntaxMatchRefs"
+          },
+          "syntaxCaptureRefs": {
+            "$ref": "semantic-tree-sitter-provenance.v1.schema.json#/$defs/syntaxCaptureRefs"
         },
         "syntaxAnchor": {
-          "$ref": "#/$defs/syntaxAnchor"
+          "$ref": "semantic-tree-sitter-provenance.v1.schema.json#/$defs/syntaxAnchor"
         },
         "relations": {
           "type": "array",
@@ -339,28 +311,6 @@
         },
         "fields": {
           "$ref": "#/$defs/fields"
-        }
-      }
-    },
-    "syntaxAnchor": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["nodeType", "range"],
-      "properties": {
-        "nodeType": {
-          "type": "string",
-          "pattern": "^(?:[A-Za-z_][A-Za-z0-9_]*|ERROR|MISSING)$"
-        },
-        "field": {
-          "type": "string",
-          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
-        },
-        "capture": {
-          "type": "string",
-          "pattern": "^[A-Za-z][A-Za-z0-9_.-]*$"
-        },
-        "range": {
-          "$ref": "#/$defs/location"
         }
       }
     },

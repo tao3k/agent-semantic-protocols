@@ -49,31 +49,33 @@ class LineProtocolCompactGraphTests(unittest.TestCase):
 
             self.assertEqual("pass", result.status)
 
-    def test_line_protocol_accepts_compact_graph_entries(self) -> None:
+    def test_line_protocol_rejects_unclosed_compact_graph_alias_line(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)
             scenario_path = repo_root / "scenario.json"
             scenario_path.write_text(
                 json.dumps(
                     {
-                        "id": "python.compact-graph-entries-line-protocol",
+                        "id": "python.compact-graph-unclosed-alias",
                         "language": "python",
                         "workdir": ".",
                         "steps": [
                             {
-                                "id": "compact-graph-entries",
+                                "id": "compact-graph",
                                 "command": [
                                     sys.executable,
                                     "-c",
                                     (
-                                        "print('[search-query] q=async selector=src/lib.rs alg=query-set')\n"
+                                        "print('[search-prime] root=. alg=owner-rank-frontier')\n"
                                         "print('legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next')\n"
-                                        "print('alias: graph:{G=search,O=owner,T=test}')\n"
-                                        "print('O=owner:path(src/lib.rs)!owner;T=test:path(tests/lib.rs)!tests')\n"
-                                        "print('G>{O:selects,T:covers}')\n"
-                                        "print('rank=O,T frontier=O.owner,T.tests')\n"
-                                        "print('entries=owner-tests(O,T=>covering-tests+fixtures),query-deps(O,T=>owners+imports)')"
+                                        "print('alias: graph:{G=search,O=owner')\n"
+                                        "print('O=owner:path(src/lib.rs)!owner')\n"
+                                        "print('G>{O:selects}')\n"
+                                        "print('rank=O frontier=O.owner')"
                                     ),
+                                    "search",
+                                    "--view",
+                                    "seeds",
                                 ],
                                 "expect": {"lineProtocol": True},
                             }
@@ -85,7 +87,11 @@ class LineProtocolCompactGraphTests(unittest.TestCase):
 
             result = run_scenario(repo_root, scenario_path)
 
-            self.assertEqual("pass", result.status)
+            self.assertEqual("fail", result.status)
+            self.assertIn(
+                "line protocol stray line: 'alias: graph:{G=search,O=owner'",
+                result.steps[0].errors,
+            )
 
     def test_line_protocol_accepts_compact_graph_omit_and_avoid(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

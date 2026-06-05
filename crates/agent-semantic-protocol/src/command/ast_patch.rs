@@ -112,16 +112,16 @@ impl AstPatchTemplateRequest {
         let mut mutation_source = flag_value(args, "--mutation-source");
         let mut snippet_required = flag_bool_value(args, "--snippet-required")?;
         let mut code_in_prompt = flag_bool_value(args, "--code-in-prompt")?;
-        if let Some(source) = mutation_source.as_deref() {
-            if !matches!(
+        if let Some(source) = mutation_source.as_deref()
+            && !matches!(
                 source,
                 "provider-native" | "agent-snippet" | "codex-text-fallback"
-            ) {
-                return Err(
-                    "--mutation-source must be provider-native, agent-snippet, or codex-text-fallback"
-                        .to_string(),
-                );
-            }
+            )
+        {
+            return Err(
+                "--mutation-source must be provider-native, agent-snippet, or codex-text-fallback"
+                    .to_string(),
+            );
         }
         if operation == "split_owner_items" {
             if !field_present(&fields, "destinationPath") {

@@ -36,7 +36,7 @@ pub(super) fn run_healthcheck_command(args: &[String]) -> Result<(), String> {
         "hook activation is missing",
         "invalid-activation",
         "hook activation is invalid",
-        &activation.status,
+        activation.status,
         activation.error.as_deref(),
     );
     collect_read_issue(
@@ -45,7 +45,7 @@ pub(super) fn run_healthcheck_command(args: &[String]) -> Result<(), String> {
         "runtime profiles are missing",
         "invalid-runtime-profiles",
         "runtime profiles are invalid",
-        &runtime_profiles.status,
+        runtime_profiles.status,
         runtime_profiles.error.as_deref(),
     );
     collect_binary_issue(&mut issues, &binary);

@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-tree-sitter-provenance.v1.schema.json",
+  "title": "Semantic Tree-sitter Provenance",
+  "description": "Shared tree-sitter provenance base used by search/query/read packet envelopes to point at semantic-tree-sitter-query.v1 matches and captures. This schema is not a replacement packet envelope; grammar id, source authority, adapter mode, and full capture facts remain owned by semantic-tree-sitter-query.v1.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.semantic-tree-sitter-provenance"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "syntaxQueryRef": {
+      "$ref": "#/$defs/syntaxQueryRef"
+    },
+    "syntaxMatchRefs": {
+      "$ref": "#/$defs/syntaxMatchRefs"
+    },
+    "syntaxCaptureRefs": {
+      "$ref": "#/$defs/syntaxCaptureRefs"
+    },
+    "syntaxAnchor": {
+      "$ref": "#/$defs/syntaxAnchor"
+    }
+  },
+  "$defs": {
+    "treeSitterProvenance": {
+      "type": "object",
+      "description": "Reusable tree-sitter provenance field group for packet envelopes that need to reference syntax query evidence without duplicating semantic-tree-sitter-query.v1.",
+      "additionalProperties": false,
+      "properties": {
+        "syntaxQueryRef": {
+          "$ref": "#/$defs/syntaxQueryRef"
+        },
+        "syntaxMatchRefs": {
+          "$ref": "#/$defs/syntaxMatchRefs"
+        },
+        "syntaxCaptureRefs": {
+          "$ref": "#/$defs/syntaxCaptureRefs"
+        },
+        "syntaxAnchor": {
+          "$ref": "#/$defs/syntaxAnchor"
+        }
+      }
+    },
+    "projectPath": {
+      "$ref": "semantic-source-location.v1.schema.json#/$defs/projectPath"
+    },
+    "lineRange": {
+      "$ref": "semantic-source-location.v1.schema.json#/$defs/lineRange"
+    },
+    "location": {
+      "$ref": "semantic-source-location.v1.schema.json#/$defs/location"
+    },
+    "syntaxQueryRef": {
+      "type": "string",
+      "description": "Artifact or packet id for the semantic-tree-sitter-query.v1 packet that supplied syntax captures.",
+      "minLength": 1
+    },
+    "syntaxMatchRefs": {
+      "type": "array",
+      "description": "Match ids from the referenced semantic-tree-sitter-query.v1 packet.",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "syntaxCaptureRefs": {
+      "type": "array",
+      "description": "Capture ids from the referenced semantic-tree-sitter-query.v1 packet.",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "syntaxAnchor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["nodeType", "location"],
+      "properties": {
+        "nodeType": {
+          "type": "string",
+          "pattern": "^(?:[A-Za-z_][A-Za-z0-9_]*|ERROR|MISSING)$"
+        },
+        "field": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+        },
+        "capture": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.-]*$"
+        },
+        "location": {
+          "$ref": "#/$defs/location"
+        }
+      }
+    }
+  }
+}

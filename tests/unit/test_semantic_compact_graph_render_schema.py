@@ -11,6 +11,15 @@ from jsonschema import Draft202012Validator
 _PROTOCOL_REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
+def _reasoning_profile_contracts() -> list[object]:
+    schema_path = (
+        _PROTOCOL_REPO_ROOT / "schemas" / "semantic-compact-graph-render.v1.schema.json"
+    )
+    with schema_path.open("r", encoding="utf-8") as handle:
+        schema = json.load(handle)
+    return schema["properties"]["reasoningProfileContracts"]["const"]
+
+
 def minimal_render_template() -> dict[str, object]:
     return {
         "schemaId": "agent.semantic-protocols.semantic-compact-graph-render",
@@ -47,6 +56,7 @@ def minimal_render_template() -> dict[str, object]:
             "groupedEdge": "(<SRC>,...)><DST>:<relation>",
             "rankFrontier": "rank=<ID>,... frontier=<ID>.<action>,...",
             "entries": "entries=<profile>(<ID>,...=><return>+...),...",
+            "entryAliasContract": "entries selector IDs must resolve to alias: graph declarations; known profile selectors must match the profile node-kind catalog",
             "omit": "omit=<omitted-semantic>[,<omitted-semantic>]",
             "avoid": "avoid=<anti-action>[,<anti-action>]",
             "denseAliasSeparator": ";",
@@ -64,6 +74,7 @@ def minimal_render_template() -> dict[str, object]:
             "rankEligible": False,
             "frontierEligible": False,
         },
+        "reasoningProfileContracts": _reasoning_profile_contracts(),
         "headerFields": {
             "identity": ["q", "root"],
             "algorithm": "alg",
@@ -146,6 +157,10 @@ class SemanticCompactGraphRenderSchemaTests(unittest.TestCase):
         self.assertEqual(
             "entries=<profile>(<ID>,...=><return>+...),...",
             template["lineGrammar"]["entries"],
+        )
+        self.assertEqual(
+            "entries selector IDs must resolve to alias: graph declarations; known profile selectors must match the profile node-kind catalog",
+            template["lineGrammar"]["entryAliasContract"],
         )
 
     def test_omit_and_avoid_lines_are_schema_owned(self) -> None:

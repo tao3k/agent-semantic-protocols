@@ -574,13 +574,19 @@ alone are not enough to replay compact output.  =cacheStatus=hit= is allowed
 only when the generation references a replayable provider-owned artifact.  In
 the first implementation, =prompt-output/*.txt= under the protocol artifact root
 is the fastest replay path and may be paired with
-=prompt-output/*.command.json= provider-command provenance, =search/*.json=
-semantic-search-packet artifacts are replayable through the shared =asp graph
-render --packet <artifact> --view seeds= renderer, and =query/*.json=
-semantic-query-packet artifacts are replayable for =query/owner-items= compact
-query output.  If a referenced packet artifact is missing, unsafe, too large,
-unsupported for the request method, or cannot be rendered, the generation
-remains =warm-provider= and the native provider still supplies the output.
+  =prompt-output/*.command.json= provider-command provenance, =search/*.json=
+  semantic-search-packet artifacts are replayable through the shared =asp graph
+  render --packet <artifact> --view seeds= renderer, =query/*.json=
+  semantic-query-packet artifacts are replayable for =query/owner-items= compact
+  query output, and =semantic-tree-sitter-query/*.json= artifacts are replayable
+  for exact non-=--code= syntax-locate/capture requests.  The client also writes
+  normalized =syntax_query_*= rows from validated
+  =semantic-tree-sitter-query.v1= packets.  Syntax replay first tries the packet
+  artifact, then falls back to those rows when the artifact is missing or cannot
+  be rendered.  Both paths render the compact locator/capture surface and must
+  not store or replay raw source.  If neither artifact nor rows can satisfy the
+  exact request, the generation remains =warm-provider= and the native provider
+  still supplies the output.
 
 The Rust client may build denormalized owner, symbol, native fact, handle,
 diagnostic, search packet, and query packet SQL tables from provider exports.  It
@@ -1002,8 +1008,15 @@ local-cache path:
 - Local cache hits can replay =prompt-output/*.txt= artifacts directly, render
   =search/*.json= semantic-search-packet artifacts through the shared graph
   renderer, and replay =query/*.json= semantic-query-packet artifacts for
-  =query/owner-items=.  Misses and unsupported artifacts fall through to native
-  provider execution with =cacheStatus=warm-provider= or =miss=.
+  =query/owner-items=.  Exact non-=--code= tree-sitter ABI queries can replay
+  =semantic-tree-sitter-query/*.json= artifacts by matching the query source and
+  selector, then rendering compact locator/capture output from the packet.  If
+  that artifact is unavailable, the same exact request can replay normalized
+  =syntax_query_generation=, =syntax_query_pattern=, =syntax_query_match=,
+  =syntax_query_capture=, =syntax_query_capture_native_fact_ref=, and
+  =syntax_query_artifact_ref= rows derived from the validated packet.  Misses
+  and unsupported artifacts or rows fall through to native provider execution
+  with =cacheStatus=warm-provider= or =miss=.
 - Successful local-native =asp <language> search ... --view seeds= requests that
   do not ask for item code, JSON, or direct code output first try to export a
   schema-valid =semantic-search-packet= through the same provider request with
@@ -1018,6 +1031,15 @@ local-cache path:
   =--json=.  Replay is keyed by =query/owner-items=, =ownerPath=, and =query=,
   then rendered through the client artifact replay path without respawning the
   provider.
+- Successful local-native =asp <language> query --treesitter-query <sexpr>
+  --selector <path[:line-range]>= requests can write back
+  =semantic-tree-sitter-query/*.json= artifacts when the provider can export a
+  schema-valid =semantic-tree-sitter-query.v1= packet through the same ASP-
+  compiled request with =--json=.  The same write-back imports normalized syntax
+  query rows into =client.sqlite3= so repeated requests can replay without
+  respawning the provider even when the packet artifact is unavailable.  Replay
+  is exact for the request fingerprint and is disabled for =--code= because
+  syntax replay must not persist raw source.
 - Julia remains workspace-managed and out of standalone bin parity.  The agent
   semantic client hot path for Julia is still the future Rust-side
   cache/query/render path over validated JuliaSyntax-owned facts, not a

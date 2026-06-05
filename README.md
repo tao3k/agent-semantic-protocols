@@ -18,8 +18,8 @@ aligned.
   and receipts.
 - `crates/agent-semantic-protocol/`: shared Rust CLI entrypoint for protocol
   commands such as `hook` and `ast-patch`.
-- `crates/agent-semantic-hook/`: Rust root hook runtime for Codex/agent hook
-  classification and provider routing, used by `asp hook`.
+- `crates/agent-semantic-hook/`: Rust root hook runtime for Codex, Claude,
+  and other agent hook classification and provider routing, used by `asp hook`.
 - `crates/agent-semantic-client*/`: agent semantic client/backend crates. `asp` is the
   product-facing local/cloud client surface; hook and protocol crates keep
   their `semantic-agent-*` names.
@@ -51,7 +51,8 @@ Enter the project shell first when available:
 direnv exec . <command>
 ```
 
-Install agent-facing tools and Codex hook config:
+Install agent-facing tools and the Codex hook config through the current
+convenience target:
 
 ```sh
 just agent-hooks-install
@@ -59,7 +60,7 @@ just agent-hooks-doctor
 ```
 
 Install the same tools into a user-owned bin directory. The directory must be
-on the PATH that Codex uses to run hooks:
+on the PATH that your agent client uses to run hooks:
 
 ```sh
 mkdir -p "$HOME/.local/bin"
@@ -86,21 +87,23 @@ asp guide
 asp doctor
 asp providers
 asp cache status
-asp search --language rust prime --view seeds .
+asp rust search prime --view seeds .
 ```
 
-Refresh only the Codex hook config after the binaries already exist:
+Refresh a client hook config after the binaries already exist:
 
 ```sh
 asp hook install --client codex .
 asp hook doctor --client codex .
+asp hook install --client claude .
+asp hook doctor --client claude .
 ```
 
-`asp hook install` writes the root Codex hook block, cache
-activation, versioned hook policy config, and provider manifests for this
-repository. It does not build or install `rs-harness`, `ts-harness`, or
-`py-harness`; use the `just agent-tools-install-*` commands for those
-binaries.
+`asp hook install --client <codex|claude>` writes the root client hook
+configuration, cache activation, versioned hook policy config, and provider
+manifests for this repository. It does not build or install `rs-harness`,
+`ts-harness`, or `py-harness`; use the `just agent-tools-install-*` commands
+for those binaries.
 
 Verify a compact AST patch intent without enabling mutation:
 
@@ -109,22 +112,25 @@ asp ast-patch verify --packet ast-patch.json .
 asp ast-patch dry-run --packet ast-patch.json .
 ```
 
-For the Codex adapter, `ast-patch` emits a receipt with
-`mutationAvailable=false`; apply code changes through Codex `apply_patch`.
+For text-patch agent adapters such as Codex, `ast-patch` emits a receipt with
+`mutationAvailable=false`; apply code changes through the client patch tool.
 
 `doctor` checks the project hook block, PATH binary, activation/provider
-manifest sync, and Codex user-level hook trust state. It does not prove that
-the already-running agent thread has reloaded the hook config. After changing
-hooks, start a fresh Codex session or run a live smoke:
+manifest sync, and client-specific readiness. Codex also reports user-level
+hook trust state; Claude reports non-Codex enforcement probes as not applicable.
+It does not prove that the already-running agent thread has reloaded the hook
+config. After changing hooks, start a fresh agent session or run a live smoke:
 
 ```sh
 just agent-hooks-smoke-hook
 just agent-hooks-smoke-codex
+uv run semantic-sandtable sandtables/root/claude-hook-flow.json
 ```
 
 The direct smoke replays the hook classifier. The Codex smoke launches the
 actual Codex CLI and verifies that a TypeScript source dump is blocked by
-`PreToolUse`.
+`PreToolUse`. The Claude sandtable replays Claude `PreToolUse` payloads through
+the same hook classifier.
 
 Run the root hook tests:
 
@@ -138,6 +144,7 @@ Run sandtable scenarios:
 ```sh
 uv run semantic-sandtable
 uv run semantic-sandtable sandtables/root/codex-hook-dispatcher-flow.json
+uv run semantic-sandtable sandtables/root/claude-hook-flow.json
 ```
 
 Run the Python policy gate owned by the Python harness:

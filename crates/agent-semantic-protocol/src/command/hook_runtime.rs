@@ -187,7 +187,7 @@ fn activation_failure_source_decision(
         || tool_name.eq_ignore_ascii_case("view")
         || command
             .as_deref()
-            .is_some_and(|command| starts_with_source_dump_command(command));
+            .is_some_and(starts_with_source_dump_command);
     let reason_kind = if is_direct_read {
         ReasonKind::DirectSourceRead
     } else {
@@ -247,10 +247,8 @@ fn string_field(value: &serde_json::Value, keys: &[&str]) -> Option<String> {
 
 fn collect_source_like_values(value: &serde_json::Value, paths: &mut Vec<String>) {
     match value {
-        serde_json::Value::String(text) => {
-            if is_source_path(text) {
-                paths.push(text.to_string());
-            }
+        serde_json::Value::String(text) if is_source_path(text) => {
+            paths.push(text.to_string());
         }
         serde_json::Value::Array(values) => {
             for value in values {

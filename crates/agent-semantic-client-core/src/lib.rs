@@ -29,11 +29,16 @@ pub use types::{
 pub use {
     agent_semantic_tree_sitter::{
         CompiledSyntaxQuery, LoadedGrammarProfile, LoadedSyntaxCatalog, SyntaxCatalogDescriptor,
-        SyntaxQueryCompileError, compile_catalog_query, compile_query_source,
+        SyntaxQueryAbiError, SyntaxQueryAbiPattern, SyntaxQueryAbiPlan, SyntaxQueryCompileError,
+        compile_catalog_query, compile_query_abi_source, compile_query_source,
         extract_capture_names, fingerprint_catalog, fingerprint_grammar_profile,
         load_grammar_profile, load_syntax_catalog, normalize_capture_names,
     },
-    request::{ClientMethod, ClientRequest},
+    request::{
+        ASP_SYNTAX_QUERY_CAPTURES_ARG, ASP_SYNTAX_QUERY_FIELDS_ARG,
+        ASP_SYNTAX_QUERY_NODE_TYPES_ARG, ClientMethod, ClientRequest,
+        append_syntax_query_plan_args,
+    },
 };
 #[cfg(test)]
 #[path = "../tests/unit/activation.rs"]
@@ -41,3 +46,6 @@ mod activation_tests;
 #[cfg(test)]
 #[path = "../tests/unit/cache_manifest.rs"]
 mod cache_manifest_tests;
+#[cfg(test)]
+#[path = "../tests/unit/request.rs"]
+mod request_tests;

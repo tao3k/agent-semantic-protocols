@@ -157,10 +157,7 @@ fn graph_action_owner_item_order(action: &GraphAction) -> u8 {
     }
 }
 
-fn graph_rank_aliases<'a>(
-    aliases: &'a [GraphAlias],
-    owner_item_query: bool,
-) -> Vec<&'a GraphAlias> {
+fn graph_rank_aliases(aliases: &[GraphAlias], owner_item_query: bool) -> Vec<&GraphAlias> {
     if !owner_item_query {
         return aliases.iter().collect();
     }

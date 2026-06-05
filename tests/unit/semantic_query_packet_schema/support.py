@@ -118,9 +118,10 @@ def semantic_query_minimal_packet() -> dict[str, object]:
 
 
 def schema_validator() -> Draft202012Validator:
+    from unit.schema_validation import schema_validator_for
+
     schema_path = _REPO_ROOT / "schemas" / "semantic-query-packet.v1.schema.json"
-    with schema_path.open("r", encoding="utf-8") as handle:
-        return Draft202012Validator(json.load(handle))
+    return schema_validator_for(schema_path)
 
 
 def validation_errors(packet: dict[str, object]) -> list[str]:

@@ -66,6 +66,10 @@ def _assert_query_set_steps_include_entries(
             str(item) for item in _list_value(expect.get("stdoutContains"))
         ]
         step_id = step_mapping.get("id", "<unknown>")
+        if expect.get("lineProtocol") is not True:
+            raise AssertionError(
+                f"{path}: {step_id} query-set --view seeds step must enable lineProtocol compact graph validation"
+            )
         if not any(item.startswith("entries=") for item in stdout_contains):
             raise AssertionError(
                 f"{path}: {step_id} query-set --view seeds step must assert compact graph entries"
@@ -110,6 +114,10 @@ def _assert_prime_steps_include_entries_and_status(
             str(item) for item in _list_value(expect.get("stdoutContains"))
         ]
         step_id = step_mapping.get("id", "<unknown>")
+        if expect.get("lineProtocol") is not True:
+            raise AssertionError(
+                f"{path}: {step_id} prime --view seeds step must enable lineProtocol compact graph validation"
+            )
         if not any(item.startswith("entries=") for item in stdout_contains):
             raise AssertionError(
                 f"{path}: {step_id} prime --view seeds step must assert compact graph entries"
@@ -206,4 +214,3 @@ def _required_str_list(mapping: dict[str, Any], key: str, path: Path) -> list[st
 
 if __name__ == "__main__":
     unittest.main()
-

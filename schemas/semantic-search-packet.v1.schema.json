@@ -210,28 +210,16 @@
       }
     },
     "syntaxQueryRef": {
-      "type": "string",
-      "description": "Reference to the semantic-tree-sitter-query artifact that informed this packet.",
-      "minLength": 1
+      "$ref": "semantic-tree-sitter-provenance.v1.schema.json#/$defs/syntaxQueryRef"
     },
     "syntaxMatchRefs": {
-      "type": "array",
-      "description": "Match ids from a semantic-tree-sitter-query artifact that explain selected search facts.",
-      "items": {
-        "type": "string",
-        "minLength": 1
-      }
+      "$ref": "semantic-tree-sitter-provenance.v1.schema.json#/$defs/syntaxMatchRefs"
     },
     "syntaxCaptureRefs": {
-      "type": "array",
-      "description": "Capture ids from a semantic-tree-sitter-query artifact that explain selected search facts.",
-      "items": {
-        "type": "string",
-        "minLength": 1
-      }
+      "$ref": "semantic-tree-sitter-provenance.v1.schema.json#/$defs/syntaxCaptureRefs"
     },
     "syntaxAnchor": {
-      "$ref": "#/$defs/syntaxAnchor"
+      "$ref": "semantic-tree-sitter-provenance.v1.schema.json#/$defs/syntaxAnchor"
     },
     "reasoningProfiles": {
       "type": "array",
@@ -489,10 +477,7 @@
       ]
     },
     "projectPath": {
-      "type": "string",
-      "description": "Canonical project-root-relative path. This is a path value, not a display locator: no rank prefixes, URI schemes, command prefixes, line ranges, columns, absolute paths, parent segments, backslashes, or numeric node slots.",
-      "minLength": 1,
-      "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*)$"
+      "$ref": "semantic-source-location.v1.schema.json#/$defs/projectPath"
     },
     "windowTarget": {
       "description": "A window-set target is either a canonical project path or a graph frontier token such as feature:cli, cfg:unix, or import:serde. It is not a display locator or rank-prefixed path.",
@@ -1146,47 +1131,7 @@
       }
     },
     "location": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "path",
-        "lineRange"
-      ],
-      "properties": {
-        "path": {
-          "$ref": "#/$defs/projectPath"
-        },
-        "lineRange": {
-          "type": "string",
-          "description": "Compact source line range as start:end, for example 10:43.",
-          "pattern": "^[1-9][0-9]*:[1-9][0-9]*$"
-        }
-      }
-    },
-    "syntaxAnchor": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "nodeType",
-        "location"
-      ],
-      "properties": {
-        "nodeType": {
-          "type": "string",
-          "minLength": 1
-        },
-        "field": {
-          "type": "string",
-          "minLength": 1
-        },
-        "capture": {
-          "type": "string",
-          "minLength": 1
-        },
-        "location": {
-          "$ref": "#/$defs/location"
-        }
-      }
+      "$ref": "semantic-source-location.v1.schema.json#/$defs/location"
     },
     "header": {
       "type": "object",
@@ -1569,7 +1514,368 @@
         "fields": {
           "$ref": "#/$defs/fields"
         }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/reasoningProfileOwnerQueryContract"
+        },
+        {
+          "$ref": "#/$defs/reasoningProfileQueryDepsContract"
+        },
+        {
+          "$ref": "#/$defs/reasoningProfileOwnerTestsContract"
+        },
+        {
+          "$ref": "#/$defs/reasoningProfileFindingFrontierContract"
+        },
+        {
+          "$ref": "#/$defs/reasoningProfileFeatureCfgContract"
+        }
+      ]
+    },
+    "reasoningProfileCatalog": {
+      "const": [
+        {
+          "profile": "owner-query",
+          "selectors": [
+            {
+              "kind": "owner",
+              "required": true
+            },
+            {
+              "kind": "query",
+              "required": true
+            }
+          ],
+          "returns": [
+            "items",
+            "tests",
+            "dependency-usage"
+          ]
+        },
+        {
+          "profile": "query-deps",
+          "selectors": [
+            {
+              "kind": "query",
+              "required": true
+            },
+            {
+              "kind": "dependency",
+              "required": true
+            }
+          ],
+          "returns": [
+            "owners",
+            "imports",
+            "usage-tests"
+          ]
+        },
+        {
+          "profile": "owner-tests",
+          "selectors": [
+            {
+              "kind": "owner",
+              "required": true
+            }
+          ],
+          "returns": [
+            "covering-tests",
+            "test-entrypoints",
+            "fixtures"
+          ]
+        },
+        {
+          "profile": "finding-frontier",
+          "selectors": [
+            {
+              "kind": "finding",
+              "required": true
+            },
+            {
+              "kind": "owner",
+              "required": false
+            }
+          ],
+          "returns": [
+            "affected-owners",
+            "tests",
+            "verification-actions"
+          ]
+        },
+        {
+          "profile": "feature-cfg",
+          "selectors": [
+            {
+              "kind": "feature",
+              "required": true
+            }
+          ],
+          "returns": [
+            "cfg-gates",
+            "owners",
+            "verification-surfaces"
+          ]
+        }
+      ]
+    },
+    "reasoningProfileOwnerQueryContract": {
+      "if": {
+        "properties": {
+          "profile": {
+            "const": "owner-query"
+          }
+        },
+        "required": [
+          "profile"
+        ]
+      },
+      "then": {
+        "properties": {
+          "selectors": {
+            "prefixItems": [
+              {
+                "$ref": "#/$defs/reasoningProfileOwnerSelector"
+              },
+              {
+                "$ref": "#/$defs/reasoningProfileQuerySelector"
+              }
+            ],
+            "items": false,
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "returns": {
+            "const": [
+              "items",
+              "tests",
+              "dependency-usage"
+            ]
+          }
+        }
       }
+    },
+    "reasoningProfileQueryDepsContract": {
+      "if": {
+        "properties": {
+          "profile": {
+            "const": "query-deps"
+          }
+        },
+        "required": [
+          "profile"
+        ]
+      },
+      "then": {
+        "properties": {
+          "selectors": {
+            "prefixItems": [
+              {
+                "$ref": "#/$defs/reasoningProfileQuerySelector"
+              },
+              {
+                "$ref": "#/$defs/reasoningProfileDependencySelector"
+              }
+            ],
+            "items": false,
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "returns": {
+            "const": [
+              "owners",
+              "imports",
+              "usage-tests"
+            ]
+          }
+        }
+      }
+    },
+    "reasoningProfileOwnerTestsContract": {
+      "if": {
+        "properties": {
+          "profile": {
+            "const": "owner-tests"
+          }
+        },
+        "required": [
+          "profile"
+        ]
+      },
+      "then": {
+        "properties": {
+          "selectors": {
+            "prefixItems": [
+              {
+                "$ref": "#/$defs/reasoningProfileOwnerSelector"
+              }
+            ],
+            "items": false,
+            "minItems": 1,
+            "maxItems": 1
+          },
+          "returns": {
+            "const": [
+              "covering-tests",
+              "test-entrypoints",
+              "fixtures"
+            ]
+          }
+        }
+      }
+    },
+    "reasoningProfileFindingFrontierContract": {
+      "if": {
+        "properties": {
+          "profile": {
+            "const": "finding-frontier"
+          }
+        },
+        "required": [
+          "profile"
+        ]
+      },
+      "then": {
+        "properties": {
+          "selectors": {
+            "oneOf": [
+              {
+                "prefixItems": [
+                  {
+                    "$ref": "#/$defs/reasoningProfileFindingSelector"
+                  }
+                ],
+                "items": false,
+                "minItems": 1,
+                "maxItems": 1
+              },
+              {
+                "prefixItems": [
+                  {
+                    "$ref": "#/$defs/reasoningProfileFindingSelector"
+                  },
+                  {
+                    "$ref": "#/$defs/reasoningProfileOwnerSelector"
+                  }
+                ],
+                "items": false,
+                "minItems": 2,
+                "maxItems": 2
+              }
+            ]
+          },
+          "returns": {
+            "const": [
+              "affected-owners",
+              "tests",
+              "verification-actions"
+            ]
+          }
+        }
+      }
+    },
+    "reasoningProfileFeatureCfgContract": {
+      "if": {
+        "properties": {
+          "profile": {
+            "const": "feature-cfg"
+          }
+        },
+        "required": [
+          "profile"
+        ]
+      },
+      "then": {
+        "properties": {
+          "selectors": {
+            "prefixItems": [
+              {
+                "$ref": "#/$defs/reasoningProfileFeatureSelector"
+              }
+            ],
+            "items": false,
+            "minItems": 1,
+            "maxItems": 1
+          },
+          "returns": {
+            "const": [
+              "cfg-gates",
+              "owners",
+              "verification-surfaces"
+            ]
+          }
+        }
+      }
+    },
+    "reasoningProfileOwnerSelector": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/reasoningProfileSelector"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "owner"
+            }
+          }
+        }
+      ]
+    },
+    "reasoningProfileQuerySelector": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/reasoningProfileSelector"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "query"
+            }
+          }
+        }
+      ]
+    },
+    "reasoningProfileDependencySelector": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/reasoningProfileSelector"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "dependency"
+            }
+          }
+        }
+      ]
+    },
+    "reasoningProfileFindingSelector": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/reasoningProfileSelector"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "finding"
+            }
+          }
+        }
+      ]
+    },
+    "reasoningProfileFeatureSelector": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/reasoningProfileSelector"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "feature"
+            }
+          }
+        }
+      ]
     },
     "reasoningProfileSelector": {
       "type": "object",

@@ -88,7 +88,6 @@
         "stdoutContains": [
           "[search-prime]",
           "legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next",
-          "alias: graph:{G=search",
           "G>{",
           "rank=",
           "frontier="

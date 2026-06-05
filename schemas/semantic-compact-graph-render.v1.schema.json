@@ -18,6 +18,7 @@
     "locatorPolicy",
     "searchRoot",
     "headerFields",
+    "reasoningProfileContracts",
     "actionSpecs",
     "relationSpecs"
   ],
@@ -128,6 +129,7 @@
         "groupedEdge",
         "rankFrontier",
         "entries",
+        "entryAliasContract",
         "omit",
         "avoid",
         "denseAliasSeparator"
@@ -156,6 +158,9 @@
         },
         "entries": {
           "const": "entries=<profile>(<ID>,...=><return>+...),..."
+        },
+        "entryAliasContract": {
+          "const": "entries selector IDs must resolve to alias: graph declarations; known profile selectors must match the profile node-kind catalog"
         },
         "omit": {
           "const": "omit=<omitted-semantic>[,<omitted-semantic>]"
@@ -257,6 +262,92 @@
           "uniqueItems": true
         }
       }
+    },
+    "reasoningProfileContracts": {
+      "const": [
+        {
+          "profile": "owner-query",
+          "selectors": [
+            {
+              "kind": "owner",
+              "required": true
+            },
+            {
+              "kind": "query",
+              "required": true
+            }
+          ],
+          "returns": [
+            "items",
+            "tests",
+            "dependency-usage"
+          ]
+        },
+        {
+          "profile": "query-deps",
+          "selectors": [
+            {
+              "kind": "query",
+              "required": true
+            },
+            {
+              "kind": "dependency",
+              "required": true
+            }
+          ],
+          "returns": [
+            "owners",
+            "imports",
+            "usage-tests"
+          ]
+        },
+        {
+          "profile": "owner-tests",
+          "selectors": [
+            {
+              "kind": "owner",
+              "required": true
+            }
+          ],
+          "returns": [
+            "covering-tests",
+            "test-entrypoints",
+            "fixtures"
+          ]
+        },
+        {
+          "profile": "finding-frontier",
+          "selectors": [
+            {
+              "kind": "finding",
+              "required": true
+            },
+            {
+              "kind": "owner",
+              "required": false
+            }
+          ],
+          "returns": [
+            "affected-owners",
+            "tests",
+            "verification-actions"
+          ]
+        },
+        {
+          "profile": "feature-cfg",
+          "selectors": [
+            {
+              "kind": "feature",
+              "required": true
+            }
+          ],
+          "returns": [
+            "cfg-gates",
+            "owners",
+            "verification-surfaces"
+          ]
+        }
+      ]
     },
     "actionSpecs": {
       "type": "array",

@@ -67,6 +67,11 @@ Profile names are not free-form compatibility aliases. The shared
 `owner-tests`, `finding-frontier`, and `feature-cfg`; adding a new prompt-facing
 entry name requires a schema update so Rust, TypeScript, Python, and future
 providers can compare the same returned entries.
+`semantic-compact-graph-render.v1.schema.json` exposes the prompt-facing
+`reasoningProfileContracts` catalog, including selector order, optional
+selectors, and return entries. `semantic-search-packet.v1.schema.json` validates
+implemented packet profiles against the same contract, so compatibility aliases
+or extra selectors are schema errors rather than model-inferred hints.
 Provider `agent guide` and `search guide` output should print the same catalog
 as a compact `reasoningProfiles=... entries=... routes=...` line. Runnable
 reasoning rows belong in `entries`; repair/direct-read flows belong in `routes`
@@ -236,6 +241,20 @@ read, and native syntax fact packets can refer back to this ABI through
 `syntaxQueryRef`, `syntaxMatchRefs`, `syntaxCaptureRefs`, and an optional short
 `syntaxAnchor` when those references improve a decision path without adding a
 new render protocol.
+
+`semantic-source-location.v1.schema.json` owns the shared project-relative
+path, line range, and source locator vocabulary used by query, search, read,
+tree-sitter query/profile/provenance, and native syntax fact schemas. Packet
+schemas should reference that base instead of carrying their own path/range
+regex copies.
+
+`semantic-tree-sitter-provenance.v1.schema.json` owns the shared tree-sitter provenance base.
+The packet envelopes stay separate because query, search, and read packets have
+different required fields and consumer semantics, but tree-sitter provenance
+must not be redefined separately in each envelope. Additive changes to syntax
+provenance fields go through this shared schema first, then package-local schema
+copies and provider registry descriptors. The provenance schema itself depends
+on `semantic-source-location.v1.schema.json` for its `syntaxAnchor.location`.
 
 Provider-maintained catalogs should follow the upstream tree-sitter convention
 `tree-sitter/<grammar-id>/queries/*.scm` when that grammar uses it. Selected
@@ -678,7 +697,9 @@ This repository's `schemas/` directory is the protocol source of truth.
 It contains common protocol schemas only. Provider packages that run CI from
 independent checkouts should carry package-local copies of those common schemas
 at the same relative paths, for example
-`schemas/semantic-search-packet.v1.schema.json`. Language-specific schemas stay
+`schemas/semantic-search-packet.v1.schema.json`,
+`schemas/semantic-source-location.v1.schema.json`, and
+`schemas/semantic-tree-sitter-provenance.v1.schema.json`. Language-specific schemas stay
 inside the language harness repository, for example the TypeScript provider's
 `schemas/typescript-semantic-capabilities.v1.schema.json`. The protocol
 repository may keep language-specific templates, such as

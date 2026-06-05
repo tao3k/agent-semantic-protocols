@@ -6,12 +6,16 @@
 //! crates for this ABI.
 
 pub mod catalog;
+pub mod query_syntax;
 pub mod runtime;
 
 pub use catalog::{
     LoadedGrammarProfile, LoadedSyntaxCatalog, SyntaxCatalogDescriptor, extract_capture_names,
     fingerprint_catalog, fingerprint_grammar_profile, load_grammar_profile, load_syntax_catalog,
     normalize_capture_names,
+};
+pub use query_syntax::{
+    SyntaxQueryAbiError, SyntaxQueryAbiPattern, SyntaxQueryAbiPlan, compile_query_abi_source,
 };
 pub use runtime::{
     CompiledSyntaxQuery, SyntaxQueryCompileError, compile_catalog_query, compile_query_source,
@@ -20,3 +24,6 @@ pub use runtime::{
 #[cfg(test)]
 #[path = "../tests/unit/catalog.rs"]
 mod catalog_tests;
+#[cfg(test)]
+#[path = "../tests/unit/query_syntax.rs"]
+mod query_syntax_tests;

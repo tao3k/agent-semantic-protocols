@@ -41,18 +41,18 @@ fn remove_stale_codex_trust_state_blocks(existing: &str) -> String {
     let mut index = 0;
     while index < lines.len() {
         let line = lines[index];
-        if let Some(path) = codex_trust_block_path(line) {
-            if !Path::new(path).is_file() {
-                if let Some(relative_end) = lines[index + 1..]
-                    .iter()
-                    .position(|candidate| is_codex_trust_block_end(candidate))
-                {
-                    index += relative_end + 2;
-                } else {
-                    index += 1;
-                }
-                continue;
+        if let Some(path) = codex_trust_block_path(line)
+            && !Path::new(path).is_file()
+        {
+            if let Some(relative_end) = lines[index + 1..]
+                .iter()
+                .position(|candidate| is_codex_trust_block_end(candidate))
+            {
+                index += relative_end + 2;
+            } else {
+                index += 1;
             }
+            continue;
         }
         kept.push(line);
         index += 1;

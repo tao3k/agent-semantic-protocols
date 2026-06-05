@@ -9,7 +9,9 @@ use agent_semantic_client_core::{
 };
 use agent_semantic_client_db::{ClientDb, ClientDbGenerationLookup, ClientDbReport};
 
-use crate::cache_cli::request::{request_export_method, selected_provider_for_request};
+use crate::cache_cli::request::{
+    request_export_method, request_lookup_fingerprint, selected_provider_for_request,
+};
 use crate::cache_replay::{ProviderCacheReplay, load_replay_artifact};
 
 pub(crate) struct ProviderCacheProbe {
@@ -37,12 +39,15 @@ pub(crate) fn provider_cache_probe(
         selected_provider
             .zip(request_export_method(request))
             .and_then(|(provider, export_method)| {
+                let request_fingerprint =
+                    request_lookup_fingerprint(provider, project_root, &export_method, request);
                 ClientDb::lookup_generation(&ClientDbGenerationLookup {
                     db_path: db_path.clone(),
                     language_id: provider.language_id.clone(),
                     provider_id: provider.provider_id.clone(),
                     project_root: project_root.to_path_buf(),
                     export_method,
+                    request_fingerprint,
                 })
                 .ok()
                 .flatten()
@@ -101,6 +106,8 @@ pub(crate) fn cache_hit_receipt(
     apply_provider_cache_probe(&mut receipt, probe);
     receipt.cache_status = CacheStatus::Hit;
     receipt.stdout_bytes = ByteCount::from_len(replay.stdout.len());
+    receipt.syntax_artifact_id = replay.syntax_artifact_id.clone();
+    receipt.packet_bytes = replay.packet_bytes;
     receipt.elapsed_ms = elapsed_ms;
     receipt
 }

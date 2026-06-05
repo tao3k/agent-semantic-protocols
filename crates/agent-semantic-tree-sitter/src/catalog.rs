@@ -8,6 +8,8 @@ use std::fs;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 
+use crate::compile_query_abi_source;
+
 /// Registry-declared tree-sitter-compatible query catalog entry.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SyntaxCatalogDescriptor {
@@ -46,7 +48,15 @@ pub fn load_syntax_catalog(
             descriptor.path.display()
         )
     })?;
-    let discovered_captures = extract_capture_names(&source);
+    let discovered_captures = compile_query_abi_source(&source)
+        .map_err(|error| {
+            format!(
+                "failed to compile syntax query catalog {}: {}",
+                descriptor.path.display(),
+                error.message
+            )
+        })?
+        .captures;
     let fingerprint = fingerprint_catalog(descriptor, &source);
     Ok(LoadedSyntaxCatalog {
         id: descriptor.id.clone(),
@@ -81,15 +91,9 @@ pub fn load_grammar_profile(
 /// Extract capture names from tree-sitter query source without compiling a grammar.
 #[must_use]
 pub fn extract_capture_names(source: &str) -> Vec<String> {
-    let captures = source
-        .split(|character: char| {
-            character.is_whitespace() || matches!(character, '(' | ')' | '[' | ']' | '{' | '}')
-        })
-        .filter_map(|token| token.strip_prefix('@'))
-        .filter(|capture| !capture.is_empty())
-        .map(str::to_string)
-        .collect::<Vec<_>>();
-    normalize_capture_names(&captures)
+    compile_query_abi_source(source)
+        .map(|plan| plan.captures)
+        .unwrap_or_default()
 }
 
 /// Normalize capture names into stable ABI order.

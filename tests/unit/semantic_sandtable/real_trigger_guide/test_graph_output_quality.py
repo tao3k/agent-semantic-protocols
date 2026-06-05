@@ -17,7 +17,10 @@ class RealTriggerGraphOutputGuideTests(unittest.TestCase):
     ) -> None:
         entries = (
             "entries=owner-query(O,Q=>items+tests+dependency-usage),"
-            "owner-tests(O=>covering-tests+test-entrypoints+fixtures)"
+            "query-deps(Q,D=>owners+imports+usage-tests),"
+            "owner-tests(O=>covering-tests+test-entrypoints+fixtures),"
+            "finding-frontier(F,O=>affected-owners+tests+verification-actions),"
+            "feature-cfg(F2=>cfg-gates+owners+verification-surfaces)"
         )
         legacy_profiles = "profiles" + "="
         legacy_handles = "".join(["compatible", "Handles"])
@@ -37,9 +40,10 @@ class RealTriggerGraphOutputGuideTests(unittest.TestCase):
                                     sys.executable,
                                     "-c",
                                     (
-                                        "import json; "
-                                        f"entries = {entries!r}; "
-                                        "prime_output = 'analysis=structure nativeSyntaxFacts=skipped policyFindings=skipped\\n' + entries; "
+                        "import json; "
+                        f"entries = {entries!r}; "
+                        "prime_output = 'analysis=structure nativeSyntaxFacts=skipped policyFindings=skipped\\n"
+                        "alias: graph:{G=search,O=owner,Q=query,D=dependency,T=test,F=finding,F2=feature}\\n' + entries; "
                                         "decision = {"
                                         "'reasonKind': 'raw-broad-search',"
                                         "'languageIds': ['typescript'],"
@@ -64,6 +68,7 @@ class RealTriggerGraphOutputGuideTests(unittest.TestCase):
                                         ],
                                         "primeOutput": {
                                             "requiresStructureStatus": True,
+                                            "requiresTypedEntryAliases": True,
                                             "entries": [entries],
                                         },
                                     }
@@ -304,3 +309,63 @@ class RealTriggerGraphOutputGuideTests(unittest.TestCase):
             result.steps[0].errors,
         )
 
+    def test_guide_quality_rejects_entry_alias_kind_mismatch(self) -> None:
+        entries = "entries=feature-cfg(F=>cfg-gates+owners+verification-surfaces)"
+        prime_output = (
+            "analysis=structure nativeSyntaxFacts=skipped policyFindings=skipped\n"
+            "alias: graph:{G=search,F=finding}\n"
+            f"{entries}"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            scenario_path = repo_root / "scenario.json"
+            scenario_path.write_text(
+                json.dumps(
+                    {
+                        "id": "typescript.graph-entry-alias-mismatch",
+                        "language": "typescript",
+                        "workdir": ".",
+                        "steps": [
+                            {
+                                "id": "guide",
+                                "command": [
+                                    sys.executable,
+                                    "-c",
+                                    (
+                                        "import json; "
+                                        f"prime_output = {prime_output!r}; "
+                                        "decision = {"
+                                        "'reasonKind': 'raw-broad-search',"
+                                        "'languageIds': ['typescript'],"
+                                        "'routes': [{'kind': 'query', 'argv': ['ts-harness', 'query']}],"
+                                        "'message': 'Use ts-harness query.'"
+                                        "}; "
+                                        "print(json.dumps({'agentHookDecision': decision, 'searchOutput': prime_output}))"
+                                    ),
+                                ],
+                                "expect": {
+                                    "guideQuality": {
+                                        "reasonKind": "raw-broad-search",
+                                        "languageId": "typescript",
+                                        "routeKind": "query",
+                                        "primeOutput": {
+                                            "requiresStructureStatus": True,
+                                            "requiresTypedEntryAliases": True,
+                                            "entries": [entries],
+                                        },
+                                    }
+                                },
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = run_scenario(repo_root, scenario_path)
+
+        self.assertEqual("fail", result.status)
+        self.assertIn(
+            "guide prime output entry alias 'F' for profile 'feature-cfg' resolves to 'finding', expected 'feature'",
+            result.steps[0].errors,
+        )

@@ -116,30 +116,16 @@
       }
     },
     "syntaxQueryRef": {
-      "type": "string",
-      "description": "Artifact or packet id for the semantic-tree-sitter-query.v1 packet that supplied syntax captures for this query packet.",
-      "minLength": 1
+      "$ref": "semantic-tree-sitter-provenance.v1.schema.json#/$defs/syntaxQueryRef"
     },
     "syntaxMatchRefs": {
-      "type": "array",
-      "description": "Match ids from the referenced semantic-tree-sitter-query.v1 packet selected by this query packet.",
-      "uniqueItems": true,
-      "items": {
-        "type": "string",
-        "minLength": 1
-      }
+      "$ref": "semantic-tree-sitter-provenance.v1.schema.json#/$defs/syntaxMatchRefs"
     },
     "syntaxCaptureRefs": {
-      "type": "array",
-      "description": "Capture ids from the referenced semantic-tree-sitter-query.v1 packet selected by this query packet.",
-      "uniqueItems": true,
-      "items": {
-        "type": "string",
-        "minLength": 1
-      }
+      "$ref": "semantic-tree-sitter-provenance.v1.schema.json#/$defs/syntaxCaptureRefs"
     },
     "syntaxAnchor": {
-      "$ref": "#/$defs/syntaxAnchor"
+      "$ref": "semantic-tree-sitter-provenance.v1.schema.json#/$defs/syntaxAnchor"
     },
     "nativeSyntaxFacts": {
       "type": "array",
@@ -183,52 +169,10 @@
   },
   "$defs": {
     "projectPath": {
-      "type": "string",
-      "minLength": 1,
-      "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*)$"
+      "$ref": "semantic-source-location.v1.schema.json#/$defs/projectPath"
     },
     "location": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "path",
-        "lineRange"
-      ],
-      "properties": {
-        "path": {
-          "$ref": "#/$defs/projectPath"
-        },
-        "lineRange": {
-          "type": "string",
-          "description": "Compact source line range as start:end, for example 10:43.",
-          "pattern": "^[1-9][0-9]*:[1-9][0-9]*$"
-        }
-      }
-    },
-    "syntaxAnchor": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "nodeType",
-        "location"
-      ],
-      "properties": {
-        "nodeType": {
-          "type": "string",
-          "pattern": "^(?:[A-Za-z_][A-Za-z0-9_]*|ERROR|MISSING)$"
-        },
-        "field": {
-          "type": "string",
-          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
-        },
-        "capture": {
-          "type": "string",
-          "pattern": "^[A-Za-z][A-Za-z0-9_.-]*$"
-        },
-        "location": {
-          "$ref": "#/$defs/location"
-        }
-      }
+      "$ref": "semantic-source-location.v1.schema.json#/$defs/location"
     },
     "match": {
       "type": "object",
@@ -300,8 +244,7 @@
       }
     },
     "sourceLocator": {
-      "type": "string",
-      "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*):[1-9][0-9]*:[1-9][0-9]*$"
+      "$ref": "semantic-source-location.v1.schema.json#/$defs/sourceSpanLocator"
     },
     "patchSafety": {
       "description": "Whether compact query output is safe only for navigation/read, or is stable enough to feed asp ast-patch verification. This never makes compact code a text patch preimage; text patch context must come from exact source reads.",
@@ -778,11 +721,11 @@
               "panic",
               "async",
               "await",
-            "unsafe",
-            "mutation",
-            "effect",
-            "delimiter"
-          ]
+              "unsafe",
+              "mutation",
+              "effect",
+              "delimiter"
+            ]
           }
         }
       }

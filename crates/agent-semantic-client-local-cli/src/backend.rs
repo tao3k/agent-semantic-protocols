@@ -7,7 +7,10 @@ use std::time::Instant;
 use agent_semantic_client_core::{
     ByteCount, ClientMethod, ClientReceipt, ClientRequest, ElapsedMillis, LanguageId,
     ProviderCommandReceipt, ProviderRegistrySnapshot, ResolvedProvider,
+    append_syntax_query_plan_args,
 };
+
+const SEMANTIC_AGENT_PROTOCOL_BIN_ENV: &str = "SEMANTIC_AGENT_PROTOCOL_BIN";
 
 /// Prepared native provider command built from activation data.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -26,6 +29,15 @@ pub struct LocalNativeOutput {
     pub status_code: i32,
     pub receipt: ClientReceipt,
 }
+
+type ProviderCommandOutputs = (
+    ResolvedProvider,
+    Vec<u8>,
+    Vec<u8>,
+    i32,
+    Vec<ProviderCommandReceipt>,
+    ElapsedMillis,
+);
 
 /// Execution backend that shells out to activated provider binaries.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -73,6 +85,7 @@ impl LocalNativeCliBackend {
             provider.command_prefix()
         };
         Self::push_method(&mut invocation, &request.method)?;
+        let forwarded_args = append_syntax_query_plan_args(&request.method, forwarded_args)?;
         invocation.extend(forwarded_args);
         let (program, args) = invocation
             .split_first()
@@ -137,10 +150,10 @@ impl LocalNativeCliBackend {
 
     fn is_search_scope_fanout_candidate(request: &ClientRequest) -> bool {
         matches!(&request.method, ClientMethod::Search)
-            && !request
+            && request
                 .forwarded_args
                 .first()
-                .is_some_and(|subcommand| subcommand == "ingest")
+                .is_none_or(|subcommand| subcommand != "ingest")
     }
 
     fn is_existing_directory_arg(project_root: &std::path::Path, arg: &str) -> bool {
@@ -179,17 +192,7 @@ impl LocalNativeCliBackend {
 
     fn run_provider_commands(
         prepared_commands: Vec<LocalNativeCommand>,
-    ) -> Result<
-        (
-            ResolvedProvider,
-            Vec<u8>,
-            Vec<u8>,
-            i32,
-            Vec<ProviderCommandReceipt>,
-            ElapsedMillis,
-        ),
-        String,
-    > {
+    ) -> Result<ProviderCommandOutputs, String> {
         let provider = prepared_commands
             .first()
             .map(|prepared| prepared.provider.clone())
@@ -202,17 +205,18 @@ impl LocalNativeCliBackend {
 
         for prepared in prepared_commands {
             let started = Instant::now();
-            let output = Command::new(&prepared.program)
+            let mut command = Command::new(&prepared.program);
+            command
                 .args(&prepared.args)
                 .current_dir(&prepared.project_root)
-                .stdin(std::process::Stdio::inherit())
-                .output()
-                .map_err(|error| {
-                    format!(
-                        "failed to execute provider `{}` for language `{}`: {error}",
-                        prepared.provider.provider_id, prepared.provider.language_id
-                    )
-                })?;
+                .stdin(std::process::Stdio::inherit());
+            Self::set_protocol_renderer_env(&mut command);
+            let output = command.output().map_err(|error| {
+                format!(
+                    "failed to execute provider `{}` for language `{}`: {error}",
+                    prepared.provider.provider_id, prepared.provider.language_id
+                )
+            })?;
             let command_status = output.status.code().unwrap_or(1);
             provider_commands.push(ProviderCommandReceipt {
                 language_id: prepared.provider.language_id.clone(),
@@ -239,6 +243,15 @@ impl LocalNativeCliBackend {
             provider_commands,
             ElapsedMillis::from_duration(started_all.elapsed()),
         ))
+    }
+
+    fn set_protocol_renderer_env(command: &mut Command) {
+        if std::env::var_os(SEMANTIC_AGENT_PROTOCOL_BIN_ENV).is_some() {
+            return;
+        }
+        if let Ok(current_exe) = std::env::current_exe() {
+            command.env(SEMANTIC_AGENT_PROTOCOL_BIN_ENV, current_exe);
+        }
     }
 
     fn receipt_for_run(

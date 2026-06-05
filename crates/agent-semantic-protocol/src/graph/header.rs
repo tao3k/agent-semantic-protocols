@@ -64,15 +64,14 @@ fn header_mode(mode: &str) -> &str {
 }
 
 fn header_field_string(packet: &Value, key: &str) -> Option<String> {
-    if key == "querySet" {
-        if let Some(count) = packet
+    if key == "querySet"
+        && let Some(count) = packet
             .get("querySet")
             .and_then(Value::as_array)
             .map(Vec::len)
             .filter(|count| *count > 0)
-        {
-            return Some(count.to_string());
-        }
+    {
+        return Some(count.to_string());
     }
     packet
         .get("header")

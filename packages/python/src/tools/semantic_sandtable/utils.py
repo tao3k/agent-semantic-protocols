@@ -83,14 +83,32 @@ def expand_tokens(value: str, captures: dict[str, str]) -> str:
     return TOKEN_PATTERN.sub(replace, value)
 
 
-def build_env(value: Any) -> dict[str, str]:
+def build_env(value: Any, *, repo_root: Path | None = None) -> dict[str, str]:
     env = os.environ.copy()
-    if not isinstance(value, dict):
-        return env
-    for key, item in value.items():
-        if isinstance(key, str):
-            env[key] = os.path.expandvars(str(item))
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if isinstance(key, str):
+                env[key] = os.path.expandvars(str(item))
+    _set_workspace_protocol_bin(env, repo_root)
     return env
+
+def _set_workspace_protocol_bin(env: dict[str, str], repo_root: Path | None) -> None:
+    if "SEMANTIC_AGENT_PROTOCOL_BIN" in env or repo_root is None:
+        return
+    protocol_bin = _workspace_protocol_bin(repo_root)
+    if protocol_bin is not None:
+        env["SEMANTIC_AGENT_PROTOCOL_BIN"] = str(protocol_bin)
+
+def _workspace_protocol_bin(repo_root: Path) -> Path | None:
+    for relative in (
+        ".bin/asp",
+        "target/debug/asp",
+        "target/debug/semantic-agent-protocol",
+    ):
+        candidate = repo_root / relative
+        if candidate.exists():
+            return candidate.resolve()
+    return None
 
 
 def require_str(mapping: dict[str, Any], key: str, default: str) -> str:

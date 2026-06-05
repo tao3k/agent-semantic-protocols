@@ -10,15 +10,20 @@ use agent_semantic_client_core::{
     AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_SCHEMA_VERSION, CacheArtifactId, CacheExportMethod,
     CacheGenerationId, CacheManifestStatus, CacheStatus, ClientCacheGeneration,
     ClientCacheManifest, ClientCachePath, ClientMethod, ClientRequest, ProviderCommandReceipt,
-    ProviderRegistrySnapshot, ResolvedProvider, SemanticSchemaId,
+    ProviderRegistrySnapshot, ResolvedProvider, SemanticSchemaId, append_syntax_query_plan_args,
 };
 use agent_semantic_client_db::ClientDb;
 
 use super::probe::{ProviderCacheProbe, provider_cache_probe};
-use super::request::{request_export_method, selected_provider_for_request};
+use super::request::{
+    exact_request_fingerprint, has_tree_sitter_query, request_export_method,
+    selected_provider_for_request,
+};
 use crate::cache_replay::{MAX_CACHE_REPLAY_ARTIFACT_BYTES, replay_artifact_path};
 
 const CLIENT_PROMPT_OUTPUT_SCHEMA_ID: &str = "agent.semantic-protocols.client-prompt-output";
+const SEMANTIC_TREE_SITTER_QUERY_SCHEMA_ID: &str =
+    "agent.semantic-protocols.semantic-tree-sitter-query";
 
 pub(crate) fn write_prompt_output_cache_after_provider_success(
     project_root: &Path,
@@ -32,6 +37,7 @@ pub(crate) fn write_prompt_output_cache_after_provider_success(
         PromptOutput,
         SearchPacket,
         QueryPacket,
+        SemanticTreeSitterQuery,
     }
 
     fn request_search_packet_writeback_method(
@@ -59,6 +65,24 @@ pub(crate) fn write_prompt_output_cache_after_provider_success(
         }
     }
 
+    fn request_syntax_query_writeback_method(request: &ClientRequest) -> Option<CacheExportMethod> {
+        if request.method != ClientMethod::Query
+            || request
+                .forwarded_args
+                .iter()
+                .any(|arg| arg == "--json" || arg == "--code")
+            || !has_tree_sitter_query(&request.forwarded_args)
+        {
+            return None;
+        }
+        let export_method = request_export_method(request)?;
+        if export_method.as_str() == "query/tree-sitter" {
+            Some(export_method)
+        } else {
+            None
+        }
+    }
+
     fn export_provider_packet(
         provider: &ResolvedProvider,
         request: &ClientRequest,
@@ -72,7 +96,9 @@ pub(crate) fn write_prompt_output_cache_after_provider_success(
             _ => return None,
         };
         args.push(provider_method.to_string());
-        args.extend(request.forwarded_args.iter().cloned());
+        let forwarded_args =
+            append_syntax_query_plan_args(&request.method, request.forwarded_args.clone()).ok()?;
+        args.extend(forwarded_args);
         args.push("--json".to_string());
         let output = std::process::Command::new(program)
             .current_dir(&request.project_root)
@@ -118,6 +144,32 @@ pub(crate) fn write_prompt_output_cache_after_provider_success(
             return None;
         }
         packet.get("matches")?.as_array()?;
+        Some(())
+    }
+
+    fn validate_syntax_query_packet(
+        packet_bytes: &[u8],
+        provider: &ResolvedProvider,
+    ) -> Option<()> {
+        let packet: serde_json::Value = serde_json::from_slice(packet_bytes).ok()?;
+        if packet.get("schemaId")?.as_str()? != SEMANTIC_TREE_SITTER_QUERY_SCHEMA_ID {
+            return None;
+        }
+        if packet.get("languageId")?.as_str()? != provider.language_id.as_str() {
+            return None;
+        }
+        if packet.get("providerId")?.as_str()? != provider.provider_id.as_str() {
+            return None;
+        }
+        packet.get("query")?.as_object()?;
+        packet.get("matches")?.as_array()?;
+        if packet
+            .pointer("/cache/artifactKind")
+            .and_then(serde_json::Value::as_str)
+            != Some("semantic-tree-sitter-query")
+        {
+            return None;
+        }
         Some(())
     }
 
@@ -199,6 +251,48 @@ pub(crate) fn write_prompt_output_cache_after_provider_success(
         }
     }
 
+    fn syntax_query_generation(
+        project_root: &Path,
+        provider: &ResolvedProvider,
+        request: &ClientRequest,
+        export_method: &CacheExportMethod,
+        packet_bytes: &[u8],
+    ) -> ClientCacheGeneration {
+        let seed = format!(
+            "{}\0{}\0{}\0{}\0{}\0{}",
+            provider.language_id,
+            provider.provider_id,
+            normalized_path(project_root),
+            export_method,
+            request.forwarded_args.join("\0"),
+            stable_hash_bytes(packet_bytes)
+        );
+        let hash = stable_hash_hex(&seed);
+        let slug = slugify_cache_component(export_method.as_str());
+        let generation_id = format!("{}-{slug}-{}", provider.language_id, &hash[..12]);
+        let artifact_id = format!("semantic-tree-sitter-query/{generation_id}.json");
+        ClientCacheGeneration {
+            generation_id: CacheGenerationId::from(generation_id),
+            language_id: provider.language_id.clone(),
+            provider_id: provider.provider_id.clone(),
+            provider_version: None,
+            export_method: Some(export_method.as_str().to_string()),
+            project_root: normalized_path(project_root),
+            package_root: Some(".".to_string()),
+            schema_ids: vec![SemanticSchemaId::from(SEMANTIC_TREE_SITTER_QUERY_SCHEMA_ID)],
+            cache_status: CacheStatus::Hit,
+            raw_source_stored: false,
+            request_fingerprint: Some(exact_request_fingerprint(
+                provider,
+                project_root,
+                export_method,
+                &request.forwarded_args,
+            )),
+            file_hashes: None,
+            artifact_ids: Some(vec![CacheArtifactId::from(artifact_id)]),
+        }
+    }
+
     let provider = selected_provider_for_request(snapshot, request)?;
     let search_packet_writeback =
         request_search_packet_writeback_method(request).and_then(|export_method| {
@@ -227,6 +321,16 @@ pub(crate) fn write_prompt_output_cache_after_provider_success(
                 "prompt-output/",
                 ".txt",
                 ArtifactKind::PromptOutput,
+            )
+        } else if let Some(export_method) = request_syntax_query_writeback_method(request) {
+            let packet_bytes = export_provider_packet(provider, request)?;
+            validate_syntax_query_packet(&packet_bytes, provider)?;
+            (
+                export_method,
+                packet_bytes,
+                "semantic-tree-sitter-query/",
+                ".json",
+                ArtifactKind::SemanticTreeSitterQuery,
             )
         } else {
             let export_method = request_query_packet_writeback_method(request)?;
@@ -271,8 +375,20 @@ pub(crate) fn write_prompt_output_cache_after_provider_success(
             &export_method,
             &artifact_bytes,
         ),
+        ArtifactKind::SemanticTreeSitterQuery => syntax_query_generation(
+            project_root,
+            provider,
+            request,
+            &export_method,
+            &artifact_bytes,
+        ),
     };
     let artifact_id = generation.artifact_ids.as_ref()?.first()?.clone();
+    let syntax_generation = if matches!(artifact_kind, ArtifactKind::SemanticTreeSitterQuery) {
+        Some(generation.clone())
+    } else {
+        None
+    };
     let command_artifact_id =
         if matches!(artifact_kind, ArtifactKind::PromptOutput) && !provider_commands.is_empty() {
             let command_artifact_id = CacheArtifactId::from(format!(
@@ -290,7 +406,7 @@ pub(crate) fn write_prompt_output_cache_after_provider_success(
     let artifact_path =
         replay_artifact_path(cache_root, &artifact_id, artifact_prefix, artifact_suffix)?;
     fs::create_dir_all(artifact_path.parent()?).ok()?;
-    fs::write(&artifact_path, artifact_bytes).ok()?;
+    fs::write(&artifact_path, &artifact_bytes).ok()?;
     if let Some(command_artifact_id) = command_artifact_id {
         let command_artifact_path = replay_artifact_path(
             cache_root,
@@ -315,6 +431,10 @@ pub(crate) fn write_prompt_output_cache_after_provider_success(
     let db_path = ClientDb::default_path(cache_root);
     let mut db = ClientDb::open_or_create(&db_path).ok()?;
     db.import_manifest(&manifest).ok()?;
+    if let Some(syntax_generation) = syntax_generation {
+        db.import_semantic_tree_sitter_query_packet(&syntax_generation, &artifact_bytes)
+            .ok()?;
+    }
     provider_cache_probe(project_root, snapshot, request)
 }
 

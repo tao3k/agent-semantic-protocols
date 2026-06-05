@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use agent_semantic_client_core::{
+    ASP_SYNTAX_QUERY_CAPTURES_ARG, ASP_SYNTAX_QUERY_FIELDS_ARG, ASP_SYNTAX_QUERY_NODE_TYPES_ARG,
     ClientMethod, ClientRequest, ProviderRegistrySnapshot, ResolvedProvider, RuntimeProfileStatus,
 };
 use agent_semantic_client_local_cli::LocalNativeCliBackend;
@@ -45,6 +46,39 @@ fn requires_language_for_multi_provider_route() {
     let error = backend.prepare(&request).expect_err("requires language");
 
     assert!(error.contains("use --language <id>"));
+}
+
+#[test]
+fn prepares_query_with_asp_compiled_syntax_plan() {
+    let backend = LocalNativeCliBackend::new(snapshot(vec![provider("rust", "rs-harness")]));
+    let request = ClientRequest::new(ClientMethod::Query, PathBuf::from("/repo"))
+        .with_language("rust")
+        .with_forwarded_args(vec![
+            "--treesitter-query".to_string(),
+            "(function_item name: (identifier) @function.name)".to_string(),
+            ".".to_string(),
+        ]);
+
+    let command = backend.prepare(&request).expect("prepare command");
+
+    assert_eq!(
+        command.args,
+        vec![
+            "exec",
+            ".",
+            "rs-harness",
+            "query",
+            "--treesitter-query",
+            "(function_item name: (identifier) @function.name)",
+            ".",
+            ASP_SYNTAX_QUERY_CAPTURES_ARG,
+            "function.name",
+            ASP_SYNTAX_QUERY_NODE_TYPES_ARG,
+            "function_item,identifier",
+            ASP_SYNTAX_QUERY_FIELDS_ARG,
+            "name",
+        ]
+    );
 }
 
 #[test]

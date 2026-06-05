@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-source-location.v1.schema.json",
+  "title": "Semantic Source Location",
+  "description": "Shared source path, line range, and source locator base used by semantic query, search, read, tree-sitter provenance, and native syntax fact schemas. This schema is not a packet envelope.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.semantic-source-location"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "path": {
+      "$ref": "#/$defs/projectPath"
+    },
+    "lineRange": {
+      "$ref": "#/$defs/lineRange"
+    },
+    "location": {
+      "$ref": "#/$defs/location"
+    },
+    "sourceLocator": {
+      "$ref": "#/$defs/sourceLocator"
+    },
+    "sourceSpanLocator": {
+      "$ref": "#/$defs/sourceSpanLocator"
+    }
+  },
+  "$defs": {
+    "projectPath": {
+      "type": "string",
+      "description": "Canonical project-root-relative path. This is a path value, not a display locator: no rank prefixes, URI schemes, command prefixes, line ranges, columns, absolute paths, parent segments, backslashes, or numeric node slots.",
+      "minLength": 1,
+      "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*)$"
+    },
+    "lineRange": {
+      "type": "string",
+      "description": "Compact source line range as start:end, for example 10:43.",
+      "pattern": "^[1-9][0-9]*:[1-9][0-9]*$"
+    },
+    "location": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "lineRange"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/projectPath"
+        },
+        "lineRange": {
+          "$ref": "#/$defs/lineRange"
+        }
+      }
+    },
+    "sourceLocator": {
+      "type": "string",
+      "description": "Project-root-relative source selector accepting path:start, path:start:end, or path:start-end.",
+      "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*):[1-9][0-9]*(?:(?::|-)[1-9][0-9]*)?$"
+    },
+    "sourceSpanLocator": {
+      "type": "string",
+      "description": "Project-root-relative source selector requiring an explicit start:end span.",
+      "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*):[1-9][0-9]*:[1-9][0-9]*$"
+    }
+  }
+}

@@ -3,8 +3,8 @@ use std::path::PathBuf;
 use std::process::Command;
 
 use crate::provider_command::support::{
-    asp_command, prepend_path, provider, temp_project_root, write_activation,
-    write_echo_provider, write_pwd_provider,
+    asp_command, prepend_path, provider, temp_project_root, write_activation, write_echo_provider,
+    write_pwd_provider,
 };
 
 #[test]
@@ -206,7 +206,12 @@ fn language_facade_normalizes_relative_nested_project_root_arg() {
     let argv = receipt["providerCommands"][0]["argv"]
         .as_array()
         .expect("provider argv");
-    assert_eq!(argv.last().and_then(serde_json::Value::as_str), Some("."));
+    assert!(
+        argv.iter()
+            .filter_map(serde_json::Value::as_str)
+            .any(|arg| arg == "."),
+        "provider argv should contain normalized project root: {argv:?}"
+    );
     assert!(
         !argv
             .iter()

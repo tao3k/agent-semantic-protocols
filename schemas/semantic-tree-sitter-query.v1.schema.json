@@ -135,14 +135,47 @@
   },
   "$defs": {
     "projectPath": {
-      "type": "string",
-      "minLength": 1,
-      "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*)$"
+      "$ref": "semantic-source-location.v1.schema.json#/$defs/projectPath"
     },
     "lineRange": {
-      "type": "string",
-      "description": "Compact source line range as start:end, for example 10:43.",
-      "pattern": "^[1-9][0-9]*:[1-9][0-9]*$"
+      "$ref": "semantic-source-location.v1.schema.json#/$defs/lineRange"
+    },
+    "location": {
+      "$ref": "semantic-source-location.v1.schema.json#/$defs/location"
+    },
+    "sourceLocator": {
+      "$ref": "semantic-source-location.v1.schema.json#/$defs/sourceLocator"
+    },
+    "sourceSpanLocator": {
+      "$ref": "semantic-source-location.v1.schema.json#/$defs/sourceSpanLocator"
+    },
+    "sourceLocation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "lineRange",
+        "location",
+        "sourceLocator",
+        "sourceSpanLocator"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/projectPath"
+        },
+        "lineRange": {
+          "$ref": "#/$defs/lineRange"
+        },
+        "location": {
+          "$ref": "#/$defs/location"
+        },
+        "sourceLocator": {
+          "$ref": "#/$defs/sourceLocator"
+        },
+        "sourceSpanLocator": {
+          "$ref": "#/$defs/sourceSpanLocator"
+        }
+      }
     },
     "range": {
       "type": "object",
@@ -268,6 +301,9 @@
         "range": {
           "$ref": "#/$defs/range"
         },
+        "sourceLocation": {
+          "$ref": "#/$defs/sourceLocation"
+        },
         "captures": {
           "type": "array",
           "minItems": 1,
@@ -327,6 +363,9 @@
         },
         "range": {
           "$ref": "#/$defs/range"
+        },
+        "sourceLocation": {
+          "$ref": "#/$defs/sourceLocation"
         },
         "predicateRefs": {
           "type": "array",

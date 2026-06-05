@@ -576,10 +576,14 @@ exercise native parser facts without requiring another runtime boundary.
 1. Add catalog loading and fingerprinting to ASP so query catalog id, grammar
    id, and grammar profile version become part of cache provenance.
 2. Add artifact family =semantic-tree-sitter-query/<id>.json= or a compatible
-   query artifact namespace.
-3. Normalize syntax query rows into SQLite.
+   query artifact namespace, and replay exact non-=--code= syntax locator
+   output from validated packet artifacts.
+3. Normalize syntax query rows into SQLite from validated
+   =semantic-tree-sitter-query.v1= packets; rows store project-relative ranges,
+   capture names/text, native fact refs, and artifact refs, never raw source.
 4. Add exact artifact replay for identical request fingerprints.
-5. Add normalized-row replay for repeated syntax query requests.
+5. Add normalized-row replay for repeated syntax query requests when the packet
+   artifact is unavailable or cannot be rendered.
 6. Add receipts for cold native, warm provider, local cache hit, stale, and
    invalidated paths.
 

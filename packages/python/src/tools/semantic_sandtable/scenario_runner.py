@@ -29,7 +29,7 @@ def _run_loaded_scenario(
     if isinstance(prepared, ScenarioResult):
         return prepared
     scenario_id, workdir, result, steps, budgets = prepared
-    env = build_env(scenario.get("env", {}))
+    env = build_env(scenario.get("env", {}), repo_root=repo_root)
     captures: dict[str, str] = {}
     totals = _run_scenario_steps(repo_root, workdir, scenario_id, steps, env, captures, result)
     _apply_scenario_budget_warnings(result, budgets, totals)

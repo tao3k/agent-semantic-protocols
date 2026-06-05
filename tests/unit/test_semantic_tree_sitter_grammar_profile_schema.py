@@ -7,7 +7,7 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
-from jsonschema import Draft202012Validator
+from unit.schema_validation import schema_validator_for
 
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -22,9 +22,8 @@ _PYTHON_PROFILE_PATH = (
 )
 
 
-def _validator() -> Draft202012Validator:
-    with _SCHEMA_PATH.open() as handle:
-        return Draft202012Validator(json.load(handle))
+def _validator():
+    return schema_validator_for(_SCHEMA_PATH)
 
 
 def _rust_profile() -> dict[str, Any]:
@@ -36,7 +35,7 @@ def _python_profile() -> dict[str, Any]:
 
 
 def _profile(path: Path) -> dict[str, Any]:
-    with path.open() as handle:
+    with path.open(encoding="utf-8") as handle:
         return json.load(handle)
 
 

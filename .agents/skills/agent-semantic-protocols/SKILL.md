@@ -19,6 +19,18 @@ description: Use when working with the language provider binaries maintained by 
 - agent semantic client-backend phase 1 probes the local SQLite client DB before local native provider execution. It must not invent semantic facts or hide cache state: `asp cache status` reports manifest/DB health as `missing`, `unimported`, `available`, `invalid`, or `unavailable`; request receipts use `cacheStatus=miss|warm-provider|hit|stale`.
 - Successful replay-safe `asp <language> search ... --view seeds` requests can write back schema-valid `search/*.json` artifacts when the provider can export the matching search packet, with prompt-output writeback as fallback; schema-valid `query/owner-items` query packets can write back and replay query artifacts when the provider can export the matching packet.
 
+## Tree-sitter ABI Boundary
+
+- Tree-sitter query support is a shared ABI inside the existing provider `query` method, not a new public command family. Do not introduce or document top-level `ts-query`, `syntax-query`, or `asp query --language ...` surfaces.
+- ASP owns tree-sitter-compatible query compilation, catalog/profile loading, validation, cache keys, artifact ids, receipts, and prompt render hints. Language providers own native parser/compiler authority and project those facts into tree-sitter-compatible captures.
+- Providers should not require tree-sitter runtime, grammar, or query compiler dependencies for inline `--treesitter-query`. Direct provider CLI calls may reject inline S-expressions unless ASP has supplied the compiled query plan.
+- Use `asp <language> query --treesitter-query ... --selector <path[:line|:start:end]> .` only when you need parser-shaped syntax captures, such as functions, classes, imports, call expressions, or language-specific syntax patterns that ordinary owner/item search cannot name cleanly.
+- Prefer catalog ids or provider-advertised examples from `asp <language> agent guide .` before hand-writing a query. If you hand-write one, keep it narrow and attach it to a concrete selector instead of scanning the whole repository.
+- Treat tree-sitter query output as evidence for choosing the next `search owner`, `query --term`, `search ingest`, or direct-source-read route. Do not use it as a raw source dump or as a replacement for normal `search --view seeds` exploration.
+- If the query misses, revise the selector, capture name, or syntax pattern. Do not keep broadening into raw `rg`, `cat`, or repository-wide source reads.
+- Keep interactive output compact. Use `--json` only for schema tests, validators, receipts, artifact/cache debugging, or when a test explicitly needs machine-readable tree-sitter query packets.
+- When tree-sitter query behavior changes, update provider guides and package-local provider tests together with the shared validation tests so Rust, TypeScript, Python, and Julia do not drift.
+
 ## Command Shapes
 
 - Map the project: `asp <language> search prime --view seeds .`
@@ -27,6 +39,7 @@ description: Use when working with the language provider binaries maintained by 
 - Search external API/deps: `asp <language> search deps <dep[/subpath][@version][::api]> .`
 - Query parser items with compact code: `asp <language> search owner <path> items --query '<symbol-or-a|b|c>' .`
 - Discover owner-local item names before code: `asp <language> query <path> --term <candidate> --names-only .`
+- Run an ASP-compiled tree-sitter ABI query through the provider query method: `asp <language> query --treesitter-query '<tree-sitter-query>' --selector <path[:line|:start:end]> [--code] .`
 - Follow a hook exact direct-read route: `asp <language> query --from-hook direct-source-read --selector <path[:line-range]> [--code] .`
 - Follow a hook wildcard direct-read route: `asp <language> query --from-hook direct-source-read --selector <glob-or-path> --term <term> --surface owners,tests --view seeds .`
 - Pipe candidate lines: `rg -n '<term>' src tests | asp <language> search ingest --view seeds .`

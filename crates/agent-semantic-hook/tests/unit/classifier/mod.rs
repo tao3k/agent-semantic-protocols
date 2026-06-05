@@ -59,6 +59,7 @@ pub(super) fn typescript_provider() -> ActivatedProvider {
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn provider(
     language_id: &str,
     provider_id: &str,
