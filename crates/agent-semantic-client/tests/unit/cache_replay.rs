@@ -143,7 +143,7 @@ fn semantic_tree_sitter_query_replay_requires_exact_query_selector_and_no_code()
 }
 
 #[test]
-fn semantic_tree_sitter_query_replay_renders_corpus_style_locator_capture_output() {
+fn semantic_tree_sitter_query_replay_renders_frontier_graph_output() {
     let output = render_semantic_tree_sitter_query_stdout(&json!({
         "schemaId": "agent.semantic-protocols.semantic-tree-sitter-query",
         "method": "query",
@@ -191,7 +191,22 @@ fn semantic_tree_sitter_query_replay_renders_corpus_style_locator_capture_output
 
     assert_eq!(
         output,
-        "src/lib.rs:10:12\nparse_query\nsrc/main.rs:20\nmain\n"
+        "[query-treesitter] root=. lang=unknown pattern=function_item/name capture=function.name alg=syntax-capture-frontier\n\
+legend: ID=kind:role(value)!next; ts=node/field; frontier ID.next\n\
+alias: graph:{G=query,Q=tsquery,C=capture,I=item,O=owner}\n\n\
+Q=tsquery:pattern(function_item/name)!query\n\
+C=capture:function.name(parse_query)@src/lib.rs:10!code ts=identifier/name\n\
+I=item:fn(parse_query)@src/lib.rs:10:12!code ts=function_item\n\
+C2=capture:function.name(main)@src/main.rs:20!code ts=identifier/name\n\
+I2=item:fn(main)@src/main.rs:20!code ts=function_item\n\n\
+G>{Q:selects}\n\
+Q>{C:captures,C2:captures}\n\
+C>{I:enclosing-item}\n\
+C2>{I2:enclosing-item}\n\n\
+omit=code,full-node-list,capture-text\n\
+rank=I,I2\n\
+frontier=I.code,I2.code\n\
+avoid=broad-code-output,raw-read\n"
     );
 }
 
@@ -226,10 +241,13 @@ fn semantic_tree_sitter_query_replay_renders_compact_miss_note() {
 fn semantic_tree_sitter_query_row_replay_renders_same_compact_surface() {
     let output = render_semantic_tree_sitter_query_rows_stdout(&ClientDbSyntaxQueryReplay {
         generation_id: CacheGenerationId::from("syntax-row"),
+        language_id: LanguageId::from("rust"),
         grammar_id: "tree-sitter-rust".to_string(),
         grammar_profile_version: "2026-06-04.v1".to_string(),
         input_form: "s-expression".to_string(),
         input_kind: ClientDbSyntaxQueryInputKind::Inline,
+        compiled_source: "(function_item name: (identifier) @function.name)".to_string(),
+        query_ast_fingerprint: "syntax-query-ast-abi:test".to_string(),
         captures: vec!["function.name".to_string()],
         artifact_id: Some(CacheArtifactId::from(
             "semantic-tree-sitter-query/syntax-row.json",
@@ -237,11 +255,21 @@ fn semantic_tree_sitter_query_row_replay_renders_same_compact_surface() {
         packet_bytes: Some(123),
         rows: vec![
             ClientDbSyntaxCaptureReplay {
-                locator: "src/lib.rs:10:12".to_string(),
+                match_locator: "src/lib.rs:10:12".to_string(),
+                capture_locator: "src/lib.rs:10".to_string(),
+                capture_name: "function.name".to_string(),
+                capture_node_type: "identifier".to_string(),
+                item_node_type: "function_item".to_string(),
+                field: Some("name".to_string()),
                 text: "parse_query".to_string(),
             },
             ClientDbSyntaxCaptureReplay {
-                locator: "src/main.rs:20".to_string(),
+                match_locator: "src/main.rs:20".to_string(),
+                capture_locator: "src/main.rs:20".to_string(),
+                capture_name: "function.name".to_string(),
+                capture_node_type: "identifier".to_string(),
+                item_node_type: "function_item".to_string(),
+                field: Some("name".to_string()),
                 text: "main".to_string(),
             },
         ],
@@ -249,7 +277,22 @@ fn semantic_tree_sitter_query_row_replay_renders_same_compact_surface() {
 
     assert_eq!(
         output,
-        "src/lib.rs:10:12\nparse_query\nsrc/main.rs:20\nmain\n"
+        "[query-treesitter] root=. lang=rust pattern=function_item/name capture=function.name alg=syntax-capture-frontier\n\
+legend: ID=kind:role(value)!next; ts=node/field; frontier ID.next\n\
+alias: graph:{G=query,Q=tsquery,C=capture,I=item,O=owner}\n\n\
+Q=tsquery:pattern(function_item/name)!query\n\
+C=capture:function.name(parse_query)@src/lib.rs:10!code ts=identifier/name\n\
+I=item:fn(parse_query)@src/lib.rs:10:12!code ts=function_item\n\
+C2=capture:function.name(main)@src/main.rs:20!code ts=identifier/name\n\
+I2=item:fn(main)@src/main.rs:20!code ts=function_item\n\n\
+G>{Q:selects}\n\
+Q>{C:captures,C2:captures}\n\
+C>{I:enclosing-item}\n\
+C2>{I2:enclosing-item}\n\n\
+omit=code,full-node-list,capture-text\n\
+rank=I,I2\n\
+frontier=I.code,I2.code\n\
+avoid=broad-code-output,raw-read\n"
     );
 }
 
@@ -257,10 +300,13 @@ fn semantic_tree_sitter_query_row_replay_renders_same_compact_surface() {
 fn semantic_tree_sitter_query_row_replay_renders_compact_miss_note() {
     let output = render_semantic_tree_sitter_query_rows_stdout(&ClientDbSyntaxQueryReplay {
         generation_id: CacheGenerationId::from("syntax-row"),
+        language_id: LanguageId::from("rust"),
         grammar_id: "tree-sitter-rust".to_string(),
         grammar_profile_version: "2026-06-04.v1".to_string(),
         input_form: "s-expression".to_string(),
         input_kind: ClientDbSyntaxQueryInputKind::Inline,
+        compiled_source: "(function_item name: (identifier) @function.name)".to_string(),
+        query_ast_fingerprint: "syntax-query-ast-abi:test".to_string(),
         captures: vec!["function.name".to_string()],
         artifact_id: None,
         packet_bytes: None,
@@ -300,6 +346,7 @@ fn semantic_tree_sitter_query_replay_falls_back_to_rows_when_artifact_is_missing
                 "agent.semantic-protocols.semantic-tree-sitter-query",
             )],
             request_fingerprint: Some("fnv64:syntax-row".to_string()),
+            file_hashes: Vec::new(),
             artifact_ids: vec![CacheArtifactId::from(
                 "semantic-tree-sitter-query/missing.json",
             )],
@@ -314,7 +361,22 @@ fn semantic_tree_sitter_query_replay_falls_back_to_rows_when_artifact_is_missing
 
     assert_eq!(
         String::from_utf8(replay.stdout).expect("utf8"),
-        "src/lib.rs:10:12\nparse_query\nsrc/main.rs:20\nmain\n"
+        "[query-treesitter] root=. lang=rust pattern=function_item/name capture=function.name alg=syntax-capture-frontier\n\
+legend: ID=kind:role(value)!next; ts=node/field; frontier ID.next\n\
+alias: graph:{G=query,Q=tsquery,C=capture,I=item,O=owner}\n\n\
+Q=tsquery:pattern(function_item/name)!query\n\
+C=capture:function.name(parse_query)@src/lib.rs:10!code ts=identifier/name\n\
+I=item:fn(parse_query)@src/lib.rs:10:12!code ts=function_item\n\
+C2=capture:function.name(main)@src/main.rs:20!code ts=identifier/name\n\
+I2=item:fn(main)@src/main.rs:20!code ts=function_item\n\n\
+G>{Q:selects}\n\
+Q>{C:captures,C2:captures}\n\
+C>{I:enclosing-item}\n\
+C2>{I2:enclosing-item}\n\n\
+omit=code,full-node-list,capture-text\n\
+rank=I,I2\n\
+frontier=I.code,I2.code\n\
+avoid=broad-code-output,raw-read\n"
     );
     assert_eq!(
         replay.syntax_artifact_id.as_ref().map(|id| id.as_str()),

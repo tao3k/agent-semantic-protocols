@@ -15,7 +15,8 @@ pub use catalog::{
     normalize_capture_names,
 };
 pub use query_syntax::{
-    SyntaxQueryAbiError, SyntaxQueryAbiPattern, SyntaxQueryAbiPlan, compile_query_abi_source,
+    SyntaxQueryAbiError, SyntaxQueryAbiPattern, SyntaxQueryAbiPlan, SyntaxQueryAbiPredicate,
+    SyntaxQueryPredicateOp, SyntaxQueryPredicateValue, compile_query_abi_source,
 };
 pub use runtime::{
     CompiledSyntaxQuery, SyntaxQueryCompileError, compile_catalog_query, compile_query_source,

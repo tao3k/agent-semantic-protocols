@@ -583,10 +583,32 @@ is the fastest replay path and may be paired with
   normalized =syntax_query_*= rows from validated
   =semantic-tree-sitter-query.v1= packets.  Syntax replay first tries the packet
   artifact, then falls back to those rows when the artifact is missing or cannot
-  be rendered.  Both paths render the compact locator/capture surface and must
-  not store or replay raw source.  If neither artifact nor rows can satisfy the
-  exact request, the generation remains =warm-provider= and the native provider
-  still supplies the output.
+  be rendered.  A replayable generation must also carry non-empty =fileHashes=
+  that match the current project files.  Missing, unreadable, or mismatched
+  source hashes make the generation =cacheStatus=stale=, not =hit=, and the
+  client must invoke the native provider instead of replaying old compact
+  output.  Both syntax paths render the current compact locator/frontier
+  surface from structured facts and must not store or replay raw source.  Exact
+  syntax query cache identity is the ASP-compiled query AST/ABI fingerprint plus
+  grammar/profile/catalog provenance and provider generation; stdout text is a
+  renderer product, not the normal cache boundary.  =prompt-output/*.txt= replay
+  remains a documented special case only when its provenance points back to the
+  validated packet or row generation.  Registry-owned catalog/profile
+  fingerprints must join the same key family once the client carries query
+  descriptors from provider activation.  If neither artifact nor rows can
+  satisfy the exact request, the generation remains =warm-provider= and the
+  native provider still supplies the output.
+
+Syntax row projection changes must not be handled by repeatedly bumping the
+client DB schema.  The client records a row-family ABI marker such as
+=syntaxQueryRowAbiVersion= in =schema_meta=.  When that marker differs from the
+current syntax row renderer/importer ABI, the client flushes only
+=syntax_query_*= rows and leaves provider artifacts, cache generation metadata,
+and unrelated packet rows in place.  The next validated packet import or native
+provider miss repopulates the row family.  A syntax row is eligible for replay
+only when it carries the ASP query AST/ABI fingerprint plus AST/ABI-derived
+capture and item node types; incomplete rows are treated as absent, not as a
+best-effort fallback surface.
 
 The Rust client may build denormalized owner, symbol, native fact, handle,
 diagnostic, search packet, and query packet SQL tables from provider exports.  It
@@ -1009,14 +1031,17 @@ local-cache path:
   =search/*.json= semantic-search-packet artifacts through the shared graph
   renderer, and replay =query/*.json= semantic-query-packet artifacts for
   =query/owner-items=.  Exact non-=--code= tree-sitter ABI queries can replay
-  =semantic-tree-sitter-query/*.json= artifacts by matching the query source and
-  selector, then rendering compact locator/capture output from the packet.  If
-  that artifact is unavailable, the same exact request can replay normalized
+  =semantic-tree-sitter-query/*.json= artifacts by matching the query AST/ABI
+  fingerprint and selector, then rendering the current compact query frontier
+  from the packet.  If that artifact is unavailable, the same exact request can
+  replay normalized
   =syntax_query_generation=, =syntax_query_pattern=, =syntax_query_match=,
   =syntax_query_capture=, =syntax_query_capture_native_fact_ref=, and
-  =syntax_query_artifact_ref= rows derived from the validated packet.  Misses
-  and unsupported artifacts or rows fall through to native provider execution
-  with =cacheStatus=warm-provider= or =miss=.
+  =syntax_query_artifact_ref= rows derived from the validated packet.  These
+  rows store query/capture ABI facts, not rendered stdout text.  Row ABI changes
+  use the syntax row flush marker, not a DB schema bump.  Misses and unsupported
+  artifacts or rows fall through to native provider execution with
+  =cacheStatus=warm-provider= or =miss=.
 - Successful local-native =asp <language> search ... --view seeds= requests that
   do not ask for item code, JSON, or direct code output first try to export a
   schema-valid =semantic-search-packet= through the same provider request with

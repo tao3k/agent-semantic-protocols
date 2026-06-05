@@ -545,6 +545,36 @@
           "pattern": "^(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*\\.json$",
           "description": "Canonical grammar profile path/handle. When the provider embeds profile source, this is not a downstream filesystem requirement."
         },
+        "supportedPredicates": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "#eq?",
+              "#any-eq?",
+              "#any-of?",
+              "#match?",
+              "#any-match?",
+              "#not-eq?",
+              "#not-match?"
+            ]
+          }
+        },
+        "unsupportedPredicates": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "#eq?",
+              "#any-eq?",
+              "#any-of?",
+              "#match?",
+              "#any-match?",
+              "#not-eq?",
+              "#not-match?"
+            ]
+          }
+        },
         "cacheReplay": {
           "type": "boolean"
         },

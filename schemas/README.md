@@ -241,6 +241,10 @@ read, and native syntax fact packets can refer back to this ABI through
 `syntaxQueryRef`, `syntaxMatchRefs`, `syntaxCaptureRefs`, and an optional short
 `syntaxAnchor` when those references improve a decision path without adding a
 new render protocol.
+Predicate facts under `query.fields.predicates` use structured operands
+`{op,capture,values:[{kind,value}]}` so `string` and `capture` operands remain
+explicit across ASP cache keys and native provider projection. The `op` label is
+preserved as ABI data, including tree-sitter `any-eq` and `any-match` variants.
 
 `semantic-source-location.v1.schema.json` owns the shared project-relative
 path, line range, and source locator vocabulary used by query, search, read,

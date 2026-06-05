@@ -13,6 +13,7 @@ pub struct SyntaxQueryAbiPlan {
     pub captures: Vec<String>,
     pub node_types: Vec<String>,
     pub fields: Vec<String>,
+    pub predicates: Vec<SyntaxQueryAbiPredicate>,
 }
 
 impl SyntaxQueryAbiPlan {
@@ -20,6 +21,48 @@ impl SyntaxQueryAbiPlan {
     pub fn pattern_count(&self) -> usize {
         self.patterns.len()
     }
+}
+
+/// Predicate operator extracted from a tree-sitter-compatible query.
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub enum SyntaxQueryPredicateOp {
+    Eq,
+    AnyEq,
+    AnyOf,
+    Match,
+    AnyMatch,
+    NotEq,
+    NotMatch,
+}
+
+impl SyntaxQueryPredicateOp {
+    #[must_use]
+    pub fn as_abi_str(&self) -> &'static str {
+        match self {
+            Self::Eq => "eq",
+            Self::AnyEq => "any-eq",
+            Self::AnyOf => "any-of",
+            Self::Match => "match",
+            Self::AnyMatch => "any-match",
+            Self::NotEq => "not-eq",
+            Self::NotMatch => "not-match",
+        }
+    }
+}
+
+/// Predicate operand extracted from a tree-sitter-compatible query.
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub enum SyntaxQueryPredicateValue {
+    String(String),
+    Capture(String),
+}
+
+/// Predicate ABI fact extracted from one tree-sitter query predicate form.
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub struct SyntaxQueryAbiPredicate {
+    pub op: SyntaxQueryPredicateOp,
+    pub capture: String,
+    pub values: Vec<SyntaxQueryPredicateValue>,
 }
 
 /// Per-pattern ABI facts extracted from one top-level query pattern.
@@ -60,7 +103,7 @@ enum Token {
     Ident(String),
     Field(String),
     Capture(String),
-    StringLiteral,
+    StringLiteral(String),
     Quantifier,
 }
 
@@ -95,8 +138,9 @@ fn tokenize_query(source: &str) -> Result<Vec<Token>, SyntaxQueryAbiError> {
                 index += 1;
             }
             '"' => {
-                index = skip_string_literal(&chars, index)?;
-                tokens.push(Token::StringLiteral);
+                let (literal, next) = read_string_literal(&chars, index)?;
+                index = next;
+                tokens.push(Token::StringLiteral(literal));
             }
             '@' => {
                 let (capture, next) = read_atom(&chars, index + 1);
@@ -142,17 +186,24 @@ fn is_atom_delimiter(character: char) -> bool {
     character.is_whitespace() || matches!(character, '(' | ')' | '[' | ']' | '"' | ';')
 }
 
-fn skip_string_literal(chars: &[char], start: usize) -> Result<usize, SyntaxQueryAbiError> {
+fn read_string_literal(
+    chars: &[char],
+    start: usize,
+) -> Result<(String, usize), SyntaxQueryAbiError> {
     let mut index = start + 1;
     let mut escaped = false;
+    let mut literal = String::new();
     while index < chars.len() {
         let character = chars[index];
         if escaped {
+            literal.push(character);
             escaped = false;
         } else if character == '\\' {
             escaped = true;
         } else if character == '"' {
-            return Ok(index + 1);
+            return Ok((literal, index + 1));
+        } else {
+            literal.push(character);
         }
         index += 1;
     }
@@ -232,6 +283,7 @@ impl AbiParser {
             return Err(error("empty query source"));
         }
         let tokens = std::mem::take(&mut self.tokens);
+        let predicates = query_predicates(&tokens);
         for token in tokens {
             self.accept(token)?;
         }
@@ -250,6 +302,7 @@ impl AbiParser {
             captures,
             node_types,
             fields,
+            predicates,
         })
     }
 
@@ -301,7 +354,7 @@ impl AbiParser {
                     current.node_types.insert(identifier);
                 }
             }
-            Token::StringLiteral | Token::Quantifier => self.mark_head_consumed(),
+            Token::StringLiteral(_) | Token::Quantifier => self.mark_head_consumed(),
         }
         Ok(())
     }
@@ -347,6 +400,60 @@ impl AbiParser {
         if let Some(context) = self.stack.last_mut() {
             context.expects_head = false;
         }
+    }
+}
+
+fn query_predicates(tokens: &[Token]) -> Vec<SyntaxQueryAbiPredicate> {
+    let mut predicates = BTreeSet::new();
+    let mut index = 0usize;
+    while index + 3 < tokens.len() {
+        let predicate = match (&tokens[index], &tokens[index + 1], &tokens[index + 2]) {
+            (Token::LParen, Token::Ident(predicate), Token::Capture(capture)) => {
+                predicate_op(predicate).map(|op| (op, capture.clone()))
+            }
+            _ => None,
+        };
+        if let Some((op, capture)) = predicate {
+            let mut values = Vec::new();
+            let mut cursor = index + 3;
+            while cursor < tokens.len() && !matches!(tokens[cursor], Token::RParen) {
+                match &tokens[cursor] {
+                    Token::StringLiteral(value) if !value.is_empty() => {
+                        values.push(SyntaxQueryPredicateValue::String(value.clone()));
+                    }
+                    Token::Capture(value) if !value.is_empty() => {
+                        values.push(SyntaxQueryPredicateValue::Capture(value.clone()));
+                    }
+                    _ => {}
+                }
+                cursor += 1;
+            }
+            values.sort();
+            values.dedup();
+            if !values.is_empty() {
+                predicates.insert(SyntaxQueryAbiPredicate {
+                    op,
+                    capture,
+                    values,
+                });
+            }
+            index = cursor;
+        }
+        index += 1;
+    }
+    predicates.into_iter().collect()
+}
+
+fn predicate_op(predicate: &str) -> Option<SyntaxQueryPredicateOp> {
+    match predicate {
+        "#eq?" => Some(SyntaxQueryPredicateOp::Eq),
+        "#any-eq?" => Some(SyntaxQueryPredicateOp::AnyEq),
+        "#any-of?" => Some(SyntaxQueryPredicateOp::AnyOf),
+        "#match?" => Some(SyntaxQueryPredicateOp::Match),
+        "#any-match?" => Some(SyntaxQueryPredicateOp::AnyMatch),
+        "#not-eq?" => Some(SyntaxQueryPredicateOp::NotEq),
+        "#not-match?" => Some(SyntaxQueryPredicateOp::NotMatch),
+        _ => None,
     }
 }
 

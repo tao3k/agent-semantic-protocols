@@ -38,6 +38,23 @@ def semantic_tree_sitter_query_packet() -> dict[str, Any]:
                 "catalogEmbedded": True,
                 "compilerBoundary": "asp-tree-sitter-runtime",
                 "providerRuntimeCompiled": False,
+                "predicates": [
+                    {
+                        "op": "match",
+                        "capture": "call.target",
+                        "values": [{"kind": "string", "value": "^parse"}],
+                    },
+                    {
+                        "op": "any-eq",
+                        "capture": "call.target",
+                        "values": [{"kind": "string", "value": "parse_query"}],
+                    },
+                    {
+                        "op": "any-match",
+                        "capture": "call.target",
+                        "values": [{"kind": "string", "value": "^parse_"}],
+                    }
+                ],
             },
         },
         "matches": [],
@@ -150,3 +167,13 @@ def test_catalog_embedded_is_a_scalar_field_not_a_new_packet_surface() -> None:
     packet["query"]["fields"]["catalogEmbedded"] = True
 
     assert tree_sitter_query_validation_errors(packet) == []
+
+
+def test_rejects_legacy_string_predicate_field() -> None:
+    packet = copy.deepcopy(semantic_tree_sitter_query_packet())
+    packet["query"]["fields"]["predicates"] = ["eq:function.name=parse_query"]
+
+    assert any(
+        "is not of type 'object'" in error
+        for error in tree_sitter_query_validation_errors(packet)
+    )

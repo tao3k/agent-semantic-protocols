@@ -6,6 +6,7 @@ description = "Thin agent semantic client over native semantic language provider
 license = "MIT"
 
 [dependencies]
+sha2 = { workspace = true }
 agent-semantic-client-core = { path = "../agent-semantic-client-core" }
 agent-semantic-client-db = { path = "../agent-semantic-client-db" }
 agent-semantic-client-local-cli = { path = "../agent-semantic-client-local-cli" }

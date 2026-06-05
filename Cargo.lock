@@ -11,6 +11,7 @@ dependencies = [
  "agent-semantic-client-local-cli",
  "rust-lang-project-harness",
  "serde_json",
+ "sha2",
 ]
 
 [[package]]
@@ -407,6 +408,7 @@ dependencies = [
  "cargo_toml",
  "proc-macro2",
  "quote",
+ "regex",
  "serde",
  "serde_json",
  "syn",

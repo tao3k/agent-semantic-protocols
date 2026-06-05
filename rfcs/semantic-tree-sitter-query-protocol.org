@@ -104,7 +104,7 @@ query source     S-expression pattern source, when present
 node type        grammar node type such as function_item or call_expression
 field            child field such as name, body, function, argument
 capture          named capture such as function.name or call.target
-predicate        capture filter such as eq, match, any-of, is
+predicate        typed capture filter such as eq, any-eq, any-of, match, any-match, not-eq, not-match
 directive        capture metadata such as set or strip
 range            project-relative source range
 ERROR/MISSING    syntax recovery nodes when the provider can expose them
@@ -465,6 +465,23 @@ asp <language> query/search
        render compact output
 #+end_example
 
+For syntax query replay, the cache boundary is the query AST/ABI fingerprint,
+plus grammar/profile/catalog provenance and provider generation.  Stdout is not
+the syntax fact and must not be the normal invalidation boundary.  Cache hits
+render the current agent-facing locator/frontier surface from a validated
+=semantic-tree-sitter-query.v1= artifact or normalized rows.  Stored stdout is
+allowed only for explicit prompt-output artifacts or another documented special
+case whose provenance points back to the structured packet or row generation.
+Renderer or row-projection changes use an explicit syntax row ABI flush, not a
+SQLite schema-version bump.  The client records the current syntax row ABI in
+cache metadata, for example =syntaxQueryRowAbiVersion=, and when it changes the
+client deletes only the =syntax_query_*= row family.  Provider artifacts, normal
+cache generations, and unrelated search/query rows remain intact and can refresh
+syntax rows from validated packets or a native provider miss.
+Rows are replayable only when they carry the ASP query AST/ABI fingerprint and
+the AST/ABI-derived capture and item node types.  The row path does not guess or
+fallback from legacy rendered text or incomplete packet fields.
+
 Recommended SQLite families:
 
 #+begin_example
@@ -492,13 +509,17 @@ grammar profile version
 adapter mode
 source authority
 normalized query input or compiled query source
+ASP-compiled query AST/ABI fingerprint for inline query source
+catalog fingerprint when the request uses a registry-declared catalog id
+grammar profile fingerprint when the provider registry declares grammar-profile.json
 workspace config digests such as tsconfig, Cargo.toml, pyproject.toml, Project.toml
 file hash or provider generation
 #+end_example
 
 The default cache must not store raw source files.  It may store project-relative
 ranges, capture names, native fact refs, structural fingerprints, and artifact
-ids.
+ids.  It must prefer structured packets or rows over rendered stdout so renderer
+changes cannot replay stale agent-facing text against fresh query semantics.
 
 * Compact graph and search behavior
 
@@ -627,9 +648,15 @@ CLI startup when validated captures and native fact refs are fresh.
 1. Add package-local schema copies where providers require them.
 2. Add registry descriptor capabilities for =semantic-tree-sitter-query.v1=
    export, query input forms, grammar profile id, and cache replay support.
-3. Add sandtable scenarios for cold native, cache hit, provider miss, stale
+3. Carry ASP-compiled predicate ABI as structured operands:
+   ={op,capture,values:[{kind:string|capture,value}]}=.  Providers execute this
+   typed predicate model directly; they should not accept a second string
+   encoding such as =op:capture=value=.  The =op= label is part of the
+   query AST/ABI fingerprint; ASP must preserve =any-eq= and =any-match=
+   rather than folding them into =eq= and =match=.
+4. Add sandtable scenarios for cold native, cache hit, provider miss, stale
    cache, and real-trigger repeated syntax queries.
-4. Feed real-project metrics back into RFC/schema refinement before widening
+5. Feed real-project metrics back into RFC/schema refinement before widening
    renderer behavior.
 
 * Registry descriptors

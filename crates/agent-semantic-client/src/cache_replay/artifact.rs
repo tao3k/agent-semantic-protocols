@@ -1,4 +1,4 @@
-//! Replay provider cache artifacts into compact prompt stdout.
+//! Cache artifact replay implementation.
 
 use std::env;
 use std::fs;
@@ -6,15 +6,17 @@ use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 
 use agent_semantic_client_core::{ByteCount, CacheArtifactId, ClientMethod, ClientRequest};
-use agent_semantic_client_db::{
-    ClientDb, ClientDbGenerationHit, ClientDbSyntaxQueryLookup, ClientDbSyntaxQueryReplay,
-};
+use agent_semantic_client_db::{ClientDb, ClientDbGenerationHit, ClientDbSyntaxQueryLookup};
 use serde_json::Value;
 
 const SEMANTIC_AGENT_PROTOCOL_BIN_ENV: &str = "SEMANTIC_AGENT_PROTOCOL_BIN";
 const SEMANTIC_TREE_SITTER_QUERY_SCHEMA_ID: &str =
     "agent.semantic-protocols.semantic-tree-sitter-query";
 pub(crate) const MAX_CACHE_REPLAY_ARTIFACT_BYTES: u64 = 1_048_576;
+
+use super::syntax_query::{
+    render_semantic_tree_sitter_query_rows_stdout, render_semantic_tree_sitter_query_stdout,
+};
 
 pub(crate) struct ProviderCacheReplay {
     pub(crate) stdout: Vec<u8>,
@@ -414,140 +416,6 @@ fn render_query_packet_stdout(packet: &Value) -> Option<String> {
         }
     }
     Some(output)
-}
-
-pub(crate) fn render_semantic_tree_sitter_query_stdout(packet: &Value) -> Option<String> {
-    if string_field(packet, "schemaId")? != SEMANTIC_TREE_SITTER_QUERY_SCHEMA_ID {
-        return None;
-    }
-    let matches = packet.get("matches")?.as_array()?;
-    if matches.is_empty() {
-        return render_syntax_query_miss_stdout(packet);
-    }
-
-    let mut output = String::new();
-    for item in matches {
-        let match_locator = item.get("range").and_then(syntax_range_locator);
-        let captures = item.get("captures")?.as_array()?;
-        for capture in captures {
-            let Some(text) = syntax_capture_text(capture).or_else(|| syntax_capture_text(item))
-            else {
-                continue;
-            };
-            let locator = match_locator
-                .clone()
-                .or_else(|| capture.get("range").and_then(syntax_range_locator))?;
-            output.push_str(&locator);
-            output.push('\n');
-            output.push_str(text);
-            output.push('\n');
-        }
-    }
-    if output.is_empty() {
-        render_syntax_query_miss_stdout(packet)
-    } else {
-        Some(output)
-    }
-}
-
-pub(crate) fn render_semantic_tree_sitter_query_rows_stdout(
-    replay: &ClientDbSyntaxQueryReplay,
-) -> String {
-    if replay.rows.is_empty() {
-        return render_syntax_query_miss_line(
-            &replay.input_form,
-            replay.input_kind.as_str(),
-            &replay.grammar_id,
-            &replay.grammar_profile_version,
-            &replay.captures,
-        );
-    }
-    let mut output = String::new();
-    for row in &replay.rows {
-        output.push_str(&row.locator);
-        output.push('\n');
-        output.push_str(&row.text);
-        output.push('\n');
-    }
-    output
-}
-
-fn render_syntax_query_miss_stdout(packet: &Value) -> Option<String> {
-    let query = packet.get("query")?;
-    let input_form = string_field(query, "inputForm").unwrap_or("s-expression");
-    let input = if string_field(query, "catalogId").is_some() {
-        "catalog"
-    } else {
-        "inline"
-    };
-    let grammar = string_field(packet, "grammarId").unwrap_or("unknown");
-    let grammar_profile = string_field(packet, "grammarProfileVersion").unwrap_or("unknown");
-    let captures = query
-        .get("fields")
-        .and_then(|fields| fields.get("captures"))
-        .and_then(Value::as_array)
-        .map(|captures| {
-            captures
-                .iter()
-                .filter_map(Value::as_str)
-                .map(str::to_string)
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
-    Some(render_syntax_query_miss_line(
-        input_form,
-        input,
-        grammar,
-        grammar_profile,
-        &captures,
-    ))
-}
-
-fn render_syntax_query_miss_line(
-    input_form: &str,
-    input: &str,
-    grammar: &str,
-    grammar_profile: &str,
-    captures: &[String],
-) -> String {
-    let captures_display = captures.join(",");
-    let capture_count = if captures_display.is_empty() {
-        0
-    } else {
-        captures.len()
-    };
-    format!(
-        "|syntax-query inputForm={input_form} input={input} grammar={grammar} grammarProfile={grammar_profile} dialect=tree-sitter-query matchStatus=miss match=0 rows=0 truncated=false captureCount={capture_count} captures={captures_display}\n"
-    )
-}
-
-fn syntax_capture_text(value: &Value) -> Option<&str> {
-    value
-        .get("fields")
-        .and_then(|fields| string_field(fields, "symbol").or_else(|| string_field(fields, "name")))
-        .or_else(|| string_field(value, "text"))
-        .or_else(|| string_field(value, "name"))
-}
-
-fn syntax_range_locator(range: &Value) -> Option<String> {
-    let path = string_field(range, "path")?;
-    let line_range = range.get("lineRange")?;
-    let (start, end) = syntax_line_range_bounds(line_range)?;
-    if start == end {
-        Some(format!("{path}:{start}"))
-    } else {
-        Some(format!("{path}:{start}:{end}"))
-    }
-}
-
-fn syntax_line_range_bounds(line_range: &Value) -> Option<(String, String)> {
-    if let Some(line_range) = line_range.as_str() {
-        let (start, end) = line_range.split_once(':')?;
-        return Some((start.to_string(), end.to_string()));
-    }
-    let start = line_range.get("start").and_then(Value::as_u64)?;
-    let end = line_range.get("end").and_then(Value::as_u64)?;
-    Some((start.to_string(), end.to_string()))
 }
 
 fn query_status<'a>(packet: &'a Value, matches: &[Value]) -> &'a str {

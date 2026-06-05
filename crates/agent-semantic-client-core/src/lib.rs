@@ -36,8 +36,9 @@ pub use {
     },
     request::{
         ASP_SYNTAX_QUERY_CAPTURES_ARG, ASP_SYNTAX_QUERY_FIELDS_ARG,
-        ASP_SYNTAX_QUERY_NODE_TYPES_ARG, ClientMethod, ClientRequest,
-        append_syntax_query_plan_args,
+        ASP_SYNTAX_QUERY_NODE_TYPES_ARG, ASP_SYNTAX_QUERY_PREDICATES_JSON_ARG, ClientMethod,
+        ClientRequest, SYNTAX_QUERY_AST_ABI_FINGERPRINT_VERSION, append_syntax_query_plan_args,
+        syntax_query_ast_abi_fingerprint,
     },
 };
 #[cfg(test)]

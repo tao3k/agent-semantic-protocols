@@ -4,6 +4,7 @@ use std::path::Path;
 
 use agent_semantic_client_core::{
     CacheExportMethod, ClientMethod, ClientRequest, ProviderRegistrySnapshot, ResolvedProvider,
+    syntax_query_ast_abi_fingerprint,
 };
 
 pub(super) fn selected_provider_for_request<'a>(
@@ -83,15 +84,23 @@ pub(super) fn exact_request_fingerprint(
     export_method: &CacheExportMethod,
     forwarded_args: &[String],
 ) -> String {
+    let syntax_query_provenance = syntax_query_cache_provenance(forwarded_args)
+        .unwrap_or_else(|| "syntax-query-ast-abi:none".to_string());
     let seed = format!(
-        "{}\0{}\0{}\0{}\0{}",
+        "{}\0{}\0{}\0{}\0{}\0{}",
         provider.language_id,
         provider.provider_id,
         normalized_path(project_root),
         export_method,
-        forwarded_args.join("\0")
+        forwarded_args.join("\0"),
+        syntax_query_provenance
     );
     format!("fnv64:{}", stable_hash_hex(&seed))
+}
+
+fn syntax_query_cache_provenance(forwarded_args: &[String]) -> Option<String> {
+    let source = tree_sitter_query_source(forwarded_args)?;
+    syntax_query_ast_abi_fingerprint(source).ok()
 }
 
 fn check_export_method(args: &[String]) -> String {
@@ -105,6 +114,19 @@ fn check_export_method(args: &[String]) -> String {
     } else {
         "check".to_string()
     }
+}
+
+fn tree_sitter_query_source(args: &[String]) -> Option<&str> {
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        if arg == "--treesitter-query" {
+            return iter.next().map(String::as_str);
+        }
+        if let Some(value) = arg.strip_prefix("--treesitter-query=") {
+            return Some(value);
+        }
+    }
+    None
 }
 
 fn normalized_path(path: &Path) -> String {
@@ -126,3 +148,7 @@ fn stable_hash_bytes(bytes: &[u8]) -> String {
 fn stable_hash_hex(value: &str) -> String {
     stable_hash_bytes(value.as_bytes())
 }
+
+#[cfg(test)]
+#[path = "../../tests/unit/cache_cli/request.rs"]
+mod request_tests;

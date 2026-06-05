@@ -1,13 +1,17 @@
 //! Cache DB probe and receipt decoration.
 
-use std::path::Path;
+use std::fs;
+use std::path::{Component, Path};
 
 use agent_semantic_client_core::{
-    ByteCount, CacheManifestReport, CacheStatus, ClientCacheManifest, ClientCachePath,
-    ClientDbStatus, ClientMethod, ClientReceipt, ClientRequest, ElapsedMillis, NativeProvenance,
-    ProviderRegistrySnapshot,
+    ByteCount, CacheManifestReport, CacheStatus, ClientCacheFileHash, ClientCacheManifest,
+    ClientCachePath, ClientDbStatus, ClientMethod, ClientReceipt, ClientRequest, ElapsedMillis,
+    NativeProvenance, ProviderRegistrySnapshot,
 };
-use agent_semantic_client_db::{ClientDb, ClientDbGenerationLookup, ClientDbReport};
+use agent_semantic_client_db::{
+    ClientDb, ClientDbGenerationHit, ClientDbGenerationLookup, ClientDbReport,
+};
+use sha2::{Digest, Sha256};
 
 use crate::cache_cli::request::{
     request_export_method, request_lookup_fingerprint, selected_provider_for_request,
@@ -55,11 +59,20 @@ pub(crate) fn provider_cache_probe(
     } else {
         None
     };
-    let replay = generation_hit
+    let generation_fresh = generation_hit
         .as_ref()
-        .and_then(|hit| load_replay_artifact(cache_root, hit, request));
+        .is_some_and(|hit| generation_file_hashes_match(project_root, hit));
+    let replay = generation_hit.as_ref().and_then(|hit| {
+        if generation_fresh {
+            load_replay_artifact(cache_root, hit, request)
+        } else {
+            None
+        }
+    });
     let cache_status = if replay.is_some() {
         CacheStatus::Hit
+    } else if generation_hit.is_some() && !generation_fresh {
+        CacheStatus::Stale
     } else if generation_hit.is_some() {
         CacheStatus::WarmProvider
     } else {
@@ -72,6 +85,50 @@ pub(crate) fn provider_cache_probe(
         provenance,
         replay,
     })
+}
+
+pub(crate) fn generation_file_hashes_match(
+    project_root: &Path,
+    hit: &ClientDbGenerationHit,
+) -> bool {
+    !hit.file_hashes.is_empty()
+        && hit
+            .file_hashes
+            .iter()
+            .all(|file_hash| file_hash_matches(project_root, file_hash))
+}
+
+fn file_hash_matches(project_root: &Path, file_hash: &ClientCacheFileHash) -> bool {
+    let Some(path) = safe_project_file_path(project_root, &file_hash.path) else {
+        return false;
+    };
+    let Ok(metadata) = fs::metadata(&path) else {
+        return false;
+    };
+    if !metadata.is_file() {
+        return false;
+    }
+    let Ok(bytes) = fs::read(path) else {
+        return false;
+    };
+    let digest = Sha256::digest(&bytes);
+    format!("{digest:x}").eq_ignore_ascii_case(&file_hash.sha256)
+}
+
+fn safe_project_file_path(project_root: &Path, path: &str) -> Option<std::path::PathBuf> {
+    let path = Path::new(path);
+    if path.is_absolute() {
+        return None;
+    }
+    let mut relative = std::path::PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::Normal(part) => relative.push(part),
+            Component::CurDir => {}
+            Component::ParentDir | Component::RootDir | Component::Prefix(_) => return None,
+        }
+    }
+    Some(project_root.join(relative))
 }
 
 pub(crate) fn apply_provider_cache_probe(receipt: &mut ClientReceipt, probe: &ProviderCacheProbe) {

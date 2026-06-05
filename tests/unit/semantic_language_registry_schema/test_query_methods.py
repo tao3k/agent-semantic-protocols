@@ -100,6 +100,8 @@ def test_query_method_can_declare_binary_embedded_catalog_delivery() -> None:
             "grammarProfileSchema": "semantic-tree-sitter-grammar-profile.v1",
             "grammarProfilePath": "tree-sitter/tree-sitter-rust/grammar-profile.json",
             "queryInputForms": ["catalog-id"],
+            "supportedPredicates": ["#eq?", "#any-eq?", "#match?", "#any-match?"],
+            "unsupportedPredicates": ["#not-eq?", "#not-match?"],
             "queryCatalogs": [
                 {
                     "id": "calls",

@@ -1,4 +1,6 @@
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::mpsc;
+use std::thread;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use agent_semantic_client_core::{CacheExportMethod, ClientCacheManifest, LanguageId, ProviderId};
 use agent_semantic_client_db::{ClientDb, ClientDbGenerationLookup, ClientDbStatus};
@@ -26,6 +28,16 @@ fn open_creates_schema_and_imports_manifest_generations() {
 
     db.import_manifest(&manifest).expect("import manifest");
     let summary = db.summary().expect("db summary");
+    let generation_hit = ClientDb::lookup_generation(&ClientDbGenerationLookup {
+        db_path: db_path.clone(),
+        language_id: LanguageId::from("rust"),
+        provider_id: ProviderId::from("rs-harness"),
+        project_root: root.clone(),
+        export_method: CacheExportMethod::from("search/prime"),
+        request_fingerprint: Some("fnv64:0123456789abcdef".to_string()),
+    })
+    .expect("lookup generation")
+    .expect("generation hit");
     let report = ClientDb::inspect(&db_path);
     let stored_schema_version: String = rusqlite::Connection::open(&db_path)
         .expect("open sqlite")
@@ -35,6 +47,10 @@ fn open_creates_schema_and_imports_manifest_generations() {
             |row| row.get(0),
         )
         .expect("schema version");
+    let journal_mode: String = rusqlite::Connection::open(&db_path)
+        .expect("open sqlite")
+        .query_row("PRAGMA journal_mode", [], |row| row.get(0))
+        .expect("journal mode");
 
     assert_eq!(summary.generation_count, 1);
     assert!(!summary.raw_source_stored);
@@ -45,6 +61,35 @@ fn open_creates_schema_and_imports_manifest_generations() {
         stored_schema_version,
         agent_semantic_client_db::AGENT_SEMANTIC_CLIENT_DB_SCHEMA_VERSION.to_string()
     );
+    assert_eq!(generation_hit.file_hashes.len(), 1);
+    assert_eq!(generation_hit.file_hashes[0].path, "src/lib.rs");
+    assert_eq!(generation_hit.file_hashes[0].sha256, "0".repeat(64));
+    assert_eq!(journal_mode.to_ascii_lowercase(), "wal");
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn open_waits_for_transient_writer_lock() {
+    let root = temp_root("writer-lock");
+    let db_path = root.join("client.sqlite3");
+    let db = ClientDb::open_or_create(&db_path).expect("create db");
+    drop(db);
+
+    let (ready_tx, ready_rx) = mpsc::channel();
+    let locked_db_path = db_path.clone();
+    let lock_handle = thread::spawn(move || {
+        let conn = rusqlite::Connection::open(&locked_db_path).expect("open lock connection");
+        conn.execute_batch("BEGIN IMMEDIATE")
+            .expect("begin write lock");
+        ready_tx.send(()).expect("send lock ready");
+        thread::sleep(Duration::from_millis(200));
+        conn.execute_batch("COMMIT").expect("release write lock");
+    });
+
+    ready_rx.recv().expect("wait for write lock");
+    let reopened = ClientDb::open_or_create(&db_path).expect("open waits for writer lock");
+    drop(reopened);
+    lock_handle.join().expect("lock thread");
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -178,7 +223,7 @@ fn manifest(root: &std::path::Path, raw_source_stored: bool) -> ClientCacheManif
                 "cacheStatus": "miss",
                 "rawSourceStored": raw_source_stored,
                 "requestFingerprint": "fnv64:0123456789abcdef",
-                "fileHashes": [],
+                "fileHashes": [{"path": "src/lib.rs", "sha256": "0000000000000000000000000000000000000000000000000000000000000000"}],
                 "artifactIds": ["search/rust-main-1.json"]
             }
         ]

@@ -236,6 +236,73 @@
         "$ref": "#/$defs/scalar"
       }
     },
+    "queryFields": {
+      "type": "object",
+      "properties": {
+        "predicates": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/queryPredicate"
+          }
+        }
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/scalar"
+      }
+    },
+    "queryPredicate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "capture",
+        "values"
+      ],
+      "properties": {
+        "op": {
+          "enum": [
+            "eq",
+            "any-eq",
+            "any-of",
+            "match",
+            "any-match",
+            "not-eq",
+            "not-match"
+          ]
+        },
+        "capture": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.-]*$"
+        },
+        "values": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/queryPredicateValue"
+          }
+        }
+      }
+    },
+    "queryPredicateValue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "value"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "string",
+            "capture"
+          ]
+        },
+        "value": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
     "query": {
       "type": "object",
       "additionalProperties": false,
@@ -274,7 +341,7 @@
           "minimum": 0
         },
         "fields": {
-          "$ref": "#/$defs/fields"
+          "$ref": "#/$defs/queryFields"
         },
         "grammarProfilePath": {
           "$ref": "#/$defs/projectPath",

@@ -2,10 +2,12 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use agent_semantic_client_core::{
-    CacheArtifactId, CacheExportMethod, CacheGenerationId, ClientCacheGeneration,
-    ClientCacheManifest, ClientDbStatus, LanguageId, ProviderId,
+    CacheArtifactId, CacheExportMethod, CacheGenerationId, ClientCacheFileHash,
+    ClientCacheGeneration, ClientCacheManifest, ClientDbStatus, LanguageId, ProviderId,
+    compile_query_abi_source, syntax_query_ast_abi_fingerprint,
 };
 use rusqlite::{Connection, OpenFlags, OptionalExtension, params};
 use serde_json::Value;
@@ -13,10 +15,13 @@ use serde_json::Value;
 /// File name used for the local SQLite client cache.
 pub const AGENT_SEMANTIC_CLIENT_DB_FILE: &str = "client.sqlite3";
 /// Current SQLite schema version for the local agent semantic client DB.
-pub const AGENT_SEMANTIC_CLIENT_DB_SCHEMA_VERSION: i64 = 3;
+pub const AGENT_SEMANTIC_CLIENT_DB_SCHEMA_VERSION: i64 = 4;
 
 const SEMANTIC_TREE_SITTER_QUERY_SCHEMA_ID: &str =
     "agent.semantic-protocols.semantic-tree-sitter-query";
+const SYNTAX_QUERY_ROW_ABI_META_KEY: &str = "syntaxQueryRowAbiVersion";
+const SYNTAX_QUERY_ROW_ABI_VERSION: &str = "syntax-query-row-abi.ast-abi-capture-item-node.v1";
+const CLIENT_DB_BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Read-only diagnostic summary for a local SQLite client DB path.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -48,6 +53,7 @@ pub struct ClientDbGenerationHit {
     pub export_method: CacheExportMethod,
     pub schema_ids: Vec<agent_semantic_client_core::SemanticSchemaId>,
     pub request_fingerprint: Option<String>,
+    pub file_hashes: Vec<ClientCacheFileHash>,
     pub artifact_ids: Vec<CacheArtifactId>,
 }
 
@@ -65,11 +71,14 @@ pub struct ClientDbSyntaxQueryLookup {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ClientDbSyntaxQueryReplay {
     pub generation_id: CacheGenerationId,
+    pub language_id: LanguageId,
     pub grammar_id: String,
     pub grammar_profile_version: String,
     pub input_form: String,
     pub input_kind: ClientDbSyntaxQueryInputKind,
+    pub compiled_source: String,
     pub captures: Vec<String>,
+    pub query_ast_fingerprint: String,
     pub artifact_id: Option<CacheArtifactId>,
     pub packet_bytes: Option<u64>,
     pub rows: Vec<ClientDbSyntaxCaptureReplay>,
@@ -103,7 +112,12 @@ impl ClientDbSyntaxQueryInputKind {
 /// One replayable syntax capture row.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ClientDbSyntaxCaptureReplay {
-    pub locator: String,
+    pub match_locator: String,
+    pub capture_locator: String,
+    pub capture_name: String,
+    pub capture_node_type: String,
+    pub item_node_type: String,
+    pub field: Option<String>,
     pub text: String,
 }
 
@@ -114,6 +128,7 @@ type CacheGenerationRow = (
     String,
     String,
     Option<String>,
+    String,
     String,
 );
 
@@ -180,6 +195,7 @@ impl ClientDb {
                 db_path.display()
             )
         })?;
+        configure_writable_connection(&conn, &db_path)?;
         let db = Self { conn, db_path };
         db.migrate()?;
         Ok(db)
@@ -355,7 +371,8 @@ impl ClientDb {
                     export_method,
                     schema_ids_json,
                     request_fingerprint,
-                    artifact_ids_json
+                    artifact_ids_json,
+                    file_hashes_json
              FROM cache_generations
              WHERE language_id = ?1
                AND provider_id = ?2
@@ -381,6 +398,7 @@ impl ClientDb {
                         row.get(4)?,
                         row.get(5)?,
                         row.get(6)?,
+                        row.get(7)?,
                     ))
                 },
             )
@@ -394,6 +412,7 @@ impl ClientDb {
             schema_ids_json,
             request_fingerprint,
             artifact_ids_json,
+            file_hashes_json,
         )) = row
         else {
             return Ok(None);
@@ -402,6 +421,8 @@ impl ClientDb {
             .map_err(|error| format!("failed to parse client db schema ids: {error}"))?;
         let artifact_ids = serde_json::from_str(&artifact_ids_json)
             .map_err(|error| format!("failed to parse client db artifact ids: {error}"))?;
+        let file_hashes = serde_json::from_str(&file_hashes_json)
+            .map_err(|error| format!("failed to parse client db file hashes: {error}"))?;
         Ok(Some(ClientDbGenerationHit {
             language_id: LanguageId::from(language_id),
             provider_id: ProviderId::from(provider_id),
@@ -409,6 +430,7 @@ impl ClientDb {
             export_method: CacheExportMethod::from(export_method),
             schema_ids,
             request_fingerprint,
+            file_hashes,
             artifact_ids,
         }))
     }
@@ -422,11 +444,14 @@ impl ClientDb {
             .conn
             .query_row(
                 "SELECT g.generation_id,
+                    g.language_id,
                     g.grammar_id,
                     g.grammar_profile_version,
                     g.input_form,
                     g.input_kind,
+                    p.compiled_source,
                     p.captures_json,
+                    g.query_ast_fingerprint,
                     g.packet_bytes
              FROM syntax_query_generation g
              JOIN syntax_query_pattern p ON p.generation_id = g.generation_id
@@ -435,6 +460,7 @@ impl ClientDb {
                AND g.project_root = ?3
                AND g.request_fingerprint = ?4
                AND g.raw_source_stored = 0
+               AND g.query_ast_fingerprint IS NOT NULL
              ORDER BY g.updated_at DESC
              LIMIT 1",
                 params![
@@ -451,7 +477,10 @@ impl ClientDb {
                         row.get::<_, String>(3)?,
                         row.get::<_, String>(4)?,
                         row.get::<_, String>(5)?,
-                        row.get::<_, Option<i64>>(6)?,
+                        row.get::<_, String>(6)?,
+                        row.get::<_, String>(7)?,
+                        row.get::<_, String>(8)?,
+                        row.get::<_, Option<i64>>(9)?,
                     ))
                 },
             )
@@ -459,11 +488,14 @@ impl ClientDb {
             .map_err(|error| format!("failed to read syntax query replay generation: {error}"))?;
         let Some((
             generation_id,
+            language_id,
             grammar_id,
             grammar_profile_version,
             input_form,
             input_kind,
+            compiled_source,
             captures_json,
+            query_ast_fingerprint,
             packet_bytes,
         )) = row
         else {
@@ -488,20 +520,55 @@ impl ClientDb {
         let mut statement = self
             .conn
             .prepare(
-                "SELECT path, start_line, end_line, capture_text
-                 FROM syntax_query_capture
-                 WHERE generation_id = ?1
-                 ORDER BY match_ordinal ASC, capture_ordinal ASC",
+                "SELECT m.path,
+                        m.start_line,
+                        m.end_line,
+                        c.path,
+                        c.start_line,
+                        c.end_line,
+                        c.capture_name,
+                        c.capture_node_type,
+                        c.item_node_type,
+                        c.field,
+                        c.capture_text
+                 FROM syntax_query_capture c
+                 JOIN syntax_query_match m
+                   ON m.generation_id = c.generation_id
+                 AND m.match_ordinal = c.match_ordinal
+                 WHERE c.generation_id = ?1
+                   AND c.capture_node_type IS NOT NULL
+                   AND c.item_node_type IS NOT NULL
+                 ORDER BY c.match_ordinal ASC, c.capture_ordinal ASC",
             )
             .map_err(|error| format!("failed to prepare syntax capture replay query: {error}"))?;
         let row_iter = statement
             .query_map(params![generation_id.as_str()], |row| {
-                let path = row.get::<_, String>(0)?;
-                let start_line = row.get::<_, i64>(1)?;
-                let end_line = row.get::<_, i64>(2)?;
-                let text = row.get::<_, String>(3)?;
+                let match_path = row.get::<_, String>(0)?;
+                let match_start_line = row.get::<_, i64>(1)?;
+                let match_end_line = row.get::<_, i64>(2)?;
+                let capture_path = row.get::<_, String>(3)?;
+                let capture_start_line = row.get::<_, i64>(4)?;
+                let capture_end_line = row.get::<_, i64>(5)?;
+                let capture_name = row.get::<_, String>(6)?;
+                let capture_node_type = row.get::<_, String>(7)?;
+                let item_node_type = row.get::<_, String>(8)?;
+                let field = row.get::<_, Option<String>>(9)?;
+                let text = row.get::<_, String>(10)?;
                 Ok(ClientDbSyntaxCaptureReplay {
-                    locator: compact_source_locator(&path, start_line, end_line),
+                    match_locator: compact_source_locator(
+                        &match_path,
+                        match_start_line,
+                        match_end_line,
+                    ),
+                    capture_locator: compact_source_locator(
+                        &capture_path,
+                        capture_start_line,
+                        capture_end_line,
+                    ),
+                    capture_name,
+                    capture_node_type,
+                    item_node_type,
+                    field,
                     text,
                 })
             })
@@ -514,11 +581,14 @@ impl ClientDb {
         }
         Ok(Some(ClientDbSyntaxQueryReplay {
             generation_id: CacheGenerationId::from(generation_id),
+            language_id: LanguageId::from(language_id),
             grammar_id,
             grammar_profile_version,
             input_form,
             input_kind: ClientDbSyntaxQueryInputKind::from_wire(&input_kind),
+            compiled_source,
             captures,
+            query_ast_fingerprint,
             artifact_id,
             packet_bytes: packet_bytes.map(|value| value.max(0) as u64),
             rows,
@@ -578,6 +648,7 @@ impl ClientDb {
                 provider_id TEXT NOT NULL,
                 project_root TEXT NOT NULL,
                 request_fingerprint TEXT NOT NULL,
+                query_ast_fingerprint TEXT,
                 grammar_id TEXT NOT NULL,
                 grammar_profile_version TEXT NOT NULL,
                 input_form TEXT NOT NULL,
@@ -624,6 +695,9 @@ impl ClientDb {
                 capture_id TEXT,
                 capture_name TEXT NOT NULL,
                 node_type TEXT,
+                capture_node_type TEXT,
+                item_node_type TEXT,
+                field TEXT,
                 capture_text TEXT NOT NULL,
                 path TEXT NOT NULL,
                 start_line INTEGER NOT NULL,
@@ -705,8 +779,137 @@ impl ClientDb {
                 .map_err(|error| format!("failed to add request fingerprint column: {error}"))?;
         }
 
+        if !self.table_has_column("syntax_query_generation", "query_ast_fingerprint")? {
+            self.conn
+                .execute(
+                    "ALTER TABLE syntax_query_generation ADD COLUMN query_ast_fingerprint TEXT",
+                    [],
+                )
+                .map_err(|error| {
+                    format!("failed to add syntax query AST fingerprint column: {error}")
+                })?;
+        }
+
+        if !self.table_has_column("syntax_query_capture", "field")? {
+            self.conn
+                .execute("ALTER TABLE syntax_query_capture ADD COLUMN field TEXT", [])
+                .map_err(|error| format!("failed to add syntax capture field column: {error}"))?;
+        }
+        if !self.table_has_column("syntax_query_capture", "capture_node_type")? {
+            self.conn
+                .execute(
+                    "ALTER TABLE syntax_query_capture ADD COLUMN capture_node_type TEXT",
+                    [],
+                )
+                .map_err(|error| {
+                    format!("failed to add syntax capture node type column: {error}")
+                })?;
+        }
+        if !self.table_has_column("syntax_query_capture", "item_node_type")? {
+            self.conn
+                .execute(
+                    "ALTER TABLE syntax_query_capture ADD COLUMN item_node_type TEXT",
+                    [],
+                )
+                .map_err(|error| format!("failed to add syntax item node type column: {error}"))?;
+        }
+
+        self.flush_stale_syntax_query_rows()?;
+
         Ok(())
     }
+
+    fn flush_stale_syntax_query_rows(&self) -> Result<(), String> {
+        let current_row_abi = self
+            .conn
+            .query_row(
+                "SELECT value FROM schema_meta WHERE key = ?1",
+                params![SYNTAX_QUERY_ROW_ABI_META_KEY],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()
+            .map_err(|error| {
+                format!(
+                    "failed to read syntax query row ABI version at {}: {error}",
+                    self.db_path.display()
+                )
+            })?;
+        if current_row_abi.as_deref() != Some(SYNTAX_QUERY_ROW_ABI_VERSION) {
+            self.conn
+                .execute("DELETE FROM syntax_query_generation", [])
+                .map_err(|error| format!("failed to flush syntax query row cache: {error}"))?;
+            self.conn
+                .execute(
+                    "INSERT OR REPLACE INTO schema_meta (key, value) VALUES (?1, ?2)",
+                    params![SYNTAX_QUERY_ROW_ABI_META_KEY, SYNTAX_QUERY_ROW_ABI_VERSION],
+                )
+                .map_err(|error| {
+                    format!("failed to write syntax query row ABI version: {error}")
+                })?;
+        }
+        Ok(())
+    }
+
+    fn table_has_column(&self, table: &str, column: &str) -> Result<bool, String> {
+        let mut statement = self
+            .conn
+            .prepare(&format!("PRAGMA table_info({table})"))
+            .map_err(|error| {
+                format!(
+                    "failed to inspect agent semantic client db table {table} at {}: {error}",
+                    self.db_path.display()
+                )
+            })?;
+        let columns = statement
+            .query_map([], |row| row.get::<_, String>(1))
+            .map_err(|error| format!("failed to read client db columns: {error}"))?;
+        for candidate in columns {
+            if candidate.map_err(|error| format!("failed to read client db column: {error}"))?
+                == column
+            {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+}
+
+fn configure_writable_connection(conn: &Connection, db_path: &Path) -> Result<(), String> {
+    conn.busy_timeout(CLIENT_DB_BUSY_TIMEOUT).map_err(|error| {
+        format!(
+            "failed to configure agent semantic client db busy timeout at {}: {error}",
+            db_path.display()
+        )
+    })?;
+
+    let journal_mode: String = conn
+        .query_row("PRAGMA journal_mode = WAL", [], |row| row.get(0))
+        .map_err(|error| {
+            format!(
+                "failed to enable WAL journal mode for agent semantic client db at {}: {error}",
+                db_path.display()
+            )
+        })?;
+    if !journal_mode.eq_ignore_ascii_case("wal") {
+        return Err(format!(
+            "failed to enable WAL journal mode for agent semantic client db at {}: sqlite returned {journal_mode}",
+            db_path.display()
+        ));
+    }
+
+    conn.execute_batch(
+        "
+        PRAGMA synchronous = NORMAL;
+        PRAGMA foreign_keys = ON;
+        ",
+    )
+    .map_err(|error| {
+        format!(
+            "failed to configure agent semantic client db pragmas at {}: {error}",
+            db_path.display()
+        )
+    })?;
+    Ok(())
 }
 
 fn normalized_project_root(project_root: &Path) -> String {
@@ -727,6 +930,10 @@ struct ParsedSyntaxQueryPacketImport<'a> {
     input_kind: &'static str,
     query_input: String,
     compiled_source: String,
+    query_ast_fingerprint: String,
+    item_node_type: String,
+    capture_node_type: String,
+    query_field: Option<String>,
     selector: Option<String>,
     captures_json: String,
     matches: Vec<Value>,
@@ -769,6 +976,23 @@ fn parse_syntax_query_packet_import<'a>(
         .and_then(Value::as_array)
         .ok_or_else(|| "syntax query packet is missing matches".to_string())?;
     let query_input = optional_string_field(query, "input").unwrap_or("");
+    let compiled_source = optional_string_field(query, "compiledSource")
+        .unwrap_or(query_input)
+        .to_string();
+    let query_plan = compile_query_abi_source(&compiled_source)
+        .map_err(|error| format!("syntax query rows require AST/ABI plan: {}", error.message))?;
+    let query_ast_fingerprint = syntax_query_ast_abi_fingerprint(&compiled_source)
+        .map_err(|error| format!("syntax query rows require AST/ABI fingerprint: {error}"))?;
+    let item_node_type = query_plan
+        .node_types
+        .first()
+        .cloned()
+        .ok_or_else(|| "syntax query rows require an AST/ABI item node type".to_string())?;
+    let capture_node_type = query_plan
+        .node_types
+        .last()
+        .cloned()
+        .ok_or_else(|| "syntax query rows require an AST/ABI capture node type".to_string())?;
     Ok(ParsedSyntaxQueryPacketImport {
         generation,
         request_fingerprint,
@@ -782,9 +1006,11 @@ fn parse_syntax_query_packet_import<'a>(
             "inline"
         },
         query_input: query_input.to_string(),
-        compiled_source: optional_string_field(query, "compiledSource")
-            .unwrap_or(query_input)
-            .to_string(),
+        query_ast_fingerprint,
+        item_node_type,
+        capture_node_type,
+        query_field: query_plan.fields.first().cloned(),
+        compiled_source,
         selector: query
             .get("fields")
             .and_then(|fields| optional_string_field(fields, "selector"))
@@ -832,7 +1058,15 @@ fn write_syntax_query_import_rows(
     write_syntax_query_pattern_row(tx, parsed)?;
     write_syntax_query_artifact_ref_rows(tx, parsed)?;
     for (match_index, item) in parsed.matches.iter().enumerate() {
-        import_syntax_match_rows(tx, generation_id, match_index, item)?;
+        import_syntax_match_rows(
+            tx,
+            generation_id,
+            match_index,
+            item,
+            parsed.item_node_type.as_str(),
+            parsed.capture_node_type.as_str(),
+            parsed.query_field.as_deref(),
+        )?;
     }
     Ok(())
 }
@@ -848,6 +1082,7 @@ fn write_syntax_query_generation_row(
             provider_id,
             project_root,
             request_fingerprint,
+            query_ast_fingerprint,
             grammar_id,
             grammar_profile_version,
             input_form,
@@ -856,13 +1091,14 @@ fn write_syntax_query_generation_row(
             truncated,
             packet_bytes,
             raw_source_stored
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, 0)",
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, 0)",
         params![
             parsed.generation.generation_id.as_str(),
             parsed.generation.language_id.as_str(),
             parsed.generation.provider_id.as_str(),
             parsed.project_root.as_str(),
             parsed.request_fingerprint,
+            parsed.query_ast_fingerprint.as_str(),
             parsed.grammar_id.as_str(),
             parsed.grammar_profile_version.as_str(),
             parsed.input_form.as_str(),
@@ -949,6 +1185,9 @@ fn import_syntax_match_rows(
     generation_id: &str,
     match_index: usize,
     item: &Value,
+    query_item_node_type: &str,
+    query_capture_node_type: &str,
+    query_field: Option<&str>,
 ) -> Result<(), String> {
     let captures = item
         .get("captures")
@@ -994,10 +1233,10 @@ fn import_syntax_match_rows(
         else {
             continue;
         };
-        let capture_range = item
+        let capture_range = capture
             .get("range")
             .and_then(parse_syntax_range)
-            .or_else(|| capture.get("range").and_then(parse_syntax_range))
+            .or_else(|| item.get("range").and_then(parse_syntax_range))
             .ok_or_else(|| "syntax capture is missing a replayable range".to_string())?;
         let capture_ordinal = capture_index.min(i64::MAX as usize) as i64;
         tx.execute(
@@ -1008,18 +1247,24 @@ fn import_syntax_match_rows(
                 capture_id,
                 capture_name,
                 node_type,
+                capture_node_type,
+                item_node_type,
+                field,
                 capture_text,
                 path,
                 start_line,
                 end_line
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
             params![
                 generation_id,
                 match_ordinal,
                 capture_ordinal,
                 optional_string_field(capture, "id"),
                 optional_string_field(capture, "name").unwrap_or("capture"),
-                optional_string_field(capture, "nodeType"),
+                query_capture_node_type,
+                query_capture_node_type,
+                syntax_item_node_type(item, capture).unwrap_or(query_item_node_type),
+                optional_string_field(capture, "field").or(query_field),
                 text,
                 capture_range.0,
                 capture_range.1,
@@ -1082,6 +1327,17 @@ fn safe_syntax_capture_text(value: &Value) -> Option<&str> {
     value.get("fields").and_then(|fields| {
         optional_string_field(fields, "symbol").or_else(|| optional_string_field(fields, "name"))
     })
+}
+
+fn syntax_item_node_type<'a>(item: &'a Value, capture: &'a Value) -> Option<&'a str> {
+    item.get("fields")
+        .and_then(|fields| optional_string_field(fields, "nodeType"))
+        .or_else(|| optional_string_field(item, "nodeType"))
+        .or_else(|| {
+            capture
+                .get("fields")
+                .and_then(|fields| optional_string_field(fields, "nativeNodeType"))
+        })
 }
 
 fn string_array_field(value: &Value, field: &str) -> Vec<String> {

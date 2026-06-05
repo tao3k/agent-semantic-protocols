@@ -8,9 +8,10 @@ use agent_semantic_client_core::{
     AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_PROTOCOL_VERSION,
     AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_SCHEMA_ID,
     AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_SCHEMA_VERSION, CacheArtifactId, CacheExportMethod,
-    CacheGenerationId, CacheManifestStatus, CacheStatus, ClientCacheGeneration,
-    ClientCacheManifest, ClientCachePath, ClientMethod, ClientRequest, ProviderCommandReceipt,
-    ProviderRegistrySnapshot, ResolvedProvider, SemanticSchemaId, append_syntax_query_plan_args,
+    CacheGenerationId, CacheManifestStatus, CacheStatus, ClientCacheFileHash,
+    ClientCacheGeneration, ClientCacheManifest, ClientCachePath, ClientMethod, ClientRequest,
+    ProviderCommandReceipt, ProviderRegistrySnapshot, ResolvedProvider, SemanticSchemaId,
+    append_syntax_query_plan_args,
 };
 use agent_semantic_client_db::ClientDb;
 
@@ -173,6 +174,19 @@ pub(crate) fn write_prompt_output_cache_after_provider_success(
         Some(())
     }
 
+    fn packet_file_hashes(packet_bytes: &[u8]) -> Option<Vec<ClientCacheFileHash>> {
+        let packet: serde_json::Value = serde_json::from_slice(packet_bytes).ok()?;
+        let hashes = packet.pointer("/cache/fileHashes")?.as_array()?;
+        let mut file_hashes = Vec::with_capacity(hashes.len());
+        for hash in hashes {
+            file_hashes.push(ClientCacheFileHash {
+                path: hash.get("path")?.as_str()?.to_string(),
+                sha256: hash.get("sha256")?.as_str()?.to_string(),
+            });
+        }
+        Some(file_hashes)
+    }
+
     fn search_packet_generation(
         project_root: &Path,
         provider: &ResolvedProvider,
@@ -206,8 +220,13 @@ pub(crate) fn write_prompt_output_cache_after_provider_success(
             )],
             cache_status: CacheStatus::Hit,
             raw_source_stored: false,
-            request_fingerprint: None,
-            file_hashes: None,
+            request_fingerprint: Some(exact_request_fingerprint(
+                provider,
+                project_root,
+                export_method,
+                &request.forwarded_args,
+            )),
+            file_hashes: packet_file_hashes(packet_bytes),
             artifact_ids: Some(vec![CacheArtifactId::from(artifact_id)]),
         }
     }
@@ -245,8 +264,13 @@ pub(crate) fn write_prompt_output_cache_after_provider_success(
             )],
             cache_status: CacheStatus::Hit,
             raw_source_stored: false,
-            request_fingerprint: None,
-            file_hashes: None,
+            request_fingerprint: Some(exact_request_fingerprint(
+                provider,
+                project_root,
+                export_method,
+                &request.forwarded_args,
+            )),
+            file_hashes: packet_file_hashes(packet_bytes),
             artifact_ids: Some(vec![CacheArtifactId::from(artifact_id)]),
         }
     }
@@ -288,7 +312,7 @@ pub(crate) fn write_prompt_output_cache_after_provider_success(
                 export_method,
                 &request.forwarded_args,
             )),
-            file_hashes: None,
+            file_hashes: packet_file_hashes(packet_bytes),
             artifact_ids: Some(vec![CacheArtifactId::from(artifact_id)]),
         }
     }
