@@ -23,16 +23,19 @@ pub use receipt::{
 };
 pub use types::{
     ByteCount, CacheArtifactId, CacheExportMethod, CacheGenerationId, CacheStatus, ClientCachePath,
-    ClientDbStatus, CompactArtifactId, ElapsedMillis, LanguageId, ProviderId, SemanticProtocolId,
-    SemanticProtocolVersion, SemanticSchemaId, SemanticSchemaVersion,
+    ClientDbJournalMode, ClientDbStatus, CompactArtifactId, ElapsedMillis, LanguageId, ProviderId,
+    SemanticProtocolId, SemanticProtocolVersion, SemanticSchemaId, SemanticSchemaVersion,
+    SyntaxQueryAstAbiFingerprint, SyntaxQueryGrammarId, SyntaxQueryGrammarProfileVersion,
+    SyntaxQuerySelector,
 };
 pub use {
     agent_semantic_tree_sitter::{
-        CompiledSyntaxQuery, LoadedGrammarProfile, LoadedSyntaxCatalog, SyntaxCatalogDescriptor,
-        SyntaxQueryAbiError, SyntaxQueryAbiPattern, SyntaxQueryAbiPlan, SyntaxQueryCompileError,
-        compile_catalog_query, compile_query_abi_source, compile_query_source,
-        extract_capture_names, fingerprint_catalog, fingerprint_grammar_profile,
-        load_grammar_profile, load_syntax_catalog, normalize_capture_names,
+        BuiltinCatalogId, BuiltinCatalogLanguageId, CompiledSyntaxQuery, LoadedGrammarProfile,
+        LoadedSyntaxCatalog, SyntaxCatalogDescriptor, SyntaxQueryAbiError, SyntaxQueryAbiPattern,
+        SyntaxQueryAbiPlan, SyntaxQueryCompileError, builtin_catalog_source, compile_catalog_query,
+        compile_query_abi_source, compile_query_source, extract_capture_names, fingerprint_catalog,
+        fingerprint_grammar_profile, load_grammar_profile, load_syntax_catalog,
+        normalize_capture_names,
     },
     request::{
         ASP_SYNTAX_QUERY_CAPTURES_ARG, ASP_SYNTAX_QUERY_FIELDS_ARG,

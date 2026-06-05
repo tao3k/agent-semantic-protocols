@@ -1,18 +1,14 @@
 use crate::cache_replay::{
-    load_replay_artifact, query_packet_matches_request,
-    render_semantic_tree_sitter_query_rows_stdout, render_semantic_tree_sitter_query_stdout,
-    semantic_tree_sitter_query_packet_matches_request,
+    query_packet_matches_request, render_semantic_tree_sitter_query_rows_stdout,
+    render_semantic_tree_sitter_query_stdout, semantic_tree_sitter_query_packet_matches_request,
 };
 use agent_semantic_client_core::{
-    CacheArtifactId, CacheExportMethod, CacheGenerationId, ClientCacheGeneration,
-    ClientCacheManifest, ClientMethod, ClientRequest, LanguageId, ProviderId, SemanticSchemaId,
+    CacheArtifactId, CacheGenerationId, ClientMethod, ClientRequest, LanguageId,
 };
 use agent_semantic_client_db::{
-    ClientDb, ClientDbGenerationHit, ClientDbSyntaxCaptureReplay, ClientDbSyntaxQueryInputKind,
-    ClientDbSyntaxQueryReplay,
+    ClientDbSyntaxCaptureReplay, ClientDbSyntaxQueryInputKind, ClientDbSyntaxQueryReplay,
 };
 use serde_json::{Value, json};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 #[test]
 fn query_packet_replay_requires_matching_owner_and_query() {
@@ -21,6 +17,10 @@ fn query_packet_replay_requires_matching_owner_and_query() {
         "render_rust_project_harness_search_view_with_config",
     );
     let term_request = term_request(
+        "src/search/api.rs",
+        "render_rust_project_harness_search_view_with_config",
+    );
+    let code_request = code_query_request(
         "src/search/api.rs",
         "render_rust_project_harness_search_view_with_config",
     );
@@ -65,6 +65,16 @@ fn query_packet_replay_requires_matching_owner_and_query() {
         )
         .is_none()
     );
+    assert!(
+        query_packet_matches_request(
+            &query_packet(
+                "src/search/api.rs",
+                "render_rust_project_harness_search_view_with_config",
+            ),
+            &code_request,
+        )
+        .is_none()
+    );
 }
 
 fn query_request(owner_path: &str, query: &str) -> ClientRequest {
@@ -75,12 +85,17 @@ fn term_request(owner_path: &str, query: &str) -> ClientRequest {
     request_with_query_flag(owner_path, "--term", query)
 }
 
+fn code_query_request(owner_path: &str, query: &str) -> ClientRequest {
+    let mut request = request_with_query_flag(owner_path, "--query", query);
+    request.forwarded_args.insert(3, "--code".to_string());
+    request
+}
+
 fn request_with_query_flag(owner_path: &str, flag: &str, query: &str) -> ClientRequest {
     ClientRequest::new(ClientMethod::Query, ".").with_forwarded_args(vec![
         owner_path.to_string(),
         flag.to_string(),
         query.to_string(),
-        "--code".to_string(),
         ".".to_string(),
     ])
 }
@@ -192,8 +207,8 @@ fn semantic_tree_sitter_query_replay_renders_frontier_graph_output() {
     assert_eq!(
         output,
         "[query-treesitter] root=. lang=unknown pattern=function_item/name capture=function.name alg=syntax-capture-frontier\n\
-legend: ID=kind:role(value)!next; ts=node/field; frontier ID.next\n\
-alias: graph:{G=query,Q=tsquery,C=capture,I=item,O=owner}\n\n\
+legend: aliases ID:kind; node ID=kind:role(value)!next; ts=node/field; frontier ID.next\n\
+aliases=G:query,Q:tsquery,C:capture,I:item,O:owner\n\n\
 Q=tsquery:pattern(function_item/name)!query\n\
 C=capture:function.name(parse_query)@src/lib.rs:10!code ts=identifier/name\n\
 I=item:fn(parse_query)@src/lib.rs:10:12!code ts=function_item\n\
@@ -253,13 +268,14 @@ fn semantic_tree_sitter_query_row_replay_renders_same_compact_surface() {
             "semantic-tree-sitter-query/syntax-row.json",
         )),
         packet_bytes: Some(123),
+        file_hashes: Vec::new(),
         rows: vec![
             ClientDbSyntaxCaptureReplay {
                 match_locator: "src/lib.rs:10:12".to_string(),
                 capture_locator: "src/lib.rs:10".to_string(),
                 capture_name: "function.name".to_string(),
-                capture_node_type: "identifier".to_string(),
-                item_node_type: "function_item".to_string(),
+                capture_node_type: "identifier".to_string().into(),
+                item_node_type: "function_item".to_string().into(),
                 field: Some("name".to_string()),
                 text: "parse_query".to_string(),
             },
@@ -267,8 +283,8 @@ fn semantic_tree_sitter_query_row_replay_renders_same_compact_surface() {
                 match_locator: "src/main.rs:20".to_string(),
                 capture_locator: "src/main.rs:20".to_string(),
                 capture_name: "function.name".to_string(),
-                capture_node_type: "identifier".to_string(),
-                item_node_type: "function_item".to_string(),
+                capture_node_type: "identifier".to_string().into(),
+                item_node_type: "function_item".to_string().into(),
                 field: Some("name".to_string()),
                 text: "main".to_string(),
             },
@@ -278,8 +294,8 @@ fn semantic_tree_sitter_query_row_replay_renders_same_compact_surface() {
     assert_eq!(
         output,
         "[query-treesitter] root=. lang=rust pattern=function_item/name capture=function.name alg=syntax-capture-frontier\n\
-legend: ID=kind:role(value)!next; ts=node/field; frontier ID.next\n\
-alias: graph:{G=query,Q=tsquery,C=capture,I=item,O=owner}\n\n\
+legend: aliases ID:kind; node ID=kind:role(value)!next; ts=node/field; frontier ID.next\n\
+aliases=G:query,Q:tsquery,C:capture,I:item,O:owner\n\n\
 Q=tsquery:pattern(function_item/name)!query\n\
 C=capture:function.name(parse_query)@src/lib.rs:10!code ts=identifier/name\n\
 I=item:fn(parse_query)@src/lib.rs:10:12!code ts=function_item\n\
@@ -310,6 +326,7 @@ fn semantic_tree_sitter_query_row_replay_renders_compact_miss_note() {
         captures: vec!["function.name".to_string()],
         artifact_id: None,
         packet_bytes: None,
+        file_hashes: Vec::new(),
         rows: Vec::new(),
     });
 
@@ -317,76 +334,6 @@ fn semantic_tree_sitter_query_row_replay_renders_compact_miss_note() {
         output,
         "|syntax-query inputForm=s-expression input=inline grammar=tree-sitter-rust grammarProfile=2026-06-04.v1 dialect=tree-sitter-query matchStatus=miss match=0 rows=0 truncated=false captureCount=1 captures=function.name\n"
     );
-}
-
-#[test]
-fn semantic_tree_sitter_query_replay_falls_back_to_rows_when_artifact_is_missing() {
-    let root = temp_root("syntax-row-replay");
-    let cache_root = root.join("client");
-    let db_path = ClientDb::default_path(&cache_root);
-    let generation = syntax_generation(&root);
-    let manifest = manifest_from_generation(&cache_root, generation.clone());
-    let packet = syntax_packet_with_matches();
-    let packet_bytes = serde_json::to_vec(&packet).expect("packet bytes");
-    let packet_len = packet_bytes.len();
-    let mut db = ClientDb::open_or_create(&db_path).expect("open db");
-
-    db.import_manifest(&manifest).expect("import manifest");
-    db.import_semantic_tree_sitter_query_packet(&generation, &packet_bytes)
-        .expect("import syntax rows");
-
-    let replay = load_replay_artifact(
-        &cache_root,
-        &ClientDbGenerationHit {
-            language_id: LanguageId::from("rust"),
-            provider_id: ProviderId::from("rs-harness"),
-            project_root: root.clone(),
-            export_method: CacheExportMethod::from("query/tree-sitter"),
-            schema_ids: vec![SemanticSchemaId::from(
-                "agent.semantic-protocols.semantic-tree-sitter-query",
-            )],
-            request_fingerprint: Some("fnv64:syntax-row".to_string()),
-            file_hashes: Vec::new(),
-            artifact_ids: vec![CacheArtifactId::from(
-                "semantic-tree-sitter-query/missing.json",
-            )],
-        },
-        &syntax_request(
-            "(function_item name: (identifier) @function.name)",
-            "src/lib.rs:1:80",
-            false,
-        ),
-    )
-    .expect("row replay");
-
-    assert_eq!(
-        String::from_utf8(replay.stdout).expect("utf8"),
-        "[query-treesitter] root=. lang=rust pattern=function_item/name capture=function.name alg=syntax-capture-frontier\n\
-legend: ID=kind:role(value)!next; ts=node/field; frontier ID.next\n\
-alias: graph:{G=query,Q=tsquery,C=capture,I=item,O=owner}\n\n\
-Q=tsquery:pattern(function_item/name)!query\n\
-C=capture:function.name(parse_query)@src/lib.rs:10!code ts=identifier/name\n\
-I=item:fn(parse_query)@src/lib.rs:10:12!code ts=function_item\n\
-C2=capture:function.name(main)@src/main.rs:20!code ts=identifier/name\n\
-I2=item:fn(main)@src/main.rs:20!code ts=function_item\n\n\
-G>{Q:selects}\n\
-Q>{C:captures,C2:captures}\n\
-C>{I:enclosing-item}\n\
-C2>{I2:enclosing-item}\n\n\
-omit=code,full-node-list,capture-text\n\
-rank=I,I2\n\
-frontier=I.code,I2.code\n\
-avoid=broad-code-output,raw-read\n"
-    );
-    assert_eq!(
-        replay.syntax_artifact_id.as_ref().map(|id| id.as_str()),
-        Some("semantic-tree-sitter-query/missing.json")
-    );
-    assert_eq!(
-        replay.packet_bytes.map(|bytes| bytes.as_u64()),
-        Some(packet_len.min(u64::MAX as usize) as u64)
-    );
-    let _ = std::fs::remove_dir_all(root);
 }
 
 fn syntax_request(source: &str, selector: &str, code: bool) -> ClientRequest {
@@ -417,101 +364,4 @@ fn syntax_packet(source: &str, selector: &str, code_output: bool) -> Value {
         },
         "matches": []
     })
-}
-
-fn syntax_generation(root: &std::path::Path) -> ClientCacheGeneration {
-    serde_json::from_value(json!({
-        "generationId": "syntax-row",
-        "languageId": "rust",
-        "providerId": "rs-harness",
-        "providerVersion": "0.1.0",
-        "exportMethod": "query/tree-sitter",
-        "projectRoot": root.display().to_string(),
-        "packageRoot": ".",
-        "schemaIds": ["agent.semantic-protocols.semantic-tree-sitter-query"],
-        "cacheStatus": "hit",
-        "rawSourceStored": false,
-        "requestFingerprint": "fnv64:syntax-row",
-        "fileHashes": [],
-        "artifactIds": ["semantic-tree-sitter-query/missing.json"]
-    }))
-    .expect("syntax generation")
-}
-
-fn manifest_from_generation(
-    cache_root: &std::path::Path,
-    generation: ClientCacheGeneration,
-) -> ClientCacheManifest {
-    ClientCacheManifest {
-        schema_id: "agent.semantic-protocols.client-cache-manifest".into(),
-        schema_version: "1".into(),
-        protocol_id: "agent.semantic-protocols.client".into(),
-        protocol_version: "1".into(),
-        cache_root: cache_root.display().to_string().into(),
-        generations: vec![generation],
-    }
-}
-
-fn syntax_packet_with_matches() -> Value {
-    json!({
-        "schemaId": "agent.semantic-protocols.semantic-tree-sitter-query",
-        "method": "query",
-        "languageId": "rust",
-        "providerId": "rs-harness",
-        "grammarId": "tree-sitter-rust",
-        "grammarProfileVersion": "2026-06-04.v1",
-        "query": {
-            "input": "(function_item name: (identifier) @function.name)",
-            "inputForm": "s-expression",
-            "dialect": "tree-sitter-query",
-            "compiledSource": "(function_item name: (identifier) @function.name)",
-            "fields": {
-                "selector": "src/lib.rs:1:80",
-                "codeOutput": false,
-                "captures": ["function.name"]
-            }
-        },
-        "matches": [
-            {
-                "id": "m1",
-                "range": {"path": "src/lib.rs", "lineRange": "10:12"},
-                "captures": [
-                    {
-                        "id": "c1",
-                        "name": "function.name",
-                        "nodeType": "identifier",
-                        "range": {"path": "src/lib.rs", "lineRange": "10:10"},
-                        "fields": {"symbol": "parse_query"}
-                    }
-                ]
-            },
-            {
-                "id": "m2",
-                "captures": [
-                    {
-                        "id": "c2",
-                        "name": "function.name",
-                        "nodeType": "identifier",
-                        "range": {"path": "src/main.rs", "lineRange": {"start": 20, "end": 20}},
-                        "fields": {"name": "main"}
-                    }
-                ]
-            }
-        ],
-        "truncated": false,
-        "cache": {
-            "artifactKind": "semantic-tree-sitter-query",
-            "rawSourceStored": false
-        }
-    })
-}
-
-fn temp_root(name: &str) -> std::path::PathBuf {
-    let unique = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("clock")
-        .as_nanos();
-    let root = std::env::temp_dir().join(format!("agent-semantic-client-{name}-{unique}"));
-    std::fs::create_dir_all(&root).expect("create temp root");
-    root
 }

@@ -1,6 +1,6 @@
 use agent_semantic_client_core::{
     ByteCount, ClientMethod, ClientReceipt, ElapsedMillis, LanguageId, NativeProvenance,
-    ProviderCommandReceipt, ProviderId,
+    ProviderCommandReceipt, ProviderId, syntax_query_ast_abi_fingerprint,
 };
 
 use crate::syntax_receipt::apply_syntax_query_receipt_metadata;
@@ -27,8 +27,11 @@ fn base_receipt() -> ClientReceipt {
 
 #[test]
 fn annotates_semantic_tree_sitter_query_packet_receipt() {
-    let stdout = br#"{"schemaId":"agent.semantic-protocols.semantic-tree-sitter-query","cache":{"artifactId":"semantic-tree-sitter-query/calls.json"}}"#;
+    let stdout = br#"{"schemaId":"agent.semantic-protocols.semantic-tree-sitter-query","grammarId":"tree-sitter-rust","grammarProfileVersion":"1.0.0","query":{"input":"(function_item name: (identifier) @function.name)","compiledSource":"(function_item name: (identifier) @function.name)","fields":{"selector":"src/lib.rs:1:20"}},"cache":{"artifactId":"semantic-tree-sitter-query/calls.json"}}"#;
     let mut receipt = base_receipt();
+    let expected_fingerprint =
+        syntax_query_ast_abi_fingerprint("(function_item name: (identifier) @function.name)")
+            .unwrap();
 
     apply_syntax_query_receipt_metadata(&mut receipt, stdout);
 
@@ -40,6 +43,34 @@ fn annotates_semantic_tree_sitter_query_packet_receipt() {
         receipt.syntax_artifact_id.as_ref().map(|id| id.as_str()),
         Some("semantic-tree-sitter-query/calls.json")
     );
+    assert_eq!(
+        receipt
+            .syntax_query_ast_abi_fingerprint
+            .as_ref()
+            .map(|fingerprint| fingerprint.as_str()),
+        Some(expected_fingerprint.as_str())
+    );
+    assert_eq!(
+        receipt
+            .syntax_query_grammar_id
+            .as_ref()
+            .map(|grammar_id| grammar_id.as_str()),
+        Some("tree-sitter-rust")
+    );
+    assert_eq!(
+        receipt
+            .syntax_query_grammar_profile_version
+            .as_ref()
+            .map(|grammar_profile_version| grammar_profile_version.as_str()),
+        Some("1.0.0")
+    );
+    assert_eq!(
+        receipt
+            .syntax_query_selector
+            .as_ref()
+            .map(|selector| selector.as_str()),
+        Some("src/lib.rs:1:20")
+    );
 }
 
 #[test]
@@ -50,4 +81,8 @@ fn ignores_non_syntax_or_invalid_stdout() {
 
     assert_eq!(receipt.packet_bytes, None);
     assert_eq!(receipt.syntax_artifact_id, None);
+    assert_eq!(receipt.syntax_query_ast_abi_fingerprint, None);
+    assert_eq!(receipt.syntax_query_grammar_id, None);
+    assert_eq!(receipt.syntax_query_grammar_profile_version, None);
+    assert_eq!(receipt.syntax_query_selector, None);
 }

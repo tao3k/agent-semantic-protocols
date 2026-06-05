@@ -18,7 +18,7 @@ class LineProtocolCompactGraphEntriesTests(unittest.TestCase):
             (
                 "print('[search-query] q=async selector=src/lib.rs alg=query-set')\n"
                 "print('legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next')\n"
-                "print('alias: graph:{G=search,O=owner,Q=query,D=dependency}')\n"
+                "print('aliases: graph:{G=search,O=owner,Q=query,D=dependency}')\n"
                 "print('O=owner:path(src/lib.rs)!owner;Q=query:term(async)!fzf;D=dependency:pkg(tokio)!deps')\n"
                 "print('G>{O:selects,Q:matches,D:uses}')\n"
                 "print('rank=O,Q,D frontier=O.owner,Q.fzf,D.deps')\n"
@@ -34,7 +34,7 @@ class LineProtocolCompactGraphEntriesTests(unittest.TestCase):
             (
                 "print('[search-reasoning] q=finding-frontier selector=finding=py-policy alg=seed-frontier')\n"
                 "print('legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next')\n"
-                "print('alias: graph:{G=search,F=finding,O=owner}')\n"
+                "print('aliases: graph:{G=search,F=finding,O=owner}')\n"
                 "print('F=finding:finding(py-policy)!finding;O=owner:path(src/lib.rs)!owner')\n"
                 "print('G>{F:flags,O:selects}')\n"
                 "print('rank=F,O frontier=F.finding,O.owner')\n"
@@ -50,7 +50,7 @@ class LineProtocolCompactGraphEntriesTests(unittest.TestCase):
             (
                 "print('[search-query] q=async selector=src/lib.rs alg=query-set')\n"
                 "print('legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next')\n"
-                "print('alias: graph:{G=search,O=owner}')\n"
+                "print('aliases: graph:{G=search,O=owner}')\n"
                 "print('O=owner:path(src/lib.rs)!owner')\n"
                 "print('G>{O:selects}')\n"
                 "print('rank=O frontier=O.owner')\n"
@@ -60,7 +60,7 @@ class LineProtocolCompactGraphEntriesTests(unittest.TestCase):
 
         self.assertEqual("fail", result.status)
         self.assertIn(
-            "compact graph entry selector alias 'X' missing from alias graph",
+            "compact graph entry selector alias 'X' missing from aliases declaration",
             result.steps[0].errors,
         )
 
@@ -70,7 +70,7 @@ class LineProtocolCompactGraphEntriesTests(unittest.TestCase):
             (
                 "print('[search-query] q=async selector=src/lib.rs alg=query-set')\n"
                 "print('legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next')\n"
-                "print('alias: graph:{G=search,O=owner,T=test}')\n"
+                "print('aliases: graph:{G=search,O=owner,T=test}')\n"
                 "print('O=owner:path(src/lib.rs)!owner;T=test:path(tests/lib.rs)!tests')\n"
                 "print('G>{O:selects,T:covers}')\n"
                 "print('rank=O,T frontier=O.owner,T.tests')\n"
@@ -90,7 +90,7 @@ class LineProtocolCompactGraphEntriesTests(unittest.TestCase):
             (
                 "print('[search-query] q=async selector=src/lib.rs alg=query-set')\n"
                 "print('legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next')\n"
-                "print('alias: graph:{G=search,O=owner,T=test}')\n"
+                "print('aliases: graph:{G=search,O=owner,T=test}')\n"
                 "print('O=owner:path(src/lib.rs)!owner;T=test:path(tests/lib.rs)!tests')\n"
                 "print('G>{O:selects,T:covers}')\n"
                 "print('rank=O,T frontier=O.owner,T.tests')\n"

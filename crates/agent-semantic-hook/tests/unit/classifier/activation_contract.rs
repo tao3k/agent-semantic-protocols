@@ -79,7 +79,7 @@ fn activation_resolves_provider_manifest_and_project_coverage() {
     assert_eq!(runtime.providers[0].source_roots, ["src", "tests"]);
     assert_eq!(
         runtime.providers[0].routes.guide.as_ref().unwrap().argv,
-        ["ts-harness", "agent", "guide", "."]
+        ["ts-harness", "guide", "."]
     );
 }
 
@@ -121,7 +121,7 @@ fn provider_manifest_value() -> Value {
                 "stdinMode": "pipe-candidates"
             },
             "checkChanged": {"argv": ["ts-harness", "check", "--changed", "."]},
-            "guide": {"argv": ["ts-harness", "agent", "guide", "."]}
+            "guide": {"argv": ["ts-harness", "guide", "."]}
         }
     })
 }

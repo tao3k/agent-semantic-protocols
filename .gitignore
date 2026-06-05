@@ -4,6 +4,7 @@
 .cache
 .data/
 .devenv/
+build/
 target/
 .venv/
 __pycache__/

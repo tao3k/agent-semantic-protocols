@@ -16,6 +16,7 @@ fn rust_search_facade_execs_activated_provider() {
         ("rust", "rs-harness", "rs"),
         ("typescript", "ts-harness", "ts"),
         ("python", "py-harness", "py"),
+        ("julia", "aslp-julia-harness", "jl"),
     ];
     std::fs::create_dir_all(&bin_dir).expect("create bin dir");
     for (_, binary, label) in providers.iter().copied() {
@@ -35,6 +36,7 @@ fn rust_search_facade_execs_activated_provider() {
             provider("rust", Vec::new()),
             provider("typescript", Vec::new()),
             provider("python", Vec::new()),
+            provider("julia", Vec::new()),
         ],
     );
     for (language, _, label) in providers.iter().copied() {

@@ -12,7 +12,7 @@ pub(super) struct GraphAlias {
     target_role: &'static str,
     target: String,
     locator: Option<String>,
-    pub(super) action: &'static str,
+    pub(super) action: String,
 }
 
 impl GraphAlias {
@@ -56,7 +56,11 @@ pub(super) fn graph_aliases(packet: &Value, limit: usize) -> Vec<GraphAlias> {
         if target.is_empty() {
             continue;
         }
-        let dedupe_key = format!("{}:{}:{}", spec.node_type, target, spec.action);
+        let action_name = action
+            .action
+            .clone()
+            .unwrap_or_else(|| spec.action.to_string());
+        let dedupe_key = format!("{}:{}:{}", spec.node_type, target, action_name);
         if !seen.insert(dedupe_key) {
             continue;
         }
@@ -67,7 +71,7 @@ pub(super) fn graph_aliases(packet: &Value, limit: usize) -> Vec<GraphAlias> {
             target_role: spec.target_role,
             target: target.to_string(),
             locator: action.locator.clone(),
-            action: spec.action,
+            action: action_name,
         });
         if aliases.len() >= limit {
             break;
@@ -87,24 +91,48 @@ pub(super) fn graph_edge_lines(aliases: &[GraphAlias], owner_item_query: bool) -
     }
 
     let owner = aliases.iter().find(|alias| alias.node_type == "owner");
-    let symbols = aliases
+    let queries = aliases
         .iter()
-        .filter(|alias| alias.node_type == "symbol")
+        .filter(|alias| alias.node_type == "query")
+        .collect::<Vec<_>>();
+    let items = aliases
+        .iter()
+        .filter(|alias| alias.node_type == "item")
+        .collect::<Vec<_>>();
+    let hot = aliases
+        .iter()
+        .filter(|alias| alias.node_type == "hot")
         .collect::<Vec<_>>();
     let mut root_edges = Vec::new();
     if let Some(owner) = owner {
         root_edges.push(format!("{}:selects", owner.id));
     }
-    root_edges.extend(symbols.iter().map(|alias| format!("{}:matches", alias.id)));
+    if queries.is_empty() {
+        root_edges.extend(items.iter().map(|alias| format!("{}:matches", alias.id)));
+    } else {
+        root_edges.extend(queries.iter().map(|alias| format!("{}:matches", alias.id)));
+    }
     let mut lines = vec![format!("{SEARCH_ROOT_ID}>{{{}}}", root_edges.join(","))];
     if let Some(owner) = owner {
-        let contains_edges = symbols
+        let contains_edges = items
             .iter()
+            .chain(hot.iter())
             .map(|alias| format!("{}:contains", alias.id))
             .collect::<Vec<_>>()
             .join(",");
         if !contains_edges.is_empty() {
             lines.push(format!("{}>{{{contains_edges}}}", owner.id));
+        }
+    }
+    for query in queries {
+        let query_edges = items
+            .iter()
+            .map(|alias| format!("{}:matches", alias.id))
+            .chain(hot.iter().map(|alias| format!("{}:revise", alias.id)))
+            .collect::<Vec<_>>()
+            .join(",");
+        if !query_edges.is_empty() {
+            lines.push(format!("{}>{{{query_edges}}}", query.id));
         }
     }
     lines
@@ -129,16 +157,31 @@ pub(super) fn graph_frontier(aliases: &[GraphAlias], owner_item_query: bool) -> 
 
 pub(super) fn graph_legend_line(aliases: &[GraphAlias]) -> String {
     let mut entries = vec![format!("{SEARCH_ROOT_ID}=search")];
+    let mut seen = BTreeSet::new();
     for alias in aliases {
-        entries.push(format!("{}={}", alias.id, alias.node_type));
+        let compact_id = compact_alias_id(&alias.id);
+        if seen.contains(&(compact_id.to_string(), alias.node_type)) {
+            continue;
+        }
+        let id = if seen
+            .iter()
+            .any(|(existing, node_type)| existing == compact_id && *node_type != alias.node_type)
+        {
+            alias.id.as_str()
+        } else {
+            compact_id
+        };
+        if seen.insert((id.to_string(), alias.node_type)) {
+            entries.push(format!("{id}={}", alias.node_type));
+        }
     }
-    format!("alias: graph:{{{}}}", entries.join(","))
+    format!("aliases: graph:{{{}}}", entries.join(","))
 }
 
 pub(super) fn is_owner_item_query(packet: &Value, mode: &str, aliases: &[GraphAlias]) -> bool {
     is_owner_item_query_packet(packet, mode)
         && aliases.iter().any(|alias| alias.node_type == "owner")
-        && aliases.iter().any(|alias| alias.node_type == "symbol")
+        && aliases.iter().any(|alias| alias.node_type == "item")
 }
 
 fn graph_alias_target_role(target_role: &'static str, target: &str) -> &'static str {
@@ -151,9 +194,11 @@ fn graph_alias_target_role(target_role: &'static str, target: &str) -> &'static 
 fn graph_action_owner_item_order(action: &GraphAction) -> u8 {
     match action.kind.as_str() {
         "owner" => 0,
-        "item-symbol" => 1,
-        "symbol" => 2,
-        _ => 3,
+        "query" => 1,
+        "item-symbol" => 2,
+        "symbol" => 3,
+        "hot" => 3,
+        _ => 5,
     }
 }
 
@@ -163,9 +208,14 @@ fn graph_rank_aliases(aliases: &[GraphAlias], owner_item_query: bool) -> Vec<&Gr
     }
     aliases
         .iter()
-        .filter(|alias| alias.node_type == "symbol")
-        .chain(aliases.iter().filter(|alias| alias.node_type != "symbol"))
+        .filter(|alias| alias.node_type == "hot")
+        .chain(aliases.iter().filter(|alias| alias.node_type == "item"))
+        .chain(aliases.iter().filter(|alias| alias.node_type == "owner"))
         .collect()
+}
+
+fn compact_alias_id(id: &str) -> &str {
+    id.trim_end_matches(|character: char| character.is_ascii_digit())
 }
 
 fn graph_relation(node_type: &str) -> &'static str {

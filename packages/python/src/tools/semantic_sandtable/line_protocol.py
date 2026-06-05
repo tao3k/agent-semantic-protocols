@@ -41,11 +41,11 @@ def _validate_compact_graph_contract(result: StepResult, lines: list[str]) -> No
         return
     if COMPACT_GRAPH_MICRO_LEGEND not in lines:
         result.errors.append("compact graph missing micro-legend line")
-    alias_lines = [line for line in lines if line.startswith("alias: graph:{")]
+    alias_lines = [line for line in lines if line.startswith("aliases: graph:{")]
     if not alias_lines:
-        result.errors.append("compact graph missing alias legend line")
+        result.errors.append("compact graph missing aliases line")
     elif "G=search" not in alias_lines[0]:
-        result.errors.append("compact graph alias legend missing G=search")
+        result.errors.append("compact graph aliases line missing G=search")
     if not any(line.startswith("G>{") for line in lines):
         result.errors.append("compact graph missing root edge line")
     if not any(line.startswith("rank=") and " frontier=" in line for line in lines):
@@ -76,8 +76,8 @@ def _requires_compact_graph_contract(command: list[str]) -> bool:
 def _is_compact_graph_line(line: str) -> bool:
     if line == COMPACT_GRAPH_MICRO_LEGEND:
         return True
-    if line.startswith("alias: graph:{"):
-        return _looks_like_compact_graph_legend_line(line)
+    if line.startswith("aliases: graph:{"):
+        return _looks_like_compact_graph_aliases_line(line)
     if line.startswith("rank="):
         return " frontier=" in line
     if line.startswith("entries="):
@@ -89,10 +89,11 @@ def _is_compact_graph_line(line: str) -> bool:
     return _looks_like_compact_graph_alias_line(line)
 
 
-def _looks_like_compact_graph_legend_line(line: str) -> bool:
-    if not line.endswith("}"):
+def _looks_like_compact_graph_aliases_line(line: str) -> bool:
+    body = _compact_graph_alias_body(line)
+    if body is None:
         return False
-    entries = line.removeprefix("alias: graph:{")[:-1].split(",")
+    entries = body.split(",")
     if not entries:
         return False
     for entry in entries:
@@ -151,12 +152,27 @@ def _validate_compact_graph_entries_contract(
 
 def _compact_graph_legend_aliases(alias_line: str) -> dict[str, str]:
     aliases: dict[str, str] = {}
-    body = alias_line.removeprefix("alias: graph:{").removesuffix("}")
+    body = _compact_graph_alias_body(alias_line)
+    if body is None:
+        return aliases
     for entry in body.split(","):
         alias, sep, node_kind = entry.partition("=")
         if sep:
             aliases[alias] = node_kind
     return aliases
+
+def _compact_graph_alias_body(alias_line: str) -> str | None:
+    prefix = "aliases: graph:{"
+    if not alias_line.startswith(prefix):
+        return None
+    body_and_tail = alias_line.removeprefix(prefix)
+    body, sep, tail = body_and_tail.partition("}")
+    if not sep:
+        return None
+    tail = tail.strip()
+    if tail and not tail.startswith(","):
+        return None
+    return body
 
 def _validate_compact_graph_entry_contract(
     result: StepResult,
@@ -176,10 +192,12 @@ def _validate_compact_graph_entry_contract(
             )
             return
     for index, selector in enumerate(selectors):
-        node_kind = graph_aliases.get(selector)
+        node_kind = graph_aliases.get(selector) or graph_aliases.get(
+            _compact_graph_alias_prefix(selector)
+        )
         if node_kind is None:
             result.errors.append(
-                f"compact graph entry selector alias {selector!r} missing from alias graph"
+                f"compact graph entry selector alias {selector!r} missing from aliases declaration"
             )
             return
         if expected_contract is None:
@@ -195,6 +213,9 @@ def _compact_graph_return_entry_parts(entry: str) -> tuple[str, list[str], list[
     profile, _sep, selector_and_returns = entry.partition("(")
     selectors, _sep, returns = selector_and_returns[:-1].partition("=>")
     return profile, selectors.split(","), returns.split("+")
+
+def _compact_graph_alias_prefix(alias_id: str) -> str:
+    return alias_id.rstrip("0123456789")
 
 def _looks_like_compact_graph_return_entry(entry: str) -> bool:
     profile, sep, selector_and_returns = entry.partition("(")

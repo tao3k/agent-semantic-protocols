@@ -12,6 +12,9 @@ mod command_shell;
 #[path = "unit/event_state.rs"]
 mod event_state;
 
+#[path = "unit/provider_manifest.rs"]
+mod provider_manifest;
+
 #[path = "unit/rust_harness_activation/mod.rs"]
 mod rust_harness_activation;
 #[path = "unit/rust_project_harness_gate.rs"]

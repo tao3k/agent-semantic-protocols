@@ -6,6 +6,7 @@ typescript_harness_project := "languages/typescript-lang-project-harness"
 python_harness_project := "languages/python-lang-project-harness"
 julia_harness_project := "languages/JuliaLangProjectHarness.jl"
 julia_harness := "julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl"
+julia_compiled_harness := "languages/JuliaLangProjectHarness.jl/build/juliac-aslp-local/aslp-julia-harness"
 
 default:
     @just --list
@@ -152,17 +153,30 @@ agent-hooks-doctor-py:
     py-harness agent doctor {{repo}}
 
 check-sandtables:
-    uv run semantic-sandtable
+    uv run --project packages/python python -m tools sandtable
 
-provider-gate: check-rust-warnings provider-gate-root provider-gate-rust provider-gate-typescript provider-gate-python provider-gate-julia
+provider-gate: check-rust-warnings check-schema-profiles check-tree-sitter-query-contracts check-language-workspace-search-contracts provider-gate-root provider-gate-rust provider-gate-typescript provider-gate-python provider-gate-julia
 
 check-rust-warnings:
     direnv exec . env RUSTFLAGS="-D warnings" cargo check -q -p agent-semantic-protocol
     direnv exec . env RUSTFLAGS="-D warnings" cargo check -q --manifest-path {{rust_harness_project}}/Cargo.toml --features cli,search
 
+check-schema-profiles:
+    direnv exec . uv run --project packages/python python -m tools schema profiles validate
+
+check-tree-sitter-query-contracts:
+    direnv exec . bash tools/run-tree-sitter-query-contracts.sh
+
+check-language-workspace-search-contracts:
+    direnv exec . bash tools/validate-language-workspace-search-contract.sh
+
 provider-gate-root:
     direnv exec . cargo test -p agent-semantic-hook
-    direnv exec . python -m pytest tests/unit/test_semantic_*_schema.py tests/unit/semantic_sandtable
+    direnv exec . python -m pytest \
+      tests/unit/test_semantic_*_schema.py \
+      tests/unit/test_semantic_tree_sitter_query_rfc.py \
+      tests/unit/test_cli_first_harness_ux_rfc.py \
+      tests/unit/semantic_sandtable
 
 provider-gate-rust:
     direnv exec . cargo test --manifest-path {{rust_harness_project}}/Cargo.toml --features cli,search search
@@ -178,6 +192,7 @@ provider-gate-typescript:
       {{typescript_harness_project}}/dist/tests/unit/cli_item_query.test.js \
       {{typescript_harness_project}}/dist/tests/unit/cli_item_query_code.test.js \
       {{typescript_harness_project}}/dist/tests/unit/cli_item_query_fallback.test.js \
+      {{typescript_harness_project}}/dist/tests/unit/cli_search_ingest.test.js \
       {{typescript_harness_project}}/dist/tests/unit/cli_search_policy.test.js \
       {{typescript_harness_project}}/dist/tests/unit/cli_search_query.test.js \
       {{typescript_harness_project}}/dist/tests/unit/semantic_language_registry_read_packet.test.js \
@@ -191,12 +206,16 @@ provider-gate-python:
     direnv exec . uv run --project {{python_harness_project}} --frozen python -m pytest \
       {{python_harness_project}}/tests/unit/harness/test_semantic_cli_query_set.py \
       {{python_harness_project}}/tests/unit/harness/test_semantic_cli_owner_items.py \
+      {{python_harness_project}}/tests/unit/harness/test_semantic_search_ingest_cli.py \
       {{python_harness_project}}/tests/unit/harness/test_semantic_cli_policy.py \
       {{python_harness_project}}/tests/unit/harness/test_semantic_schema_registry.py
 
 provider-gate-julia:
 	direnv exec . julia --project={{julia_harness_project}} -e 'using Pkg; Pkg.test()'
-	@echo "[provider-gate-julia] skipped CLI runtime smoke; Julia startup/warmup is tracked separately"
+	direnv exec . {{julia_harness}} guide {{julia_harness_project}} >/dev/null
+	direnv exec . {{julia_harness}} agent doctor --json {{julia_harness_project}} >/dev/null
+	direnv exec . {{julia_compiled_harness}} guide {{julia_harness_project}} >/dev/null
+	direnv exec . {{julia_compiled_harness}} agent doctor --json {{julia_harness_project}} >/dev/null
 
 check-python-policy:
     uv run --project {{python_harness_project}} --frozen py-harness check --full {{repo}}

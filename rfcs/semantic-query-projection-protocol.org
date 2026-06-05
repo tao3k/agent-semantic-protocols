@@ -121,8 +121,9 @@ Language-owned examples:
   =tsconfig= facts.
 - Python uses =ast= and must preserve indentation-sensitive block ownership in
   projection nodes or semantic outline.
-- Julia remains workspace-managed; if it emits query packets, it uses this same
-  schema shape without requiring global bin parity.
+- Julia uses JuliaSyntax-owned projection facts through =asp julia= and the
+  compiled =aslp-julia-harness= provider; its query packets use this same schema
+  shape.
 
 Formatter-assisted compaction is allowed only after native parser facts are
 established.  Formatter profile is provider/workspace metadata, not a shared

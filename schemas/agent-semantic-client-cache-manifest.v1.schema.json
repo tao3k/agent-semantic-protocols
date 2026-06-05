@@ -99,6 +99,7 @@
           "pattern": "^[a-z0-9_-]+:[a-f0-9]{16,64}$"
         },
         "fileHashes": {
+          "description": "Source freshness hashes for replay eligibility. Entries store only project-relative path plus sha256 and may be supplied by a validated provider packet or derived by the client from validated syntax locator fields.",
           "type": "array",
           "items": {
             "$ref": "#/$defs/fileHash"

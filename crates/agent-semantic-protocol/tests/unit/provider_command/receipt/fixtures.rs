@@ -5,7 +5,7 @@ use crate::provider_command::support::{
 };
 
 pub(super) fn valid_manifest(root: &std::path::Path) -> Value {
-    valid_manifest_with_artifact(root, "search/rust-main-1.json")
+    valid_search_manifest_with_artifact(root, "search/rust-main-1.json")
 }
 
 pub(super) fn valid_manifest_with_artifact(root: &std::path::Path, artifact_id: &str) -> Value {
@@ -34,10 +34,47 @@ pub(super) fn valid_manifest_with_artifact(root: &std::path::Path, artifact_id: 
     })
 }
 
+pub(super) fn valid_search_manifest_with_artifact(
+    root: &std::path::Path,
+    artifact_id: &str,
+) -> Value {
+    let request_fingerprint =
+        request_fingerprint(root, "search/prime", &["prime", "--view", "seeds", "."]);
+    json!({
+        "schemaId": "agent.semantic-protocols.client-cache-manifest",
+        "schemaVersion": "1",
+        "protocolId": "agent.semantic-protocols.client",
+        "protocolVersion": "1",
+        "cacheRoot": cache_root(root).display().to_string(),
+        "generations": [
+            {
+                "generationId": "rust-main-1",
+                "languageId": "rust",
+                "providerId": "rs-harness",
+                "providerVersion": "0.1.0",
+                "exportMethod": "search/prime",
+                "projectRoot": root.display().to_string(),
+                "packageRoot": ".",
+                "schemaIds": ["agent.semantic-protocols.semantic-search-packet"],
+                "cacheStatus": "miss",
+                "rawSourceStored": false,
+                "requestFingerprint": request_fingerprint,
+                "fileHashes": fresh_file_hashes(root),
+                "artifactIds": [artifact_id]
+            }
+        ]
+    })
+}
+
 pub(super) fn valid_query_manifest_with_artifact(
     root: &std::path::Path,
     artifact_id: &str,
 ) -> Value {
+    let request_fingerprint = request_fingerprint(
+        root,
+        "query/owner-items",
+        &["src/lib.rs", "--term", "CacheReplay", "."],
+    );
     json!({
         "schemaId": "agent.semantic-protocols.client-cache-manifest",
         "schemaVersion": "1",
@@ -56,6 +93,7 @@ pub(super) fn valid_query_manifest_with_artifact(
                 "schemaIds": ["agent.semantic-protocols.semantic-query-packet"],
                 "cacheStatus": "miss",
                 "rawSourceStored": false,
+                "requestFingerprint": request_fingerprint,
                 "fileHashes": fresh_file_hashes(root),
                 "artifactIds": [artifact_id]
             }
@@ -71,6 +109,35 @@ fn fresh_file_hashes(root: &std::path::Path) -> Value {
             "sha256": CACHE_SOURCE_SHA256
         }
     ])
+}
+
+fn request_fingerprint(root: &std::path::Path, export_method: &str, args: &[&str]) -> String {
+    let seed = format!(
+        "{}\0{}\0{}\0{}\0{}\0{}",
+        "rust",
+        "rs-harness",
+        normalized_path(root),
+        export_method,
+        args.join("\0"),
+        "syntax-query-ast-abi:none"
+    );
+    format!("fnv64:{}", stable_hash_hex(&seed))
+}
+
+fn normalized_path(path: &std::path::Path) -> String {
+    path.canonicalize()
+        .unwrap_or_else(|_| path.to_path_buf())
+        .display()
+        .to_string()
+}
+
+fn stable_hash_hex(value: &str) -> String {
+    let mut hash = 0xcbf29ce484222325u64;
+    for byte in value.as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    format!("{hash:016x}")
 }
 
 pub(super) fn sample_search_packet() -> Value {

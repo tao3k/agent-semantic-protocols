@@ -55,8 +55,8 @@ Machine output: compact JSON artifacts and local SQL rows outside the prompt; Ar
 3. /Local-first remains the community default./  The local client works with
    installed provider CLIs such as =ts-harness=, =rs-harness=, and
    =py-harness=, but the default agent-facing command surface is the
-   =asp <language>= facade for =search=, =query=, =check=,
-   =agent guide=, and bounded provider-native surfaces such as =ast-patch= and
+   =asp <language>= facade for =guide=, =search=, =query=, =check=,
+   and bounded provider-native surfaces such as =ast-patch= and
    =evidence=.  It must not require the private server submodule, Arrow Flight,
    cloud auth, or a network connection.
 
@@ -74,8 +74,8 @@ Machine output: compact JSON artifacts and local SQL rows outside the prompt; Ar
    namespace.
 
 5. /Provider CLIs remain parser authority./  Rust, TypeScript, Python, and
-   workspace-managed Julia providers own native parser facts, project config,
-   owner graphs, item queries, policy checks, and compact code projection.
+   Julia providers own native parser facts, project config, owner graphs, item
+   queries, policy checks, and compact code projection.
    =agent-semantic-client= must not recreate language semantics from text.
 
 6. /Execution-route selection is not a search flag./  Normal agent search commands do
@@ -174,7 +174,7 @@ logic must keep separate ownership boundaries.
 | Component | Owns |
 |-----------+------|
 | =ts-harness=, =rs-harness=, =py-harness= | native parser facts, provider commands, schema-valid search/query/check packets and provider-native receipts |
-| workspace-managed Julia provider | JuliaSyntax-native facts, explicit workspace-managed evidence, index exports for cache refresh, not global bin parity |
+| =aslp-julia-harness= | JuliaSyntax-native facts, facade-aligned provider commands, index exports for cache refresh, source-provider fallback via =julia-project-harness.jl= |
 | =agent-semantic-protocol= | shared schemas/receipts, compact graph render algorithm, graph render validation, provider shell-out =graph render= CLI |
 | =agent-semantic-hook= | agent platform event classification and provider route guidance |
 | =agent-semantic-client= | cross-language routing, execution-route choice, cache, renderer invocation, artifacts |
@@ -339,7 +339,7 @@ asp rust ast-patch dry-run --packet semantic-ast-patch.json .
 This facade is deliberately smaller than =agent-semantic-client=.  It reads
 =.cache/agent-semantic-protocol/hooks/activation.json=, selects the activated provider by
 canonical =languageId=, applies =providerCommandPrefix= if configured, and
-execs =search=, =query=, =check=, =agent guide=, =ast-patch=, or =evidence=.
+execs =guide=, =search=, =query=, =check=, =ast-patch=, or =evidence=.
 The advanced provider-native surfaces are explicit allow-list entries, not an
 open provider command tunnel.  It preserves provider stdout/stderr and
 parser-owned semantics.  It must not add compatibility aliases such as =rs=,
@@ -549,11 +549,13 @@ asp cache status
   -> inspect cache-manifest.json and client.sqlite3
   -> do not spawn native providers
   -> print status=missing|unimported|available|invalid|unavailable
+  -> report SQLite runtime profile when client.sqlite3 is present
   -> emit method=cache-status receipt
 
 asp cache import
   -> validate provider-owned cache-manifest.json
   -> write normalized generation rows into client.sqlite3
+  -> preserve unrelated normalized row families when a manifest generation is refreshed
   -> do not spawn native providers or synthesize provider facts
   -> emit method=cache-import receipt
 
@@ -587,8 +589,13 @@ is the fastest replay path and may be paired with
   that match the current project files.  Missing, unreadable, or mismatched
   source hashes make the generation =cacheStatus=stale=, not =hit=, and the
   client must invoke the native provider instead of replaying old compact
-  output.  Both syntax paths render the current compact locator/frontier
-  surface from structured facts and must not store or replay raw source.  Exact
+  output.  For =semantic-tree-sitter-query.v1= packets, those hashes may come
+  from packet-provided =/cache/fileHashes= or from client-computed path+sha256
+  values over validated locator fields such as =selector=, =read=, =path=, and
+  capture/match ranges.  This freshness fallback stores no raw source and does
+  not infer language semantics.  Both syntax paths render the current compact
+  locator/frontier surface from structured facts and must not store or replay
+  raw source.  Exact
   syntax query cache identity is the ASP-compiled query AST/ABI fingerprint plus
   grammar/profile/catalog provenance and provider generation; stdout text is a
   renderer product, not the normal cache boundary.  =prompt-output/*.txt= replay
@@ -596,8 +603,17 @@ is the fastest replay path and may be paired with
   validated packet or row generation.  Registry-owned catalog/profile
   fingerprints must join the same key family once the client carries query
   descriptors from provider activation.  If neither artifact nor rows can
-  satisfy the exact request, the generation remains =warm-provider= and the
-  native provider still supplies the output.
+satisfy the exact request, the generation remains =warm-provider= and the
+native provider still supplies the output.
+
+The local SQLite client DB is a concurrent cache boundary, not a single-process
+scratch file.  Writable cache connections must enable =journal_mode=WAL=, set a
+non-zero =busy_timeout=, keep =foreign_keys= enabled, and use a stable
+=synchronous= profile appropriate for local cache durability.  =asp cache
+status= and cache receipts expose the observed runtime profile as
+=clientDbJournalMode=, =clientDbSynchronous=, =clientDbBusyTimeoutMs=, and
+=clientDbForeignKeys= so agents can diagnose lock contention or stale installed
+binary behavior without guessing from filesystem state.
 
 Syntax row projection changes must not be handled by repeatedly bumping the
 client DB schema.  The client records a row-family ABI marker such as
@@ -609,6 +625,11 @@ provider miss repopulates the row family.  A syntax row is eligible for replay
 only when it carries the ASP query AST/ABI fingerprint plus AST/ABI-derived
 capture and item node types; incomplete rows are treated as absent, not as a
 best-effort fallback surface.
+
+Operators can force the same scoped reset with =asp cache flush syntax-rows=.
+That command deletes only normalized syntax row families, preserves manifest
+generations and artifact provenance, and is intended for AST/ABI renderer or row
+projection drift.  Full =asp cache flush= remains the broad generation reset.
 
 The Rust client may build denormalized owner, symbol, native fact, handle,
 diagnostic, search packet, and query packet SQL tables from provider exports.  It
@@ -638,15 +659,14 @@ cache/query/render path, with Julia invoked only to refresh parser-owned facts.
 The execution shape is:
 
 #+begin_example
-future asp-managed Julia cache query
-  -> resolve workspace-managed Julia provider
+asp-managed Julia cache query
+  -> resolve compiled Julia provider/runtime profile
   -> check local cache generation for project root / schema / provider version
   -> on cache hit:
        Rust client queries cached native fact rows
        Rust client renders compact search output and receipt
   -> on cache miss or stale generation:
-       call julia --project=languages/JuliaLangProjectHarness.jl \
-         languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl
+       call aslp-julia-harness
        request provider-owned index export
        validate export against shared schema
        write SQLite cache generation
@@ -660,10 +680,9 @@ without language leakage, define a provider-owned Julia sub-schema and advertise
 it through the provider registry.  Do not change
 =semantic-search-packet.v1= in place for this optimization.
 
-This adaptation does not make Julia a bin-parity target and does not make Rust
-the Julia parser.  The provider command remains workspace-managed.  =asp= is
-the stable agent command; Julia is a native fact refresh backend for the global
-cache model.
+This adaptation makes Julia facade-aligned without making Rust the Julia parser.
+The compiled provider command is =aslp-julia-harness=; =asp= is the stable agent
+command, and Julia remains the native fact refresh owner for the cache model.
 
 * Performance calibration
 
@@ -702,10 +721,19 @@ Every measurement should record:
   cache read/write, validation, and compact render where available;
 - provider command count and provider processes spawned;
 - stdout bytes, compact output bytes, packet bytes, SQLite read/write counts,
-  and upload bytes;
+  syntax row generation/match/capture counts, and upload bytes;
+- syntax query AST/ABI fingerprint, grammar id, grammar profile version, and
+  selector when a =semantic-tree-sitter-query.v1= packet participates in cache
+  identity;
 - source file count, changed file count, and invalidation reason;
 - repeated-trigger grouping key so repeated agent searches can be merged or
   query-set optimized later.
+
+=sqliteReadCount= and =sqliteWriteCount= are logical client DB operation
+counters for cache observability.  They are not a SQL statement ABI and do not
+promise exact SQLite row counts; normalized AST/ABI rows remain the cache
+boundary, while stdout is only a rendered product except for the documented
+prompt-output fallback.
 
 The client may optimize:
 
@@ -918,13 +946,13 @@ Local-mode evidence for each cached provider should include both paths:
 
 Julia local-mode evidence must include both paths:
 
-- cold refresh through the workspace-managed Julia provider;
+- cold refresh through the compiled Julia provider;
 - repeated search/query through Rust-side cache without starting Julia.
 
 The receipt should report provider command count, cache generation, cache
-hit/miss, compact stdout bytes, and elapsed time for both paths.  The target is
-not to make Julia a short-lived provider binary; the target is to prove that
-repeated Julia search avoids provider process startup while preserving
+hit/miss, compact stdout bytes, and elapsed time for both paths.  The compiled
+provider is the cold/warm-provider execution boundary; cache hits prove repeated
+Julia search can avoid provider process startup while preserving
 JuliaSyntax-owned facts.
 
 ** Cloud mode evidence
@@ -962,8 +990,8 @@ Follow the same protocol-first order used by search work:
    =LocalNativeCliBackend=.
 8. Add local cache prime/status/invalidate commands.
 9. Add provider registry descriptors for machine index export capabilities,
-   using one shared descriptor shape across providers and starting with
-   workspace-managed Julia index export as the performance proof.
+   using one shared descriptor shape across providers and starting with compiled
+   Julia index export as the performance proof.
 10. Prove local Julia repeated-search acceleration through Rust-side cache before
    adding cloud behavior.
 11. Add performance calibration receipts and local sandtable scenarios for cold
@@ -1065,10 +1093,10 @@ local-cache path:
   respawning the provider even when the packet artifact is unavailable.  Replay
   is exact for the request fingerprint and is disabled for =--code= because
   syntax replay must not persist raw source.
-- Julia remains workspace-managed and out of standalone bin parity.  The agent
-  semantic client hot path for Julia is still the future Rust-side
+- Julia is facade-aligned through compiled =aslp-julia-harness=.  The agent
+  semantic client hot path for repeated Julia search is still the Rust-side
   cache/query/render path over validated JuliaSyntax-owned facts, not a
-  short-lived Julia renderer binary.
+  Rust-owned Julia parser or hidden text heuristic.
 
 The remaining local work is a prime command, denormalized query indexes beyond
 artifact replay, and performance receipts for cold, warm-provider, invalidated,
@@ -1086,7 +1114,9 @@ and write-back routes.  The local-cache hit route now has receipt coverage for
 - Do not replace language harness parser authority with text heuristics in the
   client.
 - Do not expose full JSON, AST, or source as the default prompt surface.
-- Do not require a standalone Julia provider binary for bin parity.
+- Do not require a bare =julia-project-harness= command or Rust-owned Julia
+  parser facts; Julia provider identity is =aslp-julia-harness= behind
+  =asp julia=.
 - Do not turn the protocol into MCP or a dynamic tool-discovery layer.
 - Do not upload source by default.
 

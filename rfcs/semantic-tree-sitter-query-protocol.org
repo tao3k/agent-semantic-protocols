@@ -92,6 +92,29 @@ stronger native-parser-backed language syntax search system.
    repeated queries, but they cannot become a semantic fallback that outranks
    the provider.
 
+8. /Selectors are source identity, not fuzzy search./  A selector that resolves
+   to a real file or directory is compared by canonical source identity: file
+   equality for files and containment for directories.  A selector that does not
+   resolve on disk may only match an exact project-relative path.  Providers and
+   cache replay must not use basename, suffix, or contains-style matching as the
+   syntax query ABI, because that can silently redirect a query to the wrong
+   owner.
+
+9. /Normalized row replay is keyed by query AST/ABI./  SQLite syntax rows may be
+   replayed only when the request query compiles to the same tree-sitter ABI
+   fingerprint as the stored provider packet, the selector identity matches, and
+   the row generation's file hashes are fresh.  Exact forwarded argv,
+   artifact id, stdout text, and compact renderer version are receipt and
+   provenance signals, not the semantic boundary for row replay.
+   =semantic-tree-sitter-query= generation/artifact ids should be derived from
+   the same AST/ABI identity plus grammar/profile, selector identity, and
+   source file hashes.  Exact request fingerprints remain provenance only.
+   When a client probes =query/tree-sitter= without an exact request
+   fingerprint, an unrelated generation with the same provider/export method
+   must not decide row freshness.  Artifact replay may still require the chosen
+   generation to be fresh, but normalized row replay must check the matched row
+   generation's own AST/ABI identity and file hashes.
+
 * Terminology
 
 ** Tree-sitter-compatible
@@ -325,9 +348,12 @@ ASP responsibilities:
 - include catalog id, grammar id, grammar profile version, catalog fingerprint,
   and grammar profile fingerprint in cache keys
 - route typed selectors such as =query collectToolActions= to catalog query ids
-- compile catalog and S-expression inputs into the shared query model only when
-  the catalog source is present in a provider packet/export or another declared
-  delivery channel
+- embed registry-declared canonical catalog sources into the ASP binary for the
+  public =asp <language> query --catalog ...= path; downstream clients must not
+  depend on provider package source files being installed
+- compile catalog-id and S-expression inputs into the shared query model in the
+  ASP wrap layer and forward only internal =--asp-syntax-query-*= plan facts to
+  providers
 - execute tree-sitter runtime matching only when the provider declares
   =adapterMode=tree-sitter-runtime= or =hybrid=; native-projection remains
   provider-owned
@@ -338,8 +364,8 @@ Provider responsibilities:
   as the canonical source in the provider repository, matching the upstream
   tree-sitter query layout where one exists
 - embed or otherwise publish those catalogs through the provider binary/export
-  path declared by =queryCatalogs[].sourceDelivery=; downstream clients must not
-  need provider package source files installed
+  path for direct provider debugging and release provenance; public ASP wrapper
+  execution uses the ASP-binary embedded catalog copy for ABI planning
 - maintain =grammar-profile.json= mapping native parser facts to capture names
   and deliver that profile through the same provider-owned channel
 - track upstream grammar test corpus knowledge through lightweight development
@@ -351,9 +377,14 @@ Provider responsibilities:
   by the main ASP workspace. These fixtures should cite upstream corpus files
   for grammar shape provenance while only testing ASP-specific capture
   granularity and avoiding duplicate upstream parser grammar tests
-- pin the ASP workspace git revision that validated the grammar profile and
-  query corpus in =grammar-profile.json=. This is provenance for the ASP-side
-  query compiler/cache/validator contract, not a provider runtime dependency
+- record the ASP workspace git revision that validated the grammar profile and
+  query corpus in =grammar-profile.json= only as provenance. It is not a
+  current-HEAD equality gate because the main ASP repository naturally advances
+  after a language profile is written
+- gate grammar-profile compatibility with =aspWorkspace.contractFingerprint=,
+  computed from the ASP tree-sitter query ABI/schema/validator contract files.
+  Ordinary main-repo commits do not require profile churn when this fingerprint
+  is unchanged; ABI/schema/compiler/validator changes do
 - validate =grammar-profile.json= against the main workspace
   =semantic-tree-sitter-grammar-profile.v1= schema so other language providers
   can adapt the same profile/query-corpus contract without inventing local
@@ -472,15 +503,82 @@ render the current agent-facing locator/frontier surface from a validated
 =semantic-tree-sitter-query.v1= artifact or normalized rows.  Stored stdout is
 allowed only for explicit prompt-output artifacts or another documented special
 case whose provenance points back to the structured packet or row generation.
+=semantic-tree-sitter-query= generation/artifact ids are also AST/ABI-derived:
+they should not include exact argv strings, stdout text, or volatile packet
+bytes except through validated source file hashes.  Exact request fingerprints
+can be stored for receipts and provenance, but they are not the row or artifact
+identity.
+Because =query/tree-sitter= generation probes intentionally avoid exact request
+fingerprint lookup, a stale unrelated generation must not block a fresh row hit.
+Clients should keep artifact replay behind the artifact generation freshness
+gate, then let normalized row replay perform its own AST/ABI, selector, and row
+file-hash check.
+Freshness uses non-empty file hashes supplied by the validated packet when
+available.  If a syntax packet omits =/cache/fileHashes=, the client may derive
+path+sha256 freshness rows from validated locator fields such as =selector=,
+=read=, =path=, and capture/match ranges; it must not derive semantic facts from
+raw source text or rendered stdout.
 Renderer or row-projection changes use an explicit syntax row ABI flush, not a
 SQLite schema-version bump.  The client records the current syntax row ABI in
 cache metadata, for example =syntaxQueryRowAbiVersion=, and when it changes the
 client deletes only the =syntax_query_*= row family.  Provider artifacts, normal
 cache generations, and unrelated search/query rows remain intact and can refresh
 syntax rows from validated packets or a native provider miss.
+The explicit maintenance command =asp cache flush syntax-rows= performs the same
+scoped row-family reset without deleting manifest generations or artifacts.
 Rows are replayable only when they carry the ASP query AST/ABI fingerprint and
 the AST/ABI-derived capture and item node types.  The row path does not guess or
 fallback from legacy rendered text or incomplete packet fields.
+
+** Agent-facing render contract
+
+The syntax query stdout contract is intentionally smaller than the JSON packet.
+Non-=--code= output is a locator/frontier surface for choosing the next exact
+query, read, or code extraction; it must not inline source windows or cache
+debugging state.  =--code= output is the only default prompt-facing syntax query
+mode that writes source text, and it must write only the selected code.
+
+Providers may choose one of two render profiles while sharing the same
+=semantic-tree-sitter-query.v1= packet and ASP-compiled query plan:
+
+| Render profile | Current providers | Required facts |
+|----------------+-------------------+----------------|
+| =compact-graph-frontier= | Rust reference | Header, query alias, capture aliases, enclosing item aliases, =rank=, =frontier=, =omit=, =avoid=, and =ts=node/field= atoms. |
+| =corpus-locator= | TypeScript, Python | Repeated =path:start[:end]= locator blocks plus capture label/text, separated by blank lines for multiple paths. |
+
+Both profiles are valid only when they are rendered from provider-native
+projection over an ASP-compiled plan.  They are not separate query protocols and
+must not create =ts-query=, =syntax-query=, or raw-query command families.
+Both profiles must suppress =artifactId=, SQLite path hints, cache roots,
+receipt JSON, raw source windows, full node lists, and unbounded capture text in
+default non-JSON output.
+
+The code contract is stricter than the locate contract:
+
+#+begin_example
+asp <language> query --treesitter-query <query> --selector <exact-locator> --code
+  -> stdout contains only provider-selected source code
+
+asp <language> query --treesitter-query <query> --selector <range-or-path>
+  -> stdout contains locator/frontier facts only
+#+end_example
+
+When a non-=--code= query matches many captures, the renderer should cap prompt
+output and state the cap with =matches=, =shown=, =omitted=, and =omit= rather
+than printing hidden source or JSON.  When =--code= would select multiple code
+windows, providers should reject the request or require a more exact selector or
+predicate.
+
+=tools/validate-tree-sitter-frontier-code-contract.sh= is the root rollout gate
+for syntax locate/code output and Rust, TypeScript, and Python
+=native-projection= packets: each JSON packet must retain =nativeFactRefs=,
+=rawSourceStored=false=, tree-sitter-compatible capture =nodeType=/=field=, and
+native parser enrichment such as =nativeNodeType= while default stdout stays
+compact.  =tools/validate-search-read-plan-frontier-contract.sh=
+is the paired gate for hook recovery and search/read-plan output: Rust,
+TypeScript, and Python must return graph locator/frontier evidence for
+search-style recovery without inline source or cache debugging state, and Rust's
+reference read-plan must remain =mode=range-frontier= with =omit=code=.
 
 Recommended SQLite families:
 
@@ -532,8 +630,8 @@ The syntax ABI helps compact output explain why a node is a good next action:
 
 #+begin_example
 [search-owner] owner=src/tool_action.rs selector=items terms=3 view=seeds alg=syntax-frontier
-legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next
-alias: graph:{G=search,O=owner,I=item,H=custom}
+legend: aliases ID:kind; node ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next
+aliases=G:search,O:owner,I:item,H:custom
 O=owner:path(src/tool_action.rs)!owner
 I=item:symbol(collect_tool_actions)@216:421!outline syn=function_item/name
 H=custom:range(command_source_paths@397:401)!code syn=call_expression/function
@@ -588,6 +686,16 @@ split marked as such.
 2. Add provider JSON export for =query= and selected =search owner items= paths.
 3. Add compact output =syn= atoms only where they reduce ambiguity.
 4. Validate =asp rust query= cold-native and cache-write paths.
+5. Run =tools/validate-language-tree-sitter-runtime-boundary.sh= and then
+   =tools/validate-tree-sitter-frontier-code-contract.sh= after Rust,
+   TypeScript, and Python are available.  This is the root-level rollout gate
+   for the shared boundary and agent-facing render contract: language providers
+   must not depend on tree-sitter runtime packages; Rust may render
+   =compact-graph-frontier= and TypeScript/Python may render =corpus-locator=,
+   but all three must prove ASP-compiled query input, non-=--code=
+   locator/frontier output without cache noise, and pure-code =--code= output.
+   The gate also runs =python -m tools tree-sitter validate json-abi-corpus=
+   so the JSON packet ABI proves ASP-compiled catalog plans and honest native-projection/no-runtime behavior alongside stdout corpus locators.
 
 Rust is the reference because it is already the strongest local provider and can
 exercise native parser facts without requiring another runtime boundary.
@@ -634,7 +742,8 @@ CLI startup when validated captures and native fact refs are fresh.
 
 ** Phase 5: Julia provider
 
-1. Keep Julia workspace-managed.
+1. Align Julia on the =asp julia= facade backed by compiled
+   =aslp-julia-harness= and cacheable runtime profiles.
 2. Add Julia =tree-sitter/tree-sitter-julia/queries/*.scm= compatible catalogs
    where the grammar profile has stable names.
 3. Export JuliaSyntax-owned captures and native fact refs for cache import.

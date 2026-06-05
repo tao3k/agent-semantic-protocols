@@ -5,10 +5,12 @@
 //! `.scm` catalogs; they do not need to link tree-sitter runtime or grammar
 //! crates for this ABI.
 
+pub mod builtin_catalog;
 pub mod catalog;
 pub mod query_syntax;
 pub mod runtime;
 
+pub use builtin_catalog::{BuiltinCatalogId, BuiltinCatalogLanguageId, builtin_catalog_source};
 pub use catalog::{
     LoadedGrammarProfile, LoadedSyntaxCatalog, SyntaxCatalogDescriptor, extract_capture_names,
     fingerprint_catalog, fingerprint_grammar_profile, load_grammar_profile, load_syntax_catalog,

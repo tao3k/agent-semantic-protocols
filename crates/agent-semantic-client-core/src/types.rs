@@ -117,8 +117,28 @@ semantic_string_type!(
     CompactArtifactId
 );
 semantic_string_type!(
+    /// Stable fingerprint of the normalized tree-sitter-compatible query AST/ABI.
+    SyntaxQueryAstAbiFingerprint
+);
+semantic_string_type!(
+    /// Tree-sitter grammar id used by a syntax-query packet.
+    SyntaxQueryGrammarId
+);
+semantic_string_type!(
+    /// Grammar profile version used by a syntax-query packet.
+    SyntaxQueryGrammarProfileVersion
+);
+semantic_string_type!(
+    /// Selector component used by a syntax-query cache identity.
+    SyntaxQuerySelector
+);
+semantic_string_type!(
     /// UTF-8 cache path serialized in client receipts and manifests.
     ClientCachePath
+);
+semantic_string_type!(
+    /// Observed SQLite journal mode for the local client DB.
+    ClientDbJournalMode
 );
 
 impl ClientCachePath {

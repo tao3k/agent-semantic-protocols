@@ -113,10 +113,16 @@ fn structured_direct_read_brace_glob_routes_to_all_matching_providers() {
             "."
         ]
     );
-    assert_eq!(
-        decision.message,
-        "direct-source-read denied; provider guide: rs-harness => asp rust agent guide .; py-harness => asp python agent guide ."
-    );
+    assert!(decision.message.starts_with("# ASP Hook Recovery"));
+    assert!(decision.message.contains("`asp rust guide .`"));
+    assert!(decision.message.contains("`asp python guide .`"));
+    assert!(decision.message.contains(
+        "asp rust query --from-hook direct-source-read --selector '*.{rs,py}' --surface 'owners,tests' --view seeds ."
+    ));
+    assert!(decision.message.contains(
+        "asp python query --from-hook direct-source-read --selector '*.{rs,py}' --surface 'owners,tests' --view seeds ."
+    ));
+    assert!(!decision.message.contains("|run-next"));
 }
 
 #[test]

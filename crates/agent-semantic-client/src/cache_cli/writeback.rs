@@ -1,6 +1,6 @@
 //! Prompt-output write-back for replay-safe provider results.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
@@ -12,7 +12,7 @@ use agent_semantic_client_core::{
     CacheGenerationId, CacheManifestStatus, CacheStatus, ClientCacheFileHash,
     ClientCacheGeneration, ClientCacheManifest, ClientCachePath, ClientMethod, ClientRequest,
     ProviderCommandReceipt, ProviderRegistrySnapshot, ResolvedProvider, SemanticSchemaId,
-    append_syntax_query_plan_args,
+    append_syntax_query_plan_args, syntax_query_ast_abi_fingerprint,
 };
 use agent_semantic_client_db::ClientDb;
 use sha2::{Digest, Sha256};
@@ -99,8 +99,12 @@ pub(crate) fn write_prompt_output_cache_after_provider_success(
             _ => return None,
         };
         args.push(provider_method.to_string());
-        let forwarded_args =
-            append_syntax_query_plan_args(&request.method, request.forwarded_args.clone()).ok()?;
+        let forwarded_args = append_syntax_query_plan_args(
+            &request.method,
+            Some(&provider.language_id),
+            request.forwarded_args.clone(),
+        )
+        .ok()?;
         args.extend(forwarded_args);
         args.push("--json".to_string());
         let output = std::process::Command::new(program)
@@ -128,7 +132,29 @@ pub(crate) fn write_prompt_output_cache_after_provider_success(
         if packet.get("providerId")?.as_str()? != provider.provider_id.as_str() {
             return None;
         }
-        packet.get("searchSynthesis")?.as_object()?;
+        let has_search_synthesis = packet
+            .get("searchSynthesis")
+            .and_then(|value| value.as_object())
+            .is_some();
+        let has_graph = packet
+            .get("nodes")
+            .and_then(|value| value.as_array())
+            .is_some()
+            && packet
+                .get("edges")
+                .and_then(|value| value.as_array())
+                .is_some();
+        let has_frontier_lists = packet
+            .get("owners")
+            .and_then(|value| value.as_array())
+            .is_some()
+            || packet
+                .get("hits")
+                .and_then(|value| value.as_array())
+                .is_some();
+        if !has_search_synthesis && !has_graph && !has_frontier_lists {
+            return None;
+        }
         Some(())
     }
 
@@ -164,6 +190,10 @@ pub(crate) fn write_prompt_output_cache_after_provider_success(
         if packet.get("providerId")?.as_str()? != provider.provider_id.as_str() {
             return None;
         }
+        packet.get("grammarId")?.as_str()?;
+        packet.get("grammarProfileVersion")?.as_str()?;
+        let query_source = syntax_query_packet_source(&packet)?;
+        syntax_query_ast_abi_fingerprint(query_source).ok()?;
         packet.get("query")?.as_object()?;
         packet.get("matches")?.as_array()?;
         if packet
@@ -186,7 +216,127 @@ pub(crate) fn write_prompt_output_cache_after_provider_success(
                 sha256: hash.get("sha256")?.as_str()?.to_string(),
             });
         }
-        Some(file_hashes)
+        if file_hashes.is_empty() {
+            None
+        } else {
+            Some(file_hashes)
+        }
+    }
+
+    fn search_packet_file_hashes(
+        project_root: &Path,
+        provider: &ResolvedProvider,
+        request: &ClientRequest,
+        packet_bytes: &[u8],
+    ) -> Option<Vec<ClientCacheFileHash>> {
+        packet_file_hashes(packet_bytes)
+            .or_else(|| locator_file_hashes(project_root, &provider.package_roots, packet_bytes))
+            .or_else(|| search_prime_project_file_hashes(project_root, request))
+    }
+
+    fn search_prime_project_file_hashes(
+        project_root: &Path,
+        request: &ClientRequest,
+    ) -> Option<Vec<ClientCacheFileHash>> {
+        if !request
+            .forwarded_args
+            .first()
+            .is_some_and(|arg| arg == "prime")
+        {
+            return None;
+        }
+        let file_hashes = [
+            ".cache/agent-semantic-protocol/hooks/activation.json",
+            "Cargo.toml",
+            "package.json",
+            "tsconfig.json",
+            "pyproject.toml",
+            "Project.toml",
+        ]
+        .into_iter()
+        .filter_map(|path| hash_project_file(project_root, path))
+        .collect::<Vec<_>>();
+        if file_hashes.is_empty() {
+            None
+        } else {
+            Some(file_hashes)
+        }
+    }
+
+    fn syntax_query_file_hashes(
+        project_root: &Path,
+        packet_bytes: &[u8],
+    ) -> Option<Vec<ClientCacheFileHash>> {
+        packet_file_hashes(packet_bytes)
+            .or_else(|| syntax_query_locator_file_hashes(project_root, packet_bytes))
+    }
+
+    fn syntax_query_locator_file_hashes(
+        project_root: &Path,
+        packet_bytes: &[u8],
+    ) -> Option<Vec<ClientCacheFileHash>> {
+        locator_file_hashes(project_root, &[], packet_bytes)
+    }
+
+    fn locator_file_hashes(
+        project_root: &Path,
+        package_roots: &[String],
+        packet_bytes: &[u8],
+    ) -> Option<Vec<ClientCacheFileHash>> {
+        let packet: serde_json::Value = serde_json::from_slice(packet_bytes).ok()?;
+        let mut paths = BTreeSet::new();
+        collect_json_locator_paths(&packet, &mut paths, None);
+        let mut file_hashes = BTreeMap::new();
+        for path in paths {
+            for file_hash in hash_locator_file(project_root, package_roots, &path) {
+                file_hashes
+                    .entry(file_hash.path.clone())
+                    .or_insert(file_hash);
+            }
+        }
+        let file_hashes = file_hashes.into_values().collect::<Vec<_>>();
+        if file_hashes.is_empty() {
+            None
+        } else {
+            Some(file_hashes)
+        }
+    }
+
+    fn collect_json_locator_paths(
+        value: &serde_json::Value,
+        paths: &mut BTreeSet<String>,
+        key: Option<&str>,
+    ) {
+        match value {
+            serde_json::Value::String(text) if key.is_some_and(is_locator_key) => {
+                collect_locator_paths(text, paths);
+            }
+            serde_json::Value::Array(items) => {
+                for item in items {
+                    collect_json_locator_paths(item, paths, None);
+                }
+            }
+            serde_json::Value::Object(map) => {
+                for (key, value) in map {
+                    collect_json_locator_paths(value, paths, Some(key));
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn is_locator_key(key: &str) -> bool {
+        matches!(
+            key,
+            "selector"
+                | "read"
+                | "exactRead"
+                | "path"
+                | "target"
+                | "ownerPath"
+                | "matchLocator"
+                | "captureLocator"
+        )
     }
 
     fn search_packet_generation(
@@ -218,7 +368,7 @@ pub(crate) fn write_prompt_output_cache_after_provider_success(
             project_root: normalized_path(project_root),
             package_root: Some(".".to_string()),
             schema_ids: vec![SemanticSchemaId::from(
-                "agent.semantic-protocols.semantic-query-packet",
+                "agent.semantic-protocols.semantic-search-packet",
             )],
             cache_status: CacheStatus::Hit,
             raw_source_stored: false,
@@ -228,7 +378,7 @@ pub(crate) fn write_prompt_output_cache_after_provider_success(
                 export_method,
                 &request.forwarded_args,
             )),
-            file_hashes: packet_file_hashes(packet_bytes),
+            file_hashes: search_packet_file_hashes(project_root, provider, request, packet_bytes),
             artifact_ids: Some(vec![CacheArtifactId::from(artifact_id)]),
         }
     }
@@ -283,21 +433,17 @@ pub(crate) fn write_prompt_output_cache_after_provider_success(
         request: &ClientRequest,
         export_method: &CacheExportMethod,
         packet_bytes: &[u8],
-    ) -> ClientCacheGeneration {
-        let seed = format!(
-            "{}\0{}\0{}\0{}\0{}\0{}",
-            provider.language_id,
-            provider.provider_id,
-            normalized_path(project_root),
+    ) -> Option<ClientCacheGeneration> {
+        let packet: serde_json::Value = serde_json::from_slice(packet_bytes).ok()?;
+        let file_hashes = syntax_query_file_hashes(project_root, packet_bytes);
+        let (generation_id, artifact_id) = syntax_query_generation_identity(
+            project_root,
+            provider,
             export_method,
-            request.forwarded_args.join("\0"),
-            stable_hash_bytes(packet_bytes)
-        );
-        let hash = stable_hash_hex(&seed);
-        let slug = slugify_cache_component(export_method.as_str());
-        let generation_id = format!("{}-{slug}-{}", provider.language_id, &hash[..12]);
-        let artifact_id = format!("semantic-tree-sitter-query/{generation_id}.json");
-        ClientCacheGeneration {
+            &packet,
+            file_hashes.as_deref(),
+        )?;
+        Some(ClientCacheGeneration {
             generation_id: CacheGenerationId::from(generation_id),
             language_id: provider.language_id.clone(),
             provider_id: provider.provider_id.clone(),
@@ -314,9 +460,9 @@ pub(crate) fn write_prompt_output_cache_after_provider_success(
                 export_method,
                 &request.forwarded_args,
             )),
-            file_hashes: packet_file_hashes(packet_bytes),
+            file_hashes,
             artifact_ids: Some(vec![CacheArtifactId::from(artifact_id)]),
-        }
+        })
     }
 
     let provider = selected_provider_for_request(snapshot, request)?;
@@ -407,7 +553,7 @@ pub(crate) fn write_prompt_output_cache_after_provider_success(
             request,
             &export_method,
             &artifact_bytes,
-        ),
+        )?,
     };
     let artifact_id = generation.artifact_ids.as_ref()?.first()?.clone();
     let syntax_generation = if matches!(artifact_kind, ArtifactKind::SemanticTreeSitterQuery) {
@@ -457,11 +603,15 @@ pub(crate) fn write_prompt_output_cache_after_provider_success(
     let db_path = ClientDb::default_path(cache_root);
     let mut db = ClientDb::open_or_create(&db_path).ok()?;
     db.import_manifest(&manifest).ok()?;
+    let mut sqlite_write_count = 1;
     if let Some(syntax_generation) = syntax_generation {
         db.import_semantic_tree_sitter_query_packet(&syntax_generation, &artifact_bytes)
             .ok()?;
+        sqlite_write_count += 1;
     }
-    provider_cache_probe(project_root, snapshot, request)
+    let mut probe = provider_cache_probe(project_root, snapshot, request)?;
+    probe.sqlite_write_count = sqlite_write_count;
+    Some(probe)
 }
 
 fn request_prompt_output_writeback_method(request: &ClientRequest) -> Option<CacheExportMethod> {
@@ -503,15 +653,6 @@ fn prompt_output_generation(
     export_method: &CacheExportMethod,
     stdout: &[u8],
 ) -> ClientCacheGeneration {
-    let request_seed = format!(
-        "{}\0{}\0{}\0{}\0{}",
-        provider.language_id,
-        provider.provider_id,
-        normalized_path(project_root),
-        export_method,
-        request.forwarded_args.join("\0")
-    );
-    let request_fingerprint = format!("fnv64:{}", stable_hash_hex(&request_seed));
     let seed = format!(
         "{}\0{}\0{}\0{}\0{}\0{}",
         provider.language_id,
@@ -536,10 +677,69 @@ fn prompt_output_generation(
         schema_ids: vec![SemanticSchemaId::from(CLIENT_PROMPT_OUTPUT_SCHEMA_ID)],
         cache_status: CacheStatus::Hit,
         raw_source_stored: false,
-        request_fingerprint: Some(request_fingerprint),
+        request_fingerprint: Some(exact_request_fingerprint(
+            provider,
+            project_root,
+            export_method,
+            &request.forwarded_args,
+        )),
         file_hashes: prompt_output_file_hashes(project_root, stdout),
         artifact_ids: Some(vec![CacheArtifactId::from(artifact_id)]),
     }
+}
+
+fn syntax_query_generation_identity(
+    project_root: &Path,
+    provider: &ResolvedProvider,
+    export_method: &CacheExportMethod,
+    packet: &serde_json::Value,
+    file_hashes: Option<&[ClientCacheFileHash]>,
+) -> Option<(String, String)> {
+    let query_ast_fingerprint =
+        syntax_query_ast_abi_fingerprint(syntax_query_packet_source(packet)?).ok()?;
+    let grammar_id = packet.get("grammarId")?.as_str()?;
+    let grammar_profile_version = packet.get("grammarProfileVersion")?.as_str()?;
+    let selector = packet
+        .pointer("/query/fields/selector")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("");
+    let file_hashes_fingerprint = file_hashes
+        .map(syntax_query_file_hashes_fingerprint)
+        .unwrap_or_else(|| "none".to_string());
+    let seed = format!(
+        "{}\0{}\0{}\0{}\0{}\0{}\0{}\0{}\0{}",
+        provider.language_id,
+        provider.provider_id,
+        normalized_path(project_root),
+        export_method,
+        grammar_id,
+        grammar_profile_version,
+        query_ast_fingerprint,
+        selector,
+        file_hashes_fingerprint
+    );
+    let hash = stable_hash_hex(&seed);
+    let slug = slugify_cache_component(export_method.as_str());
+    let generation_id = format!("{}-{slug}-{}", provider.language_id, &hash[..12]);
+    let artifact_id = format!("semantic-tree-sitter-query/{generation_id}.json");
+    Some((generation_id, artifact_id))
+}
+
+fn syntax_query_packet_source(packet: &serde_json::Value) -> Option<&str> {
+    let query = packet.get("query")?;
+    query
+        .get("compiledSource")
+        .and_then(serde_json::Value::as_str)
+        .or_else(|| query.get("input").and_then(serde_json::Value::as_str))
+}
+
+fn syntax_query_file_hashes_fingerprint(file_hashes: &[ClientCacheFileHash]) -> String {
+    let mut entries = file_hashes
+        .iter()
+        .map(|file_hash| format!("{}\0{}", file_hash.path, file_hash.sha256))
+        .collect::<Vec<_>>();
+    entries.sort();
+    stable_hash_hex(&entries.join("\0"))
 }
 
 fn prompt_output_file_hashes(
@@ -617,6 +817,26 @@ fn hash_project_file(project_root: &Path, path: &str) -> Option<ClientCacheFileH
         path: path.to_string(),
         sha256: format!("{digest:x}"),
     })
+}
+
+fn hash_locator_file(
+    project_root: &Path,
+    package_roots: &[String],
+    path: &str,
+) -> Vec<ClientCacheFileHash> {
+    std::iter::once(path.to_string())
+        .chain(package_roots.iter().filter_map(|package_root| {
+            if package_root == "." || package_root.is_empty() {
+                return None;
+            }
+            Some(format!(
+                "{}/{}",
+                package_root.trim_end_matches('/'),
+                path.trim_start_matches("./")
+            ))
+        }))
+        .filter_map(|candidate_path| hash_project_file(project_root, &candidate_path))
+        .collect()
 }
 
 fn safe_project_file_path(project_root: &Path, path: &str) -> Option<PathBuf> {
@@ -703,3 +923,7 @@ fn stable_hash_bytes(bytes: &[u8]) -> String {
 fn stable_hash_hex(value: &str) -> String {
     stable_hash_bytes(value.as_bytes())
 }
+
+#[cfg(test)]
+#[path = "../../tests/unit/cache_cli/writeback.rs"]
+mod writeback_tests;

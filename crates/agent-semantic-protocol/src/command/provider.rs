@@ -2,8 +2,8 @@
 
 use agent_semantic_hook::{
     ActivatedProvider, HookRuntime, default_activation_path, discover_activation_path,
-    load_or_refresh_runtime_profiles, parse_hook_activation, runtime_profile_invocation,
-    runtime_profiles_path_from_cache_home,
+    load_or_refresh_runtime_profiles, load_or_sync_activation, parse_hook_activation,
+    runtime_profile_invocation, runtime_profiles_path_from_cache_home,
 };
 use std::env;
 use std::fs;
@@ -11,15 +11,8 @@ use std::io::{self, ErrorKind, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-const SUPPORTED_LANGUAGES: &[&str] = &["rust", "typescript", "python"];
-const SUPPORTED_COMMANDS: &[&str] = &[
-    "search",
-    "query",
-    "check",
-    "agent guide",
-    "ast-patch",
-    "evidence",
-];
+const SUPPORTED_LANGUAGES: &[&str] = &["rust", "typescript", "python", "julia"];
+const SUPPORTED_COMMANDS: &[&str] = &["search", "query", "guide", "check", "ast-patch", "evidence"];
 
 pub(crate) fn is_language_facade(language_id: &str) -> bool {
     SUPPORTED_LANGUAGES.contains(&language_id)
@@ -27,10 +20,11 @@ pub(crate) fn is_language_facade(language_id: &str) -> bool {
 
 pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result<(), String> {
     fn uses_client_backend(args: &[String]) -> bool {
-        matches!(
-            args.first().map(String::as_str),
-            Some("search" | "query" | "check")
-        )
+        (args.first().is_some_and(|command| command == "search")
+            && args.get(1).is_none_or(|subcommand| subcommand != "guide"))
+            || matches!(args.first().map(String::as_str), Some("check"))
+            || (args.first().is_some_and(|command| command == "query")
+                && args.get(1).is_none_or(|subcommand| subcommand != "guide"))
     }
 
     fn activation_cache_home(activation_path: &Path) -> PathBuf {
@@ -119,10 +113,10 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
     let runtime_profiles_path = runtime_profiles_path_from_cache_home(&cache_home);
     let runtime_profiles =
         load_or_refresh_runtime_profiles(&runtime_profiles_path, &project_root, &runtime)?;
-    if is_agent_guide(args) {
+    if is_guide(args) {
         let invocation =
             provider_invocation_with_profile(&runtime_profiles, provider, &provider_args)?;
-        return run_agent_guide_command(
+        return run_guide_command(
             language_id,
             provider,
             &invocation,
@@ -183,7 +177,7 @@ fn run_provider_command(
     Ok(())
 }
 
-fn run_agent_guide_command(
+fn run_guide_command(
     language_id: &str,
     provider: &ActivatedProvider,
     invocation: &[String],
@@ -240,11 +234,13 @@ fn load_activation(path: &Path) -> Result<HookRuntime, String> {
             path.display()
         )
     })?;
-    parse_hook_activation(&text).map_err(|error| {
-        format!(
-            "failed to parse provider activation {}: {error:?}",
-            path.display()
-        )
+    parse_hook_activation(&text).or_else(|error| {
+        load_or_sync_activation(path, &activation_storage_root(path)).map_err(|sync_error| {
+            format!(
+                "failed to parse provider activation {}: {error:?}; failed to sync generated activation: {sync_error}",
+                path.display()
+            )
+        })
     })
 }
 
@@ -334,6 +330,8 @@ fn invocation_root_is_provider_project(invocation_root: &Path) -> bool {
     invocation_root.join("Cargo.toml").is_file()
         || invocation_root.join("package.json").is_file()
         || invocation_root.join("pyproject.toml").is_file()
+        || invocation_root.join("Project.toml").is_file()
+        || invocation_root.join("JuliaProject.toml").is_file()
 }
 
 fn activation_storage_root(activation_path: &Path) -> PathBuf {
@@ -352,7 +350,7 @@ fn validate_provider_command(args: &[String]) -> Result<(), String> {
     };
     let supported = if command == "agent" {
         args.get(1)
-            .is_some_and(|subcommand| matches!(subcommand.as_str(), "guide" | "doctor"))
+            .is_some_and(|subcommand| matches!(subcommand.as_str(), "doctor"))
     } else {
         SUPPORTED_COMMANDS.contains(&command)
     };
@@ -363,9 +361,8 @@ fn validate_provider_command(args: &[String]) -> Result<(), String> {
     }
 }
 
-fn is_agent_guide(args: &[String]) -> bool {
-    args.first().is_some_and(|command| command == "agent")
-        && args.get(1).is_some_and(|subcommand| subcommand == "guide")
+fn is_guide(args: &[String]) -> bool {
+    args.first().is_some_and(|command| command == "guide")
 }
 
 fn provider_invocation(provider: &ActivatedProvider, args: &[String]) -> Vec<String> {
@@ -465,26 +462,34 @@ fn render_facade_guide(
     let mut lines = provider_stdout
         .lines()
         .map(|line| {
-            if let Some((prefix, command)) = line
-                .strip_prefix("|cmd ")
-                .and_then(|line| line.split_once('='))
-            {
-                format!(
-                    "|cmd {prefix}={}",
-                    rewrite_provider_command_mentions(language_id, provider, command)
-                )
+            if let Some(command_line) = line.strip_prefix("|cmd ") {
+                if let Some((prefix, command)) = command_line.split_once('=') {
+                    format!(
+                        "|cmd {prefix}={}",
+                        rewrite_provider_command_mentions(language_id, provider, command)
+                    )
+                } else {
+                    format!(
+                        "|cmd {}",
+                        rewrite_provider_command_mentions(language_id, provider, command_line)
+                    )
+                }
             } else if line == "|rule hook install/runtime is owned by rs-harness" {
                 "|rule hook install/runtime is owned by semantic-agent-hook".to_string()
             } else {
-                line.to_string()
+                rewrite_provider_command_mentions(language_id, provider, line)
             }
         })
         .collect::<Vec<_>>();
 
+    let v1_agent_contract = lines
+        .first()
+        .is_some_and(|line| line.contains("protocol=agent-guide.v1"));
     let doctor_line = format!("|cmd agent-doctor=asp {language_id} agent doctor --json .");
-    if !lines
-        .iter()
-        .any(|line| line.starts_with("|cmd agent-doctor="))
+    if !v1_agent_contract
+        && !lines
+            .iter()
+            .any(|line| line.starts_with("|cmd agent-doctor="))
     {
         lines.push(doctor_line);
     }
@@ -532,8 +537,10 @@ fn runtime_profile_status_label(
 }
 
 fn provider_usage() -> String {
-    "usage: asp <rust|typescript|python> <search|query|check|agent guide|agent doctor|ast-patch|evidence> ..."
-        .to_string()
+    format!(
+        "usage: asp <{}> <guide|search|query|check|agent doctor|ast-patch|evidence> ...",
+        SUPPORTED_LANGUAGES.join("|")
+    )
 }
 
 fn language_usage() -> String {

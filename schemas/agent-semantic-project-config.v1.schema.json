@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agent-semantic-protocols.local/agent-semantic-project-config.v1.schema.json",
+  "title": "Agent Semantic Project Config",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.project-config"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "discovery": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ignoredDirNames": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/dirName" },
+          "uniqueItems": true
+        },
+        "includeHiddenDirNames": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/hiddenDirName" },
+          "uniqueItems": true
+        }
+      }
+    },
+    "providers": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "rust": { "$ref": "#/$defs/providerConfig" },
+        "typescript": { "$ref": "#/$defs/providerConfig" },
+        "python": { "$ref": "#/$defs/providerConfig" },
+        "julia": { "$ref": "#/$defs/providerConfig" }
+      }
+    }
+  },
+  "$defs": {
+    "providerConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "binary": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "dirName": {
+      "type": "string",
+      "minLength": 1,
+      "not": {
+        "anyOf": [
+          { "const": "." },
+          { "const": ".." }
+        ]
+      },
+      "pattern": "^[^/\\\\]+$"
+    },
+    "hiddenDirName": {
+      "allOf": [
+        { "$ref": "#/$defs/dirName" },
+        { "pattern": "^\\.[^.]|^\\.[^.].*" }
+      ]
+    }
+  }
+}

@@ -2,3 +2,5 @@
 mod db;
 #[path = "unit/db/syntax_query.rs"]
 mod db_syntax_query;
+#[path = "unit/db/syntax_query_flush.rs"]
+mod db_syntax_query_flush;

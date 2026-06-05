@@ -42,6 +42,7 @@ mod language {
         std::fs::remove_dir_all(root).expect("remove temp root");
     }
 }
+mod guide;
 mod pipe;
 mod provider_invocation;
 mod rewrite;

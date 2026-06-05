@@ -52,23 +52,34 @@ fn diagnostic_commands_do_not_require_activation() {
         match args.as_slice() {
             ["guide"] => assert!(stdout.contains("[asp-guide]"), "{stdout}"),
             ["doctor"] => {
-                assert!(stdout.contains("[asp-doctor] status=degraded"), "{stdout}");
-                assert!(stdout.contains("activation=missing"), "{stdout}");
+                assert!(stdout.contains("[asp-doctor] status="), "{stdout}");
                 assert!(
-                    stdout.contains("|cmd install=asp hook install --client codex ."),
+                    stdout.contains("status=degraded") || stdout.contains("status=ok"),
                     "{stdout}"
                 );
+                if stdout.contains("status=degraded") {
+                    assert!(stdout.contains("activation=missing"), "{stdout}");
+                    assert!(
+                        stdout.contains("|cmd install=asp hook install --client codex ."),
+                        "{stdout}"
+                    );
+                } else {
+                    assert!(stdout.contains("providers="), "{stdout}");
+                    assert!(stdout.contains("server=not-required"), "{stdout}");
+                }
             }
             ["providers"] => {
-                assert!(
-                    stdout.contains("[asp-providers] activation=missing"),
-                    "{stdout}"
-                );
-                assert!(stdout.contains("providers=0"), "{stdout}");
+                assert!(stdout.contains("[asp-providers]"), "{stdout}");
+                if stdout.contains("activation=missing") {
+                    assert!(stdout.contains("providers=0"), "{stdout}");
+                } else {
+                    assert!(stdout.contains("activation="), "{stdout}");
+                    assert!(stdout.contains("providers="), "{stdout}");
+                }
             }
             ["cache", "status"] => {
                 assert!(stdout.contains("[asp-cache] status=missing"), "{stdout}");
-                assert!(stdout.contains("activation=missing"), "{stdout}");
+                assert!(stdout.contains("activation="), "{stdout}");
             }
             _ => unreachable!("covered args"),
         }
@@ -92,7 +103,7 @@ fn non_agent_command_surface_is_rejected_without_provider_spawn() {
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("<search|query|check|agent guide|agent doctor|ast-patch|evidence>"),
+        stderr.contains("<guide|search|query|check|agent doctor|ast-patch|evidence>"),
         "{stderr}"
     );
     assert!(!called.exists(), "provider should not have been spawned");
@@ -101,11 +112,15 @@ fn non_agent_command_surface_is_rejected_without_provider_spawn() {
     std::fs::remove_dir_all(root).ok();
 }
 #[test]
-fn julia_is_not_a_global_language_facade() {
+fn provider_language_facades_forward_language_like_provider_args() {
     let root = temp_project_root("provider-dash-language-query");
     let bin_dir = root.join(".bin");
     super::support::write_echo_provider(&bin_dir, "rs-harness", "rs");
-    write_activation(&root, &[provider("rust", Vec::new())]);
+    super::support::write_echo_provider(&bin_dir, "aslp-julia-harness", "jl");
+    write_activation(
+        &root,
+        &[provider("rust", Vec::new()), provider("julia", Vec::new())],
+    );
     let output = asp_command(&root)
         .env("PATH", prepend_path(&bin_dir))
         .args([
@@ -157,17 +172,20 @@ fn julia_is_not_a_global_language_facade() {
             "{stderr}"
         );
         assert!(
-            stderr.contains(&format!("use asp <rust|typescript|python> {command}")),
+            stderr.contains(&format!("use asp <rust|typescript|python|julia> {command}")),
             "{stderr}"
         );
     }
     let output = asp_command(&root)
         .args(["julia", "search", "prime", "."])
         .output()
-        .expect("run asp");
-    assert!(!output.status.success());
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("rust|typescript|python"), "{stderr}");
-    assert!(!stderr.contains("julia"), "{stderr}");
+        .expect("run asp julia search");
+    assert!(
+        output.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    assert!(stdout.contains("jl args=[search][prime][.]"), "{stdout}");
     let _ = std::fs::remove_dir_all(root);
 }

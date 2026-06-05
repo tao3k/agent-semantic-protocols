@@ -223,8 +223,8 @@ lines:
 
 #+begin_src text
 [search-<view>] (q=<query>|owner=<path>|root=<path-or-.>) [querySet=<n>|terms=<n>] [selector=<selector>] [scope=<scope>] [view=<view>] alg=<searchSynthesis.algorithm>
-legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next
-alias: graph:{G=search,...}
+legend: aliases ID:kind; node ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next
+aliases=G:search,...
 ID=<nodeKind>:<targetRole>(<target>)[!<action>]
 G>{ID:relation,ID:relation}
 SRC>{DST:relation,DST:relation}
@@ -264,7 +264,7 @@ return entries exposed by that profile.  The
 micro-legend line is the minimal grammar contract for agents that have not
 recently read this RFC.
 Every selector alias used by an =entries= row must resolve to the current
-packet's =alias: graph:{...}= declaration, and known shared profile selectors
+packet's =aliases=...= declaration, and known shared profile selectors
 must resolve to the profile's node-kind catalog.  For example,
 =owner-query(O,Q=>...)= requires =O= to resolve to an =owner= alias and =Q= to
 resolve to a =query= alias; =query-deps(O,T=>...)= is invalid even if =O= and
@@ -291,18 +291,18 @@ needs its own RFC/schema pass.
 When a provider implements one of these profiles, the returned packet must carry
 the selector as a typed graph action, for example =nextActions=[{kind:"finding",
 target:<finding>}]= or =nextActions=[{kind:"feature", target:<feature>}]=, so
-the shared renderer can emit =F=finding= / =F=feature= aliases and concrete
+the shared renderer can emit =F:finding= / =F:feature= aliases and concrete
 =entries= rows without relying on model inference.
 
-The alias legend is strict in compact mode: every alias id that appears in
-alias lines, edges, =rank=, or =frontier= must be declared with its node kind,
-for example =alias: graph:{G=search,O=owner,S=symbol,S2=symbol}=.  A prefix
+The aliases declaration is strict in compact mode: every alias id that appears
+in node lines, edges, =rank=, or =frontier= must be declared with its node kind,
+for example =aliases=G:search,O:owner,S:symbol,S2:symbol=.  A prefix
 legend such as =S*=symbol= may be introduced later as a dense-mode extension,
 but it is not the default compact grammar because it requires parser and LLM
 inheritance rules that are not otherwise needed.
 
 =G= is the packet-local search root.  It is declared by the legend entry
-=G=search= and by appearing as an edge source such as =G>{...}=.  Renderers
+=G:search= and by appearing as an edge source such as =G>{...}=.  Renderers
 must not emit a standalone root alias line such as =G=search:result!query=:
 that line repeats the legend, looks like an actionable node, and increases the
 chance that an agent treats the root as a follow-up target.  =G= gives
@@ -317,39 +317,39 @@ render honest synthesis-derived relations from =G= such as =selects=,
 * Line protocol atomics
 
 Compact graph output is line protocol.  Each rendered graph fact is a complete
-line atom.  The micro-legend and alias legend lines are each valid only as one
-complete line, for example:
+line atom.  The micro-legend and aliases declaration lines are each valid only
+as one complete line, for example:
 
 #+begin_src text
-legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next
-alias: graph:{G=search,O=owner,T=test}
+legend: aliases ID:kind; node ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next
+aliases=G:search,O:owner,T:test
 #+end_src
 
 Renderers, schema examples, JSON fixtures, and sandtable assertions must not
 split this line into structural fragments such as:
 
 #+begin_src json
-["alias: graph:{", "G=search:result!query"]
+["aliases=", "G:search,O:owner"]
 #+end_src
 
-That shape is invalid even though =alias: graph:{...}= itself is valid.  It
-turns an opening delimiter into a standalone assertion and makes the next line
-look like a continuation or a root alias.  The standalone root alias
-=G=search:result!query= is also forbidden by this RFC.
+That shape is invalid even though =aliases=...= itself is valid.  It
+turns a declaration key into a standalone assertion and makes the next line
+look like a continuation.  The standalone root alias =G=search:result!query=
+is also forbidden by this RFC.
 
 When tests need resilient substring matching rather than exact output matching,
 they may assert a stable prefix that includes the first alias assignment, such
-as =alias: graph:{G=search=.  They must not assert only =alias: graph:{=.
-Exact-output fixtures should store the full legend line.  JSON arrays that
-model =stdoutContains= are lists of independent line substrings, not a way to
-continue a graph grammar token across elements.
+as =aliases=G:search=.  They must not assert only the bare =aliases= key.
+Exact-output fixtures should store the full aliases declaration line.  JSON
+arrays that model =stdoutContains= are lists of independent line substrings,
+not a way to continue a graph grammar token across elements.
 
 * Owner search example
 
 #+begin_src text
 [search-owner] q=src/classifier.rs scope=tests/unit/classifier/routes alg=bounded-reachability-depth1
-legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next
-alias: graph:{G=search,C=owner,M=owner,P=owner,W=test,R=test}
+legend: aliases ID:kind; node ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next
+aliases=G:search,C:owner,M:owner,P:owner,W:test,R:test
 C=owner:self(root)!items
 M=owner:path(src/command/mod.rs)!owner
 P=owner:path(src/protocol.rs)
@@ -380,8 +380,8 @@ edges are grouped.  The agent does not have to infer rank from output order.
 
 #+begin_src text
 [search-query] q=command_source_paths selector=src/tool_action.rs terms=1 view=seeds alg=exact-item
-legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next
-alias: graph:{G=search,I=item,A=item,L=item,B=item,P=item}
+legend: aliases ID:kind; node ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next
+aliases=G:search,I:item,A:item,L:item,B:item,P:item
 I=item:symbol(command_source_paths)@221:241!code
 A=guard:range(range_paths.nonempty@224:226)!read
 L=loop:range(path_like_tokens@228:239)!read
@@ -411,37 +411,46 @@ fact that this is an owner-local item query rather than an ordinary owner
 frontier:
 
 #+begin_src text
-[search-owner] owner=src/cli/search_output/graph.rs selector=items terms=4 view=seeds alg=seed-frontier
+[search-owner] q=crates/agent-semantic-hook/src/tool_action.rs pkg=crates/agent-semantic-hook selector=items querySet=6 alg=item-frontier
 legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next
-alias: graph:{G=search,O=owner,S=symbol,S2=symbol,S3=symbol,S4=symbol}
-O=owner:path(src/cli/search_output/graph.rs)!owner
-S=symbol:symbol(render_search_graph_packet)@60:93!code
-S2=symbol:symbol(graph_header)@521:548!code
-S3=symbol:symbol(header_mode)@550:555!code
-S4=symbol:symbol(packet_view)@570:582!code
-G>{O:selects,S:matches,S2:matches,S3:matches,S4:matches}
-O>{S:contains,S2:contains,S3:contains,S4:contains}
-rank=S,S2,S3,S4,O frontier=S.code,S2.code,S3.code,S4.code
-omit=code,comments,blank-lines,nonmatching-items
-avoid=repeat-owner,raw-read,full-json
+aliases: graph:{G=search,O=owner,Q=query,I=item,H=hot}
+O=owner:path(crates/agent-semantic-hook/src/tool_action.rs)!owner
+Q=query:term(tool_action|structured|payload|command_intent|from_payload|from_action)!query
+I=item:symbol(payload_string)@crates/agent-semantic-hook/src/tool_action.rs:212:214!code
+I2=item:symbol(collect_tool_actions)@crates/agent-semantic-hook/src/tool_action.rs:216:419!outline
+I3=item:symbol(nested_tool_actions)@crates/agent-semantic-hook/src/tool_action.rs:555:571!code
+H=hot:symbol(command_source_paths)@crates/agent-semantic-hook/src/tool_action.rs:397:401!code
+H2=hot:symbol(nested_action_from_tool_use)@crates/agent-semantic-hook/src/tool_action.rs:567:568!code
+
+G>{O:selects,Q:matches}
+O>{I:contains,I2:contains,I3:contains,H:contains,H2:contains}
+Q>{I:matches,I2:matches,I3:matches,H:revise,H2:revise}
+
+rank=H,H2,I,I2,I3,O
+frontier=H.code,H2.code,I.code,I2.outline,I3.code
+revise=command_intent->command_source_paths,from_action->nested_action_from_tool_use
+omit=code,projection-nodes,large-item-text
+avoid=inline-code-in-search,raw-read,repeat-owner
 #+end_src
 
 This avoids a common search loop: after =search owner <path> items --query ...=,
 the selected owner has already been expanded, so =O.owner= is not the next
-frontier action.  The owner remains in =rank= as context, but matched symbols
-rank first and their bounded =code= actions are the recommended follow-up.
-Edges keep the two meanings separate: =G>{S:matches}= says the search matched
-the symbol; =O>{S:contains}= says the owner contains it.  Because the header
-already declares the owner path, same-owner code locators use =@start:end=.
-Cross-owner item locators must use =@path:start:end= so the provider can route
-the next =code= action without a raw file read.
+frontier action.  The owner remains in =rank= as context, but hot revision
+targets and matched items rank first and their bounded =code= or =outline=
+actions are the recommended follow-up.  Edges keep the meanings separate:
+=G>{Q:matches}= says the search matched the owner-local query, =Q>{I:matches}=
+says the item matched it, =Q>{H:revise}= says a query term should be revised to
+a parser-owned candidate, and =O>{I:contains,H:contains}= records ownership.
+Owner-item search output must not inline source code.  It gives exact
+locators/frontier only; a follow-up =query --code= or direct-read route is the
+pure code extraction boundary.
 
 * Prime search example
 
 #+begin_src text
 [search-prime] root=. alg=owner-rank-frontier
-legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next
-alias: graph:{G=search,L=owner,C=owner,T=owner,U=test}
+legend: aliases ID:kind; node ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next
+aliases=G:search,L:owner,C:owner,T:owner,U:test
 L=owner:path(src/lib.rs)!owner
 C=owner:path(src/classifier.rs)!owner
 T=owner:path(src/tool_action.rs)!owner
@@ -493,9 +502,9 @@ high-impact node and one edge line per source or grouped relation.
 Dense mode may pack aliases and edges with semicolons:
 
 #+begin_src text
-legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next
+legend: aliases ID:kind; node ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next
 C=owner:self(root)!items;M=owner:path(src/command/mod.rs)!owner;P=owner:path(src/protocol.rs);W=test:path(wrappers.rs)!tests;R=test:path(raw_search.rs)!tests
-alias: graph:{G=search,C=owner,M=owner,P=owner,W=test,R=test}
+aliases=G:search,C:owner,M:owner,P:owner,W:test,R:test
 G>{C:selects,W:covers,R:covers,M:selects,P:selects};C>{M:imports,P:decision};(W,R)>C:covers
 rank=C,W,R,M,P frontier=C.items,M.owner,W.tests,R.tests
 #+end_src
@@ -652,7 +661,7 @@ Completed:
   fzf, and fzf query-set assert graph output instead of legacy =|seed= /
   =|synthesis= rows.
 - [X] TypeScript and Python =--view seeds= render the schema-owned
-  =alias: graph:{...}= legend, =G>{...}= root edges, aliases, and
+  =aliases=...= legend, =G>{...}= root edges, aliases, and
   =rank= / =frontier= without a standalone =G=search:result!query= line.
 - [X] TypeScript and Python sandtable scenarios assert graph output and reject
   legacy =|seed= / =|synthesis= rows plus the obsolete standalone root alias
@@ -688,7 +697,7 @@ In progress:
 * Acceptance criteria
 
 - The compact graph output can be parsed by an agent through the schema-owned
-  micro-legend plus =alias: graph:{...}= legend and does not require prose to
+  micro-legend plus =aliases=...= legend and does not require prose to
   explain aliases.
 - The output has fewer repeated paths and field names than legacy line protocol.
 - Target roles, relation labels, rank order, frontier seed actions, node-local
@@ -696,6 +705,6 @@ In progress:
 - The JSON packet remains the source of truth for graph data.
 - =seed= and =synthesis= are represented through graph aliases, =rank=,
   =frontier=, and =avoid= rather than as independent prompt-facing protocols.
-- Providers produce the same graph meaning across Rust, TypeScript, and Python.
-- Julia remains out of bin-parity requirements for this lane unless a separate
-  Julia-specific workspace-managed effort is opened.
+- Providers produce the same graph meaning across Rust, TypeScript, Python, and
+  Julia.  Julia uses the compiled =aslp-julia-harness= plus cacheable search
+  packets, not a workspace-managed exception.

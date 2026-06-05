@@ -4,6 +4,7 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::executable::is_executable_file;
 use crate::protocol::{CommandTemplate, HOOK_PROTOCOL_ID, HOOK_PROTOCOL_VERSION, HookRoutes};
 use crate::protocol_activation::{ActivatedProviderConfig, HookActivation, ProviderManifest};
 use crate::provider_manifest::provider_manifests;
@@ -27,7 +28,7 @@ pub fn write_profile_registry(
                     activated.manifest_id
                 )
             })?;
-        profiles.push(profile_entry(activated, manifest));
+        profiles.push(profile_entry(&activation.project_root, activated, manifest));
     }
     let registry = serde_json::json!({
         "schemaId": "agent.semantic-protocols.hook.profile-registry",
@@ -47,9 +48,11 @@ pub fn write_profile_registry(
 }
 
 fn profile_entry(
+    project_root: &str,
     activated: &ActivatedProviderConfig,
     manifest: &ProviderManifest,
 ) -> serde_json::Value {
+    let command_binary = profile_command_binary(project_root, activated);
     serde_json::json!({
         "languageId": activated.language_id,
         "providerId": activated.provider_id,
@@ -60,8 +63,20 @@ fn profile_entry(
         "sourceRoots": activated.coverage.source_roots,
         "ignoredPathPrefixes": activated.coverage.ignored_path_prefixes,
         "policy": manifest.policy,
-        "commands": profile_commands(&manifest.routes, &activated.binary, &activated.provider_command_prefix),
+        "commands": profile_commands(&manifest.routes, &command_binary, &activated.provider_command_prefix),
     })
+}
+
+fn profile_command_binary(project_root: &str, activated: &ActivatedProviderConfig) -> String {
+    if !activated.provider_command_prefix.is_empty() {
+        return activated.binary.clone();
+    }
+    let project_bin = Path::new(project_root).join(".bin").join(&activated.binary);
+    if is_executable_file(&project_bin) {
+        project_bin.display().to_string()
+    } else {
+        activated.binary.clone()
+    }
 }
 
 fn profile_commands(
@@ -128,15 +143,19 @@ fn profile_command_argv(
     binary: &str,
     provider_command_prefix: &[String],
 ) -> Vec<String> {
-    let mut argv = if !provider_command_prefix.is_empty()
-        && command
-            .argv
-            .first()
-            .is_some_and(|command| command == binary)
-    {
+    let binary_file_name = Path::new(binary).file_name().and_then(|name| name.to_str());
+    let command_uses_provider_binary = command
+        .argv
+        .first()
+        .is_some_and(|command| command == binary || Some(command.as_str()) == binary_file_name);
+    let mut argv = if !provider_command_prefix.is_empty() && command_uses_provider_binary {
         provider_command_prefix
             .iter()
             .cloned()
+            .chain(command.argv.iter().skip(1).cloned())
+            .collect()
+    } else if command_uses_provider_binary {
+        std::iter::once(binary.to_string())
             .chain(command.argv.iter().skip(1).cloned())
             .collect()
     } else {

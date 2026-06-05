@@ -5,8 +5,8 @@ use std::path::{Path, PathBuf};
 
 use agent_semantic_hook::{
     ActivatedProvider, RuntimeProviderHealthStatus, builtin_provider_manifests,
-    load_or_refresh_runtime_profiles, parse_activation, project_hook_state_dir,
-    runtime_profile_command_argv, runtime_profiles_path_for_activation,
+    load_or_refresh_runtime_profiles, load_or_sync_activation, parse_activation,
+    project_hook_state_dir, runtime_profile_command_argv, runtime_profiles_path_for_activation,
     runtime_project_root_for_activation,
 };
 
@@ -117,7 +117,7 @@ impl ProviderRegistrySnapshot {
                     let candidate =
                         candidate_root.join(".cache/agent-semantic-protocol/hooks/activation.json");
                     if candidate.is_file() {
-                        return Self::load_from_path(&candidate);
+                        return Self::load_from_path_for_project(&candidate, candidate_root);
                     }
                     current = candidate_root.parent();
                 }
@@ -127,18 +127,18 @@ impl ProviderRegistrySnapshot {
 
         if let Some(activation_path) = direct_activation_path {
             if activation_path.is_file() {
-                return Self::load_from_path(&activation_path);
+                return Self::load_from_path_for_project(&activation_path, project_root);
             }
             let mut current = project_root.parent();
             while let Some(candidate_root) = current {
                 let candidate =
                     candidate_root.join(".cache/agent-semantic-protocol/hooks/activation.json");
                 if candidate.is_file() {
-                    return Self::load_from_path(&candidate);
+                    return Self::load_from_path_for_project(&candidate, candidate_root);
                 }
                 current = candidate_root.parent();
             }
-            return Self::load_from_path(&activation_path);
+            return Self::load_from_path_for_project(&activation_path, project_root);
         }
 
         Err("provider activation path could not be resolved".to_string())
@@ -155,6 +155,21 @@ impl ProviderRegistrySnapshot {
         let manifests = builtin_provider_manifests();
         let activation =
             parse_activation(&text, &manifests).map_err(|error| format!("{error:?}"))?;
+        Self::from_activation(activation_path, &activation)
+    }
+
+    fn load_from_path_for_project(
+        activation_path: &Path,
+        project_root: &Path,
+    ) -> Result<Self, String> {
+        let activation = load_or_sync_activation(activation_path, project_root)?;
+        Self::from_activation(activation_path, &activation)
+    }
+
+    fn from_activation(
+        activation_path: &Path,
+        activation: &agent_semantic_hook::HookRuntime,
+    ) -> Result<Self, String> {
         let runtime_profiles_path = runtime_profiles_path_for_activation(activation_path);
         let runtime_project_root =
             runtime_project_root_for_activation(activation_path, &activation.project_root);

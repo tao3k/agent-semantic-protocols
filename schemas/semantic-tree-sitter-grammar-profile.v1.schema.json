@@ -13,6 +13,8 @@
     "dialect",
     "upstream",
     "aspWorkspace",
+    "queryCorpus",
+    "nativeFactProjection",
     "sourceAuthority",
     "adapterModes",
     "compatibilityLevels",
@@ -57,6 +59,7 @@
     "nativeFactProjection": {
       "type": "array",
       "description": "Provider-owned native parser/compiler facts projected into tree-sitter-compatible captures. This keeps native authority visible through the canonical .scm ABI instead of hidden provider-private fields.",
+      "minItems": 1,
       "items": {
         "$ref": "#/$defs/nativeFactProjection"
       }
@@ -121,10 +124,11 @@
           "type": "string",
           "format": "uri"
         },
-        "revision": {
-          "type": "string",
-          "pattern": "^[0-9a-f]{40}$"
-        },
+    "revision": {
+      "type": "string",
+      "description": "Main ASP repository baseline commit used to validate this grammar profile. Validators should require this revision to be reachable from the active ASP checkout, not equal to the active HEAD; the root repository commit that consumes a language profile will naturally advance after the profile is written.",
+      "pattern": "^[0-9a-f]{40}$"
+    },
         "version": {
           "type": "string",
           "minLength": 1
@@ -135,10 +139,11 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "owner",
-        "repository",
-        "revision",
-        "queryCorpusValidator"
+      "owner",
+      "repository",
+      "revision",
+      "contractFingerprint",
+      "queryCorpusValidator"
       ],
       "properties": {
         "owner": {
@@ -148,10 +153,16 @@
           "type": "string",
           "format": "uri"
         },
-        "revision": {
-          "type": "string",
-          "pattern": "^[0-9a-f]{40}$"
-        },
+    "revision": {
+      "type": "string",
+      "description": "Main ASP repository commit recorded as provenance for the tree-sitter contract validation run. This is not a current-HEAD equality gate; contract compatibility is enforced by contractFingerprint.",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "contractFingerprint": {
+      "type": "string",
+      "description": "Content fingerprint for the ASP tree-sitter query ABI/schema/validator contract used by this grammar profile. Main-repo commits may advance without profile churn when this fingerprint is unchanged.",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
         "queryCorpusValidator": {
           "$ref": "#/$defs/projectPath"
         }

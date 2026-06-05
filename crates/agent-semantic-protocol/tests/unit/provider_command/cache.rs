@@ -57,6 +57,9 @@ fn cache_status_reports_missing_manifest_with_receipt() {
     );
     assert_eq!(receipt["clientDbStatus"], "missing");
     assert_eq!(receipt["clientDbGenerationCount"], 0);
+    assert_eq!(receipt["clientDbSyntaxRowGenerationCount"], 0);
+    assert_eq!(receipt["clientDbSyntaxRowMatchCount"], 0);
+    assert_eq!(receipt["clientDbSyntaxRowCaptureCount"], 0);
     assert_eq!(receipt["clientDbRawSourceStored"], false);
 
     let _ = std::fs::remove_dir_all(root);
@@ -141,6 +144,9 @@ fn cache_import_writes_manifest_generations_to_client_db_without_spawning_provid
     assert!(stdout.contains("|db "), "{stdout}");
     assert!(stdout.contains("status=present"), "{stdout}");
     assert!(stdout.contains("generations=1"), "{stdout}");
+    assert!(stdout.contains("journalMode=wal"), "{stdout}");
+    assert!(stdout.contains("busyTimeoutMs=5000"), "{stdout}");
+    assert!(stdout.contains("foreignKeys=true"), "{stdout}");
 
     let receipt: Value =
         serde_json::from_slice(&output.stderr).expect("stderr should be receipt JSON");
@@ -151,7 +157,14 @@ fn cache_import_writes_manifest_generations_to_client_db_without_spawning_provid
     assert_eq!(receipt["cacheGenerationCount"], 1);
     assert_eq!(receipt["clientDbStatus"], "present");
     assert_eq!(receipt["clientDbGenerationCount"], 1);
+    assert_eq!(receipt["clientDbSyntaxRowGenerationCount"], 0);
+    assert_eq!(receipt["clientDbSyntaxRowMatchCount"], 0);
+    assert_eq!(receipt["clientDbSyntaxRowCaptureCount"], 0);
     assert_eq!(receipt["clientDbRawSourceStored"], false);
+    assert_eq!(receipt["clientDbJournalMode"], "wal");
+    assert_eq!(receipt["clientDbSynchronous"], 1);
+    assert_eq!(receipt["clientDbBusyTimeoutMs"], 5000);
+    assert_eq!(receipt["clientDbForeignKeys"], true);
     assert_eq!(receipt["providerCommandCount"], 0);
     assert_eq!(receipt["providerProcessesSpawned"], 0);
 
@@ -174,6 +187,21 @@ fn cache_import_writes_manifest_generations_to_client_db_without_spawning_provid
     );
     assert!(status_stdout.contains("status=present"), "{status_stdout}");
     assert!(status_stdout.contains("generations=1"), "{status_stdout}");
+    assert!(status_stdout.contains("journalMode=wal"), "{status_stdout}");
+    assert!(
+        status_stdout.contains("busyTimeoutMs=5000"),
+        "{status_stdout}"
+    );
+    assert!(
+        status_stdout.contains("foreignKeys=true"),
+        "{status_stdout}"
+    );
+    let status_receipt: Value =
+        serde_json::from_slice(&status_output.stderr).expect("status stderr receipt JSON");
+    assert_eq!(status_receipt["clientDbJournalMode"], "wal");
+    assert_eq!(status_receipt["clientDbSynchronous"], 1);
+    assert_eq!(status_receipt["clientDbBusyTimeoutMs"], 5000);
+    assert_eq!(status_receipt["clientDbForeignKeys"], true);
 
     let invalidate_output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .current_dir(&root)
@@ -217,6 +245,9 @@ fn cache_import_writes_manifest_generations_to_client_db_without_spawning_provid
     assert_eq!(invalidate_receipt["cacheGenerationCount"], 0);
     assert_eq!(invalidate_receipt["clientDbStatus"], "present");
     assert_eq!(invalidate_receipt["clientDbGenerationCount"], 0);
+    assert_eq!(invalidate_receipt["clientDbSyntaxRowGenerationCount"], 0);
+    assert_eq!(invalidate_receipt["clientDbSyntaxRowMatchCount"], 0);
+    assert_eq!(invalidate_receipt["clientDbSyntaxRowCaptureCount"], 0);
     assert_eq!(invalidate_receipt["providerCommandCount"], 0);
     assert_eq!(invalidate_receipt["providerProcessesSpawned"], 0);
     let manifest_after: Value = serde_json::from_str(
@@ -258,6 +289,66 @@ fn cache_import_writes_manifest_generations_to_client_db_without_spawning_provid
         status_after_stdout.contains("status=present generations=0"),
         "{status_after_stdout}"
     );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn cache_flush_syntax_rows_keeps_generations_without_spawning_provider() {
+    let root = temp_project_root("cache-flush-syntax-rows");
+    let bin_dir = root.join(".bin");
+    let called = root.join("provider-called");
+    write_marker_provider(&bin_dir, "rs-harness", &called);
+    write_activation(&root, &[provider("rust", Vec::new())]);
+    write_cache_manifest(&root, valid_manifest(&root));
+
+    let import_output = Command::new(env!("CARGO_BIN_EXE_asp"))
+        .current_dir(&root)
+        .env("PATH", &bin_dir)
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args(["cache", "import", "--receipt-json"])
+        .output()
+        .expect("run asp cache import");
+    assert!(
+        import_output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&import_output.stderr)
+    );
+
+    let output = Command::new(env!("CARGO_BIN_EXE_asp"))
+        .current_dir(&root)
+        .env("PATH", &bin_dir)
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args(["cache", "flush", "syntax-rows", "--receipt-json"])
+        .output()
+        .expect("run asp cache flush syntax rows");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(!called.exists(), "cache flush should not spawn provider");
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    assert!(stdout.contains("[asp-cache] status=flushed"), "{stdout}");
+    assert!(stdout.contains("flushedSyntaxRows=0"), "{stdout}");
+    assert!(stdout.contains("action=flush-syntax-rows"), "{stdout}");
+    assert!(stdout.contains("status=present generations=1"), "{stdout}");
+
+    let receipt: Value = serde_json::from_slice(&output.stderr).expect("receipt json");
+    assert_eq!(receipt["method"], "cache-flush");
+    assert_eq!(receipt["route"], "local-cache");
+    assert_eq!(receipt["cacheStatus"], "invalidated");
+    assert_eq!(receipt["cacheManifestStatus"], "present");
+    assert_eq!(receipt["cacheGenerationCount"], 1);
+    assert_eq!(receipt["clientDbStatus"], "present");
+    assert_eq!(receipt["clientDbGenerationCount"], 1);
+    assert_eq!(receipt["clientDbSyntaxRowGenerationCount"], 0);
+    assert_eq!(receipt["clientDbSyntaxRowMatchCount"], 0);
+    assert_eq!(receipt["clientDbSyntaxRowCaptureCount"], 0);
+    assert_eq!(receipt["providerCommandCount"], 0);
+    assert_eq!(receipt["providerProcessesSpawned"], 0);
+    assert_eq!(receipt["sqliteReadCount"], 1);
+    assert_eq!(receipt["sqliteWriteCount"], 1);
+
     let _ = std::fs::remove_dir_all(root);
 }
 

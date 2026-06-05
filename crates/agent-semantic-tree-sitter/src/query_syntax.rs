@@ -407,41 +407,69 @@ fn query_predicates(tokens: &[Token]) -> Vec<SyntaxQueryAbiPredicate> {
     let mut predicates = BTreeSet::new();
     let mut index = 0usize;
     while index + 3 < tokens.len() {
-        let predicate = match (&tokens[index], &tokens[index + 1], &tokens[index + 2]) {
-            (Token::LParen, Token::Ident(predicate), Token::Capture(capture)) => {
-                predicate_op(predicate).map(|op| (op, capture.clone()))
+        if let Some((predicate, closing_index)) = query_predicate_at(tokens, index) {
+            if let Some(predicate) = predicate {
+                predicates.insert(predicate);
             }
-            _ => None,
-        };
-        if let Some((op, capture)) = predicate {
-            let mut values = Vec::new();
-            let mut cursor = index + 3;
-            while cursor < tokens.len() && !matches!(tokens[cursor], Token::RParen) {
-                match &tokens[cursor] {
-                    Token::StringLiteral(value) if !value.is_empty() => {
-                        values.push(SyntaxQueryPredicateValue::String(value.clone()));
-                    }
-                    Token::Capture(value) if !value.is_empty() => {
-                        values.push(SyntaxQueryPredicateValue::Capture(value.clone()));
-                    }
-                    _ => {}
-                }
-                cursor += 1;
-            }
-            values.sort();
-            values.dedup();
-            if !values.is_empty() {
-                predicates.insert(SyntaxQueryAbiPredicate {
-                    op,
-                    capture,
-                    values,
-                });
-            }
-            index = cursor;
+            index = closing_index;
         }
         index += 1;
     }
     predicates.into_iter().collect()
+}
+
+fn query_predicate_at(
+    tokens: &[Token],
+    index: usize,
+) -> Option<(Option<SyntaxQueryAbiPredicate>, usize)> {
+    let (op, capture) = predicate_header_at(tokens, index)?;
+    let (values, closing_index) = predicate_values_until_rparen(tokens, index + 3);
+    let predicate = (!values.is_empty()).then_some(SyntaxQueryAbiPredicate {
+        op,
+        capture,
+        values,
+    });
+    Some((predicate, closing_index))
+}
+
+fn predicate_header_at(tokens: &[Token], index: usize) -> Option<(SyntaxQueryPredicateOp, String)> {
+    match (
+        tokens.get(index)?,
+        tokens.get(index + 1)?,
+        tokens.get(index + 2)?,
+    ) {
+        (Token::LParen, Token::Ident(predicate), Token::Capture(capture)) => {
+            predicate_op(predicate).map(|op| (op, capture.clone()))
+        }
+        _ => None,
+    }
+}
+
+fn predicate_values_until_rparen(
+    tokens: &[Token],
+    start_index: usize,
+) -> (Vec<SyntaxQueryPredicateValue>, usize) {
+    let mut cursor = start_index;
+    let mut values = BTreeSet::new();
+    while cursor < tokens.len() && !matches!(tokens[cursor], Token::RParen) {
+        if let Some(value) = predicate_value_token(&tokens[cursor]) {
+            values.insert(value);
+        }
+        cursor += 1;
+    }
+    (values.into_iter().collect(), cursor)
+}
+
+fn predicate_value_token(token: &Token) -> Option<SyntaxQueryPredicateValue> {
+    match token {
+        Token::StringLiteral(value) if !value.is_empty() => {
+            Some(SyntaxQueryPredicateValue::String(value.clone()))
+        }
+        Token::Capture(value) if !value.is_empty() => {
+            Some(SyntaxQueryPredicateValue::Capture(value.clone()))
+        }
+        _ => None,
+    }
 }
 
 fn predicate_op(predicate: &str) -> Option<SyntaxQueryPredicateOp> {

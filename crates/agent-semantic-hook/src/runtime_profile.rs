@@ -163,6 +163,7 @@ pub fn load_or_refresh_runtime_profiles(
     runtime: &HookRuntime,
 ) -> Result<RuntimeProfiles, String> {
     if let Ok(profiles) = load_runtime_profiles(path)
+        && profiles_match_project_root(&profiles, project_root)
         && profiles_match_runtime(&profiles, runtime)
         && profiles_have_usable_commands(&profiles, runtime)
     {
@@ -251,18 +252,32 @@ fn build_runtime_profiles(
         providers: runtime
             .providers
             .iter()
-            .map(runtime_provider_profile_for_provider)
+            .map(|provider| runtime_provider_profile_for_provider(project_root, provider))
             .collect(),
     }
 }
 
-fn runtime_provider_profile_for_provider(provider: &ActivatedProvider) -> RuntimeProviderProfile {
-    let binary_resolution = resolve_executable_with_status(&provider.binary);
-    let resolved_binary = binary_resolution
-        .path
-        .as_ref()
-        .map(|path| path.display().to_string());
+fn runtime_provider_profile_for_provider(
+    project_root: &Path,
+    provider: &ActivatedProvider,
+) -> RuntimeProviderProfile {
+    let project_bin = project_root.join(".bin").join(&provider.binary);
+    let binary_resolution = if is_executable_file(&project_bin) {
+        crate::executable::ExecutableResolution {
+            path: Some(fs::canonicalize(&project_bin).unwrap_or(project_bin)),
+            status: ExecutableStatus::Available,
+            reason: None,
+        }
+    } else {
+        resolve_executable_with_status(&provider.binary)
+    };
     let command = runtime_provider_command(provider, binary_resolution.path.as_ref());
+    let resolved_binary = command.argv.first().cloned().or_else(|| {
+        binary_resolution
+            .path
+            .as_ref()
+            .map(|path| path.display().to_string())
+    });
     let health = RuntimeProviderHealth {
         status: command
             .status
@@ -372,9 +387,22 @@ fn expect_field(name: &str, actual: &str, expected: &str) -> Result<(), String> 
 
 fn profiles_match_runtime(profiles: &RuntimeProfiles, runtime: &HookRuntime) -> bool {
     runtime.providers.iter().all(|provider| {
-        runtime_provider_profile(profiles, provider)
-            .is_some_and(|profile| profile.manifest_digest == provider.manifest_digest)
+        runtime_provider_profile(profiles, provider).is_some_and(|profile| {
+            profile.manifest_digest == provider.manifest_digest
+                && profile.provider_command_prefix == provider.provider_command_prefix
+        })
     })
+}
+
+fn profiles_match_project_root(profiles: &RuntimeProfiles, project_root: &Path) -> bool {
+    paths_match(Path::new(&profiles.project_root), project_root)
+}
+
+fn paths_match(left: &Path, right: &Path) -> bool {
+    match (fs::canonicalize(left), fs::canonicalize(right)) {
+        (Ok(left), Ok(right)) => left == right,
+        _ => left == right,
+    }
 }
 
 fn profiles_have_usable_commands(profiles: &RuntimeProfiles, runtime: &HookRuntime) -> bool {

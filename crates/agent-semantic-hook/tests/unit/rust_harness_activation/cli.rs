@@ -64,10 +64,18 @@ fn cli_hook_emits_decision_for_root_owned_rust_activation() {
     assert!(context.starts_with("[agent-hook-decision] "));
     assert!(context.contains("\"decision\":\"deny\""));
     assert!(context.contains("\"reasonKind\":\"direct-source-read\""));
-    assert_eq!(
-        value["hookSpecificOutput"]["permissionDecisionReason"],
-        "direct-source-read denied; route: asp rust query --from-hook direct-source-read --selector src/lib.rs --code ."
+    let reason = value["hookSpecificOutput"]["permissionDecisionReason"]
+        .as_str()
+        .expect("permission reason");
+    assert!(reason.contains("# ASP Hook Recovery"));
+    assert!(reason.contains("blocked `direct-source-read`"));
+    let system_message = value["systemMessage"].as_str().expect("system message");
+    assert!(
+        system_message.contains(
+            "asp rust query --from-hook direct-source-read --selector src/lib.rs --code ."
+        )
     );
+    assert!(system_message.contains("Do not retry `Read`, `cat`, `sed`, `rg`"));
     assert!(context.contains("\"binary\":\"asp\""));
     assert!(context.contains("\"src/lib.rs\""));
     std::fs::remove_dir_all(root).expect("cleanup temp project root");

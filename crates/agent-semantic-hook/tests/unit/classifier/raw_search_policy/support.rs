@@ -93,6 +93,34 @@ pub(super) fn assert_content_dump_denied(command: &str, provider_id: &str) {
 }
 
 fn assert_agent_facade_decision(decision: &HookDecision, command: &str) {
+    assert!(
+        decision.message.starts_with("# ASP Hook Recovery"),
+        "{command}: {}",
+        decision.message
+    );
+    assert!(
+        decision.message.contains(&format!(
+            "blocked `{}`",
+            reason_kind_label(decision.reason_kind)
+        )),
+        "{command}: {}",
+        decision.message
+    );
+    assert!(
+        decision.message.contains("## Stop")
+            && decision.message.contains("## Run Next")
+            && decision.message.contains("## Agent Flow")
+            && decision.message.contains("## Rules"),
+        "{command}: {}",
+        decision.message
+    );
+    assert!(
+        decision
+            .message
+            .contains("Do not retry `Read`, `cat`, `sed`, `rg`, or source-dump commands"),
+        "{command}: {}",
+        decision.message
+    );
     for route in &decision.routes {
         assert_eq!(route.binary, "asp", "{command}: {:?}", route.argv);
         assert_eq!(
@@ -100,17 +128,52 @@ fn assert_agent_facade_decision(decision: &HookDecision, command: &str) {
             Some("asp"),
             "{command}"
         );
+        assert!(
+            decision
+                .message
+                .contains(&format!("asp {} query", route.language_id))
+                || decision
+                    .message
+                    .contains(&format!("asp {} search", route.language_id)),
+            "{command}: {}",
+            decision.message
+        );
+        assert!(
+            decision
+                .message
+                .contains(&format!("asp {} guide .", route.language_id)),
+            "{command}: {}",
+            decision.message
+        );
     }
     for stale in [
         "rs-harness agent guide",
         "ts-harness agent guide",
         "py-harness agent guide",
+        "provider guide:",
+        "blocked=",
+        "protocol=asp-hook-recovery.v1",
+        "|run-next",
+        "|guide",
     ] {
         assert!(
             !decision.message.contains(stale),
             "{command}: {}",
             decision.message
         );
+    }
+}
+
+fn reason_kind_label(reason_kind: ReasonKind) -> &'static str {
+    match reason_kind {
+        ReasonKind::None => "none",
+        ReasonKind::DirectSourceRead => "direct-source-read",
+        ReasonKind::BulkSourceDump => "bulk-source-dump",
+        ReasonKind::RawBroadSearch => "raw-broad-search",
+        ReasonKind::SourceDirectoryEnumeration => "source-directory-enumeration",
+        ReasonKind::AgentSearchJson => "agent-search-json",
+        ReasonKind::SemanticAstPatchRequired => "semantic-ast-patch-required",
+        ReasonKind::SubagentReceiptRequired => "subagent-receipt-required",
     }
 }
 

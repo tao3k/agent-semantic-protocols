@@ -125,7 +125,7 @@ def _validate_prime_entries(
     requires_typed_aliases = bool(prime_output.get("requiresTypedEntryAliases", False))
     graph_aliases = _graph_aliases(guide_output) if requires_typed_aliases else {}
     if requires_typed_aliases and not graph_aliases:
-        result.errors.append("guide prime output missing alias graph for typed entries")
+        result.errors.append("guide prime output missing aliases declaration for typed entries")
     for entry in string_list(prime_output.get("entries", [])):
         _validate_prime_entry(entry, result, stdout)
         if requires_typed_aliases:
@@ -188,7 +188,7 @@ def _validate_prime_entry_alias(
     node_kind = graph_aliases.get(alias)
     if node_kind is None:
         result.errors.append(
-            f"guide prime output entry alias {alias!r} missing from alias graph"
+            f"guide prime output entry alias {alias!r} missing from aliases declaration"
         )
         return
     if node_kind == expected:
@@ -254,13 +254,13 @@ def _entry_profile_segments(entry_line: str) -> list[str]:
 def _graph_aliases(stdout: str) -> dict[str, str]:
     aliases: dict[str, str] = {}
     for line in stdout.splitlines():
-        if not line.startswith("alias: graph:{") or not line.endswith("}"):
+        if not line.startswith("aliases="):
             continue
-        body = line.removeprefix("alias: graph:{").removesuffix("}")
+        body = line.removeprefix("aliases=")
         for entry in body.split(","):
-            if "=" not in entry:
+            if ":" not in entry:
                 continue
-            alias, node_kind = entry.split("=", 1)
+            alias, node_kind = entry.split(":", 1)
             aliases[alias.strip()] = node_kind.strip()
     return aliases
 

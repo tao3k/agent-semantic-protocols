@@ -2,6 +2,8 @@
 #[path = "classifier_inline_source_read.rs"]
 mod inline_source_read;
 
+use std::collections::HashSet;
+
 use serde_json::Value;
 
 use crate::command::looks_like_command_transcript;
@@ -87,10 +89,15 @@ pub fn classify_hook_with_config(request: HookClassificationRequest<'_>) -> Hook
         return decision;
     }
 
-    if let Some(decision) = actions
-        .iter()
-        .find_map(|action| classify_direct_read_action(registry, platform, event, action))
-    {
+    if let Some(decision) = actions.iter().find_map(|action| {
+        classify_direct_read_action(
+            registry,
+            platform,
+            event,
+            action,
+            config.semantic_ast_patch_enabled(),
+        )
+    }) {
         return decision;
     }
     if let Some(decision) = actions.iter().find_map(|action| {
@@ -142,6 +149,7 @@ fn classify_direct_read_action(
     platform: &str,
     event: &str,
     action: &ToolAction,
+    semantic_ast_patch_enabled: bool,
 ) -> Option<HookDecision> {
     fn directory_path_matches_provider(
         project_root: &str,
@@ -178,16 +186,18 @@ fn classify_direct_read_action(
         }
 
         let absolute = path.starts_with('/');
-        let mut segments = Vec::new();
-        for segment in path.split('/') {
-            match segment {
-                "" | "." => {}
-                ".." => {
-                    segments.pop()?;
+        let segments = path
+            .split('/')
+            .try_fold(Vec::new(), |mut segments, segment| {
+                match segment {
+                    "" | "." => {}
+                    ".." => {
+                        segments.pop()?;
+                    }
+                    segment => segments.push(segment),
                 }
-                segment => segments.push(segment),
-            }
-        }
+                Some(segments)
+            })?;
 
         let joined = segments.join("/");
         if absolute {
@@ -250,11 +260,16 @@ fn classify_direct_read_action(
             return None;
         }
 
-        let routes = providers
+        let routes: Vec<DecisionRoute> = providers
             .iter()
             .map(|provider| raw_search_ingest_route(provider))
             .collect();
-        let message = provider_guide_message("source-directory-enumeration denied", &providers);
+        let message = source_access_recovery_message(
+            "source-directory-enumeration",
+            &providers,
+            &routes,
+            semantic_ast_patch_enabled,
+        );
         return Some(deny_for_action(
             platform,
             event,
@@ -280,6 +295,7 @@ fn classify_direct_read_action(
         platform,
         event,
         action,
+        semantic_ast_patch_enabled,
         collect_direct_read_matches(registry, action.paths.iter().map(String::as_str)),
     )
 }
@@ -299,9 +315,26 @@ fn classify_command_action(
     apply_patch_decision
         .or_else(|| classify_search_json_command(registry, platform, event, action, &tokens))
         .or_else(|| {
-            classify_source_read_command(registry, platform, event, action, command, &tokens)
+            classify_source_read_command(
+                registry,
+                platform,
+                event,
+                action,
+                command,
+                &tokens,
+                semantic_ast_patch_enabled,
+            )
         })
-        .or_else(|| classify_raw_search_command(registry, platform, event, action, &tokens))
+        .or_else(|| {
+            classify_raw_search_command(
+                registry,
+                platform,
+                event,
+                action,
+                &tokens,
+                semantic_ast_patch_enabled,
+            )
+        })
 }
 
 fn classify_apply_patch_command(
@@ -484,6 +517,7 @@ fn classify_source_read_command(
     action: &ToolAction,
     command: &str,
     tokens: &[String],
+    semantic_ast_patch_enabled: bool,
 ) -> Option<HookDecision> {
     let inline_source_read_paths = inline_source_read::source_read_paths(command, tokens);
     if !inline_source_read_paths.is_empty() {
@@ -498,6 +532,7 @@ fn classify_source_read_command(
                 action,
                 matches,
                 Some(inline_source_read_paths),
+                semantic_ast_patch_enabled,
             ));
         }
     }
@@ -508,6 +543,7 @@ fn classify_source_read_command(
             platform,
             event,
             action,
+            semantic_ast_patch_enabled,
             collect_direct_read_matches(registry, action_path_selectors(action, tokens)),
         ),
         CommandIntent::ContentDump => {
@@ -517,7 +553,12 @@ fn classify_source_read_command(
                 return None;
             }
             Some(content_dump_decision(
-                platform, event, action, matches, None,
+                platform,
+                event,
+                action,
+                matches,
+                None,
+                semantic_ast_patch_enabled,
             ))
         }
         _ => None,
@@ -547,10 +588,16 @@ fn content_dump_decision(
     action: &ToolAction,
     matches: Vec<DirectReadMatch<'_>>,
     subject_paths: Option<Vec<String>>,
+    semantic_ast_patch_enabled: bool,
 ) -> HookDecision {
     let routes = direct_read_routes(&matches);
     let providers = providers_from_matches(&matches);
-    let message = provider_guide_message("bulk-source-dump denied", &providers);
+    let message = source_access_recovery_message(
+        "bulk-source-dump",
+        &providers,
+        &routes,
+        semantic_ast_patch_enabled,
+    );
     let mut subject = subject_for_action(action);
     if let Some(paths) = subject_paths {
         subject.paths = paths;
@@ -572,13 +619,14 @@ fn direct_read_decision(
     platform: &str,
     event: &str,
     action: &ToolAction,
+    semantic_ast_patch_enabled: bool,
     matches: Vec<DirectReadMatch<'_>>,
 ) -> Option<HookDecision> {
     if matches.is_empty() {
         return None;
     }
     let routes = direct_read_routes(&matches);
-    let message = direct_read_decision_message(&matches, &routes);
+    let message = direct_read_decision_message(&matches, &routes, semantic_ast_patch_enabled);
     Some(deny_for_action(
         platform,
         event,
@@ -636,24 +684,14 @@ fn direct_read_language_ids(matches: &[DirectReadMatch<'_>]) -> Vec<String> {
 fn direct_read_decision_message(
     matches: &[DirectReadMatch<'_>],
     routes: &[DecisionRoute],
+    semantic_ast_patch_enabled: bool,
 ) -> String {
     let providers = providers_from_matches(matches);
-    if !matches
-        .iter()
-        .any(|matched| matched.kind == SourceSelectorKind::ExactPath)
-    {
-        return provider_guide_message("direct-source-read denied", &providers);
-    }
-    let rendered_routes = routes
-        .iter()
-        .map(|route| command_line(&route.argv))
-        .collect::<Vec<_>>();
-    if rendered_routes.is_empty() {
-        return provider_guide_message("direct-source-read denied", &providers);
-    }
-    format!(
-        "direct-source-read denied; route: {}",
-        rendered_routes.join("; ")
+    source_access_recovery_message(
+        "direct-source-read",
+        &providers,
+        routes,
+        semantic_ast_patch_enabled,
     )
 }
 
@@ -661,49 +699,152 @@ fn providers_from_matches<'a>(matches: &[DirectReadMatch<'a>]) -> Vec<&'a Activa
     matches.iter().map(|matched| matched.provider).collect()
 }
 
-fn provider_guide_message(reason: &str, providers: &[&ActivatedProvider]) -> String {
-    let mut rendered_guides = Vec::<String>::new();
-    let mut seen_providers = Vec::<(&str, &str)>::new();
-    for provider in providers {
-        if seen_providers.iter().any(|(language_id, provider_id)| {
-            *language_id == provider.language_id && *provider_id == provider.provider_id
-        }) {
-            continue;
+fn source_access_recovery_message(
+    reason: &str,
+    providers: &[&ActivatedProvider],
+    routes: &[DecisionRoute],
+    semantic_ast_patch_enabled: bool,
+) -> String {
+    let mut lines = vec![
+        "# ASP Hook Recovery".to_string(),
+        String::new(),
+        format!("The pre-tool hook blocked `{reason}` on language source."),
+        String::new(),
+        "## Stop".to_string(),
+        "Do not retry `Read`, `cat`, `sed`, `rg`, or source-dump commands on the matched source. The hook runs before the tool and will deny the same raw access again.".to_string(),
+        String::new(),
+        "## Run Next".to_string(),
+    ];
+    for route in routes {
+        lines.push(String::new());
+        lines.push("```sh".to_string());
+        lines.push(command_line(&route.argv));
+        lines.push("```".to_string());
+    }
+    if routes.is_empty() {
+        lines.push(String::new());
+        lines.push("```sh".to_string());
+        lines.push("asp guide".to_string());
+        lines.push("```".to_string());
+    }
+    let unique_providers = unique_activated_providers(providers);
+    if !unique_providers.is_empty() {
+        lines.push(String::new());
+        lines.push("## Detected Binaries".to_string());
+        for provider in &unique_providers {
+            lines.push(format!(
+                "- language={} provider={} command=`{}` facade=`asp {}`",
+                provider.language_id,
+                provider.provider_id,
+                command_line(&provider_detected_command(provider)),
+                provider.language_id
+            ));
         }
-        seen_providers.push((provider.language_id.as_str(), provider.provider_id.as_str()));
-        rendered_guides.push(format!(
-            "{} => {}",
-            provider.provider_id,
-            command_line(&provider_guide_argv(provider))
+    }
+    lines.push(String::new());
+    lines.push("## Agent Flow".to_string());
+    lines.push(
+        "Follow this flow after the hook recovery command gives you a frontier or exact locator."
+            .to_string(),
+    );
+    for provider in &unique_providers {
+        lines.push(String::new());
+        lines.push(format!(
+            "### {}",
+            agent_flow_language_heading(&provider.language_id)
         ));
+        lines
+            .push("1. Start from the language guide when you need the agent tool map.".to_string());
+        lines.push(format!("   - `asp {} guide .`", provider.language_id));
+        lines.push(format!(
+            "2. Map the project with `asp {} search prime --view seeds .`.",
+            provider.language_id
+        ));
+        lines.push("3. Choose an owner, query, dependency, test, or syntax profile from the user intent and the seed frontier.".to_string());
+        lines.push(format!(
+            "4. When you need syntax location, read `asp {} query guide treesitter .`.",
+            provider.language_id
+        ));
+        lines.push(format!(
+            "5. Execute `asp {} query --treesitter-query '<pattern>' .` for a capture/frontier result.",
+            provider.language_id
+        ));
+        lines.push("6. Select one exact locator from the frontier.".to_string());
+        lines.push(format!("7. Extract pure code with `asp {} query --selector <path-or-range> --treesitter-query '<narrow-pattern>' --code .`.", provider.language_id));
+        lines.push("8. Treat stdout from `query --code` as pure source code only.".to_string());
+        if semantic_ast_patch_enabled {
+            lines.push(format!("9. Patch with `apply_patch` for normal edits, or use provider `ast-patch` for structural/mechanical edits after a dry-run receipt; then run `asp {} check --changed .`.", provider.language_id));
+        } else {
+            lines.push(format!("9. Hook config has `experimental.semanticAstPatch.enabled = false`, so patch with `apply_patch`; use provider `ast-patch` only after enabling that config and validating a dry-run receipt, then run `asp {} check --changed .`.", provider.language_id));
+        }
     }
-    if rendered_guides.is_empty() {
-        return format!("{reason}; provider guide unavailable");
+    if unique_providers.is_empty() {
+        lines.push(String::new());
+        lines.push("### Provider Discovery".to_string());
+        lines.push("1. Start from the generic guide.".to_string());
+        lines.push("   - `asp guide`".to_string());
+        lines.push(
+            "2. Inspect active providers, then rerun the language-specific guide.".to_string(),
+        );
     }
-    format!("{reason}; provider guide: {}", rendered_guides.join("; "))
+    lines.push(String::new());
+    lines.push("## Rules".to_string());
+    lines.push("- Search is for discovery and should not inline code.".to_string());
+    lines.push("- Query with `--code` is for exact or unique code extraction.".to_string());
+    lines.push(
+        "- Tree-sitter query is the syntax base; native parser facts enrich the capture/frontier."
+            .to_string(),
+    );
+    lines.push(
+        "- Do not read full guide bodies unless the current step needs that guide.".to_string(),
+    );
+    lines.push(
+        "- Codex and Claude may trigger different hook events, but the recovery route should stay on the same `asp <language>` facade."
+            .to_string(),
+    );
+    if semantic_ast_patch_enabled {
+        lines.push(
+            "- `ast-patch` is available for structural/mechanical edits after a provider dry-run receipt."
+                .to_string(),
+        );
+    } else {
+        lines.push(
+            "- `ast-patch` is disabled by hook config; do not route ordinary edits through provider mutation."
+                .to_string(),
+        );
+    }
+    lines.join("\n")
 }
 
-fn provider_guide_argv(provider: &ActivatedProvider) -> Vec<String> {
-    let argv = provider
-        .routes
-        .guide
-        .as_ref()
-        .map(|template| {
-            template
-                .argv
-                .iter()
-                .map(|arg| arg.replace("{projectRoot}", "."))
-                .collect()
+fn unique_activated_providers<'a>(
+    providers: &'a [&'a ActivatedProvider],
+) -> Vec<&'a ActivatedProvider> {
+    let mut seen = HashSet::new();
+    providers
+        .iter()
+        .copied()
+        .filter(|provider| {
+            seen.insert((provider.language_id.clone(), provider.provider_id.clone()))
         })
-        .unwrap_or_else(|| {
-            vec![
-                provider.binary.clone(),
-                "agent".to_string(),
-                "guide".to_string(),
-                ".".to_string(),
-            ]
-        });
-    provider.agent_facade_argv_from_provider_argv(argv)
+        .collect()
+}
+
+fn provider_detected_command(provider: &ActivatedProvider) -> Vec<String> {
+    if provider.provider_command_prefix.is_empty() {
+        vec![provider.binary.clone()]
+    } else {
+        provider.provider_command_prefix.clone()
+    }
+}
+
+fn agent_flow_language_heading(language_id: &str) -> String {
+    match language_id {
+        "rust" => "Rust".to_string(),
+        "typescript" => "TypeScript".to_string(),
+        "python" => "Python".to_string(),
+        "julia" => "Julia".to_string(),
+        other => other.to_string(),
+    }
 }
 
 fn direct_read_route(
@@ -755,6 +896,7 @@ fn classify_raw_search_command(
     event: &str,
     action: &ToolAction,
     tokens: &[String],
+    semantic_ast_patch_enabled: bool,
 ) -> Option<HookDecision> {
     if command_intent(tokens) != CommandIntent::RawSearch {
         return None;
@@ -779,7 +921,12 @@ fn classify_raw_search_command(
                 .unwrap_or_else(|| raw_search_ingest_route(provider))
         })
         .collect();
-    let message = provider_guide_message("raw-broad-search denied", &raw_search_providers);
+    let message = source_access_recovery_message(
+        "raw-broad-search",
+        &raw_search_providers,
+        &routes,
+        semantic_ast_patch_enabled,
+    );
     Some(deny_for_action(
         platform,
         event,

@@ -39,6 +39,7 @@
         "cache-status",
         "cache-import",
         "cache-invalidate",
+        "cache-flush",
         "search",
         "query",
         "check"
@@ -81,18 +82,38 @@
       "type": ["string", "null"],
       "minLength": 1
     },
+    "syntaxQueryAstAbiFingerprint": {
+      "description": "Stable fingerprint of the normalized tree-sitter-compatible query AST/ABI that participates in syntax-query cache identity.",
+      "type": "string",
+      "pattern": "^syntax-query-ast-abi:[0-9a-f]{16}$"
+    },
+    "syntaxQueryGrammarId": {
+      "description": "Tree-sitter grammar id from the semantic-tree-sitter-query packet used by syntax-query cache identity.",
+      "type": "string",
+      "pattern": "^tree-sitter-[a-z][a-z0-9_-]*$"
+    },
+    "syntaxQueryGrammarProfileVersion": {
+      "description": "Grammar profile version from the semantic-tree-sitter-query packet used by syntax-query cache identity.",
+      "type": "string",
+      "minLength": 1
+    },
+    "syntaxQuerySelector": {
+      "description": "Exact selector component from the semantic-tree-sitter-query packet when present; query --code remains pure stdout and selector metadata belongs in the receipt.",
+      "type": "string",
+      "minLength": 1
+    },
     "packetBytes": {
       "description": "Size in bytes of the validated provider packet or replayed artifact packet when available.",
       "type": "integer",
       "minimum": 0
     },
     "sqliteReadCount": {
-      "description": "Count of local SQLite rows read for this client request when the local cache backend was consulted.",
+      "description": "Count of logical local SQLite read operations for this client request when the local cache backend was consulted. This is an observability counter, not a SQL statement or row-count ABI.",
       "type": "integer",
       "minimum": 0
     },
     "sqliteWriteCount": {
-      "description": "Count of local SQLite rows written or refreshed for this client request.",
+      "description": "Count of logical local SQLite write/import operations for this client request. This is an observability counter, not a SQL statement or row-count ABI.",
       "type": "integer",
       "minimum": 0
     },
@@ -146,8 +167,42 @@
       "type": "integer",
       "minimum": 0
     },
+    "clientDbSyntaxRowGenerationCount": {
+      "description": "Number of normalized semantic-tree-sitter-query generation rows visible in the local SQLite client database.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "clientDbSyntaxRowMatchCount": {
+      "description": "Number of normalized semantic-tree-sitter-query match rows visible in the local SQLite client database.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "clientDbSyntaxRowCaptureCount": {
+      "description": "Number of normalized semantic-tree-sitter-query capture rows visible in the local SQLite client database.",
+      "type": "integer",
+      "minimum": 0
+    },
     "clientDbRawSourceStored": {
       "description": "Diagnostic flag indicating whether the local SQLite client database contains cache rows marked as raw-source storage.",
+      "type": "boolean"
+    },
+    "clientDbJournalMode": {
+      "description": "Observed SQLite journal_mode for the local client database when runtime pragmas were inspected. WAL-capable writable cache connections should report wal.",
+      "type": "string",
+      "minLength": 1
+    },
+    "clientDbSynchronous": {
+      "description": "Observed SQLite synchronous pragma value for the local client database when runtime pragmas were inspected.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "clientDbBusyTimeoutMs": {
+      "description": "Observed SQLite busy_timeout value in milliseconds for the local client database when runtime pragmas were inspected.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "clientDbForeignKeys": {
+      "description": "Observed SQLite foreign_keys pragma for the local client database when runtime pragmas were inspected.",
       "type": "boolean"
     }
   },

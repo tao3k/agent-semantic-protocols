@@ -4,7 +4,8 @@ use std::path::PathBuf;
 
 use crate::types::LanguageId;
 use agent_semantic_tree_sitter::{
-    SyntaxQueryAbiPredicate, SyntaxQueryPredicateValue, compile_query_abi_source,
+    SyntaxQueryAbiPredicate, SyntaxQueryPredicateValue, builtin_catalog_source,
+    compile_query_abi_source,
 };
 use serde::{Deserialize, Serialize};
 
@@ -81,6 +82,7 @@ impl ClientRequest {
 /// Append ASP-compiled tree-sitter query ABI metadata for native projection.
 pub fn append_syntax_query_plan_args(
     method: &ClientMethod,
+    language_id: Option<&LanguageId>,
     forwarded_args: Vec<String>,
 ) -> Result<Vec<String>, String> {
     if *method != ClientMethod::Query
@@ -90,7 +92,7 @@ pub fn append_syntax_query_plan_args(
     {
         return Ok(forwarded_args);
     }
-    let Some(source) = tree_sitter_query_source(&forwarded_args) else {
+    let Some(source) = tree_sitter_query_source(language_id, &forwarded_args)? else {
         return Ok(forwarded_args);
     };
     let plan = compile_query_abi_source(source).map_err(|error| {
@@ -192,13 +194,42 @@ fn escape_fingerprint_component(value: &str) -> String {
         .replace(',', "\\,")
 }
 
-fn tree_sitter_query_source(args: &[String]) -> Option<&str> {
+fn tree_sitter_query_source<'a>(
+    language_id: Option<&LanguageId>,
+    args: &'a [String],
+) -> Result<Option<&'a str>, String> {
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
         if arg == "--treesitter-query" {
-            return iter.next().map(String::as_str);
+            return Ok(iter.next().map(String::as_str));
         }
         if let Some(value) = arg.strip_prefix("--treesitter-query=") {
+            return Ok(Some(value));
+        }
+    }
+    let Some(catalog_id) = tree_sitter_catalog_id(args) else {
+        return Ok(None);
+    };
+    let Some(language_id) = language_id else {
+        return Ok(None);
+    };
+    builtin_catalog_source(language_id.as_str().into(), catalog_id.into())
+        .map(Some)
+        .ok_or_else(|| {
+            format!(
+                "unknown built-in tree-sitter query catalog `{catalog_id}` for language `{}`",
+                language_id.as_str()
+            )
+        })
+}
+
+fn tree_sitter_catalog_id(args: &[String]) -> Option<&str> {
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        if arg == "--catalog" {
+            return iter.next().map(String::as_str);
+        }
+        if let Some(value) = arg.strip_prefix("--catalog=") {
             return Some(value);
         }
     }

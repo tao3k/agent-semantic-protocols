@@ -1,6 +1,8 @@
 use serde_json::Value;
 
-use super::packet::{graph_root, header_field_scalar, packet_query, packet_view};
+use super::packet::{
+    graph_root, header_field_scalar, is_owner_item_query_packet, packet_query, packet_view,
+};
 
 #[derive(Clone, Copy)]
 pub(super) struct GraphActionSpec {
@@ -14,6 +16,7 @@ pub(super) struct GraphAction {
     pub(super) kind: String,
     pub(super) target: String,
     pub(super) locator: Option<String>,
+    pub(super) action: Option<String>,
 }
 
 macro_rules! graph_action_specs {
@@ -41,7 +44,8 @@ graph_action_specs! {
     "test" => "test", "path", "T", "tests";
     "tests" => "test", "path", "T", "tests";
     "symbol" => "symbol", "symbol", "S", "symbol";
-    "item-symbol" => "symbol", "symbol", "S", "code";
+    "item-symbol" => "item", "symbol", "I", "code";
+    "hot" => "hot", "symbol", "H", "code";
     "text" => "query", "term", "Q", "fzf";
     "fzf" => "query", "term", "Q", "fzf";
     "query" => "query", "term", "Q", "query";
@@ -75,6 +79,7 @@ pub(super) fn graph_actions(packet: &Value) -> Vec<GraphAction> {
                 kind: kind.to_string(),
                 target,
                 locator: None,
+                action: None,
             });
         }
     }
@@ -95,12 +100,14 @@ pub(super) fn graph_actions(packet: &Value) -> Vec<GraphAction> {
                 target: header_scalar(packet, "query")
                     .or_else(|| selector_target(packet, "feature="))?,
                 locator: None,
+                action: None,
             }),
             "finding-frontier" => Some(GraphAction {
                 kind: "finding".to_string(),
                 target: header_scalar(packet, "query")
                     .or_else(|| selector_target(packet, "finding="))?,
                 locator: None,
+                action: None,
             }),
             _ => None,
         }
@@ -139,7 +146,16 @@ pub(super) fn graph_actions(packet: &Value) -> Vec<GraphAction> {
     if let Some(action) = packet_root_action(packet) {
         actions.push(action);
     }
-    append_object_actions(&mut actions, packet.get("nextActions"));
+    if is_owner_item_query_packet(packet, packet_view(packet))
+        && let Some(action) = owner_item_query_action(packet)
+    {
+        actions.push(action);
+    }
+    if is_owner_item_query_packet(packet, packet_view(packet)) {
+        append_owner_item_next_actions(&mut actions, packet.get("nextActions"));
+    } else {
+        append_object_actions(&mut actions, packet.get("nextActions"));
+    }
     if synthesis_seeds_are_primary(packet) {
         append_object_actions(
             &mut actions,
@@ -198,6 +214,7 @@ pub(super) fn graph_actions(packet: &Value) -> Vec<GraphAction> {
                 kind: profile.kind.clone(),
                 target: profile.target.clone(),
                 locator: profile.locator.clone(),
+                action: profile.action.clone(),
             },
         );
     }
@@ -205,6 +222,9 @@ pub(super) fn graph_actions(packet: &Value) -> Vec<GraphAction> {
 }
 
 pub(super) fn query_term_count(packet: &Value) -> Option<usize> {
+    if is_owner_item_query_packet(packet, packet_view(packet)) {
+        return owner_item_query_terms(packet).map(|terms| terms.len());
+    }
     let symbol_seed_count = graph_actions(packet)
         .into_iter()
         .filter(|action| action.kind == "symbol")
@@ -218,6 +238,58 @@ pub(super) fn query_term_count(packet: &Value) -> Option<usize> {
         .filter(|term| !term.trim().is_empty())
         .count();
     (count > 0).then_some(count)
+}
+
+fn owner_item_query_action(packet: &Value) -> Option<GraphAction> {
+    Some(GraphAction {
+        kind: "query".to_string(),
+        target: owner_item_query_terms(packet)?.join("|"),
+        locator: None,
+        action: Some("query".to_string()),
+    })
+}
+
+fn owner_item_query_terms(packet: &Value) -> Option<Vec<String>> {
+    let query_set_terms = packet
+        .get("querySet")
+        .and_then(Value::as_array)
+        .map(|terms| {
+            terms
+                .iter()
+                .filter_map(query_set_term_value)
+                .collect::<Vec<_>>()
+        })
+        .filter(|terms| !terms.is_empty());
+    query_set_terms.or_else(|| {
+        header_scalar_value(packet, "itemQuery").and_then(|query| {
+            let terms = query
+                .split('|')
+                .map(str::trim)
+                .filter(|term| !term.is_empty())
+                .map(ToOwned::to_owned)
+                .collect::<Vec<_>>();
+            (!terms.is_empty()).then_some(terms)
+        })
+    })
+}
+
+fn query_set_term_value(value: &Value) -> Option<String> {
+    value
+        .as_str()
+        .or_else(|| value.get("value").and_then(Value::as_str))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+}
+
+fn header_scalar_value(packet: &Value, field: &str) -> Option<String> {
+    packet
+        .get("header")
+        .and_then(|header| header.get("fields"))
+        .and_then(|fields| fields.get(field))
+        .and_then(header_field_scalar)
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
 }
 
 pub(super) fn graph_action_spec(kind: &str) -> Option<GraphActionSpec> {
@@ -252,11 +324,13 @@ fn packet_root_action(packet: &Value) -> Option<GraphAction> {
             kind: mode.to_string(),
             target: query.to_string(),
             locator: None,
+            action: None,
         }),
         "dependency" | "deps" => Some(GraphAction {
             kind: "dependency".to_string(),
             target: query.to_string(),
             locator: None,
+            action: None,
         }),
         "fzf" => {
             let action = packet
@@ -271,6 +345,7 @@ fn packet_root_action(packet: &Value) -> Option<GraphAction> {
                 kind: action.to_string(),
                 target: query.to_string(),
                 locator: None,
+                action: None,
             })
         }
         _ => None,
@@ -282,6 +357,20 @@ fn append_object_actions(actions: &mut Vec<GraphAction>, value: Option<&Value>) 
         return;
     };
     for value in values {
+        if let Some(action) = action_from_value(value) {
+            actions.push(action);
+        }
+    }
+}
+
+fn append_owner_item_next_actions(actions: &mut Vec<GraphAction>, value: Option<&Value>) {
+    let Some(values) = value.and_then(Value::as_array) else {
+        return;
+    };
+    for value in values {
+        if value.get("kind").and_then(Value::as_str) == Some("symbol") {
+            continue;
+        }
         if let Some(action) = action_from_value(value) {
             actions.push(action);
         }
@@ -300,6 +389,7 @@ fn append_string_actions(actions: &mut Vec<GraphAction>, value: Option<&Value>, 
             kind: kind.to_string(),
             target: target.to_string(),
             locator: None,
+            action: None,
         });
     }
 }
@@ -314,6 +404,7 @@ fn append_owner_paths(actions: &mut Vec<GraphAction>, value: Option<&Value>) {
                 kind: "owner".to_string(),
                 target: target.to_string(),
                 locator: None,
+                action: None,
             });
         }
     }
@@ -334,6 +425,7 @@ fn append_native_fact_owners(actions: &mut Vec<GraphAction>, value: Option<&Valu
                 kind: "owner".to_string(),
                 target: target.to_string(),
                 locator: None,
+                action: None,
             });
         }
     }
@@ -350,10 +442,15 @@ fn append_item_symbols(actions: &mut Vec<GraphAction>, value: Option<&Value>) {
             .or_else(|| value.get("target"))
             .and_then(Value::as_str);
         if let Some(target) = target {
+            let locator = graph_item_locator(value);
             actions.push(GraphAction {
                 kind: "item-symbol".to_string(),
                 target: target.to_string(),
-                locator: graph_item_locator(value),
+                action: locator
+                    .as_deref()
+                    .map(item_frontier_action)
+                    .map(ToOwned::to_owned),
+                locator,
             });
         }
     }
@@ -369,16 +466,39 @@ fn graph_item_locator(value: &Value) -> Option<String> {
 }
 
 fn action_from_value(value: &Value) -> Option<GraphAction> {
+    let kind = value.get("kind")?.as_str()?.to_string();
+    let locator = value
+        .get("read")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    let action = if kind == "hot" {
+        Some("code".to_string())
+    } else {
+        None
+    };
     Some(GraphAction {
-        kind: value.get("kind")?.as_str()?.to_string(),
+        kind,
         target: value
             .get("target")
             .or_else(|| value.get("ownerPath"))?
             .as_str()?
             .to_string(),
-        locator: value
-            .get("read")
-            .and_then(Value::as_str)
-            .map(str::to_string),
+        locator,
+        action,
     })
+}
+
+fn item_frontier_action(locator: &str) -> &'static str {
+    let mut parts = locator.rsplit(':');
+    let Some(end) = parts.next().and_then(|part| part.parse::<usize>().ok()) else {
+        return "code";
+    };
+    let Some(start) = parts.next().and_then(|part| part.parse::<usize>().ok()) else {
+        return "code";
+    };
+    if end.saturating_sub(start).saturating_add(1) > 40 {
+        "outline"
+    } else {
+        "code"
+    }
 }

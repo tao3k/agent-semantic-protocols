@@ -30,12 +30,34 @@ fn rejects_invalid_inline_tree_sitter_query_before_provider_execution() {
 }
 
 #[test]
-fn ignores_catalog_and_owner_queries() {
+fn accepts_builtin_catalog_query_before_provider_execution() {
     let catalog_request = query_request(vec![
         "--catalog".to_string(),
         "declarations".to_string(),
         ".".to_string(),
     ]);
+
+    validate_syntax_query_request(&catalog_request).expect("catalog query");
+}
+
+#[test]
+fn rejects_unknown_builtin_catalog_query_before_provider_execution() {
+    let catalog_request = query_request(vec![
+        "--catalog".to_string(),
+        "missing".to_string(),
+        ".".to_string(),
+    ]);
+
+    let error = validate_syntax_query_request(&catalog_request).expect_err("unknown catalog");
+
+    assert_eq!(
+        error,
+        "unknown built-in tree-sitter query catalog `missing` for language `rust`"
+    );
+}
+
+#[test]
+fn ignores_owner_queries() {
     let owner_request = query_request(vec![
         "src/lib.rs".to_string(),
         "--query".to_string(),
@@ -43,7 +65,6 @@ fn ignores_catalog_and_owner_queries() {
         ".".to_string(),
     ]);
 
-    validate_syntax_query_request(&catalog_request).expect("catalog query");
     validate_syntax_query_request(&owner_request).expect("owner query");
 }
 

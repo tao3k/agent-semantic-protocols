@@ -5,7 +5,7 @@ mod syntax_query;
 
 pub(crate) use artifact::{
     MAX_CACHE_REPLAY_ARTIFACT_BYTES, ProviderCacheReplay, load_replay_artifact,
-    replay_artifact_path,
+    load_syntax_query_rows_replay, replay_artifact_path,
 };
 #[cfg(test)]
 pub(crate) use artifact::{

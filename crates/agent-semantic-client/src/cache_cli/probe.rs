@@ -16,13 +16,17 @@ use sha2::{Digest, Sha256};
 use crate::cache_cli::request::{
     request_export_method, request_lookup_fingerprint, selected_provider_for_request,
 };
-use crate::cache_replay::{ProviderCacheReplay, load_replay_artifact};
+use crate::cache_replay::{
+    ProviderCacheReplay, load_replay_artifact, load_syntax_query_rows_replay,
+};
 
 pub(crate) struct ProviderCacheProbe {
     cache_report: CacheManifestReport,
     db_report: ClientDbReport,
-    cache_status: CacheStatus,
+    pub(crate) cache_status: CacheStatus,
     provenance: Vec<NativeProvenance>,
+    pub(crate) sqlite_read_count: u64,
+    pub(crate) sqlite_write_count: u64,
     pub(crate) replay: Option<ProviderCacheReplay>,
 }
 
@@ -35,13 +39,20 @@ pub(crate) fn provider_cache_probe(
     let cache_root = cache_report.cache_root.as_ref()?;
     let db_path = ClientDb::default_path(cache_root);
     let db_report = ClientDb::inspect(&db_path);
+    let mut sqlite_read_count = if db_report.status == ClientDbStatus::Present {
+        1
+    } else {
+        0
+    };
     let selected_provider = selected_provider_for_request(snapshot, request);
     let provenance = selected_provider
         .map(|provider| vec![provider.provenance()])
         .unwrap_or_default();
+    let export_method = request_export_method(request);
     let generation_hit = if db_report.status == ClientDbStatus::Present {
+        sqlite_read_count += 1;
         selected_provider
-            .zip(request_export_method(request))
+            .zip(export_method.clone())
             .and_then(|(provider, export_method)| {
                 let request_fingerprint =
                     request_lookup_fingerprint(provider, project_root, &export_method, request);
@@ -62,13 +73,31 @@ pub(crate) fn provider_cache_probe(
     let generation_fresh = generation_hit
         .as_ref()
         .is_some_and(|hit| generation_file_hashes_match(project_root, hit));
-    let replay = generation_hit.as_ref().and_then(|hit| {
-        if generation_fresh {
-            load_replay_artifact(cache_root, hit, request)
-        } else {
-            None
-        }
-    });
+    let replay = generation_hit
+        .as_ref()
+        .and_then(|hit| {
+            if generation_fresh {
+                load_replay_artifact(cache_root, hit, request)
+            } else {
+                None
+            }
+        })
+        .or_else(|| {
+            let provider = selected_provider?;
+            let export_method = export_method.as_ref()?;
+            if db_report.status != ClientDbStatus::Present
+                || export_method.as_str() != "query/tree-sitter"
+            {
+                return None;
+            }
+            load_syntax_query_rows_replay(
+                cache_root,
+                &provider.language_id,
+                &provider.provider_id,
+                project_root,
+                request,
+            )
+        });
     let cache_status = if replay.is_some() {
         CacheStatus::Hit
     } else if generation_hit.is_some() && !generation_fresh {
@@ -83,6 +112,9 @@ pub(crate) fn provider_cache_probe(
         db_report,
         cache_status,
         provenance,
+        sqlite_read_count: sqlite_read_count
+            + replay.as_ref().map_or(0, |replay| replay.sqlite_read_count),
+        sqlite_write_count: 0,
         replay,
     })
 }
@@ -149,7 +181,19 @@ pub(crate) fn apply_provider_cache_probe(receipt: &mut ClientReceipt, probe: &Pr
     receipt.client_db_path = Some(ClientCachePath::from_path(&probe.db_report.db_path));
     receipt.client_db_status = Some(probe.db_report.status.clone());
     receipt.client_db_generation_count = Some(probe.db_report.generation_count);
+    receipt.client_db_syntax_row_generation_count =
+        Some(probe.db_report.syntax_row_generation_count);
+    receipt.client_db_syntax_row_match_count = Some(probe.db_report.syntax_row_match_count);
+    receipt.client_db_syntax_row_capture_count = Some(probe.db_report.syntax_row_capture_count);
     receipt.client_db_raw_source_stored = Some(probe.db_report.raw_source_stored);
+    if let Some(pragmas) = &probe.db_report.runtime_pragmas {
+        receipt.client_db_journal_mode = Some(pragmas.journal_mode.as_str().into());
+        receipt.client_db_synchronous = Some(pragmas.synchronous);
+        receipt.client_db_busy_timeout_ms = u64::try_from(pragmas.busy_timeout_ms).ok();
+        receipt.client_db_foreign_keys = Some(pragmas.foreign_keys);
+    }
+    receipt.sqlite_read_count = Some(probe.sqlite_read_count);
+    receipt.sqlite_write_count = Some(probe.sqlite_write_count);
 }
 
 pub(crate) fn cache_hit_receipt(

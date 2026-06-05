@@ -6,6 +6,10 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
+use agent_semantic_hook::{
+    HOOK_ACTIVATION_SCHEMA_ID, HOOK_ACTIVATION_SCHEMA_VERSION, HOOK_PROTOCOL_ID,
+    HOOK_PROTOCOL_VERSION, builtin_provider_manifests, provider_manifest_digest,
+};
 use serde_json::{Value, json};
 
 #[test]
@@ -200,36 +204,36 @@ fn assert_route_mentions(decision: &Value, needle: &str) {
     );
 }
 
-fn root_owned_rust_activation_json() -> &'static str {
-    r#"{
-  "schemaId": "agent.semantic-protocols.hook.activation",
-  "schemaVersion": "1",
-  "protocolId": "agent.semantic-protocols.hook",
-  "protocolVersion": "1",
-  "projectRoot": ".",
-  "generatedBy": {
-    "runtime": "agent-semantic-hook",
-    "version": "0.1.0"
-  },
-  "providers": [
-    {
-      "manifestId": "agent.semantic-protocols.providers.rust.rs-harness",
-      "manifestDigest": "sha256:b7d08e7410b0034e70bb5101964613c78865c50bfe310d0a1827ae78a660db3c",
-      "languageId": "rust",
-      "providerId": "rs-harness",
-      "binary": "rs-harness",
-      "providerCommandPrefix": [],
-      "coverage": {
-        "packageRoots": ["."],
-        "sourceRoots": ["src", "tests"],
-        "configFiles": ["Cargo.toml"],
-        "sourceExtensions": [".rs"],
-        "ignoredPathPrefixes": ["target"]
-      }
-    }
-  ]
-}
-"#
+fn root_owned_rust_activation_json() -> String {
+    let manifest = builtin_provider_manifests()
+        .into_iter()
+        .find(|manifest| manifest.language_id == "rust")
+        .expect("rust manifest");
+    let manifest_digest = provider_manifest_digest(&manifest).expect("digest manifest");
+    serde_json::to_string_pretty(&json!({
+        "schemaId": HOOK_ACTIVATION_SCHEMA_ID,
+        "schemaVersion": HOOK_ACTIVATION_SCHEMA_VERSION,
+        "protocolId": HOOK_PROTOCOL_ID,
+        "protocolVersion": HOOK_PROTOCOL_VERSION,
+        "projectRoot": ".",
+        "generatedBy": {"runtime": "asp", "version": "test"},
+        "providers": [{
+            "manifestId": manifest.manifest_id,
+            "manifestDigest": manifest_digest,
+            "languageId": manifest.language_id,
+            "providerId": manifest.provider_id,
+            "binary": manifest.binary,
+            "providerCommandPrefix": [],
+            "coverage": {
+                "packageRoots": ["."],
+                "sourceRoots": ["src", "tests", "crates", "examples", "benches"],
+                "configFiles": ["Cargo.toml", "Cargo.lock"],
+                "sourceExtensions": [".rs"],
+                "ignoredPathPrefixes": [".cache", ".direnv", ".git", ".idea", ".jj", ".run", ".vscode", "node_modules", "target", ".codex/harness-state", ".codex/rs-harness"]
+            }
+        }]
+    }))
+    .expect("serialize root-owned rust activation")
 }
 
 const CLIENT_CONFIG: &str = r#"

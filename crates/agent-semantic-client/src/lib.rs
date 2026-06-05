@@ -17,6 +17,9 @@ mod cache_cli_command_tests;
 mod cache_cli_probe_tests;
 
 #[cfg(test)]
+#[path = "../tests/unit/cache_replay/row_replay.rs"]
+mod cache_replay_row_replay_tests;
+#[cfg(test)]
 #[path = "../tests/unit/cache_replay.rs"]
 mod cache_replay_tests;
 

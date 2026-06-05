@@ -122,8 +122,8 @@ pub(crate) fn render_semantic_tree_sitter_query_rows_stdout(
             match_locator: row.match_locator.clone(),
             capture_locator: row.capture_locator.clone(),
             capture_name: row.capture_name.clone(),
-            capture_node_type: Some(row.capture_node_type.clone()),
-            item_node_type: Some(row.item_node_type.clone()),
+            capture_node_type: Some(row.capture_node_type.as_str().to_string()),
+            item_node_type: Some(row.item_node_type.as_str().to_string()),
             field: row.field.clone(),
             text: row.text.clone(),
         })
@@ -172,8 +172,10 @@ fn render_syntax_query_frontier_graph(
     output.push_str(&format!(
         "[query-treesitter] root=. lang={language_id} pattern={pattern} capture={capture} alg=syntax-capture-frontier\n"
     ));
-    output.push_str("legend: ID=kind:role(value)!next; ts=node/field; frontier ID.next\n");
-    output.push_str("alias: graph:{G=query,Q=tsquery,C=capture,I=item,O=owner}\n\n");
+    output.push_str(
+        "legend: aliases ID:kind; node ID=kind:role(value)!next; ts=node/field; frontier ID.next\n",
+    );
+    output.push_str("aliases=G:query,Q:tsquery,C:capture,I:item,O:owner\n\n");
     output.push_str(&format!("Q=tsquery:pattern({pattern})!query\n"));
 
     for (index, row) in rows.iter().enumerate() {

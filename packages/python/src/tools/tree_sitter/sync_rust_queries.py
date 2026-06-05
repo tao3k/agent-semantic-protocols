@@ -14,8 +14,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+from tools.console import emit
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+
+REPO_ROOT = Path(__file__).resolve().parents[5]
 DEFAULT_PROVIDER_DIR = (
     REPO_ROOT / "languages/rust-lang-project-harness/tree-sitter/tree-sitter-rust"
 )
@@ -181,16 +183,16 @@ def main() -> int:
     changed = write_or_check(outputs, args.check)
     check_provider_layout(provider_dir)
     if changed and args.check:
-        print("tree-sitter Rust query snapshots are out of date:", file=sys.stderr)
+        emit("tree-sitter Rust query snapshots are out of date:", file=sys.stderr)
         for path in changed:
-            print(f"  {path}", file=sys.stderr)
+            emit(f"  {path}", file=sys.stderr)
         return 1
     if changed:
-        print("updated tree-sitter Rust query snapshots:")
+        emit("updated tree-sitter Rust query snapshots:")
         for path in changed:
-            print(f"  {path}")
+            emit(f"  {path}")
     else:
-        print("tree-sitter Rust query snapshots are up to date")
+        emit("tree-sitter Rust query snapshots are up to date")
     return 0
 
 

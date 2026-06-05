@@ -5,9 +5,13 @@ use std::fs;
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 
-use agent_semantic_client_core::{ByteCount, CacheArtifactId, ClientMethod, ClientRequest};
+use agent_semantic_client_core::{
+    ByteCount, CacheArtifactId, ClientCacheFileHash, ClientMethod, ClientRequest, LanguageId,
+    ProviderId, syntax_query_ast_abi_fingerprint,
+};
 use agent_semantic_client_db::{ClientDb, ClientDbGenerationHit, ClientDbSyntaxQueryLookup};
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 
 const SEMANTIC_AGENT_PROTOCOL_BIN_ENV: &str = "SEMANTIC_AGENT_PROTOCOL_BIN";
 const SEMANTIC_TREE_SITTER_QUERY_SCHEMA_ID: &str =
@@ -22,6 +26,7 @@ pub(crate) struct ProviderCacheReplay {
     pub(crate) stdout: Vec<u8>,
     pub(crate) syntax_artifact_id: Option<CacheArtifactId>,
     pub(crate) packet_bytes: Option<ByteCount>,
+    pub(crate) sqlite_read_count: u64,
 }
 
 impl ProviderCacheReplay {
@@ -30,6 +35,7 @@ impl ProviderCacheReplay {
             stdout,
             syntax_artifact_id: None,
             packet_bytes: None,
+            sqlite_read_count: 0,
         }
     }
 
@@ -42,6 +48,7 @@ impl ProviderCacheReplay {
             stdout,
             syntax_artifact_id: Some(syntax_artifact_id),
             packet_bytes: Some(ByteCount::from_len(packet_bytes)),
+            sqlite_read_count: 0,
         }
     }
 
@@ -54,6 +61,7 @@ impl ProviderCacheReplay {
             stdout,
             syntax_artifact_id,
             packet_bytes: packet_bytes.map(ByteCount::new),
+            sqlite_read_count: 1,
         }
     }
 }
@@ -88,12 +96,13 @@ pub(crate) fn load_replay_artifact(
         request: &ClientRequest,
     ) -> String {
         let seed = format!(
-            "{}\0{}\0{}\0{}\0{}",
+            "{}\0{}\0{}\0{}\0{}\0{}",
             generation_hit.language_id,
             generation_hit.provider_id,
             normalized_path(&generation_hit.project_root),
             generation_hit.export_method,
-            request.forwarded_args.join("\0")
+            request.forwarded_args.join("\0"),
+            "syntax-query-ast-abi:none"
         );
         format!("fnv64:{}", stable_hash_hex(&seed))
     }
@@ -116,7 +125,10 @@ pub(crate) fn load_replay_artifact(
                 continue;
             }
             let stdout = fs::read(artifact_path).ok()?;
-            std::str::from_utf8(&stdout).ok()?;
+            let stdout_text = std::str::from_utf8(&stdout).ok()?;
+            if !prompt_output_artifact_replay_safe(stdout_text) {
+                continue;
+            }
             return Some(ProviderCacheReplay::stdout(stdout));
         }
         None
@@ -125,9 +137,30 @@ pub(crate) fn load_replay_artifact(
     load_search_packet_artifact(cache_root, generation_hit, request)
         .or_else(|| load_query_packet_artifact(cache_root, generation_hit, request))
         .or_else(|| load_syntax_query_packet_artifact(cache_root, generation_hit, request))
-        .or_else(|| load_syntax_query_rows(cache_root, generation_hit, request))
-        .or_else(|| load_prompt_output_artifact(cache_root, generation_hit, request))
+        .or_else(|| {
+            load_syntax_query_rows_replay(
+                cache_root,
+                &generation_hit.language_id,
+                &generation_hit.provider_id,
+                &generation_hit.project_root,
+                request,
+            )
+        })
+        .or_else(|| {
+            if is_tree_sitter_query_request(request) {
+                None
+            } else {
+                load_prompt_output_artifact(cache_root, generation_hit, request)
+            }
+        })
 }
+
+fn prompt_output_artifact_replay_safe(stdout: &str) -> bool {
+    !stdout.contains("alias: graph:{")
+        && !stdout
+            .contains("legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next")
+}
+
 pub(crate) fn replay_artifact_path(
     cache_root: &Path,
     artifact_id: &CacheArtifactId,
@@ -239,9 +272,11 @@ fn render_syntax_query_packet_artifact(
     })
 }
 
-fn load_syntax_query_rows(
+pub(crate) fn load_syntax_query_rows_replay(
     cache_root: &Path,
-    generation_hit: &ClientDbGenerationHit,
+    language_id: &LanguageId,
+    provider_id: &ProviderId,
+    project_root: &Path,
     request: &ClientRequest,
 ) -> Option<ProviderCacheReplay> {
     if request.method != ClientMethod::Query
@@ -249,16 +284,20 @@ fn load_syntax_query_rows(
     {
         return None;
     }
-    let request_fingerprint = generation_hit.request_fingerprint.as_ref()?.clone();
+    let query_ast_fingerprint = request_tree_sitter_query_ast_fingerprint(&request.forwarded_args)?;
     let replay = ClientDb::lookup_syntax_query_replay(&ClientDbSyntaxQueryLookup {
         db_path: ClientDb::default_path(cache_root),
-        language_id: generation_hit.language_id.clone(),
-        provider_id: generation_hit.provider_id.clone(),
-        project_root: generation_hit.project_root.clone(),
-        request_fingerprint,
+        language_id: language_id.clone(),
+        provider_id: provider_id.clone(),
+        project_root: project_root.to_path_buf(),
+        query_ast_fingerprint,
+        selector: request_flag_value(&request.forwarded_args, "--selector").map(str::to_string),
     })
     .ok()
     .flatten()?;
+    if !syntax_replay_file_hashes_match(project_root, &replay.file_hashes) {
+        return None;
+    }
     let stdout = render_semantic_tree_sitter_query_rows_stdout(&replay);
     Some(ProviderCacheReplay::syntax_rows(
         stdout.into_bytes(),
@@ -284,6 +323,9 @@ fn render_query_packet_artifact(
 }
 
 pub(crate) fn query_packet_matches_request(packet: &Value, request: &ClientRequest) -> Option<()> {
+    if request.forwarded_args.iter().any(|arg| arg == "--code") {
+        return None;
+    }
     if string_field(packet, "schemaId")? != "agent.semantic-protocols.semantic-query-packet" {
         return None;
     }
@@ -313,7 +355,12 @@ pub(crate) fn semantic_tree_sitter_query_packet_matches_request(
         return None;
     }
     let query = packet.get("query")?;
-    if string_field(query, "input")? != request_tree_sitter_query_value(&request.forwarded_args)? {
+    let request_query_ast_fingerprint =
+        request_tree_sitter_query_ast_fingerprint(&request.forwarded_args)?;
+    let packet_source =
+        string_field(query, "compiledSource").or_else(|| string_field(query, "input"))?;
+    let packet_query_ast_fingerprint = syntax_query_ast_abi_fingerprint(packet_source).ok()?;
+    if packet_query_ast_fingerprint != request_query_ast_fingerprint {
         return None;
     }
     let packet_selector = query
@@ -350,6 +397,16 @@ fn request_tree_sitter_query_value(forwarded_args: &[String]) -> Option<&str> {
     request_flag_value(forwarded_args, "--treesitter-query")
 }
 
+fn is_tree_sitter_query_request(request: &ClientRequest) -> bool {
+    request.method == ClientMethod::Query
+        && request_tree_sitter_query_value(&request.forwarded_args).is_some()
+}
+
+fn request_tree_sitter_query_ast_fingerprint(forwarded_args: &[String]) -> Option<String> {
+    request_tree_sitter_query_value(forwarded_args)
+        .and_then(|source| syntax_query_ast_abi_fingerprint(source).ok())
+}
+
 fn request_flag_value<'a>(forwarded_args: &'a [String], flag: &str) -> Option<&'a str> {
     let prefix = format!("{flag}=");
     let mut iter = forwarded_args.iter();
@@ -362,6 +419,49 @@ fn request_flag_value<'a>(forwarded_args: &'a [String], flag: &str) -> Option<&'
         }
     }
     None
+}
+
+fn syntax_replay_file_hashes_match(
+    project_root: &Path,
+    file_hashes: &[ClientCacheFileHash],
+) -> bool {
+    !file_hashes.is_empty()
+        && file_hashes
+            .iter()
+            .all(|file_hash| replay_file_hash_matches(project_root, file_hash))
+}
+
+fn replay_file_hash_matches(project_root: &Path, file_hash: &ClientCacheFileHash) -> bool {
+    let Some(path) = safe_project_file_path(project_root, &file_hash.path) else {
+        return false;
+    };
+    let Ok(metadata) = fs::metadata(&path) else {
+        return false;
+    };
+    if !metadata.is_file() {
+        return false;
+    }
+    let Ok(bytes) = fs::read(path) else {
+        return false;
+    };
+    let digest = Sha256::digest(&bytes);
+    format!("{digest:x}").eq_ignore_ascii_case(&file_hash.sha256)
+}
+
+fn safe_project_file_path(project_root: &Path, path: &str) -> Option<PathBuf> {
+    let path = Path::new(path);
+    if path.is_absolute() {
+        return None;
+    }
+    let mut relative = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::Normal(part) => relative.push(part),
+            Component::CurDir => {}
+            Component::ParentDir | Component::RootDir | Component::Prefix(_) => return None,
+        }
+    }
+    Some(project_root.join(relative))
 }
 
 fn render_query_packet_stdout(packet: &Value) -> Option<String> {

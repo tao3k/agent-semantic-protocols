@@ -72,7 +72,7 @@ providers can compare the same returned entries.
 selectors, and return entries. `semantic-search-packet.v1.schema.json` validates
 implemented packet profiles against the same contract, so compatibility aliases
 or extra selectors are schema errors rather than model-inferred hints.
-Provider `agent guide` and `search guide` output should print the same catalog
+Provider `guide` and `search guide` output should print the same catalog
 as a compact `reasoningProfiles=... entries=... routes=...` line. Runnable
 reasoning rows belong in `entries`; repair/direct-read flows belong in `routes`
 or command lines and must not be presented as reasoning-profile entries.
@@ -99,21 +99,48 @@ than default client-cache dependencies. `cache-status` receipts are read-only
 inspections; the prompt line reports manifest/DB health as `missing`,
 `unimported`, `available`, `invalid`, or `unavailable`, while the receipt keeps
 machine routing state in `cacheStatus` plus `cacheManifestStatus` and
-`clientDbStatus`. `cache-import` receipts describe explicit SQLite imports from
-a validated provider-owned manifest. `cache-invalidate` receipts describe
+`clientDbStatus`. Local DB receipts also expose normalized syntax row
+generation/match/capture counts so cache hits can distinguish artifact replay,
+row replay, and warm-provider gaps. Runtime DB diagnostics expose observed
+`clientDbJournalMode`, `clientDbSynchronous`, `clientDbBusyTimeoutMs`, and
+`clientDbForeignKeys` so WAL/busy-timeout drift is machine-visible in cache
+status and replay receipts. `cache-import` receipts describe explicit
+SQLite imports from a validated provider-owned manifest. Manifest re-imports
+must preserve unrelated normalized row families rather than replacing the parent
+generation in a way that cascades syntax rows away. `cache-invalidate`
+receipts describe
 local SQLite generation-row invalidation and do not imply manifest or artifact
-deletion. In local-native receipts, `warm-provider`
+deletion. `cache flush syntax-rows` deletes only normalized syntax query row
+families and preserves manifest generations plus artifact provenance. In
+local-native receipts, `warm-provider`
 means a matching SQLite generation was found but provider execution still
 supplied the output; only `hit` means the client served output from cache. The
 initial replay surface covers provider-owned `prompt-output/*.txt` artifacts,
 `search/*.json` semantic-search-packet artifacts rendered through shared compact
 graph output, and `query/*.json` semantic-query-packet artifacts for
 `query/owner-items` compact query replay under the protocol artifact root.
+`semantic-tree-sitter-query/*.json` artifacts and normalized syntax rows replay
+only through AST/ABI fingerprints plus freshness hashes. Syntax-query receipts
+surface the AST/ABI fingerprint, grammar id, grammar profile version, and
+selector when present; artifact ids remain provenance rather than cache facts.
+Providers may supply
+`/cache/fileHashes`; when they do not, the client may hash validated syntax
+locator paths from the packet, storing only path+sha256 and no raw source.
 The client may also capture successful replay-safe `search --view seeds`
 provider stdout as `prompt-output/*.txt` write-back artifacts for the next
 identical request. `prompt-output/*.command.json` stores the matching
 provider-command provenance when stdout replay has no packet-level command
 field. This path deliberately excludes query/code windows.
+
+`agent-semantic-project-config.v1.schema.json` owns the shared `asp.toml`
+project configuration surface. Providers ignore hidden directories by default,
+merge additive `discovery.ignoredDirNames`, and scan hidden directories only
+when listed in `discovery.includeHiddenDirNames`. Hook activation also consumes
+`providers.<language>.enabled` and `providers.<language>.binary` to disable a
+language provider or pin its executable path. Provider-specific policy config
+may stay in language-owned files, but source discovery, fd/rg prefilters, and
+hook activation should consume the nearest `asp.toml` before selecting provider
+facts or binaries.
 
 `semantic-type-surface.v1.schema.json` is the shared vocabulary for
 language-neutral public type surface facts. It owns the facts that agents need
@@ -274,13 +301,25 @@ workspace owns validation, query compilation, cache keys, and replay semantics.
 `semantic-tree-sitter-grammar-profile.v1.schema.json` owns the shared
 `grammar-profile.json` shape so Rust, TypeScript, Python, Julia, and future
 providers can expose the same catalog/profile/corpus contract. The profile pins
-the ASP workspace git revision used to validate the fixture contract. It also
+the ASP workspace git revision only as validation provenance; it is not a
+current-HEAD equality gate. The compatibility gate is
+`aspWorkspace.contractFingerprint`, computed from the ASP tree-sitter query
+ABI/schema/validator files. It also
 declares `nativeFactProjection` entries that map provider-owned native
 parser/compiler facts onto catalog captures, keeping native authority visible
 through the canonical `.scm` ABI rather than provider-private fields. The
 fixtures may cite upstream `test/corpus` files for grammar provenance, but
 should test only provider/ASP capture granularity rather than duplicate
 upstream parser grammar coverage.
+
+Agent-facing syntax query stdout has a separate render contract from the JSON
+packet: non-`--code` output is locator/frontier evidence only, while `--code`
+prints pure source code. Rust currently renders the reference
+`compact-graph-frontier` profile, and TypeScript/Python render the
+`corpus-locator` profile. Both profiles are valid only when backed by the same
+ASP-compiled tree-sitter query plan and provider-native projection, and neither
+profile may expose cache ids, SQLite paths, receipts, full node lists, or raw
+source windows in default non-JSON output.
 
 `parser-compact-case.v1.schema.json` and
 `parser-compact-token-cost.v1.schema.json` are the root fixture contracts for
@@ -356,8 +395,8 @@ Each `commands[].metrics.tokenCost` records the token cost for that command id;
 `summary.tokenCost` is the checked sum across command costs. Both levels must
 identify whether the value is an estimate or a measured count and include a
 basis string so sandtable evidence is not confused with model billing.
-`semantic-sandtable` can validate these receipts directly with
-`--receipt <path>`, and scenarios can link a receipt through
+`python -m tools sandtable` can validate these receipts directly with
+`--receipt <path>` from `packages/python`, and scenarios can link a receipt through
 `evidence.receiptPath`.
 
 `semantic-agent-hook-provider-manifest.v1.schema.json` is the static provider
@@ -457,6 +496,15 @@ broad or low-signal, providers should emit `readPlan` with `code=false`,
 `mode=range-frontier`, executable `frontier` entries, bounded `windows`, and
 `avoid` actions instead of `sourceWindows`; broad discovery still stays in
 provider search, prime, ingest, or normal query repair.
+
+When a direct read must distinguish worktree, staged index, and committed
+contents, the same packet carries `sourceVersion=worktree|index|head`.
+Providers should set `repositoryRoot` when the Git repository root differs from
+`projectRoot`, such as a nested language harness repo. `gitBlobOid` identifies
+the Git object read for `index` or `head`; `worktreeHash` identifies bounded
+worktree text. This keeps Git object reads inside the provider-owned
+`direct-source-read` route instead of relying on raw `git show :path`, raw
+diffs, or untracked shell dumps.
 
 `semantic-ast-patch.v1.schema.json` and
 `semantic-ast-patch-receipt.v1.schema.json` define the compact AST patch
@@ -678,7 +726,7 @@ facts rank and explain parser-owned owner/dependency/test edges but do not
 introduce a second source of truth. In agent-facing `--view seeds` output,
 providers render derived follow-up routes through the RFC 006 compact graph
 projection: the view-native `[search-<view>]` header, the micro-legend,
-`alias: graph:{...}`, role-typed aliases, `G>{...}` edges, `rank=`, and
+`aliases=...`, role-typed aliases, `G>{...}` edges, `rank=`, and
 `frontier=`.
 Providers should not render seed or synthesis as a second independent prompt
 protocol.

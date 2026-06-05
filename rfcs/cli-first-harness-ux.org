@@ -82,24 +82,23 @@ reroutes, and compact code projection are =query=.
 
 Language-neutral examples use =<lang-harness>=.  The TypeScript implementation
 ships this as =ts-harness=; Rust/Cargo-specific lanes use =rs-harness=.
-Julia is intentionally not a bin parity target: LLVM/JIT warm-up makes a
-short-lived installed/global Julia provider binary a poor agent protocol
-surface. Julia alignment should use the workspace-managed command
-=julia --project=languages/JuliaLangProjectHarness.jl
-languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl= and should
-not design a standalone =julia-project-harness= bin as part of provider
-alignment.  RFC 008 may let =agent-semantic-client= cache validated
-workspace-managed Julia provider exports and serve repeated searches from the
-Rust client cache, but that cache is an execution optimization, not a new Julia
-bin-parity requirement or a Rust-owned Julia parser.
+Julia is no longer a bin-parity exclusion.  The provider identity is the
+compiled =aslp-julia-harness=, with =julia-project-harness.jl= kept as a
+source-provider development fallback.  RFC 008 lets =agent-semantic-client=
+cache validated Julia provider exports in the local SQLite cache and serve
+repeated searches without restarting Julia when the generation is fresh.  That
+cache is an execution optimization; JuliaSyntax remains the parser authority and
+Rust must not invent Julia parser facts.
 
-The agent sees four language-provider top-level commands:
+The agent sees the language facade commands, with =guide= as the interactive
+entrypoint and =agent doctor --json= as the machine/registry diagnostic surface:
 
 #+begin_src shell
-<lang-harness> search <view> ...   # all exploration / location / evidence
-<lang-harness> query ...           # parser-owned compact code/query reroutes
-<lang-harness> check ...           # policy / style / changed / full
-<lang-harness> agent ...           # agent-client install and diagnostics
+asp <language> guide ...                 # provider-owned agent command menu
+asp <language> search <view> ...         # all exploration / location / evidence
+asp <language> query ...                 # parser-owned compact code/query reroutes
+asp <language> check ...                 # policy / style / changed / full
+asp <language> agent doctor --json ...   # registry/diagnostic packet
 #+end_src
 
 RFC 007 adds the shared =asp ast-patch= verification path.
@@ -194,14 +193,11 @@ Provider-native item query is the default code extraction path for agents:
 
 The language provider owns parser/AST lookup, exact item matching, multi-term
 query expressions, hook reroute normalization, and compact code rendering.
-Even when Julia stays workspace-managed rather than bin-parity, its owner-local
-item query must use this same shared =semantic-query-packet= contract for JSON
-output:
+Julia owner-local item query uses this same shared =semantic-query-packet=
+contract for JSON output through the language facade:
 
 #+begin_src shell
-julia --project=languages/JuliaLangProjectHarness.jl \
-  languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl \
-  query src/CliExample.jl --term run --json languages/JuliaLangProjectHarness.jl
+asp julia query src/CliExample.jl --term run --json languages/JuliaLangProjectHarness.jl
 #+end_src
 
 For an exact =direct-source-read= selector with =--code=, the provider should
@@ -213,8 +209,9 @@ the selected window, including indentation, blank lines, attributes, semicolons,
 macro payloads, enum variants, and visible block braces.  Parser projection may
 select or repair a read frontier, but it must not be used as the exact-read text
 for this surface.  Rust, TypeScript, Python, and Julia all use their native
-parser facts to bound or repair the selector; Julia uses the workspace-managed
-provider command rather than a global short-lived binary.
+parser facts to bound or repair the selector; Julia uses the =asp julia=
+facade backed by the compiled =aslp-julia-harness= and cacheable provider
+artifacts.
 If the selector is too wide for bounded code transport, the provider returns a
 =read-plan= frontier, not a denial-only outline.  The active contract is
 =semantic-read-packet=: =readPlan.mode= is =range-frontier= or =search-repair=,
@@ -229,13 +226,16 @@ must map back to:
 <lang-harness> query --from-hook direct-source-read --selector <path[:line-range]> --code .
 #+end_src
 
-For exact selectors without =--code=, the provider may normalize to
-=search owner <path> items= rather than owner seeds.  That gives the agent
-parser-owned item names, read locators carrying line ranges, and test
-reachability without dumping raw source.  For exact selectors with a query term,
-the provider should keep the normal item query/code projection path.  Wildcard
-or broad selectors still require concrete terms and should remain bounded
-candidate/seed searches.
+For exact selectors without =--code=, the provider may return a bounded
+=read-owner= source window, return a =read-plan= frontier, or normalize to
+=search owner <path> items= rather than owner seeds.  A =read-owner= response
+must state the selected path, item, line range, truncation status, and bounded
+source text in protocol rows; it must not include cache ids, SQLite paths,
+receipt JSON, or unbounded adjacent source.  A =read-plan= or item response
+must keep code omitted and provide executable read locators.  For exact
+selectors with a query term, the provider should keep the normal item query/code
+projection path.  Wildcard or broad selectors still require concrete terms and
+should remain bounded candidate/seed searches.
 
 Hook route construction must preserve exact line-range selectors when the agent
 already supplied one.  The hook may strip =:line[-end]= for language profile
@@ -406,8 +406,8 @@ The formatter stage is language-owned:
 - TypeScript and JavaScript use the workspace-declared formatter from
   =package.json= or provider registry facts, such as =prettier=, =biome=, or
   =oxfmt=.
-- Julia remains skipped for bin parity.  If the Julia lane reopens, it should
-  use =JuliaFormatter.jl= as a workspace-managed capability.
+- Julia uses =JuliaFormatter.jl= as a provider-declared formatter capability
+  behind the Julia facade.
 
 Compact AST output must not break the normal agent edit loop.  The agent reads
 compact projection to understand and choose a target, then expands an exact
@@ -521,9 +521,9 @@ The Rust, TypeScript, and Python compact lanes must be advanced as native parser
 implementations, not as renderer tricks.  The renderer may choose line protocol,
 JSON, or pure =--code= transport, but it must serialize parser projection nodes
 that already exist in the language provider.  A provider that can only trim
-whitespace has not implemented compact code.  Julia is skipped for this
-bin-parity and compact-search lane; it remains workspace-managed only and must
-not be used to justify a standalone =julia-project-harness= binary.
+whitespace has not implemented compact code.  Julia participates through
+JuliaSyntax-owned compact projections and the compiled =aslp-julia-harness=
+facade path.
 
 The mainline compact dialects are =save-token-rustfmt= for Rust,
 =save-token-typescript= for TypeScript/JavaScript, and =save-token-ruff= for
@@ -635,6 +635,21 @@ They are query repair evidence, not textual search hits.  A shell-safe repeated
 =--query RawSearchScope|terms_for_raw_search= is interpreted by shells as a
 pipeline unless the whole expression is quoted.
 
+Agents must also quote literal query text that contains shell metacharacters.
+Backticks are command substitution in common shells, so a copied documentation
+string such as =Start with `asp <language> guide .`= must be passed as a
+single-quoted argv literal:
+
+#+begin_src shell
+asp rust search fzf --query-set 'Start with `asp <language> guide .`' owner tests --view seeds .
+#+end_src
+
+If the query text itself contains single quotes, the agent should narrow the
+query into separate safe terms or use a provider-documented file/stdin input
+surface rather than interpolating raw prose into a shell command.  Providers
+must treat the received argv term as literal query text and must not ask agents
+to rely on shell escaping side effects.
+
 When provider-native =query --json= is requested for an owner item query, it
 emits =semantic-query-packet.v1= rather than =semantic-search-packet.v1=.  The
 JSON packet uses =queryCoverage= and =candidateItems= for the same repair
@@ -643,22 +658,17 @@ Parser compact snapshots must use this =query --json= form; using
 =search ... --json= records the wrong packet class and hides compact-query
 cost behind search-packet fields.
 
-Workspace-managed Julia search still uses the shared search packet for search
-JSON:
+Julia search uses the shared search packet for search JSON through the facade:
 
 #+begin_src shell
-julia --project=languages/JuliaLangProjectHarness.jl \
-  languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl \
-  search fzf run owner tests --view seeds --json languages/JuliaLangProjectHarness.jl
+asp julia search fzf run owner tests --view seeds --json languages/JuliaLangProjectHarness.jl
 #+end_src
 
 The hook wildcard form uses the same packet class when a client needs a cached
 search frontier rather than compact text:
 
 #+begin_src shell
-julia --project=languages/JuliaLangProjectHarness.jl \
-  languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl \
-  query --from-hook direct-source-read \
+asp julia query --from-hook direct-source-read \
     --selector '**/*.jl' \
     --term render_julia_search_packet \
     --surface owners,tests \
@@ -685,6 +695,19 @@ That mode emits =semantic-read-packet= under the normal
 parser transport, not a root hook command.  The packet should only carry
 bounded exact windows that the provider can justify with parser-owned owner,
 item, or syntax facts.  Broad selectors must remain seed/candidate queries.
+
+When the target file has separate staged and unstaged states, =direct-source-read=
+is still the recovery surface.  Providers may accept a source selector such as
+=--source worktree|index|head= and should record the selected layer in the
+=semantic-read-packet= with =sourceVersion=.  =sourceVersion= defaults to
+=worktree=.  =sourceVersion=index= reads the Git index blob for the resolved
+repository-relative path, and =sourceVersion=head= reads the =HEAD= blob.
+Packets should include =repositoryRoot= for nested repositories,
+=gitBlobOid= for Git object reads, and =worktreeHash= for bounded worktree
+source.  Agents must not replace this with raw =git show :path=, raw =git diff=,
+or shell source dumps; if the provider cannot produce the requested source
+version, it should fail with an explicit provider error or emit a read-plan
+repair action rather than silently falling back to a different layer.
 
 When an owner-scoped item query has no exact or contains match, the provider may
 return a bounded owner-local fallback instead of an empty packet.  The fallback
@@ -723,8 +746,8 @@ the normalized intent and facts:
 |query intent=syntax.import term=rules status=hit routed=native-syntax selected=1
 |fact id=rust:src/lib.rs:4:reexport:rules kind=reexport source=native-parser owner=src/lib.rs line=4 visibility=public name=rules languageKind=use
 [search-graph] mode=query root=. alg=native-syntax-query
-legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next
-alias: graph:{G=search,L=owner,F=fact}
+legend: aliases ID:kind; node ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next
+aliases=G:search,L:owner,F:fact
 L=owner:path(src/lib.rs)!owner
 F=fact:symbol(rust:src/lib.rs:4:reexport:rules)
 L>{F:contains}
@@ -1178,12 +1201,167 @@ the public decision contract:
 |route query-code selectors=O:owner,Q:symbol returns=code code=pure
 #+end_src
 
+Provider guide output should be split by use, not by implementation owner.  The
+agent-facing line protocols are:
+
+#+begin_src text
+[agent-guide] lang=<language> provider=<asp-provider> protocol=agent-guide.v1 root=.
+[query-guide] lang=<language> provider=<asp-provider> protocol=query-guide.v1 root=.
+[treesitter-query-guide] lang=<language> engine=tree-sitter protocol=treesitter-query-guide.v1 root=.
+#+end_src
+
+=guide= is the provider's default agent-facing guide command and emits the
+=agent-guide.v1= protocol.  It teaches surfaces and flows, and should point
+code-shaped syntax work to =query guide treesitter .= before an agent writes an
+inline =--treesitter-query=.  =query guide= teaches stdout contracts, read-plan
+contracts, and pure-code requirements.  =query guide treesitter= teaches
+tree-sitter S-expression shape, captures, predicates, native enrichment fields,
+catalog templates, and the rules for multi-match =--code=.  Hook recovery
+messages should refer to these guides when the agent used raw language-source
+tools: for example, a Rust =PreToolUse= denial for =Read=, =cat=, =sed=, or
+=rg= over =.rs= source should explain that raw Rust source access is replaced by
+=asp rust guide .= as the main progressive tool map, with =asp rust search guide
+.=, =asp rust query guide .=, and =asp rust query guide treesitter .= listed
+only as specialized reference guides when that decision is needed.
+The concrete recovery route remains
+=asp rust query --from-hook direct-source-read ...= when the hook has an exact
+selector.
+
+Hook recovery reason text is a compact Markdown prompt, not a second JSON
+schema and not a line-protocol template.  The authoritative
+platform-independent envelope remains the existing
+=agent.semantic-protocols.hook.decision= packet in =additionalContext=; the
+=permissionDecisionReason= / =systemMessage= string is the low-token agent
+instruction.  It must avoid inline guide bodies and use a progressive decision
+ladder:
+
+#+begin_src text
+# ASP Hook Recovery
+
+The pre-tool hook blocked `<reason>` on language source.
+
+## Stop
+Do not retry `Read`, `cat`, `sed`, `rg`, or source-dump commands on the matched source.
+
+## Run Next
+```sh
+asp <language> query --from-hook direct-source-read ...
+```
+
+## Agent Flow
+Follow this flow after the hook recovery command gives you a frontier or exact locator.
+
+1. Start from the language guide when you need the agent tool map: `asp <language> guide .`.
+2. Map the project with `asp <language> search prime --view seeds .`.
+3. Choose an owner, query, dependency, test, or syntax profile from the user intent and seed frontier.
+4. When syntax location is needed, read `asp <language> query guide treesitter .`.
+5. Execute `asp <language> query --treesitter-query '<pattern>' .` for a capture/frontier result.
+6. Select one exact locator from the frontier.
+7. Extract pure code with `asp <language> query --selector <path-or-range> --treesitter-query '<narrow-pattern>' --code .`.
+8. Treat stdout from `query --code` as pure source code only.
+9. Patch with `apply_patch` by default, or use provider `ast-patch` only when hook config enables semantic AST patching and a provider dry-run receipt validates the structural/mechanical edit.
+
+## Rules
+- Search is for discovery and should not inline code.
+- Query with `--code` is for exact or unique code extraction.
+- Tree-sitter query is the syntax base; native parser facts enrich the capture/frontier.
+- Do not read full guide bodies unless the current step needs that guide.
+#+end_src
+
+The renderer must branch on the loaded hook config.  Generated Codex hook
+configs set =experimental.semanticAstPatch.enabled = false=, so
+=permissionDecisionReason= must tell agents to patch with =apply_patch= and not
+route ordinary edits through provider =ast-patch= unless that option is enabled.
+
+Project discovery must ignore hidden directories by default across Rust,
+TypeScript, and Python providers.  This includes heavy local state directories
+such as =.devenv=, =.direnv=, =.cache=, and generated tool caches.  A hidden
+directory may be scanned only when project config explicitly allows it.  The
+shared ASP config surface is =asp.toml=:
+
+#+begin_src toml
+[discovery]
+ignoredDirNames = ["vendor"]
+includeHiddenDirNames = [".agent-fixtures"]
+
+[providers.rust]
+enabled = true
+binary = ".bin/rs-harness"
+
+[providers.typescript]
+enabled = false
+#+end_src
+
+Providers may keep language-specific policy config in their existing files, but
+file discovery must merge the nearest =asp.toml= discovery settings before
+walking source trees or running fd/rg prefilters.  =ignoredDirNames= is an
+additive deny-list.  =includeHiddenDirNames= is the only supported exception to
+the default hidden-directory prune rule.
+
+Hook activation must also merge =asp.toml= provider settings before writing
+=activation.json=.  =providers.<language>.enabled = false= removes that language
+from hook source matching and from the =asp <language>= facade for the activated
+project.  =providers.<language>.binary= pins the detected executable used for
+provider runtime profiles; relative paths resolve from the project root.  The
+activation keeps the manifest-owned =binary= identity stable and records the
+detected executable in =providerCommandPrefix=, so manifest digest checks remain
+stable while runtime output can show the actual bin path.
+
+To keep guide prompts stable, =guide= is the low-frequency agent tool map.  It
+should be generated from a typed provider catalog rather than hand-written
+inline prose.  =guide= should not inline the full =query guide= or
+=treesitter-query-guide= bodies; it should reference them:
+
+#+begin_src text
+[search-guide] protocol=search-guide.v1
+profiles:
+  overview-prime:
+    command=search prime --view seeds
+    returns=owner/query/dependency/test/finding handles
+  owner-items:
+    args=owner:path query:term
+    returns=symbol/item frontier
+  owner-tests:
+    args=owner:path
+    returns=test frontier
+  query-deps:
+    args=query:term dependency:pkg
+    returns=dependency usage owners/tests
+  path:
+    args=from:typed-node to:typed-node
+    returns=shortest relation path
+  read-frontier:
+    args=range:path@start:end
+    returns=symbol/window frontier without code
+avoid=raw-read,manual-window-scan,full-json,natural-language-intent
+#+end_src
+
+The paired prime output should expose the current handles and available profile
+follow-ups, not code or full item lists:
+
+#+begin_src text
+[search-prime] root=<project-root> alg=budgeted-prime-frontier-v1 budget=handles:12
+legend: ID=kind:role(value)!next; profiles P(args); frontier ID.next
+profiles=owner-items(O,Q),owner-tests(O,T),query-deps(Q,D)
+omit=items,blocks,code,full-test-list
+avoid=raw-read,full-json,broad-fzf
+#+end_src
+
 =--treesitter-query= is precise syntax locate/capture/frontier.  Adding
 =--code= to an exact selector turns it into pure code extraction.  Search and
 read-plan flows must return locators/frontier rather than inline code.  Plain
 =query --code= writes only code to stdout.  JSON artifacts, SQLite cache ids,
 and receipts are debugging/integration surfaces and should not appear in the
-default agent guide or non-JSON query output.
+default guide output or non-JSON query output.
+=tools/validate-search-read-plan-frontier-contract.sh= is the root executable
+gate for this search/read-plan rule across Rust, TypeScript, and Python.
+=tools/validate-exact-direct-read-contract.sh= is the paired gate for exact
+direct-source-read: non-=--code= output must be bounded =read-owner= or
+=read-plan= protocol output, and =--code= output must be pure source text.
+The repository runs these tree-sitter query gates from
+=check-tree-sitter-query-contracts= in the local provider gate and from the
+CI schema/provider gate after the root =asp= binary and TypeScript provider are
+built.
 
 Schema evolution rules:
 
@@ -1222,10 +1400,11 @@ capability.  Agents should only call methods present in the registry and use
 whether it consumes stdin, whether =--package= is accepted, and whether
 compact/JSON output is supported.  A =search/*= descriptor must carry its
 =view=, emitted schema ids, and CLI input semantics; a =check/*= descriptor must
-not pretend to be a search view; an =agent/*= descriptor only requires
+not pretend to be a search view; an =agent/*= descriptor only covers machine
+surfaces such as =agent/doctor= or =agent/registry= and only requires
 =outputSchemaIds= when =supportsJson=true=.  Text-only helper methods such as
-=agent/guide= can be registry-described without inventing a JSON schema they do
-not emit.
+=guide= can be registry-described without inventing a JSON schema they do not
+emit.
 
 A =query/*= descriptor must use =command="query"=, must not carry a search
 =view=, and must advertise the schema it emits.  For owner-local item lookup,
@@ -1626,8 +1805,8 @@ superseded by graph-integrated rank and frontier facts:
 
 #+begin_src text
 [search-graph] mode=prime root=. alg=owner-rank-frontier
-legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next
-alias: graph:{G=search,L=owner,T=owner}
+legend: aliases ID:kind; node ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next
+aliases=G:search,L:owner,T:owner
 L=owner:path(src/lib.rs)!owner
 T=owner:path(src/tests.rs)!owner
 L>{T:frontier}
@@ -2823,8 +3002,8 @@ A daemon bug cannot corrupt the agent contract.
 The semantic-language protocol does not expose daemon lifecycle commands.
 Providers may keep private developer controls for starting, stopping, or
 inspecting a daemon, but those controls are not =methods=, are not advertised by
-=agent doctor --json=, and are not used by agent guides or hooks.  The
-agent-visible health surface is =<lang-harness> agent doctor=.
+=agent doctor --json=, and are not used by guide output or hooks.  The
+agent-visible health surface is =asp <language> agent doctor --json=.
 
 #+begin_src json
 {
@@ -2837,9 +3016,9 @@ agent-visible health surface is =<lang-harness> agent doctor=.
 }
 #+end_src
 
-* Agent guide: teach recipes, not intent
+* Generated guide: teach recipes, not intent
 
-The generated agent guide tells an agent client how to think about the
+The generated guide tells an agent client how to think about the
 primitives.  It does not tell the client to call a planner command.  It
 provides command-group recipes for common task types, subagent guidance, and a
 synthesis format — all of which the agent client executes by composing
@@ -3022,8 +3201,8 @@ without teaching the agent a second prompt protocol.
 #+begin_src text
 [search-fzf] q=load,Thing querySet=2 selector=exact-set pkg=. own=3
 [search-graph] mode=query-set root=. alg=change-frontier-query-set
-legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next
-alias: graph:{G=search,O1=owner,O2=owner,T3=test}
+legend: aliases ID:kind; node ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next
+aliases=G:search,O1:owner,O2:owner,T3:test
 O1=owner:path(src/domain/mod.rs)!owner
 O2=owner:path(src/lib.rs)!owner
 T3=test:path(tests/domain.rs)!tests
@@ -3136,8 +3315,8 @@ In compact output this should be visible without JSON:
 |query AgentHookEvent hit=0 status=miss
 |query runCodexAgentHook hit=2 surface=test-fixture-string owner=tests/unit/cli.test.ts fixturePath=src/cli/agent-hooks.ts
 [search-graph] mode=query-set root=. alg=fixture-owner-resolution
-legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next
-alias: graph:{G=search,T=test,A=owner,O=owner,R=query,P=query}
+legend: aliases ID:kind; node ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next
+aliases=G:search,T:test,A:owner,O:owner,R:query,P:query
 T=test:path(tests/unit/cli.test.ts)
 A=owner:path(src/cli/agent-hooks.ts)!owner
 O=owner:path(src/cli/protocol.ts)!owner
@@ -3403,12 +3582,12 @@ adding another accepted alias would create a new drift point and should fail the
 output-quality check.  Valid profile names come from the shared
 =reasoningProfileName= catalog, currently =owner-query=, =query-deps=,
 =owner-tests=, =finding-frontier=, and =feature-cfg=.
-Provider =agent guide= and =search guide= outputs SHOULD expose this catalog as
+Provider =guide= and =search guide= outputs SHOULD expose this catalog as
 a prompt-visible =reasoningProfiles= line before listing commands.  That line
 should name runnable reasoning rows as =entries= and non-profile direct-read or
 frontier repair actions as =routes=, so catalog-only profiles do not become
 implicit commands.
-Provider =agent guide= command rows SHOULD assume commands are run from the
+Provider =guide= command rows SHOULD assume commands are run from the
 advertised project root and use trailing =.= for that root.  The header may
 carry the absolute =project= once, but command rows should not repeat long
 absolute paths.  This keeps the guide usable as a prompt-visible command ABI

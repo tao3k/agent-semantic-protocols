@@ -9,9 +9,11 @@ import json
 import sys
 from pathlib import Path
 
+from tools.console import emit
+
 
 SEPARATOR = "=" * 80
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[5]
 GRAMMAR_ROOT = (
     REPO_ROOT
     / "languages"
@@ -32,10 +34,10 @@ def main() -> int:
     if args.check:
         if CORPUS_PROFILE.read_text() != rendered:
             raise AssertionError(f"{CORPUS_PROFILE} is stale")
-        print("tree-sitter TypeScript query corpus profile is current")
+        emit("tree-sitter TypeScript query corpus profile is current")
         return 0
     CORPUS_PROFILE.write_text(rendered)
-    print(f"updated {CORPUS_PROFILE.relative_to(REPO_ROOT)}")
+    emit(f"updated {CORPUS_PROFILE.relative_to(REPO_ROOT)}")
     return 0
 
 

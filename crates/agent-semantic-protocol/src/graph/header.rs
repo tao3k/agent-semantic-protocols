@@ -13,18 +13,20 @@ pub(crate) fn graph_header(
     let mut fields = Vec::new();
     fields.push(format!("[search-{}]", header_mode(mode)));
     if owner_item_query_packet {
-        fields.push(format!("owner={}", packet_query(packet).unwrap_or(root)));
+        fields.push(format!("q={}", packet_query(packet).unwrap_or(root)));
+        if let Some(package) =
+            header_field_string(packet, "pkg").or_else(|| header_field_string(packet, "package"))
+        {
+            fields.push(format!("pkg={package}"));
+        }
+        fields.push("selector=items".to_string());
+        if let Some(terms) = term_count {
+            fields.push(format!("querySet={terms}"));
+        }
     } else if let Some(query) = packet_query(packet) {
         fields.push(format!("q={query}"));
     } else {
         fields.push(format!("root={root}"));
-    }
-    if owner_item_query_packet {
-        fields.push("selector=items".to_string());
-        if let Some(terms) = term_count {
-            fields.push(format!("terms={terms}"));
-        }
-        fields.push("view=seeds".to_string());
     }
     for key in [
         "querySet",
@@ -35,7 +37,7 @@ pub(crate) fn graph_header(
         "nativeSyntaxFacts",
         "policyFindings",
     ] {
-        if owner_item_query_packet && matches!(key, "selector" | "view") {
+        if owner_item_query_packet && matches!(key, "querySet" | "selector" | "view") {
             continue;
         }
         if key == "querySet" {

@@ -3,7 +3,8 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::{
-    SyntaxCatalogDescriptor, extract_capture_names, load_grammar_profile, load_syntax_catalog,
+    SyntaxCatalogDescriptor, builtin_catalog_source, compile_query_abi_source,
+    extract_capture_names, load_grammar_profile, load_syntax_catalog,
 };
 
 #[test]
@@ -137,6 +138,39 @@ fn loads_real_rust_provider_grammar_profile() {
     assert!(profile.source.contains("tree-sitter-rust"));
     assert!(profile.source.contains("corpus-profile.json"));
     assert!(profile.fingerprint.starts_with("grammar-profile:"));
+}
+
+#[test]
+fn built_in_language_catalogs_compile_to_abi_plans() {
+    let catalogs = [
+        ("rust", "calls", "call.target"),
+        ("rust", "cfg", "attribute.name"),
+        ("rust", "declarations", "function.name"),
+        ("rust", "imports", "import.path"),
+        ("rust", "macros", "macro.name"),
+        ("typescript", "calls", "call.target"),
+        ("typescript", "declarations", "function.name"),
+        ("typescript", "imports", "import.source"),
+        ("python", "calls", "call.target"),
+        ("python", "control-flow", "control.loop"),
+        ("python", "declarations", "function.name"),
+        ("python", "decorators", "decorator.target"),
+        ("python", "imports", "import.path"),
+    ];
+
+    for (language_id, catalog_id, expected_capture) in catalogs {
+        let source = builtin_catalog_source(language_id.into(), catalog_id.into())
+            .expect("built-in catalog source");
+        let plan = compile_query_abi_source(source).expect("built-in catalog ABI plan");
+
+        assert!(
+            plan.captures
+                .iter()
+                .any(|capture| capture == expected_capture),
+            "{language_id}:{catalog_id} missing {expected_capture}: {:?}",
+            plan.captures
+        );
+    }
 }
 
 fn workspace_root() -> PathBuf {

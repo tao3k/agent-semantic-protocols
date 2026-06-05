@@ -2,10 +2,22 @@ version = 1
 revision = 3
 requires-python = ">=3.11"
 
+[manifest]
+members = [
+    "agent-semantic-protocols-tools",
+]
+
+[manifest.dependency-groups]
+dev = [
+    { name = "jsonschema", specifier = ">=4.23,<5" },
+    { name = "pytest", specifier = ">=9,<10" },
+    { name = "tiktoken", specifier = ">=0.9,<1" },
+]
+
 [[package]]
-name = "agent-semantic-protocols"
+name = "agent-semantic-protocols-tools"
 version = "0.1.0"
-source = { editable = "." }
+source = { editable = "packages/python" }
 dependencies = [
     { name = "jsonschema" },
     { name = "tiktoken" },

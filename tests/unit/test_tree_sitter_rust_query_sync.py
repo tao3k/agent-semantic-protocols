@@ -2,12 +2,8 @@
 
 import json
 import subprocess
-import sys
 from pathlib import Path
 
-
-_REPO_ROOT = Path(__file__).resolve().parents[2]
-_SYNC_SCRIPT = _REPO_ROOT / "tools" / "sync-tree-sitter-rust-queries.py"
 
 
 def _write_text(path: Path, text: str) -> None:
@@ -70,8 +66,16 @@ def test_sync_tree_sitter_rust_queries_updates_queries_and_corpus_profile(
 
     result = subprocess.run(
         [
-            sys.executable,
-            str(_SYNC_SCRIPT),
+            "uv",
+            "run",
+            "--project",
+            "packages/python",
+            "python",
+            "-m",
+            "tools",
+            "tree-sitter",
+            "sync",
+            "rust-queries",
             "--upstream",
             str(upstream),
             "--provider-dir",
@@ -100,8 +104,16 @@ def test_sync_tree_sitter_rust_queries_updates_queries_and_corpus_profile(
 
     subprocess.run(
         [
-            sys.executable,
-            str(_SYNC_SCRIPT),
+            "uv",
+            "run",
+            "--project",
+            "packages/python",
+            "python",
+            "-m",
+            "tools",
+            "tree-sitter",
+            "sync",
+            "rust-queries",
             "--upstream",
             str(upstream),
             "--provider-dir",

@@ -85,7 +85,11 @@ impl LocalNativeCliBackend {
             provider.command_prefix()
         };
         Self::push_method(&mut invocation, &request.method)?;
-        let forwarded_args = append_syntax_query_plan_args(&request.method, forwarded_args)?;
+        let forwarded_args = append_syntax_query_plan_args(
+            &request.method,
+            Some(&provider.language_id),
+            forwarded_args,
+        )?;
         invocation.extend(forwarded_args);
         let (program, args) = invocation
             .split_first()

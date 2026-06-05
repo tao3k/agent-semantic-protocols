@@ -82,6 +82,33 @@ fn prepares_query_with_asp_compiled_syntax_plan() {
 }
 
 #[test]
+fn prepares_catalog_query_with_asp_compiled_syntax_plan() {
+    let backend = LocalNativeCliBackend::new(snapshot(vec![provider("rust", "rs-harness")]));
+    let request = ClientRequest::new(ClientMethod::Query, PathBuf::from("/repo"))
+        .with_language("rust")
+        .with_forwarded_args(vec![
+            "--catalog".to_string(),
+            "declarations".to_string(),
+            ".".to_string(),
+        ]);
+
+    let command = backend.prepare(&request).expect("prepare command");
+
+    assert!(command.args.windows(2).any(|window| window
+        == [
+            ASP_SYNTAX_QUERY_CAPTURES_ARG,
+            "constant.definition,constant.name,constant.type,function.definition,function.modifier,function.name,function.return_type,function.type_parameters,impl.definition,impl.target,impl.trait,impl.type_parameters,item.attribute,item.visibility,module.definition,module.name,trait.bounds,trait.definition,trait.name,trait.type_parameters,type.aliased_type,type.definition,type.name,type.type_parameters"
+        ]));
+    assert_internal_arg_contains(
+        &command.args,
+        ASP_SYNTAX_QUERY_NODE_TYPES_ARG,
+        "function_item",
+    );
+    assert_internal_arg_contains(&command.args, ASP_SYNTAX_QUERY_NODE_TYPES_ARG, "trait_item");
+    assert_internal_arg_contains(&command.args, ASP_SYNTAX_QUERY_FIELDS_ARG, "name");
+}
+
+#[test]
 fn reports_unusable_runtime_profile_status_before_falling_back_to_path() {
     let mut provider = provider("rust", "rs-harness");
     provider.runtime_profile_status = Some(RuntimeProfileStatus::Missing);
@@ -122,4 +149,16 @@ fn snapshot(providers: Vec<ResolvedProvider>) -> ProviderRegistrySnapshot {
         ),
         providers,
     }
+}
+
+fn assert_internal_arg_contains(args: &[String], key: &str, expected_value: &str) {
+    let value = args
+        .windows(2)
+        .find(|window| window[0] == key)
+        .map(|window| window[1].as_str())
+        .unwrap_or_else(|| panic!("missing internal arg {key}"));
+    assert!(
+        value.split(',').any(|value| value == expected_value),
+        "{key} did not contain {expected_value}: {value}"
+    );
 }

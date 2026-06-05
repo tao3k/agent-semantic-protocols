@@ -15,7 +15,11 @@ fn inspect_reports_missing_without_creating_db() {
 
     assert_eq!(report.status, ClientDbStatus::Missing);
     assert_eq!(report.generation_count, 0);
+    assert_eq!(report.syntax_row_generation_count, 0);
+    assert_eq!(report.syntax_row_match_count, 0);
+    assert_eq!(report.syntax_row_capture_count, 0);
     assert!(!db_path.exists());
+    assert!(report.runtime_pragmas.is_none());
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -53,10 +57,20 @@ fn open_creates_schema_and_imports_manifest_generations() {
         .expect("journal mode");
 
     assert_eq!(summary.generation_count, 1);
+    assert_eq!(summary.syntax_row_generation_count, 0);
+    assert_eq!(summary.syntax_row_match_count, 0);
+    assert_eq!(summary.syntax_row_capture_count, 0);
     assert!(!summary.raw_source_stored);
     assert_eq!(report.status, ClientDbStatus::Present);
     assert_eq!(report.generation_count, 1);
+    assert_eq!(report.syntax_row_generation_count, 0);
+    assert_eq!(report.syntax_row_match_count, 0);
+    assert_eq!(report.syntax_row_capture_count, 0);
     assert!(!report.raw_source_stored);
+    let runtime_pragmas = report.runtime_pragmas.expect("runtime pragmas");
+    assert_eq!(runtime_pragmas.journal_mode.as_str(), "wal");
+    assert_eq!(runtime_pragmas.busy_timeout_ms, 5000);
+    assert!(runtime_pragmas.foreign_keys);
     assert_eq!(
         stored_schema_version,
         agent_semantic_client_db::AGENT_SEMANTIC_CLIENT_DB_SCHEMA_VERSION.to_string()

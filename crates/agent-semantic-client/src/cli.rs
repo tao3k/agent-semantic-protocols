@@ -20,7 +20,7 @@ pub fn run_cli_from_env() -> Result<(), String> {
         Some("search" | "query" | "check")
     ) {
         return Err(
-            "top-level asp search/query/check has been removed; use asp <rust|typescript|python> <search|query|check> ..."
+            "top-level asp search/query/check has been removed; use asp <rust|typescript|python|julia> <search|query|check> ..."
                 .to_string(),
         );
     }
@@ -81,7 +81,7 @@ fn run_guide(
 
 fn provider_language_required(command: &str) -> String {
     format!(
-        "asp {command} requires a language facade; use asp <rust|typescript|python> {command} ..."
+        "asp {command} requires a language facade; use asp <rust|typescript|python|julia> {command} ..."
     )
 }
 
@@ -236,6 +236,10 @@ fn print_guide() {
     println!("[asp-guide] backend=local prompt=compact json=artifact-only");
     println!("|cmd doctor=asp doctor");
     println!("|cmd providers=asp providers");
+    println!("|cmd guide=asp <rust|typescript|python> guide .");
+    println!("|cmd search-guide=asp <rust|typescript|python> search guide .");
+    println!("|ref query-guide=asp <rust|typescript|python> query guide .");
+    println!("|ref treesitter-query-guide=asp <rust|typescript|python> query guide treesitter .");
     println!("|cmd search=asp <rust|typescript|python> search <provider-search-args>");
     println!("|cmd query=asp <rust|typescript|python> query <provider-query-args>");
     println!("|cmd check=asp <rust|typescript|python> check <provider-check-args>");

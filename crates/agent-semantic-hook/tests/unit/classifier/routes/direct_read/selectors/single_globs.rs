@@ -36,10 +36,12 @@ fn structured_direct_read_source_glob_routes_to_provider_query() {
             "."
         ]
     );
-    assert_eq!(
-        decision.message,
-        "direct-source-read denied; provider guide: ts-harness => asp typescript agent guide ."
-    );
+    assert!(decision.message.starts_with("# ASP Hook Recovery"));
+    assert!(decision.message.contains("`asp typescript guide .`"));
+    assert!(decision.message.contains(
+        "asp typescript query --from-hook direct-source-read --selector '*.ts' --surface 'owners,tests' --view seeds ."
+    ));
+    assert!(!decision.message.contains("|run-next"));
 }
 
 #[test]

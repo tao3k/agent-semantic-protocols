@@ -523,8 +523,8 @@ may degrade to a repair-oriented guide when no provider route can be trusted,
 but activation errors must not turn obvious source reads into allow decisions.
 =doctor= and =install= are strict: they rebuild activation, verify manifest
 digests, and fail if no provider can be activated.  They must not run provider
-=agent guide= or any other provider command during discovery; PATH executable
-checks and static workspace detector facts are enough.
+=guide= or any other provider command during discovery; PATH executable checks
+and static workspace detector facts are enough.
 
 * Shared Hook State
 
@@ -751,8 +751,8 @@ activated suffixes and shell-tokenized search terms.  Otherwise, it should wrap
 the provider-owned guide command in a compact form such as:
 
 #+begin_example
-direct-source-read denied; provider guide: rust => asp rust agent guide .; python => asp python agent guide .
-raw-broad-search denied; provider guide: typescript => asp typescript agent guide .
+direct-source-read denied; provider guide: rust => asp rust guide .; python => asp python guide .
+raw-broad-search denied; provider guide: typescript => asp typescript guide .
 #+end_example
 
 The root hook must not maintain a parser/query engine.  Exact selected source

@@ -69,6 +69,24 @@
       "type": "string",
       "minLength": 1
     },
+    "repositoryRoot": {
+      "type": "string",
+      "description": "Git repository root used to resolve sourceVersion when it differs from projectRoot, for example in nested provider repos.",
+      "minLength": 1
+    },
+    "sourceVersion": {
+      "$ref": "#/$defs/sourceVersion"
+    },
+    "gitBlobOid": {
+      "type": "string",
+      "description": "Git blob object id for sourceVersion=index or sourceVersion=head when the provider read a Git object.",
+      "pattern": "^[0-9a-f]{40,64}$"
+    },
+    "worktreeHash": {
+      "type": "string",
+      "description": "Hash of the bounded worktree source text used by sourceVersion=worktree reads.",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
     "packageName": {
       "type": "string",
       "minLength": 1
@@ -164,6 +182,13 @@
     },
     "location": {
       "$ref": "semantic-source-location.v1.schema.json#/$defs/location"
+    },
+    "sourceVersion": {
+      "enum": [
+        "worktree",
+        "index",
+        "head"
+      ]
     },
     "line": {
       "type": "object",

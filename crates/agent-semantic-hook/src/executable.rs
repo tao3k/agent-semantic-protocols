@@ -18,10 +18,6 @@ pub(crate) struct ExecutableResolution {
     pub(crate) reason: Option<String>,
 }
 
-pub(crate) fn resolve_executable(program: &str) -> Option<PathBuf> {
-    resolve_executable_with_status(program).path
-}
-
 pub(crate) fn resolve_executable_with_status(program: &str) -> ExecutableResolution {
     let path = PathBuf::from(program);
     if program_has_path_separator(program) || path.is_absolute() {

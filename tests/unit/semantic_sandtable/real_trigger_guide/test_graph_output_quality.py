@@ -43,7 +43,7 @@ class RealTriggerGraphOutputGuideTests(unittest.TestCase):
                         "import json; "
                         f"entries = {entries!r}; "
                         "prime_output = 'analysis=structure nativeSyntaxFacts=skipped policyFindings=skipped\\n"
-                        "alias: graph:{G=search,O=owner,Q=query,D=dependency,T=test,F=finding,F2=feature}\\n' + entries; "
+                        "aliases=G:search,O:owner,Q:query,D:dependency,T:test,F:finding,F2:feature\\n' + entries; "
                                         "decision = {"
                                         "'reasonKind': 'raw-broad-search',"
                                         "'languageIds': ['typescript'],"
@@ -253,7 +253,7 @@ class RealTriggerGraphOutputGuideTests(unittest.TestCase):
 
     def test_guide_quality_rejects_graph_selector_drift(self) -> None:
         bad_output = (
-            "alias: graph:{G=search,F=reasoning-selector}\n"
+            "aliases=G:search,F:reasoning-selector\n"
             "F2=finding:finding(finding(serde))!finding"
         )
         with tempfile.TemporaryDirectory() as tmp:
@@ -313,7 +313,7 @@ class RealTriggerGraphOutputGuideTests(unittest.TestCase):
         entries = "entries=feature-cfg(F=>cfg-gates+owners+verification-surfaces)"
         prime_output = (
             "analysis=structure nativeSyntaxFacts=skipped policyFindings=skipped\n"
-            "alias: graph:{G=search,F=finding}\n"
+            "aliases=G:search,F:finding\n"
             f"{entries}"
         )
         with tempfile.TemporaryDirectory() as tmp:

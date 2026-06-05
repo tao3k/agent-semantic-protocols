@@ -305,7 +305,7 @@ asp rust search reasoning query-deps --query serde --dependency serde --view see
 #+end_src
 
 Each command must return =[search-reasoning]= compact graph output with
-=legend:=, =alias: graph:{...}=, =rank=, =frontier=, and =avoid=raw-read=.
+=legend:=, =aliases: graph:{...}=, =rank=, =frontier=, and =avoid=raw-read=.
 It must not return =unknown search view: reasoning=, advertise natural-language
 intent fields, or emit raw source/code snippets.
 

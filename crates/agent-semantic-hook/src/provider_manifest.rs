@@ -1,9 +1,11 @@
 //! Built-in provider manifests and default project activations.
 
+use serde::Deserialize;
+use std::collections::BTreeMap;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-use crate::executable::resolve_executable;
+use crate::executable::{is_executable_file, resolve_executable_with_status};
 use crate::protocol::{
     CommandTemplate, HOOK_ACTIVATION_SCHEMA_ID, HOOK_ACTIVATION_SCHEMA_VERSION, HOOK_PROTOCOL_ID,
     HOOK_PROTOCOL_VERSION, HookPolicy, HookRoutes, PROVIDER_MANIFEST_SCHEMA_ID,
@@ -20,17 +22,28 @@ pub fn builtin_provider_manifests() -> Vec<ProviderManifest> {
 }
 
 pub(crate) fn provider_manifests() -> Vec<ProviderManifest> {
-    vec![rust_manifest(), typescript_manifest(), python_manifest()]
+    vec![
+        rust_manifest(),
+        typescript_manifest(),
+        python_manifest(),
+        julia_manifest(),
+    ]
 }
 
-/// Build the default project activation from providers available on `PATH`.
+/// Build the default project activation from configured project providers.
 pub fn build_default_activation(project_root: &Path) -> Result<HookActivation, String> {
+    let project_config = ProjectProviderConfigSet::load(project_root)?;
     let mut providers = Vec::new();
     for manifest in provider_manifests() {
-        if !provider_binary_available(&manifest.binary) {
+        let Some(provider_config) = project_config.provider_config(&manifest.language_id) else {
             continue;
-        }
-        providers.push(activate_provider(project_root, &manifest)?);
+        };
+        let Some(command_prefix) =
+            provider_command_prefix(project_root, &manifest, provider_config)?
+        else {
+            continue;
+        };
+        providers.push(activate_provider(project_root, &manifest, command_prefix)?);
     }
     if providers.is_empty() {
         return Err(
@@ -52,15 +65,11 @@ pub fn build_default_activation(project_root: &Path) -> Result<HookActivation, S
     })
 }
 
-pub(crate) fn provider_binary_available(binary: &str) -> bool {
-    resolve_executable(binary).is_some()
-}
-
 fn activate_provider(
     project_root: &Path,
     manifest: &ProviderManifest,
+    provider_command_prefix: Vec<String>,
 ) -> Result<ActivatedProviderConfig, String> {
-    let provider_command_prefix = Vec::new();
     Ok(ActivatedProviderConfig {
         manifest_id: manifest.manifest_id.clone(),
         manifest_digest: provider_manifest_digest(manifest)
@@ -77,6 +86,104 @@ fn activate_provider(
             ignored_path_prefixes: manifest.source.default_ignored_path_prefixes.clone(),
         },
     })
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AgentSemanticProjectConfig {
+    #[serde(default)]
+    providers: BTreeMap<String, ProjectProviderConfig>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ProjectProviderConfig {
+    #[serde(default)]
+    enabled: Option<bool>,
+    #[serde(default)]
+    binary: Option<String>,
+}
+
+#[derive(Debug, Default)]
+struct ProjectProviderConfigSet {
+    providers: BTreeMap<String, ProjectProviderConfig>,
+}
+
+impl ProjectProviderConfigSet {
+    fn load(project_root: &Path) -> Result<Self, String> {
+        let config_path = project_root.join("asp.toml");
+        if !config_path.is_file() {
+            return Ok(Self::default());
+        }
+        let contents = fs::read_to_string(&config_path)
+            .map_err(|error| format!("failed to read {}: {error}", config_path.display()))?;
+        let config: AgentSemanticProjectConfig = toml::from_str(&contents)
+            .map_err(|error| format!("invalid {}: {error}", config_path.display()))?;
+        Ok(Self {
+            providers: config.providers,
+        })
+    }
+
+    fn provider_config(&self, language_id: &str) -> Option<&ProjectProviderConfig> {
+        let config = self.providers.get(language_id);
+        if config.and_then(|config| config.enabled) == Some(false) {
+            return None;
+        }
+        Some(config.unwrap_or(&DEFAULT_PROVIDER_CONFIG))
+    }
+}
+
+static DEFAULT_PROVIDER_CONFIG: ProjectProviderConfig = ProjectProviderConfig {
+    enabled: None,
+    binary: None,
+};
+
+fn provider_command_prefix(
+    project_root: &Path,
+    manifest: &ProviderManifest,
+    config: &ProjectProviderConfig,
+) -> Result<Option<Vec<String>>, String> {
+    let has_binary_override = config.binary.is_some();
+    let configured_binary = config.binary.as_deref().unwrap_or(&manifest.binary);
+    let provider_binary = if has_binary_override {
+        project_root_relative_binary(project_root, configured_binary)
+    } else {
+        default_provider_binary(project_root, manifest)
+    };
+    let resolution = resolve_executable_with_status(&provider_binary);
+    let Some(path) = resolution.path else {
+        if config.enabled == Some(true) || config.binary.is_some() {
+            return Err(format!(
+                "provider `{}` language `{}` binary `{configured_binary}` is not executable: {}",
+                manifest.provider_id,
+                manifest.language_id,
+                resolution
+                    .reason
+                    .unwrap_or_else(|| "provider binary unavailable".to_string())
+            ));
+        }
+        return Ok(None);
+    };
+    Ok(Some(vec![path.display().to_string()]))
+}
+
+fn default_provider_binary(project_root: &Path, manifest: &ProviderManifest) -> String {
+    let project_bin = project_root.join(".bin").join(&manifest.binary);
+    if is_executable_file(&project_bin) {
+        return project_bin.display().to_string();
+    }
+    manifest.binary.clone()
+}
+
+fn project_root_relative_binary(project_root: &Path, binary: &str) -> String {
+    let path = PathBuf::from(binary);
+    if path.is_absolute() {
+        return binary.to_string();
+    }
+    if binary.contains('/') || binary.contains('\\') || binary.starts_with('.') {
+        return project_root.join(path).display().to_string();
+    }
+    binary.to_string()
 }
 
 fn discover_package_roots(project_root: &Path, manifest: &ProviderManifest) -> Vec<String> {
@@ -164,6 +271,24 @@ fn manifest(
     binary: &str,
     source: ManifestSourceDefaults,
 ) -> ProviderManifest {
+    manifest_with_routes(
+        manifest_id,
+        language_id,
+        provider_id,
+        binary,
+        source,
+        provider_routes(binary),
+    )
+}
+
+fn manifest_with_routes(
+    manifest_id: &str,
+    language_id: &str,
+    provider_id: &str,
+    binary: &str,
+    source: ManifestSourceDefaults,
+    routes: HookRoutes,
+) -> ProviderManifest {
     ProviderManifest {
         schema_id: PROVIDER_MANIFEST_SCHEMA_ID.to_string(),
         schema_version: PROVIDER_MANIFEST_SCHEMA_VERSION.to_string(),
@@ -177,7 +302,7 @@ fn manifest(
         binary: binary.to_string(),
         source,
         policy: HookPolicy::default(),
-        routes: provider_routes(binary),
+        routes,
     }
 }
 
@@ -253,12 +378,70 @@ fn provider_routes(binary: &str) -> HookRoutes {
             StdinMode::PipeCandidates,
         ),
         check_changed: command_template(&[binary, "check", "--changed", "{projectRoot}"]),
-        guide: Some(command_template(&[
+        guide: Some(command_template(&[binary, "guide", "{projectRoot}"])),
+    }
+}
+
+fn julia_routes(binary: &str) -> HookRoutes {
+    HookRoutes {
+        prime: command_template(&[
             binary,
-            "agent",
-            "guide",
+            "search",
+            "prime",
+            "--view",
+            "seeds",
+            "{projectRoot}",
+        ]),
+        owner: command_template(&[
+            binary,
+            "search",
+            "owner",
+            "{path}",
+            "--view",
+            "seeds",
+            "{projectRoot}",
+        ]),
+        fzf: command_template(&[
+            binary,
+            "search",
+            "fzf",
+            "{query}",
+            "owner",
+            "tests",
+            "--view",
+            "seeds",
+            "{projectRoot}",
+        ]),
+        query: Some(command_template(&[
+            binary,
+            "search",
+            "query",
+            "--from-hook",
+            "direct-source-read",
+            "--selector",
+            "{selector}",
+            "{termArgs}",
+            "--surface",
+            "owners,tests",
+            "--view",
+            "seeds",
             "{projectRoot}",
         ])),
+        ingest: command_template_with_stdin(
+            &[
+                binary,
+                "search",
+                "ingest",
+                "owner",
+                "tests",
+                "--view",
+                "seeds",
+                "{projectRoot}",
+            ],
+            StdinMode::PipeCandidates,
+        ),
+        check_changed: command_template(&[binary, "check", "--changed", "{projectRoot}"]),
+        guide: Some(command_template(&[binary, "guide", "{projectRoot}"])),
     }
 }
 
@@ -322,5 +505,21 @@ fn python_manifest() -> ProviderManifest {
             &["src", "tests"],
             &[".venv", "venv", "__pycache__", ".mypy_cache"],
         ),
+    )
+}
+
+fn julia_manifest() -> ProviderManifest {
+    manifest_with_routes(
+        "agent.semantic-protocols.providers.julia.julia-lang-project-harness",
+        "julia",
+        "julia-lang-project-harness",
+        "aslp-julia-harness",
+        source_defaults(
+            &[".jl"],
+            &["Project.toml"],
+            &["src", "test", "docs", "examples", "benchmark"],
+            &[".devenv", ".git", "build", "Manifest.toml"],
+        ),
+        julia_routes("aslp-julia-harness"),
     )
 }

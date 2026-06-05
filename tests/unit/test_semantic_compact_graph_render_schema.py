@@ -48,15 +48,15 @@ def minimal_render_template() -> dict[str, object]:
             "legacySynthesisRowsAllowed": False,
         },
         "lineGrammar": {
-            "header": "[search-<view>] (q=<query>|owner=<path>|root=<root>) [querySet=<n>|terms=<n>] [selector=<selector>] [scope=<scope>] [view=<view>] alg=<algorithm>",
+            "header": "[search-<view>] (q=<query>|root=<root>) [pkg=<package>] [selector=<selector>] [querySet=<n>|terms=<n>] [scope=<scope>] [view=<view>] alg=<algorithm>",
             "microLegend": "legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next",
-            "legend": "alias: graph:{<ID>=<nodeType>,...}; every rendered ID is declared",
+            "legend": "aliases: graph:{<ID>=<nodeType>,...}[,<alias-group>...]; numbered aliases inherit their prefix node type unless explicitly declared",
             "alias": "<ID>=<nodeType>:<targetRole>(<target>)[@<locator>][!<action>]",
             "edge": "<SRC>{<DST>:<relation>,...}",
             "groupedEdge": "(<SRC>,...)><DST>:<relation>",
             "rankFrontier": "rank=<ID>,... frontier=<ID>.<action>,...",
             "entries": "entries=<profile>(<ID>,...=><return>+...),...",
-            "entryAliasContract": "entries selector IDs must resolve to alias: graph declarations; known profile selectors must match the profile node-kind catalog",
+            "entryAliasContract": "entries selector IDs must resolve to aliases declarations; known profile selectors must match the profile node-kind catalog",
             "omit": "omit=<omitted-semantic>[,<omitted-semantic>]",
             "avoid": "avoid=<anti-action>[,<anti-action>]",
             "denseAliasSeparator": ";",
@@ -78,7 +78,7 @@ def minimal_render_template() -> dict[str, object]:
         "headerFields": {
             "identity": ["q", "root"],
             "algorithm": "alg",
-            "retained": ["querySet", "terms", "selector", "scope", "view"],
+            "retained": ["pkg", "querySet", "terms", "selector", "scope", "view"],
         },
         "actionSpecs": [
             {
@@ -159,7 +159,7 @@ class SemanticCompactGraphRenderSchemaTests(unittest.TestCase):
             template["lineGrammar"]["entries"],
         )
         self.assertEqual(
-            "entries selector IDs must resolve to alias: graph declarations; known profile selectors must match the profile node-kind catalog",
+            "entries selector IDs must resolve to aliases declarations; known profile selectors must match the profile node-kind catalog",
             template["lineGrammar"]["entryAliasContract"],
         )
 

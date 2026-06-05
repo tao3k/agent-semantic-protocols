@@ -127,7 +127,7 @@ pub(super) fn write_fake_provider_file(root: &std::path::Path, binary: &str, mod
     std::fs::write(
         &path,
         format!(
-            "#!/bin/sh\nif [ \"$1\" = \"agent\" ] && [ \"$2\" = \"guide\" ]; then\n  printf '%s\\n' '{}'\n  exit 0\nfi\nexit 0\n",
+            "#!/bin/sh\nif [ \"$1\" = \"guide\" ]; then\n  printf '%s\\n' '{}'\n  exit 0\nfi\nexit 0\n",
             guide_marker
         ),
     )

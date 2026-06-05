@@ -101,9 +101,9 @@ def _set_workspace_protocol_bin(env: dict[str, str], repo_root: Path | None) -> 
 
 def _workspace_protocol_bin(repo_root: Path) -> Path | None:
     for relative in (
-        ".bin/asp",
         "target/debug/asp",
         "target/debug/semantic-agent-protocol",
+        ".bin/asp",
     ):
         candidate = repo_root / relative
         if candidate.exists():

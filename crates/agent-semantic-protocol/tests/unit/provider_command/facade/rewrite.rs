@@ -32,15 +32,15 @@ fn provider_output_command_hints_are_rewritten_without_changing_identity() {
 }
 
 #[test]
-fn agent_guide_rewrites_command_lines_to_language_facade() {
-    let root = temp_project_root("agent-guide-facade");
+fn guide_rewrites_command_lines_to_language_facade() {
+    let root = temp_project_root("guide-facade");
     let bin_dir = root.join(".bin");
     write_guide_provider(&bin_dir, "rs-harness");
     write_activation(&root, &[provider("rust", Vec::new())]);
 
     let output = asp_command(&root)
         .env("PATH", prepend_path(&bin_dir))
-        .args(["rust", "agent", "guide", "."])
+        .args(["rust", "guide", "."])
         .output()
         .expect("run asp guide");
     assert!(

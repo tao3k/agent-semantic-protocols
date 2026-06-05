@@ -5,9 +5,10 @@ use serde::{Deserialize, Serialize};
 use crate::cache_manifest::{CacheManifestReport, CacheManifestStatus};
 use crate::request::ClientMethod;
 use crate::types::{
-    ByteCount, CacheArtifactId, CacheStatus, ClientCachePath, ClientDbStatus, CompactArtifactId,
-    ElapsedMillis, LanguageId, ProviderId, SemanticProtocolId, SemanticProtocolVersion,
-    SemanticSchemaId, SemanticSchemaVersion,
+    ByteCount, CacheArtifactId, CacheStatus, ClientCachePath, ClientDbJournalMode, ClientDbStatus,
+    CompactArtifactId, ElapsedMillis, LanguageId, ProviderId, SemanticProtocolId,
+    SemanticProtocolVersion, SemanticSchemaId, SemanticSchemaVersion, SyntaxQueryAstAbiFingerprint,
+    SyntaxQueryGrammarId, SyntaxQueryGrammarProfileVersion, SyntaxQuerySelector,
 };
 
 /// Schema id for `agent-semantic-client-receipt.v1`.
@@ -70,6 +71,14 @@ pub struct ClientReceipt {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub syntax_artifact_id: Option<CacheArtifactId>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub syntax_query_ast_abi_fingerprint: Option<SyntaxQueryAstAbiFingerprint>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub syntax_query_grammar_id: Option<SyntaxQueryGrammarId>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub syntax_query_grammar_profile_version: Option<SyntaxQueryGrammarProfileVersion>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub syntax_query_selector: Option<SyntaxQuerySelector>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub packet_bytes: Option<ByteCount>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sqlite_read_count: Option<u64>,
@@ -95,7 +104,21 @@ pub struct ClientReceipt {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub client_db_generation_count: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_db_syntax_row_generation_count: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_db_syntax_row_match_count: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_db_syntax_row_capture_count: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub client_db_raw_source_stored: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_db_journal_mode: Option<ClientDbJournalMode>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_db_synchronous: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_db_busy_timeout_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_db_foreign_keys: Option<bool>,
 }
 
 impl ClientReceipt {
@@ -122,6 +145,10 @@ impl ClientReceipt {
             native_provenance: vec![provenance],
             compact_artifact_id: None,
             syntax_artifact_id: None,
+            syntax_query_ast_abi_fingerprint: None,
+            syntax_query_grammar_id: None,
+            syntax_query_grammar_profile_version: None,
+            syntax_query_selector: None,
             packet_bytes: None,
             sqlite_read_count: None,
             sqlite_write_count: None,
@@ -133,7 +160,14 @@ impl ClientReceipt {
             client_db_path: None,
             client_db_status: None,
             client_db_generation_count: None,
+            client_db_syntax_row_generation_count: None,
+            client_db_syntax_row_match_count: None,
+            client_db_syntax_row_capture_count: None,
             client_db_raw_source_stored: None,
+            client_db_journal_mode: None,
+            client_db_synchronous: None,
+            client_db_busy_timeout_ms: None,
+            client_db_foreign_keys: None,
         }
     }
 
@@ -165,6 +199,10 @@ impl ClientReceipt {
             native_provenance: provenance,
             compact_artifact_id: None,
             syntax_artifact_id: None,
+            syntax_query_ast_abi_fingerprint: None,
+            syntax_query_grammar_id: None,
+            syntax_query_grammar_profile_version: None,
+            syntax_query_selector: None,
             packet_bytes: None,
             sqlite_read_count: None,
             sqlite_write_count: None,
@@ -185,7 +223,14 @@ impl ClientReceipt {
             client_db_path: None,
             client_db_status: None,
             client_db_generation_count: None,
+            client_db_syntax_row_generation_count: None,
+            client_db_syntax_row_match_count: None,
+            client_db_syntax_row_capture_count: None,
             client_db_raw_source_stored: None,
+            client_db_journal_mode: None,
+            client_db_synchronous: None,
+            client_db_busy_timeout_ms: None,
+            client_db_foreign_keys: None,
         }
     }
 }

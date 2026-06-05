@@ -2,6 +2,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use agent_semantic_client_core::{
     CacheExportMethod, ClientCacheGeneration, ClientCacheManifest, LanguageId, ProviderId,
+    syntax_query_ast_abi_fingerprint,
 };
 use agent_semantic_client_db::{
     ClientDb, ClientDbGenerationLookup, ClientDbSyntaxQueryInputKind, ClientDbSyntaxQueryLookup,
@@ -66,18 +67,26 @@ fn import_semantic_tree_sitter_query_packet_writes_replay_rows() {
     db.import_manifest(&manifest).expect("import manifest");
     db.import_semantic_tree_sitter_query_packet(&generation, &packet_bytes)
         .expect("import syntax rows");
+    let summary = db.summary().expect("db summary after syntax import");
 
     let replay = ClientDb::lookup_syntax_query_replay(&ClientDbSyntaxQueryLookup {
         db_path: db_path.clone(),
         language_id: LanguageId::from("rust"),
         provider_id: ProviderId::from("rs-harness"),
         project_root: root.clone(),
-        request_fingerprint: "fnv64:syntax-row".to_string(),
+        query_ast_fingerprint: syntax_query_ast_abi_fingerprint(
+            "(function_item name: (identifier) @function.name)",
+        )
+        .expect("syntax query AST fingerprint"),
+        selector: Some("src/lib.rs:1:80".to_string()),
     })
     .expect("lookup syntax rows")
     .expect("syntax rows");
 
     assert_eq!(replay.grammar_id, "tree-sitter-rust");
+    assert_eq!(summary.syntax_row_generation_count, 1);
+    assert_eq!(summary.syntax_row_match_count, 2);
+    assert_eq!(summary.syntax_row_capture_count, 2);
     assert_eq!(replay.language_id.as_str(), "rust");
     assert_eq!(replay.grammar_profile_version, "2026-06-04.v1");
     assert_eq!(replay.input_form, "s-expression");
@@ -107,17 +116,49 @@ fn import_semantic_tree_sitter_query_packet_writes_replay_rows() {
     assert_eq!(replay.rows[0].match_locator, "src/lib.rs:10:12");
     assert_eq!(replay.rows[0].capture_locator, "src/lib.rs:10");
     assert_eq!(replay.rows[0].capture_name, "function.name");
-    assert_eq!(replay.rows[0].capture_node_type, "identifier");
-    assert_eq!(replay.rows[0].item_node_type, "function_item");
+    assert_eq!(replay.rows[0].capture_node_type.as_str(), "identifier");
+    assert_eq!(replay.rows[0].item_node_type.as_str(), "function_item");
     assert_eq!(replay.rows[0].field.as_deref(), Some("name"));
     assert_eq!(replay.rows[0].text, "parse_query");
     assert_eq!(replay.rows[1].match_locator, "src/main.rs:20");
     assert_eq!(replay.rows[1].capture_locator, "src/main.rs:20");
     assert_eq!(replay.rows[1].capture_name, "function.name");
-    assert_eq!(replay.rows[1].capture_node_type, "identifier");
-    assert_eq!(replay.rows[1].item_node_type, "function_item");
+    assert_eq!(replay.rows[1].capture_node_type.as_str(), "identifier");
+    assert_eq!(replay.rows[1].item_node_type.as_str(), "function_item");
     assert_eq!(replay.rows[1].field.as_deref(), Some("name"));
     assert_eq!(replay.rows[1].text, "main");
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn reimport_manifest_preserves_semantic_tree_sitter_query_rows() {
+    let root = temp_root("syntax-reimport-preserves-rows");
+    let db_path = root.join("client.sqlite3");
+    let generation = syntax_generation(
+        &root,
+        "syntax-row",
+        "fnv64:syntax-row",
+        "semantic-tree-sitter-query/syntax-row.json",
+    );
+    let manifest = manifest_from_generation(&root, generation.clone());
+    let packet_bytes = serde_json::to_vec(&syntax_packet()).expect("packet bytes");
+    let mut db = ClientDb::open_or_create(&db_path).expect("open db");
+
+    db.import_manifest(&manifest).expect("import manifest");
+    db.import_semantic_tree_sitter_query_packet(&generation, &packet_bytes)
+        .expect("import syntax rows");
+    db.import_manifest(&manifest)
+        .expect("reimport manifest without replacing parent row");
+
+    let summary = db.summary().expect("summary after manifest reimport");
+    assert_eq!(summary.syntax_row_generation_count, 1);
+    assert_eq!(summary.syntax_row_match_count, 2);
+    assert_eq!(summary.syntax_row_capture_count, 2);
+    assert!(
+        lookup_syntax_rows(&db_path, &root, "fnv64:syntax-row")
+            .expect("lookup after manifest reimport")
+            .is_some()
+    );
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -437,12 +478,17 @@ fn lookup_syntax_rows(
     root: &std::path::Path,
     request_fingerprint: &str,
 ) -> Result<Option<agent_semantic_client_db::ClientDbSyntaxQueryReplay>, String> {
+    let _ = request_fingerprint;
     ClientDb::lookup_syntax_query_replay(&ClientDbSyntaxQueryLookup {
         db_path: db_path.to_path_buf(),
         language_id: LanguageId::from("rust"),
         provider_id: ProviderId::from("rs-harness"),
         project_root: root.to_path_buf(),
-        request_fingerprint: request_fingerprint.to_string(),
+        query_ast_fingerprint: syntax_query_ast_abi_fingerprint(
+            "(function_item name: (identifier) @function.name)",
+        )
+        .expect("syntax query AST fingerprint"),
+        selector: Some("src/lib.rs:1:80".to_string()),
     })
 }
 

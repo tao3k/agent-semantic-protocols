@@ -4,12 +4,19 @@ use std::process::Command;
 
 use super::fixtures::{
     sample_query_packet, sample_search_packet, valid_manifest_with_artifact,
-    valid_query_manifest_with_artifact,
+    valid_query_manifest_with_artifact, valid_search_manifest_with_artifact,
 };
 use crate::provider_command::support::{
     cache_root, provider, temp_project_root, write_activation, write_cache_manifest,
     write_marker_provider,
 };
+
+fn assert_client_db_runtime_profile(receipt: &Value) {
+    assert_eq!(receipt["clientDbJournalMode"], "wal");
+    assert_eq!(receipt["clientDbSynchronous"], 1);
+    assert_eq!(receipt["clientDbBusyTimeoutMs"], 5000);
+    assert_eq!(receipt["clientDbForeignKeys"], true);
+}
 
 #[test]
 fn client_search_receipt_reports_cache_hit_when_prompt_output_artifact_exists() {
@@ -73,8 +80,9 @@ fn client_search_receipt_reports_cache_hit_when_prompt_output_artifact_exists() 
 
     let receipt: Value = serde_json::from_slice(&output.stderr).expect("receipt json on stderr");
     assert_eq!(receipt["route"], "local-native");
-    assert_eq!(receipt["cacheStatus"], "warm-provider");
+    assert_eq!(receipt["cacheStatus"], "miss");
     assert_eq!(receipt["clientDbStatus"], "present");
+    assert_client_db_runtime_profile(&receipt);
     assert_eq!(receipt["providerCommandCount"], 1);
     assert_eq!(receipt["providerProcessesSpawned"], 1);
     assert_eq!(receipt["stdoutBytes"], stdout.len());
@@ -102,7 +110,10 @@ fn client_search_receipt_reports_cache_hit_when_search_packet_artifact_exists() 
     .expect("write search artifact");
     write_marker_provider(&bin_dir, "rs-harness", &called);
     write_activation(&root, &[provider("rust", Vec::new())]);
-    write_cache_manifest(&root, valid_manifest_with_artifact(&root, artifact_id));
+    write_cache_manifest(
+        &root,
+        valid_search_manifest_with_artifact(&root, artifact_id),
+    );
 
     let import_output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .current_dir(&root)
@@ -145,8 +156,11 @@ fn client_search_receipt_reports_cache_hit_when_search_packet_artifact_exists() 
     assert_eq!(receipt["route"], "local-cache");
     assert_eq!(receipt["cacheStatus"], "hit");
     assert_eq!(receipt["clientDbStatus"], "present");
+    assert_client_db_runtime_profile(&receipt);
     assert_eq!(receipt["providerCommandCount"], 0);
     assert_eq!(receipt["providerProcessesSpawned"], 0);
+    assert_eq!(receipt["sqliteReadCount"], 2);
+    assert_eq!(receipt["sqliteWriteCount"], 0);
     assert!(receipt["elapsedMs"].as_u64().is_some());
     assert_eq!(
         receipt["providerCommands"]
@@ -190,8 +204,11 @@ fn client_search_receipt_reports_cache_hit_when_search_packet_artifact_exists() 
     assert_eq!(external_receipt["route"], "local-cache");
     assert_eq!(external_receipt["cacheStatus"], "hit");
     assert_eq!(external_receipt["clientDbStatus"], "present");
+    assert_client_db_runtime_profile(&external_receipt);
     assert_eq!(external_receipt["providerCommandCount"], 0);
     assert_eq!(external_receipt["providerProcessesSpawned"], 0);
+    assert_eq!(external_receipt["sqliteReadCount"], 2);
+    assert_eq!(external_receipt["sqliteWriteCount"], 0);
     assert!(external_receipt["elapsedMs"].as_u64().is_some());
     assert_eq!(
         external_receipt["providerCommands"]
@@ -270,8 +287,11 @@ fn client_query_receipt_reports_cache_hit_when_query_packet_artifact_exists() {
     assert_eq!(receipt["route"], "local-cache");
     assert_eq!(receipt["cacheStatus"], "hit");
     assert_eq!(receipt["clientDbStatus"], "present");
+    assert_client_db_runtime_profile(&receipt);
     assert_eq!(receipt["providerCommandCount"], 0);
     assert_eq!(receipt["providerProcessesSpawned"], 0);
+    assert_eq!(receipt["sqliteReadCount"], 2);
+    assert_eq!(receipt["sqliteWriteCount"], 0);
     assert!(receipt["elapsedMs"].as_u64().is_some());
     assert_eq!(
         receipt["providerCommands"]
@@ -315,8 +335,11 @@ fn client_query_receipt_reports_cache_hit_when_query_packet_artifact_exists() {
     assert_eq!(external_receipt["route"], "local-cache");
     assert_eq!(external_receipt["cacheStatus"], "hit");
     assert_eq!(external_receipt["clientDbStatus"], "present");
+    assert_client_db_runtime_profile(&external_receipt);
     assert_eq!(external_receipt["providerCommandCount"], 0);
     assert_eq!(external_receipt["providerProcessesSpawned"], 0);
+    assert_eq!(external_receipt["sqliteReadCount"], 2);
+    assert_eq!(external_receipt["sqliteWriteCount"], 0);
     assert!(external_receipt["elapsedMs"].as_u64().is_some());
     assert_eq!(
         external_receipt["providerCommands"]

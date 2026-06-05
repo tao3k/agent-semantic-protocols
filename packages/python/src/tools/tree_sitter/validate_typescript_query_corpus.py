@@ -10,16 +10,28 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
+from tools.console import emit
+
+from .contract import assert_asp_tree_sitter_contract
+
 
 SEPARATOR = "=" * 80
 EXPECTED_SEPARATOR = "-" * 80
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[5]
 PROVIDER_ROOT = REPO_ROOT / "languages" / "typescript-lang-project-harness"
 GRAMMAR_ROOT = PROVIDER_ROOT / "tree-sitter" / "tree-sitter-typescript"
 CORPUS_ROOT = GRAMMAR_ROOT / "test" / "corpus"
 PROFILE_PATH = GRAMMAR_ROOT / "grammar-profile.json"
 CLI_PATH = PROVIDER_ROOT / "dist" / "src" / "cli" / "main.js"
-SYNC_SCRIPT = REPO_ROOT / "tools" / "sync-tree-sitter-typescript-query-corpus.py"
+SYNC_SCRIPT = (
+    REPO_ROOT
+    / "packages"
+    / "python"
+    / "src"
+    / "tools"
+    / "tree_sitter"
+    / "sync_typescript_query_corpus.py"
+)
 
 
 @dataclass(frozen=True)
@@ -42,7 +54,7 @@ def main() -> int:
         raise AssertionError(f"no TypeScript query corpus cases found in {CORPUS_ROOT}")
     for case in cases:
         validate_case(case)
-    print(f"tree-sitter TypeScript query corpus is valid: cases={len(cases)}")
+    emit(f"tree-sitter TypeScript query corpus is valid: cases={len(cases)}")
     return 0
 
 
@@ -50,9 +62,19 @@ def validate_profile(profile: dict[str, object]) -> None:
     assert profile["grammarId"] == "tree-sitter-typescript"
     assert profile["grammarProfileVersion"] == "2026-06-05.v1"
     assert profile["sourceAuthority"] == "native-parser-adapter"
-    assert profile["aspWorkspace"]["revision"] == git_head()
+    assert_asp_tree_sitter_contract(
+        profile,
+        extra_paths=("packages/python/src/tools/tree_sitter/validate_typescript_query_corpus.py",),
+    )
+    assert (
+        profile["aspWorkspace"]["queryCorpusValidator"]
+        == "asp-tree-sitter-validate-typescript-query-corpus"
+    )
     assert profile["queryCorpus"]["path"] == "tree-sitter/tree-sitter-typescript/test/corpus"
-    assert profile["queryCorpus"]["validator"] == "tools/validate-tree-sitter-typescript-query-corpus.py"
+    assert (
+        profile["queryCorpus"]["validator"]
+        == "asp-tree-sitter-validate-typescript-query-corpus"
+    )
     assert profile["corpusProfilePath"] == "tree-sitter/tree-sitter-typescript/corpus-profile.json"
 
 

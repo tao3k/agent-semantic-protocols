@@ -285,16 +285,17 @@ impl HookRuntime {
                 {
                     return None;
                 }
-                provider
-                    .glob_matches_source_selector(&matcher)
-                    .then_some(ProviderSelectorMatch {
-                        provider,
-                        kind: if matcher.has_glob {
-                            SourceSelectorKind::Pattern
-                        } else {
-                            SourceSelectorKind::ExactPath
-                        },
-                    })
+                (provider.glob_matches_source_selector(&matcher)
+                    || (!matcher.has_glob
+                        && provider.package_roots_match_search_token(matcher.normalized)))
+                .then_some(ProviderSelectorMatch {
+                    provider,
+                    kind: if matcher.has_glob {
+                        SourceSelectorKind::Pattern
+                    } else {
+                        SourceSelectorKind::ExactPath
+                    },
+                })
             })
             .collect()
     }
@@ -339,12 +340,42 @@ impl ActivatedProvider {
     }
 
     pub(crate) fn matches_search_token(&self, token: &str) -> bool {
-        let normalized = token.trim_start_matches("./");
-        self.matches_source_selector(normalized)
-            || self
-                .source_roots
-                .iter()
-                .any(|root| normalized == root || normalized.starts_with(&format!("{root}/")))
+        let normalized = normalize_route_path(token);
+        self.matches_source_selector(&normalized)
+            || self.matches_source_directory_token(&normalized)
+    }
+
+    fn matches_source_directory_token(&self, normalized: &str) -> bool {
+        self.source_root_matches_search_token(normalized)
+            || self.package_roots_match_search_token(normalized)
+    }
+
+    fn package_roots_match_search_token(&self, normalized: &str) -> bool {
+        self.package_roots
+            .iter()
+            .any(|root| self.package_root_matches_search_token(root, normalized))
+    }
+
+    fn package_root_matches_search_token(&self, package_root: &str, normalized: &str) -> bool {
+        let package_root = normalize_route_path(package_root);
+        let package_root = package_root.trim_end_matches('/');
+        if package_root.is_empty() || package_root == "." {
+            return false;
+        }
+        if normalized == package_root {
+            return true;
+        }
+        normalized
+            .strip_prefix(&format!("{package_root}/"))
+            .is_some_and(|relative| self.source_root_matches_search_token(relative))
+    }
+
+    fn source_root_matches_search_token(&self, normalized: &str) -> bool {
+        self.source_roots.iter().any(|root| {
+            let root = normalize_route_path(root);
+            let root = root.trim_end_matches('/');
+            !root.is_empty() && (normalized == root || normalized.starts_with(&format!("{root}/")))
+        })
     }
 
     fn glob_matches_source_selector(&self, selector: &SourceSelectorMatcher<'_>) -> bool {

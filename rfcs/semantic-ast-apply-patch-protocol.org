@@ -458,8 +458,8 @@ Formatter ownership is language-specific.  Rust uses =rustfmt=.  Python uses
 =ruff format= for pure formatting; =ruff check --fix= is a stronger lint-fix or
 organize-imports capability and must be recorded separately.  TypeScript and
 JavaScript should use the workspace-declared formatter from =package.json= or a
-provider registry descriptor, not a hard-coded global default.  Julia remains
-workspace-managed until that lane reopens.
+    provider registry descriptor, not a hard-coded global default.  Julia uses
+    provider-declared =JuliaFormatter.jl= capability behind =asp julia=.
 
 * Receipt
 
@@ -538,8 +538,10 @@ import organization, or semantic cleanups must be separate capabilities.
 
 ** Julia
 
-Julia should use JuliaSyntax-derived facts when this lane reopens.  Julia is not
-a global bin parity target, so its AST patch support remains workspace-managed.
+Julia AST patch support should use JuliaSyntax-derived facts and the same
+facade/provider contract as search and query.  The compiled =aslp-julia-harness=
+owns provider identity; =julia-project-harness.jl= is only a source-provider
+development fallback.
 
 * Interaction with RFC 003 mutation boundary
 

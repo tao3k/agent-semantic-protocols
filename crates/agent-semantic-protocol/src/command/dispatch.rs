@@ -13,7 +13,7 @@ pub(crate) fn run_protocol_command(args: Vec<String>) -> Result<(), String> {
     match args.first().map(String::as_str) {
         Some("guide" | "providers" | "doctor" | "cache" | "cloud") => run_client_command(args),
         Some(command @ ("search" | "query" | "check")) => Err(format!(
-            "asp {command} is not a public command surface; use asp <rust|typescript|python> {command} ..."
+            "asp {command} is not a public command surface; use asp <rust|typescript|python|julia> {command} ..."
         )),
         Some("hook") => run_hook_command(&args[1..]),
         Some("healthcheck") => run_healthcheck_command(&args[1..]),
@@ -27,7 +27,7 @@ pub(crate) fn run_protocol_command(args: Vec<String>) -> Result<(), String> {
 }
 
 fn usage() -> String {
-    "usage: asp <guide|providers|doctor|cache|cloud|search|query|check|hook|healthcheck|source-access|ast-patch|graph|rust|typescript|python> ...".to_string()
+    "usage: asp <guide|providers|doctor|cache|cloud|search|query|check|hook|healthcheck|source-access|ast-patch|graph|rust|typescript|python|julia> ...".to_string()
 }
 
 fn run_client_command(args: Vec<String>) -> Result<(), String> {

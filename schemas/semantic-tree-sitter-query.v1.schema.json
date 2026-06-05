@@ -514,6 +514,7 @@
           "minLength": 1
         },
         "fileHashes": {
+          "description": "Source freshness hashes for replay eligibility. Entries store only project-relative path plus sha256 and may be supplied by the provider packet or derived by the client from validated syntax locator fields.",
           "type": "array",
           "items": {
             "$ref": "#/$defs/fileHash"

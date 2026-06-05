@@ -181,8 +181,8 @@ The prime output should be graph-rendered with RFC 006 line protocol:
 
 #+begin_src text
 [search-prime] root=. alg=budgeted-frontier-v1 budget=handles:10
-legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next
-alias: graph:{G=search,O=owner,Q=query,D=dependency,T=test,F=finding}
+legend: aliases ID:kind; node ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next
+aliases=G:search,O:owner,Q:query,D:dependency,T:test,F:finding
 O=owner:path(src/python_lang_project_harness/verification/model.py)!owner
 Q=query:term(Path)!fzf
 D=dependency:pkg(pytest)!deps
@@ -266,8 +266,8 @@ returns graph facts:
 
 #+begin_src text
 [search-reasoning] profile=owner-query selector=owner+query+dependency alg=bounded-evidence-frontier
-legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next
-alias: graph:{G=search,O=owner,Q=query,D=dependency,I=item,T=test}
+legend: aliases ID:kind; node ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next
+aliases=G:search,O:owner,Q:query,D:dependency,I:item,T:test
 O=owner:path(src/.../model.py)!owner
 Q=query:term(Path)!fzf
 D=dependency:pkg(pytest)!deps
@@ -478,7 +478,7 @@ RFC 005 defines the CLI-first boundary and explicitly rejects natural-language
 intent parsing inside provider commands.  This RFC extends that boundary to
 =search guide=, =search prime=, and =search reasoning <profile>=.
 
-RFC 006 owns compact graph render grammar, including =alias: graph:{...}=,
+RFC 006 owns compact graph render grammar, including =aliases=...=,
 =rank=, =frontier=, =avoid=, and line protocol atomics.  This RFC uses that
 rendering for prime and reasoning evidence but does not change the graph text
 grammar.
@@ -509,8 +509,10 @@ space:
 7. Defer relation-frontier and causal-path commands until provider relation
    facts and schema fields exist.
 
-Julia remains out of bin parity for this RFC.  Julia-specific evidence can use
-the workspace-managed command only if a separate Julia lane is opened.
+Julia participates in this RFC through the compiled =aslp-julia-harness= and the
+same cacheable graph/reasoning packet contracts.  Julia-specific evidence must
+come from JuliaSyntax-owned facts surfaced through =asp julia ...=, not from a
+workspace-managed exception.
 
 ** Rust reasoning MVP
 
@@ -550,10 +552,9 @@ the Rust command shape is tested.
   =reasoningProfiles= packet field?
 - Should dependency handles distinguish =current= vs =external= source scope in
   prime, or only in =query-deps=?
-- Should =search guide= be a =search= view or an =agent guide= subcommand?  The
-  research preference is =search guide= because it teaches search profiles, but
-  provider implementation may continue exposing =agent guide= until the CLI
-  contract is finalized.
+- =guide= is the provider's main agent-facing command.  =search guide= remains
+  the specialized search-profile view for agents that already know they need
+  search profile details.
 - How should return entries be serialized in dense mode without looking like a
   task plan?
 

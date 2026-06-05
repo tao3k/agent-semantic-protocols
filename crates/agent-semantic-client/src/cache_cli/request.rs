@@ -4,7 +4,7 @@ use std::path::Path;
 
 use agent_semantic_client_core::{
     CacheExportMethod, ClientMethod, ClientRequest, ProviderRegistrySnapshot, ResolvedProvider,
-    syntax_query_ast_abi_fingerprint,
+    builtin_catalog_source, syntax_query_ast_abi_fingerprint,
 };
 
 pub(super) fn selected_provider_for_request<'a>(
@@ -56,8 +56,12 @@ fn query_export_method(args: &[String]) -> String {
 }
 
 pub(super) fn has_tree_sitter_query(args: &[String]) -> bool {
-    args.iter()
-        .any(|arg| arg == "--treesitter-query" || arg.starts_with("--treesitter-query="))
+    args.iter().any(|arg| {
+        arg == "--treesitter-query"
+            || arg.starts_with("--treesitter-query=")
+            || arg == "--catalog"
+            || arg.starts_with("--catalog=")
+    })
 }
 
 pub(super) fn request_lookup_fingerprint(
@@ -67,14 +71,15 @@ pub(super) fn request_lookup_fingerprint(
     request: &ClientRequest,
 ) -> Option<String> {
     if export_method.as_str() == "query/tree-sitter" {
+        let _ = (provider, project_root, request);
+        None
+    } else {
         Some(exact_request_fingerprint(
             provider,
             project_root,
             export_method,
             &request.forwarded_args,
         ))
-    } else {
-        None
     }
 }
 
@@ -84,7 +89,7 @@ pub(super) fn exact_request_fingerprint(
     export_method: &CacheExportMethod,
     forwarded_args: &[String],
 ) -> String {
-    let syntax_query_provenance = syntax_query_cache_provenance(forwarded_args)
+    let syntax_query_provenance = syntax_query_cache_provenance(provider, forwarded_args)
         .unwrap_or_else(|| "syntax-query-ast-abi:none".to_string());
     let seed = format!(
         "{}\0{}\0{}\0{}\0{}\0{}",
@@ -98,8 +103,14 @@ pub(super) fn exact_request_fingerprint(
     format!("fnv64:{}", stable_hash_hex(&seed))
 }
 
-fn syntax_query_cache_provenance(forwarded_args: &[String]) -> Option<String> {
-    let source = tree_sitter_query_source(forwarded_args)?;
+fn syntax_query_cache_provenance(
+    provider: &ResolvedProvider,
+    forwarded_args: &[String],
+) -> Option<String> {
+    let source = tree_sitter_query_source(forwarded_args).or_else(|| {
+        let catalog_id = tree_sitter_catalog_id(forwarded_args)?;
+        builtin_catalog_source(provider.language_id.as_str().into(), catalog_id.into())
+    })?;
     syntax_query_ast_abi_fingerprint(source).ok()
 }
 
@@ -123,6 +134,19 @@ fn tree_sitter_query_source(args: &[String]) -> Option<&str> {
             return iter.next().map(String::as_str);
         }
         if let Some(value) = arg.strip_prefix("--treesitter-query=") {
+            return Some(value);
+        }
+    }
+    None
+}
+
+fn tree_sitter_catalog_id(args: &[String]) -> Option<&str> {
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        if arg == "--catalog" {
+            return iter.next().map(String::as_str);
+        }
+        if let Some(value) = arg.strip_prefix("--catalog=") {
             return Some(value);
         }
     }

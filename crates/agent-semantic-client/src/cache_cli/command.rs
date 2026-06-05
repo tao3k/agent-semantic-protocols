@@ -26,11 +26,10 @@ pub(crate) fn run_cache(
                 .map(|cache_root| ClientDb::inspect(ClientDb::default_path(cache_root)));
             let mut receipt = ClientReceipt::cache_status(provenance, &cache_report);
             if let Some(db_report) = &db_report {
-                receipt.client_db_path = Some(ClientCachePath::from_path(&db_report.db_path));
-                receipt.client_db_status = Some(db_report.status.clone());
-                receipt.client_db_generation_count = Some(db_report.generation_count);
-                receipt.client_db_raw_source_stored = Some(db_report.raw_source_stored);
+                apply_db_report_to_receipt(&mut receipt, db_report);
             }
+            receipt.sqlite_read_count = Some(u64::from(db_report.is_some()));
+            receipt.sqlite_write_count = Some(0);
             let (activation, provider_count) = match &snapshot {
                 Ok(snapshot) => (
                     snapshot.activation_path.display().to_string(),
@@ -94,10 +93,9 @@ pub(crate) fn run_cache(
             let db_report = ClientDb::inspect(db_path);
             let mut receipt =
                 ClientReceipt::cache_report(ClientMethod::CacheImport, provenance, &cache_report);
-            receipt.client_db_path = Some(ClientCachePath::from_path(&db_report.db_path));
-            receipt.client_db_status = Some(db_report.status.clone());
-            receipt.client_db_generation_count = Some(db_report.generation_count);
-            receipt.client_db_raw_source_stored = Some(db_report.raw_source_stored);
+            apply_db_report_to_receipt(&mut receipt, &db_report);
+            receipt.sqlite_read_count = Some(1);
+            receipt.sqlite_write_count = Some(1);
             println!(
                 "[asp-cache] status=imported route=local-cache cacheRoot={} manifest={} generations={} rawSourceStored={}",
                 display_optional_path(cache_report.cache_root.as_deref()),
@@ -113,6 +111,53 @@ pub(crate) fn run_cache(
             print_db_status(Some(&db_report));
             println!(
                 "|reason phase=phase-1-client-db-sql action=import arrow=false providerCommands=0"
+            );
+            if receipt_json {
+                let receipt = serde_json::to_string(&receipt)
+                    .map_err(|error| format!("failed to serialize receipt: {error}"))?;
+                eprintln!("{receipt}");
+            }
+            Ok(())
+        }
+        [subcommand, scope] if subcommand == "flush" && scope == "syntax-rows" => {
+            let snapshot = ProviderRegistrySnapshot::load(project_root);
+            let provenance = snapshot
+                .as_ref()
+                .map_or_else(|_| Vec::new(), ProviderRegistrySnapshot::native_provenance);
+            let cache_report = ClientCacheManifest::inspect_project(project_root);
+            let cache_root = cache_report
+                .cache_root
+                .as_ref()
+                .ok_or_else(|| "cache root unavailable".to_string())?;
+            let db_path = ClientDb::default_path(cache_root);
+            let flushed_syntax_rows = ClientDb::flush_syntax_query_rows(&db_path)?;
+            let updated_cache_report = ClientCacheManifest::inspect_project(project_root);
+            let db_report = ClientDb::inspect(db_path);
+            let mut receipt = ClientReceipt::cache_report(
+                ClientMethod::CacheFlush,
+                provenance,
+                &updated_cache_report,
+            );
+            receipt.cache_status = agent_semantic_client_core::CacheStatus::Invalidated;
+            apply_db_report_to_receipt(&mut receipt, &db_report);
+            receipt.sqlite_read_count = Some(1);
+            receipt.sqlite_write_count = Some(1);
+            println!(
+                "[asp-cache] status=flushed route=local-cache cacheRoot={} manifest={} generations={} rawSourceStored={} flushedSyntaxRows={}",
+                display_optional_path(updated_cache_report.cache_root.as_deref()),
+                updated_cache_report.status.as_str(),
+                updated_cache_report.generation_count,
+                updated_cache_report.raw_source_stored,
+                flushed_syntax_rows
+            );
+            println!(
+                "|cache manifestPath={} cacheManifestStatus={}",
+                display_optional_path(updated_cache_report.manifest_path.as_deref()),
+                updated_cache_report.status.as_str()
+            );
+            print_db_status(Some(&db_report));
+            println!(
+                "|reason phase=phase-1-client-db-sql action=flush-syntax-rows manifestArtifactsDeleted=false providerCommands=0"
             );
             if receipt_json {
                 let receipt = serde_json::to_string(&receipt)
@@ -154,10 +199,9 @@ pub(crate) fn run_cache(
             let mut receipt =
                 ClientReceipt::cache_report(receipt_method, provenance, &updated_cache_report);
             receipt.cache_status = agent_semantic_client_core::CacheStatus::Invalidated;
-            receipt.client_db_path = Some(ClientCachePath::from_path(&db_report.db_path));
-            receipt.client_db_status = Some(db_report.status.clone());
-            receipt.client_db_generation_count = Some(db_report.generation_count);
-            receipt.client_db_raw_source_stored = Some(db_report.raw_source_stored);
+            apply_db_report_to_receipt(&mut receipt, &db_report);
+            receipt.sqlite_read_count = Some(1);
+            receipt.sqlite_write_count = Some(1);
             println!(
                 "[asp-cache] status={} route=local-cache cacheRoot={} manifest={} generations={} rawSourceStored={} {}={}",
                 status,
@@ -185,7 +229,10 @@ pub(crate) fn run_cache(
             }
             Ok(())
         }
-        _ => Err("usage: asp cache <status|import|invalidate|flush> [--root <path>]".to_string()),
+        _ => Err(
+            "usage: asp cache <status|import|invalidate|flush [syntax-rows]> [--root <path>]"
+                .to_string(),
+        ),
     }
 }
 
@@ -243,12 +290,29 @@ fn cache_status_line(
 
 fn print_db_status(db_report: Option<&ClientDbReport>) {
     if let Some(db_report) = db_report {
+        let runtime_pragmas = db_report
+            .runtime_pragmas
+            .as_ref()
+            .map(|pragmas| {
+                format!(
+                    " journalMode={} synchronous={} busyTimeoutMs={} foreignKeys={}",
+                    pragmas.journal_mode.as_str(),
+                    pragmas.synchronous,
+                    pragmas.busy_timeout_ms,
+                    pragmas.foreign_keys
+                )
+            })
+            .unwrap_or_default();
         println!(
-            "|db path={} status={} generations={} rawSourceStored={}",
+            "|db path={} status={} generations={} syntaxRows={}/{}/{} rawSourceStored={}{}",
             db_report.db_path.display(),
             db_report.status.as_str(),
             db_report.generation_count,
-            db_report.raw_source_stored
+            db_report.syntax_row_generation_count,
+            db_report.syntax_row_match_count,
+            db_report.syntax_row_capture_count,
+            db_report.raw_source_stored,
+            runtime_pragmas
         );
         if let Some(reason) = &db_report.reason {
             println!(
@@ -258,7 +322,25 @@ fn print_db_status(db_report: Option<&ClientDbReport>) {
             );
         }
     } else {
-        println!("|db path=unavailable status=unavailable generations=0 rawSourceStored=false");
+        println!(
+            "|db path=unavailable status=unavailable generations=0 syntaxRows=0/0/0 rawSourceStored=false journalMode=unknown synchronous=unknown busyTimeoutMs=unknown foreignKeys=false"
+        );
+    }
+}
+
+fn apply_db_report_to_receipt(receipt: &mut ClientReceipt, db_report: &ClientDbReport) {
+    receipt.client_db_path = Some(ClientCachePath::from_path(&db_report.db_path));
+    receipt.client_db_status = Some(db_report.status.clone());
+    receipt.client_db_generation_count = Some(db_report.generation_count);
+    receipt.client_db_syntax_row_generation_count = Some(db_report.syntax_row_generation_count);
+    receipt.client_db_syntax_row_match_count = Some(db_report.syntax_row_match_count);
+    receipt.client_db_syntax_row_capture_count = Some(db_report.syntax_row_capture_count);
+    receipt.client_db_raw_source_stored = Some(db_report.raw_source_stored);
+    if let Some(pragmas) = &db_report.runtime_pragmas {
+        receipt.client_db_journal_mode = Some(pragmas.journal_mode.as_str().into());
+        receipt.client_db_synchronous = Some(pragmas.synchronous);
+        receipt.client_db_busy_timeout_ms = u64::try_from(pragmas.busy_timeout_ms).ok();
+        receipt.client_db_foreign_keys = Some(pragmas.foreign_keys);
     }
 }
 

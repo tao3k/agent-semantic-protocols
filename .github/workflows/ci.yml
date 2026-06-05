@@ -163,7 +163,11 @@ jobs:
           uv run --frozen pytest \
             tests/unit/test_semantic_common_schema_copy_sync.py \
             tests/unit/test_semantic_source_location_schema.py \
+            tests/unit/test_semantic_tree_sitter_grammar_profile_schema.py \
             tests/unit/test_semantic_tree_sitter_provenance_schema.py \
+            tests/unit/test_semantic_tree_sitter_query_schema.py \
+            tests/unit/test_semantic_tree_sitter_query_rfc.py \
+            tests/unit/test_cli_first_harness_ux_rfc.py \
             tests/unit/semantic_query_packet_schema/test_basic.py \
             tests/unit/test_semantic_search_packet_schema.py \
             tests/unit/test_semantic_read_packet_schema.py \
@@ -208,3 +212,6 @@ jobs:
             dist/tests/unit/semantic_search_schema.test.js \
             dist/tests/unit/semantic_language_registry_read_packet.test.js
         working-directory: languages/typescript-lang-project-harness
+
+      - name: Tree-sitter query contract gates
+        run: bash tools/run-tree-sitter-query-contracts.sh

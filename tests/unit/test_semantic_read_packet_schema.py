@@ -59,6 +59,28 @@ class SemanticReadPacketSchemaTests(unittest.TestCase):
     def test_minimal_provider_read_packet_is_valid(self) -> None:
         self.assertEqual([], self.validation_errors(semantic_read_minimal_packet()))
 
+    def test_read_packet_accepts_git_source_version_metadata(self) -> None:
+        packet = semantic_read_minimal_packet()
+        packet["repositoryRoot"] = "/workspace/project/languages/rust-lang-project-harness"
+        packet["sourceVersion"] = "index"
+        packet["gitBlobOid"] = "a" * 40
+
+        self.assertEqual([], self.validation_errors(packet))
+
+    def test_read_packet_accepts_worktree_hash_metadata(self) -> None:
+        packet = semantic_read_minimal_packet()
+        packet["sourceVersion"] = "worktree"
+        packet["worktreeHash"] = "sha256:" + ("b" * 64)
+
+        self.assertEqual([], self.validation_errors(packet))
+
+    def test_read_packet_rejects_unknown_source_version(self) -> None:
+        packet = semantic_read_minimal_packet()
+        packet["sourceVersion"] = "staged"
+        errors = self.validation_errors(packet)
+
+        self.assertTrue(any("is not one of" in message for message in errors))
+
     def test_read_packet_accepts_tree_sitter_syntax_refs(self) -> None:
         packet = semantic_read_minimal_packet()
         packet["syntaxQueryRef"] = "semantic-tree-sitter-query/rust-owner-items.v1"
