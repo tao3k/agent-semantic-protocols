@@ -36,6 +36,7 @@ pub enum ClientMethod {
     CacheStatus,
     CacheImport,
     CacheInvalidate,
+    CacheFlush,
     Search,
     Query,
     Check,

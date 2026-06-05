@@ -121,7 +121,15 @@ pub(crate) fn run_cache(
             }
             Ok(())
         }
-        [subcommand] if subcommand == "invalidate" => {
+        [subcommand] if subcommand == "invalidate" || subcommand == "flush" => {
+            let is_flush = subcommand == "flush";
+            let action = if is_flush { "flush" } else { "invalidate" };
+            let status = if is_flush { "flushed" } else { "invalidated" };
+            let count_label = if is_flush {
+                "flushedGenerations"
+            } else {
+                "invalidatedGenerations"
+            };
             let snapshot = ProviderRegistrySnapshot::load(project_root);
             let provenance = snapshot
                 .as_ref()
@@ -138,22 +146,26 @@ pub(crate) fn run_cache(
                 db_invalidated_generation_count.max(manifest_invalidated_generation_count);
             let updated_cache_report = ClientCacheManifest::inspect_project(project_root);
             let db_report = ClientDb::inspect(db_path);
-            let mut receipt = ClientReceipt::cache_report(
-                ClientMethod::CacheInvalidate,
-                provenance,
-                &updated_cache_report,
-            );
+            let receipt_method = if is_flush {
+                ClientMethod::CacheFlush
+            } else {
+                ClientMethod::CacheInvalidate
+            };
+            let mut receipt =
+                ClientReceipt::cache_report(receipt_method, provenance, &updated_cache_report);
             receipt.cache_status = agent_semantic_client_core::CacheStatus::Invalidated;
             receipt.client_db_path = Some(ClientCachePath::from_path(&db_report.db_path));
             receipt.client_db_status = Some(db_report.status.clone());
             receipt.client_db_generation_count = Some(db_report.generation_count);
             receipt.client_db_raw_source_stored = Some(db_report.raw_source_stored);
             println!(
-                "[asp-cache] status=invalidated route=local-cache cacheRoot={} manifest={} generations={} rawSourceStored={} invalidatedGenerations={}",
+                "[asp-cache] status={} route=local-cache cacheRoot={} manifest={} generations={} rawSourceStored={} {}={}",
+                status,
                 display_optional_path(updated_cache_report.cache_root.as_deref()),
                 updated_cache_report.status.as_str(),
                 updated_cache_report.generation_count,
                 updated_cache_report.raw_source_stored,
+                count_label,
                 invalidated_generation_count
             );
             println!(
@@ -163,7 +175,8 @@ pub(crate) fn run_cache(
             );
             print_db_status(Some(&db_report));
             println!(
-                "|reason phase=phase-1-client-db-sql action=invalidate manifestArtifactsDeleted=false providerCommands=0"
+                "|reason phase=phase-1-client-db-sql action={} manifestArtifactsDeleted=false providerCommands=0",
+                action
             );
             if receipt_json {
                 let receipt = serde_json::to_string(&receipt)
@@ -172,7 +185,7 @@ pub(crate) fn run_cache(
             }
             Ok(())
         }
-        _ => Err("usage: asp cache <status|import|invalidate> [--root <path>]".to_string()),
+        _ => Err("usage: asp cache <status|import|invalidate|flush> [--root <path>]".to_string()),
     }
 }
 

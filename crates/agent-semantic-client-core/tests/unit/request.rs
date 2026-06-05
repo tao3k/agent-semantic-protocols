@@ -4,6 +4,13 @@ use crate::{
 };
 
 #[test]
+fn cache_flush_method_uses_stable_wire_spelling() {
+    let value = serde_json::to_value(ClientMethod::CacheFlush).expect("serialize method");
+
+    assert_eq!(value, serde_json::json!("cache-flush"));
+}
+
+#[test]
 fn appends_asp_syntax_query_plan_for_inline_query() {
     let args = append_syntax_query_plan_args(
         &ClientMethod::Query,

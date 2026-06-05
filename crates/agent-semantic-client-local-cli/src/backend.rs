@@ -111,7 +111,8 @@ impl LocalNativeCliBackend {
             | ClientMethod::Doctor
             | ClientMethod::CacheStatus
             | ClientMethod::CacheImport
-            | ClientMethod::CacheInvalidate => {
+            | ClientMethod::CacheInvalidate
+            | ClientMethod::CacheFlush => {
                 return Err("method is not executable by local native CLI backend".to_string());
             }
         }
