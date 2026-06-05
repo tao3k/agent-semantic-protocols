@@ -236,11 +236,11 @@ pub(super) fn make_executable(path: &Path) {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let mut permissions = std::fs::metadata(&path)
+        let mut permissions = std::fs::metadata(path)
             .expect("fake provider metadata")
             .permissions();
         permissions.set_mode(0o755);
-        std::fs::set_permissions(&path, permissions).expect("chmod fake provider");
+        std::fs::set_permissions(path, permissions).expect("chmod fake provider");
     }
     #[cfg(not(unix))]
     {

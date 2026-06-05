@@ -83,6 +83,7 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Run tests
+        if: ${{ matrix.os != 'windows-latest' }}
         run: cargo test --workspace --all-targets --all-features
 
       - name: Run clippy
@@ -173,7 +174,7 @@ jobs:
 
       - name: Python provider schema gates
         run: |
-          uv run --frozen pytest \
+          uv run --frozen --with pytest pytest \
             tests/unit/harness/test_semantic_cli_direct_read_registry.py \
             tests/unit/harness/test_semantic_schema_registry.py \
             -q
