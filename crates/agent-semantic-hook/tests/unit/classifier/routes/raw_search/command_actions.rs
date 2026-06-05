@@ -50,7 +50,7 @@ fn codex_search_command_action_routes_as_raw_search() {
             "toolInput": {
                 "commandActions": [{
                     "type": "search",
-                    "command": "rg HookDecision crates/agent-semantic-hook/src",
+                    "command": "rg -n -g '*.rs' HookDecision crates/agent-semantic-hook/src",
                     "query": "HookDecision",
                     "path": "crates/agent-semantic-hook/src"
                 }]
@@ -58,7 +58,7 @@ fn codex_search_command_action_routes_as_raw_search() {
             "tool_input": {
                 "commandActions": [{
                     "type": "search",
-                    "command": "rg HookDecision crates/agent-semantic-hook/src",
+                    "command": "rg -n -g '*.rs' HookDecision crates/agent-semantic-hook/src",
                     "query": "HookDecision",
                     "path": "crates/agent-semantic-hook/src"
                 }]

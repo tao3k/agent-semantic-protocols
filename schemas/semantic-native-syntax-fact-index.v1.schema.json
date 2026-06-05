@@ -308,6 +308,29 @@
             "minLength": 1
           }
         },
+        "syntaxQueryRef": {
+          "type": "string",
+          "minLength": 1
+        },
+        "syntaxMatchRefs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "syntaxCaptureRefs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "syntaxAnchor": {
+          "$ref": "#/$defs/syntaxAnchor"
+        },
         "relations": {
           "type": "array",
           "items": {
@@ -316,6 +339,28 @@
         },
         "fields": {
           "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "syntaxAnchor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["nodeType", "range"],
+      "properties": {
+        "nodeType": {
+          "type": "string",
+          "pattern": "^(?:[A-Za-z_][A-Za-z0-9_]*|ERROR|MISSING)$"
+        },
+        "field": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+        },
+        "capture": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.-]*$"
+        },
+        "range": {
+          "$ref": "#/$defs/location"
         }
       }
     },

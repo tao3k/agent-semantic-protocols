@@ -136,6 +136,7 @@ fn temp_project_root(label: &str) -> PathBuf {
         .as_nanos();
     let root = env::temp_dir().join(format!("asp-{label}-{unique}"));
     fs::create_dir_all(&root).expect("create temp root");
+    fs::create_dir_all(root.join(".git")).expect("create git marker");
     root
 }
 
@@ -148,6 +149,8 @@ fn run_hook_decision(root: &Path, event: Value) -> Value {
         .arg("codex")
         .arg("--event-json")
         .arg("-")
+        .env_remove("PRJ_CACHE_HOME")
+        .env_remove("PRJ_HOME_CACHE")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -172,9 +175,15 @@ fn run_hook_decision(root: &Path, event: Value) -> Value {
 
     let stdout = String::from_utf8(output.stdout).expect("utf8 stdout");
     let envelope: Value = serde_json::from_str(stdout.trim()).expect("hook json envelope");
+    if let Some(decision) = envelope
+        .get("agentHookDecision")
+        .filter(|value| value.is_object())
+    {
+        return decision.clone();
+    }
     let context = envelope["hookSpecificOutput"]["additionalContext"]
         .as_str()
-        .expect("additional context");
+        .unwrap_or_else(|| panic!("additional context missing: {envelope}"));
     let decision_json = context
         .strip_prefix("[agent-hook-decision] ")
         .expect("decision prefix");

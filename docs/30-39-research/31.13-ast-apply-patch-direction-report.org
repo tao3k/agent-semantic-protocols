@@ -153,14 +153,18 @@ provider emits textual diff + edit receipt
   -> normal check --changed validates the result
 #+end_example
 
-For the current Codex adapter this is a verification path, not a mutation path:
+For the shared Codex adapter this is a verification path.  Provider-native
+mutation is owned by trusted language providers; Codex text patching is only a
+declared fallback:
 
 #+begin_example
 asp ast-patch dry-run
   -> validates AST target and snippet
   -> emits receipt and optional text diff
+asp <language> ast-patch apply
+  -> mutates only when receipt says mutationSource=provider-native
 Codex apply_patch
-  -> remains the actual file mutation tool
+  -> allowed only for explicit codex-text-fallback receipts
 #+end_example
 
 The hook layer should also move under the same public binary:

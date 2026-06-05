@@ -16,7 +16,7 @@ fn client_search_receipt_records_local_native_provider_command() {
     let output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .current_dir(&root)
         .env("PATH", &bin_dir)
-        .env("PRJ_HOME_CACHE", root.join(".cache"))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args([
             "rust",
             "search",
@@ -44,9 +44,13 @@ fn client_search_receipt_records_local_native_provider_command() {
     assert_eq!(receipt["providerCommandCount"], 1);
     assert_eq!(receipt["providerProcessesSpawned"], 1);
     assert_eq!(receipt["nativeProvenance"][0]["providerId"], "rs-harness");
+    let resolved_provider = std::fs::canonicalize(bin_dir.join("rs-harness"))
+        .expect("canonical provider binary")
+        .display()
+        .to_string();
     assert_eq!(
         receipt["providerCommands"][0]["argv"],
-        serde_json::json!(["rs-harness", "search", "prime", "--view", "seeds", "."])
+        serde_json::json!([resolved_provider, "search", "prime", "--view", "seeds", "."])
     );
     assert_eq!(receipt["providerCommands"][0]["exitCode"], 0);
     assert_eq!(receipt["providerCommands"][0]["stdoutBytes"], stdout_len);

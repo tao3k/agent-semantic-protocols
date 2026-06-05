@@ -12,7 +12,7 @@ fn cache_status_reports_missing_manifest_with_receipt() {
 
     let output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .current_dir(&root)
-        .env("PRJ_HOME_CACHE", root.join(".cache"))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args(["cache", "status", "--receipt-json"])
         .output()
         .expect("run cache status");
@@ -78,7 +78,7 @@ fn cache_status_reads_manifest_without_spawning_provider() {
     let output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .current_dir(&root)
         .env("PATH", &bin_dir)
-        .env("PRJ_HOME_CACHE", root.join(".cache"))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args(["cache", "status", "--receipt-json"])
         .output()
         .expect("run asp cache status");
@@ -124,7 +124,7 @@ fn cache_import_writes_manifest_generations_to_client_db_without_spawning_provid
     let output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .current_dir(&root)
         .env("PATH", &bin_dir)
-        .env("PRJ_HOME_CACHE", root.join(".cache"))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args(["cache", "import", "--receipt-json"])
         .output()
         .expect("run asp cache import");
@@ -158,7 +158,7 @@ fn cache_import_writes_manifest_generations_to_client_db_without_spawning_provid
     let status_output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .current_dir(&root)
         .env("PATH", &bin_dir)
-        .env("PRJ_HOME_CACHE", root.join(".cache"))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args(["cache", "status", "--receipt-json"])
         .output()
         .expect("run asp cache status after import");
@@ -178,7 +178,7 @@ fn cache_import_writes_manifest_generations_to_client_db_without_spawning_provid
     let invalidate_output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .current_dir(&root)
         .env("PATH", &bin_dir)
-        .env("PRJ_HOME_CACHE", root.join(".cache"))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args(["cache", "invalidate", "--receipt-json"])
         .output()
         .expect("run asp cache invalidate");
@@ -239,7 +239,7 @@ fn cache_import_writes_manifest_generations_to_client_db_without_spawning_provid
     let status_after_invalidate = Command::new(env!("CARGO_BIN_EXE_asp"))
         .current_dir(&root)
         .env("PATH", &bin_dir)
-        .env("PRJ_HOME_CACHE", root.join(".cache"))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args(["cache", "status", "--receipt-json"])
         .output()
         .expect("run asp cache status after invalidate");
@@ -271,7 +271,7 @@ fn cache_status_reports_invalid_manifest_without_polluting_receipt_stream() {
 
     let output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .current_dir(&root)
-        .env("PRJ_HOME_CACHE", root.join(".cache"))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args(["cache", "status", "--receipt-json"])
         .output()
         .expect("run cache status");

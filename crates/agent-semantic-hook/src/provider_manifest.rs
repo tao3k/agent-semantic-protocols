@@ -1,9 +1,9 @@
 //! Built-in provider manifests and default project activations.
 
-use std::env;
 use std::fs;
 use std::path::Path;
 
+use crate::executable::resolve_executable;
 use crate::protocol::{
     CommandTemplate, HOOK_ACTIVATION_SCHEMA_ID, HOOK_ACTIVATION_SCHEMA_VERSION, HOOK_PROTOCOL_ID,
     HOOK_PROTOCOL_VERSION, HookPolicy, HookRoutes, PROVIDER_MANIFEST_SCHEMA_ID,
@@ -44,7 +44,7 @@ pub fn build_default_activation(project_root: &Path) -> Result<HookActivation, S
         protocol_version: HOOK_PROTOCOL_VERSION.to_string(),
         project_root: project_root.display().to_string(),
         generated_by: ActivationGeneratedBy {
-            runtime: "agent-semantic-hook".to_string(),
+            runtime: "asp".to_string(),
             version: env!("CARGO_PKG_VERSION").to_string(),
         },
         generated_at: None,
@@ -53,13 +53,7 @@ pub fn build_default_activation(project_root: &Path) -> Result<HookActivation, S
 }
 
 pub(crate) fn provider_binary_available(binary: &str) -> bool {
-    env::var_os("PATH")
-        .and_then(|paths| {
-            env::split_paths(&paths)
-                .map(|path| path.join(binary))
-                .find(|candidate| is_executable_file(candidate))
-        })
-        .is_some()
+    resolve_executable(binary).is_some()
 }
 
 fn activate_provider(
@@ -161,23 +155,6 @@ fn should_skip_package_root_dir(path: &Path, manifest: &ProviderManifest) -> boo
             .default_ignored_path_prefixes
             .iter()
             .any(|ignored| ignored == name)
-}
-
-fn is_executable_file(path: &Path) -> bool {
-    if !path.is_file() {
-        return false;
-    }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        path.metadata()
-            .map(|metadata| metadata.permissions().mode() & 0o111 != 0)
-            .unwrap_or(false)
-    }
-    #[cfg(not(unix))]
-    {
-        true
-    }
 }
 
 fn manifest(

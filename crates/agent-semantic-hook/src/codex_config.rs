@@ -1,5 +1,8 @@
 //! Client project config install helpers for asp hook.
 
+use crate::codex_trust::{
+    TRUST_BLOCK_END, codex_trust_block_begin, merge_codex_trust_config, toml_basic_string,
+};
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 use std::env;
@@ -11,7 +14,6 @@ pub const ROOT_BLOCK_BEGIN: &str = "# BEGIN agent-semantic-protocol agent hooks"
 /// End marker for the managed project-level Codex hook block.
 pub const ROOT_BLOCK_END: &str = "# END agent-semantic-protocol agent hooks";
 
-const TRUST_BLOCK_END: &str = "# END agent-semantic-protocol trusted hook state";
 const LEGACY_BLOCKS: [(&str, &str); 5] = [
     (
         "# BEGIN semantic-agent-protocol agent hooks",
@@ -298,54 +300,6 @@ fn codex_trust_state_block(config_source_path: &Path) -> String {
     )
 }
 
-fn codex_trust_block_begin(config_source_path: &Path) -> String {
-    format!(
-        "# BEGIN agent-semantic-protocol trusted hook state: {}",
-        config_source_path.display()
-    )
-}
-
-fn merge_codex_trust_config(existing: &str, config_source_path: &Path, block: &str) -> String {
-    let content = remove_managed_block(
-        existing,
-        &codex_trust_block_begin(config_source_path),
-        TRUST_BLOCK_END,
-    );
-    let content = remove_hook_state_entries_for_config(&content, config_source_path);
-    let prefix = content.trim();
-    if prefix.is_empty() {
-        format!("{}\n", block.trim_end())
-    } else {
-        format!("{}\n\n{}\n", prefix, block.trim_end())
-    }
-}
-
-fn remove_hook_state_entries_for_config(existing: &str, config_source_path: &Path) -> String {
-    let escaped_path = toml_basic_string(&config_source_path.display().to_string());
-    let state_prefix = format!(
-        "[hooks.state.{}:",
-        escaped_path
-            .strip_suffix('"')
-            .expect("TOML string always ends with quote")
-    );
-    existing
-        .lines()
-        .scan(false, |skipping, line| {
-            let trimmed = line.trim();
-            if trimmed.starts_with("[hooks.state.") && trimmed.starts_with(&state_prefix) {
-                *skipping = true;
-                return Some(None);
-            }
-            if *skipping && trimmed.starts_with('[') {
-                *skipping = false;
-            }
-            Some((!*skipping).then_some(line))
-        })
-        .flatten()
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
 fn codex_hook_trusted_hash(event: &CodexHookEvent) -> String {
     let mut identity = serde_json::Map::new();
     identity.insert(
@@ -547,23 +501,6 @@ fn canonical_json(value: Value) -> Value {
         Value::Array(items) => Value::Array(items.into_iter().map(canonical_json).collect()),
         other => other,
     }
-}
-
-fn toml_basic_string(value: &str) -> String {
-    let mut output = String::from("\"");
-    for ch in value.chars() {
-        match ch {
-            '\\' => output.push_str("\\\\"),
-            '"' => output.push_str("\\\""),
-            '\n' => output.push_str("\\n"),
-            '\r' => output.push_str("\\r"),
-            '\t' => output.push_str("\\t"),
-            c if c.is_control() => output.push_str(&format!("\\u{:04X}", c as u32)),
-            c => output.push(c),
-        }
-    }
-    output.push('"');
-    output
 }
 
 fn ensure_codex_required_features(existing: &str) -> String {

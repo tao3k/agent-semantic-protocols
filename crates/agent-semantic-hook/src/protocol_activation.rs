@@ -51,19 +51,14 @@ pub struct ActivatedProviderConfig {
     pub coverage: ActivationCoverage,
 }
 
+/// Coverage defaults activated from a provider manifest for hook routing.
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-/// Workspace coverage resolved for one activated provider.
+#[serde(rename_all = "camelCase")]
 pub struct ActivationCoverage {
-    #[serde(default)]
     pub package_roots: Vec<String>,
-    #[serde(default)]
     pub source_roots: Vec<String>,
-    #[serde(default)]
     pub config_files: Vec<String>,
-    #[serde(default)]
     pub source_extensions: Vec<String>,
-    #[serde(default)]
     pub ignored_path_prefixes: Vec<String>,
 }
 
@@ -89,17 +84,13 @@ pub struct ProviderManifest {
     pub routes: HookRoutes,
 }
 
+/// Source matching defaults declared by a provider manifest.
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-/// Provider-owned default coverage before project activation narrows it.
+#[serde(rename_all = "camelCase")]
 pub struct ManifestSourceDefaults {
-    #[serde(default)]
     pub default_extensions: Vec<String>,
-    #[serde(default)]
     pub default_config_files: Vec<String>,
-    #[serde(default)]
     pub default_source_roots: Vec<String>,
-    #[serde(default)]
     pub default_ignored_path_prefixes: Vec<String>,
 }
 
@@ -110,11 +101,11 @@ pub struct HookRuntime {
     pub providers: Vec<ActivatedProvider>,
 }
 
-#[derive(Clone, Debug)]
-/// Activated provider facts used by the root hook classifier.
+/// Raw DTO boundary for an activated provider selected from a manifest.
 ///
-/// Raw DTO boundary: this preserves validated primitive identifiers so hook
-/// decisions can echo provider manifest identity without reparsing manifests.
+/// The string fields preserve manifest and namespace identities exactly as they
+/// are serialized for hook runtime activation.
+#[derive(Debug)]
 pub struct ActivatedProvider {
     pub manifest_id: String,
     pub manifest_digest: String,
@@ -131,7 +122,6 @@ pub struct ActivatedProvider {
     pub policy: HookPolicy,
     pub routes: HookRoutes,
 }
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum SourceSelectorKind {
     ExactPath,
@@ -173,7 +163,7 @@ fn resolve_activation(
             .find(|manifest| manifest.manifest_id == activated.manifest_id)
             .ok_or_else(|| {
                 AgentHookError::InvalidActivationConfig(format!(
-                    "unknown provider manifest {}",
+                    "unknown provider manifest: {}",
                     activated.manifest_id
                 ))
             })?;
@@ -181,7 +171,7 @@ fn resolve_activation(
         let expected_digest = provider_manifest_digest(manifest)?;
         if activated.manifest_digest != expected_digest {
             return Err(AgentHookError::InvalidActivationConfig(format!(
-                "manifest digest mismatch for {}: expected {}, got {}",
+                "provider manifest digest drift for {}: expected {}, got {}",
                 activated.manifest_id, expected_digest, activated.manifest_digest
             )));
         }
@@ -190,7 +180,7 @@ fn resolve_activation(
             || activated.binary != manifest.binary
         {
             return Err(AgentHookError::InvalidActivationConfig(format!(
-                "activation identity for {} does not match provider manifest",
+                "provider activation does not match manifest identity: {}",
                 activated.manifest_id
             )));
         }
@@ -231,11 +221,15 @@ impl HookActivation {
             &self.protocol_version,
             HOOK_PROTOCOL_VERSION,
         )?;
-        expect_field(
-            "generatedBy.runtime",
-            &self.generated_by.runtime,
-            "agent-semantic-hook",
-        )?;
+        if !matches!(
+            self.generated_by.runtime.as_str(),
+            "asp" | "agent-semantic-hook"
+        ) {
+            return Err(AgentHookError::InvalidActivationConfig(format!(
+                "invalid activation generatedBy.runtime: expected asp or agent-semantic-hook, got {}",
+                self.generated_by.runtime
+            )));
+        }
         if self.providers.is_empty() {
             return Err(AgentHookError::InvalidActivationConfig(
                 "activation must include at least one provider".to_string(),
@@ -275,14 +269,43 @@ impl HookRuntime {
             })
             .collect()
     }
+
+    pub(crate) fn providers_for_raw_search_selector(
+        &self,
+        selector: &str,
+    ) -> Vec<ProviderSelectorMatch<'_>> {
+        let matcher = SourceSelectorMatcher::new(selector);
+        self.providers
+            .iter()
+            .filter_map(|provider| {
+                if provider
+                    .ignored_path_prefixes
+                    .iter()
+                    .any(|prefix| matcher.is_ignored_by(prefix))
+                {
+                    return None;
+                }
+                provider
+                    .glob_matches_source_selector(&matcher)
+                    .then_some(ProviderSelectorMatch {
+                        provider,
+                        kind: if matcher.has_glob {
+                            SourceSelectorKind::Pattern
+                        } else {
+                            SourceSelectorKind::ExactPath
+                        },
+                    })
+            })
+            .collect()
+    }
 }
 
 impl ActivatedProvider {
-    pub(crate) fn matches_source_selector(&self, selector: &str) -> bool {
+    fn matches_source_selector(&self, selector: &str) -> bool {
         self.match_source_selector(selector).is_some()
     }
 
-    pub(crate) fn match_source_selector(&self, selector: &str) -> Option<SourceSelectorKind> {
+    fn match_source_selector(&self, selector: &str) -> Option<SourceSelectorKind> {
         let matcher = SourceSelectorMatcher::new(selector);
         self.match_source_selector_with(&matcher)
     }
@@ -298,22 +321,17 @@ impl ActivatedProvider {
         {
             return None;
         }
-        if selector.has_glob {
-            return self
-                .glob_matches_source_selector(selector)
-                .then_some(SourceSelectorKind::Pattern);
+        if self.glob_matches_source_selector(selector) {
+            return Some(if selector.has_glob {
+                SourceSelectorKind::Pattern
+            } else {
+                SourceSelectorKind::ExactPath
+            });
         }
         if self
             .config_files
             .iter()
             .any(|config| selector.normalized.ends_with(config))
-        {
-            return Some(SourceSelectorKind::ExactPath);
-        }
-        if self
-            .source_extensions
-            .iter()
-            .any(|extension| selector.normalized.ends_with(extension))
         {
             return Some(SourceSelectorKind::ExactPath);
         }
@@ -333,10 +351,6 @@ impl ActivatedProvider {
         self.source_extensions
             .iter()
             .any(|extension| selector.targets_extension(extension))
-            || self
-                .config_files
-                .iter()
-                .any(|config| selector.matches_config(config))
     }
 
     pub(crate) fn route_from_template(
@@ -456,9 +470,6 @@ struct SourceSelectorMatcher<'a> {
     normalized: &'a str,
     has_glob: bool,
     extension_glob: Option<GlobSet>,
-    basename_glob: Option<GlobSet>,
-    literal_prefix: &'a str,
-    has_extension_pattern: bool,
 }
 
 impl<'a> SourceSelectorMatcher<'a> {
@@ -471,9 +482,6 @@ impl<'a> SourceSelectorMatcher<'a> {
             normalized,
             has_glob,
             extension_glob: extension_pattern.and_then(build_glob_set),
-            basename_glob: build_glob_set(&basename),
-            literal_prefix: literal_prefix_before_glob(normalized),
-            has_extension_pattern: extension_pattern.is_some(),
         }
     }
 
@@ -487,30 +495,14 @@ impl<'a> SourceSelectorMatcher<'a> {
             .as_ref()
             .is_some_and(|glob_set| glob_set.is_match(extension))
     }
-
-    fn matches_config(&self, config: &str) -> bool {
-        if !self.has_extension_pattern {
-            return false;
-        }
-        if self.normalized.contains('/') && !self.literal_prefix.trim_matches('/').is_empty() {
-            return false;
-        }
-        let config_basename = basename_pattern(config).to_ascii_lowercase();
-        self.basename_glob
-            .as_ref()
-            .is_some_and(|glob_set| glob_set.is_match(config_basename))
-    }
 }
 
 fn build_glob_set(pattern: &str) -> Option<GlobSet> {
-    let glob = match GlobBuilder::new(pattern)
+    let glob = GlobBuilder::new(pattern)
         .literal_separator(false)
         .backslash_escape(false)
         .build()
-    {
-        Ok(glob) => glob,
-        Err(_) => return None,
-    };
+        .ok()?;
     let mut builder = GlobSetBuilder::new();
     builder.add(glob);
     builder.build().ok()
@@ -542,16 +534,6 @@ fn basename_extension_pattern(basename: &str) -> Option<&str> {
     );
     let start = last_literal_dot? + 1;
     (start < basename.len()).then_some(&basename[start..])
-}
-
-fn literal_prefix_before_glob(selector: &str) -> &str {
-    let glob_start = selector
-        .char_indices()
-        .find_map(|(index, character)| {
-            matches!(character, '*' | '?' | '[' | ']' | '{' | '}').then_some(index)
-        })
-        .unwrap_or(selector.len());
-    selector[..glob_start].trim_end_matches('/')
 }
 
 fn selector_has_glob(path: &str) -> bool {

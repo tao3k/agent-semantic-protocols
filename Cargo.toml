@@ -6,6 +6,8 @@ members = [
     "crates/agent-semantic-client-local-cli",
     "crates/agent-semantic-hook",
     "crates/agent-semantic-protocol",
+    "crates/agent-semantic-runtime",
+    "crates/agent-semantic-tree-sitter",
 ]
 exclude = ["languages/rust-lang-project-harness"]
 resolver = "2"

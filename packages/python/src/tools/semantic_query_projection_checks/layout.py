@@ -18,16 +18,39 @@ def compact_code_layout_punctuation_errors(packet: dict[str, object]) -> list[st
         if isinstance(match, dict) and _is_compact_projection(match.get("projection"))
         for code in [match.get("code")]
         if isinstance(code, str)
-        for error in compact_code_text_layout_errors(code)
+        for error in compact_code_text_layout_errors(
+            code,
+            allowed_punctuation_lines=_delimiter_row_line_numbers(
+                match.get("projection")
+            ),
+        )
     ]
 
 
-def compact_code_text_layout_errors(code: str) -> list[str]:
+def compact_code_text_layout_errors(
+    code: str,
+    *,
+    allowed_punctuation_lines: set[int] | None = None,
+) -> list[str]:
+    allowed_lines = allowed_punctuation_lines or set()
     return [
         f"line {line_number} is punctuation-only compact residue"
         for line_number, line in enumerate(code.splitlines(), start=1)
-        if _LAYOUT_PUNCTUATION_ONLY.fullmatch(line)
+        if line_number not in allowed_lines and _LAYOUT_PUNCTUATION_ONLY.fullmatch(line)
     ]
+
+
+def _delimiter_row_line_numbers(projection: object) -> set[int]:
+    if not isinstance(projection, dict):
+        return set()
+    rows = projection.get("renderedRows")
+    if not isinstance(rows, list):
+        return set()
+    return {
+        row_index
+        for row_index, row in enumerate(rows, start=1)
+        if isinstance(row, dict) and row.get("rowKind") == "delimiter"
+    }
 
 
 def is_layout_punctuation_only(text: object) -> bool:

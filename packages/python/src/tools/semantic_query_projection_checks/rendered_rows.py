@@ -19,7 +19,9 @@ def projection_rendered_row_errors(packet: dict[str, object]) -> list[str]:
     ]
 
 
-def _compact_match_row_errors(match_index: int, match: dict[object, object]) -> list[str]:
+def _compact_match_row_errors(
+    match_index: int, match: dict[object, object]
+) -> list[str]:
     projection = match.get("projection")
     if not isinstance(projection, dict) or projection.get("mode") != "compact":
         return []
@@ -48,7 +50,10 @@ def _validated_rows_errors(
             f"matches[{match_index}].projection renderedRows text does not match code"
         )
     rendered_node_ids = projection.get("renderedNodeIds")
-    if isinstance(rendered_node_ids, list) and row_result["node_ids"] != rendered_node_ids:
+    if (
+        isinstance(rendered_node_ids, list)
+        and row_result["node_ids"] != rendered_node_ids
+    ):
         errors.append(
             f"matches[{match_index}].projection renderedRows node sequence "
             "does not match renderedNodeIds"
@@ -83,12 +88,18 @@ def _single_row_errors(
     node_id_set: set[object],
 ) -> tuple[list[str], str | None, object | None]:
     if not isinstance(row, dict):
-        return [
-            f"matches[{match_index}].projection.renderedRows[{row_index}] "
-            "must be an object"
-        ], None, None
+        return (
+            [
+                f"matches[{match_index}].projection.renderedRows[{row_index}] "
+                "must be an object"
+            ],
+            None,
+            None,
+        )
     errors = _row_node_errors(match_index, row_index, row.get("nodeId"), node_id_set)
-    text_errors, row_text = _row_text_errors(match_index, row_index, row.get("text"))
+    text_errors, row_text = _row_text_errors(
+        match_index, row_index, row.get("text"), row.get("rowKind")
+    )
     return [*errors, *text_errors], row_text, row.get("nodeId") if not errors else None
 
 
@@ -110,13 +121,14 @@ def _row_text_errors(
     match_index: int,
     row_index: int,
     text: object,
+    row_kind: object,
 ) -> tuple[list[str], str | None]:
     if not isinstance(text, str) or not text.strip():
         return [
             f"matches[{match_index}].projection.renderedRows[{row_index}] "
             "text must be non-empty"
         ], None
-    if is_layout_punctuation_only(text):
+    if is_layout_punctuation_only(text) and row_kind != "delimiter":
         return [
             f"matches[{match_index}].projection.renderedRows[{row_index}] "
             "text is punctuation-only compact residue"

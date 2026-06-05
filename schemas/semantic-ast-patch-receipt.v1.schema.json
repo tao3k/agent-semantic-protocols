@@ -58,6 +58,30 @@
     "mutationAvailable": {
       "type": "boolean"
     },
+    "mutationSource": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "provider-native",
+        "agent-snippet",
+        "codex-text-fallback",
+        null
+      ]
+    },
+    "snippetRequired": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "codeInPrompt": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
     "languageId": {
       "$ref": "#/$defs/identifier"
     },
@@ -113,9 +137,12 @@
         "target-outside-project",
         "source-read-error",
         "target-range-invalid",
+        "target-locator-stale",
         "target-preimage-mismatch",
         "target-item-parse-error",
         "target-item-mismatch",
+        "destination-invalid",
+        "destination-exists",
         "file-reparse-failed",
         "source-write-error",
         "formatter-failed",
@@ -215,7 +242,8 @@
         "remove_import",
         "remove_statement",
         "remove_item",
-        "replace_item"
+        "replace_item",
+        "split_owner_items"
       ]
     },
     "identifier": {
@@ -308,6 +336,34 @@
         },
         "requiresCodexApplyPatch": {
           "type": "boolean"
+        },
+        "mutationSource": {
+          "enum": [
+            "provider-native",
+            "agent-snippet",
+            "codex-text-fallback"
+          ]
+        },
+        "snippetRequired": {
+          "type": "boolean"
+        },
+        "codeInPrompt": {
+          "type": "boolean"
+        },
+        "changedPaths": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/projectPath"
+          }
+        },
+        "sourceBytesReadLocal": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "promptBytesAvoided": {
+          "type": "integer",
+          "minimum": 0
         },
         "changedRanges": {
           "type": "array",

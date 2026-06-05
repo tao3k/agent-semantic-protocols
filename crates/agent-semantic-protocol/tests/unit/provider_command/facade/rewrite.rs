@@ -1,9 +1,6 @@
-use std::env;
-use std::process::Command;
-
 use crate::provider_command::support::{
-    provider, temp_project_root, write_activation, write_command_hint_provider,
-    write_guide_provider,
+    asp_command, prepend_path, provider, temp_project_root, write_activation,
+    write_command_hint_provider, write_guide_provider,
 };
 
 #[test]
@@ -13,9 +10,8 @@ fn provider_output_command_hints_are_rewritten_without_changing_identity() {
     write_command_hint_provider(&bin_dir, "rs-harness");
     write_activation(&root, &[provider("rust", Vec::new())]);
 
-    let output = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .current_dir(&root)
-        .env("PATH", &bin_dir)
+    let output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
         .args(["rust", "ast-patch", "dry-run", "--packet", "-", "."])
         .output()
         .expect("run asp rust ast-patch");
@@ -35,15 +31,15 @@ fn provider_output_command_hints_are_rewritten_without_changing_identity() {
     let _ = std::fs::remove_dir_all(root);
 }
 
+#[test]
 fn agent_guide_rewrites_command_lines_to_language_facade() {
     let root = temp_project_root("agent-guide-facade");
     let bin_dir = root.join(".bin");
     write_guide_provider(&bin_dir, "rs-harness");
     write_activation(&root, &[provider("rust", Vec::new())]);
 
-    let output = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .current_dir(&root)
-        .env("PATH", &bin_dir)
+    let output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
         .args(["rust", "agent", "guide", "."])
         .output()
         .expect("run asp guide");

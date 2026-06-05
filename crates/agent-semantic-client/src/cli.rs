@@ -94,16 +94,31 @@ fn run_provider_method(
     let request = ClientRequest::new(method, parsed.project_root.clone())
         .with_forwarded_args(parsed.forwarded_args)
         .with_language(language_id);
+    let request_started_at = std::time::Instant::now();
     let cache_probe = provider_cache_probe(&parsed.project_root, &snapshot, &request);
     if let Some(cache_probe) = &cache_probe {
         if let Some(replay) = &cache_probe.replay {
             io::stdout()
                 .write_all(&replay.stdout)
-                .map_err(|error| format!("failed to write cached stdout: {error}"))?;
+                .map_err(|error| format!("failed to write cache replay stdout: {error}"))?;
             if parsed.receipt_json {
-                let receipt = cache_hit_receipt(request.method.clone(), cache_probe, replay);
+                let mut receipt = cache_hit_receipt(
+                    request.method.clone(),
+                    cache_probe,
+                    replay,
+                    agent_semantic_client_core::ElapsedMillis::new(
+                        request_started_at
+                            .elapsed()
+                            .as_millis()
+                            .min(u128::from(u64::MAX)) as u64,
+                    ),
+                );
+                crate::syntax_receipt::apply_syntax_query_receipt_metadata(
+                    &mut receipt,
+                    &replay.stdout,
+                );
                 let receipt = serde_json::to_string(&receipt)
-                    .map_err(|error| format!("failed to serialize receipt: {error}"))?;
+                    .map_err(|error| format!("failed to serialize receipt JSON: {error}"))?;
                 eprintln!("{receipt}");
             }
             return Ok(());
@@ -118,18 +133,20 @@ fn run_provider_method(
             &writeback_snapshot,
             &request,
             &output.stdout,
+            &output.receipt.provider_commands,
         )
     } else {
         None
     };
     if let Some(cache_probe) = &cache_probe {
-        apply_provider_cache_probe(&mut output.receipt, cache_probe)
+        apply_provider_cache_probe(&mut output.receipt, cache_probe);
     }
     let execution_cache_status = output.receipt.cache_status;
     if let Some(writeback_probe) = &writeback_probe {
         apply_provider_cache_probe(&mut output.receipt, writeback_probe);
         output.receipt.cache_status = execution_cache_status;
     }
+    crate::syntax_receipt::apply_syntax_query_receipt_metadata(&mut output.receipt, &output.stdout);
     if !parsed.receipt_json {
         io::stderr()
             .write_all(&output.stderr)
@@ -140,11 +157,11 @@ fn run_provider_method(
         .map_err(|error| format!("failed to write provider stdout: {error}"))?;
     if parsed.receipt_json {
         let receipt = serde_json::to_string(&output.receipt)
-            .map_err(|error| format!("failed to serialize receipt: {error}"))?;
+            .map_err(|error| format!("failed to serialize receipt JSON: {error}"))?;
         eprintln!("{receipt}");
     }
     if output.status_code != 0 {
-        std::process::exit(output.status_code)
+        std::process::exit(output.status_code);
     }
     Ok(())
 }
@@ -273,6 +290,9 @@ impl ParsedArgs {
         if !explicit_project_root && should_infer_positional_project_root(command.as_deref()) {
             if let Some(root) = positional_project_root(&forwarded_args, &project_root) {
                 project_root = root;
+                if let Some(last) = forwarded_args.last_mut() {
+                    *last = ".".to_string();
+                }
             }
         }
         Ok(Self {
@@ -306,6 +326,11 @@ fn positional_project_root(forwarded_args: &[String], cwd: &Path) -> Option<Path
         || absolute
             .join(".cache/agent-semantic-protocol/client/cache-manifest.json")
             .is_file()
+        || absolute.join("Cargo.toml").is_file()
+        || absolute.join("package.json").is_file()
+        || absolute.join("pyproject.toml").is_file()
+        || absolute.join("Project.toml").is_file()
+        || absolute.join("JuliaProject.toml").is_file()
     {
         Some(absolute)
     } else {

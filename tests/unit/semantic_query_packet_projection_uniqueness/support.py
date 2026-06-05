@@ -117,12 +117,5 @@ def semantic_query_schema_validator() -> Draft202012Validator:
     return Draft202012Validator(json.loads(schema_path.read_text(encoding="utf-8")))
 
 
-def parser_compact_query_fixture_paths() -> list[Path]:
-    fixture_root = (
-        _REPO_ROOT / "tests" / "fixtures" / "parser-compact" / "expected-output"
-    )
-    return sorted(fixture_root.glob("*/*/*/query-packet.json"))
-
-
 def repo_relative_path(path: Path) -> Path:
     return path.relative_to(_REPO_ROOT)

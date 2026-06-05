@@ -1,0 +1,729 @@
+#+TITLE: RFC: Semantic Tree-sitter Query Protocol
+#+AUTHOR: agent-semantic-protocols
+#+DATE: 2026-06-04
+#+RFC: 011
+#+STATUS: draft
+#+DEPENDS: rfcs/cli-first-harness-ux.org (005), rfcs/agent-compact-graph-feature.org (006), rfcs/agent-semantic-client-backend-protocol.org (008), rfcs/semantic-query-projection-protocol.org (010)
+#+SEE_ALSO: schemas/semantic-native-syntax-fact-index.v1.schema.json
+#+SEE_ALSO: schemas/semantic-search-packet.v1.schema.json
+#+SEE_ALSO: schemas/semantic-query-packet.v1.schema.json
+#+SEE_ALSO: schemas/semantic-read-packet.v1.schema.json
+
+* One-sentence summary
+
+=semantic-tree-sitter-query.v1= is the shared syntax query and capture ABI for
+language providers: it uses tree-sitter-compatible query shape, captures, node
+types, fields, predicates, and ranges as the portable grammar layer, while
+compiler/native parser providers remain the authority for language syntax,
+project semantics, cache provenance, and edit safety.
+
+* Problem
+
+The current search and query contracts already separate agent-facing compact
+output from machine JSON packets, but syntax-level facts still appear in several
+provider-shaped forms:
+
+#+begin_example
+nativeSyntaxFacts[].languageKind
+query.projection.nodes[].kind
+search.items[].kind
+readPlan.symbols[].itemKind
+prompt-facing nodes=...
+provider-private fields
+#+end_example
+
+Those forms are useful, but they do not give agents and caches one stable syntax
+coordinate system.  They also make cross-language query behavior harder to
+compare: Rust, TypeScript, Python, and Julia can all prove richer native facts,
+but the shared packet only sees the later semantic summary.
+
+Tree-sitter's query model is the useful base to reuse here.  It already has a
+compact S-expression pattern language, node types, field names, captures,
+predicates, directives, named and anonymous nodes, =ERROR= and =MISSING= nodes,
+and grammar-owned node type catalogs.  LLMs have strong prior training on this
+shape, and engineers can inspect it without learning a provider-private node
+encoding.
+
+The goal is not to turn this repository into a tree-sitter wrapper.  The goal is
+to use the mature tree-sitter query schema as the portable syntax ABI for a
+stronger native-parser-backed language syntax search system.
+
+* Design principles
+
+1. /Tree-sitter-compatible shape is the portable syntax ABI./  The shared
+   schema owns query source, patterns, captures, fields, predicates, directives,
+   ranges, match ids, capture ids, grammar ids, and node type spelling.
+
+2. /Native parser and compiler authority is the core product./  Rust =syn= or
+   compiler-facing facts, the TypeScript Compiler API and =tsconfig= facts,
+   Python =ast=, =tokenize=, and =symtable= facts, JuliaSyntax facts, and future
+   provider-native parser stacks own language syntax authority.  They can prove
+   facts that tree-sitter alone cannot: type-only imports, cfg gates, macro
+   boundaries, include/module ownership, scope, project references, owner/test
+   reachability, and edit safety.
+
+3. /The schema is for the whole language syntax surface, not only owners./  It
+   covers declarations, imports, exports, types, traits, interfaces, classes,
+   macros, attributes, decorators, calls, bindings, assignments, patterns,
+   match/case arms, control flow, literals, injected languages, tests, cfg or
+   feature gates, and syntax diagnostics.
+
+4. /ASP coordinates; language providers project./  The Rust =asp= client
+   dispatches, validates, caches, renders, and records receipts.  It does not
+   implement TypeScript, Python, Julia, or Rust language semantics.  Each
+   provider emits =semantic-tree-sitter-query.v1= captures from its native parser
+   or from an explicitly declared hybrid/runtime mode.
+
+5. /There is one query surface./  Agent-facing =asp <language> query= is the
+   syntax query surface.  There is no separate =ts-query=, =syntax-query=, or
+   raw-query command family.  Typed selectors, code-shaped terms, and
+   S-expression query source all normalize into the same tree-sitter-compatible
+   query kernel and packet contract.
+
+6. /Query catalogs are configurable protocol assets./  Tree-sitter-compatible
+   query patterns live in versioned catalog files, not hard-coded prompt text.
+   ASP owns catalog loading, normalization, validation, cache keys, and common
+   selector-to-query routing.  Language providers own the thin grammar profile
+   that says which catalog queries they support and how native parser facts map
+   to those captures.
+
+7. /Cache rows never invent facts./  ASP cache entries are derived from
+   provider-owned packets or provider-owned exports.  Cached captures can speed
+   repeated queries, but they cannot become a semantic fallback that outranks
+   the provider.
+
+* Terminology
+
+** Tree-sitter-compatible
+
+A packet is tree-sitter-compatible when its query and match model can be
+understood in terms of tree-sitter query concepts:
+
+#+begin_example
+query source     S-expression pattern source, when present
+node type        grammar node type such as function_item or call_expression
+field            child field such as name, body, function, argument
+capture          named capture such as function.name or call.target
+predicate        capture filter such as eq, match, any-of, is
+directive        capture metadata such as set or strip
+range            project-relative source range
+ERROR/MISSING    syntax recovery nodes when the provider can expose them
+#+end_example
+
+The provider may produce this shape without linking tree-sitter.  For example,
+TypeScript can use the Compiler API and still emit a
+=tree-sitter-typescript=-compatible =function_declaration/name= capture.
+
+** Source authority
+
+=sourceAuthority= records what proved the match:
+
+| Value | Meaning |
+|-------+---------|
+| =native-parser= | The language provider's native parser/compiler stack proved the capture. |
+| =native-parser-adapter= | Native facts were projected through a tree-sitter-compatible mapping table. |
+| =tree-sitter-runtime= | A real tree-sitter parser/query runtime proved the capture. |
+| =hybrid= | Tree-sitter-compatible candidates were verified or enriched by the native provider. |
+| =cached-provider-export= | ASP replayed a previously validated provider-owned export. |
+
+Only provider-owned native modes may claim compiler/project semantics.  A
+=tree-sitter-runtime= capture can be useful syntax evidence, but it does not
+prove type, owner, dependency, test, policy, or patch-safety facts by itself.
+
+** Adapter mode
+
+=adapterMode= records how the provider produced the packet:
+
+| Mode | Purpose |
+|------+---------|
+| =native-projection= | Primary path.  Native parser facts are projected into the shared syntax ABI. |
+| =hybrid= | Tree-sitter-compatible query narrows candidates; native parser verifies and enriches them. |
+| =tree-sitter-runtime= | Bootstrap/debug path.  A provider directly runs tree-sitter query. |
+| =cached-replay= | ASP renders from validated cache rows or artifacts without starting the provider. |
+
+** Compatibility level
+
+=compatibilityLevel= records the strength of the mapping:
+
+| Level | Meaning |
+|-------+---------|
+| =exact= | Native fact maps exactly to a tree-sitter node, field, capture, and range. |
+| =approximate= | The shared capture is close enough for syntax navigation, but provider fields carry the exact native shape. |
+| =native-only= | The provider has a valid language fact with no useful tree-sitter-compatible capture. |
+| =tree-only= | The capture is syntax-only and has not been verified by the native parser. |
+
+Agents must not treat =approximate= or =tree-only= as edit-safety evidence.
+
+* Packet contract
+
+The new shared schema is:
+
+#+begin_example
+schemas/semantic-tree-sitter-query.v1.schema.json
+schemaId = agent.semantic-protocols.semantic-tree-sitter-query
+protocolId = agent.semantic-protocols.semantic-language
+#+end_example
+
+The core packet shape is:
+
+#+begin_src json
+{
+  "schemaId": "agent.semantic-protocols.semantic-tree-sitter-query",
+  "schemaVersion": "1",
+  "protocolId": "agent.semantic-protocols.semantic-language",
+  "protocolVersion": "1",
+  "languageId": "typescript",
+  "providerId": "ts-harness",
+  "projectRoot": ".",
+  "grammarId": "tree-sitter-typescript",
+  "grammarProfileVersion": "typescript-compiler-api-2026-06",
+  "sourceAuthority": "native-parser",
+  "adapterMode": "native-projection",
+  "compatibilityLevel": "exact",
+  "query": {
+    "input": "collectToolActions",
+    "dialect": "tree-sitter-query",
+    "compiledSource": "(function_declaration name: (identifier) @function.name)"
+  },
+  "matches": [
+    {
+      "id": "m1",
+      "patternIndex": 0,
+      "captures": [
+        {
+          "id": "c1",
+          "name": "function.name",
+          "nodeType": "identifier",
+          "field": "name",
+          "named": true,
+          "range": {
+            "path": "src/tool-action.ts",
+            "lineRange": "24:80"
+          },
+          "nativeFactRefs": [
+            "typescript:src/tool-action.ts:24:function:collectToolActions"
+          ]
+        }
+      ]
+    }
+  ],
+  "nativeSyntaxFacts": [],
+  "semanticHandles": [],
+  "truncated": false
+}
+#+end_src
+
+The packet should not store raw source by default.  Capture text may be omitted
+or summarized unless an explicit machine consumer requests bounded exact text
+and the provider policy allows it.  Source windows remain =semantic-read-packet=
+or provider =query --code= output, not the default syntax query packet.
+
+* Query input model
+
+The agent-facing path is the normal query surface and the default
+tree-sitter-compatible query kernel.  Agents usually provide typed or
+code-shaped selectors:
+
+#+begin_src shell
+asp typescript query collectToolActions .
+asp rust query 'fn collect_tool_actions' .
+asp python query 'def render_packet' .
+#+end_src
+
+ASP resolves the language facade and provider registry, checks cache, and on
+miss calls the provider-owned command.  The input is normalized through the
+query catalog into a tree-sitter-compatible query model before the provider
+returns =semantic-tree-sitter-query.v1= captures.
+
+S-expression source is also part of the same =query= surface.  It is not a
+separate command family:
+
+#+begin_src shell
+asp typescript query \
+  '(function_declaration name: (identifier) @function.name)' .
+#+end_src
+
+Provider guides and registry descriptors may advertise which input forms are
+accepted: =selector=, =code-shaped=, =catalog-id=, and =s-expression=.  All forms
+route through the same query kernel, schema, cache, and receipt path.  Providers
+may reject a particular S-expression when the grammar profile cannot map it or
+the native parser cannot verify it, but that rejection is a normal query miss or
+unsupported-pattern response, not a fallback to another protocol.
+
+* Query catalog files
+
+The shared syntax ABI should be configurable through tree-sitter-style query
+catalogs.  Catalog files use the familiar =.scm= extension used by tree-sitter
+query ecosystems; =.scheme= may be accepted as a compatibility spelling, but
+=.scm= is the canonical repository convention.
+
+Recommended layout:
+
+#+begin_example
+languages/typescript-lang-project-harness/
+  tree-sitter/
+    tree-sitter-typescript/
+      grammar-profile.json
+      corpus-profile.json
+      queries/
+        declarations.scm
+        imports.scm
+        calls.scm
+        control-flow.scm
+        tests.scm
+
+languages/rust-lang-project-harness/
+  tree-sitter/
+    tree-sitter-rust/
+      grammar-profile.json
+      corpus-profile.json
+      queries/
+        calls.scm
+        cfg.scm
+        declarations.scm
+        imports.scm
+        injections.scm
+        macros.scm
+        tags.scm
+      query-corpus/
+        calls.txt
+        declarations.txt
+        imports-macros-cfg.txt
+
+languages/python-lang-project-harness/
+  tree-sitter/
+    tree-sitter-python/
+      grammar-profile.json
+      corpus-profile.json
+      queries/
+        declarations.scm
+        imports.scm
+        calls.scm
+        decorators.scm
+        control-flow.scm
+#+end_example
+
+The catalog is not another semantic engine.  It is a configurable query layer
+that lets providers and ASP agree on capture names and grammar shapes:
+
+#+begin_src scheme
+;; declarations.scm
+(function_declaration
+  name: (identifier) @function.name)
+
+(class_declaration
+  name: (type_identifier) @class.name)
+#+end_src
+
+ASP responsibilities:
+
+- treat registry catalog paths as canonical catalog handles, not as downstream
+  filesystem requirements
+- normalize query ids and capture names
+- validate catalog metadata, source delivery declarations, packet references,
+  and cache fingerprints
+- include catalog id, grammar id, grammar profile version, catalog fingerprint,
+  and grammar profile fingerprint in cache keys
+- route typed selectors such as =query collectToolActions= to catalog query ids
+- compile catalog and S-expression inputs into the shared query model only when
+  the catalog source is present in a provider packet/export or another declared
+  delivery channel
+- execute tree-sitter runtime matching only when the provider declares
+  =adapterMode=tree-sitter-runtime= or =hybrid=; native-projection remains
+  provider-owned
+
+Provider responsibilities:
+
+- maintain the language-local =tree-sitter/<grammar-id>/queries/*.scm= catalog
+  as the canonical source in the provider repository, matching the upstream
+  tree-sitter query layout where one exists
+- embed or otherwise publish those catalogs through the provider binary/export
+  path declared by =queryCatalogs[].sourceDelivery=; downstream clients must not
+  need provider package source files installed
+- maintain =grammar-profile.json= mapping native parser facts to capture names
+  and deliver that profile through the same provider-owned channel
+- track upstream grammar test corpus knowledge through lightweight development
+  assets such as =corpus-profile.json=; corpus files guide catalog coverage and
+  drift detection, but are not required runtime inputs
+- maintain provider-local =query-corpus/*.txt= fixtures for ASP capture
+  precision. Providers store these fixtures beside their catalogs, but the
+  validation, query compilation, cache keys, and replay semantics remain owned
+  by the main ASP workspace. These fixtures should cite upstream corpus files
+  for grammar shape provenance while only testing ASP-specific capture
+  granularity and avoiding duplicate upstream parser grammar tests
+- pin the ASP workspace git revision that validated the grammar profile and
+  query corpus in =grammar-profile.json=. This is provenance for the ASP-side
+  query compiler/cache/validator contract, not a provider runtime dependency
+- validate =grammar-profile.json= against the main workspace
+  =semantic-tree-sitter-grammar-profile.v1= schema so other language providers
+  can adapt the same profile/query-corpus contract without inventing local
+  shapes
+- do not import editor-oriented query assets such as =highlights.scm= by default;
+  vendored upstream queries should have an explicit syntax ABI calibration role
+  such as definition/reference tags or embedded-language injection boundaries
+- declare which catalog queries are supported by native projection
+- return =compatibilityLevel=exact=, =approximate=, =native-only=, or =tree-only=
+  honestly
+- keep language-only semantic facts in provider-owned fields or native fact refs
+- do not link grammar-specific tree-sitter runtime crates for this ABI; the
+  provider catalog is =.scm= plus native projection, and ASP owns any shared
+  tree-sitter runtime/query loading path
+
+This keeps language maintenance lightweight: adding a stronger native parser
+capability usually means adding or refining a small catalog query plus a grammar
+profile mapping, while ASP continues to own shared schema validation, cache,
+artifact replay, and compact rendering.
+
+* Provider adapter contract
+
+Each language provider owns a grammar profile that maps native syntax facts to
+tree-sitter-compatible captures:
+
+#+begin_example
+native kind -> nodeType / field / capture / relation / compatibilityLevel
+#+end_example
+
+The profile's =nativeFactProjection= table is the convergence contract.  Native
+parser/compiler facts remain the authority, but any fact that can be represented
+as a stable syntax anchor should be projected through a catalog capture in
+=tree-sitter/<grammar-id>/queries/*.scm=.  Provider-private native fields are
+reserved for facts that are genuinely =native-only=.
+
+Examples:
+
+| Language | Native authority | Grammar profile examples |
+|----------+------------------+--------------------------|
+| Rust | =syn=, compiler-facing facts, Cargo metadata | =function_item/name=, =impl_item=, =trait_item=, =use_declaration=, =macro_invocation=, =attribute_item=, =match_expression= |
+| TypeScript | TypeScript Compiler API, =tsconfig=, project references | =function_declaration/name=, =class_declaration/name=, =interface_declaration/name=, =type_alias_declaration/name=, =import_statement=, =call_expression/function= |
+| Python | =ast=, =tokenize=, =symtable= | =function_definition/name=, =class_definition/name=, =decorated_definition=, =import_statement=, =call/function=, =match_statement=, =with_statement= |
+| Julia | JuliaSyntax, package/module/include environment | =function_definition/name=, =macrocall=, =module=, =using_statement=, =import_statement=, =struct_definition=, =call_expression/function= |
+
+Providers can expose facts that have no tree-sitter equivalent by using
+=compatibilityLevel=native-only= and provider-owned fields.  They must not force
+project, type, policy, or edit-safety facts into a fake syntax capture.
+
+* Relationship to existing packets
+
+=semantic-tree-sitter-query.v1= is additive.  It does not immediately replace
+=semantic-search-packet.v1=, =semantic-query-packet.v1=, or
+=semantic-read-packet.v1=.
+
+Existing packets should gradually reference syntax captures instead of
+duplicating provider-private syntax fields:
+
+#+begin_example
+syntaxQueryRef       packet or artifact id for semantic-tree-sitter-query.v1
+syntaxMatchRefs      match ids selected by this packet
+syntaxCaptureRefs    capture ids selected by this packet
+syntaxAnchor         small inline nodeType/field/capture/range summary
+#+end_example
+
+Initial consumers:
+
+| Packet | First integration |
+|--------+-------------------|
+| =semantic-search-packet.v1= | Add refs for search items, hits, and graph nodes that come from syntax captures. |
+| =semantic-query-packet.v1= | Add refs from matches and projection nodes to capture ids. |
+| =semantic-read-packet.v1= | Add refs from read-plan symbols, windows, and code frontier entries. |
+| =semantic-native-syntax-fact-index.v1= | Add optional refs from facts to syntax captures and grammar profile version. |
+
+Prompt-facing search output should use a compact field named =syn= when the capture
+helps the agent choose a next action:
+
+#+begin_example
+I=item:symbol(collect_tool_actions)@216:421!outline syn=function_item/name
+H=custom:range(command_source_paths@397:401)!code syn=call_expression/function
+#+end_example
+
+Do not use a field named =ts= for this purpose; in this repository =ts= already
+commonly means TypeScript.
+
+* ASP cache model
+
+This RFC makes syntax captures a first-class cache key family.  The cache goal
+is not just artifact replay; it is to reduce repeated native provider startup
+and repeated project parsing for =asp <language> query/search=.
+
+The cache execution shape is:
+
+#+begin_example
+asp <language> query/search
+  -> resolve project root, provider, grammar profile, and request fingerprint
+  -> probe local SQLite generation
+  -> on exact prompt-output hit:
+       replay prompt-output artifact
+  -> on packet artifact hit:
+       load a previously validated semantic-tree-sitter-query packet
+       render compact output or linked search/query/read packet
+  -> on normalized-row hit:
+       query syntax captures and native fact refs from SQLite
+       render through ASP shared renderer
+  -> on miss or stale generation:
+       call native provider CLI or provider export
+       validate packets
+       write artifacts and normalized rows
+       render compact output
+#+end_example
+
+Recommended SQLite families:
+
+#+begin_example
+syntax_query_generation
+syntax_query_pattern
+syntax_match
+syntax_capture
+syntax_capture_range
+syntax_capture_native_fact_ref
+native_syntax_fact
+owner_index
+query_key_index
+artifact_ref
+#+end_example
+
+Cache keys must include:
+
+#+begin_example
+normalized project root
+language id
+provider id and provider version
+schema version
+grammar id
+grammar profile version
+adapter mode
+source authority
+normalized query input or compiled query source
+workspace config digests such as tsconfig, Cargo.toml, pyproject.toml, Project.toml
+file hash or provider generation
+#+end_example
+
+The default cache must not store raw source files.  It may store project-relative
+ranges, capture names, native fact refs, structural fingerprints, and artifact
+ids.
+
+* Compact graph and search behavior
+
+Syntax captures feed compact graph decisions, but they do not replace graph
+semantics.  RFC 006 still owns prompt-facing graph grammar, rank, frontier,
+relations, and avoidance facts.  A graph relation such as =calls=, =covers=,
+=imports=, or =contains= must come from provider-owned parser/project facts.
+
+The syntax ABI helps compact output explain why a node is a good next action:
+
+#+begin_example
+[search-owner] owner=src/tool_action.rs selector=items terms=3 view=seeds alg=syntax-frontier
+legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next
+alias: graph:{G=search,O=owner,I=item,H=custom}
+O=owner:path(src/tool_action.rs)!owner
+I=item:symbol(collect_tool_actions)@216:421!outline syn=function_item/name
+H=custom:range(command_source_paths@397:401)!code syn=call_expression/function
+G>{O:selects,I:matches,H:matches}
+O>{I:contains,H:contains}
+rank=H,I,O frontier=H.code,I.outline
+omit=code,full-node-list
+avoid=raw-read,repeat-owner
+#+end_example
+
+The =syn= atoms are explanatory syntax anchors.  The executable next action
+still comes from =!code=, =!outline=, and =frontier=.
+
+* Read-plan behavior
+
+Wide reads should use syntax captures to produce better frontier entries, but
+the packet remains =semantic-read-packet.v1=.  Providers should prefer
+parser-owned symbols or syntax windows before mechanical range splits.
+
+Example behavior:
+
+#+begin_example
+readPlan.mode=range-frontier
+readPlan.algorithm=symbol-frontier
+readPlan.syn=function_item/name
+frontier[0].kind=symbol
+frontier[0].action=code
+frontier[0].read=src/tool_action.rs:397:401
+frontier[0].fields.syntaxCaptureRef=c37
+#+end_example
+
+Providers must not synthesize fake symbols such as =local-window=.  If no native
+symbol exists, use a window frontier with a syntax capture or a mechanical range
+split marked as such.
+
+* Language rollout plan
+
+** Phase 0: RFC and schema
+
+1. Land this RFC.
+2. Add =schemas/semantic-tree-sitter-query.v1.schema.json=.
+3. Add schema tests for valid native-projection, hybrid, tree-sitter-runtime,
+   cached-replay, exact, approximate, native-only, and tree-only examples.
+4. Update =schemas/README.md= with the packet role and its relationship to
+   search/query/read/cache.
+
+** Phase 1: Rust reference adapter
+
+1. Add Rust =tree-sitter/tree-sitter-rust/queries/*.scm= query catalogs,
+   upstream standard query snapshots, and a grammar profile that maps existing
+   provider-native item and call facts to tree-sitter-compatible captures.
+2. Add provider JSON export for =query= and selected =search owner items= paths.
+3. Add compact output =syn= atoms only where they reduce ambiguity.
+4. Validate =asp rust query= cold-native and cache-write paths.
+
+Rust is the reference because it is already the strongest local provider and can
+exercise native parser facts without requiring another runtime boundary.
+
+** Phase 2: ASP cache integration
+
+1. Add catalog loading and fingerprinting to ASP so query catalog id, grammar
+   id, and grammar profile version become part of cache provenance.
+2. Add artifact family =semantic-tree-sitter-query/<id>.json= or a compatible
+   query artifact namespace.
+3. Normalize syntax query rows into SQLite.
+4. Add exact artifact replay for identical request fingerprints.
+5. Add normalized-row replay for repeated syntax query requests.
+6. Add receipts for cold native, warm provider, local cache hit, stale, and
+   invalidated paths.
+
+This phase proves that =asp <language> query/search= can avoid repeated provider
+CLI startup when validated captures and native fact refs are fresh.
+
+** Phase 3: TypeScript provider
+
+1. Add TypeScript =tree-sitter/tree-sitter-typescript/queries/*.scm= catalogs.
+2. Implement =ts-harness= native projection through the TypeScript Compiler API.
+3. Project TypeScript declarations, imports, exports, calls, classes,
+   interfaces, type aliases, and type-only import/export facts into captures.
+4. Use =tsconfig= and project references in native fields and cache digests.
+5. Route =asp typescript query "xx"= through ASP cache first, then
+   =ts-harness= on miss.
+6. Prove repeated query speedup on a real TypeScript workspace.
+
+** Phase 4: Python provider
+
+1. Add Python =tree-sitter/tree-sitter-python/queries/*.scm= catalogs.
+2. Implement =py-harness= native projection through =ast=, =tokenize=, and
+   =symtable=.
+3. Preserve indentation-sensitive ownership through native fields and avoid
+   claiming edit safety from syntax captures alone.
+4. Add read-plan syntax frontier coverage for wide direct-source-read recovery.
+5. Prove repeated query speedup and fewer manual range scans.
+
+** Phase 5: Julia provider
+
+1. Keep Julia workspace-managed.
+2. Add Julia =tree-sitter/tree-sitter-julia/queries/*.scm= compatible catalogs
+   where the grammar profile has stable names.
+3. Export JuliaSyntax-owned captures and native fact refs for cache import.
+4. Make ASP serve repeated query/search from Rust-side cache without starting
+   Julia when the generation is fresh.
+5. Validate module/include/macro boundaries as native facts, not tree-sitter-only
+   guesses.
+
+** Phase 6: Cross-language convergence
+
+1. Add package-local schema copies where providers require them.
+2. Add registry descriptor capabilities for =semantic-tree-sitter-query.v1=
+   export, query input forms, grammar profile id, and cache replay support.
+3. Add sandtable scenarios for cold native, cache hit, provider miss, stale
+   cache, and real-trigger repeated syntax queries.
+4. Feed real-project metrics back into RFC/schema refinement before widening
+   renderer behavior.
+
+* Registry descriptors
+
+Provider registry descriptors should advertise:
+
+#+begin_src json
+{
+  "method": "query",
+  "packetSchemas": [
+    "semantic-tree-sitter-query.v1"
+  ],
+  "capabilities": {
+    "adapterModes": ["native-projection"],
+    "sourceAuthorities": ["native-parser"],
+    "grammarId": "tree-sitter-typescript",
+    "grammarProfileVersion": "typescript-compiler-api-2026-06",
+    "queryCatalogs": [
+      {
+        "id": "typescript.declarations",
+        "path": "tree-sitter/tree-sitter-typescript/declarations.scm",
+        "sourceDelivery": "provider-binary-embedded",
+        "captures": ["function.name", "class.name", "interface.name"]
+      }
+    ],
+    "queryInputForms": ["selector", "code-shaped", "catalog-id", "s-expression"],
+    "cacheReplay": true
+  }
+}
+#+end_src
+
+The descriptor must describe which input forms the same =query= surface accepts.
+A provider can support selector and code-shaped input before it accepts arbitrary
+S-expression source, but it must not expose that as a separate agent-facing
+command.
+
+* Validation
+
+Schema-level validation:
+
+- packet shape, ids, refs, and range syntax
+- enum coverage for source authority, adapter mode, and compatibility level
+- no raw source text in default packets
+- valid native fact refs when provided
+- cache key and generation fields present for cacheable packets
+
+Provider validation:
+
+- Rust reference adapter fixture
+- TypeScript Compiler API projection fixture
+- Python indentation/decorator fixture
+- Julia module/include/macro fixture
+- package-local schema copy equality where the provider keeps schema copies
+
+ASP cache validation:
+
+- cold native provider call writes packet artifact and SQLite rows
+- identical request replays artifact without provider execution
+- repeated compatible request uses normalized rows without provider execution
+- stale generation invokes provider and refreshes rows
+- invalidated cache reports visible miss or warm-provider path
+
+Real-project evidence:
+
+- command count
+- provider process count
+- packet size
+- cache hit rate
+- cold and warm latency
+- repeated-trigger reduction
+- read-plan repeated range scan reduction
+- confusing next actions after compact render
+
+* Non-goals
+
+- Do not require every provider to link tree-sitter.
+- Do not move language parser implementations into the Rust ASP client.
+- Do not introduce a separate =ts-query=, =syntax-query=, or raw-query command
+  family; =query= is the tree-sitter-compatible syntax query surface.
+- Do not replace =semantic-search-packet=, =semantic-query-packet=, or
+  =semantic-read-packet= in the first implementation.
+- Do not treat cache availability routing as semantic fallback.
+- Do not store raw source in the default cache.
+- Do not claim edit safety from syntax captures without native parser,
+  fingerprint, and patch-verification evidence.
+
+* Open decisions
+
+1. Whether syntax query artifacts should use a dedicated
+   =semantic-tree-sitter-query/<id>.json= namespace or reuse the existing
+   =query/<id>.json= namespace with =artifactKind=semantic-tree-sitter-query=.
+2. Whether =syntaxAnchor= should be a small shared sub-schema reused by
+   search/query/read packets before full =syntaxCaptureRefs= are available.
+3. Which grammar profile version naming convention should be stable across
+   providers.
+4. Whether arbitrary S-expression input should be enabled by default for every
+   provider or gated per provider until its grammar profile is stable.
+5. Whether ASP should accept =.scheme= catalog filenames as input while
+   normalizing repository-owned catalogs to =.scm=.
+6. Which provider is first after Rust: TypeScript for LLM familiarity and
+   compiler API value, or Julia for process-start/cache payoff.

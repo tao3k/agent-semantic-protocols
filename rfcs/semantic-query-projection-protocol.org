@@ -90,6 +90,18 @@ soundly emit for the selected match:
 - =exactRead=
 - =nodes[]=
 - =renderedNodeIds=
+- =renderedRows[]=
+- =nodeCount=
+- =nodeLimit=
+- =nodesTruncated=
+- =omitted[]=
+- =expandActions[]=
+
+These fields are the compact contract, not optional diagnostics.  A provider
+that can only emit names, outline rows, or formatter-shaped text without
+parser-owned reverse navigation must report =mode=names= or =mode=outline=.
+It must not serialize a partial compact projection and expect an agent or
+fixture validator to infer the missing AST projection from rendered text.
 
 For compact code, =exactRead= is the same canonical locator as the match-level
 =read= field.  =sourceFingerprint= must bind that locator so stale projections
@@ -158,6 +170,18 @@ global whitespace replacement.  The old pattern of
 =split_whitespace().join(" ")= followed by textual punctuation replacement is
 not a valid compact renderer because it can rewrite raw string indentation.
 
+TypeScript and JavaScript use the same contract through
+=projection.syntax=save-token-typescript=.  The syntax value names the compact
+projection dialect, not a specific formatter.  The provider may discover
+prettier, biome, oxfmt, or a workspace script, but the shared requirement is
+compiler-owned nodes, formatter-structural whitespace safety, and exact-read
+expansion before editing.
+
+Python uses =projection.syntax=save-token-ruff= for formatter-structural
+compact output.  =ruff format= is the formatting substrate; lint fixes,
+organize-imports, and =ruff check --fix= are separate capabilities and must not
+be collapsed into compact projection safety.
+
 * Node identity
 
 Every projected native node has one shared projection identity within a packet.
@@ -206,7 +230,7 @@ Each rendered row records:
 | Field | Meaning |
 |-------+---------|
 | =nodeId= | Existing =projection.nodes[].id= that owns the row |
-| =rowKind= | Shared semantic row kind such as =declaration=, =mutation=, =call=, =control-flow=, =terminal=, =effect=, =field=, or =omission= |
+| =rowKind= | Shared semantic row kind such as =declaration=, =mutation=, =call=, =control-flow=, =terminal=, =effect=, =field=, =delimiter=, or =omission= |
 | =text= | The exact prompt-facing row text |
 | =semanticWeight= | Integer weight for token-cost/quality reporting |
 
@@ -214,8 +238,9 @@ Rendered row invariants:
 
 - =renderedRows[].nodeId= sequence equals =renderedNodeIds=.
 - =matches[].code= equals the newline join of =renderedRows[].text=.
-- =renderedRows[].text= is non-empty and must not be punctuation-only,
-  delimiter-only, brace-only, or formatter-only residue.
+- =renderedRows[].text= is non-empty.  Punctuation-only rows are valid only
+  when =rowKind=delimiter= and =nodeId= points at a parser-owned block boundary;
+  formatter-only residue remains invalid.
 - A row may summarize syntax, but it may not invent semantic facts that are not
   owned by the referenced parser node.
 - Cross-language snapshot gates must assert =residueRowCount=0= for Rust,
@@ -267,9 +292,11 @@ If compact mode cannot preserve unique node identity after truncation, the
 provider should return a weaker =outline= or =names= projection instead of
 claiming compact AST output.
 
-Token savings are measured in root parser-compact snapshots.  A smaller compact
-string is not successful if it duplicates nodes, drops reverse navigation, leaks
-absolute paths, or forces another broad search round.
+Token savings are measured in language-harness parser compact snapshots.  The
+root repository owns the shared schema, RFC, and cross-field validators, but it
+does not mirror provider compact fixtures.  A smaller compact string is not
+successful if it duplicates nodes, drops reverse navigation, leaks absolute
+paths, or forces another broad search round.
 
 * Agent-facing transport
 
@@ -279,8 +306,10 @@ the agent to choose the next action.
 
 =--code= is a post-selection token optimization.  It prints the compact
 projection text directly after an owner and item have already been selected.
-It is not a replacement for the metadata-bearing query packet and must not
-diverge from the =|code text="..."= projection value.
+It is not a replacement for the metadata-bearing query packet.  Default search
+discovery must not inline the projection as =|code text="..."=; when a provider
+offers an explicit line-protocol code transport, that transport and =--code=
+must come from the same projection renderer.
 
 Interactive agent exploration should not request JSON.  =--json= is for schema
 tests, snapshot validators, cache artifacts, and IDE integrations.
@@ -299,7 +328,7 @@ allowed operation facts are strong enough for the AST patch verifier.
 
 * Snapshot workflow
 
-Parser compact snapshots are the main regression boundary:
+Language-owned parser compact snapshots are the main regression boundary:
 
 #+begin_example
 fixture source
@@ -311,7 +340,9 @@ fixture source
 
 Snapshot fixtures must avoid absolute project roots.  Expected outputs record
 project-relative paths, exact locators, projection nodes, omitted facts,
-expansion actions, and token-cost measurements.
+expansion actions, and token-cost measurements.  These artifacts live in the
+provider harness that owns the native parser output; the root repository keeps
+only protocol-level validators and schema tests.
 
 Feature cases should be organized by parser capability rather than by provider:
 
@@ -341,12 +372,13 @@ toy function.  Node counts, depth, and token ratios remain useful residue
 checks, but they are not sufficient complexity evidence on their own.
 
 Compact text should still preserve formatter-style block ownership.  Rust
-compact rows use a save-token rustfmt dialect: parser depth renders as
-rustfmt-style four-space indentation, opening and closing braces remain visible,
+compact rows use a save-token rustfmt dialect; TypeScript uses a save-token
+TypeScript dialect over compiler-owned syntax; Python uses a save-token ruff
+dialect.  Parser depth renders as formatter-style structural indentation,
+opening and closing delimiters remain visible when they carry block ownership,
 and low-value trivia or large literal payloads may be omitted or summarized.
 This indentation is structural projection data, not arbitrary whitespace copied
-from source.  Rust packets identify this dialect with
-=projection.syntax=save-token-rustfmt= and
+from source.  Packets identify the dialect with =projection.syntax= and
 =compactSafety.whitespacePolicy=formatter-structural=.
 
 * Acceptance gates
@@ -359,8 +391,8 @@ Changes to projection behavior are accepted only when the following gates pass:
    and expand-action invariants.
    =tests/unit/test_semantic_query_packet_projection_uniqueness.py= is the root
    cross-field guard for these invariants.
-4. Parser compact snapshots capture compact output, query packet JSON, and
-   token-cost reports.
+4. Language-harness parser compact snapshots capture compact output, query
+   packet JSON, and token-cost reports.
 5. Real-library fixtures show command-count or token-cost improvement without
    increasing follow-up search churn.
 6. Agent-facing guides keep JSON out of interactive exploration and route exact
@@ -370,11 +402,11 @@ Changes to projection behavior are accepted only when the following gates pass:
 
 As of 2026-06-04, the root Python validator
 =tools.semantic_query_projection= owns reusable cross-field projection checks
-for parser-compact fixtures and provider JSON replay.  Unit tests still keep
-focused examples in
-=tests/unit/test_semantic_query_packet_projection_uniqueness.py=, while
-=tools.parser_compact_runner.query_packet_artifacts= fails provider output
-before snapshot artifacts are written when projection invariants drift.
+for provider query-packet JSON replay.  Unit tests still keep focused examples
+in =tests/unit/test_semantic_query_packet_projection_uniqueness.py=.  Provider
+harnesses should run these shared checks before writing compact snapshot
+artifacts, while the retired root =parser-compact-snapshots= command exits with
+a migration message instead of maintaining a parallel compact fixture runner.
 
 * Open implementation work
 

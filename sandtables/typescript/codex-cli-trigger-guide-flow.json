@@ -194,7 +194,11 @@
           "[search-prime]",
           "root=@openai/codex-sdk",
           "src/index.ts",
-          "alg=owner-rank-frontier"
+          "alg=owner-rank-frontier",
+          "entries=",
+          "analysis=structure",
+          "nativeSyntaxFacts=skipped",
+          "policyFindings=skipped"
         ],
         "maxStdoutLinesWarn": 12,
         "maxElapsedMsWarn": 8000

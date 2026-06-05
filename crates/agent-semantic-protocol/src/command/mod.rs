@@ -3,6 +3,7 @@
 mod ast_patch;
 mod dispatch;
 mod graph;
+mod healthcheck;
 mod hook;
 mod hook_enforcement;
 mod hook_runtime;

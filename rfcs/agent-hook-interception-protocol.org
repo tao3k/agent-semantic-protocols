@@ -132,9 +132,21 @@ binary is a global toolchain component.
 =.codex/agent-semantic-protocol/hooks= is durable project hook policy.  The
 versioned client policy lives at =config.toml= there.  Generated activation,
 provider profile registries, and hook event logs must live under
-=${PRJ_HOME_CACHE}/agent-semantic-protocol/hooks= when =PRJ_HOME_CACHE= is set,
+=${PRJ_CACHE_HOME}/agent-semantic-protocol/hooks= when =PRJ_CACHE_HOME= is set,
 otherwise under the git toplevel =.cache/agent-semantic-protocol/hooks=
 directory.
+
+Provider execution profiles are a separate runtime cache contract.  The root
+runtime writes =profiles.json= under
+=${PRJ_CACHE_HOME}/agent-semantic-protocol/runtime=, or otherwise under the git
+toplevel =.cache/agent-semantic-protocol/runtime= directory.  Activation
+continues to record which provider manifests and coverage roots are active;
+runtime profiles record the resolved provider argv and health for the current
+project.  Agent-facing provider execution must prefer a healthy profile argv
+over shell =PATH= lookup.  This prevents an agent from accidentally selecting a
+different provider binary when it forgets =direnv exec= or inherits the wrong
+=PATH=, and it makes stale/missing runtime tools visible through doctor output
+instead of hiding them behind generated bin symlinks.
 
 Public Codex issue threads also document that =updatedInput= rewrite should
 not be treated as portable and that tool coverage has changed over recent
@@ -284,11 +296,15 @@ The classifier must operate primarily at the action layer:
 - known tool names are hints for platform surface reporting, not the policy
   authority;
 - shell commands are parsed with the Bash grammar through =tree-sitter-bash=
-  before direct-read, content-dump, raw-search, provider-output-pipe, and
-  wrapper-unwrapping decisions are made;
-- source selector matching remains provider-owned through activated coverage and
-  =globset=, so Rust, TypeScript, Python, and later providers share the same
-  action detector and only differ in coverage/route manifests.
+  before direct-read, content-dump, raw-search, and provider-output-pipe
+  decisions are made; the classifier should preserve parser-owned command
+  stages and argument roles instead of flattening first and recovering meaning
+  through wrapper-name heuristics;
+- raw-search source selector matching remains provider-owned through activated
+  =sourceExtensions= and =globset=: =tree-sitter-bash= owns selector roles,
+  the shared matcher extracts the selector's extension pattern, and the
+  pattern must match the provider-declared language extensions before the raw
+  search is treated as source-content access.
 
 Client-side hook customization is a typed config file, not a server process:
 
@@ -309,6 +325,12 @@ Client-side hook customization is a typed config file, not a server process:
   become machine receipts;
 - rule receipts: config-derived decisions set =fields.configRuleId= to the
   matching rule id;
+- experimental switches: generated Codex client configs include
+  =[experimental.semanticAstPatch] enabled = false=.  The built-in source
+  =apply_patch= to semantic AST patch route is experimental; hook runtimes may
+  preserve legacy behavior when the switch is absent, but generated
+  =.codex/agent-semantic-protocol/hooks/config.toml= must keep it disabled
+  until the provider-native AST patch path is stable;
 - runtime schema mirror: the loader rejects schema-shape errors before
   classification, including invalid identifiers, empty min-length strings,
   unsupported events/platforms, duplicate =languageIds=, empty route =argv=,
@@ -469,7 +491,7 @@ and what coverage the installer resolved:
 
 #+begin_src text
 projectRoot
-generatedBy.runtime = agent-semantic-hook
+generatedBy.runtime = asp
 generatedBy.version
 generatedAt
 providers[].manifestId
@@ -508,7 +530,7 @@ checks and static workspace detector facts are enough.
 
 Generated hook state is diagnostic and routing evidence, not a source of
 provider truth.  It lives under
-=${PRJ_HOME_CACHE}/agent-semantic-protocol/hooks= when =PRJ_HOME_CACHE= is set,
+=${PRJ_CACHE_HOME}/agent-semantic-protocol/hooks= when =PRJ_CACHE_HOME= is set,
 otherwise under the git toplevel =.cache/agent-semantic-protocol/hooks=.
 
 The append-only event log is =events.jsonl=.  Each non-empty line must be one
@@ -616,8 +638,8 @@ provider manifest and workspace detector only; the classifier algorithm should
 not gain a language-specific branch.
 
 For performance, a selector is normalized and parsed once per classifier pass:
-the matcher owns glob detection, basename extension matching, config filename
-matching, literal prefix extraction, and compiled globsets.  Classifier actions
+the matcher owns glob detection, extension-pattern extraction, config filename
+matching for exact direct reads, and compiled globsets.  Classifier actions
 consume that parsed selector rather than compiling glob patterns inside every
 provider-extension pair.
 
@@ -628,12 +650,15 @@ still owns argument roles: =rg -e runner.py docs= treats =runner.py= as the
 search pattern, not as a Python source selector, while =rg -g '*.py' docs= or
 =git ls-files '*.py'= are source selectors.
 
-Selectors without a source suffix are still policy-relevant when they target an
-activated source root or the whole workspace.  For example =src/**= matches
-providers activated for =src=, =crates/**= matches providers activated for
-=crates=, and =**/*= is treated as all activated source providers.  A
-non-source root such as =docs/**= remains allowed unless it also matches an
-activated extension, config file, or source root.
+Selectors without a source suffix remain valid scope limiters, but for
+=rg=/=fd=-style raw search they are not sufficient source evidence by
+themselves.  The necessary raw-search source signal is a parser-owned
+language selector that matches the activated provider's required
+=sourceExtensions= through the shared globset matcher, such as =*.rs=,
+=**/*.{ts,tsx}=, or =src/model.py=.
+Roots such as =src=, =crates=, or =.= can narrow the
+search after that signal exists, but they do not turn =env | rg PATH=,
+=rg Foo src=, or =fd Foo crates= into source search.
 
 Raw shell search is allowed only when one of these is true:
 
@@ -675,9 +700,10 @@ The decision order is:
 8. require compact subagent receipt shape at subagent stop;
 9. require changed checks at stop when dirty activated provider files exist.
 
-The raw command classifier is action-aware first and suffix/source-aware second.
+The raw command classifier is action-aware first and selector-aware second.
 Directory names such as =docs/**= or =crates/**= are not language evidence on
-their own; source suffixes and provider-declared source roots are.
+their own; only selectors whose basename or glob extension pattern matches
+provider-declared =sourceExtensions= are raw-search source evidence.
 
 | Action family | Source evidence | Term evidence | Decision |
 | Direct read/edit wrapper | exact source file | exact selector | deny with provider =query --from-hook direct-source-read --selector <path> .= route |
@@ -686,8 +712,8 @@ their own; source suffixes and provider-declared source roots are.
 | Content dump (=sed=, =less=, =head=, =tail=, =nl=, =bat=) | source glob | not required | deny bulk-source-dump with provider prime route |
 | Content diff (=git diff=, =git diff --no-index /dev/null <path>=) | exact source file | exact selector | deny bulk-source-dump with provider =query --from-hook direct-source-read --selector <path> .= route |
 | Metadata diff (=git diff --stat=, =git diff --name-only=, =git diff --name-status=) | source or non-source scope | metadata only | allow |
-| Raw search (=rg=, =grep=, =fd=, =find=, =git grep=) | source suffix/root/provider match | concrete query term | deny with provider query route when declared |
-| Raw search (=rg=, =grep=, =fd=, =find=, =git grep=) | source suffix/root/provider match | no concrete term | deny with provider ingest route |
+| Raw search (=rg=, =grep=, =fd=, =find=, =git grep=) | parser-owned selector extension matches activated =sourceExtensions= | concrete query term | deny with provider query route when declared |
+| Raw search (=rg=, =grep=, =fd=, =find=, =git grep=) | parser-owned selector extension matches activated =sourceExtensions= | no concrete term | deny with provider ingest route |
 | Structured directory/listFiles action | activated source root/path | none | deny source-directory-enumeration with provider ingest route |
 | Raw search | non-source scope only, such as markdown/docs | any term | allow |
 | Raw search piped to provider ingest | source scope | candidates on stdin | allow |

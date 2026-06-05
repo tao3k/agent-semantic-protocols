@@ -1,0 +1,488 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-tree-sitter-query.v1.schema.json",
+  "title": "Semantic Tree-sitter Query Packet",
+  "description": "Tree-sitter-compatible syntax query and capture ABI emitted by native semantic language providers and replayed by ASP cache.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "protocolId",
+    "protocolVersion",
+    "languageId",
+    "providerId",
+    "projectRoot",
+    "grammarId",
+    "grammarProfileVersion",
+    "sourceAuthority",
+    "adapterMode",
+    "compatibilityLevel",
+    "query",
+    "matches",
+    "truncated"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.semantic-tree-sitter-query"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "protocolId": {
+      "const": "agent.semantic-protocols.semantic-language"
+    },
+    "protocolVersion": {
+      "const": "1"
+    },
+    "languageId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "providerId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "binary": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "namespace": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*(\\.[a-z][a-z0-9_-]*)+$"
+    },
+    "method": {
+      "const": "query"
+    },
+    "projectRoot": {
+      "type": "string",
+      "minLength": 1
+    },
+    "packageName": {
+      "type": "string",
+      "minLength": 1
+    },
+    "grammarId": {
+      "type": "string",
+      "pattern": "^tree-sitter-[a-z][a-z0-9_-]*$"
+    },
+    "grammarProfileVersion": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sourceAuthority": {
+      "enum": [
+        "native-parser",
+        "native-parser-adapter",
+        "tree-sitter-runtime",
+        "hybrid",
+        "cached-provider-export"
+      ]
+    },
+    "adapterMode": {
+      "enum": [
+        "native-projection",
+        "hybrid",
+        "tree-sitter-runtime",
+        "cached-replay"
+      ]
+    },
+    "compatibilityLevel": {
+      "enum": [
+        "exact",
+        "approximate",
+        "native-only",
+        "tree-only"
+      ]
+    },
+    "query": {
+      "$ref": "#/$defs/query"
+    },
+    "matches": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/match"
+      }
+    },
+    "nativeFactRefs": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "semanticHandleRefs": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "cache": {
+      "$ref": "#/$defs/cache"
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/note"
+      }
+    },
+    "truncated": {
+      "type": "boolean"
+    }
+  },
+  "$defs": {
+    "projectPath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*)$"
+    },
+    "lineRange": {
+      "type": "string",
+      "description": "Compact source line range as start:end, for example 10:43.",
+      "pattern": "^[1-9][0-9]*:[1-9][0-9]*$"
+    },
+    "range": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "lineRange"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/projectPath"
+        },
+        "lineRange": {
+          "$ref": "#/$defs/lineRange"
+        },
+        "startByte": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "endByte": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "scalar": {
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "fields": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/scalar"
+      }
+    },
+    "query": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "inputForm"
+      ],
+      "properties": {
+        "input": {
+          "type": "string",
+          "minLength": 1
+        },
+        "inputForm": {
+          "enum": [
+            "selector",
+            "code-shaped",
+            "catalog-id",
+            "s-expression"
+          ]
+        },
+        "dialect": {
+          "const": "tree-sitter-query"
+        },
+        "catalogId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.-]*$"
+        },
+        "catalogPath": {
+          "$ref": "#/$defs/projectPath"
+        },
+        "compiledSource": {
+          "type": "string",
+          "minLength": 1
+        },
+        "patternCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        },
+        "grammarProfilePath": {
+          "$ref": "#/$defs/projectPath",
+          "description": "Canonical grammar-profile.json path associated with a catalog-id query when the provider exposes one."
+        }
+      }
+    },
+    "match": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "captures"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]*$"
+        },
+        "patternIndex": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "range": {
+          "$ref": "#/$defs/range"
+        },
+        "captures": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/capture"
+          }
+        },
+        "nativeFactRefs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "semanticHandleRefs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "capture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name",
+        "nodeType",
+        "range"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]*$"
+        },
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.-]*$"
+        },
+        "nodeType": {
+          "type": "string",
+          "pattern": "^(?:[A-Za-z_][A-Za-z0-9_]*|ERROR|MISSING)$"
+        },
+        "field": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+        },
+        "named": {
+          "type": "boolean"
+        },
+        "range": {
+          "$ref": "#/$defs/range"
+        },
+        "predicateRefs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "directiveRefs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "nativeFactRefs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "semanticHandleRefs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "cache": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestFingerprint"
+      ],
+      "properties": {
+        "cacheStatus": {
+          "enum": [
+            "miss",
+            "warm-provider",
+            "hit",
+            "stale"
+          ]
+        },
+        "requestFingerprint": {
+          "type": "string",
+          "minLength": 1
+        },
+        "generation": {
+          "type": "string",
+          "minLength": 1
+        },
+        "generationId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "artifactId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "artifactKind": {
+          "const": "semantic-tree-sitter-query"
+        },
+        "catalogFingerprint": {
+          "type": "string",
+          "minLength": 1
+        },
+        "grammarProfileFingerprint": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fileHashes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/fileHash"
+          }
+        },
+        "configDigests": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/configDigest"
+          }
+        },
+        "rawSourceStored": {
+          "const": false
+        }
+      }
+    },
+    "fileHash": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "hash"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/projectPath"
+        },
+        "hash": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "configDigest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "path",
+        "digest"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "path": {
+          "$ref": "#/$defs/projectPath"
+        },
+        "digest": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "note": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "message"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    }
+  }
+}

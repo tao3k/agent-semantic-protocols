@@ -90,7 +90,7 @@ fn cli_hook_discovers_parent_activation_from_child_workdir() {
 
     let mut child = asp_command()
         .current_dir(&child_dir)
-        .env("PRJ_HOME_CACHE", root.join(".cache"))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args(["hook", "--client", "codex", "pre-tool"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

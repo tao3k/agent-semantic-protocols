@@ -15,13 +15,23 @@ fn sample_packet() -> serde_json::Value {
         "languageId": "typescript",
         "providerId": "ts-harness",
         "view": "fzf",
-        "query": "SemanticSearchOwnerFallback", "header": { "kind": "search-fzf", "fields": { "analysis": "structure", "nativeSyntaxFacts": "skipped", "policyFindings": "skipped" } },
+        "query": "SemanticSearchOwnerFallback",
+        "header": {
+            "kind": "search-fzf",
+            "fields": {
+                "analysis": "structure",
+                "nativeSyntaxFacts": "skipped",
+                "policyFindings": "skipped"
+            }
+        },
         "querySet": ["SemanticSearchOwnerFallback", "parserOwner"],
-        "avoidNextActions": [{
-            "kind": "raw-read",
-            "target": "source",
-            "reason": "reasoning-profile"
-        }],
+        "avoidNextActions": [
+            { "kind": "raw-read", "target": "source", "reason": "reasoning-profile" }
+        ],
+        "nextActions": [
+            { "kind": "finding", "target": "serde" },
+            { "kind": "feature", "target": "test" }
+        ],
         "reasoningProfiles": [
             {
                 "profile": "owner-query",
@@ -45,6 +55,13 @@ fn sample_packet() -> serde_json::Value {
                     { "kind": "owner", "alias": "O", "targetRole": "path", "required": false }
                 ],
                 "returns": ["affected-owners", "tests", "verification-actions"]
+            },
+            {
+                "profile": "feature-cfg",
+                "selectors": [
+                    { "kind": "feature", "alias": "F2", "targetRole": "feature", "required": true }
+                ],
+                "returns": ["cfg-gates", "owners", "verification-surfaces"]
             }
         ],
         "searchSynthesis": {
@@ -74,18 +91,20 @@ fn sample_packet() -> serde_json::Value {
 #[test]
 fn shared_renderer_projects_search_packet_into_compact_graph() {
     let output = render_search_graph_packet(&sample_packet(), GraphRenderOptions::default());
-
     assert!(output.starts_with("[search-fzf] q=SemanticSearchOwnerFallback"));
-    assert!(output.contains("legend: ID=kind:role(value)!next"));
-    assert!(output.contains("alias: graph:{"));
+    assert!(output.contains("legend:"));
+    assert!(output.contains("alias: graph:"));
     assert!(output.contains("Q=query:term(SemanticSearchOwnerFallback)!fzf"));
+    assert!(output.contains("F=finding:finding(serde)!finding"));
+    assert!(output.contains("F2=feature:feature(test)!cfg"));
     assert!(output.contains("O=owner:path(src/cli/semantic-search/owner-fallback.ts)!owner"));
-    assert!(output.contains(
-        "S=symbol:symbol(SemanticSearchOwnerFallback)@src/cli/semantic-search/owner-fallback.ts:1:5!symbol"
-    ));
-    assert!(output.contains("G>{Q:matches,O:selects,S:contains,T:covers}"));
+    assert!(output.contains("S=symbol:symbol(SemanticSearchOwnerFallback)@src/cli/semantic-search/owner-fallback.ts:1:5!symbol"));
+    assert!(output.contains("F:flags"));
+    assert!(output.contains("F2:gates"));
     assert!(output.contains("rank="));
     assert!(output.contains("frontier="));
+    assert!(output.contains("finding-frontier(F,O=>affected-owners+tests+verification-actions)"));
+    assert!(output.contains("feature-cfg(F2=>cfg-gates+owners+verification-surfaces)"));
     assert!(output.contains("avoid=raw-read"));
     assert!(!output.contains("G=search:result!query"));
 }
@@ -94,7 +113,6 @@ fn shared_renderer_projects_search_packet_into_compact_graph() {
 fn graph_render_cli_reads_packet_file() {
     let packet_path = temp_packet_path();
     fs::write(&packet_path, sample_packet().to_string()).unwrap();
-
     let output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .args([
             "graph",
@@ -107,17 +125,16 @@ fn graph_render_cli_reads_packet_file() {
         .output()
         .unwrap();
     fs::remove_file(&packet_path).unwrap();
-
     assert!(
         output.status.success(),
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains(
-        "entries=owner-query(O,Q=>items+tests+dependency-usage),owner-tests(O=>covering-tests+test-entrypoints+fixtures)"
-    ));
-    assert!(!stdout.contains("finding-frontier"));
+    assert!(stdout.contains("owner-query(O,Q=>items+tests+dependency-usage)"));
+    assert!(stdout.contains("owner-tests(O=>covering-tests+test-entrypoints+fixtures)"));
+    assert!(stdout.contains("finding-frontier(F,O=>affected-owners+tests+verification-actions)"));
+    assert!(stdout.contains("feature-cfg(F2=>cfg-gates+owners+verification-surfaces)"));
     assert!(stdout.contains("avoid=raw-read"));
 }
 

@@ -167,12 +167,32 @@ fn unwrap_command_stage(tokens: &[String]) -> Vec<String> {
         return Vec::new();
     }
     match command_name(&tokens[0]) {
-        "env" => return unwrap_command_stage(&tokens[env_command_index(tokens)..]),
-        "direnv" if tokens.get(1).map(String::as_str) == Some("exec") && tokens.len() > 3 => {
-            return unwrap_command_stage(&tokens[3..]);
+        "env" => {
+            return unwrap_command_stage(&tokens[env_command_index(tokens)..]);
         }
-        "rtk" => return unwrap_rtk_stage(tokens),
-        "uv" if tokens.get(1).map(String::as_str) == Some("run") => {
+        "direnv" => {
+            let command_index = if tokens.get(1).is_some_and(|token| token == "exec") {
+                let candidate = 2;
+                if tokens.get(candidate).is_some_and(|token| {
+                    token == "."
+                        || token == "--"
+                        || token.starts_with('/')
+                        || token.starts_with("./")
+                        || token.starts_with("../")
+                }) {
+                    candidate + 1
+                } else {
+                    candidate
+                }
+            } else {
+                1
+            };
+            return unwrap_command_stage(&tokens[command_index.min(tokens.len())..]);
+        }
+        "rtk" => {
+            return unwrap_rtk_stage(tokens);
+        }
+        "uv" => {
             return unwrap_command_stage(&tokens[uv_run_command_index(tokens)..]);
         }
         "cargo" => {

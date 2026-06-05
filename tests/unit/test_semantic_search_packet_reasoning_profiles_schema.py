@@ -110,6 +110,31 @@ class SemanticSearchPacketReasoningProfilesSchemaTests(unittest.TestCase):
 
         self.assertEqual([], self.validation_errors(packet))
 
+    def test_reasoning_profiles_reject_unknown_profile_name(self) -> None:
+        packet = _semantic_search_minimal_packet()
+        packet["method"] = "search/reasoning"
+        packet["view"] = "reasoning"
+        packet["renderMode"] = "facts"
+        packet["reasoningProfiles"] = [
+            {
+                "profile": "ad-hoc-owner-map",
+                "selectors": [
+                    {
+                        "kind": "owner",
+                        "alias": "O",
+                        "target": "src/components/WorkflowExecution.tsx",
+                        "targetRole": "path",
+                        "required": True,
+                    }
+                ],
+                "returns": ["items"],
+            }
+        ]
+
+        errors = self.validation_errors(packet)
+
+        self.assertTrue(any("is not one of" in message for message in errors))
+
     def test_reasoning_profiles_reject_removed_alias_field(self) -> None:
         packet = _semantic_search_minimal_packet()
         packet["method"] = "search/reasoning"

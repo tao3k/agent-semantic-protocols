@@ -1,0 +1,243 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-agent-healthcheck.v1.schema.json",
+  "title": "Semantic Agent Healthcheck",
+  "description": "Read-only ASP runtime healthcheck report for git, project cache, activation, runtime profiles, and executable routing.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "protocolId",
+    "protocolVersion",
+    "status",
+    "projectRoot",
+    "gitToplevel",
+    "cacheHome",
+    "cacheSource",
+    "env",
+    "paths",
+    "binary",
+    "providers",
+    "issues"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.healthcheck"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "protocolId": {
+      "const": "agent.semantic-protocols.runtime"
+    },
+    "protocolVersion": {
+      "const": "1"
+    },
+    "status": {
+      "enum": ["ok", "degraded", "error"]
+    },
+    "projectRoot": {
+      "$ref": "#/$defs/nullablePath"
+    },
+    "gitToplevel": {
+      "$ref": "#/$defs/nullablePath"
+    },
+    "cacheHome": {
+      "$ref": "#/$defs/nullablePath"
+    },
+    "cacheSource": {
+      "anyOf": [
+        {
+          "enum": ["prj-cache-home", "git-toplevel"]
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "env": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["PRJ_HOME_CACHE", "PRJ_CACHE_HOME"],
+      "properties": {
+        "PRJ_HOME_CACHE": {
+          "$ref": "#/$defs/nullablePath"
+        },
+        "PRJ_CACHE_HOME": {
+          "$ref": "#/$defs/nullablePath"
+        }
+      }
+    },
+    "paths": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "agentsDir",
+        "agentsSkill",
+        "activation",
+        "runtimeHome",
+        "runtimeProfiles"
+      ],
+      "properties": {
+        "agentsDir": {
+          "$ref": "#/$defs/pathReport"
+        },
+        "agentsSkill": {
+          "$ref": "#/$defs/pathReport"
+        },
+        "activation": {
+          "$ref": "#/$defs/pathReport"
+        },
+        "runtimeHome": {
+          "$ref": "#/$defs/pathReport"
+        },
+        "runtimeProfiles": {
+          "$ref": "#/$defs/pathReport"
+        }
+      }
+    },
+    "binary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["currentAsp", "pathAsp", "status"],
+      "properties": {
+        "currentAsp": {
+          "$ref": "#/$defs/nullablePath"
+        },
+        "pathAsp": {
+          "$ref": "#/$defs/nullablePath"
+        },
+        "status": {
+          "enum": ["ok", "mismatch", "path-missing", "current-missing", "missing"]
+        }
+      }
+    },
+    "providers": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/provider"
+      }
+    },
+    "issues": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/issue"
+      }
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "namespace": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*(\\.[a-z][a-z0-9_-]*)+$"
+    },
+    "nonEmptyString": {
+      "type": "string",
+      "minLength": 1
+    },
+    "nullablePath": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "pathReport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "status", "providerCount", "error"],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/nullablePath"
+        },
+        "status": {
+          "enum": ["ok", "missing", "invalid", "unresolved"]
+        },
+        "providerCount": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/nonEmptyString"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "provider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "languageId",
+        "providerId",
+        "manifestId",
+        "binary",
+        "resolvedBinary",
+        "argv",
+        "healthStatus"
+      ],
+      "properties": {
+        "languageId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "providerId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "manifestId": {
+          "$ref": "#/$defs/namespace"
+        },
+        "binary": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "resolvedBinary": {
+          "$ref": "#/$defs/nullablePath"
+        },
+        "argv": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nonEmptyString"
+          }
+        },
+        "healthStatus": {
+          "enum": ["available", "missing", "unexecutable"]
+        }
+      }
+    },
+    "issue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["severity", "code", "message"],
+      "properties": {
+        "severity": {
+          "enum": ["warn", "error"]
+        },
+        "code": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$"
+        },
+        "message": {
+          "$ref": "#/$defs/nonEmptyString"
+        }
+      }
+    }
+  }
+}

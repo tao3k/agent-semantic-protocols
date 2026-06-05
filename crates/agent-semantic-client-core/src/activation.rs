@@ -4,7 +4,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use agent_semantic_hook::{
-    ActivatedProvider, builtin_provider_manifests, parse_activation, project_hook_state_dir,
+    ActivatedProvider, RuntimeProviderHealthStatus, builtin_provider_manifests,
+    load_or_refresh_runtime_profiles, parse_activation, project_hook_state_dir,
+    runtime_profile_command_argv, runtime_profiles_path_for_activation,
+    runtime_project_root_for_activation,
 };
 
 use crate::receipt::NativeProvenance;
@@ -17,7 +20,42 @@ pub struct ResolvedProvider {
     pub provider_id: ProviderId,
     pub binary: String,
     pub provider_command_prefix: Vec<String>,
+    pub runtime_command_argv: Option<Vec<String>>,
+    pub runtime_profile_status: Option<RuntimeProfileStatus>,
     pub package_roots: Vec<String>,
+}
+
+/// Health status copied from the provider runtime profile.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RuntimeProfileStatus {
+    /// Runtime profile command is available.
+    Available,
+    /// Runtime profile command is missing.
+    Missing,
+    /// Runtime profile command exists but is not executable.
+    Unexecutable,
+}
+
+impl RuntimeProfileStatus {
+    /// Return the receipt label for this runtime profile status.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Available => "available",
+            Self::Missing => "missing",
+            Self::Unexecutable => "unexecutable",
+        }
+    }
+}
+
+impl From<RuntimeProviderHealthStatus> for RuntimeProfileStatus {
+    fn from(status: RuntimeProviderHealthStatus) -> Self {
+        match status {
+            RuntimeProviderHealthStatus::Available => Self::Available,
+            RuntimeProviderHealthStatus::Missing => Self::Missing,
+            RuntimeProviderHealthStatus::Unexecutable => Self::Unexecutable,
+        }
+    }
 }
 
 impl ResolvedProvider {
@@ -40,6 +78,12 @@ impl ResolvedProvider {
             self.provider_command_prefix.clone()
         }
     }
+
+    /// Return the profile-pinned provider argv when runtime profile health is usable.
+    #[must_use]
+    pub fn runtime_command_prefix(&self) -> Option<Vec<String>> {
+        self.runtime_command_argv.clone()
+    }
 }
 
 impl From<&ActivatedProvider> for ResolvedProvider {
@@ -49,6 +93,8 @@ impl From<&ActivatedProvider> for ResolvedProvider {
             provider_id: provider.provider_id.clone().into(),
             binary: provider.binary.clone(),
             provider_command_prefix: provider.provider_command_prefix.clone(),
+            runtime_command_argv: None,
+            runtime_profile_status: None,
             package_roots: provider.package_roots.clone(),
         }
     }
@@ -109,12 +155,38 @@ impl ProviderRegistrySnapshot {
         let manifests = builtin_provider_manifests();
         let activation =
             parse_activation(&text, &manifests).map_err(|error| format!("{error:?}"))?;
+        let runtime_profiles_path = runtime_profiles_path_for_activation(activation_path);
+        let runtime_project_root =
+            runtime_project_root_for_activation(activation_path, &activation.project_root);
+        let runtime_profiles = load_or_refresh_runtime_profiles(
+            &runtime_profiles_path,
+            &runtime_project_root,
+            &activation,
+        )
+        .ok();
         Ok(Self {
             activation_path: activation_path.to_path_buf(),
             providers: activation
                 .providers
                 .iter()
-                .map(ResolvedProvider::from)
+                .map(|provider| {
+                    let mut resolved = ResolvedProvider::from(provider);
+                    if let Some(runtime_profiles) = runtime_profiles.as_ref() {
+                        resolved.runtime_command_argv =
+                            runtime_profile_command_argv(runtime_profiles, provider);
+                        resolved.runtime_profile_status = runtime_profiles
+                            .providers
+                            .iter()
+                            .find(|profile| {
+                                profile.manifest_id == provider.manifest_id
+                                    && profile.language_id == provider.language_id
+                                    && profile.provider_id == provider.provider_id
+                                    && profile.binary == provider.binary
+                            })
+                            .map(|profile| profile.health.status.into());
+                    }
+                    resolved
+                })
                 .collect(),
         })
     }

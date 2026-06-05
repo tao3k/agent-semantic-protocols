@@ -9,6 +9,15 @@ from .models import StepResult
 from .utils import string_list
 
 
+_REASONING_PROFILE_NAMES = {
+    "owner-query",
+    "query-deps",
+    "owner-tests",
+    "finding-frontier",
+    "feature-cfg",
+}
+
+
 def validate_guide_quality(
     expect: dict[str, Any],
     result: StepResult,
@@ -23,6 +32,8 @@ def validate_guide_quality(
 
     _validate_source_leak_expectations(guide, result, stdout)
     _validate_output_expectations(guide, result, stdout)
+    _validate_graph_drift_expectations(result, stdout)
+    _validate_prime_output_expectations(guide, result, stdout)
     decision = _guide_decision(guide, result, stdout)
     if decision is None:
         return
@@ -53,6 +64,92 @@ def _validate_output_expectations(
         if needle in stdout:
             result.errors.append(f"guide output contains stale text {needle!r}")
 
+
+def _validate_graph_drift_expectations(result: StepResult, stdout: str) -> None:
+    for needle in ("reasoning-selector", "finding(finding("):
+        if needle in stdout:
+            result.errors.append(f"guide output contains graph drift text {needle!r}")
+
+
+def _validate_prime_output_expectations(
+    guide: dict[str, Any],
+    result: StepResult,
+    stdout: str,
+) -> None:
+    prime_output = guide.get("primeOutput")
+    if prime_output is None:
+        return
+    if not isinstance(prime_output, dict):
+        result.errors.append("expect.guideQuality.primeOutput must be an object")
+        return
+
+    _validate_prime_structure_status(prime_output, result, stdout)
+    _validate_prime_entries(prime_output, result, stdout)
+
+
+def _validate_prime_structure_status(
+    prime_output: dict[str, Any],
+    result: StepResult,
+    stdout: str,
+) -> None:
+    if not bool(prime_output.get("requiresStructureStatus", False)):
+        return
+    for needle in (
+        "analysis=structure",
+        "nativeSyntaxFacts=skipped",
+        "policyFindings=skipped",
+    ):
+        if needle not in stdout:
+            result.errors.append(f"guide prime output missing status field {needle!r}")
+
+
+def _validate_prime_entries(
+    prime_output: dict[str, Any],
+    result: StepResult,
+    stdout: str,
+) -> None:
+    for entry in string_list(prime_output.get("entries", [])):
+        _validate_prime_entry(entry, result, stdout)
+
+
+def _validate_prime_entry(entry: str, result: StepResult, stdout: str) -> None:
+    if not entry.startswith("entries="):
+        result.errors.append(
+            f"guide prime output entry must start with 'entries=': {entry!r}"
+        )
+        return
+    _validate_prime_entry_profiles(entry, result)
+    if entry not in stdout:
+        result.errors.append(f"guide prime output missing entry {entry!r}")
+
+
+def _validate_prime_entry_profiles(entry: str, result: StepResult) -> None:
+    for profile_name in _entry_profile_names(entry):
+        if profile_name not in _REASONING_PROFILE_NAMES:
+            result.errors.append(
+                f"guide prime output entry profile {profile_name!r} is not in the shared reasoning profile catalog"
+            )
+
+
+def _entry_profile_names(entry_line: str) -> list[str]:
+    if not entry_line.startswith("entries=") or entry_line == "entries=":
+        return []
+    segments: list[str] = []
+    segment = []
+    depth = 0
+    for char in entry_line.removeprefix("entries="):
+        if char == "(":
+            depth += 1
+        elif char == ")" and depth > 0:
+            depth -= 1
+        if char == "," and depth == 0:
+            segments.append("".join(segment))
+            segment = []
+            continue
+        segment.append(char)
+    if segment:
+        segments.append("".join(segment))
+    return [segment.split("(", 1)[0] for segment in segments if "(" in segment]
 
 def _guide_decision(
     guide: dict[str, Any],

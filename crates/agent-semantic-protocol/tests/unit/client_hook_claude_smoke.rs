@@ -125,6 +125,8 @@ fn install_claude_hooks(root: &std::path::Path) {
     let output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .args(["hook", "install", "--client", "claude"])
         .arg(root)
+        .env_remove("PRJ_CACHE_HOME")
+        .env_remove("PRJ_HOME_CACHE")
         .output()
         .expect("run asp hook install");
     assert!(
@@ -148,6 +150,8 @@ fn run_claude_pre_tool_decision(
         .arg("--config")
         .arg(root.join(".codex/agent-semantic-protocol/hooks/config.toml"))
         .current_dir(root)
+        .env_remove("PRJ_CACHE_HOME")
+        .env_remove("PRJ_HOME_CACHE")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());

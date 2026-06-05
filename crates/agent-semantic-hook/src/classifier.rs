@@ -79,10 +79,12 @@ pub fn classify_hook_with_config(request: HookClassificationRequest<'_>) -> Hook
         return decision;
     }
 
-    if let Some(decision) = actions.iter().find_map(|action| {
-        classify_structured_apply_patch_action(registry, platform, event, action)
-    }) {
-        return decision;
+    if config.semantic_ast_patch_enabled() {
+        if let Some(decision) = actions.iter().find_map(|action| {
+            classify_structured_apply_patch_action(registry, platform, event, action)
+        }) {
+            return decision;
+        }
     }
 
     if let Some(decision) = actions
@@ -91,10 +93,15 @@ pub fn classify_hook_with_config(request: HookClassificationRequest<'_>) -> Hook
     {
         return decision;
     }
-    if let Some(decision) = actions
-        .iter()
-        .find_map(|action| classify_command_action(registry, platform, event, action))
-    {
+    if let Some(decision) = actions.iter().find_map(|action| {
+        classify_command_action(
+            registry,
+            platform,
+            event,
+            action,
+            config.semantic_ast_patch_enabled(),
+        )
+    }) {
         return decision;
     }
 
@@ -289,10 +296,14 @@ fn classify_command_action(
     platform: &str,
     event: &str,
     action: &ToolAction,
+    semantic_ast_patch_enabled: bool,
 ) -> Option<HookDecision> {
     let command = action.command.as_deref()?;
     let tokens = semantic_shell_tokens(command);
-    classify_apply_patch_command(registry, platform, event, action, command)
+    let apply_patch_decision = semantic_ast_patch_enabled
+        .then(|| classify_apply_patch_command(registry, platform, event, action, command))
+        .flatten();
+    apply_patch_decision
         .or_else(|| classify_search_json_command(registry, platform, event, action, &tokens))
         .or_else(|| {
             classify_source_read_command(registry, platform, event, action, command, &tokens)
@@ -393,7 +404,7 @@ fn classify_apply_patch_paths(
         .collect::<Vec<_>>()
         .join("; ");
     let message = format!(
-        "source apply_patch denied; compact output is not patch context. Exact-read route: {route_guide}. Build semantic-ast-patch.json with `asp ast-patch template --language {language} --owner <owner-path> --read <path:start:end> --op <operation> --snippet '<exact source or inserted snippet>' {project_root}` and validate it with `asp {language} ast-patch dry-run --packet semantic-ast-patch.json {project_root}`. Receipt verification records edit intent; this hook does not auto-unlock source apply_patch. If provider dry-run cannot verify this operation, use a provider-native mutation route or a controlled maintenance policy."
+        "source apply_patch denied; handwritten source hunks are not a supported workflow for protected source. Exact-read route: {route_guide}. Build semantic-ast-patch.json with `asp ast-patch template --language {language} --owner <owner-path> --read <path:start:end> --op <operation> --field <key=value> {project_root}`; verify with `asp {language} ast-patch dry-run --packet semantic-ast-patch.json {project_root}`; apply with provider-native `asp {language} ast-patch apply --packet semantic-ast-patch.json {project_root}` when the receipt reports mutationSource=provider-native. Codex text patching is only a codex-text-fallback or controlled maintenance policy path, not the normal AST patch route."
     );
     Some(deny_for_action(
         platform,

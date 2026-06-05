@@ -1,9 +1,8 @@
-use std::env;
 use std::io::Write;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 use crate::provider_command::support::{
-    provider, temp_project_root, write_activation, write_stdin_provider,
+    asp_command, prepend_path, provider, temp_project_root, write_activation, write_stdin_provider,
 };
 
 #[test]
@@ -13,9 +12,8 @@ fn provider_stdin_is_preserved_for_pipe_commands() {
     write_stdin_provider(&bin_dir, "rs-harness");
     write_activation(&root, &[provider("rust", Vec::new())]);
 
-    let mut child = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .current_dir(&root)
-        .env("PATH", &bin_dir)
+    let mut child = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
         .args(["rust", "search", "ingest", "."])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

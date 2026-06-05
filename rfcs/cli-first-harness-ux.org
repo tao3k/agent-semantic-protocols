@@ -205,12 +205,16 @@ julia --project=languages/JuliaLangProjectHarness.jl \
 #+end_src
 
 For an exact =direct-source-read= selector with =--code=, the provider should
-return a bounded compact local window for that path/range, not owner metadata.
-The compact output is parser-owned code text only; the selector already carries
-the path/range, so =--code= must not repeat =line= or =endLine= metadata or return
-owner seeds.  Rust, TypeScript, Python, and Julia all use their native parser
-facts for this surface; Julia uses the workspace-managed provider command
-rather than a global short-lived binary.
+return a bounded source-preserved local window for that path/range, not owner
+metadata and not compact projection text.  The selector already carries the
+path/range, so =--code= must not repeat =line= or =endLine= metadata or return
+owner seeds.  The rendered lines must preserve the source/formatter shape for
+the selected window, including indentation, blank lines, attributes, semicolons,
+macro payloads, enum variants, and visible block braces.  Parser projection may
+select or repair a read frontier, but it must not be used as the exact-read text
+for this surface.  Rust, TypeScript, Python, and Julia all use their native
+parser facts to bound or repair the selector; Julia uses the workspace-managed
+provider command rather than a global short-lived binary.
 If the selector is too wide for bounded code transport, the provider returns a
 =read-plan= frontier, not a denial-only outline.  The active contract is
 =semantic-read-packet=: =readPlan.mode= is =range-frontier= or =search-repair=,
@@ -247,22 +251,26 @@ and encourages follow-up raw reads.  That is a protocol bug, not a user
 preference.
 
 The language provider must make that bounded selector useful.  A query such as
-=<lang-harness> query src/lib.rs:10:20 --code .= should return a bounded
-parser-owned local window for that exact range, not whole-owner item names.
-This is required for test/assertion edits, import/header inspection, and hook
-recovery after a denied =sed= / =rtk read= / tool-native read.  The root hook
-only preserves the selector; native parser providers own the local-window
-projection.
+=<lang-harness> query src/lib.rs:10:20 --code .= should return the exact
+bounded source window for that range, not whole-owner item names and not a
+lossy ancestor projection.  Ranges inside an inline module, impl, function, or
+other containing item must preserve the selected source lines instead of
+collapsing to only the ancestor declaration.  This is required for
+test/assertion edits, import/header inspection, enum/impl variant inspection,
+and hook recovery after a denied =sed= / =rtk read= / tool-native read.  The
+root hook only preserves the selector; native parser providers own safe
+selector validation, read-plan repair, and exact source-window rendering.
 
 Providers should exact-match item names first; if no exact item exists, they may
-fall back to contains matching.  A hit emits both parser-owned item metadata and
-compact code:
+fall back to contains matching.  A default hit emits parser-owned item metadata,
+read locators, and explicit next actions, but it must not inline compact code:
 
 #+begin_example
 [search-owner] q=src/search/owner_view.rs pkg=. own=1 item=1 itemQuery=render_search_owner
-|query itemQuery=render_search_owner status=hit match=exact item=1 reason=parser-item-exact next=code
+|query itemQuery=render_search_owner status=hit match=exact item=1 reason=parser-item-exact next=query-code
 |item render_search_owner kind=fn next=symbol:render_search_owner read=src/search/owner_view.rs:22:40
-|code path=src/search/owner_view.rs lineRange=22:40 reason=item-query truncated=false nodes=n0:fn:declaration:0:22:40,n1:if:control-flow:1:28:32 text="pub(super) fn render_search_owner(\nproject_root: &Path,"
+omit=code,projection-nodes,large-item-text
+avoid=inline-code-in-search,repeat-owner,raw-read
 #+end_example
 
 After an agent has already selected a concrete owner and item query, it may ask
@@ -280,13 +288,13 @@ markers are the accuracy contract for exploration and hook recovery.  =--code=
 is therefore a post-selection token optimization, not a replacement for search
 evidence.
 
-For item query results, the =|code text="..."= field must carry the same
-compact parser-owned projection as =--code=.  The only difference is transport:
-line protocol JSON-escapes the compact text into a field, while =--code= prints
-the compact text directly.  Providers must not apply a second whitespace-only
-compaction layer at line-render time; that hides AST structure, makes
-=text="..."= diverge from =--code=, and pushes agents back into repeated local
-reads.
+For explicit item query code results, the compact parser-owned projection must
+be produced by the same renderer regardless of transport.  Prompt-facing search
+line protocol must not add =|code text="..."= during default discovery; code
+text belongs to explicit =--code=, =query --code=, or JSON/artifact projection
+surfaces after the agent has selected a concrete item/frontier node.  Providers
+must not apply a second whitespace-only compaction layer at line-render time;
+that hides AST structure and pushes agents back into repeated local reads.
 
 Provider compact code must also preserve literal payload semantics.  Whitespace
 inside Rust raw strings, Python triple-quoted strings, JavaScript template
@@ -305,6 +313,9 @@ parser-owned node list for =projection.nodes[]= and =expandActions[]=, using
 compact =text= classification only as a fallback when a legacy provider does
 not emit =nodes=.  This keeps visible line protocol compact while preventing
 JSON projections from being reconstructed by renderer heuristics.
+Formatter-structural compact may use =role=delimiter= rows for parser-owned
+block boundaries; such rows are not formatter residue when their =nodeId= is
+present in =projection.nodes[]=.
 
 Compact code is not raw source minification.  It is an agent-facing AST
 projection produced by the language-native parser.  The projection may omit
@@ -514,6 +525,18 @@ whitespace has not implemented compact code.  Julia is skipped for this
 bin-parity and compact-search lane; it remains workspace-managed only and must
 not be used to justify a standalone =julia-project-harness= binary.
 
+The mainline compact dialects are =save-token-rustfmt= for Rust,
+=save-token-typescript= for TypeScript/JavaScript, and =save-token-ruff= for
+Python.  All three dialects share
+=compactSafety.whitespacePolicy=formatter-structural= and must carry
+=projection.nodes[]=, =renderedRows[]=, =omitted[]=, and =expandActions[]= in
+JSON packets.  Formatter names, versions, plugins, line widths, and workspace
+scripts remain provider-owned metadata; the shared syntax value names the
+compact projection dialect, not a global formatter choice.  Providers that can
+only emit names, outline rows, or formatter-shaped text without reverse
+navigation must report =mode=names= or =mode=outline= rather than partial
+=mode=compact=.
+
 The shared capability ladder is:
 
 1. /Declaration boundary./  Item name, visibility, signature, type-only status,
@@ -533,19 +556,16 @@ The shared capability ladder is:
 The durable plan is:
 
 1. /Snapshot the current parser contract./  Each provider keeps a small fixture
-   project and a stable compact-query snapshot.  The snapshot records the
-   agent-facing =code= projection, =projection.nodes[]=, =omitted[]=, and
-   =expandActions[]=.  It excludes temp roots, timings, and other runtime-only
-   fields.  A compact algorithm change must update this fixture intentionally.
-   The root repository mirrors these fixtures under
-   =tests/fixtures/parser-compact/= as feature-level cases with one provider
-   variant per language, for example =cases/control-flow-basic/rust.json=.
-   Each variant has three shared artifacts: compact line output,
-   =semantic-query-packet.v1= JSON, and =parser-compact-token-cost.v1=
-   measurement.  The =parser-compact-snapshots= runner only wraps the provider
-   commands from the manifest and compares artifacts so Rust, TypeScript,
-   Python, and Julia can compare compact algorithms against the same schema and
-   token-cost contract.
+   project and a stable compact-query snapshot in the language harness that owns
+   the parser output.  The snapshot records the agent-facing =code= projection,
+   =projection.nodes[]=, =omitted[]=, and =expandActions[]=.  It excludes temp
+   roots, timings, and other runtime-only fields.  A compact algorithm change
+   must update this fixture intentionally.  The root repository no longer
+   mirrors parser-compact fixtures or runs provider snapshots; it owns the
+   shared schema, RFC contract, and cross-field validators that language
+   harnesses use to prove compact line output, =semantic-query-packet.v1= JSON,
+   and =parser-compact-token-cost.v1= measurements against the same protocol
+   boundary.
 
 2. /Strengthen native parser facts before renderer rules./  New compact
    behavior should come from native parser nodes: Rust =syn=, the TypeScript
@@ -562,13 +582,13 @@ The durable plan is:
    item or source window, not owner top-items.
 
 4. /Add capability tests by language feature./  After the baseline snapshot,
-   add one snapshot per parser feature class: nested branches, loops, terminal
-   statements, mutation, call/macro summaries, async calls/effects,
-   class/member bodies, decorators or modifiers, large item outline truncation,
-   and selector-range expansion.  These snapshots are the parser compact
-   acceptance tests.  Rust should lock both the pure =--code= projection and the
-   line-protocol =|code text="..."= transport so renderer changes cannot drift
-   away from parser facts.
+   add one language-harness snapshot per parser feature class: nested branches,
+   loops, terminal statements, mutation, call/macro summaries,
+   async calls/effects, class/member bodies, decorators or modifiers, large
+   item outline truncation, and selector-range expansion.  These snapshots are
+   the parser compact acceptance tests.  Rust should lock both the pure
+   =--code= projection and the line-protocol =|code text="..."= transport so
+   renderer changes cannot drift away from parser facts.
 
 5. /Measure search-flow impact after snapshots are stable./  Sandtable and
    real-project runs should compare command count, repeated owner/test search,
@@ -742,6 +762,14 @@ API on behalf of the caller.  It should return a visible =next=query= action so
 the agent retries through the explicit parser-native API.  If text lies outside
 the provider's local index, the provider may return =next=ingest:<query>= and
 the agent must route external candidates through =search ingest=.
+
+Hook wildcard direct-read recovery uses the =query= surface as the wrapper
+entrypoint, not raw =search fzf=.  When =--from-hook direct-source-read= carries
+a broad selector and a code-shaped term such as =ClientReceipt {=, the provider
+must normalize syntax delimiters out of the lexical fallback term set before
+rendering a compact frontier.  The delimiter remains provider-owned query
+context; it must not become an independent fuzzy term or cause prompt-facing
+=|seed= rows to reappear.
 
 =search fzf= must remain lexical/fuzzy search.  It may support match modes
 such as =literal=, =fixed=, =regex=, =word=, =case-folded=, and =fuzzy=, and
@@ -3332,10 +3360,28 @@ require canonical command fragments such as =query --from-hook= and reject stale
 fragments such as =search query --from-hook= or non-canonical surface names.
 Guide quality may also assert prompt-visible output facts.  When compact graph
 or search-guide optimization is under test, scenarios can require exact
-=entries=profile(selectors=>returns)= text and reject obsolete profile alias or
-compatibility fields.  These assertions are about the returned search artifact,
-not client compatibility: adding another accepted alias would create a new drift
-point and should fail the output-quality check.
+=entries=profile(selectors=>returns)= text through
+=guideQuality.primeOutput.entries=, require explicit optimized-prime status
+fields through =guideQuality.primeOutput.requiresStructureStatus=, and reject
+obsolete profile alias, unknown profile names, or compatibility fields.  These
+assertions are about the returned search artifact, not client compatibility:
+adding another accepted alias would create a new drift point and should fail the
+output-quality check.  Valid profile names come from the shared
+=reasoningProfileName= catalog, currently =owner-query=, =query-deps=,
+=owner-tests=, =finding-frontier=, and =feature-cfg=.
+Provider =agent guide= and =search guide= outputs SHOULD expose this catalog as
+a prompt-visible =reasoningProfiles= line before listing commands.  That line
+should name runnable reasoning rows as =entries= and non-profile direct-read or
+frontier repair actions as =routes=, so catalog-only profiles do not become
+implicit commands.
+When a provider implements =finding-frontier= or =feature-cfg= without adding
+new selector flags, the public command should keep the existing typed =--query=
+slot as the selector carrier rather than introducing compatibility aliases such
+as =--finding= or =--feature=.
+The returned packet still needs a typed graph action such as
+=nextActions.kind="finding"= or =nextActions.kind="feature"=, because the
+=entries= row is matched from schema-visible aliases rather than inferred from
+the query text.
 
 Sandtable summaries should make the improvement visible:
 
@@ -3989,6 +4035,21 @@ asp ast-patch dry-run --packet <ast-patch.json> .
 =agent-semantic-hook= remains the library dependency that implements the hook
 subcommands inside =agent-semantic-protocol=.  The migration is a command-surface
 consolidation, not a deletion of the hook runtime crate.
+
+=asp hook install= also writes the project runtime profile:
+
+#+begin_src text
+.cache/agent-semantic-protocol/runtime/profiles.json
+#+end_src
+
+The profile pins the provider argv resolved at activation time and records a
+small health result for each activated provider.  =asp rust|typescript|python=
+facades and the local-native client backend consume this profile before they
+fall back to shell lookup.  The profile is regenerated when activation is
+installed or synced, and doctor reports the same profile path and provider
+health.  This keeps provider execution aligned across Rust, TypeScript, and
+Python without depending on generated =runtime/bin= symlinks or the agent's
+current shell =PATH=.
 
 If an agent-client integration bundle is desired, it contains:
 

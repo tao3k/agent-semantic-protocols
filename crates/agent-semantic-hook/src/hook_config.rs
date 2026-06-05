@@ -28,6 +28,7 @@ const CLIENT_HOOK_CONFIG_SCHEMA_VERSION: &str = "1";
 /// Compiled project-local hook rules loaded from `.codex/agent-semantic-protocol`.
 pub struct ClientHookConfig {
     rules: Vec<CompiledHookRule>,
+    semantic_ast_patch_disabled: bool,
 }
 
 #[derive(Debug)]
@@ -81,6 +82,8 @@ struct ConfigFile {
     protocol_id: Option<String>,
     #[serde(default)]
     protocol_version: Option<String>,
+    #[serde(default)]
+    experimental: std::collections::BTreeMap<String, std::collections::BTreeMap<String, bool>>,
     #[serde(default)]
     rules: Vec<RuleConfig>,
 }
@@ -150,7 +153,7 @@ pub fn default_client_config_path(project_root: &str) -> PathBuf {
         .join("config.toml")
 }
 
-/// Render the default project-local hook config template.
+/// Render the seed project-local hook config file.
 pub fn default_client_config_template() -> String {
     format!(
         r#"# Semantic agent client hook config.
@@ -160,6 +163,10 @@ schemaId = "{CLIENT_HOOK_CONFIG_SCHEMA_ID}"
 schemaVersion = "{CLIENT_HOOK_CONFIG_SCHEMA_VERSION}"
 protocolId = "{HOOK_PROTOCOL_ID}"
 protocolVersion = "{HOOK_PROTOCOL_VERSION}"
+
+# AST patch routing is experimental and disabled for generated Codex hook configs.
+[experimental.semanticAstPatch]
+enabled = false
 
 # Uncomment and edit this example to add a project-local rule.
 # [[rules]]
@@ -200,6 +207,10 @@ pub fn load_client_config(path: &Path) -> Result<ClientHookConfig, String> {
 }
 
 impl ClientHookConfig {
+    pub(crate) fn semantic_ast_patch_enabled(&self) -> bool {
+        !self.semantic_ast_patch_disabled
+    }
+
     pub(crate) fn classify(
         &self,
         runtime: &HookRuntime,
@@ -376,6 +387,12 @@ fn compile_config(config: ConfigFile) -> Result<ClientHookConfig, String> {
     config.validate_protocol()?;
     validate_unique_rule_ids(&config.rules)?;
     validate_rule_schema_shape(&config.rules)?;
+    let semantic_ast_patch_enabled = config
+        .experimental
+        .get("semanticAstPatch")
+        .and_then(|feature| feature.get("enabled"))
+        .copied()
+        .unwrap_or(true);
     let mut rules = config
         .rules
         .into_iter()
@@ -384,7 +401,10 @@ fn compile_config(config: ConfigFile) -> Result<ClientHookConfig, String> {
         .collect::<Result<Vec<_>, _>>()?;
     // `sort_by` is stable, so equal-priority rules keep config file order.
     rules.sort_by(|left, right| right.priority.cmp(&left.priority));
-    Ok(ClientHookConfig { rules })
+    Ok(ClientHookConfig {
+        rules,
+        semantic_ast_patch_disabled: !semantic_ast_patch_enabled,
+    })
 }
 
 fn validate_unique_rule_ids(rules: &[RuleConfig]) -> Result<(), String> {

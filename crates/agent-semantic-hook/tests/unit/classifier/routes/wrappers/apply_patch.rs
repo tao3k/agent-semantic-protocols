@@ -27,17 +27,52 @@ PATCH"#;
     assert_eq!(decision.routes[0].provider_id, "ts-harness");
     assert!(decision.message.contains("Exact-read route:"));
     assert!(decision.message.contains("semantic-ast-patch.json"));
-    assert!(
-        decision
-            .message
-            .contains("does not auto-unlock source apply_patch")
-    );
-    assert!(decision.message.contains("provider-native mutation route"));
+    assert!(decision.message.contains("handwritten source hunks"));
+    assert!(decision.message.contains("provider-native"));
+    assert!(decision.message.contains("ast-patch apply"));
+    assert!(decision.message.contains("codex-text-fallback"));
     assert!(
         !decision
             .message
             .contains("only then retry Codex apply_patch")
     );
+
+    let root = std::env::temp_dir().join(format!(
+        "agent-semantic-hook-ast-patch-disabled-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&root).expect("create temp config root");
+    let config_path = root.join("config.toml");
+    std::fs::write(
+        &config_path,
+        r#"schemaId = "agent.semantic-protocols.hook.client-config"
+schemaVersion = "1"
+protocolId = "agent.semantic-protocols.hook"
+protocolVersion = "1"
+
+[experimental.semanticAstPatch]
+enabled = false
+"#,
+    )
+    .expect("write disabled ast patch config");
+    let config = agent_semantic_hook::load_client_config(&config_path)
+        .expect("load disabled ast patch config");
+    let disabled_payload =
+        json!({ "tool_name": "functions.exec_command", "tool_input": { "cmd": command } });
+    let disabled_decision = agent_semantic_hook::classify_hook_with_config(
+        agent_semantic_hook::HookClassificationRequest {
+            registry: &registry(),
+            config: &config,
+            platform: "codex",
+            event: "pre-tool",
+            payload: &disabled_payload,
+        },
+    );
+    assert_eq!(disabled_decision.decision, DecisionKind::Allow);
+    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
@@ -61,16 +96,9 @@ fn direct_apply_patch_tool_to_source_requires_semantic_ast_patch() {
     assert_eq!(decision.subject.paths, ["src/cli/agent-hooks.ts"]);
     assert!(decision.message.contains("Exact-read route:"));
     assert!(decision.message.contains("semantic-ast-patch.json"));
-    assert!(
-        decision
-            .message
-            .contains("Receipt verification records edit intent")
-    );
-    assert!(
-        decision
-            .message
-            .contains("does not auto-unlock source apply_patch")
-    );
+    assert!(decision.message.contains("handwritten source hunks"));
+    assert!(decision.message.contains("provider-native"));
+    assert!(decision.message.contains("ast-patch apply"));
     assert!(decision.message.contains("controlled maintenance policy"));
     assert!(
         !decision

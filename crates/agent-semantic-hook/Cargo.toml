@@ -6,6 +6,7 @@ description = "Root semantic agent hook runtime for provider manifests and proje
 license = "MIT"
 
 [dependencies]
+agent-semantic-runtime = { path = "../agent-semantic-runtime" }
 figment = { version = "0.10.19", features = ["toml"] }
 fs2 = { workspace = true }
 globset = { workspace = true }

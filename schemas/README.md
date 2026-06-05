@@ -62,6 +62,23 @@ emit `entries=<profile>(<ID>,...=><return>+...)` after the
 packet-local alias id whose node kind matches the typed profile selector, so the
 line is a return-entry catalog for the current graph packet rather than an alias
 hint or a second action protocol.
+Profile names are not free-form compatibility aliases. The shared
+`reasoningProfileName` catalog currently accepts `owner-query`, `query-deps`,
+`owner-tests`, `finding-frontier`, and `feature-cfg`; adding a new prompt-facing
+entry name requires a schema update so Rust, TypeScript, Python, and future
+providers can compare the same returned entries.
+Provider `agent guide` and `search guide` output should print the same catalog
+as a compact `reasoningProfiles=... entries=... routes=...` line. Runnable
+reasoning rows belong in `entries`; repair/direct-read flows belong in `routes`
+or command lines and must not be presented as reasoning-profile entries.
+Provider-specific `entries` can be a subset of the shared catalog. If a provider
+implements a profile through an existing selector slot such as `--query`, it
+should document that command directly instead of adding compatibility aliases
+that would create new drift points.
+Implemented selector profiles must also expose the selected value as a typed
+packet action, for example `nextActions.kind="feature"` or
+`nextActions.kind="finding"`, so compact graph `entries=` rows are matched from
+schema-visible facts instead of prompt inference.
 
 `agent-semantic-client-config.v1.schema.json`,
 `agent-semantic-client-cache-manifest.v1.schema.json`, and
@@ -89,7 +106,9 @@ graph output, and `query/*.json` semantic-query-packet artifacts for
 `query/owner-items` compact query replay under the protocol artifact root.
 The client may also capture successful replay-safe `search --view seeds`
 provider stdout as `prompt-output/*.txt` write-back artifacts for the next
-identical request; this path deliberately excludes query/code windows.
+identical request. `prompt-output/*.command.json` stores the matching
+provider-command provenance when stdout replay has no packet-level command
+field. This path deliberately excludes query/code windows.
 
 `semantic-type-surface.v1.schema.json` is the shared vocabulary for
 language-neutral public type surface facts. It owns the facts that agents need
@@ -205,6 +224,41 @@ projection identity invariants are enforced by
 for these fields are owned by
 `rfcs/semantic-query-projection-protocol.org`.
 
+`semantic-tree-sitter-query.v1.schema.json` is the shared portable ABI for
+tree-sitter-compatible syntax query results exposed through the existing
+provider `query` method. It does not create `ts-query`, `syntax-query`, or a
+second public command family. ASP owns catalog ids, canonical `.scm` catalog
+metadata, schema validation, artifact/cache references, replay receipts, and
+prompt render hints; language providers remain the authority for native
+parser/compiler facts, catalog source delivery, grammar-profile delivery, and
+project captures into this packet. Search, query,
+read, and native syntax fact packets can refer back to this ABI through
+`syntaxQueryRef`, `syntaxMatchRefs`, `syntaxCaptureRefs`, and an optional short
+`syntaxAnchor` when those references improve a decision path without adding a
+new render protocol.
+
+Provider-maintained catalogs should follow the upstream tree-sitter convention
+`tree-sitter/<grammar-id>/queries/*.scm` when that grammar uses it. Selected
+upstream query snapshots and corpus profiles are development/CI alignment
+assets. Editor-oriented assets such as `highlights.scm` are not included unless
+they are given an explicit syntax ABI calibration role. Downstream clients
+consume provider-emitted packets or binary-embedded catalog sources, not
+provider package source files.
+
+Provider-local `query-corpus/*.txt` fixtures pin syntax ABI capture precision.
+Providers store these fixtures beside `queries/*.scm`, but the main ASP
+workspace owns validation, query compilation, cache keys, and replay semantics.
+`semantic-tree-sitter-grammar-profile.v1.schema.json` owns the shared
+`grammar-profile.json` shape so Rust, TypeScript, Python, Julia, and future
+providers can expose the same catalog/profile/corpus contract. The profile pins
+the ASP workspace git revision used to validate the fixture contract. It also
+declares `nativeFactProjection` entries that map provider-owned native
+parser/compiler facts onto catalog captures, keeping native authority visible
+through the canonical `.scm` ABI rather than provider-private fields. The
+fixtures may cite upstream `test/corpus` files for grammar provenance, but
+should test only provider/ASP capture granularity rather than duplicate
+upstream parser grammar coverage.
+
 `parser-compact-case.v1.schema.json` and
 `parser-compact-token-cost.v1.schema.json` are the root fixture contracts for
 parser compact snapshots. A case manifest names the language, fixture project,
@@ -255,7 +309,9 @@ repeated-search findings, and query-set merge opportunities. Hook replay steps
 may use `expect.guideQuality` to assert that a denial includes the reason kind,
 language route, safe command shape, ingest-pipe guidance, and no leaked source
 text; guide-quality output assertions can require returned compact graph
-`entries=...` facts and reject stale profile/compatibility text. JSON stdout expectations can assert exact paths, substring containment,
+`entries=...` facts through `guideQuality.primeOutput.entries`, require
+optimized-prime status fields through `guideQuality.primeOutput.requiresStructureStatus`,
+and reject stale profile names, unknown profile names, or compatibility text. JSON stdout expectations can assert exact paths, substring containment,
 schema conformance, and array membership with scalar values or object subsets.
 Large-library calibration scenarios use typed `evidence.targetLibrary`,
 `evidence.fixtureTier`, and `evidence.intentCases` metadata so every provider
@@ -294,13 +350,38 @@ current project, their resolved command prefixes, manifest digests, and
 coverage roots. It does not repeat provider routes or policies, so a stale
 activation cannot drift into an alternate command registry.
 
+`semantic-agent-runtime-profiles.v1.schema.json` is the generated runtime
+execution profile for activated providers. It is written under
+`${PRJ_CACHE_HOME}/agent-semantic-protocol/runtime/profiles.json` or the git
+toplevel `.cache/agent-semantic-protocol/runtime/profiles.json`, beside but
+separate from hook activation. Activation answers which providers and coverage
+are active; runtime profiles answer which fixed provider argv and resolved
+tool paths should be used for the current project. `asp` facades and local
+native client execution must prefer a healthy profile argv over shell `PATH`
+lookup, and `asp hook doctor` reports the same profile health so PATH, direnv,
+and stale binary drift are visible instead of hidden behind symlink behavior.
+
+`semantic-agent-healthcheck.v1.schema.json` is the read-only report emitted by
+`asp healthcheck --json`. It treats git toplevel as the first project fact,
+then reports the canonical `PRJ_CACHE_HOME` or git `.cache` runtime layout,
+the ignored typo-like `PRJ_HOME_CACHE` value if present, `.agents` skill
+paths, hook activation, runtime profiles, current `asp` executable, `asp` on
+`PATH`, provider profile health, and compact issue codes.
+
+ASP state storage is rooted at `${PRJ_CACHE_HOME}/agent-semantic-protocol` when
+the explicit override is set, otherwise at
+`<git-toplevel>/.cache/agent-semantic-protocol`. In monorepos, package roots and
+subdirectories do not create separate ASP `.cache` homes; package root facts
+belong in manifests, SQLite rows, receipts, and artifacts under the shared git
+toplevel state root.
+
 `semantic-agent-hook-client-config.v1.schema.json` is the optional client-side
 configuration contract loaded by `asp hook` on each hook
 invocation. Codex installs seed `.codex/agent-semantic-protocol/hooks/config.toml` with
 schema metadata and commented examples while preserving any existing valid
 project config. `.codex/agent-semantic-protocol/hooks` is durable project
 policy; generated activation, profile registries, and hook event logs are cache
-artifacts under `${PRJ_HOME_CACHE}/agent-semantic-protocol/hooks` or the git
+artifacts under `${PRJ_CACHE_HOME}/agent-semantic-protocol/hooks` or the git
 toplevel `.cache/agent-semantic-protocol/hooks`. It
 standardizes typed rule matchers, priorities, decisions, and routes without
 introducing a client watch loop or server runtime. Rule
@@ -345,8 +426,11 @@ may emit it from `query/*` methods, for example an exact
 `query --from-hook direct-source-read --selector <path[:range]>` recovery with
 `outputMode=read-packet`. The packet records parser-owned selection evidence:
 project-relative selectors or source locators, owner paths, optional item facts,
-bounded line windows, truncation state, and notes. When a selector is broad or
-low-signal, providers should emit `readPlan` with `code=false`,
+bounded source-preserved line windows, truncation state, and notes. Exact
+`direct-source-read --code` windows must not be reconstructed from lossy compact
+projection rows; projection may select or repair a frontier, but `sourceWindows`
+text is source/formatter-preserved for the bounded selector. When a selector is
+broad or low-signal, providers should emit `readPlan` with `code=false`,
 `mode=range-frontier`, executable `frontier` entries, bounded `windows`, and
 `avoid` actions instead of `sourceWindows`; broad discovery still stays in
 provider search, prime, ingest, or normal query repair.

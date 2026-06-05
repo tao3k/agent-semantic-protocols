@@ -16,6 +16,7 @@ const PROJECT_ANCHORS: &[&str] = &[
     "Project.toml",
     ".git",
 ];
+const ASP_DEV_CONFIG_PATH: &str = "agents/asp.toml";
 
 /// Named input for writing a development active-context marker.
 pub struct ActiveContextRecord<'a> {
@@ -31,9 +32,9 @@ pub struct ActiveContextRecord<'a> {
     pub decision: &'a HookDecision,
 }
 
-/// Record a short-lived active hook context marker in development mode.
+/// Records the active hook context when development diagnostics are enabled.
 pub fn record_active_context(record: ActiveContextRecord<'_>) {
-    if !env_truthy("SEMANTIC_PROTOCOL_DEV_MODE") {
+    if !dev_mode_enabled(record.activation_path) {
         return;
     }
     let Some(marker) = build_active_context_marker(record) else {
@@ -127,6 +128,23 @@ fn env_truthy(name: &str) -> bool {
                 "1" | "true" | "TRUE" | "yes" | "YES" | "on" | "ON"
             )
         })
+        .unwrap_or(false)
+}
+
+fn dev_mode_enabled(activation_path: &Path) -> bool {
+    if env_truthy("SEMANTIC_PROTOCOL_DEV_MODE") {
+        return true;
+    }
+    infer_project_root(activation_path)
+        .as_deref()
+        .is_some_and(asp_config_develop_mode)
+}
+
+fn asp_config_develop_mode(project_root: &Path) -> bool {
+    fs::read_to_string(project_root.join(ASP_DEV_CONFIG_PATH))
+        .ok()
+        .and_then(|content| toml::from_str::<toml::Value>(&content).ok())
+        .and_then(|config| config.get("develop_mode").and_then(toml::Value::as_bool))
         .unwrap_or(false)
 }
 

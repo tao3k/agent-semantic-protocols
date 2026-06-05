@@ -4,6 +4,7 @@ use std::env;
 
 use super::ast_patch::run_ast_patch_command;
 use super::graph::run_graph_command;
+use super::healthcheck::run_healthcheck_command;
 use super::hook::run_hook_command;
 use super::provider::run_language_command;
 use super::source_access::run_source_access_command;
@@ -15,6 +16,7 @@ pub(crate) fn run_protocol_command(args: Vec<String>) -> Result<(), String> {
             "asp {command} is not a public command surface; use asp <rust|typescript|python> {command} ..."
         )),
         Some("hook") => run_hook_command(&args[1..]),
+        Some("healthcheck") => run_healthcheck_command(&args[1..]),
         Some("source-access") => run_source_access_command(&args[1..]),
         Some("ast-patch") => run_ast_patch_command(&args[1..]),
         Some("graph") => run_graph_command(&args[1..]),
@@ -25,7 +27,7 @@ pub(crate) fn run_protocol_command(args: Vec<String>) -> Result<(), String> {
 }
 
 fn usage() -> String {
-    "usage: asp <guide|providers|doctor|cache|cloud|search|query|check|hook|source-access|ast-patch|graph|rust|typescript|python> ...".to_string()
+    "usage: asp <guide|providers|doctor|cache|cloud|search|query|check|hook|healthcheck|source-access|ast-patch|graph|rust|typescript|python> ...".to_string()
 }
 
 fn run_client_command(args: Vec<String>) -> Result<(), String> {

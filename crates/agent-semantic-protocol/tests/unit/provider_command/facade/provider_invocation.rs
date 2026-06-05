@@ -2,14 +2,37 @@ use std::env;
 use std::process::Command;
 
 use crate::provider_command::support::{
-    provider, temp_project_root, write_activation, write_echo_provider,
+    asp_command, prepend_path, provider, temp_project_root, write_activation, write_echo_provider,
+    write_runtime_profiles,
 };
 
 #[test]
 fn provider_command_prefix_is_used_as_full_invocation_prefix() {
     let root = temp_project_root("provider-prefix-facade");
     let bin_dir = root.join(".bin");
-    write_echo_provider(&bin_dir, "provider-wrapper", "wrapper");
+    std::fs::create_dir_all(&bin_dir).expect("create bin dir");
+    let wrapper_path = bin_dir.join("provider-wrapper");
+    std::fs::write(
+        &wrapper_path,
+        r#"#!/bin/sh
+printf 'wrapper args='
+for arg in "$@"; do printf '[%s]' "$arg"; done
+printf '
+'
+printf 'cache=%s
+' "$PRJ_HOME_CACHE"
+printf 'runtime=%s
+' "$ASP_RUNTIME_BIN_DIR"
+printf 'path0=%s
+' "${PATH%%:*}"
+"#,
+    )
+    .expect("write provider wrapper");
+    let mut permissions = std::fs::metadata(&wrapper_path)
+        .expect("wrapper metadata")
+        .permissions();
+    std::os::unix::fs::PermissionsExt::set_mode(&mut permissions, 0o755);
+    std::fs::set_permissions(&wrapper_path, permissions).expect("set wrapper permissions");
     write_activation(
         &root,
         &[provider(
@@ -18,9 +41,94 @@ fn provider_command_prefix_is_used_as_full_invocation_prefix() {
         )],
     );
 
-    let output = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .current_dir(&root)
-        .env("PATH", &bin_dir)
+    let output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .args(["rust", "query", "src/lib.rs", "."])
+        .output()
+        .expect("run asp rust query");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let canonical_root = std::fs::canonicalize(&root).unwrap_or_else(|_| root.clone());
+    let cache_home = canonical_root.join(".cache");
+    let runtime_bin = cache_home.join("agent-semantic-protocol/runtime/bin");
+    assert_eq!(
+        String::from_utf8(output.stdout).expect("stdout"),
+        format!(
+            "wrapper args=[rs-harness][query][src/lib.rs][.]\ncache={}\nruntime={}\npath0={}\n",
+            cache_home.display(),
+            runtime_bin.display(),
+            runtime_bin.display()
+        )
+    );
+
+    let nested_root = root.join("languages/rust-lang-project-harness");
+    write_activation(
+        &nested_root,
+        &[provider(
+            "rust",
+            vec!["provider-wrapper".to_string(), "rs-harness".to_string()],
+        )],
+    );
+    let output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .args([
+            "rust",
+            "check",
+            "--changed",
+            "languages/rust-lang-project-harness",
+        ])
+        .output()
+        .expect("run asp rust check nested root");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8(output.stdout).expect("stdout"),
+        format!(
+            "wrapper args=[rs-harness][check][--changed][.]\ncache={}\nruntime={}\npath0={}\n",
+            cache_home.display(),
+            runtime_bin.display(),
+            runtime_bin.display()
+        )
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn language_facade_query_uses_runtime_profile_before_path_lookup() {
+    let root = temp_project_root("provider-runtime-profile-facade");
+    let profile_bin_dir = root.join(".profile-bin");
+    let path_bin_dir = root.join(".path-bin");
+    write_echo_provider(&profile_bin_dir, "rs-harness", "profile");
+    std::fs::create_dir_all(&path_bin_dir).expect("create path bin dir");
+    let path_provider = path_bin_dir.join("rs-harness");
+    std::fs::write(
+        &path_provider,
+        "#!/bin/sh\nprintf 'path provider should not run\\n' >&2\nexit 42\n",
+    )
+    .expect("write path provider");
+    let mut permissions = std::fs::metadata(&path_provider)
+        .expect("path provider metadata")
+        .permissions();
+    std::os::unix::fs::PermissionsExt::set_mode(&mut permissions, 0o755);
+    std::fs::set_permissions(&path_provider, permissions).expect("set path provider permissions");
+
+    write_activation(&root, &[provider("rust", Vec::new())]);
+    write_runtime_profiles(
+        &root,
+        "rust",
+        vec![profile_bin_dir.join("rs-harness").display().to_string()],
+    );
+
+    let output = asp_command(&root)
+        .env("PATH", prepend_path(&path_bin_dir))
         .args(["rust", "query", "src/lib.rs", "."])
         .output()
         .expect("run asp rust query");
@@ -32,11 +140,10 @@ fn provider_command_prefix_is_used_as_full_invocation_prefix() {
     );
     assert_eq!(
         String::from_utf8(output.stdout).expect("stdout"),
-        "wrapper args=[rs-harness][query][src/lib.rs][.]\n"
+        "profile args=[query][src/lib.rs][.]\n"
     );
     let _ = std::fs::remove_dir_all(root);
 }
-
 #[test]
 fn provider_native_ast_patch_command_is_wrapped_by_language_facade() {
     let root = temp_project_root("provider-ast-patch-facade");
@@ -44,9 +151,8 @@ fn provider_native_ast_patch_command_is_wrapped_by_language_facade() {
     write_echo_provider(&bin_dir, "rs-harness", "rs");
     write_activation(&root, &[provider("rust", Vec::new())]);
 
-    let output = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .current_dir(&root)
-        .env("PATH", &bin_dir)
+    let output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
         .args([
             "rust",
             "ast-patch",
@@ -135,9 +241,8 @@ fn provider_native_ast_patch_command_is_wrapped_by_language_facade() {
         }
     })
     .to_string();
-    let mut child = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .current_dir(&root)
-        .env("PATH", &bin_dir)
+    let mut child = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
         .args(["rust", "ast-patch", "apply", "--packet", "-", "."])
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
@@ -152,23 +257,13 @@ fn provider_native_ast_patch_command_is_wrapped_by_language_facade() {
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    let receipt: serde_json::Value =
-        serde_json::from_slice(&output.stdout).expect("provider ast-patch receipt");
-    assert_eq!(receipt["capability"], "provider-ast-apply");
-    assert_eq!(receipt["status"], "failed");
-    assert_eq!(receipt["failureKind"], "rustfmt-error");
-    let verification = receipt["verification"].as_array().expect("verification");
-    let has_event = |expected: &str| {
-        verification.iter().any(|entry| {
-            entry
-                .as_str()
-                .or_else(|| entry["event"].as_str())
-                .is_some_and(|event| event == expected)
-        })
-    };
-    assert!(has_event("file-reparsed"));
-    assert!(!has_event("file-written"));
+    assert!(
+        output.stdout.is_empty(),
+        "successful provider ast-patch apply should be quiet: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
     let after = std::fs::read_to_string(&source_path).expect("read after");
-    assert_eq!(before, after);
+    assert_ne!(before, after);
+    assert!(after.contains("2"), "{after}");
     let _ = std::fs::remove_dir_all(root);
 }

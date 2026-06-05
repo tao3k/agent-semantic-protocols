@@ -123,6 +123,30 @@
         "$ref": "semantic-handle.v1.schema.json#/$defs/semanticHandle"
       }
     },
+    "syntaxQueryRef": {
+      "type": "string",
+      "description": "Reference to the semantic-tree-sitter-query artifact that selected or repaired the read window.",
+      "minLength": 1
+    },
+    "syntaxMatchRefs": {
+      "type": "array",
+      "description": "Match ids from a semantic-tree-sitter-query artifact that selected or repaired the read window.",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "syntaxCaptureRefs": {
+      "type": "array",
+      "description": "Capture ids from a semantic-tree-sitter-query artifact that selected or repaired the read window.",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "syntaxAnchor": {
+      "$ref": "#/$defs/syntaxAnchor"
+    },
     "nativeSyntaxFacts": {
       "type": "array",
       "description": "Parser-owned syntax facts used to select or repair the read window.",
@@ -168,6 +192,31 @@
         },
         "lineRange": {
           "$ref": "#/$defs/lineRange"
+        }
+      }
+    },
+    "syntaxAnchor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "nodeType",
+        "location"
+      ],
+      "properties": {
+        "nodeType": {
+          "type": "string",
+          "minLength": 1
+        },
+        "field": {
+          "type": "string",
+          "minLength": 1
+        },
+        "capture": {
+          "type": "string",
+          "minLength": 1
+        },
+        "location": {
+          "$ref": "#/$defs/location"
         }
       }
     },
@@ -230,7 +279,7 @@
         },
         "text": {
           "type": "string",
-          "description": "Provider-rendered compact source window selected from parser-owned context."
+          "description": "Provider-rendered source-preserved window selected from parser-owned context."
         },
         "lines": {
           "type": "array",
@@ -282,6 +331,7 @@
         "reason": {
           "enum": [
             "wide-selector",
+            "locator-frontier",
             "low-signal-window",
             "broad-selector",
             "missing-query-terms",
@@ -350,6 +400,11 @@
             "query-window-frontier",
             "search-repair"
           ]
+        },
+        "syn": {
+          "type": "string",
+          "description": "Prompt-facing syntax atom for the primary frontier anchor, for example function_item/name.",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*/[A-Za-z_][A-Za-z0-9_]*$"
         },
         "nextActions": {
           "type": "array",

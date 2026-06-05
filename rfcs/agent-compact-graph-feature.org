@@ -144,7 +144,7 @@ Valid reasoning commands are shaped by guide-declared profiles:
   .
 
 <lang-harness> search reasoning finding-frontier \
-  --finding <rule-id-or-diagnostic-id> \
+  --query <rule-id-or-diagnostic-id> \
   [--owner <project-path>] \
   [--view facts|seeds|both] \
   .
@@ -263,6 +263,26 @@ typed selectors match aliases rendered in this packet; each selector inside
 return entries exposed by that profile.  The
 micro-legend line is the minimal grammar contract for agents that have not
 recently read this RFC.
+
+Profile names are shared protocol catalog entries, not compatibility aliases or
+provider-private labels.  The initial catalog is =owner-query=, =query-deps=,
+=owner-tests=, =finding-frontier=, and =feature-cfg=.  Adding another
+prompt-facing profile name requires a schema/RFC update first so every provider
+can either emit the same meaning or deliberately omit it.
+Provider guides should print this catalog explicitly, for example
+=|catalog reasoningProfiles=owner-query,query-deps,owner-tests,finding-frontier,feature-cfg entries=owner-query,query-deps,owner-tests,finding-frontier,feature-cfg routes=read-frontier=.
+Direct-read or repair flows that are not reasoning profiles must be rendered as
+routes or commands rather than as =entry= rows.
+Provider-specific guide lines may list fewer =entries= than the shared catalog
+until that provider implements the matching reasoning command.  Rust carries
+=finding-frontier= and =feature-cfg= through the existing =--query= selector
+slot; adding =--finding= or =--feature= would be a new public command surface and
+needs its own RFC/schema pass.
+When a provider implements one of these profiles, the returned packet must carry
+the selector as a typed graph action, for example =nextActions=[{kind:"finding",
+target:<finding>}]= or =nextActions=[{kind:"feature", target:<feature>}]=, so
+the shared renderer can emit =F=finding= / =F=feature= aliases and concrete
+=entries= rows without relying on model inference.
 
 The alias legend is strict in compact mode: every alias id that appears in
 alias lines, edges, =rank=, or =frontier= must be declared with its node kind,

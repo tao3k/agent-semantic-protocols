@@ -61,7 +61,17 @@ impl LocalNativeCliBackend {
         provider: &ResolvedProvider,
         forwarded_args: Vec<String>,
     ) -> Result<LocalNativeCommand, String> {
-        let mut invocation = provider.command_prefix();
+        let mut invocation = if let Some(runtime_command) = provider.runtime_command_prefix() {
+            runtime_command
+        } else if let Some(status) = provider.runtime_profile_status {
+            let status = status.as_str();
+            return Err(format!(
+                "runtime profile for provider `{}` language `{}` is {status}; run `asp hook doctor --client codex .`",
+                provider.provider_id, provider.language_id
+            ));
+        } else {
+            provider.command_prefix()
+        };
         Self::push_method(&mut invocation, &request.method)?;
         invocation.extend(forwarded_args);
         let (program, args) = invocation

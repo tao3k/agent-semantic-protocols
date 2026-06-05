@@ -47,6 +47,8 @@ def minimal_render_template() -> dict[str, object]:
             "groupedEdge": "(<SRC>,...)><DST>:<relation>",
             "rankFrontier": "rank=<ID>,... frontier=<ID>.<action>,...",
             "entries": "entries=<profile>(<ID>,...=><return>+...),...",
+            "omit": "omit=<omitted-semantic>[,<omitted-semantic>]",
+            "avoid": "avoid=<anti-action>[,<anti-action>]",
             "denseAliasSeparator": ";",
         },
         "locatorPolicy": {
@@ -88,6 +90,13 @@ def minimal_render_template() -> dict[str, object]:
                 "targetRole": "pkg",
                 "aliasPrefix": "D",
                 "action": "deps",
+            },
+            {
+                "sourceKind": "finding",
+                "nodeType": "finding",
+                "targetRole": "finding",
+                "aliasPrefix": "F",
+                "action": "finding",
             },
         ],
         "relationSpecs": [
@@ -137,6 +146,18 @@ class SemanticCompactGraphRenderSchemaTests(unittest.TestCase):
         self.assertEqual(
             "entries=<profile>(<ID>,...=><return>+...),...",
             template["lineGrammar"]["entries"],
+        )
+
+    def test_omit_and_avoid_lines_are_schema_owned(self) -> None:
+        template = minimal_render_template()
+
+        self.assertEqual(
+            "omit=<omitted-semantic>[,<omitted-semantic>]",
+            template["lineGrammar"]["omit"],
+        )
+        self.assertEqual(
+            "avoid=<anti-action>[,<anti-action>]",
+            template["lineGrammar"]["avoid"],
         )
 
     def test_view_header_is_the_graph_packet_header(self) -> None:

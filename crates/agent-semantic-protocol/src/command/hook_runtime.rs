@@ -6,15 +6,17 @@ use agent_semantic_hook::{
     ActiveContextRecord, DecisionKind, DecisionSubject, HOOK_DECISION_SCHEMA_ID,
     HOOK_DECISION_SCHEMA_VERSION, HOOK_PROTOCOL_ID, HOOK_PROTOCOL_VERSION,
     HookClassificationRequest, HookDecision, ROOT_BLOCK_BEGIN, ROOT_BLOCK_END, ReasonKind,
-    append_hook_event_state, build_default_activation, classify_hook_with_config,
-    claude_hook_block, codex_hook_block, codex_user_trust_state_status, default_activation_path,
-    default_claude_settings_path, default_client_config_path, default_client_config_template,
-    discover_activation_path, install_codex_user_trust_state, load_activation, load_client_config,
-    load_or_sync_activation, merge_claude_settings, merge_codex_config, parse_payload,
-    project_hook_cache_dir, project_hook_state_dir, record_active_context,
-    remove_incompatible_hook_event_state, remove_legacy_codex_hook_cache_files,
-    render_platform_response, validate_claude_settings_json, validate_codex_config_toml,
-    write_activation, write_profile_registry,
+    RuntimeProviderHealthStatus, append_hook_event_state, build_default_activation,
+    classify_hook_with_config, claude_hook_block, codex_hook_block, codex_user_trust_state_status,
+    default_activation_path, default_claude_settings_path, default_client_config_path,
+    default_client_config_template, default_runtime_profiles_path, discover_activation_path,
+    install_codex_user_trust_state, load_activation, load_client_config,
+    load_or_refresh_runtime_profiles, load_or_sync_activation, merge_claude_settings,
+    merge_codex_config, parse_payload, project_hook_cache_dir, project_hook_state_dir,
+    record_active_context, remove_incompatible_hook_event_state,
+    remove_legacy_codex_hook_cache_files, render_platform_response, validate_claude_settings_json,
+    validate_codex_config_toml, write_activation, write_profile_registry,
+    write_runtime_profiles_for_activation,
 };
 use std::collections::BTreeMap;
 use std::env;
@@ -386,6 +388,9 @@ fn run_doctor(args: &[String]) -> Result<(), String> {
         .map(PathBuf::from)
         .unwrap_or_else(|| default_activation_path(&project_root));
     let runtime = load_or_sync_activation(&activation_path, &project_root)?;
+    let runtime_profiles_path = default_runtime_profiles_path(&project_root)?;
+    let runtime_profiles =
+        load_or_refresh_runtime_profiles(&runtime_profiles_path, &project_root, &runtime)?;
     let config_path = if client == "claude" {
         default_claude_settings_path(&project_root.to_string_lossy())
     } else {
@@ -435,9 +440,10 @@ fn run_doctor(args: &[String]) -> Result<(), String> {
         .map(|status| status.trust_config_path.display().to_string())
         .unwrap_or_else(|| "unavailable".to_string());
     println!(
-        "[agent-doctor] status=ok client={client} providers={} activation={} config={} clientConfig={} clientConfigStatus={} hook={} trust={} trustConfig={} binary={} binaryPath={} enforcement={} enforcementProbe={} enforcementReason={} protocol={}",
+        "[agent-doctor] status=ok client={client} providers={} activation={} runtimeProfiles={} config={} clientConfig={} clientConfigStatus={} hook={} trust={} trustConfig={} binary={} binaryPath={} enforcement={} enforcementProbe={} enforcementReason={} protocol={}",
         runtime.providers.len(),
         display_path(&project_root, &activation_path),
+        display_path(&project_root, &runtime_profiles_path),
         config_path.is_file(),
         display_path(&project_root, &client_config_path),
         client_config_status,
@@ -479,12 +485,26 @@ fn run_doctor(args: &[String]) -> Result<(), String> {
     {
         println!("|trust missing={}", status.missing_events.join(","));
     }
-    for provider in runtime.providers {
+    for provider in &runtime.providers {
+        let runtime_profile = runtime_profiles.providers.iter().find(|profile| {
+            profile.manifest_id == provider.manifest_id
+                && profile.language_id == provider.language_id
+                && profile.provider_id == provider.provider_id
+                && profile.binary == provider.binary
+        });
+        let runtime_profile_status = runtime_profile
+            .map(|profile| runtime_profile_status_label(profile.health.status))
+            .unwrap_or("missing");
+        let resolved_binary = runtime_profile
+            .and_then(|profile| profile.resolved_binary.as_deref())
+            .unwrap_or("missing");
         println!(
-            "|provider language={} provider={} binary={} roots={} extensions={}",
+            "|provider language={} provider={} binary={} runtimeProfileStatus={} resolvedBinary={} roots={} extensions={}",
             provider.language_id,
             provider.provider_id,
             provider.binary,
+            runtime_profile_status,
+            resolved_binary,
             provider.source_roots.join(","),
             provider.source_extensions.join(","),
         );
@@ -505,6 +525,8 @@ fn run_install(args: &[String]) -> Result<(), String> {
     }
     let activation = build_default_activation(&project_root)?;
     write_activation(&activation_path, &activation)?;
+    let runtime_profiles_path = default_runtime_profiles_path(&project_root)?;
+    write_runtime_profiles_for_activation(&runtime_profiles_path, &project_root, &activation)?;
     let profile_cache_dir = project_hook_state_dir(&project_root)?;
     remove_incompatible_hook_event_state(&project_root)?;
     let profile_registry_path = write_profile_registry(&profile_cache_dir, &activation)?;
@@ -517,8 +539,9 @@ fn run_install(args: &[String]) -> Result<(), String> {
         _ => unreachable!("client support checked before install"),
     };
     println!(
-        "[agent-install] client={client} activation={} clientConfig={} profileCache={} config={}{} skill={} binary=asp binaryPath={} binaryInstall={} mode=updated",
+        "[agent-install] client={client} activation={} runtimeProfiles={} clientConfig={} profileCache={} config={}{} skill={} binary=asp binaryPath={} binaryInstall={} mode=updated",
         display_path(&project_root, &activation_path),
+        display_path(&project_root, &runtime_profiles_path),
         display_path(&project_root, &client_config_path),
         display_path(&project_root, &profile_registry_path),
         display_path(&project_root, &config_path),
@@ -633,6 +656,14 @@ fn display_path(project_root: &Path, path: &Path) -> String {
         .unwrap_or(path)
         .to_string_lossy()
         .replace('\\', "/")
+}
+
+fn runtime_profile_status_label(status: RuntimeProviderHealthStatus) -> &'static str {
+    match status {
+        RuntimeProviderHealthStatus::Available => "available",
+        RuntimeProviderHealthStatus::Missing => "missing",
+        RuntimeProviderHealthStatus::Unexecutable => "unexecutable",
+    }
 }
 
 fn flag_value<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {

@@ -3,6 +3,7 @@
 use crate::cache_paths::project_hook_cache_dir;
 use crate::protocol_activation::{HookActivation, HookRuntime, parse_activation};
 use crate::provider_manifest::{build_default_activation, provider_manifests};
+use crate::runtime_profile::{default_runtime_profiles_path, write_runtime_profiles_for_runtime};
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -42,7 +43,10 @@ pub fn load_or_sync_activation(
 fn sync_activation(project_root: &Path, activation_path: &Path) -> Result<HookRuntime, String> {
     let activation = build_default_activation(project_root)?;
     write_activation(activation_path, &activation)?;
-    activation_to_runtime(&activation)
+    let runtime = activation_to_runtime(&activation)?;
+    let runtime_profiles_path = default_runtime_profiles_path(project_root)?;
+    write_runtime_profiles_for_runtime(&runtime_profiles_path, project_root, &runtime)?;
+    Ok(runtime)
 }
 
 fn activation_to_runtime(activation: &HookActivation) -> Result<HookRuntime, String> {

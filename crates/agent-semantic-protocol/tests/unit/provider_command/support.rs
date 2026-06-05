@@ -1,7 +1,9 @@
 use agent_semantic_hook::{builtin_provider_manifests, provider_manifest_digest};
 use serde_json::json;
 use std::env;
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub(super) struct ProviderSpec {
@@ -50,14 +52,51 @@ pub(super) fn write_activation(root: &Path, providers: &[ProviderSpec]) {
         "protocolId": agent_semantic_hook::HOOK_PROTOCOL_ID,
         "protocolVersion": agent_semantic_hook::HOOK_PROTOCOL_VERSION,
         "projectRoot": ".",
-        "generatedBy": {"runtime": "agent-semantic-hook", "version": "test"},
+        "generatedBy": { "runtime": "asp", "version": "test" },
         "providers": providers
     });
     std::fs::write(
         activation_dir.join("activation.json"),
-        serde_json::to_string_pretty(&activation).expect("activation JSON"),
+        serde_json::to_string_pretty(&activation).expect("serialize activation"),
     )
     .expect("write activation");
+}
+
+pub(super) fn write_runtime_profiles(root: &Path, language_id: &str, argv: Vec<String>) -> PathBuf {
+    let manifest = builtin_provider_manifests()
+        .into_iter()
+        .find(|manifest| manifest.language_id == language_id)
+        .unwrap_or_else(|| panic!("missing manifest for {language_id}"));
+    let manifest_digest = provider_manifest_digest(&manifest).expect("manifest digest");
+    let runtime_dir = root.join(".cache/agent-semantic-protocol/runtime");
+    std::fs::create_dir_all(&runtime_dir).expect("create runtime profile dir");
+    let profiles = json!({
+        "schemaId": agent_semantic_hook::RUNTIME_PROFILES_SCHEMA_ID,
+        "schemaVersion": agent_semantic_hook::RUNTIME_PROFILES_SCHEMA_VERSION,
+        "protocolId": agent_semantic_hook::RUNTIME_PROFILES_PROTOCOL_ID,
+        "protocolVersion": agent_semantic_hook::RUNTIME_PROFILES_PROTOCOL_VERSION,
+        "projectRoot": root.display().to_string(),
+        "runtimeHome": runtime_dir.display().to_string(),
+        "generatedBy": { "runtime": "asp", "version": "test" },
+        "providers": [{
+            "manifestId": manifest.manifest_id,
+            "manifestDigest": manifest_digest,
+            "languageId": manifest.language_id,
+            "providerId": manifest.provider_id,
+            "binary": manifest.binary,
+            "providerCommandPrefix": [],
+            "resolvedBinary": argv.first().cloned(),
+            "argv": argv,
+            "health": { "status": "available" }
+        }]
+    });
+    let path = runtime_dir.join("profiles.json");
+    std::fs::write(
+        &path,
+        serde_json::to_string_pretty(&profiles).expect("serialize runtime profiles"),
+    )
+    .expect("write runtime profiles");
+    path
 }
 
 pub(super) fn write_cache_manifest(root: &Path, manifest: serde_json::Value) -> PathBuf {
@@ -80,6 +119,23 @@ pub(super) fn cache_manifest_path(root: &Path) -> PathBuf {
     cache_root(root).join("cache-manifest.json")
 }
 
+pub(super) fn asp_command(root: &Path) -> Command {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_asp"));
+    command
+        .current_dir(root)
+        .env_remove("PRJ_CACHE_HOME")
+        .env_remove("PRJ_HOME_CACHE");
+    command
+}
+
+pub(super) fn prepend_path(path_prefix: &Path) -> OsString {
+    let mut paths = vec![path_prefix.to_path_buf()];
+    if let Some(path) = env::var_os("PATH") {
+        paths.extend(env::split_paths(&path));
+    }
+    env::join_paths(paths).expect("join PATH")
+}
+
 pub(super) fn temp_project_root(name: &str) -> PathBuf {
     let unique = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -87,6 +143,7 @@ pub(super) fn temp_project_root(name: &str) -> PathBuf {
         .as_nanos();
     let root = env::temp_dir().join(format!("agent-semantic-protocol-{name}-{unique}"));
     std::fs::create_dir_all(&root).expect("create temp project root");
+    std::fs::create_dir_all(root.join(".git")).expect("create temp git marker");
     root
 }
 

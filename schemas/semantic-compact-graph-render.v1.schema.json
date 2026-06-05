@@ -127,7 +127,9 @@
         "edge",
         "groupedEdge",
         "rankFrontier",
-    "entries",
+        "entries",
+        "omit",
+        "avoid",
         "denseAliasSeparator"
       ],
       "properties": {
@@ -154,6 +156,12 @@
         },
         "entries": {
           "const": "entries=<profile>(<ID>,...=><return>+...),..."
+        },
+        "omit": {
+          "const": "omit=<omitted-semantic>[,<omitted-semantic>]"
+        },
+        "avoid": {
+          "const": "avoid=<anti-action>[,<anti-action>]"
         },
         "denseAliasSeparator": {
           "const": ";"
@@ -326,8 +334,10 @@
             "docs",
             "features",
             "cfg",
+            "finding",
             "import",
             "items",
+            "outline",
             "code",
             "read"
           ]

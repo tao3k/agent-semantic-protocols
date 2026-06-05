@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use agent_semantic_client_core::{
-    ClientMethod, ClientRequest, ProviderRegistrySnapshot, ResolvedProvider,
+    ClientMethod, ClientRequest, ProviderRegistrySnapshot, ResolvedProvider, RuntimeProfileStatus,
 };
 use agent_semantic_client_local_cli::LocalNativeCliBackend;
 
@@ -47,6 +47,23 @@ fn requires_language_for_multi_provider_route() {
     assert!(error.contains("use --language <id>"));
 }
 
+#[test]
+fn reports_unusable_runtime_profile_status_before_falling_back_to_path() {
+    let mut provider = provider("rust", "rs-harness");
+    provider.runtime_profile_status = Some(RuntimeProfileStatus::Missing);
+    let backend = LocalNativeCliBackend::new(snapshot(vec![provider]));
+    let request = ClientRequest::new(ClientMethod::Search, PathBuf::from("/repo"))
+        .with_language("rust")
+        .with_forwarded_args(vec!["prime".to_string(), ".".to_string()]);
+
+    let error = backend
+        .prepare(&request)
+        .expect_err("missing runtime profile");
+
+    assert!(error.contains("provider `rs-harness` language `rust` is missing"));
+    assert!(error.contains("asp hook doctor --client codex ."));
+}
+
 fn provider(language_id: &str, binary: &str) -> ResolvedProvider {
     ResolvedProvider {
         language_id: language_id.into(),
@@ -58,6 +75,8 @@ fn provider(language_id: &str, binary: &str) -> ResolvedProvider {
             ".".to_string(),
             binary.to_string(),
         ],
+        runtime_command_argv: None,
+        runtime_profile_status: None,
         package_roots: vec![".".to_string()],
     }
 }

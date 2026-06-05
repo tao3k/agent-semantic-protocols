@@ -45,6 +45,7 @@ pub(super) fn temp_project_root(name: &str) -> PathBuf {
         .as_nanos();
     let root = std::env::temp_dir().join(format!("agent-semantic-hook-{name}-{unique}"));
     std::fs::create_dir_all(&root).expect("create temp project root");
+    std::fs::create_dir_all(root.join(".git")).expect("create temp git marker");
     root
 }
 
@@ -60,7 +61,7 @@ pub(super) fn root_owned_rust_activation_json() -> String {
         "protocolId": agent_semantic_hook::HOOK_PROTOCOL_ID,
         "protocolVersion": agent_semantic_hook::HOOK_PROTOCOL_VERSION,
         "projectRoot": ".",
-        "generatedBy": {"runtime": "agent-semantic-hook", "version": "test"},
+        "generatedBy": {"runtime": "asp", "version": "test"},
         "providers": [{
             "manifestId": manifest.manifest_id,
             "manifestDigest": manifest_digest,

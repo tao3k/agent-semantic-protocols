@@ -94,12 +94,13 @@ pub(crate) fn cache_hit_receipt(
     method: ClientMethod,
     probe: &ProviderCacheProbe,
     replay: &ProviderCacheReplay,
+    elapsed_ms: ElapsedMillis,
 ) -> ClientReceipt {
     let mut receipt =
         ClientReceipt::cache_report(method, probe.provenance.clone(), &probe.cache_report);
     apply_provider_cache_probe(&mut receipt, probe);
     receipt.cache_status = CacheStatus::Hit;
     receipt.stdout_bytes = ByteCount::from_len(replay.stdout.len());
-    receipt.elapsed_ms = ElapsedMillis::new(0);
+    receipt.elapsed_ms = elapsed_ms;
     receipt
 }

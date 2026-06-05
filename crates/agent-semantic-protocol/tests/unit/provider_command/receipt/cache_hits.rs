@@ -34,7 +34,7 @@ fn client_search_receipt_reports_cache_hit_when_prompt_output_artifact_exists() 
     let import_output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .current_dir(&root)
         .env("PATH", &bin_dir)
-        .env("PRJ_HOME_CACHE", root.join(".cache"))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args(["cache", "import"])
         .output()
         .expect("run cache import");
@@ -47,7 +47,7 @@ fn client_search_receipt_reports_cache_hit_when_prompt_output_artifact_exists() 
     let output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .current_dir(&root)
         .env("PATH", &bin_dir)
-        .env("PRJ_HOME_CACHE", root.join(".cache"))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args([
             "rust",
             "search",
@@ -107,7 +107,7 @@ fn client_search_receipt_reports_cache_hit_when_search_packet_artifact_exists() 
     let import_output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .current_dir(&root)
         .env("PATH", &bin_dir)
-        .env("PRJ_HOME_CACHE", root.join(".cache"))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args(["cache", "import"])
         .output()
         .expect("run cache import");
@@ -120,7 +120,7 @@ fn client_search_receipt_reports_cache_hit_when_search_packet_artifact_exists() 
     let output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .current_dir(&root)
         .env("PATH", &bin_dir)
-        .env("PRJ_HOME_CACHE", root.join(".cache"))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .env_remove("SEMANTIC_AGENT_PROTOCOL_BIN")
         .args([
             "rust",
@@ -147,13 +147,21 @@ fn client_search_receipt_reports_cache_hit_when_search_packet_artifact_exists() 
     assert_eq!(receipt["clientDbStatus"], "present");
     assert_eq!(receipt["providerCommandCount"], 0);
     assert_eq!(receipt["providerProcessesSpawned"], 0);
+    assert!(receipt["elapsedMs"].as_u64().is_some());
+    assert_eq!(
+        receipt["providerCommands"]
+            .as_array()
+            .expect("providerCommands")
+            .len(),
+        0
+    );
     assert_eq!(receipt["stdoutBytes"], stdout.len());
 
     let root_arg = root.display().to_string();
     let external_output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .current_dir(root.parent().expect("root parent"))
         .env("PATH", &bin_dir)
-        .env("PRJ_HOME_CACHE", root.join(".cache"))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args([
             "rust",
             "search",
@@ -184,6 +192,14 @@ fn client_search_receipt_reports_cache_hit_when_search_packet_artifact_exists() 
     assert_eq!(external_receipt["clientDbStatus"], "present");
     assert_eq!(external_receipt["providerCommandCount"], 0);
     assert_eq!(external_receipt["providerProcessesSpawned"], 0);
+    assert!(external_receipt["elapsedMs"].as_u64().is_some());
+    assert_eq!(
+        external_receipt["providerCommands"]
+            .as_array()
+            .expect("providerCommands")
+            .len(),
+        0
+    );
     assert_eq!(external_receipt["stdoutBytes"], external_stdout.len());
     let _ = std::fs::remove_dir_all(root);
 }
@@ -216,7 +232,7 @@ fn client_query_receipt_reports_cache_hit_when_query_packet_artifact_exists() {
     let import_output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .current_dir(&root)
         .env("PATH", &bin_dir)
-        .env("PRJ_HOME_CACHE", root.join(".cache"))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args(["cache", "import"])
         .output()
         .expect("run cache import");
@@ -229,7 +245,7 @@ fn client_query_receipt_reports_cache_hit_when_query_packet_artifact_exists() {
     let output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .current_dir(&root)
         .env("PATH", &bin_dir)
-        .env("PRJ_HOME_CACHE", root.join(".cache"))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args([
             "rust",
             "query",
@@ -256,13 +272,21 @@ fn client_query_receipt_reports_cache_hit_when_query_packet_artifact_exists() {
     assert_eq!(receipt["clientDbStatus"], "present");
     assert_eq!(receipt["providerCommandCount"], 0);
     assert_eq!(receipt["providerProcessesSpawned"], 0);
+    assert!(receipt["elapsedMs"].as_u64().is_some());
+    assert_eq!(
+        receipt["providerCommands"]
+            .as_array()
+            .expect("providerCommands")
+            .len(),
+        0
+    );
     assert_eq!(receipt["stdoutBytes"], stdout.len());
 
     let root_arg = root.display().to_string();
     let external_output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .current_dir(root.parent().expect("root parent"))
         .env("PATH", &bin_dir)
-        .env("PRJ_HOME_CACHE", root.join(".cache"))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args([
             "rust",
             "query",
@@ -293,6 +317,14 @@ fn client_query_receipt_reports_cache_hit_when_query_packet_artifact_exists() {
     assert_eq!(external_receipt["clientDbStatus"], "present");
     assert_eq!(external_receipt["providerCommandCount"], 0);
     assert_eq!(external_receipt["providerProcessesSpawned"], 0);
+    assert!(external_receipt["elapsedMs"].as_u64().is_some());
+    assert_eq!(
+        external_receipt["providerCommands"]
+            .as_array()
+            .expect("providerCommands")
+            .len(),
+        0
+    );
     assert_eq!(external_receipt["stdoutBytes"], external_stdout.len());
     let _ = std::fs::remove_dir_all(root);
 }

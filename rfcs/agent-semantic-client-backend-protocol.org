@@ -464,10 +464,11 @@ misses remain provider-owned misses.
 The local cache is the community edition's main performance asset.  Flight is
 not required for repeated searches to improve.
 
-Recommended layout:
+Recommended layout, where =<state-cache-home>= is =${PRJ_CACHE_HOME}= when set
+and otherwise =<git-toplevel>/.cache=:
 
 #+begin_example
-$PRJ_HOME_CACHE/agent-semantic-protocol/
+<state-cache-home>/agent-semantic-protocol/
   hooks/
     activation.json
   client/
@@ -478,7 +479,28 @@ $PRJ_HOME_CACHE/agent-semantic-protocol/
     query/<id>.json
     check/<id>.json
     prompt-output/<id>.txt
+    prompt-output/<id>.command.json
+  runtime/
+    bin/
+      rustfmt
+      <provider-command-shims>
 #+end_example
+
+=git rev-parse --show-toplevel= is the first project identity fact.  In a
+monorepo or workspace, package roots and subdirectories do not own independent
+ASP =.cache= trees; their package/project roots are recorded as metadata in
+manifest rows, SQLite rows, and artifacts under the same state cache home.
+=PRJ_CACHE_HOME= is an explicit state-storage override, not a second project
+identity.
+
+Runtime command shims are
+fixed under =<state-cache-home>/agent-semantic-protocol/runtime/bin=.  Every
+=asp <language> ...= provider execution path, including direct native provider
+commands and client-backed =search/query/check= misses, must set
+=ASP_RUNTIME_BIN_DIR= to that directory and prepend it to =PATH= before
+spawning or delegating to a provider.  This keeps =rustfmt= and future
+formatter/parser helper binaries under the same project-local ASP runtime
+environment as activation, cache, and artifacts.
 
 Cache rows must be derived from provider-owned packets or provider-owned index
 exports.  The client DB uses SQLite by default so the local client can do
@@ -551,13 +573,14 @@ provider.  A matching generation marks the local-native receipt as
 alone are not enough to replay compact output.  =cacheStatus=hit= is allowed
 only when the generation references a replayable provider-owned artifact.  In
 the first implementation, =prompt-output/*.txt= under the protocol artifact root
-is the fastest replay path, =search/*.json= semantic-search-packet artifacts are
-replayable through the shared =asp graph render --packet <artifact> --view
-seeds= renderer, and =query/*.json= semantic-query-packet artifacts are
-replayable for =query/owner-items= compact query output.  If a referenced packet
-artifact is missing, unsafe, too large, unsupported for the request method, or
-cannot be rendered, the generation remains =warm-provider= and the native
-provider still supplies the output.
+is the fastest replay path and may be paired with
+=prompt-output/*.command.json= provider-command provenance, =search/*.json=
+semantic-search-packet artifacts are replayable through the shared =asp graph
+render --packet <artifact> --view seeds= renderer, and =query/*.json=
+semantic-query-packet artifacts are replayable for =query/owner-items= compact
+query output.  If a referenced packet artifact is missing, unsafe, too large,
+unsupported for the request method, or cannot be rendered, the generation
+remains =warm-provider= and the native provider still supplies the output.
 
 The Rust client may build denormalized owner, symbol, native fact, handle,
 diagnostic, search packet, and query packet SQL tables from provider exports.  It
@@ -684,6 +707,10 @@ evidence:
 #+begin_example
 local-cache-hit:
   providerCommandsAvoided >= 1
+  providerCommandCount = 0
+  providerProcessesSpawned = 0
+  providerCommands = []
+  elapsedMs = present
   compactOutputParity = true
   nativeProvenancePresent = true
   staleHitCount = 0
@@ -998,7 +1025,9 @@ local-cache path:
 
 The remaining local work is a prime command, denormalized query indexes beyond
 artifact replay, and performance receipts for cold, warm-provider, invalidated,
-write-back, and cache-hit routes.
+and write-back routes.  The local-cache hit route now has receipt coverage for
+=elapsedMs=, zero provider command/process counts, and an empty
+=providerCommands= array.
 
 * Non-goals
 

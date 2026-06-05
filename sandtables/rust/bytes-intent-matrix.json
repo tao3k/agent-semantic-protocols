@@ -90,7 +90,8 @@
           "alias: graph:{G=search",
           "G>{",
           "rank=",
-          "frontier="
+          "frontier=",
+          "entries="
         ],
         "maxStdoutLinesWarn": 10,
         "maxElapsedMsWarn": 2500,

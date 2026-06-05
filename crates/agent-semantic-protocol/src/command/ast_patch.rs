@@ -21,6 +21,7 @@ const SUPPORTED_OPERATIONS: &[&str] = &[
     "remove_statement",
     "remove_item",
     "replace_item",
+    "split_owner_items",
 ];
 const LARGE_MECHANICAL_OPERATIONS: &[&str] = &[
     "insert_import",
@@ -29,6 +30,7 @@ const LARGE_MECHANICAL_OPERATIONS: &[&str] = &[
     "remove_item",
     "replace_statement",
     "replace_item",
+    "split_owner_items",
 ];
 
 pub(crate) fn run_ast_patch_command(args: &[String]) -> Result<(), String> {
@@ -65,6 +67,10 @@ struct AstPatchTemplateRequest {
     namespace: Option<String>,
     item_name: Option<String>,
     item_kind: Option<String>,
+    fields: Vec<(String, String)>,
+    mutation_source: Option<String>,
+    snippet_required: Option<bool>,
+    code_in_prompt: Option<bool>,
 }
 
 impl AstPatchTemplateRequest {
@@ -93,7 +99,7 @@ impl AstPatchTemplateRequest {
         }
 
         let expected_snippet = flag_value(args, "--expected-snippet");
-        let mechanical_kind = flag_value(args, "--mechanical-kind");
+        let mut mechanical_kind = flag_value(args, "--mechanical-kind");
         let max_edits = flag_value(args, "--max-edits")
             .map(|value| {
                 value
@@ -102,6 +108,42 @@ impl AstPatchTemplateRequest {
             })
             .transpose()?;
         let allow_large_mechanical_edit = flag_present(args, "--allow-large-mechanical-edit");
+        let fields = field_values(args)?;
+        let mut mutation_source = flag_value(args, "--mutation-source");
+        let mut snippet_required = flag_bool_value(args, "--snippet-required")?;
+        let mut code_in_prompt = flag_bool_value(args, "--code-in-prompt")?;
+        if let Some(source) = mutation_source.as_deref() {
+            if !matches!(
+                source,
+                "provider-native" | "agent-snippet" | "codex-text-fallback"
+            ) {
+                return Err(
+                    "--mutation-source must be provider-native, agent-snippet, or codex-text-fallback"
+                        .to_string(),
+                );
+            }
+        }
+        if operation == "split_owner_items" {
+            if !field_present(&fields, "destinationPath") {
+                return Err(
+                    "--field destinationPath=<path> is required for --op split_owner_items"
+                        .to_string(),
+                );
+            }
+            if !field_present(&fields, "moduleName") {
+                return Err(
+                    "--field moduleName=<name> is required for --op split_owner_items".to_string(),
+                );
+            }
+            mutation_source.get_or_insert_with(|| "provider-native".to_string());
+            snippet_required.get_or_insert(false);
+            code_in_prompt.get_or_insert(false);
+            mechanical_kind.get_or_insert_with(|| "owner-items".to_string());
+        } else if operation_requires_snippet(&operation) {
+            mutation_source.get_or_insert_with(|| "agent-snippet".to_string());
+            snippet_required.get_or_insert(true);
+            code_in_prompt.get_or_insert(true);
+        }
         if allow_large_mechanical_edit {
             if !LARGE_MECHANICAL_OPERATIONS.contains(&operation.as_str()) {
                 return Err(format!(
@@ -146,6 +188,10 @@ impl AstPatchTemplateRequest {
             namespace: flag_value(args, "--namespace"),
             item_name: flag_value(args, "--item-name"),
             item_kind: flag_value(args, "--item-kind"),
+            fields,
+            mutation_source,
+            snippet_required,
+            code_in_prompt,
         })
     }
 }
@@ -207,6 +253,23 @@ fn template_packet(request: AstPatchTemplateRequest) -> Value {
 
     let mut operation = Map::new();
     operation.insert("op".to_string(), Value::String(request.operation));
+    if let Some(mutation_source) = request.mutation_source {
+        operation.insert("mutationSource".to_string(), Value::String(mutation_source));
+    }
+    if let Some(snippet_required) = request.snippet_required {
+        operation.insert("snippetRequired".to_string(), Value::Bool(snippet_required));
+    }
+    if let Some(code_in_prompt) = request.code_in_prompt {
+        operation.insert("codeInPrompt".to_string(), Value::Bool(code_in_prompt));
+    }
+    if !request.fields.is_empty() {
+        let fields = request
+            .fields
+            .into_iter()
+            .map(|(key, value)| (key, Value::String(value)))
+            .collect();
+        operation.insert("fields".to_string(), Value::Object(fields));
+    }
     if let Some(snippet) = request.snippet {
         operation.insert("snippet".to_string(), Value::String(snippet));
     }
@@ -272,7 +335,7 @@ impl AstPatchRequest {
         };
         if mode == "apply" {
             return Err(
-                "ast-patch apply is unavailable in the Codex adapter; use dry-run and Codex apply_patch"
+                "ast-patch apply is unavailable in the Codex adapter; use provider ast-patch apply for provider-native receipts or Codex apply_patch only for explicit text fallback"
                     .to_string(),
             );
         }
@@ -294,6 +357,42 @@ fn flag_value(args: &[String], flag: &str) -> Option<String> {
     args.windows(2)
         .find(|window| window[0] == flag)
         .map(|window| window[1].clone())
+}
+
+fn flag_values(args: &[String], flag: &str) -> Vec<String> {
+    args.windows(2)
+        .filter(|window| window[0] == flag)
+        .map(|window| window[1].clone())
+        .collect()
+}
+
+fn field_values(args: &[String]) -> Result<Vec<(String, String)>, String> {
+    flag_values(args, "--field")
+        .into_iter()
+        .map(|field| {
+            let (key, value) = field
+                .split_once('=')
+                .ok_or_else(|| "--field must use key=value".to_string())?;
+            if key.trim().is_empty() || value.is_empty() {
+                return Err("--field must use non-empty key=value".to_string());
+            }
+            Ok((key.to_string(), value.to_string()))
+        })
+        .collect()
+}
+
+fn flag_bool_value(args: &[String], flag: &str) -> Result<Option<bool>, String> {
+    flag_value(args, flag)
+        .map(|value| match value.as_str() {
+            "true" => Ok(true),
+            "false" => Ok(false),
+            _ => Err(format!("{flag} must be true or false")),
+        })
+        .transpose()
+}
+
+fn field_present(fields: &[(String, String)], field: &str) -> bool {
+    fields.iter().any(|(key, _)| key == field)
 }
 
 fn required_flag(args: &[String], flag: &str) -> Result<String, String> {
@@ -324,6 +423,10 @@ fn trailing_project_root(args: &[String]) -> Option<String> {
         "--namespace",
         "--item-name",
         "--item-kind",
+        "--field",
+        "--mutation-source",
+        "--snippet-required",
+        "--code-in-prompt",
     ];
     let values: Vec<_> = args
         .iter()
@@ -482,6 +585,17 @@ pub(super) fn receipt_for_packet(packet: &Value, mode: AstPatchMode) -> AstPatch
     let max_edits = integer_field(operation, "maxEdits").unwrap_or(1);
     let allow_large_mechanical_edit =
         bool_field(operation, "allowLargeMechanicalEdit").unwrap_or(false);
+    let mutation_source = string_field(operation, "mutationSource");
+    if let Some(source) = mutation_source.as_deref() {
+        if matches!(
+            source,
+            "provider-native" | "agent-snippet" | "codex-text-fallback"
+        ) {
+            verification.push("mutation-source-valid");
+        } else {
+            failures.push(format!("unsupported mutationSource {source}"));
+        }
+    }
     match op.as_deref() {
         Some(operation_name) if SUPPORTED_OPERATIONS.contains(&operation_name) => {
             verification.push("operation-supported");
@@ -492,6 +606,24 @@ pub(super) fn receipt_for_packet(packet: &Value, mode: AstPatchMode) -> AstPatch
                     failures.push(format!(
                         "operation {operation_name} requires operation.snippet"
                     ));
+                }
+            }
+            if operation_name == "split_owner_items" {
+                let fields = operation.get("fields").unwrap_or(&Value::Null);
+                if string_field(fields, "destinationPath").is_some() {
+                    verification.push("destination-path-present");
+                } else {
+                    failures.push(
+                        "operation.fields.destinationPath is required for split_owner_items"
+                            .to_string(),
+                    );
+                }
+                if string_field(fields, "moduleName").is_some() {
+                    verification.push("module-name-present");
+                } else {
+                    failures.push(
+                        "operation.fields.moduleName is required for split_owner_items".to_string(),
+                    );
                 }
             }
             if allow_large_mechanical_edit {
@@ -540,26 +672,35 @@ pub(super) fn receipt_for_packet(packet: &Value, mode: AstPatchMode) -> AstPatch
             receipt_target
                 .read
                 .as_ref()
-                .map(|read| MechanicalEditPlan {
-                    kind: "codex-dry-run",
-                    operation: operation_name.clone(),
-                    target_read: read.clone(),
-                    estimated_edits: if allow_large_mechanical_edit {
-                        max_edits
-                    } else {
-                        1
-                    },
-                    max_edits,
-                    safe_for_large_change: allow_large_mechanical_edit
-                        && LARGE_MECHANICAL_OPERATIONS.contains(&operation_name.as_str()),
-                    mutation_available: false,
-                    requires_codex_apply_patch: true,
-                    changed_ranges: vec![read.clone()],
-                    notes: vec![if allow_large_mechanical_edit {
-                        "bounded mechanical edit intent verified; provider AST dry-run should estimate exact affected nodes before mutation".to_string()
-                    } else {
-                        "single-target AST patch intent verified; Codex adapter still delegates mutation to apply_patch".to_string()
-                    }],
+                .map(|read| {
+                    let provider_native = mutation_source.as_deref() == Some("provider-native");
+                    MechanicalEditPlan {
+                        kind: if provider_native {
+                            "provider-native-dry-run"
+                        } else {
+                            "codex-dry-run"
+                        },
+                        operation: operation_name.clone(),
+                        target_read: read.clone(),
+                        estimated_edits: if allow_large_mechanical_edit {
+                            max_edits
+                        } else {
+                            1
+                        },
+                        max_edits,
+                        safe_for_large_change: allow_large_mechanical_edit
+                            && LARGE_MECHANICAL_OPERATIONS.contains(&operation_name.as_str()),
+                        mutation_available: false,
+                        requires_codex_apply_patch: !provider_native,
+                        changed_ranges: vec![read.clone()],
+                        notes: vec![if provider_native {
+                            "provider-native AST mutation intent verified; use provider ast-patch apply after dry-run receipt".to_string()
+                        } else if allow_large_mechanical_edit {
+                            "bounded mechanical edit intent verified; provider AST dry-run should estimate exact affected nodes before mutation".to_string()
+                        } else {
+                            "single-target AST patch intent verified; Codex apply_patch remains only an explicit text fallback".to_string()
+                        }],
+                    }
                 })
         })
     } else {
@@ -570,6 +711,7 @@ pub(super) fn receipt_for_packet(packet: &Value, mode: AstPatchMode) -> AstPatch
         receipt_target.owner_path.as_deref(),
         receipt_target.read.as_deref(),
         op.as_deref(),
+        mutation_source.as_deref(),
         status,
     );
     AstPatchReceipt {
@@ -598,6 +740,7 @@ fn next_guidance_for_receipt(
     owner_path: Option<&str>,
     read: Option<&str>,
     operation: Option<&str>,
+    mutation_source: Option<&str>,
     status: &str,
 ) -> String {
     let language = language_id.unwrap_or("<language>");
@@ -606,11 +749,16 @@ fn next_guidance_for_receipt(
     let operation = operation.unwrap_or("<op>");
     if status == "failed" {
         return format!(
-            "revise packet: asp ast-patch template --language {language} --owner {owner} --read {read} --op {operation} --snippet '<exact source or inserted snippet>' > semantic-ast-patch.json; rerun: asp {language} ast-patch dry-run --packet semantic-ast-patch.json ."
+            "revise packet: asp ast-patch template --language {language} --owner {owner} --read {read} --op {operation} --field <key=value> [--snippet '<source when required>'] > semantic-ast-patch.json; rerun: asp {language} ast-patch dry-run --packet semantic-ast-patch.json ."
+        );
+    }
+    if mutation_source == Some("provider-native") {
+        return format!(
+            "provider-dry-run: asp {language} ast-patch dry-run --packet semantic-ast-patch.json .; provider-apply: asp {language} ast-patch apply --packet semantic-ast-patch.json .; exact-read: asp {language} query --from-hook direct-source-read --selector {read} --code .; check: asp {language} check --changed ."
         );
     }
     format!(
-        "provider-dry-run: asp {language} ast-patch dry-run --packet semantic-ast-patch.json .; exact-read: asp {language} query --from-hook direct-source-read --selector {read} --code .; mutate: Codex apply_patch using that exact source preimage, not compact code; check: asp {language} check --changed ."
+        "provider-dry-run: asp {language} ast-patch dry-run --packet semantic-ast-patch.json .; exact-read: asp {language} query --from-hook direct-source-read --selector {read} --code .; fallback: Codex apply_patch only when mutationSource=codex-text-fallback or receipt.requiresCodexApplyPatch=true; check: asp {language} check --changed ."
     )
 }
 

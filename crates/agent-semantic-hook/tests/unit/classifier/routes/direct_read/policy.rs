@@ -12,10 +12,7 @@ fn action_policy_can_allow_direct_source_read_without_disabling_other_policies()
         &registry,
         "codex",
         "pre-tool",
-        &json!({
-            "tool_name": "Read",
-            "tool_input": {"path": "src/cli/agent-hooks.ts"}
-        }),
+        &json!({ "tool_name": "Read", "tool_input": { "path": "src/cli/agent-hooks.ts" } }),
     );
     let search_decision = classify_hook(
         &registry,
@@ -23,7 +20,7 @@ fn action_policy_can_allow_direct_source_read_without_disabling_other_policies()
         "pre-tool",
         &json!({
             "tool_name": "functions.exec_command",
-            "tool_input": {"cmd": "rg -n WorkflowExecution src"}
+            "tool_input": { "cmd": "rg -n -g '*.ts' WorkflowExecution src" }
         }),
     );
 

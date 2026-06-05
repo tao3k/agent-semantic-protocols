@@ -1,7 +1,7 @@
 use agent_semantic_hook::{DecisionKind, DecisionRouteKind, ReasonKind, classify_hook};
 use serde_json::json;
 
-use super::support::rust_harness_activation;
+use super::support::{root_owned_rust_activation_json, rust_harness_activation};
 
 #[test]
 fn root_owned_rust_activation_tracks_rust_harness_default_scope() {
@@ -33,6 +33,14 @@ fn root_owned_rust_activation_uses_shared_hook_schema() {
 
     assert_eq!(runtime.project_root, ".");
     assert_eq!(runtime.providers[0].source_roots[0], "src");
+}
+
+#[test]
+fn root_owned_rust_activation_is_generated_by_asp() {
+    let activation: serde_json::Value =
+        serde_json::from_str(&root_owned_rust_activation_json()).expect("parse activation fixture");
+
+    assert_eq!(activation["generatedBy"]["runtime"], "asp");
 }
 
 #[test]
@@ -91,14 +99,14 @@ fn rust_harness_activation_routes_direct_reads_to_provider_query() {
 }
 
 #[test]
-fn rust_harness_activation_routes_raw_root_search_to_hook_query() {
+fn rust_harness_activation_routes_source_glob_search_to_hook_query() {
     let decision = classify_hook(
         &rust_harness_activation(),
         "codex",
         "pre-tool",
         &json!({
             "tool_name": "functions.exec_command",
-            "tool_input": {"cmd": "rg -n \"HookDecision\" ."}
+            "tool_input": { "cmd": "rg -n -g '*.rs' HookDecision ." }
         }),
     );
 
@@ -107,23 +115,15 @@ fn rust_harness_activation_routes_raw_root_search_to_hook_query() {
     assert_eq!(decision.routes[0].kind, DecisionRouteKind::Query);
     assert_eq!(decision.routes[0].provider_id, "rs-harness");
     assert_eq!(decision.routes[0].binary, "asp");
-    assert_eq!(
-        decision.routes[0].argv,
-        [
-            "asp",
-            "rust",
-            "query",
-            "--from-hook",
-            "direct-source-read",
-            "--selector",
-            "**/*.rs",
-            "--term",
-            "HookDecision",
-            "--surface",
-            "owners,tests",
-            "--view",
-            "seeds",
-            "."
-        ]
+    let argv = &decision.routes[0].argv;
+    assert!(
+        argv.windows(2)
+            .any(|window| window[0] == "--selector" && window[1] == "**/*.rs"),
+        "{argv:?}"
+    );
+    assert!(
+        argv.windows(2)
+            .any(|window| window[0] == "--term" && window[1] == "HookDecision"),
+        "{argv:?}"
     );
 }

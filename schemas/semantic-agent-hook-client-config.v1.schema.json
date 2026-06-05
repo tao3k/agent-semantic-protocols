@@ -24,6 +24,9 @@
       "items": {
         "$ref": "#/$defs/rule"
       }
+    },
+    "experimental": {
+      "$ref": "#/$defs/experimental"
     }
   },
   "$defs": {
@@ -42,6 +45,25 @@
         "subagent-stop",
         "stop"
       ]
+    },
+    "experimental": {
+      "description": "Project-local experimental hook feature switches. Missing switches preserve the built-in classifier behavior.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "semanticAstPatch": {
+          "$ref": "#/$defs/experimentalFeature"
+        }
+      }
+    },
+    "experimentalFeature": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        }
+      }
     },
     "rule": {
       "type": "object",

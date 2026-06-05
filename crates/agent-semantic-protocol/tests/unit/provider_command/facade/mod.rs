@@ -27,9 +27,11 @@ mod language {
                 Vec::new(),
             )],
         );
-        let output = std::process::Command::new(env!("CARGO_BIN_EXE_asp"))
-            .current_dir(&root)
-            .env("PATH", &bin_dir)
+        let output = crate::provider_command::support::asp_command(&root)
+            .env(
+                "PATH",
+                crate::provider_command::support::prepend_path(&bin_dir),
+            )
             .args(["rust", "agent", "doctor", "--json", "."])
             .output()
             .expect("run asp");

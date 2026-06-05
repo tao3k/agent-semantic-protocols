@@ -1,4 +1,0 @@
-[project]
-name = "parser-compact-real-django-model-base"
-version = "0.0.0"
-import-names = ["base"]

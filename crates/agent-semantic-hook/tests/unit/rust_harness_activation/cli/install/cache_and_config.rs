@@ -5,17 +5,17 @@ use crate::rust_harness_activation::support::write_fake_provider_binary;
 use super::support::{assert_installed_hook_state, git_project_root, protocol_command};
 
 #[test]
-fn cli_install_writes_profile_registry_to_prj_home_cache() {
-    let root = git_project_root("install-prj-home-cache");
+fn cli_install_writes_profile_registry_to_prj_cache_home() {
+    let root = git_project_root("install-prj-cache-home");
     let codex_home = root.join(".codex-home");
     let provider_path = write_fake_provider_binary(&root, "rs-harness");
     let protocol_bin_dir = root.join(".agent-bin");
-    let prj_home_cache = root.join(".project-cache");
+    let prj_cache_home = root.join(".project-cache");
     let path = env::join_paths([&protocol_bin_dir, &provider_path]).expect("join PATH");
     let output = protocol_command()
         .env("PATH", &path)
         .env("SEMANTIC_AGENT_BIN_DIR", &protocol_bin_dir)
-        .env("PRJ_HOME_CACHE", &prj_home_cache)
+        .env("PRJ_CACHE_HOME", &prj_cache_home)
         .env("CODEX_HOME", &codex_home)
         .args([
             "hook",
@@ -36,7 +36,7 @@ fn cli_install_writes_profile_registry_to_prj_home_cache() {
         stdout.contains("profileCache=.project-cache/agent-semantic-protocol/hooks/profiles.json")
     );
     assert!(
-        prj_home_cache
+        prj_cache_home
             .join("agent-semantic-protocol/hooks/profiles.json")
             .is_file()
     );

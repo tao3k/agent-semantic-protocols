@@ -7,7 +7,7 @@ pub mod receipt;
 pub mod request;
 pub mod types;
 
-pub use activation::{ProviderRegistrySnapshot, ResolvedProvider};
+pub use activation::{ProviderRegistrySnapshot, ResolvedProvider, RuntimeProfileStatus};
 pub use cache_manifest::{
     AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_FILE, AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_PROTOCOL_ID,
     AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_PROTOCOL_VERSION,
@@ -21,12 +21,23 @@ pub use receipt::{
     AGENT_SEMANTIC_CLIENT_RECEIPT_PROTOCOL_ID, AGENT_SEMANTIC_CLIENT_RECEIPT_SCHEMA_ID,
     ClientReceipt, ExecutionRoute, NativeProvenance, ProviderCommandReceipt,
 };
-pub use request::{ClientMethod, ClientRequest};
 pub use types::{
     ByteCount, CacheArtifactId, CacheExportMethod, CacheGenerationId, CacheStatus, ClientCachePath,
     ClientDbStatus, CompactArtifactId, ElapsedMillis, LanguageId, ProviderId, SemanticProtocolId,
     SemanticProtocolVersion, SemanticSchemaId, SemanticSchemaVersion,
 };
+pub use {
+    agent_semantic_tree_sitter::{
+        CompiledSyntaxQuery, LoadedGrammarProfile, LoadedSyntaxCatalog, SyntaxCatalogDescriptor,
+        SyntaxQueryCompileError, compile_catalog_query, compile_query_source,
+        extract_capture_names, fingerprint_catalog, fingerprint_grammar_profile,
+        load_grammar_profile, load_syntax_catalog, normalize_capture_names,
+    },
+    request::{ClientMethod, ClientRequest},
+};
+#[cfg(test)]
+#[path = "../tests/unit/activation.rs"]
+mod activation_tests;
 #[cfg(test)]
 #[path = "../tests/unit/cache_manifest.rs"]
 mod cache_manifest_tests;

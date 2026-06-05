@@ -41,7 +41,7 @@ pub(super) fn graph_aliases(packet: &Value, limit: usize) -> Vec<GraphAlias> {
     let owner_item_query = is_owner_item_query_packet(packet, packet_view(packet));
     let mut actions = graph_actions(packet);
     if owner_item_query {
-        actions.sort_by_key(graph_action_owner_item_order);
+        actions.sort_by_key(graph_action_owner_item_order)
     }
     for action in actions {
         let action_kind = if owner_item_query && action.kind == "symbol" {

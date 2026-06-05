@@ -14,12 +14,19 @@ use serde_json::Value;
 #[test]
 fn concurrent_hook_event_appends_write_valid_json_lines() {
     let project_root = unique_project_root();
+    let run_id = project_root
+        .file_name()
+        .and_then(|name| name.to_str())
+        .expect("temp project root name")
+        .to_string();
+    let run_prefix = format!("{run_id}_");
     let worker_count = 32;
 
     let handles = (0..worker_count)
         .map(|index| {
             let project_root = project_root.clone();
-            thread::spawn(move || append_hook_event_state(&project_root, &decision(index)))
+            let run_id = run_id.clone();
+            thread::spawn(move || append_hook_event_state(&project_root, &decision(&run_id, index)))
         })
         .collect::<Vec<_>>();
 
@@ -31,7 +38,10 @@ fn concurrent_hook_event_appends_write_valid_json_lines() {
     assert!(event_paths.iter().all(|path| path == event_path));
 
     let content = fs::read_to_string(event_path).expect("event log should exist");
-    let lines = content.lines().collect::<Vec<_>>();
+    let lines = content
+        .lines()
+        .filter(|line| line.contains(&run_prefix))
+        .collect::<Vec<_>>();
     assert_eq!(lines.len(), worker_count);
 
     let mut seen_paths = HashSet::new();
@@ -43,6 +53,7 @@ fn concurrent_hook_event_appends_write_valid_json_lines() {
         let path = event["subject"]["paths"][0]
             .as_str()
             .expect("event path should be a string");
+        assert!(path.starts_with(&run_prefix));
         seen_paths.insert(path.to_string());
     }
     assert_eq!(seen_paths.len(), worker_count);
@@ -64,7 +75,7 @@ fn unique_project_root() -> PathBuf {
     project_root
 }
 
-fn decision(index: usize) -> HookDecision {
+fn decision(run_id: &str, index: usize) -> HookDecision {
     HookDecision {
         schema_id: HOOK_DECISION_SCHEMA_ID,
         schema_version: HOOK_DECISION_SCHEMA_VERSION,
@@ -78,7 +89,7 @@ fn decision(index: usize) -> HookDecision {
         subject: DecisionSubject {
             tool_name: Some("Read".to_string()),
             command: None,
-            paths: vec![format!("event_state_{index}.rs")],
+            paths: vec![format!("{run_id}_event_state_{index}.rs")],
         },
         routes: vec![DecisionRoute {
             language_id: "rust".to_string(),

@@ -60,6 +60,28 @@ def test_names_only_query_packet_can_omit_code_and_report_candidates() -> None:
     assert validation_errors(packet) == []
 
 
+def test_query_packet_accepts_tree_sitter_syntax_refs() -> None:
+    packet = semantic_query_minimal_packet()
+    packet["syntaxQueryRef"] = "semantic-tree-sitter-query/rust-owner-items.v1"
+    packet["syntaxMatchRefs"] = ["match.1"]
+    packet["syntaxCaptureRefs"] = ["capture.1"]
+    packet["syntaxAnchor"] = {
+        "nodeType": "function_item",
+        "field": "name",
+        "capture": "function.name",
+        "location": {"path": "src/lib.rs", "lineRange": "6:6"},
+    }
+    packet["matches"][0]["fields"] = {
+        "syntaxQueryRef": "semantic-tree-sitter-query/rust-owner-items.v1",
+        "syntaxMatchRef": "match.1",
+        "syntaxCaptureRef": "capture.1",
+        "syntaxNodeType": "function_item",
+        "syntaxCapture": "function.name",
+    }
+
+    assert validation_errors(packet) == []
+
+
 def test_outline_projection_can_report_hot_blocks() -> None:
     packet = semantic_query_minimal_packet()
     packet["outputMode"] = "outline"

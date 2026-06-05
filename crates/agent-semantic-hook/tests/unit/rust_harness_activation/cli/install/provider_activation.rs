@@ -1,4 +1,6 @@
-use agent_semantic_hook::parse_hook_activation;
+use agent_semantic_hook::{
+    RuntimeProviderHealthStatus, load_runtime_profiles, parse_hook_activation,
+};
 
 use crate::rust_harness_activation::support::{
     write_failing_provider_binary, write_fake_provider_binary,
@@ -33,6 +35,21 @@ fn cli_install_uses_static_provider_manifest_without_running_guide() {
     let registry = parse_hook_activation(&activation).expect("valid installed activation");
     assert_eq!(registry.providers.len(), 1);
     assert_eq!(registry.providers[0].language_id, "python");
+    let runtime_profiles =
+        load_runtime_profiles(&root.join(".cache/agent-semantic-protocol/runtime/profiles.json"))
+            .expect("valid runtime profiles");
+    assert_eq!(runtime_profiles.providers.len(), 1);
+    assert_eq!(runtime_profiles.providers[0].language_id, "python");
+    assert_eq!(
+        runtime_profiles.providers[0].health.status,
+        RuntimeProviderHealthStatus::Available
+    );
+    let resolved_binary = runtime_profiles.providers[0]
+        .resolved_binary
+        .as_deref()
+        .expect("resolved provider binary");
+    assert!(resolved_binary.ends_with("/.bin/py-harness"));
+    assert!(std::path::Path::new(resolved_binary).is_file());
     let _ = std::fs::remove_dir_all(&root);
 }
 

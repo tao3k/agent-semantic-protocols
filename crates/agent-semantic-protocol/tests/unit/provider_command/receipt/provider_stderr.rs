@@ -19,7 +19,7 @@ fn receipt_json_suppresses_provider_stderr_from_receipt_stream() {
     let output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .current_dir(&root)
         .env("PATH", &bin_dir)
-        .env("PRJ_HOME_CACHE", root.join(".cache"))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args([
             "rust",
             "search",
@@ -68,7 +68,7 @@ fn receipt_json_is_emitted_for_nonzero_provider_exit() {
     let output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .current_dir(&root)
         .env("PATH", &bin_dir)
-        .env("PRJ_HOME_CACHE", root.join(".cache"))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args([
             "rust",
             "search",

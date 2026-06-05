@@ -79,14 +79,57 @@ pub(super) fn graph_actions(packet: &Value) -> Vec<GraphAction> {
         }
     }
 
+    fn selector_target(packet: &Value, prefix: &str) -> Option<String> {
+        header_scalar(packet, "selector").and_then(|selector| {
+            selector
+                .strip_prefix(prefix)
+                .map(str::to_string)
+                .filter(|value| !value.trim().is_empty())
+        })
+    }
+
+    fn reasoning_profile_action(packet: &Value) -> Option<GraphAction> {
+        match packet_query(packet)? {
+            "feature-cfg" => Some(GraphAction {
+                kind: "feature".to_string(),
+                target: header_scalar(packet, "query")
+                    .or_else(|| selector_target(packet, "feature="))?,
+                locator: None,
+            }),
+            "finding-frontier" => Some(GraphAction {
+                kind: "finding".to_string(),
+                target: header_scalar(packet, "query")
+                    .or_else(|| selector_target(packet, "finding="))?,
+                locator: None,
+            }),
+            _ => None,
+        }
+    }
+
+    fn is_reasoning_profile_duplicate(profile: &GraphAction, action: &GraphAction) -> bool {
+        if action.target != profile.target {
+            return false;
+        }
+        match profile.kind.as_str() {
+            "feature" => matches!(action.kind.as_str(), "query" | "features"),
+            "finding" => action.kind == "query",
+            _ => false,
+        }
+    }
+
     let mut actions = Vec::new();
+    let reasoning_profile = (packet_view(packet) == "reasoning")
+        .then(|| reasoning_profile_action(packet))
+        .flatten();
     if packet_view(packet) == "reasoning" {
-        push_header_action(&mut actions, "query", header_scalar(packet, "query"));
-        push_header_action(
-            &mut actions,
-            "dependency",
-            header_scalar(packet, "dependency"),
-        );
+        if reasoning_profile.is_none() {
+            push_header_action(&mut actions, "query", header_scalar(packet, "query"));
+            push_header_action(
+                &mut actions,
+                "dependency",
+                header_scalar(packet, "dependency"),
+            );
+        }
         push_header_action(
             &mut actions,
             "owner",
@@ -144,6 +187,20 @@ pub(super) fn graph_actions(packet: &Value) -> Vec<GraphAction> {
     append_owner_paths(&mut actions, packet.get("owners"));
     append_native_fact_owners(&mut actions, packet.get("nativeSyntaxFacts"));
     append_item_symbols(&mut actions, packet.get("items"));
+    if let Some(profile) = reasoning_profile.as_ref() {
+        actions.retain(|action| {
+            !(is_reasoning_profile_duplicate(profile, action)
+                || (action.kind == profile.kind && action.target == profile.target))
+        });
+        actions.insert(
+            0,
+            GraphAction {
+                kind: profile.kind.clone(),
+                target: profile.target.clone(),
+                locator: profile.locator.clone(),
+            },
+        );
+    }
     actions
 }
 
@@ -164,9 +221,23 @@ pub(super) fn query_term_count(packet: &Value) -> Option<usize> {
 }
 
 pub(super) fn graph_action_spec(kind: &str) -> Option<GraphActionSpec> {
-    GRAPH_ACTION_SPECS
-        .iter()
-        .find_map(|(candidate, spec)| (*candidate == kind).then_some(*spec))
+    match kind {
+        "feature" => Some(GraphActionSpec {
+            node_type: "feature",
+            target_role: "feature",
+            alias_prefix: "F",
+            action: "cfg",
+        }),
+        "finding" => Some(GraphActionSpec {
+            node_type: "finding",
+            target_role: "finding",
+            alias_prefix: "F",
+            action: "finding",
+        }),
+        _ => GRAPH_ACTION_SPECS
+            .iter()
+            .find_map(|(candidate, spec)| (*candidate == kind).then_some(*spec)),
+    }
 }
 
 fn synthesis_seeds_are_primary(packet: &Value) -> bool {

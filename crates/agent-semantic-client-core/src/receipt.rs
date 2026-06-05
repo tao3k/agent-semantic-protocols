@@ -5,9 +5,9 @@ use serde::{Deserialize, Serialize};
 use crate::cache_manifest::{CacheManifestReport, CacheManifestStatus};
 use crate::request::ClientMethod;
 use crate::types::{
-    ByteCount, CacheStatus, ClientCachePath, ClientDbStatus, CompactArtifactId, ElapsedMillis,
-    LanguageId, ProviderId, SemanticProtocolId, SemanticProtocolVersion, SemanticSchemaId,
-    SemanticSchemaVersion,
+    ByteCount, CacheArtifactId, CacheStatus, ClientCachePath, ClientDbStatus, CompactArtifactId,
+    ElapsedMillis, LanguageId, ProviderId, SemanticProtocolId, SemanticProtocolVersion,
+    SemanticSchemaId, SemanticSchemaVersion,
 };
 
 /// Schema id for `agent-semantic-client-receipt.v1`.
@@ -67,6 +67,14 @@ pub struct ClientReceipt {
     pub provider_commands: Vec<ProviderCommandReceipt>,
     pub native_provenance: Vec<NativeProvenance>,
     pub compact_artifact_id: Option<CompactArtifactId>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub syntax_artifact_id: Option<CacheArtifactId>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub packet_bytes: Option<ByteCount>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sqlite_read_count: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sqlite_write_count: Option<u64>,
     pub elapsed_ms: ElapsedMillis,
     pub stdout_bytes: ByteCount,
     pub stderr_bytes: ByteCount,
@@ -113,6 +121,10 @@ impl ClientReceipt {
             provider_commands: vec![provider_command],
             native_provenance: vec![provenance],
             compact_artifact_id: None,
+            syntax_artifact_id: None,
+            packet_bytes: None,
+            sqlite_read_count: None,
+            sqlite_write_count: None,
             cache_root: None,
             cache_manifest_path: None,
             cache_manifest_status: None,
@@ -152,6 +164,10 @@ impl ClientReceipt {
             provider_commands: Vec::new(),
             native_provenance: provenance,
             compact_artifact_id: None,
+            syntax_artifact_id: None,
+            packet_bytes: None,
+            sqlite_read_count: None,
+            sqlite_write_count: None,
             elapsed_ms: ElapsedMillis::new(0),
             stdout_bytes: ByteCount::new(0),
             stderr_bytes: ByteCount::new(0),

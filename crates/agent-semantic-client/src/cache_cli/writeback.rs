@@ -9,8 +9,8 @@ use agent_semantic_client_core::{
     AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_SCHEMA_ID,
     AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_SCHEMA_VERSION, CacheArtifactId, CacheExportMethod,
     CacheGenerationId, CacheManifestStatus, CacheStatus, ClientCacheGeneration,
-    ClientCacheManifest, ClientCachePath, ClientMethod, ClientRequest, ProviderRegistrySnapshot,
-    ResolvedProvider, SemanticSchemaId,
+    ClientCacheManifest, ClientCachePath, ClientMethod, ClientRequest, ProviderCommandReceipt,
+    ProviderRegistrySnapshot, ResolvedProvider, SemanticSchemaId,
 };
 use agent_semantic_client_db::ClientDb;
 
@@ -25,6 +25,7 @@ pub(crate) fn write_prompt_output_cache_after_provider_success(
     snapshot: &ProviderRegistrySnapshot,
     request: &ClientRequest,
     stdout: &[u8],
+    provider_commands: &[ProviderCommandReceipt],
 ) -> Option<ProviderCacheProbe> {
     #[derive(Clone, Copy)]
     enum ArtifactKind {
@@ -248,7 +249,7 @@ pub(crate) fn write_prompt_output_cache_after_provider_success(
         CacheManifestStatus::Present => ClientCacheManifest::load_from_path(manifest_path).ok()?,
         CacheManifestStatus::Unavailable | CacheManifestStatus::Invalid => return None,
     };
-    let generation = match artifact_kind {
+    let mut generation = match artifact_kind {
         ArtifactKind::PromptOutput => prompt_output_generation(
             project_root,
             provider,
@@ -272,10 +273,43 @@ pub(crate) fn write_prompt_output_cache_after_provider_success(
         ),
     };
     let artifact_id = generation.artifact_ids.as_ref()?.first()?.clone();
+    let command_artifact_id =
+        if matches!(artifact_kind, ArtifactKind::PromptOutput) && !provider_commands.is_empty() {
+            let command_artifact_id = CacheArtifactId::from(format!(
+                "{}.command.json",
+                artifact_id.as_str().strip_suffix(".txt")?
+            ));
+            generation
+                .artifact_ids
+                .get_or_insert_with(Vec::new)
+                .push(command_artifact_id.clone());
+            Some(command_artifact_id)
+        } else {
+            None
+        };
     let artifact_path =
         replay_artifact_path(cache_root, &artifact_id, artifact_prefix, artifact_suffix)?;
     fs::create_dir_all(artifact_path.parent()?).ok()?;
     fs::write(&artifact_path, artifact_bytes).ok()?;
+    if let Some(command_artifact_id) = command_artifact_id {
+        let command_artifact_path = replay_artifact_path(
+            cache_root,
+            &command_artifact_id,
+            "prompt-output/",
+            ".command.json",
+        )?;
+        fs::create_dir_all(command_artifact_path.parent()?).ok()?;
+        let command_artifact = serde_json::json!({
+            "schemaId": "agent.semantic-protocols.client-prompt-output-command",
+            "schemaVersion": "1",
+            "protocolId": "agent.semantic-protocols.client",
+            "protocolVersion": "1",
+            "promptOutputArtifactId": artifact_id.as_str(),
+            "providerCommands": provider_commands,
+        });
+        let command_artifact = serde_json::to_vec_pretty(&command_artifact).ok()?;
+        fs::write(command_artifact_path, command_artifact).ok()?;
+    }
     upsert_generation(&mut manifest, generation);
     write_cache_manifest(manifest_path, &manifest).ok()?;
     let db_path = ClientDb::default_path(cache_root);

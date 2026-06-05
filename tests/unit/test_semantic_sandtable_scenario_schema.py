@@ -52,6 +52,12 @@ class SemanticSandtableScenarioSchemaTests(unittest.TestCase):
                                 "entries=owner-query(O,Q=>items+tests+dependency-usage)"
                             ],
                             "outputNotContains": ["profiles" + "="],
+                            "primeOutput": {
+                                "requiresStructureStatus": True,
+                                "entries": [
+                                    "entries=owner-query(O,Q=>items+tests+dependency-usage)"
+                                ],
+                            },
                         }
                     },
                 }
@@ -59,6 +65,30 @@ class SemanticSandtableScenarioSchemaTests(unittest.TestCase):
         }
 
         self.assertEqual([], self.validation_errors(scenario))
+
+    def test_guide_quality_prime_output_entries_must_be_entries_lines(self) -> None:
+        scenario: dict[str, object] = {
+            "id": "typescript.codex-guide",
+            "language": "typescript",
+            "workdir": ".",
+            "steps": [
+                {
+                    "id": "guide",
+                    "command": ["node", "-e", "console.log('{}')"],
+                    "expect": {
+                        "guideQuality": {
+                            "primeOutput": {
+                                "entries": ["entries=ad-hoc-owner-map(O=>items)"],
+                            }
+                        }
+                    },
+                }
+            ],
+        }
+
+        self.assertTrue(
+            any("does not match" in error for error in self.validation_errors(scenario))
+        )
 
     def test_large_library_evidence_requires_complete_matrix_metadata(self) -> None:
         scenario: dict[str, object] = _large_library_scenario()

@@ -83,6 +83,20 @@ class SemanticSearchPacketSchemaTests(unittest.TestCase):
     def test_project_root_relative_paths_are_valid(self) -> None:
         self.assertEqual([], self.validation_errors(_semantic_search_minimal_packet()))
 
+    def test_search_packet_accepts_tree_sitter_syntax_refs(self) -> None:
+        packet = _semantic_search_minimal_packet()
+        packet["syntaxQueryRef"] = "semantic-tree-sitter-query/rust-owner-items.v1"
+        packet["syntaxMatchRefs"] = ["match.1"]
+        packet["syntaxCaptureRefs"] = ["capture.1"]
+        packet["syntaxAnchor"] = {
+            "nodeType": "function_item",
+            "field": "name",
+            "capture": "function.name",
+            "location": {"path": "src/lib.rs", "lineRange": "6:6"},
+        }
+
+        self.assertEqual([], self.validation_errors(packet))
+
     def test_root_dot_path_token_is_valid(self) -> None:
         packet = _semantic_search_minimal_packet()
         packet["owners"] = [

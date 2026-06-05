@@ -61,41 +61,47 @@ The public agent-facing entrypoint is a shared binary, not one public AST patch
 surface per language:
 
 #+begin_src shell
-asp ast-patch template --language <language> --owner <path> --read <path:start:end> --op <operation> --snippet '<source>' > semantic-ast-patch.json
+asp ast-patch template --language <language> --owner <path> --read <path:start:end> --op <operation> [--snippet '<source>'] [--field <key=value> ...] > semantic-ast-patch.json
 asp ast-patch verify --packet <ast-patch.json> .
 asp ast-patch dry-run --packet <ast-patch.json> .
 #+end_src
 
-For the current Codex adapter, =ast-patch= is verification-only.  It must not
-pretend to replace Codex's built-in mutation tool.  A successful dry-run proves
-that compact/query output is patchable and may emit a text diff proposal, but
-the actual file mutation still goes through Codex =apply_patch=.
+For the current shared Codex adapter, =asp ast-patch= is verification-only.  It
+must not pretend to own every provider's mutation semantics.  A successful
+shared dry-run proves that compact/query output is patchable and tells the agent
+whether the packet is provider-native or only a controlled text fallback.
 =template= is the agent-facing packet builder.  It exists so a hook denial can
 tell the agent one command shape instead of causing another broad search for
 =schemaId=, =target.read=, =expectedSnippet=, or other packet fields.
 
-The normal Codex source-edit flow is:
+The normal source-edit flow is:
 
 #+begin_src shell
 asp <language> query --from-hook direct-source-read --selector <path:start:end> --code .
-asp ast-patch template --language <language> --owner <path> --read <path:start:end> --op <operation> --snippet '<exact source or inserted snippet>' > semantic-ast-patch.json
+asp ast-patch template --language <language> --owner <path> --read <path:start:end> --op <operation> [--snippet '<exact source or inserted snippet>'] [--field <key=value> ...] > semantic-ast-patch.json
 asp <language> ast-patch dry-run --packet semantic-ast-patch.json .
-# Codex apply_patch uses the exact-read preimage, not compact projection text.
+# If the receipt says mutationSource=provider-native:
+asp <language> ast-patch apply --packet semantic-ast-patch.json .
+# Codex apply_patch is only an explicit text fallback, never the default source-edit path.
 asp <language> check --changed .
 #+end_src
 
-Future non-Codex runtimes may add:
+Trusted local provider runtimes expose:
 
 #+begin_src shell
-asp ast-patch apply --packet <ast-patch.json> .
+asp <language> ast-patch apply --packet <ast-patch.json> .
 #+end_src
 
 The first provider-native apply backend is intentionally narrower than the full
-protocol surface: Rust may expose trusted local =replace_item= mutation after
-the provider parses the replacement as a Rust item, verifies the selected
-=target.read= range is one Rust item, reparses the full file, runs =rustfmt=,
-and reparses the formatted file.  Other operations remain dry-run or
-verification-only until their parser-owned apply semantics are implemented.
+protocol surface: Rust may expose trusted local =replace_item= and
+=split_owner_items= mutation after the provider parses selected syntax with
+native Rust ASTs, verifies =target.read= against parser-owned item boundaries,
+runs =rustfmt=, and reparses the formatted files.  =split_owner_items= reads the
+selected owner items locally, emits the destination module, inserts the owner
+module declaration, and carries =destinationPath= / =moduleName= as
+operation-owned fields instead of asking the model to write a hunk.  Other
+operations remain dry-run or verification-only until their parser-owned apply
+semantics are implemented.
 
 Language providers expose a narrow internal adapter surface behind the shared
 binary.  This adapter may be a CLI subcommand, library API, or crate call, but
@@ -202,6 +208,8 @@ provider-specific only where syntax requires it:
     "ownerPath": "src/cli/semantic-search/render.ts",
     "locator": "src/cli/semantic-search/render.ts#fn:renderSemanticSearchSeedPacket#if:packet.searchSynthesis",
     "read": "src/cli/semantic-search/render.ts:120:180",
+    "itemKind": "fn",
+    "itemName": "renderSemanticSearchSeedPacket",
     "nodeKind": "if_statement",
     "role": "body"
   },
@@ -218,7 +226,13 @@ provider-specific only where syntax requires it:
 #+end_src
 
 Line locations use the existing compact source-locator form =path:10:43=.
-Do not introduce =startLine= / =endLine= fields in this protocol.
+Do not introduce =startLine= / =endLine= fields in this protocol.  The
+line-range locator is a read hint and audit coordinate, not mutation
+authority.  The authoritative target is the parser-owned AST identity:
+=ownerPath=, =locator=, =itemKind=, =itemName=, and provider-owned structural
+roles.  If the line range is stale after an earlier patch or formatter pass,
+the provider must reparse the current file and re-resolve the unique AST item
+by identity before applying or dry-running the operation.
 
 * Patch affordances
 
@@ -252,6 +266,8 @@ query result; match scope overrides it for a concrete parser item.
 - =target.locator=
 - =target.read= using the =path:10:43= source-locator grammar
 - =target.location.path= and =target.location.lineRange=
+- =target.itemKind= and =target.itemName=, or an equivalent provider-owned
+  identity under =target.fields=
 - =sourceFingerprint=
 - =parserVersion=
 - non-empty =allowedOperations=
@@ -260,6 +276,38 @@ They must not include legacy =startLine= or =endLine= fields.  When compact
 projection is lossy, the provider should emit =navigation-safe= or =read-safe=
 with a =reason= and =nextAction= instead of letting an agent infer braces,
 commas, or statement anchors from outline text.
+
+* Mutation source contract
+
+=ast-patch= is not only an =apply_patch= preflight.  For supported structural
+edits, the supported workflow must remove handwritten hunks from the prompt:
+the agent selects parser-owned identities and operation arguments, while the
+provider reads source locally, applies the AST transform, formats, reparses, and
+writes files.  Receipts distinguish three mutation sources:
+
+| =mutationSource= | Meaning | Prompt/code policy |
+|------------------+---------+--------------------|
+| =provider-native= | provider owns source read, AST transform, formatter, reparse, and file write | no source hunk in prompt; success may be quiet |
+| =agent-snippet= | agent supplies a bounded snippet, provider parses and normalizes it before mutation | snippet is allowed, but raw hunk context is not |
+| =codex-text-fallback= | unsupported structural edit or prose/text edit goes through Codex text patching | explicit fallback only, never the preferred AST path |
+
+Hook denials for protected source edits should route to =provider-native= when
+the provider advertises the operation.  They should not tell agents to compose
+manual hunks for supported AST operations.  The normal hook-guided source edit
+flow is:
+
+#+begin_src shell
+asp <language> query --from-hook direct-source-read --selector <path:start:end> --code .
+asp ast-patch template --language <language> --owner <path> --read <path:start:end> --op <operation> --field <key=value> > semantic-ast-patch.json
+asp <language> ast-patch dry-run --packet semantic-ast-patch.json .
+asp <language> ast-patch apply --packet semantic-ast-patch.json .
+asp <language> check --changed .
+#+end_src
+
+For =provider-native= operations, =snippetRequired=false=, =codeInPrompt=false=,
+and receipt output should summarize changed paths/ranges instead of printing a
+full source diff.  This is the token-saving contract: source bytes are consumed
+locally by the provider, not round-tripped through the model context.
 
 * Operation vocabulary
 
@@ -278,6 +326,7 @@ Version 1 should stay small:
 | =remove_statement= | statement node | none |
 | =remove_item= | item/module member node | none |
 | =replace_item= | item/module member node | item |
+| =split_owner_items= | contiguous top-level owner items | none; =destinationPath= and =moduleName= fields |
 
 Providers may expose additional operations under provider-owned fields, but the
 shared vocabulary above must be enough for cross-language agent guidance.
@@ -293,6 +342,8 @@ fragile text edit across many structurally identical sites.  Examples:
 - insert or remove imports across a known owner/test frontier
 - remove generated compatibility shims once the parser can prove every target
   is the same syntactic role
+- split an oversized owner by moving parser-selected top-level items into a
+  provider-created submodule without asking the agent to write source hunks
 
 Large mechanical edits must be opt-in.  A packet that wants large-change safety
 sets:
@@ -311,9 +362,10 @@ sets:
 
 The shared verifier only proves the packet is structurally bounded and
 audit-ready.  Provider-native AST dry-run should then resolve exact affected
-nodes and emit a receipt with =mechanicalEditPlan=.  In the Codex adapter,
-=mutationAvailable=false= remains mandatory, so the final mutation still goes
-through Codex =apply_patch= or a later trusted provider-native apply backend.
+nodes and emit a receipt with =mechanicalEditPlan=.  When the operation is
+advertised as =provider-native=, provider apply is the preferred mutation path.
+Codex =apply_patch= remains only an explicit =codex-text-fallback= for
+unsupported structural operations or non-code text edits.
 
 Do not use large mechanical AST patching for prose edits, formatting-only
 changes, uncertain targets, or regex-shaped rewrites.  Unknown operations must
@@ -326,11 +378,23 @@ Every AST patch attempt has the same stages:
 
 1. Resolve project root from native anchors such as =Cargo.toml=,
    =package.json=, or =pyproject.toml=, bounded by the repository root.
-2. Resolve the target locator to exactly one parser node.
+2. Resolve the target locator to exactly one parser node.  Treat the packet
+   line range as a hint.  If the range no longer parses to the expected item,
+   reparse the current file and resolve by parser-owned AST identity.  When
+   the identity is unique, continue with the current range and record
+   =target-locator-stale= plus =target-re-resolved= in the receipt
+   verification list.  When the identity is missing or ambiguous, fail with
+   =failureKind=target-locator-stale= and report candidate current locators
+   when available.
 3. Verify the target hash/precondition if supplied.
-4. Parse the snippet in the target operation's grammar context.
-5. Apply the structural transform to an in-memory syntax tree.
-6. Print or splice the changed file from provider-owned syntax facts.
+4. Parse the snippet in the target operation's grammar context when the
+   operation has =snippetRequired=true=.  Provider-native operations with
+   =snippetRequired=false= must derive changed syntax from parser-owned source
+   nodes and operation fields instead.
+5. Apply the structural transform to an in-memory syntax tree or provider-owned
+   source projection.
+6. Print or splice changed files from provider-owned syntax facts without
+   requiring the agent to author a source hunk.
 7. Run the declared language formatter capability when available.
 8. Re-parse the formatter-normalized changed file.
 9. Verify the target owner/symbol still resolves, unless the operation
@@ -346,6 +410,22 @@ that text into the language or workspace-owned style before the provider
 re-parses it.  This lets providers compress code aggressively for agent reading
 without making the compact form writable.  The write path remains: exact
 locator, native AST transform, formatter, reparse, receipt.
+Formatter-normalized text is a stable comparison substrate, not the source of
+truth.  The source of truth is always the current parser AST identity.  A
+formatter may move spans or change line counts; the provider must use the
+formatted text only after the AST identity has been resolved and must reparse
+the formatter output before any mutation is committed.
+
+Formatter execution belongs to the =asp= runtime environment, not the user's
+ambient shell.  When =asp= invokes a provider directly or through the client
+backend, it sets =PRJ_CACHE_HOME= to the project cache root and prepends
+=${PRJ_CACHE_HOME}/agent-semantic-protocol/runtime/bin= to =PATH=.  The same
+path is exposed as =ASP_RUNTIME_BIN_DIR=.  Rust =rustfmt=, TypeScript/Python
+formatter shims, and future provider-owned command shims must be resolved from
+that runtime bin directory before falling back to the ambient =PATH=.  This
+keeps formatter evidence reproducible under =.cache/agent-semantic-protocol=
+and prevents installed or user-shell formatter drift from changing AST patch
+receipts.
 
 The goal is not to show the agent fully formatted source.  Formatters were
 designed for human readers and often add indentation, blank lines, wrapping,
@@ -466,19 +546,20 @@ a global bin parity target, so its AST patch support remains workspace-managed.
 RFC 003 states that code-intelligence lanes plan and validate, while the client
 runtime owns workspace mutation.  This RFC does not remove that boundary.
 
-The Codex-compatible implementation starts as verification/dry-run only:
+The shared Codex-compatible adapter remains verification/dry-run only, while a
+trusted provider may own native mutation for operations it explicitly advertises:
 
 #+begin_example
 provider validates AST edit
-  -> provider emits receipt + diff
-client mutation tool applies diff
+  -> provider-native apply writes files when mutationSource=provider-native
+  -> or client text fallback applies only an explicit codex-text-fallback packet
   -> provider check validates result
 #+end_example
 
-Only trusted local runtimes should later expose =ast-patch apply=.
-Rust now uses that trusted-local boundary for the narrow =replace_item= path;
+Only trusted local runtimes should expose =ast-patch apply=.  Rust now uses that
+trusted-local boundary for =replace_item= and =split_owner_items=;
 Codex-compatible hook flows may still choose dry-run plus client-owned mutation
-when provider apply is not explicitly requested.
+only when the receipt marks an explicit text fallback.
 
 * Interaction with Codex apply_patch
 
@@ -496,8 +577,9 @@ syntax-shaped changes.  Parser-owned providers should use AST node identity and
 grammar-context snippet parsing instead of asking the LLM to infer missing
 braces, commas, sibling anchors, indentation, or other source layout from
 compact search output.  Compact projections are valid edit planning evidence,
-but they are not indentation-preserving patch preimages.  When the final
-mutation goes through Codex =apply_patch=, its context must come from an exact
+but they are not indentation-preserving patch preimages.  Provider-native
+operations should keep syntax construction inside the provider.  When the final
+mutation falls back to Codex =apply_patch=, its context must come from an exact
 source window for the selected locator, not from compact code.
 
 ** Experimental hook interception
@@ -514,8 +596,10 @@ is not an automatic text-patch-to-AST conversion.  The first safe behavior is:
 - return provider exact-read routes so the agent can validate the source
   preimage for the selected locator;
 - instruct the agent to build a packet with =asp ast-patch template=, run
-  provider =ast-patch dry-run=, and then use exact-read source as the Codex
-  =apply_patch= context;
+  provider =ast-patch dry-run=, and then run provider =ast-patch apply= when the
+  receipt says =mutationSource=provider-native=;
+- mention Codex =apply_patch= only for receipts that explicitly require a text
+  fallback;
 - allow non-source/prose patches to continue through ordinary Codex
   =apply_patch=.
 
@@ -523,7 +607,7 @@ This rule exists because compact AST projection intentionally removes layout
 that text patch engines depend on.  A compact locator may authorize the next
 semantic query, but it must not become a hunk preimage.  The hook therefore
 guards the source-mutation boundary while RFC 007 evolves provider-native AST
-patch dry-run and, later, trusted AST patch apply.
+patch dry-run and trusted AST patch apply.
 
 * Acceptance gates
 
@@ -541,8 +625,8 @@ patch dry-run and, later, trusted AST patch apply.
    payloads with =reasonKind=semantic-ast-patch-required=, prints an
    executable =asp ast-patch template= -> provider =ast-patch dry-run= command
    chain, and still allows non-source =README.md= patches.
-7. The emitted textual diff can be applied by the existing client mutation tool
-   and then passes =ts-harness check --changed .=.
+7. Provider-native receipts can be applied with provider =ast-patch apply=;
+   Codex =apply_patch= is present only for explicit text fallback receipts.
 8. Rust and Python providers reject unsupported operations with structured
    =unsupported-operation= receipts rather than falling back to raw text edits.
 
@@ -562,6 +646,7 @@ patch dry-run and, later, trusted AST patch apply.
    including the =renderSemanticSearchSeedPacket= safety case that triggered
    this RFC.
 8. Add sandtable traces for compact query -> exact read -> =asp ast-patch
-   template= -> provider AST patch dry-run -> Codex =apply_patch= -> check.
+   template= -> provider AST patch dry-run -> provider apply or explicit text
+   fallback -> check.
 9. Align Rust and Python with unsupported-operation receipts first, then add
    native operations.

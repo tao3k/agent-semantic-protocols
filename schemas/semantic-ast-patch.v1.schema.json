@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://agent-semantic-protocols.local/schemas/semantic-ast-patch.v1.schema.json",
   "title": "Semantic AST Patch Request",
-  "description": "Language-neutral request packet for verifying a parser-owned AST patch intent before an agent edits code. Codex adapters use this as a compact-mode safety verifier; mutation is deliberately outside the v1 Codex boundary.",
+  "description": "Language-neutral request packet for verifying or applying a parser-owned AST patch intent. Supported provider-native operations remove handwritten source hunks from the agent workflow; Codex text patches are an explicit fallback only.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -75,7 +75,8 @@
         "remove_import",
         "remove_statement",
         "remove_item",
-        "replace_item"
+        "replace_item",
+        "split_owner_items"
       ]
     },
     "identifier": {
@@ -157,13 +158,27 @@
         "expectedSnippet": {
           "type": "string"
         },
+        "mutationSource": {
+          "enum": [
+            "provider-native",
+            "agent-snippet",
+            "codex-text-fallback"
+          ]
+        },
+        "snippetRequired": {
+          "type": "boolean"
+        },
+        "codeInPrompt": {
+          "type": "boolean"
+        },
         "mechanicalKind": {
           "type": "string",
           "enum": [
             "single-node",
             "bounded-multi-node",
             "import-list",
-            "block-statements"
+            "block-statements",
+            "owner-items"
           ]
         },
         "maxEdits": {
@@ -214,7 +229,39 @@
             "required": ["expectedSnippet", "maxEdits", "mechanicalKind"],
             "properties": {
               "mechanicalKind": {
-                "enum": ["bounded-multi-node", "import-list", "block-statements"]
+                "enum": [
+                  "bounded-multi-node",
+                  "import-list",
+                  "block-statements",
+                  "owner-items"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "op": {
+                "const": "split_owner_items"
+              }
+            },
+            "required": ["op"]
+          },
+          "then": {
+            "required": ["mutationSource", "snippetRequired", "codeInPrompt"],
+            "properties": {
+              "mutationSource": {
+                "const": "provider-native"
+              },
+              "snippetRequired": {
+                "const": false
+              },
+              "codeInPrompt": {
+                "const": false
+              },
+              "mechanicalKind": {
+                "const": "owner-items"
               }
             }
           }

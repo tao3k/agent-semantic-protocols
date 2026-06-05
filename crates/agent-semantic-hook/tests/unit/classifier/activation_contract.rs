@@ -56,8 +56,12 @@ fn activation_rejects_manifest_digest_drift() {
         activation_value("sha256:0000000000000000000000000000000000000000000000000000000000000000");
 
     let error = parse_activation(&activation.to_string(), &[manifest]).unwrap_err();
+    let error_text = format!("{error:?}");
 
-    assert!(format!("{error:?}").contains("manifest digest mismatch"));
+    assert!(
+        error_text.contains("provider manifest digest drift"),
+        "{error_text}"
+    );
 }
 
 #[test]

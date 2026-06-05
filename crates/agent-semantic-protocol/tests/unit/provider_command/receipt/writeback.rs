@@ -23,7 +23,7 @@ fn client_search_miss_writes_prompt_output_cache_for_next_hit() {
     let first_output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .current_dir(&root)
         .env("PATH", &bin_dir)
-        .env("PRJ_HOME_CACHE", root.join(".cache"))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args([
             "rust",
             "search",
@@ -62,12 +62,58 @@ fn client_search_miss_writes_prompt_output_cache_for_next_hit() {
         manifest_text.contains("requestFingerprint"),
         "{manifest_text}"
     );
+    assert!(manifest_text.contains(".command.json"), "{manifest_text}");
+
+    let manifest: Value = serde_json::from_str(&manifest_text).expect("manifest JSON");
+    let artifact_ids = manifest["generations"][0]["artifactIds"]
+        .as_array()
+        .expect("artifact ids");
+    let prompt_artifact_id = artifact_ids
+        .iter()
+        .filter_map(Value::as_str)
+        .find(|artifact_id| {
+            artifact_id.starts_with("prompt-output/") && artifact_id.ends_with(".txt")
+        })
+        .expect("prompt-output artifact id");
+    let command_artifact_id = artifact_ids
+        .iter()
+        .filter_map(Value::as_str)
+        .find(|artifact_id| {
+            artifact_id.starts_with("prompt-output/") && artifact_id.ends_with(".command.json")
+        })
+        .expect("prompt-output command artifact id");
+    let command_artifact_path = cache_root(&root)
+        .parent()
+        .expect("cache parent")
+        .join("artifacts")
+        .join(command_artifact_id);
+    let command_artifact: Value = serde_json::from_slice(
+        &std::fs::read(command_artifact_path).expect("read command artifact"),
+    )
+    .expect("command artifact JSON");
+    assert_eq!(
+        command_artifact["schemaId"],
+        "agent.semantic-protocols.client-prompt-output-command"
+    );
+    assert_eq!(
+        command_artifact["promptOutputArtifactId"],
+        prompt_artifact_id
+    );
+    assert_eq!(
+        command_artifact["providerCommands"][0]["providerId"],
+        "rs-harness"
+    );
+    let argv = command_artifact["providerCommands"][0]["argv"]
+        .as_array()
+        .expect("provider argv");
+    assert!(argv.iter().any(|arg| arg.as_str() == Some("search")));
+    assert!(argv.iter().any(|arg| arg.as_str() == Some("prime")));
 
     write_marker_provider(&bin_dir, "rs-harness", &called);
     let second_output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .current_dir(&root)
         .env("PATH", &bin_dir)
-        .env("PRJ_HOME_CACHE", root.join(".cache"))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args([
             "rust",
             "search",
@@ -100,7 +146,7 @@ fn client_search_miss_writes_prompt_output_cache_for_next_hit() {
     let invalidate_output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .current_dir(&root)
         .env("PATH", &bin_dir)
-        .env("PRJ_HOME_CACHE", root.join(".cache"))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args(["cache", "invalidate", "--receipt-json"])
         .output()
         .expect("run cache invalidate");
@@ -123,7 +169,7 @@ fn client_search_miss_writes_prompt_output_cache_for_next_hit() {
     let third_output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .current_dir(&root)
         .env("PATH", &bin_dir)
-        .env("PRJ_HOME_CACHE", root.join(".cache"))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args([
             "rust",
             "search",
@@ -154,7 +200,7 @@ fn client_search_miss_writes_prompt_output_cache_for_next_hit() {
     let fourth_output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .current_dir(&root)
         .env("PATH", &bin_dir)
-        .env("PRJ_HOME_CACHE", root.join(".cache"))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args([
             "rust",
             "search",
@@ -190,7 +236,7 @@ fn client_search_miss_writes_prompt_output_cache_for_next_hit() {
     let fifth_output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .current_dir(&root)
         .env("PATH", &bin_dir)
-        .env("PRJ_HOME_CACHE", root.join(".cache"))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args([
             "rust",
             "search",
@@ -231,7 +277,7 @@ fn client_search_receipt_reports_warm_provider_when_matching_generation_exists()
     let import_output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .current_dir(&root)
         .env("PATH", &bin_dir)
-        .env("PRJ_HOME_CACHE", root.join(".cache"))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args(["cache", "import"])
         .output()
         .expect("run asp cache import");
@@ -244,7 +290,7 @@ fn client_search_receipt_reports_warm_provider_when_matching_generation_exists()
     let output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .current_dir(&root)
         .env("PATH", &bin_dir)
-        .env("PRJ_HOME_CACHE", root.join(".cache"))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args([
             "rust",
             "search",
@@ -316,7 +362,7 @@ esac
     let first_search = Command::new(env!("CARGO_BIN_EXE_asp"))
         .current_dir(&search_root)
         .env("PATH", &search_bin_dir)
-        .env("PRJ_HOME_CACHE", search_root.join(".cache"))
+        .env("PRJ_CACHE_HOME", search_root.join(".cache"))
         .args([
             "rust",
             "search",
@@ -373,7 +419,7 @@ esac
     let second_search = Command::new(env!("CARGO_BIN_EXE_asp"))
         .current_dir(&search_root)
         .env("PATH", &search_bin_dir)
-        .env("PRJ_HOME_CACHE", search_root.join(".cache"))
+        .env("PRJ_CACHE_HOME", search_root.join(".cache"))
         .args([
             "rust",
             "search",
@@ -450,7 +496,7 @@ esac
     let first_query = Command::new(env!("CARGO_BIN_EXE_asp"))
         .current_dir(&query_root)
         .env("PATH", &query_bin_dir)
-        .env("PRJ_HOME_CACHE", query_root.join(".cache"))
+        .env("PRJ_CACHE_HOME", query_root.join(".cache"))
         .args([
             "rust",
             "query",
@@ -501,7 +547,7 @@ esac
     let second_query = Command::new(env!("CARGO_BIN_EXE_asp"))
         .current_dir(&query_root)
         .env("PATH", &query_bin_dir)
-        .env("PRJ_HOME_CACHE", query_root.join(".cache"))
+        .env("PRJ_CACHE_HOME", query_root.join(".cache"))
         .args([
             "rust",
             "query",

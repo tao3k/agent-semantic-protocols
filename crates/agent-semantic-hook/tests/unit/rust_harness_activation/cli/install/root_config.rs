@@ -16,6 +16,9 @@ fn cli_install_writes_root_owned_codex_hook_config() {
     write_legacy_hook_cache(&root);
     write_incompatible_current_hook_events(&root);
     write_legacy_semantic_agent_protocol_config(&root);
+    let canonical_config =
+        std::fs::canonicalize(root.join(".codex/config.toml")).expect("canonical config path");
+    write_legacy_codex_user_trust_state(&codex_home, &canonical_config);
 
     let output = protocol_command()
         .env("PATH", &path)
@@ -50,15 +53,42 @@ fn cli_install_writes_root_owned_codex_hook_config() {
     assert_enabled_features(&parsed_config);
     let user_config =
         std::fs::read_to_string(codex_home.join("config.toml")).expect("user trust config");
+    assert!(!user_config.contains("semantic-agent-hook trusted hook state"));
+    assert!(!user_config.contains("stale-sandbox"));
+    assert!(user_config.contains("agent-semantic-protocol trusted hook state"));
     let parsed_user_config =
         toml::from_str::<toml::Value>(&user_config).expect("user trust config is valid TOML");
-    assert_installed_hook_state(
-        &parsed_user_config,
-        &std::fs::canonicalize(root.join(".codex/config.toml")).expect("canonical config path"),
-    );
+    assert_installed_hook_state(&parsed_user_config, &canonical_config);
     assert_doctor(&root, &path, &codex_home);
     assert_installed_activation(&root);
     let _ = std::fs::remove_dir_all(&root);
+}
+
+fn write_legacy_codex_user_trust_state(
+    codex_home: &std::path::Path,
+    config_path: &std::path::Path,
+) {
+    std::fs::create_dir_all(codex_home).expect("create fake Codex home");
+    let stale_config_path = codex_home.join("stale-sandbox/.codex/config.toml");
+    std::fs::write(
+        codex_home.join("config.toml"),
+        format!(
+            r#"# BEGIN semantic-agent-hook trusted hook state: {config_path}
+[hooks.state."{config_path}:PreToolUse"]
+trusted = true
+ask = false
+# END semantic-agent-hook trusted hook state
+
+# BEGIN agent-semantic-protocol trusted hook state: {stale_config_path}
+[hooks.state."{stale_config_path}:pre_tool_use:0:0"]
+trusted_hash = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+# END agent-semantic-protocol trusted hook state
+"#,
+            config_path = config_path.display(),
+            stale_config_path = stale_config_path.display()
+        ),
+    )
+    .expect("write legacy user trust state");
 }
 
 fn write_legacy_hook_cache(root: &std::path::Path) {
@@ -304,6 +334,8 @@ fn assert_client_config(root: &std::path::Path) {
         std::fs::read_to_string(root.join(".codex/agent-semantic-protocol/hooks/config.toml"))
             .expect("installed client hook config");
     assert!(client_config.contains("schemaId = "));
+    assert!(client_config.contains("[experimental.semanticAstPatch]"));
+    assert!(client_config.contains("enabled = false"));
     assert!(client_config.contains("# [[rules]]"));
     assert!(!client_config.contains("\n[[rules]]"));
     toml::from_str::<toml::Value>(&client_config).expect("client hook config is valid TOML");

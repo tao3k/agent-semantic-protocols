@@ -4,13 +4,16 @@ mod activation_store;
 mod cache_paths;
 mod classifier;
 mod codex_config;
+mod codex_trust;
 mod command;
 mod event_state;
+mod executable;
 mod hook_config;
 mod profile_registry;
 mod protocol;
 mod protocol_activation;
 mod provider_manifest;
+mod runtime_profile;
 pub mod source_access;
 mod source_dump_range;
 mod source_selector;
@@ -20,7 +23,10 @@ pub use crate::activation_store::{
     default_activation_path, discover_activation_path, load_activation, load_or_sync_activation,
     parse_hook_activation, write_activation,
 };
-pub use cache_paths::{project_hook_cache_dir, project_hook_state_dir};
+pub use cache_paths::{
+    PRJ_CACHE_HOME_ENV, PRJ_HOME_CACHE_ENV, ProjectCacheSource, ProjectRuntimeLayout,
+    project_hook_cache_dir, project_hook_state_dir, project_runtime_layout,
+};
 pub use classifier::{HookClassificationRequest, classify_hook, classify_hook_with_config};
 pub use codex_config::{
     CodexUserTrustStatus, ROOT_BLOCK_BEGIN, ROOT_BLOCK_END, claude_hook_block, codex_hook_block,
@@ -50,6 +56,16 @@ pub use protocol_activation::{
     provider_manifest_digest,
 };
 pub use provider_manifest::{build_default_activation, builtin_provider_manifests};
+pub use runtime_profile::{
+    RUNTIME_PROFILES_PROTOCOL_ID, RUNTIME_PROFILES_PROTOCOL_VERSION, RUNTIME_PROFILES_SCHEMA_ID,
+    RUNTIME_PROFILES_SCHEMA_VERSION, RuntimeProfiles, RuntimeProfilesGeneratedBy,
+    RuntimeProviderHealth, RuntimeProviderHealthStatus, RuntimeProviderProfile,
+    default_runtime_profiles_path, load_or_refresh_runtime_profiles, load_runtime_profiles,
+    runtime_profile_command_argv, runtime_profile_invocation, runtime_profiles_path_for_activation,
+    runtime_profiles_path_from_cache_home, runtime_project_root_for_activation,
+    write_runtime_profiles, write_runtime_profiles_for_activation,
+    write_runtime_profiles_for_runtime,
+};
 pub(crate) use source_selector::{SourceSelectorMatch, collect_source_selector_matches};
 pub(crate) use tool_action::{
     OperationIntent, ToolAction, collect_tool_actions, payload_string, subject_for_action,

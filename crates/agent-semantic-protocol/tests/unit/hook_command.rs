@@ -47,7 +47,7 @@ fn hook_install_help_is_non_mutating() {
     let output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .current_dir(&root)
         .env("PATH", "")
-        .env("PRJ_HOME_CACHE", root.join(".cache"))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args(["hook", "install", "--help"])
         .output()
         .expect("run asp hook install --help");

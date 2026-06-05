@@ -44,10 +44,19 @@
     },
     "method": {
       "type": "string",
-      "pattern": "^(search|query|check|proof|review|evidence|ast-patch|agent)/[a-z][a-z0-9_-]*$"
+      "pattern": "^(?:query|(search|query|check|proof|review|evidence|ast-patch|agent)/[a-z][a-z0-9_-]*)$"
     },
     "command": {
-      "enum": ["search", "query", "check", "proof", "review", "evidence", "ast-patch", "agent"]
+      "enum": [
+        "search",
+        "query",
+        "check",
+        "proof",
+        "review",
+        "evidence",
+        "ast-patch",
+        "agent"
+      ]
     },
     "outputSchemaId": {
       "type": "string",
@@ -60,7 +69,11 @@
     "capabilityDescriptor": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["languageId", "namespace", "name"],
+      "required": [
+        "languageId",
+        "namespace",
+        "name"
+      ],
       "properties": {
         "languageId": {
           "$ref": "#/$defs/identifier"
@@ -76,13 +89,20 @@
     "fallbackDescriptor": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "trigger"],
+      "required": [
+        "name",
+        "trigger"
+      ],
       "properties": {
         "name": {
           "$ref": "#/$defs/identifier"
         },
         "trigger": {
-          "enum": ["query-miss", "item-query-miss", "path-only-owner"]
+          "enum": [
+            "query-miss",
+            "item-query-miss",
+            "path-only-owner"
+          ]
         },
         "appliesToPipes": {
           "type": "array",
@@ -100,7 +120,11 @@
     "schemaRegistration": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["schemaId", "schemaVersion", "path"],
+      "required": [
+        "schemaId",
+        "schemaVersion",
+        "path"
+      ],
       "properties": {
         "schemaId": {
           "type": "string",
@@ -180,7 +204,12 @@
     "methodDescriptor": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["method", "command", "supportsJson", "supportsCompact"],
+      "required": [
+        "method",
+        "command",
+        "supportsJson",
+        "supportsCompact"
+      ],
       "allOf": [
         {
           "if": {
@@ -189,7 +218,9 @@
                 "pattern": "^search/"
               }
             },
-            "required": ["method"]
+            "required": [
+              "method"
+            ]
           },
           "then": {
             "required": [
@@ -213,13 +244,17 @@
           "if": {
             "properties": {
               "method": {
-                "pattern": "^query/"
+                "pattern": "^query(?:/|$)"
               }
             },
-            "required": ["method"]
+            "required": [
+              "method"
+            ]
           },
           "then": {
-            "required": ["outputSchemaIds"],
+            "required": [
+              "outputSchemaIds"
+            ],
             "properties": {
               "command": {
                 "const": "query"
@@ -229,7 +264,9 @@
               }
             },
             "not": {
-              "required": ["view"]
+              "required": [
+                "view"
+              ]
             }
           }
         },
@@ -240,7 +277,9 @@
                 "pattern": "^check/"
               }
             },
-            "required": ["method"]
+            "required": [
+              "method"
+            ]
           },
           "then": {
             "properties": {
@@ -249,7 +288,9 @@
               }
             },
             "not": {
-              "required": ["view"]
+              "required": [
+                "view"
+              ]
             }
           }
         },
@@ -260,7 +301,9 @@
                 "pattern": "^agent/"
               }
             },
-            "required": ["method"]
+            "required": [
+              "method"
+            ]
           },
           "then": {
             "properties": {
@@ -269,7 +312,9 @@
               }
             },
             "not": {
-              "required": ["view"]
+              "required": [
+                "view"
+              ]
             }
           }
         },
@@ -280,10 +325,14 @@
                 "pattern": "^proof/"
               }
             },
-            "required": ["method"]
+            "required": [
+              "method"
+            ]
           },
           "then": {
-            "required": ["outputSchemaIds"],
+            "required": [
+              "outputSchemaIds"
+            ],
             "properties": {
               "command": {
                 "const": "proof"
@@ -293,7 +342,9 @@
               }
             },
             "not": {
-              "required": ["view"]
+              "required": [
+                "view"
+              ]
             }
           }
         },
@@ -304,10 +355,14 @@
                 "pattern": "^review/"
               }
             },
-            "required": ["method"]
+            "required": [
+              "method"
+            ]
           },
           "then": {
-            "required": ["outputSchemaIds"],
+            "required": [
+              "outputSchemaIds"
+            ],
             "properties": {
               "command": {
                 "const": "review"
@@ -317,7 +372,9 @@
               }
             },
             "not": {
-              "required": ["view"]
+              "required": [
+                "view"
+              ]
             }
           }
         },
@@ -328,10 +385,14 @@
                 "pattern": "^evidence/"
               }
             },
-            "required": ["method"]
+            "required": [
+              "method"
+            ]
           },
           "then": {
-            "required": ["outputSchemaIds"],
+            "required": [
+              "outputSchemaIds"
+            ],
             "properties": {
               "command": {
                 "const": "evidence"
@@ -341,7 +402,9 @@
               }
             },
             "not": {
-              "required": ["view"]
+              "required": [
+                "view"
+              ]
             }
           }
         },
@@ -352,10 +415,15 @@
                 "pattern": "^ast-patch/"
               }
             },
-            "required": ["method"]
+            "required": [
+              "method"
+            ]
           },
           "then": {
-            "required": ["outputSchemaIds", "mutationAvailable"],
+            "required": [
+              "outputSchemaIds",
+              "mutationAvailable"
+            ],
             "properties": {
               "command": {
                 "const": "ast-patch"
@@ -368,7 +436,9 @@
               }
             },
             "not": {
-              "required": ["view"]
+              "required": [
+                "view"
+              ]
             }
           }
         },
@@ -382,10 +452,15 @@
                 "const": true
               }
             },
-            "required": ["method", "supportsJson"]
+            "required": [
+              "method",
+              "supportsJson"
+            ]
           },
           "then": {
-            "required": ["outputSchemaIds"],
+            "required": [
+              "outputSchemaIds"
+            ],
             "properties": {
               "outputSchemaIds": {
                 "minItems": 1
@@ -412,6 +487,15 @@
             "$ref": "#/$defs/outputSchemaId"
           }
         },
+        "packetSchemas": {
+          "type": "array",
+          "description": "Short packet schema names advertised by this method, for example semantic-tree-sitter-query.v1.",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]+\\.v[0-9]+$"
+          }
+        },
         "requiresQuery": {
           "type": "boolean"
         },
@@ -424,18 +508,67 @@
         "supportsQuerySet": {
           "type": "boolean"
         },
+        "queryInputForms": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "selector",
+              "code-shaped",
+              "catalog-id",
+              "s-expression"
+            ]
+          }
+        },
+        "queryCatalogs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/queryCatalogDescriptor"
+          }
+        },
+        "grammarId": {
+          "type": "string",
+          "pattern": "^tree-sitter-[a-z][a-z0-9_-]*$"
+        },
+        "grammarProfileVersion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "grammarProfileSchema": {
+          "type": "string",
+          "pattern": "^semantic-tree-sitter-grammar-profile\\.v[0-9]+$"
+        },
+        "grammarProfilePath": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*\\.json$",
+          "description": "Canonical grammar profile path/handle. When the provider embeds profile source, this is not a downstream filesystem requirement."
+        },
+        "cacheReplay": {
+          "type": "boolean"
+        },
         "acceptedQuerySetSelectors": {
           "type": "array",
           "uniqueItems": true,
           "items": {
-            "enum": ["exact-set", "prefix-set", "fuzzy-set", "stdin-path-set"]
+            "enum": [
+              "exact-set",
+              "prefix-set",
+              "fuzzy-set",
+              "stdin-path-set"
+            ]
           }
         },
         "querySetScopes": {
           "type": "array",
           "uniqueItems": true,
           "items": {
-            "enum": ["project", "package", "owner"]
+            "enum": [
+              "project",
+              "package",
+              "owner"
+            ]
           }
         },
         "acceptedPipes": {
@@ -490,7 +623,14 @@
           "type": "array",
           "uniqueItems": true,
           "items": {
-            "enum": ["compact", "json", "code", "names", "outline", "read-packet"]
+            "enum": [
+              "compact",
+              "json",
+              "code",
+              "names",
+              "outline",
+              "read-packet"
+            ]
           }
         },
         "supportsJson": {
@@ -501,6 +641,46 @@
         },
         "mutationAvailable": {
           "type": "boolean"
+        }
+      }
+    },
+    "queryCatalogDescriptor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "path",
+        "captures"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.-]*$"
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*\\.scm$",
+          "description": "Canonical catalog path/handle. When sourceDelivery is provider-binary-embedded, this is not a downstream filesystem requirement."
+        },
+        "captures": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9_.-]*$"
+          }
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sourceDelivery": {
+          "enum": [
+            "provider-binary-embedded"
+          ],
+          "description": "How the provider makes this canonical .scm source available to downstream clients. provider-binary-embedded means the provider binary carries the source and does not require package source files on the target machine."
         }
       }
     }

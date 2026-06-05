@@ -16,6 +16,8 @@ mod client_hook_config_runtime;
 mod client_hook_desktop_smoke;
 #[path = "unit/graph_render.rs"]
 mod graph_render;
+#[path = "unit/healthcheck.rs"]
+mod healthcheck;
 
 #[path = "unit/hook_command.rs"]
 mod hook_command;

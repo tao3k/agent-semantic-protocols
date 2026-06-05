@@ -6,6 +6,10 @@ schemaVersion = "1"
 protocolId = "agent.semantic-protocols.hook"
 protocolVersion = "1"
 
+# AST patch routing is experimental and disabled for generated Codex hook configs.
+[experimental.semanticAstPatch]
+enabled = false
+
 # Uncomment and edit this example to add a project-local rule.
 # [[rules]]
 # id = "deny-rust-raw-search"

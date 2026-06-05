@@ -76,6 +76,26 @@
       "type": ["string", "null"],
       "minLength": 1
     },
+    "syntaxArtifactId": {
+      "description": "semantic-tree-sitter-query artifact id used or written by a query route, when syntax ABI replay is involved.",
+      "type": ["string", "null"],
+      "minLength": 1
+    },
+    "packetBytes": {
+      "description": "Size in bytes of the validated provider packet or replayed artifact packet when available.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "sqliteReadCount": {
+      "description": "Count of local SQLite rows read for this client request when the local cache backend was consulted.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "sqliteWriteCount": {
+      "description": "Count of local SQLite rows written or refreshed for this client request.",
+      "type": "integer",
+      "minimum": 0
+    },
     "elapsedMs": {
       "type": "integer",
       "minimum": 0

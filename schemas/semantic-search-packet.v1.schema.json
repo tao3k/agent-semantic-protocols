@@ -209,6 +209,30 @@
         "$ref": "semantic-handle.v1.schema.json#/$defs/semanticHandle"
       }
     },
+    "syntaxQueryRef": {
+      "type": "string",
+      "description": "Reference to the semantic-tree-sitter-query artifact that informed this packet.",
+      "minLength": 1
+    },
+    "syntaxMatchRefs": {
+      "type": "array",
+      "description": "Match ids from a semantic-tree-sitter-query artifact that explain selected search facts.",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "syntaxCaptureRefs": {
+      "type": "array",
+      "description": "Capture ids from a semantic-tree-sitter-query artifact that explain selected search facts.",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "syntaxAnchor": {
+      "$ref": "#/$defs/syntaxAnchor"
+    },
     "reasoningProfiles": {
       "type": "array",
       "items": {
@@ -1139,6 +1163,31 @@
         }
       }
     },
+    "syntaxAnchor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "nodeType",
+        "location"
+      ],
+      "properties": {
+        "nodeType": {
+          "type": "string",
+          "minLength": 1
+        },
+        "field": {
+          "type": "string",
+          "minLength": 1
+        },
+        "capture": {
+          "type": "string",
+          "minLength": 1
+        },
+        "location": {
+          "$ref": "#/$defs/location"
+        }
+      }
+    },
     "header": {
       "type": "object",
       "additionalProperties": false,
@@ -1469,6 +1518,15 @@
         }
       }
     },
+    "reasoningProfileName": {
+      "enum": [
+        "owner-query",
+        "query-deps",
+        "owner-tests",
+        "finding-frontier",
+        "feature-cfg"
+      ]
+    },
     "reasoningProfile": {
       "type": "object",
       "additionalProperties": false,
@@ -1479,8 +1537,7 @@
       ],
       "properties": {
         "profile": {
-          "type": "string",
-          "pattern": "^[a-z][a-z0-9_-]*$"
+          "$ref": "#/$defs/reasoningProfileName"
         },
         "description": {
           "type": "string",

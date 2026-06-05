@@ -49,6 +49,26 @@ tool = "Bash"
 }
 
 #[test]
+fn doctor_reports_runtime_profile_health() {
+    let root = temp_project_root("doctor-runtime-profiles");
+    let activation_path = write_activation(&root);
+    let bin_dir = root.join(".doctor-bin");
+    write_executable(&bin_dir, "rs-harness", "#!/bin/sh\nexit 0\n");
+
+    let output = run_doctor_with_env(&root, &activation_path, &[], &[], Some(&bin_dir));
+
+    assert!(output.status.success(), "stderr: {}", stderr(&output));
+    let stdout = stdout(&output);
+    assert!(
+        stdout.contains("runtimeProfiles=.cache/agent-semantic-protocol/runtime/profiles.json")
+    );
+    assert!(stdout.contains("runtimeProfileStatus=available"));
+    assert!(stdout.contains("resolvedBinary="));
+    assert!(stdout.contains("/rs-harness"));
+    std::fs::remove_dir_all(root).expect("cleanup temp project root");
+}
+
+#[test]
 fn doctor_reports_enforced_when_codex_probe_observes_deny() {
     let root = temp_project_root("doctor-codex-probe-deny");
     let activation_path = write_activation(&root);
@@ -209,6 +229,8 @@ fn run_doctor_with_env(
     if let Some(path_prefix) = path_prefix {
         command.env("PATH", prepend_path(path_prefix));
     }
+    command.env_remove("PRJ_CACHE_HOME");
+    command.env_remove("PRJ_HOME_CACHE");
     command.output().expect("run asp hook doctor")
 }
 
@@ -227,6 +249,7 @@ fn temp_project_root(name: &str) -> PathBuf {
         .as_nanos();
     let root = std::env::temp_dir().join(format!("agent-semantic-hook-{name}-{unique}"));
     std::fs::create_dir_all(&root).expect("create temp project root");
+    std::fs::create_dir_all(root.join(".git")).expect("create git marker");
     root
 }
 

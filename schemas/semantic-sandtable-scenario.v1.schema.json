@@ -558,18 +558,35 @@
           "type": "string",
           "pattern": "^[a-z][a-z0-9_-]*$"
         },
-      "commandContains": {
-        "$ref": "#/$defs/stringList"
-      },
-      "outputContains": {
-        "$ref": "#/$defs/stringList"
-      },
-      "outputNotContains": {
-        "$ref": "#/$defs/stringList"
-      },
-      "routeCommandContains": {
-        "$ref": "#/$defs/stringList"
-      },
+        "commandContains": {
+          "$ref": "#/$defs/stringList"
+        },
+        "outputContains": {
+          "$ref": "#/$defs/stringList"
+        },
+        "outputNotContains": {
+          "$ref": "#/$defs/stringList"
+        },
+        "primeOutput": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "requiresStructureStatus": {
+              "type": "boolean"
+            },
+            "entries": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string",
+                "pattern": "^entries=(?:owner-query|query-deps|owner-tests|finding-frontier|feature-cfg)\\([^)]*\\)(?:,(?:owner-query|query-deps|owner-tests|finding-frontier|feature-cfg)\\([^)]*\\))*$"
+              }
+            }
+          }
+        },
+        "routeCommandContains": {
+          "$ref": "#/$defs/stringList"
+        },
         "routeCommandNotContains": {
           "$ref": "#/$defs/stringList"
         },

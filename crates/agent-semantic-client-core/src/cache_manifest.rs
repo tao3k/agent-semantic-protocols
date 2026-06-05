@@ -7,7 +7,7 @@ use crate::types::{
     CacheArtifactId, CacheGenerationId, CacheStatus, ClientCachePath, LanguageId, ProviderId,
     SemanticProtocolId, SemanticProtocolVersion, SemanticSchemaId, SemanticSchemaVersion,
 };
-use agent_semantic_hook::project_hook_state_dir;
+use agent_semantic_runtime::project_client_cache_dir as runtime_project_client_cache_dir;
 use serde::{Deserialize, Serialize};
 
 /// Schema id for `agent-semantic-client-cache-manifest.v1`.
@@ -278,44 +278,10 @@ pub struct ClientCacheFileHash {
 
 /// Return the agent semantic client cache directory for an activated project.
 ///
-/// The hook runtime owns the primary cache-root lookup. When a fixture or
-/// already-activated non-git project has a local `.cache/agent-semantic-protocol`
-/// tree, reuse that activation cache so facade-routed client calls can share
-/// the same manifest and SQLite DB.
+/// `agent-semantic-runtime` owns project identity and state storage layout so
+/// client, hook, and provider receipts resolve the same manifest and SQLite DB.
 pub fn project_client_cache_dir(project_root: impl AsRef<Path>) -> Result<PathBuf, String> {
-    let project_root = project_root.as_ref();
-    let project_protocol_cache_dir = project_root.join(".cache/agent-semantic-protocol");
-    if project_protocol_cache_dir
-        .join("hooks/activation.json")
-        .is_file()
-        || project_has_cache_identity(project_root)
-    {
-        return Ok(project_protocol_cache_dir.join("client"));
-    }
-
-    match project_hook_state_dir(project_root) {
-        Ok(hook_state_dir) => {
-            let protocol_cache_dir = hook_state_dir.parent().ok_or_else(|| {
-                format!(
-                    "hook state dir has no protocol cache parent: {}",
-                    hook_state_dir.display()
-                )
-            })?;
-            Ok(protocol_cache_dir.join("client"))
-        }
-        Err(error) => Err(error),
-    }
-}
-
-fn project_has_cache_identity(project_root: &Path) -> bool {
-    [
-        "Cargo.toml",
-        "package.json",
-        "pyproject.toml",
-        "Project.toml",
-    ]
-    .iter()
-    .any(|manifest| project_root.join(manifest).is_file())
+    runtime_project_client_cache_dir(project_root)
 }
 
 /// Resolve the JSON cache manifest path for a project.

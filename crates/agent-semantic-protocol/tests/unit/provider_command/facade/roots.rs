@@ -1,8 +1,6 @@
 use crate::provider_command::support::{
-    provider, temp_project_root, write_activation, write_echo_provider,
+    asp_command, prepend_path, provider, temp_project_root, write_activation, write_echo_provider,
 };
-use std::env;
-use std::process::Command;
 
 #[test]
 fn rust_search_facade_fans_out_multiple_trailing_scope_roots() {
@@ -14,9 +12,8 @@ fn rust_search_facade_fans_out_multiple_trailing_scope_roots() {
     write_echo_provider(&bin_dir, "rs-harness", "rs");
     write_activation(&root, &[provider("rust", Vec::new())]);
 
-    let output = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .current_dir(&root)
-        .env("PATH", &bin_dir)
+    let output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
         .args([
             "rust",
             "search",

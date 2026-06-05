@@ -58,6 +58,20 @@ class SemanticReadPacketSchemaTests(unittest.TestCase):
     def test_minimal_provider_read_packet_is_valid(self) -> None:
         self.assertEqual([], self.validation_errors(semantic_read_minimal_packet()))
 
+    def test_read_packet_accepts_tree_sitter_syntax_refs(self) -> None:
+        packet = semantic_read_minimal_packet()
+        packet["syntaxQueryRef"] = "semantic-tree-sitter-query/rust-owner-items.v1"
+        packet["syntaxMatchRefs"] = ["match.1"]
+        packet["syntaxCaptureRefs"] = ["capture.1"]
+        packet["syntaxAnchor"] = {
+            "nodeType": "function_item",
+            "field": "name",
+            "capture": "function.name",
+            "location": {"path": "src/lib.rs", "lineRange": "6:6"},
+        }
+
+        self.assertEqual([], self.validation_errors(packet))
+
     def test_read_plan_frontier_packet_is_valid_without_source_windows_or_symbols(self) -> None:
         packet = semantic_read_minimal_packet()
         packet.pop("sourceWindows")
@@ -65,9 +79,10 @@ class SemanticReadPacketSchemaTests(unittest.TestCase):
         packet["readPlan"] = {
             "mode": "range-frontier",
             "code": False,
-            "reason": "wide-selector",
+            "reason": "locator-frontier",
             "maxWindowLines": 40,
             "algorithm": "range-split",
+            "syn": "function_item/name",
             "ranges": [
                 {
                     "path": "src/lib.rs",

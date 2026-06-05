@@ -44,6 +44,9 @@ pub(crate) fn raw_search_plan<'a>(
         return None;
     }
     let parsed = ParsedRawSearch::from_tokens(tokens)?;
+    if !parsed.scope.has_raw_source_selector(registry) {
+        return None;
+    }
     Some(RawSearchPlan {
         providers: parsed.scope.matching_providers(registry),
         terms: parsed.terms,
@@ -149,7 +152,13 @@ pub(super) fn raw_search_stage(tokens: &[String]) -> Option<(&[String], RawSearc
             .position(|token| is_separator(token))
             .map(|offset| start + offset)
             .unwrap_or(tokens.len());
-        let stage = &tokens[start..end];
+        let mut stage = &tokens[start..end];
+        while stage
+            .first()
+            .is_some_and(|token| token.contains('=') && !token.starts_with('-'))
+        {
+            stage = &stage[1..];
+        }
         if let Some(kind) = raw_search_kind(stage) {
             return Some((stage, kind));
         }
@@ -538,23 +547,25 @@ impl RawSearchScope {
         self.paths.dedup();
     }
 
+    fn has_raw_source_selector(&self, registry: &HookRuntime) -> bool {
+        let mut providers = Vec::new();
+        self.push_raw_source_selector_providers(registry, &mut providers);
+        !providers.is_empty()
+    }
+
     fn matching_providers<'a>(&self, registry: &'a HookRuntime) -> Vec<&'a ActivatedProvider> {
         let mut providers = Vec::new();
-        self.push_language_filter_providers(registry, &mut providers);
-
-        if self.has_language_filter() {
-            if providers.is_empty() {
-                self.push_explicit_source_path_providers(registry, &mut providers);
-            }
-            return providers;
-        }
-
-        if self.implicit_workspace || self.paths.iter().any(|path| is_workspace_root(path)) {
-            return registry.providers.iter().collect();
-        }
-
-        self.push_path_providers(registry, &mut providers);
+        self.push_raw_source_selector_providers(registry, &mut providers);
         providers
+    }
+
+    fn push_raw_source_selector_providers<'a>(
+        &self,
+        registry: &'a HookRuntime,
+        providers: &mut Vec<&'a ActivatedProvider>,
+    ) {
+        self.push_language_filter_providers(registry, providers);
+        self.push_explicit_source_path_providers(registry, providers);
     }
 
     fn push_language_filter_providers<'a>(
@@ -576,7 +587,7 @@ impl RawSearchScope {
             }
         }
         for glob in &self.globs {
-            for matched in registry.providers_for_selector(glob) {
+            for matched in registry.providers_for_raw_search_selector(glob) {
                 push_provider_once(providers, matched.provider);
             }
         }
@@ -588,27 +599,8 @@ impl RawSearchScope {
         providers: &mut Vec<&'a ActivatedProvider>,
     ) {
         for path in &self.paths {
-            for matched in registry.providers_for_selector(path) {
+            for matched in registry.providers_for_raw_search_selector(path) {
                 push_provider_once(providers, matched.provider);
-            }
-        }
-    }
-
-    fn push_path_providers<'a>(
-        &self,
-        registry: &'a HookRuntime,
-        providers: &mut Vec<&'a ActivatedProvider>,
-    ) {
-        for path in &self.paths {
-            for matched in registry.providers_for_selector(path) {
-                push_provider_once(providers, matched.provider);
-            }
-            for provider in registry
-                .providers
-                .iter()
-                .filter(|provider| provider.matches_search_token(path))
-            {
-                push_provider_once(providers, provider);
             }
         }
     }
@@ -666,10 +658,6 @@ fn raw_search_option_takes_value(token: &str) -> bool {
             | "--threads"
             | "-j"
     )
-}
-
-fn is_workspace_root(path: &str) -> bool {
-    matches!(path, "." | "./")
 }
 
 fn is_common_source_scope(path: &str) -> bool {

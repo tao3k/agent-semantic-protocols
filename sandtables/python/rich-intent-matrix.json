@@ -85,7 +85,8 @@
       "expect": {
         "lineProtocol": true,
         "stdoutContains": [
-          "[search-prime]"
+          "[search-prime]",
+          "entries="
         ],
         "maxStdoutLinesWarn": 8,
         "maxElapsedMsWarn": 9000

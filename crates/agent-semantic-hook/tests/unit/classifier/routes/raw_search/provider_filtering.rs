@@ -6,19 +6,17 @@ use super::support::{prefixed_registry, registry};
 #[test]
 fn provider_output_filtering_is_allowed() {
     for command in [
-        "ts-harness --help | rg -- '--code|query <owner-path>'",
-        "ts-harness agent guide . | rg -- '--code'",
-        "py-harness --help | rg -- '--code|query <owner-path>'",
-        "rs-harness agent guide . | rg -- '--code'",
+        "rs-harness search prime . | rg -g '*.rs' WorkflowExecution",
+        "py-harness search prime . | rg -g '*.py' Session",
+        "env | rg PATH",
+        "printenv | rg '^PATH='",
+        "fd -t f shell crates/agent-semantic-hook",
     ] {
         let decision = classify_hook(
             &registry(),
             "codex",
             "pre-tool",
-            &json!({
-                "tool_name": "functions.exec_command",
-                "tool_input": {"cmd": command}
-            }),
+            &json!({ "tool_name": "functions.exec_command", "tool_input": { "cmd": command } }),
         );
         assert_eq!(decision.decision, DecisionKind::Allow, "{command}");
         assert_eq!(decision.reason_kind, ReasonKind::None, "{command}");
@@ -27,28 +25,22 @@ fn provider_output_filtering_is_allowed() {
 
 #[test]
 fn prefixed_provider_output_filtering_requires_full_command_prefix() {
-    let allowed = "python -m tools.fake_provider agent guide . | rg -- 'search owner'";
+    let allowed = "python -m tools.fake_provider search prime . | rg -g '*.py' Session";
     let allowed_decision = classify_hook(
         &prefixed_registry(),
         "codex",
         "pre-tool",
-        &json!({
-            "tool_name": "functions.exec_command",
-            "tool_input": {"cmd": allowed}
-        }),
+        &json!({ "tool_name": "functions.exec_command", "tool_input": { "cmd": allowed } }),
     );
     assert_eq!(allowed_decision.decision, DecisionKind::Allow);
     assert_eq!(allowed_decision.reason_kind, ReasonKind::None);
 
-    let denied = "python -c 'print(\"raw\")' | rg -- 'raw'";
+    let denied = "tools.fake_provider search prime . | rg -g '*.py' Session";
     let denied_decision = classify_hook(
         &prefixed_registry(),
         "codex",
         "pre-tool",
-        &json!({
-            "tool_name": "functions.exec_command",
-            "tool_input": {"cmd": denied}
-        }),
+        &json!({ "tool_name": "functions.exec_command", "tool_input": { "cmd": denied } }),
     );
     assert_eq!(denied_decision.decision, DecisionKind::Deny);
     assert_eq!(denied_decision.reason_kind, ReasonKind::RawBroadSearch);

@@ -105,7 +105,7 @@
           }
         },
         "artifactIds": {
-          "description": "Provider-owned artifact ids or client-captured prompt-output write-back ids relative to $PRJ_HOME_CACHE/agent-semantic-protocol/artifacts. prompt-output/*.txt artifacts are eligible for direct prompt stdout replay only when requestFingerprint matches the current request. search/*.json semantic-search-packet artifacts are eligible for replay through the shared compact graph renderer. query/*.json semantic-query-packet artifacts are eligible for query/owner-items compact query replay. Other ids remain provenance for provider packets or rendered cache artifacts.",
+          "description": "Provider-owned artifact ids or client-captured prompt-output write-back ids relative to $PRJ_CACHE_HOME/agent-semantic-protocol/artifacts. prompt-output/*.txt artifacts are eligible for direct prompt stdout replay only when requestFingerprint matches the current request. search/*.json semantic-search-packet artifacts are eligible for replay through the shared compact graph renderer. query/*.json semantic-query-packet artifacts are eligible for query/owner-items compact query replay. semantic-tree-sitter-query/*.json artifacts, or query/*.json artifacts with artifactKind=semantic-tree-sitter-query, are eligible for exact syntax-query artifact replay and normalized row replay when catalog/profile fingerprints match. Other ids remain provenance for provider packets or rendered cache artifacts.",
           "type": "array",
           "uniqueItems": true,
           "items": {

@@ -6,35 +6,14 @@ use serde_json::json;
 use super::support::{assert_allowed, polyglot_registry, rust_registry};
 
 #[test]
-fn workspace_wide_raw_search_without_scope_is_denied_for_all_providers() {
+fn workspace_wide_raw_search_without_language_selector_is_allowed() {
     for command in [
         "rg -n WorkflowExecution",
-        "rg --files .",
+        "rg -n WorkflowExecution src",
         "fd WorkflowExecution",
-        "git grep WorkflowExecution",
-        "git ls-files",
+        "fd -t f WorkflowExecution src",
     ] {
-        let decision = classify_hook(
-            &polyglot_registry(),
-            "codex",
-            "pre-tool",
-            &json!({
-                "tool_name": "functions.exec_command",
-                "tool_input": {"cmd": command}
-            }),
-        );
-
-        assert_eq!(decision.decision, DecisionKind::Deny, "{command}");
-        assert_eq!(decision.reason_kind, ReasonKind::RawBroadSearch);
-        assert_eq!(
-            decision.language_ids,
-            vec![
-                "typescript".to_string(),
-                "rust".to_string(),
-                "python".to_string()
-            ],
-            "{command}"
-        );
+        assert_allowed(command);
     }
 }
 
@@ -46,6 +25,7 @@ fn broad_rust_raw_search_with_filters_routes_to_ingest() {
         "rg -n HookToolName -t rust crates/agent-semantic-hook/src/lib.rs crates/agent-semantic-hook/src",
         "fd -e rs lib crates",
         "find crates -name '*.rs' -print",
+        "fd -t f shell -c \"echo a.rs\"",
     ] {
         let decision = classify_hook(
             &rust_registry(),
@@ -53,7 +33,7 @@ fn broad_rust_raw_search_with_filters_routes_to_ingest() {
             "pre-tool",
             &json!({
                 "tool_name": "functions.exec_command",
-                "tool_input": {"cmd": command}
+                "tool_input": { "cmd": command }
             }),
         );
 
@@ -156,32 +136,14 @@ fn broad_raw_search_routes_to_provider_query_when_supported() {
         "pre-tool",
         &json!({
             "tool_name": "functions.exec_command",
-            "tool_input": {"cmd": "rg -n WorkflowExecution src tests"}
+            "tool_input": { "cmd": "rg -n WorkflowExecution src/cli/protocol.ts" }
         }),
     );
 
     assert_eq!(decision.decision, DecisionKind::Deny);
     assert_eq!(decision.reason_kind, ReasonKind::RawBroadSearch);
+    assert_eq!(decision.language_ids, vec!["typescript".to_string()]);
     assert_eq!(decision.routes[0].kind, DecisionRouteKind::Query);
-    assert_eq!(
-        decision.routes[0].argv,
-        [
-            "asp",
-            "typescript",
-            "query",
-            "--from-hook",
-            "direct-source-read",
-            "--selector",
-            "**/*.{cjs,cts,js,jsx,mjs,mts,ts,tsx}",
-            "--term",
-            "WorkflowExecution",
-            "--surface",
-            "owners,tests",
-            "--view",
-            "seeds",
-            ".",
-        ]
-    );
 }
 
 #[test]

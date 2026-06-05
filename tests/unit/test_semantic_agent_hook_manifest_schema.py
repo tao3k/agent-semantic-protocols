@@ -91,7 +91,7 @@ def minimal_activation() -> dict[str, object]:
         "protocolVersion": "1",
         "projectRoot": ".",
         "generatedBy": {
-            "runtime": "agent-semantic-hook",
+            "runtime": "asp",
             "version": "0.1.0",
         },
         "providers": [

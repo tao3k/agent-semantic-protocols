@@ -18,6 +18,8 @@ name = "agent-semantic-client-core"
 version = "0.1.0"
 dependencies = [
  "agent-semantic-hook",
+ "agent-semantic-runtime",
+ "agent-semantic-tree-sitter",
  "rust-lang-project-harness",
  "serde",
  "serde_json",
@@ -45,6 +47,7 @@ dependencies = [
 name = "agent-semantic-hook"
 version = "0.1.0"
 dependencies = [
+ "agent-semantic-runtime",
  "figment",
  "fs2",
  "globset",
@@ -67,6 +70,18 @@ dependencies = [
  "serde",
  "serde_json",
  "toml 0.9.12+spec-1.1.0",
+]
+
+[[package]]
+name = "agent-semantic-runtime"
+version = "0.1.0"
+
+[[package]]
+name = "agent-semantic-tree-sitter"
+version = "0.1.0"
+dependencies = [
+ "rust-lang-project-harness",
+ "tree-sitter",
 ]
 
 [[package]]

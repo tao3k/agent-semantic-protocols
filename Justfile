@@ -93,6 +93,7 @@ agent-tools-install-protocol bin_dir="":
       mkdir -p "${bin_dir}"; \
       cargo build --release --manifest-path Cargo.toml --package agent-semantic-protocol --bin asp; \
       install -m 755 target/release/asp "${bin_dir}/asp"; \
+      rm -f "${bin_dir}/semantic-agent-protocol"; \
       test -x "${bin_dir}/asp"; \
       "${bin_dir}/asp" guide >/dev/null
 
