@@ -45,18 +45,15 @@ fn document_facade_help_does_not_spawn_orgize() {
 }
 
 #[test]
-fn org_facade_forwards_to_orgize() {
+fn org_facade_uses_native_orgize_dependency() {
     let root = temp_project_root("org-document-facade");
     let orgize = root.join("orgize");
-    std::fs::write(
-        &orgize,
-        "#!/bin/sh\nprintf 'orgize'\nfor arg in \"$@\"; do printf ' [%s]' \"$arg\"; done\nprintf '\\n'\n",
-    )
-    .expect("write orgize");
+    std::fs::write(&orgize, "#!/bin/sh\nexit 42\n").expect("write orgize");
     make_executable(&orgize);
 
     let output = asp_command(&root)
         .env("ASP_ORGIZE_BIN", &orgize)
+        .env("PATH", "")
         .args(["org", "search", "prime", "--view", "seeds", "."])
         .output()
         .expect("run asp org search");
@@ -66,39 +63,35 @@ fn org_facade_forwards_to_orgize() {
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    assert_eq!(
-        String::from_utf8(output.stdout).expect("stdout"),
-        "orgize [search] [prime] [--view] [seeds] [.]\n"
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    assert!(
+        stdout.contains("[search-prime] lang=org"),
+        "stdout={stdout}"
     );
     let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
-fn md_facade_forwards_to_orgize_md() {
+fn md_facade_uses_native_orgize_dependency() {
     let root = temp_project_root("md-document-facade");
     let orgize = root.join("orgize");
-    std::fs::write(
-        &orgize,
-        "#!/bin/sh\nprintf 'orgize'\nfor arg in \"$@\"; do printf ' [%s]' \"$arg\"; done\nprintf '\\n'\n",
-    )
-    .expect("write orgize");
+    std::fs::write(&orgize, "#!/bin/sh\nexit 42\n").expect("write orgize");
     make_executable(&orgize);
 
     let output = asp_command(&root)
         .env("ASP_ORGIZE_BIN", &orgize)
-        .args(["md", "query", "--selector", "README.md:1-3", "--code"])
+        .env("PATH", "")
+        .args(["md", "search", "prime", "--view", "seeds", "."])
         .output()
-        .expect("run asp md query");
+        .expect("run asp md search");
 
     assert!(
         output.status.success(),
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    assert_eq!(
-        String::from_utf8(output.stdout).expect("stdout"),
-        "orgize [md] [query] [--selector] [README.md:1-3] [--code]\n"
-    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    assert!(stdout.contains("[search-prime] lang=md"), "stdout={stdout}");
     let _ = std::fs::remove_dir_all(root);
 }
 
