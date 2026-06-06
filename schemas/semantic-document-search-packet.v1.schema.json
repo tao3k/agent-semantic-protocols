@@ -112,6 +112,7 @@
     "documentFactKind": {
       "enum": [
         "heading",
+        "paragraph",
         "property",
         "planning",
         "table",

@@ -538,6 +538,8 @@
             "queryInputForms": [
               "selector",
               "term",
+              "kind",
+              "field",
               "metadata"
             ]
         },
@@ -620,6 +622,8 @@
             "queryInputForms": [
               "selector",
               "term",
+              "kind",
+              "field",
               "metadata"
             ]
         },

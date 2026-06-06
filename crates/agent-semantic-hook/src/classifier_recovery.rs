@@ -101,7 +101,7 @@ fn render_document_flow(lines: &mut Vec<String>, language_id: &str) {
         "2. Search parser-owned document elements with `asp {language_id} search prime --view seeds .`."
     ));
     lines.push(format!(
-        "3. Query element metadata with `asp {language_id} query --term <term> --view metadata .` or `asp {language_id} query --selector <path-or-range> --view metadata .`."
+        "3. Query element metadata with `asp {language_id} query --term <term> --view metadata .`, `asp {language_id} query --kind <element-kind> --view metadata .`, `asp {language_id} query --field <key=value> --view metadata .`, or `asp {language_id} query --selector <path-or-range> --view metadata .`."
     ));
     lines.push(format!(
         "4. For hook recovery direct reads only, use `asp {language_id} query --from-hook direct-source-read --selector <path-or-range> .`."

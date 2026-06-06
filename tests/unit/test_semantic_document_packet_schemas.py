@@ -56,7 +56,7 @@ class SemanticDocumentPacketSchemaTests(unittest.TestCase):
                 if descriptor["method"] == "query/document"
             )
             self.assertEqual(
-                ["selector", "term", "metadata"],
+                ["selector", "term", "kind", "field", "metadata"],
                 document_query["queryInputForms"],
             )
 
@@ -145,7 +145,7 @@ class SemanticDocumentPacketSchemaTests(unittest.TestCase):
             "documentMode": "metadata",
             "query": "",
             "documentCount": 1,
-            "factCount": 5,
+            "factCount": 6,
             "owners": [
                 {
                     "path": "README.md",
@@ -155,6 +155,7 @@ class SemanticDocumentPacketSchemaTests(unittest.TestCase):
             ],
             "documentFacts": [
                 base_fact | {"kind": "task", "sourceKind": "NodeValue::TaskItem"},
+                base_fact | {"kind": "paragraph", "sourceKind": "NodeValue::Paragraph"},
                 base_fact | {"kind": "list", "sourceKind": "NodeValue::List"},
                 base_fact | {"kind": "image", "sourceKind": "NodeValue::Image"},
                 base_fact | {"kind": "frontMatter", "sourceKind": "NodeValue::FrontMatter"},

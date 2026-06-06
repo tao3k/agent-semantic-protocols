@@ -27,8 +27,9 @@ Document languages use the same facade shape but are not policy harnesses:
 inside `asp`.
 Use them for parser-owned document elements and metadata navigation. Normal
 document query must be explicit and element-oriented, such as `--term` or
-`--selector` with `--view metadata`; direct content reads are only a hook
-recovery surface through `--from-hook direct-source-read`. `check`,
+`--selector` with `--view metadata`; use `--kind` and `--field` to narrow
+parser-owned elements without post-processing. Direct content reads are only a
+hook recovery surface through `--from-hook direct-source-read`. `check`,
 `ast-patch`, and `evidence` are intentionally unsupported for document files.
 
 ## Rules
@@ -96,14 +97,18 @@ Use `--names-only` for broad owner-local prefixes before requesting code.
 ```sh
 asp org search prime --view seeds .
 asp org query --term <heading-property-task-or-table-term> --view metadata .
+asp org query --kind <element-kind> --view metadata .
+asp org query --field <key=value> --view metadata .
 asp org query --selector <path:start-end> --view metadata .
 asp md search prime --view seeds .
-asp md query --term <heading-task-link-or-table-term> --view metadata .
+asp md query --term <heading-paragraph-task-link-or-table-term> --view metadata .
+asp md query --kind paragraph --view metadata .
+asp md query --field <key=value> --view metadata .
 asp md query --selector <path:start-end> --view metadata .
 ```
 
 Document search and query return parser-owned element facts: headings,
-properties, planning rows, tables, blocks, lists, tasks, links, and images.
+paragraphs, properties, planning rows, tables, blocks, lists, tasks, links, and images.
 Use selector query for the element frontier inside a known range. Use
 `direct-source-read` only when raw document text is required after that range is
 known.

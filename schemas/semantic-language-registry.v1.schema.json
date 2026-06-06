@@ -530,14 +530,16 @@
           "uniqueItems": true,
           "items": {
             "enum": [
-              "selector",
-              "code-shaped",
-              "catalog-id",
-              "s-expression",
-              "term",
-              "metadata",
-              "content"
-            ]
+          "selector",
+          "code-shaped",
+          "catalog-id",
+          "s-expression",
+          "term",
+          "kind",
+          "field",
+          "metadata",
+          "content"
+        ]
           }
         },
         "adapterModes": {
