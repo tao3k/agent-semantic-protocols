@@ -25,7 +25,10 @@ Document languages use the same facade shape but are not policy harnesses:
 `asp org <guide|search|query> ...` and
 `asp md <guide|search|query> ...` run the native orgize document provider
 inside `asp`.
-Use them for parser-owned document structure and exact selector reads; `check`,
+Use them for parser-owned document elements and metadata navigation. Normal
+document query must be explicit and element-oriented, such as `--term` or
+`--selector` with `--view metadata`; direct content reads are only a hook
+recovery surface through `--from-hook direct-source-read`. `check`,
 `ast-patch`, and `evidence` are intentionally unsupported for document files.
 
 ## Rules
@@ -69,7 +72,12 @@ source-dump commands on the same matched source.
 ```sh
 asp <language> query --from-hook direct-source-read --selector <path-or-range> --code .
 asp <language> query --from-hook direct-source-read --selector <glob-or-path> --term <term> --surface owners,tests --view seeds .
+asp org query --from-hook direct-source-read --selector <path-or-range> .
+asp md query --from-hook direct-source-read --selector <path-or-range> .
 ```
+
+For document languages, do not use `--content`. Treat `direct-source-read` as
+the only pure text read path, and use it only after an exact selector is known.
 
 ### Search Before Code
 
@@ -82,6 +90,23 @@ asp <language> query <owner-path> --term <candidate> --code .
 ```
 
 Use `--names-only` for broad owner-local prefixes before requesting code.
+
+### Document Element Search
+
+```sh
+asp org search prime --view seeds .
+asp org query --term <heading-property-task-or-table-term> --view metadata .
+asp org query --selector <path:start-end> --view metadata .
+asp md search prime --view seeds .
+asp md query --term <heading-task-link-or-table-term> --view metadata .
+asp md query --selector <path:start-end> --view metadata .
+```
+
+Document search and query return parser-owned element facts: headings,
+properties, planning rows, tables, blocks, lists, tasks, links, and images.
+Use selector query for the element frontier inside a known range. Use
+`direct-source-read` only when raw document text is required after that range is
+known.
 
 ### Tree-sitter Locate Then Code
 

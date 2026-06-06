@@ -205,6 +205,32 @@ pub(super) fn polyglot_registry() -> HookRuntime {
     }
 }
 
+pub(super) fn document_registry() -> HookRuntime {
+    HookRuntime {
+        project_root: ".".to_string(),
+        providers: vec![markdown_provider()],
+    }
+}
+
+pub(super) fn markdown_provider() -> ActivatedProvider {
+    provider(
+        "md",
+        "orgize",
+        "asp",
+        "agent.semantic-protocols.languages.md.orgize",
+        &[".md", ".markdown"],
+        &[],
+        &["."],
+        &[".git"],
+        provider_routes(
+            "asp",
+            Some(command(&[
+                "asp", "md", "query", "--term", "{query}", "--view", "metadata", ".",
+            ])),
+        ),
+    )
+}
+
 pub(super) fn typescript_provider() -> ActivatedProvider {
     provider(
         "typescript",

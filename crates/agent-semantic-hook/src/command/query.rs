@@ -34,9 +34,10 @@ pub(crate) fn direct_source_query_route(provider: &ActivatedProvider, path: &str
             kind: DecisionRouteKind::Query,
             argv: provider.agent_facade_argv([
                 "query",
+                "--from-hook",
+                "direct-source-read",
                 "--selector",
                 route_context.selector.as_str(),
-                "--content",
                 route_context.project_root.as_str(),
             ]),
             stdin_mode: None,

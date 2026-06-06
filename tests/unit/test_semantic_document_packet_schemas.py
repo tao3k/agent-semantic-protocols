@@ -56,7 +56,7 @@ class SemanticDocumentPacketSchemaTests(unittest.TestCase):
                 if descriptor["method"] == "query/document"
             )
             self.assertEqual(
-                ["selector", "term", "metadata", "content"],
+                ["selector", "term", "metadata"],
                 document_query["queryInputForms"],
             )
 
@@ -102,9 +102,9 @@ class SemanticDocumentPacketSchemaTests(unittest.TestCase):
             ],
             "nextActions": [
                 {
-                    "kind": "content",
+                    "kind": "query",
                     "target": "selector",
-                    "command": "asp org query --selector notes.org:2-4 --content",
+                    "command": "asp org query --selector notes.org:2-4 --view metadata",
                 }
             ],
             "notes": [
@@ -162,9 +162,9 @@ class SemanticDocumentPacketSchemaTests(unittest.TestCase):
             ],
             "nextActions": [
                 {
-                    "kind": "content",
+                    "kind": "query",
                     "target": "selector",
-                    "command": "asp md query --selector README.md:4-4 --content",
+                    "command": "asp md query --selector README.md:4-4 --view metadata",
                 }
             ],
             "notes": [
@@ -195,21 +195,25 @@ class SemanticDocumentPacketSchemaTests(unittest.TestCase):
             "query": "README.md:1-1",
             "queryTerms": ["README.md:1-1"],
             "queryKind": "selector",
-            "querySurface": "content",
-            "documentMode": "content",
+            "querySurface": "metadata",
+            "documentMode": "metadata",
             "matchCount": 1,
-            "matchLimit": 1,
+            "matchLimit": 80,
             "matchesTruncated": False,
-            "documentFacts": [],
-            "contentBlocks": [
+            "documentFacts": [
                 {
-                    "kind": "selector",
+                    "id": "heading:README.md:1:1",
+                    "kind": "heading",
+                    "sourceKind": "NodeValue::Heading",
+                    "name": "Project",
                     "documentPath": "README.md",
                     "location": {"path": "README.md", "lineRange": "1:1"},
                     "parserAuthority": "comrak",
-                    "content": "# Project\n",
+                    "queryKeys": ["heading", "Project"],
+                    "attributes": {"title": "Project", "level": "1"},
                 }
             ],
+            "contentBlocks": [],
             "truncated": False,
         }
 

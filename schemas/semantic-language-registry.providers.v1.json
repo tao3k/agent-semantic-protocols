@@ -535,12 +535,11 @@
           "outputSchemaIds": [
             "agent.semantic-protocols.semantic-document-query-packet"
           ],
-          "queryInputForms": [
-            "selector",
-            "term",
-            "metadata",
-            "content"
-          ]
+            "queryInputForms": [
+              "selector",
+              "term",
+              "metadata"
+            ]
         },
         {
           "method": "guide",
@@ -618,12 +617,11 @@
           "outputSchemaIds": [
             "agent.semantic-protocols.semantic-document-query-packet"
           ],
-          "queryInputForms": [
-            "selector",
-            "term",
-            "metadata",
-            "content"
-          ]
+            "queryInputForms": [
+              "selector",
+              "term",
+              "metadata"
+            ]
         },
         {
           "method": "guide",

@@ -221,12 +221,11 @@
         "command"
       ],
       "properties": {
-        "kind": {
-          "enum": [
-            "query",
-            "content"
-          ]
-        },
+      "kind": {
+        "enum": [
+          "query"
+        ]
+      },
         "target": {
           "type": "string",
           "minLength": 1

@@ -98,12 +98,18 @@ fn render_document_flow(lines: &mut Vec<String>, language_id: &str) {
     );
     lines.push(format!("   - `asp {language_id} guide .`"));
     lines.push(format!(
-        "2. Query parser-owned document metadata with `asp {language_id} query --term <term> --view metadata .`."
+        "2. Search parser-owned document elements with `asp {language_id} search prime --view seeds .`."
     ));
     lines.push(format!(
-        "3. Read exact document content with `asp {language_id} query --selector <path-or-range> --content .`."
+        "3. Query element metadata with `asp {language_id} query --term <term> --view metadata .` or `asp {language_id} query --selector <path-or-range> --view metadata .`."
     ));
-    lines.push("4. Treat stdout from `query --content` as pure document content only.".to_string());
+    lines.push(format!(
+        "4. For hook recovery direct reads only, use `asp {language_id} query --from-hook direct-source-read --selector <path-or-range> .`."
+    ));
+    lines.push(
+        "5. Treat stdout from `--from-hook direct-source-read` as pure document content only."
+            .to_string(),
+    );
 }
 
 fn render_source_flow(
@@ -146,9 +152,9 @@ fn render_rules(
         .iter()
         .any(|provider| is_document_language(&provider.language_id))
     {
-        lines.push("- Document query is parser-owned metadata or exact content; it does not use `search owner` or `--code`.".to_string());
+        lines.push("- Document query is parser-owned element metadata; it does not use `search owner`, `--code`, or `--content`.".to_string());
         lines.push(
-            "- Query with `--content` is for exact document selector extraction.".to_string(),
+            "- Direct document text reads use `--from-hook direct-source-read` after an exact selector is known.".to_string(),
         );
     }
     if providers

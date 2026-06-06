@@ -1,7 +1,9 @@
 use agent_semantic_hook::{DecisionKind, DecisionRouteKind, classify_hook};
 use serde_json::json;
 
-use super::support::{assert_allowed, assert_direct_read_denied, polyglot_registry};
+use super::support::{
+    assert_allowed, assert_direct_read_denied, document_registry, polyglot_registry,
+};
 
 #[test]
 fn rtk_read_source_globs_are_denied_for_each_provider() {
@@ -100,6 +102,47 @@ fn rtk_read_line_locator_routes_to_provider_query_with_range() {
             "--code",
             "."
         ]
+    );
+}
+
+#[test]
+fn document_direct_read_uses_from_hook_without_content_flag() {
+    let decision = classify_hook(
+        &document_registry(),
+        "codex",
+        "pre-tool",
+        &json!({
+            "tool_name": "functions.exec_command",
+            "tool_input": {"cmd": "rtk read README.md:1-4"}
+        }),
+    );
+
+    assert_eq!(decision.decision, DecisionKind::Deny);
+    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Query);
+    assert_eq!(
+        decision.routes[0].argv,
+        vec![
+            "asp",
+            "md",
+            "query",
+            "--from-hook",
+            "direct-source-read",
+            "--selector",
+            "README.md:1-4",
+            "."
+        ]
+    );
+    assert!(
+        !decision.routes[0].argv.iter().any(|arg| arg == "--content"),
+        "{:?}",
+        decision.routes[0].argv
+    );
+    assert!(
+        decision
+            .message
+            .contains("does not use `search owner`, `--code`, or `--content`"),
+        "{}",
+        decision.message
     );
 }
 
