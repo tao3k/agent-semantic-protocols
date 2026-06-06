@@ -113,9 +113,16 @@
       "enum": [
         "heading",
         "property",
+        "planning",
         "table",
         "block",
+        "list",
+        "listItem",
+        "task",
         "link",
+        "image",
+        "frontMatter",
+        "thematicBreak",
         "selector"
       ]
     },
@@ -168,6 +175,10 @@
         },
         "kind": {
           "$ref": "#/$defs/documentFactKind"
+        },
+        "sourceKind": {
+          "type": "string",
+          "minLength": 1
         },
         "name": {
           "type": "string",

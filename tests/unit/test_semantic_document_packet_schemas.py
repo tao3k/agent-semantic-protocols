@@ -91,6 +91,7 @@ class SemanticDocumentPacketSchemaTests(unittest.TestCase):
                 {
                     "id": "property:notes.org:2:4",
                     "kind": "property",
+                    "sourceKind": "PropertyDrawer",
                     "name": "CUSTOM_ID",
                     "documentPath": "notes.org",
                     "location": {"path": "notes.org", "lineRange": "2:4"},
@@ -104,6 +105,66 @@ class SemanticDocumentPacketSchemaTests(unittest.TestCase):
                     "kind": "content",
                     "target": "selector",
                     "command": "orgize query --selector notes.org:2-4 --content",
+                }
+            ],
+            "notes": [
+                {
+                    "kind": "search-document",
+                    "message": "Document facts are metadata.",
+                }
+            ],
+        }
+
+        self.assertEqual([], list(validator.iter_errors(packet)))
+
+    def test_document_search_packet_accepts_element_map_kinds(self) -> None:
+        validator = schema_validator_for(
+            _REPO_ROOT / "schemas" / "semantic-document-search-packet.v1.schema.json"
+        )
+        base_fact = {
+            "id": "task:README.md:4:4",
+            "name": "Write tests",
+            "documentPath": "README.md",
+            "location": {"path": "README.md", "lineRange": "4:4"},
+            "parserAuthority": "comrak",
+            "queryKeys": ["task", "Write tests"],
+            "attributes": {},
+        }
+        packet = {
+            "schemaId": "agent.semantic-protocols.semantic-document-search-packet",
+            "schemaVersion": "1",
+            "protocolId": "agent.semantic-protocols.semantic-language",
+            "protocolVersion": "1",
+            "languageId": "md",
+            "providerId": "orgize",
+            "binary": "orgize",
+            "namespace": "agent.semantic-protocols.languages.md.orgize",
+            "method": "search/prime",
+            "projectRoot": ".",
+            "view": "prime",
+            "documentMode": "metadata",
+            "query": "",
+            "documentCount": 1,
+            "factCount": 5,
+            "owners": [
+                {
+                    "path": "README.md",
+                    "role": "document",
+                    "parserAuthority": "comrak",
+                }
+            ],
+            "documentFacts": [
+                base_fact | {"kind": "task", "sourceKind": "NodeValue::TaskItem"},
+                base_fact | {"kind": "list", "sourceKind": "NodeValue::List"},
+                base_fact | {"kind": "image", "sourceKind": "NodeValue::Image"},
+                base_fact | {"kind": "frontMatter", "sourceKind": "NodeValue::FrontMatter"},
+                base_fact | {"kind": "thematicBreak", "sourceKind": "NodeValue::ThematicBreak"},
+            ],
+            "nextActions": [
+                {
+                    "kind": "content",
+                    "target": "selector",
+                    "command": "asp md query --selector README.md:4-4 --content",
                 }
             ],
             "notes": [

@@ -23,10 +23,11 @@ asp <language> agent doctor --json ...   # registry/diagnostic packet
 
 Document languages are a separate facade class.  =asp org= and =asp md= expose
 parser-owned document structure, not code harness policy.  The executable
-runtime is =orgize=: Org commands forward as =orgize <args>=, while Markdown
-commands forward as =orgize md <args>=.  The root =asp= facade owns only this
-stable command routing; Org facts are owned by the =orgize= parser and
-Markdown facts are owned by =comrak= through =orgize='s =md= subcommand.
+runtime is =asp= with a native =orgize= dependency.  The =orgize= binary remains
+a standalone development/debug CLI, but =asp org= and =asp md= do not require it
+on PATH.  The root =asp= facade owns this stable command routing; Org facts are
+owned by the =orgize= parser and Markdown facts are owned by =comrak= through
+the native =orgize= document provider.
 
 #+begin_src shell
 asp org guide .                 # orgize guide .
@@ -53,6 +54,39 @@ metadata frontier. =query --selector <path:start-end> --content= retains the
 exact selector contract for document languages: stdout is the source-preserved
 document slice selected by =path:start-end=. =--code= remains reserved for
 source-language providers.
+
+Document facts are a navigation element map, not a full document AST dump.
+The shared packet keeps language-neutral element categories in =kind= and
+parser-native node identity in =sourceKind=.  Provider-specific facts stay in
+=attributes=.  This lets agents query TODO lists, checklists, tables, headings,
+property drawers, links, images, and code blocks without inheriting code search
+owner semantics.
+
+#+begin_src text
+documentFact.kind =
+  heading | property | planning | table | block | list | listItem | task |
+  link | image | frontMatter | thematicBreak | selector
+
+documentFact.sourceKind =
+  Org wrapper or comrak NodeValue variant, e.g. Headline, PropertyDrawer,
+  SyntaxPlanning, SyntaxListItem, NodeValue::Heading, NodeValue::TaskItem
+#+end_src
+
+Org maps its org-elements-like syntax wrappers to the shared element map:
+=Headline= to =heading=, =PropertyDrawer= entries to =property=,
+=SyntaxPlanning= to =planning=, =OrgTable= to =table=, =SourceBlock= and
+=ExportBlock= to =block=, =SyntaxList= to =list=, =SyntaxListItem= to
+=listItem= or =task= when a checkbox is present, and =SyntaxLink= to =link= or
+=image=.  Headline attributes include =level=, =title=, =todo=, =todoType=,
+=priority=, and repeated =tag= values.  List/task attributes include =bullet=,
+=indent=, =checkbox=, =checked=, and optional descriptive =tag=.
+
+Markdown maps comrak nodes to the same shared categories: =Heading=,
+=List=, =Item=, =TaskItem=, =Table=, =CodeBlock=, =Link=, =Image=,
+=FrontMatter=, and =ThematicBreak=.  Markdown paragraphs are intentionally not
+emitted by default search/query metadata because they turn navigation into full
+text indexing; exact paragraph content stays available through selector
+queries.
 
 RFC 007 adds the shared =asp ast-patch= verification path.
 Language providers still own AST adapters, but agents should use the shared
