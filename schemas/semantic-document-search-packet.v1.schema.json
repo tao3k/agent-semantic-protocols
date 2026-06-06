@@ -45,7 +45,7 @@
       "const": "orgize"
     },
     "binary": {
-      "const": "orgize"
+      "const": "asp"
     },
     "namespace": {
       "type": "string",

@@ -30,12 +30,12 @@ owned by the =orgize= parser and Markdown facts are owned by =comrak= through
 the native =orgize= document provider.
 
 #+begin_src shell
-asp org guide .                 # orgize guide .
+asp org guide .                 # native orgize document provider through asp
 asp org search prime --view seeds .
 asp org query --term CUSTOM_ID --view metadata .
 asp org query --selector docs/a.org:10-20 --content .
 
-asp md guide .                  # orgize md guide .
+asp md guide .                  # native orgize/comrak document provider through asp
 asp md search prime --view seeds .
 asp md query --term Project --view metadata .
 asp md query --selector README.md:1-20 --content .
