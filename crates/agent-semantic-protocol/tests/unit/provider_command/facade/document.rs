@@ -1,4 +1,6 @@
-use crate::provider_command::support::{asp_command, make_executable, temp_project_root};
+use crate::provider_command::support::{
+    asp_command, make_executable, prepend_path, temp_project_root,
+};
 
 #[test]
 fn top_level_usage_lists_document_facades() {
@@ -24,7 +26,6 @@ fn document_facade_help_does_not_spawn_orgize() {
 
     for language in ["org", "md"] {
         let output = asp_command(&root)
-            .env_remove("ASP_ORGIZE_BIN")
             .env("PATH", "")
             .args([language, "--help"])
             .output()
@@ -47,13 +48,14 @@ fn document_facade_help_does_not_spawn_orgize() {
 #[test]
 fn org_facade_uses_native_orgize_dependency() {
     let root = temp_project_root("org-document-facade");
-    let orgize = root.join("orgize");
+    let bin_dir = root.join(".bin");
+    std::fs::create_dir_all(&bin_dir).expect("create bin dir");
+    let orgize = bin_dir.join("orgize");
     std::fs::write(&orgize, "#!/bin/sh\nexit 42\n").expect("write orgize");
     make_executable(&orgize);
 
     let output = asp_command(&root)
-        .env("ASP_ORGIZE_BIN", &orgize)
-        .env("PATH", "")
+        .env("PATH", prepend_path(&bin_dir))
         .args(["org", "search", "prime", "--view", "seeds", "."])
         .output()
         .expect("run asp org search");
@@ -74,13 +76,14 @@ fn org_facade_uses_native_orgize_dependency() {
 #[test]
 fn md_facade_uses_native_orgize_dependency() {
     let root = temp_project_root("md-document-facade");
-    let orgize = root.join("orgize");
+    let bin_dir = root.join(".bin");
+    std::fs::create_dir_all(&bin_dir).expect("create bin dir");
+    let orgize = bin_dir.join("orgize");
     std::fs::write(&orgize, "#!/bin/sh\nexit 42\n").expect("write orgize");
     make_executable(&orgize);
 
     let output = asp_command(&root)
-        .env("ASP_ORGIZE_BIN", &orgize)
-        .env("PATH", "")
+        .env("PATH", prepend_path(&bin_dir))
         .args(["md", "search", "prime", "--view", "seeds", "."])
         .output()
         .expect("run asp md search");
