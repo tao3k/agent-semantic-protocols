@@ -1,3 +1,5 @@
+#![deny(dead_code)]
+
 //! Core contracts for the local-first agent semantic client.
 
 pub mod activation;
@@ -8,6 +10,7 @@ pub mod request;
 pub mod types;
 
 pub use activation::{ProviderRegistrySnapshot, ResolvedProvider, RuntimeProfileStatus};
+pub use agent_semantic_hook::ProviderExecution;
 pub use cache_manifest::{
     AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_FILE, AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_PROTOCOL_ID,
     AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_PROTOCOL_VERSION,

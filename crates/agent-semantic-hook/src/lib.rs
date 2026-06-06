@@ -27,8 +27,8 @@ pub use crate::activation_store::{
     parse_hook_activation, write_activation,
 };
 pub use cache_paths::{
-    PRJ_CACHE_HOME_ENV, PRJ_HOME_CACHE_ENV, ProjectCacheSource, ProjectRuntimeLayout,
-    project_hook_cache_dir, project_hook_state_dir, project_runtime_layout,
+    PRJ_CACHE_HOME_ENV, ProjectCacheSource, ProjectRuntimeLayout, project_hook_cache_dir,
+    project_hook_state_dir, project_runtime_layout,
 };
 pub use classifier::{HookClassificationRequest, classify_hook, classify_hook_with_config};
 pub use codex_config::{
@@ -55,8 +55,8 @@ pub use protocol::{
 pub(crate) use protocol_activation::SourceSelectorKind;
 pub use protocol_activation::{
     ActivatedProvider, ActivatedProviderConfig, ActivationCoverage, ActivationGeneratedBy,
-    HookActivation, HookRuntime, ManifestSourceDefaults, ProviderManifest, parse_activation,
-    provider_manifest_digest,
+    HookActivation, HookRuntime, ManifestSourceDefaults, ProviderExecution, ProviderManifest,
+    parse_activation, provider_manifest_digest,
 };
 pub use provider_manifest::{build_default_activation, builtin_provider_manifests};
 pub use runtime_profile::{

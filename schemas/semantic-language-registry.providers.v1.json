@@ -8,6 +8,7 @@
       "languageId": "rust",
       "providerId": "rs-harness",
       "binary": "rs-harness",
+      "execution": "external-process",
       "namespace": "agent.semantic-protocols.languages.rust.rs-harness",
       "displayName": "Rust Harness",
       "methods": [
@@ -129,6 +130,7 @@
       "languageId": "typescript",
       "providerId": "ts-harness",
       "binary": "ts-harness",
+      "execution": "external-process",
       "namespace": "agent.semantic-protocols.languages.typescript.ts-harness",
       "displayName": "TypeScript Harness",
       "methods": [
@@ -250,6 +252,7 @@
       "languageId": "python",
       "providerId": "py-harness",
       "binary": "py-harness",
+      "execution": "external-process",
       "namespace": "agent.semantic-protocols.languages.python.py-harness",
       "displayName": "Python Harness",
       "methods": [
@@ -371,6 +374,7 @@
       "languageId": "julia",
       "providerId": "julia-lang-project-harness",
       "binary": "asp-julia-harness",
+      "execution": "external-process",
       "namespace": "agent.semantic-protocols.languages.julia.julia-lang-project-harness",
       "displayName": "Julia Harness",
       "methods": [
@@ -483,6 +487,7 @@
       "languageId": "org",
       "providerId": "orgize",
       "binary": "asp",
+      "execution": "embedded",
       "namespace": "agent.semantic-protocols.languages.org.orgize",
       "displayName": "Org Document Provider",
       "methods": [
@@ -535,13 +540,14 @@
           "outputSchemaIds": [
             "agent.semantic-protocols.semantic-document-query-packet"
           ],
-            "queryInputForms": [
-              "selector",
-              "term",
-              "kind",
-              "field",
-              "metadata"
-            ]
+          "queryInputForms": [
+            "selector",
+            "term",
+            "kind",
+            "field",
+            "metadata",
+            "content"
+          ]
         },
         {
           "method": "guide",
@@ -567,6 +573,7 @@
       "languageId": "md",
       "providerId": "orgize",
       "binary": "asp",
+      "execution": "embedded",
       "namespace": "agent.semantic-protocols.languages.md.orgize",
       "displayName": "Markdown Document Provider",
       "methods": [
@@ -619,13 +626,14 @@
           "outputSchemaIds": [
             "agent.semantic-protocols.semantic-document-query-packet"
           ],
-            "queryInputForms": [
-              "selector",
-              "term",
-              "kind",
-              "field",
-              "metadata"
-            ]
+          "queryInputForms": [
+            "selector",
+            "term",
+            "kind",
+            "field",
+            "metadata",
+            "content"
+          ]
         },
         {
           "method": "guide",

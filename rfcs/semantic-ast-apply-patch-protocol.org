@@ -539,7 +539,7 @@ import organization, or semantic cleanups must be separate capabilities.
 ** Julia
 
 Julia AST patch support should use JuliaSyntax-derived facts and the same
-facade/provider contract as search and query.  The compiled =aslp-julia-harness=
+facade/provider contract as search and query.  The compiled =asp-julia-harness=
 owns provider identity; =julia-project-harness.jl= is only a source-provider
 development fallback.
 

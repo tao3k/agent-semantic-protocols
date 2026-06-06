@@ -1,3 +1,5 @@
+#![deny(dead_code)]
+
 //! Shared tree-sitter-compatible query catalog utilities for ASP.
 //!
 //! This crate owns ASP-side catalog loading, fingerprinting, and runtime query

@@ -82,9 +82,14 @@ def test_root_skill_template_and_installed_skill_contract() -> None:
     assert "Do not edit this installed copy" in installed_skill
     assert "## Active Providers" in installed_skill
     assert "Start with `asp <language> guide .`" in installed_skill
+    assert "path-context resolution" in root_skill
+    assert "path-context resolution" in installed_skill
+    assert "workspace discovery" not in root_skill
     assert "<!-- ASP_INSTALLED_SKILL_NOTICE -->" not in installed_skill
     assert "<!-- ASP_PROVIDER_SUMMARY -->" not in installed_skill
     assert "asp <language> agent guide" not in installed_skill
+    assert str(_REPO_ROOT) not in installed_skill
+    assert "| `/" not in installed_skill
 
 
 def test_rfc_docs_contracts_are_in_local_and_ci_gates() -> None:
@@ -102,7 +107,7 @@ def test_rfc_docs_contracts_are_in_local_and_ci_gates() -> None:
 
     required_ci_terms = [
         "Root schema gates",
-        "tests/unit/test_semantic_tree_sitter_query_rfc.py",
+        "tests/unit/semantic_tree_sitter_query_rfc",
         "tests/unit/test_cli_first_harness_ux_rfc.py",
         "tests/unit/test_agent_hook_interception_protocol_rfc.py",
         "tests/unit/test_docs_rfc_skill_contracts.py",

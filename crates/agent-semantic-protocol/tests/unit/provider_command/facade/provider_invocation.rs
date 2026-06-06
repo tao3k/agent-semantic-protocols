@@ -3,7 +3,7 @@ use std::process::Command;
 
 use crate::provider_command::support::{
     asp_command, make_executable, prepend_path, provider, temp_project_root, write_activation,
-    write_echo_provider, write_runtime_profiles,
+    write_echo_provider,
 };
 
 #[test]
@@ -20,7 +20,7 @@ for arg in "$@"; do printf '[%s]' "$arg"; done
 printf '
 '
 printf 'cache=%s
-' "$PRJ_HOME_CACHE"
+' "$PRJ_CACHE_HOME"
 printf 'runtime=%s
 ' "$ASP_RUNTIME_BIN_DIR"
 printf 'path0=%s
@@ -40,6 +40,7 @@ printf 'renderer=%s
     );
 
     let output = asp_command(&root)
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .env("PATH", prepend_path(&bin_dir))
         .env_remove("SEMANTIC_AGENT_PROTOCOL_BIN")
         .args(["rust", "query", "src/lib.rs", "."])
@@ -57,7 +58,7 @@ printf 'renderer=%s
     assert_eq!(
         String::from_utf8(output.stdout).expect("stdout"),
         format!(
-            "wrapper args=[rs-harness][query][src/lib.rs][.]\ncache={}\nruntime={}\npath0={}\nrenderer={}\n",
+            "wrapper args=[rs-harness][query][src/lib.rs]\ncache={}\nruntime={}\npath0={}\nrenderer={}\n",
             cache_home.display(),
             runtime_bin.display(),
             runtime_bin.display(),
@@ -74,6 +75,7 @@ printf 'renderer=%s
         )],
     );
     let output = asp_command(&root)
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .env("PATH", prepend_path(&bin_dir))
         .args([
             "rust",
@@ -92,7 +94,7 @@ printf 'renderer=%s
     assert_eq!(
         String::from_utf8(output.stdout).expect("stdout"),
         format!(
-            "wrapper args=[rs-harness][check][--changed][.]\ncache={}\nruntime={}\npath0={}\nrenderer={}\n",
+            "wrapper args=[rs-harness][check][--changed]\ncache={}\nruntime={}\npath0={}\nrenderer={}\n",
             cache_home.display(),
             runtime_bin.display(),
             runtime_bin.display(),
@@ -103,8 +105,8 @@ printf 'renderer=%s
 }
 
 #[test]
-fn language_facade_query_uses_runtime_profile_before_path_lookup() {
-    let root = temp_project_root("provider-runtime-profile-facade");
+fn language_facade_query_uses_activation_prefix_before_path_lookup() {
+    let root = temp_project_root("provider-activation-prefix-facade");
     let profile_bin_dir = root.join(".profile-bin");
     let path_bin_dir = root.join(".path-bin");
     write_echo_provider(&profile_bin_dir, "rs-harness", "profile");
@@ -117,14 +119,16 @@ fn language_facade_query_uses_runtime_profile_before_path_lookup() {
     .expect("write path provider");
     make_executable(&path_provider);
 
-    write_activation(&root, &[provider("rust", Vec::new())]);
-    write_runtime_profiles(
+    write_activation(
         &root,
-        "rust",
-        vec![profile_bin_dir.join("rs-harness").display().to_string()],
+        &[provider(
+            "rust",
+            vec![profile_bin_dir.join("rs-harness").display().to_string()],
+        )],
     );
 
     let output = asp_command(&root)
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .env("PATH", prepend_path(&path_bin_dir))
         .args(["rust", "query", "src/lib.rs", "."])
         .output()
@@ -137,14 +141,14 @@ fn language_facade_query_uses_runtime_profile_before_path_lookup() {
     );
     assert_eq!(
         String::from_utf8(output.stdout).expect("stdout"),
-        "profile args=[query][src/lib.rs][.]\n"
+        "profile args=[query][src/lib.rs]\n"
     );
     let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
-fn language_facade_query_guide_routes_to_provider_runtime_profile() {
-    let root = temp_project_root("provider-query-guide-facade");
+fn language_facade_query_guide_routes_to_activation_prefix() {
+    let root = temp_project_root("provider-query-guide-prefix-facade");
     let profile_bin_dir = root.join(".profile-bin");
     let path_bin_dir = root.join(".path-bin");
     write_echo_provider(&profile_bin_dir, "rs-harness", "profile");
@@ -157,14 +161,16 @@ fn language_facade_query_guide_routes_to_provider_runtime_profile() {
     .expect("write path provider");
     make_executable(&path_provider);
 
-    write_activation(&root, &[provider("rust", Vec::new())]);
-    write_runtime_profiles(
+    write_activation(
         &root,
-        "rust",
-        vec![profile_bin_dir.join("rs-harness").display().to_string()],
+        &[provider(
+            "rust",
+            vec![profile_bin_dir.join("rs-harness").display().to_string()],
+        )],
     );
 
     let output = asp_command(&root)
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .env("PATH", prepend_path(&path_bin_dir))
         .args(["rust", "query", "guide", "."])
         .output()
@@ -177,14 +183,14 @@ fn language_facade_query_guide_routes_to_provider_runtime_profile() {
     );
     assert_eq!(
         String::from_utf8(output.stdout).expect("stdout"),
-        "profile args=[query][guide][.]\n"
+        "profile args=[query][guide]\n"
     );
     let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
-fn language_facade_search_guide_routes_to_provider_runtime_profile() {
-    let root = temp_project_root("provider-search-guide-facade");
+fn language_facade_search_guide_routes_to_activation_prefix() {
+    let root = temp_project_root("provider-search-guide-prefix-facade");
     let profile_bin_dir = root.join(".profile-bin");
     let path_bin_dir = root.join(".path-bin");
     write_echo_provider(&profile_bin_dir, "rs-harness", "profile");
@@ -197,14 +203,16 @@ fn language_facade_search_guide_routes_to_provider_runtime_profile() {
     .expect("write path provider");
     make_executable(&path_provider);
 
-    write_activation(&root, &[provider("rust", Vec::new())]);
-    write_runtime_profiles(
+    write_activation(
         &root,
-        "rust",
-        vec![profile_bin_dir.join("rs-harness").display().to_string()],
+        &[provider(
+            "rust",
+            vec![profile_bin_dir.join("rs-harness").display().to_string()],
+        )],
     );
 
     let output = asp_command(&root)
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .env("PATH", prepend_path(&path_bin_dir))
         .args(["rust", "search", "guide", "."])
         .output()
@@ -217,7 +225,7 @@ fn language_facade_search_guide_routes_to_provider_runtime_profile() {
     );
     assert_eq!(
         String::from_utf8(output.stdout).expect("stdout"),
-        "profile args=[search][guide][.]\n"
+        "profile args=[search][guide]\n"
     );
     let _ = std::fs::remove_dir_all(root);
 }
@@ -276,6 +284,7 @@ fn language_facade_query_injects_asp_compiled_tree_sitter_plan_for_each_provider
 
     for case in cases {
         let output = asp_command(&root)
+            .env("PRJ_CACHE_HOME", root.join(".cache"))
             .env("PATH", prepend_path(&bin_dir))
             .args([
                 case.language,
@@ -299,7 +308,7 @@ fn language_facade_query_injects_asp_compiled_tree_sitter_plan_for_each_provider
         let stdout = String::from_utf8(output.stdout).expect("stdout");
         assert!(
             stdout.starts_with(&format!(
-                "{} args=[query][--treesitter-query][{}][--selector][{}][--code][.]",
+                "{} args=[query][--treesitter-query][{}][--selector][{}][--code]",
                 case.label, case.query, case.selector
             )),
             "stdout: {stdout}"
@@ -335,6 +344,7 @@ fn provider_native_ast_patch_command_is_wrapped_by_language_facade() {
     write_activation(&root, &[provider("rust", Vec::new())]);
 
     let output = asp_command(&root)
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .env("PATH", prepend_path(&bin_dir))
         .args([
             "rust",
@@ -354,7 +364,7 @@ fn provider_native_ast_patch_command_is_wrapped_by_language_facade() {
     );
     assert_eq!(
         String::from_utf8(output.stdout).expect("stdout"),
-        "rs args=[ast-patch][dry-run][--packet][packet.json][.]\n"
+        "rs args=[ast-patch][dry-run][--packet][packet.json]\n"
     );
     let _ = std::fs::remove_dir_all(&root);
 
@@ -421,6 +431,7 @@ fn provider_native_ast_patch_command_is_wrapped_by_language_facade() {
     })
     .to_string();
     let mut child = asp_command(&root)
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .env("PATH", prepend_path(&bin_dir))
         .args(["rust", "ast-patch", "apply", "--packet", "-", "."])
         .stdin(std::process::Stdio::piped())

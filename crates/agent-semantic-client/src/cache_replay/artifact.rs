@@ -139,6 +139,11 @@ pub(crate) fn load_replay_artifact(
         return None;
     }
 
+    let has_structured_evidence_artifact = generation_hit
+        .artifact_ids
+        .iter()
+        .any(|artifact_id| structured_evidence_artifact_path(cache_root, artifact_id).is_some());
+
     load_search_packet_artifact(cache_root, generation_hit, request)
         .or_else(|| load_query_packet_artifact(cache_root, generation_hit, request))
         .or_else(|| load_syntax_query_packet_artifact(cache_root, generation_hit, request))
@@ -152,7 +157,7 @@ pub(crate) fn load_replay_artifact(
             )
         })
         .or_else(|| {
-            if is_tree_sitter_query_request(request) {
+            if is_tree_sitter_query_request(request) || has_structured_evidence_artifact {
                 None
             } else {
                 load_prompt_output_artifact(cache_root, generation_hit, request)
@@ -186,6 +191,19 @@ pub(crate) fn replay_artifact_path(
         return None;
     }
     Some(cache_root.parent()?.join("artifacts").join(relative))
+}
+
+pub(crate) fn structured_evidence_artifact_path(
+    cache_root: &Path,
+    artifact_id: &CacheArtifactId,
+) -> Option<PathBuf> {
+    [
+        ("relation-plan/", ".json"),
+        ("flow-lite/", ".json"),
+        ("codeql-evidence/", ".json"),
+    ]
+    .into_iter()
+    .find_map(|(prefix, suffix)| replay_artifact_path(cache_root, artifact_id, prefix, suffix))
 }
 
 fn load_search_packet_artifact(

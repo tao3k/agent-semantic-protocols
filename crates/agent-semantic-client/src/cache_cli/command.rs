@@ -3,8 +3,12 @@
 use std::{fs, path::Path};
 
 use agent_semantic_client_core::{
-    CacheManifestReport, CacheManifestStatus, ClientCacheManifest, ClientCachePath, ClientDbStatus,
-    ClientMethod, ClientReceipt, ProviderRegistrySnapshot,
+    AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_PROTOCOL_ID,
+    AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_PROTOCOL_VERSION,
+    AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_SCHEMA_ID,
+    AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_SCHEMA_VERSION, CacheManifestReport, CacheManifestStatus,
+    ClientCacheManifest, ClientCachePath, ClientDbStatus, ClientMethod, ClientReceipt,
+    ProviderRegistrySnapshot,
 };
 use agent_semantic_client_db::{ClientDb, ClientDbReport};
 
@@ -185,8 +189,10 @@ pub(crate) fn run_cache(
                 .as_ref()
                 .ok_or_else(|| "cache root unavailable".to_string())?;
             let db_path = ClientDb::default_path(cache_root);
-            let db_invalidated_generation_count = ClientDb::invalidate_generations(&db_path)?;
-            let manifest_invalidated_generation_count = clear_manifest_generations(&cache_report)?;
+            let db_invalidated_generation_count =
+                ClientDb::invalidate_generations_for_project(&db_path, project_root)?;
+            let manifest_invalidated_generation_count =
+                clear_manifest_generations(&cache_report, project_root)?;
             let invalidated_generation_count =
                 db_invalidated_generation_count.max(manifest_invalidated_generation_count);
             let updated_cache_report = ClientCacheManifest::inspect_project(project_root);
@@ -236,22 +242,62 @@ pub(crate) fn run_cache(
     }
 }
 
-fn clear_manifest_generations(cache_report: &CacheManifestReport) -> Result<u32, String> {
-    if cache_report.status != CacheManifestStatus::Present {
-        return Ok(0);
-    }
+fn clear_manifest_generations(
+    cache_report: &CacheManifestReport,
+    project_root: &Path,
+) -> Result<u32, String> {
     let manifest_path = cache_report
         .manifest_path
         .as_ref()
         .ok_or_else(|| "cache manifest path unavailable".to_string())?;
+    if cache_report.status == CacheManifestStatus::Invalid {
+        let cache_root = cache_report
+            .cache_root
+            .as_ref()
+            .ok_or_else(|| "cache root unavailable".to_string())?;
+        write_cache_manifest(manifest_path, &empty_cache_manifest(cache_root))?;
+        return Ok(0);
+    }
+    if cache_report.status != CacheManifestStatus::Present {
+        return Ok(0);
+    }
     let mut manifest = ClientCacheManifest::load_from_path(manifest_path)?;
-    let invalidated = manifest.generations.len().min(u32::MAX as usize) as u32;
+    let project_root = normalized_project_root(project_root);
+    let before = manifest.generations.len();
+    manifest.generations.retain(|generation| {
+        !manifest_project_root_matches(&generation.project_root, &project_root)
+    });
+    let invalidated = before
+        .saturating_sub(manifest.generations.len())
+        .min(u32::MAX as usize) as u32;
     if invalidated == 0 {
         return Ok(0);
     }
-    manifest.generations.clear();
     write_cache_manifest(manifest_path, &manifest)?;
     Ok(invalidated)
+}
+
+fn normalized_project_root(project_root: &Path) -> String {
+    project_root
+        .canonicalize()
+        .unwrap_or_else(|_| project_root.to_path_buf())
+        .display()
+        .to_string()
+}
+
+fn manifest_project_root_matches(candidate: &str, project_root: &str) -> bool {
+    candidate == project_root || normalized_project_root(Path::new(candidate)) == project_root
+}
+
+fn empty_cache_manifest(cache_root: &Path) -> ClientCacheManifest {
+    ClientCacheManifest {
+        schema_id: AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_SCHEMA_ID.into(),
+        schema_version: AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_SCHEMA_VERSION.into(),
+        protocol_id: AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_PROTOCOL_ID.into(),
+        protocol_version: AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_PROTOCOL_VERSION.into(),
+        cache_root: ClientCachePath::from_path(cache_root),
+        generations: Vec::new(),
+    }
 }
 
 fn write_cache_manifest(
@@ -304,13 +350,14 @@ fn print_db_status(db_report: Option<&ClientDbReport>) {
             })
             .unwrap_or_default();
         println!(
-            "|db path={} status={} generations={} syntaxRows={}/{}/{} rawSourceStored={}{}",
+            "|db path={} status={} generations={} syntaxRows={}/{}/{} artifactEvents={} rawSourceStored={}{}",
             db_report.db_path.display(),
             db_report.status.as_str(),
             db_report.generation_count,
             db_report.syntax_row_generation_count,
             db_report.syntax_row_match_count,
             db_report.syntax_row_capture_count,
+            db_report.artifact_event_count,
             db_report.raw_source_stored,
             runtime_pragmas
         );
@@ -323,7 +370,7 @@ fn print_db_status(db_report: Option<&ClientDbReport>) {
         }
     } else {
         println!(
-            "|db path=unavailable status=unavailable generations=0 syntaxRows=0/0/0 rawSourceStored=false journalMode=unknown synchronous=unknown busyTimeoutMs=unknown foreignKeys=false"
+            "|db path=unavailable status=unavailable generations=0 syntaxRows=0/0/0 artifactEvents=0 rawSourceStored=false journalMode=unknown synchronous=unknown busyTimeoutMs=unknown foreignKeys=false"
         );
     }
 }

@@ -1,0 +1,80 @@
+{
+  "id": "rust.codeql-backend-unavailable-flow",
+  "language": "rust",
+  "title": "Rust ASP optional CodeQL backend unavailable evidence flow",
+  "coverage": [
+    "json-schema",
+    "evidence-assurance",
+    "real-trigger",
+    "performance"
+  ],
+  "tags": [
+    "asp",
+    "relation-flow",
+    "codeql-unavailable"
+  ],
+  "workdir": ".",
+  "budgets": {
+    "maxCommands": 1,
+    "maxTotalLinesWarn": 1,
+    "maxTotalElapsedMsWarn": 800,
+    "maxTotalStdoutBytesWarn": 2500
+  },
+  "evidence": {
+    "source": "recorded-replay",
+    "intent": "Validate the optional CodeQL evidence backend unavailable path without requiring CodeQL to be installed.",
+    "intentKind": "implementation-principle",
+    "editBoundary": "none",
+    "metrics": {
+      "recordedCommandCount": 1,
+      "recordedStdoutBytes": 1110,
+      "repeatedSearches": 0,
+      "jsonSearches": 1,
+      "compactSearches": 0,
+      "tokenDelta": "same"
+    },
+    "findings": [
+      {
+        "kind": "backend-unavailable",
+        "severity": "info",
+        "message": "CodeQL is optional; unavailable evidence is represented as a structured artifact rather than prompt-output text."
+      }
+    ]
+  },
+  "steps": [
+    {
+      "id": "codeql-unavailable-evidence",
+      "kind": "schema-contract",
+      "coverage": [
+        "json-schema",
+        "evidence-assurance",
+        "real-trigger",
+        "performance"
+      ],
+      "command": [
+        "python",
+        "-c",
+        "import json; from pathlib import Path; print(json.dumps(json.loads(Path('sandtables/fixtures/asp/codeql-backend-unavailable.json').read_text(encoding='utf-8')), separators=(',', ':')))"
+      ],
+      "expect": {
+        "stdoutJsonSchema": "schemas/semantic-codeql-evidence.v1.schema.json",
+        "stdoutJsonEquals": {
+          "schemaId": "agent.semantic-protocols.semantic-codeql-evidence",
+          "languageId": "rust",
+          "providerId": "rs-harness",
+          "projectRootPolicy": "blocked",
+          "omissions.0.kind": "backend-unavailable",
+          "omissions.0.fields.executionBackend": "codeql"
+        },
+        "stdoutJsonContains": {
+          "artifactId": "codeql-evidence/unavailable",
+          "queryId": "asp.flow-lite",
+          "rowCount": "0"
+        },
+        "maxStdoutLinesWarn": 1,
+        "maxStdoutBytesWarn": 2500,
+        "maxElapsedMsWarn": 800
+      }
+    }
+  ]
+}

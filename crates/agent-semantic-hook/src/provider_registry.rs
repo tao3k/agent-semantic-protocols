@@ -6,7 +6,7 @@ use crate::protocol::{
     CommandTemplate, HOOK_PROTOCOL_ID, HOOK_PROTOCOL_VERSION, HookPolicy, HookRoutes,
     PROVIDER_MANIFEST_SCHEMA_ID, PROVIDER_MANIFEST_SCHEMA_VERSION, StdinMode,
 };
-use crate::protocol_activation::{ManifestSourceDefaults, ProviderManifest};
+use crate::protocol_activation::{ManifestSourceDefaults, ProviderExecution, ProviderManifest};
 
 const SCHEMA_REGISTRY_JSON: &str =
     include_str!("../../../schemas/semantic-language-registry.providers.v1.json");
@@ -44,6 +44,8 @@ struct LanguageRegistration {
     language_id: String,
     provider_id: String,
     binary: String,
+    #[serde(default)]
+    execution: ProviderExecution,
     namespace: String,
 }
 
@@ -63,6 +65,7 @@ impl LanguageRegistration {
             provider_id: self.provider_id,
             namespace: self.namespace,
             binary: self.binary.clone(),
+            execution: self.execution,
             source: overlay.source.into_defaults(),
             policy: HookPolicy::default(),
             routes: overlay

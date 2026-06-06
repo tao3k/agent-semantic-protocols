@@ -1,0 +1,164 @@
+* Tool health and search history
+
+ASP must not rebuild Unix search tools or graph-turbo algorithms under
+different names.  Agents already understand =fd=, =rg=, =fzf=, and =eza=.
+Those tools are allowed in ordinary shell pipelines, and simple pipelines
+should stay explicit:
+
+#+begin_src shell
+rg -n contentBlocks tests | asp python search ingest items tests --view seeds .
+fd -e rs provider crates | asp rust search ingest items tests --view seeds .
+#+end_src
+
+The protocol responsibility is narrower and stricter:
+
+- detect required external tools and ASP extension bins and report their
+  health;
+- keep =search ingest= stdin-first and typed;
+- preserve command history artifacts so agent command quality can be audited;
+- suggest better search plans from recorded command behavior;
+- compose only high-value multi-step searches that need budgets, fan-out,
+  deduplication, ranking, provenance, and artifact recording.
+
+** Required external tool health
+
+=fd=, =rg=, =fzf=, =eza=, and =graph-turbo= are required tools for ASP's
+agent-facing search toolset.  =graph-turbo= is the ASP graph extension bin used
+by timeline/history audit.  ASP must not silently fall back to a native
+reimplementation.  If a tool is missing, the corresponding tool-assisted
+workflow is unavailable and the diagnostic must say so.
+
+#+begin_src shell
+asp tools doctor
+asp doctor
+#+end_src
+
+=asp tools doctor= prints one compact row per required tool:
+
+#+begin_src text
+[asp-tools] status=missing required=fd,rg,fzf,eza,graph-turbo root=.
+|tool name=fd status=ok path=/opt/homebrew/bin/fd
+|tool name=rg status=ok path=/opt/homebrew/bin/rg
+|tool name=fzf status=missing
+|tool name=eza status=ok path=/opt/homebrew/bin/eza
+|tool name=graph-turbo status=ok path=/Users/me/.local/bin/graph-turbo
+|cmd doctor=asp tools doctor
+|rule fallback=disabled installRequired=true
+#+end_src
+
+=asp doctor= includes a one-line summary so agents see missing tools before
+choosing tool-assisted search flows.  Future =asp.toml= support may add
+=toolsSet.paths= to extend discovery, but fallback remains disabled.
+
+** Search history audit is graph-turbo owned
+
+Recorded command artifacts under
+=.cache/agent-semantic-protocol/artifacts/prompt-output= are part of the ASP
+feedback loop.  The agent should not guess whether a new wrapper is useful or
+whether =search prime= / reasoning quality is improving; it should inspect the
+recorded command cascade as graph-turbo timeline evidence.
+
+=graph-turbo= is the algorithm owner for this audit surface.  It owns artifact
+event extraction, episode/session splitting, microburst and fan-out detection,
+prime-frontier suppression, =fzf= promotion, owner collapse, ranked next
+actions, and future failure-frontier evidence backends.  =asp= must not
+reimplement these algorithms in Rust.  The ASP surface is a thin, explicit bin
+caller:
+
+#+begin_src shell
+asp search history audit .
+#+end_src
+
+This is equivalent to:
+
+#+begin_src shell
+graph-turbo timeline .cache/agent-semantic-protocol/artifacts
+#+end_src
+
+The boundary is intentionally explicit:
+
+- =graph-turbo= must be installed on =PATH=;
+- =asp search history audit [PROJECT_ROOT]= calls exactly
+  =graph-turbo timeline <PROJECT_ROOT>/.cache/agent-semantic-protocol/artifacts=;
+- no Python source-path probing, =python -m= fallback, or legacy statistical
+  audit implementation is allowed;
+- agents can call =graph-turbo timeline <ARTIFACT_DIR>= directly when they want
+  artifact-level control.
+
+For speed, ASP's Rust SQLite client DB owns the durable artifact-event index.
+Provider write-back inserts compact =artifact_event= rows next to cache
+generation rows, and =asp search history audit= may pass those rows to
+=graph-turbo timeline --events-json -=. =graph-turbo= must not open ASP's
+SQLite DB directly; the cross-language boundary is the schema-owned
+=graph-turbo-artifact-events= packet. When no indexed rows exist for old
+history, directory scanning remains an artifact import path, not a second audit
+algorithm.
+
+The audit is compact and action-oriented.  It must not dump provider stdout or
+source windows.  It reports timeline episodes, command cascade size, repeated
+prime/fzf/owner patterns, mixed fan-out bursts, avoidable branches, and ranked
+next actions.  Old aggregate command counts are only raw input to the graph
+model, not the product output.  Example rows:
+
+#+begin_src text
+[graph-turbo-timeline] events=746 actions=512 sessions=18 rounds=64 microbursts=64 fanoutBursts=22 repeatSearches=47 suppressiblePrimeSearches=9 promotableFzfSearches=12 collapsibleOwnerSearches=18 routableFanoutBursts=7 avoidableFanoutBranches=19
+[graph-turbo-prime-suppression] policy=same-session-fresh-prime suppressible=9 groups=4 actions=4 replacement=reuse-prime-frontier
+[graph-turbo-fzf-promotion] policy=repeat-fzf-to-typed-frontier promotable=12 groups=6 actions=5 replacement=promote-to-owner-item-test-frontier
+[graph-turbo-owner-collapse] policy=repeat-owner-to-item-test-frontier collapsible=18 groups=7 actions=5 replacement=promote-to-owner-query-item-test-frontier
+[graph-turbo-fanout-planning] policy=mixed-fanout-to-single-profile-frontier routable=7 avoidableBranches=19 actions=5 replacement=route-to-typed-frontier-before-parallel-fanout
+[graph-turbo-next] source=ownerCollapse category=repeat-owner score=18 decision=collapse subject=crates/agent-semantic-client/src/search_history.rs replacement=promote-to-owner-query-item-test-frontier profile=owner-query route=owner-items-tests preferredCommand=asp rust search owner crates/agent-semantic-client/src/search_history.rs items --view seeds .
+#+end_src
+
+The intent is to improve agent command quality and reduce command rounds.  A
+better =search prime= or reasoning profile should show fewer commands to the
+first useful owner/query/code action, fewer repeated owner probes, fewer
+same-session prime refreshes, and fewer mixed fan-out bursts before a typed
+frontier is selected.  The audit should therefore rank concrete next actions
+that reduce cascade length, not merely report that a subcommand was frequent.
+
+** Suggest before compose
+
+=asp <language> search suggest= is the advisory surface.  It consumes user
+intent plus local history and prints candidate commands; it must not execute
+provider searches.  It is useful when the agent has vague terms, repeated
+failed searches, or a wide owner frontier:
+
+#+begin_src shell
+asp rust search suggest 'cacheRoot ClientReceipt cacheManifestPath' --view commands .
+#+end_src
+
+Suggested commands should prefer existing high-signal surfaces:
+
+- =search fzf <term> owner tests --view seeds= for lexical candidate
+  acquisition;
+- =search owner <owner> items --query a|b|c --view seeds= for owner-local
+  parser-visible item discovery;
+- =query <owner> --term <symbol> --names-only= before code extraction;
+- =query --from-hook direct-source-read --selector <exact-range> --code= only
+  after an exact selector exists.
+
+** Compose only high-value searches
+
+=asp <language> search compose= is not a replacement for shell pipes.  It
+exists only when ASP can add value that a raw pipeline does not provide:
+
+- multiple independent query terms or owners;
+- bounded fan-out/fan-in with stable ordering;
+- deduplication across provider surfaces;
+- latency and command-count budgets;
+- provenance rows for every sub-search;
+- artifact records that can be audited later;
+- typed next actions for owner/tests/query/code promotion.
+
+#+begin_src shell
+asp rust search compose \
+  --query 'cacheRoot|ClientReceipt|cacheManifestPath' \
+  --owners crates/agent-semantic-client/src crates/agent-semantic-protocol/src \
+  --pipe items,tests \
+  --view seeds .
+#+end_src
+
+If a search is a plain one-tool pipeline, agents should write the shell
+pipeline directly and pipe into =search ingest=.  If a search needs history,
+budgets, fan-in, ranking, and artifact provenance, use =search suggest= first
+and =search compose= only after the command plan is clear.

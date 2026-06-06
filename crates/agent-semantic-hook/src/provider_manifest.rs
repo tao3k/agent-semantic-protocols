@@ -72,6 +72,7 @@ fn activate_provider(
         language_id: manifest.language_id.clone(),
         provider_id: manifest.provider_id.clone(),
         binary: manifest.binary.clone(),
+        execution: manifest.execution,
         provider_command_prefix,
         coverage: ActivationCoverage {
             package_roots: discover_package_roots(project_root, manifest),

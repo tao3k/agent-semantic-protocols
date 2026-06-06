@@ -109,7 +109,7 @@ assert_pure_code "$typescript_code" "export function parseTreeSitterQueryArgs" "
 python_read="$(
   asp python query \
     --from-hook direct-source-read \
-    --selector src/python_lang_project_harness/_cli_query.py:20:50 \
+    --selector src/python_lang_project_harness/_cli_query.py:20:60 \
     languages/python-lang-project-harness
 )"
 assert_contains "$python_read" "[read-owner]" "python exact read"
@@ -122,7 +122,7 @@ assert_no_cache_noise "$python_read" "python exact read"
 python_code="$(
   asp python query \
     --from-hook direct-source-read \
-    --selector src/python_lang_project_harness/_cli_query.py:20:50 \
+    --selector src/python_lang_project_harness/_cli_query.py:20:60 \
     --code \
     languages/python-lang-project-harness
 )"

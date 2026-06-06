@@ -1,0 +1,421 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-graph-turbo-artifact-timeline.v1.schema.json",
+  "title": "Semantic Graph Turbo Artifact Timeline",
+  "description": "Schema-owned timeline audit report emitted by graph-turbo from ASP artifact events.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "artifactDir",
+    "eventSource",
+    "parameters",
+    "eventCount",
+    "actionEventCount",
+    "sessionCount",
+    "roundCount",
+    "microburstCount",
+    "fanoutBurstCount",
+    "softOverrunMicrobursts",
+    "inferredSubagentStarts",
+    "repeatSearches",
+    "suppressiblePrimeSearches",
+    "promotableFzfSearches",
+    "collapsibleOwnerSearches",
+    "routableFanoutBursts",
+    "avoidableFanoutBranches",
+    "kindCounts",
+    "actionMethodCounts",
+    "sessions",
+    "topMicrobursts",
+    "fanoutHotspots",
+    "repeatGroups",
+    "optimizationTargets",
+    "primeSuppression",
+    "fzfPromotion",
+    "ownerCollapse",
+    "fanoutPlanning",
+    "actionSummary",
+    "efficiencyEstimate"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.graph-turbo-artifact-timeline"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "artifactDir": {
+      "type": "string",
+      "minLength": 1
+    },
+    "eventSource": {
+      "type": "string",
+      "enum": [
+        "artifact-scan",
+        "rust-sqlite",
+        "events-json"
+      ]
+    },
+    "parameters": {
+      "$ref": "#/$defs/parameters"
+    },
+    "eventCount": {
+      "$ref": "#/$defs/nonNegativeInteger"
+    },
+    "actionEventCount": {
+      "$ref": "#/$defs/nonNegativeInteger"
+    },
+    "sessionCount": {
+      "$ref": "#/$defs/nonNegativeInteger"
+    },
+    "roundCount": {
+      "$ref": "#/$defs/nonNegativeInteger"
+    },
+    "microburstCount": {
+      "$ref": "#/$defs/nonNegativeInteger"
+    },
+    "fanoutBurstCount": {
+      "$ref": "#/$defs/nonNegativeInteger"
+    },
+    "softOverrunMicrobursts": {
+      "$ref": "#/$defs/nonNegativeInteger"
+    },
+    "inferredSubagentStarts": {
+      "$ref": "#/$defs/nonNegativeInteger"
+    },
+    "repeatSearches": {
+      "$ref": "#/$defs/nonNegativeInteger"
+    },
+    "suppressiblePrimeSearches": {
+      "$ref": "#/$defs/nonNegativeInteger"
+    },
+    "promotableFzfSearches": {
+      "$ref": "#/$defs/nonNegativeInteger"
+    },
+    "collapsibleOwnerSearches": {
+      "$ref": "#/$defs/nonNegativeInteger"
+    },
+    "routableFanoutBursts": {
+      "$ref": "#/$defs/nonNegativeInteger"
+    },
+    "avoidableFanoutBranches": {
+      "$ref": "#/$defs/nonNegativeInteger"
+    },
+    "kindCounts": {
+      "$ref": "#/$defs/countMap"
+    },
+    "actionMethodCounts": {
+      "$ref": "#/$defs/countMap"
+    },
+    "sessions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/session"
+      }
+    },
+    "topMicrobursts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/microburst"
+      }
+    },
+    "fanoutHotspots": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/fanoutHotspot"
+      }
+    },
+    "repeatGroups": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/actionRow"
+      }
+    },
+    "optimizationTargets": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/actionRow"
+      }
+    },
+    "primeSuppression": {
+      "$ref": "#/$defs/actionGroup"
+    },
+    "fzfPromotion": {
+      "$ref": "#/$defs/actionGroup"
+    },
+    "ownerCollapse": {
+      "$ref": "#/$defs/actionGroup"
+    },
+    "fanoutPlanning": {
+      "$ref": "#/$defs/actionGroup"
+    },
+    "actionSummary": {
+      "$ref": "#/$defs/actionGroup"
+    },
+    "efficiencyEstimate": {
+      "$ref": "#/$defs/efficiencyEstimate"
+    }
+  },
+  "$defs": {
+    "nonNegativeInteger": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "nonNegativeNumber": {
+      "type": "number",
+      "minimum": 0
+    },
+    "countMap": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/nonNegativeInteger"
+      }
+    },
+    "parameters": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "subagentStartGapSeconds",
+        "subagentSoftMaxSeconds",
+        "subagentHardMaxSeconds",
+        "sessionGapSeconds",
+        "since",
+        "recentSessions"
+      ],
+      "properties": {
+        "subagentStartGapSeconds": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "subagentSoftMaxSeconds": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "subagentHardMaxSeconds": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "sessionGapSeconds": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "since": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "recentSessions": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        }
+      }
+    },
+    "session": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "start",
+        "end",
+        "durationSeconds",
+        "events",
+        "actions",
+        "microbursts",
+        "fanoutBursts",
+        "repeatSearches"
+      ],
+      "properties": {
+        "start": {
+          "type": "string",
+          "minLength": 1
+        },
+        "end": {
+          "type": "string",
+          "minLength": 1
+        },
+        "durationSeconds": {
+          "$ref": "#/$defs/nonNegativeNumber"
+        },
+        "events": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "actions": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "microbursts": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "fanoutBursts": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "repeatSearches": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        }
+      }
+    },
+    "microburst": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "start",
+        "spanSeconds",
+        "events",
+        "fanoutWidth",
+        "commands",
+        "searches",
+        "queries",
+        "methods"
+      ],
+      "properties": {
+        "start": {
+          "type": "string",
+          "minLength": 1
+        },
+        "spanSeconds": {
+          "$ref": "#/$defs/nonNegativeNumber"
+        },
+        "events": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "fanoutWidth": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "commands": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "searches": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "queries": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "methods": {
+          "$ref": "#/$defs/countMap"
+        }
+      }
+    },
+    "fanoutHotspot": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "start",
+        "spanSeconds",
+        "fanoutWidth",
+        "events",
+        "methods"
+      ],
+      "properties": {
+        "start": {
+          "type": "string",
+          "minLength": 1
+        },
+        "spanSeconds": {
+          "$ref": "#/$defs/nonNegativeNumber"
+        },
+        "fanoutWidth": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "events": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "methods": {
+          "$ref": "#/$defs/countMap"
+        }
+      }
+    },
+    "actionRow": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "actionGroup": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "policy",
+        "replacement",
+        "actionCount"
+      ],
+      "properties": {
+        "policy": {
+          "type": "string",
+          "minLength": 1
+        },
+        "replacement": {
+          "type": "string",
+          "minLength": 1
+        },
+        "actionCount": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "actions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/actionRow"
+          }
+        }
+      }
+    },
+    "efficiencyEstimate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policy",
+        "basis",
+        "observedActions",
+        "observedRounds",
+        "repeatSearches",
+        "routableFanoutBursts",
+        "typedFrontierAvoidableSearches",
+        "avoidableFanoutBranches",
+        "estimatedAvoidableActionsUpperBound",
+        "estimatedActionReductionRatioUpperBound",
+        "recommendedFirstCommand",
+        "acceptance"
+      ],
+      "properties": {
+        "policy": {
+          "const": "timeline-action-reduction-estimate"
+        },
+        "basis": {
+          "type": "string",
+          "minLength": 1
+        },
+        "observedActions": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "observedRounds": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "repeatSearches": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "routableFanoutBursts": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "typedFrontierAvoidableSearches": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "avoidableFanoutBranches": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "estimatedAvoidableActionsUpperBound": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "estimatedActionReductionRatioUpperBound": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "recommendedFirstCommand": {
+          "type": "string"
+        },
+        "acceptance": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

@@ -2,8 +2,8 @@
 
 use super::protocol_binary::protocol_binary_on_path;
 use agent_semantic_hook::{
-    PRJ_CACHE_HOME_ENV, PRJ_HOME_CACHE_ENV, ProjectRuntimeLayout, RuntimeProfiles,
-    RuntimeProviderHealthStatus, load_activation, load_runtime_profiles, project_runtime_layout,
+    PRJ_CACHE_HOME_ENV, ProjectRuntimeLayout, RuntimeProfiles, RuntimeProviderHealthStatus,
+    load_activation, project_runtime_layout, runtime_profiles_for_runtime,
 };
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -19,17 +19,16 @@ pub(super) fn run_healthcheck_command(args: &[String]) -> Result<(), String> {
     let options = HealthcheckOptions::parse(args)?;
     let layout = project_runtime_layout(&options.project_root);
     let activation = check_activation(layout.activation_path.as_deref());
-    let runtime_home_status = fs_status(layout.runtime_home.as_deref(), FsKind::Dir);
-    let runtime_profiles = check_runtime_profiles(layout.runtime_profiles_path.as_deref());
+    let activation_runtime = check_activation_runtime(
+        layout.activation_path.as_deref(),
+        layout
+            .git_toplevel
+            .as_deref()
+            .unwrap_or(&options.project_root),
+    );
     let binary = check_binary();
 
     let mut issues = collect_layout_issues(&layout);
-    collect_file_issue(
-        &mut issues,
-        "missing-runtime-home",
-        "runtime profile directory is missing",
-        runtime_home_status,
-    );
     collect_read_issue(
         &mut issues,
         "missing-activation",
@@ -39,15 +38,6 @@ pub(super) fn run_healthcheck_command(args: &[String]) -> Result<(), String> {
         activation.status,
         activation.error.as_deref(),
     );
-    collect_read_issue(
-        &mut issues,
-        "missing-runtime-profiles",
-        "runtime profiles are missing",
-        "invalid-runtime-profiles",
-        "runtime profiles are invalid",
-        runtime_profiles.status,
-        runtime_profiles.error.as_deref(),
-    );
     collect_binary_issue(&mut issues, &binary);
 
     let status = overall_status(&issues);
@@ -55,9 +45,8 @@ pub(super) fn run_healthcheck_command(args: &[String]) -> Result<(), String> {
         print_json(
             status,
             &layout,
-            runtime_home_status,
             &activation,
-            &runtime_profiles,
+            &activation_runtime,
             &binary,
             &issues,
         )?;
@@ -65,9 +54,8 @@ pub(super) fn run_healthcheck_command(args: &[String]) -> Result<(), String> {
         print_compact(
             status,
             &layout,
-            runtime_home_status,
             &activation,
-            &runtime_profiles,
+            &activation_runtime,
             &binary,
             &issues,
         );
@@ -130,7 +118,7 @@ struct ActivationCheck {
 }
 
 #[derive(Clone, Debug)]
-struct RuntimeProfilesCheck {
+struct ActivationRuntimeCheck {
     status: &'static str,
     provider_count: Option<usize>,
     error: Option<String>,
@@ -179,9 +167,9 @@ fn check_activation(path: Option<&Path>) -> ActivationCheck {
     }
 }
 
-fn check_runtime_profiles(path: Option<&Path>) -> RuntimeProfilesCheck {
+fn check_activation_runtime(path: Option<&Path>, project_root: &Path) -> ActivationRuntimeCheck {
     let Some(path) = path else {
-        return RuntimeProfilesCheck {
+        return ActivationRuntimeCheck {
             status: "unresolved",
             provider_count: None,
             error: None,
@@ -189,21 +177,22 @@ fn check_runtime_profiles(path: Option<&Path>) -> RuntimeProfilesCheck {
         };
     };
     if !path.is_file() {
-        return RuntimeProfilesCheck {
+        return ActivationRuntimeCheck {
             status: "missing",
             provider_count: None,
             error: None,
             profiles: None,
         };
     }
-    match load_runtime_profiles(path) {
-        Ok(profiles) => RuntimeProfilesCheck {
+    match load_activation(path).map(|runtime| runtime_profiles_for_runtime(project_root, &runtime))
+    {
+        Ok(profiles) => ActivationRuntimeCheck {
             status: "ok",
             provider_count: Some(profiles.providers.len()),
             error: None,
             profiles: Some(profiles),
         },
-        Err(error) => RuntimeProfilesCheck {
+        Err(error) => ActivationRuntimeCheck {
             status: "invalid",
             provider_count: None,
             error: Some(error),
@@ -244,15 +233,6 @@ fn collect_layout_issues(layout: &ProjectRuntimeLayout) -> Vec<HealthIssue> {
         issues.push(error(
             "missing-cache-home",
             format!("set {PRJ_CACHE_HOME_ENV} or run inside a git worktree"),
-        ));
-    }
-    if let Some(value) = layout.prj_home_cache.as_ref() {
-        issues.push(warn(
-            "ignored-prj-home-cache",
-            format!(
-                "{PRJ_HOME_CACHE_ENV} is set to {}; did you mean {PRJ_CACHE_HOME_ENV}?",
-                value.display()
-            ),
         ));
     }
     collect_file_issue(
@@ -366,9 +346,8 @@ fn same_path(left: &Path, right: &Path) -> bool {
 fn print_compact(
     status: &str,
     layout: &ProjectRuntimeLayout,
-    runtime_home_status: &'static str,
     activation: &ActivationCheck,
-    runtime_profiles: &RuntimeProfilesCheck,
+    activation_runtime: &ActivationRuntimeCheck,
     binary: &BinaryCheck,
     issues: &[HealthIssue],
 ) {
@@ -384,11 +363,9 @@ fn print_compact(
             .unwrap_or("missing"),
     );
     println!(
-        "|env {}={} {}={}",
-        PRJ_HOME_CACHE_ENV,
-        env_status(layout.prj_home_cache.as_deref(), true),
+        "|env {}={}",
         PRJ_CACHE_HOME_ENV,
-        env_status(layout.prj_cache_home.as_deref(), false),
+        env_status(layout.prj_cache_home.as_deref()),
     );
     println!(
         "|path agentsDir={} status={}",
@@ -407,15 +384,9 @@ fn print_compact(
         display_count(activation.provider_count)
     );
     println!(
-        "|path runtimeHome={} status={}",
-        display_opt(layout.runtime_home.as_deref()),
-        runtime_home_status
-    );
-    println!(
-        "|path runtimeProfiles={} status={} providers={}",
-        display_opt(layout.runtime_profiles_path.as_deref()),
-        runtime_profiles.status,
-        display_count(runtime_profiles.provider_count)
+        "|activationRuntime status={} providers={}",
+        activation_runtime.status,
+        display_count(activation_runtime.provider_count)
     );
     println!(
         "|binary currentAsp={} pathAsp={} status={}",
@@ -423,10 +394,10 @@ fn print_compact(
         display_opt(binary.path_asp.as_deref()),
         binary.status
     );
-    if let Some(profiles) = runtime_profiles.profiles.as_ref() {
+    if let Some(profiles) = activation_runtime.profiles.as_ref() {
         for provider in &profiles.providers {
             println!(
-                "|provider language={} provider={} profile={} resolvedBinary={} argv={}",
+                "|provider language={} provider={} runtime={} resolvedBinary={} argv={}",
                 provider.language_id,
                 provider.provider_id,
                 runtime_provider_status(provider.health.status),
@@ -448,13 +419,12 @@ fn print_compact(
 fn print_json(
     status: &str,
     layout: &ProjectRuntimeLayout,
-    runtime_home_status: &'static str,
     activation: &ActivationCheck,
-    runtime_profiles: &RuntimeProfilesCheck,
+    activation_runtime: &ActivationRuntimeCheck,
     binary: &BinaryCheck,
     issues: &[HealthIssue],
 ) -> Result<(), String> {
-    let providers = runtime_profiles
+    let providers = activation_runtime
         .profiles
         .as_ref()
         .map(|profiles| {
@@ -486,15 +456,17 @@ fn print_json(
         "cacheHome": path_value(layout.cache_home.as_deref()),
         "cacheSource": layout.cache_source.as_ref().map(|source| source.as_str()),
         "env": {
-            "PRJ_HOME_CACHE": path_value(layout.prj_home_cache.as_deref()),
             "PRJ_CACHE_HOME": path_value(layout.prj_cache_home.as_deref()),
         },
         "paths": {
             "agentsDir": path_report(layout.agents_dir.as_deref(), fs_status(layout.agents_dir.as_deref(), FsKind::Dir), None, None),
             "agentsSkill": path_report(layout.agent_skill_path.as_deref(), fs_status(layout.agent_skill_path.as_deref(), FsKind::File), None, None),
             "activation": path_report(layout.activation_path.as_deref(), activation.status, activation.provider_count, activation.error.as_deref()),
-            "runtimeHome": path_report(layout.runtime_home.as_deref(), runtime_home_status, None, None),
-            "runtimeProfiles": path_report(layout.runtime_profiles_path.as_deref(), runtime_profiles.status, runtime_profiles.provider_count, runtime_profiles.error.as_deref()),
+        },
+        "activationRuntime": {
+            "status": activation_runtime.status,
+            "providerCount": activation_runtime.provider_count,
+            "error": activation_runtime.error,
         },
         "binary": {
             "currentAsp": path_value(binary.current_asp.as_deref()),
@@ -540,11 +512,10 @@ fn display_count(count: Option<usize>) -> String {
         .unwrap_or_else(|| "n/a".to_string())
 }
 
-fn env_status(path: Option<&Path>, ignored: bool) -> String {
-    match (path, ignored) {
-        (Some(path), true) => format!("set-ignored:{}", path.display()),
-        (Some(path), false) => format!("set:{}", path.display()),
-        (None, _) => "unset".to_string(),
+fn env_status(path: Option<&Path>) -> String {
+    match path {
+        Some(path) => format!("set:{}", path.display()),
+        None => "unset".to_string(),
     }
 }
 

@@ -90,36 +90,119 @@ class SemanticSandtableScenarioSchemaTests(unittest.TestCase):
             any("does not match" in error for error in self.validation_errors(scenario))
         )
 
-    def test_large_library_evidence_requires_complete_matrix_metadata(self) -> None:
-        scenario: dict[str, object] = _large_library_scenario()
+    def test_agent_cli_claude_step_is_valid(self) -> None:
+        scenario: dict[str, object] = {
+            "id": "root.claude-cli",
+            "language": "root",
+            "workdir": ".",
+            "skipUnlessEnv": ["ASP_LIVE_CLAUDE_CLI", "ANTHROPIC_AUTH_TOKEN"],
+            "steps": [
+                {
+                    "id": "claude-print",
+                    "kind": "agent-cli",
+                    "agentCli": {
+                        "client": "claude",
+                        "binary": "claude",
+                        "prompt": "Explain ASP hook install",
+                        "outputFormat": "stream-json",
+                        "inputFormat": "text",
+                        "includePartialMessages": True,
+                        "includeHookEvents": True,
+                        "verbose": True,
+                        "model": "deepseek-v4",
+                        "env": {
+                            "ANTHROPIC_BASE_URL": "https://api.deepseek.com/anthropic",
+                            "ANTHROPIC_AUTH_TOKEN": "${DEEPSEEK_API_KEY}",
+                        },
+                        "requiredEnv": ["ANTHROPIC_AUTH_TOKEN"],
+                    },
+                }
+            ],
+        }
 
         self.assertEqual([], self.validation_errors(scenario))
 
-    def test_large_library_evidence_requires_coverage_and_repository(self) -> None:
-        scenario = _large_library_scenario()
-        scenario.pop("coverage")
+    def test_skip_unless_env_rejects_non_env_names(self) -> None:
+        scenario: dict[str, object] = {
+            "id": "root.claude-cli",
+            "language": "root",
+            "workdir": ".",
+            "skipUnlessEnv": ["live-claude"],
+            "steps": [
+                {
+                    "id": "claude-print",
+                    "agentCli": {
+                        "client": "claude",
+                        "binary": "claude",
+                        "prompt": "Explain ASP hook install",
+                        "outputFormat": "text",
+                    },
+                }
+            ],
+        }
+
+        self.assertTrue(
+            any("does not match" in error for error in self.validation_errors(scenario))
+        )
+
+    def test_step_rejects_command_and_agent_cli_together(self) -> None:
+        scenario: dict[str, object] = {
+            "id": "root.claude-cli",
+            "language": "root",
+            "workdir": ".",
+            "steps": [
+                {
+                    "id": "ambiguous",
+                    "command": ["true"],
+                    "agentCli": {
+                        "client": "claude",
+                        "binary": "claude",
+                        "prompt": "Explain ASP hook install",
+                        "outputFormat": "text",
+                    },
+                }
+            ],
+        }
+
+        self.assertTrue(
+            any(
+                "{'id': 'ambiguous'" in error or "is valid under each" in error
+                for error in self.validation_errors(scenario)
+            )
+        )
+
+    def test_failure_frontier_comparison_evidence_is_valid(self) -> None:
+        scenario = _load_json(
+            _REPO_ROOT
+            / "sandtables"
+            / "fixtures"
+            / "asp"
+            / "failure-frontier-real-trigger-replay.json"
+        )
+
+        self.assertEqual([], self.validation_errors(scenario))
+
+    def test_failure_frontier_comparison_rejects_unknown_threshold(self) -> None:
+        scenario = _load_json(
+            _REPO_ROOT
+            / "sandtables"
+            / "fixtures"
+            / "asp"
+            / "failure-frontier-real-trigger-replay.json"
+        )
         evidence = scenario["evidence"]
         assert isinstance(evidence, dict)
-        target = evidence["targetLibrary"]
-        assert isinstance(target, dict)
-        target.pop("repository")
+        comparison = evidence["failureFrontierComparison"]
+        assert isinstance(comparison, dict)
+        thresholds = comparison["thresholds"]
+        assert isinstance(thresholds, dict)
+        thresholds["maxRawSourceWindows"] = 4
 
         errors = self.validation_errors(scenario)
 
-        self.assertIn("'coverage' is a required property", errors)
-        self.assertIn("'repository' is a required property", errors)
-
-    def test_large_library_evidence_rejects_unknown_workdir_kind(self) -> None:
-        scenario = _large_library_scenario()
-        evidence = scenario["evidence"]
-        assert isinstance(evidence, dict)
-        target = evidence["targetLibrary"]
-        assert isinstance(target, dict)
-        target["workdirKind"] = "unknown"
-
-        errors = self.validation_errors(scenario)
-
-        self.assertIn("'unknown' is not one of ['checkout', 'registry']", errors)
+        self.assertTrue(
+            any("Additional properties are not allowed" in error for error in errors)
+        )
 
     def test_semantic_sandtable_scenario_schema_copies_stay_synchronized(self) -> None:
         root_schema = _load_json(
@@ -137,66 +220,6 @@ class SemanticSandtableScenarioSchemaTests(unittest.TestCase):
             {schema_path: root_schema for schema_path in schema_copies},
             {schema_path: _load_json(schema_path) for schema_path in schema_copies},
         )
-
-
-def _large_library_scenario() -> dict[str, object]:
-    return {
-        "id": "python.demo-large-library",
-        "language": "python",
-        "coverage": ["large-library"],
-        "workdir": ".",
-        "evidence": {
-            "source": "handwritten",
-            "fixtureTier": "large-library",
-            "targetLibrary": {
-                "language": "python",
-                "name": "demo",
-                "package": "demo",
-                "repository": "example/demo",
-                "workdirKind": "checkout",
-            },
-            "intentCases": [
-                {
-                    "intentKind": "feature-implementation",
-                    "intent": "feature",
-                    "stepIds": ["intent-query-set"],
-                    "queryTerms": ["Feature"],
-                },
-                {
-                    "intentKind": "api-usage",
-                    "intent": "api",
-                    "stepIds": ["intent-query-set"],
-                    "queryTerms": ["Api"],
-                },
-                {
-                    "intentKind": "implementation-principle",
-                    "intent": "principle",
-                    "stepIds": ["intent-query-set"],
-                    "queryTerms": ["Principle"],
-                },
-            ],
-        },
-        "steps": [
-            {
-                "id": "intent-query-set",
-                "command": [
-                    "py-harness",
-                    "search",
-                    "fzf",
-                    "--query-set",
-                    "Feature",
-                    "--query-set",
-                    "Api",
-                    "--query-set",
-                    "Principle",
-                    "--view",
-                    "seeds",
-                    ".",
-                ],
-            }
-        ],
-    }
-
 
 if __name__ == "__main__":
     unittest.main()

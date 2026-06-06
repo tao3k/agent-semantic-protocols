@@ -249,9 +249,11 @@ fn client_search_miss_writes_prompt_output_cache_for_next_hit() {
             "rust",
             "search",
             "prime",
-            ".",
             "--view",
             "seeds",
+            "--focus",
+            "tests",
+            ".",
             "--receipt-json",
         ])
         .output()
@@ -317,7 +319,7 @@ fn client_search_receipt_reports_warm_provider_when_matching_generation_exists()
     );
     assert_eq!(
         String::from_utf8(output.stdout).expect("stdout"),
-        "rs args=[search][prime][--view][seeds][.]\n"
+        "rs args=[search][prime][--view][seeds]\n"
     );
     let receipt: Value =
         serde_json::from_slice(&output.stderr).expect("stderr should be receipt JSON");
@@ -408,7 +410,7 @@ esac
     let search_provider_args =
         std::fs::read_to_string(&search_provider_args_log).expect("read search provider args");
     assert!(
-        search_provider_args.contains("search prime --view seeds --json ."),
+        search_provider_args.contains("search prime --view seeds"),
         "{search_provider_args}"
     );
     let search_provider_arg_count = search_provider_args.lines().count();
@@ -421,14 +423,9 @@ esac
         "{search_manifest_text}"
     );
     assert!(
-        search_manifest_text.contains("search/"),
+        search_manifest_text.contains("prompt-output/"),
         "{search_manifest_text}"
     );
-    assert!(
-        search_manifest_text.contains("search-output/"),
-        "{search_manifest_text}"
-    );
-
     let second_search = Command::new(env!("CARGO_BIN_EXE_asp"))
         .current_dir(&search_root)
         .env("PATH", &search_bin_dir)
@@ -544,11 +541,11 @@ esac
     let provider_args =
         std::fs::read_to_string(&provider_args_log).expect("read provider args log");
     assert!(
-        provider_args.contains("query src/lib.rs --term CacheReplay ."),
+        provider_args.contains("query src/lib.rs --term CacheReplay"),
         "{provider_args}"
     );
     assert!(
-        provider_args.contains("query src/lib.rs --term CacheReplay --json ."),
+        provider_args.contains("query src/lib.rs --term CacheReplay --json"),
         "{provider_args}"
     );
     let provider_arg_count = provider_args.lines().count();

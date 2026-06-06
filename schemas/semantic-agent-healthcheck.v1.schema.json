@@ -59,11 +59,8 @@
     "env": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["PRJ_HOME_CACHE", "PRJ_CACHE_HOME"],
+      "required": ["PRJ_CACHE_HOME"],
       "properties": {
-        "PRJ_HOME_CACHE": {
-          "$ref": "#/$defs/nullablePath"
-        },
         "PRJ_CACHE_HOME": {
           "$ref": "#/$defs/nullablePath"
         }

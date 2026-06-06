@@ -1,3 +1,5 @@
+#![deny(dead_code)]
+
 //! Public facade for the `asp` CLI.
 
 mod cli;

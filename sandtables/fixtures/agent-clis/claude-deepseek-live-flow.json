@@ -1,0 +1,51 @@
+{
+  "id": "root.claude-deepseek-live-flow",
+  "language": "root",
+  "coverage": [
+    "real-trigger"
+  ],
+  "tags": [
+    "claude-cli",
+    "agent-cli",
+    "deepseek-env",
+    "live"
+  ],
+  "workdir": {
+    "relative": "."
+  },
+  "skipUnlessEnv": [
+    "ASP_LIVE_CLAUDE_CLI",
+    "ANTHROPIC_AUTH_TOKEN"
+  ],
+  "steps": [
+    {
+      "id": "claude-deepseek-stream-json",
+      "kind": "agent-cli",
+      "agentCli": {
+        "client": "claude",
+        "binary": "claude",
+        "prompt": "Return exactly: ASP_LIVE_CLAUDE_CLI_OK",
+        "outputFormat": "stream-json",
+        "inputFormat": "text",
+        "includeHookEvents": true,
+        "verbose": true,
+        "env": {
+          "ANTHROPIC_BASE_URL": "https://api.deepseek.com/anthropic",
+          "ANTHROPIC_AUTH_TOKEN": "${ANTHROPIC_AUTH_TOKEN}"
+        },
+        "requiredEnv": [
+          "ANTHROPIC_AUTH_TOKEN"
+        ]
+      },
+      "timeoutSeconds": 120,
+      "expect": {
+        "exitCode": 0,
+        "stdoutContains": [
+          "ASP_LIVE_CLAUDE_CLI_OK"
+        ],
+        "maxStdoutBytesWarn": 200000,
+        "maxElapsedMsWarn": 120000
+      }
+    }
+  ]
+}

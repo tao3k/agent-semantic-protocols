@@ -609,6 +609,94 @@ schema-valid packets and invoke the shared renderer through
 thin process adapter and tests that prove the adapter passes canonical packets
 to the shared renderer without fallback.
 
+** Graph turbo packet boundary
+
+=asp-graph-turbo= is a typed ranking engine for parser-owned graph facts, not a
+second prompt renderer.  Its durable output is
+=semantic-graph-turbo-result.v1=, which records the selected profile, seed
+nodes, ranked node ids, ranking budget, frontier actions, relation edges, and
+scores.  When graph turbo emits compact text, it must use the same
+=[graph-frontier]= family owned by this RFC: header, legend, =aliases=, node
+aliases, edge lines, =rank=, =frontier=, =scores=, =profiles=, =omit=, and
+=avoid=.  It must not invent a second =[graph-turbo]= prompt format.  Provider
+search output must continue to render through the shared
+=semantic-compact-graph-render.v1= template.
+
+Graph turbo must not infer missing relation labels, node roles, or frontier
+actions from prose.  Any prompt-visible rank or action produced by the turbo
+engine must be visible in the result packet before another renderer serializes
+it for an agent.
+
+Graph turbo requests are schema-owned too.  A caller that wants the Python
+ranking engine to run =typed-ppr-diverse= should send
+=semantic-graph-turbo-request.v1= with =profile=, =algorithm=, =seedIds=,
+=budget=, typed =graph.nodes[]=/=graph.edges[]= facts, optional
+=kindBudgets=, and optional =windowMerge= controls.  Command-line arguments
+may override request profile, seeds, or budget for local debugging, but
+provider integration should prefer the request packet so the algorithm input
+and response can be audited together.  The response is
+=semantic-graph-turbo-result.v1= and must echo the effective profile,
+algorithm, seed ids, budget, per-kind budget, merged windows, profile
+compatibility, plus prompt-visible =profiles=, =omit=, and =avoid= facts used
+by compact graph-frontier rendering.
+
+Language implementations may use their ecosystem's normal graph algorithm
+library, such as Python =NetworkX= or Julia =Graphs.jl=, for traversal,
+centrality, and reachability.  These libraries are implementation dependencies:
+the durable protocol remains the schema-owned graph turbo result packet and
+does not expose provider-local library names as ranking algorithms.
+
+For Python MVP 11 P1, =typed-ppr-diverse= is implemented over a SciPy sparse
+CSR backend.  The algorithm constructs a profile-filtered typed adjacency
+matrix, runs personalized PageRank from =seedIds=, filters by profile depth,
+applies diversity and per-kind budgets, merges overlapping/nearby source
+windows, and emits profile compatibility evidence.  NetworkX can be useful for
+experimentation, but the production Python turbo path should use SciPy sparse
+linear algebra because P2 flow/path ranking and P3 trace/cache evidence also
+depend on stable matrix-oriented graph state.
+
+Python MVP 11 P2 adds typed path evidence to the same response packet:
+=sourceSinkFrontier= records the effective sources and sinks,
+=typedPaths= records constrained shortest and k-shortest typed paths, and
+=flowLite= records the local path ranking order.  The path evidence is
+schema-owned response data, not another compact prompt protocol.
+
+Python MVP 11 P3 adds auditability around the algorithm run:
+=packetFingerprint= is the canonical request/graph hash, =graphCache= reports
+the sparse backend cache status, =algorithmTrace= lists the stable algorithm
+steps, =rankExplanations= explains each ranked node, and =algorithmMetrics=
+records sandtable-friendly counts such as path count, ranked count, merged
+window count, and cache status.
+
+Python MVP 12 makes the ranking policy explicit rather than allowing the
+algorithm to consume unweighted or all-graph edges.  Graph turbo must normalize
+missing edge weights through a shared relation policy before constructing the
+CSR matrix: =selects= 1.2, =matches= 1.5, =repairs= 1.8, =contains= 1.0,
+=calls= 1.2, =covers= 1.4, =imports= 0.8, =uses= 0.9, =flows-to= 1.6, and
+=split= 0.7.  Provider-compatible aliases such as =covered_by= and
+=depends_on= may map to the same initial weights as their canonical relation
+families, but unknown unweighted relations must not silently become neutral
+rank edges.
+
+Each profile owns a node-kind bonus map and an explicit transition mask.  The
+initial bonuses are =owner-query= hot +0.3, item +0.25, test +0.15, owner
++0.1; =prime= owner +0.3, query +0.2, dependency +0.15, test +0.15; and
+=read-frontier= window +0.4, symbol +0.3, range -0.2.  The initial typed
+transitions are =owner-query= query->item, owner->item, item->hot, owner->test;
+=query-deps= query->owner, owner->dependency, dependency->owner, owner->test;
+and =read-frontier= range->symbol, range->window, symbol->window.  The result
+packet's =profileCompatibility= evidence must expose allowed relations,
+allowed transitions, and kind bonuses so another renderer or agent does not
+have to infer the policy from rank output.
+
+Diversity is a score adjustment layer over typed PPR, not a prompt heuristic.
+The initial penalties are same owner 0.25, same symbol name 0.4, and repeated
+same kind beyond the soft budget 0.3; contiguous windows that can merge receive
+a 0.5 bonus.  Explicit per-kind budgets remain hard caps.  This policy is meant
+to suppress repeated outputs such as =semantic_string_type= x8 while still
+preserving parser-owned rank evidence for distinct owners, symbols, tests, and
+windows.
+
 * Implementation order
 
 1. Keep this RFC as the language-neutral contract.
@@ -694,6 +782,222 @@ Completed:
   hits replay the rendered compact graph without starting the provider or
   renderer.  Julia =search prime --view seeds= is the first focused calibration
   target for this path.
+- [X] =asp-graph-turbo= emits =semantic-graph-turbo-result.v1= ranking
+  packets from typed graph facts, and a Python sandtable validates the package
+  CLI through schema-owned stdout instead of treating compact debug text as the
+  source of truth.
+- [X] Python graph turbo has an offline artifact evaluator that converts cached
+  =semantic-search-packet= artifacts under
+  =.cache/agent-semantic-protocol/artifacts/search= into schema-owned graph
+  turbo requests, then records conversion count, duplicate target compression,
+  rank size, path count, and second-pass cache hits.  This is the first
+  repeatable local baseline for measuring the effect of typed sparse ranking on
+  real ASP cache artifacts.
+- [X] The offline artifact evaluator also extracts historical provider command
+  targets from prompt-output command artifacts and reports
+  =historicalCommandCoverage= over same-language input-target candidate
+  packets.  This is not exact session replay because the current cache does not
+  stem-pair search packets with prompt-output command receipts, but it gives a
+  repeatable proxy for whether graph turbo ranks likely follow-up owner/deps
+  targets near the front.  The current local baseline over 509 cached search
+  artifacts converts 441 packets, hits the second-pass graph cache for all 441,
+  reduces average duplicate target pressure from 3.41 to 1.14, and covers 37 of
+  39 measurable historical command labels with Top-3 35/39, Top-5 37/39, and
+  MRR 0.4744.
+- [X] Add a read-only artifact timeline evaluator that uses artifact mtimes,
+  directory ownership, packet method/language fields, and prompt-output command
+  receipts to infer search rounds, dense subagent-style microbursts, fanout
+  width, repeated searches, and LLM reasoning gaps.  The default time model is
+  a 10-second microburst start gap, 30-second soft subagent span, 60-second hard
+  split, and 10-minute session gap.  Existing prompt-output command receipts
+  remain immutable history; future runtime provenance such as parent artifact
+  or subagent ids may make this evaluator exact, but the first implementation
+  must work as a derived, side-effect-free audit over today's artifacts.
+- [X] The timeline evaluator now emits repeat-search groups and fanout
+  hotspots so graph turbo optimization can target concrete search-loop
+  patterns instead of only aggregate counts.  Current local artifacts produce
+  778 inferred microbursts, 353 fanout bursts, 951 inferred subagent starts,
+  0 soft-overrun microbursts, and 98 repeated searches.  The current top repeat
+  group is Rust =search/prime= over =src/lib.rs=, followed by Python =search/fzf=
+  over =src/python_lang_project_harness/__init__.py= and Rust owner searches
+  for classifier/provider owners.
+- [X] Timeline output now classifies repeat and fanout evidence into balanced
+  =optimizationTargets=.  Repeat-prime targets point to agent guidance/cache
+  suppression, repeat-fzf targets point to typed target recall and profile
+  selection, repeat-owner targets point to owner-local frontier expansion,
+  mixed fanout targets point to round planning/profile routing, and wide
+  owner-item query fanout points to batched owner item frontiers.
+- [X] Timeline optimization rows now carry action-ready routing fields, not
+  only diagnostic labels.  Repeat-fzf and repeat-owner rows include
+  =profile=owner-query= plus an executable =preferredCommand= that promotes
+  path-like fuzzy targets and repeated owner searches to
+  =search owner <path> items --view seeds <project-root>=.  Mixed fanout rows
+  choose one typed frontier route before widening parallel reads/searches.
+  Preferred commands preserve package-local project roots such as
+  =languages/typescript-lang-project-harness= so the suggested action is valid
+  at the real provider boundary.
+- [X] Timeline output now exposes =fanoutPlanning= as a first-class action
+  surface alongside =primeSuppression=, =fzfPromotion=, and =ownerCollapse=.
+  Each mixed-fanout action records =decision=route=,
+  =profile=owner-query=, =route=single-profile-frontier-before-fanout=, an
+  actionable =preferredCommand=, and an =avoidableFanoutBranches= count.  This
+  lets agent guidance and cache/runtime experiments consume the same derived
+  history without reverse-engineering =optimizationTargets= text.
+- [X] Timeline output now includes =actionSummary= as a ranked consumer view
+  over the existing action surfaces.  It does not invent a new compact graph
+  format; it selects the top =preferredCommand= rows from fanout planning,
+  owner collapse, fuzzy promotion, and prime suppression so the agent can run
+  one typed frontier command before widening search again.
+- [X] Timeline output now includes =efficiencyEstimate= as a conservative
+  upper-bound audit over repeated searches plus avoidable fanout branches.  The
+  estimate records observed actions, observed rounds, typed-frontier avoidable
+  searches, avoidable fanout branches, and the top recommended command so a
+  later fresh session can compare before/after behavior without parsing prose.
+- [X] Timeline output now reports =primeSuppression= candidates for the
+  =same-session-fresh-prime= policy.  Existing artifacts remain immutable; this
+  is a derived audit that counts provider =search/prime= artifacts that could
+  have reused an earlier prime frontier inside the same inferred session.
+  Current local artifacts show 38 suppressible prime searches across 5 candidate
+  groups, dominated by Rust =src/lib.rs= with same-session groups of
+  24 calls / 23 suppressible and 11 calls / 10 suppressible.
+- [X] =primeSuppression= now emits executable guidance rows as well as counts:
+  each action records =decision=suppress=, =replacement=reuse-prime-frontier=,
+  the avoided =asp <language> search prime --view seeds .= command, the kept
+  packet path, and the suppressed packet path.  This keeps runtime suppression
+  and agent guidance grounded in packet history rather than hidden prompt
+  heuristics.
+- [X] The local client cache probe now performs fresh-prime reuse for
+  =search prime --view seeds .=.  Exact request-fingerprint replay still wins;
+  when that misses, the probe may reuse the latest same provider/project
+  =search/prime= generation if its file hashes are fresh and its
+  =search-output= artifact is replay-safe.  This turns the repeated-prime
+  guidance into a real provider-spawn suppression path without changing
+  provider =search prime= semantics.
+- [X] Real CLI validation proves the runtime suppression boundary.  Running
+  =cargo run -p agent-semantic-protocol -- rust search --receipt-json prime --view seeds .=
+  first refreshed stale prime state through =route=local-native= with
+  =providerProcessesSpawned=1=.  Running the equivalent
+  =--view=seeds= form immediately after changed the exact request fingerprint
+  but replayed through =route=local-cache= with =cacheStatus=hit=,
+  =providerProcessesSpawned=0=, =sqliteReadCount=3=, =sqliteWriteCount=0=,
+  =elapsedMs=19=, and byte-identical 1095-byte stdout.
+- [X] Timeline output now reports =fzfPromotion= actions for repeated
+  =search/fzf= groups.  Each action records =decision=promote=,
+  =replacement=promote-to-owner-item-test-frontier=, repeat count, span, query,
+  and the target =owner-query= profile so recurring fuzzy searches can be
+  converted into typed owner/item/test frontier work.  Current local artifacts
+  show 53 promotable fuzzy searches; top groups include Python
+  =src/python_lang_project_harness/__init__.py= with 7 calls / 6 repeats,
+  Rust =cache= with 5 calls / 4 repeats, TypeScript
+  =languages/typescript-lang-project-harness/src/parser/index.ts= with
+  5 calls / 4 repeats, and Python
+  =languages/python-lang-project-harness/src/python_lang_parser/_ast_names.py=
+  with 5 calls / 4 repeats.
+- [X] The local client cache probe now performs safe fresh-fzf reuse for
+  repeated =search fzf <query> --view seeds .= requests.  Exact
+  request-fingerprint replay still wins; when that misses, the probe scans the
+  recent same provider/project =search/fzf= generations newest-first and only
+  reuses one if source file hashes are fresh and the cached =search/*.json=
+  packet carries the same =query= as the current request.  This prevents
+  accidentally replaying a different fuzzy query while still suppressing
+  repeated provider spawns for equivalent fuzzy searches.
+- [X] Real CLI validation covers the fresh-fzf latest-unrelated case.  First,
+  =search fzf "cache replay proof 20260606 fresh fzf" owner tests --view seeds .=
+  wrote a native miss with =providerProcessesSpawned=1=, =elapsedMs=6577=,
+  and 1226-byte stdout.  Then an unrelated newer
+  =search fzf "unrelated proof 20260606 fresh fzf" owner tests --view seeds .=
+  generation wrote another native miss with =providerProcessesSpawned=1=.
+  Finally, running the original query with =tests owner= changed the exact
+  request fingerprint, skipped the unrelated latest generation through packet
+  query matching, and replayed through =route=local-cache= with
+  =cacheStatus=hit=, =providerProcessesSpawned=0=, =sqliteReadCount=3=,
+  =sqliteWriteCount=0=, =elapsedMs=37=, and byte-identical 1226-byte stdout.
+- [X] Timeline output now reports =ownerCollapse= actions for repeated
+  =search/owner= groups.  Each action records =decision=collapse=,
+  =replacement=promote-to-owner-query-item-test-frontier=, repeat count, span,
+  owner path, and the target =owner-query= profile so repeated owner searches
+  can be converted into a single hotter owner-local item/test frontier.
+- [X] Real artifact validation shows the owner-collapse layer is now a larger
+  target than fuzzy promotion in the current local history.  The timeline
+  report over =.cache/agent-semantic-protocol/artifacts= found
+  =collapsibleOwnerSearches=51= across 27 groups; top candidates are Rust
+  =crates/agent-semantic-protocol/src/command/provider.rs= with 7 calls / 6
+  repeats, =crates/agent-semantic-hook/src/classifier.rs= with 6 calls / 5
+  repeats, and =crates/agent-semantic-client/src/cache_cli/probe.rs= with 5
+  calls / 4 repeats.  The text report emits
+  =[graph-turbo-owner-collapse]= and =[graph-turbo-owner-action]= rows so this
+  optimization remains visible without inventing a new prompt-facing graph
+  format.
+- [X] Runtime Rust owner search now collapses the first follow-up step by
+  emitting a bounded owner-local hot item frontier even when the user does not
+  request the full =items= pipe.  The full item inventory remains behind
+  =search owner <path> items=, but default owner output now includes =|hot=
+  symbol locators plus existing covering tests and owner graph synthesis.
+- [X] Real CLI validation against the refreshed active =.bin/rs-harness= proves
+  the repeated-owner target has a prompt-facing runtime path.  Running
+  =rust search --receipt-json owner crates/agent-semantic-protocol/src/command/provider.rs .=
+  used =route=local-native= and emitted 2743-byte stdout with =|hot
+  run_language_command= plus 11 more owner-local symbols.  Running
+  =rust search --receipt-json owner crates/agent-semantic-client-db/src/db.rs .=
+  emitted 2848-byte stdout with =|hot ClientDb=, =|hot
+  cache_generation_hit_from_row=, covering =|test= rows, and the existing
+  bounded owner graph =|synthesis= line.
+- [X] Artifact timeline method normalization now treats command receipt argv
+  options as modifiers rather than methods.  Hook recovery commands such as
+  =query --from-hook direct-source-read --selector ...= collapse to =query=,
+  and search modifiers such as =search --view seeds owner ...= still resolve to
+  =search/owner=.  This removes pseudo-methods like =query/--from-hook=,
+  =query/--selector=, and =search/--view= from fanout and mixed-profile
+  metrics without changing provider search/query packet semantics.
+- [X] Artifact timeline evaluation now supports measurement windows through
+  =--since= and =--recent-sessions= so post-change optimization can compare a
+  bounded artifact slice instead of reusing all historical search behavior.
+  The filtered window recomputes sessions, repeated searches, fuzzy promotion,
+  owner collapse, prime suppression, fanout hotspots, and optimization targets
+  from only the selected events.  A real local =--recent-sessions 1= report
+  over =.cache/agent-semantic-protocol/artifacts= produced =eventCount=186=,
+  =actionEventCount=89=, =repeatSearches=8=, =promotableFzfSearches=5=,
+  =collapsibleOwnerSearches=3=, and =suppressiblePrimeSearches=0=.  Its current
+  top post-change target is TypeScript =src/cli/protocol.ts= with
+  =search/fzf= repeat 4 and =search/owner= repeat 2, while mixed fanout remains
+  =query,search/fzf,search/owner=.
+- [X] Artifact timeline repeat and action targets now preserve provider project
+  root context for package-local owner paths.  Search packets use their
+  schema-owned =projectRoot=, and prompt-output command receipts without an
+  explicit root use a conservative local unique-file match to derive
+  =projectRootArg=.  This prevents TypeScript package-local paths such as
+  =src/cli/protocol.ts= from being reported as root-level commands when the
+  executable action passes the project root argument, for example
+  =asp typescript search owner src/cli/protocol.ts languages/typescript-lang-project-harness=.
+  The current
+  =--recent-sessions 1= text report now annotates the top repeat, target,
+  fuzzy-promotion, and owner-collapse rows with
+  =root=languages/typescript-lang-project-harness=.
+- [X] TypeScript owner search now collapses the first repeat-owner follow-up in
+  the same prompt-facing graph-frontier format.  For =search owner <path>
+  --view seeds=, the owner packet includes bounded parser-owned item facts and
+  the shared graph renderer emits item/code frontier nodes instead of forcing a
+  second =search owner <path> items --query ...= round.  Explicit non-seed
+  =items= output remains the compact =|item= inventory.  After invalidating the
+  TypeScript provider-root cache, the real facade command
+  =asp typescript search owner src/cli/protocol.ts --view seeds languages/typescript-lang-project-harness=
+  emitted =selector=items=, =alg=item-frontier=, item nodes for =CliStreams=,
+  =SearchArgs=, =QueryArgs=, =CheckArgs=, =ProtocolArgs=,
+  =parseProtocolArgs=, and =runProtocolCli=, =frontier= entries ending in
+  =.code=, and =avoid=repeat-owner=.
+- [X] Python now implements the executable reasoning entry surface for
+  =owner-tests=, =owner-query=, and =query-deps= through
+  =py-harness search reasoning <profile>=.  The guide prints the exact
+  commands with required selectors, the provider registry advertises
+  =search/reasoning=, and =--view seeds= renders typed =entries= rows such as
+  =owner-query(O,Q=>items+tests+dependency-usage)= and
+  =query-deps(Q,D=>owners+imports+usage-tests)= through the shared graph
+  renderer.
+- [X] Python fast prime no longer emits the retired
+  =owner-items(O=>items+tests)= entry.  Owner-only prime frontiers now expose
+  =owner-tests(O=>covering-tests+test-entrypoints+fixtures)= when an owner
+  selector exists, matching the shared profile catalog instead of preserving a
+  compatibility alias.
 
 In progress:
 
@@ -712,5 +1016,5 @@ In progress:
 - =seed= and =synthesis= are represented through graph aliases, =rank=,
   =frontier=, and =avoid= rather than as independent prompt-facing protocols.
 - Providers produce the same graph meaning across Rust, TypeScript, Python, and
-  Julia.  Julia uses the compiled =aslp-julia-harness= plus cacheable search
+  Julia.  Julia uses the compiled =asp-julia-harness= plus cacheable search
   packets, not a workspace-managed exception.

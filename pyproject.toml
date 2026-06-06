@@ -9,6 +9,7 @@ dev = [
 package = false
 
 [tool.uv.workspace]
+exclude = ["packages/python"]
 members = ["packages/python"]
 
 [tool.python-lang-project-harness]

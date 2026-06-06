@@ -46,3 +46,26 @@ def test_hook_rfc_defines_markdown_recovery_prompt_and_runtime_binaries() -> Non
     missing_terms = [term for term in required_terms if term not in text]
 
     assert missing_terms == []
+
+
+def test_hook_rfc_closure_gates_cover_recovery_prompt_and_retired_routes() -> None:
+    text = _RFC_PATH.read_text(encoding="utf-8")
+
+    required_terms = [
+        "Prompt-facing deny output is a Markdown recovery prompt",
+        "=# ASP Hook Recovery=",
+        "=## Detected Binaries=",
+        "current runtime profile command argv",
+        "=routes[].argv= remains the public =asp <language>=",
+        "experimental.semanticAstPatch.enabled = false",
+        "=apply_patch=",
+        "Generated skills and hook prompts must not reintroduce",
+        "agent-prefixed guide spelling",
+        "old search-wrapper hook query",
+        "accepted guide entrypoint is =asp <language> guide .=",
+        "help surface is =asp <language> guide --help .=",
+    ]
+
+    missing_terms = [term for term in required_terms if term not in text]
+
+    assert missing_terms == []

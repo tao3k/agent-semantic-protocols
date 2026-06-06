@@ -17,14 +17,17 @@ pub(super) fn client_backend_cache_home(
     activation_root: &Path,
     project_root: &Path,
 ) -> Result<PathBuf, String> {
-    if let Some(cache_home) = env::var_os("PRJ_CACHE_HOME") {
-        return Ok(canonical_or_existing(PathBuf::from(cache_home)));
+    if let Some(cache_home) =
+        git_toplevel_cache_home(project_root).or_else(|| git_toplevel_cache_home(activation_root))
+    {
+        return Ok(cache_home);
     }
-    git_toplevel_cache_home(project_root)
-        .or_else(|| git_toplevel_cache_home(activation_root))
+    env::var_os("PRJ_CACHE_HOME")
+        .map(PathBuf::from)
+        .map(canonical_or_existing)
         .ok_or_else(|| {
             format!(
-                "PRJ_CACHE_HOME is unset and no git toplevel was found for {}",
+                "no git toplevel was found for {}; set PRJ_CACHE_HOME only when running outside a git worktree",
                 project_root.display()
             )
         })
@@ -35,25 +38,26 @@ pub(super) fn effective_project_root_and_args(
     args: &[String],
     invocation_root: &Path,
     activation_root: &Path,
-) -> (PathBuf, Vec<String>) {
-    if let Some((root, args)) = explicit_positional_project_root(language_id, args, invocation_root)
+) -> Result<(PathBuf, Vec<String>), String> {
+    if let Some((root, args)) =
+        explicit_positional_project_root(language_id, args, invocation_root)?
     {
-        return (root, args);
+        return Ok((root, args));
     }
 
     if invocation_root != activation_root
         && invocation_root.starts_with(activation_root)
         && invocation_root_is_provider_project(language_id, invocation_root)
     {
-        return (invocation_root.to_path_buf(), args.to_vec());
+        return Ok((invocation_root.to_path_buf(), args.to_vec()));
     }
 
     if args.last().is_some_and(|arg| arg == ".")
         && invocation_root_is_provider_project(language_id, invocation_root)
     {
-        (invocation_root.to_path_buf(), args.to_vec())
+        Ok((invocation_root.to_path_buf(), args.to_vec()))
     } else {
-        (activation_root.to_path_buf(), args.to_vec())
+        Ok((activation_root.to_path_buf(), args.to_vec()))
     }
 }
 
@@ -71,7 +75,8 @@ fn explicit_positional_project_root(
     language_id: &str,
     args: &[String],
     invocation_root: &Path,
-) -> Option<(PathBuf, Vec<String>)> {
+) -> Result<Option<(PathBuf, Vec<String>)>, String> {
+    let mut selected = None;
     for (index, value) in args.iter().enumerate().rev() {
         if value.starts_with('-') || arg_is_option_value(args, index) {
             continue;
@@ -85,11 +90,17 @@ fn explicit_positional_project_root(
         let Some(selected_root) = positional_project_root(language_id, &absolute) else {
             continue;
         };
-        let mut normalized_args = args.to_vec();
-        normalized_args.remove(index);
-        return Some((selected_root, normalized_args));
+        if selected.is_some() {
+            return Err("expected at most one PROJECT_ROOT argument".to_string());
+        }
+        selected = Some((index, selected_root));
     }
-    None
+    let Some((index, selected_root)) = selected else {
+        return Ok(None);
+    };
+    let mut normalized_args = args.to_vec();
+    normalized_args.remove(index);
+    Ok(Some((selected_root, normalized_args)))
 }
 
 fn positional_project_root(language_id: &str, path: &Path) -> Option<PathBuf> {
@@ -155,6 +166,12 @@ fn git_toplevel_cache_home(project_root: &Path) -> Option<PathBuf> {
 }
 
 fn git_toplevel(project_root: &Path) -> Option<PathBuf> {
+    if let Some(root) = project_root
+        .ancestors()
+        .find(|ancestor| ancestor.join(".git").exists())
+    {
+        return Some(canonical_or_existing(root.to_path_buf()));
+    }
     let output = Command::new("git")
         .arg("-C")
         .arg(project_root)

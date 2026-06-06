@@ -45,15 +45,36 @@ asp md query --selector README.md:1-20 --content .
 =ast-patch=, =evidence=, and policy gates are intentionally unsupported for
 document languages.  Their JSON contracts are document-specific:
 =semantic-document-search-packet.v1= for metadata discovery and
-=semantic-document-query-packet.v1= for metadata or selector content reads.
+=semantic-document-query-packet.v1= for metadata or filtered element-content
+projections.
 =search= emits document facts such as headings, Org properties, drawers,
 tables, source or export blocks, Markdown links, and Markdown code fences, but
 document content recovery does not use =search owner= or source owner/items
 routes. =query --term <term> --view metadata= returns a bounded document
-metadata frontier. =query --selector <path:start-end> --content= retains the
-exact selector contract for document languages: stdout is the source-preserved
-document slice selected by =path:start-end=. =--code= remains reserved for
-source-language providers.
+metadata frontier. Adding =--content= to an explicit =--selector=, =--term=,
+=--kind=, or =--field= query changes stdout to the pure content of the matched
+document elements; it is still query output and must not become a whole-file
+read. Source-preserved document reads use
+=query --from-hook direct-source-read --selector <path-or-range>= and must not
+be combined with =--content=. =--code= remains reserved for source-language
+providers.
+
+=guide= and =query guide= for document languages must expose the parser-owned
+query vocabulary, not just command names.  The prompt-facing guide should
+include query axes (=--term=, =--selector=, =--kind=, =--field=, =--content=),
+the element map, field maps for each element kind, and common recipes such as
+TODO headings, checked tasks, property lookup, source blocks, paragraph
+content, and range-local element frontiers.  Agents should be able to choose a
+document query from the guide without guessing field names or falling back to
+raw reads.
+
+Document query no-hit output is still a protocol surface.  A query with
+=hit=0= must not stop at a count-only receipt.  It must state that combined
+terms/kinds/fields are an intersection, then return bounded next actions such
+as =search fzf= for one term, a single-term =query --term= retry, =query guide=,
+and the selector requirement for =direct-source-read=.  These rows are
+agent-facing recovery guidance; they must not include raw source snippets or
+pretend that =direct-source-read= can run without a selector.
 
 Document facts are a navigation element map, not a full document AST dump.
 The shared packet keeps language-neutral element categories in =kind= and

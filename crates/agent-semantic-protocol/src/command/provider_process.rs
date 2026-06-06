@@ -21,7 +21,7 @@ pub(super) fn run_provider_command(
     command
         .args(forwarded)
         .current_dir(project_root)
-        .env("PRJ_HOME_CACHE", cache_home)
+        .env("PRJ_CACHE_HOME", cache_home)
         .env("ASP_RUNTIME_BIN_DIR", &runtime_bin)
         .stdin(Stdio::inherit());
     let mut path_entries = vec![runtime_bin];
@@ -60,7 +60,7 @@ pub(super) fn run_guide_command(
     command
         .args(forwarded)
         .current_dir(project_root)
-        .env("PRJ_HOME_CACHE", cache_home)
+        .env("PRJ_CACHE_HOME", cache_home)
         .env("ASP_RUNTIME_BIN_DIR", &runtime_bin);
     let mut path_entries = vec![runtime_bin];
     if let Some(path) = env::var_os("PATH") {

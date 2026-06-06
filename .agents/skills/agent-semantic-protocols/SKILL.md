@@ -1,6 +1,6 @@
 ---
 name: agent-semantic-protocols
-description: Use when working with the language provider binaries maintained by agent-semantic-protocols, including asp hook installs, compact semantic search flow, and non-JSON agent command guidance.
+description: Use when working with the language provider binaries maintained by agent-semantic-protocols, including asp hook install, compact semantic search flow, and non-JSON agent command guidance.
 ---
 
 # Agent Semantic Protocols
@@ -20,14 +20,14 @@ and `asp.toml`.
 
 Detected from provider binaries plus `asp.toml`; only activated languages are listed.
 
-| Language | Facade | Provider | Command |
-| --- | --- | --- | --- |
-| rust | `asp rust` | rs-harness | `.bin/rs-harness` |
-| typescript | `asp typescript` | ts-harness | `.bin/ts-harness` |
-| python | `asp python` | py-harness | `.bin/py-harness` |
-| julia | `asp julia` | julia-lang-project-harness | `.bin/asp-julia-harness` |
-| org | `asp org` | orgize | `.bin/asp` |
-| md | `asp md` | orgize | `.bin/asp` |
+| Language | Facade | Provider | Execution | Command |
+| --- | --- | --- | --- | --- |
+| rust | `asp rust` | rs-harness | external-process | `.bin/rs-harness` |
+| typescript | `asp typescript` | ts-harness | external-process | `.bin/ts-harness` |
+| python | `asp python` | py-harness | external-process | `.bin/py-harness` |
+| julia | `asp julia` | julia-lang-project-harness | external-process | `.bin/asp-julia-harness` |
+| org | `asp org` | orgize | embedded | `.bin/asp` |
+| md | `asp md` | orgize | embedded | `.bin/asp` |
 
 Start with `asp <language> guide .` when a task needs the provider-owned tool
 map. Use `asp providers` or `asp doctor` when the active language or provider
@@ -40,9 +40,11 @@ inside `asp`.
 Use them for parser-owned document elements and metadata navigation. Normal
 document query must be explicit and element-oriented, such as `--term` or
 `--selector` with `--view metadata`; use `--kind` and `--field` to narrow
-parser-owned elements without post-processing. Direct content reads are only a
-hook recovery surface through `--from-hook direct-source-read`. `check`,
-`ast-patch`, and `evidence` are intentionally unsupported for document files.
+parser-owned elements without post-processing. Add `--content` only when the
+same explicit query should print the matched element content instead of
+metadata. Source-preserved document reads are only a hook recovery surface
+through `--from-hook direct-source-read`. `check`, `ast-patch`, and `evidence`
+are intentionally unsupported for document files.
 
 ## Rules
 
@@ -89,8 +91,10 @@ asp org query --from-hook direct-source-read --selector <path-or-range> .
 asp md query --from-hook direct-source-read --selector <path-or-range> .
 ```
 
-For document languages, do not use `--content`. Treat `direct-source-read` as
-the only pure text read path, and use it only after an exact selector is known.
+For document languages, do not add `--content` to `direct-source-read`. Use
+`query --content` only as a filtered element-content projection with
+`--selector`, `--term`, `--kind`, or `--field`; use `direct-source-read` only
+after an exact selector is known and source-preserved text is required.
 
 ### Search Before Code
 
@@ -103,27 +107,76 @@ asp <language> query <owner-path> --term <candidate> --code .
 ```
 
 Use `--names-only` for broad owner-local prefixes before requesting code.
+Within one task session, do not repeat `asp <language> search prime --view seeds .`
+for the same language/root after a fresh prime frontier is already available.
+Reuse that prime frontier and move to owner, fzf, query, read-plan, or
+query-code actions unless the project root, language provider state, or search
+scope has changed.
 
 ### Document Element Search
+
+Start from the document guide when you need the element and field vocabulary:
+
+```sh
+asp org guide .
+asp org query guide .
+asp md guide .
+asp md query guide .
+```
 
 ```sh
 asp org search prime --view seeds .
 asp org query --term <heading-property-task-or-table-term> --view metadata .
+asp org query --term <heading-property-task-or-table-term> --content .
 asp org query --kind <element-kind> --view metadata .
 asp org query --field <key=value> --view metadata .
 asp org query --selector <path:start-end> --view metadata .
 asp md search prime --view seeds .
 asp md query --term <heading-paragraph-task-link-or-table-term> --view metadata .
+asp md query --term <heading-paragraph-task-link-or-table-term> --content .
 asp md query --kind paragraph --view metadata .
 asp md query --field <key=value> --view metadata .
 asp md query --selector <path:start-end> --view metadata .
 ```
 
 Document search and query return parser-owned element facts: headings,
-paragraphs, properties, planning rows, tables, blocks, lists, tasks, links, and images.
+paragraphs,
+properties, planning rows, tables, blocks, lists, tasks, links, and images.
 Use selector query for the element frontier inside a known range. Use
-`direct-source-read` only when raw document text is required after that range is
-known.
+`--content` when stdout should be only the matched element content. Use
+`direct-source-read` only when source-preserved document text is required after
+that range is known.
+
+Document query is an intersection of explicit axes:
+
+- `--term <term>` searches element kind, source kind, path, text/content, field
+  keys, and field values.
+- `--selector <path:start-end>` narrows to elements overlapping a known range.
+- `--kind <element-kind>` narrows to an exact element kind.
+- `--field <key>` or `--field <key=value>` narrows to parser-owned fields; the
+  value match is substring-based.
+
+Org element fields are parser-owned by orgize:
+
+- `heading`: `level`, `title`, `todo`, `todoType`, `priority`, `tag`
+- `property`: `key`, `value`
+- `planning`: `scheduled`, `deadline`, `closed`
+- `table`: `header`
+- `block`: `kind=source|export`, `lang`, `backend`
+- `list`: `listKind`, `descriptive`
+- `listItem`: `bullet`, `indent`, `counter`, `tag`
+- `task`: `bullet`, `indent`, `checkbox`, `checked`, `tag`
+- `link` / `image`: `target`, `description`
+
+Useful Org query shapes:
+
+```sh
+asp org query --kind heading --field todo=TODO --view metadata .
+asp org query --kind task --field checked=true --view metadata .
+asp org query --kind property --field key=CUSTOM_ID --view metadata .
+asp org query --kind block --field kind=source --field lang=rust --view metadata .
+asp org query --kind paragraph --term <term> --content .
+```
 
 ### Tree-sitter Locate Then Code
 

@@ -6,11 +6,10 @@ use std::process::{Command, Output};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[test]
-fn healthcheck_reports_git_cache_agents_and_runtime_profiles() {
+fn healthcheck_reports_git_cache_agents_and_activation_runtime() {
     let root = prepared_project("healthcheck-compact");
     let provider = write_executable(&root, "rs-harness");
-    write_activation(&root);
-    write_runtime_profiles(&root, &provider);
+    write_activation(&root, &provider);
 
     let output = run_healthcheck(&root, &["."], &[]);
 
@@ -20,13 +19,13 @@ fn healthcheck_reports_git_cache_agents_and_runtime_profiles() {
     assert!(stdout.contains("[asp-healthcheck] status="));
     assert!(stdout.contains(&format!("gitToplevel={}", git_toplevel.display())));
     assert!(stdout.contains("cacheSource=git-toplevel"));
-    assert!(stdout.contains("|env PRJ_HOME_CACHE=unset PRJ_CACHE_HOME=unset"));
+    assert!(stdout.contains("|env PRJ_CACHE_HOME=unset"));
     assert!(stdout.contains("|path agentsSkill="));
     assert!(stdout.contains("status=ok"));
     assert!(stdout.contains("|path activation="));
     assert!(stdout.contains("providers=1"));
-    assert!(stdout.contains("|path runtimeProfiles="));
-    assert!(stdout.contains("|provider language=rust provider=rs-harness profile=available"));
+    assert!(stdout.contains("|activationRuntime status=ok providers=1"));
+    assert!(stdout.contains("|provider language=rust provider=rs-harness runtime=available"));
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
 }
 
@@ -34,8 +33,7 @@ fn healthcheck_reports_git_cache_agents_and_runtime_profiles() {
 fn healthcheck_json_reports_project_runtime_layout() {
     let root = prepared_project("healthcheck-json");
     let provider = write_executable(&root, "rs-harness");
-    write_activation(&root);
-    write_runtime_profiles(&root, &provider);
+    write_activation(&root, &provider);
 
     let output = run_healthcheck(&root, &["--json", "."], &[]);
 
@@ -47,14 +45,14 @@ fn healthcheck_json_reports_project_runtime_layout() {
     );
     assert_eq!(value["cacheSource"], json!("git-toplevel"));
     assert_eq!(value["paths"]["activation"]["status"], json!("ok"));
-    assert_eq!(value["paths"]["runtimeProfiles"]["providerCount"], json!(1));
+    assert_eq!(value["activationRuntime"]["providerCount"], json!(1));
     assert_eq!(value["providers"][0]["languageId"], json!("rust"));
     assert_eq!(value["env"]["PRJ_CACHE_HOME"], Value::Null);
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
 }
 
 #[test]
-fn healthcheck_uses_prj_cache_home_when_set() {
+fn healthcheck_prefers_git_toplevel_over_prj_cache_home_when_set() {
     let root = prepared_project("healthcheck-prj-cache-home");
     let cache_home = root.join(".cache");
 
@@ -69,31 +67,30 @@ fn healthcheck_uses_prj_cache_home_when_set() {
 
     assert!(output.status.success(), "stderr: {}", stderr(&output));
     let stdout = stdout(&output);
-    assert!(stdout.contains("cacheSource=prj-cache-home"));
+    assert!(stdout.contains("cacheSource=git-toplevel"));
     assert!(stdout.contains("PRJ_CACHE_HOME=set:"));
-    assert!(!stdout.contains("|warn code=ignored-prj-home-cache"));
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
 }
 
 #[test]
-fn healthcheck_warns_when_prj_home_cache_typo_is_set() {
-    let root = prepared_project("healthcheck-typo-env");
-    let wrong_cache = root.join("wrong-cache");
+fn healthcheck_uses_prj_cache_home_outside_git_worktree() {
+    let root = temp_project_root("healthcheck-prj-cache-home-no-git");
+    let cache_home = root.join("cache-home");
 
     let output = run_healthcheck(
         &root,
         &["."],
         &[(
-            "PRJ_HOME_CACHE",
-            wrong_cache.to_str().expect("utf8 temp path"),
+            "PRJ_CACHE_HOME",
+            cache_home.to_str().expect("utf8 temp path"),
         )],
     );
 
     assert!(output.status.success(), "stderr: {}", stderr(&output));
     let stdout = stdout(&output);
-    assert!(stdout.contains("cacheSource=git-toplevel"));
-    assert!(stdout.contains("PRJ_HOME_CACHE=set-ignored:"));
-    assert!(stdout.contains("|warn code=ignored-prj-home-cache"));
+    assert!(stdout.contains("[asp-healthcheck] status=error"));
+    assert!(stdout.contains("cacheSource=prj-cache-home"));
+    assert!(stdout.contains("PRJ_CACHE_HOME=set:"));
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
 }
 
@@ -106,7 +103,7 @@ fn prepared_project(name: &str) -> PathBuf {
     root
 }
 
-fn write_activation(root: &Path) {
+fn write_activation(root: &Path, provider: &Path) {
     let manifest = rust_manifest();
     let manifest_digest = provider_manifest_digest(&manifest).expect("manifest digest");
     let activation_dir = root.join(".cache/agent-semantic-protocol/hooks");
@@ -124,7 +121,7 @@ fn write_activation(root: &Path) {
             "languageId": manifest.language_id,
             "providerId": manifest.provider_id,
             "binary": manifest.binary,
-            "providerCommandPrefix": [],
+            "providerCommandPrefix": [provider.display().to_string()],
             "coverage": {
                 "packageRoots": ["."],
                 "sourceRoots": manifest.source.default_source_roots,
@@ -141,39 +138,6 @@ fn write_activation(root: &Path) {
     .expect("write activation");
 }
 
-fn write_runtime_profiles(root: &Path, provider: &Path) {
-    let manifest = rust_manifest();
-    let manifest_digest = provider_manifest_digest(&manifest).expect("manifest digest");
-    let runtime_dir = root.join(".cache/agent-semantic-protocol/runtime");
-    std::fs::create_dir_all(&runtime_dir).expect("create runtime profile dir");
-    let provider = provider.display().to_string();
-    let profiles = json!({
-        "schemaId": agent_semantic_hook::RUNTIME_PROFILES_SCHEMA_ID,
-        "schemaVersion": agent_semantic_hook::RUNTIME_PROFILES_SCHEMA_VERSION,
-        "protocolId": agent_semantic_hook::RUNTIME_PROFILES_PROTOCOL_ID,
-        "protocolVersion": agent_semantic_hook::RUNTIME_PROFILES_PROTOCOL_VERSION,
-        "projectRoot": root.display().to_string(),
-        "runtimeHome": runtime_dir.display().to_string(),
-        "generatedBy": { "runtime": "asp", "version": "test" },
-        "providers": [{
-            "manifestId": manifest.manifest_id,
-            "manifestDigest": manifest_digest,
-            "languageId": manifest.language_id,
-            "providerId": manifest.provider_id,
-            "binary": manifest.binary,
-            "providerCommandPrefix": [],
-            "resolvedBinary": provider,
-            "argv": [provider],
-            "health": { "status": "available" }
-        }]
-    });
-    std::fs::write(
-        runtime_dir.join("profiles.json"),
-        serde_json::to_string_pretty(&profiles).expect("serialize runtime profiles"),
-    )
-    .expect("write runtime profiles");
-}
-
 fn rust_manifest() -> agent_semantic_hook::ProviderManifest {
     builtin_provider_manifests()
         .into_iter()
@@ -185,7 +149,6 @@ fn run_healthcheck(root: &Path, args: &[&str], envs: &[(&str, &str)]) -> Output 
     let mut command = Command::new(env!("CARGO_BIN_EXE_asp"));
     command.current_dir(root).arg("healthcheck").args(args);
     command.env_remove("PRJ_CACHE_HOME");
-    command.env_remove("PRJ_HOME_CACHE");
     for (key, value) in envs {
         command.env(key, value);
     }

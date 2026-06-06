@@ -1,0 +1,503 @@
+#+TITLE: RFC: ASP Native Relation/Flow Plan with Experimental CodeQL Extension
+#+AUTHOR: agent-semantic-protocols
+#+DATE: 2026-06-05
+#+RFC: 012
+#+STATUS: draft
+#+DEPENDS: rfcs/cli-first-harness-ux.org (005), rfcs/agent-compact-graph-feature.org (006), rfcs/agent-semantic-client-backend-protocol.org (008), rfcs/semantic-query-projection-protocol.org (010), rfcs/semantic-tree-sitter-query-protocol.org (011)
+#+SEE_ALSO: schemas/semantic-native-syntax-fact-index.v1.schema.json
+#+SEE_ALSO: schemas/semantic-tree-sitter-query.v1.schema.json
+#+SEE_ALSO: schemas/semantic-language-registry.v1.schema.json
+#+SEE_ALSO: schemas/semantic-relation-plan.v1.schema.json
+#+SEE_ALSO: schemas/semantic-flow-lite.v1.schema.json
+#+SEE_ALSO: schemas/semantic-codeql-evidence.v1.schema.json
+
+* One-sentence summary
+
+ASP should grow parser-owned relation and bounded flow facts first, then allow
+the experimental CodeQL ASP extension to contribute opt-in cold-path evidence
+that is projected into the same frontier packets.
+
+* Problem
+
+Tree-sitter-compatible query gives agents a stable syntax ABI, but it does not
+by itself answer relation questions such as "what calls this", "what test
+covers this", "which guard protects this effect", or "is there a bounded
+source-to-sink path inside this owner".  Native providers already know many of
+these facts through compiler/parser APIs, package metadata, test discovery, and
+project policy checks.
+
+The protocol gap is not a missing general graph database.  The gap is a typed,
+cross-language relation/flow plan that says which facts providers may expose,
+how those facts are proven, how they become compact graph/frontier rows, and
+where optional engines such as CodeQL are allowed to participate.
+
+* Design principles
+
+1. Native parser authority is the primary path.  A provider may project native
+   compiler/parser facts into shared ASP packets without linking tree-sitter or
+   CodeQL.
+2. Relations are protocol facts, not prompt inference.  Every prompt-visible
+   edge must carry an explicit relation label, source handle, target handle,
+   owner path, and evidence authority.
+3. Flow is bounded before it is global.  The first supported flow tier is
+   =flow-lite=: local source, sink, guard, effect, and short path evidence
+   inside a function, method, module, or owner.
+4. CodeQL is an ASP extension, not a provider default or a command family.  It
+   is disabled by default, marked experimental by default, enabled through
+   shared ASP project config or explicit extension commands, and must never be
+   required for ordinary search, query, or exact source reads.
+5. Heavy backend outputs are artifacts.  Prompt-facing output receives compact
+   handles, relation rows, and artifact ids, not raw CodeQL tables, logs, or
+   database paths.
+
+* Non-goals
+
+- Do not embed ast-grep or Semgrep runtimes into ASP.  ASP may borrow pattern,
+  metavariable, relational, and composite constraint ideas, but execution stays
+  provider-owned.
+- Do not put CodeQL database creation in the hot path for =search prime=,
+  =search owner=, =query --code=, hook recovery, or =check --changed=.
+- Do not use CodeQL as the implementation for ordinary fuzzy search, owner
+  discovery, seed frontier construction, or hook recovery.  Those workflows
+  remain native-parser hot paths.
+- Do not advertise =codeql= in provider registry descriptors just because the
+  ASP CodeQL extension is installed.  Extension availability belongs to an
+  extension descriptor/status receipt, while providers keep native parser
+  execution as their default registry contract.
+- Do not expose raw CodeQL query language as the normal agent-facing API.
+- Do not make private server infrastructure a prerequisite for public provider
+  correctness.
+
+* Layer model
+
+#+begin_src text
+Layer 0  tree-sitter-compatible syntax ABI
+Layer 1  native parser projection
+Layer 2  ASP relation catalog
+Layer 3  ASP flow-lite catalog
+Layer 4  experimental ASP CodeQL extension
+Layer 5  agent frontier, compact graph, exact selector --code
+#+end_src
+
+** Layer 0: syntax ABI
+
+RFC 011 owns tree-sitter-compatible query packets.  It defines
+=sourceAuthority=, =executionBackend=, and =adapterMode= so a single frontier
+packet can be produced by native parser projection, tree-sitter runtime,
+CodeQL, hybrid execution, or cached replay.
+
+** Layer 1: native parser projection
+
+Native providers own parser/compiler truth.  They may project language-native
+nodes, fields, captures, symbols, owners, visibility, tests, cfg/features, and
+package facts into shared ASP packets.  This is the default path for Rust,
+TypeScript, Python, Julia, and future providers.
+
+** Layer 2: relation catalog
+
+The relation catalog names directed edges that compact graph output, search
+frontiers, query packets, and future relation plans may share.  The first
+catalog should extend the existing relation families only additively.
+
+| Family | Relation labels | Required evidence |
+|--------+-----------------+-------------------|
+| structural | =contains=, =defines=, =declares=, =exports=, =reexports= | native node/owner facts |
+| dependency | =imports=, =uses-dependency=, =feature-gates= | package metadata plus parser import/use sites |
+| symbol | =calls=, =references=, =implements=, =overrides= | native resolver or parser-owned approximation level |
+| test | =tests=, =covers=, =fixtures= | test discovery plus owner/symbol references |
+| policy | =violates=, =guards=, =waives= | provider policy diagnostics or explicit config |
+| flow-lite | =source=, =sink=, =flows-to=, =sanitizes=, =guards=, =effects= | bounded intra-owner flow evidence |
+| provenance | =derived-from=, =verified-by=, =cached-from= | packet/artifact identifiers |
+
+Every relation row must be replayable from provider-owned facts or a validated
+artifact.  If the provider can only guess, the relation must not be promoted to
+prompt-visible compact graph output.
+
+** Layer 3: flow-lite catalog
+
+=flow-lite= is a bounded path vocabulary, not full interprocedural dataflow.
+It should support the first agent workflows that need path evidence without
+requiring a workspace-wide CodeQL database.
+
+| Flow id | Scope | Output |
+|---------+-------+--------|
+| =local-source-sink= | function/method/body | source, sink, shortest bounded path |
+| =owner-call-path= | owner file/module | calls/references path between two handles |
+| =guarded-effect= | function/method/body | guard, effect, terminal/error boundary |
+| =mutation-flow= | function/method/body | mutation target, aliases if provider-owned, effect |
+| =test-coverage-path= | owner plus tests | covered handle, test handle, coverage relation |
+| =config-feature-flow= | package/module | cfg/feature flag, guarded item, dependency edge |
+
+The compact contract is:
+
+#+begin_src text
+flow-lite -> relation rows -> compact graph frontier -> exact selector --code
+#+end_src
+
+The agent receives handles and relation/path summaries first.  Source text is
+still gated behind an exact or unique selector with =--code=.
+
+*** Flow-lite query catalog v1
+
+The first prompt-facing relation/flow command stays under the existing
+=query= surface:
+
+#+begin_src text
+asp rust query --catalog flow-lite \
+  --where 'source.call=payload_string sink.constructs=ToolAction scope.fn=collect_tool_actions' .
+#+end_src
+
+=--catalog flow-lite= is not a tree-sitter =.scm= catalog id.  It is a native
+ASP relation/flow catalog dispatch that must be routed before the
+tree-sitter-compatible syntax catalog branch.  It exists because the agent asks
+for a bounded relation/path question, not a syntax capture list.
+
+The v1 =--where= grammar is deliberately closed:
+
+#+begin_src text
+where        := constraint (space constraint)*
+constraint   := key "=" value
+key          := "source.call" | "sink.constructs" | "scope.fn"
+value        := non-empty token without whitespace
+#+end_src
+
+The v1 meaning is:
+
+- =source.call= selects a function-call terminal name inside the scope.
+- =sink.constructs= selects a constructed type/path terminal or struct literal
+  inside the same scope.
+- =scope.fn= selects one Rust function body by function name.
+
+This is not a general predicate language, arbitrary dataflow engine, or CodeQL
+query surface.  Unknown keys, duplicate keys, missing keys, or empty values must
+fail before provider execution.  The initial Rust adapter uses only
+=sourceAuthority = native-parser=, =executionBackend = native-parser=, and
+=adapterMode = native-projection=.
+
+Default stdout is a compact =flow-lite= frontier:
+
+#+begin_src text
+[query-flow-lite] root=. lang=rust catalog=flow-lite flow=local-source-sink scope=fn(collect_tool_actions) alg=native-flow-lite
+S=source:call(payload_string)@src/cli/example.rs:10!code
+K=sink:constructs(ToolAction)@src/cli/example.rs:12!code
+P=path:bounded(S->K)!flow
+frontier=S.code,K.code
+omit=code,full-path-ast,raw-source
+avoid=codeql-hot-path,raw-read,inline-code
+#+end_src
+
+With =--json=, the same native result is rendered as
+=semantic-flow-lite.v1=.  No raw source is stored in the packet.  Source text
+still requires a follow-up exact selector with =--code=; =flow-lite= itself is a
+locator/provenance surface.
+
+** Layer 4: experimental ASP CodeQL extension
+
+CodeQL may execute or replay a bounded evidence request only when the ASP
+CodeQL extension is enabled.  The extension is owned by ASP runtime/evidence
+policy rather than by the default language-provider hot path.  Native provider
+facts first narrow the handles, owners, and flow question; the extension may
+then attach normalized CodeQL evidence to those handles when policy allows it.
+
+The shared =asp.toml= project config owns the switch:
+
+#+begin_src toml
+[extensions.codeql]
+enabled = false
+experimental = true
+mode = "disabled"          # disabled | metadata | cache-only | manual | ci
+allowDatabaseCreate = false
+allowHotPath = false
+#+end_src
+
+The defaults mean:
+
+- =enabled=false=: ordinary ASP commands do not run CodeQL.
+- =experimental=true=: CodeQL evidence remains explicitly experimental even
+  when enabled.
+- =mode="cache-only"=: ASP may attach existing =codeql-evidence/*.json=
+  artifacts without creating a database or running a query.
+- =mode="manual"= or =mode="ci"=: explicit extension commands or CI/nightly
+  jobs may produce new evidence, subject to =allowDatabaseCreate=.
+- =allowHotPath=false=: configuration cannot move CodeQL into =search=,
+  =query=, hook recovery, or =check --changed= hot paths.
+
+The extension command family is evidence-oriented and explicit:
+
+#+begin_src text
+asp extension codeql status .
+asp extension codeql prepare .
+asp extension codeql run --profile local-flow .
+asp evidence codeql --profile global-flow --cache-only .
+#+end_src
+
+CodeQL output must be normalized before it reaches ASP:
+
+#+begin_src text
+CodeQL rows
+  -> ASP extension adapter
+  -> relation/flow artifact
+  -> frontier packet with executionBackend=codeql
+  -> compact graph / exact selector route
+#+end_src
+
+CodeQL-backed packets use the RFC 011 fields:
+
+#+begin_src text
+sourceAuthority = codeql
+executionBackend = codeql
+adapterMode = codeql-query
+#+end_src
+
+If a CodeQL database is missing, stale, too expensive, or outside policy, the
+extension must return a bounded unsupported/backend-unavailable receipt and
+keep native search/query behavior working.  Cache-miss receipts should guide
+agents toward a warm-cache or CI/manual path with compact next actions such as
+=next=warm-cache= and =avoid=run-codeql-in-agent-hot-path=.
+
+*** Hot-path policy
+
+CodeQL is valuable only after native exploration has narrowed the question to a
+specific high-value evidence request.  It must not run during ordinary
+=search=, =query=, hook recovery, or =check --changed= flows.
+
+Recent local evidence from this repository shows why:
+
+#+begin_src text
+native search fzf owner/tests     0.6s-2.7s
+CodeQL bounded evidence, warm     ~8s
+CodeQL database create, cold      40s-50s
+#+end_src
+
+The allowed CodeQL triggers are:
+
+1. explicit user opt-in for a slow extension evidence command or scenario;
+2. precomputed cache/artifact hit where no database creation is required;
+3. CI, nightly, or development-mode evidence production outside the prompt
+   search loop.
+
+The value of CodeQL is proof-oriented evidence: source-to-sink paths,
+cross-function reachability, security query results, and expensive relation
+checks that native search has already scoped.  It is not a replacement for
+owner discovery, symbol search, compact graph frontier construction, or exact
+source reads.
+
+** Layer 5: agent frontier
+
+The prompt-facing surface stays CLI-first:
+
+#+begin_src text
+asp <language> search prime --view seeds .
+asp <language> search owner <owner> items --query <term> .
+asp <language> query <owner-or-selector> --term <term> .
+asp <language> query --selector <exact> --code .
+#+end_src
+
+Future relation/flow commands may be added only after the schema and provider
+facts exist.  Until then, guide output should describe relation/flow evidence as
+capabilities inside existing search/query packets, not as speculative commands.
+
+* Packet plan
+
+** Relation plan packet
+
+The next shared schema should be additive and separate from existing packets:
+=semantic-relation-plan.v1.schema.json=.  It should define:
+
+#+begin_src text
+relationPlanId
+languageId
+projectRoot
+ownerPath
+inputs[]          typed handles or query selectors
+relations[]       directed relation rows
+evidence[]        provider facts, syntax refs, artifacts, diagnostics
+sourceAuthority
+executionBackend
+adapterMode
+omissions[]       unsupported, unavailable, too-expensive, ambiguous
+next[]            exact selector, owner query, flow-lite expansion
+#+end_src
+
+Relation rows should reuse stable handles and must preserve relation labels
+that compact graph renders.
+
+** Flow-lite packet
+
+=semantic-flow-lite.v1.schema.json= should define bounded paths:
+
+#+begin_src text
+flowId
+flowKind
+scope            function | method | owner | package
+sourceHandle
+sinkHandle
+path[]           ordered handles or relation ids
+guards[]
+effects[]
+artifacts[]
+confidence       proved | bounded | partial | unavailable
+#+end_src
+
+=confidence= is not a model score.  It is a provider/runtime evidence category
+that tells the agent whether the path is proven, bounded, partial, or
+unavailable.
+
+** CodeQL evidence artifact
+
+=semantic-codeql-evidence.v1.schema.json= should describe normalized artifact
+metadata only:
+
+#+begin_src text
+artifactId
+databaseFingerprint
+queryId
+queryVersion
+generatedAt
+inputHandles[]
+rowCount
+projectRootPolicy
+sourceSnapshot
+relationPlanId | flowId
+#+end_src
+
+The prompt must not include raw query output by default.  The artifact id lets
+debugging, SQL-backed artifact inspection, or offline replay recover details
+without spending prompt tokens.
+
+* Cache and artifact policy
+
+The runtime-managed artifact store is the correct place for heavy CodeQL and
+relation/flow evidence.  Command receipts should point to artifacts by id and
+schema, while prompt-facing output stays compact.
+
+This keeps the behavior aligned with the existing development-mode command log:
+the command log records what was run; artifacts record normalized evidence.  A
+prompt-output text artifact is acceptable only when the command itself has no
+more precise evidence schema.  Relation plans, flow-lite paths, and CodeQL rows
+must prefer structured artifacts.
+
+* Provider registry policy
+
+Provider registry descriptors may advertise language-provider
+=executionBackends=, but they do not own the CodeQL extension switch.  The
+allowed initial provider state is conservative:
+
+#+begin_src text
+Rust        executionBackends = ["native-parser"]
+TypeScript  executionBackends = ["native-parser"]
+Python      executionBackends = ["native-parser"]
+Julia       executionBackends = ["native-parser"]
+#+end_src
+
+A separate extension descriptor/status receipt owns:
+
+#+begin_src text
+extensionId = codeql
+enabled = false
+experimental = true
+mode = disabled | metadata | cache-only | manual | ci
+capabilities = status | metadata | cache-read | prepare | run-query
+#+end_src
+
+A provider may consume CodeQL extension evidence only after:
+
+1. Native provider facts selected bounded input handles for the evidence
+   question.
+2. The CodeQL extension is enabled by =extensions.codeql.enabled=true= or an
+   explicit extension command.
+3. The extension executes or replays a bounded CodeQL query.
+4. It normalizes rows into relation/flow packets.
+5. It validates those packets against shared schemas.
+6. It returns backend-unavailable receipts without breaking native paths.
+7. Sandtable coverage proves the command count, token count, and latency remain
+   bounded.
+
+* Roadmap
+
+| Milestone | Scope | Gate |
+|-----------+-------+------|
+| M1 | RFC 012 plus relation/flow examples | RFC tests assert native-first and CodeQL-optional boundaries |
+| M2 | =semantic-relation-plan.v1= and =semantic-flow-lite.v1= schemas | schema fixtures validate native and unavailable backend examples |
+| M3 | Rust native relation export for owners/tests/calls/imports | Rust provider tests plus registry descriptor checks |
+| M4 | Compact graph consumes relation rows without invented labels | compact graph snapshot tests |
+| M5 | Runtime artifact registry for relation/flow evidence | artifact schema tests and dev-mode receipt checks |
+| M6 | Experimental CodeQL extension cold path | extension fixture plus backend-unavailable fixture |
+| M7 | Real-project sandtable evidence | command count, packet size, latency, repeated-trigger report |
+
+* Implementation status
+
+- M2 has a shared schema slice for =semantic-relation-plan.v1=,
+  =semantic-flow-lite.v1=, and =semantic-codeql-evidence.v1=.  These schemas are
+  copied into Rust, TypeScript, and Python provider schema directories through
+  the language schema profiles.
+- M3 starts in Rust with native syntax facts: =search query --json= promotes
+  parser-owned import/reexport facts into explicit =relations[]= rows.  The Rust
+  registry advertises the relation/flow/schema artifacts, but its
+  =executionBackends= remain =["native-parser"]= until a real CodeQL executor
+  exists.
+- M4 starts by projecting =nativeSyntaxFacts[].relations[]= into search packet
+  =edges[]= while preserving the provider-owned relation labels such as
+  =reexports=.  This gives compact graph consumers typed edges without asking
+  the prompt to infer them from raw fact fields.
+- M5 starts in the client runtime artifact gate: =relation-plan/*.json=,
+  =flow-lite/*.json=, and =codeql-evidence/*.json= are recognized as structured
+  evidence/provenance families, while =prompt-output/*.txt= remains only a
+  legacy direct-stdout replay surface and is not used when structured evidence
+  is present.
+- M6 starts with the cold path only: shared schema fixtures validate both a
+  metadata-only CodeQL evidence artifact with normalized rows and a
+  =backend-unavailable= CodeQL evidence artifact with =rowCount = 0=.  This
+  proves the experimental extension receipt shape without advertising =codeql=
+  from a provider registry or requiring a local CodeQL database.
+- M7 starts with sandtable-runner scenarios for both optional-backend states:
+  =sandtables/rust/codeql-backend-unavailable-flow.json= emits a compact
+  =semantic-codeql-evidence= artifact fixture and checks the
+  =backend-unavailable= JSON paths; =sandtables/rust/codeql-cli-metadata-flow.json=
+  invokes =packages/python/src/tools/codeql_evidence.py=, reads real
+  =codeql version --format=json= and =codeql resolve languages --format=json=
+  output, and normalizes the installed Rust language pack into metadata-only
+  evidence.  This is real runner evidence for the optional-backend contract, not
+  evidence that a provider CodeQL executor exists.
+- M7 also has a bounded extension smoke path:
+  =sandtables/rust/codeql-bounded-source-file-flow.json= invokes
+  =packages/python/src/tools/codeql_bounded_evidence.py= against a copied tiny
+  Cargo fixture, runs =codeql database create=, executes a raw-dbscheme
+  =files= query with =codeql query run=, decodes BQRS, and emits a structured
+  =codeql-evidence/bounded= artifact.  The row proves CodeQL queried database
+  content and reached =codeql:file:src/lib.rs= without leaking raw build/query
+  logs.  Because the installed CLI currently exposes the Rust extractor but not
+  a Rust QL library pack such as =codeql/rust-all=, this remains a
+  raw-dbscheme capability smoke test rather than a semantic provider CodeQL
+  executor or hot-path backend.  The tool records =databaseCacheStatus= and uses
+  =.cache/agent-semantic-protocol/codeql-fixtures= as a repo-local warm cache:
+  cold =codeql database create= remains slow, while repeated sandtable runs can
+  reuse the fixture database without changing the evidence schema.
+
+* Acceptance tests
+
+- RFC tests require this document to state =Native parser authority=,
+  =flow-lite=, =executionBackend = codeql=, and "CodeQL is an ASP extension".
+- Project-config schema tests require =extensions.codeql.enabled= to exist,
+  default off/experimental semantics to be documented, and =allowHotPath=true=
+  to be rejected.
+- Schema tests validate relation/flow examples before any provider advertises a
+  new backend.
+- Registry tests fail if a provider advertises =codeql= without a CodeQL-backed
+  execution fixture.
+- Fast sandtable tests include a backend-unavailable path and a
+  =codeql= term native-search path so ordinary search/query remains green
+  without running CodeQL.
+- Slow sandtable tests may execute bounded CodeQL database/query evidence only
+  under explicit opt-in, for example =ASP_RUN_SLOW_CODEQL=1=.
+- Compact graph tests assert that relation labels are preserved and no prompt
+  inference is needed to recover edge semantics.
+
+* Bottom line
+
+ASP should embrace CodeQL as an experimental extension, but only after native
+relation and flow packets give the protocol a stable shape.  The durable
+boundary is not "LLM asks CodeQL"; it is "ASP extension evidence is explicitly
+enabled, proves bounded relation/flow evidence, stores heavy artifacts, and
+renders compact ASP frontier packets that still lead to exact source only
+through =--code=".

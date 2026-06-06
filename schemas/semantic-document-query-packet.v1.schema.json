@@ -79,12 +79,14 @@
     },
     "querySurface": {
       "enum": [
-        "metadata"
+        "metadata",
+        "content"
       ]
     },
     "documentMode": {
       "enum": [
-        "metadata"
+        "metadata",
+        "content"
       ]
     },
     "matchCount": {
@@ -106,7 +108,6 @@
     },
     "contentBlocks": {
       "type": "array",
-      "maxItems": 0,
       "items": {
         "$ref": "#/$defs/contentBlock"
       }
@@ -115,61 +116,6 @@
       "type": "boolean"
     }
   },
-  "allOf": [
-    {
-      "if": {
-        "properties": {
-          "queryKind": {
-            "const": "term"
-          }
-        },
-        "required": [
-          "queryKind"
-        ]
-      },
-      "then": {
-        "properties": {
-          "querySurface": {
-            "const": "metadata"
-          },
-          "documentMode": {
-            "const": "metadata"
-          },
-          "contentBlocks": {
-            "maxItems": 0
-          }
-        }
-      }
-    },
-    {
-      "if": {
-        "properties": {
-          "queryKind": {
-            "const": "selector"
-          }
-        },
-        "required": [
-          "queryKind"
-        ]
-      },
-      "then": {
-        "properties": {
-          "querySurface": {
-            "const": "metadata"
-          },
-          "documentMode": {
-            "const": "metadata"
-          },
-          "contentBlocks": {
-            "maxItems": 0
-          }
-        },
-        "required": [
-          "contentBlocks"
-        ]
-      }
-    }
-  ],
   "$defs": {
     "contentBlock": {
       "type": "object",
@@ -184,7 +130,8 @@
       "properties": {
         "kind": {
           "enum": [
-            "selector"
+            "selector",
+            "element"
           ]
         },
         "documentPath": {

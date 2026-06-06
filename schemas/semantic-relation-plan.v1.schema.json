@@ -1,0 +1,412 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-relation-plan.v1.schema.json",
+  "title": "Semantic Relation Plan",
+  "description": "Language-neutral packet for provider-owned relation evidence between semantic handles. Relations are protocol facts, not prompt inference.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "protocolId",
+    "protocolVersion",
+    "languageId",
+    "providerId",
+    "projectRoot",
+    "relationPlanId",
+    "ownerPath",
+    "sourceAuthority",
+    "executionBackend",
+    "adapterMode",
+    "inputs",
+    "relations",
+    "evidence",
+    "omissions",
+    "next"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.semantic-relation-plan"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "protocolId": {
+      "const": "agent.semantic-protocols.semantic-language"
+    },
+    "protocolVersion": {
+      "const": "1"
+    },
+    "languageId": {
+      "$ref": "#/$defs/identifier"
+    },
+    "providerId": {
+      "$ref": "#/$defs/identifier"
+    },
+    "projectRoot": {
+      "type": "string",
+      "minLength": 1
+    },
+    "packageName": {
+      "type": "string",
+      "minLength": 1
+    },
+    "relationPlanId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "ownerPath": {
+      "$ref": "semantic-source-location.v1.schema.json#/$defs/projectPath"
+    },
+    "sourceAuthority": {
+      "$ref": "#/$defs/sourceAuthority"
+    },
+    "executionBackend": {
+      "$ref": "#/$defs/executionBackend"
+    },
+    "adapterMode": {
+      "$ref": "#/$defs/adapterMode"
+    },
+    "inputs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/inputRef"
+      }
+    },
+    "relations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/relationRow"
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/evidenceRef"
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/artifactRef"
+      }
+    },
+    "omissions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/omission"
+      }
+    },
+    "next": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/nextAction"
+      }
+    },
+    "fields": {
+      "$ref": "#/$defs/fields"
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "scalar": {
+      "type": [
+        "string",
+        "number",
+        "integer",
+        "boolean",
+        "null"
+      ]
+    },
+    "fields": {
+      "type": "object",
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "$ref": "#/$defs/scalar"
+          },
+          {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/scalar"
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/$defs/scalar"
+            }
+          }
+        ]
+      }
+    },
+    "sourceAuthority": {
+      "enum": [
+        "native-parser",
+        "native-parser-adapter",
+        "tree-sitter-runtime",
+        "codeql",
+        "hybrid",
+        "cached-provider-export"
+      ]
+    },
+    "executionBackend": {
+      "enum": [
+        "native-parser",
+        "tree-sitter-runtime",
+        "codeql",
+        "hybrid",
+        "cached-replay"
+      ]
+    },
+    "adapterMode": {
+      "enum": [
+        "native-projection",
+        "hybrid",
+        "tree-sitter-runtime",
+        "codeql-query",
+        "cached-replay"
+      ]
+    },
+    "relationKind": {
+      "enum": [
+        "contains",
+        "defines",
+        "declares",
+        "exports",
+        "reexports",
+        "imports",
+        "uses-dependency",
+        "feature-gates",
+        "calls",
+        "references",
+        "implements",
+        "overrides",
+        "tests",
+        "covers",
+        "fixtures",
+        "violates",
+        "guards",
+        "waives",
+        "source",
+        "sink",
+        "flows-to",
+        "sanitizes",
+        "effects",
+        "derived-from",
+        "verified-by",
+        "cached-from",
+        "related",
+        "custom"
+      ]
+    },
+    "inputRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "target"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "handle",
+            "selector",
+            "owner",
+            "query",
+            "artifact"
+          ]
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "relationRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "relation",
+        "sourceHandle",
+        "targetHandle",
+        "ownerPath",
+        "sourceAuthority"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "relation": {
+          "$ref": "#/$defs/relationKind"
+        },
+        "sourceHandle": {
+          "type": "string",
+          "minLength": 1
+        },
+        "targetHandle": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ownerPath": {
+          "$ref": "semantic-source-location.v1.schema.json#/$defs/projectPath"
+        },
+        "location": {
+          "$ref": "semantic-source-location.v1.schema.json#/$defs/location"
+        },
+        "evidenceRefs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "sourceAuthority": {
+          "$ref": "#/$defs/sourceAuthority"
+        },
+        "confidence": {
+          "$ref": "#/$defs/confidence"
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "evidenceRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "authority"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "enum": [
+            "native-fact",
+            "syntax-ref",
+            "diagnostic",
+            "policy",
+            "artifact",
+            "codeql-artifact",
+            "cache"
+          ]
+        },
+        "authority": {
+          "$ref": "#/$defs/sourceAuthority"
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "artifactRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "artifactId",
+        "schemaId"
+      ],
+      "properties": {
+        "artifactId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "schemaId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "schemaVersion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "omission": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "message"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "unsupported",
+            "unavailable",
+            "backend-unavailable",
+            "too-expensive",
+            "ambiguous",
+            "policy-blocked"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "nextAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "target"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "exact-selector",
+            "owner-query",
+            "relation-plan",
+            "flow-lite",
+            "artifact"
+          ]
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "confidence": {
+      "enum": [
+        "proved",
+        "bounded",
+        "partial",
+        "unavailable"
+      ]
+    }
+  }
+}

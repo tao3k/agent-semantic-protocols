@@ -51,6 +51,9 @@
     "binary": {
       "$ref": "#/$defs/binary"
     },
+    "execution": {
+      "$ref": "#/$defs/providerExecution"
+    },
     "source": {
       "$ref": "#/$defs/sourceDefaults"
     },
@@ -73,6 +76,13 @@
     "namespace": {
       "type": "string",
       "pattern": "^[a-z][a-z0-9_-]*(\\.[a-z][a-z0-9_-]*)+$"
+    },
+    "providerExecution": {
+      "type": "string",
+      "enum": [
+        "external-process",
+        "embedded"
+      ]
     },
     "pathPattern": {
       "type": "string",

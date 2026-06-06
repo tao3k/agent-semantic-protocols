@@ -59,10 +59,8 @@ fn doctor_reports_runtime_profile_health() {
 
     assert!(output.status.success(), "stderr: {}", stderr(&output));
     let stdout = stdout(&output);
-    assert!(
-        stdout.contains("runtimeProfiles=.cache/agent-semantic-protocol/runtime/profiles.json")
-    );
-    assert!(stdout.contains("runtimeProfileStatus=available"));
+    assert!(!stdout.contains("runtimeProfiles="));
+    assert!(stdout.contains("runtimeStatus=available"));
     assert!(stdout.contains("resolvedBinary="));
     assert!(stdout.contains("/rs-harness"));
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
@@ -230,7 +228,6 @@ fn run_doctor_with_env(
         command.env("PATH", prepend_path(path_prefix));
     }
     command.env_remove("PRJ_CACHE_HOME");
-    command.env_remove("PRJ_HOME_CACHE");
     command.output().expect("run asp hook doctor")
 }
 

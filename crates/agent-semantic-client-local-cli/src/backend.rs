@@ -1,5 +1,6 @@
 //! Local native-provider process execution for `agent-semantic-client`.
 
+use std::io::Write;
 use std::path::PathBuf;
 use std::process::Command;
 use std::time::Instant;
@@ -177,7 +178,7 @@ impl LocalNativeCliBackend {
     pub fn execute(&self, request: &ClientRequest) -> Result<LocalNativeOutput, String> {
         let prepared_commands = self.prepare_all(request)?;
         let (provider, stdout, stderr, status_code, provider_commands, elapsed_ms) =
-            Self::run_provider_commands(prepared_commands)?;
+            Self::run_provider_commands(prepared_commands, request.stdin.as_deref())?;
         let receipt = Self::receipt_for_run(
             request,
             &provider,
@@ -197,6 +198,7 @@ impl LocalNativeCliBackend {
 
     fn run_provider_commands(
         prepared_commands: Vec<LocalNativeCommand>,
+        stdin: Option<&[u8]>,
     ) -> Result<ProviderCommandOutputs, String> {
         let provider = prepared_commands
             .first()
@@ -213,15 +215,42 @@ impl LocalNativeCliBackend {
             let mut command = Command::new(&prepared.program);
             command
                 .args(&prepared.args)
-                .current_dir(&prepared.project_root)
-                .stdin(std::process::Stdio::inherit());
+                .current_dir(&prepared.project_root);
+            if stdin.is_some() {
+                command.stdin(std::process::Stdio::piped());
+            } else {
+                command.stdin(std::process::Stdio::inherit());
+            }
             Self::set_protocol_renderer_env(&mut command);
-            let output = command.output().map_err(|error| {
-                format!(
-                    "failed to execute provider `{}` for language `{}`: {error}",
-                    prepared.provider.provider_id, prepared.provider.language_id
-                )
-            })?;
+            let output = if let Some(stdin) = stdin {
+                let mut child = command.spawn().map_err(|error| {
+                    format!(
+                        "failed to execute provider `{}` for language `{}`: {error}",
+                        prepared.provider.provider_id, prepared.provider.language_id
+                    )
+                })?;
+                if let Some(mut child_stdin) = child.stdin.take() {
+                    child_stdin.write_all(stdin).map_err(|error| {
+                        format!(
+                            "failed to write provider stdin for `{}` language `{}`: {error}",
+                            prepared.provider.provider_id, prepared.provider.language_id
+                        )
+                    })?;
+                }
+                child.wait_with_output().map_err(|error| {
+                    format!(
+                        "failed to wait for provider `{}` language `{}`: {error}",
+                        prepared.provider.provider_id, prepared.provider.language_id
+                    )
+                })?
+            } else {
+                command.output().map_err(|error| {
+                    format!(
+                        "failed to execute provider `{}` for language `{}`: {error}",
+                        prepared.provider.provider_id, prepared.provider.language_id
+                    )
+                })?
+            };
             let command_status = output.status.code().unwrap_or(1);
             provider_commands.push(ProviderCommandReceipt {
                 language_id: prepared.provider.language_id.clone(),
@@ -319,9 +348,4 @@ impl LocalNativeCommand {
         argv.extend(self.args.clone());
         argv
     }
-}
-
-#[allow(dead_code)]
-fn prepare(_request: &ClientRequest) -> Result<LocalNativeCommand, String> {
-    Err("prepare marker should not be called".to_string())
 }

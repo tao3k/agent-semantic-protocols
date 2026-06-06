@@ -17,28 +17,64 @@ fn args(values: &[&str]) -> Vec<String> {
 }
 
 #[test]
-fn install_delegates_to_hook_install() {
+fn install_and_doctor_delegate_to_hook_runtime() {
     assert_eq!(
         hook::forwarded_hook_args(&args(&["install", "--client", "codex", "."])).unwrap(),
         args(&["install", "--client", "codex", "."])
+    );
+    assert_eq!(
+        hook::forwarded_hook_args(&args(&["doctor", "--client", "codex", "."])).unwrap(),
+        args(&["doctor", "--client", "codex", "."])
     );
 }
 
 #[test]
 fn help_requests_do_not_forward_to_hook_runtime() {
+    for values in [&["--help"][..], &["-h"][..], &["help"][..]] {
+        assert!(hook::is_help_request(&args(values)), "{values:?}");
+    }
     for values in [
-        &["--help"][..],
-        &["-h"][..],
-        &["help"][..],
         &["install", "--help"][..],
         &["doctor", "-h"][..],
         &["event", "--help"][..],
     ] {
-        assert!(hook::is_help_request(&args(values)), "{values:?}");
+        assert!(!hook::is_help_request(&args(values)), "{values:?}");
     }
+    for values in [&["install", "--help"][..], &["doctor", "-h"][..]] {
+        assert!(hook::is_lifecycle_help_request(&args(values)), "{values:?}");
+    }
+    assert!(!hook::is_lifecycle_help_request(&args(&[
+        "event", "--help"
+    ])));
     assert!(!hook::is_help_request(&args(&[
         "install", "--client", "codex", "."
     ])));
+}
+
+#[test]
+fn top_level_install_is_not_a_public_surface() {
+    let root = temp_project_root("top-level-install-help");
+    let output = Command::new(env!("CARGO_BIN_EXE_asp"))
+        .current_dir(&root)
+        .env("PATH", "")
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args(["install", "--help"])
+        .output()
+        .expect("run asp install --help");
+
+    assert!(!output.status.success());
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("usage: asp <"),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(!root.join(".codex/config.toml").exists());
+    assert!(
+        !root
+            .join(".cache/agent-semantic-protocol/hooks/activation.json")
+            .exists()
+    );
+    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
@@ -58,7 +94,8 @@ fn hook_install_help_is_non_mutating() {
         String::from_utf8_lossy(&output.stderr)
     );
     assert!(
-        String::from_utf8_lossy(&output.stdout).contains("usage: asp hook"),
+        String::from_utf8_lossy(&output.stdout)
+            .contains("usage: asp hook <install|doctor> --client"),
         "stdout: {}",
         String::from_utf8_lossy(&output.stdout)
     );

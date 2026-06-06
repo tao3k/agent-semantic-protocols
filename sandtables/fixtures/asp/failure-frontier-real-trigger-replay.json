@@ -1,0 +1,65 @@
+{
+  "id": "rust.failure-frontier-real-trigger-replay",
+  "language": "rust",
+  "title": "Failure-frontier recorded real-trigger replay gate",
+  "coverage": [
+    "real-trigger",
+    "search-flow",
+    "performance"
+  ],
+  "tags": [
+    "real-trigger",
+    "failure-frontier",
+    "receipt-comparison"
+  ],
+  "evidence": {
+    "source": "recorded-replay",
+    "intent": "Verify that a failure-frontier flow reduces source-window scanning while preserving cache replay hot-block coverage.",
+    "recordedAt": "2026-06-06",
+    "editBoundary": "before-edit",
+    "metrics": {
+      "recordedCommandCount": 10,
+      "recordedStdoutBytes": 7000,
+      "tokenDelta": "lower"
+    },
+    "failureFrontierComparison": {
+      "baselineReceiptPath": "sandtables/fixtures/asp/failure-frontier-baseline-receipt.json",
+      "candidateReceiptPath": "sandtables/fixtures/asp/failure-frontier-candidate-receipt.json",
+      "expectedHotBlocks": [
+        "crates/agent-semantic-client/tests/unit/cache_cli/writeback/search.rs:40-72",
+        "crates/agent-semantic-client/src/cache_cli/writeback.rs:220-260",
+        "crates/agent-semantic-client/src/cache_replay/artifact.rs:88-132",
+        "crates/agent-semantic-client/src/cache_cli/probe.rs:140-205"
+      ],
+      "thresholds": {
+        "minCommandReduction": 0.5,
+        "maxDirectSourceReadCode": 4,
+        "maxDuplicateSelectors": 0,
+        "maxSameFileWindowFanout": 0
+      }
+    },
+    "findings": [
+      {
+        "kind": "failure-frontier-gate",
+        "severity": "info",
+        "message": "Recorded replay must prove command reduction and hot-block coverage before live agent sandbox runs."
+      }
+    ]
+  },
+  "workdir": ".",
+  "budgets": {
+    "maxCommands": 1,
+    "maxTotalStdoutBytesWarn": 64,
+    "maxTotalElapsedMsWarn": 1000
+  },
+  "steps": [
+    {
+      "id": "comparison-recorded",
+      "command": ["true"],
+      "expect": {
+        "exitCode": 0,
+        "stdoutEmpty": true
+      }
+    }
+  ]
+}

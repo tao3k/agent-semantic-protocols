@@ -191,7 +191,7 @@ assert_json_string "$python_json" "schemaId" "agent.semantic-protocols.semantic-
 assert_json_string "$python_json" "adapterMode" "native-projection" "python json"
 assert_json_string "$python_json" "compatibilityLevel" "native-only" "python json"
 assert_contains "$python_json" '"nativeFactRefs"' "python json"
-assert_contains "$python_json" 'python:ast:src/python_lang_project_harness/_cli_query.py:20:50:run_query_command' "python json"
+assert_contains "$python_json" 'python:ast:src/python_lang_project_harness/_cli_query.py:20:60:run_query_command' "python json"
 assert_json_false "$python_json" "rawSourceStored" "python json"
 assert_json_string "$python_json" "nodeType" "identifier" "python json"
 assert_json_string "$python_json" "field" "name" "python json"

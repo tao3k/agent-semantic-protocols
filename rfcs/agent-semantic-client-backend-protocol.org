@@ -106,14 +106,29 @@ Machine output: compact JSON artifacts and local SQL rows outside the prompt; Ar
    call the native provider only on miss or stale generation, validate packets,
    and render through shared protocol logic.
 
-10. /Provider export and client cache are global, not Julia-only./  Every native
+10. /Language path-context resolution is provider-owned./  The =asp
+    <language>= facade may locate a provider project hint from
+    registry-declared marker files, such as =Cargo.toml= for Rust,
+    =tsconfig.json= or =package.json= for TypeScript, =pyproject.toml= for
+    Python, and =Project.toml= for Julia.  That marker lookup only selects the
+    directory or file passed to the provider; it must not parse package
+    membership, package excludes, project references, virtual environments,
+    source/test roots, or language-specific layout.  Cargo context resolution
+    belongs to =rs-harness=, TypeScript project references belong to
+    =ts-harness=, Python project/env discovery belongs to =py-harness=, and
+    Julia project discovery belongs to =asp-julia-harness=.  =PRJ_CACHE_HOME= is
+    only a state-storage location for client cache/runtime artifacts.  If it is
+    unset, client cache may live under a git toplevel =.cache=, but neither
+    cache location nor git location determines the provider path context.
+
+11. /Provider export and client cache are global, not Julia-only./  Every native
    provider may expose machine index exports derived from its parser-owned
    facts.  =agent-semantic-client= validates those exports, writes normalized cache
    rows, and serves repeated search/query from the Rust client hot path.  Julia
    is the first high-pressure proof because process start-up is expensive, but
    the design applies to Rust, TypeScript, Python, Julia, and future providers.
 
-11. /Avoid generic fallback language./  Hybrid mode may reroute because a cache
+12. /Avoid generic fallback language./  Hybrid mode may reroute because a cache
    entry is missing, a cloud endpoint is unavailable, or policy disallows
    upload.  That is availability routing.  It is not semantic fallback,
    parser widening, lexical rescue, or a license for the client to invent facts.
@@ -154,7 +169,7 @@ The command surface is deliberately boring:
 asp guide
 asp doctor
 asp providers
-asp typescript search workspace "ParserService cacheDir"
+asp typescript search prime "ParserService cacheDir"
 asp typescript search owner src/services/parser/ParserService.ts
 asp typescript query src/services/parser/ParserService.ts --term ParserService
 asp typescript check
@@ -174,7 +189,7 @@ logic must keep separate ownership boundaries.
 | Component | Owns |
 |-----------+------|
 | =ts-harness=, =rs-harness=, =py-harness= | native parser facts, provider commands, schema-valid search/query/check packets and provider-native receipts |
-| =aslp-julia-harness= | JuliaSyntax-native facts, facade-aligned provider commands, index exports for cache refresh, source-provider fallback via =julia-project-harness.jl= |
+| =asp-julia-harness= | JuliaSyntax-native facts, facade-aligned provider commands, index exports for cache refresh, source-provider fallback via =julia-project-harness.jl= |
 | =agent-semantic-protocol= | shared schemas/receipts, compact graph render algorithm, graph render validation, provider shell-out =graph render= CLI |
 | =agent-semantic-hook= | agent platform event classification and provider route guidance |
 | =agent-semantic-client= | cross-language routing, execution-route choice, cache, renderer invocation, artifacts |
@@ -350,7 +365,7 @@ on repeated search.
 Local flow:
 
 #+begin_example
-asp typescript search workspace "ParserService cacheDir"
+asp typescript search prime "ParserService cacheDir"
   -> resolve project and activated TypeScript provider
   -> check local cache
   -> on exact cache hit: render compact graph output through shared renderer
@@ -407,7 +422,7 @@ native facts.
 The agent command does not change:
 
 #+begin_src shell
-asp typescript search workspace "ParserService cacheDir"
+asp typescript search prime "ParserService cacheDir"
 #+end_src
 
 Only the execution route changes:
@@ -666,7 +681,7 @@ asp-managed Julia cache query
        Rust client queries cached native fact rows
        Rust client renders compact search output and receipt
   -> on cache miss or stale generation:
-       call aslp-julia-harness
+       call asp-julia-harness
        request provider-owned index export
        validate export against shared schema
        write SQLite cache generation
@@ -681,7 +696,7 @@ it through the provider registry.  Do not change
 =semantic-search-packet.v1= in place for this optimization.
 
 This adaptation makes Julia facade-aligned without making Rust the Julia parser.
-The compiled provider command is =aslp-julia-harness=; =asp= is the stable agent
+The compiled provider command is =asp-julia-harness=; =asp= is the stable agent
 command, and Julia remains the native fact refresh owner for the cache model.
 
 * Performance calibration
@@ -886,7 +901,7 @@ handled a request.  They should guide inefficient behavior to the stable
 command surface:
 
 #+begin_example
-asp <language> search workspace "<query>"
+asp <language> search prime "<path-or-query>"
 asp <language> search owner <path>
 asp <language> query <owner-path> --term <symbol>
 asp <language> check
@@ -1054,9 +1069,13 @@ local-cache path:
   aliases.  They fail fast with guidance to use =asp <language>
   search|query|check ...= so command shape does not depend on a shared
   =--language= flag.
-- The final positional =PROJECT_ROOT= for =asp <language> search/query/check= is
-  treated as the client request root while provider arguments are preserved for
-  the native command, so cache hits work from outside the project directory.
+- A recognized final positional =PROJECT_ROOT= for =asp <language>
+  =search/query/check= is treated as the provider project hint and consumed by
+  the facade when it matches activation/cache state or that language's marker
+  file.  It must not be rewritten into a provider search scope such as =.=.
+  If the argument is not a recognized marker root, it remains a provider
+  argument and the provider path-context resolver decides whether it is a
+  package, project, source scope, or ordinary query operand.
 - =LocalNativeCliBackend= must preserve replay-miss provider semantics.  In
   particular, =search ingest= inherits stdin from the agent process, and
   non-ingest =search= requests with multiple trailing existing directory scopes
@@ -1119,7 +1138,7 @@ local-cache path:
   respawning the provider even when the packet artifact is unavailable.  Replay
   is exact for the request fingerprint and is disabled for =--code= because
   syntax replay must not persist raw source.
-- Julia is facade-aligned through compiled =aslp-julia-harness=.  The agent
+- Julia is facade-aligned through compiled =asp-julia-harness=.  The agent
   semantic client hot path for repeated Julia search is still the Rust-side
   cache/query/render path over validated JuliaSyntax-owned facts, not a
   Rust-owned Julia parser or hidden text heuristic.
@@ -1146,7 +1165,7 @@ processes on the hit.
   client.
 - Do not expose full JSON, AST, or source as the default prompt surface.
 - Do not require a bare =julia-project-harness= command or Rust-owned Julia
-  parser facts; Julia provider identity is =aslp-julia-harness= behind
+  parser facts; Julia provider identity is =asp-julia-harness= behind
   =asp julia=.
 - Do not turn the protocol into MCP or a dynamic tool-discovery layer.
 - Do not upload source by default.

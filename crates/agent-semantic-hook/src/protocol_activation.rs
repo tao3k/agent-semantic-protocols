@@ -47,8 +47,37 @@ pub struct ActivatedProviderConfig {
     pub provider_id: String,
     pub binary: String,
     #[serde(default)]
+    pub execution: ProviderExecution,
+    #[serde(default)]
     pub provider_command_prefix: Vec<String>,
     pub coverage: ActivationCoverage,
+}
+
+/// Execution mode used to invoke a provider from ASP.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ProviderExecution {
+    /// Provider is executed as an external process.
+    ExternalProcess,
+    /// Provider is linked into the ASP runtime and dispatched in-process.
+    Embedded,
+}
+
+impl Default for ProviderExecution {
+    fn default() -> Self {
+        Self::ExternalProcess
+    }
+}
+
+impl ProviderExecution {
+    /// Stable line-protocol label for provider diagnostics.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::ExternalProcess => "external-process",
+            Self::Embedded => "embedded",
+        }
+    }
 }
 
 /// Coverage defaults activated from a provider manifest for hook routing.
@@ -79,6 +108,8 @@ pub struct ProviderManifest {
     pub provider_id: String,
     pub namespace: String,
     pub binary: String,
+    #[serde(default)]
+    pub execution: ProviderExecution,
     pub source: ManifestSourceDefaults,
     pub policy: HookPolicy,
     pub routes: HookRoutes,
@@ -112,6 +143,7 @@ pub struct ActivatedProvider {
     pub language_id: String,
     pub provider_id: String,
     pub binary: String,
+    pub execution: ProviderExecution,
     pub provider_command_prefix: Vec<String>,
     pub namespace: String,
     pub package_roots: Vec<String>,
@@ -178,6 +210,7 @@ fn resolve_activation(
         if activated.language_id != manifest.language_id
             || activated.provider_id != manifest.provider_id
             || activated.binary != manifest.binary
+            || activated.execution != manifest.execution
         {
             return Err(AgentHookError::InvalidActivationConfig(format!(
                 "provider activation does not match manifest identity: {}",
@@ -190,6 +223,7 @@ fn resolve_activation(
             language_id: activated.language_id.clone(),
             provider_id: activated.provider_id.clone(),
             binary: activated.binary.clone(),
+            execution: activated.execution,
             provider_command_prefix: activated.provider_command_prefix.clone(),
             namespace: manifest.namespace.clone(),
             package_roots: activated.coverage.package_roots.clone(),

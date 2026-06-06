@@ -1,0 +1,62 @@
+* One-sentence summary
+
+The harness CLI is the public protocol.  A local daemon is a private
+acceleration cache.  MCP is explicitly excluded from the architecture.
+
+* Design principle
+
+#+begin_example
+Agent client
+  ↓ reads generated SKILL.md
+hooks
+  ↓ call fixed commands
+ts-harness CLI
+  ↓ optional acceleration
+ts-harness local daemon / cache
+  ↓
+TypeScript parser facts / reasoning tree / compact diagnostics
+#+end_example
+
+Agent clients call stable CLI commands.  The server is a CLI implementation
+detail — invisible to the agent, replaceable without contract changes.
+
+* Why not MCP
+
+MCP has three structural problems for harness:
+
+1. /Protocol layer is too dynamic./  Tool discovery, schema negotiation, and
+   runtime capability advertisement make the agent's dependency surface
+   unpredictable.  Harness diagnostics should be deterministic — same
+   project, same output.
+
+2. /Failure modes are unstable./  When an MCP server crashes, restarts,
+   version-mismatches, or times out, the agent receives transport-level
+   errors that it cannot repair.  A CLI with stable exit codes has exactly 5
+   failure states, all documented.
+
+3. /It turns harness into a conversational-tool-ecosystem dependency./  The
+   harness's value is /deterministic structural facts/ — parser-owned,
+   project-scoped, policy-evaluated.  Embedding that behind a dynamic tool
+   discovery layer adds indirection without adding precision.
+
+The right direction is the opposite: shrink the surface, make it deterministic,
+and keep parser-owned facts as the source of authority.
+
+* What NOT to build: the anti-patterns
+
+The CLI must not implement intent parsing, subagent planning, or task
+routing.  These are LLM responsibilities.  Specifically, these commands
+should never exist:
+
+#+begin_src shell
+# DO NOT BUILD:
+rs-harness graph subagent-plan --intent "change dependency reqwest features"
+rs-harness graph next --from synthesis
+rs-harness explore nl "find ..."
+rs-harness search ast --intent "find clone in loop"
+#+end_src
+
+Also: do NOT split exploration into =graph=, =cargo=, =explore= as separate
+top-level commands.  To the agent client, read-only discovery is =search= with
+different views.  Parser-native extraction, owner-local item lookup, hook
+reroutes, and compact code projection are =query=.

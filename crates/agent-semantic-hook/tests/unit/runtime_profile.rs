@@ -1,93 +1,127 @@
 use std::path::{Path, PathBuf};
 
-use crate::protocol_activation::{ActivatedProvider, HookRuntime, provider_manifest_digest};
+use crate::protocol_activation::{
+    ActivatedProvider, HookActivation, HookRuntime, provider_manifest_digest,
+};
+use crate::provider_manifest::provider_manifests;
 
 use super::{
-    RUNTIME_PROFILES_PROTOCOL_ID, RUNTIME_PROFILES_PROTOCOL_VERSION, RUNTIME_PROFILES_SCHEMA_ID,
-    RUNTIME_PROFILES_SCHEMA_VERSION, RuntimeProfiles, RuntimeProfilesGeneratedBy,
-    RuntimeProviderHealth, RuntimeProviderHealthStatus, RuntimeProviderProfile,
-    load_or_refresh_runtime_profiles, profiles_match_project_root, profiles_match_runtime,
-    runtime_profiles_path_for_activation, write_runtime_profiles_for_runtime,
+    RuntimeProviderHealthStatus, runtime_profile_invocation, runtime_profiles_for_activation,
+    runtime_profiles_for_runtime, runtime_project_root_for_activation,
 };
 
 #[test]
-fn runtime_profiles_path_for_generated_activation_uses_state_cache_home() {
+fn runtime_project_root_for_generated_activation_uses_activation_storage_root() {
     let activation_path =
         PathBuf::from("/tmp/project/.cache/agent-semantic-protocol/hooks/activation.json");
 
     assert_eq!(
-        runtime_profiles_path_for_activation(&activation_path),
-        PathBuf::from("/tmp/project/.cache/agent-semantic-protocol/runtime/profiles.json")
+        runtime_project_root_for_activation(&activation_path, "."),
+        PathBuf::from("/tmp/project")
     );
 }
 
 #[test]
-fn runtime_profiles_path_for_manual_activation_uses_parent_local_cache() {
-    let activation_path = PathBuf::from("/tmp/project/activation.json");
+fn runtime_profiles_for_runtime_resolves_project_bin_without_persisting_file() {
+    let root = temp_root("project-bin");
+    let provider_path = write_executable_provider(&root, "rs-harness");
+    let provider = activated_rust_provider(Vec::new());
+    let runtime = HookRuntime {
+        project_root: root.display().to_string(),
+        providers: vec![provider],
+    };
+    let provider = &runtime.providers[0];
+
+    let profiles = runtime_profiles_for_runtime(&root, &runtime);
+    let invocation =
+        runtime_profile_invocation(&profiles, &provider, &["search".into(), "prime".into()])
+            .expect("provider invocation");
 
     assert_eq!(
-        runtime_profiles_path_for_activation(&activation_path),
-        PathBuf::from("/tmp/project/.cache/agent-semantic-protocol/runtime/profiles.json")
+        invocation,
+        [
+            std::fs::canonicalize(&provider_path)
+                .expect("canonical provider")
+                .display()
+                .to_string(),
+            "search".to_string(),
+            "prime".to_string(),
+        ]
     );
-}
-
-#[test]
-fn runtime_profiles_match_project_root_and_provider_prefix() {
-    let provider_prefix = vec!["/repo/.bin/rs-harness".to_string()];
-    let runtime = HookRuntime {
-        project_root: "/repo".to_string(),
-        providers: vec![activated_rust_provider(provider_prefix.clone())],
-    };
-
-    assert!(profiles_match_project_root(
-        &runtime_profiles("/repo", provider_prefix.clone()),
-        Path::new("/repo")
-    ));
-    assert!(!profiles_match_project_root(
-        &runtime_profiles("/tmp/stale-repo", provider_prefix.clone()),
-        Path::new("/repo")
-    ));
-    assert!(profiles_match_runtime(
-        &runtime_profiles("/repo", provider_prefix.clone()),
-        &runtime
-    ));
-    assert!(!profiles_match_runtime(
-        &runtime_profiles("/repo", Vec::new()),
-        &runtime
-    ));
-}
-
-#[test]
-fn load_or_refresh_runtime_profiles_refreshes_project_root_drift() {
-    let old_root = temp_root("old");
-    let new_root = temp_root("new");
-    write_executable_provider(&old_root, "rs-harness");
-    let new_provider = write_executable_provider(&new_root, "rs-harness");
-    let runtime = HookRuntime {
-        project_root: new_root.display().to_string(),
-        providers: vec![activated_rust_provider(Vec::new())],
-    };
-    let profiles_path = new_root.join(".cache/agent-semantic-protocol/runtime/profiles.json");
-
-    write_runtime_profiles_for_runtime(&profiles_path, &old_root, &runtime)
-        .expect("write stale profiles");
-    let refreshed = load_or_refresh_runtime_profiles(&profiles_path, &new_root, &runtime)
-        .expect("refresh stale profiles");
-
-    assert_eq!(refreshed.project_root, new_root.display().to_string());
     assert_eq!(
-        refreshed.providers[0].argv,
-        [std::fs::canonicalize(&new_provider)
-            .expect("canonical new provider")
-            .display()
-            .to_string()]
+        profiles.providers[0].health.status,
+        RuntimeProviderHealthStatus::Available
     );
-    let _ = std::fs::remove_dir_all(old_root);
-    let _ = std::fs::remove_dir_all(new_root);
+    assert!(
+        !root
+            .join(".cache/agent-semantic-protocol/runtime/profiles.json")
+            .exists()
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn runtime_profiles_for_activation_uses_provider_command_prefix() {
+    let root = temp_root("activation-prefix");
+    let wrapper = write_executable_provider(&root, "provider-wrapper");
+    let provider = activated_rust_provider(vec![
+        wrapper.display().to_string(),
+        "rs-harness".to_string(),
+    ]);
+    let activation = HookActivation {
+        schema_id: crate::HOOK_ACTIVATION_SCHEMA_ID.to_string(),
+        schema_version: crate::HOOK_ACTIVATION_SCHEMA_VERSION.to_string(),
+        protocol_id: crate::HOOK_PROTOCOL_ID.to_string(),
+        protocol_version: crate::HOOK_PROTOCOL_VERSION.to_string(),
+        project_root: root.display().to_string(),
+        generated_by: crate::protocol_activation::ActivationGeneratedBy {
+            runtime: "asp".to_string(),
+            version: "test".to_string(),
+        },
+        generated_at: None,
+        providers: vec![crate::protocol_activation::ActivatedProviderConfig {
+            manifest_id: provider.manifest_id.clone(),
+            manifest_digest: provider.manifest_digest.clone(),
+            language_id: provider.language_id.clone(),
+            provider_id: provider.provider_id.clone(),
+            binary: provider.binary.clone(),
+            execution: provider.execution,
+            provider_command_prefix: provider.provider_command_prefix.clone(),
+            coverage: crate::protocol_activation::ActivationCoverage {
+                package_roots: provider.package_roots.clone(),
+                source_roots: provider.source_roots.clone(),
+                config_files: provider.config_files.clone(),
+                source_extensions: provider.source_extensions.clone(),
+                ignored_path_prefixes: provider.ignored_path_prefixes.clone(),
+            },
+        }],
+    };
+
+    let profiles = runtime_profiles_for_activation(&root, &activation).expect("profiles");
+    let invocation =
+        runtime_profile_invocation(&profiles, &provider, &["query".into()]).expect("invocation");
+
+    assert_eq!(
+        invocation,
+        [
+            std::fs::canonicalize(&wrapper)
+                .expect("canonical wrapper")
+                .display()
+                .to_string(),
+            "rs-harness".to_string(),
+            "query".to_string(),
+        ]
+    );
+    assert!(
+        !root
+            .join(".cache/agent-semantic-protocol/runtime/profiles.json")
+            .exists()
+    );
+    let _ = std::fs::remove_dir_all(root);
 }
 
 fn activated_rust_provider(provider_command_prefix: Vec<String>) -> ActivatedProvider {
-    let manifest = crate::provider_manifest::provider_manifests()
+    let manifest = provider_manifests()
         .into_iter()
         .find(|manifest| manifest.language_id == "rust")
         .expect("rust manifest");
@@ -98,6 +132,7 @@ fn activated_rust_provider(provider_command_prefix: Vec<String>) -> ActivatedPro
         language_id: manifest.language_id,
         provider_id: manifest.provider_id,
         binary: manifest.binary,
+        execution: manifest.execution,
         provider_command_prefix,
         namespace: manifest.namespace,
         package_roots: vec![".".to_string()],
@@ -107,47 +142,6 @@ fn activated_rust_provider(provider_command_prefix: Vec<String>) -> ActivatedPro
         ignored_path_prefixes: manifest.source.default_ignored_path_prefixes,
         policy: manifest.policy,
         routes: manifest.routes,
-    }
-}
-
-fn runtime_profiles(project_root: &str, provider_command_prefix: Vec<String>) -> RuntimeProfiles {
-    let manifest = crate::provider_manifest::provider_manifests()
-        .into_iter()
-        .find(|manifest| manifest.language_id == "rust")
-        .expect("rust manifest");
-    let manifest_digest = provider_manifest_digest(&manifest).expect("manifest digest");
-    let argv = if provider_command_prefix.is_empty() {
-        vec![manifest.binary.clone()]
-    } else {
-        provider_command_prefix.clone()
-    };
-    RuntimeProfiles {
-        schema_id: RUNTIME_PROFILES_SCHEMA_ID.to_string(),
-        schema_version: RUNTIME_PROFILES_SCHEMA_VERSION.to_string(),
-        protocol_id: RUNTIME_PROFILES_PROTOCOL_ID.to_string(),
-        protocol_version: RUNTIME_PROFILES_PROTOCOL_VERSION.to_string(),
-        project_root: project_root.to_string(),
-        runtime_home: "/repo/.cache/agent-semantic-protocol/runtime".to_string(),
-        generated_by: RuntimeProfilesGeneratedBy {
-            runtime: "asp".to_string(),
-            version: "test".to_string(),
-        },
-        generated_at: None,
-        providers: vec![RuntimeProviderProfile {
-            manifest_id: manifest.manifest_id,
-            manifest_digest,
-            language_id: manifest.language_id,
-            provider_id: manifest.provider_id,
-            binary: manifest.binary,
-            provider_command_prefix,
-            resolved_binary: argv.first().cloned(),
-            argv,
-            health: RuntimeProviderHealth {
-                status: RuntimeProviderHealthStatus::Available,
-                checked_at: None,
-                reason: None,
-            },
-        }],
     }
 }
 

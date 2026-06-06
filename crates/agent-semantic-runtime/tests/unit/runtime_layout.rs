@@ -36,14 +36,14 @@ fn git_toplevel_is_first_project_identity_for_workspace_packages() {
         Some(root.join(".cache/agent-semantic-protocol/artifacts"))
     );
     assert_eq!(
-        layout.runtime_profiles_path,
-        Some(root.join(".cache/agent-semantic-protocol/runtime/profiles.json"))
+        layout.runtime_home,
+        Some(root.join(".cache/agent-semantic-protocol/runtime"))
     );
     let _ = fs::remove_dir_all(root);
 }
 
 #[test]
-fn prj_cache_home_overrides_state_storage_not_project_identity() {
+fn git_toplevel_precedes_prj_cache_home_for_state_storage() {
     let root = temp_root("runtime-layout-prj-cache-home");
     let package_root = root.join("packages/example");
     let state_root = root.join(".asp-state");
@@ -53,45 +53,42 @@ fn prj_cache_home_overrides_state_storage_not_project_identity() {
     let layout = project_runtime_layout_with_env(
         &package_root,
         ProjectRuntimeEnv {
-            prj_home_cache: None,
             prj_cache_home: Some(state_root.clone()),
         },
     );
 
     assert_eq!(layout.git_toplevel.as_deref(), Some(root.as_path()));
-    assert_eq!(layout.cache_home, Some(state_root.clone()));
-    assert_eq!(layout.cache_source, Some(ProjectCacheSource::PrjCacheHome));
+    assert_eq!(layout.cache_home, Some(root.join(".cache")));
+    assert_eq!(layout.cache_source, Some(ProjectCacheSource::GitToplevel));
     assert_eq!(layout.agents_dir, Some(root.join(".agents")));
     assert_eq!(
         layout.client_cache_dir,
-        Some(state_root.join("agent-semantic-protocol/client"))
+        Some(root.join(".cache/agent-semantic-protocol/client"))
     );
     let _ = fs::remove_dir_all(root);
 }
 
 #[test]
-fn prj_home_cache_is_reported_but_ignored_for_state_storage() {
-    let root = temp_root("runtime-layout-prj-home-cache-ignored");
+fn prj_cache_home_is_fallback_outside_git_worktree() {
+    let root = temp_root("runtime-layout-prj-cache-home-fallback");
     let package_root = root.join("packages/example");
-    let typo_state_root = root.join(".typo-state");
+    let state_root = root.join(".asp-state");
     fs::create_dir_all(&package_root).expect("create package root");
-    fs::create_dir_all(root.join(".git")).expect("create git marker");
 
     let layout = project_runtime_layout_with_env(
         &package_root,
         ProjectRuntimeEnv {
-            prj_home_cache: Some(typo_state_root.clone()),
-            prj_cache_home: None,
+            prj_cache_home: Some(state_root.clone()),
         },
     );
 
-    assert_eq!(layout.prj_home_cache, Some(typo_state_root));
-    assert_eq!(layout.prj_cache_home, None);
-    assert_eq!(layout.cache_source, Some(ProjectCacheSource::GitToplevel));
-    assert_eq!(layout.cache_home, Some(root.join(".cache")));
+    assert_eq!(layout.git_toplevel, None);
+    assert_eq!(layout.prj_cache_home, Some(state_root.clone()));
+    assert_eq!(layout.cache_source, Some(ProjectCacheSource::PrjCacheHome));
+    assert_eq!(layout.cache_home, Some(state_root.clone()));
     assert_eq!(
         layout.activation_path,
-        Some(root.join(".cache/agent-semantic-protocol/hooks/activation.json"))
+        Some(state_root.join("agent-semantic-protocol/hooks/activation.json"))
     );
     let _ = fs::remove_dir_all(root);
 }

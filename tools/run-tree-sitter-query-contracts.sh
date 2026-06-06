@@ -36,6 +36,12 @@ export SEMANTIC_AGENT_PROTOCOL_BIN="$repo_root/target/debug/asp"
 
 "$repo_root/target/debug/asp" hook install --client codex .
 
+python tools/validate-provider-registry-contracts.py \
+  --asp-bin "$repo_root/target/debug/asp" \
+  --provider rust \
+  --provider typescript \
+  --provider python \
+  .
 bash tools/validate-language-tree-sitter-runtime-boundary.sh
 bash tools/validate-tree-sitter-frontier-code-contract.sh
 bash tools/validate-search-read-plan-frontier-contract.sh

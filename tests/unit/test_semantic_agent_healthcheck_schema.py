@@ -32,10 +32,7 @@ class SemanticAgentHealthcheckSchemaTests(unittest.TestCase):
             "gitToplevel": "/tmp/project",
             "cacheHome": "/tmp/project/.cache",
             "cacheSource": "prj-cache-home",
-            "env": {
-                "PRJ_HOME_CACHE": None,
-                "PRJ_CACHE_HOME": "/tmp/project/.cache",
-            },
+            "env": {"PRJ_CACHE_HOME": "/tmp/project/.cache"},
             "paths": {
                 "agentsDir": {
                     "path": "/tmp/project/.agents",
@@ -87,8 +84,8 @@ class SemanticAgentHealthcheckSchemaTests(unittest.TestCase):
             "issues": [
                 {
                     "severity": "warn",
-                    "code": "ignored-prj-cache-home",
-                    "message": "PRJ_CACHE_HOME is ignored",
+                    "code": "missing-agent-skill",
+                    "message": "git toplevel agent-semantic-protocols skill is missing",
                 }
             ],
         }

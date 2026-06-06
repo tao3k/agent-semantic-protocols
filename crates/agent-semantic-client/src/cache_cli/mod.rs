@@ -1,9 +1,11 @@
 //! Cache command helpers for the `asp` client.
 
 mod command;
+mod locator_artifact;
 mod probe;
 mod request;
 mod writeback;
+mod writeback_artifact_events;
 
 pub(crate) use command::run_cache;
 #[cfg(test)]

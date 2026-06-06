@@ -1,0 +1,100 @@
+{
+  "id": "rust.codeql-bounded-source-file-flow",
+  "language": "rust",
+  "title": "Rust ASP bounded CodeQL source-file evidence flow",
+  "coverage": [
+    "json-schema",
+    "evidence-assurance",
+    "real-trigger",
+    "performance"
+  ],
+  "tags": [
+    "asp",
+    "relation-flow",
+    "codeql-bounded",
+    "slow",
+    "cold-path",
+    "explicit-opt-in"
+  ],
+  "workdir": ".",
+  "budgets": {
+    "maxCommands": 1,
+    "maxTotalLinesWarn": 1,
+    "maxTotalElapsedMsWarn": 90000,
+    "maxTotalStdoutBytesWarn": 4500
+  },
+  "evidence": {
+    "source": "real-trigger",
+    "intent": "Validate that a bounded CodeQL database/query/decode path can produce structured ASP evidence without enabling provider CodeQL backend advertising.",
+    "intentKind": "implementation-principle",
+    "editBoundary": "none",
+    "metrics": {
+      "recordedCommandCount": 1,
+      "repeatedSearches": 0,
+      "jsonSearches": 1,
+      "compactSearches": 0,
+      "tokenDelta": "same"
+    },
+    "findings": [
+      {
+        "kind": "codeql-bounded-query",
+        "severity": "info",
+        "message": "CodeQL executes a bounded raw-dbscheme query against a copied Rust fixture and emits structured evidence only."
+      },
+      {
+        "kind": "not-hot-path",
+        "severity": "info",
+        "message": "This scenario is an explicit slow evidence path and must not be part of ordinary search or hook recovery."
+      }
+    ]
+  },
+  "steps": [
+    {
+      "id": "codeql-bounded-source-file",
+      "kind": "schema-contract",
+      "coverage": [
+        "json-schema",
+        "evidence-assurance",
+        "real-trigger",
+        "performance"
+      ],
+      "timeoutSeconds": 90,
+      "command": [
+        "python",
+        "packages/python/src/tools/codeql_bounded_evidence.py",
+        "--generated-at",
+        "2026-06-05T12:10:00Z"
+      ],
+      "expect": {
+        "stdoutJsonSchema": "schemas/semantic-codeql-evidence.v1.schema.json",
+        "stdoutJsonEquals": {
+          "schemaId": "agent.semantic-protocols.semantic-codeql-evidence",
+          "languageId": "rust",
+          "providerId": "rs-harness",
+          "queryId": "asp.codeql.rust.raw-dbscheme.source-file",
+          "projectRootPolicy": "local-only",
+          "fields.executionBackend": "codeql",
+          "fields.adapterMode": "codeql-raw-dbscheme",
+          "fields.databaseCacheEnabled": true,
+          "fields.rustLibraryPackAvailable": false,
+          "normalizedRows.0.kind": "source",
+          "normalizedRows.0.sourceHandle": "codeql:file:src/lib.rs"
+        },
+        "stdoutJsonContains": {
+          "artifactId": "codeql-evidence/bounded",
+          "databaseFingerprint": "codeql-db:",
+          "fields.databaseLanguages": "rust",
+          "rowCount": "1"
+        },
+        "stdoutNotContains": [
+          "build-stdout",
+          "build-stderr",
+          "rawOutput"
+        ],
+        "maxStdoutLinesWarn": 1,
+        "maxStdoutBytesWarn": 4500,
+        "maxElapsedMsWarn": 90000
+      }
+    }
+  ]
+}

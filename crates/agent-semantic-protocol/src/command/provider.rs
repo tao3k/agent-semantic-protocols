@@ -2,9 +2,8 @@
 
 use super::document_provider;
 use agent_semantic_hook::{
-    HookRuntime, default_activation_path, discover_activation_path,
-    load_or_refresh_runtime_profiles, load_or_sync_activation, parse_hook_activation,
-    runtime_profiles_path_from_cache_home,
+    HookRuntime, default_activation_path, discover_activation_path, load_or_sync_activation,
+    parse_hook_activation, runtime_profiles_for_runtime,
 };
 use std::env;
 use std::fs;
@@ -18,9 +17,23 @@ use super::provider_roots::{
     activation_project_root, activation_storage_root, client_backend_cache_home,
     effective_project_root_and_args,
 };
+use super::search_pipe::{is_asp_fast_search, run_asp_fast_search_command};
 
 const SUPPORTED_LANGUAGES: &[&str] = &["rust", "typescript", "python", "julia", "org", "md"];
 const SUPPORTED_COMMANDS: &[&str] = &["search", "query", "guide", "check", "ast-patch", "evidence"];
+
+macro_rules! restore_env_var {
+    ($name:literal, $previous:expr) => {
+        match $previous {
+            Some(value) => unsafe {
+                env::set_var($name, value);
+            },
+            None => unsafe {
+                env::remove_var($name);
+            },
+        }
+    };
+}
 
 pub(crate) fn is_language_facade(language_id: &str) -> bool {
     SUPPORTED_LANGUAGES.contains(&language_id)
@@ -43,7 +56,6 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
     ) -> Result<(), String> {
         let client_args = args.to_vec();
         let previous_prj_cache_home = env::var_os("PRJ_CACHE_HOME");
-        let previous_cache_home = env::var_os("PRJ_HOME_CACHE");
         let previous_runtime_bin = env::var_os("ASP_RUNTIME_BIN_DIR");
         let previous_path = env::var_os("PATH");
         let runtime_bin = cache_home.join("agent-semantic-protocol/runtime/bin");
@@ -54,7 +66,6 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
         let runtime_path = env::join_paths(path_entries).ok();
         unsafe {
             env::set_var("PRJ_CACHE_HOME", cache_home);
-            env::set_var("PRJ_HOME_CACHE", cache_home);
             env::set_var("ASP_RUNTIME_BIN_DIR", &runtime_bin);
             if let Some(path) = runtime_path.as_deref() {
                 env::set_var("PATH", path);
@@ -65,38 +76,9 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
             client_args,
             project_root.to_path_buf(),
         );
-        match previous_prj_cache_home {
-            Some(value) => unsafe {
-                env::set_var("PRJ_CACHE_HOME", value);
-            },
-            None => unsafe {
-                env::remove_var("PRJ_CACHE_HOME");
-            },
-        }
-        match previous_cache_home {
-            Some(value) => unsafe {
-                env::set_var("PRJ_HOME_CACHE", value);
-            },
-            None => unsafe {
-                env::remove_var("PRJ_HOME_CACHE");
-            },
-        }
-        match previous_runtime_bin {
-            Some(value) => unsafe {
-                env::set_var("ASP_RUNTIME_BIN_DIR", value);
-            },
-            None => unsafe {
-                env::remove_var("ASP_RUNTIME_BIN_DIR");
-            },
-        }
-        match previous_path {
-            Some(value) => unsafe {
-                env::set_var("PATH", value);
-            },
-            None => unsafe {
-                env::remove_var("PATH");
-            },
-        }
+        restore_env_var!("PRJ_CACHE_HOME", previous_prj_cache_home);
+        restore_env_var!("ASP_RUNTIME_BIN_DIR", previous_runtime_bin);
+        restore_env_var!("PATH", previous_path);
         result
     }
 
@@ -123,21 +105,22 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
     let runtime = load_activation(&activation_path)?;
     let activation_root = activation_project_root(&activation_path, &runtime.project_root);
     let (project_root, provider_args) =
-        effective_project_root_and_args(language_id, args, &invocation_root, &activation_root);
+        effective_project_root_and_args(language_id, args, &invocation_root, &activation_root)?;
 
     let cache_home = client_backend_cache_home(&activation_root, &project_root)?;
-    if uses_client_backend(args) {
-        return run_client_backend_command(language_id, &provider_args, &project_root, &cache_home);
+    if is_asp_fast_search(&provider_args) {
+        return run_asp_fast_search_command(language_id, &provider_args, &project_root);
     }
-
     let provider = runtime
         .providers
         .iter()
         .find(|provider| provider.language_id == language_id)
         .ok_or_else(|| format!("no activated provider for language {language_id}"))?;
-    let runtime_profiles_path = runtime_profiles_path_from_cache_home(&cache_home);
-    let runtime_profiles =
-        load_or_refresh_runtime_profiles(&runtime_profiles_path, &project_root, &runtime)?;
+    let runtime_profiles = runtime_profiles_for_runtime(&project_root, &runtime);
+    if uses_client_backend(args) {
+        return run_client_backend_command(language_id, &provider_args, &project_root, &cache_home);
+    }
+
     if is_guide(args) {
         let guide_args = provider_guide_args(language_id, &provider_args);
         let invocation =

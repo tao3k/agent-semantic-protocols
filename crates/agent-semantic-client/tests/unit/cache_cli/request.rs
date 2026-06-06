@@ -1,7 +1,8 @@
 use std::path::Path;
 
 use agent_semantic_client_core::{
-    CacheExportMethod, ClientMethod, ClientRequest, LanguageId, ProviderId, ResolvedProvider,
+    CacheExportMethod, ClientMethod, ClientRequest, LanguageId, ProviderExecution, ProviderId,
+    ResolvedProvider,
 };
 
 use super::{exact_request_fingerprint, request_lookup_fingerprint, syntax_query_cache_provenance};
@@ -67,6 +68,7 @@ fn tree_sitter_request_fingerprint_changes_when_compiled_abi_plan_changes() {
         language_id: LanguageId::from("rust"),
         provider_id: ProviderId::from("rs-harness"),
         binary: "rs-harness".to_string(),
+        execution: ProviderExecution::ExternalProcess,
         provider_command_prefix: Vec::new(),
         runtime_command_argv: None,
         runtime_profile_status: None,
@@ -161,6 +163,7 @@ fn rust_provider() -> ResolvedProvider {
         language_id: LanguageId::from("rust"),
         provider_id: ProviderId::from("rs-harness"),
         binary: "rs-harness".to_string(),
+        execution: ProviderExecution::ExternalProcess,
         provider_command_prefix: Vec::new(),
         runtime_command_argv: None,
         runtime_profile_status: None,

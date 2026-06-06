@@ -39,7 +39,7 @@ pub(super) fn valid_search_manifest_with_artifact(
     artifact_id: &str,
 ) -> Value {
     let request_fingerprint =
-        request_fingerprint(root, "search/prime", &["prime", "--view", "seeds", "."]);
+        request_fingerprint(root, "search/prime", &["prime", "--view", "seeds"]);
     json!({
         "schemaId": "agent.semantic-protocols.client-cache-manifest",
         "schemaVersion": "1",
@@ -73,7 +73,7 @@ pub(super) fn valid_query_manifest_with_artifact(
     let request_fingerprint = request_fingerprint(
         root,
         "query/owner-items",
-        &["src/lib.rs", "--term", "CacheReplay", "."],
+        &["src/lib.rs", "--term", "CacheReplay"],
     );
     json!({
         "schemaId": "agent.semantic-protocols.client-cache-manifest",

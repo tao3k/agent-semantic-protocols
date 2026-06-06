@@ -1,0 +1,86 @@
+* Snapshot test requirements
+
+All =search= output must be covered by snapshot tests, matching
+the existing Rust harness standard for compact render contracts:
+
+#+begin_src text
+tests/unit/search_snapshots/search_prime.snap
+tests/unit/search_snapshots/search_dependency_rename.snap
+tests/unit/search_snapshots/search_owner_slice.snap
+tests/unit/search_snapshots/search_pattern_recipe.snap
+#+end_src
+
+Acceptance criteria for every snapshot:
+
+#+begin_src text
+- no blank lines
+- no source lines in default packets
+- default ≤ max lines per block
+- paths root-relative
+- every =next= action directly translatable to a subsequent rs-harness search command
+- every dependency fact shows key / import / pkg / kind / target / features
+- every owner line has role / pub / test / find / next
+#+end_src
+
+Three MVP regression tests (must pass before public release):
+
+*** Test A: dependency rename
+
+Fixture: =local_harness = { package = "rust-lang-project-harness" }=
+
+Expected:
+
+#+begin_example
+[search-dep] q=local_harness ...
+|dep key=local_harness import=local_harness pkg=rust-lang-project-harness ...
+|note renamed=true import=local_harness
+#+end_example
+
+Goal: the agent client never searches by package name when the dependency is renamed.
+
+*** Test B: large single-file owner
+
+Fixture: a file with 1000+ lines and 10+ public items.
+
+Expected with the =items= pipe:
+
+#+begin_example
+[search-owner] role=source-large item=N
+|item FileSearchOptions kind=struct ...
+|item walker_worker kind=fn ...
+#+end_example
+
+Goal: the =items= pipe prevents large files from collapsing into one owner node.
+
+*** Test C: feature-gated dependency
+
+Fixture: =[features] tracing = ["dep:tracing"]= and
+=[[example]] required-features = ["tracing"]=.
+
+Expected:
+
+#+begin_example
+[search-features] q=tracing ...
+|feature tracing enables=dep:tracing source=manifest manager=cargo
+|target example:parse req_feat=tracing
+#+end_example
+
+Goal: the agent client changing a feature sees which targets require it.
+
+* Exit codes
+
+Stable and documented:
+
+| Code | Meaning                                          |
+|------+--------------------------------------------------|
+| 0    | clean / ok                                       |
+| 1    | harness findings exist                           |
+| 2    | invalid CLI usage                                |
+| 3    | project / config / protocol error                |
+| 4    | daemon required but unavailable                  |
+|      | (developer-only diagnostic mode, not an agent path) |
+| 5    | stale cache / retryable internal error           |
+
+Daemon unavailable /does not/ cause failure by default.  Only explicit
+developer diagnostics may make it an error, and those diagnostics are not
+advertised in the semantic-language registry.

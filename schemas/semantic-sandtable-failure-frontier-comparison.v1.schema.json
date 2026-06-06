@@ -1,0 +1,205 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-sandtable-failure-frontier-comparison.v1.schema.json",
+  "title": "Semantic Sandtable Failure Frontier Comparison",
+  "description": "Deterministic sandtable comparison packet for validating whether a failure-frontier flow reduces source-window reads while preserving hot-block coverage.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "status",
+    "baseline",
+    "candidate",
+    "delta",
+    "frontier",
+    "thresholds",
+    "failures"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.semantic-sandtable-failure-frontier-comparison"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "status": {
+      "enum": ["pass", "fail"]
+    },
+    "baseline": {
+      "$ref": "#/$defs/receiptMetrics"
+    },
+    "candidate": {
+      "$ref": "#/$defs/receiptMetrics"
+    },
+    "delta": {
+      "$ref": "#/$defs/deltaMetrics"
+    },
+    "frontier": {
+      "$ref": "#/$defs/frontierCoverage"
+    },
+    "thresholds": {
+      "$ref": "#/$defs/thresholds"
+    },
+    "failures": {
+      "$ref": "#/$defs/stringList"
+    }
+  },
+  "$defs": {
+    "receiptMetrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scenarioId",
+        "language",
+        "commandCount",
+        "stdoutBytes",
+        "stderrBytes",
+        "directSourceReadCodeCount",
+        "queryCodeCount",
+        "duplicateSelectorCount",
+        "sameFileWindowFanout",
+        "selectors"
+      ],
+      "properties": {
+        "scenarioId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "language": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "commandCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "stdoutBytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "stderrBytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "directSourceReadCodeCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "queryCodeCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "duplicateSelectorCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sameFileWindowFanout": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "selectors": {
+          "$ref": "#/$defs/stringList"
+        }
+      }
+    },
+    "deltaMetrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "commandReduction",
+        "commandReductionRatio",
+        "stdoutBytesReduction",
+        "stdoutBytesReductionRatio"
+      ],
+      "properties": {
+        "commandReduction": {
+          "type": "integer"
+        },
+        "commandReductionRatio": {
+          "type": "number"
+        },
+        "stdoutBytesReduction": {
+          "type": "integer"
+        },
+        "stdoutBytesReductionRatio": {
+          "type": "number"
+        }
+      }
+    },
+    "frontierCoverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "expectedHotBlocks",
+        "coveredHotBlocks",
+        "missingHotBlocks",
+        "coverageRatio"
+      ],
+      "properties": {
+        "expectedHotBlocks": {
+          "$ref": "#/$defs/stringList"
+        },
+        "declaredHotBlocks": {
+          "$ref": "#/$defs/stringList"
+        },
+        "readHotBlocks": {
+          "$ref": "#/$defs/stringList"
+        },
+        "coveredHotBlocks": {
+          "$ref": "#/$defs/stringList"
+        },
+        "missingHotBlocks": {
+          "$ref": "#/$defs/stringList"
+        },
+        "coverageRatio": {
+          "oneOf": [
+            {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "thresholds": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "minCommandReduction",
+        "maxDirectSourceReadCode",
+        "maxDuplicateSelectors",
+        "maxSameFileWindowFanout"
+      ],
+      "properties": {
+        "minCommandReduction": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "maxDirectSourceReadCode": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxDuplicateSelectors": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxSameFileWindowFanout": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "stringList": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

@@ -1,0 +1,90 @@
+{
+  "schemaId": "agent.semantic-protocols.semantic-sandtable-receipt",
+  "schemaVersion": "1",
+  "scenarioId": "rust.cache-replay-baseline",
+  "language": "rust",
+  "project": {
+    "name": "agent-semantic-protocols",
+    "source": "fixture"
+  },
+  "intent": "Compare baseline source-window scan with failure-frontier flow.",
+  "editBoundary": "before-edit",
+  "commands": [
+    {
+      "id": "test-a",
+      "kind": "other",
+      "argv": ["asp", "rust", "query", "--from-hook", "direct-source-read", "--selector", "crates/agent-semantic-client/tests/unit/cache_cli/writeback/search.rs:40-72", "--code", "."],
+      "outputMode": "compact",
+      "metrics": {"elapsedMs": 3, "stdoutBytes": 700, "stderrBytes": 0}
+    },
+    {
+      "id": "writeback-a",
+      "kind": "other",
+      "argv": ["asp", "rust", "query", "--from-hook", "direct-source-read", "--selector", "crates/agent-semantic-client/src/cache_cli/writeback.rs:1-140", "--code", "."],
+      "outputMode": "compact",
+      "metrics": {"elapsedMs": 3, "stdoutBytes": 700, "stderrBytes": 0}
+    },
+    {
+      "id": "writeback-b",
+      "kind": "other",
+      "argv": ["asp", "rust", "query", "--from-hook", "direct-source-read", "--selector", "crates/agent-semantic-client/src/cache_cli/writeback.rs:220-260", "--code", "."],
+      "outputMode": "compact",
+      "metrics": {"elapsedMs": 3, "stdoutBytes": 700, "stderrBytes": 0}
+    },
+    {
+      "id": "writeback-c",
+      "kind": "other",
+      "argv": ["asp", "rust", "query", "--from-hook", "direct-source-read", "--selector", "crates/agent-semantic-client/src/cache_cli/writeback.rs:560-680", "--code", "."],
+      "outputMode": "compact",
+      "metrics": {"elapsedMs": 3, "stdoutBytes": 700, "stderrBytes": 0}
+    },
+    {
+      "id": "writeback-d",
+      "kind": "other",
+      "argv": ["asp", "rust", "query", "--from-hook", "direct-source-read", "--selector", "crates/agent-semantic-client/src/cache_cli/writeback.rs:220-260", "--code", "."],
+      "outputMode": "compact",
+      "metrics": {"elapsedMs": 3, "stdoutBytes": 700, "stderrBytes": 0}
+    },
+    {
+      "id": "artifact-a",
+      "kind": "other",
+      "argv": ["asp", "rust", "query", "--from-hook", "direct-source-read", "--selector", "crates/agent-semantic-client/src/cache_replay/artifact.rs:1-120", "--code", "."],
+      "outputMode": "compact",
+      "metrics": {"elapsedMs": 3, "stdoutBytes": 700, "stderrBytes": 0}
+    },
+    {
+      "id": "artifact-b",
+      "kind": "other",
+      "argv": ["asp", "rust", "query", "--from-hook", "direct-source-read", "--selector", "crates/agent-semantic-client/src/cache_replay/artifact.rs:88-132", "--code", "."],
+      "outputMode": "compact",
+      "metrics": {"elapsedMs": 3, "stdoutBytes": 700, "stderrBytes": 0}
+    },
+    {
+      "id": "locator-a",
+      "kind": "other",
+      "argv": ["asp", "rust", "query", "--from-hook", "direct-source-read", "--selector", "crates/agent-semantic-client/src/cache_cli/locator_artifact.rs:150-250", "--code", "."],
+      "outputMode": "compact",
+      "metrics": {"elapsedMs": 3, "stdoutBytes": 700, "stderrBytes": 0}
+    },
+    {
+      "id": "probe-a",
+      "kind": "other",
+      "argv": ["asp", "rust", "query", "--from-hook", "direct-source-read", "--selector", "crates/agent-semantic-client/src/cache_cli/probe.rs:140-205", "--code", "."],
+      "outputMode": "compact",
+      "metrics": {"elapsedMs": 3, "stdoutBytes": 700, "stderrBytes": 0}
+    },
+    {
+      "id": "probe-b",
+      "kind": "other",
+      "argv": ["asp", "rust", "query", "--from-hook", "direct-source-read", "--selector", "crates/agent-semantic-client/src/cache_cli/probe.rs:205-260", "--code", "."],
+      "outputMode": "compact",
+      "metrics": {"elapsedMs": 3, "stdoutBytes": 700, "stderrBytes": 0}
+    }
+  ],
+  "summary": {
+    "commandCount": 10,
+    "stdoutBytes": 7000,
+    "stderrBytes": 0,
+    "elapsedMs": 30
+  }
+}

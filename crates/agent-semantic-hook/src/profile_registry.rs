@@ -57,6 +57,7 @@ fn profile_entry(
         "languageId": activated.language_id,
         "providerId": activated.provider_id,
         "binary": activated.binary,
+        "execution": activated.execution,
         "namespace": manifest.namespace,
         "sourceExtensions": activated.coverage.source_extensions,
         "configFiles": activated.coverage.config_files,
@@ -179,7 +180,7 @@ pub fn remove_legacy_codex_hook_cache_files(project_root: &Path) -> Result<(), S
         project_root.join(".cache").join("semantic-agent-protocol");
     remove_legacy_hook_dir(&legacy_semantic_protocol_cache_dir.join("hooks"))?;
     remove_empty_dir(&legacy_semantic_protocol_cache_dir)?;
-    if let Some(cache_root) = env::var_os("PRJ_HOME_CACHE").filter(|value| !value.is_empty()) {
+    if let Some(cache_root) = env::var_os("PRJ_CACHE_HOME").filter(|value| !value.is_empty()) {
         let cache_root = PathBuf::from(cache_root);
         remove_legacy_hook_dir(&cache_root.join("agent-semantic-hook"))?;
         let legacy_semantic_protocol_cache_dir = cache_root.join("semantic-agent-protocol");

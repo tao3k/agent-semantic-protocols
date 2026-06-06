@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from tools.semantic_sandtable.scenario_io import discover_scenarios
 from tools.semantic_sandtable.scenario_runner import run_scenario
@@ -227,6 +229,44 @@ class DiscoveryAndStepRunnerTests(unittest.TestCase):
         self.assertEqual("fail", result.status)
         self.assertEqual(["stdin command exited 7"], result.steps[0].errors)
         self.assertEqual(7, result.steps[0].exit_code)
+
+    def test_skip_unless_env_marks_scenario_skip_before_running_steps(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            marker = repo_root / "should-not-run"
+            scenario_path = repo_root / "scenario.json"
+            scenario_path.write_text(
+                json.dumps(
+                    {
+                        "id": "root.live-env-gate",
+                        "language": "root",
+                        "workdir": ".",
+                        "skipUnlessEnv": ["ASP_LIVE_CLAUDE_CLI"],
+                        "steps": [
+                            {
+                                "id": "touch-marker",
+                                "command": [
+                                    sys.executable,
+                                    "-c",
+                                    (
+                                        "from pathlib import Path; "
+                                        f"Path({str(marker)!r}).write_text('ran')"
+                                    ),
+                                ],
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with patch.dict(os.environ, {}, clear=True):
+                result = run_scenario(repo_root, scenario_path)
+
+        self.assertEqual("skip", result.status)
+        self.assertEqual("missing env: ASP_LIVE_CLAUDE_CLI", result.skip_reason)
+        self.assertEqual([], result.steps)
+        self.assertFalse(marker.exists())
 
 
 

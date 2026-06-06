@@ -149,6 +149,34 @@ fn appends_asp_syntax_query_plan_for_builtin_rust_catalog() {
 }
 
 #[test]
+fn leaves_native_flow_lite_catalog_without_tree_sitter_plan_args() {
+    let language_id = LanguageId::from("rust");
+    let forwarded_args = vec![
+        "--catalog".to_string(),
+        "flow-lite".to_string(),
+        "--where".to_string(),
+        "source.call=payload_string sink.constructs=ToolAction scope.fn=collect_tool_actions"
+            .to_string(),
+        ".".to_string(),
+    ];
+    let args = append_syntax_query_plan_args(
+        &ClientMethod::Query,
+        Some(&language_id),
+        forwarded_args.clone(),
+    )
+    .expect("native catalog");
+
+    assert_eq!(args, forwarded_args);
+    assert!(!args.iter().any(|arg| arg == ASP_SYNTAX_QUERY_CAPTURES_ARG));
+    assert!(
+        !args
+            .iter()
+            .any(|arg| arg == ASP_SYNTAX_QUERY_NODE_TYPES_ARG)
+    );
+    assert!(!args.iter().any(|arg| arg == ASP_SYNTAX_QUERY_FIELDS_ARG));
+}
+
+#[test]
 fn appends_asp_syntax_query_plan_for_builtin_typescript_catalog() {
     let language_id = LanguageId::from("typescript");
     let args = append_syntax_query_plan_args(

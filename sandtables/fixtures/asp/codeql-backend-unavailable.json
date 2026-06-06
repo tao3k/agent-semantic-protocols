@@ -1,0 +1,39 @@
+{
+  "schemaId": "agent.semantic-protocols.semantic-codeql-evidence",
+  "schemaVersion": "1",
+  "protocolId": "agent.semantic-protocols.semantic-language",
+  "protocolVersion": "1",
+  "artifactId": "codeql-evidence/unavailable/sandtable-rust-codeql.json",
+  "databaseFingerprint": "codeql-db:unavailable",
+  "queryId": "asp.flow-lite.local-source-sink",
+  "queryVersion": "2026-06-05.v1",
+  "generatedAt": "2026-06-05T12:00:00Z",
+  "languageId": "rust",
+  "providerId": "rs-harness",
+  "projectRoot": ".",
+  "inputHandles": [
+    "param:input",
+    "call:parse_inner"
+  ],
+  "rowCount": 0,
+  "projectRootPolicy": "blocked",
+  "sourceSnapshot": {
+    "kind": "workspace",
+    "fingerprint": "workspace:unavailable",
+    "fields": {
+      "reason": "codeql database unavailable"
+    }
+  },
+  "flowId": "flow-lite:sandtable:parse",
+  "normalizedRows": [],
+  "omissions": [
+    {
+      "kind": "backend-unavailable",
+      "message": "CodeQL database is not available for this project root.",
+      "target": "codeql",
+      "fields": {
+        "executionBackend": "codeql"
+      }
+    }
+  ]
+}

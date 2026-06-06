@@ -1,0 +1,227 @@
+* Agent search flow: structured, not chaotic
+
+The agent should follow this order:
+
+#+begin_example
+1. search prime     → provider resolves path context, then emits bounded map
+2. search dependency → inspect external dependency source usage when relevant
+3. search owner     → understand current file's responsibility
+4. search symbol    → find exported symbol definitions
+5. search callsite  → find owner-level import/reexport sites
+6. search import    → inspect import/reexport owner edges
+7. search tests     → locate tests importing the edited owner
+8. search fzf       → find broader symbol/path candidates
+9. search ingest    → normalize external candidate streams when needed
+10. edit            → apply change
+11. check           → verify change against policy
+12. check --full    → closeout when needed
+#+end_example
+
+NOT:
+
+#+begin_example
+rg keyword
+open many files
+guess public API
+run big test suite
+#+end_example
+
+Example: changing =OrderStatus=.
+
+#+begin_src shell
+ts-harness search prime .
+ts-harness search dependency react .
+ts-harness search deps react/jsx-runtime@19.0.0::jsx .
+ts-harness search api OrderStatus .
+ts-harness search symbol OrderStatus .
+ts-harness search callsite OrderStatus .
+ts-harness search import ./order .
+ts-harness search tests src/domain/order.ts .
+ts-harness search fzf OrderStatus .
+ts-harness search owner src/domain/order.ts .
+rg -n "\bOrderStatus\b" src tests | ts-harness search ingest .
+#+end_src
+
+The agent sees:
+
+#+begin_example
+[search-dependency] q=react dep=1 manifest=1 own=2 hit=3 edge=2 view=graph
+|hit path=package.json line=7 column=5 owner=. kind=dependency score=10 reason=manifest-package-exact packageRoot=react source=dependencies versionRange=^19.0.0
+|hit path=src/ui/order-view.ts line=1 owner=src/ui/order-view.ts kind=dependency reason=package-root-exact packageRoot=react moduleSpecifier=react
+
+[search-fzf] q=OrderStatus own=3 hit=3 view=hits
+|hit path=src/domain/order.ts owner=src/domain/order.ts kind=export score=3 reason=export-name symbol=OrderStatus
+|hit path=src/api/orders.ts owner=src/api/orders.ts kind=path score=2 reason=path
+|next owner:src/domain/order.ts,owner:src/api/orders.ts
+
+[search-callsite] q=OrderStatus def=1 own=2 hit=2 view=hits
+|hit path=src/api/orders.ts line=1 owner=src/api/orders.ts kind=callsite reason=import-owner symbol=OrderStatus
+|hit path=tests/unit/domain/order.test.ts line=1 owner=tests/unit/domain/order.test.ts kind=callsite reason=import-owner symbol=OrderStatus
+
+[search-api] q=OrderStatus api=OrderStatus own=1 hit=2 source=native-parser view=hits
+|api path=src/domain/order.ts line=1 owner=src/domain/order.ts kind=api reason=exported-api symbol=OrderStatus source=native-parser apiKind=type
+|api path=src/domain/order.ts line=8 owner=src/domain/order.ts kind=api reason=public-data-api symbol=OrderStatusRecord source=native-parser apiKind=interface fields=status:OrderStatus
+
+[search-ingest] src=rg-n in=4 own=4 hit=4
+|hit path=src/api/orders.ts line=44 owner=src/api/orders.ts kind=text reason=rg-n
+|hit path=src/ui/order-view.ts line=19 owner=src/ui/order-view.ts kind=text reason=rg-n
+#+end_example
+
+The agent immediately knows the owner-grouped blast radius.  Raw lexical output
+is never pasted into the prompt directly; it is normalized into the shared
+semantic-search packet.  TypeScript =callsite= is owner-level in this slice: it
+uses parser-owned import/reexport edges, and can later be upgraded with
+language-service identifier references without changing the packet schema.
+
+* Config: LLM generates, harness validates
+
+The agent can write:
+
+#+begin_src json
+{
+  "decisions": [
+    {
+      "kind": "ownerRuleSeverity",
+      "owner": "src/generated",
+      "ruleIds": ["TS-AGENT-R013"],
+      "severity": "info",
+      "evidence": [
+        "package.json script generate:schema",
+        "src/generated/README.md"
+      ],
+      "rationale": "Generated code is documented at schema source boundary."
+    }
+  ]
+}
+#+end_src
+
+But the harness validates:
+
+#+begin_src text
+- owner path exists?
+- rule id exists?
+- evidence path exists?
+- rationale non-empty?
+- scope narrow enough (owner-local, not global)?
+- not disabling entire agent_policy pack?
+- not silently excluding tests?
+#+end_src
+
+Bad config produces a compact finding:
+
+#+begin_example
+[TS-CONFIG-R004] Warning: Global rule disable lacks evidence
+@ .ts-harness/config.json:12:1
+fix: replace global disable with owner-local decision and rationale
+Help: config disables TS-AGENT-R011 across the project.
+Contract: Agent-authored config must be owner-local or include org-level rationale.
+#+end_example
+
+* =--changed= fast lane
+
+Not every check needs to be full-project.  =--changed= evaluates only:
+
+#+begin_src text
+syntax parse of changed files
+export/import shape
+owner-local rules
+agent policy for touched public surfaces
+extension policy for touched React/Effect files
+config/package facts (only when config files changed)
+#+end_src
+
+Full check is reserved for closeout.
+
+* Project layout
+
+#+begin_example
+repo
+├── package.json
+├── tsconfig.json
+├── .ts-harness/
+│   ├── config.json
+│   ├── cache/
+│   └── server.sock / server.pid
+├── .agents/
+│   └── skills/
+│       └── agent-semantic-protocols/
+│           └── SKILL.md
+└── src/
+#+end_example
+
+Provider activation MUST carry an explicit =execution= mode from the shared
+language registry into generated provider manifests, activation JSON, runtime
+profiles, =asp providers= output, and installed skill provider tables. Source
+language harnesses use =external-process=. Document providers such as =org= and
+=md= use =embedded=: their facade command is still =asp org= or =asp md=, but
+ASP dispatches the native document provider in-process rather than spawning an
+orgize binary.
+
+* Agent integration bundle structure (future)
+
+For Codex clients, =asp hook install --client codex= installs the
+repo-maintained language-bin skill into
+=.agents/skills/agent-semantic-protocols/SKILL.md=.  The skill is concise and
+agent-facing: it describes =rs-harness=, =ts-harness=, and =py-harness= command
+flows, and tells agents not to use =--json= for exploratory searches.
+
+The public binary is =agent-semantic-protocol=.  It exposes:
+
+#+begin_src shell
+asp hook install --client codex .
+asp hook pre-tool ...
+asp hook stop ...
+asp ast-patch dry-run --packet <ast-patch.json> .
+#+end_src
+
+=agent-semantic-hook= remains the library dependency that implements the hook
+subcommands inside =agent-semantic-protocol=.  The migration is a command-surface
+consolidation, not a deletion of the hook runtime crate.
+
+=asp hook install= also writes the project runtime profile:
+
+#+begin_src text
+.cache/agent-semantic-protocol/runtime/profiles.json
+#+end_src
+
+The profile pins the provider argv resolved at activation time and records a
+small health result for each activated provider.  =asp rust|typescript|python=
+facades and the local-native client backend consume this profile before they
+fall back to shell lookup.  The profile is regenerated when activation is
+installed or synced, and doctor reports the same profile path and provider
+health.  This keeps provider execution aligned across Rust, TypeScript, and
+Python without depending on generated =runtime/bin= symlinks or the agent's
+current shell =PATH=.
+
+If an agent-client integration bundle is desired, it contains:
+
+#+begin_example
+ts-harness-agent-bundle
+├── SKILL.md
+├── hooks/
+│   ├── session-start.sh
+│   ├── after-edit.sh
+│   └── closeout.sh
+├── scripts/
+│   ├── start-server.sh
+│   └── doctor.sh
+└── examples/
+    ├── package-scripts.json
+    └── harness-config.json
+#+end_example
+
+No MCP config.  No conversational-tool discovery.  The only advertised
+capability registry is the deterministic semantic-language registry returned by
+=<lang-harness> agent doctor --json=.
+
+* Failure mode reference
+
+| Scenario                | CLI Behavior                                |
+|-------------------------+---------------------------------------------|
+| daemon down             | direct parser run, output =daemon=missing=  |
+| daemon stale            | auto-rebuild cache, then respond            |
+| protocol mismatch       | exit 3, deterministic upgrade message       |
+| cache invalid           | direct parser run, output =cache=invalid= with reason |
+| project root mismatch   | exit 3, refuse cross-project contamination  |
+| request timeout         | retry once, then direct parser run          |
+| direct parser run fails | exit 3, compact error message               |

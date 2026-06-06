@@ -1,0 +1,619 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-graph-turbo-result.v1.schema.json",
+  "title": "Semantic Graph Turbo Result",
+  "description": "Schema-owned typed frontier ranking result emitted by asp-graph-turbo. This packet records ranking evidence and frontier actions; it is not a prompt-facing renderer template.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "protocolId",
+    "protocolVersion",
+    "packetKind",
+    "profile",
+    "algorithm",
+    "seedIds",
+    "budget",
+    "kindBudgets",
+    "profiles",
+    "rank",
+    "rankedNodes",
+    "frontier",
+    "scores",
+    "edges",
+    "mergedWindows",
+    "profileCompatibility",
+    "sourceSinkFrontier",
+    "typedPaths",
+    "flowLite",
+    "packetFingerprint",
+    "graphCache",
+    "algorithmTrace",
+    "rankExplanations",
+    "algorithmMetrics",
+    "omit",
+    "avoid"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.semantic-graph-turbo-result"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "protocolId": {
+      "const": "agent.semantic-protocols.semantic-language"
+    },
+    "protocolVersion": {
+      "const": "1"
+    },
+    "packetKind": {
+      "const": "graph-turbo-result"
+    },
+    "profile": {
+      "enum": [
+        "owner-query",
+        "query-deps",
+        "owner-tests",
+        "prime",
+        "read-frontier"
+      ]
+    },
+    "algorithm": {
+      "const": "typed-ppr-diverse"
+    },
+    "seedIds": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/nodeId"
+      },
+      "uniqueItems": true
+    },
+    "budget": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "kindBudgets": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 1
+      }
+    },
+    "profiles": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "owner-query",
+          "query-deps",
+          "owner-tests",
+          "prime",
+          "read-frontier"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "rank": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/nodeId"
+      },
+      "uniqueItems": true
+    },
+    "rankedNodes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/node"
+      }
+    },
+    "frontier": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/frontierEntry"
+      }
+    },
+    "scores": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "number"
+      }
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/edge"
+      }
+    },
+    "mergedWindows": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/mergedWindow"
+      }
+    },
+    "profileCompatibility": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/profileCompatibility"
+      }
+    },
+    "sourceSinkFrontier": {
+      "$ref": "#/$defs/sourceSinkFrontier"
+    },
+    "typedPaths": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/typedPath"
+      }
+    },
+    "flowLite": {
+      "$ref": "#/$defs/flowLite"
+    },
+    "packetFingerprint": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "graphCache": {
+      "$ref": "#/$defs/graphCache"
+    },
+    "algorithmTrace": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/algorithmTraceStep"
+      }
+    },
+    "rankExplanations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/rankExplanation"
+      }
+    },
+    "algorithmMetrics": {
+      "$ref": "#/$defs/algorithmMetrics"
+    },
+    "omit": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "code",
+          "full-score-vector",
+          "full-graph"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "avoid": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "raw-read",
+          "repeat-owner",
+          "broad-fzf"
+        ]
+      },
+      "uniqueItems": true
+    }
+  },
+  "$defs": {
+    "nodeId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "role",
+        "value",
+        "action"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/nodeId"
+        },
+        "kind": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "role": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "value": {
+          "type": "string",
+          "minLength": 1
+        },
+        "action": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        }
+      }
+    },
+    "frontierEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "nodeId",
+        "action",
+        "score"
+      ],
+      "properties": {
+        "nodeId": {
+          "$ref": "#/$defs/nodeId"
+        },
+        "action": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "score": {
+          "type": "number"
+        }
+      }
+    },
+    "edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "target",
+        "relation",
+        "weight"
+      ],
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/nodeId"
+        },
+        "target": {
+          "$ref": "#/$defs/nodeId"
+        },
+        "relation": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "weight": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      }
+    },
+    "mergedWindow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "startLine",
+        "endLine",
+        "nodeIds"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "startLine": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "endLine": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "nodeIds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nodeId"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      }
+    },
+    "profileCompatibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile",
+        "compatible",
+        "allowedRelations",
+        "allowedTransitions",
+        "kindBonus",
+        "frontierActions"
+      ],
+      "properties": {
+        "profile": {
+          "enum": [
+            "owner-query",
+            "query-deps",
+            "owner-tests",
+            "prime",
+            "read-frontier"
+          ]
+        },
+        "compatible": {
+          "type": "boolean"
+        },
+        "allowedRelations": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]*$"
+          },
+          "uniqueItems": true
+        },
+        "allowedTransitions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/allowedTransition"
+          },
+          "uniqueItems": true
+        },
+        "kindBonus": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number"
+          }
+        },
+        "frontierActions": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]*$"
+          }
+        }
+      }
+    },
+    "allowedTransition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceKind",
+        "targetKind"
+      ],
+      "properties": {
+        "sourceKind": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "targetKind": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        }
+      }
+    },
+    "sourceSinkFrontier": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceIds",
+        "sinkIds"
+      ],
+      "properties": {
+        "sourceIds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nodeId"
+          },
+          "uniqueItems": true
+        },
+        "sinkIds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nodeId"
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "typedPath": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "pathKind",
+        "source",
+        "sink",
+        "nodeIds",
+        "relations",
+        "cost",
+        "score",
+        "rank"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^P[0-9]+$"
+        },
+        "pathKind": {
+          "enum": [
+            "constrained-shortest",
+            "k-shortest"
+          ]
+        },
+        "source": {
+          "$ref": "#/$defs/nodeId"
+        },
+        "sink": {
+          "$ref": "#/$defs/nodeId"
+        },
+        "nodeIds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nodeId"
+          },
+          "minItems": 2
+        },
+        "relations": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]*$"
+          }
+        },
+        "cost": {
+          "type": "number"
+        },
+        "score": {
+          "type": "number"
+        },
+        "rank": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "flowLite": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rankedPathIds"
+      ],
+      "properties": {
+        "rankedPathIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^P[0-9]+$"
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "graphCache": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "key",
+        "status",
+        "backend",
+        "entries"
+      ],
+      "properties": {
+        "key": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "status": {
+          "enum": [
+            "hit",
+            "miss",
+            "disabled"
+          ]
+        },
+        "backend": {
+          "const": "scipy-csr"
+        },
+        "entries": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "algorithmTraceStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "step",
+        "engine",
+        "fields"
+      ],
+      "properties": {
+        "step": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "engine": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "fields": {
+          "type": "object"
+        }
+      }
+    },
+    "rankExplanation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "nodeId",
+        "score",
+        "depth",
+        "reasons"
+      ],
+      "properties": {
+        "nodeId": {
+          "$ref": "#/$defs/nodeId"
+        },
+        "score": {
+          "type": "number"
+        },
+        "depth": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "algorithmMetrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "nodeCount",
+        "edgeCount",
+        "selectedEdgeCount",
+        "reachableNodeCount",
+        "rankedNodeCount",
+        "pathCount",
+        "mergedWindowCount",
+        "cacheStatus"
+      ],
+      "properties": {
+        "nodeCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "edgeCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "selectedEdgeCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "reachableNodeCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "rankedNodeCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pathCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "mergedWindowCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cacheStatus": {
+          "enum": [
+            "hit",
+            "miss",
+            "disabled"
+          ]
+        }
+      }
+    }
+  }
+}

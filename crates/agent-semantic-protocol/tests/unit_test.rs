@@ -1,4 +1,5 @@
 #![recursion_limit = "256"]
+#![deny(dead_code)]
 
 #[path = "unit/ast_patch.rs"]
 mod ast_patch;
@@ -14,6 +15,8 @@ mod client_hook_config_doctor;
 mod client_hook_config_runtime;
 #[path = "unit/client_hook_desktop_smoke.rs"]
 mod client_hook_desktop_smoke;
+#[path = "unit/document_provider.rs"]
+mod document_provider;
 #[path = "unit/graph_render.rs"]
 mod graph_render;
 #[path = "unit/healthcheck.rs"]

@@ -1,0 +1,61 @@
+{
+  "id": "rust.failure-frontier-real-trigger-trace-replay",
+  "language": "rust",
+  "title": "Failure-frontier trace replay gate",
+  "coverage": [
+    "real-trigger",
+    "search-flow",
+    "performance"
+  ],
+  "tags": [
+    "real-trigger",
+    "failure-frontier",
+    "trace-comparison"
+  ],
+  "workdir": ".",
+  "evidence": {
+    "source": "recorded-replay",
+    "intent": "Verify that trace-built receipts prove failure-frontier command reduction and hot-block coverage.",
+    "recordedAt": "2026-06-06",
+    "editBoundary": "before-edit",
+    "metrics": {
+      "recordedCommandCount": 10,
+      "recordedStdoutBytes": 7000,
+      "tokenDelta": "lower"
+    },
+    "failureFrontierComparison": {
+      "baselineTracePath": "sandtables/fixtures/asp/failure-frontier-baseline-trace.jsonl",
+      "candidateTracePath": "sandtables/fixtures/asp/failure-frontier-candidate-trace.jsonl",
+      "projectName": "agent-semantic-protocols",
+      "projectSource": "fixture",
+      "intent": "Compare baseline source-window scan with failure-frontier trace flow.",
+      "expectedHotBlocks": [
+        "crates/agent-semantic-client/tests/unit/cache_cli/writeback/search.rs:40-72",
+        "crates/agent-semantic-client/src/cache_cli/writeback.rs:220-260",
+        "crates/agent-semantic-client/src/cache_replay/artifact.rs:88-132",
+        "crates/agent-semantic-client/src/cache_cli/probe.rs:140-205"
+      ],
+      "thresholds": {
+        "minCommandReduction": 0.5,
+        "maxDirectSourceReadCode": 4,
+        "maxDuplicateSelectors": 0,
+        "maxSameFileWindowFanout": 0
+      }
+    },
+    "findings": [
+      {
+        "kind": "failure-frontier-trace-gate",
+        "severity": "info",
+        "message": "Trace replay must build receipts and prove command reduction before live agent sandbox runs."
+      }
+    ]
+  },
+  "steps": [
+    {
+      "id": "comparison-recorded",
+      "command": [
+        "true"
+      ]
+    }
+  ]
+}

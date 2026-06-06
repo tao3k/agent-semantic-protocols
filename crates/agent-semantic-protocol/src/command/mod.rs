@@ -12,6 +12,7 @@ mod protocol_binary;
 mod provider;
 mod provider_process;
 mod provider_roots;
+mod search_pipe;
 mod source_access;
 
 pub(crate) use dispatch::run_protocol_command;

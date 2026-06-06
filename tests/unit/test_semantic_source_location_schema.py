@@ -1,3 +1,5 @@
+"""Validate shared semantic source-location schema references."""
+
 import json
 import unittest
 from pathlib import Path

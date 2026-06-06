@@ -1,0 +1,84 @@
+{
+  "id": "rust.codeql-hot-path-native-search-flow",
+  "language": "rust",
+  "title": "Rust ASP CodeQL term stays on native search hot path",
+  "coverage": [
+    "json-schema",
+    "search-flow",
+    "performance"
+  ],
+  "tags": [
+    "asp",
+    "codeql",
+    "hot-path",
+    "native-parser"
+  ],
+  "workdir": ".",
+  "budgets": {
+    "maxCommands": 1,
+    "maxTotalLinesWarn": 12,
+    "maxTotalElapsedMsWarn": 30000,
+    "maxTotalStdoutBytesWarn": 1600
+  },
+  "evidence": {
+    "source": "real-trigger",
+    "intent": "Validate that ordinary search for the term CodeQL remains a native-parser frontier operation and does not run CodeQL evidence production.",
+    "intentKind": "implementation-principle",
+    "editBoundary": "after-search",
+    "metrics": {
+      "recordedCommandCount": 1,
+      "repeatedSearches": 0,
+      "jsonSearches": 0,
+      "compactSearches": 1,
+      "tokenDelta": "lower"
+    },
+    "findings": [
+      {
+        "kind": "native-hot-path",
+        "severity": "info",
+        "message": "The CodeQL term is searched through the normal compact native frontier; CodeQL artifacts are reserved for explicit slow evidence paths."
+      }
+    ]
+  },
+  "steps": [
+    {
+      "id": "codeql-term-native-search",
+      "kind": "performance",
+      "coverage": [
+        "search-flow",
+        "performance"
+      ],
+      "command": [
+        "asp",
+        "rust",
+        "search",
+        "fzf",
+        "codeql",
+        "owner",
+        "tests",
+        "--view",
+        "seeds",
+        "."
+      ],
+      "expect": {
+        "stdoutContains": [
+          "[search-fzf]",
+          "q=codeql",
+          "frontier="
+        ],
+        "stdoutNotContains": [
+          "codeql-evidence",
+          "databaseFingerprint",
+          "databaseCacheStatus",
+          "codeql database create",
+          "codeql query run",
+          "executionBackend=codeql",
+          "rawOutput"
+        ],
+        "maxStdoutLinesWarn": 12,
+        "maxStdoutBytesWarn": 1600,
+      "maxElapsedMsWarn": 90000
+      }
+    }
+  ]
+}

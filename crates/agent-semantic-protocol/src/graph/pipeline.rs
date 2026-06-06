@@ -15,7 +15,7 @@ use super::profiles::graph_profiles_line;
 const DEFAULT_SEED_LIMIT: usize = 12;
 const PRIME_GRAPH_ALGORITHM: &str = "budgeted-prime-frontier-v1";
 const PRIME_GRAPH_LEGEND: &str =
-    "legend: ID=kind:role(value)!next; profiles P(args); frontier ID.next";
+    "legend: ID=kind:role(value)!next; entries profile(selectors=>returns); frontier ID.next";
 
 pub(super) fn render_search_graph_packet(packet: &Value, options: GraphRenderOptions) -> String {
     fn graph_avoid_line(packet: &Value) -> Option<String> {
@@ -76,8 +76,8 @@ pub(super) fn render_search_graph_packet(packet: &Value, options: GraphRenderOpt
         lines.push(format!("revise={}", revisions.join(",")));
     }
     if prime_mode {
-        if let Some(profiles) = prime_graph_profiles_line(&aliases) {
-            lines.push(profiles);
+        if let Some(entries) = prime_graph_entries_line(&aliases) {
+            lines.push(entries);
         }
         lines.push("omit=items,blocks,code,full-test-list".to_string());
         lines.push("avoid=raw-read,full-json,broad-fzf".to_string());
@@ -128,7 +128,7 @@ fn is_prime_graph_mode(mode: &str) -> bool {
     matches!(mode, "prime" | "package")
 }
 
-fn prime_graph_profiles_line(aliases: &[aliases::GraphAlias]) -> Option<String> {
+fn prime_graph_entries_line(aliases: &[aliases::GraphAlias]) -> Option<String> {
     fn first_alias_id<'a>(aliases: &'a [aliases::GraphAlias], node_type: &str) -> Option<&'a str> {
         aliases
             .iter()
@@ -139,26 +139,23 @@ fn prime_graph_profiles_line(aliases: &[aliases::GraphAlias]) -> Option<String> 
     let owner = first_alias_id(aliases, "owner");
     let query = first_alias_id(aliases, "query");
     let dependency = first_alias_id(aliases, "dependency");
-    let test = first_alias_id(aliases, "test");
-    let range = first_alias_id(aliases, "range");
-    let mut profiles = Vec::new();
+    let mut entries = Vec::new();
     if let (Some(owner), Some(query)) = (owner, query) {
-        profiles.push(format!("owner-items({owner},{query})"));
+        entries.push(format!(
+            "owner-query({owner},{query}=>items+tests+dependency-usage)"
+        ));
     }
     if let Some(owner) = owner {
-        if let Some(test) = test {
-            profiles.push(format!("owner-tests({owner},{test})"));
-        } else {
-            profiles.push(format!("owner-tests({owner})"));
-        }
+        entries.push(format!(
+            "owner-tests({owner}=>covering-tests+test-entrypoints+fixtures)"
+        ));
     }
     if let (Some(query), Some(dependency)) = (query, dependency) {
-        profiles.push(format!("query-deps({query},{dependency})"));
+        entries.push(format!(
+            "query-deps({query},{dependency}=>owners+imports+usage-tests)"
+        ));
     }
-    if let Some(range) = range {
-        profiles.push(format!("read-frontier({range})"));
-    }
-    (!profiles.is_empty()).then(|| format!("profiles={}", profiles.join(",")))
+    (!entries.is_empty()).then(|| format!("entries={}", entries.join(",")))
 }
 
 fn graph_seed_limit(seed_limit: Option<usize>) -> usize {

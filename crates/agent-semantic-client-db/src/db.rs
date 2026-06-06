@@ -26,7 +26,7 @@ pub use crate::syntax_query::{
 /// File name used for the local SQLite client cache.
 pub const AGENT_SEMANTIC_CLIENT_DB_FILE: &str = "client.sqlite3";
 /// Current SQLite schema version for the local agent semantic client DB.
-pub const AGENT_SEMANTIC_CLIENT_DB_SCHEMA_VERSION: i64 = 4;
+pub const AGENT_SEMANTIC_CLIENT_DB_SCHEMA_VERSION: i64 = 5;
 
 /// Read-only diagnostic summary for a local SQLite client DB path.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -37,6 +37,7 @@ pub struct ClientDbReport {
     pub syntax_row_generation_count: u32,
     pub syntax_row_match_count: u32,
     pub syntax_row_capture_count: u32,
+    pub artifact_event_count: u32,
     pub raw_source_stored: bool,
     pub runtime_pragmas: Option<ClientDbRuntimePragmas>,
     pub reason: Option<String>,
@@ -64,6 +65,25 @@ pub struct ClientDbGenerationHit {
     pub request_fingerprint: Option<String>,
     pub file_hashes: Vec<ClientCacheFileHash>,
     pub artifact_ids: Vec<CacheArtifactId>,
+}
+
+/// Graph-turbo artifact event row stored in Rust SQLite for fast timeline audits.
+///
+/// Stringly state boundary: serialized SQLite rows keep schema-owned graph-turbo
+/// artifact event tokens for lossless JSON handoff.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ClientDbArtifactEvent {
+    pub artifact_path: String,
+    pub event_ordinal: u32,
+    pub timestamp_ms: i64,
+    pub kind: String,
+    pub language: String,
+    pub method: String,
+    pub target: String,
+    pub query: String,
+    pub project_root: String,
+    pub project_root_arg: String,
+    pub bytes: u64,
 }
 
 type CacheGenerationRow = (
@@ -103,6 +123,7 @@ impl ClientDb {
                 syntax_row_generation_count: 0,
                 syntax_row_match_count: 0,
                 syntax_row_capture_count: 0,
+                artifact_event_count: 0,
                 raw_source_stored: false,
                 runtime_pragmas: None,
                 reason: None,
@@ -121,6 +142,7 @@ impl ClientDb {
                 syntax_row_generation_count: summary.syntax_row_generation_count,
                 syntax_row_match_count: summary.syntax_row_match_count,
                 syntax_row_capture_count: summary.syntax_row_capture_count,
+                artifact_event_count: summary.artifact_event_count,
                 raw_source_stored: summary.raw_source_stored,
                 runtime_pragmas: Some(runtime_pragmas),
                 reason: None,
@@ -132,6 +154,7 @@ impl ClientDb {
                 syntax_row_generation_count: 0,
                 syntax_row_match_count: 0,
                 syntax_row_capture_count: 0,
+                artifact_event_count: 0,
                 raw_source_stored: false,
                 runtime_pragmas: None,
                 reason: Some(error),
@@ -261,6 +284,66 @@ impl ClientDb {
         Ok(())
     }
 
+    /// Upsert graph-turbo artifact events into the local timeline index.
+    pub fn upsert_artifact_events(
+        &mut self,
+        events: &[ClientDbArtifactEvent],
+    ) -> Result<u32, String> {
+        let tx = self.conn.transaction().map_err(|error| {
+            format!(
+                "failed to start artifact event import transaction at {}: {error}",
+                self.db_path.display()
+            )
+        })?;
+        let mut written = 0_u32;
+        for event in events {
+            tx.execute(
+                "INSERT INTO artifact_event (
+                    artifact_path,
+                    event_ordinal,
+                    timestamp_ms,
+                    kind,
+                    language,
+                    method,
+                    target,
+                    query,
+                    project_root,
+                    project_root_arg,
+                    bytes
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+                ON CONFLICT(artifact_path, event_ordinal) DO UPDATE SET
+                    timestamp_ms = excluded.timestamp_ms,
+                    kind = excluded.kind,
+                    language = excluded.language,
+                    method = excluded.method,
+                    target = excluded.target,
+                    query = excluded.query,
+                    project_root = excluded.project_root,
+                    project_root_arg = excluded.project_root_arg,
+                    bytes = excluded.bytes,
+                    updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
+                params![
+                    event.artifact_path.as_str(),
+                    i64::from(event.event_ordinal),
+                    event.timestamp_ms,
+                    event.kind.as_str(),
+                    event.language.as_str(),
+                    event.method.as_str(),
+                    event.target.as_str(),
+                    event.query.as_str(),
+                    event.project_root.as_str(),
+                    event.project_root_arg.as_str(),
+                    event.bytes.min(i64::MAX as u64) as i64,
+                ],
+            )
+            .map_err(|error| format!("failed to write artifact event: {error}"))?;
+            written = written.saturating_add(1);
+        }
+        tx.commit()
+            .map_err(|error| format!("failed to commit artifact event import: {error}"))?;
+        Ok(written)
+    }
+
     /// Delete all local generation rows from an existing DB without touching provider artifacts.
     pub fn invalidate_generations(db_path: impl AsRef<Path>) -> Result<u32, String> {
         let db_path = db_path.as_ref();
@@ -274,6 +357,31 @@ impl ClientDb {
             .map_err(|error| {
                 format!(
                     "failed to invalidate agent semantic client db generations at {}: {error}",
+                    db.db_path.display()
+                )
+            })
+    }
+
+    /// Delete local generation rows for one project root without touching provider artifacts.
+    pub fn invalidate_generations_for_project(
+        db_path: impl AsRef<Path>,
+        project_root: impl AsRef<Path>,
+    ) -> Result<u32, String> {
+        let db_path = db_path.as_ref();
+        if !db_path.exists() {
+            return Ok(0);
+        }
+        let db = Self::open_or_create(db_path)?;
+        let project_root = normalized_project_root(project_root.as_ref());
+        db.conn
+            .execute(
+                "DELETE FROM cache_generations WHERE project_root = ?1",
+                params![project_root],
+            )
+            .map(|count| count.min(u32::MAX as usize) as u32)
+            .map_err(|error| {
+                format!(
+                    "failed to invalidate agent semantic client db generations for project at {}: {error}",
                     db.db_path.display()
                 )
             })
@@ -332,6 +440,38 @@ impl ClientDb {
         )
     }
 
+    /// Return recent matching generation artifact metadata, newest first.
+    pub fn lookup_recent_generations(
+        lookup: &ClientDbGenerationLookup,
+        limit: u32,
+    ) -> Result<Vec<ClientDbGenerationHit>, String> {
+        let db_path = lookup.db_path.as_path();
+        if !db_path.exists() || limit == 0 {
+            return Ok(Vec::new());
+        }
+        Self::open_read_only(db_path)?.lookup_recent_generations_for(
+            &lookup.language_id,
+            &lookup.provider_id,
+            &lookup.project_root,
+            &lookup.export_method,
+            lookup.request_fingerprint.as_deref(),
+            limit,
+        )
+    }
+
+    /// Return graph-turbo artifact events from the local SQLite index, oldest first.
+    pub fn lookup_artifact_events(
+        db_path: impl AsRef<Path>,
+        since_timestamp_ms: Option<i64>,
+        limit: u32,
+    ) -> Result<Vec<ClientDbArtifactEvent>, String> {
+        let db_path = db_path.as_ref();
+        if !db_path.exists() || limit == 0 {
+            return Ok(Vec::new());
+        }
+        Self::open_read_only(db_path)?.lookup_artifact_events_for(since_timestamp_ms, limit)
+    }
+
     /// Return normalized syntax query rows for an exact request fingerprint.
     pub fn lookup_syntax_query_replay(
         lookup: &ClientDbSyntaxQueryLookup,
@@ -358,6 +498,7 @@ impl ClientDb {
             syntax_row_generation_count: self.count_table_rows("syntax_query_generation")?,
             syntax_row_match_count: self.count_table_rows("syntax_query_match")?,
             syntax_row_capture_count: self.count_table_rows("syntax_query_capture")?,
+            artifact_event_count: self.count_table_rows("artifact_event")?,
             raw_source_stored: raw_source_stored != 0,
         })
     }
@@ -372,8 +513,12 @@ impl ClientDb {
             "syntax_query_generation" => "SELECT COUNT(*) FROM syntax_query_generation",
             "syntax_query_match" => "SELECT COUNT(*) FROM syntax_query_match",
             "syntax_query_capture" => "SELECT COUNT(*) FROM syntax_query_capture",
+            "artifact_event" => "SELECT COUNT(*) FROM artifact_event",
             _ => return Err(format!("unsupported client db count table `{table}`")),
         };
+        if !self.table_exists(table)? {
+            return Ok(0);
+        }
         let count: i64 = self
             .conn
             .query_row(sql, [], |row| row.get(0))
@@ -389,10 +534,35 @@ impl ClientDb {
         export_method: &CacheExportMethod,
         request_fingerprint: Option<&str>,
     ) -> Result<Option<ClientDbGenerationHit>, String> {
+        Ok(self
+            .lookup_recent_generations_for(
+                language_id,
+                provider_id,
+                project_root,
+                export_method,
+                request_fingerprint,
+                1,
+            )?
+            .into_iter()
+            .next())
+    }
+
+    fn lookup_recent_generations_for(
+        &self,
+        language_id: &LanguageId,
+        provider_id: &ProviderId,
+        project_root: &Path,
+        export_method: &CacheExportMethod,
+        request_fingerprint: Option<&str>,
+        limit: u32,
+    ) -> Result<Vec<ClientDbGenerationHit>, String> {
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
         let project_root = normalized_project_root(project_root);
-        let row: Option<CacheGenerationRow> = self
+        let mut statement = self
             .conn
-            .query_row(
+            .prepare(
                 "SELECT language_id,
                     provider_id,
                     project_root,
@@ -409,13 +579,20 @@ impl ClientDb {
                AND (?5 IS NULL OR request_fingerprint = ?5)
                AND raw_source_stored = 0
              ORDER BY updated_at DESC
-             LIMIT 1",
+             LIMIT ?6",
+            )
+            .map_err(|error| {
+                format!("failed to prepare client db cache generation query: {error}")
+            })?;
+        let row_iter = statement
+            .query_map(
                 params![
                     language_id.as_str(),
                     provider_id.as_str(),
                     project_root,
                     export_method.as_str(),
                     request_fingerprint,
+                    i64::from(limit),
                 ],
                 |row| {
                     Ok((
@@ -430,37 +607,14 @@ impl ClientDb {
                     ))
                 },
             )
-            .optional()
             .map_err(|error| format!("failed to read client db cache generation: {error}"))?;
-        let Some((
-            language_id,
-            provider_id,
-            project_root,
-            export_method,
-            schema_ids_json,
-            request_fingerprint,
-            artifact_ids_json,
-            file_hashes_json,
-        )) = row
-        else {
-            return Ok(None);
-        };
-        let schema_ids = serde_json::from_str(&schema_ids_json)
-            .map_err(|error| format!("failed to parse client db schema ids: {error}"))?;
-        let artifact_ids = serde_json::from_str(&artifact_ids_json)
-            .map_err(|error| format!("failed to parse client db artifact ids: {error}"))?;
-        let file_hashes = serde_json::from_str(&file_hashes_json)
-            .map_err(|error| format!("failed to parse client db file hashes: {error}"))?;
-        Ok(Some(ClientDbGenerationHit {
-            language_id: LanguageId::from(language_id),
-            provider_id: ProviderId::from(provider_id),
-            project_root: PathBuf::from(project_root),
-            export_method: CacheExportMethod::from(export_method),
-            schema_ids,
-            request_fingerprint,
-            file_hashes,
-            artifact_ids,
-        }))
+        let mut hits = Vec::new();
+        for row in row_iter {
+            hits.push(cache_generation_hit_from_row(row.map_err(|error| {
+                format!("failed to decode client db cache generation row: {error}")
+            })?)?);
+        }
+        Ok(hits)
     }
 
     fn lookup_syntax_query_replay_for(
@@ -633,6 +787,44 @@ impl ClientDb {
         }))
     }
 
+    fn lookup_artifact_events_for(
+        &self,
+        since_timestamp_ms: Option<i64>,
+        limit: u32,
+    ) -> Result<Vec<ClientDbArtifactEvent>, String> {
+        let mut statement = self
+            .conn
+            .prepare(
+                "SELECT artifact_path,
+                        event_ordinal,
+                        timestamp_ms,
+                        kind,
+                        language,
+                        method,
+                        target,
+                        query,
+                        project_root,
+                        project_root_arg,
+                        bytes
+                 FROM artifact_event
+                 WHERE (?1 IS NULL OR timestamp_ms >= ?1)
+                 ORDER BY timestamp_ms ASC, artifact_path ASC, event_ordinal ASC
+                 LIMIT ?2",
+            )
+            .map_err(|error| format!("failed to prepare artifact event query: {error}"))?;
+        let row_iter = statement
+            .query_map(
+                params![since_timestamp_ms, i64::from(limit)],
+                artifact_event_from_row,
+            )
+            .map_err(|error| format!("failed to read artifact events: {error}"))?;
+        let mut events = Vec::new();
+        for row in row_iter {
+            events.push(row.map_err(|error| format!("failed to decode artifact event: {error}"))?);
+        }
+        Ok(events)
+    }
+
     fn open_read_only(db_path: &Path) -> Result<Self, String> {
         let conn = Connection::open_with_flags(
             db_path,
@@ -764,6 +956,25 @@ impl ClientDb {
                 artifact_id TEXT NOT NULL,
                 PRIMARY KEY (generation_id, artifact_ordinal)
             );
+            CREATE TABLE IF NOT EXISTS artifact_event (
+                artifact_path TEXT NOT NULL,
+                event_ordinal INTEGER NOT NULL,
+                timestamp_ms INTEGER NOT NULL,
+                kind TEXT NOT NULL,
+                language TEXT NOT NULL,
+                method TEXT NOT NULL,
+                target TEXT NOT NULL,
+                query TEXT NOT NULL,
+                project_root TEXT NOT NULL,
+                project_root_arg TEXT NOT NULL,
+                bytes INTEGER NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+                PRIMARY KEY (artifact_path, event_ordinal)
+            );
+            CREATE INDEX IF NOT EXISTS artifact_event_timestamp_idx
+              ON artifact_event(timestamp_ms, artifact_path, event_ordinal);
+            CREATE INDEX IF NOT EXISTS artifact_event_project_idx
+              ON artifact_event(project_root, timestamp_ms);
             ",
             )
             .map_err(|error| {
@@ -911,6 +1122,65 @@ impl ClientDb {
         }
         Ok(false)
     }
+
+    fn table_exists(&self, table: &str) -> Result<bool, String> {
+        let exists: i64 = self
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?1",
+                params![table],
+                |row| row.get(0),
+            )
+            .map_err(|error| format!("failed to inspect client db table {table}: {error}"))?;
+        Ok(exists > 0)
+    }
+}
+
+fn artifact_event_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ClientDbArtifactEvent> {
+    let event_ordinal = row.get::<_, i64>(1)?.max(0).min(i64::from(u32::MAX)) as u32;
+    let bytes = row.get::<_, i64>(10)?.max(0) as u64;
+    Ok(ClientDbArtifactEvent {
+        artifact_path: row.get(0)?,
+        event_ordinal,
+        timestamp_ms: row.get(2)?,
+        kind: row.get(3)?,
+        language: row.get(4)?,
+        method: row.get(5)?,
+        target: row.get(6)?,
+        query: row.get(7)?,
+        project_root: row.get(8)?,
+        project_root_arg: row.get(9)?,
+        bytes,
+    })
+}
+
+fn cache_generation_hit_from_row(row: CacheGenerationRow) -> Result<ClientDbGenerationHit, String> {
+    let (
+        language_id,
+        provider_id,
+        project_root,
+        export_method,
+        schema_ids_json,
+        request_fingerprint,
+        artifact_ids_json,
+        file_hashes_json,
+    ) = row;
+    let schema_ids = serde_json::from_str(&schema_ids_json)
+        .map_err(|error| format!("failed to parse client db schema ids: {error}"))?;
+    let artifact_ids = serde_json::from_str(&artifact_ids_json)
+        .map_err(|error| format!("failed to parse client db artifact ids: {error}"))?;
+    let file_hashes = serde_json::from_str(&file_hashes_json)
+        .map_err(|error| format!("failed to parse client db file hashes: {error}"))?;
+    Ok(ClientDbGenerationHit {
+        language_id: LanguageId::from(language_id),
+        provider_id: ProviderId::from(provider_id),
+        project_root: PathBuf::from(project_root),
+        export_method: CacheExportMethod::from(export_method),
+        schema_ids,
+        request_fingerprint,
+        file_hashes,
+        artifact_ids,
+    })
 }
 
 pub(crate) fn normalized_project_root(project_root: &Path) -> String {
@@ -928,5 +1198,6 @@ pub struct ClientDbSummary {
     pub syntax_row_generation_count: u32,
     pub syntax_row_match_count: u32,
     pub syntax_row_capture_count: u32,
+    pub artifact_event_count: u32,
     pub raw_source_stored: bool,
 }

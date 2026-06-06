@@ -1,0 +1,55 @@
+{
+  "id": "root.claude-cli-flow",
+  "language": "root",
+  "coverage": [
+    "cli-hooks"
+  ],
+  "tags": [
+    "claude-cli",
+    "agent-cli",
+    "deepseek-env",
+    "fake-cli"
+  ],
+  "workdir": {
+    "relative": "."
+  },
+  "steps": [
+    {
+      "id": "claude-stream-json",
+      "kind": "agent-cli",
+      "agentCli": {
+        "client": "claude",
+        "binary": "sandtables/fixtures/agent-clis/fake-claude",
+        "prompt": "Explain ASP hook install",
+        "outputFormat": "stream-json",
+        "inputFormat": "text",
+        "includePartialMessages": true,
+        "includeHookEvents": true,
+        "verbose": true,
+        "env": {
+          "ANTHROPIC_BASE_URL": "https://api.deepseek.com/anthropic",
+          "ANTHROPIC_AUTH_TOKEN": "fake-token"
+        },
+        "requiredEnv": [
+          "ANTHROPIC_AUTH_TOKEN"
+        ]
+      },
+      "expect": {
+        "exitCode": 0,
+        "stdoutContains": [
+          "\"agent\": \"fake-claude-code\"",
+          "\"prompt\": \"Explain ASP hook install\"",
+          "\"outputFormat\": \"stream-json\"",
+          "\"inputFormat\": \"text\"",
+          "\"includePartialMessages\": true",
+          "\"includeHookEvents\": true",
+          "\"verbose\": true",
+          "\"baseUrl\": \"https://api.deepseek.com/anthropic\"",
+          "\"hasAuthToken\": true"
+        ],
+        "maxStdoutLinesWarn": 4,
+        "maxElapsedMsWarn": 6500
+      }
+    }
+  ]
+}

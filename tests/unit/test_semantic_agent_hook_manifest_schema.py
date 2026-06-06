@@ -139,6 +139,23 @@ class SemanticAgentHookManifestSchemaTests(unittest.TestCase):
     def test_minimal_provider_manifest_is_valid(self) -> None:
         self.assertEqual([], self.manifest_errors(minimal_provider_manifest()))
 
+    def test_provider_manifest_accepts_execution_mode(self) -> None:
+        manifest = minimal_provider_manifest()
+        manifest["execution"] = "embedded"
+
+        self.assertEqual([], self.manifest_errors(manifest))
+
+    def test_provider_manifest_rejects_unknown_execution_mode(self) -> None:
+        manifest = minimal_provider_manifest()
+        manifest["execution"] = "bin-wrap"
+
+        self.assertTrue(
+            any(
+                "'bin-wrap' is not one of" in message
+                for message in self.manifest_errors(manifest)
+            )
+        )
+
     def test_provider_manifest_accepts_export_index_route(self) -> None:
         manifest = minimal_provider_manifest()
         routes = copy.deepcopy(manifest["routes"])
@@ -204,6 +221,14 @@ class SemanticAgentHookManifestSchemaTests(unittest.TestCase):
 
     def test_project_activation_is_valid(self) -> None:
         self.assertEqual([], self.activation_errors(minimal_activation()))
+
+    def test_project_activation_accepts_execution_mode(self) -> None:
+        activation = minimal_activation()
+        provider = copy.deepcopy(activation["providers"][0])
+        provider["execution"] = "external-process"
+        activation["providers"] = [provider]
+
+        self.assertEqual([], self.activation_errors(activation))
 
     def test_project_activation_rejects_absolute_coverage_paths(self) -> None:
         activation = minimal_activation()

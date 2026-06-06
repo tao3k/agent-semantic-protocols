@@ -4,9 +4,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use agent_semantic_hook::{
-    ActivatedProvider, RuntimeProviderHealthStatus, builtin_provider_manifests,
-    load_or_refresh_runtime_profiles, load_or_sync_activation, parse_activation,
-    project_hook_state_dir, runtime_profile_command_argv, runtime_profiles_path_for_activation,
+    ActivatedProvider, ProviderExecution, RuntimeProviderHealthStatus, builtin_provider_manifests,
+    load_or_sync_activation, parse_activation, project_hook_state_dir,
+    runtime_profile_command_argv, runtime_profiles_for_runtime,
     runtime_project_root_for_activation,
 };
 
@@ -19,6 +19,7 @@ pub struct ResolvedProvider {
     pub language_id: LanguageId,
     pub provider_id: ProviderId,
     pub binary: String,
+    pub execution: ProviderExecution,
     pub provider_command_prefix: Vec<String>,
     pub runtime_command_argv: Option<Vec<String>>,
     pub runtime_profile_status: Option<RuntimeProfileStatus>,
@@ -92,6 +93,7 @@ impl From<&ActivatedProvider> for ResolvedProvider {
             language_id: provider.language_id.clone().into(),
             provider_id: provider.provider_id.clone().into(),
             binary: provider.binary.clone(),
+            execution: provider.execution,
             provider_command_prefix: provider.provider_command_prefix.clone(),
             runtime_command_argv: None,
             runtime_profile_status: None,
@@ -127,6 +129,9 @@ impl ProviderRegistrySnapshot {
 
         if let Some(activation_path) = direct_activation_path {
             if activation_path.is_file() {
+                return Self::load_from_path_for_project(&activation_path, project_root);
+            }
+            if project_root_has_provider_identity(project_root) {
                 return Self::load_from_path_for_project(&activation_path, project_root);
             }
             let mut current = project_root.parent();
@@ -170,15 +175,9 @@ impl ProviderRegistrySnapshot {
         activation_path: &Path,
         activation: &agent_semantic_hook::HookRuntime,
     ) -> Result<Self, String> {
-        let runtime_profiles_path = runtime_profiles_path_for_activation(activation_path);
         let runtime_project_root =
             runtime_project_root_for_activation(activation_path, &activation.project_root);
-        let runtime_profiles = load_or_refresh_runtime_profiles(
-            &runtime_profiles_path,
-            &runtime_project_root,
-            activation,
-        )
-        .ok();
+        let runtime_profiles = runtime_profiles_for_runtime(&runtime_project_root, activation);
         Ok(Self {
             activation_path: activation_path.to_path_buf(),
             providers: activation
@@ -186,20 +185,18 @@ impl ProviderRegistrySnapshot {
                 .iter()
                 .map(|provider| {
                     let mut resolved = ResolvedProvider::from(provider);
-                    if let Some(runtime_profiles) = runtime_profiles.as_ref() {
-                        resolved.runtime_command_argv =
-                            runtime_profile_command_argv(runtime_profiles, provider);
-                        resolved.runtime_profile_status = runtime_profiles
-                            .providers
-                            .iter()
-                            .find(|profile| {
-                                profile.manifest_id == provider.manifest_id
-                                    && profile.language_id == provider.language_id
-                                    && profile.provider_id == provider.provider_id
-                                    && profile.binary == provider.binary
-                            })
-                            .map(|profile| profile.health.status.into());
-                    }
+                    resolved.runtime_command_argv =
+                        runtime_profile_command_argv(&runtime_profiles, provider);
+                    resolved.runtime_profile_status = runtime_profiles
+                        .providers
+                        .iter()
+                        .find(|profile| {
+                            profile.manifest_id == provider.manifest_id
+                                && profile.language_id == provider.language_id
+                                && profile.provider_id == provider.provider_id
+                                && profile.binary == provider.binary
+                        })
+                        .map(|profile| profile.health.status.into());
                     resolved
                 })
                 .collect(),
@@ -222,4 +219,13 @@ impl ProviderRegistrySnapshot {
             .map(ResolvedProvider::provenance)
             .collect()
     }
+}
+
+fn project_root_has_provider_identity(project_root: &Path) -> bool {
+    project_root.join(".git").exists()
+        || project_root.join("Cargo.toml").is_file()
+        || project_root.join("package.json").is_file()
+        || project_root.join("pyproject.toml").is_file()
+        || project_root.join("Project.toml").is_file()
+        || project_root.join("JuliaProject.toml").is_file()
 }

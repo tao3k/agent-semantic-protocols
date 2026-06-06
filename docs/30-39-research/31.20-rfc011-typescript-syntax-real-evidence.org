@@ -1,0 +1,61 @@
+#+TITLE: RFC 011 TypeScript Syntax Real-Project Evidence
+#+DATE: 2026-06-05
+#+STATUS: typescript-evidence-recorded
+#+RFC: rfcs/semantic-tree-sitter-query-protocol.org
+
+* Scope
+
+This records the first TypeScript real-project syntax flow for RFC 011 using the
+public =asp typescript= facade against =languages/typescript-lang-project-harness=.
+It is evidence for the native-projection v1 lane only.  It does not claim cache hit replay, Julia cache payoff, arbitrary TypeScript/Python S-expression support, or CodeQL backend execution.
+
+* Evidence record
+
+#+begin_example
+[syntax-real-evidence] language=typescript provider=ts-harness project=typescript-lang-project-harness
+commands=search-prime,syntax-frontier,exact-selector-code,hook-recovery
+metrics=commandCount=6,providerProcessCount=6,packetBytes=13040,coldElapsedMs=31,warmElapsedMs=50
+metrics=syntaxQueryCount=3,exactCodeCount=1,manualRangeScanCount=0,repeatedTriggerReduction=0
+outputs=frontier-no-code,pure-code-stdout,registry-descriptor,query-corpus
+cacheClaim=warm-provider
+#+end_example
+
+* Commands
+
+The measured flow used:
+
+#+begin_example
+.bin/asp typescript search prime --view seeds languages/typescript-lang-project-harness
+.bin/asp typescript query --selector src/parser/native_syntax/tree-sitter-query.ts --treesitter-query '(function_declaration name: (identifier) @function.name)' languages/typescript-lang-project-harness
+.bin/asp typescript query --selector src/parser/native_syntax/tree-sitter-query.ts:202:221 --treesitter-query '(function_declaration name: (identifier) @function.name)' --code languages/typescript-lang-project-harness
+.bin/asp typescript query --from-hook direct-source-read --selector src/parser/native_syntax/tree-sitter-query.ts:202:221 --code languages/typescript-lang-project-harness
+#+end_example
+
+The repeated warm syntax-frontier probes used the same selector and pattern as
+the second command.
+
+* Observations
+
+- =search prime= surfaced =src/parser/native_syntax/tree-sitter-query.ts= as an
+  owner without inlining source code.
+- The syntax frontier returned compact capture/frontier output and located
+  =renderTypeScriptTreeSitterQuery= at
+  =src/parser/native_syntax/tree-sitter-query.ts:202=.  It did not emit raw code.
+- Exact selector code output returned pure source stdout of 1037 bytes / 21
+  lines.  Hook recovery returned pure source stdout of 1036 bytes / 20 lines.
+  The source text is intentionally not copied into this evidence document.
+- A temporary =PRJ_CACHE_HOME= measurement attempt failed with
+  =provider-activation-missing= because facade activation is derived from the
+  installed activation/cache home.  The accepted evidence therefore uses the
+  real installed activation and claims only =warm-provider=.
+- Warm-provider behavior was observed, but this is not a cache hit.  The
+  native-projection v1 benchmark set is ready for review with the Rust evidence
+  record, but cache replay remains a separate gate.
+- RFC 011 Rust and TypeScript evidence records have been reviewed together in
+  =docs/30-39-research/31.21-rfc011-native-projection-benchmark-review.org=.
+
+* Next
+
+- Keep cache hit and normalized-row replay claims out of RFC 011 until a receipt
+  or replay proof exists.
+- Add Python real-project evidence before promoting the Python lane.

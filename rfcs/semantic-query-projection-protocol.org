@@ -122,7 +122,7 @@ Language-owned examples:
 - Python uses =ast= and must preserve indentation-sensitive block ownership in
   projection nodes or semantic outline.
 - Julia uses JuliaSyntax-owned projection facts through =asp julia= and the
-  compiled =aslp-julia-harness= provider; its query packets use this same schema
+  compiled =asp-julia-harness= provider; its query packets use this same schema
   shape.
 
 Formatter-assisted compaction is allowed only after native parser facts are

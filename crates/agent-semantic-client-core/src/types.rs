@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::fmt;
-use std::path::Path;
+use std::path::{Component, Path, PathBuf};
 use std::time::Duration;
 
 macro_rules! semantic_string_type {
@@ -145,7 +145,33 @@ impl ClientCachePath {
     /// Convert a filesystem path into the client wire path string.
     #[must_use]
     pub fn from_path(path: &Path) -> Self {
-        Self(path.display().to_string())
+        Self(normalize_wire_path(path).display().to_string())
+    }
+}
+
+fn normalize_wire_path(path: &Path) -> PathBuf {
+    if let Ok(canonical) = path.canonicalize() {
+        return canonical;
+    }
+
+    let mut normalized = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                if !normalized.pop() {
+                    normalized.push(component.as_os_str());
+                }
+            }
+            Component::Normal(_) | Component::RootDir | Component::Prefix(_) => {
+                normalized.push(component.as_os_str());
+            }
+        }
+    }
+    if normalized.as_os_str().is_empty() {
+        PathBuf::from(".")
+    } else {
+        normalized
     }
 }
 

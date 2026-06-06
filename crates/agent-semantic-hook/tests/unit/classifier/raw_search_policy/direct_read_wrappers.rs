@@ -140,7 +140,14 @@ fn document_direct_read_uses_from_hook_without_content_flag() {
     assert!(
         decision
             .message
-            .contains("does not use `search owner`, `--code`, or `--content`"),
+            .contains("Do not combine `--content` with `--from-hook direct-source-read`"),
+        "{}",
+        decision.message
+    );
+    assert!(
+        decision
+            .message
+            .contains("`--content` is a filtered element-content projection"),
         "{}",
         decision.message
     );

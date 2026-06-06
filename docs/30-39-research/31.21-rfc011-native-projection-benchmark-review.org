@@ -1,0 +1,67 @@
+#+TITLE: RFC 011 Native-Projection Benchmark Review
+#+DATE: 2026-06-06
+#+STATUS: rust-typescript-reviewed
+#+RFC: rfcs/semantic-tree-sitter-query-protocol.org
+
+* Decision
+
+The Rust and TypeScript real-project evidence records satisfy the RFC 011
+native-projection v1 real-project benchmark gate for those two lanes:
+
+- =docs/30-39-research/31.19-rfc011-rust-syntax-real-evidence.org=
+- =docs/30-39-research/31.20-rfc011-typescript-syntax-real-evidence.org=
+
+This review accepts only the Rust and TypeScript native-projection v1 workflow
+claim: public =asp <language>= syntax query flows can discover an owner, render a
+tree-sitter-compatible capture/frontier without inlining code, and extract pure
+code with an exact selector.  It does not accept cache hit replay, Python,
+Julia, CodeQL backend execution, or arbitrary TypeScript/Python S-expression
+support.
+
+* Evidence matrix
+
+| Language | Provider | Project | Commands | Packet bytes | Cold ms | Warm ms | Exact code | Cache claim |
+|----------+----------+---------+----------+--------------+---------+---------+------------+-------------|
+| Rust | =rs-harness= | =agent-semantic-protocols= | 5 | 3914 | 303 | 93 | 1 | =warm-provider= |
+| TypeScript | =ts-harness= | =typescript-lang-project-harness= | 6 | 13040 | 31 | 50 | 1 | =warm-provider= |
+
+Both records include =search-prime=, =syntax-frontier=, =exact-selector-code=,
+and =hook-recovery=.  Both records intentionally omit source text from the
+evidence document.
+
+* Accepted claims
+
+- =query --treesitter-query= without =--code= is a locator/frontier surface for
+  Rust and TypeScript native projection.
+- =query --selector <exact> --treesitter-query <pattern> --code= prints pure
+  source stdout for the selected exact or unique match.
+- =search prime= remains discovery-oriented and does not inline source code.
+- Provider registry descriptors and query corpus gates are part of the evidence
+  boundary; this review depends on those gates continuing to pass.
+- Tree-sitter query remains the shared syntax ABI base, while native parser facts
+  enrich captures.
+
+* Rejected claims
+
+- =cacheClaim=warm-provider= is not a cache hit.  No cache speedup or
+  normalized-row replay claim is accepted by this review.
+- Python still keeps =pending=real-project-benchmark=.
+- Julia cache payoff remains out of scope.
+- CodeQL backend execution remains out of scope.
+- TypeScript/Python arbitrary S-expression support remains out of scope; the
+  accepted TypeScript flow used the provider guide syntax pattern, not an
+  unbounded query-language compatibility claim.
+
+* Outcome
+
+The Rust and TypeScript lane records may replace =pending=benchmark-review= with
+=status=native-projection-v1-reviewed= and reference this review artifact.
+Python remains pending until it records an equivalent real-project evidence
+flow.
+
+* Follow-up
+
+- Add Python real-project evidence before promoting the Python lane.
+- Add cache hit evidence only when receipt JSON or normalized-row replay proves
+  =cacheClaim=hit=.
+- Keep Julia cache and CodeQL promotion as separate review artifacts.

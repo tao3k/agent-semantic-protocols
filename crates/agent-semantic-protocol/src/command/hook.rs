@@ -15,7 +15,7 @@ const HOOK_EVENTS: &[&str] = &[
 ];
 
 pub(crate) fn run_hook_command(args: &[String]) -> Result<(), String> {
-    if is_help_request(args) {
+    if is_help_request(args) || is_lifecycle_help_request(args) {
         println!("{}", usage());
         return Ok(());
     }
@@ -24,8 +24,23 @@ pub(crate) fn run_hook_command(args: &[String]) -> Result<(), String> {
 }
 
 pub(super) fn is_help_request(args: &[String]) -> bool {
-    args.iter()
-        .any(|arg| matches!(arg.as_str(), "help" | "--help" | "-h"))
+    args.len() == 1 && matches!(args[0].as_str(), "help" | "--help" | "-h")
+}
+
+pub(super) fn is_lifecycle_help_request(args: &[String]) -> bool {
+    matches!(args.first().map(String::as_str), Some("install" | "doctor"))
+        && is_help_request(&args[1..])
+}
+
+fn forwarded_hook_lifecycle_args(command: &str, args: &[String]) -> Result<Vec<String>, String> {
+    match command {
+        "install" | "doctor" => {
+            let mut forwarded = vec![command.to_string()];
+            forwarded.extend(args.iter().cloned());
+            Ok(forwarded)
+        }
+        _ => Err(usage()),
+    }
 }
 
 pub(super) fn forwarded_hook_args(args: &[String]) -> Result<Vec<String>, String> {
@@ -35,11 +50,7 @@ pub(super) fn forwarded_hook_args(args: &[String]) -> Result<Vec<String>, String
 
     match command {
         "help" | "--help" | "-h" => Err(usage()),
-        "install" | "doctor" => {
-            let mut forwarded = vec![command.to_string()];
-            forwarded.extend(args[1..].iter().cloned());
-            Ok(forwarded)
-        }
+        lifecycle @ ("install" | "doctor") => forwarded_hook_lifecycle_args(lifecycle, &args[1..]),
         "event" => {
             let Some(event) = args.get(1) else {
                 return Err("usage: asp hook event <event> ...".to_string());
@@ -66,5 +77,5 @@ fn forwarded_event_args(event: &str, rest: &[String]) -> Result<Vec<String>, Str
 }
 
 fn usage() -> String {
-    "usage: asp hook <install|doctor|pre-tool|post-tool|stop|event> ...".to_string()
+    "usage: asp hook <install|doctor> --client <codex|claude> ...\n       asp hook --client <codex|claude> --event <event> ...\n       asp hook <pre-tool|post-tool|stop|event> ...".to_string()
 }

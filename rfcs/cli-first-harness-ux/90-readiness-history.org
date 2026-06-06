@@ -1,0 +1,269 @@
+* MVP order: M1–M7
+
+The real MVP is not "many search subcommands."  It's four capabilities that
+cover Tokio, rust-lang/rust, and large agent-client class projects:
+
+#+begin_src text
+1. provider path-context prime (supersedes search workspace + search prime --package)
+2. search features/cfg/deps dependency-version usage
+3. search owner <path> items
+4. search ingest auto-sniff + owner/item grouping
+#+end_src
+
+| Phase | Deliverable                                               |
+|-------+-----------------------------------------------------------|
+| M1    | Multi-pipe grammar + final-only renderer.  =search <source> |
+|       | <pipe1> <pipe2> ...= with deterministic stages.  Trace      |
+|       | output is descriptor-advertised.  Full field names,         |
+|       | =locations=/                                                |
+|       | =calls=/=uses= fold hits, next= inline on owner/item lines. |
+| M2    | Cargo feature/cfg pipes.  =search features <f> cfg     |
+|       | owners tests docs=.  Feature→optional-dep→target cfg chain. |
+|       | Tokio =io-uring= / =loom= fixtures.                         |
+| M3    | Items pipe.  =search owner <path> items=.  Nearest-item for |
+|       | ingest.  =source-large= role.  agent-client file-search fixture.   |
+| M4    | Docs/API facts.  Workspace/registry-source API facts: kind, |
+|       | signature, async, unsafe, feature, receiver, return, error. |
+|       | =search docs <crate>::<item>= plus versioned                 |
+|       | =search deps <crate[/subpath][@version][::item]>=.          |
+|       | bytes::Buf /                                                 |
+|       | ignore::WalkBuilder fixtures.                               |
+| M5    | Public-api pipe.  =search dependency <dep> public-api=.     |
+|       | Tokio allowed_external_types + rustc_middle smallvec.       |
+| M6    | Ingest auto-sniff + 8 pattern recipes.  Single command,     |
+|       | auto-detect stdin.  Always owner/item-grouped output.       |
+| M7    | Generated skill multi-pipe flows.  8 flows with multi-pipe   |
+|       | templates: dependency/feature/public-api/external-candidate/ |
+|       | namespace/finding-repair/unknown/docs-api.                  |
+
+Drill-verified implementation order — deep PM first, pipes after:
+
+#+begin_src text
+Step 1: Deep PM minimum viable loop
+    rs-harness search prime / prime <package-or-project-path>
+    mode=path-context for provider context resolution, mode=package for prime
+    |package, |dep, |feature, |cfg, |owner, |edge, |finding,
+    |api-candidate, |test-surface, |surface, |next
+    source=workspace|path|crates-io|git on cargo lines
+
+Step 2: source_large + item slice
+    rs-harness search owner <path> items
+    source_large=true signal (guide: never open the file directly)
+    agent-client file-search/src/lib.rs fixture
+
+Step 3: Cargo feature/cfg
+    rs-harness search features <feature>
+    rs-harness search cfg <cfg>
+    rs-harness search cfg <cfg>
+    feature→optional-dep→target-cfg→docs.rs-metadata chain
+    Tokio io-uring / tokio_unstable fixtures
+
+Step 4: Multi-pipe final-only renderer
+    rs-harness search dependency <dep> items tests
+    rs-harness search features <feature> cfg owners tests
+    descriptor-advertised trace for compact stage list
+    single enriched packet output
+
+Step 5: Docs/API facts
+    rs-harness search docs <crate>::<item>
+    rs-harness search deps <crate[/subpath][@version][::item]>
+    rs-harness search api <crate>::<item>
+    rs-harness search public-external-types --package <pkg>
+    native parser API facts only (kind, signature, params, async, unsafe, receiver, return, error, impl, trait)
+    public-external-types joins parser-native public API type facts with Cargo dependency facts
+    bytes::Buf / ignore::WalkBuilder fixtures
+
+Step 6: generated skill two-phase guide
+    Phase 1: deep prime always first (mode/source_large/api-candidate rules)
+    Phase 2: parent axis selection
+    Phase 3: subagent multi-pipe/ingest
+    Phase 4: parent synthesis
+    Phase 5: rs-harness check --changed
+#+end_src
+
+The dominant finding: deep PM is the single most valuable capability
+because it determines whether the LLM can correctly organize the rest of
+the subagent flow graph without full-repo traversal.  Multi-pipe is a
+Phase 3 acceleration, not a replacement for the Phase 1 map.
+
+* Existing TypeScript harness readiness
+
+The TypeScript harness already has:
+
+- A CLI binary: =ts-harness= → =./dist/src/cli/main.js=
+- =package.json= scripts: =build=, =check=, =format=, =lint=, =test=, =harness=
+- Stable protocol commands: =search=, =check=, and =agent doctor=
+- A provider registry emitted by =ts-harness agent doctor --json=
+- A generated =SKILL.md= guide that teaches protocol commands, not direct renderer flags
+- Public library surface: =renderTypeScriptProjectHarnessAgentCompactText=,
+  =renderTypeScriptProjectHarnessAgentSnapshot=,
+  =runTypeScriptProjectHarnessAgentSnapshot=, =runTypeScriptProjectHarness=,
+  verification/render/profile/task index APIs
+
+The TypeScript slice is the reference implementation for the semantic-language
+registry contract.  The CLI advertises =ts-harness= only, rejects old direct
+renderer flags as protocol commands, and validates search JSON against the
+shared schema.  Its API search slice is intentionally parser-owned:
+=ts-harness search api <query>= emits current-workspace exported/public API
+facts only, while dependency-prefixed queries such as
+=react@18.0.0::jsx= return an explicit missing-provider note until an external
+docs/API source exists.  It also implements
+=ts-harness search public-external-types <pkg>= as a parser-owned dependency
+leakage slice: direct =import("pkg").Type= public type text is confirmed, while
+named import text is marked possible until the parser exposes import binding
+attribution.  For equal relevance scores, TypeScript search ranks
+recently modified project files before older files and then falls back to path
+order, so active repair context rises without adding a new protocol field.
+
+* Existing Python harness readiness
+
+The Python harness now exposes the same CLI-first protocol lane:
+
+- A CLI binary: =py-harness= → =python_lang_project_harness:run_cli_from_env=
+- Stable protocol commands: =search=, =check=, and =agent doctor=
+- Owner item query: =py-harness search owner <path> items --query '<a|b>' .=
+  returns =|query=, =|item=, and indentation-stripped =|code= lines from Python
+  parser facts, including fallback matching against function bodies.
+- Transitional Codex hooks deny direct Python source reads, including shell
+  content readers such as =sed ... file.py= and tool-native =Read= calls, with
+  =reasonKind=direct-source-read= plus a concrete public hook route
+  =asp python query --from-hook direct-source-read --selector <path> --code .=.
+- A provider registry emitted by =py-harness agent doctor --json=
+- Python-local capability schema:
+  =schemas/python-semantic-capabilities.v1.schema.json=
+- Package-local common schema copies:
+  =schemas/semantic-language-registry.v1.schema.json= and
+  =schemas/semantic-search-packet.v1.schema.json=
+
+The first Python search slice is intentionally smaller than the Rust and
+TypeScript surfaces but follows the same contract.  =py-harness search
+workspace= emits package-root routing facts and =next= prime targets.
+=py-harness search prime= emits parser-owned reasoning-tree owners, import
+edges, dependency nodes, findings, owner-scoped text seeds, and de-duplicated
+deps next actions.
+=py-harness search callsite <query>= emits parser-owned =PythonCall= facts so
+agents can move from a symbol or API owner to the modules that invoke it without
+re-running broad text search.
+=py-harness search public-external-types <package>= emits parser-owned public
+function, class, decorator, base-class, and annotated-assignment surfaces that
+expose dependency types; direct package/alias references are confirmed and
+named import matches are marked possible.
+=py-harness search deps <package[@version][::api]>= now emits the same flow
+shape as the TypeScript lane: dependency, public-external-types, api, text, and
+tests next actions when the requested dependency version is current.
+=py-harness search fzf <query> owner tests= searches parser-visible owner
+paths, namespaces, public exports, symbols, and source text, then keeps matched
+owners plus importing tests in one packet.  =py-harness search ingest= detects
+=rg -n=, vimgrep, plain path-list, and NUL path-list stdin and maps hits back to
+parser-visible owners when possible.  Dependency queries use =pyproject.toml=
+metadata and local import usage, with =versionScope= rendered as =current=,
+=external=, or =unknown=.
+
+* The correct division of labor
+
+#+begin_example
+Generated skill:
+  writes exploration protocol, subagent usage, command-group recipes,
+  synthesis format
+
+Agent parent:
+  judges task type
+  selects recipe
+  spawns subagents
+  merges evidence
+  decides next search phase
+  decides edit plan
+
+Agent subagents:
+  read-only
+  run assigned rs-harness command group
+  return compact evidence
+
+rs-harness CLI:
+  search / check / agent primitives
+  registry-described methods
+  deterministic output
+  no natural-language intent
+  no subagent planning
+  no task router
+
+hooks:
+  inject reminders
+  prevent obviously bad searches
+  changed check after edits
+  closeout guard before stop
+#+end_example
+
+One sentence:
+
+/Put "intent → plan → subagents" in the agent client.  Put native facts, owner
+slices, search packets, compact checks, and registry-described methods in the
+harness.  That is the correct harness-client boundary./
+
+* The bottom line
+
+#+begin_example
+Generated skill:
+  teaches agent clients how to use harness
+
+hooks:
+  automatically call harness at the right moments
+
+CLI:
+  stable public protocol — primitives, not planner
+
+daemon:
+  local cache and acceleration
+
+compact text:
+  agent repair contract
+
+JSON:
+  editor / flowhub / CI consumer
+#+end_example
+
+One sentence:
+
+/The first round is always deep prime.  It gives the LLM a search map, not
+answers.  Multi-pipe is Phase 3, used by subagents after the parent has
+reasoned about axes.  Never put intent parsing or planning inside the CLI./
+
+* 2026-06-06 Rust graph reasoning ABI closure
+
+Rust now treats guide, search guide, prime, and reasoning as one prompt-visible
+ABI instead of separate compatibility hints.
+
+- =rs-harness guide= and =rs-harness search guide= both expose the shared
+  =reasoningProfiles= catalog as =owner-query=, =query-deps=, =owner-tests=,
+  =finding-frontier=, and =feature-cfg=.
+- =search prime --view seeds= emits =entries=profile(selectors=>returns)= rows
+  instead of the retired =profiles=profile(args)= line.
+- Non-reasoning actions such as =path= and =read-frontier= stay under routes,
+  not profile entries.
+- The shared graph renderer validates entry selector aliases against the
+  packet-local =aliases: graph:{...}= declaration, so =owner-query(O,Q=>...)=
+  cannot be inferred from stale or wrong alias kinds.
+- =sandtables/rust/graph-reasoning-guide-quality-flow.json= is the runtime gate:
+  it rejects =profiles=, =owner-items=, and route/profile mixing while proving
+  provider guide, search guide, and prime output through the active =asp rust=
+  facade.
+
+* 2026-06-06 Python graph reasoning entry alignment
+
+Python now has executable typed reasoning entries instead of guide-only
+profile names.
+
+- =py-harness search reasoning owner-tests --owner <owner-path> --view seeds .=
+  returns the =owner-tests(O=>covering-tests+test-entrypoints+fixtures)= entry
+  and preserves the owner selector even when no covering tests are found.
+- =py-harness search reasoning owner-query --owner <owner-path> --query
+  <symbol> --view seeds .= returns
+  =owner-query(O,Q=>items+tests+dependency-usage)= over parser-owned owner item
+  facts.
+- =py-harness search reasoning query-deps --query <symbol> --dependency <pkg>
+  --view seeds .= returns =query-deps(Q,D=>owners+imports+usage-tests)=.
+- =py-harness guide= now prints the three concrete reasoning commands, and
+  =agent doctor --json= advertises =search/reasoning= in the provider
+  registry.
+- Python fast prime removed the obsolete =owner-items= entry; owner-only seed
+  frontiers now use the shared =owner-tests= return contract.

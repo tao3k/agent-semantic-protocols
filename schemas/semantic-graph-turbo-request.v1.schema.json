@@ -1,0 +1,233 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-graph-turbo-request.v1.schema.json",
+  "title": "Semantic Graph Turbo Request",
+  "description": "Schema-owned algorithm request packet consumed by asp-graph-turbo before it emits a semantic-graph-turbo-result response.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "protocolId",
+    "protocolVersion",
+    "packetKind",
+    "profile",
+    "algorithm",
+    "seedIds",
+    "budget",
+    "graph"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.semantic-graph-turbo-request"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "protocolId": {
+      "const": "agent.semantic-protocols.semantic-language"
+    },
+    "protocolVersion": {
+      "const": "1"
+    },
+    "packetKind": {
+      "const": "graph-turbo-request"
+    },
+    "profile": {
+      "enum": [
+        "owner-query",
+        "query-deps",
+        "owner-tests",
+        "prime",
+        "read-frontier"
+      ]
+    },
+    "algorithm": {
+      "const": "typed-ppr-diverse"
+    },
+    "seedIds": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/nodeId"
+      },
+      "uniqueItems": true
+    },
+    "budget": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "kindBudgets": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 1
+      }
+    },
+    "windowMerge": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "maxGapLines": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "pathBudget": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "pathMaxHops": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "cache": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        }
+      }
+    },
+    "graph": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "nodes",
+        "edges"
+      ],
+      "properties": {
+        "nodes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/node"
+          }
+        },
+        "edges": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/edge"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "nodeId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "role",
+        "value"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/nodeId"
+        },
+        "kind": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "role": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "value": {
+          "type": "string",
+          "minLength": 1
+        },
+        "action": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "weight": {
+          "type": "number"
+        },
+        "locator": {
+          "type": "string",
+          "minLength": 1
+        },
+        "location": {
+          "type": "string",
+          "minLength": 1
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "owner": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ownerPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "symbol": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "startLine": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "endLine": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "start": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "end": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "fields": {
+          "type": "object"
+        }
+      }
+    },
+    "edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "target",
+        "relation"
+      ],
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/nodeId"
+        },
+        "target": {
+          "$ref": "#/$defs/nodeId"
+        },
+        "relation": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "weight": {
+          "type": "number"
+        },
+        "fields": {
+          "type": "object"
+        }
+      }
+    }
+  }
+}

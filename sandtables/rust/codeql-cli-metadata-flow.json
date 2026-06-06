@@ -1,0 +1,88 @@
+{
+  "id": "rust.codeql-cli-metadata-flow",
+  "language": "rust",
+  "title": "Rust ASP CodeQL CLI metadata evidence flow",
+  "coverage": [
+    "json-schema",
+    "evidence-assurance",
+    "real-trigger",
+    "performance"
+  ],
+  "tags": [
+    "asp",
+    "relation-flow",
+    "codeql-metadata"
+  ],
+  "workdir": ".",
+  "budgets": {
+    "maxCommands": 1,
+    "maxTotalLinesWarn": 1,
+    "maxTotalElapsedMsWarn": 10000,
+    "maxTotalStdoutBytesWarn": 3500
+  },
+  "evidence": {
+    "source": "real-trigger",
+    "intent": "Validate that installed CodeQL CLI metadata can be normalized into semantic-codeql-evidence without enabling the provider CodeQL backend.",
+    "intentKind": "implementation-principle",
+    "editBoundary": "none",
+    "metrics": {
+      "recordedCommandCount": 1,
+      "repeatedSearches": 0,
+      "jsonSearches": 1,
+      "compactSearches": 0,
+      "tokenDelta": "same"
+    },
+    "findings": [
+      {
+        "kind": "codeql-metadata",
+        "severity": "info",
+        "message": "CodeQL CLI metadata is captured as structured evidence while provider executionBackends remain native-parser."
+      }
+    ]
+  },
+  "steps": [
+    {
+      "id": "codeql-cli-metadata-evidence",
+      "kind": "schema-contract",
+      "coverage": [
+        "json-schema",
+        "evidence-assurance",
+        "real-trigger",
+        "performance"
+      ],
+      "command": [
+        "python",
+        "-m",
+        "tools",
+        "codeql",
+        "evidence",
+        "--generated-at",
+        "2026-06-05T12:00:00Z"
+      ],
+      "expect": {
+        "stdoutJsonSchema": "schemas/semantic-codeql-evidence.v1.schema.json",
+        "stdoutJsonEquals": {
+          "schemaId": "agent.semantic-protocols.semantic-codeql-evidence",
+          "languageId": "rust",
+          "providerId": "rs-harness",
+          "queryId": "asp.codeql.resolve-languages",
+          "projectRootPolicy": "local-only",
+          "fields.languageAvailable": true,
+          "normalizedRows.0.kind": "source"
+        },
+        "stdoutJsonContains": {
+          "artifactId": "codeql-evidence/metadata",
+          "databaseFingerprint": "codeql-cli:",
+          "fields.visibleLanguages": "rust",
+          "rowCount": "1"
+        },
+        "stdoutNotContains": [
+          "rawOutput"
+        ],
+        "maxStdoutLinesWarn": 1,
+        "maxStdoutBytesWarn": 3500,
+        "maxElapsedMsWarn": 10000
+      }
+    }
+  ]
+}

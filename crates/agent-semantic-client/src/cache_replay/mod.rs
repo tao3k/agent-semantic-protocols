@@ -1,6 +1,7 @@
 //! Replay cache artifacts into compact prompt stdout.
 
 mod artifact;
+mod search_fzf;
 mod syntax_query;
 
 pub(crate) use artifact::{
@@ -11,7 +12,11 @@ pub(crate) use artifact::{
 #[cfg(test)]
 pub(crate) use artifact::{
     query_packet_matches_request, semantic_tree_sitter_query_packet_matches_request,
+    structured_evidence_artifact_path,
 };
+pub(crate) use search_fzf::search_fzf_generation_matches_request;
+#[cfg(test)]
+pub(crate) use search_fzf::search_fzf_packet_matches_request;
 #[cfg(test)]
 pub(crate) use syntax_query::{
     render_semantic_tree_sitter_query_rows_stdout, render_semantic_tree_sitter_query_stdout,

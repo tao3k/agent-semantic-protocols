@@ -11,7 +11,12 @@ use super::source_access::run_source_access_command;
 
 pub(crate) fn run_protocol_command(args: Vec<String>) -> Result<(), String> {
     match args.first().map(String::as_str) {
-        Some("guide" | "providers" | "doctor" | "cache" | "cloud") => run_client_command(args),
+        Some("guide" | "providers" | "doctor" | "cache" | "cloud" | "tools") => {
+            run_client_command(args)
+        }
+        Some("search") if args.get(1).is_some_and(|arg| arg == "history") => {
+            run_client_command(args)
+        }
         Some(command @ ("search" | "query" | "check")) => Err(format!(
             "asp {command} is not a public command surface; use asp <rust|typescript|python|julia|org|md> {command} ..."
         )),
@@ -27,7 +32,7 @@ pub(crate) fn run_protocol_command(args: Vec<String>) -> Result<(), String> {
 }
 
 fn usage() -> String {
-    "usage: asp <guide|providers|doctor|cache|cloud|search|query|check|hook|healthcheck|source-access|ast-patch|graph|rust|typescript|python|julia|org|md> ...".to_string()
+    "usage: asp <guide|providers|tools|cache|cloud|hook|healthcheck|source-access|ast-patch|graph|rust|typescript|python|julia|org|md> ...".to_string()
 }
 
 fn run_client_command(args: Vec<String>) -> Result<(), String> {

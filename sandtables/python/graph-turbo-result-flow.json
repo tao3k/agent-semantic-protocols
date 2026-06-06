@@ -1,0 +1,113 @@
+{
+  "id": "python.graph-turbo-result-flow",
+  "language": "python",
+  "title": "Python ASP graph turbo schema-backed result flow",
+  "coverage": [
+    "json-schema",
+    "search-flow"
+  ],
+  "tags": [
+    "asp",
+    "graph-turbo",
+    "compact-graph"
+  ],
+  "workdir": ".",
+  "budgets": {
+    "maxCommands": 1,
+    "maxTotalLinesWarn": 1,
+    "maxTotalElapsedMsWarn": 10000,
+    "maxTotalStdoutBytesWarn": 9000
+  },
+  "evidence": {
+    "source": "handwritten",
+    "intent": "Validate that asp-graph-turbo consumes a schema-owned algorithm request and emits a schema-owned typed frontier ranking response instead of relying on prompt text as the source of truth.",
+    "intentKind": "implementation-principle",
+    "editBoundary": "none",
+    "metrics": {
+      "recordedCommandCount": 1,
+      "repeatedSearches": 0,
+      "jsonSearches": 1,
+      "compactSearches": 0,
+      "tokenDelta": "same"
+    },
+    "findings": [
+      {
+        "kind": "graph-turbo-packet",
+        "severity": "info",
+        "message": "Graph turbo ranking evidence is validated as semantic-graph-turbo-result before any compact renderer consumes it."
+      }
+    ]
+  },
+  "steps": [
+    {
+      "id": "graph-turbo-json-packet",
+      "kind": "schema-contract",
+      "coverage": [
+        "json-schema",
+        "search-flow"
+      ],
+      "command": [
+        "python",
+        "-m",
+        "tools",
+        "graph",
+        "turbo",
+        "sandtables/fixtures/asp/graph-turbo-owner-query.json",
+        "--format",
+        "json"
+      ],
+      "expect": {
+        "stdoutJsonSchema": "schemas/semantic-graph-turbo-result.v1.schema.json",
+        "stdoutJsonEquals": {
+          "schemaId": "agent.semantic-protocols.semantic-graph-turbo-result",
+          "packetKind": "graph-turbo-result",
+          "profile": "owner-query",
+          "algorithm": "typed-ppr-diverse",
+          "seedIds.0": "q:parser",
+          "seedIds.1": "owner:cli",
+          "profiles.0": "owner-query",
+          "omit.0": "code",
+          "avoid.0": "raw-read",
+          "profileCompatibility.0.profile": "owner-query",
+          "profileCompatibility.0.allowedTransitions.0.sourceKind": "item",
+          "profileCompatibility.0.allowedTransitions.0.targetKind": "hot",
+          "sourceSinkFrontier.sourceIds.0": "q:parser",
+          "sourceSinkFrontier.sourceIds.1": "owner:cli",
+          "graphCache.backend": "scipy-csr",
+          "algorithmTrace.2.step": "profile-policy",
+          "algorithmTrace.3.step": "typed-ppr"
+        },
+        "stdoutJsonArrayContains": {
+          "rankedNodes": {
+            "id": "item:graph-turbo",
+            "kind": "item",
+            "action": "code"
+          },
+          "typedPaths": {
+            "id": "P1",
+            "pathKind": "constrained-shortest"
+          },
+          "edges": {
+            "source": "owner:cli",
+            "target": "test:cli",
+            "relation": "covers",
+            "weight": 1.4
+          }
+        },
+        "stdoutNotContains": [
+          "[graph-turbo]",
+          "legend:"
+        ],
+        "stdoutContains": [
+          "\"algorithmMetrics\"",
+          "\"pathCount\"",
+          "\"packetFingerprint\"",
+          "\"allowedTransitions\""
+        ],
+        "maxStdoutLinesWarn": 1,
+        "maxStdoutBytesWarn": 9000,
+        "maxElapsedMsWarn": 10000
+      }
+    }
+  ]
+}

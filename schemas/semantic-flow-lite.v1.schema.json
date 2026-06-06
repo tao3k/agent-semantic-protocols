@@ -1,0 +1,347 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-flow-lite.v1.schema.json",
+  "title": "Semantic Flow Lite",
+  "description": "Bounded local source/sink/path evidence projected from native provider facts or an optional backend such as CodeQL.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "protocolId",
+    "protocolVersion",
+    "languageId",
+    "providerId",
+    "projectRoot",
+    "flowId",
+    "flowKind",
+    "scope",
+    "ownerPath",
+    "sourceAuthority",
+    "executionBackend",
+    "adapterMode",
+    "sourceHandle",
+    "sinkHandle",
+    "path",
+    "confidence",
+    "omissions"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.semantic-flow-lite"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "protocolId": {
+      "const": "agent.semantic-protocols.semantic-language"
+    },
+    "protocolVersion": {
+      "const": "1"
+    },
+    "languageId": {
+      "$ref": "#/$defs/identifier"
+    },
+    "providerId": {
+      "$ref": "#/$defs/identifier"
+    },
+    "projectRoot": {
+      "type": "string",
+      "minLength": 1
+    },
+    "packageName": {
+      "type": "string",
+      "minLength": 1
+    },
+    "flowId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "flowKind": {
+      "enum": [
+        "local-source-sink",
+        "owner-call-path",
+        "guarded-effect",
+        "mutation-flow",
+        "test-coverage-path",
+        "config-feature-flow"
+      ]
+    },
+    "scope": {
+      "enum": [
+        "function",
+        "method",
+        "owner",
+        "module",
+        "package"
+      ]
+    },
+    "ownerPath": {
+      "$ref": "semantic-source-location.v1.schema.json#/$defs/projectPath"
+    },
+    "sourceAuthority": {
+      "$ref": "#/$defs/sourceAuthority"
+    },
+    "executionBackend": {
+      "$ref": "#/$defs/executionBackend"
+    },
+    "adapterMode": {
+      "$ref": "#/$defs/adapterMode"
+    },
+    "sourceHandle": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sinkHandle": {
+      "type": "string",
+      "minLength": 1
+    },
+    "path": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/pathStep"
+      }
+    },
+    "guards": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/flowPoint"
+      }
+    },
+    "effects": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/flowPoint"
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/artifactRef"
+      }
+    },
+    "confidence": {
+      "$ref": "#/$defs/confidence"
+    },
+    "omissions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/omission"
+      }
+    },
+    "fields": {
+      "$ref": "#/$defs/fields"
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "scalar": {
+      "type": [
+        "string",
+        "number",
+        "integer",
+        "boolean",
+        "null"
+      ]
+    },
+    "fields": {
+      "type": "object",
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "$ref": "#/$defs/scalar"
+          },
+          {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/scalar"
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/$defs/scalar"
+            }
+          }
+        ]
+      }
+    },
+    "sourceAuthority": {
+      "enum": [
+        "native-parser",
+        "native-parser-adapter",
+        "tree-sitter-runtime",
+        "codeql",
+        "hybrid",
+        "cached-provider-export"
+      ]
+    },
+    "executionBackend": {
+      "enum": [
+        "native-parser",
+        "tree-sitter-runtime",
+        "codeql",
+        "hybrid",
+        "cached-replay"
+      ]
+    },
+    "adapterMode": {
+      "enum": [
+        "native-projection",
+        "hybrid",
+        "tree-sitter-runtime",
+        "codeql-query",
+        "cached-replay"
+      ]
+    },
+    "flowRelation": {
+      "enum": [
+        "source",
+        "sink",
+        "flows-to",
+        "sanitizes",
+        "guards",
+        "effects",
+        "calls",
+        "references",
+        "covers",
+        "feature-gates",
+        "related",
+        "custom"
+      ]
+    },
+    "pathStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "handle",
+        "relation"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "handle": {
+          "type": "string",
+          "minLength": 1
+        },
+        "relation": {
+          "$ref": "#/$defs/flowRelation"
+        },
+        "location": {
+          "$ref": "semantic-source-location.v1.schema.json#/$defs/location"
+        },
+        "evidenceRefs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "flowPoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "handle",
+        "kind"
+      ],
+      "properties": {
+        "handle": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "enum": [
+            "source",
+            "sink",
+            "guard",
+            "effect",
+            "sanitizer",
+            "terminal"
+          ]
+        },
+        "location": {
+          "$ref": "semantic-source-location.v1.schema.json#/$defs/location"
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "artifactRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "artifactId",
+        "schemaId"
+      ],
+      "properties": {
+        "artifactId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "schemaId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "schemaVersion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "omission": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "message"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "unsupported",
+            "unavailable",
+            "backend-unavailable",
+            "too-expensive",
+            "ambiguous",
+            "policy-blocked"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "confidence": {
+      "enum": [
+        "proved",
+        "bounded",
+        "partial",
+        "unavailable"
+      ]
+    }
+  }
+}

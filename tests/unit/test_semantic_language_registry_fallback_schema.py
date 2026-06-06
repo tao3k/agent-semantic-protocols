@@ -23,6 +23,7 @@ def test_registry_schema_accepts_owner_item_query_fallback_descriptor() -> None:
                 "languageId": "typescript",
                 "providerId": "ts-harness",
                 "binary": "ts-harness",
+                "execution": "external-process",
                 "namespace": "agent.semantic-protocols.languages.typescript.ts-harness",
                 "methods": ["search/owner"],
                 "methodDescriptors": [

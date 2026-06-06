@@ -9,14 +9,13 @@ use agent_semantic_hook::{
     RuntimeProfiles, RuntimeProviderHealthStatus, RuntimeProviderProfile, append_hook_event_state,
     build_default_activation, classify_hook_with_config, claude_hook_block, codex_hook_block,
     codex_user_trust_state_status, default_activation_path, default_claude_settings_path,
-    default_client_config_path, default_client_config_template, default_runtime_profiles_path,
-    discover_activation_path, install_codex_user_trust_state, load_activation, load_client_config,
-    load_or_refresh_runtime_profiles, load_or_sync_activation, merge_claude_settings,
-    merge_codex_config, parse_payload, project_hook_cache_dir, project_hook_state_dir,
-    record_active_context, remove_incompatible_hook_event_state,
-    remove_legacy_codex_hook_cache_files, render_platform_response, validate_claude_settings_json,
+    default_client_config_path, default_client_config_template, discover_activation_path,
+    install_codex_user_trust_state, load_activation, load_client_config, load_or_sync_activation,
+    merge_claude_settings, merge_codex_config, parse_payload, project_hook_cache_dir,
+    project_hook_state_dir, record_active_context, remove_incompatible_hook_event_state,
+    remove_legacy_codex_hook_cache_files, render_platform_response,
+    runtime_profiles_for_activation, runtime_profiles_for_runtime, validate_claude_settings_json,
     validate_codex_config_toml, write_activation, write_profile_registry,
-    write_runtime_profiles_for_activation,
 };
 use std::collections::BTreeMap;
 use std::env;
@@ -386,9 +385,7 @@ fn run_doctor(args: &[String]) -> Result<(), String> {
         .map(PathBuf::from)
         .unwrap_or_else(|| default_activation_path(&project_root));
     let runtime = load_or_sync_activation(&activation_path, &project_root)?;
-    let runtime_profiles_path = default_runtime_profiles_path(&project_root)?;
-    let runtime_profiles =
-        load_or_refresh_runtime_profiles(&runtime_profiles_path, &project_root, &runtime)?;
+    let runtime_profiles = runtime_profiles_for_runtime(&project_root, &runtime);
     let config_path = if client == "claude" {
         default_claude_settings_path(&project_root.to_string_lossy())
     } else {
@@ -438,10 +435,9 @@ fn run_doctor(args: &[String]) -> Result<(), String> {
         .map(|status| status.trust_config_path.display().to_string())
         .unwrap_or_else(|| "unavailable".to_string());
     println!(
-        "[agent-doctor] status=ok client={client} providers={} activation={} runtimeProfiles={} config={} clientConfig={} clientConfigStatus={} hook={} trust={} trustConfig={} binary={} binaryPath={} enforcement={} enforcementProbe={} enforcementReason={} protocol={}",
+        "[agent-doctor] status=ok client={client} providers={} activation={} activationRuntime=derived config={} clientConfig={} clientConfigStatus={} hook={} trust={} trustConfig={} binary={} binaryPath={} enforcement={} enforcementProbe={} enforcementReason={} protocol={}",
         runtime.providers.len(),
         display_path(&project_root, &activation_path),
-        display_path(&project_root, &runtime_profiles_path),
         config_path.is_file(),
         display_path(&project_root, &client_config_path),
         client_config_status,
@@ -497,10 +493,11 @@ fn run_doctor(args: &[String]) -> Result<(), String> {
             .and_then(|profile| profile.resolved_binary.as_deref())
             .unwrap_or("missing");
         println!(
-            "|provider language={} provider={} binary={} runtimeProfileStatus={} resolvedBinary={} roots={} extensions={}",
+            "|provider language={} provider={} binary={} execution={} runtimeStatus={} resolvedBinary={} roots={} extensions={}",
             provider.language_id,
             provider.provider_id,
             provider.binary,
+            provider.execution.as_str(),
             runtime_profile_status,
             resolved_binary,
             provider.source_roots.join(","),
@@ -523,9 +520,7 @@ fn run_install(args: &[String]) -> Result<(), String> {
     }
     let activation = build_default_activation(&project_root)?;
     write_activation(&activation_path, &activation)?;
-    let runtime_profiles_path = default_runtime_profiles_path(&project_root)?;
-    let runtime_profiles =
-        write_runtime_profiles_for_activation(&runtime_profiles_path, &project_root, &activation)?;
+    let runtime_profiles = runtime_profiles_for_activation(&project_root, &activation)?;
     let profile_cache_dir = project_hook_state_dir(&project_root)?;
     remove_incompatible_hook_event_state(&project_root)?;
     let profile_registry_path = write_profile_registry(&profile_cache_dir, &activation)?;
@@ -539,9 +534,8 @@ fn run_install(args: &[String]) -> Result<(), String> {
         _ => unreachable!("client support checked before install"),
     };
     println!(
-        "[agent-install] client={client} activation={} runtimeProfiles={} clientConfig={} profileCache={} config={}{} skill={} binary=asp binaryPath={} binaryInstall={} mode=updated",
+        "[agent-install] client={client} activation={} activationRuntime=derived clientConfig={} profileCache={} config={}{} skill={} binary=asp binaryPath={} binaryInstall={} mode=updated",
         display_path(&project_root, &activation_path),
-        display_path(&project_root, &runtime_profiles_path),
         display_path(&project_root, &client_config_path),
         display_path(&project_root, &profile_registry_path),
         display_path(&project_root, &config_path),
@@ -665,8 +659,8 @@ fn installed_provider_summary(
         "Detected from provider binaries plus `asp.toml`; only activated languages are listed."
             .to_string(),
         String::new(),
-        "| Language | Facade | Provider | Command |".to_string(),
-        "| --- | --- | --- | --- |".to_string(),
+        "| Language | Facade | Provider | Execution | Command |".to_string(),
+        "| --- | --- | --- | --- | --- |".to_string(),
     ];
     for provider in &activation.providers {
         let runtime_provider = runtime_profiles.providers.iter().find(|profile| {
@@ -675,10 +669,11 @@ fn installed_provider_summary(
                 && profile.provider_id == provider.provider_id
         });
         lines.push(format!(
-            "| {} | `{}` | {} | `{}` |",
+            "| {} | `{}` | {} | {} | `{}` |",
             markdown_table_cell(&provider.language_id),
             markdown_table_cell(&format!("asp {}", provider.language_id)),
             markdown_table_cell(&provider.provider_id),
+            provider.execution.as_str(),
             markdown_table_cell(&provider_command_display(
                 &activation.project_root,
                 provider,
@@ -705,7 +700,13 @@ fn provider_command_display(
         })
         .unwrap_or_else(|| vec![provider_display_binary(project_root, &provider.binary)]);
     argv.iter()
-        .map(|arg| shell_display_word(arg))
+        .map(|arg| {
+            shell_display_word(&installed_skill_display_arg(
+                project_root,
+                &provider.binary,
+                arg,
+            ))
+        })
         .collect::<Vec<_>>()
         .join(" ")
 }
@@ -723,12 +724,32 @@ fn runtime_provider_command_argv(profile: &RuntimeProviderProfile) -> Option<Vec
 fn provider_display_binary(project_root: &str, binary: &str) -> String {
     let project_bin = Path::new(project_root).join(".bin").join(binary);
     if project_bin.is_file() {
-        return project_bin.display().to_string();
+        return format!(".bin/{binary}");
     }
     Path::new(binary)
         .file_name()
         .and_then(|name| name.to_str())
         .unwrap_or(binary)
+        .to_string()
+}
+
+fn installed_skill_display_arg(project_root: &str, provider_binary: &str, arg: &str) -> String {
+    let path = Path::new(arg);
+    if !path.is_absolute() {
+        return arg.to_string();
+    }
+    let project_bin = Path::new(project_root).join(".bin").join(provider_binary);
+    if project_bin.is_file()
+        && path.file_name().and_then(|name| name.to_str()) == Some(provider_binary)
+    {
+        return format!(".bin/{provider_binary}");
+    }
+    if let Ok(relative) = path.strip_prefix(project_root) {
+        return relative.to_string_lossy().replace('\\', "/");
+    }
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(arg)
         .to_string()
 }
 

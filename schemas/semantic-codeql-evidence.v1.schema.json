@@ -1,0 +1,265 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-codeql-evidence.v1.schema.json",
+  "title": "Semantic CodeQL Evidence",
+  "description": "Metadata-only artifact schema for normalized CodeQL evidence that backs ASP relation or flow-lite packets. Raw CodeQL tables and logs stay outside prompt-facing output.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "protocolId",
+    "protocolVersion",
+    "artifactId",
+    "databaseFingerprint",
+    "queryId",
+    "queryVersion",
+    "generatedAt",
+    "languageId",
+    "providerId",
+    "projectRoot",
+    "inputHandles",
+    "rowCount",
+    "projectRootPolicy",
+    "sourceSnapshot"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.semantic-codeql-evidence"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "protocolId": {
+      "const": "agent.semantic-protocols.semantic-language"
+    },
+    "protocolVersion": {
+      "const": "1"
+    },
+    "artifactId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "databaseFingerprint": {
+      "type": "string",
+      "minLength": 1
+    },
+    "queryId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "queryVersion": {
+      "type": "string",
+      "minLength": 1
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "languageId": {
+      "$ref": "#/$defs/identifier"
+    },
+    "providerId": {
+      "$ref": "#/$defs/identifier"
+    },
+    "projectRoot": {
+      "type": "string",
+      "minLength": 1
+    },
+    "packageName": {
+      "type": "string",
+      "minLength": 1
+    },
+    "inputHandles": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "rowCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "projectRootPolicy": {
+      "enum": [
+        "local-only",
+        "workspace-cache",
+        "explicit-user-opt-in",
+        "blocked"
+      ]
+    },
+    "sourceSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "fingerprint"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "git-tree",
+            "workspace",
+            "provider-export",
+            "cache"
+          ]
+        },
+        "fingerprint": {
+          "type": "string",
+          "minLength": 1
+        },
+        "generatedFrom": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "relationPlanId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "flowId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "normalizedRows": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/normalizedRow"
+      }
+    },
+    "omissions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/omission"
+      }
+    },
+    "fields": {
+      "$ref": "#/$defs/fields"
+    }
+  },
+  "anyOf": [
+    {
+      "required": [
+        "relationPlanId"
+      ]
+    },
+    {
+      "required": [
+        "flowId"
+      ]
+    }
+  ],
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "scalar": {
+      "type": [
+        "string",
+        "number",
+        "integer",
+        "boolean",
+        "null"
+      ]
+    },
+    "fields": {
+      "type": "object",
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "$ref": "#/$defs/scalar"
+          },
+          {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/scalar"
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/$defs/scalar"
+            }
+          }
+        ]
+      }
+    },
+    "normalizedRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "enum": [
+            "relation",
+            "flow-step",
+            "source",
+            "sink",
+            "guard",
+            "effect",
+            "omission"
+          ]
+        },
+        "sourceHandle": {
+          "type": "string",
+          "minLength": 1
+        },
+        "targetHandle": {
+          "type": "string",
+          "minLength": 1
+        },
+        "location": {
+          "$ref": "semantic-source-location.v1.schema.json#/$defs/location"
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "omission": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "message"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "unsupported",
+            "unavailable",
+            "backend-unavailable",
+            "too-expensive",
+            "ambiguous",
+            "policy-blocked"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    }
+  }
+}

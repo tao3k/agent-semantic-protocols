@@ -509,7 +509,7 @@ space:
 7. Defer relation-frontier and causal-path commands until provider relation
    facts and schema fields exist.
 
-Julia participates in this RFC through the compiled =aslp-julia-harness= and the
+Julia participates in this RFC through the compiled =asp-julia-harness= and the
 same cacheable graph/reasoning packet contracts.  Julia-specific evidence must
 come from JuliaSyntax-owned facts surfaced through =asp julia ...=, not from a
 workspace-managed exception.

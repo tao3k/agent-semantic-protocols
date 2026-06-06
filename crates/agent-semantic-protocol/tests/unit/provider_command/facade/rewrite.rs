@@ -12,6 +12,7 @@ fn provider_output_command_hints_are_rewritten_without_changing_identity() {
 
     let output = asp_command(&root)
         .env("PATH", prepend_path(&bin_dir))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args(["rust", "ast-patch", "dry-run", "--packet", "-", "."])
         .output()
         .expect("run asp rust ast-patch");
@@ -40,6 +41,7 @@ fn guide_rewrites_command_lines_to_language_facade() {
 
     let output = asp_command(&root)
         .env("PATH", prepend_path(&bin_dir))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args(["rust", "guide", "."])
         .output()
         .expect("run asp guide");

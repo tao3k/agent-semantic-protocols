@@ -6,7 +6,7 @@ typescript_harness_project := "languages/typescript-lang-project-harness"
 python_harness_project := "languages/python-lang-project-harness"
 julia_harness_project := "languages/JuliaLangProjectHarness.jl"
 julia_harness := "julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl"
-julia_compiled_harness := "languages/JuliaLangProjectHarness.jl/build/juliac-aslp-local/aslp-julia-harness"
+julia_compiled_harness := "languages/JuliaLangProjectHarness.jl/build/juliac-asp-local/asp-julia-harness"
 
 default:
     @just --list
@@ -76,16 +76,17 @@ agent-hooks-smoke-codex:
       fi; \
       rm -f "${out}"
 
-# Install asp, rs-harness, ts-harness, and py-harness.
+# Install asp, graph-turbo, rs-harness, ts-harness, and py-harness.
 agent-tools-install-global bin_dir="":
     @bin_dir="{{bin_dir}}"; \
       if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-$HOME/.local/bin}"; fi; \
       just agent-tools-install-protocol "${bin_dir}"; \
+      just agent-tools-install-graph-turbo "${bin_dir}"; \
       just agent-tools-install-hook "${bin_dir}"; \
       just agent-tools-install-rs "${bin_dir}"; \
       just agent-tools-install-ts "${bin_dir}"; \
       just agent-tools-install-py "${bin_dir}"; \
-      echo "[agent-tools-install-global] installed asp, rs-harness, ts-harness, and py-harness into ${bin_dir}"
+      echo "[agent-tools-install-global] installed asp, graph-turbo, rs-harness, ts-harness, and py-harness into ${bin_dir}"
 
 # Install only the shared asp binary.
 agent-tools-install-protocol bin_dir="":
@@ -101,6 +102,18 @@ agent-tools-install-protocol bin_dir="":
 # Install the shared protocol binary used by hook runtime commands.
 agent-tools-install-hook bin_dir="":
     @just agent-tools-install-protocol "{{bin_dir}}"
+
+# Install only the graph-turbo extension binary.
+agent-tools-install-graph-turbo bin_dir="":
+    @bin_dir="{{bin_dir}}"; \
+      if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-$HOME/.local/bin}"; fi; \
+      mkdir -p "${bin_dir}"; \
+      uv tool install --force --editable packages/python/asp_graph_turbo; \
+      graph_turbo_bin="$(uv tool dir --bin)/graph-turbo"; \
+      if [ "${graph_turbo_bin}" != "${bin_dir}/graph-turbo" ]; then \
+        ln -sfn "${graph_turbo_bin}" "${bin_dir}/graph-turbo"; \
+      fi; \
+      "${bin_dir}/graph-turbo" --help >/dev/null
 
 # Install only the Rust provider binary.
 agent-tools-install-rust bin_dir="":
@@ -138,7 +151,9 @@ agent-tools-install-py bin_dir="":
       mkdir -p "${bin_dir}"; \
       uv tool install --force --editable {{python_harness_project}}; \
       py_bin="$(uv tool dir --bin)/py-harness"; \
-      ln -sfn "${py_bin}" "${bin_dir}/py-harness"; \
+      if [ "${py_bin}" != "${bin_dir}/py-harness" ]; then \
+        ln -sfn "${py_bin}" "${bin_dir}/py-harness"; \
+      fi; \
       "${bin_dir}/py-harness" --help >/dev/null
 
 agent-hooks-doctor-providers: agent-hooks-doctor-rs agent-hooks-doctor-ts agent-hooks-doctor-py
@@ -171,16 +186,16 @@ check-language-workspace-search-contracts:
     direnv exec . bash tools/validate-language-workspace-search-contract.sh
 
 check-rfc-docs:
-    direnv exec . uv run --frozen pytest \
+    direnv exec . uv run --project packages/python --frozen pytest \
       tests/unit/test_*rfc.py \
       tests/unit/test_docs_rfc_skill_contracts.py \
       -q
 
 provider-gate-root:
     direnv exec . cargo test -p agent-semantic-hook
-    direnv exec . python -m pytest \
+    direnv exec . uv run --project packages/python --frozen python -m pytest \
       tests/unit/test_semantic_*_schema.py \
-      tests/unit/test_semantic_tree_sitter_query_rfc.py \
+      tests/unit/semantic_tree_sitter_query_rfc \
       tests/unit/test_cli_first_harness_ux_rfc.py \
       tests/unit/test_agent_hook_interception_protocol_rfc.py \
       tests/unit/test_docs_rfc_skill_contracts.py \

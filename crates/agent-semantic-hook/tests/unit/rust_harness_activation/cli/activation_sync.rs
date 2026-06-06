@@ -92,7 +92,6 @@ fn cli_doctor_syncs_generated_activation_drift() {
 
     let output = asp_command()
         .env_remove("PRJ_CACHE_HOME")
-        .env_remove("PRJ_HOME_CACHE")
         .env("PATH", &provider_path)
         .args([
             "hook",

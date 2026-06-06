@@ -1,0 +1,60 @@
+#+TITLE: RFC 011 Rust Syntax Real-Project Evidence
+#+DATE: 2026-06-05
+#+STATUS: rust-evidence-recorded
+#+RFC: rfcs/semantic-tree-sitter-query-protocol.org
+
+* Scope
+
+This records the first Rust real-project syntax flow for RFC 011 using the
+public =asp rust= facade against this repository.  It is evidence for the
+native-projection v1 lane only.  It does not claim cache hit replay, Julia cache
+payoff, arbitrary TypeScript/Python S-expression support, or CodeQL backend
+execution.
+
+* Evidence record
+
+#+begin_example
+[syntax-real-evidence] language=rust provider=rs-harness project=agent-semantic-protocols
+commands=search-prime,syntax-frontier,exact-selector-code,hook-recovery
+metrics=commandCount=5,providerProcessCount=5,packetBytes=3914,coldElapsedMs=303,warmElapsedMs=93
+metrics=syntaxQueryCount=3,exactCodeCount=1,manualRangeScanCount=0,repeatedTriggerReduction=0
+outputs=frontier-no-code,pure-code-stdout,registry-descriptor,query-corpus
+cacheClaim=warm-provider
+#+end_example
+
+* Commands
+
+The measured flow used:
+
+#+begin_example
+asp rust search prime --view seeds .
+asp rust query --selector crates/agent-semantic-tree-sitter/src/query_syntax.rs --treesitter-query '(function_item name: (identifier) @function.name)' .
+asp rust query --selector crates/agent-semantic-tree-sitter/src/query_syntax.rs:91:95 --treesitter-query '(function_item name: (identifier) @function.name)' --code .
+asp rust query --from-hook direct-source-read --selector crates/agent-semantic-tree-sitter/src/query_syntax.rs:91:95 --code .
+#+end_example
+
+The repeated warm syntax-frontier probe used the same selector and pattern as the
+second command.
+
+* Observations
+
+- Root-wide inline syntax frontier was a miss for this repository, while the
+  repo-relative owner selector returned a non-miss frontier.
+- Package-local locators from owner item output are useful for item navigation,
+  but =--treesitter-query + --code= and hook recovery need the repo-relative
+  selector form for stable exact code output.
+- Exact selector code output and hook recovery both returned pure source stdout
+  of 255 bytes / 5 lines.  The source text is intentionally not copied into this
+  evidence document.
+- Warm-provider behavior was observed, but this is not a cache hit.  The Rust
+  lane remains paired with the TypeScript evidence record for benchmark review.
+- RFC 011 Rust and TypeScript evidence records have been reviewed together in
+  =docs/30-39-research/31.21-rfc011-native-projection-benchmark-review.org=.
+
+* Next
+
+- Keep cache hit and normalized-row replay claims out of RFC 011 until a receipt
+  or replay proof exists.
+- Feed the repo-relative selector requirement back into guide/read-plan wording
+  if repeated real flows show agents selecting package-local locators for hook
+  recovery.

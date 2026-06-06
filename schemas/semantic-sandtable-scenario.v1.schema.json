@@ -73,6 +73,13 @@
         "type": "string"
       }
     },
+    "skipUnlessEnv": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/envName"
+      }
+    },
     "budgets": {
       "$ref": "#/$defs/budgets"
     },
@@ -182,6 +189,9 @@
         "receiptPath": {
           "type": "string",
           "minLength": 1
+        },
+        "failureFrontierComparison": {
+          "$ref": "#/$defs/failureFrontierComparison"
         },
         "editBoundary": {
           "enum": ["before-edit", "after-search", "none", "unknown"]
@@ -370,6 +380,121 @@
         }
       }
     },
+    "failureFrontierComparison": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "expectedHotBlocks"
+      ],
+      "anyOf": [
+        {
+          "required": [
+            "baselineReceiptPath",
+            "candidateReceiptPath"
+          ]
+        },
+        {
+          "required": [
+            "baselineTracePath",
+            "candidateTracePath"
+          ]
+        }
+      ],
+      "properties": {
+        "baselineReceiptPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "candidateReceiptPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "baselineTracePath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "candidateTracePath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "baselineTraceSessionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "candidateTraceSessionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "traceLanguageId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "traceProviderId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "projectName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "projectSource": {
+          "enum": [
+            "checkout",
+            "registry",
+            "fixture",
+            "unknown"
+          ]
+        },
+        "intent": {
+          "type": "string",
+          "minLength": 1
+        },
+        "editBoundary": {
+          "enum": [
+            "before-edit",
+            "after-edit"
+          ]
+        },
+        "recordedAt": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expectedHotBlocks": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "thresholds": {
+          "$ref": "#/$defs/failureFrontierThresholds"
+        }
+      }
+    },
+    "failureFrontierThresholds": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "minCommandReduction": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "maxDirectSourceReadCode": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxDuplicateSelectors": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxSameFileWindowFanout": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
     "workdir": {
       "type": "object",
       "additionalProperties": false,
@@ -425,7 +550,11 @@
     "step": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "command"],
+      "required": ["id"],
+      "oneOf": [
+        {"required": ["command"], "not": {"required": ["agentCli"]}},
+        {"required": ["agentCli"], "not": {"required": ["command"]}}
+      ],
       "properties": {
         "id": {
           "type": "string",
@@ -440,7 +569,8 @@
             "performance",
             "security",
             "hook-replay",
-            "wrapper"
+            "wrapper",
+            "agent-cli"
           ]
         },
         "coverage": {
@@ -451,6 +581,9 @@
         },
         "command": {
           "$ref": "#/$defs/argv"
+        },
+        "agentCli": {
+          "$ref": "#/$defs/agentCli"
         },
         "stdin": {
           "type": "string"
@@ -477,6 +610,59 @@
         },
         "expect": {
           "$ref": "#/$defs/expect"
+        }
+      }
+    },
+    "agentCli": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["client", "binary", "prompt", "outputFormat"],
+      "properties": {
+        "client": {
+          "enum": ["claude"]
+        },
+        "binary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "prompt": {
+          "type": "string",
+          "minLength": 1
+        },
+        "outputFormat": {
+          "enum": ["text", "json", "stream-json"]
+        },
+        "inputFormat": {
+          "enum": ["text", "stream-json"]
+        },
+        "includePartialMessages": {
+          "type": "boolean"
+        },
+        "includeHookEvents": {
+          "type": "boolean"
+        },
+        "verbose": {
+          "type": "boolean"
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1
+        },
+        "env": {
+          "type": "object",
+          "propertyNames": {
+            "$ref": "#/$defs/envName"
+          },
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "requiredEnv": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/envName"
+          }
         }
       }
     },
@@ -613,6 +799,10 @@
       "items": {
         "type": "string"
       }
+    },
+    "envName": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]*$"
     },
     "coverageList": {
       "type": "array",

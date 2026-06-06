@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-graph-turbo-artifact-events.v1.schema.json",
+  "title": "Semantic Graph Turbo Artifact Events",
+  "description": "Schema-owned event stream consumed by graph-turbo timeline audits. Rust SQLite indexes can emit this packet so timeline analysis does not need to rescan artifact directories.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "artifactDir",
+    "source",
+    "events"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.graph-turbo-artifact-events"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "artifactDir": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source": {
+      "$ref": "#/$defs/source"
+    },
+    "events": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/event"
+      }
+    }
+  },
+  "$defs": {
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "dbPath"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "artifact-scan",
+            "rust-sqlite"
+          ]
+        },
+        "dbPath": {
+          "type": "string"
+        }
+      }
+    },
+    "event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "timestamp",
+        "kind",
+        "language",
+        "method",
+        "target",
+        "query",
+        "projectRoot",
+        "projectRootArg",
+        "path",
+        "bytes"
+      ],
+      "properties": {
+        "timestamp": {
+          "type": "number",
+          "minimum": 0
+        },
+        "kind": {
+          "enum": [
+            "command",
+            "prompt-output",
+            "query",
+            "search",
+            "search-output",
+            "tree-sitter-query"
+          ]
+        },
+        "language": {
+          "type": "string",
+          "minLength": 1
+        },
+        "method": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target": {
+          "type": "string"
+        },
+        "query": {
+          "type": "string"
+        },
+        "projectRoot": {
+          "type": "string"
+        },
+        "projectRootArg": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

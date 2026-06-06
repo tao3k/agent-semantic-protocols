@@ -79,6 +79,7 @@ fn builtin_manifests_include_document_language_providers() {
 
     assert_eq!(org.provider_id, "orgize");
     assert_eq!(org.binary, "asp");
+    assert_eq!(org.execution.as_str(), "embedded");
     assert!(org.source.default_extensions.contains(&".org".to_string()));
     assert_eq!(
         org.routes.query.as_ref().expect("org query route").argv,
@@ -121,6 +122,7 @@ fn builtin_manifests_include_document_language_providers() {
 
     assert_eq!(md.provider_id, "orgize");
     assert_eq!(md.binary, "asp");
+    assert_eq!(md.execution.as_str(), "embedded");
     assert!(md.source.default_extensions.contains(&".md".to_string()));
     assert_eq!(
         md.routes.query.as_ref().expect("md query route").argv,
@@ -217,6 +219,7 @@ fn asp_toml_can_disable_document_language_hook_activation() {
         .expect("md provider remains enabled");
     assert_eq!(md.provider_id, "orgize");
     assert_eq!(md.binary, "asp");
+    assert_eq!(md.execution.as_str(), "embedded");
     assert!(
         md.provider_command_prefix
             .first()

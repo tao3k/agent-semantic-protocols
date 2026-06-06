@@ -4,9 +4,9 @@ use std::fs;
 use std::path::{Component, Path};
 
 use agent_semantic_client_core::{
-    ByteCount, CacheManifestReport, CacheStatus, ClientCacheFileHash, ClientCacheManifest,
-    ClientCachePath, ClientDbStatus, ClientMethod, ClientReceipt, ClientRequest, ElapsedMillis,
-    NativeProvenance, ProviderRegistrySnapshot,
+    ByteCount, CacheExportMethod, CacheManifestReport, CacheStatus, ClientCacheFileHash,
+    ClientCacheManifest, ClientCachePath, ClientDbStatus, ClientMethod, ClientReceipt,
+    ClientRequest, ElapsedMillis, NativeProvenance, ProviderRegistrySnapshot, ResolvedProvider,
 };
 use agent_semantic_client_db::{
     ClientDb, ClientDbGenerationHit, ClientDbGenerationLookup, ClientDbReport,
@@ -18,7 +18,10 @@ use crate::cache_cli::request::{
 };
 use crate::cache_replay::{
     ProviderCacheReplay, load_replay_artifact, load_syntax_query_rows_replay,
+    search_fzf_generation_matches_request,
 };
+
+const FRESH_FZF_CANDIDATE_LIMIT: u32 = 20;
 
 pub(crate) struct ProviderCacheProbe {
     cache_report: CacheManifestReport,
@@ -86,6 +89,42 @@ pub(crate) fn provider_cache_probe(
             let provider = selected_provider?;
             let export_method = export_method.as_ref()?;
             if db_report.status != ClientDbStatus::Present
+                || !is_fresh_prime_reuse_request(request, export_method)
+            {
+                return None;
+            }
+            sqlite_read_count += 1;
+            load_fresh_prime_replay(
+                &db_path,
+                cache_root,
+                project_root,
+                provider,
+                export_method,
+                request,
+            )
+        })
+        .or_else(|| {
+            let provider = selected_provider?;
+            let export_method = export_method.as_ref()?;
+            if db_report.status != ClientDbStatus::Present
+                || !is_fresh_fzf_reuse_request(request, export_method)
+            {
+                return None;
+            }
+            sqlite_read_count += 1;
+            load_fresh_fzf_replay(
+                &db_path,
+                cache_root,
+                project_root,
+                provider,
+                export_method,
+                request,
+            )
+        })
+        .or_else(|| {
+            let provider = selected_provider?;
+            let export_method = export_method.as_ref()?;
+            if db_report.status != ClientDbStatus::Present
                 || export_method.as_str() != "query/tree-sitter"
             {
                 return None;
@@ -117,6 +156,98 @@ pub(crate) fn provider_cache_probe(
         sqlite_write_count: 0,
         replay,
     })
+}
+
+fn load_fresh_prime_replay(
+    db_path: &Path,
+    cache_root: &Path,
+    project_root: &Path,
+    provider: &ResolvedProvider,
+    export_method: &CacheExportMethod,
+    request: &ClientRequest,
+) -> Option<ProviderCacheReplay> {
+    let hit = ClientDb::lookup_generation(&ClientDbGenerationLookup {
+        db_path: db_path.to_path_buf(),
+        language_id: provider.language_id.clone(),
+        provider_id: provider.provider_id.clone(),
+        project_root: project_root.to_path_buf(),
+        export_method: export_method.clone(),
+        request_fingerprint: None,
+    })
+    .ok()
+    .flatten()?;
+    if generation_file_hashes_match(project_root, &hit) {
+        load_replay_artifact(cache_root, &hit, request)
+    } else {
+        None
+    }
+}
+
+fn load_fresh_fzf_replay(
+    db_path: &Path,
+    cache_root: &Path,
+    project_root: &Path,
+    provider: &ResolvedProvider,
+    export_method: &CacheExportMethod,
+    request: &ClientRequest,
+) -> Option<ProviderCacheReplay> {
+    let hits = ClientDb::lookup_recent_generations(
+        &ClientDbGenerationLookup {
+            db_path: db_path.to_path_buf(),
+            language_id: provider.language_id.clone(),
+            provider_id: provider.provider_id.clone(),
+            project_root: project_root.to_path_buf(),
+            export_method: export_method.clone(),
+            request_fingerprint: None,
+        },
+        FRESH_FZF_CANDIDATE_LIMIT,
+    )
+    .ok()?;
+    for hit in hits {
+        if generation_file_hashes_match(project_root, &hit)
+            && search_fzf_generation_matches_request(cache_root, &hit, request).is_some()
+        {
+            return load_replay_artifact(cache_root, &hit, request);
+        }
+    }
+    None
+}
+
+fn is_fresh_prime_reuse_request(
+    request: &ClientRequest,
+    export_method: &CacheExportMethod,
+) -> bool {
+    request.method == ClientMethod::Search
+        && export_method.as_str() == "search/prime"
+        && request
+            .forwarded_args
+            .first()
+            .is_some_and(|arg| arg == "prime")
+        && request_wants_seed_view(&request.forwarded_args)
+        && !request
+            .forwarded_args
+            .iter()
+            .any(|arg| arg == "--json" || arg == "--code")
+}
+
+fn is_fresh_fzf_reuse_request(request: &ClientRequest, export_method: &CacheExportMethod) -> bool {
+    request.method == ClientMethod::Search
+        && export_method.as_str() == "search/fzf"
+        && request
+            .forwarded_args
+            .first()
+            .is_some_and(|arg| arg == "fzf")
+        && request_wants_seed_view(&request.forwarded_args)
+        && !request
+            .forwarded_args
+            .iter()
+            .any(|arg| arg == "--json" || arg == "--code")
+}
+
+fn request_wants_seed_view(args: &[String]) -> bool {
+    args.windows(2)
+        .any(|window| window[0] == "--view" && window[1] == "seeds")
+        || args.iter().any(|arg| arg == "--view=seeds")
 }
 
 pub(crate) fn generation_file_hashes_match(

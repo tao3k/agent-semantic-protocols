@@ -1,27 +1,22 @@
-//! Project-local runtime profiles for activated language providers.
+//! Runtime provider command profiles derived from activation.
 
 use crate::executable::{ExecutableStatus, is_executable_file, resolve_executable_with_status};
 use crate::parse_activation;
 use crate::protocol_activation::{ActivatedProvider, HookActivation, HookRuntime};
 use crate::provider_manifest::provider_manifests;
-use agent_semantic_runtime::{
-    default_runtime_profiles_path as runtime_default_runtime_profiles_path,
-    runtime_profiles_path_from_cache_home as runtime_profiles_path_from_cache_home_dir,
-};
 use serde::{Deserialize, Serialize};
-use std::fs;
 use std::path::{Path, PathBuf};
 
-/// Schema id for runtime profile files.
+/// Schema id for runtime provider profiles.
 pub const RUNTIME_PROFILES_SCHEMA_ID: &str = "agent.semantic-protocols.runtime.profiles";
-/// Schema version for runtime profile files.
+/// Schema version for runtime provider profiles.
 pub const RUNTIME_PROFILES_SCHEMA_VERSION: &str = "1";
-/// Protocol id for project-local ASP runtime profiles.
+/// Protocol id for activation-derived ASP runtime profiles.
 pub const RUNTIME_PROFILES_PROTOCOL_ID: &str = "agent.semantic-protocols.runtime";
-/// Protocol version for project-local ASP runtime profiles.
+/// Protocol version for activation-derived ASP runtime profiles.
 pub const RUNTIME_PROFILES_PROTOCOL_VERSION: &str = "1";
 
-/// Runtime profile registry generated for an activated project.
+/// Runtime profile registry derived from an activated project.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RuntimeProfiles {
@@ -37,7 +32,7 @@ pub struct RuntimeProfiles {
     pub providers: Vec<RuntimeProviderProfile>,
 }
 
-/// Runtime and version that generated a runtime profile file.
+/// Runtime and version that generated runtime provider profiles.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RuntimeProfilesGeneratedBy {
@@ -57,6 +52,8 @@ pub struct RuntimeProviderProfile {
     pub language_id: String,
     pub provider_id: String,
     pub binary: String,
+    #[serde(default)]
+    pub execution: crate::protocol_activation::ProviderExecution,
     #[serde(default)]
     pub provider_command_prefix: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -99,31 +96,6 @@ impl From<ExecutableStatus> for RuntimeProviderHealthStatus {
     }
 }
 
-/// Resolve the default runtime profiles path for a project root.
-pub fn default_runtime_profiles_path(project_root: impl AsRef<Path>) -> Result<PathBuf, String> {
-    runtime_default_runtime_profiles_path(project_root)
-}
-
-/// Resolve the runtime profiles path below a known state cache home.
-pub fn runtime_profiles_path_from_cache_home(cache_home: impl AsRef<Path>) -> PathBuf {
-    runtime_profiles_path_from_cache_home_dir(cache_home)
-}
-
-/// Resolve the runtime profiles path beside an activation file.
-pub fn runtime_profiles_path_for_activation(activation_path: &Path) -> PathBuf {
-    if is_generated_activation_path(activation_path) {
-        return runtime_profiles_path_from_cache_home(
-            activation_storage_root(activation_path).join(".cache"),
-        );
-    }
-    runtime_profiles_path_from_cache_home(
-        activation_path
-            .parent()
-            .unwrap_or_else(|| Path::new("."))
-            .join(".cache"),
-    )
-}
-
 /// Resolve the project root recorded by an activation path and activation file.
 pub fn runtime_project_root_for_activation(
     activation_path: &Path,
@@ -142,39 +114,8 @@ pub fn runtime_project_root_for_activation(
         .join(project_root)
 }
 
-/// Load and validate a runtime profiles file.
-pub fn load_runtime_profiles(path: &Path) -> Result<RuntimeProfiles, String> {
-    let contents = fs::read_to_string(path).map_err(|error| {
-        format!(
-            "failed to read runtime profiles {}: {error}",
-            path.display()
-        )
-    })?;
-    let profiles: RuntimeProfiles = serde_json::from_str(&contents)
-        .map_err(|error| format!("invalid runtime profiles JSON {}: {error}", path.display()))?;
-    validate_runtime_profiles_protocol(&profiles)?;
-    Ok(profiles)
-}
-
-/// Load an existing profile file or refresh it when provider commands drift.
-pub fn load_or_refresh_runtime_profiles(
-    path: &Path,
-    project_root: &Path,
-    runtime: &HookRuntime,
-) -> Result<RuntimeProfiles, String> {
-    if let Ok(profiles) = load_runtime_profiles(path)
-        && profiles_match_project_root(&profiles, project_root)
-        && profiles_match_runtime(&profiles, runtime)
-        && profiles_have_usable_commands(&profiles, runtime)
-    {
-        return Ok(profiles);
-    }
-    write_runtime_profiles_for_runtime(path, project_root, runtime)
-}
-
-/// Write runtime profiles from an activation file model.
-pub fn write_runtime_profiles_for_activation(
-    path: &Path,
+/// Build runtime profiles from an activation file model.
+pub fn runtime_profiles_for_activation(
     project_root: &Path,
     activation: &HookActivation,
 ) -> Result<RuntimeProfiles, String> {
@@ -182,31 +123,14 @@ pub fn write_runtime_profiles_for_activation(
         .map_err(|error| format!("failed to serialize activation for runtime profiles: {error}"))?;
     let runtime = parse_activation(&contents, &provider_manifests())
         .map_err(|error| format!("failed to resolve activation for runtime profiles: {error:?}"))?;
-    write_runtime_profiles_for_runtime(path, project_root, &runtime)
+    Ok(runtime_profiles_for_runtime(project_root, &runtime))
 }
 
-/// Write runtime profiles for a parsed hook runtime.
-pub fn write_runtime_profiles_for_runtime(
-    path: &Path,
-    project_root: &Path,
-    runtime: &HookRuntime,
-) -> Result<RuntimeProfiles, String> {
-    let runtime_home = path.parent().unwrap_or_else(|| Path::new("."));
-    let profiles = build_runtime_profiles(project_root, runtime_home, runtime);
-    write_runtime_profiles(path, &profiles)?;
-    Ok(profiles)
-}
-
-/// Serialize runtime profiles to disk.
-pub fn write_runtime_profiles(path: &Path, profiles: &RuntimeProfiles) -> Result<(), String> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
-    }
-    let output = serde_json::to_string_pretty(profiles)
-        .map_err(|error| format!("failed to serialize runtime profiles: {error}"))?;
-    fs::write(path, format!("{}\n", output.trim_end()))
-        .map_err(|error| format!("failed to write {}: {error}", path.display()))
+/// Build runtime profiles for a parsed hook runtime.
+#[must_use]
+pub fn runtime_profiles_for_runtime(project_root: &Path, runtime: &HookRuntime) -> RuntimeProfiles {
+    let runtime_home = project_root;
+    build_runtime_profiles(project_root, runtime_home, runtime)
 }
 
 /// Return the stored executable argv for an available provider profile.
@@ -264,7 +188,7 @@ fn runtime_provider_profile_for_provider(
     let project_bin = project_root.join(".bin").join(&provider.binary);
     let binary_resolution = if is_executable_file(&project_bin) {
         crate::executable::ExecutableResolution {
-            path: Some(fs::canonicalize(&project_bin).unwrap_or(project_bin)),
+            path: Some(std::fs::canonicalize(&project_bin).unwrap_or(project_bin)),
             status: ExecutableStatus::Available,
             reason: None,
         }
@@ -291,6 +215,7 @@ fn runtime_provider_profile_for_provider(
         language_id: provider.language_id.clone(),
         provider_id: provider.provider_id.clone(),
         binary: provider.binary.clone(),
+        execution: provider.execution,
         provider_command_prefix: provider.provider_command_prefix.clone(),
         resolved_binary,
         argv: command.argv,
@@ -347,69 +272,6 @@ fn runtime_provider_command(
         status: Some(RuntimeProviderHealthStatus::Available),
         reason: None,
     }
-}
-
-fn validate_runtime_profiles_protocol(profiles: &RuntimeProfiles) -> Result<(), String> {
-    expect_field("schemaId", &profiles.schema_id, RUNTIME_PROFILES_SCHEMA_ID)?;
-    expect_field(
-        "schemaVersion",
-        &profiles.schema_version,
-        RUNTIME_PROFILES_SCHEMA_VERSION,
-    )?;
-    expect_field(
-        "protocolId",
-        &profiles.protocol_id,
-        RUNTIME_PROFILES_PROTOCOL_ID,
-    )?;
-    expect_field(
-        "protocolVersion",
-        &profiles.protocol_version,
-        RUNTIME_PROFILES_PROTOCOL_VERSION,
-    )?;
-    if profiles.generated_by.runtime != "asp" {
-        return Err(format!(
-            "invalid runtime profile generatedBy.runtime: expected asp, got {}",
-            profiles.generated_by.runtime
-        ));
-    }
-    Ok(())
-}
-
-fn expect_field(name: &str, actual: &str, expected: &str) -> Result<(), String> {
-    if actual == expected {
-        Ok(())
-    } else {
-        Err(format!(
-            "invalid runtime profile {name}: expected {expected}, got {actual}"
-        ))
-    }
-}
-
-fn profiles_match_runtime(profiles: &RuntimeProfiles, runtime: &HookRuntime) -> bool {
-    runtime.providers.iter().all(|provider| {
-        runtime_provider_profile(profiles, provider).is_some_and(|profile| {
-            profile.manifest_digest == provider.manifest_digest
-                && profile.provider_command_prefix == provider.provider_command_prefix
-        })
-    })
-}
-
-fn profiles_match_project_root(profiles: &RuntimeProfiles, project_root: &Path) -> bool {
-    paths_match(Path::new(&profiles.project_root), project_root)
-}
-
-fn paths_match(left: &Path, right: &Path) -> bool {
-    match (fs::canonicalize(left), fs::canonicalize(right)) {
-        (Ok(left), Ok(right)) => left == right,
-        _ => left == right,
-    }
-}
-
-fn profiles_have_usable_commands(profiles: &RuntimeProfiles, runtime: &HookRuntime) -> bool {
-    runtime
-        .providers
-        .iter()
-        .all(|provider| runtime_profile_command_argv(profiles, provider).is_some())
 }
 
 fn runtime_provider_profile<'a>(

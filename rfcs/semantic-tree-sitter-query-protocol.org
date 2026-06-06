@@ -2,12 +2,13 @@
 #+AUTHOR: agent-semantic-protocols
 #+DATE: 2026-06-04
 #+RFC: 011
-#+STATUS: draft
+#+STATUS: native-projection-v1-closure
 #+DEPENDS: rfcs/cli-first-harness-ux.org (005), rfcs/agent-compact-graph-feature.org (006), rfcs/agent-semantic-client-backend-protocol.org (008), rfcs/semantic-query-projection-protocol.org (010)
 #+SEE_ALSO: schemas/semantic-native-syntax-fact-index.v1.schema.json
 #+SEE_ALSO: schemas/semantic-search-packet.v1.schema.json
 #+SEE_ALSO: schemas/semantic-query-packet.v1.schema.json
 #+SEE_ALSO: schemas/semantic-read-packet.v1.schema.json
+#+SEE_ALSO: rfcs/asp-native-relation-flow-codeql.org (012)
 
 * One-sentence summary
 
@@ -302,6 +303,11 @@ database before basic syntax query continues to work.
 
 Compact contract: =flow-lite= local source/sink/path frontier.
 
+Provider registry descriptors may advertise supported engines through
+=executionBackends=.  Current Rust query descriptors should declare
+=native-parser= and must not advertise =codeql= until an actual CodeQL-backed
+executor exists.
+
 ** Adapter mode
 
 =adapterMode= records how the provider produced the packet:
@@ -428,8 +434,10 @@ unsupported-pattern response, not a fallback to another protocol.
 
 The shared syntax ABI should be configurable through tree-sitter-style query
 catalogs.  Catalog files use the familiar =.scm= extension used by tree-sitter
-query ecosystems; =.scheme= may be accepted as a compatibility spelling, but
-=.scm= is the canonical repository convention.
+query ecosystems.  =.scm= is the only repository and registry catalog filename
+extension for this ABI.  Scheme-like S-expression query text is an accepted
+input form when a provider advertises =queryInputForms=s-expression=, but
+=.scheme= catalog filenames are not a compatibility surface.
 
 Recommended layout:
 
@@ -818,6 +826,52 @@ Providers must not synthesize fake symbols such as =local-window=.  If no native
 symbol exists, use a window frontier with a syntax capture or a mechanical range
 split marked as such.
 
+* Acceptance matrix
+
+This matrix is the release boundary for RFC 011.  A provider or guide may only
+advertise the =v1 accepted= behaviors by default.  The =v2/deferred= behaviors
+require a schema, registry descriptor, provider implementation, corpus/fixture
+coverage, and sandtable or real-project evidence before they can appear in
+default guide output.
+
+| Capability | V1 accepted | V2/deferred |
+|------------+-------------+-------------|
+| Public command surface | =asp <language> query= with =--treesitter-query=, catalog id, selector, and =--code= modes | New public families such as =ts-query=, =syntax-query=, or raw provider query surfaces |
+| Runtime dependency | Native provider projection without grammar-specific tree-sitter runtime crates | Complete tree-sitter runtime compatibility claims for every provider |
+| Query plan | ASP-compiled flat plan facts: captures, node types, fields, predicates, selector, catalog/profile fingerprints | ASP-compiled pattern graph with nested children, optional children, anchors, alternation, quantifiers, and directives |
+| Match row | Single-capture rows that can locate an enclosing item or syntax frontier | Multi-capture match rows with capture-to-capture predicates and native relation groups |
+| Predicate ABI | Structured =eq=, =any-eq=, =any-of=, =match=, =any-match=, =not-eq=, and =not-match= operands | Full tree-sitter predicate/directive compatibility, including cross-capture text semantics beyond validated multi-capture rows |
+| Field semantics | Field names as capture metadata and native projection hints | Fields as required structural selectors over native parser AST/compiler shapes |
+| Output | Non-=--code= locator/frontier only; =--code= pure source after exact selector or unique match | Broad multi-match code dumps, inline source in search/read-plan, cache/debug ids in default output |
+| Provenance | =sourceAuthority=, =adapterMode=, =compatibilityLevel=, grammar/profile/catalog/cache refs | Treating syntax-only captures as type, owner, dependency, policy, or edit-safety proof |
+| Cache | Replay validated artifacts or normalized rows keyed by AST/ABI, selector identity, grammar/profile/catalog, and file freshness | Deriving semantic facts from rendered stdout, raw source inference, basename matching, or stale unrelated generations |
+| Corpus | Provider-local query corpus for ASP capture precision plus upstream corpus citations | Duplicating upstream parser grammar tests or requiring upstream corpus files at runtime |
+
+** Promotion rule
+
+A deferred behavior moves into v1 only after the contract stack changes in this
+order:
+
+#+begin_example
+RFC -> shared schema -> registry descriptor -> provider projection ->
+provider tests -> sandtable/real evidence -> guide output
+#+end_example
+
+Until that stack lands, docs and guides must say =unsupported-pattern=,
+=approximate=, or =native-only= rather than teaching agents to rely on a
+stronger tree-sitter behavior.
+
+** Explicit non-goals for v1
+
+- Full tree-sitter runtime parity across all providers.
+- Grammar-specific runtime crates in language harnesses solely for this ABI.
+- Edit-safety decisions from tree-sitter captures alone.
+- Type, dependency, cfg, macro expansion, or test reachability facts inferred
+  from syntax-only nodes.
+- Source-dump search output as a convenience for syntax queries.
+- Cross-provider query behavior that depends on provider package source files
+  being installed downstream.
+
 * Language rollout plan
 
 ** Phase 0: RFC and schema
@@ -894,7 +948,7 @@ CLI startup when validated captures and native fact refs are fresh.
 ** Phase 5: Julia provider
 
 1. Align Julia on the =asp julia= facade backed by compiled
-   =aslp-julia-harness= and cacheable runtime profiles.
+   =asp-julia-harness= and cacheable runtime profiles.
 2. Add Julia =tree-sitter/tree-sitter-julia/queries/*.scm= compatible catalogs
    where the grammar profile has stable names.
 3. Export JuliaSyntax-owned captures and native fact refs for cache import.
@@ -937,7 +991,7 @@ Provider registry descriptors should advertise:
     "queryCatalogs": [
       {
         "id": "typescript.declarations",
-        "path": "tree-sitter/tree-sitter-typescript/declarations.scm",
+        "path": "tree-sitter/tree-sitter-typescript/queries/declarations.scm",
         "sourceDelivery": "provider-binary-embedded",
         "captures": ["function.name", "class.name", "interface.name"]
       }
@@ -952,6 +1006,51 @@ The descriptor must describe which input forms the same =query= surface accepts.
 A provider can support selector and code-shaped input before it accepts arbitrary
 S-expression source, but it must not expose that as a separate agent-facing
 command.
+
+** Registry conformance contract
+
+Registry descriptor is the only provider syntax capability advertisement source.
+Guide text and README examples are secondary views and must not claim more than
+the descriptor claims.
+
+Required descriptor fields for RFC 011 syntax query support:
+
+| Field | Required meaning |
+|-------+------------------|
+| =method= | Must be =query=.  Syntax query is not a new command family. |
+| =packetSchemas= | Must include =semantic-tree-sitter-query.v1= before the provider emits that packet. |
+| =queryInputForms= | Names accepted input forms: =selector=, =code-shaped=, =catalog-id=, =s-expression=. |
+| =queryCatalogs= | Lists registry-owned catalog ids, capture names, canonical paths, source delivery, and fingerprints. |
+| =grammarId= | Names the tree-sitter grammar profile vocabulary such as =tree-sitter-rust=. |
+| =grammarProfileVersion= | Names the provider grammar profile version used in packet/cache provenance. |
+| =adapterModes= | Names supported projection modes such as =native-projection= or =cached-replay=. |
+| =sourceAuthorities= | Names what can prove a packet, such as =native-parser-adapter= or =cached-provider-export=. |
+| =executionBackends= | Names execution engines such as =native-parser=, =cached-replay=, or =codeql=. |
+| =renderProfiles= | Names prompt render contracts such as =compact-graph-frontier=, =corpus-locator=, or =flow-lite-frontier=. |
+| =cacheReplay= | States whether ASP may replay validated packets or normalized rows without starting the provider. |
+| =unsupportedPatternBehavior= | Must be =diagnostic= or =empty-frontier=; it must not silently fall back to raw search. |
+
+Descriptor consistency rules:
+
+1. =queryInputForms=s-expression= requires a deterministic ASP-compiled plan
+   path and an unsupported-pattern response for grammar shapes outside the
+   profile.
+2. =adapterModes=tree-sitter-runtime= requires =executionBackends= to include
+   =tree-sitter-runtime= and packet =sourceAuthority= to record runtime proof.
+3. =adapterModes=codeql-query= requires =executionBackends=codeql= and the RFC
+   012 promotion gates before guide output advertises the lane.
+4. =cacheReplay=true= requires cache keys to include the query AST/ABI,
+   selector identity, grammar/profile/catalog fingerprint, execution backend,
+   and file freshness.
+5. =renderProfiles=compact-graph-frontier= may be Rust-only at first; other
+   providers may use =corpus-locator= while sharing the same packet/schema
+   contract.
+6. Guide output must derive syntax route availability from the descriptor:
+   if =s-expression= is absent, =query guide treesitter .= may show catalog
+   templates and explain that arbitrary S-expression input is not available.
+7. Registry descriptor examples must not include provider package source paths
+   as downstream runtime requirements.
+   Catalog delivery: provider/ASP binary embedding or provider exports.
 
 * Validation
 
@@ -990,6 +1089,326 @@ Real-project evidence:
 - read-plan repeated range scan reduction
 - confusing next actions after compact render
 
+* RFC closure gates
+
+RFC 011 is closed for the native-projection v1 lane only when these gates pass.
+These gates are intentionally narrower than the full language rollout plan: they
+prove the shared syntax ABI, prompt output contract, and provider advertisement
+rules before richer v2 projection layers move into default guide output.
+
+** Schema and docs gates
+
+1. =semantic-tree-sitter-query.v1= validates native-projection, hybrid,
+   tree-sitter-runtime, codeql-query, cached-replay, exact, approximate,
+   native-only, and tree-only packet examples.
+2. =semantic-tree-sitter-provenance.v1= remains the shared base for
+   search/query/read syntax refs; no packet envelope redefines those refs in
+   provider-private shapes.
+3. =schemas/README.md= names the current v1 implementation boundary as
+   tree-sitter-compatible native projection and names pattern graph,
+   multi-capture match rows, and field structural selectors as next-layer
+   capabilities.
+4. Active RFCs, generated skills, and provider guides do not advertise retired
+   syntax command families such as =ts-query= or =syntax-query=.
+
+** Provider advertisement gates
+
+1. Provider registry descriptors for =query= list emitted packet schemas,
+   =queryInputForms=, =grammarId=, =grammarProfileVersion=,
+   =queryCatalogs=, =adapterModes=, =sourceAuthorities=, and
+   =executionBackends=.
+2. A provider may list =native-parser= in =executionBackends= only when it can
+   execute the ASP-compiled plan through native parser/compiler facts.
+3. A provider may list =tree-sitter-runtime= only when a real tree-sitter
+   runtime proves the pattern and the packet records that backend honestly.
+4. A provider may list =codeql= only when a real CodeQL-backed executor emits
+   the advertised frontier packet.  RFC 012 owns the native relation catalog,
+   flow-lite packet plan, artifact policy, and CodeQL promotion gates; RFC 011
+   only carries the shared backend/projection vocabulary.
+5. Providers must not promote =pattern graph=, =multi-capture=, or
+   =field structural selector= support in guide output until the descriptor and
+   tests name those capabilities explicitly.
+
+** Prompt and cache gates
+
+1. =asp <language> query --treesitter-query <pattern> .= prints locator/frontier
+   output by default.
+   Prompt-noise ban: without source windows, cache ids, SQLite paths, receipt JSON, or artifact ids.
+2. =asp <language> query --selector <exact> --treesitter-query <pattern> --code .=
+   prints pure source code and rejects broad multi-match code extraction unless
+   the provider can prove a unique match.
+3. Search and read-plan outputs may attach =syn= anchors, but they must not
+   inline code or treat syntax-only captures as edit-safety evidence.
+4. Cache replay uses validated packets or normalized rows.
+   Cache replay key: query AST/ABI, selector identity, grammar/profile/catalog fingerprint, execution backend, and file freshness.
+   It must not derive facts from raw source, rendered stdout, basename
+   matching, or stale unrelated generations.
+
+** Evidence gates
+
+1. Rust passes the reference native-projection corpus and stdout contract gates.
+2. TypeScript and Python pass the shared stdout contract gate before their
+   guide output advertises the syntax locate/code flow as generally available.
+3. Julia passes the cacheable runtime-profile/export gate before ASP claims it
+   can replay repeated syntax queries without starting Julia.
+4. At least one real-project benchmark records command count, provider process
+   count, cold/warm latency, packet bytes, cache hit rate, and repeated range
+   scan reduction before cache benefits are used in marketing or guide text.
+
+* Provider conformance lanes
+
+Each provider adopts RFC 011 through one explicit lane.  A lane is a public
+claim about what the provider can execute and what the =asp <language>= facade
+may advertise.  Registry descriptors, provider guide output, query corpus
+fixtures, and sandtable evidence must agree on the same lane.
+
+** Lane R: Rust reference native projection
+
+Rust is the reference lane for =native-projection= because it already has
+provider-owned native parser facts and compact graph integration.
+
+Required claims:
+
+#+begin_example
+languageId=rust
+providerId=rs-harness
+executionBackends=native-parser
+adapterModes=native-projection
+sourceAuthorities=native-parser-adapter,native-parser
+renderProfile=compact-graph-frontier
+queryInputForms=selector,code-shaped,catalog-id,s-expression
+#+end_example
+
+Required gates:
+
+- Rust query catalogs live under =tree-sitter/tree-sitter-rust/queries/*.scm=.
+- =grammar-profile.json= maps native facts to tree-sitter-compatible captures
+  and records the ASP contract fingerprint.
+- Query corpus fixtures cover declarations, calls, imports, macros, cfg, and
+  selected tests without duplicating upstream grammar parser tests.
+- =tools/validate-language-tree-sitter-runtime-boundary.sh= proves the Rust
+  provider does not require a grammar-specific tree-sitter runtime package for
+  this lane.
+- =tools/validate-tree-sitter-frontier-code-contract.sh= proves non-=--code=
+  locator/frontier output and pure =--code= output.
+
+Rust may advertise =s-expression= support only for patterns mapped by the ASP
+compiled plan and grammar profile.  Unsupported pattern graph, multi-capture,
+or field-structural patterns remain =unsupported-pattern= until v2 gates land.
+
+** Lane T: TypeScript compiler projection
+
+TypeScript proves the compiler/native-parser value of the ABI.  Its authority
+is the TypeScript Compiler API, =tsconfig=, and project references, not a
+tree-sitter runtime.
+
+Required claims:
+
+#+begin_example
+languageId=typescript
+providerId=ts-harness
+executionBackends=native-parser
+adapterModes=native-projection
+sourceAuthorities=native-parser-adapter,native-parser
+renderProfile=corpus-locator
+queryInputForms=selector,code-shaped,catalog-id
+#+end_example
+
+Required gates:
+
+- Catalogs live under
+  =tree-sitter/tree-sitter-typescript/queries/*.scm= and are embedded or
+  exported through the provider/ASP release channel.
+- Grammar profile maps declarations, imports, exports, calls, classes,
+  interfaces, type aliases, and type-only facts into capture names.
+- Cache and receipt digests include =tsconfig= and project-reference inputs
+  that affect native compiler facts.
+- The provider may add =s-expression= to =queryInputForms= only after the
+  grammar profile can reject unsupported patterns deterministically.
+- The shared stdout contract gate proves corpus-locator output without source
+  windows, cache noise, or JSON in default mode.
+
+** Lane P: Python AST/token projection
+
+Python proves indentation-sensitive native projection.  Its authority is
+=ast=, =tokenize=, and =symtable=, with native fields preserving decorators,
+block ownership, and indentation-sensitive ranges.
+
+Required claims:
+
+#+begin_example
+languageId=python
+providerId=py-harness
+executionBackends=native-parser
+adapterModes=native-projection
+sourceAuthorities=native-parser-adapter,native-parser
+renderProfile=corpus-locator
+queryInputForms=selector,code-shaped,catalog-id
+#+end_example
+
+Required gates:
+
+- Catalogs live under =tree-sitter/tree-sitter-python/queries/*.scm=.
+- Query corpus fixtures cover functions, classes, decorators, imports, calls,
+  with/match blocks, and indentation-sensitive ownership.
+- Wide direct-source-read recovery returns read-plan or syntax frontier refs,
+  not inline code.
+- The provider must not claim edit safety from AST shape alone; edit safety
+  stays tied to native parser evidence plus patch-verification receipts.
+
+** Lane J: JuliaSyntax export and cache replay
+
+Julia is the cache-payoff lane.  Its native authority is JuliaSyntax plus
+workspace-managed project/module/include context.  The public claim is not
+that ASP understands Julia semantics; the claim is that ASP can replay
+validated Julia exports when fresh.
+
+Required claims:
+
+#+begin_example
+languageId=julia
+providerId=julia-lang-project-harness
+executionBackends=native-parser,cached-replay
+adapterModes=native-projection,cached-replay
+sourceAuthorities=native-parser-adapter,cached-provider-export
+renderProfile=corpus-locator
+queryInputForms=selector,code-shaped,catalog-id
+#+end_example
+
+Required gates:
+
+- Catalogs live under =tree-sitter/tree-sitter-julia/queries/*.scm= when the
+  grammar profile has stable names.
+- Provider exports carry JuliaSyntax-owned captures and native fact refs.
+- ASP cache replay proves repeated syntax queries can render from fresh
+  validated exports without starting Julia.
+- Module, include, macro, and package-environment facts remain native fields or
+  native fact refs; they must not be flattened into syntax-only captures.
+
+** Lane Q: CodeQL or flow-lite semantic backend
+
+CodeQL and =flow-lite= are semantic backend lanes above the syntax ABI.  They
+do not change the public query command family and do not make CodeQL required
+for syntax locate/code.
+
+Required claims:
+
+#+begin_example
+executionBackends=codeql
+adapterModes=codeql-query
+sourceAuthorities=codeql
+renderProfile=flow-lite-frontier
+queryInputForms=catalog-id
+#+end_example
+
+Required gates:
+
+- RFC 012 defines the native relation catalog, flow-lite packet plan, artifact
+  policy, and CodeQL promotion gates before provider guides advertise this
+  lane.
+- Registry descriptors list =codeql= only when a real executor can produce the
+  advertised local source/sink/path frontier.
+- Default syntax guides keep =native-parser= lanes available without requiring
+  a CodeQL database.
+- Flow/path results must reference syntax captures or native fact refs where
+  useful, but they must not pretend to be tree-sitter runtime matches.
+
+** Lane promotion record
+
+Every lane promotion should leave a compact record in docs or release notes:
+
+#+begin_example
+[syntax-lane] language=<id> provider=<id> lane=<R|T|P|J|Q>
+adapterModes=...
+executionBackends=...
+queryInputForms=...
+renderProfile=...
+gates=schema,registry,provider-tests,stdout-contract,sandtable,real-evidence
+#+end_example
+
+The promotion record is not a new packet schema.  It is a review artifact that
+keeps RFC, registry, provider tests, guide output, and real evidence aligned.
+
+Current native-projection v1 lane records:
+
+#+begin_example
+[syntax-lane] language=rust provider=rs-harness lane=R
+adapterModes=native-projection
+executionBackends=native-parser
+queryInputForms=selector,code-shaped,catalog-id,s-expression
+renderProfile=compact-graph-frontier
+gates=schema,registry,provider-tests,stdout-contract,query-corpus
+evidence=docs/30-39-research/31.19-rfc011-rust-syntax-real-evidence.org
+review=docs/30-39-research/31.21-rfc011-native-projection-benchmark-review.org
+status=native-projection-v1-reviewed
+
+[syntax-lane] language=typescript provider=ts-harness lane=T
+adapterModes=native-projection
+executionBackends=native-parser
+queryInputForms=selector,code-shaped,catalog-id
+renderProfile=corpus-locator
+gates=schema,registry,provider-tests,stdout-contract,query-corpus
+evidence=docs/30-39-research/31.20-rfc011-typescript-syntax-real-evidence.org
+review=docs/30-39-research/31.21-rfc011-native-projection-benchmark-review.org
+status=native-projection-v1-reviewed
+
+[syntax-lane] language=python provider=py-harness lane=P
+adapterModes=native-projection
+executionBackends=native-parser
+queryInputForms=selector,code-shaped,catalog-id
+renderProfile=corpus-locator
+gates=schema,registry,provider-tests,stdout-contract,query-corpus
+pending=real-project-benchmark
+#+end_example
+
+These records intentionally do not claim cache replay speedup, Julia cache
+payoff, arbitrary S-expression support for TypeScript/Python, or CodeQL backend
+execution.  Those remain separate promotion records after their gates land.
+The Rust and TypeScript real-project evidence records are
+=docs/30-39-research/31.19-rfc011-rust-syntax-real-evidence.org= and
+=docs/30-39-research/31.20-rfc011-typescript-syntax-real-evidence.org=.  The
+benchmark review is
+=docs/30-39-research/31.21-rfc011-native-projection-benchmark-review.org=.  Rust
+and TypeScript are =status=native-projection-v1-reviewed=.  Python still keeps
+=pending=real-project-benchmark=.
+
+** Native-projection v1 real-project evidence gate
+
+The =pending=real-project-benchmark= marker is removed only after at least one
+representative Rust workspace and one representative TypeScript workspace record
+the syntax query flow through the public =asp <language>= facade.  The benchmark
+is not a micro-benchmark of parser internals; it is an agent workflow evidence
+record for discovery, syntax location, exact code extraction, and hook recovery.
+
+Required evidence record:
+
+#+begin_example
+[syntax-real-evidence] language=<id> provider=<id> project=<name>
+commands=search-prime,syntax-frontier,exact-selector-code,hook-recovery
+metrics=commandCount=<n>,providerProcessCount=<n>,packetBytes=<n>,coldElapsedMs=<n>,warmElapsedMs=<n>
+metrics=syntaxQueryCount=<n>,exactCodeCount=<n>,manualRangeScanCount=<n>,repeatedTriggerReduction=<n>
+outputs=frontier-no-code,pure-code-stdout,registry-descriptor,query-corpus
+cacheClaim=none|warm-provider|hit
+#+end_example
+
+=tools/record-syntax-real-evidence.py= renders this record after the measurements
+are collected.  It is a review helper, not a packet schema and not a benchmark
+runner: the caller supplies measured counts and elapsed times from the real
+workflow.  It rejects =cacheClaim=hit= unless a cache receipt or normalized-row
+replay proof is supplied.
+
+Evidence rules:
+
+1. Search/read-plan recovery remain discovery surfaces, and =search prime= remains a discovery surface; all of them
+   must not inline source code.
+2. =query --treesitter-query= without =--code= must render locator/frontier
+   evidence, not artifact ids, SQLite paths, receipt JSON, or raw source windows.
+3. =query --selector <exact> --treesitter-query <pattern> --code= must print only source text for the selected exact or unique match.
+4. Cache speedup may be claimed only when the receipt reports =cacheClaim=hit= or
+   a validated normalized-row replay path.  =warm-provider= is not a cache hit.
+5. Julia cache payoff and CodeQL backend execution remain out of scope for this
+   native-projection v1 evidence gate.
+
 * Non-goals
 
 - Do not require every provider to link tree-sitter.
@@ -1003,18 +1422,27 @@ Real-project evidence:
 - Do not claim edit safety from syntax captures without native parser,
   fingerprint, and patch-verification evidence.
 
-* Open decisions
+* Resolved decisions for native-projection v1
 
-1. Whether syntax query artifacts should use a dedicated
-   =semantic-tree-sitter-query/<id>.json= namespace or reuse the existing
-   =query/<id>.json= namespace with =artifactKind=semantic-tree-sitter-query=.
-2. Whether =syntaxAnchor= should be a small shared sub-schema reused by
-   search/query/read packets before full =syntaxCaptureRefs= are available.
-3. Which grammar profile version naming convention should be stable across
-   providers.
-4. Whether arbitrary S-expression input should be enabled by default for every
-   provider or gated per provider until its grammar profile is stable.
-5. Whether ASP should accept =.scheme= catalog filenames as input while
-   normalizing repository-owned catalogs to =.scm=.
-6. Which provider is first after Rust: TypeScript for LLM familiarity and
-   compiler API value, or Julia for process-start/cache payoff.
+1. Syntax query artifacts use the dedicated
+   =semantic-tree-sitter-query/<id>.json= namespace when the artifact is a
+   =semantic-tree-sitter-query.v1= packet.  Existing =query/<id>.json= artifacts
+   remain for =semantic-query-packet.v1= output.
+2. =semantic-tree-sitter-provenance.v1= is the shared base for syntax query refs,
+   matches, captures, and the optional short =syntaxAnchor=.  Search, query, and
+   read packet envelopes stay separate.
+3. Grammar profile versions are provider-owned stable strings, but each profile
+   must carry the shared =semantic-tree-sitter-grammar-profile.v1= shape and the
+   ASP contract fingerprint used for compatibility.
+4. Arbitrary S-expression input is gated per provider through
+   =queryInputForms=s-expression=.  Rust may advertise it for ASP-compiled plan
+   coverage; TypeScript and Python keep catalog-id/selector/code-shaped support
+   until their grammar profiles can reject unsupported S-expressions
+   deterministically.
+5. Catalog filenames are =.scm= only.  ASP does not accept =.scheme= catalog
+   filenames as an ABI compatibility spelling.  Scheme-like S-expression query text is an input form, not a catalog filename policy.
+6. TypeScript follows Rust as the first compiler/native projection target because
+   it proves =tsconfig=, project references, declarations/imports/exports, and
+   type-only facts through the TypeScript Compiler API.  Python follows for
+   indentation-sensitive AST/token projection.  Julia remains the cache-payoff
+   lane after validated exports and replay gates land.

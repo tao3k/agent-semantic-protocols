@@ -32,9 +32,8 @@ fn cli_install_writes_profile_registry_to_prj_cache_home() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8(output.stdout).expect("install stdout");
-    assert!(
-        stdout.contains("profileCache=.project-cache/agent-semantic-protocol/hooks/profiles.json")
-    );
+    assert!(stdout.contains("profileCache="));
+    assert!(stdout.contains("agent-semantic-protocol/hooks/profiles.json"));
     assert!(
         prj_cache_home
             .join("agent-semantic-protocol/hooks/profiles.json")

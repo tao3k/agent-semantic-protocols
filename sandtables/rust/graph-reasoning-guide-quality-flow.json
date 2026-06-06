@@ -1,0 +1,163 @@
+{
+  "id": "rust.graph-reasoning-guide-quality-flow",
+  "language": "rust",
+  "title": "Rust graph reasoning guide and prime ABI stay schema-owned",
+  "coverage": [
+    "search-flow",
+    "performance"
+  ],
+  "tags": [
+    "graph",
+    "reasoning",
+    "guide-quality",
+    "prime"
+  ],
+  "workdir": ".",
+  "budgets": {
+    "maxCommands": 3,
+    "maxTotalLinesWarn": 80,
+    "maxTotalElapsedMsWarn": 30000,
+    "maxTotalStdoutBytesWarn": 6000
+  },
+  "evidence": {
+    "source": "real-trigger",
+    "intent": "Validate that Rust guide, search guide, and prime output expose the shared reasoning profile catalog without compatibility aliases or profile/route drift.",
+    "intentKind": "implementation-principle",
+    "editBoundary": "after-search",
+    "metrics": {
+      "recordedCommandCount": 3,
+      "compactSearches": 3,
+      "jsonSearches": 0,
+      "tokenDelta": "lower"
+    },
+    "findings": [
+      {
+        "kind": "graph-reasoning-abi",
+        "severity": "info",
+        "message": "Guide and prime output must expose schema-owned reasoning entries instead of compatibility profile aliases."
+      }
+    ]
+  },
+  "steps": [
+    {
+      "id": "provider-guide-catalog",
+      "kind": "performance",
+      "command": [
+        "./.bin/asp",
+        "rust",
+        "guide",
+        "."
+      ],
+      "expect": {
+        "stdoutContains": [
+          "[guide] lang=rust provider=asp-rust protocol=guide.v1",
+          "|catalog reasoningProfiles=owner-query,query-deps,owner-tests,finding-frontier,feature-cfg entries=owner-query,query-deps,owner-tests,finding-frontier,feature-cfg routes=path,read-frontier",
+          "next=\"search reasoning <owner-query|query-deps|owner-tests|finding-frontier|feature-cfg> <typed-selectors>\""
+        ],
+        "stdoutNotContains": [
+          "owner-items",
+          "profiles=",
+          "|entry finding-frontier selectors=F:finding,O:owner?"
+        ],
+        "guideQuality": {
+          "outputContains": [
+            "|catalog reasoningProfiles=owner-query,query-deps,owner-tests,finding-frontier,feature-cfg entries=owner-query,query-deps,owner-tests,finding-frontier,feature-cfg routes=path,read-frontier"
+          ],
+          "outputNotContains": [
+            "owner-items",
+            "profiles="
+          ]
+        },
+        "maxStdoutLinesWarn": 24,
+        "maxStdoutBytesWarn": 2200,
+        "maxElapsedMsWarn": 4000
+      }
+    },
+    {
+      "id": "search-guide-catalog",
+      "kind": "performance",
+      "command": [
+        "./.bin/asp",
+        "rust",
+        "search",
+        "guide",
+        "."
+      ],
+      "expect": {
+        "stdoutContains": [
+          "[search-guide] protocol=search-guide.v1",
+          "|catalog reasoningProfiles=owner-query,query-deps,owner-tests,finding-frontier,feature-cfg entries=owner-query,query-deps,owner-tests,finding-frontier,feature-cfg routes=path,read-frontier",
+          "  owner-query:",
+          "  finding-frontier:",
+          "  feature-cfg:",
+          "routes:",
+          "  read-frontier:"
+        ],
+        "stdoutNotContains": [
+          "owner-items",
+          "profiles=",
+          "|entry ",
+          "|route "
+        ],
+        "guideQuality": {
+          "outputContains": [
+            "|catalog reasoningProfiles=owner-query,query-deps,owner-tests,finding-frontier,feature-cfg entries=owner-query,query-deps,owner-tests,finding-frontier,feature-cfg routes=path,read-frontier"
+          ],
+          "outputNotContains": [
+            "owner-items",
+            "profiles="
+          ]
+        },
+        "maxStdoutLinesWarn": 36,
+        "maxStdoutBytesWarn": 2600,
+        "maxElapsedMsWarn": 4000
+      }
+    },
+    {
+      "id": "prime-entries",
+      "kind": "performance",
+      "coverage": [
+        "search-flow",
+        "performance"
+      ],
+      "command": [
+        "./.bin/asp",
+        "rust",
+        "search",
+        "prime",
+        "--view",
+        "seeds",
+        "."
+      ],
+      "expect": {
+        "stdoutContains": [
+          "[search-prime]",
+          "legend: ID=kind:role(value)!next; entries profile(selectors=>returns); frontier ID.next",
+          "entries=owner-tests(O=>covering-tests+test-entrypoints+fixtures)",
+          "avoid=raw-read,full-json,broad-fzf"
+        ],
+        "stdoutNotContains": [
+          "profiles=",
+          "owner-items",
+          "read-frontier("
+        ],
+        "guideQuality": {
+          "primeOutput": {
+            "requiresTypedEntryAliases": true,
+            "entries": [
+              "entries=owner-tests(O=>covering-tests+test-entrypoints+fixtures)"
+            ]
+          },
+          "outputNotContains": [
+            "profiles=",
+            "owner-items",
+            "read-frontier("
+          ]
+        },
+        "maxStdoutLinesWarn": 18,
+        "maxStdoutBytesWarn": 1800,
+        "maxElapsedMsWarn": 30000
+      }
+    }
+  ]
+}

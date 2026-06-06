@@ -4,6 +4,16 @@ use super::aliases::GraphAlias;
 
 pub(super) fn graph_profiles_line(packet: &Value, aliases: &[GraphAlias]) -> Option<String> {
     fn selected_reasoning_profile(packet: &Value) -> Option<String> {
+        fn non_empty_str(value: Option<&Value>) -> Option<&str> {
+            value
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+        }
+
+        let is_reasoning_packet = packet.get("method").and_then(Value::as_str)
+            == Some("search/reasoning")
+            || packet.get("view").and_then(Value::as_str) == Some("reasoning");
         let header_profile = packet
             .get("profile")
             .and_then(Value::as_str)
@@ -14,8 +24,19 @@ pub(super) fn graph_profiles_line(packet: &Value, aliases: &[GraphAlias]) -> Opt
             .and_then(Value::as_str)
             .map(str::trim)
             .filter(|value| !value.is_empty());
+        let header_field_profile = non_empty_str(
+            packet
+                .get("header")
+                .and_then(|header| header.get("fields"))
+                .and_then(|fields| fields.get("profile")),
+        );
+        let packet_query_profile = is_reasoning_packet
+            .then(|| non_empty_str(packet.get("query")))
+            .flatten();
         header_profile
             .or(header_query_profile)
+            .or(header_field_profile)
+            .or(packet_query_profile)
             .map(ToOwned::to_owned)
     }
 

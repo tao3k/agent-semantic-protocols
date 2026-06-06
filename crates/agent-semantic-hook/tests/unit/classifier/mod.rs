@@ -1,5 +1,6 @@
 use agent_semantic_hook::{
-    ActivatedProvider, CommandTemplate, HookPolicy, HookRoutes, HookRuntime, StdinMode,
+    ActivatedProvider, CommandTemplate, HookPolicy, HookRoutes, HookRuntime, ProviderExecution,
+    StdinMode,
 };
 
 mod activation_contract;
@@ -77,6 +78,7 @@ pub(super) fn provider(
         language_id: language_id.to_string(),
         provider_id: provider_id.to_string(),
         binary: binary.to_string(),
+        execution: ProviderExecution::ExternalProcess,
         provider_command_prefix: Vec::new(),
         namespace: namespace.to_string(),
         package_roots: vec![".".to_string()],

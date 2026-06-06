@@ -157,12 +157,24 @@ contracts.  Tree-sitter provenance converges through
 1. RFC baseline:
    - add current v1 native-projection boundary;
    - record single-capture, field-selector, and pattern-graph gaps;
+   - add the RFC 011 acceptance matrix that separates =v1 accepted= from
+     =v2/deferred= behavior and defines the promotion rule;
+   - add provider conformance lanes for Rust reference projection, TypeScript
+     compiler projection, Python AST/token projection, JuliaSyntax cache
+     replay, and CodeQL/flow-lite semantic backend promotion;
+   - resolve catalog filename policy: =.scm= is the only repository and
+     registry catalog extension, while Scheme-like S-expression text remains a
+     provider-gated input form;
    - make =guide= the primary agent command name and keep =query guide
      treesitter= as a low-frequency reference.
 2. Schema/docs baseline:
    - document =semantic-tree-sitter-provenance.v1= as the shared base;
    - document =asp.toml= provider activation and runtime profile command
      resolution;
+   - document the registry descriptor as the only provider syntax capability
+     advertisement source; guide output must not claim capabilities absent from
+     =queryInputForms=, =adapterModes=, =executionBackends=, or
+     =renderProfiles=;
    - keep generated skills separate from root template source.
 3. Doc gates:
    - assert required terms in the RFCs and schema README;
@@ -174,7 +186,22 @@ contracts.  Tree-sitter provenance converges through
    - run hook/protocol Rust tests;
    - rebuild release =asp=, reinstall hooks, and trigger a real hook denial;
    - capture =Run Next=, =Detected Binaries=, =asp <language> guide .=, and
-     ast-patch disabled guidance as the smoke evidence.
+     ast-patch disabled guidance as the smoke evidence;
+   - record one Rust and one TypeScript real-project syntax flow with
+     =search-prime=, =syntax-frontier=, =exact-selector-code=, and
+     =hook-recovery= commands;
+   - render the measured record with =tools/record-syntax-real-evidence.py=;
+   - record =commandCount=, =providerProcessCount=, =packetBytes=,
+     =coldElapsedMs=, =warmElapsedMs=, =syntaxQueryCount=,
+     =manualRangeScanCount=, and =repeatedTriggerReduction= before removing
+     =pending=real-project-benchmark= from lane records.
+
+   Rust evidence status: =docs/30-39-research/31.19-rfc011-rust-syntax-real-evidence.org=
+   records the first =agent-semantic-protocols= flow.  TypeScript evidence
+   status: =docs/30-39-research/31.20-rfc011-typescript-syntax-real-evidence.org=
+   records the first =typescript-lang-project-harness= flow.  Benchmark review
+   status: =docs/30-39-research/31.21-rfc011-native-projection-benchmark-review.org=
+   accepts the Rust and TypeScript native-projection v1 lanes.  Neither record claims cache hit replay.
 
 * Closure Criteria
 
@@ -187,5 +214,10 @@ This documentation pass is complete when:
   do-not-edit notice;
 - tests prove tree-sitter native-projection limits and next-layer terms are in
   the RFC;
+- tests prove =.scm= is the only catalog filename ABI and =.scheme= is not
+  documented as a compatibility spelling;
+- RFC 011 defines the =syntax-real-evidence= record and keeps cache, Julia, and
+  CodeQL payoff claims out of the native-projection v1 lane until their receipts
+  prove them;
 - a live hook denial prints runtime-profile provider command paths and the
   current =experimental.semanticAstPatch.enabled= branch.

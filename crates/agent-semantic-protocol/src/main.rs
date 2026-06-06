@@ -1,3 +1,5 @@
+#![deny(dead_code)]
+
 use std::process;
 
 fn main() {

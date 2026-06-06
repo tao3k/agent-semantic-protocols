@@ -50,6 +50,7 @@ pub struct ClientRequest {
     pub language_id: Option<LanguageId>,
     pub forwarded_args: Vec<String>,
     pub project_root: PathBuf,
+    pub stdin: Option<Vec<u8>>,
 }
 
 impl ClientRequest {
@@ -61,6 +62,7 @@ impl ClientRequest {
             language_id: None,
             forwarded_args: Vec::new(),
             project_root: project_root.into(),
+            stdin: None,
         }
     }
 
@@ -75,6 +77,13 @@ impl ClientRequest {
     #[must_use]
     pub fn with_forwarded_args(mut self, forwarded_args: Vec<String>) -> Self {
         self.forwarded_args = forwarded_args;
+        self
+    }
+
+    /// Attach stdin bytes that should be replayed to the provider process.
+    #[must_use]
+    pub fn with_stdin(mut self, stdin: Vec<u8>) -> Self {
+        self.stdin = Some(stdin);
         self
     }
 }
@@ -227,13 +236,20 @@ fn tree_sitter_catalog_id(args: &[String]) -> Option<&str> {
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
         if arg == "--catalog" {
-            return iter.next().map(String::as_str);
+            return iter
+                .next()
+                .map(String::as_str)
+                .filter(|catalog_id| !is_native_query_catalog(catalog_id));
         }
         if let Some(value) = arg.strip_prefix("--catalog=") {
-            return Some(value);
+            return (!is_native_query_catalog(value)).then_some(value);
         }
     }
     None
+}
+
+fn is_native_query_catalog(catalog_id: &str) -> bool {
+    matches!(catalog_id, "flow-lite")
 }
 
 fn stable_hash_bytes(bytes: &[u8]) -> String {

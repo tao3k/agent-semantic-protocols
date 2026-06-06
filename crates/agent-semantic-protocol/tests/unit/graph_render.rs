@@ -263,10 +263,13 @@ fn shared_renderer_projects_prime_packet_into_tool_map_frontier() {
     assert!(output.starts_with("[search-prime] root=languages/rust-lang-project-harness"));
     assert!(output.contains("alg=budgeted-prime-frontier-v1"));
     assert!(output.contains("budget=handles:12"));
-    assert!(
-        output.contains("legend: ID=kind:role(value)!next; profiles P(args); frontier ID.next")
-    );
-    assert!(output.contains("profiles=owner-items(O,Q),owner-tests(O,T),query-deps(Q,D)"));
+    assert!(output.contains(
+        "legend: ID=kind:role(value)!next; entries profile(selectors=>returns); frontier ID.next"
+    ));
+    assert!(output.contains(
+        "entries=owner-query(O,Q=>items+tests+dependency-usage),owner-tests(O=>covering-tests+test-entrypoints+fixtures),query-deps(Q,D=>owners+imports+usage-tests)"
+    ));
+    assert!(!output.contains("profiles="));
     assert!(output.contains("omit=items,blocks,code,full-test-list"));
     assert!(output.contains("avoid=raw-read,full-json,broad-fzf"));
     assert!(!output.contains("owner-rank-frontier"));

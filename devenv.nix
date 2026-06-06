@@ -15,8 +15,9 @@
     pkgs.pkg-config
     pkgs.protobuf
     pkgs.just
+    pkgs.codeql
   ];
-  
+
   languages.rust = {
     enable = true;
     channel = "stable";
@@ -53,7 +54,7 @@
   # };
   # https://devenv.sh/tests/
   enterTest = "";
-  
+
   dotenv.enable = true;
   # https://devenv.sh/git-hooks/
   git-hooks.hooks = {

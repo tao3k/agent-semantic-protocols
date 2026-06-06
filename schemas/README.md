@@ -16,11 +16,12 @@ rather than spending terminal tokens on pretty-print whitespace.
 Document language providers such as `org` and `md` use document-specific packet
 shapes. `semantic-document-search-packet.v1.schema.json` owns metadata search
 facts for headings, properties, tables, blocks, links, and selectors.
-`semantic-document-query-packet.v1.schema.json` owns document query metadata and
-`--content` selector reads, with explicit `queryKind` and `querySurface`
-fields. Document hook recovery must use document `query` routes, not source
-`search owner` or owner/items routes. These providers must not report document
-facts through source-language `nativeSyntaxFacts`.
+`semantic-document-query-packet.v1.schema.json` owns document query metadata
+and filtered `--content` element projections, with explicit `queryKind`,
+`querySurface`, and `contentBlocks` fields. Document hook recovery must use
+document `query` routes, not source `search owner` or owner/items routes. These
+providers must not report document facts through source-language
+`nativeSyntaxFacts`.
 RFC 009 adds optional `reasoningProfiles` to this packet as a typed return-entry
 surface for `search prime` and `search reasoning <profile>`. Those entries
 describe profile names, selector slots, returns, and frontier actions; they
@@ -285,9 +286,11 @@ multi-term expressions such as `fun1|fun2|fun3`, and compact code extraction.
 Document providers use `semantic-document-query-packet.v1.schema.json` instead
 of this source-language packet: `asp org query --term <term> --view metadata`
 and `asp md query --term <term> --view metadata` return bounded document fact
-frontiers, while `asp org query --selector <path:start-end> --content` and
+frontiers, while `asp org query --term <term> --content` and
 `asp md query --selector <path:start-end> --content` keep stdout as pure
-document content.
+matched element content. Source-preserved document reads stay on
+`query --from-hook direct-source-read --selector <path-or-range>` and must not
+be combined with `--content`.
 Root hooks should route source access back to provider `search owner <path>
 items [--query SYMBOL]`; they should not maintain a parallel read/query engine.
 The query packet also supports owner-local discovery without source windows:
@@ -494,6 +497,14 @@ harness to parse natural-language intent. Coverage audits render this as
 missing large-library rows or missing intent cases as coverage failures.
 `intentCases[].queryTerms` records which query-set terms exercise each intent
 when several same-view probes are compressed into one scenario step.
+Failure-frontier replay gates use
+`evidence.failureFrontierComparison` to compare a baseline receipt/trace with a
+candidate receipt/trace. The candidate must prove command reduction, bounded
+`direct-source-read --code` count, zero duplicate selectors, zero same-file
+window fanout, and full coverage of explicit `expectedHotBlocks`. Receipt-path
+comparisons validate stable checked-in replay evidence; trace-path comparisons
+first normalize JSONL command traces into the same receipt contract, then run
+the identical gate. Fewer commands alone is not sufficient evidence.
 
 `semantic-sandtable-receipt.v1.schema.json` is the compact evidence contract
 for a real-trigger agent exploration before it is converted into replayable
@@ -523,21 +534,22 @@ current project, their resolved command prefixes, manifest digests, and
 coverage roots. It does not repeat provider routes or policies, so a stale
 activation cannot drift into an alternate command registry.
 
-`semantic-agent-runtime-profiles.v1.schema.json` is the generated runtime
-execution profile for activated providers. It is written under
-`${PRJ_CACHE_HOME}/agent-semantic-protocol/runtime/profiles.json` or the git
-toplevel `.cache/agent-semantic-protocol/runtime/profiles.json`, beside but
-separate from hook activation. Activation answers which providers and coverage
-are active; runtime profiles answer which fixed provider argv and resolved
-tool paths should be used for the current project. `asp` facades and local
-native client execution must prefer a healthy profile argv over shell `PATH`
-lookup, and `asp hook doctor` reports the same profile health so PATH, direnv,
-and stale binary drift are visible instead of hidden behind symlink behavior.
+`semantic-agent-runtime-profiles.v1.schema.json` is the derived runtime
+execution profile shape for activated providers. It is not a separate
+workspace source of truth and must not resurrect the retired runtime profile
+state file. Activation
+answers which providers and coverage are active; runtime profile facts are
+derived from that activation plus current project binary resolution for
+install receipts, skill rendering, and `asp hook doctor` health reporting.
+`asp` facades and local native client execution must prefer activation-derived
+provider argv over ad hoc shell `PATH` lookup, and doctor reports profile
+health so PATH, direnv, and stale binary drift are visible instead of hidden
+behind symlink behavior.
 
 `semantic-agent-healthcheck.v1.schema.json` is the read-only report emitted by
 `asp healthcheck --json`. It treats git toplevel as the first project fact,
 then reports the canonical `PRJ_CACHE_HOME` or git `.cache` runtime layout,
-the ignored typo-like `PRJ_HOME_CACHE` value if present, `.agents` skill
+the `PRJ_CACHE_HOME` value if present, `.agents` skill
 paths, hook activation, runtime profiles, current `asp` executable, `asp` on
 `PATH`, provider profile health, and compact issue codes.
 
@@ -563,7 +575,7 @@ not just labels copied into the emitted decision. Config-derived decisions set
 `fields.configRuleId`, so runtime loading rejects duplicate rule ids before
 classification and mirrors schema-shape checks for identifiers, min-length
 strings, events, platforms, language id uniqueness, route argv, and route
-binary names. `asp hook doctor` reports the same path
+binary names. `asp hook doctor --client <codex|claude>` reports the same path
 through `clientConfig` and `clientConfigStatus`; missing config is reported as
 `missing`, valid config as `ok`, and invalid config is a doctor failure.
 
@@ -863,6 +875,16 @@ Python MVP 12 requires relation-owned default edge weights and profile-owned
 typed transition masks before PageRank/path ranking. The result packet exposes
 edge weights plus each profile's allowed transitions and node-kind bonuses in
 `profileCompatibility` so policy drift is visible outside the Python package.
+
+`semantic-graph-turbo-artifact-events.v1.schema.json` is the schema-owned event
+stream between ASP's Rust SQLite cache and graph-turbo timeline audit. It
+records compact artifact events for command, prompt-output, search, query,
+search-output, and tree-sitter-query artifacts without storing provider stdout
+or source windows. `semantic-graph-turbo-artifact-timeline.v1.schema.json` is
+the matching audit report contract. It owns session, microburst, repeat,
+fanout, action-summary, and efficiency-estimate fields so `asp search history
+audit` can use SQLite-indexed events for speed while graph-turbo remains the
+ranking and timeline algorithm owner.
 
 Large-library packets should keep source and runtime limits explicit instead
 of forcing the agent to discover them through repeated commands.

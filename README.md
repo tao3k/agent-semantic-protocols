@@ -90,6 +90,7 @@ Install individual agent tools when only one boundary changed:
 ```sh
 just agent-tools-install-protocol "$HOME/.local/bin"
 just agent-tools-install-asp "$HOME/.local/bin"
+just agent-tools-install-graph-turbo "$HOME/.local/bin"
 just agent-tools-install-hook "$HOME/.local/bin"
 just agent-tools-install-rust "$HOME/.local/bin"
 just agent-tools-install-typescript "$HOME/.local/bin"
@@ -126,6 +127,10 @@ configuration, cache activation, versioned hook policy config, and provider
 manifests for this repository. It does not build or install `rs-harness`,
 `ts-harness`, or `py-harness`; use the `just agent-tools-install-*` commands
 for those binaries.
+
+Agent clients invoke the runtime hook entrypoint as `asp hook --client
+<codex|claude> --event <event>`. Lifecycle commands stay under the hook
+surface: `asp hook install ...` and `asp hook doctor ...`.
 
 Verify a compact AST patch intent without enabling mutation:
 
@@ -174,6 +179,21 @@ uv run semantic-sandtable
 uv run semantic-sandtable sandtables/root/codex-hook-dispatcher-flow.json
 uv run semantic-sandtable sandtables/root/claude-hook-flow.json
 ```
+
+Prove a failure-frontier workflow reduces validation/read rounds without losing
+hot-block coverage:
+
+```sh
+uv run --project packages/python/tools --frozen python -m tools.semantic_sandtable \
+  sandtables/fixtures/asp/failure-frontier-real-trigger-replay.json
+
+uv run --project packages/python/tools --frozen python -m tools.semantic_sandtable \
+  sandtables/fixtures/asp/failure-frontier-real-trigger-trace-replay.json
+```
+
+Both replay gates currently prove `10 -> 4` commands, `0.600` command
+reduction, `0.923` stdout-byte reduction, and `4/4` expected hot blocks
+covered.
 
 Run the Python policy gate owned by the Python harness:
 

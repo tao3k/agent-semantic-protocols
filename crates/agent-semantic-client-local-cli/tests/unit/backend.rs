@@ -2,7 +2,8 @@ use std::path::PathBuf;
 
 use agent_semantic_client_core::{
     ASP_SYNTAX_QUERY_CAPTURES_ARG, ASP_SYNTAX_QUERY_FIELDS_ARG, ASP_SYNTAX_QUERY_NODE_TYPES_ARG,
-    ClientMethod, ClientRequest, ProviderRegistrySnapshot, ResolvedProvider, RuntimeProfileStatus,
+    ClientMethod, ClientRequest, ProviderExecution, ProviderRegistrySnapshot, ResolvedProvider,
+    RuntimeProfileStatus,
 };
 use agent_semantic_client_local_cli::LocalNativeCliBackend;
 
@@ -130,6 +131,7 @@ fn provider(language_id: &str, binary: &str) -> ResolvedProvider {
         language_id: language_id.into(),
         provider_id: binary.into(),
         binary: binary.to_string(),
+        execution: ProviderExecution::ExternalProcess,
         provider_command_prefix: vec![
             "direnv".to_string(),
             "exec".to_string(),

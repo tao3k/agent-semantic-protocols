@@ -1,7 +1,7 @@
 use crate::cache_cli::{generation_file_hashes_match, provider_cache_probe};
 use agent_semantic_client_core::{
     CacheArtifactId, CacheExportMethod, CacheStatus, ClientCacheFileHash, ClientCacheGeneration,
-    ClientCacheManifest, ClientMethod, ClientRequest, LanguageId, ProviderId,
+    ClientCacheManifest, ClientMethod, ClientRequest, LanguageId, ProviderExecution, ProviderId,
     ProviderRegistrySnapshot, ResolvedProvider, SemanticSchemaId,
 };
 use agent_semantic_client_db::{ClientDb, ClientDbGenerationHit};
@@ -145,6 +145,128 @@ fn tree_sitter_rows_are_stale_when_matching_source_hash_changes() {
     let _ = std::fs::remove_dir_all(root);
 }
 
+#[test]
+fn prime_seed_probe_reuses_latest_fresh_prime_generation_after_fingerprint_miss() {
+    let root = temp_root("fresh-prime-reuse");
+    std::fs::create_dir_all(root.join(".git")).expect("create git marker");
+    std::fs::create_dir_all(root.join("src")).expect("create src dir");
+    std::fs::write(root.join("src/lib.rs"), "pub fn cached_prime() {}\n").expect("write source");
+    let cache_root = ClientCacheManifest::inspect_project(&root)
+        .cache_root
+        .expect("cache root");
+    let db_path = ClientDb::default_path(&cache_root);
+    let stdout = "[search-prime] root=. view=seeds alg=seed-frontier\n\
+legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next\n\
+aliases: graph:{G=search,O=owner}\n\
+O=owner:path(src/lib.rs)!owner\n\
+G>{O:selects}\n\
+rank=O frontier=O.owner\n";
+    write_search_output_artifact(&cache_root, "prime-fresh.txt", stdout);
+
+    let generation = search_prime_generation(
+        &root,
+        "fresh-prime",
+        vec![hash_project_file(&root, "src/lib.rs")],
+    );
+    let manifest = manifest_from_generation(&cache_root, generation);
+    let mut db = ClientDb::open_or_create(&db_path).expect("open db");
+    db.import_manifest(&manifest).expect("import manifest");
+    drop(db);
+
+    let snapshot = ProviderRegistrySnapshot {
+        activation_path: root.join(".cache/agent-semantic-protocol/hooks/activation.json"),
+        providers: vec![rust_provider()],
+    };
+    let request = ClientRequest::new(ClientMethod::Search, &root).with_forwarded_args(vec![
+        "prime".to_string(),
+        "--view".to_string(),
+        "seeds".to_string(),
+        ".".to_string(),
+    ]);
+
+    let probe = provider_cache_probe(&root, &snapshot, &request).expect("probe");
+    let replay = probe.replay.as_ref().expect("fresh prime replay");
+
+    assert_eq!(probe.cache_status, CacheStatus::Hit);
+    assert_eq!(
+        String::from_utf8(replay.stdout.clone()).expect("utf8"),
+        stdout
+    );
+    assert_eq!(probe.sqlite_read_count, 3);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn fzf_seed_probe_reuses_latest_fresh_matching_query_after_fingerprint_miss() {
+    let root = temp_root("fresh-fzf-reuse");
+    std::fs::create_dir_all(root.join(".git")).expect("create git marker");
+    std::fs::create_dir_all(root.join("src")).expect("create src dir");
+    std::fs::write(root.join("src/lib.rs"), "pub fn cached_fzf() {}\n").expect("write source");
+    let cache_root = ClientCacheManifest::inspect_project(&root)
+        .cache_root
+        .expect("cache root");
+    let db_path = ClientDb::default_path(&cache_root);
+    let stdout = "[search-fzf] q=cache replay view=seeds alg=seed-frontier\n\
+legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next\n\
+aliases: graph:{G=search,Q=query}\n\
+Q=query:term(cache replay)!fzf\n\
+G>{Q:matches}\n\
+rank=Q frontier=Q.fzf\n";
+    write_search_packet_artifact(&cache_root, "fzf-fresh.json", "cache replay");
+    write_search_output_artifact(&cache_root, "fzf-fresh.txt", stdout);
+    write_search_packet_artifact(&cache_root, "fzf-unrelated.json", "different query");
+    write_search_output_artifact(
+        &cache_root,
+        "fzf-unrelated.txt",
+        "[search-fzf] q=different query view=seeds alg=seed-frontier\n",
+    );
+
+    let generation = search_fzf_generation_with_artifacts(
+        &root,
+        "fresh-fzf",
+        vec![hash_project_file(&root, "src/lib.rs")],
+        "fzf-fresh.json",
+        "fzf-fresh.txt",
+    );
+    let manifest = manifest_from_generation(&cache_root, generation);
+    let mut db = ClientDb::open_or_create(&db_path).expect("open db");
+    db.import_manifest(&manifest).expect("import manifest");
+    std::thread::sleep(Duration::from_secs(1));
+    let unrelated_generation = search_fzf_generation_with_artifacts(
+        &root,
+        "fresh-fzf-unrelated-latest",
+        vec![hash_project_file(&root, "src/lib.rs")],
+        "fzf-unrelated.json",
+        "fzf-unrelated.txt",
+    );
+    let unrelated_manifest = manifest_from_generation(&cache_root, unrelated_generation);
+    db.import_manifest(&unrelated_manifest)
+        .expect("import unrelated latest manifest");
+    drop(db);
+
+    let snapshot = ProviderRegistrySnapshot {
+        activation_path: root.join(".cache/agent-semantic-protocol/hooks/activation.json"),
+        providers: vec![rust_provider()],
+    };
+    let request = ClientRequest::new(ClientMethod::Search, &root).with_forwarded_args(vec![
+        "fzf".to_string(),
+        "cache replay".to_string(),
+        "--view=seeds".to_string(),
+        ".".to_string(),
+    ]);
+
+    let probe = provider_cache_probe(&root, &snapshot, &request).expect("probe");
+    let replay = probe.replay.as_ref().expect("fresh fzf replay");
+
+    assert_eq!(probe.cache_status, CacheStatus::Hit);
+    assert_eq!(
+        String::from_utf8(replay.stdout.clone()).expect("utf8"),
+        stdout
+    );
+    assert_eq!(probe.sqlite_read_count, 3);
+    let _ = std::fs::remove_dir_all(root);
+}
+
 fn generation_hit(
     root: &std::path::Path,
     file_hashes: Vec<ClientCacheFileHash>,
@@ -204,6 +326,57 @@ fn syntax_generation(
     .expect("syntax generation")
 }
 
+fn search_prime_generation(
+    root: &std::path::Path,
+    generation_id: &str,
+    file_hashes: Vec<ClientCacheFileHash>,
+) -> ClientCacheGeneration {
+    serde_json::from_value(json!({
+        "generationId": generation_id,
+        "languageId": "rust",
+        "providerId": "rs-harness",
+        "providerVersion": "0.1.0",
+        "exportMethod": "search/prime",
+        "projectRoot": root.display().to_string(),
+        "packageRoot": ".",
+        "schemaIds": ["agent.semantic-protocols.semantic-search-packet"],
+        "cacheStatus": "hit",
+        "rawSourceStored": false,
+        "requestFingerprint": format!("fnv64:historical-{generation_id}"),
+        "fileHashes": file_hashes,
+        "artifactIds": ["search-output/prime-fresh.txt"]
+    }))
+    .expect("search prime generation")
+}
+
+fn search_fzf_generation_with_artifacts(
+    root: &std::path::Path,
+    generation_id: &str,
+    file_hashes: Vec<ClientCacheFileHash>,
+    packet_file_name: &str,
+    output_file_name: &str,
+) -> ClientCacheGeneration {
+    serde_json::from_value(json!({
+        "generationId": generation_id,
+        "languageId": "rust",
+        "providerId": "rs-harness",
+        "providerVersion": "0.1.0",
+        "exportMethod": "search/fzf",
+        "projectRoot": root.display().to_string(),
+        "packageRoot": ".",
+        "schemaIds": ["agent.semantic-protocols.semantic-search-packet"],
+        "cacheStatus": "hit",
+        "rawSourceStored": false,
+        "requestFingerprint": format!("fnv64:historical-{generation_id}"),
+        "fileHashes": file_hashes,
+        "artifactIds": [
+            format!("search/{packet_file_name}"),
+            format!("search-output/{output_file_name}")
+        ]
+    }))
+    .expect("search fzf generation")
+}
+
 fn manifest_from_generation(
     cache_root: &std::path::Path,
     generation: ClientCacheGeneration,
@@ -221,6 +394,31 @@ fn manifest_from_generation(
 fn hash_project_file(root: &std::path::Path, path: &str) -> ClientCacheFileHash {
     let bytes = std::fs::read(root.join(path)).expect("read source for hash");
     file_hash(path, &bytes)
+}
+
+fn write_search_output_artifact(cache_root: &std::path::Path, file_name: &str, stdout: &str) {
+    let search_output_dir = cache_root
+        .parent()
+        .expect("cache root parent")
+        .join("artifacts/search-output");
+    std::fs::create_dir_all(&search_output_dir).expect("create search output dir");
+    std::fs::write(search_output_dir.join(file_name), stdout).expect("write search output");
+}
+
+fn write_search_packet_artifact(cache_root: &std::path::Path, file_name: &str, query: &str) {
+    let search_dir = cache_root
+        .parent()
+        .expect("cache root parent")
+        .join("artifacts/search");
+    std::fs::create_dir_all(&search_dir).expect("create search packet dir");
+    let packet = json!({
+        "schemaId": "agent.semantic-protocols.semantic-search-packet",
+        "method": "search/fzf",
+        "query": query,
+        "nodes": []
+    });
+    let bytes = serde_json::to_vec(&packet).expect("search packet bytes");
+    std::fs::write(search_dir.join(file_name), bytes).expect("write search packet");
 }
 
 fn syntax_packet_with_matches() -> Value {
@@ -270,6 +468,7 @@ fn rust_provider() -> ResolvedProvider {
         language_id: LanguageId::from("rust"),
         provider_id: ProviderId::from("rs-harness"),
         binary: "rs-harness".to_string(),
+        execution: ProviderExecution::ExternalProcess,
         provider_command_prefix: Vec::new(),
         runtime_command_argv: None,
         runtime_profile_status: None,

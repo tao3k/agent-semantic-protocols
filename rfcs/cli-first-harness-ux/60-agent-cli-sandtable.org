@@ -1,0 +1,54 @@
+* Agent CLI sandtable
+
+Sandtable may replay an agent CLI, but that replay is not a new public =asp=
+command and not a hidden compatibility alias for =command=.  The scenario step
+owns this boundary through a canonical =agentCli= object.  A step MUST contain
+exactly one execution body: either =command= for ordinary subprocess replay, or
+=agentCli= for an agent-client command synthesized by the sandtable runner.
+
+The first supported agent client is Claude Code in print mode.  The generated
+argv is explicit:
+
+#+begin_src text
+<binary> -p <prompt> --output-format <text|json|stream-json> [...]
+#+end_src
+
+Optional fields append only documented CLI flags: =--input-format=,
+=--include-partial-messages=, =--include-hook-events=, =--verbose=, and
+=--model=.  The runner does not accept arbitrary extra args, infer intent,
+choose a model, or translate prompt text.  If the test needs the exact
+installed CLI boundary, the scenario writes =binary="claude"=.  If CI only
+needs the argv/env contract, the scenario writes a fake executable fixture.
+
+Provider routing is explicit environment plumbing.  DeepSeek-through-Claude-Code
+scenarios set the Anthropic-compatible endpoint and token in =agentCli.env=:
+
+#+begin_src json
+{
+  "ANTHROPIC_BASE_URL": "https://api.deepseek.com/anthropic",
+  "ANTHROPIC_AUTH_TOKEN": "${DEEPSEEK_API_KEY}"
+}
+#+end_src
+
+The =agentCli.env= map expands environment-variable references such as
+=${DEEPSEEK_API_KEY}= from the scenario process environment.  It does not use
+sandtable capture-token expansion; prompt and argv fields own captures, env
+fields own environment references.
+
+Live scenarios SHOULD add =requiredEnv=["ANTHROPIC_AUTH_TOKEN"]= so a missing
+secret fails before a subprocess is spawned.  Default sandtable coverage MUST
+use fake agent CLI fixtures, not a live network call.  The official Python
+Agent SDK can be introduced later as a separate =agentSdk= contract, but it
+must go through this same RFC/schema path instead of being treated as a
+compatibility mode of =agentCli=.
+
+Live agent CLI scenarios that may call a networked model SHOULD live under
+=sandtables/fixtures= and set scenario-level =skipUnlessEnv=.  The default
+scenario discovery excludes fixtures, and an explicit run without the gate
+returns =skip= instead of failing:
+
+#+begin_src json
+{
+  "skipUnlessEnv": ["ASP_LIVE_CLAUDE_CLI", "ANTHROPIC_AUTH_TOKEN"]
+}
+#+end_src

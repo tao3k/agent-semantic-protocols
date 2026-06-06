@@ -1,0 +1,42 @@
+* Failure frontier sandtable
+
+Failure-frontier validation is the sandtable proof that an optimized agent
+workflow reduces verification/read rounds without dropping the failure owner
+frontier that the edit still needs.  It is not an agent planner and not a new
+provider command.  The public surfaces are sandtable comparison gates over
+recorded receipts or recorded traces:
+
+#+begin_src shell
+uv run --project packages/python/tools --frozen python -m tools.semantic_sandtable \
+  --compare-receipts <baseline-receipt.json> <candidate-receipt.json> \
+  --expected-hot-block <selector> [...]
+
+uv run --project packages/python/tools --frozen python -m tools.semantic_sandtable \
+  --compare-traces <baseline-trace.jsonl> <candidate-trace.jsonl> \
+  --expected-hot-block <selector> [...]
+#+end_src
+
+The comparison succeeds only when all of these are true:
+
+- candidate command count is lower by at least =minCommandReduction=
+- candidate =direct-source-read --code= count is within budget
+- candidate selectors have no duplicates
+- candidate selectors do not fan out repeated windows in the same file
+- every expected hot block is covered by a candidate direct-read selector or a
+  candidate frontier =next= target
+
+The canonical replay evidence is:
+
+#+begin_example
+baselineCommands=10 candidateCommands=4 commandReductionRatio=0.600
+baselineStdoutBytes=7000 candidateStdoutBytes=540 stdoutBytesReductionRatio=0.923
+candidateDirectSourceReadCode=3 duplicateSelectors=0 sameFileWindowFanout=0
+coveredHotBlocks=4 expectedHotBlocks=4 missingHotBlocks=0
+#+end_example
+
+Scenario descriptors may embed the same gate under
+=evidence.failureFrontierComparison=.  Receipt-path comparisons are useful for
+stable checked-in replay; trace-path comparisons are useful when the evidence
+starts as a command JSONL trace and must first be normalized into the shared
+receipt shape.  In both forms, hot blocks are explicit selectors.  The model
+must not infer success from fewer commands alone.

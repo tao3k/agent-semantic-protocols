@@ -138,7 +138,6 @@ fn install_claude_hooks(root: &Path) {
         .arg(root)
         .env("PATH", prepend_path(&root.join(".bin")))
         .env_remove("PRJ_CACHE_HOME")
-        .env_remove("PRJ_HOME_CACHE")
         .output()
         .expect("run asp hook install");
     assert!(
@@ -159,7 +158,6 @@ fn run_claude_pre_tool_decision(root: &Path, payload: Value, extra_args: &[&str]
         .arg(root.join(".codex/agent-semantic-protocol/hooks/config.toml"))
         .current_dir(root)
         .env_remove("PRJ_CACHE_HOME")
-        .env_remove("PRJ_HOME_CACHE")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());

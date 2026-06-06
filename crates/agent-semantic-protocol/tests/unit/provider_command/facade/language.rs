@@ -4,7 +4,7 @@ use std::process::Command;
 
 use crate::provider_command::support::{
     asp_command, make_executable, prepend_path, provider, temp_project_root, write_activation,
-    write_echo_provider, write_pwd_provider, write_runtime_profiles,
+    write_echo_provider, write_pwd_provider,
 };
 
 #[test]
@@ -16,14 +16,14 @@ fn rust_search_facade_execs_activated_provider() {
         ("rust", "rs-harness", "rs"),
         ("typescript", "ts-harness", "ts"),
         ("python", "py-harness", "py"),
-        ("julia", "aslp-julia-harness", "jl"),
+        ("julia", "asp-julia-harness", "jl"),
     ];
     std::fs::create_dir_all(&bin_dir).expect("create bin dir");
     for (_, binary, label) in providers.iter().copied() {
         let call_count_path = root.join(format!("{label}-provider-count"));
         let provider_path = bin_dir.join(binary);
         let script = format!(
-            "#!/bin/sh\ncount=\"{}\"\ncurrent=0\nif [ -f \"$count\" ]; then current=$(cat \"$count\"); fi\ncurrent=$((current + 1))\nprintf '%s' \"$current\" > \"$count\"\nprintf '{} search prime --view seeds .\\n'\n",
+            "#!/bin/sh\ncount=\"{}\"\ncurrent=0\nif [ -f \"$count\" ]; then current=$(cat \"$count\"); fi\ncurrent=$((current + 1))\nprintf '%s' \"$current\" > \"$count\"\nprintf '{} %s\\n' \"$*\"\n",
             call_count_path.display(),
             label
         );
@@ -41,7 +41,7 @@ fn rust_search_facade_execs_activated_provider() {
     );
     for (language, _, label) in providers.iter().copied() {
         let call_count_path = root.join(format!("{label}-provider-count"));
-        let expected_stdout = format!("{label} search prime --view seeds .\n");
+        let expected_stdout = format!("{label} search prime --view seeds\n");
         let first_output = Command::new(env!("CARGO_BIN_EXE_asp"))
             .current_dir(&root)
             .env("PATH", &bin_dir)
@@ -90,6 +90,7 @@ fn rust_search_facade_execs_activated_provider() {
 fn language_facade_discovers_activation_from_child_directory() {
     let root = temp_project_root("child-search-facade");
     let bin_dir = root.join(".bin");
+    let cache_home = root.join(".cache");
     let child_dir = root.join("nested").join("workspace");
     std::fs::create_dir_all(&child_dir).expect("create child directory");
     write_pwd_provider(&bin_dir, "rs-harness");
@@ -98,6 +99,7 @@ fn language_facade_discovers_activation_from_child_directory() {
     let output = asp_command(&root)
         .current_dir(&child_dir)
         .env("PATH", prepend_path(&bin_dir))
+        .env("PRJ_CACHE_HOME", &cache_home)
         .args(["rust", "search", "prime", "."])
         .output()
         .expect("run asp rust search");
@@ -116,9 +118,10 @@ fn language_facade_discovers_activation_from_child_directory() {
 }
 
 #[test]
-fn language_facade_uses_nested_package_root_when_child_has_manifest() {
+fn language_facade_uses_manifest_child_as_provider_project_hint() {
     let root = temp_project_root("child-package-search-facade");
     let bin_dir = root.join(".bin");
+    let cache_home = root.join(".cache");
     let child_dir = root.join("languages").join("rust-lang-project-harness");
     std::fs::create_dir_all(&child_dir).expect("create child dir");
     std::fs::write(
@@ -132,6 +135,7 @@ fn language_facade_uses_nested_package_root_when_child_has_manifest() {
     let output = asp_command(&root)
         .current_dir(&child_dir)
         .env("PATH", prepend_path(&bin_dir))
+        .env("PRJ_CACHE_HOME", &cache_home)
         .args([
             "rust",
             "query",
@@ -179,17 +183,20 @@ fn language_facade_normalizes_relative_nested_project_root_arg() {
         "[package]\nname = \"nested-rust-lang-project-harness\"\nversion = \"0.1.0\"\n",
     )
     .expect("write child manifest");
-    write_activation(&root, &[provider("rust", Vec::new())]);
     let bin_dir = root.join(".bin");
+    let cache_home = root.join(".cache");
     write_pwd_provider(&bin_dir, "rs-harness");
-    write_runtime_profiles(
+    write_activation(
         &root,
-        "rust",
-        vec![bin_dir.join("rs-harness").display().to_string()],
+        &[provider(
+            "rust",
+            vec![bin_dir.join("rs-harness").display().to_string()],
+        )],
     );
 
     let output = asp_command(&root)
         .current_dir(&root)
+        .env("PRJ_CACHE_HOME", &cache_home)
         .args([
             "rust",
             "query",
@@ -211,10 +218,11 @@ fn language_facade_normalizes_relative_nested_project_root_arg() {
         .as_array()
         .expect("provider argv");
     assert!(
-        argv.iter()
+        !argv
+            .iter()
             .filter_map(serde_json::Value::as_str)
             .any(|arg| arg == "."),
-        "provider argv should contain normalized project root: {argv:?}"
+        "provider argv should not retain an already-selected project root: {argv:?}"
     );
     assert!(
         !argv
@@ -230,6 +238,7 @@ fn language_facade_normalizes_relative_nested_project_root_arg() {
 fn language_facade_selects_matching_provider_from_activation() {
     let root = temp_project_root("typescript-search-facade");
     let bin_dir = root.join(".bin");
+    let cache_home = root.join(".cache");
     write_echo_provider(&bin_dir, "rs-harness", "rs");
     write_echo_provider(&bin_dir, "ts-harness", "ts");
     write_activation(
@@ -242,6 +251,7 @@ fn language_facade_selects_matching_provider_from_activation() {
 
     let output = asp_command(&root)
         .env("PATH", prepend_path(&bin_dir))
+        .env("PRJ_CACHE_HOME", &cache_home)
         .args(["typescript", "search", "fzf", "parseSearchArgs", "."])
         .output()
         .expect("run asp typescript search");
@@ -253,7 +263,7 @@ fn language_facade_selects_matching_provider_from_activation() {
     );
     assert_eq!(
         String::from_utf8(output.stdout).expect("stdout"),
-        "ts args=[search][fzf][parseSearchArgs][.]\n"
+        "ts args=[search][fzf][parseSearchArgs]\n"
     );
     let _ = std::fs::remove_dir_all(root);
 }

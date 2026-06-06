@@ -5,7 +5,7 @@
 The workspace currently has two Rust crates:
 
 - `agent-semantic-hook`: owns hook runtime library behavior: activation loading, event parsing, classification, provider routes, platform response rendering, config loading, and cache helpers.
-- `agent-semantic-protocol`: owns the public `asp` CLI and the `hook` command runtime for install, doctor, replay, and client event dispatch.
+- `agent-semantic-protocol`: owns the public `asp` CLI, `hook install`/`hook doctor` lifecycle commands, and the `hook` command runtime for client event dispatch.
 
 The desired user-facing shape is one installed binary: `asp`.
 `agent-semantic-hook` should remain a library crate for hook runtime implementation, with no standalone binary or crate-local CLI facade in the normal install surface.
@@ -72,7 +72,7 @@ uncomments or adds rules. Existing valid config must be preserved.
 should contain `config.toml`, not generated activation or cache JSON. Generated
 activation, provider profile registries, and hook event logs are cache
 artifacts and should be written to
-`${PRJ_HOME_CACHE}/agent-semantic-protocol/hooks` when `PRJ_HOME_CACHE` is set,
+`${PRJ_CACHE_HOME}/agent-semantic-protocol/hooks` when `PRJ_CACHE_HOME` is set,
 otherwise to the git toplevel `.cache/agent-semantic-protocol/hooks` directory.
 
 First-pass rule model:

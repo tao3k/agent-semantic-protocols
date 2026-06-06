@@ -104,12 +104,12 @@ fn render_document_flow(lines: &mut Vec<String>, language_id: &str) {
         "3. Query element metadata with `asp {language_id} query --term <term> --view metadata .`, `asp {language_id} query --kind <element-kind> --view metadata .`, `asp {language_id} query --field <key=value> --view metadata .`, or `asp {language_id} query --selector <path-or-range> --view metadata .`."
     ));
     lines.push(format!(
-        "4. For hook recovery direct reads only, use `asp {language_id} query --from-hook direct-source-read --selector <path-or-range> .`."
+        "4. For pure matched element text, add `--content` to an explicit query with `--selector`, `--term`, `--kind`, or `--field`."
     ));
-    lines.push(
-        "5. Treat stdout from `--from-hook direct-source-read` as pure document content only."
-            .to_string(),
-    );
+    lines.push(format!(
+        "5. For hook recovery source-preserved direct reads only, use `asp {language_id} query --from-hook direct-source-read --selector <path-or-range> .`."
+    ));
+    lines.push("6. Do not combine `--content` with `--from-hook direct-source-read`.".to_string());
 }
 
 fn render_source_flow(
@@ -152,9 +152,13 @@ fn render_rules(
         .iter()
         .any(|provider| is_document_language(&provider.language_id))
     {
-        lines.push("- Document query is parser-owned element metadata; it does not use `search owner`, `--code`, or `--content`.".to_string());
+        lines.push("- Document query is parser-owned element metadata by default; `--content` is a filtered element-content projection, not a direct file read.".to_string());
         lines.push(
-            "- Direct document text reads use `--from-hook direct-source-read` after an exact selector is known.".to_string(),
+            "- Direct source-preserved document reads use `--from-hook direct-source-read` after an exact selector is known.".to_string(),
+        );
+        lines.push(
+            "- Do not combine document `--content` with `--from-hook direct-source-read`."
+                .to_string(),
         );
     }
     if providers

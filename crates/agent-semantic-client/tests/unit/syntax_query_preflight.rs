@@ -41,6 +41,20 @@ fn accepts_builtin_catalog_query_before_provider_execution() {
 }
 
 #[test]
+fn accepts_native_flow_lite_catalog_without_tree_sitter_preflight() {
+    let catalog_request = query_request(vec![
+        "--catalog".to_string(),
+        "flow-lite".to_string(),
+        "--where".to_string(),
+        "source.call=payload_string sink.constructs=ToolAction scope.fn=collect_tool_actions"
+            .to_string(),
+        ".".to_string(),
+    ]);
+
+    validate_syntax_query_request(&catalog_request).expect("native flow-lite catalog");
+}
+
+#[test]
 fn rejects_unknown_builtin_catalog_query_before_provider_execution() {
     let catalog_request = query_request(vec![
         "--catalog".to_string(),

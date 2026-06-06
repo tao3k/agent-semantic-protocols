@@ -116,7 +116,7 @@ fn provider_language_facades_forward_language_like_provider_args() {
     let root = temp_project_root("provider-dash-language-query");
     let bin_dir = root.join(".bin");
     super::support::write_echo_provider(&bin_dir, "rs-harness", "rs");
-    super::support::write_echo_provider(&bin_dir, "aslp-julia-harness", "jl");
+    super::support::write_echo_provider(&bin_dir, "asp-julia-harness", "jl");
     write_activation(
         &root,
         &[provider("rust", Vec::new()), provider("julia", Vec::new())],
@@ -172,7 +172,9 @@ fn provider_language_facades_forward_language_like_provider_args() {
             "{stderr}"
         );
         assert!(
-            stderr.contains(&format!("use asp <rust|typescript|python|julia> {command}")),
+            stderr.contains(&format!(
+                "use asp <rust|typescript|python|julia|org|md> {command}"
+            )),
             "{stderr}"
         );
     }
@@ -186,6 +188,6 @@ fn provider_language_facades_forward_language_like_provider_args() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
-    assert!(stdout.contains("jl args=[search][prime][.]"), "{stdout}");
+    assert!(stdout.contains("jl args=[search][prime]"), "{stdout}");
     let _ = std::fs::remove_dir_all(root);
 }

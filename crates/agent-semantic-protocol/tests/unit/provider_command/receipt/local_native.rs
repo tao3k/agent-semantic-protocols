@@ -50,7 +50,7 @@ fn client_search_receipt_records_local_native_provider_command() {
         .to_string();
     assert_eq!(
         receipt["providerCommands"][0]["argv"],
-        serde_json::json!([resolved_provider, "search", "prime", "--view", "seeds", "."])
+        serde_json::json!([resolved_provider, "search", "prime", "--view", "seeds"])
     );
     assert_eq!(receipt["providerCommands"][0]["exitCode"], 0);
     assert_eq!(receipt["providerCommands"][0]["stdoutBytes"], stdout_len);

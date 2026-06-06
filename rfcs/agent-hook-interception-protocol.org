@@ -929,6 +929,22 @@ when the following implementation gates pass:
     every event log line parses as JSON with
     =schemaId=agent.semantic-protocols.hook.event= and
     =protocolId=agent.semantic-protocols.hook=.
+11. Prompt-facing deny output is a Markdown recovery prompt, not a pipe-template
+    or raw JSON replacement.  It must include =# ASP Hook Recovery=, =## Stop=,
+    =## Run Next=, =## Detected Binaries=, =## Agent Flow=, and =## Rules=.
+12. =Detected Binaries= must render the current runtime profile command argv
+    when available, while =routes[].argv= remains the public =asp <language>=
+    facade route.  A real hook smoke must prove the displayed command path can
+    expose stale PATH/direnv drift without teaching agents to bypass the facade.
+13. Hook recovery output must branch on the loaded client config: when
+    =experimental.semanticAstPatch.enabled = false=, the prompt says to use
+    =apply_patch= and not provider =ast-patch= for ordinary edits; when enabled,
+    it may mention provider =ast-patch= only after dry-run receipt validation.
+14. Generated skills and hook prompts must not reintroduce retired
+    agent-prefixed guide spelling or the old search-wrapper hook query
+    spelling.  The accepted guide entrypoint is =asp <language> guide .=, its
+    help surface is =asp <language> guide --help .=, and the accepted hook
+    recovery route is top-level =query --from-hook direct-source-read=.
 
 * Downstream Plan
 

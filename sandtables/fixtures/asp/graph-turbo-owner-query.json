@@ -1,0 +1,106 @@
+{
+  "schemaId": "agent.semantic-protocols.semantic-graph-turbo-request",
+  "schemaVersion": "1",
+  "protocolId": "agent.semantic-protocols.semantic-language",
+  "protocolVersion": "1",
+  "packetKind": "graph-turbo-request",
+  "profile": "owner-query",
+  "algorithm": "typed-ppr-diverse",
+  "seedIds": [
+    "q:parser",
+    "owner:cli"
+  ],
+  "budget": 8,
+  "kindBudgets": {
+    "query": 1,
+    "owner": 2,
+    "item": 2,
+    "hot": 1,
+    "test": 1
+  },
+  "windowMerge": {
+    "enabled": true,
+    "maxGapLines": 8
+  },
+  "pathBudget": 4,
+  "pathMaxHops": 4,
+  "cache": {
+    "enabled": true
+  },
+  "graph": {
+    "nodes": [
+      {
+        "id": "q:parser",
+        "kind": "query",
+        "role": "term",
+        "value": "parser"
+      },
+      {
+        "id": "owner:cli",
+        "kind": "owner",
+        "role": "path",
+        "value": "packages/python/tools/src/tools/cli.py"
+      },
+      {
+        "id": "item:graph-turbo",
+        "kind": "item",
+        "role": "fn",
+        "value": "graph_turbo",
+        "owner": "packages/python/tools/src/tools/cli.py",
+        "symbol": "graph_turbo"
+      },
+      {
+        "id": "hot:rank-frontier",
+        "kind": "hot",
+        "role": "call",
+        "value": "rank_frontier",
+        "owner": "packages/python/tools/src/tools/cli.py",
+        "symbol": "rank_frontier"
+      },
+      {
+        "id": "dep:jsonschema",
+        "kind": "dependency",
+        "role": "pkg",
+        "value": "jsonschema"
+      },
+      {
+        "id": "test:cli",
+        "kind": "test",
+        "role": "path",
+        "value": "tests/unit/test_asp_graph_turbo.py"
+      }
+    ],
+    "edges": [
+      {
+        "source": "q:parser",
+        "target": "owner:cli",
+        "relation": "matches"
+      },
+      {
+        "source": "q:parser",
+        "target": "item:graph-turbo",
+        "relation": "matches"
+      },
+      {
+        "source": "owner:cli",
+        "target": "item:graph-turbo",
+        "relation": "contains"
+      },
+      {
+        "source": "item:graph-turbo",
+        "target": "hot:rank-frontier",
+        "relation": "contains"
+      },
+      {
+        "source": "owner:cli",
+        "target": "dep:jsonschema",
+        "relation": "uses"
+      },
+      {
+        "source": "owner:cli",
+        "target": "test:cli",
+        "relation": "covers"
+      }
+    ]
+  }
+}

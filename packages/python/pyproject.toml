@@ -1,21 +1,27 @@
 [project]
-name = "agent-semantic-protocols-tools"
+name = "agent-semantic-protocols-python-workspace"
 version = "0.1.0"
-description = "Python tooling for agent-semantic-protocols validation and package sync."
+description = "Python workspace for Agent Semantic Protocols packages."
 requires-python = ">=3.11"
 dependencies = [
-  "jsonschema>=4.23,<5",
-  "tiktoken>=0.9,<1",
+    "agent-semantic-protocols-tools",
+    "asp-graph-turbo",
 ]
 
 [dependency-groups]
 dev = [
-  "pytest>=9,<10",
+    "pytest>=9,<10",
 ]
 
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+[tool.uv]
+package = false
 
-[tool.hatch.build.targets.wheel]
-packages = ["src/tools"]
+[tool.uv.sources]
+agent-semantic-protocols-tools = { workspace = true }
+asp-graph-turbo = { workspace = true }
+
+[tool.uv.workspace]
+members = [
+    "asp_graph_turbo",
+    "tools",
+]

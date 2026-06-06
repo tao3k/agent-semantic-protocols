@@ -1,3 +1,5 @@
+#![deny(dead_code)]
+
 #[path = "unit/classifier/mod.rs"]
 mod classifier;
 

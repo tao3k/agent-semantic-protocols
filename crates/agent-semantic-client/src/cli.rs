@@ -1,29 +1,19 @@
 //! CLI dispatcher for the public `asp` agent semantic client surface.
 
 use std::env;
-use std::io::{self, Write};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
-use agent_semantic_client_core::{
-    ByteCount, CacheStatus, ClientMethod, ClientRequest, ProviderRegistrySnapshot,
-};
-use agent_semantic_client_local_cli::{LocalNativeCliBackend, LocalNativeOutput};
+use agent_semantic_client_core::{ClientMethod, ProviderRegistrySnapshot};
 
-use crate::cache_cli::{
-    apply_provider_cache_probe, cache_hit_receipt, provider_cache_probe,
-    write_prompt_output_cache_after_provider_success,
-    write_search_packet_cache_after_provider_success,
-};
+use crate::cli_args::{ParsedArgs, parse_client_args};
+use crate::provider_method::run_provider_method;
 
 /// Runs the agent semantic client CLI from process arguments.
 pub fn run_cli_from_env() -> Result<(), String> {
     let args = env::args().skip(1).collect::<Vec<_>>();
-    if matches!(
-        args.first().map(String::as_str),
-        Some("search" | "query" | "check")
-    ) {
+    if matches!(args.first().map(String::as_str), Some("query" | "check")) {
         return Err(
-            "top-level asp search/query/check has been removed; use asp <rust|typescript|python|julia> <search|query|check> ..."
+            "top-level asp query/check has been removed; use asp <rust|typescript|python|julia> <query|check> ..."
                 .to_string(),
         );
     }
@@ -38,13 +28,15 @@ pub fn run_cli_args(
     args: Vec<String>,
     cwd: PathBuf,
 ) -> Result<(), String> {
-    let parsed = ParsedArgs::parse(args, cwd, language_id.is_some())?;
+    let language_id_text = language_id.as_ref().map(ToString::to_string);
+    let parsed = parse_client_args(args, cwd, language_id_text.as_deref())?;
     match parsed.command.as_deref() {
         None | Some("help" | "--help" | "-h") => {
             print_guide();
             Ok(())
         }
         Some("guide") => run_guide(parsed, language_id),
+        Some("tools") => crate::tools_cli::run_tools(&parsed.project_root, &parsed.forwarded_args),
         Some("providers") => run_providers(parsed),
         Some("doctor") => run_doctor(parsed),
         Some("cache") => crate::cache_cli::run_cache(
@@ -53,11 +45,24 @@ pub fn run_cli_args(
             parsed.receipt_json,
         ),
         Some("cloud") => run_cloud(parsed),
-        Some("search") => run_provider_method(
-            parsed,
-            ClientMethod::Search,
-            language_id.ok_or_else(|| provider_language_required("search"))?,
-        ),
+        Some("search") => {
+            if language_id.is_none()
+                && parsed
+                    .forwarded_args
+                    .first()
+                    .is_some_and(|arg| arg == "history")
+            {
+                return crate::search_history::run_search_history(
+                    &parsed.project_root,
+                    &parsed.forwarded_args,
+                );
+            }
+            run_provider_method(
+                parsed,
+                ClientMethod::Search,
+                language_id.ok_or_else(|| provider_language_required("search"))?,
+            )
+        }
         Some("query") => run_provider_method(
             parsed,
             ClientMethod::Query,
@@ -88,171 +93,6 @@ fn provider_language_required(command: &str) -> String {
     )
 }
 
-fn run_provider_method(
-    parsed: ParsedArgs,
-    method: ClientMethod,
-    language_id: agent_semantic_client_core::LanguageId,
-) -> Result<(), String> {
-    let snapshot = ProviderRegistrySnapshot::load(&parsed.project_root)?;
-    let request = ClientRequest::new(method, parsed.project_root.clone())
-        .with_forwarded_args(parsed.forwarded_args)
-        .with_language(language_id);
-    crate::syntax_query_preflight::validate_syntax_query_request(&request)?;
-    let request_started_at = std::time::Instant::now();
-    let cache_probe = provider_cache_probe(&parsed.project_root, &snapshot, &request);
-    if let Some(cache_probe) = &cache_probe
-        && let Some(replay) = &cache_probe.replay
-    {
-        io::stdout()
-            .write_all(&replay.stdout)
-            .map_err(|error| format!("failed to write cache replay stdout: {error}"))?;
-        if parsed.receipt_json {
-            let mut receipt = cache_hit_receipt(
-                request.method.clone(),
-                cache_probe,
-                replay,
-                agent_semantic_client_core::ElapsedMillis::new(
-                    request_started_at
-                        .elapsed()
-                        .as_millis()
-                        .min(u128::from(u64::MAX)) as u64,
-                ),
-            );
-            crate::syntax_receipt::apply_syntax_query_receipt_metadata(
-                &mut receipt,
-                &replay.stdout,
-            );
-            let receipt = serde_json::to_string(&receipt)
-                .map_err(|error| format!("failed to serialize receipt JSON: {error}"))?;
-            eprintln!("{receipt}");
-        }
-        return Ok(());
-    }
-    let execution_cache_status = cache_probe
-        .as_ref()
-        .map_or(CacheStatus::Miss, |probe| probe.cache_status);
-    let packet_first_output = if should_try_search_packet_first(&request) {
-        run_search_packet_first_miss(
-            &parsed.project_root,
-            &snapshot,
-            &request,
-            execution_cache_status,
-        )?
-    } else {
-        None
-    };
-    let mut output = if let Some(output) = packet_first_output {
-        output
-    } else {
-        let writeback_snapshot = snapshot.clone();
-        let backend = LocalNativeCliBackend::new(snapshot);
-        let mut output = backend.execute(&request)?;
-        let writeback_probe = if output.status_code == 0 {
-            write_prompt_output_cache_after_provider_success(
-                &parsed.project_root,
-                &writeback_snapshot,
-                &request,
-                &output.stdout,
-                &output.receipt.provider_commands,
-            )
-        } else {
-            None
-        };
-        if let Some(cache_probe) = &cache_probe {
-            apply_provider_cache_probe(&mut output.receipt, cache_probe);
-        }
-        let execution_cache_status = output.receipt.cache_status;
-        if let Some(writeback_probe) = &writeback_probe {
-            apply_provider_cache_probe(&mut output.receipt, writeback_probe);
-            output.receipt.cache_status = execution_cache_status;
-        }
-        output
-    };
-    crate::syntax_receipt::apply_syntax_query_receipt_metadata(&mut output.receipt, &output.stdout);
-    if !parsed.receipt_json {
-        io::stderr()
-            .write_all(&output.stderr)
-            .map_err(|error| format!("failed to write provider stderr: {error}"))?;
-    }
-    io::stdout()
-        .write_all(&output.stdout)
-        .map_err(|error| format!("failed to write provider stdout: {error}"))?;
-    if parsed.receipt_json {
-        let receipt = serde_json::to_string(&output.receipt)
-            .map_err(|error| format!("failed to serialize receipt JSON: {error}"))?;
-        eprintln!("{receipt}");
-    }
-    if output.status_code != 0 {
-        std::process::exit(output.status_code);
-    }
-    Ok(())
-}
-
-fn should_try_search_packet_first(request: &ClientRequest) -> bool {
-    request.method == ClientMethod::Search
-        && !request
-            .forwarded_args
-            .iter()
-            .any(|arg| arg == "items" || arg == "ingest" || arg == "--code" || arg == "--json")
-        && (request
-            .forwarded_args
-            .windows(2)
-            .any(|window| window[0] == "--view" && window[1] == "seeds")
-            || request
-                .forwarded_args
-                .iter()
-                .any(|arg| arg == "--view=seeds"))
-}
-
-fn run_search_packet_first_miss(
-    project_root: &Path,
-    snapshot: &ProviderRegistrySnapshot,
-    request: &ClientRequest,
-    execution_cache_status: CacheStatus,
-) -> Result<Option<LocalNativeOutput>, String> {
-    let Some(language_id) = request.language_id.clone() else {
-        return Ok(None);
-    };
-    let mut packet_args = request.forwarded_args.clone();
-    insert_json_flag_before_project_root(&mut packet_args);
-    let packet_request = ClientRequest::new(ClientMethod::Search, project_root.to_path_buf())
-        .with_forwarded_args(packet_args)
-        .with_language(language_id);
-    let backend = LocalNativeCliBackend::new(snapshot.clone());
-    let mut output = backend.execute(&packet_request)?;
-    if output.status_code != 0 {
-        return Ok(None);
-    }
-    let Some(rendered_stdout) = crate::cache_replay::render_search_packet_bytes(&output.stdout)
-    else {
-        return Ok(None);
-    };
-    let Some(writeback_probe) = write_search_packet_cache_after_provider_success(
-        project_root,
-        snapshot,
-        request,
-        &output.stdout,
-        &rendered_stdout,
-    ) else {
-        return Ok(None);
-    };
-    apply_provider_cache_probe(&mut output.receipt, &writeback_probe);
-    output.receipt.cache_status = execution_cache_status;
-    output.receipt.packet_bytes = Some(ByteCount::from_len(output.stdout.len()));
-    output.receipt.stdout_bytes = ByteCount::from_len(rendered_stdout.len());
-    output.stdout = rendered_stdout;
-    Ok(Some(output))
-}
-
-fn insert_json_flag_before_project_root(args: &mut Vec<String>) {
-    let insert_at = if args.last().is_some_and(|arg| arg == ".") {
-        args.len().saturating_sub(1)
-    } else {
-        args.len()
-    };
-    args.insert(insert_at, "--json".to_string());
-}
-
 fn run_providers(parsed: ParsedArgs) -> Result<(), String> {
     match ProviderRegistrySnapshot::load(&parsed.project_root) {
         Ok(snapshot) => {
@@ -263,10 +103,11 @@ fn run_providers(parsed: ParsedArgs) -> Result<(), String> {
             );
             for provider in snapshot.providers {
                 println!(
-                    "|provider language={} provider={} binary={} packageRoots={}",
+                    "|provider language={} provider={} binary={} execution={} packageRoots={}",
                     provider.language_id,
                     provider.provider_id,
                     provider.binary,
+                    provider.execution.as_str(),
                     provider.package_roots.join(",")
                 );
             }
@@ -302,6 +143,7 @@ fn run_doctor(parsed: ParsedArgs) -> Result<(), String> {
     println!(
         "|cache status=inspectable route=local-cache import=manual invalidate=manual replay=artifact-only"
     );
+    println!("{}", crate::tools_cli::tools_summary_line());
     println!("|cloud status=disabled reason=local-default privateServer=optional");
     Ok(())
 }
@@ -322,6 +164,8 @@ fn print_guide() {
     println!("[asp-guide] backend=local prompt=compact json=artifact-only");
     println!("|cmd doctor=asp doctor");
     println!("|cmd providers=asp providers");
+    println!("|cmd tools-doctor=asp tools doctor");
+    println!("|cmd search-history=asp search history audit .");
     println!("|cmd guide=asp <rust|typescript|python> guide .");
     println!("|cmd search-guide=asp <rust|typescript|python> search guide .");
     println!("|ref query-guide=asp <rust|typescript|python> query guide .");
@@ -336,96 +180,4 @@ fn print_guide() {
     println!(
         "|rule route=local-native cache=probe-first cloud=optional nativeProviderFacts=required"
     );
-}
-
-struct ParsedArgs {
-    command: Option<String>,
-    project_root: PathBuf,
-    forwarded_args: Vec<String>,
-    receipt_json: bool,
-}
-
-impl ParsedArgs {
-    fn parse(
-        args: Vec<String>,
-        cwd: PathBuf,
-        allow_provider_language_args: bool,
-    ) -> Result<Self, String> {
-        let mut command = None;
-        let mut project_root = cwd;
-        let mut explicit_project_root = false;
-        let mut forwarded_args = Vec::new();
-        let mut receipt_json = false;
-        let mut iter = args.into_iter();
-        if let Some(first) = iter.next() {
-            command = Some(first);
-        }
-        while let Some(arg) = iter.next() {
-            match arg.as_str() {
-                "--language" if !allow_provider_language_args => {
-                    return Err("--language has been removed; use asp <rust|typescript|python> <search|query|check> ...".to_string());
-                }
-                "--root" => {
-                    project_root = PathBuf::from(
-                        iter.next()
-                            .ok_or_else(|| "--root requires a value".to_string())?,
-                    );
-                    explicit_project_root = true;
-                }
-                "--receipt-json" => {
-                    receipt_json = true;
-                }
-                _ => forwarded_args.push(arg),
-            }
-        }
-        if !explicit_project_root
-            && should_infer_positional_project_root(command.as_deref())
-            && let Some(root) = positional_project_root(&forwarded_args, &project_root)
-        {
-            project_root = root;
-            if let Some(last) = forwarded_args.last_mut() {
-                *last = ".".to_string();
-            }
-        }
-        Ok(Self {
-            command,
-            project_root,
-            forwarded_args,
-            receipt_json,
-        })
-    }
-}
-
-fn should_infer_positional_project_root(command: Option<&str>) -> bool {
-    matches!(command, Some("search" | "query" | "check"))
-}
-
-fn positional_project_root(forwarded_args: &[String], cwd: &Path) -> Option<PathBuf> {
-    let value = forwarded_args.last()?;
-    if value.starts_with('-') {
-        return None;
-    }
-    let path = PathBuf::from(value);
-    let absolute = if path.is_absolute() {
-        path
-    } else {
-        cwd.join(path)
-    };
-    if value == "."
-        || absolute
-            .join(".cache/agent-semantic-protocol/hooks/activation.json")
-            .is_file()
-        || absolute
-            .join(".cache/agent-semantic-protocol/client/cache-manifest.json")
-            .is_file()
-        || absolute.join("Cargo.toml").is_file()
-        || absolute.join("package.json").is_file()
-        || absolute.join("pyproject.toml").is_file()
-        || absolute.join("Project.toml").is_file()
-        || absolute.join("JuliaProject.toml").is_file()
-    {
-        Some(absolute)
-    } else {
-        None
-    }
 }

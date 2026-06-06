@@ -154,7 +154,6 @@ fn run_hook_decision(root: &Path, event: Value) -> Value {
         .arg("--event-json")
         .arg("-")
         .env_remove("PRJ_CACHE_HOME")
-        .env_remove("PRJ_HOME_CACHE")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

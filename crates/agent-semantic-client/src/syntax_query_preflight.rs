@@ -50,11 +50,18 @@ fn tree_sitter_catalog_id(args: &[String]) -> Option<&str> {
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
         if arg == "--catalog" {
-            return iter.next().map(String::as_str);
+            return iter
+                .next()
+                .map(String::as_str)
+                .filter(|catalog_id| !is_native_query_catalog(catalog_id));
         }
         if let Some(value) = arg.strip_prefix("--catalog=") {
-            return Some(value);
+            return (!is_native_query_catalog(value)).then_some(value);
         }
     }
     None
+}
+
+fn is_native_query_catalog(catalog_id: &str) -> bool {
+    matches!(catalog_id, "flow-lite")
 }
