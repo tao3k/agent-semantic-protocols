@@ -17,8 +17,10 @@ Document language providers such as `org` and `md` use document-specific packet
 shapes. `semantic-document-search-packet.v1.schema.json` owns metadata search
 facts for headings, properties, tables, blocks, links, and selectors.
 `semantic-document-query-packet.v1.schema.json` owns document query metadata and
-`--content` selector reads. These providers must not report document facts
-through source-language `nativeSyntaxFacts`.
+`--content` selector reads, with explicit `queryKind` and `querySurface`
+fields. Document hook recovery must use document `query` routes, not source
+`search owner` or owner/items routes. These providers must not report document
+facts through source-language `nativeSyntaxFacts`.
 RFC 009 adds optional `reasoningProfiles` to this packet as a typed return-entry
 surface for `search prime` and `search reasoning <profile>`. Those entries
 describe profile names, selector slots, returns, and frontier actions; they
@@ -281,10 +283,11 @@ language-provider capability, not a root hook capability: Rust, TypeScript,
 Python, and future providers own AST/parser lookup, exact item matching,
 multi-term expressions such as `fun1|fun2|fun3`, and compact code extraction.
 Document providers use `semantic-document-query-packet.v1.schema.json` instead
-of this source-language packet: `asp org query --selector <path:start-end>
---content` and `asp md query --selector <path:start-end> --content` keep stdout
-as pure document content, while non-content query output returns bounded
-document fact frontiers.
+of this source-language packet: `asp org query --term <term> --view metadata`
+and `asp md query --term <term> --view metadata` return bounded document fact
+frontiers, while `asp org query --selector <path:start-end> --content` and
+`asp md query --selector <path:start-end> --content` keep stdout as pure
+document content.
 Root hooks should route source access back to provider `search owner <path>
 items [--query SYMBOL]`; they should not maintain a parallel read/query engine.
 The query packet also supports owner-local discovery without source windows:
@@ -856,6 +859,10 @@ not a prompt-facing render template; provider output should still use
 Python MVP 11 uses a SciPy sparse CSR backend for `typed-ppr-diverse` so the
 request/response pair can represent real matrix-backed ranking, path, cache,
 trace, and sandtable metric evidence instead of a renderer-local graph format.
+Python MVP 12 requires relation-owned default edge weights and profile-owned
+typed transition masks before PageRank/path ranking. The result packet exposes
+edge weights plus each profile's allowed transitions and node-kind bonuses in
+`profileCompatibility` so policy drift is visible outside the Python package.
 
 Large-library packets should keep source and runtime limits explicit instead
 of forcing the agent to discover them through repeated commands.
@@ -911,9 +918,8 @@ new schema version.
 The current TypeScript slice emits conforming packets from:
 
 ```shell
-ts-harness search workspace --json .
-ts-harness search prime --package packages/core --json .
 ts-harness search prime --json .
+ts-harness search prime packages/core --json .
 ts-harness search owner src/index.ts --json .
 ts-harness search dependency react --json .
 ts-harness search deps react/jsx-runtime@19.0.0::jsx --json .
@@ -950,9 +956,9 @@ through `search ingest`. The TypeScript registry advertises this directly:
 `parser-visible-source-text-search` and TypeScript-scoped ingest surfaces for
 non-parser text, docs text, schema JSON, and generated artifacts.
 `search/api` projects TypeScript parser-owned exported/public API facts from the
-current workspace. Dependency-prefixed or external-version API queries require a
-separate docs/API source and must not present current workspace parser facts as
-dependency-version documentation.
+current provider path context. Dependency-prefixed or external-version API
+queries require a separate docs/API source and must not present current project
+parser facts as dependency-version documentation.
 `search/public-external-types` projects TypeScript parser-owned public type
 surfaces that expose a dependency package. Direct import-type text is confirmed;
 owner-level external import plus unbound type text is marked possible until the
@@ -965,7 +971,6 @@ docs, api, public-external-types, tests, and ingest views.
 The current Python slice emits conforming packets from:
 
 ```shell
-py-harness search workspace --json .
 py-harness search prime --json .
 py-harness search owner src/python_lang_project_harness/_cli.py --json .
 py-harness search dependency pytest --json .

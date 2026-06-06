@@ -17,6 +17,8 @@
     "projectRoot",
     "query",
     "queryTerms",
+    "queryKind",
+    "querySurface",
     "documentMode",
     "matchCount",
     "matchLimit",
@@ -69,6 +71,18 @@
         "minLength": 1
       }
     },
+    "queryKind": {
+      "enum": [
+        "term",
+        "selector"
+      ]
+    },
+    "querySurface": {
+      "enum": [
+        "metadata",
+        "content"
+      ]
+    },
     "documentMode": {
       "enum": [
         "metadata",
@@ -102,6 +116,58 @@
       "type": "boolean"
     }
   },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "queryKind": {
+            "const": "term"
+          }
+        },
+        "required": [
+          "queryKind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "querySurface": {
+            "const": "metadata"
+          },
+          "documentMode": {
+            "const": "metadata"
+          },
+          "contentBlocks": {
+            "maxItems": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "queryKind": {
+            "const": "selector"
+          }
+        },
+        "required": [
+          "queryKind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "querySurface": {
+            "const": "content"
+          },
+          "documentMode": {
+            "const": "content"
+          }
+        },
+        "required": [
+          "contentBlocks"
+        ]
+      }
+    }
+  ],
   "$defs": {
     "contentBlock": {
       "type": "object",

@@ -42,6 +42,7 @@ class SemanticDocumentPacketSchemaTests(unittest.TestCase):
         self.assertIn("org", languages)
         self.assertIn("md", languages)
         for language_id in ["org", "md"]:
+            self.assertNotIn("search/owner", languages[language_id]["methods"])
             packet_schemas = {
                 packet_schema
                 for descriptor in languages[language_id]["methodDescriptors"]
@@ -49,6 +50,15 @@ class SemanticDocumentPacketSchemaTests(unittest.TestCase):
             }
             self.assertIn("semantic-document-search-packet.v1", packet_schemas)
             self.assertIn("semantic-document-query-packet.v1", packet_schemas)
+            document_query = next(
+                descriptor
+                for descriptor in languages[language_id]["methodDescriptors"]
+                if descriptor["method"] == "query/document"
+            )
+            self.assertEqual(
+                ["selector", "term", "metadata", "content"],
+                document_query["queryInputForms"],
+            )
 
     def test_document_search_packet_is_valid(self) -> None:
         validator = schema_validator_for(
@@ -123,6 +133,8 @@ class SemanticDocumentPacketSchemaTests(unittest.TestCase):
             "projectRoot": ".",
             "query": "README.md:1-1",
             "queryTerms": ["README.md:1-1"],
+            "queryKind": "selector",
+            "querySurface": "content",
             "documentMode": "content",
             "matchCount": 1,
             "matchLimit": 1,
@@ -159,6 +171,8 @@ class SemanticDocumentPacketSchemaTests(unittest.TestCase):
             "projectRoot": ".",
             "query": "*",
             "queryTerms": ["*"],
+            "queryKind": "term",
+            "querySurface": "metadata",
             "documentMode": "metadata",
             "matchCount": 0,
             "matchLimit": 1,

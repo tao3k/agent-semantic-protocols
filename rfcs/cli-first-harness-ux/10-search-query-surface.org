@@ -31,10 +31,12 @@ Markdown facts are owned by =comrak= through =orgize='s =md= subcommand.
 #+begin_src shell
 asp org guide .                 # orgize guide .
 asp org search prime --view seeds .
+asp org query --term CUSTOM_ID --view metadata .
 asp org query --selector docs/a.org:10-20 --content .
 
 asp md guide .                  # orgize md guide .
 asp md search prime --view seeds .
+asp md query --term Project --view metadata .
 asp md query --selector README.md:1-20 --content .
 #+end_src
 
@@ -44,10 +46,13 @@ document languages.  Their JSON contracts are document-specific:
 =semantic-document-search-packet.v1= for metadata discovery and
 =semantic-document-query-packet.v1= for metadata or selector content reads.
 =search= emits document facts such as headings, Org properties, drawers,
-tables, source or export blocks, Markdown links, and Markdown code fences.
-=query --content= retains the exact selector contract for document languages:
-stdout is the source-preserved document slice selected by =path:start-end=.
-=--code= remains reserved for source-language providers.
+tables, source or export blocks, Markdown links, and Markdown code fences, but
+document content recovery does not use =search owner= or source owner/items
+routes. =query --term <term> --view metadata= returns a bounded document
+metadata frontier. =query --selector <path:start-end> --content= retains the
+exact selector contract for document languages: stdout is the source-preserved
+document slice selected by =path:start-end=. =--code= remains reserved for
+source-language providers.
 
 RFC 007 adds the shared =asp ast-patch= verification path.
 Language providers still own AST adapters, but agents should use the shared
@@ -928,7 +933,7 @@ item query or focused edit.
 Rust adds Cargo-native views under the same search namespace:
 
 #+begin_src shell
-rs-harness search workspace
+rs-harness search prime
 rs-harness search targets
 rs-harness search deps
 rs-harness search deps <dep[/subpath][@version][::api]>

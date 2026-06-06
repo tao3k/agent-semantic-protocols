@@ -533,7 +533,10 @@
               "selector",
               "code-shaped",
               "catalog-id",
-              "s-expression"
+              "s-expression",
+              "term",
+              "metadata",
+              "content"
             ]
           }
         },

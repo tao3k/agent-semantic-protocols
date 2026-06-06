@@ -26,15 +26,21 @@ pub(crate) fn search_query_route(
 
 pub(crate) fn direct_source_query_route(provider: &ActivatedProvider, path: &str) -> DecisionRoute {
     let route_context = provider.route_path_context(path);
-    if is_document_provider(provider)
-        && let Some(route) = search_query_route_for_selector(
-            provider,
-            &route_context.selector,
-            &route_context.project_root,
-            &[],
-        )
-    {
-        return route;
+    if is_document_provider(provider) {
+        return DecisionRoute {
+            language_id: provider.language_id.clone(),
+            provider_id: provider.provider_id.clone(),
+            binary: "asp".to_string(),
+            kind: DecisionRouteKind::Query,
+            argv: provider.agent_facade_argv([
+                "query",
+                "--selector",
+                route_context.selector.as_str(),
+                "--content",
+                route_context.project_root.as_str(),
+            ]),
+            stdin_mode: None,
+        };
     }
     let mut args = vec![
         "query".to_string(),

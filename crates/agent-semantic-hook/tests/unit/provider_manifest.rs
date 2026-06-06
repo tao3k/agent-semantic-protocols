@@ -86,9 +86,35 @@ fn builtin_manifests_include_document_language_providers() {
             "asp",
             "org",
             "query",
+            "{termArgs}",
+            "--view",
+            "metadata",
+            "{projectRoot}"
+        ]
+    );
+    assert_eq!(
+        org.routes.owner.argv,
+        [
+            "asp",
+            "org",
+            "query",
             "--selector",
-            "{selector}",
-            "--content",
+            "{path}",
+            "--view",
+            "metadata",
+            "{projectRoot}"
+        ]
+    );
+    assert_eq!(
+        org.routes.fzf.argv,
+        [
+            "asp",
+            "org",
+            "query",
+            "--term",
+            "{query}",
+            "--view",
+            "metadata",
             "{projectRoot}"
         ]
     );
@@ -102,9 +128,35 @@ fn builtin_manifests_include_document_language_providers() {
             "asp",
             "md",
             "query",
+            "{termArgs}",
+            "--view",
+            "metadata",
+            "{projectRoot}"
+        ]
+    );
+    assert_eq!(
+        md.routes.owner.argv,
+        [
+            "asp",
+            "md",
+            "query",
             "--selector",
-            "{selector}",
-            "--content",
+            "{path}",
+            "--view",
+            "metadata",
+            "{projectRoot}"
+        ]
+    );
+    assert_eq!(
+        md.routes.fzf.argv,
+        [
+            "asp",
+            "md",
+            "query",
+            "--term",
+            "{query}",
+            "--view",
+            "metadata",
             "{projectRoot}"
         ]
     );

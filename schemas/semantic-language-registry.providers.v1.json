@@ -487,7 +487,6 @@
       "displayName": "Org Document Provider",
       "methods": [
         "search/prime",
-        "search/owner",
         "search/fzf",
         "query/document",
         "guide"
@@ -506,22 +505,6 @@
           ],
           "view": "prime",
           "requiresQuery": false,
-          "acceptsStdin": false,
-          "supportsPackageScope": true
-        },
-        {
-          "method": "search/owner",
-          "command": "search",
-          "supportsJson": true,
-          "supportsCompact": true,
-          "packetSchemas": [
-            "semantic-document-search-packet.v1"
-          ],
-          "outputSchemaIds": [
-            "agent.semantic-protocols.semantic-document-search-packet"
-          ],
-          "view": "owner",
-          "requiresQuery": true,
           "acceptsStdin": false,
           "supportsPackageScope": true
         },
@@ -553,7 +536,10 @@
             "agent.semantic-protocols.semantic-document-query-packet"
           ],
           "queryInputForms": [
-            "selector"
+            "selector",
+            "term",
+            "metadata",
+            "content"
           ]
         },
         {
@@ -584,7 +570,6 @@
       "displayName": "Markdown Document Provider",
       "methods": [
         "search/prime",
-        "search/owner",
         "search/fzf",
         "query/document",
         "guide"
@@ -603,22 +588,6 @@
           ],
           "view": "prime",
           "requiresQuery": false,
-          "acceptsStdin": false,
-          "supportsPackageScope": true
-        },
-        {
-          "method": "search/owner",
-          "command": "search",
-          "supportsJson": true,
-          "supportsCompact": true,
-          "packetSchemas": [
-            "semantic-document-search-packet.v1"
-          ],
-          "outputSchemaIds": [
-            "agent.semantic-protocols.semantic-document-search-packet"
-          ],
-          "view": "owner",
-          "requiresQuery": true,
           "acceptsStdin": false,
           "supportsPackageScope": true
         },
@@ -650,7 +619,10 @@
             "agent.semantic-protocols.semantic-document-query-packet"
           ],
           "queryInputForms": [
-            "selector"
+            "selector",
+            "term",
+            "metadata",
+            "content"
           ]
         },
         {
