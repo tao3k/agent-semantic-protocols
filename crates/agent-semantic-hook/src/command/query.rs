@@ -26,6 +26,16 @@ pub(crate) fn search_query_route(
 
 pub(crate) fn direct_source_query_route(provider: &ActivatedProvider, path: &str) -> DecisionRoute {
     let route_context = provider.route_path_context(path);
+    if is_document_provider(provider)
+        && let Some(route) = search_query_route_for_selector(
+            provider,
+            &route_context.selector,
+            &route_context.project_root,
+            &[],
+        )
+    {
+        return route;
+    }
     let mut args = vec![
         "query".to_string(),
         "--from-hook".to_string(),
@@ -43,6 +53,10 @@ pub(crate) fn direct_source_query_route(provider: &ActivatedProvider, path: &str
         argv: provider.agent_facade_argv(args),
         stdin_mode: None,
     }
+}
+
+fn is_document_provider(provider: &ActivatedProvider) -> bool {
+    matches!(provider.language_id.as_str(), "org" | "md")
 }
 
 pub(crate) fn search_query_route_for_selector(

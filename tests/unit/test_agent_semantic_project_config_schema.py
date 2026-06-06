@@ -1,3 +1,5 @@
+"""Validate the shared asp.toml project configuration schema."""
+
 from __future__ import annotations
 
 import importlib.util
@@ -56,9 +58,38 @@ class AgentSemanticProjectConfigSchemaTests(unittest.TestCase):
             "providers": {
                 "rust": {"enabled": False},
                 "python": {"enabled": True, "binary": ".bin/custom-py-harness"},
+                "org": {"enabled": False},
+                "md": {"enabled": True},
             },
         }
         self.assertEqual([], self.validation_errors(config))
+
+    def test_codeql_extension_config_is_valid(self) -> None:
+        config = {
+            "schemaId": "agent.semantic-protocols.project-config",
+            "schemaVersion": "1",
+            "extensions": {
+                "codeql": {
+                    "enabled": False,
+                    "experimental": True,
+                    "mode": "cache-only",
+                    "allowDatabaseCreate": False,
+                    "allowHotPath": False,
+                    "cacheDir": ".cache/agent-semantic-protocol/codeql",
+                    "profiles": ["metadata", "local-flow"],
+                }
+            },
+        }
+        self.assertEqual([], self.validation_errors(config))
+
+    def test_codeql_extension_defaults_are_experimental_and_disabled(self) -> None:
+        codeql = self.validator.schema["$defs"]["codeqlExtensionConfig"]["properties"]
+
+        self.assertEqual(False, codeql["enabled"]["default"])
+        self.assertEqual(True, codeql["experimental"]["default"])
+        self.assertEqual("disabled", codeql["mode"]["default"])
+        self.assertEqual(False, codeql["allowDatabaseCreate"]["default"])
+        self.assertEqual(False, codeql["allowHotPath"]["default"])
 
     def test_rejects_path_like_ignored_dir_name(self) -> None:
         errors = self.validation_errors(
@@ -70,12 +101,32 @@ class AgentSemanticProjectConfigSchemaTests(unittest.TestCase):
         )
         self.assertTrue(errors)
 
-    def test_rejects_unknown_provider_language(self) -> None:
+    def test_rejects_invalid_provider_language_id(self) -> None:
         errors = self.validation_errors(
             {
                 "schemaId": "agent.semantic-protocols.project-config",
                 "schemaVersion": "1",
-                "providers": {"ruby": {"enabled": False}},
+                "providers": {"Ruby": {"enabled": False}},
+            }
+        )
+        self.assertTrue(errors)
+
+    def test_rejects_codeql_hot_path_enablement(self) -> None:
+        errors = self.validation_errors(
+            {
+                "schemaId": "agent.semantic-protocols.project-config",
+                "schemaVersion": "1",
+                "extensions": {"codeql": {"allowHotPath": True}},
+            }
+        )
+        self.assertTrue(errors)
+
+    def test_rejects_unknown_extension(self) -> None:
+        errors = self.validation_errors(
+            {
+                "schemaId": "agent.semantic-protocols.project-config",
+                "schemaVersion": "1",
+                "extensions": {"semgrep": {"enabled": True}},
             }
         )
         self.assertTrue(errors)

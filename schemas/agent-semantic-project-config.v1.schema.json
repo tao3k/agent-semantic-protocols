@@ -30,11 +30,21 @@
     "providers": {
       "type": "object",
       "additionalProperties": false,
+      "patternProperties": {
+        "^[a-z][a-z0-9_-]*$": { "$ref": "#/$defs/providerConfig" }
+      },
       "properties": {
         "rust": { "$ref": "#/$defs/providerConfig" },
         "typescript": { "$ref": "#/$defs/providerConfig" },
         "python": { "$ref": "#/$defs/providerConfig" },
         "julia": { "$ref": "#/$defs/providerConfig" }
+      }
+    },
+    "extensions": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "codeql": { "$ref": "#/$defs/codeqlExtensionConfig" }
       }
     }
   },
@@ -49,6 +59,53 @@
         "binary": {
           "type": "string",
           "minLength": 1
+        }
+      }
+    },
+    "codeqlExtensionConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "experimental": {
+          "type": "boolean",
+          "default": true
+        },
+        "mode": {
+          "type": "string",
+          "enum": ["disabled", "metadata", "cache-only", "manual", "ci"],
+          "default": "disabled"
+        },
+        "allowDatabaseCreate": {
+          "type": "boolean",
+          "default": false
+        },
+        "allowHotPath": {
+          "const": false,
+          "default": false
+        },
+        "cacheDir": {
+          "type": "string",
+          "minLength": 1
+        },
+        "profiles": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "metadata",
+              "raw-dbscheme",
+              "local-flow",
+              "global-flow",
+              "taint",
+              "security",
+              "variant-analysis"
+            ]
+          },
+          "uniqueItems": true
         }
       }
     },

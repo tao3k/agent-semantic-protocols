@@ -44,10 +44,11 @@
     },
     "method": {
       "type": "string",
-      "pattern": "^(?:query|(search|query|check|proof|review|evidence|ast-patch|agent)/[a-z][a-z0-9_-]*)$"
+      "pattern": "^(?:guide|query|(search|query|check|proof|review|evidence|ast-patch|agent)/[a-z][a-z0-9_-]*)$"
     },
     "command": {
       "enum": [
+        "guide",
         "search",
         "query",
         "check",
@@ -211,10 +212,26 @@
         "supportsCompact"
       ],
       "allOf": [
-        {
-          "if": {
-            "properties": {
-              "method": {
+      {
+        "if": {
+          "properties": {
+            "method": { "const": "guide" }
+          },
+          "required": ["method"]
+        },
+        "then": {
+          "properties": {
+            "command": { "const": "guide" }
+          },
+          "not": {
+            "required": ["view"]
+          }
+        }
+      },
+      {
+        "if": {
+          "properties": {
+            "method": {
                 "pattern": "^search/"
               }
             },
@@ -520,6 +537,61 @@
             ]
           }
         },
+        "adapterModes": {
+          "description": "Tree-sitter-compatible query projection modes supported by this method.",
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "native-projection",
+              "hybrid",
+              "tree-sitter-runtime",
+              "codeql-query",
+              "cached-replay"
+            ]
+          }
+        },
+        "sourceAuthorities": {
+          "description": "Authorities that may prove query packets emitted by this method.",
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "native-parser",
+              "native-parser-adapter",
+              "tree-sitter-runtime",
+              "codeql",
+              "hybrid",
+              "cached-provider-export"
+            ]
+          }
+        },
+        "executionBackends": {
+          "description": "Query execution engines this method can use while preserving the advertised packet shape. CodeQL is optional and must still render through frontier-first packets.",
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "native-parser",
+              "tree-sitter-runtime",
+              "codeql",
+              "hybrid",
+              "cached-replay"
+            ]
+          }
+        },
+        "renderProfiles": {
+          "description": "Prompt-facing render contracts this method can produce without changing the query packet shape.",
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "compact-graph-frontier",
+              "corpus-locator",
+              "flow-lite-frontier"
+            ]
+          }
+        },
         "queryCatalogs": {
           "type": "array",
           "uniqueItems": true,
@@ -577,6 +649,16 @@
         },
         "cacheReplay": {
           "type": "boolean"
+        },
+        "codeOutput": {
+          "$ref": "#/$defs/codeOutputDescriptor"
+        },
+        "unsupportedPatternBehavior": {
+          "description": "Provider response for unsupported tree-sitter-compatible pattern shapes. Providers must not silently fall back to raw search.",
+          "enum": [
+            "diagnostic",
+            "empty-frontier"
+          ]
         },
         "acceptedQuerySetSelectors": {
           "type": "array",
@@ -702,15 +784,74 @@
             "pattern": "^[A-Za-z][A-Za-z0-9_.-]*$"
           }
         },
+        "nodeTypes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+          }
+        },
+        "fields": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+          }
+        },
         "description": {
           "type": "string",
           "minLength": 1
+        },
+        "fingerprint": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "description": "Content fingerprint for the canonical .scm catalog source embedded by the provider."
         },
         "sourceDelivery": {
           "enum": [
             "provider-binary-embedded"
           ],
           "description": "How the provider makes this canonical .scm source available to downstream clients. provider-binary-embedded means the provider binary carries the source and does not require package source files on the target machine."
+        }
+      }
+    },
+    "codeOutputDescriptor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "multiMatch",
+        "requires"
+      ],
+      "properties": {
+        "mode": {
+          "enum": [
+            "pure-code"
+          ]
+        },
+        "multiMatch": {
+          "enum": [
+            "deny",
+            "allow",
+            "require-limit",
+            "first-only"
+          ]
+        },
+        "requires": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "exact-selector",
+              "unique-predicate",
+              "unique-match",
+              "--limit",
+              "--first"
+            ]
+          }
         }
       }
     }

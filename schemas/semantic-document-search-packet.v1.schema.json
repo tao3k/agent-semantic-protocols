@@ -1,0 +1,248 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-document-search-packet.v1.schema.json",
+  "title": "Semantic Document Search Packet",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "protocolId",
+    "protocolVersion",
+    "languageId",
+    "providerId",
+    "binary",
+    "namespace",
+    "method",
+    "projectRoot",
+    "view",
+    "documentMode",
+    "query",
+    "documentCount",
+    "factCount",
+    "owners",
+    "documentFacts",
+    "nextActions",
+    "notes"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.semantic-document-search-packet"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "protocolId": {
+      "const": "agent.semantic-protocols.semantic-language"
+    },
+    "protocolVersion": {
+      "const": "1"
+    },
+    "languageId": {
+      "$ref": "#/$defs/documentLanguageId"
+    },
+    "providerId": {
+      "const": "orgize"
+    },
+    "binary": {
+      "const": "orgize"
+    },
+    "namespace": {
+      "type": "string",
+      "pattern": "^agent\\.semantic-protocols\\.languages\\.(org|md)\\.orgize$"
+    },
+    "method": {
+      "type": "string",
+      "pattern": "^search/[a-z][a-z0-9_-]*$"
+    },
+    "projectRoot": {
+      "type": "string",
+      "minLength": 1
+    },
+    "view": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "documentMode": {
+      "const": "metadata"
+    },
+    "query": {
+      "type": "string"
+    },
+    "documentCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "factCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "owners": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/documentOwner"
+      }
+    },
+    "documentFacts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/documentFact"
+      }
+    },
+    "nextActions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/documentAction"
+      }
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/documentNote"
+      }
+    }
+  },
+  "$defs": {
+    "documentLanguageId": {
+      "enum": [
+        "org",
+        "md"
+      ]
+    },
+    "documentFactKind": {
+      "enum": [
+        "heading",
+        "property",
+        "table",
+        "block",
+        "link",
+        "selector"
+      ]
+    },
+    "parserAuthority": {
+      "enum": [
+        "orgize",
+        "comrak"
+      ]
+    },
+    "documentLocation": {
+      "$ref": "semantic-source-location.v1.schema.json#/$defs/location"
+    },
+    "documentOwner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "role",
+        "parserAuthority"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "semantic-source-location.v1.schema.json#/$defs/projectPath"
+        },
+        "role": {
+          "const": "document"
+        },
+        "parserAuthority": {
+          "$ref": "#/$defs/parserAuthority"
+        }
+      }
+    },
+    "documentFact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "name",
+        "documentPath",
+        "location",
+        "parserAuthority",
+        "queryKeys",
+        "attributes"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "$ref": "#/$defs/documentFactKind"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "documentPath": {
+          "$ref": "semantic-source-location.v1.schema.json#/$defs/projectPath"
+        },
+        "location": {
+          "$ref": "#/$defs/documentLocation"
+        },
+        "parserAuthority": {
+          "$ref": "#/$defs/parserAuthority"
+        },
+        "queryKeys": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "attributes": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "textSnippet": {
+          "type": "string"
+        }
+      }
+    },
+    "documentAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "target",
+        "command"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "query",
+            "content"
+          ]
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1
+        },
+        "command": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "documentNote": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "message"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

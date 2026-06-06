@@ -1,5 +1,5 @@
 use agent_semantic_hook::{
-    RuntimeProviderHealthStatus, load_runtime_profiles, parse_hook_activation,
+    RuntimeProviderHealthStatus, parse_hook_activation, runtime_profiles_for_runtime,
 };
 
 use crate::rust_harness_activation::support::{
@@ -33,23 +33,45 @@ fn cli_install_uses_static_provider_manifest_without_running_guide() {
         std::fs::read_to_string(root.join(".cache/agent-semantic-protocol/hooks/activation.json"))
             .expect("installed activation");
     let registry = parse_hook_activation(&activation).expect("valid installed activation");
-    assert_eq!(registry.providers.len(), 1);
-    assert_eq!(registry.providers[0].language_id, "python");
-    let runtime_profiles =
-        load_runtime_profiles(&root.join(".cache/agent-semantic-protocol/runtime/profiles.json"))
-            .expect("valid runtime profiles");
-    assert_eq!(runtime_profiles.providers.len(), 1);
-    assert_eq!(runtime_profiles.providers[0].language_id, "python");
+    assert!(
+        registry
+            .providers
+            .iter()
+            .any(|provider| provider.language_id == "python")
+    );
+    assert!(
+        registry
+            .providers
+            .iter()
+            .any(|provider| provider.language_id == "org")
+    );
+    assert!(
+        registry
+            .providers
+            .iter()
+            .any(|provider| provider.language_id == "md")
+    );
+    let runtime_profiles = runtime_profiles_for_runtime(&root, &registry);
+    let python_profile = runtime_profiles
+        .providers
+        .iter()
+        .find(|provider| provider.language_id == "python")
+        .expect("python profile");
     assert_eq!(
-        runtime_profiles.providers[0].health.status,
+        python_profile.health.status,
         RuntimeProviderHealthStatus::Available
     );
-    let resolved_binary = runtime_profiles.providers[0]
+    let resolved_binary = python_profile
         .resolved_binary
         .as_deref()
         .expect("resolved provider binary");
     assert!(resolved_binary.ends_with("/.bin/py-harness"));
     assert!(std::path::Path::new(resolved_binary).is_file());
+    assert!(
+        !root
+            .join(".cache/agent-semantic-protocol/runtime/profiles.json")
+            .exists()
+    );
     let _ = std::fs::remove_dir_all(&root);
 }
 
@@ -79,9 +101,11 @@ fn cli_install_runtime_profile_prefers_project_bin_provider() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    let runtime_profiles =
-        load_runtime_profiles(&root.join(".cache/agent-semantic-protocol/runtime/profiles.json"))
-            .expect("valid runtime profiles");
+    let activation =
+        std::fs::read_to_string(root.join(".cache/agent-semantic-protocol/hooks/activation.json"))
+            .expect("installed activation");
+    let registry = parse_hook_activation(&activation).expect("valid installed activation");
+    let runtime_profiles = runtime_profiles_for_runtime(&root, &registry);
     let resolved_binary = runtime_profiles.providers[0]
         .resolved_binary
         .as_deref()
@@ -91,6 +115,11 @@ fn cli_install_runtime_profile_prefers_project_bin_provider() {
         std::path::Path::new(resolved_binary).starts_with(&project_bin),
         "expected runtime profile to prefer {}, got {resolved_binary}",
         project_bin.display()
+    );
+    assert!(
+        !root
+            .join(".cache/agent-semantic-protocol/runtime/profiles.json")
+            .exists()
     );
     let _ = std::fs::remove_dir_all(&root);
     let _ = std::fs::remove_dir_all(&external_root);
@@ -116,6 +145,12 @@ enabled = false
 binary = ".bin/custom-py-harness"
 
 [providers.julia]
+enabled = false
+
+[providers.org]
+enabled = false
+
+[providers.md]
 enabled = false
 "#,
     )
@@ -157,9 +192,7 @@ enabled = false
         python.provider_command_prefix
     );
 
-    let runtime_profiles =
-        load_runtime_profiles(&root.join(".cache/agent-semantic-protocol/runtime/profiles.json"))
-            .expect("valid runtime profiles");
+    let runtime_profiles = runtime_profiles_for_runtime(&root, &registry);
     assert_eq!(runtime_profiles.providers.len(), 1);
     let profile = &runtime_profiles.providers[0];
     assert_eq!(profile.language_id, "python");
@@ -175,6 +208,11 @@ enabled = false
     assert_eq!(
         profile.health.status,
         RuntimeProviderHealthStatus::Available
+    );
+    assert!(
+        !root
+            .join(".cache/agent-semantic-protocol/runtime/profiles.json")
+            .exists()
     );
     let _ = std::fs::remove_dir_all(&root);
 }

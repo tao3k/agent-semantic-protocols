@@ -13,6 +13,12 @@ deny that output-mode error with `reasonKind=agent-search-json` and guide to
 the equivalent compact command. Providers should emit JSON in a compact
 machine-oriented form, leaving readability to validators and artifact viewers
 rather than spending terminal tokens on pretty-print whitespace.
+Document language providers such as `org` and `md` use document-specific packet
+shapes. `semantic-document-search-packet.v1.schema.json` owns metadata search
+facts for headings, properties, tables, blocks, links, and selectors.
+`semantic-document-query-packet.v1.schema.json` owns document query metadata and
+`--content` selector reads. These providers must not report document facts
+through source-language `nativeSyntaxFacts`.
 RFC 009 adds optional `reasoningProfiles` to this packet as a typed return-entry
 surface for `search prime` and `search reasoning <profile>`. Those entries
 describe profile names, selector slots, returns, and frontier actions; they
@@ -131,6 +137,35 @@ provider stdout as `prompt-output/*.txt` write-back artifacts for the next
 identical request. `prompt-output/*.command.json` stores the matching
 provider-command provenance when stdout replay has no packet-level command
 field. This path deliberately excludes query/code windows.
+Structured relation and flow evidence uses schema-owned JSON artifact families
+instead of prompt stdout: `relation-plan/*.json`, `flow-lite/*.json`, and
+`codeql-evidence/*.json`. When these structured evidence artifacts are present,
+the client keeps them as evidence/provenance and does not fall back to
+`prompt-output/*.txt` direct replay for that generation.
+The CodeQL evidence family belongs to the experimental ASP CodeQL extension,
+not to a default provider hot path. It supports both metadata-only normalized
+row artifacts and cold-path unavailable artifacts with `rowCount: 0` plus a
+`backend-unavailable` omission. This lets providers and clients return a stable
+extension receipt without requiring CodeQL to be installed or advertising
+`executionBackends: ["codeql"]` from provider registry descriptors.
+When CodeQL is installed, `packages/python/src/tools/codeql_evidence.py`
+normalizes `codeql version --format=json` and
+`codeql resolve languages --format=json` into the same metadata-only evidence
+family, so CLI metadata can be tested without storing raw CodeQL output in
+prompt-facing artifacts.
+`packages/python/src/tools/codeql_bounded_evidence.py` covers the next cold path:
+it copies a tiny Rust fixture to a temporary source root, creates a CodeQL
+database, runs a bounded raw-dbscheme `files` query, decodes BQRS, and emits
+`codeql-evidence/bounded/*.json`. This proves CodeQL database/query execution
+without treating the installed extractor as a full Rust QL semantic executor.
+Because Rust CodeQL database creation dominates runtime, the tool stores a
+repo-local warm cache under `.cache/agent-semantic-protocol/codeql-fixtures` and
+records `databaseCacheStatus` in evidence fields.
+Ordinary `search` and `query` commands must not create CodeQL databases or run
+CodeQL queries. They may reference previously produced `codeql-evidence/*.json`
+artifacts only after native provider facts have selected a bounded evidence
+question and the `extensions.codeql` ASP project config or an explicit
+extension command allows that evidence path.
 
 `agent-semantic-project-config.v1.schema.json` owns the shared `asp.toml`
 project configuration surface. Providers ignore hidden directories by default,
@@ -141,6 +176,14 @@ language provider or pin its executable path. Provider-specific policy config
 may stay in language-owned files, but source discovery, fd/rg prefilters, and
 hook activation should consume the nearest `asp.toml` before selecting provider
 facts or binaries.
+The same config owns extension activation under `extensions.*`. The CodeQL
+extension is default off and default experimental:
+`extensions.codeql.enabled=false`, `extensions.codeql.experimental=true`, and
+`extensions.codeql.mode="disabled"`. Enabling it changes only explicit
+extension/evidence paths unless a cache-only artifact is already available; the
+schema keeps `extensions.codeql.allowHotPath=false` so ordinary search, query,
+hook recovery, and `check --changed` cannot be configured to create CodeQL
+databases or run CodeQL queries.
 
 `semantic-type-surface.v1.schema.json` is the shared vocabulary for
 language-neutral public type surface facts. It owns the facts that agents need
@@ -237,6 +280,11 @@ provider-native parser queries that return compact code by default. Query is a
 language-provider capability, not a root hook capability: Rust, TypeScript,
 Python, and future providers own AST/parser lookup, exact item matching,
 multi-term expressions such as `fun1|fun2|fun3`, and compact code extraction.
+Document providers use `semantic-document-query-packet.v1.schema.json` instead
+of this source-language packet: `asp org query --selector <path:start-end>
+--content` and `asp md query --selector <path:start-end> --content` keep stdout
+as pure document content, while non-content query output returns bounded
+document fact frontiers.
 Root hooks should route source access back to provider `search owner <path>
 items [--query SYMBOL]`; they should not maintain a parallel read/query engine.
 The query packet also supports owner-local discovery without source windows:
@@ -263,7 +311,9 @@ second public command family. ASP owns catalog ids, canonical `.scm` catalog
 metadata, schema validation, artifact/cache references, replay receipts, and
 prompt render hints; language providers remain the authority for native
 parser/compiler facts, catalog source delivery, grammar-profile delivery, and
-project captures into this packet. Search, query,
+project captures into this packet. `.scm` is the only repository and registry
+catalog filename extension for this ABI; Scheme-like S-expression query text is
+an input form, not a `.scheme` filename compatibility surface. Search, query,
 read, and native syntax fact packets can refer back to this ABI through
 `syntaxQueryRef`, `syntaxMatchRefs`, `syntaxCaptureRefs`, and an optional short
 `syntaxAnchor` when those references improve a decision path without adding a
@@ -288,6 +338,47 @@ query. The first CodeQL-aligned target is `flow-lite` local source/sink/path fro
 still rendered through frontier-first packets and exact `--code` follow-up
 selectors.
 Compact contract: CodeQL is an optional semantic backend for `flow-lite` local source/sink/path frontier.
+`rfcs/asp-native-relation-flow-codeql.org` owns the native relation catalog,
+flow-lite packet plan, artifact policy, and CodeQL promotion gates that sit
+above this schema field.
+Provider registry method descriptors may advertise supported engines with
+`executionBackends`; current native providers should declare `native-parser`
+and must not list `codeql` until a real backend can produce the advertised
+frontier packet.
+`tools/validate-provider-registry-contracts.py` is the focused real-provider
+gate for this surface: it runs `asp <language> agent doctor --json`, validates
+the returned registry against this schema, and checks that query descriptors
+advertising `semantic-tree-sitter-query.v1` carry the shared tree-sitter query
+provenance fields. Keep this separate from fast schema unit tests because it
+starts real provider binaries.
+Tree-sitter-compatible query capability is advertised on the same `query`
+method descriptor with `packetSchemas`, `queryInputForms`, `queryCatalogs`,
+`grammarId`, `grammarProfileVersion`, `adapterModes`, `sourceAuthorities`,
+`renderProfiles`, `cacheReplay`, and `unsupportedPatternBehavior`. Catalog
+descriptors use `sourceDelivery=provider-binary-embedded` plus an optional
+`fingerprint`, so downstream users do not need provider package source to
+resolve the canonical `.scm` ABI.
+
+`semantic-relation-plan.v1.schema.json` is the shared relation-evidence packet
+introduced by RFC 012. It records provider-owned directed relation rows between
+semantic handles, the evidence authority that proved those rows, optional
+artifact references, omitted relation reasons, and exact next actions. Relation
+rows are protocol facts; consumers must not infer prompt-visible edges from raw
+text or model guesses.
+
+`semantic-flow-lite.v1.schema.json` is the shared bounded flow packet introduced
+by RFC 012. It intentionally starts with local source/sink/path shapes such as
+`local-source-sink`, `guarded-effect`, `mutation-flow`, and
+`test-coverage-path`. This is not a global dataflow contract. The packet keeps
+source/sink handles, ordered path steps, guard/effect points, evidence
+artifacts, and `confidence=proved|bounded|partial|unavailable` explicit before
+an agent asks for exact source with `--code`.
+
+`semantic-codeql-evidence.v1.schema.json` is the metadata-only artifact contract
+for optional CodeQL evidence. It records database/query fingerprints, source
+snapshot identity, input handles, normalized row count, project-root policy, and
+the relation plan or flow-lite id it supports. Raw CodeQL tables, logs, and
+database paths stay out of prompt-facing packets by default.
 
 `semantic-source-location.v1.schema.json` owns the shared project-relative
 path, line range, and source locator vocabulary used by query, search, read,
@@ -303,13 +394,13 @@ provenance fields go through this shared schema first, then package-local schema
 copies and provider registry descriptors. The provenance schema itself depends
 on `semantic-source-location.v1.schema.json` for its `syntaxAnchor.location`.
 
-Provider-maintained catalogs should follow the upstream tree-sitter convention
-`tree-sitter/<grammar-id>/queries/*.scm` when that grammar uses it. Selected
-upstream query snapshots and corpus profiles are development/CI alignment
-assets. Editor-oriented assets such as `highlights.scm` are not included unless
-they are given an explicit syntax ABI calibration role. Downstream clients
-consume provider-emitted packets or binary-embedded catalog sources, not
-provider package source files.
+Provider-maintained catalogs must use the upstream tree-sitter-style
+`tree-sitter/<grammar-id>/queries/*.scm` layout. Selected upstream query
+snapshots and corpus profiles are development/CI alignment assets.
+Editor-oriented assets such as `highlights.scm` are not included unless they
+are given an explicit syntax ABI calibration role. Downstream clients consume
+provider-emitted packets or binary-embedded catalog sources, not provider
+package source files.
 
 Provider-local `query-corpus/*.txt` fixtures pin syntax ABI capture precision.
 Providers store these fixtures beside `queries/*.scm`, but the main ASP
@@ -360,9 +451,10 @@ rules`, `fn format_field`, `struct PacketCollections`, `import {Foo}`, or
 The root schema owns only the portable fact envelope: fact id, kind, source,
 owner path, location, visibility, query keys, relations, and extension fields.
 Portable fact kinds cover owners, modules, public APIs, imports, calls, tests,
-docs, includes, fields, bindings, constants, arguments, and macros; provider
-specific syntax remains in `languageKind` and `fields`. Rust, TypeScript,
-Python, Julia, and future providers own their concrete fact builders and
+docs, document headings, properties, drawers, tables, blocks, links, code fences,
+includes, fields, bindings, constants, arguments, and macros; provider specific
+syntax remains in `languageKind` and `fields`. Rust, TypeScript, Python, Julia,
+Org, Markdown, and future providers own their concrete fact builders and
 provider-local schema refinements. Search and query packets may embed these
 facts as optional `nativeSyntaxFacts`.
 
@@ -565,7 +657,7 @@ The TypeScript provider registers as:
   "providerId": "ts-harness",
   "binary": "ts-harness",
   "namespace": "agent.semantic-protocols.languages.typescript.ts-harness",
-  "methods": ["search/workspace", "search/prime", "check/full", "agent/doctor", "agent/guide"],
+  "methods": ["search/workspace", "search/prime", "check/full", "agent/doctor", "guide"],
   "methodDescriptors": [
     {
       "method": "search/workspace",
@@ -746,6 +838,24 @@ projection: the view-native `[search-<view>]` header, the micro-legend,
 `frontier=`.
 Providers should not render seed or synthesis as a second independent prompt
 protocol.
+
+`semantic-graph-turbo-request.v1.schema.json` is the schema-owned algorithm
+input packet for the `asp-graph-turbo` Python workspace package. It carries
+the requested reasoning profile, algorithm id, seed node ids, ranking budget,
+optional per-kind budgets, optional window-merge controls, and typed graph
+facts under `graph.nodes[]` and `graph.edges[]`.
+`semantic-graph-turbo-result.v1.schema.json` is the matching schema-owned
+response packet. It records the effective profile, algorithm, seed nodes,
+budget, per-kind budgets, ranked node ids, frontier actions, relation edges,
+scores, merged windows, profile compatibility, source/sink frontier, typed
+paths, flow-lite path ranking, packet fingerprint, graph cache metadata,
+algorithm trace, rank explanations, supported profiles, and prompt-visible
+`omit`/`avoid` facts from the turbo ranking engine. It is ranking evidence,
+not a prompt-facing render template; provider output should still use
+`semantic-compact-graph-render.v1` and the shared `asp graph render` boundary.
+Python MVP 11 uses a SciPy sparse CSR backend for `typed-ppr-diverse` so the
+request/response pair can represent real matrix-backed ranking, path, cache,
+trace, and sandtable metric evidence instead of a renderer-local graph format.
 
 Large-library packets should keep source and runtime limits explicit instead
 of forcing the agent to discover them through repeated commands.

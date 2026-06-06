@@ -1,3 +1,5 @@
+#![deny(dead_code)]
+
 //! Root semantic agent hook runtime for provider manifests and project activations.
 
 mod activation_store;
@@ -13,6 +15,7 @@ mod profile_registry;
 mod protocol;
 mod protocol_activation;
 mod provider_manifest;
+mod provider_registry;
 mod runtime_profile;
 pub mod source_access;
 mod source_dump_range;
@@ -60,11 +63,8 @@ pub use runtime_profile::{
     RUNTIME_PROFILES_PROTOCOL_ID, RUNTIME_PROFILES_PROTOCOL_VERSION, RUNTIME_PROFILES_SCHEMA_ID,
     RUNTIME_PROFILES_SCHEMA_VERSION, RuntimeProfiles, RuntimeProfilesGeneratedBy,
     RuntimeProviderHealth, RuntimeProviderHealthStatus, RuntimeProviderProfile,
-    default_runtime_profiles_path, load_or_refresh_runtime_profiles, load_runtime_profiles,
-    runtime_profile_command_argv, runtime_profile_invocation, runtime_profiles_path_for_activation,
-    runtime_profiles_path_from_cache_home, runtime_project_root_for_activation,
-    write_runtime_profiles, write_runtime_profiles_for_activation,
-    write_runtime_profiles_for_runtime,
+    runtime_profile_command_argv, runtime_profile_invocation, runtime_profiles_for_activation,
+    runtime_profiles_for_runtime, runtime_project_root_for_activation,
 };
 pub(crate) use source_selector::{SourceSelectorMatch, collect_source_selector_matches};
 pub(crate) use tool_action::{
