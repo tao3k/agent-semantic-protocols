@@ -11,19 +11,26 @@ def write_timeline_text_report(report: dict[str, object]) -> None:
 
 
 def timeline_text_lines(report: dict[str, object]) -> tuple[str, ...]:
-    lines: list[str] = []
-    lines.extend(_summary_lines(report))
-    lines.extend(_burst_lines(report))
-    lines.extend(_repeat_lines(report))
-    lines.extend(_target_lines(report))
-    lines.extend(_efficiency_lines(report.get("efficiencyEstimate")))
-    lines.extend(_action_summary_lines(report.get("actionSummary")))
-    lines.extend(_suppression_lines(report.get("primeSuppression")))
-    lines.extend(_promotion_lines(report.get("fzfPromotion")))
-    lines.extend(_collapse_lines(report.get("ownerCollapse")))
-    lines.extend(_fanout_lines(report.get("fanoutPlanning")))
-    lines.extend(_session_lines(report))
-    return tuple(lines)
+    return tuple(
+        line for section in _timeline_line_sections(report) for line in section
+    )
+
+
+def _timeline_line_sections(report: dict[str, object]) -> tuple[tuple[str, ...], ...]:
+    return (
+        _summary_lines(report),
+        _burst_lines(report),
+        _repeat_lines(report),
+        _target_lines(report),
+        _efficiency_lines(report.get("efficiencyEstimate")),
+        _read_loop_lines(report.get("readLoopRisk")),
+        _action_summary_lines(report.get("actionSummary")),
+        _suppression_lines(report.get("primeSuppression")),
+        _promotion_lines(report.get("fzfPromotion")),
+        _collapse_lines(report.get("ownerCollapse")),
+        _fanout_lines(report.get("fanoutPlanning")),
+        _session_lines(report),
+    )
 
 
 def _summary_lines(report: dict[str, object]) -> tuple[str, ...]:
@@ -88,7 +95,9 @@ def _repeat_line(group: dict[str, object]) -> str:
 
 
 def _target_lines(report: dict[str, object]) -> tuple[str, ...]:
-    return tuple(_target_line(target) for target in report.get("optimizationTargets", []))
+    return tuple(
+        _target_line(target) for target in report.get("optimizationTargets", [])
+    )
 
 
 def _target_line(target: dict[str, object]) -> str:
@@ -129,6 +138,20 @@ def _action_summary_lines(value: object) -> tuple[str, ...]:
         f"policy={value['policy']} actions={value['actionCount']} "
         f"replacement={value['replacement']}",
         *(_next_action_line(action) for action in value.get("actions", [])),
+    )
+
+
+def _read_loop_lines(value: object) -> tuple[str, ...]:
+    if not isinstance(value, dict):
+        return ()
+    return (
+        "[graph-turbo-read-loop] "
+        f"policy={value['policy']} "
+        f"directCodeReads={value['directCodeReads']} "
+        f"duplicateSelectors={value['duplicateSelectors']} "
+        f"adjacentRangeWindows={value['adjacentRangeWindows']} "
+        f"sameOwnerScans={value['sameOwnerScans']} "
+        f"riskCount={value['riskCount']}",
     )
 
 

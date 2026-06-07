@@ -9,6 +9,8 @@
 #+  prime frontier, and typed reasoning profiles that feed this render surface.
 #+SEE_ALSO: rfcs/semantic-query-projection-protocol.org (010) — query-local
 #+  projection nodes and expansion actions consumed by graph/code frontiers.
+#+SEE_ALSO: rfcs/semantic-fact-frontier-feedback.org (013) — next-stage
+#+  ontology, flow profiles, receipt memory, and context precision benchmarks.
 
 * One-sentence summary
 
@@ -489,6 +491,10 @@ Allowed compression:
 - select seed actions with =frontier=
 - omit default/healthy facts
 - pack large packets with semicolons in dense mode
+- omit graph-debug rows such as =scores=, =paths=, =trace=, =explain=,
+  =cache=, and =metrics= from prompt-visible =search pipe --view seeds= output
+  when the same response still preserves parser-owned facts, typed relations,
+  =queryCoverage=, exact =S1=, and =nextCommand=
 
 Forbidden compression:
 
@@ -501,6 +507,38 @@ Forbidden compression:
 - invent relation labels that are not backed by parser/schema facts
 - shorten semantic words without a declared legend and enough packet size to
   amortize that legend
+
+* Read-loop and failure-loop memory
+
+The graph-turbo request may carry =readMemory.seenSelectors=.  These selectors
+are not advisory prose.  They are an algorithm input: ranked/frontier nodes
+whose exact selector is already present in memory must be suppressed before the
+agent-facing frontier is rendered.  The result packet must expose
+=algorithmMetrics.readMemorySuppressedCount= and add =seen-selector= to
+=avoid= when suppression occurs, so tests and sandtables can prove the loop was
+prevented rather than merely observed after the fact.
+
+ASP's =search pipe= runtime reads this memory from
+=$PRJ_CACHE_HOME/agent-semantic-protocol/read-loop-memory.json= before building
+the graph-turbo request.  The runtime accepts both =seenSelectors=[...]= and
+=entries=[{selector:...}]= so sandtable-produced memory can be replayed without
+lossy translation.  If the memory packet carries =projectRoot= and it does not
+resolve to the current project root, the runtime must ignore it.
+
+Sandtable observations also project command-output memory:
+
+- =readLoopMemory= records exact selector reads, owners, line ranges, command
+  fingerprints, output bytes, result fingerprints, read counts, and avoid
+  reasons such as =duplicate-read=, =manual-window-scan=, and =repeat-owner=.
+- =failureLoopMemory= records executable failure-frontier actions selected from
+  =asp <lang> search failure --from-last-check --view seeds .= output.
+- =failureFrontierOutputPrecision= records whether the failure frontier kept
+  failure facts, assertions, hot blocks, query profiles, omission facts, avoid
+  facts, and executable frontier actions.
+
+These memory packets are part of the loop contract.  A future provider or
+client optimization may reduce tokens only if it preserves these facts and the
+corresponding precision gates.
 
 * Compact and dense modes
 
@@ -648,6 +686,29 @@ actions from prose.  Any prompt-visible rank or action produced by the turbo
 engine must be visible in the result packet before another renderer serializes
 it for an agent.
 
+SciPy-first typed graph intelligence engine.
+
+=asp-graph-turbo= remains a SciPy-first typed sparse ranking engine for the
+agent hot path.  The default runtime path should continue to use lightweight
+SciPy sparse matrices, typed relation policy, graph cache fingerprints, and
+schema-owned request/result packets.  PyG, GNN message passing, and
+=HeteroData= export are optional lab/offline research surfaces only: they must
+not become default package dependencies, default CLI execution paths, hook
+runtime requirements, or fallback conditions for search/query/read-plan.
+
+The next graph-turbo investments should strengthen ASP's own typed facts and
+deterministic sparse scoring before any learned reranker is considered.  The
+priority order is typed fact graph quality, profile-specific sparse scoring,
+failure/read-loop feedback, and command-inflation metrics.  Current result
+metrics expose read-loop guard counts for direct code actions, duplicate
+selectors, adjacent range windows, and same-owner scans.  Future fact quality
+signals such as provenance, confidence, freshness, and profile transition
+evidence should remain packet-visible so rank explanations, =frontierActions=,
+=omit=, and =avoid= can be audited outside the Python implementation.  The
+artifact timeline report also projects cached direct-code read-loop risk through
+=readLoopRisk= JSON and =[graph-turbo-read-loop]= text evidence so historical
+agent runs can be evaluated before another live replay.
+
 The =asp <language> search failure= surface is a graph-turbo adapter, not a
 Rust-owned renderer.  The facade may parse the last check transcript, collect
 candidate facts, and construct a =semantic-graph-turbo-request.v1= packet with
@@ -656,6 +717,13 @@ frontier order, or synthesize =frontierActions= outside the graph-turbo result.
 The =failure-frontier= profile owns failure, assert, owner, hot, key, evidence,
 and test node transitions; the compact =[search-failure]= text is only a
 projection of that profile result.
+The default =[search-failure]= projection is an agent prompt surface, so it
+must keep failure facts, candidate owners, hot blocks, query profiles,
+frontier actions, =omit=, and =avoid=, while omitting diagnostic rows such as
+=scores=, =paths=, =cache=, =trace=, =explain=, and =metrics=.  Those
+diagnostics remain available through graph-turbo packet/result debug surfaces;
+removing them from seeds is valid only when the selected hot-block frontier and
+failure facts are unchanged.
 
 The check projection route follows the same boundary.  =asp <language> check
 changed --view seeds .= and =asp <language> check --changed --view seeds .=
@@ -693,6 +761,14 @@ the harness's =syn= project scan.  Search-pipe lexical candidates may seed
 priority, but they must not be the authority or the only files parsed for
 =field=/=type=/=collection= facts; otherwise a lexical =Vec= hit outside the
 struct owner prevents the graph from ever seeing the field evidence.
+Provider alignment uses the command shape =search semantic-facts <query>
+--json= with candidate lines on stdin.  The JSON response is provider-owned
+=nodes=/=edges= graph fact payload that ASP appends to the graph-turbo request.
+Rust owns these facts with =syn=, Python owns them with =ast=, TypeScript owns
+them with the TypeScript compiler API through the provider parser layer, and
+Julia owns them with JuliaSyntax-derived field facts in the Julia harness.
+Unsupported providers may return a non-zero command result; ASP treats that as
+no extra facts so rollout can be incremental without breaking existing search.
 Field nodes should preserve the exact field declaration locator for display
 and metadata, and may also expose a parser-owned =contextLocator= for code
 projection.  When =contextLocator= is present, branch =query-selector= commands
@@ -714,6 +790,35 @@ boundary.  Sandtable and hook diagnostics should therefore treat
 =prime -> pipe -> query-selector= as a complete complex-pipe success when the
 pipe result exposes an exact selector; =search-reasoning= is measured as
 optional branch expansion in that case, not as a required stage.
+The prompt-visible top-three fanout is a conditional frontier, not the default
+read plan.  The ranked graph may retain =S1=/=S2=/=S3= internally for audit and
+debug views, but =search pipe --view seeds= should expose only the primary
+=S1= exact selector in =frontierActions= and =pipeCommands= when =S1= is exact.
+Secondary selectors and reasoning branches belong in =conditionalActions= as
+metadata-only branch previews, without runnable =asp ...= commands or exact
+secondary selector ranges.  A commands/advisory surface may materialize those
+branch commands only after an explicit request or after the primary selector
+evidence is known insufficient.
+The seeds view is a decision packet, not a graph-debug dump.  When an exact
+primary selector is projected, prompt-visible seeds output should keep the
+primary graph facts, =frontierActions=S1=, =nextCommand=, compact policy,
+cache/metric summaries, and avoid/stop guidance, while omitting score vectors,
+typed path lists, full algorithm traces, and rank explanations.  Debug callers
+can still request the graph-turbo packet/result surfaces for those diagnostics;
+agents deciding the next command should not pay that token cost by default.
+Output compaction is precision-preserving only.  It may remove diagnostic
+volume such as score vectors, typed path lists, full traces, and rank
+explanations, but it must not remove parser-owned semantic evidence that
+changes the agent's decision.  For field/type/collection questions, seeds
+output must still expose the primary =field=, =type=, =collection= facts,
+the =has_type= / =collection_of= relationships, query coverage, the exact
+=S1= selector, and the same =nextCommand=.  If a proposed compaction hides
+those facts or changes the selected frontier, it is a correctness regression,
+not a token optimization.
+Language =guide= output is a pre-search tool map.  Once a pipe result has
+projected an exact primary selector, guide should not be run as a post-selector
+confirmation step; diagnostics may count =guideCommands= so this drift is
+visible in live sandtable reports.
 Command-line arguments may override request profile, seeds, or budget for
 local debugging, but provider integration should prefer the request packet so
 the algorithm input and response can be audited together.  The response is

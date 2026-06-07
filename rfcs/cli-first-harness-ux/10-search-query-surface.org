@@ -264,6 +264,16 @@ for this surface.  Rust, TypeScript, Python, and Julia all use their native
 parser facts to bound or repair the selector; Julia uses the =asp julia=
 facade backed by the compiled =asp-julia-harness= and cacheable provider
 artifacts.
+
+=--workspace <workspace-root>= is the only public way to override the
+workspace root for source-language query/code commands.  =--code= is a boolean
+output selector and must never consume or be followed by a project root.  The
+stale shape =query ... --code .= or =query ... --code <root>= is invalid for
+owner item queries, tree-sitter syntax-code queries, direct-source-read exact
+reads, and =search owner ... items --query ... --code=.  A selector query
+without =--workspace= resolves against the invocation workspace, selector
+absolute path, or provider-owned workspace inference.
+
 If the selector is too wide for bounded code transport, the provider returns a
 =read-plan= frontier, not a denial-only outline.  The active contract is
 =semantic-read-packet=: =readPlan.mode= is =range-frontier= or =search-repair=,
@@ -278,16 +288,29 @@ must map back to:
 <lang-harness> query --from-hook direct-source-read [--workspace] --selector <path[:line-range]> --code .
 #+end_src
 
-For exact selectors without =--code=, the provider may return a bounded
-=read-owner= source window, return a =read-plan= frontier, or normalize to
-=search owner <path> items= rather than owner seeds.  A =read-owner= response
-must state the selected path, item, line range, truncation status, and bounded
-source text in protocol rows; it must not include cache ids, SQLite paths,
-receipt JSON, or unbounded adjacent source.  A =read-plan= or item response
-must keep code omitted and provide executable read locators.  For exact
-selectors with a query term, the provider should keep the normal item query/code
-projection path.  Wildcard or broad selectors still require concrete terms and
-should remain bounded candidate/seed searches.
+ASP owns the compact output-mode boundary across every language facade:
+=frontier= is the default prompt-facing mode, =code= is selected only by
+=--code=, =read-packet= is selected only by =--json --view read-packet=, and
+plain =json= is any other structured packet mode.  In =frontier= mode, providers
+may emit metadata rows such as =|read=, =|item=, =|owner=, omit/avoid facts, and
+exact =read== locators, but they must not emit =|code= rows, =text= fields, or
+any inline source payload.  The ASP client validates this before cache
+write-back and replay so a provider cannot accidentally turn compact frontier
+output into lossy pseudo-source.
+
+For exact selectors without =--code=, the provider stays in =frontier= mode. It
+may return a bounded =read-owner= frontier, return a =read-plan= frontier, or
+normalize to =search owner <path> items= rather than owner seeds.  A
+=read-owner= response must state the selected path, item, line range,
+truncation status, omitted source status, and executable read locators; it must
+not include =|code= rows, =text= fields, cache ids, SQLite paths, receipt JSON,
+or unbounded adjacent source.  A =read-plan= or item response must keep code
+omitted and provide executable read locators.  If an agent needs source text,
+the next action is an explicit =--code= request or structured
+=--json --view read-packet=.  For exact selectors with a query term, the
+provider should keep the normal item query/code projection path.  Wildcard or
+broad selectors still require concrete terms and should remain bounded
+candidate/seed searches.
 
 Hook route construction must preserve exact line-range selectors when the agent
 already supplied one.  The hook may strip =:line[-end]= for language profile
@@ -303,11 +326,11 @@ and encourages follow-up raw reads.  That is a protocol bug, not a user
 preference.
 
 The language provider must make that bounded selector useful.  A query such as
-=<lang-harness> query src/lib.rs:10:20 --code .= should return the exact
-bounded source window for that range, not whole-owner item names and not a
-lossy ancestor projection.  Ranges inside an inline module, impl, function, or
-other containing item must preserve the selected source lines instead of
-collapsing to only the ancestor declaration.  This is required for
+=asp <language> query --from-hook direct-source-read --selector src/lib.rs:10:20 --workspace <workspace-root> --code=
+should return the exact bounded source window for that range, not whole-owner
+item names and not a lossy ancestor projection.  Ranges inside an inline module,
+impl, function, or other containing item must preserve the selected source
+lines instead of collapsing to only the ancestor declaration.  This is required for
 test/assertion edits, import/header inspection, enum/impl variant inspection,
 and hook recovery after a denied =sed= / =rtk read= / tool-native read.  The
 root hook only preserves the selector; native parser providers own safe
@@ -1422,17 +1445,18 @@ avoid=raw-read,full-json,broad-fzf
 =--treesitter-query= is precise syntax locate/capture/frontier.  Adding
 =--code= to an exact selector turns it into pure code extraction.  Search and
 read-plan flows must return locators/frontier rather than inline code.  Plain
-=query --code= writes only code to stdout.  JSON artifacts, SQLite cache ids,
-and receipts are debugging/integration surfaces and should not appear in the
-default guide output or non-JSON query output.
-=tools/validate-search-read-plan-frontier-contract.sh= is the root executable
-gate for this search/read-plan rule across Rust, TypeScript, and Python.
-=tools/validate-exact-direct-read-contract.sh= is the paired gate for exact
-direct-source-read: non-=--code= output must be bounded =read-owner= or
-=read-plan= protocol output, and =--code= output must be pure source text.
-The repository runs these tree-sitter query gates from
-=check-tree-sitter-query-contracts= in the local provider gate and from the
-CI schema/provider gate after the root =asp= binary and TypeScript provider are
+=query --code= writes only code to stdout, and =--workspace <workspace-root>=
+is the independent workspace override when a root must be specified.  JSON
+artifacts, SQLite cache ids, and receipts are debugging/integration surfaces
+and should not appear in the default guide output or non-JSON query output.
+=python -m tools tree-sitter validate search-read-plan-frontier-contract= is
+the package-local executable gate for this search/read-plan rule across Rust,
+TypeScript, and Python.  =python -m tools tree-sitter validate exact-direct-read-contract= is the paired gate for exact direct-source-read:
+non-=--code= output must be bounded =read-owner= source window or =read-plan=
+frontier protocol output, must keep code omitted and provide executable read locators, and =--code= output must be pure source text.  The repository runs the
+composite =python -m tools tree-sitter validate contracts= command from
+=check-tree-sitter-query-contracts= in the local provider gate and from the CI
+schema/provider gate after the root =asp= binary and TypeScript provider are
 built.
 
 Agent-facing guide acceptance:

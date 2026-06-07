@@ -23,9 +23,9 @@ def test_tree_sitter_query_rfc_defines_frontier_code_render_contract() -> None:
         "matches",
         "shown",
         "omitted",
-        "tools/validate-tree-sitter-frontier-code-contract.sh",
-        "tools/validate-language-tree-sitter-runtime-boundary.sh",
-        "tools/validate-search-read-plan-frontier-contract.sh",
+        "python -m tools tree-sitter validate frontier-code-contract",
+        "python -m tools tree-sitter validate runtime-boundary",
+        "python -m tools tree-sitter validate search-read-plan-frontier-contract",
         "python -m tools tree-sitter validate json-abi-corpus",
         "honest native-projection/no-runtime behavior",
     ]

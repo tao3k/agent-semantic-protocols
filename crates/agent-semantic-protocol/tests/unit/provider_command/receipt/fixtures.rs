@@ -193,14 +193,14 @@ pub(super) fn sample_query_packet() -> Value {
   "query": "CacheReplay",
   "queryTerms": ["CacheReplay"],
   "matchMode": "exact",
-  "outputMode": "code",
+  "outputMode": "outline",
   "queryCoverage": [
     {
       "value": "CacheReplay",
       "status": "hit",
       "match": "exact",
       "matchCount": 1,
-      "nextAction": "code"
+      "nextAction": "select-item"
     }
   ],
   "matches": [

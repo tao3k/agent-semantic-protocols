@@ -29,9 +29,22 @@ fn direct_read_routes_to_provider_query() {
             "direct-source-read",
             "--selector",
             "src/cli/agent-hooks.ts",
+            "--workspace",
+            ".",
             "--code",
-            "."
         ]
+    );
+    assert!(
+        decision
+            .message
+            .contains("--workspace <workspace-root> --code"),
+        "{}",
+        decision.message
+    );
+    assert!(
+        !decision.message.contains("--code ."),
+        "{}",
+        decision.message
     );
 }
 
@@ -61,8 +74,9 @@ fn direct_read_line_range_routes_to_provider_query_with_range() {
             "direct-source-read",
             "--selector",
             "src/cli/agent-hooks.ts:10-20",
+            "--workspace",
+            ".",
             "--code",
-            "."
         ]
     );
 }
@@ -98,8 +112,9 @@ fn namespaced_direct_read_routes_to_provider_query() {
             "direct-source-read",
             "--selector",
             "src/cli/agent-hooks.ts",
+            "--workspace",
+            ".",
             "--code",
-            "."
         ]
     );
 }
@@ -129,8 +144,9 @@ fn typescript_direct_read_infers_pascal_case_query_from_component_path() {
             "direct-source-read",
             "--selector",
             "src/components/WorkflowExecution.tsx",
+            "--workspace",
+            ".",
             "--code",
-            "."
         ]
     );
 }
@@ -162,8 +178,9 @@ fn command_transcript_with_source_path_routes_to_provider_query() {
             "direct-source-read",
             "--selector",
             "packages/rust/crates/xiuxian-security/src/public_plane.rs",
+            "--workspace",
+            ".",
             "--code",
-            "."
         ]
     );
 }

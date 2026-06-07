@@ -11,10 +11,11 @@ use super::search_pipe_candidates::{
     collect_candidates, parse_ingest_candidates, read_piped_stdin,
 };
 use super::search_pipe_graph_turbo::render_graph_turbo_request;
-use super::search_pipe_plan::render_search_pipe_plan;
+use super::search_pipe_plan::{render_primary_frontier_actions_only, render_search_pipe_plan};
 use super::search_pipe_provider_facts::{
     ProviderGraphFacts, ProviderGraphFactsContext, collect_provider_graph_facts,
 };
+use super::search_pipe_read_memory::read_loop_memory_selectors;
 use super::search_pipe_render::{
     Candidate, render_empty_ingest_diagnostic, render_ingest_frontier, render_owner_query_frontier,
     render_owner_tests_frontier,
@@ -85,6 +86,7 @@ pub(super) fn run_asp_fast_search_command(
             args,
             project_root,
             locator_root,
+            cache_home,
             config,
             provider_context,
         );
@@ -219,6 +221,7 @@ fn run_search_pipe_command(
     args: &[String],
     project_root: &Path,
     locator_root: &Path,
+    cache_home: &Path,
     config: &AspConfig,
     provider_context: Option<&ProviderGraphFactsContext<'_>>,
 ) -> Result<(), String> {
@@ -239,15 +242,19 @@ fn run_search_pipe_command(
         config,
         provider_context,
     )?;
-    print_search_pipe_view(
+    print_search_pipe_view(SearchPipeViewRequest {
         language_id,
-        Some(&pipe_args.query),
-        &candidates,
-        &pipe_args.pipes,
-        &pipe_args.view,
-        true,
-        &provider_facts,
-    )?;
+        project_root,
+        locator_root,
+        query: Some(&pipe_args.query),
+        candidates: &candidates,
+        pipes: &pipe_args.pipes,
+        scopes: &pipe_args.owners,
+        view: &pipe_args.view,
+        include_pipe_plan: true,
+        provider_facts: &provider_facts,
+        read_memory_selectors: &read_loop_memory_selectors(cache_home, project_root),
+    })?;
     Ok(())
 }
 
@@ -345,15 +352,19 @@ fn run_search_ingest_command(
         config,
         provider_context,
     )?;
-    print_search_pipe_view(
+    print_search_pipe_view(SearchPipeViewRequest {
         language_id,
-        None,
-        &candidates,
-        &ingest_args.pipes,
-        &ingest_args.view,
-        false,
-        &provider_facts,
-    )?;
+        project_root,
+        locator_root,
+        query: None,
+        candidates: &candidates,
+        pipes: &ingest_args.pipes,
+        scopes: &[],
+        view: &ingest_args.view,
+        include_pipe_plan: false,
+        provider_facts: &provider_facts,
+        read_memory_selectors: &[],
+    })?;
     Ok(())
 }
 
@@ -387,15 +398,19 @@ fn run_search_fzf_command(
         config,
         provider_context,
     )?;
-    print_search_pipe_view(
+    print_search_pipe_view(SearchPipeViewRequest {
         language_id,
-        Some(&pipe_args.query),
-        &candidates,
-        &pipe_args.pipes,
-        &pipe_args.view,
-        false,
-        &provider_facts,
-    )?;
+        project_root,
+        locator_root,
+        query: Some(&pipe_args.query),
+        candidates: &candidates,
+        pipes: &pipe_args.pipes,
+        scopes: &pipe_args.owners,
+        view: &pipe_args.view,
+        include_pipe_plan: false,
+        provider_facts: &provider_facts,
+        read_memory_selectors: &[],
+    })?;
     Ok(())
 }
 
@@ -454,59 +469,108 @@ fn run_search_failure_command(
     Ok(())
 }
 
-fn print_search_pipe_view(
-    language_id: &str,
-    query: Option<&str>,
-    candidates: &[Candidate],
-    pipes: &[String],
-    view: &str,
+struct SearchPipeViewRequest<'a> {
+    language_id: &'a str,
+    project_root: &'a Path,
+    locator_root: &'a Path,
+    query: Option<&'a str>,
+    candidates: &'a [Candidate],
+    pipes: &'a [String],
+    scopes: &'a [PathBuf],
+    view: &'a str,
     include_pipe_plan: bool,
-    provider_facts: &ProviderGraphFacts,
-) -> Result<(), String> {
+    provider_facts: &'a ProviderGraphFacts,
+    read_memory_selectors: &'a [String],
+}
+
+fn print_search_pipe_view(request: SearchPipeViewRequest<'_>) -> Result<(), String> {
+    let SearchPipeViewRequest {
+        language_id,
+        project_root,
+        locator_root,
+        query,
+        candidates,
+        pipes,
+        scopes,
+        view,
+        include_pipe_plan,
+        provider_facts,
+        read_memory_selectors,
+    } = request;
     match view {
         "graph-turbo-request" => {
             print!(
                 "{}",
-                render_graph_turbo_request(language_id, query, candidates, pipes, provider_facts)?
+                render_graph_turbo_request(
+                    language_id,
+                    query,
+                    candidates,
+                    pipes,
+                    provider_facts,
+                    read_memory_selectors,
+                )?
             );
         }
         "seeds" => {
-            let request =
-                render_graph_turbo_request(language_id, query, candidates, pipes, provider_facts)?;
+            let request = render_graph_turbo_request(
+                language_id,
+                query,
+                candidates,
+                pipes,
+                provider_facts,
+                read_memory_selectors,
+            )?;
             let mut ranked_compact = None;
             if let Some(output) = render_graph_turbo_packet(request.as_bytes())? {
                 ranked_compact = std::str::from_utf8(output.as_ref())
                     .ok()
                     .map(str::to_string);
-                io::stdout()
-                    .write_all(output.as_ref())
-                    .map_err(|error| format!("failed to write asp-graph-turbo stdout: {error}"))?;
+                if include_pipe_plan {
+                    if let Some(compact) = ranked_compact.as_deref() {
+                        print!("{}", render_primary_frontier_actions_only(compact));
+                    } else {
+                        io::stdout().write_all(output.as_ref()).map_err(|error| {
+                            format!("failed to write asp-graph-turbo stdout: {error}")
+                        })?;
+                    }
+                } else {
+                    io::stdout().write_all(output.as_ref()).map_err(|error| {
+                        format!("failed to write asp-graph-turbo stdout: {error}")
+                    })?;
+                }
             } else {
                 print!("{}", render_ingest_frontier(candidates, pipes));
             }
-            if include_pipe_plan {
-                if let Some(query) = query {
-                    print!(
-                        "{}",
-                        render_search_pipe_plan(
-                            language_id,
-                            query,
-                            candidates,
-                            ranked_compact.as_deref(),
-                        )
-                    );
-                }
+            if include_pipe_plan && let Some(query) = query {
+                print!(
+                    "{}",
+                    render_search_pipe_plan(
+                        language_id,
+                        project_root,
+                        locator_root,
+                        scopes,
+                        query,
+                        candidates,
+                        ranked_compact.as_deref(),
+                    )
+                );
             }
         }
         _ => {
             print!("{}", render_ingest_frontier(candidates, pipes));
-            if include_pipe_plan {
-                if let Some(query) = query {
-                    print!(
-                        "{}",
-                        render_search_pipe_plan(language_id, query, candidates, None)
-                    );
-                }
+            if include_pipe_plan && let Some(query) = query {
+                print!(
+                    "{}",
+                    render_search_pipe_plan(
+                        language_id,
+                        project_root,
+                        locator_root,
+                        scopes,
+                        query,
+                        candidates,
+                        None,
+                    )
+                );
             }
         }
     }

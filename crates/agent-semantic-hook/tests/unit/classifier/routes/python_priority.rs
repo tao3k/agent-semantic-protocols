@@ -30,8 +30,9 @@ fn content_dump_file_extension_beats_shared_source_root() {
             "direct-source-read",
             "--selector",
             "src/tools/semantic_sandtable/receipt_reports.py:1:80",
+            "--workspace",
+            ".",
             "--code",
-            "."
         ]
     );
 }
@@ -71,8 +72,9 @@ fn namespaced_python_direct_read_routes_to_provider_query() {
             "direct-source-read",
             "--selector",
             "src/tools/semantic_sandtable/receipt_reports.py",
+            "--workspace",
+            ".",
             "--code",
-            "."
         ]
     );
 }

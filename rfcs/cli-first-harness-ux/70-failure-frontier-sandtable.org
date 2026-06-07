@@ -59,6 +59,20 @@ the ASP projection flags before provider execution, persists the failed check
 transcript, and renders the same =failure-frontier= graph-turbo result.  The
 =graph-turbo-request= view is only for schema/debug inspection of the typed
 request sent to =asp-graph-turbo=.
+The default seeds text is compact by profile: keep the failure facts, owners,
+hot block frontier, query profiles, =frontierActions=, =omit=, and =avoid=;
+do not print diagnostic =scores=, =paths=, =cache=, =trace=, =explain=, or
+=metrics= rows unless the caller asks for a debug packet/result surface.
+
+Read-loop guard is the first follow-up MVP for this surface.  The initial
+graph-turbo implementation detects code follow-up pressure, adjacent windows in
+the same file, duplicate selectors, and same-owner source scans.  The guard is
+not a new planner or provider command: it projects through the existing
+graph-turbo request/result, compact frontier, =frontierActions=, =avoid=, and
+metrics fields so sandtable gates can prove lower command inflation without
+losing expected hot blocks.  Agent SDK sandtable observations also project
+read-loop risk into =pipeFlow= budgets, including duplicate selector, adjacent
+range window, same-owner scan, and aggregate =read-loop-risk= stage checks.
 
 =next= remains a copyable action surface for agents.  Sandtable trace receipts
 also preserve a structured =failureFrontier= array with the same fields, so

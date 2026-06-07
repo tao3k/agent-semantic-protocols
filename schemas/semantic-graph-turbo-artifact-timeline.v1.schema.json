@@ -25,6 +25,10 @@
     "collapsibleOwnerSearches",
     "routableFanoutBursts",
     "avoidableFanoutBranches",
+    "readLoopDirectCodeReads",
+    "readLoopDuplicateSelectors",
+    "readLoopAdjacentRangeWindows",
+    "readLoopSameOwnerScans",
     "kindCounts",
     "actionMethodCounts",
     "sessions",
@@ -36,6 +40,7 @@
     "fzfPromotion",
     "ownerCollapse",
     "fanoutPlanning",
+    "readLoopRisk",
     "actionSummary",
     "efficiencyEstimate"
   ],
@@ -103,6 +108,18 @@
     "avoidableFanoutBranches": {
       "$ref": "#/$defs/nonNegativeInteger"
     },
+    "readLoopDirectCodeReads": {
+      "$ref": "#/$defs/nonNegativeInteger"
+    },
+    "readLoopDuplicateSelectors": {
+      "$ref": "#/$defs/nonNegativeInteger"
+    },
+    "readLoopAdjacentRangeWindows": {
+      "$ref": "#/$defs/nonNegativeInteger"
+    },
+    "readLoopSameOwnerScans": {
+      "$ref": "#/$defs/nonNegativeInteger"
+    },
     "kindCounts": {
       "$ref": "#/$defs/countMap"
     },
@@ -150,6 +167,9 @@
     },
     "fanoutPlanning": {
       "$ref": "#/$defs/actionGroup"
+    },
+    "readLoopRisk": {
+      "$ref": "#/$defs/readLoopRisk"
     },
     "actionSummary": {
       "$ref": "#/$defs/actionGroup"
@@ -350,6 +370,45 @@
           "$ref": "#/$defs/nonNegativeInteger"
         },
         "actions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/actionRow"
+          }
+        }
+      }
+    },
+    "readLoopRisk": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policy",
+        "directCodeReads",
+        "duplicateSelectors",
+        "adjacentRangeWindows",
+        "sameOwnerScans",
+        "riskCount",
+        "examples"
+      ],
+      "properties": {
+        "policy": {
+          "const": "direct-source-read-code-loop-guard"
+        },
+        "directCodeReads": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "duplicateSelectors": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "adjacentRangeWindows": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "sameOwnerScans": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "riskCount": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "examples": {
           "type": "array",
           "items": {
             "$ref": "#/$defs/actionRow"

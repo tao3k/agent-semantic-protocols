@@ -39,6 +39,7 @@ fn codex_desktop_read_aliases_reach_runtime_policy() {
         assert_eq!(decision["reasonKind"], "direct-source-read", "{tool_name}");
         assert_eq!(decision["routes"][0]["providerId"], "rs-harness");
         assert_route_mentions(&decision, "src/lib.rs");
+        assert_route_uses_workspace_code(&decision);
     }
 }
 
@@ -65,14 +66,12 @@ fn codex_desktop_shell_read_wrappers_reach_runtime_policy() {
         assert_eq!(decision["reasonKind"], "bulk-source-dump", "{command}");
         assert_eq!(decision["routes"][0]["providerId"], "rs-harness");
         assert_route_mentions(&decision, "src/lib.rs");
+        assert_route_uses_workspace_code(&decision);
     }
 }
 
 #[test]
 fn codex_desktop_write_aliases_require_semantic_ast_patch() {
-    let root = temp_project_root("codex-desktop-write-aliases");
-    write_hook_fixture(&root);
-
     for tool_name in [
         "apply_patch",
         "functions.apply_patch",
@@ -81,6 +80,9 @@ fn codex_desktop_write_aliases_require_semantic_ast_patch() {
         "FsWriteFile",
         "fs.writeFile",
     ] {
+        let root = temp_project_root(&format!("codex-desktop-write-alias-{tool_name}"));
+        write_hook_fixture(&root);
+
         let decision = run_hook_decision(
             &root,
             json!({
@@ -101,13 +103,17 @@ fn codex_desktop_write_aliases_require_semantic_ast_patch() {
             decision["message"]
                 .as_str()
                 .expect("decision message")
-                .contains("asp ast-patch template")
+                .contains("asp ast-patch template"),
+            "{tool_name}: {}",
+            decision["message"].as_str().expect("decision message")
         );
         assert!(
             decision["message"]
                 .as_str()
                 .expect("decision message")
-                .contains("asp rust ast-patch dry-run")
+                .contains("asp rust ast-patch dry-run"),
+            "{tool_name}: {}",
+            decision["message"].as_str().expect("decision message")
         );
     }
 }
@@ -200,6 +206,27 @@ fn assert_route_mentions(decision: &Value, needle: &str) {
     assert!(
         argv.iter().any(|arg| arg.as_str() == Some(needle)),
         "route argv should mention {needle}: {argv:?}"
+    );
+}
+
+fn assert_route_uses_workspace_code(decision: &Value) {
+    let argv = decision["routes"][0]["argv"]
+        .as_array()
+        .expect("route argv");
+    let args = argv
+        .iter()
+        .map(|arg| arg.as_str().expect("route arg string"))
+        .collect::<Vec<_>>();
+    assert!(
+        args.windows(3)
+            .any(|window| window == ["--workspace", ".", "--code",]),
+        "route argv should use --workspace . --code: {args:?}"
+    );
+    assert!(
+        !args
+            .windows(2)
+            .any(|window| window[0] == "--code" && window[1] == "."),
+        "route argv must not use --code .: {args:?}"
     );
 }
 

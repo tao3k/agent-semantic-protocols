@@ -74,20 +74,24 @@ def test_timeline_cli_is_lightweight_artifact_entrypoint(tmp_path) -> None:
 
 
 def _assert_timeline_counts(report: dict[str, object]) -> None:
-    assert report["eventCount"] == 10
-    assert report["actionEventCount"] == 10
+    assert report["eventCount"] == 14
+    assert report["actionEventCount"] == 14
     assert report["sessionCount"] == 1
     assert report["microburstCount"] == 2
     assert report["fanoutBurstCount"] == 2
     assert report["softOverrunMicrobursts"] == 0
     assert report["inferredSubagentStarts"] == 7
     assert report["repeatSearches"] == 3
+    assert report["readLoopDirectCodeReads"] == 4
+    assert report["readLoopDuplicateSelectors"] == 1
+    assert report["readLoopAdjacentRangeWindows"] == 1
+    assert report["readLoopSameOwnerScans"] == 2
 
 
 def _assert_action_counts(report: dict[str, object]) -> None:
     assert report["topMicrobursts"][0]["fanoutWidth"] == 4
     assert report["fanoutHotspots"][0]["fanoutWidth"] == 4
-    assert report["actionMethodCounts"]["rust:query"] == 2
+    assert report["actionMethodCounts"]["rust:query"] == 6
     assert report["actionMethodCounts"]["rust:search/owner"] == 4
     assert "rust:query/--from-hook" not in report["actionMethodCounts"]
     assert "rust:query/--selector" not in report["actionMethodCounts"]
@@ -169,15 +173,32 @@ def _assert_efficiency_estimate(report: dict[str, object]) -> None:
         + report["promotableFzfSearches"]
         + report["collapsibleOwnerSearches"]
     )
-    avoidable_upper_bound = (
-        typed_frontier_searches + report["avoidableFanoutBranches"]
-    )
+    avoidable_upper_bound = typed_frontier_searches + report["avoidableFanoutBranches"]
     assert estimate["policy"] == "timeline-action-reduction-estimate"
     assert estimate["basis"] == "upper-bound-repeat-searches-plus-fanout-branches"
     assert estimate["typedFrontierAvoidableSearches"] == typed_frontier_searches
     assert estimate["estimatedAvoidableActionsUpperBound"] == avoidable_upper_bound
     assert estimate["observedActions"] == report["actionEventCount"]
     assert estimate["observedRounds"] == report["roundCount"]
-    assert estimate["recommendedFirstCommand"] == (
-        report["actionSummary"]["actions"][0]["preferredCommand"]
+    assert (
+        estimate["recommendedFirstCommand"]
+        == (report["actionSummary"]["actions"][0]["preferredCommand"])
     )
+
+
+def test_timeline_reports_read_loop_risk_from_direct_code_reads(tmp_path) -> None:
+    write_microburst_repeat_artifacts(tmp_path)
+
+    report = evaluate_artifact_timeline(
+        tmp_path,
+        parameters=TimelineParameters(examples=5),
+    )
+
+    risk = report["readLoopRisk"]
+    assert risk["policy"] == "direct-source-read-code-loop-guard"
+    assert risk["directCodeReads"] == 4
+    assert risk["duplicateSelectors"] == 1
+    assert risk["adjacentRangeWindows"] == 1
+    assert risk["sameOwnerScans"] == 2
+    assert risk["riskCount"] == 4
+    assert risk["examples"][0]["selector"] == "src/lib.rs:1:10"

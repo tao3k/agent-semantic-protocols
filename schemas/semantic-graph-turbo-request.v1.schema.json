@@ -40,7 +40,13 @@
         "owner-tests",
         "prime",
         "read-frontier",
-        "failure-frontier"
+        "failure-frontier",
+        "field-impact",
+        "type-impact",
+        "collection-impact",
+        "failure-evidence",
+        "test-selection",
+        "affected"
       ]
     },
     "algorithm": {
@@ -91,6 +97,20 @@
       "properties": {
         "enabled": {
           "type": "boolean"
+        }
+      }
+    },
+    "readMemory": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "seenSelectors": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
         }
       }
     },

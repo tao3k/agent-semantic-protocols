@@ -505,6 +505,9 @@ fn render_query_packet_stdout(packet: &Value) -> Option<String> {
     let owner_path = string_field(packet, "ownerPath").unwrap_or(".");
     let package = string_field(packet, "packageName").unwrap_or(".");
     let output_mode = string_field(packet, "outputMode").unwrap_or("code");
+    if output_mode == "code" {
+        return None;
+    }
     let match_mode = string_field(packet, "matchMode").unwrap_or("unknown");
     let matches = packet.get("matches")?.as_array()?;
     let status = query_status(packet, matches);

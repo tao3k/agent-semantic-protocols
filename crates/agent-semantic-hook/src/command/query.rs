@@ -43,15 +43,16 @@ pub(crate) fn direct_source_query_route(provider: &ActivatedProvider, path: &str
             stdin_mode: None,
         };
     }
-    let mut args = vec![
+    let args = vec![
         "query".to_string(),
         "--from-hook".to_string(),
         "direct-source-read".to_string(),
         "--selector".to_string(),
         route_context.selector,
+        "--workspace".to_string(),
+        route_context.project_root,
         "--code".to_string(),
     ];
-    args.push(route_context.project_root);
     DecisionRoute {
         language_id: provider.language_id.clone(),
         provider_id: provider.provider_id.clone(),

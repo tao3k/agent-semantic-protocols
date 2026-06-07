@@ -110,9 +110,7 @@ fn rust_dependency_from_line(line: &str) -> Option<String> {
 
 fn typescript_dependency_from_line(line: &str) -> Option<String> {
     let trimmed = line.trim_start();
-    if trimmed.starts_with("import ") {
-        quoted_dependency(trimmed)
-    } else if trimmed.contains("require(") {
+    if trimmed.starts_with("import ") || trimmed.contains("require(") {
         quoted_dependency(trimmed)
     } else {
         None

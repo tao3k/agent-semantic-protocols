@@ -1018,6 +1018,10 @@
           "type": "integer",
           "minimum": 0
         },
+        "maxGuideCommands": {
+          "type": "integer",
+          "minimum": 0
+        },
         "maxDirectReadCommands": {
           "type": "integer",
           "minimum": 0
@@ -1034,19 +1038,74 @@
           "type": "integer",
           "minimum": 0
         },
-        "minQuerySelectorCommands": {
+        "maxSearchFailureCommands": {
           "type": "integer",
           "minimum": 0
         },
-        "requireComplexPipeFlow": {
-          "type": "boolean"
+        "maxReadLoopDirectCodeCommands": {
+          "type": "integer",
+          "minimum": 0
         },
-        "requireTokenCost": {
-          "type": "boolean"
+        "maxReadLoopDuplicateSelectors": {
+          "type": "integer",
+          "minimum": 0
         },
-        "requiredStages": {
-          "$ref": "#/$defs/pipeFlowStageList"
+        "maxReadLoopAdjacentRangeWindows": {
+          "type": "integer",
+          "minimum": 0
         },
+        "maxReadLoopSameOwnerScans": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxReadLoopMemorySuppressibleReads": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxAspCommandOutputBytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+    "minQuerySelectorCommands": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "minFrontierFollowRate": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "minContextPrecision": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "minContextUtilization": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "requireComplexPipeFlow": {
+      "type": "boolean"
+    },
+      "requireTokenCost": {
+        "type": "boolean"
+      },
+      "requireSearchPipePrecision": {
+        "type": "boolean"
+      },
+      "requireReadLoopMemory": {
+        "type": "boolean"
+      },
+      "requireFailureFrontierPrecision": {
+        "type": "boolean"
+      },
+      "requireFailureLoopMemory": {
+        "type": "boolean"
+      },
+      "requiredStages": {
+        "$ref": "#/$defs/pipeFlowStageList"
+      },
         "forbiddenStages": {
           "$ref": "#/$defs/pipeFlowStageList"
         }
@@ -1061,12 +1120,16 @@
           "search-prime",
           "search-fzf",
           "search-reasoning",
+          "search-failure",
           "search-fzf-or-reasoning",
           "query-selector",
           "treesitter-query",
           "direct-read",
           "repeated-commands",
-          "repeated-prime"
+          "repeated-prime",
+          "read-loop-risk",
+          "read-loop-memory-risk",
+          "failure-loop-memory"
         ]
       }
     },

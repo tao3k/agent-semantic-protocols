@@ -35,6 +35,13 @@ COMMANDS: tuple[CommandSpec, ...] = (
         "Emit CodeQL CLI metadata as ASP evidence.",
     ),
     CommandSpec(
+        ("cache", "validate", "julia-performance"),
+        "tools.julia_cache_performance",
+        "main",
+        "argv",
+        "Validate Julia cache miss/hit performance evidence.",
+    ),
+    CommandSpec(
         ("graph", "turbo"),
         "asp_graph_turbo.cli",
         "main",
@@ -63,6 +70,13 @@ COMMANDS: tuple[CommandSpec, ...] = (
         "Validate language package schema downsync profiles.",
     ),
     CommandSpec(
+        ("syntax", "real-evidence"),
+        "tools.syntax_real_evidence",
+        "main",
+        "argv",
+        "Render RFC 011 syntax real-project evidence records.",
+    ),
+    CommandSpec(
         ("tree-sitter", "contract"),
         "tools.tree_sitter.contract",
         "main",
@@ -75,6 +89,41 @@ COMMANDS: tuple[CommandSpec, ...] = (
         "main",
         "no_args",
         "Validate tree-sitter JSON ABI corpus capture output.",
+    ),
+    CommandSpec(
+        ("tree-sitter", "validate", "contracts"),
+        "tools.tree_sitter.contract_gates",
+        "main",
+        "argv",
+        "Run the tree-sitter ABI rollout contract gates.",
+    ),
+    CommandSpec(
+        ("tree-sitter", "validate", "runtime-boundary"),
+        "tools.tree_sitter.contract_gates",
+        "runtime_boundary_main",
+        "argv",
+        "Validate that language providers do not depend on tree-sitter runtime packages.",
+    ),
+    CommandSpec(
+        ("tree-sitter", "validate", "frontier-code-contract"),
+        "tools.tree_sitter.contract_gates",
+        "frontier_code_main",
+        "argv",
+        "Validate tree-sitter locator/frontier and exact-code output.",
+    ),
+    CommandSpec(
+        ("tree-sitter", "validate", "search-read-plan-frontier-contract"),
+        "tools.tree_sitter.contract_gates",
+        "search_read_plan_main",
+        "argv",
+        "Validate search/read-plan frontier output without inline code.",
+    ),
+    CommandSpec(
+        ("tree-sitter", "validate", "exact-direct-read-contract"),
+        "tools.tree_sitter.contract_gates",
+        "exact_direct_read_main",
+        "argv",
+        "Validate exact direct-source-read frontier and pure-code output.",
     ),
     CommandSpec(
         ("tree-sitter", "validate", "python-query-corpus"),
@@ -124,5 +173,12 @@ COMMANDS: tuple[CommandSpec, ...] = (
         "main",
         "argv",
         "Validate cross-language workspace/search ingest provider contracts.",
+    ),
+    CommandSpec(
+        ("validate", "provider-registry-contracts"),
+        "tools.provider_registry_contracts",
+        "main",
+        "argv",
+        "Validate real provider registry output against shared query contracts.",
     ),
 )

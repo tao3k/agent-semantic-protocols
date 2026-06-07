@@ -1,0 +1,568 @@
+#+TITLE: RFC: Semantic Fact Frontier Feedback
+#+AUTHOR: agent-semantic-protocols
+#+DATE: 2026-06-07
+#+RFC: 013
+#+STATUS: draft
+#+DEPENDS: rfcs/cli-first-harness-ux.org (005), rfcs/agent-compact-graph-feature.org (006), rfcs/agent-semantic-client-backend-protocol.org (008), rfcs/semantic-query-projection-protocol.org (010), rfcs/asp-native-relation-flow-codeql.org (012)
+
+* One-sentence summary
+
+After Rust, Python, TypeScript, and Julia can all emit parser-owned
+=field=/=type=/=collection= facts, ASLP moves from fact extraction to a
+closed loop:
+
+#+begin_src text
+parser-owned facts -> precise frontier -> exact query -> feedback memory -> benchmark
+#+end_src
+
+* Problem
+
+The current graph-turbo path can rank parser-owned facts and project compact
+frontiers.  That is no longer enough.  Agent failures now come from a more
+specific gap: the system can expose relevant facts, but it does not yet
+standardize how those facts drive fewer source reads, better test selection,
+failure evidence, and session memory.
+
+The next protocol layer must answer these questions across languages:
+
+- which field/type/collection fact is the best next evidence boundary?
+- which exact selector should the agent read first?
+- which test target validates the selected owner or changed field?
+- which failure assertion, stack frame, or hot block explains the failure?
+- which frontier items were already explored, ignored, read, edited, or
+  validated in this task session?
+- did the agent actually use the frontier, or did it fall back to raw reads and
+  repeated windows?
+
+This is a context precision problem, not a graph visualization problem.
+
+* Non-goals
+
+- Do not add a new default agent-facing =asp graph= command.
+- Do not make graph-turbo a prompt renderer with hidden semantics.
+- Do not switch to GNN/PyG before deterministic sparse graph metrics show a
+  need.
+- Do not optimize token count by removing parser-owned semantic evidence,
+  exact selectors, frontier actions, test links, omission facts, or avoid
+  guidance.
+- Do not introduce language-private fact meanings that cannot be represented in
+  the shared ontology.
+
+* Protocol direction
+
+The next ASLP research line is:
+
+#+begin_src text
+cross-language semantic facts
+  -> relation-specific sparse graph profiles
+  -> frontier and capsule projections
+  -> read/failure/test feedback memory
+  -> context precision benchmark
+  -> optional lightweight learned scoring
+#+end_src
+
+Graph-turbo remains an internal ranking and projection layer consumed by
+=search=, =query=, =check=, read-plan, and failure-frontier surfaces.  It
+should keep producing schema-owned packets and compact decision frontiers with
+=rank=, =frontier=, =frontierActions=, =profiles=, =omit=, and =avoid=.
+
+* Semantic ontology
+
+Four-language =field=/=type=/=collection= facts must converge on one shared
+ontology.  Provider-owned parser facts stay native at extraction time, but the
+graph facts consumed by graph-turbo use shared semantic fields:
+
+#+begin_src text
+field.ownerKind      struct | class | interface | dataclass | module | object
+field.name           provider-owned field symbol
+field.ownerPath      source owner path
+field.access         read | write | append | mutate | construct | validate
+
+type.name            provider-owned type text
+type.element         sequence/set/iterator element type
+type.key             map key type
+type.value           map/result/optional value type
+
+collection.family    sequence | map | set | iterator | optional | result
+collection.impl      Vec | list | Array | Vector | HashMap | dict | Map | Dict | ...
+collection.mutation  append | insert | remove | update | clear | replace
+
+fact.provenance      parser | build | test | failure | receipt | heuristic
+fact.confidence      exact | inferred | heuristic
+fact.freshness       fresh | stale | unknown
+#+end_src
+
+The same user intent should produce homologous graph facts across languages:
+
+#+begin_src text
+Rust       Vec<T>        -> collection.family=sequence impl=Vec
+Python     list[T]       -> collection.family=sequence impl=list
+TypeScript Array<T>      -> collection.family=sequence impl=Array
+Julia      Vector{T}     -> collection.family=sequence impl=Vector
+
+Rust       HashMap<K,V>  -> collection.family=map impl=HashMap
+Python     dict[K,V]     -> collection.family=map impl=dict
+TypeScript Map<K,V>      -> collection.family=map impl=Map
+Julia      Dict{K,V}     -> collection.family=map impl=Dict
+#+end_src
+
+** P0 contract surface
+
+The P0 ontology contract is schema-first:
+
+- =schemas/semantic-fact-ontology.v1.schema.json= owns the shared
+  =field=/=type=/=collection= node vocabulary, =has_type= and
+  =collection_of= relations, provenance/confidence/freshness fields, and
+  collection families.
+- =schemas/semantic-fact-graph.v1.schema.json= owns the runtime
+  =search semantic-facts --json= provider packet.  Providers must advertise
+  this packet schema for fact graph output instead of =semantic-graph.v1=;
+  =semantic-graph.v1= remains the embedded search packet graph vocabulary.
+- =schemas/semantic-fact-ontology.fixtures.v1.json= is the executable
+  cross-language fixture matrix for Rust, TypeScript, Python, and Julia
+  sequence/map facts.
+- =schemas/semantic-language-registry.providers.v1.json= advertises the
+  ontology schema for the four source-language providers so future provider
+  output alignment has a registry-visible contract.
+- =packages/python/asp_graph_turbo/src/asp_graph_turbo/ontology.py= projects the
+  fixture catalog into a schema-valid graph-turbo request by moving
+  ontology-specific fields into graph node =fields= and preserving top-level
+  request fields for selectors, paths, symbols, and actions.
+- =tests/unit/test_semantic_fact_ontology_schema.py= validates the schema, the
+  fixture matrix, and the provider registry declaration.
+- =tests/unit/test_asp_graph_turbo_ontology.py= validates that the projected
+  ontology facts are rankable as field-first graph frontiers.
+- =languages/rust-lang-project-harness/src/search/semantic_facts.rs= emits
+  ontology-shaped Rust =field=/=type=/=collection= graph facts from =syn=
+  parser facts while preserving the existing provider metadata fields used by
+  compact rendering.
+- =crates/agent-semantic-protocol/tests/unit/provider_command/facade/pipe/provider_ontology.rs=
+  validates that ASP keeps provider-emitted ontology fields when it builds a
+  =semantic-graph-turbo-request.v1= packet.
+
+The Rust, Python, TypeScript, and Julia providers are the first concrete
+emitters for this contract.  Other providers may still roll out incrementally,
+but they must map their parser-owned facts into this shared contract before
+profile scoring consumes those facts.
+
+* Flow profiles
+
+Graph-turbo should grow profile-owned flow views before adding new public
+commands.  Existing =search=, =query=, =check=, failure-frontier, and read-plan
+surfaces may select these profiles internally.
+
+Required initial profiles:
+
+- =field-impact= :: owner -> field -> type -> hot -> test
+- =type-impact= :: type -> constructors/methods/usages -> tests
+- =collection-impact= :: collection -> element/key/value -> read/write/mutate
+  sites -> tests
+- =failure-evidence= :: failure -> assertion -> hot/field/type/collection ->
+  tests
+- =test-selection= :: changed owner/fact -> smallest covering test frontier
+- =affected= :: changed owner/fact -> package/build/test/dependency frontier
+
+Profile output must stay compact and action-oriented:
+
+#+begin_src text
+[graph-frontier] profile=collection-impact alg=typed-sparse-frontier
+F=field:struct-field(entries: Vec<Entry>)@src/cache.rs:20:20!code
+Y=type:field-type(Vec<Entry>)!evidence
+C=collection:sequence(Vec<Entry>)!evidence
+H=hot:fn(write_entry)@src/cache.rs:80:104!code
+T=test:case(cache_replay_roundtrip)!tests
+frontier=F.code,H.code,T.tests
+frontierActions=F.code=>asp rust query --selector src/cache.rs:18:24 --code .
+profiles=collection-impact,test-selection
+omit=source,full-callgraph,unrelated-fields
+avoid=raw-read,manual-window-scan,broad-fzf
+#+end_src
+
+* Sparse matrix bank
+
+The Python graph-turbo engine should move from one adjacency view toward a
+relation-specific sparse matrix bank.  Relation matrices are deterministic
+algorithm inputs, not prompt text:
+
+#+begin_src text
+A_matches
+A_contains
+A_has_type
+A_collection_of
+A_reads
+A_writes
+A_mutates
+A_calls
+A_imports
+A_covers
+A_fails
+A_explains
+A_points_to
+A_validates
+A_belongs_to
+A_builds
+#+end_src
+
+Profiles compile a weighted sparse graph from those matrices:
+
+#+begin_src text
+field-impact       = has_type + reads + writes + mutates + covers
+collection-impact  = collection_of + reads + writes + mutates + covers
+failure-evidence   = fails + explains + points_to + touches + validates
+test-selection     = covers + validates + belongs_to
+affected           = calls + imports + belongs_to + builds + covers
+#+end_src
+
+The first implementation remains SciPy/NumPy based.  Learned scoring may
+adjust profile weights later, but relation construction and profile semantics
+must remain inspectable.
+
+* Build, test, and package graph
+
+Parser facts are not enough for repository-level agents.  The next fact graph
+must include deterministic build/test/package nodes:
+
+#+begin_src text
+package
+workspace-member
+build-target
+test-target
+test-case
+runner
+fixture
+external-package
+package-manager
+#+end_src
+
+Required relation vocabulary:
+
+#+begin_src text
+owner -> package             belongs_to
+package -> build-target      builds
+test-case -> test-target     belongs_to
+test-target -> owner         covers
+test-target -> package       validates
+external-package -> owner    imported_by
+field/type -> test-case      covered_by
+failure -> test-target       failed_in
+#+end_src
+
+The agent-facing result is not a full architecture report.  It is a minimal
+validation frontier:
+
+#+begin_src text
+frontier=T.unit,T2.integration,P.package
+frontierActions=T.unit=>asp rust check --test cache_replay_roundtrip .
+omit=full-suite,full-build-graph
+avoid=run-full-suite,manual-window-scan,raw-read
+#+end_src
+
+* Feedback memory
+
+Read-loop and failure-loop memory are not only post-hoc metrics.  They become
+ranking inputs through receipt graph facts:
+
+#+begin_src text
+frontier receipt
+read receipt
+failure receipt
+test receipt
+edit receipt
+#+end_src
+
+Each receipt should record:
+
+#+begin_src text
+taskFingerprint
+commandFingerprint
+selector
+owner
+symbol
+range
+frontierReturned
+frontierFollowed
+codeActuallyRead
+testCommand
+testResult
+editTouchedOwner
+outputFingerprint
+#+end_src
+
+Graph-turbo must penalize:
+
+- same selector repeated
+- overlapping range repeated
+- same owner scanned repeatedly
+- raw read after exact frontier
+- broad fzf after projected frontier
+- frontier returned but ignored
+
+Graph-turbo must promote:
+
+- unvisited high-confidence owner
+- exact locator with parser provenance
+- nearest assertion/hot block
+- covered test target
+- field/type/collection flow node with failure evidence
+
+* Query capsule
+
+=query --view capsule= is the preferred next protocol surface once ontology
+and flow facts are stable.  A capsule is not source code.  It is a compact
+semantic pre-read packet:
+
+#+begin_src text
+[query-capsule] profile=type-impact ranker=graph-turbo:field-type-collection
+Y=type:struct(CacheRecord)!evidence
+F=field:struct-field(entries: Vec<Entry>)!code
+C=collection:sequence(Vec<Entry>)!evidence
+H=hot:fn(write_record)!code
+T=test:case(cache_replay_roundtrip)!tests
+frontier=F.code,H.code,T.tests
+omit=source,full-field-list,full-callgraph
+avoid=raw-read,manual-window-scan
+#+end_src
+
+Capsule success means the agent can choose one exact =query --code= selector
+or one exact test action without reading wide source first.
+
+* Benchmark contract
+
+ASLP needs a ContextBench-style process benchmark.  It must measure context
+retrieval and utilization, not only final patch success.
+
+Required metrics:
+
+#+begin_src text
+contextRecall
+contextPrecision
+contextUtilization
+frontierFollowRate
+exactCodeSuccess
+manualWindowScanCount
+rawReadFallbackCount
+repeatOwnerCount
+duplicateSelectorCount
+broadFzfCount
+testSelectionPrecision
+failureEvidenceHitRate
+commandsToFirstUsefulLocator
+commandsToPatch
+stdoutBytesToPatch
+graphTurboLatencyMs
+#+end_src
+
+The key metric is:
+
+#+begin_src text
+contextUtilization =
+  frontier items actually used for edit/test/failure reasoning
+  /
+  frontier items emitted by graph_turbo
+#+end_src
+
+This prevents a false optimization where graph-turbo emits more plausible
+nodes but agents still ignore them or fall back to manual source scans.
+
+* Lightweight scoring
+
+Learned scoring is allowed only after deterministic metrics exist.  The first
+version is an interpretable weighted scorer:
+
+#+begin_src text
+final_score =
+  ppr_score
+  + weighted_feature_score
+  + action_utility_score
+  + feedback_score
+  - redundancy_penalty
+  - read_loop_penalty
+#+end_src
+
+Candidate features:
+
+- exact query token match
+- parser-owned confidence
+- field/type/collection flow distance
+- exact locator availability
+- covered_by test
+- failure stack distance
+- assertion proximity
+- read/write/mutation relation
+- same-owner repetition
+- same-range overlap
+- stale cache
+- heuristic edge
+
+Training signals come from receipt graph facts: frontier followed, exact code
+success, edit touched node owner, test passed after edit, failure evidence
+used, manual-window-scan avoided, duplicate read avoided.
+
+* Audit plan
+
+P0 audit should answer:
+
+- Do all four language providers emit homologous =field=/=type=/=collection=
+  graph facts for sequence and map fields?
+- Does graph-turbo preserve parser provenance, confidence, freshness, exact
+  selector, and context locator?
+- Are debug-only ranking details separated from agent-facing compact frontier?
+- Are read/failure/test receipts available as packet-visible facts or
+  sandtable observations?
+- Do current live sandtables measure frontier follow rate and utilization, not
+  only command counts?
+
+P1 audit should answer:
+
+- Which relation vocabularies are still language-private?
+- Which graph-turbo profiles still rely on string heuristics instead of typed
+  facts?
+- Which agent-facing surfaces still emit too many runnable branch choices?
+- Which tests prove lower token cost without precision loss?
+
+* Landing plan
+
+** P0: Ontology and schema closure
+
+- Add or revise shared schemas for semantic fact ontology:
+  =field=, =type=, =collection=, =fact.provenance=, =fact.confidence=,
+  =fact.freshness=.
+- Add a cross-language fixture matrix for Rust/Python/TypeScript/Julia:
+  sequence field, map field, optional/result field where supported.
+- Gate graph-turbo request/result packets against the new ontology without
+  changing default agent behavior.
+
+** P1: Relation matrix bank
+
+- Split graph-turbo relation handling into named sparse matrices.
+- =schemas/semantic-graph-turbo-result.v1.schema.json= exposes
+  =profileMatrices= as a packet-visible profile matrix bank with relation,
+  transition, supported edge, reachable edge, and density summaries.
+- =packages/python/asp_graph_turbo/src/asp_graph_turbo/profile_matrix.py=
+  compiles the current graph against every registered profile without changing
+  the existing default frontier contract.
+- =packages/python/asp_graph_turbo/src/asp_graph_turbo/profiles.py= registers
+  =field-impact=, =type-impact=, =collection-impact=, and =failure-evidence=
+  as internal graph-turbo profiles that can be selected by existing surfaces.
+- =tests/unit/asp_graph_turbo_feedback_profiles/= validates
+  relation-specific profile compilation for =field-impact=,
+  =collection-impact=, and =failure-evidence= flows.
+- Preserve existing =owner-query= and =failure-frontier= output contracts.
+
+** P2: Feedback receipt graph
+
+- Extend read/failure memory from observations into packet-visible receipt
+  facts.
+- =schemas/semantic-graph-turbo-result.v1.schema.json= exposes
+  =receiptAdjustments= plus =receiptBoostCount= and =receiptPenaltyCount= so
+  receipt effects are inspectable instead of hidden inside scores.
+- =packages/python/asp_graph_turbo/src/asp_graph_turbo/receipt.py= applies
+  deterministic boost/penalty deltas from =kind=receipt= nodes, receipt edges,
+  and seen selector receipts while preserving parser-owned graph reachability.
+- =packages/python/tools/src/tools/semantic_sandtable/agent_observation_frontier.py=
+  derives =frontierFollowRate=, =contextPrecision=, and =contextUtilization=
+  from ASP search frontier selectors and subsequent =query --selector= commands.
+- =packages/python/tools/src/tools/semantic_sandtable/expectations.py= gates those
+  metrics with =minFrontierFollowRate=, =minContextPrecision=, and
+  =minContextUtilization=.
+- =packages/python/asp_graph_turbo/src/asp_graph_turbo/receipt.py= derives
+  ranking penalties for duplicate selector, overlapping range, same-owner scan,
+  and raw-read fallback after exact frontier from packet-visible receipt facts.
+- =tests/unit/asp_graph_turbo_feedback_profiles/= validates those receipt
+  penalties against schema-valid graph-turbo result packets.
+- Add sandtable gates for =frontierFollowRate= and =contextUtilization=.
+
+** P3: Build/test/package graph
+
+- =schemas/semantic-fact-graph.v1.schema.json= accepts =package=, =build=,
+  and =dependency= nodes plus build/test/package metadata edges such as
+  =belongs_to=, =builds=, =tests=, and =depends_on=.
+- =packages/python/asp_graph_turbo/src/asp_graph_turbo/profiles.py= registers
+  =test-selection= and =affected= as deterministic profile masks for existing
+  search/query/check surfaces.
+- =tests/unit/asp_graph_turbo_feedback_profiles/= validates
+  =test-selection= and =affected= against deterministic
+  owner/field/package/build/test/dependency fixtures.
+- =schemas/semantic-language-registry.providers.v1.json= exposes
+  =search/semantic-facts= for Rust, Python, TypeScript, and Julia with
+  =semantic-fact-graph.v1= packet metadata, so agents can discover the fact
+  graph surface from the provider registry instead of hard-coding it.
+- =languages/rust-lang-project-harness/src/search/semantic_facts.rs= now emits
+  parser-owned Cargo =package=, =build=, =dependency=, and =test= graph facts
+  from manifest dependency facts and Cargo test target parsing. Runtime evidence:
+  =cargo run --quiet --features search,cli -- search semantic-facts "cargo test dependency" --json .=
+  produces schema-valid =semantic-fact-graph.v1= output with
+  =builds=/=depends_on=/=tests=/=belongs_to= edges.
+- =languages/python-lang-project-harness/src/python_lang_project_harness/_semantic_graph_facts.py=
+  now merges parser-owned Python field facts with project-level =package=,
+  =build=, =dependency=, and =test= facts from =pyproject.toml= and AST-based
+  test discovery. Runtime evidence through =run_cli(["search", "semantic-facts",
+  "pytest dependency", "--json", "."])= produces schema-valid
+  =semantic-fact-graph.v1= output with the same P3 edge vocabulary.
+- =languages/typescript-lang-project-harness/src/cli/semantic-graph-facts.ts=
+  now merges parser-owned TypeScript field facts with project-level =package=,
+  =build=, =dependency=, and =test= facts from =package.json= and AST-based
+  test discovery. Runtime evidence:
+  =node dist/src/cli/main.js search semantic-facts "npm test dependency" --json .=
+  produces schema-valid =semantic-fact-graph.v1= output with the same
+  =builds=/=depends_on=/=tests=/=belongs_to= edges.
+- =languages/JuliaLangProjectHarness.jl/src/semantic_graph_facts.jl= now
+  merges JuliaSyntax-owned field facts with project-level =package=, =build=,
+  =dependency=, and =test= facts from =Project.toml= and JuliaSyntax test
+  discovery. Runtime evidence:
+  =julia --project=. -e 'using JuliaLangProjectHarness; print(render_julia_semantic_graph_facts_json(pwd(), "Pkg test dependency", ""))'=
+  produces schema-valid =semantic-fact-graph.v1= output with the same
+  =builds=/=depends_on=/=tests=/=belongs_to= edges.
+- Provider packets must expose a visible source-to-package bridge instead of
+  leaving graph-turbo to infer package reachability. Rust, Python, TypeScript,
+  and Julia now emit =belongs_to= from matched =field=/=hot=/=owner= nodes to
+  the package node when project metadata is available. This lets
+  =test-selection= and =affected= traverse =field -> package -> build/test=
+  using schema-owned facts.
+
+** P4: Query capsule
+
+- Define =semantic-query-capsule.v1=.
+- Add =asp <language> query --view capsule= only after P0-P3 facts can produce
+  enough evidence without source.
+- Gate capsule by exact follow-up action availability.
+
+** P5: ASLP context precision benchmark
+
+- Add benchmark fixtures with gold context, gold frontier, gold exact selector,
+  and gold test action.
+- Record =contextPrecision=, =contextRecall=, =contextUtilization=,
+  =commandsToFirstUsefulLocator=, and =stdoutBytesToPatch=.
+- Run one real-project scenario before allowing scoring changes to count as an
+  optimization.
+
+** P6: Lightweight learned scoring
+
+- Fit per-profile weights from receipt graph data.
+- Keep features and weights inspectable.
+- Treat PyG/GNN as a lab-only follow-up unless deterministic metrics show a
+  concrete failure that weighted sparse scoring cannot address.
+
+* Acceptance criteria
+
+The RFC is considered landed only when:
+
+- the shared ontology schema validates Rust/Python/TypeScript/Julia fixtures;
+- graph-turbo has relation-specific profile tests for at least field,
+  collection, and failure evidence flows;
+- live or recorded sandtables report context precision/utilization metrics;
+- read/failure/test receipt facts affect ranking in a tested way;
+- default agent-facing outputs remain compact and preserve exact follow-up
+  actions;
+- at least one real-project run shows fewer repeated reads or broad searches
+  without losing the correct edit/test/failure evidence frontier.
+
+** Closure evidence matrix
+
+| criterion | status | gate/evidence |
+| shared ontology validates Rust/Python/TypeScript/Julia fixtures | closed | =tests/unit/test_semantic_fact_ontology_schema.py=, =tests/unit/test_semantic_fact_graph_schema.py=, and four provider runtime packets validating =semantic-fact-graph.v1= |
+| graph-turbo relation profiles cover field, collection, failure evidence | closed | =tests/unit/asp_graph_turbo_feedback_profiles/test_impact_profiles.py=, =test_failure_evidence.py=, =test_package_profiles.py=, and =test_profile_matrix.py= |
+| sandtables report context precision/utilization metrics | closed | =tests/unit/semantic_sandtable/test_expectations.py=, =test_agent_observation_pipe.py=, =test_agent_observation_read_loop.py=, and =test_deep_question_cases.py= |
+| read/failure/test receipt facts affect ranking | closed | =tests/unit/asp_graph_turbo_feedback_profiles/test_receipt_feedback.py=, =tests/unit/test_asp_graph_turbo_failure_frontier.py=, and read-loop memory gates in =tests/unit/test_asp_graph_turbo_read_loop.py= |
+| default agent-facing outputs stay compact with exact follow-up actions | closed | graph-turbo seed/render tests plus =tests/unit/semantic_sandtable/test_expectations_pipe_flow_drift.py= enforcing primary selector actions without broad executable branch spam |
+| real-project run reduces repeated reads/searches without losing frontier | closed | =docs/30-39-research/31.22-claude-sandtable-live-pipe-audit.org= records the Tokio 1.52.3 live run with =prime -> pipe -> query-selector=, zero repeated commands, zero direct reads, one remembered selector, and retained selector evidence |

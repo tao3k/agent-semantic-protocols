@@ -13,7 +13,10 @@ from .model import (
     MergedWindow,
     Node,
     ProfileCompatibility,
+    ProfileMatrixSummary,
     RankExplanation,
+    ReceiptAdjustment,
+    ReadLoopGuard,
     SourceSinkFrontier,
     TypedPath,
     TypedGraph,
@@ -21,6 +24,8 @@ from .model import (
 
 _TURBO_EXPORTS = {
     "DEFAULT_PROFILES",
+    "ontology_catalog_to_graph_packet",
+    "ontology_catalog_to_graph_request",
     "rank_frontier",
     "render_compact",
     "result_to_packet",
@@ -40,10 +45,15 @@ __all__ = [
     "MergedWindow",
     "Node",
     "ProfileCompatibility",
+    "ProfileMatrixSummary",
     "RankExplanation",
+    "ReceiptAdjustment",
+    "ReadLoopGuard",
     "SourceSinkFrontier",
     "TypedPath",
     "TypedGraph",
+    "ontology_catalog_to_graph_packet",
+    "ontology_catalog_to_graph_request",
     "rank_frontier",
     "render_compact",
     "result_to_packet",
@@ -53,6 +63,22 @@ __all__ = [
 def __getattr__(name: str) -> object:
     if name not in _TURBO_EXPORTS:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    if name in {
+        "ontology_catalog_to_graph_packet",
+        "ontology_catalog_to_graph_request",
+    }:
+        from .ontology import (
+            ontology_catalog_to_graph_packet,
+            ontology_catalog_to_graph_request,
+        )
+
+        exports = {
+            "ontology_catalog_to_graph_packet": ontology_catalog_to_graph_packet,
+            "ontology_catalog_to_graph_request": ontology_catalog_to_graph_request,
+        }
+        value = exports[name]
+        globals()[name] = value
+        return value
     from .turbo import DEFAULT_PROFILES, rank_frontier, render_compact, result_to_packet
 
     exports = {

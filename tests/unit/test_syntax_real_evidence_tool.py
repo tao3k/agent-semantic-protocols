@@ -2,20 +2,31 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
 
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
-_TOOL = _REPO_ROOT / "tools" / "record-syntax-real-evidence.py"
+_TOOLS_SRC = _REPO_ROOT / "packages" / "python" / "tools" / "src"
+
+
+def _tools_env() -> dict[str, str]:
+    env = os.environ.copy()
+    current = env.get("PYTHONPATH")
+    env["PYTHONPATH"] = str(_TOOLS_SRC) if not current else f"{_TOOLS_SRC}{os.pathsep}{current}"
+    return env
 
 
 def test_record_syntax_real_evidence_renders_review_record() -> None:
     result = subprocess.run(
         [
             sys.executable,
-            str(_TOOL),
+            "-m",
+            "tools",
+            "syntax",
+            "real-evidence",
             "--language",
             "rust",
             "--provider",
@@ -45,6 +56,7 @@ def test_record_syntax_real_evidence_renders_review_record() -> None:
         ],
         check=True,
         capture_output=True,
+        env=_tools_env(),
         text=True,
     )
 
@@ -62,7 +74,10 @@ def test_record_syntax_real_evidence_rejects_unproven_cache_hit() -> None:
     result = subprocess.run(
         [
             sys.executable,
-            str(_TOOL),
+            "-m",
+            "tools",
+            "syntax",
+            "real-evidence",
             "--language",
             "typescript",
             "--provider",
@@ -92,6 +107,7 @@ def test_record_syntax_real_evidence_rejects_unproven_cache_hit() -> None:
         ],
         check=False,
         capture_output=True,
+        env=_tools_env(),
         text=True,
     )
 

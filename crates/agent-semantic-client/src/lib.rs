@@ -6,6 +6,7 @@ mod cache_cli;
 mod cache_replay;
 pub mod cli;
 mod cli_args;
+mod compact_mode;
 mod provider_method;
 mod search_history;
 mod syntax_query_preflight;
@@ -38,6 +39,9 @@ mod cache_replay_tests;
 #[cfg(test)]
 #[path = "../tests/unit/cli_args.rs"]
 mod cli_args_tests;
+#[cfg(test)]
+#[path = "../tests/unit/compact_mode.rs"]
+mod compact_mode_tests;
 #[cfg(test)]
 #[path = "../tests/unit/provider_method.rs"]
 mod provider_method_tests;

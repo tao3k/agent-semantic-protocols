@@ -2,6 +2,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
+use std::path::{Path, PathBuf};
 
 use super::search_pipe_render::Candidate;
 
@@ -15,38 +16,54 @@ struct PipeAction {
 
 pub(super) fn render_search_pipe_plan(
     language_id: &str,
+    project_root: &Path,
+    locator_root: &Path,
+    scopes: &[PathBuf],
     query: &str,
     candidates: &[Candidate],
     ranked_compact: Option<&str>,
 ) -> String {
     let quoted_query = shell_quote(query);
+    let scope_arg = display_scope_args(project_root, locator_root, scopes);
     let actions = concrete_pipe_actions(candidates, ranked_compact);
+    let compact_prints_primary = ranked_compact
+        .map(compact_has_primary_selector_action)
+        .unwrap_or(false);
     let action_stages = if actions.is_empty() {
         "pipeStages=search-prime,search-pipe,query-selector,search-reasoning\n\
 selectorPolicy=defer reason=no-exact-selector next=search-reasoning\n"
             .to_string()
     } else {
-        render_action_lines(&actions)
+        render_action_lines(&actions, compact_prints_primary)
     };
-    let next_action_lines = render_next_action_lines(language_id, &actions);
+    let next_action_lines =
+        render_next_action_lines(language_id, project_root, locator_root, scopes, &actions);
     let command_line = if actions.is_empty() {
         format!(
-            "pipeCommands=context=>asp {language_id} search prime --view seeds .,pipe=>asp {language_id} search pipe {quoted_query} --view seeds .,owner-query=>asp {language_id} search reasoning owner-query --owner <owner-path> --query {quoted_query} --view seeds .,selector=>asp {language_id} query --selector <selector> --code .\n"
+            "pipeCommands=context=>asp {language_id} search prime --view seeds {scope_arg},pipe=>asp {language_id} search pipe {quoted_query} --view seeds {scope_arg},owner-query=>asp {language_id} search reasoning owner-query --owner <owner-path> --query {quoted_query} --view seeds {scope_arg},selector=>asp {language_id} query --selector <selector> --code {scope_arg}\n"
         )
     } else {
-        render_concrete_pipe_commands(language_id, query, &actions)
+        render_concrete_pipe_commands(
+            language_id,
+            project_root,
+            locator_root,
+            scopes,
+            &scope_arg,
+            query,
+            &actions,
+        )
     };
     let choice_line = pipe_choice_lines(ranked_compact);
     format!(
-        "pipePlan=query-pipeline alg=asp-search-pipe-v1 budget=asp<=8,search<=4,query<=4,repeated=0\n\
-pipeExpr=prime |> search(term={quoted_query}) |> rank(profile=owner-query) |> filter(path=source-preferred) |> project(frontierActions,pipeCommands,selectors) |> choose(branch=bounded,max=3,repeat=false,rewrite=false)\n\
-pipeProjections=graph-frontier,frontierActions,pipeCommands\n\
+        "pipePlan=query-pipeline alg=asp-search-pipe-v1 budget=asp<=3,search<=2,query<=1,repeated=0\n\
+pipeExpr=prime|pipe(term={quoted_query})|S1.query-selector conditional=metadata-only\n\
+pipeProjections=graph-frontier,S1,nextCommand,pipeCommands,conditionalActions\n\
 {choice_line}\
 {action_stages}\
 {next_action_lines}\
 {command_line}\
-stop=after-first-query-selector-read-or-after-projected-branches answer-from-evidence=true no-search-after-projected-branches=true\n\
-avoid=repeat-prime,repeat-pipe,query-rewrite-pipe,reasoning-before-selector,repeat-fzf,broad-fzf,post-projection-owner-search,post-projection-fzf,post-projection-treesitter-guide,raw-read,manual-window-scan,wide-windows\n"
+stop=after-primary-query-selector-read answer-from-evidence=true conditional-branches=only-if-primary-selector-insufficient no-search-after-projected-branches=true no-duplicate-selector=true no-context-widening=true\n\
+avoid=repeat-prime,repeat-pipe,query-rewrite-pipe,reasoning-before-selector,read-all-selectors-by-default,guide-after-selector,repeat-fzf,broad-fzf,post-projection-owner-search,post-projection-fzf,post-projection-treesitter-guide,duplicate-selector,context-widening,raw-read,manual-window-scan,wide-windows\n"
     )
 }
 
@@ -282,11 +299,11 @@ fn node_symbol(node: &str) -> Option<String> {
     }
 }
 
-fn render_action_lines(actions: &[PipeAction]) -> String {
+fn render_action_lines(actions: &[PipeAction], compact_prints_primary: bool) -> String {
     let mut rendered = "pipeStages=search-prime,search-pipe,query-selector,search-reasoning\n\
 selectorPolicy=run-first reason=exact-selector-present before=search-reasoning\n"
         .to_string();
-    for action in actions {
+    if !compact_prints_primary && let Some(action) = actions.first() {
         let _ = writeln!(
             rendered,
             "frontierActions=S{index}.selector(selector={selector},owner={owner},symbol={symbol})!query-selector",
@@ -295,22 +312,62 @@ selectorPolicy=run-first reason=exact-selector-present before=search-reasoning\n
             owner = action.owner,
             symbol = action.symbol,
         );
-        let _ = writeln!(
-            rendered,
-            "frontierActions=R{index}.reasoning(owner={owner},querySource=search-pipe)!search-reasoning",
-            index = action.index,
-            owner = action.owner,
-        );
     }
     rendered
 }
 
-fn render_next_action_lines(language_id: &str, actions: &[PipeAction]) -> String {
+pub(super) fn render_primary_frontier_actions_only(compact: &str) -> String {
+    let mut rendered = String::new();
+    for line in compact.lines() {
+        if is_graph_debug_line(line) {
+            continue;
+        }
+        if let Some(value) = line.strip_prefix("frontierActions=")
+            && let Some(primary) = action_segments(value)
+                .into_iter()
+                .find(|part| part.trim().starts_with("S1.selector("))
+        {
+            let _ = writeln!(rendered, "frontierActions={}", primary.trim());
+            continue;
+        }
+        rendered.push_str(line);
+        rendered.push('\n');
+    }
+    rendered
+}
+
+fn is_graph_debug_line(line: &str) -> bool {
+    matches!(
+        line.split_once('=').map(|(key, _)| key),
+        Some("scores" | "paths" | "trace" | "explain" | "cache" | "metrics")
+    )
+}
+
+fn compact_has_primary_selector_action(compact: &str) -> bool {
+    compact.lines().any(|line| {
+        line.strip_prefix("frontierActions=")
+            .map(|value| {
+                action_segments(value)
+                    .into_iter()
+                    .any(|part| part.trim().starts_with("S1.selector("))
+            })
+            .unwrap_or(false)
+    })
+}
+
+fn render_next_action_lines(
+    language_id: &str,
+    project_root: &Path,
+    locator_root: &Path,
+    scopes: &[PathBuf],
+    actions: &[PipeAction],
+) -> String {
     let Some(action) = actions.first() else {
         return String::new();
     };
+    let root_arg = action_root_arg(action, project_root, locator_root, scopes);
     let command = format!(
-        "asp {language_id} query --selector {selector} --code .",
+        "asp {language_id} query --selector {selector} --code {root_arg}",
         selector = shell_arg(&action.selector),
     );
     format!(
@@ -319,25 +376,46 @@ fn render_next_action_lines(language_id: &str, actions: &[PipeAction]) -> String
     )
 }
 
-fn render_concrete_pipe_commands(language_id: &str, query: &str, actions: &[PipeAction]) -> String {
+fn render_concrete_pipe_commands(
+    language_id: &str,
+    project_root: &Path,
+    locator_root: &Path,
+    scopes: &[PathBuf],
+    scope_arg: &str,
+    query: &str,
+    actions: &[PipeAction],
+) -> String {
     let quoted_query = shell_quote(query);
     let mut commands = vec![
-        format!("context=>asp {language_id} search prime --view seeds ."),
-        format!("pipe=>asp {language_id} search pipe {quoted_query} --view seeds ."),
+        format!("context=>asp {language_id} search prime --view seeds {scope_arg}"),
+        format!("pipe=>asp {language_id} search pipe {quoted_query} --view seeds {scope_arg}"),
     ];
-    for action in actions {
+    if let Some(primary) = actions.first() {
+        let root_arg = action_root_arg(primary, project_root, locator_root, scopes);
         commands.push(format!(
-            "S{index}=>asp {language_id} query --selector {selector} --code .",
-            index = action.index,
-            selector = shell_arg(&action.selector),
-        ));
-        commands.push(format!(
-            "R{index}=>asp {language_id} search reasoning owner-query --owner {owner} --query {quoted_query} --view seeds .",
-            index = action.index,
-            owner = shell_arg(&action.owner),
+            "S{index}=>asp {language_id} query --selector {selector} --code {root_arg}",
+            index = primary.index,
+            selector = shell_arg(&primary.selector),
         ));
     }
-    format!("pipeCommands={}\n", commands.join(","))
+    let mut conditional_actions = Vec::new();
+    for action in actions.iter().skip(1) {
+        conditional_actions.push(format!(
+            "S{index}(owner={owner},symbol={symbol},selector=hidden)",
+            index = action.index,
+            owner = action.owner,
+            symbol = action.symbol,
+        ));
+    }
+    let mut rendered = format!("pipeCommands={}\n", commands.join(","));
+    if !conditional_actions.is_empty() {
+        let _ = writeln!(
+            rendered,
+            "conditionalActions=metadata-only selector=hidden run-if-primary-insufficient:{}",
+            conditional_actions.join(",")
+        );
+    }
+    rendered
 }
 
 fn is_source_preferred_owner(owner: &str) -> bool {
@@ -359,6 +437,93 @@ fn shell_arg(value: &str) -> String {
     } else {
         shell_quote(value)
     }
+}
+
+fn display_project_root_arg(project_root: &Path) -> String {
+    let Ok(cwd) = std::env::current_dir() else {
+        return shell_arg(&slash_path(project_root));
+    };
+    if project_root == cwd {
+        return ".".to_string();
+    }
+    let display = project_root
+        .strip_prefix(&cwd)
+        .map(slash_path)
+        .unwrap_or_else(|_| slash_path(project_root));
+    if display.is_empty() {
+        ".".to_string()
+    } else {
+        shell_arg(&display)
+    }
+}
+
+fn display_scope_args(project_root: &Path, locator_root: &Path, scopes: &[PathBuf]) -> String {
+    if scopes.is_empty() {
+        return display_project_root_arg(project_root);
+    }
+    scopes
+        .iter()
+        .map(|scope| display_scope_arg(project_root, locator_root, scope))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn action_root_arg(
+    action: &PipeAction,
+    project_root: &Path,
+    locator_root: &Path,
+    scopes: &[PathBuf],
+) -> String {
+    let Some(path) = selector_path(&action.selector) else {
+        return display_project_root_arg(project_root);
+    };
+    let path = Path::new(path);
+    if locator_root.join(path).exists() || path.is_absolute() {
+        return display_project_root_arg(project_root);
+    }
+    for scope in scopes {
+        let absolute = scope_absolute(project_root, scope);
+        if absolute.join(path).exists() {
+            return display_scope_arg(project_root, locator_root, scope);
+        }
+    }
+    display_project_root_arg(project_root)
+}
+
+fn selector_path(selector: &str) -> Option<&str> {
+    let mut parts = selector.rsplitn(3, ':');
+    let _end = parts.next()?;
+    let _start = parts.next()?;
+    let path = parts.next()?;
+    (!path.is_empty()).then_some(path)
+}
+
+fn display_scope_arg(project_root: &Path, locator_root: &Path, scope: &Path) -> String {
+    let absolute = scope_absolute(project_root, scope);
+    if absolute == locator_root {
+        return ".".to_string();
+    }
+    let display = absolute
+        .strip_prefix(locator_root)
+        .map(slash_path)
+        .unwrap_or_else(|_| slash_path(&absolute));
+    if display.is_empty() {
+        ".".to_string()
+    } else {
+        shell_arg(&display)
+    }
+}
+
+fn scope_absolute(project_root: &Path, scope: &Path) -> PathBuf {
+    if scope.is_absolute() {
+        scope.to_path_buf()
+    } else {
+        project_root.join(scope)
+    }
+}
+
+fn slash_path(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
 }
 
 fn shell_quote(value: &str) -> String {

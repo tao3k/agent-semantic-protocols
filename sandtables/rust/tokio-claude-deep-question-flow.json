@@ -59,9 +59,9 @@
           "fields"
         ],
         "audit": {
-          "maxAspCommands": 8,
-          "maxSearchCommands": 4,
-          "maxQueryCommands": 4,
+          "maxAspCommands": 3,
+          "maxSearchCommands": 2,
+          "maxQueryCommands": 1,
           "maxRepeatedCommands": 0,
           "requiresGraphSignals": true,
           "requiresQuerySet": true,
@@ -83,7 +83,8 @@
           ],
           "forbiddenStages": [
             "repeated-prime",
-            "repeated-commands"
+            "repeated-commands",
+            "read-loop-risk"
           ],
           "notes": [
             "Prime exactly once to build the project graph context, then start search pipe and follow recommendedNext/nextCommand when it exposes an exact selector.",
@@ -117,7 +118,7 @@
       "kind": "agent-sdk",
       "agentSdk": {
         "client": "claude",
-        "prompt": "In tokio 1.52.3, what do Vec<scalar> collection fields mean, and why are they not modeled as ordinary scalar fields? Use this repository's SKILL.md and ASP search/query workflow. Start with asp rust search prime --view seeds . once, then asp rust search pipe 'Vec scalar collection fields' --view seeds .. If search pipe emits recommendedNext or nextCommand for an exact query selector, run that selector command first. Then run at most one corresponding search reasoning branch only if the selector evidence still needs branch expansion. List the asp commands you actually ran at the end.",
+        "prompt": "In tokio 1.52.3, what do Vec<scalar> collection fields mean, and why are they not modeled as ordinary scalar fields? Use this repository's ASP search/query workflow. Start with asp rust search prime --view seeds . once, then asp rust search pipe 'Vec scalar collection fields' --view seeds .. If search pipe emits recommendedNext or nextCommand for an exact query selector, run that selector command first and answer from that primary selector evidence when possible. Treat conditionalActions, S2/S3 branch previews, search reasoning branches, and asp rust guide as metadata-only follow-ups unless the primary selector is insufficient; do not read all selectors or run guide by default. List the asp commands you actually ran at the end.",
         "outputFormat": "stream-json",
         "includeHookEvents": true,
         "verbose": true,
@@ -138,15 +139,26 @@
       "expect": {
         "allowNonZeroExit": true,
         "pipeFlow": {
-          "maxAspCommands": 8,
-          "maxSearchCommands": 4,
-          "maxQueryCommands": 4,
+        "maxAspCommands": 3,
+        "maxSearchCommands": 2,
+        "maxQueryCommands": 1,
+          "maxGuideCommands": 0,
           "maxRepeatedCommands": 0,
           "maxSearchPipeCommands": 1,
           "maxSearchPrimeCommands": 1,
-          "minQuerySelectorCommands": 1,
-          "requireComplexPipeFlow": true,
+          "maxReadLoopDuplicateSelectors": 0,
+          "maxReadLoopAdjacentRangeWindows": 0,
+          "maxReadLoopSameOwnerScans": 0,
+          "maxReadLoopMemorySuppressibleReads": 0,
+        "maxAspCommandOutputBytes": 7000,
+        "minQuerySelectorCommands": 1,
+        "minFrontierFollowRate": 0.25,
+        "minContextPrecision": 0.5,
+        "minContextUtilization": 0.25,
+        "requireComplexPipeFlow": true,
           "requireTokenCost": true,
+          "requireSearchPipePrecision": true,
+          "requireReadLoopMemory": true,
           "requiredStages": [
             "search-prime",
             "search-pipe",
@@ -154,7 +166,9 @@
           ],
           "forbiddenStages": [
             "repeated-prime",
-            "repeated-commands"
+            "repeated-commands",
+            "read-loop-risk",
+            "read-loop-memory-risk"
           ]
         },
         "stdoutContains": [

@@ -29,8 +29,13 @@ def rank_nodes(
     best_depth: Mapping[str, int],
     limit: int,
     kind_budgets: Mapping[str, int],
+    seen_selectors: frozenset[str] = frozenset(),
 ) -> tuple[Node, ...]:
-    remaining = [graph.nodes[node_id] for node_id in scores]
+    remaining = [
+        graph.nodes[node_id]
+        for node_id in scores
+        if _selector_for_node(graph.nodes[node_id]) not in seen_selectors
+    ]
     ranked: list[Node] = []
     selected_kind_counts: dict[str, int] = {}
     while remaining and len(ranked) < limit:
@@ -128,3 +133,24 @@ def _window_bounds(node: Node) -> tuple[str, int, int] | None:
     if not isinstance(path, str) or not isinstance(start, int) or not isinstance(end, int):
         return None
     return path, start, end
+
+
+def selector_for_node(node: Node) -> str | None:
+    return _selector_for_node(node)
+
+
+def _selector_for_node(node: Node) -> str | None:
+    fields = node.fields.get("fields")
+    if isinstance(fields, Mapping):
+        context_locator = fields.get("contextLocator")
+        if isinstance(context_locator, str) and context_locator:
+            return context_locator
+    locator = node.fields.get("locator") or node.fields.get("location")
+    if isinstance(locator, str) and locator:
+        return locator
+    path = node.fields.get("path")
+    start = node.fields.get("startLine") or node.fields.get("start")
+    end = node.fields.get("endLine") or node.fields.get("end")
+    if isinstance(path, str) and isinstance(start, int) and isinstance(end, int):
+        return f"{path}:{start}:{end}"
+    return None

@@ -38,6 +38,25 @@ def test_real_trigger_trace_replay_scenario_builds_receipts_in_memory() -> None:
     assert comparison["frontier"]["coverageRatio"] == 1.0
 
 
+def test_failure_loop_memory_replay_scenario_gates_recorded_agent_output() -> None:
+    scenario_path = (
+        _REPO_ROOT
+        / "sandtables"
+        / "fixtures"
+        / "asp"
+        / "failure-loop-memory-replay.json"
+    )
+
+    result = run_scenario(_REPO_ROOT, scenario_path)
+
+    assert result.status == "pass"
+    assert [step.status for step in result.steps] == ["pass"]
+    pipe_flow = result.steps[0].observations["pipeFlow"]
+    assert pipe_flow["searchFailureCommands"] == 1
+    assert pipe_flow["failureLoopMemoryEntryCount"] == 1
+    assert pipe_flow["failureFrontierOutputPrecision"]["hotFacts"] == 1
+
+
 def test_trace_replay_scenario_filters_dev_log_root_by_session(
     tmp_path: Path,
 ) -> None:

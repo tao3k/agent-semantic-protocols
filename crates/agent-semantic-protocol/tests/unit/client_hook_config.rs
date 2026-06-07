@@ -316,6 +316,7 @@ fn temp_project_root(name: &str) -> PathBuf {
         .as_nanos();
     let root = std::env::temp_dir().join(format!("agent-semantic-hook-{name}-{unique}"));
     std::fs::create_dir_all(&root).expect("create temp project root");
+    std::fs::create_dir_all(root.join(".git")).expect("create git marker");
     root
 }
 
@@ -398,6 +399,7 @@ fn run_hook_decision_with_args(
     let mut child = Command::new(env!("CARGO_BIN_EXE_asp"))
         .current_dir(root)
         .args(args)
+        .env_remove("PRJ_CACHE_HOME")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

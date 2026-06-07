@@ -167,6 +167,22 @@ fn org_facade_query_covers_org_element_kinds() {
 }
 
 #[test]
+fn org_facade_content_projection_deduplicates_list_children() {
+    let root = temp_project_root("org-document-content-deduplicates-list");
+    let path = write_org_elements_fixture(&root);
+    let selector = format!("{}:15-16", path.display());
+
+    let content = asp_org_query(&root, &["query", "--selector", &selector, "--content"]);
+
+    assert_eq!(content.matches("ship element map").count(), 1, "{content}");
+    assert_eq!(content.matches("plain list item").count(), 1, "{content}");
+    assert!(content.contains("- [X] ship element map"), "{content}");
+    assert!(content.contains("- plain list item"), "{content}");
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn org_facade_search_toc_returns_heading_outline() {
     let root = temp_project_root("org-document-toc-search");
     write_org_elements_fixture(&root);

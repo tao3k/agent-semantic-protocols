@@ -43,7 +43,7 @@ def test_cli_first_rfc_defines_exact_direct_read_contract() -> None:
         "must keep code omitted and provide executable read locators",
         "For an exact =direct-source-read= selector with =--code=",
         "must not repeat =line= or =endLine= metadata",
-        "tools/validate-exact-direct-read-contract.sh",
+        "python -m tools tree-sitter validate exact-direct-read-contract",
     ]
 
     missing_terms = [term for term in required_terms if term not in text]
@@ -57,7 +57,7 @@ def test_cli_first_rfc_keeps_search_read_plan_frontier_gate() -> None:
     required_terms = [
         "Search and",
         "read-plan flows must return locators/frontier rather than inline code",
-        "tools/validate-search-read-plan-frontier-contract.sh",
+        "python -m tools tree-sitter validate search-read-plan-frontier-contract",
     ]
 
     missing_terms = [term for term in required_terms if term not in text]

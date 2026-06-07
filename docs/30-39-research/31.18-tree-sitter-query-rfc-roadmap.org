@@ -190,7 +190,7 @@ contracts.  Tree-sitter provenance converges through
    - record one Rust and one TypeScript real-project syntax flow with
      =search-prime=, =syntax-frontier=, =exact-selector-code=, and
      =hook-recovery= commands;
-   - render the measured record with =tools/record-syntax-real-evidence.py=;
+   - render the measured record with =python -m tools syntax real-evidence=;
    - record =commandCount=, =providerProcessCount=, =packetBytes=,
      =coldElapsedMs=, =warmElapsedMs=, =syntaxQueryCount=,
      =manualRangeScanCount=, and =repeatedTriggerReduction= before removing

@@ -11,7 +11,7 @@ from .guide_quality import validate_guide_quality
 from .json_expectations import validate_stdout_json
 from .line_protocol import validate_line_protocol
 from .models import StepResult
-from .utils import dict_value, optional_int, string_list
+from .utils import dict_value, optional_float, optional_int, string_list
 
 
 def validate_step(
@@ -93,6 +93,7 @@ def _validate_pipe_flow_expectation(expect: dict[str, Any], result: StepResult) 
 
     _validate_pipe_flow_max(pipe_expect, pipe_flow, result)
     _validate_pipe_flow_min(pipe_expect, pipe_flow, result)
+    _validate_frontier_context_metrics(pipe_expect, pipe_flow, result)
     if bool(pipe_expect.get("requireComplexPipeFlow")) and not bool(
         pipe_flow.get("complexPipeFlow")
     ):
@@ -100,6 +101,14 @@ def _validate_pipe_flow_expectation(expect: dict[str, Any], result: StepResult) 
         result.errors.append(f"pipeFlow complex=false missing={missing}")
     if bool(pipe_expect.get("requireTokenCost")) and not token_cost:
         result.errors.append("tokenCost missing from agent observations")
+    if bool(pipe_expect.get("requireSearchPipePrecision")):
+        _validate_search_pipe_precision(pipe_flow, result)
+    if bool(pipe_expect.get("requireReadLoopMemory")):
+        _validate_read_loop_memory(pipe_flow, result)
+    if bool(pipe_expect.get("requireFailureFrontierPrecision")):
+        _validate_failure_frontier_precision(pipe_flow, result)
+    if bool(pipe_expect.get("requireFailureLoopMemory")):
+        _validate_failure_loop_memory(pipe_flow, result)
     for stage in string_list(pipe_expect.get("requiredStages")):
         if not _pipe_flow_stage_present(stage, pipe_flow):
             result.errors.append(f"pipeFlow missing required stage {stage!r}")
@@ -117,14 +126,26 @@ def _validate_pipe_flow_max(
         "maxAspCommands": "aspCommands",
         "maxSearchCommands": "searchCommands",
         "maxQueryCommands": "queryCommands",
+        "maxGuideCommands": "guideCommands",
         "maxDirectReadCommands": "directReadCommands",
         "maxRepeatedCommands": "repeatedCommands",
         "maxSearchPipeCommands": "searchPipeCommands",
         "maxSearchPrimeCommands": "searchPrimeCommands",
+        "maxSearchFailureCommands": "searchFailureCommands",
+        "maxReadLoopDirectCodeCommands": "readLoopDirectCodeCommands",
+        "maxReadLoopDuplicateSelectors": "readLoopDuplicateSelectors",
+        "maxReadLoopAdjacentRangeWindows": "readLoopAdjacentRangeWindows",
+        "maxReadLoopSameOwnerScans": "readLoopSameOwnerScans",
+        "maxReadLoopMemorySuppressibleReads": "readLoopMemorySuppressibleReads",
+        "maxAspCommandOutputBytes": "aspCommandOutputBytes",
     }
     for expect_key, flow_key in fields.items():
         maximum = optional_int(pipe_expect.get(expect_key))
-        value = optional_int(pipe_flow.get(flow_key)) or 0
+        observed = optional_int(pipe_flow.get(flow_key))
+        if maximum is not None and observed is None and flow_key == "aspCommandOutputBytes":
+            result.errors.append(f"pipeFlow {flow_key} missing for {expect_key}")
+            continue
+        value = observed or 0
         if maximum is not None and value > maximum:
             result.errors.append(
                 f"pipeFlow {flow_key}={value} exceeds {expect_key}={maximum}"
@@ -144,6 +165,117 @@ def _validate_pipe_flow_min(
         )
 
 
+def _validate_frontier_context_metrics(
+    pipe_expect: dict[str, Any],
+    pipe_flow: dict[str, Any],
+    result: StepResult,
+) -> None:
+    fields = {
+        "minFrontierFollowRate": "frontierFollowRate",
+        "minContextPrecision": "contextPrecision",
+        "minContextUtilization": "contextUtilization",
+    }
+    for expect_key, flow_key in fields.items():
+        minimum = optional_float(pipe_expect.get(expect_key))
+        if minimum is None:
+            continue
+        observed = optional_float(pipe_flow.get(flow_key))
+        if observed is None:
+            result.errors.append(f"pipeFlow {flow_key} missing for {expect_key}")
+            continue
+        if observed < minimum:
+            result.errors.append(
+                f"pipeFlow {flow_key}={observed:.4f} below {expect_key}={minimum:.4f}"
+            )
+
+
+def _validate_search_pipe_precision(
+    pipe_flow: dict[str, Any],
+    result: StepResult,
+) -> None:
+    precision = dict_value(pipe_flow.get("searchPipeOutputPrecision"))
+    if not precision:
+        result.errors.append("pipeFlow searchPipeOutputPrecision missing")
+        return
+    minimums = {
+        "fieldFacts": 1,
+        "typeFacts": 1,
+        "collectionFacts": 1,
+        "collectionOfEdges": 1,
+        "s1Selectors": 1,
+        "nextCommands": 1,
+        "exactQueryCoverage": 1,
+    }
+    for key, minimum in minimums.items():
+        value = optional_int(precision.get(key)) or 0
+        if value < minimum:
+            result.errors.append(
+                f"pipeFlow searchPipeOutputPrecision {key}={value} below {minimum}"
+            )
+    debug_rows = optional_int(precision.get("debugRows")) or 0
+    if debug_rows > 0:
+        result.errors.append(
+            f"pipeFlow searchPipeOutputPrecision debugRows={debug_rows} expected=0"
+        )
+
+
+def _validate_read_loop_memory(pipe_flow: dict[str, Any], result: StepResult) -> None:
+    memory = dict_value(pipe_flow.get("readLoopMemory"))
+    if not memory:
+        result.errors.append("pipeFlow readLoopMemory missing")
+        return
+    entries = memory.get("entries", [])
+    if not isinstance(entries, list) or not entries:
+        result.errors.append("pipeFlow readLoopMemory entries missing")
+    entry_count = optional_int(memory.get("entryCount")) or 0
+    if entry_count < 1:
+        result.errors.append("pipeFlow readLoopMemory entryCount below 1")
+
+
+def _validate_failure_frontier_precision(
+    pipe_flow: dict[str, Any], result: StepResult
+) -> None:
+    precision = dict_value(pipe_flow.get("failureFrontierOutputPrecision"))
+    if not precision:
+        result.errors.append("pipeFlow failureFrontierOutputPrecision missing")
+        return
+    minimums = {
+        "failureFacts": 1,
+        "assertFacts": 1,
+        "hotFacts": 1,
+        "frontierActions": 1,
+        "queryProfiles": 1,
+        "omitRows": 1,
+        "avoidRows": 1,
+    }
+    for key, minimum in minimums.items():
+        value = optional_int(precision.get(key)) or 0
+        if value < minimum:
+            result.errors.append(
+                f"pipeFlow failureFrontierOutputPrecision {key}={value} below {minimum}"
+            )
+    debug_rows = optional_int(precision.get("debugRows")) or 0
+    if debug_rows > 0:
+        result.errors.append(
+            f"pipeFlow failureFrontierOutputPrecision debugRows={debug_rows} expected=0"
+        )
+
+
+def _validate_failure_loop_memory(
+    pipe_flow: dict[str, Any], result: StepResult
+) -> None:
+    memory = dict_value(pipe_flow.get("failureLoopMemory"))
+    if not memory:
+        result.errors.append("pipeFlow failureLoopMemory missing")
+        return
+    entries = memory.get("entries", [])
+    if not isinstance(entries, list) or not entries:
+        result.errors.append("pipeFlow failureLoopMemory entries missing")
+    entry_count = optional_int(memory.get("entryCount")) or 0
+    if entry_count < 1:
+        result.errors.append("pipeFlow failureLoopMemory entryCount below 1")
+
+
 def _pipe_flow_stage_present(stage: str, pipe_flow: dict[str, Any]) -> bool:
     if stage == "search-pipe":
         return (optional_int(pipe_flow.get("searchPipeCommands")) or 0) > 0
@@ -153,6 +285,8 @@ def _pipe_flow_stage_present(stage: str, pipe_flow: dict[str, Any]) -> bool:
         return (optional_int(pipe_flow.get("searchFzfCommands")) or 0) > 0
     if stage == "search-reasoning":
         return (optional_int(pipe_flow.get("searchReasoningCommands")) or 0) > 0
+    if stage == "search-failure":
+        return (optional_int(pipe_flow.get("searchFailureCommands")) or 0) > 0
     if stage == "search-fzf-or-reasoning":
         fzf = optional_int(pipe_flow.get("searchFzfCommands")) or 0
         reasoning = optional_int(pipe_flow.get("searchReasoningCommands")) or 0
@@ -167,6 +301,21 @@ def _pipe_flow_stage_present(stage: str, pipe_flow: dict[str, Any]) -> bool:
         return (optional_int(pipe_flow.get("repeatedCommands")) or 0) > 0
     if stage == "repeated-prime":
         return (optional_int(pipe_flow.get("searchPrimeCommands")) or 0) > 1
+    if stage == "read-loop-risk":
+        duplicate_selectors = (
+            optional_int(pipe_flow.get("readLoopDuplicateSelectors")) or 0
+        )
+        adjacent_windows = (
+            optional_int(pipe_flow.get("readLoopAdjacentRangeWindows")) or 0
+        )
+        same_owner_scans = optional_int(pipe_flow.get("readLoopSameOwnerScans")) or 0
+        return duplicate_selectors + adjacent_windows + same_owner_scans > 0
+    if stage == "read-loop-memory-risk":
+        return (
+            optional_int(pipe_flow.get("readLoopMemorySuppressibleReads")) or 0
+        ) > 0
+    if stage == "failure-loop-memory":
+        return (optional_int(pipe_flow.get("failureLoopMemoryEntryCount")) or 0) > 0
     return False
 
 

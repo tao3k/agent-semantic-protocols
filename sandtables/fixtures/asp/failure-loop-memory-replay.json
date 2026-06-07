@@ -1,0 +1,49 @@
+{
+  "id": "rust.failure-loop-memory-replay",
+  "language": "rust",
+  "workdir": ".",
+  "evidence": {
+    "source": "recorded-replay",
+    "intent": "Verify failure-loop memory and precision gates from recorded agent tool output.",
+    "recordedAt": "2026-06-07",
+    "editBoundary": "before-edit",
+    "findings": [
+      {
+        "kind": "failure-loop-memory-gate",
+        "severity": "info",
+        "message": "Recorded search-failure output must preserve hot-block frontier facts and executable action memory."
+      }
+    ]
+  },
+  "steps": [
+    {
+      "id": "failure-loop-replay",
+      "kind": "command",
+      "command": [
+        "cat",
+        "sandtables/fixtures/asp/failure-loop-agent-output.json"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "pipeFlow": {
+          "maxAspCommands": 1,
+          "maxSearchCommands": 1,
+          "maxSearchFailureCommands": 1,
+          "maxQueryCommands": 0,
+          "maxRepeatedCommands": 0,
+          "maxAspCommandOutputBytes": 2000,
+          "requireFailureFrontierPrecision": true,
+          "requireFailureLoopMemory": true,
+          "requiredStages": [
+            "search-failure",
+            "failure-loop-memory"
+          ],
+          "forbiddenStages": [
+            "repeated-commands",
+            "read-loop-risk"
+          ]
+        }
+      }
+    }
+  ]
+}

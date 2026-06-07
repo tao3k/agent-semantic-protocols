@@ -1,0 +1,101 @@
+#+TITLE: Agent Quality RFC 013 Final Implementation Evidence
+#+DATE: 2026-06-07
+#+RFC: 013
+#+STATUS: implemented
+#+SEE_ALSO: rfcs/agent-coding-quality-policy.org
+#+SEE_ALSO: schemas/agent-quality-signal.v1.schema.json
+#+SEE_ALSO: schemas/agent-quality-signals.v1.json
+
+* Summary
+
+RFC 013 is implemented for the v1 ready-provider scope:
+Python, Rust, and TypeScript emit the five control-flow/native-idiom signals
+from provider-owned parser facts, keep JSON =agentQualitySignals= values as raw
+shared signal ids, and render compact text with the RFC vocabulary prefix
+=agent-coding-quality/<domain.signal>=.
+
+Julia remains =planned= in the catalog and registry path.  It must not emit
+shared signal ids until JuliaSyntax-owned facts land.
+
+* Final compact vocabulary repair
+
+The final repair closed the strict RFC vocabulary gap found during audit:
+compact text now prefixes signal ids with =agent-coding-quality/=, while JSON
+metadata keeps the raw =signalId= values for schema-visible matching.
+
+Changed compact surfaces:
+
+- Python renderer: =languages/python-lang-project-harness/src/python_lang_project_harness/_render.py=
+- Rust algorithm-shape policy: =languages/rust-lang-project-harness/src/rules/agent_policy/algorithm_shape.rs=
+- TypeScript agent-policy summaries: =languages/typescript-lang-project-harness/src/rules/agent_policy/pack.ts=
+
+Snapshot coverage now fixes both sides:
+
+- compact text includes =agent-coding-quality/control-flow.*= and
+  =agent-coding-quality/native-idiom.manual-transform-loop=
+- JSON labels remain =control-flow.*= and =native-idiom.manual-transform-loop=
+
+* Python root policy repair
+
+The previous full Python policy gate failed on three module ownership findings:
+
+- =packages/python/tools/src/tools/semantic_sandtable/agent_observation_commands.py=
+- =packages/python/tools/src/tools/semantic_sandtable/agent_observation_read_loop.py=
+- =tests/unit/semantic_sandtable/test_expectations.py=
+
+The repair split focused ownership seams:
+
+- ASP argv/normalization:
+  =packages/python/tools/src/tools/semantic_sandtable/agent_observation_asp.py=
+- command output precision:
+  =packages/python/tools/src/tools/semantic_sandtable/agent_observation_command_precision.py=
+- failure-frontier memory:
+  =packages/python/tools/src/tools/semantic_sandtable/agent_observation_failure_memory.py=
+- read-loop selector parsing:
+  =packages/python/tools/src/tools/semantic_sandtable/agent_observation_read_selectors.py=
+- long pipe-flow drift test:
+  =tests/unit/semantic_sandtable/test_expectations_pipe_flow_drift.py=
+
+After the split, the full Python policy gate exits successfully.  Remaining
+agent-quality findings are advisory compact evidence and are not blocking.
+
+* Verification commands
+
+#+begin_example
+uv run --project languages/python-lang-project-harness --frozen \
+  py-harness check --full .
+# pass; advisory output only
+
+cd languages/python-lang-project-harness
+uv run --group test pytest -q \
+  tests/unit/harness/test_agent_quality_signal_snapshots.py
+# 2 passed
+
+cd languages/typescript-lang-project-harness
+npm run build
+node --test \
+  dist/tests/unit/agent_quality_signal_snapshot.test.js \
+  dist/tests/unit/agent_policy.test.js
+# 14 passed
+
+direnv exec . cargo test \
+  --manifest-path languages/rust-lang-project-harness/Cargo.toml \
+  --features 'search cli' agent_quality_signal
+# 5 passed
+
+PYTHONPATH=packages/python/tools/src \
+uv run --project languages/python-lang-project-harness --frozen pytest -q \
+  tests/unit/semantic_sandtable/test_expectations.py \
+  tests/unit/semantic_sandtable/test_expectations_pipe_flow_drift.py
+# 5 passed
+#+end_example
+
+* Implementation boundary
+
+This record does not promote any RFC 013 signal to blocking severity.  The v1
+signals stay advisory, and future promotion still requires broader
+real-project repair history plus provider-local opt-in configuration.
+
+This record also does not claim that the full future taxonomy is implemented.
+The implemented scope is the v1 rollout domain described by the RFC:
+=control-flow= plus =native-idiom.manual-transform-loop= for ready providers.

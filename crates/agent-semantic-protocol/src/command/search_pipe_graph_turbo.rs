@@ -23,8 +23,16 @@ pub(super) fn render_graph_turbo_request(
     candidates: &[Candidate],
     pipes: &[String],
     provider_facts: &ProviderGraphFacts,
+    read_memory_selectors: &[String],
 ) -> Result<String, String> {
-    let packet = graph_turbo_request(language_id, query, candidates, pipes, provider_facts);
+    let packet = graph_turbo_request(
+        language_id,
+        query,
+        candidates,
+        pipes,
+        provider_facts,
+        read_memory_selectors,
+    );
     serde_json::to_string_pretty(&packet)
         .map(|mut text| {
             text.push('\n');
@@ -39,6 +47,7 @@ fn graph_turbo_request(
     candidates: &[Candidate],
     pipes: &[String],
     provider_facts: &ProviderGraphFacts,
+    read_memory_selectors: &[String],
 ) -> Value {
     let profile = profile_for_pipes(pipes);
     let mut nodes = Vec::new();
@@ -83,7 +92,7 @@ fn graph_turbo_request(
         pipes,
     );
 
-    json!({
+    let mut packet = json!({
         "schemaId": GRAPH_TURBO_REQUEST_SCHEMA_ID,
         "schemaVersion": "1",
         "protocolId": "agent.semantic-protocols.semantic-language",
@@ -102,7 +111,13 @@ fn graph_turbo_request(
             "nodes": nodes,
             "edges": edges,
         },
-    })
+    });
+    if !read_memory_selectors.is_empty() {
+        packet["readMemory"] = json!({
+            "seenSelectors": read_memory_selectors,
+        });
+    }
+    packet
 }
 
 fn sparse_graph_candidates(candidates: &[Candidate]) -> Vec<Candidate> {

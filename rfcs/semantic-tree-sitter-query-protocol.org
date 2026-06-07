@@ -764,16 +764,16 @@ than printing hidden source or JSON.  When =--code= would select multiple code
 windows, providers should reject the request or require a more exact selector or
 predicate.
 
-=tools/validate-tree-sitter-frontier-code-contract.sh= is the root rollout gate
-for syntax locate/code output and Rust, TypeScript, and Python
-=native-projection= packets: each JSON packet must retain =nativeFactRefs=,
-=rawSourceStored=false=, tree-sitter-compatible capture =nodeType=/=field=, and
-native parser enrichment such as =nativeNodeType= while default stdout stays
-compact.  =tools/validate-search-read-plan-frontier-contract.sh=
-is the paired gate for hook recovery and search/read-plan output: Rust,
-TypeScript, and Python must return graph locator/frontier evidence for
-search-style recovery without inline source or cache debugging state, and Rust's
-reference read-plan must remain =mode=range-frontier= with =omit=code=.
+=python -m tools tree-sitter validate frontier-code-contract= is the
+package-local rollout gate for syntax locate/code output and Rust, TypeScript,
+and Python =native-projection= packets: each JSON packet must retain
+=nativeFactRefs=, =rawSourceStored=false=, tree-sitter-compatible capture
+=nodeType=/=field=, and native parser enrichment such as =nativeNodeType= while
+default stdout stays compact.  =python -m tools tree-sitter validate search-read-plan-frontier-contract= is the paired gate for hook recovery and
+search/read-plan output: Rust, TypeScript, and Python must return graph
+locator/frontier evidence for search-style recovery without inline source or
+cache debugging state, and Rust's reference read-plan must remain
+=mode=range-frontier= with =omit=code=.
 
 Recommended SQLite families:
 
@@ -927,16 +927,17 @@ stronger tree-sitter behavior.
 2. Add provider JSON export for =query= and selected =search owner items= paths.
 3. Add compact output =syn= atoms only where they reduce ambiguity.
 4. Validate =asp rust query= cold-native and cache-write paths.
-5. Run =tools/validate-language-tree-sitter-runtime-boundary.sh= and then
-   =tools/validate-tree-sitter-frontier-code-contract.sh= after Rust,
-   TypeScript, and Python are available.  This is the root-level rollout gate
-   for the shared boundary and agent-facing render contract: language providers
-   must not depend on tree-sitter runtime packages; Rust may render
+5. Run =python -m tools tree-sitter validate runtime-boundary= and then
+   =python -m tools tree-sitter validate frontier-code-contract= after Rust,
+   TypeScript, and Python are available.  These package-local gates own the
+   shared boundary and agent-facing render contract: language providers must
+   not depend on tree-sitter runtime packages; Rust may render
    =compact-graph-frontier= and TypeScript/Python may render =corpus-locator=,
    but all three must prove ASP-compiled query input, non-=--code=
    locator/frontier output without cache noise, and pure-code =--code= output.
-   The gate also runs =python -m tools tree-sitter validate json-abi-corpus=
-   so the JSON packet ABI proves ASP-compiled catalog plans and honest native-projection/no-runtime behavior alongside stdout corpus locators.
+   The composite =python -m tools tree-sitter validate contracts= command also
+   runs =python -m tools tree-sitter validate json-abi-corpus= so the JSON
+   packet ABI proves ASP-compiled catalog plans and honest native-projection/no-runtime behavior alongside stdout corpus locators.
 
 Rust is the reference because it is already the strongest local provider and can
 exercise native parser facts without requiring another runtime boundary.
@@ -1226,10 +1227,10 @@ Required gates:
   and records the ASP contract fingerprint.
 - Query corpus fixtures cover declarations, calls, imports, macros, cfg, and
   selected tests without duplicating upstream grammar parser tests.
-- =tools/validate-language-tree-sitter-runtime-boundary.sh= proves the Rust
+- =python -m tools tree-sitter validate runtime-boundary= proves the Rust
   provider does not require a grammar-specific tree-sitter runtime package for
   this lane.
-- =tools/validate-tree-sitter-frontier-code-contract.sh= proves non-=--code=
+- =python -m tools tree-sitter validate frontier-code-contract= proves non-=--code=
   locator/frontier output and pure =--code= output.
 
 Rust may advertise =s-expression= support only for patterns mapped by the ASP
@@ -1432,7 +1433,7 @@ outputs=frontier-no-code,pure-code-stdout,registry-descriptor,query-corpus
 cacheClaim=none|warm-provider|hit
 #+end_example
 
-=tools/record-syntax-real-evidence.py= renders this record after the measurements
+=python -m tools syntax real-evidence= renders this record after the measurements
 are collected.  It is a review helper, not a packet schema and not a benchmark
 runner: the caller supplies measured counts and elapsed times from the real
 workflow.  It rejects =cacheClaim=hit= unless a cache receipt or normalized-row

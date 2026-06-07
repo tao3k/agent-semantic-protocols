@@ -96,6 +96,11 @@ class DeepQuestionCaseTests(unittest.TestCase):
         self.assertTrue(step["agentSdk"]["requireAspBashCommands"])
         self.assertTrue(step["agentSdk"]["useRepoClaudeSettings"])
         self.assertEqual(9, step["agentSdk"]["maxTurns"])
+        self.assertIn("conditionalActions", step["agentSdk"]["prompt"])
+        self.assertIn(
+            "do not read all selectors or run guide by default",
+            step["agentSdk"]["prompt"],
+        )
         step_ids = {step["id"] for step in scenario["steps"]}
         self.assertEqual(1, len(scenario["evidence"]["deepQuestionCases"]))
         for deep_question in scenario["evidence"]["deepQuestionCases"]:
@@ -127,18 +132,25 @@ class DeepQuestionCaseTests(unittest.TestCase):
                 ],
                 pipe_flow["requiredStages"],
             )
-            self.assertEqual(8, pipe_flow["maxAspCommands"])
-            self.assertEqual(4, pipe_flow["maxSearchCommands"])
-            self.assertEqual(4, pipe_flow["maxQueryCommands"])
+            self.assertEqual(3, pipe_flow["maxAspCommands"])
+            self.assertEqual(2, pipe_flow["maxSearchCommands"])
+            self.assertEqual(1, pipe_flow["maxQueryCommands"])
+            self.assertEqual(0, pipe_flow["maxGuideCommands"])
             self.assertEqual(0, pipe_flow["maxRepeatedCommands"])
             self.assertEqual(1, pipe_flow["maxSearchPipeCommands"])
             self.assertEqual(1, pipe_flow["maxSearchPrimeCommands"])
+            self.assertEqual(0, pipe_flow["maxReadLoopDuplicateSelectors"])
+            self.assertEqual(0, pipe_flow["maxReadLoopAdjacentRangeWindows"])
+            self.assertEqual(0, pipe_flow["maxReadLoopSameOwnerScans"])
+            self.assertEqual(7000, pipe_flow["maxAspCommandOutputBytes"])
             self.assertIn("search-prime", pipe_flow["requiredStages"])
             self.assertIn("search-pipe", pipe_flow["requiredStages"])
             self.assertIn("query-selector", pipe_flow["requiredStages"])
             self.assertNotIn("search-reasoning", pipe_flow["requiredStages"])
+            self.assertIn("read-loop-risk", pipe_flow["forbiddenStages"])
             self.assertTrue(pipe_flow["requireComplexPipeFlow"])
             self.assertTrue(pipe_flow["requireTokenCost"])
+            self.assertTrue(pipe_flow["requireSearchPipePrecision"])
 
 
 if __name__ == "__main__":

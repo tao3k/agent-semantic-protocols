@@ -1,0 +1,103 @@
+#+TITLE: Agent Quality Signal Real-Project Evidence
+#+DATE: 2026-06-07
+#+STATUS: agent-quality-evidence-recorded
+#+RFC: rfcs/agent-coding-quality-policy.org
+
+* Scope
+
+This records the first ready-provider real-project evidence pass for the agent
+quality signal contract.  The run exercises the TypeScript, Python, and Rust
+language harness repositories through their public policy check commands.  It
+does not claim Julia readiness, blocking severity promotion, compact-output
+parity for every signal, or repair success.
+
+The TypeScript pass includes the false-positive audit for
+=native-idiom.manual-transform-loop=.  The final run requires a loop to push a
+value that depends on the loop variable and requires the enclosing function to
+directly return the built collection.  Argument collection and command argument
+accumulation are therefore excluded from the final evidence.
+
+* Evidence record
+
+#+begin_example
+[agent-quality-real-evidence] language=typescript provider=ts-harness project=languages/typescript-lang-project-harness
+commands=policy-json-check
+metrics=commandCount=1,providerProcessCount=1,packetBytes=9423005,coldElapsedMs=2236,warmElapsedMs=2174
+metrics=findingCount=28,qualityFindingCount=15,exitCode=0,repeatedTriggerDelta=0
+signals=control-flow.decision-stack:5,control-flow.traversal-knot:4,native-idiom.manual-transform-loop:6
+sample=src/cli/protocol.ts:151 TS-AGENT-R007 control-flow.decision-stack runProtocolCli
+sample=src/cli/semantic-search/source-text.ts:15 TS-AGENT-R007 control-flow.traversal-knot sourceTextHits
+sample=src/cli/semantic-search/owners.ts:10 TS-AGENT-R008 native-idiom.manual-transform-loop ownersForHits
+claim=real-project-localization
+
+[agent-quality-real-evidence] language=python provider=py-harness project=languages/python-lang-project-harness
+commands=policy-json-check
+metrics=commandCount=1,providerProcessCount=1,packetBytes=28584406,coldElapsedMs=1768,warmElapsedMs=1467
+metrics=findingCount=1,qualityFindingCount=1,exitCode=0,repeatedTriggerDelta=0
+signals=control-flow.broad-linear-phase:1
+sample=src/python_lang_project_harness/_cli_protocol.py:17 PY-AGENT-R010 control-flow.broad-linear-phase run_protocol_cli
+claim=real-project-localization
+
+[agent-quality-real-evidence] language=rust provider=rs-harness project=languages/rust-lang-project-harness
+commands=policy-json-check
+metrics=commandCount=1,providerProcessCount=1,packetBytes=81837,coldElapsedMs=7735,warmElapsedMs=7450
+metrics=findingCount=7,qualityFindingCount=4,exitCode=1,repeatedTriggerDelta=0
+signals=control-flow.traversal-knot:1,native-idiom.manual-transform-loop:3
+sample=src/search/semantic_facts.rs:183 AGENT-R025 control-flow.traversal-knot project_collection_field_owners
+sample=src/search/semantic_facts.rs:164 AGENT-R026 native-idiom.manual-transform-loop semantic_fact_owners
+claim=real-project-localization
+#+end_example
+
+* Commands
+
+The measured commands were run twice for each provider.  The second run is
+reported as the warm elapsed value; packet sizes and finding counts were
+unchanged between the two runs.
+
+#+begin_example
+cd languages/typescript-lang-project-harness
+node dist/src/cli/main.js check --full --json .
+
+cd languages/python-lang-project-harness
+uv run py-harness check --full --json .
+
+cd languages/rust-lang-project-harness
+target/debug/rs-harness check --full --json .
+#+end_example
+
+* Observations
+
+- TypeScript now has real-project signal coverage without the broad
+  =positionals.push(arg)= false positive.  The remaining manual transform loop
+  findings are functions that build and return collections, including
+  =ownersForHits=, =uniqueOwners=, =sourceTextHits=,
+  =collectPublicDataFields=, and =collectSemanticGraphFieldFacts=.
+- Python has a narrow quality finding in the harness CLI, but the JSON packet is
+  28.58 MB for one quality finding.  This reinforces the RFC rule that compact
+  text is the default agent surface and JSON remains a validation/artifact
+  surface.
+- Rust returned parseable JSON with four quality findings and exit code 1.  The
+  non-zero status reflects policy findings from the check command rather than a
+  JSON evidence failure, but any CI use of this evidence needs to document that
+  status convention.
+- Repeated two-run measurements did not change finding counts, signal counts, or
+  packet sizes.  This evidence does not prove provider cache replay; it only
+  shows stable repeated command output for these projects.
+
+* Promotion blockers
+
+- Do not promote any quality signal to blocking severity from this record alone.
+  The record proves localization, not repair usefulness.
+- Add compact-output parity checks before agents rely on JSON-only fields for
+  the signal vocabulary.
+- Track Python packet size separately from signal correctness.  A correct
+  finding with a 28.58 MB JSON packet is still too expensive for default agent
+  loops.
+- Clarify Rust check exit semantics before wiring this evidence shape into a
+  pass/fail CI gate.
+
+* Next
+
+- Use this record as the Phase 4 evidence anchor in the quality-policy RFC.
+- Add one repair-oriented real-project pass after compact-output parity is
+  verified, then decide whether any signal deserves blocking-candidate status.

@@ -14,6 +14,91 @@ fn accepts_valid_inline_tree_sitter_query() {
 }
 
 #[test]
+fn rejects_tree_sitter_query_code_output_without_exact_selector() {
+    let request = query_request(vec![
+        "--treesitter-query".to_string(),
+        "(function_item name: (identifier) @function.name)".to_string(),
+        "--code".to_string(),
+    ]);
+
+    let error = validate_syntax_query_request(&request).expect_err("missing exact selector");
+
+    assert_eq!(
+        error,
+        "tree-sitter query --code requires an exact --selector; run without --code for a capture frontier or add --selector <path-or-range> for pure code"
+    );
+}
+
+#[test]
+fn accepts_tree_sitter_query_code_output_with_exact_selector() {
+    let request = query_request(vec![
+        "--treesitter-query".to_string(),
+        "(function_item name: (identifier) @function.name)".to_string(),
+        "--selector".to_string(),
+        "src/lib.rs:1:10".to_string(),
+        "--code".to_string(),
+    ]);
+
+    validate_syntax_query_request(&request).expect("exact selector tree-sitter code query");
+}
+
+#[test]
+fn rejects_query_code_trailing_project_root_before_cache_replay() {
+    let request = query_request(vec![
+        "--from-hook".to_string(),
+        "direct-source-read".to_string(),
+        "--selector".to_string(),
+        "src/lib.rs:1:2".to_string(),
+        "--code".to_string(),
+        ".".to_string(),
+    ]);
+
+    let error = validate_syntax_query_request(&request).expect_err("trailing project root");
+
+    assert_eq!(
+        error,
+        "query/search --code does not accept a trailing PROJECT_ROOT; use --workspace PROJECT_ROOT"
+    );
+}
+
+#[test]
+fn rejects_search_code_trailing_project_root_before_cache_replay() {
+    let request = ClientRequest::new(ClientMethod::Search, ".")
+        .with_language("rust")
+        .with_forwarded_args(vec![
+            "owner".to_string(),
+            "src/lib.rs".to_string(),
+            "items".to_string(),
+            "--query".to_string(),
+            "target".to_string(),
+            "--code".to_string(),
+            ".".to_string(),
+        ]);
+
+    let error = validate_syntax_query_request(&request).expect_err("trailing project root");
+
+    assert_eq!(
+        error,
+        "query/search --code does not accept a trailing PROJECT_ROOT; use --workspace PROJECT_ROOT"
+    );
+}
+
+#[test]
+fn accepts_query_code_with_workspace_before_cache_replay() {
+    let request = query_request(vec![
+        "--from-hook".to_string(),
+        "direct-source-read".to_string(),
+        "--selector".to_string(),
+        "src/lib.rs:1:2".to_string(),
+        "--workspace".to_string(),
+        ".".to_string(),
+        "--code".to_string(),
+    ]);
+
+    validate_syntax_query_request(&request).expect("workspace code query");
+}
+
+#[test]
 fn rejects_invalid_inline_tree_sitter_query_before_provider_execution() {
     let request = query_request(vec![
         "--treesitter-query".to_string(),

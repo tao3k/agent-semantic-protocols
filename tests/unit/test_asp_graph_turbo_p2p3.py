@@ -91,7 +91,9 @@ def test_typed_paths_and_flow_lite_rank_source_sink_frontier() -> None:
     assert result.typed_paths[0].path_kind == "constrained-shortest"
     assert result.typed_paths[0].source == "q:parser"
     assert result.typed_paths[0].node_ids[0] == "q:parser"
-    assert result.flow_lite.ranked_path_ids == tuple(path.id for path in result.typed_paths)
+    assert result.flow_lite.ranked_path_ids == tuple(
+        path.id for path in result.typed_paths
+    )
 
 
 def test_packet_fingerprint_cache_trace_and_explanations_are_response_evidence(
@@ -131,7 +133,11 @@ def test_packet_fingerprint_cache_trace_and_explanations_are_response_evidence(
         "diverse-rank",
         "typed-paths",
         "window-merge",
+        "read-loop-guard",
     ]
-    assert second.rank_explanations[0].node_id == "q:cache"
-    assert "typed-ppr" in second.rank_explanations[0].reasons
+    explanations = {
+        explanation.node_id: explanation for explanation in second.rank_explanations
+    }
+    assert "typed-ppr" in explanations["q:cache"].reasons
     assert second.algorithm_metrics.cache_status == "hit"
+    assert second.algorithm_metrics.read_loop_direct_code_action_count == 0

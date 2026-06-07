@@ -24,6 +24,7 @@
     "edges",
     "mergedWindows",
     "profileCompatibility",
+    "profileMatrices",
     "sourceSinkFrontier",
     "typedPaths",
     "flowLite",
@@ -31,6 +32,7 @@
     "graphCache",
     "algorithmTrace",
     "rankExplanations",
+    "receiptAdjustments",
     "algorithmMetrics",
     "omit",
     "avoid"
@@ -58,7 +60,13 @@
         "owner-tests",
         "prime",
         "read-frontier",
-        "failure-frontier"
+        "failure-frontier",
+        "field-impact",
+        "type-impact",
+        "collection-impact",
+        "failure-evidence",
+        "test-selection",
+        "affected"
       ]
     },
     "algorithm": {
@@ -91,7 +99,13 @@
           "owner-tests",
           "prime",
           "read-frontier",
-          "failure-frontier"
+          "failure-frontier",
+          "field-impact",
+          "type-impact",
+          "collection-impact",
+          "failure-evidence",
+          "test-selection",
+          "affected"
         ]
       },
       "uniqueItems": true
@@ -139,6 +153,12 @@
         "$ref": "#/$defs/profileCompatibility"
       }
     },
+    "profileMatrices": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/profileMatrixSummary"
+      }
+    },
     "sourceSinkFrontier": {
       "$ref": "#/$defs/sourceSinkFrontier"
     },
@@ -170,6 +190,12 @@
         "$ref": "#/$defs/rankExplanation"
       }
     },
+    "receiptAdjustments": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/receiptAdjustment"
+      }
+    },
     "algorithmMetrics": {
       "$ref": "#/$defs/algorithmMetrics"
     },
@@ -195,7 +221,8 @@
           "repeat-owner",
           "broad-fzf",
           "manual-window-scan",
-          "duplicate-read"
+          "duplicate-read",
+          "seen-selector"
         ]
       },
       "uniqueItems": true
@@ -339,7 +366,13 @@
             "owner-tests",
             "prime",
             "read-frontier",
-            "failure-frontier"
+            "failure-frontier",
+            "field-impact",
+            "type-impact",
+            "collection-impact",
+            "failure-evidence",
+            "test-selection",
+            "affected"
           ]
         },
         "compatible": {
@@ -390,6 +423,56 @@
         "targetKind": {
           "type": "string",
           "pattern": "^[a-z][a-z0-9_-]*$"
+        }
+      }
+    },
+    "profileMatrixSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile",
+        "relationCount",
+        "transitionCount",
+        "supportedEdgeCount",
+        "reachableEdgeCount",
+        "density"
+      ],
+      "properties": {
+        "profile": {
+          "enum": [
+            "owner-query",
+            "query-deps",
+            "owner-tests",
+            "prime",
+            "read-frontier",
+            "failure-frontier",
+            "field-impact",
+            "type-impact",
+            "collection-impact",
+            "failure-evidence",
+            "test-selection",
+            "affected"
+          ]
+        },
+        "relationCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "transitionCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "supportedEdgeCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "reachableEdgeCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "density": {
+          "type": "number",
+          "minimum": 0
         }
       }
     },
@@ -572,6 +655,34 @@
         }
       }
     },
+    "receiptAdjustment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "nodeId",
+        "effect",
+        "scoreDelta",
+        "reason"
+      ],
+      "properties": {
+        "nodeId": {
+          "$ref": "#/$defs/nodeId"
+        },
+        "effect": {
+          "enum": [
+            "boost",
+            "penalty"
+          ]
+        },
+        "scoreDelta": {
+          "type": "number"
+        },
+        "reason": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        }
+      }
+    },
     "algorithmMetrics": {
       "type": "object",
       "additionalProperties": false,
@@ -620,6 +731,34 @@
             "miss",
             "disabled"
           ]
+        },
+        "readLoopDirectCodeActionCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "readLoopDuplicateSelectorCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "readLoopAdjacentRangeWindowCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "readLoopSameOwnerScanCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "readMemorySuppressedCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "receiptBoostCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "receiptPenaltyCount": {
+          "type": "integer",
+          "minimum": 0
         }
       }
     }

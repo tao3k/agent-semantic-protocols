@@ -99,14 +99,15 @@ fn rtk_read_line_locator_routes_to_provider_query_with_range() {
             "direct-source-read",
             "--selector",
             "crates/agent-semantic-hook/src/lib.rs:10-20",
+            "--workspace",
+            ".",
             "--code",
-            "."
         ]
     );
 }
 
 #[test]
-fn rtk_read_whole_source_file_routes_to_frontier_not_direct_source_read() {
+fn rtk_read_whole_source_file_routes_to_direct_source_read() {
     let decision = classify_hook(
         &polyglot_registry(),
         "codex",
@@ -119,15 +120,20 @@ fn rtk_read_whole_source_file_routes_to_frontier_not_direct_source_read() {
 
     assert_eq!(decision.decision, DecisionKind::Deny);
     assert_eq!(decision.routes[0].kind, DecisionRouteKind::Query);
-    assert!(
-        !decision.routes[0].argv.iter().any(|arg| arg == "--code"),
-        "{:?}",
-        decision.routes[0].argv
-    );
-    assert!(
-        decision.routes[0].argv.iter().any(|arg| arg == "--view"),
-        "{:?}",
-        decision.routes[0].argv
+    assert_eq!(
+        decision.routes[0].argv,
+        vec![
+            "asp",
+            "rust",
+            "query",
+            "--from-hook",
+            "direct-source-read",
+            "--selector",
+            "crates/agent-semantic-hook/src/lib.rs",
+            "--workspace",
+            ".",
+            "--code",
+        ]
     );
 }
 

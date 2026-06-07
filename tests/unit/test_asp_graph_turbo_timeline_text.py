@@ -28,16 +28,24 @@ def test_timeline_text_exposes_ranked_next_actions(tmp_path) -> None:
 
     lines = timeline_text_lines(report)
     efficiency_index = _line_index(lines, "[graph-turbo-efficiency] ")
+    read_loop_index = _line_index(lines, "[graph-turbo-read-loop] ")
     summary_index = _line_index(lines, "[graph-turbo-next-summary] ")
     action_index = _line_index(lines, "[graph-turbo-next] ")
     efficiency_line = lines[efficiency_index]
+    read_loop_line = lines[read_loop_index]
     action_line = lines[action_index]
 
-    assert efficiency_index < summary_index
+    assert efficiency_index < read_loop_index
+    assert read_loop_index < summary_index
     assert summary_index < action_index
     assert "policy=timeline-action-reduction-estimate" in efficiency_line
     assert "estimatedAvoidableActionsUpperBound=" in efficiency_line
     assert "recommendedFirstCommand=asp " in efficiency_line
+    assert "policy=direct-source-read-code-loop-guard" in read_loop_line
+    assert "directCodeReads=4" in read_loop_line
+    assert "duplicateSelectors=1" in read_loop_line
+    assert "adjacentRangeWindows=1" in read_loop_line
+    assert "sameOwnerScans=2" in read_loop_line
     assert "policy=ranked-next-action-summary" in lines[summary_index]
     assert (
         "replacement=run-top-preferred-command-before-widening-search"

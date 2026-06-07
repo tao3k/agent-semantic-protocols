@@ -1,0 +1,24 @@
+[
+  {
+    "type": "AssistantMessage",
+    "content": [
+      {
+        "id": "call_failure_1",
+        "input": {
+          "command": "asp rust search failure --from-last-check --view seeds ."
+        },
+        "name": "Bash"
+      }
+    ]
+  },
+  {
+    "type": "UserMessage",
+    "content": [
+      {
+        "content": "[search-failure] kind=test-failure profile=failure-frontier alg=typed-ppr-diverse seed=F budget=8\nF=failure:test-failure(cache_cli::writeback)!failure\nA=assert:failure(expected=hit,actual=miss)!evidence\nO=owner:path(src/cache_cli/writeback.rs)!owner\nH=hot:fn(write_prompt_output_artifact)@src/cache_cli/writeback.rs:10:24!code\nK=key:signal(request_fingerprint)!evidence\nE=evidence:signal(file_hash(observed=failure))!evidence\nfrontier=A.evidence,H.code,K.evidence,E.evidence\nfrontierActions=H.code=>asp rust query --selector src/cache_cli/writeback.rs:10:24 --code .\nqueryProfiles=failure-frontier(F=>failure-facts+owners+hot-blocks)\nomit=full-source,unrelated-functions,wide-windows\navoid=manual-window-scan,duplicate-read,raw-read,broad-fzf\n",
+        "is_error": false,
+        "tool_use_id": "call_failure_1"
+      }
+    ]
+  }
+]

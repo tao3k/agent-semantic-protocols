@@ -1,0 +1,740 @@
+{
+  "schemaId": "agent.semantic-protocols.semantic-fact-ontology",
+  "schemaVersion": "1",
+  "protocolId": "agent.semantic-protocols.semantic-language",
+  "protocolVersion": "1",
+  "ontologyId": "semantic-fact-ontology.p0.fixture-matrix",
+  "sourceVersion": "2026-06-07",
+  "description": "Cross-language sequence/map field/type/collection fixture matrix for graph-turbo ontology validation.",
+  "collectionFamilies": [
+    "sequence",
+    "map",
+    "set",
+    "iterator",
+    "optional",
+    "result"
+  ],
+  "relationVocabulary": [
+    "matches",
+    "contains",
+    "has_type",
+    "collection_of",
+    "reads",
+    "writes",
+    "mutates",
+    "covers",
+    "fails",
+    "explains",
+    "validates"
+  ],
+  "fixtures": [
+    {
+      "fixtureId": "rust.sequence.vec",
+      "languageId": "rust",
+      "providerId": "rs-harness",
+      "collectionFamily": "sequence",
+      "collectionImpl": "Vec",
+      "queryIntent": "sequence collection field",
+      "nodes": [
+        {
+          "id": "rust:field:cache_entries",
+          "kind": "field",
+          "role": "struct-field",
+          "value": "entries: Vec<Entry>",
+          "action": "code",
+          "languageId": "rust",
+          "path": "src/cache.rs",
+          "ownerPath": "src/cache.rs",
+          "symbol": "entries",
+          "locator": "src/cache.rs:3:3",
+          "contextLocator": "src/cache.rs:1:5",
+          "field": {
+            "ownerKind": "struct",
+            "name": "entries",
+            "ownerPath": "src/cache.rs",
+            "access": [
+              "read",
+              "append",
+              "validate"
+            ]
+          },
+          "provenance": "parser",
+          "confidence": "exact",
+          "freshness": "fresh"
+        },
+        {
+          "id": "rust:type:vec_entry",
+          "kind": "type",
+          "role": "field-type",
+          "value": "Vec<Entry>",
+          "action": "evidence",
+          "languageId": "rust",
+          "type": {
+            "name": "Vec<Entry>",
+            "element": "Entry"
+          },
+          "provenance": "parser",
+          "confidence": "exact",
+          "freshness": "fresh"
+        },
+        {
+          "id": "rust:collection:vec_entry",
+          "kind": "collection",
+          "role": "family",
+          "value": "Vec",
+          "action": "evidence",
+          "languageId": "rust",
+          "collection": {
+            "family": "sequence",
+            "impl": "Vec",
+            "elementType": "Entry",
+            "mutation": [
+              "append",
+              "remove"
+            ]
+          },
+          "provenance": "parser",
+          "confidence": "exact",
+          "freshness": "fresh"
+        }
+      ],
+      "edges": [
+        {
+          "source": "rust:field:cache_entries",
+          "target": "rust:type:vec_entry",
+          "relation": "has_type",
+          "provenance": "parser",
+          "confidence": "exact"
+        },
+        {
+          "source": "rust:field:cache_entries",
+          "target": "rust:collection:vec_entry",
+          "relation": "collection_of",
+          "provenance": "parser",
+          "confidence": "exact"
+        }
+      ]
+    },
+    {
+      "fixtureId": "rust.map.hashmap",
+      "languageId": "rust",
+      "providerId": "rs-harness",
+      "collectionFamily": "map",
+      "collectionImpl": "HashMap",
+      "queryIntent": "map collection field",
+      "nodes": [
+        {
+          "id": "rust:field:index",
+          "kind": "field",
+          "role": "struct-field",
+          "value": "index: HashMap<String, Entry>",
+          "action": "code",
+          "languageId": "rust",
+          "path": "src/cache.rs",
+          "ownerPath": "src/cache.rs",
+          "symbol": "index",
+          "locator": "src/cache.rs:4:4",
+          "contextLocator": "src/cache.rs:1:5",
+          "field": {
+            "ownerKind": "struct",
+            "name": "index",
+            "ownerPath": "src/cache.rs",
+            "access": [
+              "read",
+              "write",
+              "validate"
+            ]
+          },
+          "provenance": "parser",
+          "confidence": "exact",
+          "freshness": "fresh"
+        },
+        {
+          "id": "rust:type:hashmap_string_entry",
+          "kind": "type",
+          "role": "field-type",
+          "value": "HashMap<String, Entry>",
+          "action": "evidence",
+          "languageId": "rust",
+          "type": {
+            "name": "HashMap<String, Entry>",
+            "key": "String",
+            "value": "Entry"
+          },
+          "provenance": "parser",
+          "confidence": "exact",
+          "freshness": "fresh"
+        },
+        {
+          "id": "rust:collection:hashmap_string_entry",
+          "kind": "collection",
+          "role": "family",
+          "value": "HashMap",
+          "action": "evidence",
+          "languageId": "rust",
+          "collection": {
+            "family": "map",
+            "impl": "HashMap",
+            "keyType": "String",
+            "valueType": "Entry",
+            "mutation": [
+              "insert",
+              "remove",
+              "update"
+            ]
+          },
+          "provenance": "parser",
+          "confidence": "exact",
+          "freshness": "fresh"
+        }
+      ],
+      "edges": [
+        {
+          "source": "rust:field:index",
+          "target": "rust:type:hashmap_string_entry",
+          "relation": "has_type",
+          "provenance": "parser",
+          "confidence": "exact"
+        },
+        {
+          "source": "rust:field:index",
+          "target": "rust:collection:hashmap_string_entry",
+          "relation": "collection_of",
+          "provenance": "parser",
+          "confidence": "exact"
+        }
+      ]
+    },
+    {
+      "fixtureId": "python.sequence.list",
+      "languageId": "python",
+      "providerId": "py-harness",
+      "collectionFamily": "sequence",
+      "collectionImpl": "list",
+      "queryIntent": "sequence collection field",
+      "nodes": [
+        {
+          "id": "python:field:entries",
+          "kind": "field",
+          "role": "class-field",
+          "value": "entries: list[Entry]",
+          "action": "code",
+          "languageId": "python",
+          "path": "src/cache.py",
+          "ownerPath": "src/cache.py",
+          "symbol": "entries",
+          "locator": "src/cache.py:3:3",
+          "contextLocator": "src/cache.py:1:5",
+          "field": {
+            "ownerKind": "dataclass",
+            "name": "entries",
+            "ownerPath": "src/cache.py",
+            "access": [
+              "read",
+              "append",
+              "validate"
+            ]
+          },
+          "provenance": "parser",
+          "confidence": "exact",
+          "freshness": "fresh"
+        },
+        {
+          "id": "python:type:list_entry",
+          "kind": "type",
+          "role": "field-type",
+          "value": "list[Entry]",
+          "action": "evidence",
+          "languageId": "python",
+          "type": {
+            "name": "list[Entry]",
+            "element": "Entry"
+          },
+          "provenance": "parser",
+          "confidence": "exact",
+          "freshness": "fresh"
+        },
+        {
+          "id": "python:collection:list_entry",
+          "kind": "collection",
+          "role": "family",
+          "value": "list",
+          "action": "evidence",
+          "languageId": "python",
+          "collection": {
+            "family": "sequence",
+            "impl": "list",
+            "elementType": "Entry",
+            "mutation": [
+              "append",
+              "remove"
+            ]
+          },
+          "provenance": "parser",
+          "confidence": "exact",
+          "freshness": "fresh"
+        }
+      ],
+      "edges": [
+        {
+          "source": "python:field:entries",
+          "target": "python:type:list_entry",
+          "relation": "has_type",
+          "provenance": "parser",
+          "confidence": "exact"
+        },
+        {
+          "source": "python:field:entries",
+          "target": "python:collection:list_entry",
+          "relation": "collection_of",
+          "provenance": "parser",
+          "confidence": "exact"
+        }
+      ]
+    },
+    {
+      "fixtureId": "python.map.dict",
+      "languageId": "python",
+      "providerId": "py-harness",
+      "collectionFamily": "map",
+      "collectionImpl": "dict",
+      "queryIntent": "map collection field",
+      "nodes": [
+        {
+          "id": "python:field:index",
+          "kind": "field",
+          "role": "class-field",
+          "value": "index: dict[str, Entry]",
+          "action": "code",
+          "languageId": "python",
+          "path": "src/cache.py",
+          "ownerPath": "src/cache.py",
+          "symbol": "index",
+          "locator": "src/cache.py:4:4",
+          "contextLocator": "src/cache.py:1:5",
+          "field": {
+            "ownerKind": "dataclass",
+            "name": "index",
+            "ownerPath": "src/cache.py",
+            "access": [
+              "read",
+              "write",
+              "validate"
+            ]
+          },
+          "provenance": "parser",
+          "confidence": "exact",
+          "freshness": "fresh"
+        },
+        {
+          "id": "python:type:dict_str_entry",
+          "kind": "type",
+          "role": "field-type",
+          "value": "dict[str, Entry]",
+          "action": "evidence",
+          "languageId": "python",
+          "type": {
+            "name": "dict[str, Entry]",
+            "key": "str",
+            "value": "Entry"
+          },
+          "provenance": "parser",
+          "confidence": "exact",
+          "freshness": "fresh"
+        },
+        {
+          "id": "python:collection:dict_str_entry",
+          "kind": "collection",
+          "role": "family",
+          "value": "dict",
+          "action": "evidence",
+          "languageId": "python",
+          "collection": {
+            "family": "map",
+            "impl": "dict",
+            "keyType": "str",
+            "valueType": "Entry",
+            "mutation": [
+              "insert",
+              "remove",
+              "update"
+            ]
+          },
+          "provenance": "parser",
+          "confidence": "exact",
+          "freshness": "fresh"
+        }
+      ],
+      "edges": [
+        {
+          "source": "python:field:index",
+          "target": "python:type:dict_str_entry",
+          "relation": "has_type",
+          "provenance": "parser",
+          "confidence": "exact"
+        },
+        {
+          "source": "python:field:index",
+          "target": "python:collection:dict_str_entry",
+          "relation": "collection_of",
+          "provenance": "parser",
+          "confidence": "exact"
+        }
+      ]
+    },
+    {
+      "fixtureId": "typescript.sequence.array",
+      "languageId": "typescript",
+      "providerId": "ts-harness",
+      "collectionFamily": "sequence",
+      "collectionImpl": "Array",
+      "queryIntent": "sequence collection field",
+      "nodes": [
+        {
+          "id": "typescript:field:entries",
+          "kind": "field",
+          "role": "interface-field",
+          "value": "entries: Array<Entry>",
+          "action": "code",
+          "languageId": "typescript",
+          "path": "src/cache.ts",
+          "ownerPath": "src/cache.ts",
+          "symbol": "entries",
+          "locator": "src/cache.ts:3:3",
+          "contextLocator": "src/cache.ts:1:5",
+          "field": {
+            "ownerKind": "interface",
+            "name": "entries",
+            "ownerPath": "src/cache.ts",
+            "access": [
+              "read",
+              "append",
+              "validate"
+            ]
+          },
+          "provenance": "parser",
+          "confidence": "exact",
+          "freshness": "fresh"
+        },
+        {
+          "id": "typescript:type:array_entry",
+          "kind": "type",
+          "role": "field-type",
+          "value": "Array<Entry>",
+          "action": "evidence",
+          "languageId": "typescript",
+          "type": {
+            "name": "Array<Entry>",
+            "element": "Entry"
+          },
+          "provenance": "parser",
+          "confidence": "exact",
+          "freshness": "fresh"
+        },
+        {
+          "id": "typescript:collection:array_entry",
+          "kind": "collection",
+          "role": "family",
+          "value": "Array",
+          "action": "evidence",
+          "languageId": "typescript",
+          "collection": {
+            "family": "sequence",
+            "impl": "Array",
+            "elementType": "Entry",
+            "mutation": [
+              "append",
+              "remove"
+            ]
+          },
+          "provenance": "parser",
+          "confidence": "exact",
+          "freshness": "fresh"
+        }
+      ],
+      "edges": [
+        {
+          "source": "typescript:field:entries",
+          "target": "typescript:type:array_entry",
+          "relation": "has_type",
+          "provenance": "parser",
+          "confidence": "exact"
+        },
+        {
+          "source": "typescript:field:entries",
+          "target": "typescript:collection:array_entry",
+          "relation": "collection_of",
+          "provenance": "parser",
+          "confidence": "exact"
+        }
+      ]
+    },
+    {
+      "fixtureId": "typescript.map.map",
+      "languageId": "typescript",
+      "providerId": "ts-harness",
+      "collectionFamily": "map",
+      "collectionImpl": "Map",
+      "queryIntent": "map collection field",
+      "nodes": [
+        {
+          "id": "typescript:field:index",
+          "kind": "field",
+          "role": "interface-field",
+          "value": "index: Map<string, Entry>",
+          "action": "code",
+          "languageId": "typescript",
+          "path": "src/cache.ts",
+          "ownerPath": "src/cache.ts",
+          "symbol": "index",
+          "locator": "src/cache.ts:4:4",
+          "contextLocator": "src/cache.ts:1:5",
+          "field": {
+            "ownerKind": "interface",
+            "name": "index",
+            "ownerPath": "src/cache.ts",
+            "access": [
+              "read",
+              "write",
+              "validate"
+            ]
+          },
+          "provenance": "parser",
+          "confidence": "exact",
+          "freshness": "fresh"
+        },
+        {
+          "id": "typescript:type:map_string_entry",
+          "kind": "type",
+          "role": "field-type",
+          "value": "Map<string, Entry>",
+          "action": "evidence",
+          "languageId": "typescript",
+          "type": {
+            "name": "Map<string, Entry>",
+            "key": "string",
+            "value": "Entry"
+          },
+          "provenance": "parser",
+          "confidence": "exact",
+          "freshness": "fresh"
+        },
+        {
+          "id": "typescript:collection:map_string_entry",
+          "kind": "collection",
+          "role": "family",
+          "value": "Map",
+          "action": "evidence",
+          "languageId": "typescript",
+          "collection": {
+            "family": "map",
+            "impl": "Map",
+            "keyType": "string",
+            "valueType": "Entry",
+            "mutation": [
+              "insert",
+              "remove",
+              "update"
+            ]
+          },
+          "provenance": "parser",
+          "confidence": "exact",
+          "freshness": "fresh"
+        }
+      ],
+      "edges": [
+        {
+          "source": "typescript:field:index",
+          "target": "typescript:type:map_string_entry",
+          "relation": "has_type",
+          "provenance": "parser",
+          "confidence": "exact"
+        },
+        {
+          "source": "typescript:field:index",
+          "target": "typescript:collection:map_string_entry",
+          "relation": "collection_of",
+          "provenance": "parser",
+          "confidence": "exact"
+        }
+      ]
+    },
+    {
+      "fixtureId": "julia.sequence.vector",
+      "languageId": "julia",
+      "providerId": "julia-lang-project-harness",
+      "collectionFamily": "sequence",
+      "collectionImpl": "Vector",
+      "queryIntent": "sequence collection field",
+      "nodes": [
+        {
+          "id": "julia:field:entries",
+          "kind": "field",
+          "role": "struct-field",
+          "value": "entries::Vector{Entry}",
+          "action": "code",
+          "languageId": "julia",
+          "path": "src/cache.jl",
+          "ownerPath": "src/cache.jl",
+          "symbol": "entries",
+          "locator": "src/cache.jl:3:3",
+          "contextLocator": "src/cache.jl:1:5",
+          "field": {
+            "ownerKind": "struct",
+            "name": "entries",
+            "ownerPath": "src/cache.jl",
+            "access": [
+              "read",
+              "append",
+              "validate"
+            ]
+          },
+          "provenance": "parser",
+          "confidence": "exact",
+          "freshness": "fresh"
+        },
+        {
+          "id": "julia:type:vector_entry",
+          "kind": "type",
+          "role": "field-type",
+          "value": "Vector{Entry}",
+          "action": "evidence",
+          "languageId": "julia",
+          "type": {
+            "name": "Vector{Entry}",
+            "element": "Entry"
+          },
+          "provenance": "parser",
+          "confidence": "exact",
+          "freshness": "fresh"
+        },
+        {
+          "id": "julia:collection:vector_entry",
+          "kind": "collection",
+          "role": "family",
+          "value": "Vector",
+          "action": "evidence",
+          "languageId": "julia",
+          "collection": {
+            "family": "sequence",
+            "impl": "Vector",
+            "elementType": "Entry",
+            "mutation": [
+              "append",
+              "remove"
+            ]
+          },
+          "provenance": "parser",
+          "confidence": "exact",
+          "freshness": "fresh"
+        }
+      ],
+      "edges": [
+        {
+          "source": "julia:field:entries",
+          "target": "julia:type:vector_entry",
+          "relation": "has_type",
+          "provenance": "parser",
+          "confidence": "exact"
+        },
+        {
+          "source": "julia:field:entries",
+          "target": "julia:collection:vector_entry",
+          "relation": "collection_of",
+          "provenance": "parser",
+          "confidence": "exact"
+        }
+      ]
+    },
+    {
+      "fixtureId": "julia.map.dict",
+      "languageId": "julia",
+      "providerId": "julia-lang-project-harness",
+      "collectionFamily": "map",
+      "collectionImpl": "Dict",
+      "queryIntent": "map collection field",
+      "nodes": [
+        {
+          "id": "julia:field:index",
+          "kind": "field",
+          "role": "struct-field",
+          "value": "index::Dict{String,Entry}",
+          "action": "code",
+          "languageId": "julia",
+          "path": "src/cache.jl",
+          "ownerPath": "src/cache.jl",
+          "symbol": "index",
+          "locator": "src/cache.jl:4:4",
+          "contextLocator": "src/cache.jl:1:5",
+          "field": {
+            "ownerKind": "struct",
+            "name": "index",
+            "ownerPath": "src/cache.jl",
+            "access": [
+              "read",
+              "write",
+              "validate"
+            ]
+          },
+          "provenance": "parser",
+          "confidence": "exact",
+          "freshness": "fresh"
+        },
+        {
+          "id": "julia:type:dict_string_entry",
+          "kind": "type",
+          "role": "field-type",
+          "value": "Dict{String,Entry}",
+          "action": "evidence",
+          "languageId": "julia",
+          "type": {
+            "name": "Dict{String,Entry}",
+            "key": "String",
+            "value": "Entry"
+          },
+          "provenance": "parser",
+          "confidence": "exact",
+          "freshness": "fresh"
+        },
+        {
+          "id": "julia:collection:dict_string_entry",
+          "kind": "collection",
+          "role": "family",
+          "value": "Dict",
+          "action": "evidence",
+          "languageId": "julia",
+          "collection": {
+            "family": "map",
+            "impl": "Dict",
+            "keyType": "String",
+            "valueType": "Entry",
+            "mutation": [
+              "insert",
+              "remove",
+              "update"
+            ]
+          },
+          "provenance": "parser",
+          "confidence": "exact",
+          "freshness": "fresh"
+        }
+      ],
+      "edges": [
+        {
+          "source": "julia:field:index",
+          "target": "julia:type:dict_string_entry",
+          "relation": "has_type",
+          "provenance": "parser",
+          "confidence": "exact"
+        },
+        {
+          "source": "julia:field:index",
+          "target": "julia:collection:dict_string_entry",
+          "relation": "collection_of",
+          "provenance": "parser",
+          "confidence": "exact"
+        }
+      ]
+    }
+  ]
+}

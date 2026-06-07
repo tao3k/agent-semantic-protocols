@@ -65,3 +65,40 @@ fn md_facade_search_fzf_toc_returns_toc_for_keyword_matched_documents() {
 
     let _ = std::fs::remove_dir_all(root);
 }
+
+#[test]
+fn md_facade_content_projection_deduplicates_list_children() {
+    let root = temp_project_root("md-document-content-deduplicates-list");
+    std::fs::write(
+        root.join("guide.md"),
+        "# Guide\n\n- [x] ship element map\n- plain list item\n\n- repeated item\n- repeated item\n",
+    )
+    .expect("write markdown list fixture");
+
+    let output = asp_command(&root)
+        .args(["md", "query", "--selector", "guide.md:3-4", "--content"])
+        .output()
+        .expect("run asp md content query");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let content = String::from_utf8(output.stdout).expect("stdout");
+    assert_eq!(content.matches("ship element map").count(), 1, "{content}");
+    assert_eq!(content.matches("plain list item").count(), 1, "{content}");
+
+    let repeated_output = asp_command(&root)
+        .args(["md", "query", "--selector", "guide.md:6-7", "--content"])
+        .output()
+        .expect("run asp md repeated content query");
+    assert!(
+        repeated_output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&repeated_output.stderr)
+    );
+    let repeated = String::from_utf8(repeated_output.stdout).expect("stdout");
+    assert_eq!(repeated.matches("repeated item").count(), 2, "{repeated}");
+
+    let _ = std::fs::remove_dir_all(root);
+}

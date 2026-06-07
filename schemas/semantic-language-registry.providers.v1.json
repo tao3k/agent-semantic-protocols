@@ -16,6 +16,7 @@
         "search/owner",
         "search/fzf",
         "search/ingest",
+        "search/semantic-facts",
         "query/direct-source-read",
         "check/changed",
         "guide"
@@ -93,6 +94,22 @@
           ]
         },
         {
+          "method": "search/semantic-facts",
+          "command": "search",
+          "supportsJson": true,
+          "supportsCompact": true,
+          "packetSchemas": [
+            "semantic-fact-graph.v1"
+          ],
+          "view": "semantic-facts",
+          "outputSchemaIds": [
+            "agent.semantic-protocols.semantic-fact-graph"
+          ],
+          "requiresQuery": true,
+          "acceptsStdin": true,
+          "supportsPackageScope": true
+        },
+        {
           "method": "check/changed",
           "command": "check",
           "supportsJson": true,
@@ -123,6 +140,21 @@
           "schemaId": "agent.semantic-protocols.semantic-read-packet",
           "schemaVersion": "1",
           "path": "schemas/semantic-read-packet.v1.schema.json"
+        },
+        {
+          "schemaId": "agent.semantic-protocols.agent-quality-signal",
+          "schemaVersion": "1",
+          "path": "schemas/agent-quality-signal.v1.schema.json"
+        },
+        {
+          "schemaId": "agent.semantic-protocols.semantic-fact-graph",
+          "schemaVersion": "1",
+          "path": "schemas/semantic-fact-graph.v1.schema.json"
+        },
+        {
+          "schemaId": "agent.semantic-protocols.semantic-fact-ontology",
+          "schemaVersion": "1",
+          "path": "schemas/semantic-fact-ontology.v1.schema.json"
         }
       ]
     },
@@ -138,6 +170,7 @@
         "search/owner",
         "search/fzf",
         "search/ingest",
+        "search/semantic-facts",
         "query/direct-source-read",
         "check/changed",
         "guide"
@@ -215,6 +248,22 @@
           ]
         },
         {
+          "method": "search/semantic-facts",
+          "command": "search",
+          "supportsJson": true,
+          "supportsCompact": true,
+          "packetSchemas": [
+            "semantic-fact-graph.v1"
+          ],
+          "view": "semantic-facts",
+          "outputSchemaIds": [
+            "agent.semantic-protocols.semantic-fact-graph"
+          ],
+          "requiresQuery": true,
+          "acceptsStdin": true,
+          "supportsPackageScope": true
+        },
+        {
           "method": "check/changed",
           "command": "check",
           "supportsJson": true,
@@ -245,6 +294,21 @@
           "schemaId": "agent.semantic-protocols.semantic-read-packet",
           "schemaVersion": "1",
           "path": "schemas/semantic-read-packet.v1.schema.json"
+        },
+        {
+          "schemaId": "agent.semantic-protocols.agent-quality-signal",
+          "schemaVersion": "1",
+          "path": "schemas/agent-quality-signal.v1.schema.json"
+        },
+        {
+          "schemaId": "agent.semantic-protocols.semantic-fact-graph",
+          "schemaVersion": "1",
+          "path": "schemas/semantic-fact-graph.v1.schema.json"
+        },
+        {
+          "schemaId": "agent.semantic-protocols.semantic-fact-ontology",
+          "schemaVersion": "1",
+          "path": "schemas/semantic-fact-ontology.v1.schema.json"
         }
       ]
     },
@@ -260,6 +324,7 @@
         "search/owner",
         "search/fzf",
         "search/ingest",
+        "search/semantic-facts",
         "query/direct-source-read",
         "check/changed",
         "guide"
@@ -337,6 +402,22 @@
           ]
         },
         {
+          "method": "search/semantic-facts",
+          "command": "search",
+          "supportsJson": true,
+          "supportsCompact": true,
+          "packetSchemas": [
+            "semantic-fact-graph.v1"
+          ],
+          "view": "semantic-facts",
+          "outputSchemaIds": [
+            "agent.semantic-protocols.semantic-fact-graph"
+          ],
+          "requiresQuery": true,
+          "acceptsStdin": true,
+          "supportsPackageScope": true
+        },
+        {
           "method": "check/changed",
           "command": "check",
           "supportsJson": true,
@@ -367,6 +448,21 @@
           "schemaId": "agent.semantic-protocols.semantic-read-packet",
           "schemaVersion": "1",
           "path": "schemas/semantic-read-packet.v1.schema.json"
+        },
+        {
+          "schemaId": "agent.semantic-protocols.agent-quality-signal",
+          "schemaVersion": "1",
+          "path": "schemas/agent-quality-signal.v1.schema.json"
+        },
+        {
+          "schemaId": "agent.semantic-protocols.semantic-fact-graph",
+          "schemaVersion": "1",
+          "path": "schemas/semantic-fact-graph.v1.schema.json"
+        },
+        {
+          "schemaId": "agent.semantic-protocols.semantic-fact-ontology",
+          "schemaVersion": "1",
+          "path": "schemas/semantic-fact-ontology.v1.schema.json"
         }
       ]
     },
@@ -383,6 +479,7 @@
         "search/fzf",
         "search/ingest",
         "search/query",
+        "search/semantic-facts",
         "check/changed",
         "guide"
       ],
@@ -455,6 +552,22 @@
           "supportsPackageScope": true
         },
         {
+          "method": "search/semantic-facts",
+          "command": "search",
+          "supportsJson": true,
+          "supportsCompact": true,
+          "packetSchemas": [
+            "semantic-fact-graph.v1"
+          ],
+          "view": "semantic-facts",
+          "outputSchemaIds": [
+            "agent.semantic-protocols.semantic-fact-graph"
+          ],
+          "requiresQuery": true,
+          "acceptsStdin": true,
+          "supportsPackageScope": true
+        },
+        {
           "method": "check/changed",
           "command": "check",
           "supportsJson": true,
@@ -480,6 +593,21 @@
           "schemaId": "agent.semantic-protocols.semantic-query-packet",
           "schemaVersion": "1",
           "path": "schemas/semantic-query-packet.v1.schema.json"
+        },
+        {
+          "schemaId": "agent.semantic-protocols.agent-quality-signal",
+          "schemaVersion": "1",
+          "path": "schemas/agent-quality-signal.v1.schema.json"
+        },
+        {
+          "schemaId": "agent.semantic-protocols.semantic-fact-graph",
+          "schemaVersion": "1",
+          "path": "schemas/semantic-fact-graph.v1.schema.json"
+        },
+        {
+          "schemaId": "agent.semantic-protocols.semantic-fact-ontology",
+          "schemaVersion": "1",
+          "path": "schemas/semantic-fact-ontology.v1.schema.json"
         }
       ]
     },

@@ -751,10 +751,10 @@
           "uniqueItems": true,
           "items": {
             "enum": [
-              "compact",
-              "json",
-              "code",
-              "names",
+                "frontier",
+                "json",
+                "code",
+                "names",
               "outline",
               "read-packet"
             ]

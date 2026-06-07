@@ -38,6 +38,7 @@ _CORE_QUERY_SCHEMAS = (
 )
 
 _AGENT_REASONING_SCHEMAS = (
+    "agent-quality-signal.v1.schema.json",
     "semantic-verification-receipt.v1.schema.json",
     "semantic-behavior-snapshot.v1.schema.json",
     "semantic-determinism-readiness.v1.schema.json",

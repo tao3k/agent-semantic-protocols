@@ -1,0 +1,63 @@
+#+TITLE: Agent Quality Python Clean Real-Project Evidence
+#+DATE: 2026-06-07
+#+RFC: 013
+#+STATUS: implemented-follow-up
+#+SEE_ALSO: docs/30-39-research/31.27-agent-quality-final-implementation-evidence.org
+
+* Summary
+
+This follow-up tightens the RFC 013 ready-provider evidence from "Python full
+policy gate exits successfully with advisory findings" to "Python full policy
+gate exits successfully with no compact findings".
+
+The repair started from compact =agent-coding-quality/*= advice in the
+=agent-semantic-protocols= repository and split the remaining broad or nested
+algorithm surfaces into named helper phases.
+
+* Repaired advisory surfaces
+
+Sandtable observation helpers:
+
+- =packages/python/tools/src/tools/semantic_sandtable/agent_observation_failure_memory.py=
+- =packages/python/tools/src/tools/semantic_sandtable/agent_observation_pipe.py=
+- =packages/python/tools/src/tools/semantic_sandtable/agent_observation_read_loop.py=
+- =packages/python/tools/src/tools/semantic_sandtable/agent_observation_tokens.py=
+
+Graph-turbo and workdir helpers:
+
+- =packages/python/asp_graph_turbo/src/asp_graph_turbo/artifact_timeline_text.py=
+- =packages/python/asp_graph_turbo/src/asp_graph_turbo/ontology.py=
+- =packages/python/tools/src/tools/semantic_sandtable/utils.py=
+- =packages/python/tools/src/tools/semantic_sandtable/workdir_git.py=
+
+The git workdir logic moved out of the broad utility module into a dedicated
+ownership seam so the module-level policy stays clean without hiding behavior
+behind configuration.
+
+* Evidence
+
+#+begin_example
+uv run --project languages/python-lang-project-harness --frozen py-harness check --full .
+# [ok] . python
+# Files: 616 Parsed: 616
+
+PYTHONPATH=packages/python/tools/src \
+uv run --project languages/python-lang-project-harness --frozen pytest -q \
+  tests/unit/semantic_sandtable/test_agent_observation_pipe.py \
+  tests/unit/semantic_sandtable/test_agent_observation_read_loop.py \
+  tests/unit/semantic_sandtable/test_discovery_git_workdir.py \
+  tests/unit/semantic_sandtable/test_discovery_and_steps.py
+# 9 passed
+
+PYTHONPATH=packages/python/asp_graph_turbo/src \
+uv run --project packages/python/asp_graph_turbo --frozen pytest -q \
+  tests/unit/test_asp_graph_turbo_timeline_text.py \
+  tests/unit/test_asp_graph_turbo_ontology.py
+# 3 passed
+#+end_example
+
+* Boundary
+
+This evidence does not promote any signal to blocking severity.  It shows that
+the existing advisory signals can guide successful real-project repairs without
+requiring allowlists or provider-private string heuristics.

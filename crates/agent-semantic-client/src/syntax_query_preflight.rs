@@ -5,18 +5,41 @@ use agent_semantic_client_core::{
 };
 
 pub(crate) fn validate_syntax_query_request(request: &ClientRequest) -> Result<(), String> {
+    validate_code_flag_boundary(request)?;
     if request.method != ClientMethod::Query {
         return Ok(());
     }
     let Some(source) = tree_sitter_query_source(request)? else {
         return Ok(());
     };
+    if requests_code_output(&request.forwarded_args) && !has_exact_selector(&request.forwarded_args)
+    {
+        return Err(
+            "tree-sitter query --code requires an exact --selector; run without --code for a capture frontier or add --selector <path-or-range> for pure code"
+                .to_string(),
+        );
+    }
     compile_query_abi_source(source).map_err(|error| {
         format!(
             "invalid tree-sitter query ABI source before provider execution: {}",
             error.message
         )
     })?;
+    Ok(())
+}
+
+fn validate_code_flag_boundary(request: &ClientRequest) -> Result<(), String> {
+    if !matches!(request.method, ClientMethod::Query | ClientMethod::Search) {
+        return Ok(());
+    }
+    for window in request.forwarded_args.windows(2) {
+        if window[0] == "--code" && !window[1].starts_with('-') {
+            return Err(
+                "query/search --code does not accept a trailing PROJECT_ROOT; use --workspace PROJECT_ROOT"
+                    .to_string(),
+            );
+        }
+    }
     Ok(())
 }
 
@@ -60,6 +83,18 @@ fn tree_sitter_catalog_id(args: &[String]) -> Option<&str> {
         }
     }
     None
+}
+
+fn requests_code_output(args: &[String]) -> bool {
+    args.iter().any(|arg| arg == "--code")
+}
+
+fn has_exact_selector(args: &[String]) -> bool {
+    args.windows(2)
+        .any(|window| window[0] == "--selector" && !window[1].starts_with('-'))
+        || args
+            .iter()
+            .any(|arg| arg.starts_with("--selector=") && arg.len() > "--selector=".len())
 }
 
 fn is_native_query_catalog(catalog_id: &str) -> bool {

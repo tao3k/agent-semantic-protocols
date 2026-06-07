@@ -923,7 +923,7 @@ when the following implementation gates pass:
    shapes: =path=, =file=, =absolutePath=, nested =resource.path=,
    =resources[].filePath=, and =file://= URI lists.  Each source match denies
    with =reasonKind=direct-source-read= and a route shaped as
-   =asp <language> query --from-hook direct-source-read --selector <path> --code .=.
+   =asp <language> query --from-hook direct-source-read --selector <path> --workspace <workspace-root> --code=.
 10. Concurrent hook invocations cannot corrupt =events.jsonl=.  Unit tests must
     exercise overlapping appends, and a real-runtime smoke must prove that
     every event log line parses as JSON with
@@ -973,7 +973,7 @@ when the following implementation gates pass:
    - replace any transitional provider-owned hook wrapper with =asp hook=, or
      keep only a thin compatibility wrapper that invokes =asp hook=;
    - deny direct Python source reads with =reasonKind=direct-source-read= and a
-     concrete =asp python query --from-hook direct-source-read --selector <path> --code .=
+     concrete =asp python query --from-hook direct-source-read --selector <path> --workspace <workspace-root> --code=
      route when the root runtime is installed;
    - continue moving shared classification into the root hook runtime behind
      =asp hook= for raw-search-to-ingest, edit-before-prime,

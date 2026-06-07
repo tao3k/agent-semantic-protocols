@@ -32,6 +32,7 @@ def _rank_packet(packet: Mapping[str, object], args: argparse.Namespace) -> Grap
     path_budget = _positive_int_packet_field(packet, "pathBudget", 4)
     path_max_hops = _positive_int_packet_field(packet, "pathMaxHops", 4)
     cache_enabled = _cache_enabled_packet_field(packet)
+    seen_selectors = _read_memory_seen_selectors(packet)
     graph = TypedGraph.from_packet(packet)
     return rank_frontier(
         graph,
@@ -44,6 +45,7 @@ def _rank_packet(packet: Mapping[str, object], args: argparse.Namespace) -> Grap
         path_budget=path_budget,
         path_max_hops=path_max_hops,
         cache_enabled=cache_enabled,
+        seen_selectors=seen_selectors,
     )
 
 
@@ -147,6 +149,18 @@ def _cache_enabled_packet_field(packet: Mapping[str, object]) -> bool:
     if not isinstance(enabled, bool):
         raise SystemExit("graph turbo cache.enabled must be a boolean")
     return enabled
+
+
+def _read_memory_seen_selectors(packet: Mapping[str, object]) -> list[str]:
+    value = packet.get("readMemory", {})
+    if not isinstance(value, Mapping):
+        raise SystemExit("graph turbo readMemory must be an object")
+    selectors = value.get("seenSelectors", [])
+    if not isinstance(selectors, list) or not all(
+        isinstance(selector, str) for selector in selectors
+    ):
+        raise SystemExit("graph turbo readMemory.seenSelectors must be a string array")
+    return selectors
 
 
 if __name__ == "__main__":

@@ -16,6 +16,8 @@
 #+  query projection nodes, omissions, expansion actions, and exact reads.
 #+SEE_ALSO: rfcs/asp-native-relation-flow-codeql.org (012) — native
 #+  relation/flow plans with optional CodeQL evidence backend.
+#+SEE_ALSO: rfcs/semantic-fact-frontier-feedback.org (013) — cross-language
+#+  fact ontology, feedback memory, and context precision benchmark plan.
 
 
 * One-sentence summary

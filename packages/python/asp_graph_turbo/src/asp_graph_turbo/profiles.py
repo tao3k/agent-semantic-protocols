@@ -9,6 +9,7 @@ from .policy import NODE_KIND_BONUS_BY_PROFILE
 
 _DEFAULT_FRONTIER_ACTIONS = {
     "assert": "evidence",
+    "build": "build",
     "collection": "code",
     "dependency": "deps",
     "evidence": "evidence",
@@ -19,6 +20,7 @@ _DEFAULT_FRONTIER_ACTIONS = {
     "item": "code",
     "key": "evidence",
     "owner": "owner",
+    "package": "package",
     "query": "fzf",
     "range": "code",
     "symbol": "code",
@@ -146,6 +148,223 @@ DEFAULT_PROFILES: dict[str, GraphProfile] = {
         frontier_actions={**_DEFAULT_FRONTIER_ACTIONS, "test": "code"},
         kind_bonus=NODE_KIND_BONUS_BY_PROFILE["failure-frontier"],
         max_depth=3,
+    ),
+    "field-impact": GraphProfile(
+        name="field-impact",
+        allowed_relations=frozenset(
+            {
+                "matches",
+                "selects",
+                "contains",
+                "covers",
+                "covered_by",
+                "has_type",
+                "collection_of",
+                "calls",
+                "relates",
+                "validates",
+            }
+        ),
+        allowed_transitions=_transitions(
+            (
+                ("query", "field"),
+                ("owner", "field"),
+                ("field", "type"),
+                ("field", "collection"),
+                ("field", "hot"),
+                ("type", "hot"),
+                ("collection", "hot"),
+                ("hot", "test"),
+                ("owner", "test"),
+            )
+        ),
+        frontier_actions=_DEFAULT_FRONTIER_ACTIONS,
+        kind_bonus=NODE_KIND_BONUS_BY_PROFILE["field-impact"],
+        max_depth=4,
+    ),
+    "type-impact": GraphProfile(
+        name="type-impact",
+        allowed_relations=frozenset(
+            {
+                "matches",
+                "selects",
+                "contains",
+                "covers",
+                "covered_by",
+                "has_type",
+                "collection_of",
+                "calls",
+                "relates",
+                "validates",
+            }
+        ),
+        allowed_transitions=_transitions(
+            (
+                ("query", "type"),
+                ("field", "type"),
+                ("type", "field"),
+                ("type", "collection"),
+                ("type", "hot"),
+                ("collection", "hot"),
+                ("hot", "test"),
+                ("owner", "test"),
+            )
+        ),
+        frontier_actions=_DEFAULT_FRONTIER_ACTIONS,
+        kind_bonus=NODE_KIND_BONUS_BY_PROFILE["type-impact"],
+        max_depth=4,
+    ),
+    "collection-impact": GraphProfile(
+        name="collection-impact",
+        allowed_relations=frozenset(
+            {
+                "matches",
+                "selects",
+                "contains",
+                "covers",
+                "covered_by",
+                "has_type",
+                "collection_of",
+                "calls",
+                "relates",
+                "validates",
+            }
+        ),
+        allowed_transitions=_transitions(
+            (
+                ("query", "collection"),
+                ("field", "collection"),
+                ("collection", "field"),
+                ("collection", "type"),
+                ("collection", "hot"),
+                ("type", "hot"),
+                ("hot", "test"),
+            )
+        ),
+        frontier_actions=_DEFAULT_FRONTIER_ACTIONS,
+        kind_bonus=NODE_KIND_BONUS_BY_PROFILE["collection-impact"],
+        max_depth=4,
+    ),
+    "failure-evidence": GraphProfile(
+        name="failure-evidence",
+        allowed_relations=frozenset(
+            {
+                "checks",
+                "collection_of",
+                "contains",
+                "explains",
+                "fails",
+                "gates",
+                "has_type",
+                "matches",
+                "relates",
+                "selects",
+                "validates",
+            }
+        ),
+        allowed_transitions=_transitions(
+            (
+                ("failure", "assert"),
+                ("failure", "test"),
+                ("assert", "evidence"),
+                ("assert", "hot"),
+                ("assert", "field"),
+                ("assert", "collection"),
+                ("assert", "type"),
+                ("field", "type"),
+                ("field", "collection"),
+                ("hot", "evidence"),
+                ("hot", "field"),
+                ("hot", "collection"),
+                ("hot", "type"),
+            )
+        ),
+        frontier_actions={**_DEFAULT_FRONTIER_ACTIONS, "test": "code"},
+        kind_bonus=NODE_KIND_BONUS_BY_PROFILE["failure-evidence"],
+        max_depth=4,
+    ),
+    "test-selection": GraphProfile(
+        name="test-selection",
+        allowed_relations=frozenset(
+            {
+                "affects",
+                "belongs_to",
+                "builds",
+                "contains",
+                "covered_by",
+                "covers",
+                "matches",
+                "packages",
+                "selects",
+                "targets",
+                "tests",
+                "validates",
+            }
+        ),
+        allowed_transitions=_transitions(
+            (
+                ("query", "owner"),
+                ("query", "field"),
+                ("query", "hot"),
+                ("field", "owner"),
+                ("field", "package"),
+                ("hot", "owner"),
+                ("hot", "package"),
+                ("field", "test"),
+                ("hot", "test"),
+                ("owner", "test"),
+                ("owner", "package"),
+                ("package", "build"),
+                ("build", "test"),
+                ("package", "test"),
+            )
+        ),
+        frontier_actions=_DEFAULT_FRONTIER_ACTIONS,
+        kind_bonus=NODE_KIND_BONUS_BY_PROFILE["test-selection"],
+        max_depth=4,
+    ),
+    "affected": GraphProfile(
+        name="affected",
+        allowed_relations=frozenset(
+            {
+                "affects",
+                "belongs_to",
+                "builds",
+                "contains",
+                "covered_by",
+                "covers",
+                "depends_on",
+                "imports",
+                "matches",
+                "packages",
+                "selects",
+                "targets",
+                "tests",
+                "uses",
+                "validates",
+            }
+        ),
+        allowed_transitions=_transitions(
+            (
+                ("query", "owner"),
+                ("query", "field"),
+                ("field", "owner"),
+                ("field", "package"),
+                ("hot", "owner"),
+                ("hot", "package"),
+                ("owner", "package"),
+                ("owner", "dependency"),
+                ("owner", "test"),
+                ("package", "build"),
+                ("package", "dependency"),
+                ("package", "test"),
+                ("build", "test"),
+                ("dependency", "package"),
+            )
+        ),
+        frontier_actions=_DEFAULT_FRONTIER_ACTIONS,
+        kind_bonus=NODE_KIND_BONUS_BY_PROFILE["affected"],
+        max_depth=4,
     ),
 }
 

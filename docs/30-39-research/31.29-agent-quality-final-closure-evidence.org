@@ -1,0 +1,106 @@
+#+TITLE: Agent Quality RFC 013 Final Closure Evidence
+#+DATE: 2026-06-07
+#+RFC: 013
+#+STATUS: closed
+#+SEE_ALSO: rfcs/agent-coding-quality-policy.org
+#+SEE_ALSO: docs/30-39-research/31.27-agent-quality-final-implementation-evidence.org
+#+SEE_ALSO: docs/30-39-research/31.28-agent-quality-python-clean-evidence.org
+
+* Summary
+
+RFC 013 v1 ready-provider rollout is closed for the implemented scope:
+
+- shared schema and package-local schema profiles validate
+- Python, Rust, and TypeScript changed-provider checks pass
+- Python full real-project policy check is clean
+- Rust agent-quality insta snapshots compile and pass
+- TypeScript build and agent-quality snapshots pass
+- no Rust =.snap.new= files remain
+- TypeScript and Julia no longer carry incorrect package-local
+  =semantic-fact-ontology.v1.schema.json= copies
+
+This closure keeps the RFC boundary intact: Julia remains =planned= for signal
+emission, future taxonomy domains remain out of the v1 implementation scope,
+and no agent-quality signal is promoted to blocking severity by this RFC.
+
+* Final fixes after clean evidence
+
+Two final closure issues were found after the Python clean evidence pass.
+
+** Package-local schema profile drift
+
+The shared schema sync gate rejected generated
+=semantic-fact-ontology.v1.schema.json= copies in TypeScript and Julia provider
+schema directories.  Those copies were removed from the nested provider indexes
+and worktrees.  The root shared schema remains the source of truth.
+
+** Rust full-test compile drift
+
+The Rust changed check passed, but the focused Rust agent-quality snapshot test
+compiled a wider surface and found a stale CLI model drift:
+=QueryOptions= parsed =--workspace= into =workspace_root=, while the struct had
+no field.  The fix added =QueryOptions.workspace_root= and removed the unused
+=QuerySearchOptions.workspace_root= field to satisfy =#![deny(dead_code)]=.
+
+* Final verification commands
+
+#+begin_example
+direnv exec . env PYTHONPATH=packages/python/tools/src:tests/unit pytest -q \
+  tests/unit/test_agent_quality_signal_schema.py \
+  tests/unit/test_semantic_common_schema_copy_sync.py
+# 5 passed
+
+asp python check --changed .
+# [ok] . python
+# Files: 616 Parsed: 616
+
+uv run --project languages/python-lang-project-harness --frozen \
+  py-harness check --full .
+# [ok] . python
+# Files: 616 Parsed: 616
+
+asp rust check --changed .
+# [ok] rust
+
+direnv exec . cargo test \
+  --manifest-path languages/rust-lang-project-harness/Cargo.toml \
+  --features 'search cli' agent_quality_signal
+# 5 passed
+
+asp typescript check --changed .
+# [ok] typescript files=0 parsed=0
+
+cd languages/typescript-lang-project-harness
+npm run build
+node --test \
+  dist/tests/unit/agent_quality_signal_snapshot.test.js \
+  dist/tests/unit/agent_policy.test.js
+# 14 passed
+
+PYTHONPATH=packages/python/tools/src \
+uv run --project languages/python-lang-project-harness --frozen pytest -q \
+  tests/unit/semantic_sandtable/test_agent_observation_pipe.py \
+  tests/unit/semantic_sandtable/test_agent_observation_read_loop.py \
+  tests/unit/semantic_sandtable/test_discovery_git_workdir.py \
+  tests/unit/semantic_sandtable/test_discovery_and_steps.py \
+  tests/unit/semantic_sandtable/test_expectations.py \
+  tests/unit/semantic_sandtable/test_expectations_pipe_flow_drift.py
+# 14 passed
+
+PYTHONPATH=packages/python/asp_graph_turbo/src \
+uv run --project packages/python/asp_graph_turbo --frozen pytest -q \
+  tests/unit/test_asp_graph_turbo_timeline_text.py \
+  tests/unit/test_asp_graph_turbo_ontology.py
+# 3 passed
+#+end_example
+
+* Residue audit
+
+No Rust agent-quality =.snap.new= files remain.
+
+Nested TypeScript and Julia provider repositories no longer report
+=schemas/semantic-fact-ontology.v1.schema.json= as staged-added then deleted.
+
+The remaining dirty worktree entries are normal implementation, snapshot,
+schema, RFC, and evidence files from this rollout plus pre-existing unrelated
+repository changes.

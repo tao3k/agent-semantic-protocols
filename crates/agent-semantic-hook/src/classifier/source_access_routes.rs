@@ -237,22 +237,6 @@ fn action_path_selectors<'a>(action: &'a ToolAction, tokens: &'a [String]) -> Ve
     selectors
 }
 
-fn direct_source_read_selector_range(selector: &str) -> Option<(usize, usize)> {
-    if let Some((path_or_start, end_text)) = selector.rsplit_once(':')
-        && let Ok(end) = end_text.parse::<usize>()
-    {
-        if let Some((_, start_text)) = path_or_start.rsplit_once(':') {
-            return start_text.parse::<usize>().ok().map(|start| (start, end));
-        }
-        return Some((end, end));
-    }
-    let (_, range_text) = selector.rsplit_once(':')?;
-    let (start_text, end_text) = range_text.split_once('-')?;
-    let start = start_text.parse::<usize>().ok()?;
-    let end = end_text.parse::<usize>().ok()?;
-    Some((start, end))
-}
-
 fn push_unique_selector<'a>(selectors: &mut Vec<&'a str>, selector: &'a str) {
     if !selectors.iter().any(|existing| existing == &selector) {
         selectors.push(selector);
@@ -382,26 +366,7 @@ fn direct_read_route(
     selector_kind: SourceSelectorKind,
 ) -> DecisionRoute {
     match selector_kind {
-        SourceSelectorKind::ExactPath if selector_has_line_locator(path) => {
-            direct_source_query_route(provider, path)
-        }
-        SourceSelectorKind::ExactPath => {
-            let route_context = provider.route_path_context(path);
-            search_query_route_for_selector(
-                provider,
-                &route_context.selector,
-                &route_context.project_root,
-                &[],
-            )
-            .unwrap_or_else(|| {
-                provider.route_from_template(
-                    DecisionRouteKind::Prime,
-                    &provider.routes.prime,
-                    None,
-                    None,
-                )
-            })
-        }
+        SourceSelectorKind::ExactPath => direct_source_query_route(provider, path),
         SourceSelectorKind::Pattern => {
             let route_context = provider.route_path_context(path);
             search_query_route_for_selector(
@@ -420,10 +385,6 @@ fn direct_read_route(
             })
         }
     }
-}
-
-fn selector_has_line_locator(selector: &str) -> bool {
-    direct_source_read_selector_range(selector).is_some()
 }
 
 pub(super) fn classify_raw_search_command(

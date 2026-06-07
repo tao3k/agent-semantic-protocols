@@ -1,10 +1,10 @@
-#!/usr/bin/env python3
 """Render RFC 011 syntax real-project evidence records."""
 
 from __future__ import annotations
 
 import argparse
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 
 
@@ -38,8 +38,8 @@ METRICS_LINE_TWO = (
 )
 
 
-def main() -> int:
-    args = _parse_args()
+def main(argv: Sequence[str] | None = None) -> int:
+    args = _parse_args(argv)
     error = _validate_cache_claim(args)
     if error is not None:
         sys.stderr.write(f"{error}\n")
@@ -53,8 +53,9 @@ def main() -> int:
     return 0
 
 
-def _parse_args() -> argparse.Namespace:
+def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
+        prog="python -m tools syntax real-evidence",
         description=(
             "Render the RFC 011 [syntax-real-evidence] review record after a "
             "real Rust or TypeScript syntax-query flow has been measured."
@@ -89,7 +90,7 @@ def _parse_args() -> argparse.Namespace:
         help="Mark cache hit as proven by validated normalized-row replay.",
     )
     parser.add_argument("--output", type=Path, help="Optional file to write.")
-    return parser.parse_args()
+    return parser.parse_args(argv)
 
 
 def _non_negative_int(value: str) -> int:

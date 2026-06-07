@@ -23,8 +23,9 @@ fn hard_fs_deny_serializes_no_source_bytes_returned() {
             "direct-source-read".into(),
             "--selector".into(),
             "src/lib.rs".into(),
-            "--code".into(),
+            "--workspace".into(),
             ".".into(),
+            "--code".into(),
         ],
     });
     let value = serde_json::to_value(decision).expect("serializes");
@@ -58,8 +59,9 @@ fn shell_egress_suppression_records_hidden_subprocess_output() {
                 "direct-source-read".into(),
                 "--selector".into(),
                 "src/lib.rs".into(),
-                "--code".into(),
+                "--workspace".into(),
                 ".".into(),
+                "--code".into(),
             ],
         });
     let value = serde_json::to_value(decision).expect("serializes");
@@ -81,7 +83,7 @@ fn provider_capability_allow_keeps_authorization_explicit() {
         SourceAccessDecision::provider_capability_allow(SourceAccessProviderCapabilityAllowInput {
             language_id: "rust".to_string(),
             provider_id: "rs-harness".into(),
-            command: "asp rust query --from-hook direct-source-read --selector src/lib.rs --code ."
+            command: "asp rust query --from-hook direct-source-read --selector src/lib.rs --workspace . --code"
                 .to_string(),
             path: "src/lib.rs".to_string(),
         });
@@ -114,7 +116,7 @@ fn provider_capability_allow_keeps_authorization_explicit() {
             "providerId": "rs-harness",
             "subject": {
                 "toolName": "asp",
-                "command": "asp rust query --from-hook direct-source-read --selector src/lib.rs --code .",
+                "command": "asp rust query --from-hook direct-source-read --selector src/lib.rs --workspace . --code",
                 "paths": ["src/lib.rs"]
             },
             "message": "provider-capability allowed compact source access."
@@ -143,8 +145,9 @@ fn codex_fs_read_file_policy_denies_activated_source_path() {
             "direct-source-read",
             "--selector",
             "src/cli/agent-hooks.ts",
+            "--workspace",
+            ".",
             "--code",
-            "."
         ])
     );
 }

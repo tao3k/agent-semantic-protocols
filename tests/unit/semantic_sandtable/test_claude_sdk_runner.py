@@ -104,6 +104,12 @@ def test_agent_summary_extracts_token_cost_and_complex_pipe_flow() -> None:
                             ),
                         },
                     },
+                    {
+                        "name": "Bash",
+                        "input": {
+                            "command": "asp rust guide .",
+                        },
+                    },
                 ],
             },
             {
@@ -122,12 +128,76 @@ def test_agent_summary_extracts_token_cost_and_complex_pipe_flow() -> None:
     assert summary["tokenCost"]["outputTokens"] == 25
     assert summary["tokenCost"]["cacheReadInputTokens"] == 50
     assert summary["tokenCost"]["costUsd"] == 0.0123
-    assert summary["pipeFlow"]["aspCommands"] == 4
+    assert summary["pipeFlow"]["aspCommands"] == 5
     assert summary["pipeFlow"]["searchCommands"] == 3
     assert summary["pipeFlow"]["queryCommands"] == 1
+    assert summary["pipeFlow"]["guideCommands"] == 1
     assert summary["pipeFlow"]["searchPipeCommands"] == 1
     assert summary["pipeFlow"]["searchReasoningCommands"] == 1
     assert summary["pipeFlow"]["searchPrimeCommands"] == 1
     assert summary["pipeFlow"]["querySelectorCommands"] == 1
     assert summary["pipeFlow"]["treesitterQueryCommands"] == 1
     assert summary["pipeFlow"]["complexPipeFlow"]
+
+
+def test_agent_summary_extracts_read_loop_risk_from_direct_code_reads() -> None:
+    summary = summarize_agent_messages(
+        [
+            {
+                "type": "AssistantMessage",
+                "content": [
+                    {
+                        "name": "Bash",
+                        "input": {
+                            "command": (
+                                "asp rust query --from-hook direct-source-read "
+                                "--selector src/lib.rs:1:10 --code ."
+                            ),
+                        },
+                    },
+                    {
+                        "name": "Bash",
+                        "input": {
+                            "command": (
+                                "asp rust query --from-hook direct-source-read "
+                                "--selector src/lib.rs:11:20 --code ."
+                            ),
+                        },
+                    },
+                    {
+                        "name": "Bash",
+                        "input": {
+                            "command": (
+                                "asp rust query --from-hook direct-source-read "
+                                "--selector src/lib.rs:11:20 --code ."
+                            ),
+                        },
+                    },
+                    {
+                        "name": "Bash",
+                        "input": {
+                            "command": (
+                                "asp rust query --from-hook direct-source-read "
+                                "--selector src/lib.rs:30:35 --code ."
+                            ),
+                        },
+                    },
+                    {
+                        "name": "Bash",
+                        "input": {
+                            "command": (
+                                "asp rust query --from-hook direct-source-read "
+                                "--selector tests/test_lib.rs:1:4 --code ."
+                            ),
+                        },
+                    },
+                ],
+            },
+        ]
+    )
+
+    assert summary["pipeFlow"]["directReadCommands"] == 5
+    assert summary["pipeFlow"]["readLoopDirectCodeCommands"] == 5
+    assert summary["pipeFlow"]["readLoopDuplicateSelectors"] == 1
+    assert summary["pipeFlow"]["readLoopAdjacentRangeWindows"] == 1
+    assert summary["pipeFlow"]["readLoopSameOwnerScans"] == 2

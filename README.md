@@ -133,6 +133,17 @@ stale source facts. Inspect or reset that ranking cache with
 `--view graph-turbo-request` only when validating or debugging the JSON packet
 that will be sent to `asp-graph-turbo`.
 
+`asp-graph-turbo` is the lightweight internal ranker for this path. Its default
+ranking dependency is SciPy sparse graph scoring, not PyTorch, PyG, or a GNN
+runtime. Future PyG/HeteroData work belongs behind optional lab or offline
+rerank surfaces; it must not become an install requirement, hook dependency, or
+agent hot-path fallback. The current roadmap is to strengthen typed facts,
+profile-specific sparse scoring, failure/read-loop feedback, and command
+inflation metrics while keeping the stable search frontier deterministic and
+schema-auditable. Its artifact timeline report also surfaces historical
+direct-code read-loop risk so cached agent runs can be audited before another
+live sandtable pass.
+
 agent semantic client-backend phase 1 is local-native only:
 
 ```sh

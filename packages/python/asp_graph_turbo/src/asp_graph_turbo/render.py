@@ -35,12 +35,7 @@ def render_compact(result: GraphResult) -> str:
         f"rank={rank_line}",
         f"frontier={frontier_line}",
         *_render_profile_projection_lines(result, aliases),
-        f"scores={score_line}",
-        f"paths={_render_paths(result, aliases)}",
-        f"cache={_render_cache(result)}",
-        f"trace={_render_trace(result)}",
-        f"explain={_render_explanations(result, aliases)}",
-        f"metrics={_render_metrics(result)}",
+        *_render_debug_projection_lines(result, aliases, score_line),
         f"profiles={','.join(result.profiles)}",
         f"omit={','.join(result.omit)}",
         f"avoid={','.join(result.avoid)}",
@@ -67,6 +62,21 @@ def _failure_kind(result: GraphResult) -> str:
             value = node.fields.get("failureKind") or node.role
             return str(value)
     return "failure"
+
+
+def _render_debug_projection_lines(
+    result: GraphResult, aliases: Mapping[str, str], score_line: str
+) -> list[str]:
+    if result.profile.name == "failure-frontier":
+        return []
+    return [
+        f"scores={score_line}",
+        f"paths={_render_paths(result, aliases)}",
+        f"cache={_render_cache(result)}",
+        f"trace={_render_trace(result)}",
+        f"explain={_render_explanations(result, aliases)}",
+        f"metrics={_render_metrics(result)}",
+    ]
 
 
 def _aliases(nodes: Iterable[Node]) -> Mapping[str, str]:
@@ -533,9 +543,25 @@ def _render_explanations(result: GraphResult, aliases: Mapping[str, str]) -> str
 
 def _render_metrics(result: GraphResult) -> str:
     metrics = result.algorithm_metrics
-    return (
+    rendered = (
         f"nodes={metrics.node_count},edges={metrics.edge_count},"
         f"selectedEdges={metrics.selected_edge_count},reachable={metrics.reachable_node_count},"
         f"ranked={metrics.ranked_node_count},paths={metrics.path_count},"
         f"windows={metrics.merged_window_count},cache={metrics.cache_status}"
     )
+    if (
+        metrics.read_loop_direct_code_action_count
+        or metrics.read_loop_duplicate_selector_count
+        or metrics.read_loop_adjacent_range_window_count
+        or metrics.read_loop_same_owner_scan_count
+    ):
+        rendered += (
+            ",readLoop="
+            f"code:{metrics.read_loop_direct_code_action_count}|"
+            f"duplicate:{metrics.read_loop_duplicate_selector_count}|"
+            f"adjacent:{metrics.read_loop_adjacent_range_window_count}|"
+            f"sameOwner:{metrics.read_loop_same_owner_scan_count}"
+        )
+    if metrics.read_memory_suppressed_count:
+        rendered += f",readMemorySuppressed={metrics.read_memory_suppressed_count}"
+    return rendered

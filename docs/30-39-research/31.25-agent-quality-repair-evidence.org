@@ -1,0 +1,76 @@
+#+TITLE: Agent Quality Signal Repair Evidence
+#+DATE: 2026-06-07
+#+STATUS: agent-quality-repair-evidence-recorded
+#+RFC: rfcs/agent-coding-quality-policy.org
+
+* Scope
+
+This records the first repair-oriented real-project pass for the agent quality
+signal contract.  The pass starts from the default compact output rather than
+JSON, follows one =native-idiom.manual-transform-loop= signal in the TypeScript
+harness, applies a small repair, and re-runs the same real-project checks.
+
+This is repair usefulness evidence for one signal in one ready provider.  It is
+not enough to promote the whole signal catalog to blocking severity.
+
+* Evidence record
+
+#+begin_example
+[agent-quality-repair-evidence] language=typescript provider=ts-harness project=languages/typescript-lang-project-harness
+start=compact-signal-line
+signal=native-idiom.manual-transform-loop
+target=src/cli/semantic-search/owners.ts ownersForHits,uniqueOwners
+repair=replace seen+push return-collection loops with uniqueBy(...).map/filter composition
+before=compactPacketBytes=13528,jsonPacketBytes=9423005,findingCount=28,qualityFindingCount=15,native-idiom.manual-transform-loop=6
+after=compactPacketBytes=12618,jsonPacketBytes=9421977,findingCount=26,qualityFindingCount=13,native-idiom.manual-transform-loop=4
+tests=npm-run-build,node-test-agent-quality-policy-search,asp-typescript-check-changed
+claim=signal-improved-localization-and-edit-choice
+#+end_example
+
+* Repair path
+
+The compact output exposed:
+
+#+begin_example
+Help: Public function 'ownersForHits' uses 1 manual transform loop(s). Signals: native-idiom.manual-transform-loop.
+#+end_example
+
+Following that signal led to =ownersForHits= in
+=src/cli/semantic-search/owners.ts=.  The function manually built a return
+collection using =seen=, =owners.push(...)=, and =return owners=.  The nearby
+=uniqueOwners= helper used the same shape.  The repair introduced a local
+=uniqueBy= helper and rewrote the public helpers to compose =uniqueBy(...)= with
+=map= or =flatMap=.
+
+The repaired code preserves stable owner order and de-duplicates by the same
+path key.  The signal disappeared for =ownersForHits= and =uniqueOwners=, while
+the remaining four TypeScript manual-transform-loop findings stayed localized
+to source-text and native-syntax fact collection functions.
+
+* Verification
+
+#+begin_example
+npm run build
+node --test dist/tests/unit/agent_quality_signal_snapshot.test.js dist/tests/unit/agent_policy.test.js dist/tests/unit/cli_semantic_search.test.js
+asp typescript check --changed .
+node dist/src/cli/main.js check --full .
+node dist/src/cli/main.js check --full --json .
+#+end_example
+
+* Observations
+
+- The compact signal id was sufficient to choose the edit boundary without
+  reading JSON.
+- The repair reduced TypeScript real-project quality findings from 15 to 13 and
+  reduced =native-idiom.manual-transform-loop= findings from 6 to 4.
+- The fix did not require provider-private allowlists or suppressions; it
+  removed the parser-owned condition that produced the signal.
+- This supports using compact signal ids as repair navigation evidence, but one
+  TypeScript repair is not enough for blocking severity promotion.
+
+* Next
+
+- Python and Rust follow-up passes are recorded in
+  =docs/30-39-research/31.26-agent-quality-python-rust-repair-evidence.org=.
+- Keep collecting before/after signal counts rather than relying on snapshot
+  fixture stability alone.

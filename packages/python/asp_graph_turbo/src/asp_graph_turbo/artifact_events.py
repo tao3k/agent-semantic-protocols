@@ -8,7 +8,10 @@ from pathlib import Path
 from typing import Any
 
 from .artifact_event_model import ArtifactEvent
-from .artifact_event_packet import artifact_events_from_packet, artifact_events_packet
+from .artifact_event_packet import (
+    artifact_events_from_packet as artifact_events_from_packet,
+    artifact_events_packet as artifact_events_packet,
+)
 from .artifact_event_commands import (
     artifact_command_argv,
     artifact_command_method,
@@ -117,6 +120,7 @@ def _command_events(path: Path, workspace_root: Path) -> Iterable[ArtifactEvent]
                 query=query,
                 project_root=project_root,
                 workspace_root=workspace_root,
+                argv=argv,
             )
         )
     return tuple(events)
@@ -145,6 +149,7 @@ def _event(
     query: str,
     project_root: str,
     workspace_root: Path,
+    argv: tuple[str, ...] = (),
 ) -> ArtifactEvent:
     stat = path.stat()
     return ArtifactEvent(
@@ -158,6 +163,7 @@ def _event(
         project_root_arg=artifact_project_root_arg(project_root, workspace_root),
         path=str(path),
         bytes=stat.st_size,
+        argv=argv,
     )
 
 

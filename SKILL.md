@@ -67,6 +67,11 @@ are intentionally unsupported for document files.
   after a parser-owned frontier has selected the locator. Do not use
   `direct-source-read` for discovery, owner mapping, import scanning, symbol
   search, or "show me this file" habits.
+- `--view metadata` is document-only and only valid for `asp org query` and
+  `asp md query`. Do not use it with code providers such as Python, Rust,
+  TypeScript, or Julia; use `search ... --view seeds` for discovery and
+  `query <owner-path> --term <symbol> --code` or `--names-only` for code
+  extraction.
 - Query with `--code` is for exact or unique code extraction.
 - Tree-sitter-compatible query is the syntax base; native parser facts enrich
   the capture/frontier. When syntax shape matters, use the tree-sitter guide
@@ -90,7 +95,7 @@ asp <language> search owner <owner-path> items --query '<symbol-or-a|b|c>' .
 asp <language> query <owner-path> --term '<candidate>' --names-only .
 asp <language> query guide treesitter .
 asp <language> query --treesitter-query '<pattern>' .
-asp <language> query --selector <exact-path-or-range> --treesitter-query '<narrow-pattern>' --code .
+asp <language> query --selector <exact-path-or-range> --treesitter-query '<narrow-pattern>' --workspace <workspace-root> --code
 ```
 
 For a concrete deep question, bug, feature, or API-usage task, use
@@ -113,8 +118,8 @@ asp <language> search fzf '<blocked-term-or-symbol>' owner tests --view seeds .
 asp <language> search owner <owner-path> items --query '<symbol-or-a|b|c>' .
 asp <language> query <owner-path> --term '<candidate>' --names-only .
 asp <language> query --treesitter-query '<pattern>' .
-asp <language> query --selector <exact-path-or-range> --treesitter-query '<narrow-pattern>' --code .
-asp <language> query --from-hook direct-source-read --selector <exact-path-or-range> --code .
+asp <language> query --selector <exact-path-or-range> --treesitter-query '<narrow-pattern>' --workspace <workspace-root> --code
+asp <language> query --from-hook direct-source-read --selector <exact-path-or-range> --workspace <workspace-root> --code
 asp org query --from-hook direct-source-read --selector <path-or-range> .
 asp md query --from-hook direct-source-read --selector <path-or-range> .
 ```
@@ -273,7 +278,7 @@ asp org query --kind paragraph --term <term> --content .
 ```sh
 asp <language> query guide treesitter .
 asp <language> query --treesitter-query '<pattern>' .
-asp <language> query --selector <path-or-range> --treesitter-query '<narrow-pattern>' --code .
+asp <language> query --selector <path-or-range> --treesitter-query '<narrow-pattern>' --workspace <workspace-root> --code
 ```
 
 Without `--code`, tree-sitter query output is a capture/frontier locator. Use

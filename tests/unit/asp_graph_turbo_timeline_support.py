@@ -90,6 +90,58 @@ def _mixed_provider_commands() -> list[dict[str, object]]:
         {
             "argv": [
                 "rs-harness",
+                "query",
+                "--from-hook",
+                "direct-source-read",
+                "--selector",
+                "src/" + "lib.rs:1:10",
+                "--code",
+                ".",
+            ],
+            "languageId": "rust",
+        },
+        {
+            "argv": [
+                "rs-harness",
+                "query",
+                "--from-hook",
+                "direct-source-read",
+                "--selector",
+                "src/" + "lib.rs:11:20",
+                "--code",
+                ".",
+            ],
+            "languageId": "rust",
+        },
+        {
+            "argv": [
+                "rs-harness",
+                "query",
+                "--from-hook",
+                "direct-source-read",
+                "--selector",
+                "src/" + "lib.rs:11:20",
+                "--code",
+                ".",
+            ],
+            "languageId": "rust",
+        },
+        {
+            "argv": [
+                "rs-harness",
+                "query",
+                "--from-hook",
+                "direct-source-read",
+                "--selector",
+                "src/" + "lib.rs:30:35",
+                "--code",
+                ".",
+            ],
+            "languageId": "rust",
+        },
+        {
+            "argv": [
+                "rs-harness",
                 "search",
                 "--view",
                 "seeds",

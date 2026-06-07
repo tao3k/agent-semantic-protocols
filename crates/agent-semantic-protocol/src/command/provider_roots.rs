@@ -39,6 +39,16 @@ pub(super) fn effective_project_root_and_args(
     invocation_root: &Path,
     activation_root: &Path,
 ) -> Result<(PathBuf, Vec<String>), String> {
+    validate_code_flag_boundary(args)?;
+    if let Some(workspace_root) = explicit_workspace_project_root(args, invocation_root)? {
+        if explicit_positional_project_root(language_id, args, invocation_root)?.is_some() {
+            return Err(
+                "query/search accepts project root via --workspace or positional PROJECT_ROOT, not both"
+                    .to_string(),
+            );
+        }
+        return Ok((workspace_root, args.to_vec()));
+    }
     if let Some((root, args)) =
         explicit_positional_project_root(language_id, args, invocation_root)?
     {
@@ -59,6 +69,53 @@ pub(super) fn effective_project_root_and_args(
     } else {
         Ok((activation_root.to_path_buf(), args.to_vec()))
     }
+}
+
+fn validate_code_flag_boundary(args: &[String]) -> Result<(), String> {
+    if !matches!(args.first().map(String::as_str), Some("query" | "search")) {
+        return Ok(());
+    }
+    for window in args.windows(2) {
+        if window[0] == "--code" && !window[1].starts_with('-') {
+            return Err(
+                "query/search --code does not accept a trailing PROJECT_ROOT; use --workspace PROJECT_ROOT"
+                    .to_string(),
+            );
+        }
+    }
+    Ok(())
+}
+
+fn explicit_workspace_project_root(
+    args: &[String],
+    invocation_root: &Path,
+) -> Result<Option<PathBuf>, String> {
+    let mut selected = None::<PathBuf>;
+    let mut index = 0;
+    while index < args.len() {
+        if args[index] != "--workspace" {
+            index += 1;
+            continue;
+        }
+        let Some(value) = args.get(index + 1) else {
+            return Err("--workspace requires a project root".to_string());
+        };
+        if value.starts_with('-') {
+            return Err("--workspace requires a project root".to_string());
+        }
+        if selected.is_some() {
+            return Err("expected at most one --workspace PROJECT_ROOT argument".to_string());
+        }
+        let path = PathBuf::from(value);
+        let absolute = if path.is_absolute() {
+            path
+        } else {
+            invocation_root.join(path)
+        };
+        selected = Some(canonical_or_existing(absolute));
+        index += 2;
+    }
+    Ok(selected)
 }
 
 pub(super) fn activation_storage_root(activation_path: &Path) -> PathBuf {

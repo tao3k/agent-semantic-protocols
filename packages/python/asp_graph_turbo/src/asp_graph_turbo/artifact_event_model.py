@@ -17,6 +17,7 @@ class ArtifactEvent:
     project_root_arg: str
     path: str
     bytes: int
+    argv: tuple[str, ...] = ()
 
     @property
     def action(self) -> bool:

@@ -66,7 +66,6 @@ fn language_facade_query_injects_asp_compiled_tree_sitter_plan_for_each_provider
                 case.query,
                 "--selector",
                 case.selector,
-                "--code",
                 ".",
             ])
             .output()
@@ -81,7 +80,7 @@ fn language_facade_query_injects_asp_compiled_tree_sitter_plan_for_each_provider
         let stdout = String::from_utf8(output.stdout).expect("stdout");
         assert!(
             stdout.starts_with(&format!(
-                "{} args=[query][--treesitter-query][{}][--selector][{}][--code]",
+                "{} args=[query][--treesitter-query][{}][--selector][{}]",
                 case.label, case.query, case.selector
             )),
             "stdout: {stdout}"
@@ -111,7 +110,7 @@ fn language_facade_query_injects_asp_compiled_tree_sitter_plan_for_each_provider
 }
 
 #[test]
-fn language_facade_query_preserves_provider_stdout_for_syntax_code_output() {
+fn language_facade_query_allows_syntax_code_output_with_exact_selector() {
     let root = temp_project_root("provider-syntax-query-stdout-facade");
     let bin_dir = root.join(".bin");
     std::fs::create_dir_all(&bin_dir).expect("create bin dir");
@@ -140,7 +139,6 @@ printf 'pub fn provider_owned() -> usize {
             "--selector",
             "src/lib.rs:1:3",
             "--code",
-            ".",
         ])
         .output()
         .expect("run asp rust syntax query code");
@@ -154,8 +152,138 @@ printf 'pub fn provider_owned() -> usize {
         String::from_utf8(output.stdout).expect("stdout"),
         "pub fn provider_owned() -> usize {\n    1\n}\n"
     );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn language_facade_query_rejects_syntax_code_output_without_selector() {
+    let root = temp_project_root("provider-syntax-query-code-no-selector");
+    let bin_dir = root.join(".bin");
+    write_echo_provider(&bin_dir, "rs-harness", "rust-provider");
+    write_activation(&root, &[provider("rust", Vec::new())]);
+
+    let output = asp_command(&root)
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .env("PATH", prepend_path(&bin_dir))
+        .args([
+            "rust",
+            "query",
+            "--treesitter-query",
+            "(function_item name: (identifier) @function.name)",
+            "--code",
+        ])
+        .output()
+        .expect("run asp rust syntax query code without selector");
+
     assert!(
-        output.stderr.is_empty(),
+        !output.status.success(),
+        "stdout: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    assert!(
+        output.stdout.is_empty(),
+        "stdout: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains("tree-sitter query --code requires an exact --selector"),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn language_facade_rejects_direct_source_read_code_trailing_root_before_fast_path() {
+    let root = temp_project_root("provider-direct-read-code-root-facade");
+    let bin_dir = root.join(".bin");
+    write_echo_provider(&bin_dir, "rs-harness", "rust-provider");
+    write_activation(&root, &[provider("rust", Vec::new())]);
+    std::fs::create_dir_all(root.join("src")).expect("create src dir");
+    std::fs::write(root.join("src/lib.rs"), "pub fn fast_path() {}\n").expect("write fixture");
+
+    let output = asp_command(&root)
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .env("PATH", prepend_path(&bin_dir))
+        .args([
+            "rust",
+            "query",
+            "--from-hook",
+            "direct-source-read",
+            "--selector",
+            "src/lib.rs:1:1",
+            "--code",
+            ".",
+        ])
+        .output()
+        .expect("run asp rust direct-source-read code root");
+
+    assert!(
+        !output.status.success(),
+        "stdout: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    assert!(
+        output.stdout.is_empty(),
+        "stdout: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains("query/search --code does not accept a trailing PROJECT_ROOT"),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn language_facade_rejects_inline_code_in_compact_frontier_mode() {
+    let root = temp_project_root("provider-compact-frontier-inline-code");
+    let bin_dir = root.join(".bin");
+    std::fs::create_dir_all(&bin_dir).expect("create bin dir");
+    let provider_path = bin_dir.join("rs-harness");
+    std::fs::write(
+        &provider_path,
+        r#"#!/bin/sh
+printf '[read-owner] q=src/lib.rs\n'
+printf '|read path=src/lib.rs lineRange=1:2\n'
+printf '|code path=src/lib.rs lineRange=1:2 text="pub fn bad() {}"\n'
+"#,
+    )
+    .expect("write provider");
+    make_executable(&provider_path);
+    write_activation(&root, &[provider("rust", Vec::new())]);
+
+    let output = asp_command(&root)
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .env("PATH", prepend_path(&bin_dir))
+        .args([
+            "rust",
+            "query",
+            "--from-hook",
+            "direct-source-read",
+            "--selector",
+            "src/lib.rs:1:2",
+            ".",
+        ])
+        .output()
+        .expect("run asp rust compact frontier");
+
+    assert!(
+        !output.status.success(),
+        "stdout: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    assert!(
+        output.stdout.is_empty(),
+        "stdout: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains("provider violated ASP compact frontier mode"),
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );

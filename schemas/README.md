@@ -43,6 +43,19 @@ slice that lets the LLM choose the next focused search. The graph schema exists
 to keep that embedded vocabulary aligned across providers, not to introduce a
 separate `search graph` or top-level graph exploration workflow.
 
+`semantic-fact-ontology.v1.schema.json` is the shared field/type/collection
+fact ontology introduced by RFC 013. It defines parser-owned `field`, `type`,
+and `collection` nodes plus relation vocabulary such as `has_type` and
+`collection_of` so Rust, TypeScript, Python, and Julia providers can describe
+equivalent sequence/map facts without provider-private names.
+`semantic-fact-graph.v1.schema.json` is the runtime packet emitted by
+`search semantic-facts --json`; provider descriptors advertise it for provider
+fact graph output rather than `semantic-graph.v1`. The companion
+`semantic-fact-ontology.fixtures.v1.json` catalog keeps the P0 cross-language
+matrix executable: `Vec`/`HashMap`, `Array`/`Map`, `list`/`dict`, and
+`Vector`/`Dict` must validate through the same schema before graph-turbo ranking
+or sparse relation banks consume those facts.
+
 `semantic-compact-graph-render.v1.schema.json` is the shared prompt-facing
 render template for compact graph search output. It owns the view-native
 header contract, micro-legend grammar, role-typed alias line grammar, dense
@@ -366,12 +379,12 @@ Provider registry method descriptors may advertise supported engines with
 `executionBackends`; current native providers should declare `native-parser`
 and must not list `codeql` until a real backend can produce the advertised
 frontier packet.
-`tools/validate-provider-registry-contracts.py` is the focused real-provider
-gate for this surface: it runs `asp <language> agent doctor --json`, validates
-the returned registry against this schema, and checks that query descriptors
-advertising `semantic-tree-sitter-query.v1` carry the shared tree-sitter query
-provenance fields. Keep this separate from fast schema unit tests because it
-starts real provider binaries.
+`python -m tools validate provider-registry-contracts` is the focused
+real-provider gate for this surface: it runs `asp <language> agent doctor
+--json`, validates the returned registry against this schema, and checks that
+query descriptors advertising `semantic-tree-sitter-query.v1` carry the shared
+tree-sitter query provenance fields. Keep this separate from fast schema unit
+tests because it starts real provider binaries.
 Tree-sitter-compatible query capability is advertised on the same `query`
 method descriptor with `packetSchemas`, `queryInputForms`, `queryCatalogs`,
 `grammarId`, `grammarProfileVersion`, `adapterModes`, `sourceAuthorities`,
@@ -513,6 +526,10 @@ harness to parse natural-language intent. Coverage audits render this as
 missing large-library rows or missing intent cases as coverage failures.
 `intentCases[].queryTerms` records which query-set terms exercise each intent
 when several same-view probes are compressed into one scenario step.
+Agent SDK replay expectations can use `expect.pipeFlow` read-loop budgets to
+bound direct-code reads, duplicate selectors, adjacent range windows, and
+same-owner scans; `forbiddenStages` can also reject the aggregate
+`read-loop-risk` stage.
 Failure-frontier replay gates use
 `evidence.failureFrontierComparison` to compare a baseline receipt/trace with a
 candidate receipt/trace. The candidate must prove command reduction, bounded
@@ -641,6 +658,17 @@ broad or low-signal, providers should emit `readPlan` with `code=false`,
 `avoid` actions instead of `sourceWindows`; broad discovery still stays in
 provider search, prime, ingest, or normal query repair.
 
+ASP owns the shared output mode names for provider stdout and packet requests:
+`frontier`, `code`, `read-packet`, and `json`. `frontier` is the default compact
+search/query mode and is source-free: providers must return metadata, omit/avoid
+facts, and executable read locators rather than `|code` rows or inline `text=`
+source fields. `code` is selected only by `--code` and may carry pure
+source/compact code text. `read-packet` is selected by `--json --view
+read-packet` and is the structured mode that may carry `sourceWindows` or
+`readPlan`. Other JSON packet requests use `json`. The ASP client validates the
+default frontier mode before prompt-output cache write-back and replay so
+language packages cannot drift into incompatible compact renderers.
+
 When a direct read must distinguish worktree, staged index, and committed
 contents, the same packet carries `sourceVersion=worktree|index|head`.
 Providers should set `repositoryRoot` when the Git repository root differs from
@@ -730,7 +758,9 @@ Query descriptors use `query/*` methods, advertise packet schemas such as
 `agent.semantic-protocols.semantic-query-packet` and optional
 `agent.semantic-protocols.semantic-read-packet`, and describe owner-local inputs
 such as `input="owner-path"`, required options such as `--term`, and supported
-`outputModes` including compact, JSON, code, names, outline, and read-packet.
+`outputModes` including frontier, json, code, names, outline, and read-packet.
+Providers may keep a user-facing `compact` label in guide text only as an alias
+for ASP `frontier`; registry descriptors should use the ASP-owned mode names.
 They must not reuse a search `view`; query is the parser-owned item lookup
 surface that lets an agent repair stale symbol probes without escalating to
 source reads.
@@ -899,6 +929,18 @@ Python MVP 12 requires relation-owned default edge weights and profile-owned
 typed transition masks before PageRank/path ranking. The result packet exposes
 edge weights plus each profile's allowed transitions and node-kind bonuses in
 `profileCompatibility` so policy drift is visible outside the Python package.
+The current result metrics also expose read-loop guard counters for direct code
+actions, duplicate selectors, adjacent range windows, and same-owner scans.
+Graph-turbo artifact timeline reports mirror that operational signal as
+`readLoopRisk` JSON and `[graph-turbo-read-loop]` text evidence over cached
+agent command artifacts.
+This roadmap does not require a new schema version yet: future graph-turbo
+packet changes should add explicit node/edge quality facts such as
+`provenance`, `confidence`, and `freshness`, plus additional profile-specific
+transition evidence, only when an implementation needs those facts to leave the
+Python ranking boundary. PyG/HeteroData export remains an optional lab surface
+and must not become part of the default request/result contract or package
+dependency set.
 
 `semantic-graph-turbo-artifact-events.v1.schema.json` is the schema-owned event
 stream between ASP's Rust SQLite cache and graph-turbo timeline audit. It

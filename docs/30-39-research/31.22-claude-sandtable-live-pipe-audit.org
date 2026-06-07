@@ -757,3 +757,248 @@ and =tokio/src/runtime/io/registration_set.rs:21:41=.  It still had
 required only =search-prime=, =search-pipe=, and =query-selector=.  The step
 expectation is now synchronized with the deep-question contract so optional
 reasoning does not regress into a required gate.
+
+The next cost problem is not search drift; it is default fanout.  The live agent
+correctly avoided =fzf=, duplicate pipe, reasoning, and raw reads, but it still
+read all three projected selectors.  That proves top-three graph projection is
+useful as a conditional frontier, yet too expensive as the default read plan.
+The follow-up optimization changes prompt-visible command projection so
+=pipeCommands= exposes only the primary =S1= selector when it is exact, while
+=conditionalActions= keeps =R1= and =S2=/=R2=/=S3=/=R3= available as
+metadata-only branch labels without exact secondary selectors.  The live Tokio
+expectation now budgets only the primary Rust selector read.
+
+The primary-only live rerun passed the scenario and validated that behavior:
+the agent executed four ASP commands, with =searchPrimeCommands=1=,
+=searchPipeCommands=1=, =querySelectorCommands=1=, =searchReasoningCommands=0=,
+=searchFzfCommands=0=, =repeatedCommands=0=, and =directReadCommands=0=.  The
+only selector read was =tokio/src/io/blocking.rs:15:35=.  The remaining waste
+is a post-selector =asp rust guide . | head -80= command, not search fanout.
+The next contract change therefore tracks =guideCommands= explicitly and sets
+=maxGuideCommands=0= for this live scenario, with prompt and pipe output both
+marking guide-after-selector as an avoid action.
+
+The guide-gated live rerun reached the current target shape.  It passed with
+exactly three ASP commands:
+
+1. =asp rust search prime --view seeds .=
+2. =asp rust search pipe 'Vec scalar collection fields' --view seeds .=
+3. =asp rust query --selector tokio/src/io/blocking.rs:15:35 --code .=
+
+The observed counters were =aspCommands=3=, =searchCommands=2=,
+=queryCommands=1=, =querySelectorCommands=1=, =guideCommands=0=,
+=searchReasoningCommands=0=, =searchFzfCommands=0=, =repeatedCommands=0=, and
+=directReadCommands=0=.  =stdoutBytes=54541=, =elapsedMs=74642=,
+=totalTokens=282929=, and =costUsd=0.386753=.  The remaining high token count is
+mostly Claude SDK cache-read/input cost and compact output volume, not wasted
+ASP command fanout.  The next optimization target should be graph-frontier
+packet compaction and lower prompt/output bytes, not search command selection.
+
+A later live rerun after tightening read-loop detection exposed the remaining
+command-projection weakness.  The agent no longer repeated the same selector
+or widened context, but it still executed all three projected selector reads
+and one =search reasoning owner-query= because =conditionalCommands= printed
+runnable =asp ...= branch commands in the =--view seeds= output.  The scenario
+correctly failed with =queryCommands=3= over the =maxQueryCommands=2= budget,
+while =readLoopDuplicateSelectors=0= confirmed the duplicate-read fix.  The
+next contract is therefore stronger: seeds output may expose top-three
+branches as =conditionalActions= metadata for auditability, but only
+=frontierActions=S1=, =nextCommand=, and the primary =pipeCommands= entry
+should contain an exact selector or executable shell command.  Secondary branch
+selectors and branch commands belong behind an explicit commands/advisory
+surface after the primary selector evidence is known insufficient.
+
+The S1-only seeds rerun reached the tightened live target after hiding
+secondary exact selectors from prompt-visible branch metadata.  The scenario now
+requires =maxAspCommands=3= and =maxQueryCommands=1=, and the live agent
+executed exactly:
+
+1. =asp rust search prime --view seeds .=
+
+2. =asp rust search pipe 'Vec scalar collection fields' --view seeds .=
+
+3. =asp rust query --selector tokio/src/io/blocking.rs:15:35 --code .=
+
+The observed counters were =aspCommands=3=, =searchCommands=2=,
+=queryCommands=1=, =querySelectorCommands=1=, =guideCommands=0=,
+=searchReasoningCommands=0=, =searchFzfCommands=0=, =repeatedCommands=0=,
+=readLoopDuplicateSelectors=0=, =readLoopAdjacentRangeWindows=0=, and
+=readLoopSameOwnerScans=0=.  =stdoutBytes=33979=, =elapsedMs=38481=,
+=totalTokens=135494=, and =costUsd=0.274538=.  The remaining cost driver is now
+large compact/search output and Claude SDK cache-read volume, not ASP command
+selection.
+
+The first format-compaction pass treats =search pipe --view seeds= as a
+decision packet instead of a graph-debug dump.  It omits =scores=, =paths=,
+=trace=, and =explain= from prompt-visible seeds output, keeps the primary
+=S1= graph facts and =nextCommand=, and shortens the pipe plan /
+=conditionalActions= lines.  The Tokio pipe output shrank from =5851= bytes to
+=3950= bytes without changing the three-command live behavior.  A follow-up
+runner smoke added command-output attribution to the agent summary:
+=aspCommandOutputBytes= now records the total ASP tool-result bytes, with
+=aspCommandOutputRecords= listing per-command output bytes and line counts.
+This makes future sandtable JSON durable for output-size optimization instead
+of relying on total SDK stdout alone.
+
+The output-budget gate is now active in the Tokio live scenario through
+=expect.pipeFlow.maxAspCommandOutputBytes=7000=.  A live validation passed with
+=aspCommandOutputBytes=5203=, split as =search prime= =1067= bytes, =search
+pipe= =3741= bytes, and =query --selector --code= =395= bytes.  The command
+trajectory stayed at three ASP commands, while token cost dropped to
+=totalTokens=101933= and =costUsd=0.258517=.  This separates the next
+optimization problem cleanly: ASP command output is now bounded and attributed;
+remaining cost is mostly SDK prompt/cache behavior plus the model's answer
+tokens, not hidden provider fanout.
+
+Compression must remain precision-preserving.  Output budgets are only useful
+when they remove debug volume without weakening the evidence frontier.  The
+Rust pipe fixture now asserts that compressed seeds output still carries the
+primary =field=, =type=, =collection= facts, =has_type= and =collection_of=
+relations, complete =queryCoverage=, and the exact =S1= / =nextCommand= pair,
+while omitting only graph-debug rows such as =scores=, =paths=, =trace=, and
+=explain=.  A compression that changes those facts or the selected frontier is
+a correctness regression even if it saves tokens.
+
+The live sandtable now enforces the same precision boundary with
+=requireSearchPipePrecision=true=.  The Tokio run passed with
+=fieldFacts=4=, =typeFacts=1=, =collectionFacts=1=, =collectionOfEdges=5=,
+=s1Selectors=1=, =nextCommands=1=, =exactQueryCoverage=1=, and
+=debugRows=0=.  The =hasTypeEdges= count was =0= for this Tokio query because
+the rendered owner-query frontier exposes type facts without a primary
+=has_type= edge; the unit fixture covers =has_type= preservation separately.
+
+The next P0-P2 loop tightened the boundary from post-hoc measurement toward
+memory-backed control:
+
+- P0 read-loop memory: sandtable pipe observations now emit =readLoopMemory=
+  with selector, owner, range, command fingerprint, output bytes, result
+  fingerprint, read count, suppressible-read count, and avoid reasons.  The
+  Tokio scenario now requires =requireReadLoopMemory=true= and
+  =maxReadLoopMemorySuppressibleReads=0=, so a single exact selector read is
+  remembered while duplicate or adjacent reads still fail the gate.
+- P0 proactive suppression: =asp-graph-turbo= accepts
+  =readMemory.seenSelectors= in the request packet.  Ranked/frontier nodes with
+  those exact selectors are suppressed before rendering, and the result exposes
+  =algorithmMetrics.readMemorySuppressedCount= plus =avoid=seen-selector=.
+- P0 runtime closure: ASP =search pipe= now loads
+  =$PRJ_CACHE_HOME/agent-semantic-protocol/read-loop-memory.json= and injects
+  =readMemory.seenSelectors= into graph-turbo requests.  The facade test proves
+  both =--view graph-turbo-request= injection and =--view seeds= suppression:
+  the seen selector is absent from =frontierActions=S1= and =avoid= carries
+  =seen-selector=.
+- P1 failure-loop memory: agent observation now extracts
+  =failureFrontierOutputPrecision= and =failureLoopMemory= from
+  =asp <lang> search failure --from-last-check --view seeds .= tool output.
+  The precision gate checks failure facts, assertions, hot blocks,
+  =frontierActions=, =queryProfiles=, =omit=, =avoid=, and debug-row absence.
+- P1 recorded replay closure: =failure-loop-memory-replay.json= replays
+  recorded agent tool output through a normal command step with
+  =expect.pipeFlow=.  The runner parses command stdout as agent JSONL whenever
+  a pipe-flow expectation is present, so failure-loop memory can be validated
+  without spending live model tokens.
+- P2 precision-preserving compression: prompt-visible pipe seeds now omit
+  =cache= and =metrics= in addition to =scores=, =paths=, =trace=, and
+  =explain=.  The Rust fixture still asserts parser-owned field/type/collection
+  facts, relation facts, =queryCoverage=, exact =S1=, and =nextCommand= remain.
+- Live boundary result on Tokio 1.52.3: the deep-question sandtable passed with
+  exactly three ASP commands, =prime -> pipe -> query-selector=, zero repeated
+  commands, zero guide/direct-read commands, and one remembered read-loop entry
+  for =tokio/src/io/blocking.rs:15:35=.  Runtime was =35613ms=, ASP command
+  output was =4991= bytes, scenario stdout was =34925= bytes, and Claude SDK
+  reported =133866= total tokens with =$0.275566= cost.  The remaining cost is
+  dominated by live transcript stdout rather than ASP command output.
+
+Focused validation for this loop:
+
+#+begin_example
+jq empty schemas/semantic-sandtable-scenario.v1.schema.json \
+  schemas/semantic-graph-turbo-result.v1.schema.json \
+  schemas/semantic-graph-turbo-request.v1.schema.json \
+  sandtables/rust/tokio-claude-deep-question-flow.json
+uv run --project packages/python pytest \
+  tests/unit/semantic_sandtable/test_agent_observation_pipe.py \
+  tests/unit/semantic_sandtable/test_agent_observation_read_loop.py \
+  tests/unit/semantic_sandtable/test_expectations.py -q
+uv run --project packages/python pytest \
+  tests/unit/semantic_sandtable/test_deep_question_cases.py \
+  tests/unit/semantic_sandtable/test_failure_frontier_scenario_schema.py \
+  tests/unit/semantic_sandtable/test_json_expectations.py -q
+direnv exec . just check-graph-turbo-focused
+direnv exec . cargo test -p agent-semantic-protocol pipe_frontier -- --nocapture
+uv run --project packages/python pytest \
+  tests/unit/semantic_sandtable/test_failure_frontier_trace_scenario.py \
+  tests/unit/semantic_sandtable/test_failure_frontier_scenario_schema.py -q
+#+end_example
+
+The focused result was =10 passed= for sandtable observation/expectation tests,
+=8 passed= for failure-frontier replay/schema tests, =25 passed= for
+=check-graph-turbo-focused=, and =7 passed= for the Rust pipe facade frontier
+tests.
+
+The follow-up boundary audit confirmed that =asp rust search failure
+--from-last-check --view graph-turbo-request .= emits a
+=semantic-graph-turbo-request.v1= packet with =profile=failure-frontier=,
+=algorithm=typed-ppr-diverse=, and typed =failure=, =assert=, =evidence=,
+=hot=, =key=, =owner=, and =test= nodes.  The prompt-facing
+=--view seeds= projection starts with =[search-failure]= and exposes
+hot-block =frontierActions= as executable =asp rust query --selector ... --code
+.= follow-ups.  Compact parity is now enforced for this profile: default
+failure-frontier seeds omit debug rows such as =scores=, =paths=, =cache=,
+=trace=, =explain=, and =metrics=, while preserving failure facts, owners, hot
+blocks, profiles, frontier actions, =omit=, and =avoid=.  The focused
+graph-turbo test asserts those debug rows stay absent and the real
+=asp rust search failure --from-last-check --view seeds .= smoke confirms the
+current installed ASP surface prints only the agent-facing frontier rows.
+The final RFC closure gap was the check projection route.  The facade test
+=check_changed_view_seeds_renders_failure_frontier_after_provider_failure=
+now runs =asp rust check changed --view seeds .= against a failing fake provider,
+proves the provider receives =check --changed= without ASP =--view= flags,
+persists the failure transcript, and verifies stdout is the same compact
+=failure-frontier= projection with executable hot-block =frontierActions= and
+without debug rows.
+
+* Cross-language provider fact alignment
+
+Rust was the first provider to expose parser-owned data-shape facts into
+=asp-graph-turbo= through =search semantic-facts <query> --json=.  The ASP core
+gate is now language-neutral: when a query asks for field/type/collection shape
+and candidates exist, ASP invokes the active provider's =semantic-facts= method
+and appends returned =nodes=/=edges= to the graph-turbo request.  Providers that
+do not implement the method simply return no extra facts.
+
+Python now implements the same method with stdlib =ast=.  It emits =field=,
+=type=, and =collection= nodes for class annotations and =self.<field>:
+<type>= annotations, including =contextLocator= so graph-turbo can project a
+bounded class/function context selector instead of a single annotation line.
+TypeScript now implements the same ABI in the provider parser layer with the
+TypeScript compiler API.  It emits =field=, =type=, and =collection= graph facts
+for interface/type/class fields, including common collection shapes such as
+=T[]=, =readonly T[]=, =Array<T>=, =ReadonlyArray<T>=, =Map<K,V>=, =Set<T>=,
+and =Record<K,V>=.  The real =asp typescript search pipe 'array collection
+fields' --view seeds= smoke now surfaces =field= and =collection= nodes before
+lexical item matches and projects selector-first next commands.
+
+Julia now implements the same ABI through the Julia harness parser path.  It
+maps existing JuliaSyntax-derived =JuliaTypeSyntax.field_facts= into =field=,
+=type=, and =collection= graph nodes, with =Vector= / =Array= as =array=,
+=Dict= as =map=, =Set= as =set=, =Tuple= as =tuple=, and =NamedTuple= as
+=record=.  After rebuilding the compiled =asp-julia-harness= target used by
+the local =.bin= facade, the real command =asp julia search pipe 'Vector
+collection fields' --view seeds languages/JuliaLangProjectHarness.jl= surfaced
+parser-owned field nodes before lexical item matches, including
+=F=field:mutable-struct-field(tags: Vector{String})=,
+=C=collection:family(array)=, and =Y=type:field-type(Vector{JuliaBindingSyntax})=.
+The same smoke verified workspace-aware command projection: provider-local
+selectors such as =src/cli.jl:1:17= are emitted with
+=--code languages/JuliaLangProjectHarness.jl=, while workspace-relative
+selectors continue to use =--code .=.
+
+The 2026-06-07 validation boundary is explicit.  Rust provider tests pass
+through =direnv exec . cargo test -p agent-semantic-protocol=, and real
+=.bin/asp= pipe smokes verify both Julia provider-local and Rust
+workspace-relative selector commands.  Python graph-turbo focused tests must be
+run through the package-owned environment:
+=direnv exec . just check-graph-turbo-focused= or
+=uv run --project packages/python/asp_graph_turbo --frozen pytest ...=.  The
+graph-turbo package owns =numpy= and =scipy=; long-term gates should not rely
+on hand-written =--with numpy --with scipy= invocations.

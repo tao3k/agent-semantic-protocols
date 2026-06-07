@@ -3,6 +3,7 @@ mod fzf;
 mod fzf_query_deps;
 mod ingest;
 mod pipe_frontier;
+mod provider_ontology;
 mod reasoning;
 mod suggest;
 

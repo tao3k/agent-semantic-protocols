@@ -135,7 +135,7 @@ fn render_source_flow(
     ));
     lines.push("6. Select one exact locator from the frontier.".to_string());
     lines.push(format!(
-        "7. Extract pure code with `asp {language_id} query --selector <path-or-range> --treesitter-query '<narrow-pattern>' --code .`."
+        "7. Extract pure code with `asp {language_id} query --selector <path-or-range> --treesitter-query '<narrow-pattern>' --workspace <workspace-root> --code`."
     ));
     lines.push("8. Treat stdout from `query --code` as pure source code only.".to_string());
     if semantic_ast_patch_enabled {

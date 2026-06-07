@@ -55,6 +55,7 @@ pub(crate) fn run_provider_method(
     if let Some(cache_probe) = &cache_probe
         && let Some(replay) = &cache_probe.replay
     {
+        crate::compact_mode::validate_compact_provider_stdout(&request, &replay.stdout)?;
         io::stdout()
             .write_all(&replay.stdout)
             .map_err(|error| format!("failed to write cache replay stdout: {error}"))?;
@@ -99,6 +100,9 @@ pub(crate) fn run_provider_method(
         let writeback_snapshot = snapshot.clone();
         let backend = LocalNativeCliBackend::new(snapshot);
         let mut output = backend.execute(&request)?;
+        if output.status_code == 0 {
+            crate::compact_mode::validate_compact_provider_stdout(&request, &output.stdout)?;
+        }
         let writeback_probe = if output.status_code == 0 && request.stdin.is_none() {
             write_prompt_output_cache_after_provider_success(
                 &parsed.project_root,
@@ -120,6 +124,9 @@ pub(crate) fn run_provider_method(
         }
         output
     };
+    if output.status_code == 0 {
+        crate::compact_mode::validate_compact_provider_stdout(&request, &output.stdout)?;
+    }
     crate::syntax_receipt::apply_syntax_query_receipt_metadata(&mut output.receipt, &output.stdout);
     if request.method == ClientMethod::Check {
         persist_last_check_output(
@@ -232,19 +239,7 @@ fn provider_forwarded_args(method: &ClientMethod, args: Vec<String>) -> Vec<Stri
     if method == &ClientMethod::Check {
         return normalize_check_forwarded_args(args);
     }
-    if method != &ClientMethod::Query || !args.iter().any(|arg| arg == "--treesitter-query") {
-        return args;
-    }
-    args.iter()
-        .enumerate()
-        .filter_map(|(index, arg)| {
-            if arg == "." && !arg_is_option_value(&args, index) {
-                None
-            } else {
-                Some(arg.clone())
-            }
-        })
-        .collect()
+    args
 }
 
 fn normalize_check_forwarded_args(args: Vec<String>) -> Vec<String> {
@@ -311,13 +306,6 @@ fn render_last_check_failure_frontier(
         ));
     }
     Ok(output.stdout.to_vec())
-}
-
-fn arg_is_option_value(args: &[String], index: usize) -> bool {
-    let Some(previous) = index.checked_sub(1).and_then(|previous| args.get(previous)) else {
-        return false;
-    };
-    previous.starts_with("--") && !previous.contains('=')
 }
 
 pub(crate) fn should_try_search_packet_first(request: &ClientRequest) -> bool {

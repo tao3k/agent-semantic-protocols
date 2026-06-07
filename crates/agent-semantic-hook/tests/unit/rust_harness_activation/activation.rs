@@ -89,8 +89,9 @@ fn rust_harness_activation_routes_direct_reads_to_provider_query() {
             "direct-source-read",
             "--selector",
             "src/lib.rs",
+            "--workspace",
+            ".",
             "--code",
-            "."
         ]
     );
 }

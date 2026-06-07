@@ -19,6 +19,10 @@ def test_failure_frontier_trace_comparison_evidence_is_valid() -> None:
     assert _validation_errors(_scenario("failure-frontier-real-trigger-trace-replay")) == []
 
 
+def test_failure_loop_memory_replay_scenario_is_valid() -> None:
+    assert _validation_errors(_scenario("failure-loop-memory-replay")) == []
+
+
 def test_failure_frontier_comparison_requires_receipt_or_trace_pair() -> None:
     scenario = _scenario("failure-frontier-real-trigger-trace-replay")
     comparison = _failure_frontier_comparison(scenario)

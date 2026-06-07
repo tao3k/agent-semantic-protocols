@@ -1,0 +1,350 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-fact-graph.v1.schema.json",
+  "title": "Semantic Fact Graph Packet v1",
+  "description": "Runtime provider packet for parser-owned field/type/collection fact graphs consumed by graph-turbo.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "protocolId",
+    "protocolVersion",
+    "languageId",
+    "providerId",
+    "projectRoot",
+    "query",
+    "nodes",
+    "edges"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.semantic-fact-graph"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "protocolId": {
+      "const": "agent.semantic-protocols.semantic-language"
+    },
+    "protocolVersion": {
+      "const": "1"
+    },
+    "languageId": {
+      "$ref": "#/$defs/languageId"
+    },
+    "providerId": {
+      "$ref": "#/$defs/providerId"
+    },
+    "projectRoot": {
+      "type": "string",
+      "minLength": 1
+    },
+    "query": {
+      "type": "string"
+    },
+    "nodes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/node"
+      }
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/edge"
+      }
+    }
+  },
+  "$defs": {
+    "languageId": {
+      "enum": ["rust", "python", "typescript", "julia"]
+    },
+    "providerId": {
+      "enum": ["rs-harness", "py-harness", "ts-harness", "julia-lang-project-harness"]
+    },
+    "provenance": {
+      "enum": ["parser", "build", "test", "failure", "receipt", "heuristic"]
+    },
+    "confidence": {
+      "enum": ["exact", "high", "medium", "low", "heuristic"]
+    },
+    "freshness": {
+      "enum": ["fresh", "cache-hit", "stale", "unknown"]
+    },
+    "collectionFamily": {
+      "enum": ["sequence", "map", "set", "iterator", "optional", "result"]
+    },
+    "accessMode": {
+      "enum": ["read", "write", "append", "mutate", "construct", "validate"]
+    },
+    "nodeId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "semanticFactKind": {
+      "enum": ["field", "type", "collection", "hot", "test", "package", "build", "dependency", "owner", "query", "evidence"]
+    },
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "role", "value", "action"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/nodeId"
+        },
+        "kind": {
+          "enum": ["query", "owner", "field", "type", "collection", "hot", "test", "package", "build", "dependency", "failure", "assert", "key", "evidence"]
+        },
+        "role": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "value": {
+          "type": "string",
+          "minLength": 1
+        },
+        "action": {
+          "enum": ["query", "owner", "code", "evidence", "tests", "package", "build", "deps", "failure"]
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ownerPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "symbol": {
+          "type": "string",
+          "minLength": 1
+        },
+        "startLine": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "endLine": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "locator": {
+          "type": "string",
+          "minLength": 1
+        },
+        "matchText": {
+          "type": "string"
+        },
+        "fields": {
+          "$ref": "#/$defs/nodeFields"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "field"
+              }
+            },
+            "required": ["kind"]
+          },
+          "then": {
+            "required": ["fields"],
+            "properties": {
+              "fields": {
+                "required": ["field"]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "type"
+              }
+            },
+            "required": ["kind"]
+          },
+          "then": {
+            "required": ["fields"],
+            "properties": {
+              "fields": {
+                "required": ["type"]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "collection"
+              }
+            },
+            "required": ["kind"]
+          },
+          "then": {
+            "required": ["fields"],
+            "properties": {
+              "fields": {
+                "required": ["collection"]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "nodeFields": {
+      "type": "object",
+      "additionalProperties": {
+        "anyOf": [
+          { "type": "string" },
+          { "type": "number" },
+          { "type": "integer" },
+          { "type": "boolean" },
+          {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                { "type": "string" },
+                { "type": "number" },
+                { "type": "integer" },
+                { "type": "boolean" }
+              ]
+            }
+          }
+        ]
+      },
+      "properties": {
+        "languageId": {
+          "$ref": "#/$defs/languageId"
+        },
+        "providerId": {
+          "$ref": "#/$defs/providerId"
+        },
+        "semanticFactKind": {
+          "$ref": "#/$defs/semanticFactKind"
+        },
+        "provenance": {
+          "$ref": "#/$defs/provenance"
+        },
+        "confidence": {
+          "$ref": "#/$defs/confidence"
+        },
+        "freshness": {
+          "$ref": "#/$defs/freshness"
+        },
+        "collectionFamily": {
+          "$ref": "#/$defs/collectionFamily"
+        },
+        "field": {
+          "$ref": "#/$defs/fieldFact"
+        },
+        "type": {
+          "$ref": "#/$defs/typeFact"
+        },
+        "collection": {
+          "$ref": "#/$defs/collectionFact"
+        }
+      }
+    },
+    "fieldFact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ownerKind", "name", "ownerPath", "access"],
+      "properties": {
+        "ownerKind": {
+          "enum": ["struct", "class", "interface", "dataclass", "module", "object"]
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ownerPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "access": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/accessMode"
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "typeFact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "element": {
+          "type": "string",
+          "minLength": 1
+        },
+        "key": {
+          "type": "string",
+          "minLength": 1
+        },
+        "value": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "collectionFact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["family", "impl"],
+      "properties": {
+        "family": {
+          "$ref": "#/$defs/collectionFamily"
+        },
+        "impl": {
+          "type": "string",
+          "minLength": 1
+        },
+        "elementType": {
+          "type": "string",
+          "minLength": 1
+        },
+        "keyType": {
+          "type": "string",
+          "minLength": 1
+        },
+        "valueType": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mutation": {
+          "type": "array",
+          "items": {
+            "enum": ["append", "insert", "remove", "update", "clear", "replace"]
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "target", "relation"],
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/nodeId"
+        },
+        "target": {
+          "$ref": "#/$defs/nodeId"
+        },
+        "relation": {
+          "enum": ["matches", "contains", "has_type", "collection_of", "covers", "covered_by", "tests", "belongs_to", "packages", "builds", "targets", "depends_on", "affects", "fails", "explains", "points_to", "validates"]
+        }
+      }
+    }
+  }
+}

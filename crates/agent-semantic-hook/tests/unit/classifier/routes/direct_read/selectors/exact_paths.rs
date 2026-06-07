@@ -64,8 +64,9 @@ fn rust_basename_reads_route_through_asp_facade() {
                 "direct-source-read",
                 "--selector",
                 selector,
+                "--workspace",
+                ".",
                 "--code",
-                "."
             ],
             "{selector}"
         );
@@ -160,8 +161,9 @@ fn direct_read_path_field_variants_route_source_paths() {
                 "direct-source-read",
                 "--selector",
                 selector,
+                "--workspace",
+                ".",
                 "--code",
-                "."
             ],
             "{selector}"
         );

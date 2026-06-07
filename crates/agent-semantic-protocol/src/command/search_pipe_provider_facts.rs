@@ -36,7 +36,7 @@ pub(super) fn collect_provider_graph_facts(
     let Some(context) = context else {
         return Ok(ProviderGraphFacts::default());
     };
-    if language_id != "rust" || candidates.is_empty() {
+    if candidates.is_empty() {
         return Ok(ProviderGraphFacts::default());
     }
     let args = vec![

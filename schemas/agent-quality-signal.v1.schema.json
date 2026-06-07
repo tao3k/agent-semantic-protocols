@@ -1,0 +1,419 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/agent-quality-signal.v1.schema.json",
+  "title": "Agent Quality Signal Catalog",
+  "description": "Language-neutral catalog of agent coding quality signals, evidence requirements, repair recipes, severity policy, and staged provider mappings.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "protocolId",
+    "protocolVersion",
+    "signalSetId",
+    "signals"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.agent-quality-signal"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "protocolId": {
+      "const": "agent.semantic-protocols.agent-coding-quality"
+    },
+    "protocolVersion": {
+      "const": "1"
+    },
+    "signalSetId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_.:-]*$"
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sourceVersion": {
+      "type": "string",
+      "minLength": 1
+    },
+    "signals": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/signal"
+      }
+    },
+    "providerMappings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/providerMapping"
+      }
+    },
+    "fields": {
+      "$ref": "#/$defs/fields"
+    }
+  },
+  "$defs": {
+    "scalar": {
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "fields": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/scalar"
+      }
+    },
+    "languageId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "providerId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "projectPath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*)$"
+    },
+    "domain": {
+      "enum": [
+        "control-flow",
+        "native-idiom",
+        "domain-type",
+        "error-resource",
+        "concurrency",
+        "owner-boundary",
+        "verification",
+        "custom"
+      ]
+    },
+    "signalId": {
+      "type": "string",
+      "pattern": "^(control-flow|native-idiom|domain-type|error-resource|concurrency|owner-boundary|verification|custom)\\.[a-z][a-z0-9-]*$"
+    },
+    "severity": {
+      "enum": [
+        "info",
+        "advisory",
+        "warning",
+        "blocking-candidate",
+        "error"
+      ]
+    },
+    "evidenceKind": {
+      "enum": [
+        "official-manual",
+        "community-practice",
+        "agent-quality-paper",
+        "parser-fact",
+        "provider-implementation",
+        "self-fixture",
+        "real-project-evidence",
+        "custom"
+      ]
+    },
+    "sourceEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "claim"
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/evidenceKind"
+        },
+        "languageId": {
+          "$ref": "#/$defs/languageId"
+        },
+        "project": {
+          "type": "string",
+          "minLength": 1
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "claim": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "parserFact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "factKey"
+      ],
+      "properties": {
+        "factKey": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.:-]*$"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "languageId": {
+          "$ref": "#/$defs/languageId"
+        },
+        "providerFactKey": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "repairRecipe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "recipeId",
+        "summary"
+      ],
+      "properties": {
+        "recipeId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.:-]*$"
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "languageHints": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/languageHint"
+          }
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "languageHint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "languageId",
+        "hint"
+      ],
+      "properties": {
+        "languageId": {
+          "$ref": "#/$defs/languageId"
+        },
+        "hint": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "promotionRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "targetSeverity",
+        "requiredEvidence"
+      ],
+      "properties": {
+        "targetSeverity": {
+          "$ref": "#/$defs/severity"
+        },
+        "requiredEvidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/evidenceKind"
+          }
+        },
+        "requiresFixture": {
+          "type": "boolean"
+        },
+        "requiresRealProjectEvidence": {
+          "type": "boolean"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "mappingStatus": {
+      "enum": [
+        "ready",
+        "partial",
+        "planned",
+        "blocked"
+      ]
+    },
+    "providerMapping": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "languageId",
+        "providerId",
+        "status",
+        "signalIds"
+      ],
+      "properties": {
+        "languageId": {
+          "$ref": "#/$defs/languageId"
+        },
+        "providerId": {
+          "$ref": "#/$defs/providerId"
+        },
+        "status": {
+          "$ref": "#/$defs/mappingStatus"
+        },
+        "signalIds": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/signalId"
+          }
+        },
+        "sourceOwners": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/projectPath"
+          }
+        },
+        "factKeys": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "fixturePlan": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/projectPath"
+          }
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "signal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "signalId",
+        "domain",
+        "title",
+        "agentRisk",
+        "sourceEvidence",
+        "parserFacts",
+        "repairRecipes",
+        "defaultSeverity",
+        "promotable"
+      ],
+      "properties": {
+        "signalId": {
+          "$ref": "#/$defs/signalId"
+        },
+        "domain": {
+          "$ref": "#/$defs/domain"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "agentRisk": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sourceEvidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/sourceEvidence"
+          }
+        },
+        "parserFacts": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/parserFact"
+          }
+        },
+        "repairRecipes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/repairRecipe"
+          }
+        },
+        "defaultSeverity": {
+          "$ref": "#/$defs/severity"
+        },
+        "promotable": {
+          "type": "boolean"
+        },
+        "promotionPolicy": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/promotionRule"
+          }
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    }
+  }
+}

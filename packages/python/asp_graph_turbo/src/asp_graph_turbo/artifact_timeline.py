@@ -14,6 +14,7 @@ from .artifact_fanout_planning import fanout_planning_candidates
 from .artifact_fzf_promotion import fzf_promotion_candidates
 from .artifact_owner_collapse import owner_collapse_candidates
 from .artifact_prime_suppression import prime_suppression_candidates
+from .artifact_read_loop import read_loop_risk_summary
 from .artifact_timeline_targets import optimization_targets
 
 
@@ -40,6 +41,7 @@ class TimelineContext:
     fzf_promotion: dict[str, object]
     owner_collapse: dict[str, object]
     fanout_planning: dict[str, object]
+    read_loop_risk: dict[str, object]
 
 
 def evaluate_artifact_timeline(
@@ -74,9 +76,7 @@ def _timeline_context(
     sessions, events = _selected_sessions(events, params)
     session_rows = [_session_row(session, params) for session in sessions]
     burst_rows = [
-        burst
-        for session in sessions
-        for burst in _microburst_rows(session, params)
+        burst for session in sessions for burst in _microburst_rows(session, params)
     ]
     repeat_groups = _repeat_groups(events, None)
     fanout_hotspots = _fanout_hotspots(burst_rows, None)
@@ -96,6 +96,7 @@ def _timeline_context(
         fanout_hotspots,
         limit=params.examples,
     )
+    read_loop_risk = read_loop_risk_summary(events, limit=params.examples)
     return TimelineContext(
         events=events,
         sessions=sessions,
@@ -107,6 +108,7 @@ def _timeline_context(
         fzf_promotion=fzf_promotion,
         owner_collapse=owner_collapse,
         fanout_planning=fanout_planning,
+        read_loop_risk=read_loop_risk,
     )
 
 
@@ -176,6 +178,10 @@ def _timeline_report(
         "collapsibleOwnerSearches": context.owner_collapse["collapsibleSearches"],
         "routableFanoutBursts": context.fanout_planning["routableFanoutBursts"],
         "avoidableFanoutBranches": context.fanout_planning["avoidableFanoutBranches"],
+        "readLoopDirectCodeReads": context.read_loop_risk["directCodeReads"],
+        "readLoopDuplicateSelectors": context.read_loop_risk["duplicateSelectors"],
+        "readLoopAdjacentRangeWindows": context.read_loop_risk["adjacentRangeWindows"],
+        "readLoopSameOwnerScans": context.read_loop_risk["sameOwnerScans"],
         "kindCounts": dict(
             sorted(Counter(event.kind for event in context.events).items())
         ),
@@ -193,6 +199,7 @@ def _timeline_report(
         "fzfPromotion": context.fzf_promotion,
         "ownerCollapse": context.owner_collapse,
         "fanoutPlanning": context.fanout_planning,
+        "readLoopRisk": context.read_loop_risk,
         "actionSummary": summary,
     }
     report["efficiencyEstimate"] = efficiency_estimate(report)
@@ -236,7 +243,9 @@ def _session_row(
             if int(burst["fanoutWidth"]) >= 2
         ),
         "repeatSearches": _repeat_searches(session),
-        "maxFanoutWidth": max((int(burst["fanoutWidth"]) for burst in bursts), default=0),
+        "maxFanoutWidth": max(
+            (int(burst["fanoutWidth"]) for burst in bursts), default=0
+        ),
         "llmReasoningGaps": len(reasoning_gaps),
         "maxReasoningGapSeconds": max(reasoning_gaps, default=0.0),
         "kindCounts": dict(sorted(Counter(event.kind for event in session).items())),

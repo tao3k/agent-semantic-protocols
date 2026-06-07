@@ -2,7 +2,7 @@
 name = "agent-semantic-protocols-python-workspace"
 version = "0.1.0"
 description = "Python workspace for Agent Semantic Protocols packages."
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
     "agent-semantic-protocols-tools",
     "asp-graph-turbo",
@@ -10,6 +10,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "python-lang-project-harness",
     "pytest>=9,<10",
 ]
 
@@ -19,6 +20,7 @@ package = false
 [tool.uv.sources]
 agent-semantic-protocols-tools = { workspace = true }
 asp-graph-turbo = { workspace = true }
+python-lang-project-harness = { path = "../../languages/python-lang-project-harness", editable = true }
 
 [tool.uv.workspace]
 members = [

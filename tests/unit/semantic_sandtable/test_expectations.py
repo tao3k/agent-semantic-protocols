@@ -33,13 +33,13 @@ def test_allow_non_zero_exit_suppresses_exit_code_error() -> None:
     assert result.errors == []
 
 
-def test_pipe_flow_expectation_reports_budget_and_stage_drift() -> None:
+def test_pipe_flow_output_budget_requires_attribution() -> None:
     result = StepResult(
         scenario_id="rust.live",
         step_id="claude",
         command=["claude"],
         status="pass",
-        exit_code=1,
+        exit_code=0,
         elapsed_ms=10,
         stdout_lines=1,
         stderr_lines=0,
@@ -47,17 +47,89 @@ def test_pipe_flow_expectation_reports_budget_and_stage_drift() -> None:
         stderr_bytes=0,
         observations={
             "pipeFlow": {
-                "aspCommands": 9,
-                "searchCommands": 5,
-                "queryCommands": 1,
-                "repeatedCommands": 1,
-                "searchPipeCommands": 2,
-                "searchPrimeCommands": 2,
-                "searchFzfCommands": 0,
-                "searchReasoningCommands": 1,
-                "querySelectorCommands": 0,
+                "aspCommands": 1,
                 "complexPipeFlow": False,
-                "missingComplexPipeStages": ["query-selector"],
+                "missingComplexPipeStages": [],
+            }
+        },
+    )
+
+    validate_step(
+        {"expect": {"pipeFlow": {"maxAspCommandOutputBytes": 8000}}},
+        result,
+        "done",
+        "",
+        Path("."),
+    )
+
+    assert (
+        "pipeFlow aspCommandOutputBytes missing for maxAspCommandOutputBytes"
+        in result.errors
+    )
+
+
+def test_pipe_flow_precision_gate_accepts_preserved_semantic_evidence() -> None:
+    result = StepResult(
+        scenario_id="rust.live",
+        step_id="claude",
+        command=["claude"],
+        status="pass",
+        exit_code=0,
+        elapsed_ms=10,
+        stdout_lines=1,
+        stderr_lines=0,
+        stdout_bytes=4,
+        stderr_bytes=0,
+        observations={
+            "pipeFlow": {
+                "aspCommands": 3,
+                "complexPipeFlow": True,
+                "missingComplexPipeStages": [],
+                "searchPipeOutputPrecision": {
+                    "fieldFacts": 1,
+                    "typeFacts": 1,
+                    "collectionFacts": 1,
+                    "collectionOfEdges": 1,
+                    "s1Selectors": 1,
+                    "nextCommands": 1,
+                    "exactQueryCoverage": 1,
+                    "debugRows": 0,
+                },
+            }
+        },
+    )
+
+    validate_step(
+        {"expect": {"pipeFlow": {"requireSearchPipePrecision": True}}},
+        result,
+        "done",
+        "",
+        Path("."),
+    )
+
+    assert result.errors == []
+
+
+def test_pipe_flow_frontier_context_gates_accept_followed_frontier() -> None:
+    result = StepResult(
+        scenario_id="rust.live",
+        step_id="claude",
+        command=["claude"],
+        status="pass",
+        exit_code=0,
+        elapsed_ms=10,
+        stdout_lines=1,
+        stderr_lines=0,
+        stdout_bytes=4,
+        stderr_bytes=0,
+        observations={
+            "pipeFlow": {
+                "aspCommands": 3,
+                "complexPipeFlow": True,
+                "missingComplexPipeStages": [],
+                "frontierFollowRate": 0.75,
+                "contextPrecision": 1.0,
+                "contextUtilization": 0.75,
             }
         },
     )
@@ -65,19 +137,11 @@ def test_pipe_flow_expectation_reports_budget_and_stage_drift() -> None:
     validate_step(
         {
             "expect": {
-                "allowNonZeroExit": True,
                 "pipeFlow": {
-                    "maxAspCommands": 8,
-                    "maxSearchCommands": 4,
-                    "maxRepeatedCommands": 0,
-                    "maxSearchPipeCommands": 1,
-                    "maxSearchPrimeCommands": 1,
-                    "minQuerySelectorCommands": 1,
-                    "requireComplexPipeFlow": True,
-                    "requireTokenCost": True,
-                    "requiredStages": ["search-pipe", "query-selector"],
-                    "forbiddenStages": ["repeated-prime", "repeated-commands"],
-                },
+                    "minFrontierFollowRate": 0.75,
+                    "minContextPrecision": 0.9,
+                    "minContextUtilization": 0.7,
+                }
             }
         },
         result,
@@ -86,23 +150,64 @@ def test_pipe_flow_expectation_reports_budget_and_stage_drift() -> None:
         Path("."),
     )
 
-    assert "pipeFlow aspCommands=9 exceeds maxAspCommands=8" in result.errors
-    assert "pipeFlow searchCommands=5 exceeds maxSearchCommands=4" in result.errors
-    assert "pipeFlow repeatedCommands=1 exceeds maxRepeatedCommands=0" in result.errors
-    assert (
-        "pipeFlow searchPipeCommands=2 exceeds maxSearchPipeCommands=1"
-        in result.errors
+    assert result.errors == []
+
+
+def test_pipe_flow_memory_and_failure_precision_gates_accept_preserved_frontier() -> (
+    None
+):
+    result = StepResult(
+        scenario_id="rust.live",
+        step_id="claude",
+        command=["claude"],
+        status="pass",
+        exit_code=0,
+        elapsed_ms=10,
+        stdout_lines=1,
+        stderr_lines=0,
+        stdout_bytes=4,
+        stderr_bytes=0,
+        observations={
+            "pipeFlow": {
+                "aspCommands": 3,
+                "complexPipeFlow": True,
+                "missingComplexPipeStages": [],
+                "readLoopMemory": {
+                    "entryCount": 1,
+                    "entries": [{"selector": "src/lib.rs:1:3"}],
+                },
+                "failureLoopMemory": {
+                    "entryCount": 1,
+                    "entries": [{"selector": "src/lib.rs:1:3"}],
+                },
+                "failureFrontierOutputPrecision": {
+                    "failureFacts": 1,
+                    "assertFacts": 1,
+                    "hotFacts": 1,
+                    "frontierActions": 1,
+                    "queryProfiles": 1,
+                    "omitRows": 1,
+                    "avoidRows": 1,
+                    "debugRows": 0,
+                },
+            }
+        },
     )
-    assert (
-        "pipeFlow searchPrimeCommands=2 exceeds maxSearchPrimeCommands=1"
-        in result.errors
+
+    validate_step(
+        {
+            "expect": {
+                "pipeFlow": {
+                    "requireReadLoopMemory": True,
+                    "requireFailureFrontierPrecision": True,
+                    "requireFailureLoopMemory": True,
+                }
+            }
+        },
+        result,
+        "done",
+        "",
+        Path("."),
     )
-    assert (
-        "pipeFlow querySelectorCommands=0 below minQuerySelectorCommands=1"
-        in result.errors
-    )
-    assert "pipeFlow complex=false missing=['query-selector']" in result.errors
-    assert "tokenCost missing from agent observations" in result.errors
-    assert "pipeFlow missing required stage 'query-selector'" in result.errors
-    assert "pipeFlow contains forbidden stage 'repeated-prime'" in result.errors
-    assert "pipeFlow contains forbidden stage 'repeated-commands'" in result.errors
+
+    assert result.errors == []

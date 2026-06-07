@@ -3,7 +3,15 @@
 from __future__ import annotations
 
 from .constants import ALGORITHM_ID
-from .model import GraphProfile, GraphResult, MergedWindow, Node, ProfileCompatibility
+from .model import (
+    GraphProfile,
+    GraphResult,
+    MergedWindow,
+    Node,
+    ProfileCompatibility,
+    ProfileMatrixSummary,
+    ReceiptAdjustment,
+)
 from .profiles import frontier_action
 
 
@@ -21,7 +29,9 @@ def result_to_packet(result: GraphResult) -> dict[str, object]:
         "kindBudgets": dict(result.kind_budgets),
         "profiles": list(result.profiles),
         "rank": [node.id for node in result.ranked_nodes],
-        "rankedNodes": [_node_to_packet(result.profile, node) for node in result.ranked_nodes],
+        "rankedNodes": [
+            _node_to_packet(result.profile, node) for node in result.ranked_nodes
+        ],
         "frontier": [
             {"nodeId": entry.node.id, "action": entry.action, "score": entry.score}
             for entry in result.frontier
@@ -36,9 +46,15 @@ def result_to_packet(result: GraphResult) -> dict[str, object]:
             }
             for edge in result.selected_edges
         ],
-        "mergedWindows": [_merged_window_to_packet(window) for window in result.merged_windows],
+        "mergedWindows": [
+            _merged_window_to_packet(window) for window in result.merged_windows
+        ],
         "profileCompatibility": [
-            _profile_compatibility_to_packet(entry) for entry in result.profile_compatibility
+            _profile_compatibility_to_packet(entry)
+            for entry in result.profile_compatibility
+        ],
+        "profileMatrices": [
+            _profile_matrix_to_packet(entry) for entry in result.profile_matrices
         ],
         "sourceSinkFrontier": {
             "sourceIds": list(result.source_sink_frontier.source_ids),
@@ -79,6 +95,10 @@ def result_to_packet(result: GraphResult) -> dict[str, object]:
             }
             for explanation in result.rank_explanations
         ],
+        "receiptAdjustments": [
+            _receipt_adjustment_to_packet(adjustment)
+            for adjustment in result.receipt_adjustments
+        ],
         "algorithmMetrics": {
             "nodeCount": result.algorithm_metrics.node_count,
             "edgeCount": result.algorithm_metrics.edge_count,
@@ -88,6 +108,23 @@ def result_to_packet(result: GraphResult) -> dict[str, object]:
             "pathCount": result.algorithm_metrics.path_count,
             "mergedWindowCount": result.algorithm_metrics.merged_window_count,
             "cacheStatus": result.algorithm_metrics.cache_status,
+            "readLoopDirectCodeActionCount": (
+                result.algorithm_metrics.read_loop_direct_code_action_count
+            ),
+            "readLoopDuplicateSelectorCount": (
+                result.algorithm_metrics.read_loop_duplicate_selector_count
+            ),
+            "readLoopAdjacentRangeWindowCount": (
+                result.algorithm_metrics.read_loop_adjacent_range_window_count
+            ),
+            "readLoopSameOwnerScanCount": (
+                result.algorithm_metrics.read_loop_same_owner_scan_count
+            ),
+            "readMemorySuppressedCount": (
+                result.algorithm_metrics.read_memory_suppressed_count
+            ),
+            "receiptBoostCount": result.algorithm_metrics.receipt_boost_count,
+            "receiptPenaltyCount": result.algorithm_metrics.receipt_penalty_count,
         },
         "omit": list(result.omit),
         "avoid": list(result.avoid),
@@ -131,4 +168,24 @@ def _profile_compatibility_to_packet(entry: ProfileCompatibility) -> dict[str, o
         ],
         "kindBonus": dict(entry.kind_bonus),
         "frontierActions": dict(entry.frontier_actions),
+    }
+
+
+def _profile_matrix_to_packet(entry: ProfileMatrixSummary) -> dict[str, object]:
+    return {
+        "profile": entry.profile,
+        "relationCount": entry.relation_count,
+        "transitionCount": entry.transition_count,
+        "supportedEdgeCount": entry.supported_edge_count,
+        "reachableEdgeCount": entry.reachable_edge_count,
+        "density": entry.density,
+    }
+
+
+def _receipt_adjustment_to_packet(entry: ReceiptAdjustment) -> dict[str, object]:
+    return {
+        "nodeId": entry.node_id,
+        "effect": entry.effect,
+        "scoreDelta": entry.score_delta,
+        "reason": entry.reason,
     }
