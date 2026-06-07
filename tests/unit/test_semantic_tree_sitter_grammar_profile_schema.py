@@ -24,6 +24,10 @@ _TYPESCRIPT_PROFILE_PATH = (
     _REPO_ROOT
     / "languages/typescript-lang-project-harness/tree-sitter/tree-sitter-typescript/grammar-profile.json"
 )
+_JULIA_PROFILE_PATH = (
+    _REPO_ROOT
+    / "languages/JuliaLangProjectHarness.jl/tree-sitter/tree-sitter-julia/grammar-profile.json"
+)
 
 
 def _validator():
@@ -40,6 +44,14 @@ def _python_profile() -> dict[str, Any]:
 
 def _typescript_profile() -> dict[str, Any]:
     return _profile(_TYPESCRIPT_PROFILE_PATH)
+
+
+def _julia_profile() -> dict[str, Any]:
+    return _profile(_JULIA_PROFILE_PATH)
+
+
+def _all_profiles() -> list[dict[str, Any]]:
+    return [_rust_profile(), _python_profile(), _typescript_profile(), _julia_profile()]
 
 
 def _profile(path: Path) -> dict[str, Any]:
@@ -61,6 +73,10 @@ def test_python_tree_sitter_grammar_profile_is_valid() -> None:
 
 def test_typescript_tree_sitter_grammar_profile_is_valid() -> None:
     assert _errors(_typescript_profile()) == []
+
+
+def test_julia_tree_sitter_grammar_profile_is_valid() -> None:
+    assert _errors(_julia_profile()) == []
 
 
 def test_profile_requires_main_asp_revision_provenance() -> None:
@@ -136,7 +152,7 @@ def test_profile_rejects_unscoped_native_fact_projection_captures() -> None:
 
 
 def test_native_fact_projection_captures_are_catalog_declared() -> None:
-    for profile in [_rust_profile(), _python_profile(), _typescript_profile()]:
+    for profile in _all_profiles():
         _assert_native_fact_projection_captures_are_catalog_declared(profile)
 
 
@@ -153,7 +169,7 @@ def _assert_native_fact_projection_captures_are_catalog_declared(
 
 
 def test_query_corpus_validator_matches_asp_workspace_provenance() -> None:
-    for profile in [_rust_profile(), _python_profile(), _typescript_profile()]:
+    for profile in _all_profiles():
         assert (
             profile["queryCorpus"]["validator"]
             == profile["aspWorkspace"]["queryCorpusValidator"]

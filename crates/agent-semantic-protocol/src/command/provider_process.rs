@@ -295,7 +295,7 @@ fn write_facade_stream(
 ) -> Result<(), String> {
     match std::str::from_utf8(bytes) {
         Ok(text) => stream
-            .write_all(rewrite_provider_command_mentions(language_id, provider, &text).as_bytes())
+            .write_all(rewrite_provider_command_mentions(language_id, provider, text).as_bytes())
             .map_err(|error| format!("failed to write provider output: {error}")),
         Err(_) => stream
             .write_all(bytes)

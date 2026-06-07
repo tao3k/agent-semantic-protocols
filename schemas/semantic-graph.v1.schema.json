@@ -170,6 +170,11 @@
             "dependency",
             "test",
             "finding",
+            "failure",
+            "assert",
+            "hot",
+            "key",
+            "evidence",
             "symbol",
             "config",
             "tsconfig",
@@ -245,6 +250,7 @@
             "fzf",
             "tests",
             "ingest",
+            "failure",
             "custom"
           ]
         },

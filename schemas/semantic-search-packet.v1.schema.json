@@ -91,7 +91,8 @@
         "tests",
         "fzf",
         "reasoning",
-        "ingest"
+        "ingest",
+        "failure"
       ]
     },
     "renderMode": {
@@ -468,6 +469,9 @@
         "dep",
         "test",
         "finding",
+        "failure",
+        "hot",
+        "evidence",
         "result",
         "self",
         "feature",
@@ -900,6 +904,7 @@
             "fzf",
             "tests",
             "ingest",
+            "failure",
             "custom"
           ]
         },
@@ -1220,6 +1225,11 @@
             "dependency",
             "test",
             "finding",
+            "failure",
+            "assert",
+            "hot",
+            "key",
+            "evidence",
             "symbol",
             "config",
             "tsconfig",

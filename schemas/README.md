@@ -23,6 +23,11 @@ and filtered `--content` element projections, with explicit `queryKind`,
 document `query` routes, not source `search owner` or owner/items routes. These
 providers must not report document facts through source-language
 `nativeSyntaxFacts`.
+For tree-sitter-backed source query rendering, non-`--code` output is
+locator/frontier evidence only, while `--code` prints pure source code. Query
+render profiles such as the `compact-graph-frontier` profile and
+`corpus-locator` profile project an ASP-compiled tree-sitter query plan over
+provider-native projection; they do not introduce a new packet surface.
 RFC 009 adds optional `reasoningProfiles` to this packet as a typed return-entry
 surface for `search prime` and `search reasoning <profile>`. Those entries
 describe profile names, selector slots, returns, and frontier actions; they
@@ -874,7 +879,10 @@ protocol.
 input packet for the `asp-graph-turbo` Python workspace package. It carries
 the requested reasoning profile, algorithm id, seed node ids, ranking budget,
 optional per-kind budgets, optional window-merge controls, and typed graph
-facts under `graph.nodes[]` and `graph.edges[]`.
+facts under `graph.nodes[]` and `graph.edges[]`. Fast-search request nodes may
+carry parser-owned `syntaxQuery` locators for candidate symbols, hot range
+nodes for direct code follow-ups, and dependency package nodes connected by
+`owner -> dependency` import edges for query-deps routing.
 `semantic-graph-turbo-result.v1.schema.json` is the matching schema-owned
 response packet. It records the effective profile, algorithm, seed nodes,
 budget, per-kind budgets, ranked node ids, frontier actions, relation edges,

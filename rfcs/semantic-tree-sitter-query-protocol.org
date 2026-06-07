@@ -1426,7 +1426,8 @@ Required evidence record:
 [syntax-real-evidence] language=<id> provider=<id> project=<name>
 commands=search-prime,syntax-frontier,exact-selector-code,hook-recovery
 metrics=commandCount=<n>,providerProcessCount=<n>,packetBytes=<n>,coldElapsedMs=<n>,warmElapsedMs=<n>
-metrics=syntaxQueryCount=<n>,treeSitterArtifactCount=<n>,directReadCount=<n>,exactCodeCount=<n>,manualRangeScanCount=<n>,repeatedTriggerReduction=<n>
+metrics=syntaxQueryCount=<n>,exactCodeCount=<n>,manualRangeScanCount=<n>,repeatedTriggerReduction=<n>
+metrics=treeSitterArtifactCount=<n>,directReadCount=<n>
 outputs=frontier-no-code,pure-code-stdout,registry-descriptor,query-corpus
 cacheClaim=none|warm-provider|hit
 #+end_example
