@@ -22,10 +22,13 @@ pub(super) fn render_search_pipe_plan(
     let quoted_query = shell_quote(query);
     let actions = concrete_pipe_actions(candidates, ranked_compact);
     let action_stages = if actions.is_empty() {
-        "pipeStages=search-prime,search-pipe,search-reasoning,query-selector\n".to_string()
+        "pipeStages=search-prime,search-pipe,query-selector,search-reasoning\n\
+selectorPolicy=defer reason=no-exact-selector next=search-reasoning\n"
+            .to_string()
     } else {
         render_action_lines(&actions)
     };
+    let next_action_lines = render_next_action_lines(language_id, &actions);
     let command_line = if actions.is_empty() {
         format!(
             "pipeCommands=context=>asp {language_id} search prime --view seeds .,pipe=>asp {language_id} search pipe {quoted_query} --view seeds .,owner-query=>asp {language_id} search reasoning owner-query --owner <owner-path> --query {quoted_query} --view seeds .,selector=>asp {language_id} query --selector <selector> --code .\n"
@@ -40,9 +43,10 @@ pipeExpr=prime |> search(term={quoted_query}) |> rank(profile=owner-query) |> fi
 pipeProjections=graph-frontier,frontierActions,pipeCommands\n\
 {choice_line}\
 {action_stages}\
+{next_action_lines}\
 {command_line}\
-stop=after-first-exact-selector-or-after-projected-branches answer-from-evidence=true no-search-after-projected-branches=true\n\
-avoid=repeat-prime,repeat-pipe,query-rewrite-pipe,repeat-fzf,broad-fzf,post-projection-owner-search,post-projection-fzf,post-projection-treesitter-guide,raw-read,manual-window-scan,wide-windows\n"
+stop=after-first-query-selector-read-or-after-projected-branches answer-from-evidence=true no-search-after-projected-branches=true\n\
+avoid=repeat-prime,repeat-pipe,query-rewrite-pipe,reasoning-before-selector,repeat-fzf,broad-fzf,post-projection-owner-search,post-projection-fzf,post-projection-treesitter-guide,raw-read,manual-window-scan,wide-windows\n"
     )
 }
 
@@ -279,15 +283,10 @@ fn node_symbol(node: &str) -> Option<String> {
 }
 
 fn render_action_lines(actions: &[PipeAction]) -> String {
-    let mut rendered =
-        "pipeStages=search-prime,search-pipe,search-reasoning,query-selector\n".to_string();
+    let mut rendered = "pipeStages=search-prime,search-pipe,query-selector,search-reasoning\n\
+selectorPolicy=run-first reason=exact-selector-present before=search-reasoning\n"
+        .to_string();
     for action in actions {
-        let _ = writeln!(
-            rendered,
-            "frontierActions=R{index}.reasoning(owner={owner},querySource=search-pipe)!search-reasoning",
-            index = action.index,
-            owner = action.owner,
-        );
         let _ = writeln!(
             rendered,
             "frontierActions=S{index}.selector(selector={selector},owner={owner},symbol={symbol})!query-selector",
@@ -296,8 +295,28 @@ fn render_action_lines(actions: &[PipeAction]) -> String {
             owner = action.owner,
             symbol = action.symbol,
         );
+        let _ = writeln!(
+            rendered,
+            "frontierActions=R{index}.reasoning(owner={owner},querySource=search-pipe)!search-reasoning",
+            index = action.index,
+            owner = action.owner,
+        );
     }
     rendered
+}
+
+fn render_next_action_lines(language_id: &str, actions: &[PipeAction]) -> String {
+    let Some(action) = actions.first() else {
+        return String::new();
+    };
+    let command = format!(
+        "asp {language_id} query --selector {selector} --code .",
+        selector = shell_arg(&action.selector),
+    );
+    format!(
+        "recommendedNext=S{index}.query-selector\nnextCommand={command}\n",
+        index = action.index,
+    )
 }
 
 fn render_concrete_pipe_commands(language_id: &str, query: &str, actions: &[PipeAction]) -> String {
@@ -308,14 +327,14 @@ fn render_concrete_pipe_commands(language_id: &str, query: &str, actions: &[Pipe
     ];
     for action in actions {
         commands.push(format!(
-            "R{index}=>asp {language_id} search reasoning owner-query --owner {owner} --query {quoted_query} --view seeds .",
-            index = action.index,
-            owner = shell_arg(&action.owner),
-        ));
-        commands.push(format!(
             "S{index}=>asp {language_id} query --selector {selector} --code .",
             index = action.index,
             selector = shell_arg(&action.selector),
+        ));
+        commands.push(format!(
+            "R{index}=>asp {language_id} search reasoning owner-query --owner {owner} --query {quoted_query} --view seeds .",
+            index = action.index,
+            owner = shell_arg(&action.owner),
         ));
     }
     format!("pipeCommands={}\n", commands.join(","))

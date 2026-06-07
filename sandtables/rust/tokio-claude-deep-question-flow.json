@@ -1,6 +1,6 @@
 {
   "id": "rust.tokio-claude-deep-question-flow",
-  "title": "Tokio 0.6.0 live Claude deep question command audit flow",
+  "title": "Tokio 1.52.3 live Claude deep question command audit flow",
   "language": "rust",
   "coverage": [
     "search-flow",
@@ -15,9 +15,7 @@
     "live"
   ],
   "skipUnlessEnv": [
-    "ASP_LIVE_CLAUDE_CLI",
-    "ANTHROPIC_AUTH_TOKEN",
-    "SANDTABLE_RUST_TOKIO_060_ROOT"
+    "ANTHROPIC_AUTH_TOKEN"
   ],
   "execution": {
     "mode": "parallel",
@@ -30,7 +28,7 @@
       "name": "Tokio",
       "package": "tokio",
       "repository": "tokio-rs/tokio",
-      "workdirKind": "registry"
+      "workdirKind": "checkout"
     },
     "intentCases": [
       {
@@ -50,7 +48,7 @@
     "deepQuestionCases": [
       {
         "id": "tokio-vec-scalar-collection-fields",
-        "question": "In Tokio 0.6.0, what do Vec<scalar> collection fields mean, and why are they not modeled as ordinary scalar fields?",
+        "question": "In Tokio 1.52.3, what do Vec<scalar> collection fields mean, and why are they not modeled as ordinary scalar fields?",
         "stepIds": [
           "claude-tokio-vec-scalar-meaning"
         ],
@@ -75,13 +73,12 @@
           "canonicalCommands": [
             "asp rust search prime --view seeds .",
             "asp rust search pipe 'Vec scalar collection fields' --view seeds .",
-            "asp rust search reasoning owner-query --owner <owner-path> --query 'Vec scalar collection fields' --view seeds .",
-            "asp rust query --selector <field-or-owner-selector> --code ."
+            "asp rust query --selector <field-or-owner-selector> --code .",
+            "asp rust search reasoning owner-query --owner <owner-path> --query 'Vec scalar collection fields' --view seeds ."
           ],
           "requiredStages": [
             "search-prime",
             "search-pipe",
-            "search-reasoning",
             "query-selector"
           ],
           "forbiddenStages": [
@@ -89,8 +86,8 @@
             "repeated-commands"
           ],
           "notes": [
-            "Prime exactly once to build the project graph context, then start search pipe and follow the emitted pipeCommands.",
-            "The owner-query command is available when the first pipe frontier does not already expose an exact selector."
+            "Prime exactly once to build the project graph context, then start search pipe and follow recommendedNext/nextCommand when it exposes an exact selector.",
+            "The owner-query command is branch expansion after the selector read, or fallback when the first pipe frontier does not expose an exact selector."
           ]
         }
       }
@@ -98,8 +95,15 @@
   },
   "workdir": {
     "env": "SANDTABLE_RUST_TOKIO_060_ROOT",
+    "git": {
+      "url": "https://github.com/tokio-rs/tokio.git",
+      "ref": "tokio-1.52.3",
+      "depth": 1,
+      "cacheKey": "tokio-1.52.3",
+      "subdir": "."
+    },
     "candidates": [
-      "~/.cargo/registry/src/*/tokio-0.6.0"
+      "~/.cargo/registry/src/*/tokio-1.52.3"
     ]
   },
   "budgets": {
@@ -113,7 +117,7 @@
       "kind": "agent-sdk",
       "agentSdk": {
         "client": "claude",
-        "prompt": "In tokio 0.6.0, what do Vec<scalar> collection fields mean, and why are they not modeled as ordinary scalar fields? Use this repository's SKILL.md and ASP search/query workflow. Start with asp rust search prime --view seeds . once, then asp rust search pipe 'Vec scalar collection fields' --view seeds ., follow its pipeCommands through reasoning, then query selectors before any exact code read. List the asp commands you actually ran at the end.",
+        "prompt": "In tokio 1.52.3, what do Vec<scalar> collection fields mean, and why are they not modeled as ordinary scalar fields? Use this repository's SKILL.md and ASP search/query workflow. Start with asp rust search prime --view seeds . once, then asp rust search pipe 'Vec scalar collection fields' --view seeds .. If search pipe emits recommendedNext or nextCommand for an exact query selector, run that selector command first. Then run at most one corresponding search reasoning branch only if the selector evidence still needs branch expansion. List the asp commands you actually ran at the end.",
         "outputFormat": "stream-json",
         "includeHookEvents": true,
         "verbose": true,
@@ -146,7 +150,6 @@
           "requiredStages": [
             "search-prime",
             "search-pipe",
-            "search-reasoning",
             "query-selector"
           ],
           "forbiddenStages": [

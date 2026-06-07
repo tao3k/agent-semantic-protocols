@@ -12,6 +12,9 @@ use super::search_pipe_candidates::{
 };
 use super::search_pipe_graph_turbo::render_graph_turbo_request;
 use super::search_pipe_plan::render_search_pipe_plan;
+use super::search_pipe_provider_facts::{
+    ProviderGraphFacts, ProviderGraphFactsContext, collect_provider_graph_facts,
+};
 use super::search_pipe_render::{
     Candidate, render_empty_ingest_diagnostic, render_ingest_frontier, render_owner_query_frontier,
     render_owner_tests_frontier,
@@ -74,9 +77,17 @@ pub(super) fn run_asp_fast_search_command(
     locator_root: &Path,
     cache_home: &Path,
     config: &AspConfig,
+    provider_context: Option<&ProviderGraphFactsContext<'_>>,
 ) -> Result<(), String> {
     if is_search_pipe(args) {
-        return run_search_pipe_command(language_id, args, project_root, locator_root, config);
+        return run_search_pipe_command(
+            language_id,
+            args,
+            project_root,
+            locator_root,
+            config,
+            provider_context,
+        );
     }
     if is_search_suggest(args) {
         return run_search_suggest_command(language_id, args);
@@ -85,10 +96,24 @@ pub(super) fn run_asp_fast_search_command(
         return reject_unsupported_search_pipeline_command();
     }
     if is_search_ingest(args) {
-        return run_search_ingest_command(language_id, args, project_root, locator_root);
+        return run_search_ingest_command(
+            language_id,
+            args,
+            project_root,
+            locator_root,
+            config,
+            provider_context,
+        );
     }
     if is_search_fzf(args) {
-        return run_search_fzf_command(language_id, args, project_root, locator_root, config);
+        return run_search_fzf_command(
+            language_id,
+            args,
+            project_root,
+            locator_root,
+            config,
+            provider_context,
+        );
     }
     if is_search_failure(args) {
         return run_search_failure_command(
@@ -195,6 +220,7 @@ fn run_search_pipe_command(
     project_root: &Path,
     locator_root: &Path,
     config: &AspConfig,
+    provider_context: Option<&ProviderGraphFactsContext<'_>>,
 ) -> Result<(), String> {
     let pipe_args = parse_search_pipe_args(args)?;
     let candidates = collect_candidates(
@@ -205,6 +231,14 @@ fn run_search_pipe_command(
         &pipe_args.owners,
         config,
     )?;
+    let provider_facts = collect_provider_graph_facts(
+        language_id,
+        project_root,
+        Some(&pipe_args.query),
+        &candidates,
+        config,
+        provider_context,
+    )?;
     print_search_pipe_view(
         language_id,
         Some(&pipe_args.query),
@@ -212,6 +246,7 @@ fn run_search_pipe_command(
         &pipe_args.pipes,
         &pipe_args.view,
         true,
+        &provider_facts,
     )?;
     Ok(())
 }
@@ -283,6 +318,8 @@ fn run_search_ingest_command(
     args: &[String],
     project_root: &Path,
     locator_root: &Path,
+    config: &AspConfig,
+    provider_context: Option<&ProviderGraphFactsContext<'_>>,
 ) -> Result<(), String> {
     let ingest_args = parse_ingest_args(args)?;
     if !matches!(ingest_args.view.as_str(), "seeds" | "graph-turbo-request") {
@@ -300,6 +337,14 @@ fn run_search_ingest_command(
         return Ok(());
     }
     let candidates = parse_ingest_candidates(project_root, locator_root, stdin.as_slice());
+    let provider_facts = collect_provider_graph_facts(
+        language_id,
+        project_root,
+        None,
+        &candidates,
+        config,
+        provider_context,
+    )?;
     print_search_pipe_view(
         language_id,
         None,
@@ -307,6 +352,7 @@ fn run_search_ingest_command(
         &ingest_args.pipes,
         &ingest_args.view,
         false,
+        &provider_facts,
     )?;
     Ok(())
 }
@@ -317,6 +363,7 @@ fn run_search_fzf_command(
     project_root: &Path,
     locator_root: &Path,
     config: &AspConfig,
+    provider_context: Option<&ProviderGraphFactsContext<'_>>,
 ) -> Result<(), String> {
     let pipe_args = parse_fzf_args(args)?;
     if !matches!(pipe_args.view.as_str(), "seeds" | "graph-turbo-request") {
@@ -332,6 +379,14 @@ fn run_search_fzf_command(
         &pipe_args.owners,
         config,
     )?;
+    let provider_facts = collect_provider_graph_facts(
+        language_id,
+        project_root,
+        Some(&pipe_args.query),
+        &candidates,
+        config,
+        provider_context,
+    )?;
     print_search_pipe_view(
         language_id,
         Some(&pipe_args.query),
@@ -339,6 +394,7 @@ fn run_search_fzf_command(
         &pipe_args.pipes,
         &pipe_args.view,
         false,
+        &provider_facts,
     )?;
     Ok(())
 }
@@ -405,16 +461,18 @@ fn print_search_pipe_view(
     pipes: &[String],
     view: &str,
     include_pipe_plan: bool,
+    provider_facts: &ProviderGraphFacts,
 ) -> Result<(), String> {
     match view {
         "graph-turbo-request" => {
             print!(
                 "{}",
-                render_graph_turbo_request(language_id, query, candidates, pipes)?
+                render_graph_turbo_request(language_id, query, candidates, pipes, provider_facts)?
             );
         }
         "seeds" => {
-            let request = render_graph_turbo_request(language_id, query, candidates, pipes)?;
+            let request =
+                render_graph_turbo_request(language_id, query, candidates, pipes, provider_facts)?;
             let mut ranked_compact = None;
             if let Some(output) = render_graph_turbo_packet(request.as_bytes())? {
                 ranked_compact = std::str::from_utf8(output.as_ref())

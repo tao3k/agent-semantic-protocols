@@ -36,7 +36,7 @@ const LEGACY_BLOCKS: [(&str, &str); 5] = [
         "# END rs-harness agent hooks",
     ),
 ];
-const CODEX_TOOL_MATCHER: &str = r"Read|read|readFile|readDirectory|read_file|read_directory|FsReadFile|FsReadDirectory|fs\.read|fs\.readFile|fs\.readDirectory|fs/read|fs/readFile|fs/readDirectory|fs\\read|fs\\readFile|fs\\readDirectory|functions\.read|functions\.read_file|functions\.readFile|mcp__.*__read|mcp__.*__read_file|mcp__.*__readFile|apply_patch|applypatch|functions\.apply_patch|Edit|MultiEdit|Write|NotebookEdit|functions\.edit|functions\.multiEdit|functions\.write|functions\.notebookEdit|FsWriteFile|fs\.write|fs\.writeFile|fs/write|fs/writeFile|fs\\write|fs\\writeFile|FsRemove|fs\.remove|fs/remove|fs\\remove|FsCopy|fs\.copy|fs/copy|fs\\copy|FsRename|fs\.rename|fs/rename|fs\\rename|functions\.exec_command|exec_command|command_execution|multi_tool_use\.parallel|Bash|Shell";
+const TOOL_SURFACE_MATCHER: &str = r"Read|read|readFile|readDirectory|read_file|read_directory|FsReadFile|FsReadDirectory|fs\.read|fs\.readFile|fs\.readDirectory|fs/read|fs/readFile|fs/readDirectory|fs\\read|fs\\readFile|fs\\readDirectory|functions\.read|functions\.read_file|functions\.readFile|mcp__.*__read|mcp__.*__read_file|mcp__.*__readFile|apply_patch|applypatch|functions\.apply_patch|Edit|MultiEdit|Write|NotebookEdit|functions\.edit|functions\.multiEdit|functions\.write|functions\.notebookEdit|FsWriteFile|fs\.write|fs\.writeFile|fs/write|fs/writeFile|fs\\write|fs\\writeFile|FsRemove|fs\.remove|fs/remove|fs\\remove|FsCopy|fs\.copy|fs/copy|fs\\copy|FsRename|fs\.rename|fs/rename|fs\\rename|functions\.exec_command|exec_command|command_execution|multi_tool_use\.parallel|Bash|Shell";
 
 #[derive(Debug)]
 /// Status of the Codex user trust entries required for project hooks.
@@ -205,35 +205,35 @@ fn codex_hook_events() -> [CodexHookEvent; 8] {
         CodexHookEvent {
             event: "PreToolUse",
             state_label: "pre_tool_use",
-            matcher: Some(CODEX_TOOL_MATCHER),
+            matcher: Some(TOOL_SURFACE_MATCHER),
             status: "Checking semantic search flow",
             hook_event: "pre-tool",
         },
         CodexHookEvent {
             event: "PermissionRequest",
             state_label: "permission_request",
-            matcher: Some(CODEX_TOOL_MATCHER),
+            matcher: Some(TOOL_SURFACE_MATCHER),
             status: "Checking semantic approval flow",
             hook_event: "permission-request",
         },
         CodexHookEvent {
             event: "PostToolUse",
             state_label: "post_tool_use",
-            matcher: Some(CODEX_TOOL_MATCHER),
+            matcher: Some(TOOL_SURFACE_MATCHER),
             status: "Updating semantic search flow state",
             hook_event: "post-tool",
         },
         CodexHookEvent {
             event: "SubagentStart",
             state_label: "subagent_start",
-            matcher: Some(CODEX_TOOL_MATCHER),
+            matcher: Some(TOOL_SURFACE_MATCHER),
             status: "Preparing semantic subagent context",
             hook_event: "subagent-start",
         },
         CodexHookEvent {
             event: "SubagentStop",
             state_label: "subagent_stop",
-            matcher: Some(CODEX_TOOL_MATCHER),
+            matcher: Some(TOOL_SURFACE_MATCHER),
             status: "Checking semantic subagent evidence",
             hook_event: "subagent-stop",
         },
@@ -416,17 +416,17 @@ fn claude_hook_events() -> [ClaudeHookEvent; 8] {
         },
         ClaudeHookEvent {
             event: "PreToolUse",
-            matcher: Some("*"),
+            matcher: Some(TOOL_SURFACE_MATCHER),
             hook_event: "pre-tool",
         },
         ClaudeHookEvent {
             event: "PermissionRequest",
-            matcher: Some("*"),
+            matcher: Some(TOOL_SURFACE_MATCHER),
             hook_event: "permission-request",
         },
         ClaudeHookEvent {
             event: "PostToolUse",
-            matcher: Some("*"),
+            matcher: Some(TOOL_SURFACE_MATCHER),
             hook_event: "post-tool",
         },
         ClaudeHookEvent {

@@ -9,8 +9,11 @@ pub(crate) fn source_access_recovery_message(
     semantic_ast_patch_enabled: bool,
 ) -> String {
     let mut lines = vec![
-        "# ASP Hook Recovery".to_string(),
+        format!("ASP hook denied `{reason}` on language source."),
+        "See @.agents/skills/agent-semantic-protocols/SKILL.md for the active ASP agent workflow."
+            .to_string(),
         String::new(),
+        "## ASP Hook Recovery".to_string(),
         format!("The pre-tool hook blocked `{reason}` on language source."),
         String::new(),
         "## Stop".to_string(),
@@ -177,7 +180,7 @@ fn render_rules(
         "- Do not read full guide bodies unless the current step needs that guide.".to_string(),
     );
     lines.push(
-        "- Codex and Claude may trigger different hook events, but the recovery route should stay on the same `asp <language>` facade."
+        "- Codex and Claude share the same tool-surface matcher; platform differences should stay in hook envelopes, not recovery routing."
             .to_string(),
     );
     if semantic_ast_patch_enabled {

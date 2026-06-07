@@ -16,7 +16,9 @@ def render_compact(result: GraphResult) -> str:
     aliases = _aliases(result.ranked_nodes)
     seed_line = _render_seed_aliases(result.seed_ids, aliases)
     alias_line = _render_aliases(result.ranked_nodes, aliases)
-    node_lines = [_render_node(result.profile, node, aliases) for node in result.ranked_nodes]
+    node_lines = [
+        _render_node(result.profile, node, aliases) for node in result.ranked_nodes
+    ]
     edge_lines = [
         *_render_root_edges(result.seed_ids, result.ranked_nodes, aliases),
         *_render_edges(result.selected_edges, aliases),
@@ -92,7 +94,9 @@ def _aliases(nodes: Iterable[Node]) -> Mapping[str, str]:
     for node in nodes:
         prefix = prefixes.get(node.kind, "N")
         counts[prefix] = counts.get(prefix, 0) + 1
-        aliases[node.id] = prefix if counts[prefix] == 1 else f"{prefix}{counts[prefix]}"
+        aliases[node.id] = (
+            prefix if counts[prefix] == 1 else f"{prefix}{counts[prefix]}"
+        )
     return aliases
 
 
@@ -141,6 +145,7 @@ def _render_owner_query_projection_lines(
     return [
         "pipeChoice=bounded-fanout maxBranches=3 repeat=false owner=asp-graph-turbo",
         "pipePolicy=maxSearchPipe=1 rewrite=false branchRepeat=false stopAfterProjectedBranches=true missingTokenSearch=false postProjectionSearch=false",
+        "selectorPolicy=run-first reason=exact-selector-present before=search-reasoning",
         _render_query_token_coverage(result),
         f"frontierActions={actions}",
     ]
@@ -161,10 +166,10 @@ def _render_owner_query_frontier_actions(
         symbol = node.fields.get("symbol") or node.value
         alias = aliases.get(node.id, f"B{index}")
         actions.append(
-            f"R{index}.reasoning(owner={owner},source={alias})!search-reasoning"
+            f"S{index}.selector(selector={selector},owner={owner},symbol={symbol},source={alias})!query-selector"
         )
         actions.append(
-            f"S{index}.selector(selector={selector},owner={owner},symbol={symbol},source={alias})!query-selector"
+            f"R{index}.reasoning(owner={owner},source={alias})!search-reasoning"
         )
     return ",".join(actions)
 
@@ -243,8 +248,37 @@ def _owner_query_branches(result: GraphResult) -> list[Node]:
     candidates = [
         entry.node
         for entry in _prompt_frontier_entries(result)
-        if entry.node.kind in {"field", "hot", "item"} and _selector_for_node(entry.node)
+        if entry.node.kind in {"field", "hot", "item"}
+        and _selector_for_node(entry.node)
     ]
+    field_candidates = [node for node in candidates if node.kind == "field"]
+    if field_candidates:
+        return _dedupe_mapped_branches(
+            _owner_query_diverse_candidates(field_candidates),
+            hot_by_key,
+        )
+    return _dedupe_mapped_branches(
+        _owner_query_diverse_candidates(candidates),
+        hot_by_key,
+    )
+
+
+def _dedupe_mapped_branches(
+    branches: list[Node], hot_by_key: Mapping[tuple[str, str], Node]
+) -> list[Node]:
+    selected: list[Node] = []
+    seen_selectors: set[str] = set()
+    for node in branches:
+        mapped = _hot_node_for_branch(node, hot_by_key)
+        selector = _selector_for_node(mapped)
+        if selector is None or selector in seen_selectors:
+            continue
+        seen_selectors.add(selector)
+        selected.append(mapped)
+    return selected
+
+
+def _owner_query_diverse_candidates(candidates: list[Node]) -> list[Node]:
     preferred = [node for node in candidates if _source_preferred_node(node)]
     diverse: list[Node] = []
     fallback: list[Node] = []
@@ -265,7 +299,7 @@ def _owner_query_branches(result: GraphResult) -> list[Node]:
             continue
         seen_selectors.add(selector)
         diverse.append(node)
-    return [_hot_node_for_branch(node, hot_by_key) for node in diverse]
+    return diverse
 
 
 def _owner_query_hot_nodes(result: GraphResult) -> dict[tuple[str, str], Node]:
@@ -278,7 +312,9 @@ def _owner_query_hot_nodes(result: GraphResult) -> dict[tuple[str, str], Node]:
     return hot_nodes
 
 
-def _hot_node_for_branch(node: Node, hot_by_key: Mapping[tuple[str, str], Node]) -> Node:
+def _hot_node_for_branch(
+    node: Node, hot_by_key: Mapping[tuple[str, str], Node]
+) -> Node:
     if node.kind == "hot":
         return node
     return hot_by_key.get(_branch_key(node), node)
@@ -348,9 +384,7 @@ def _render_frontier_actions(result: GraphResult, aliases: Mapping[str, str]) ->
 
 def _render_frontier(result: GraphResult, aliases: Mapping[str, str]) -> str:
     entries = _prompt_frontier_entries(result)
-    return ",".join(
-        f"{aliases[entry.node.id]}.{entry.action}" for entry in entries
-    )
+    return ",".join(f"{aliases[entry.node.id]}.{entry.action}" for entry in entries)
 
 
 def _prompt_frontier_entries(result: GraphResult):
@@ -372,6 +406,12 @@ def _prompt_frontier_entries(result: GraphResult):
 
 
 def _selector_for_node(node: Node) -> str | None:
+    if node.kind == "field":
+        fields = node.fields.get("fields")
+        if isinstance(fields, Mapping):
+            context_locator = fields.get("contextLocator")
+            if context_locator is not None:
+                return str(context_locator)
     locator = node.fields.get("locator") or node.fields.get("location")
     if locator is not None:
         return str(locator)
@@ -424,13 +464,16 @@ def _render_edges(edges: Iterable[Edge], aliases: Mapping[str, str]) -> list[str
     if not groups:
         return []
     return [
-        f"{source}>{{{','.join(targets)}}}" for source, targets in sorted(groups.items())
+        f"{source}>{{{','.join(targets)}}}"
+        for source, targets in sorted(groups.items())
     ]
 
 
 def _render_scores(result: GraphResult, aliases: Mapping[str, str]) -> str:
     ranked_scores = [
-        result.scores[node.id] for node in result.ranked_nodes if node.id in result.scores
+        result.scores[node.id]
+        for node in result.ranked_nodes
+        if node.id in result.scores
     ]
     max_score = max(ranked_scores, default=0.0)
     return ",".join(
@@ -476,7 +519,9 @@ def _render_trace(result: GraphResult) -> str:
 def _render_trace_fields(fields: Mapping[str, int | float | str | bool]) -> str:
     if not fields:
         return ""
-    return "(" + ",".join(f"{key}={value}" for key, value in sorted(fields.items())) + ")"
+    return (
+        "(" + ",".join(f"{key}={value}" for key, value in sorted(fields.items())) + ")"
+    )
 
 
 def _render_explanations(result: GraphResult, aliases: Mapping[str, str]) -> str:

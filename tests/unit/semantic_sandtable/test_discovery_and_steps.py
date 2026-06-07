@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -268,6 +269,124 @@ class DiscoveryAndStepRunnerTests(unittest.TestCase):
         self.assertEqual([], result.steps)
         self.assertFalse(marker.exists())
 
+    def test_scenario_env_feeds_skip_gate_and_workdir_resolution(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            live_root = repo_root / "live-workdir"
+            live_root.mkdir()
+            marker = live_root / "ran"
+            scenario_path = repo_root / "scenario.json"
+            scenario_path.write_text(
+                json.dumps(
+                    {
+                        "id": "root.live-env-inheritance",
+                        "language": "root",
+                        "env": {
+                            "ASP_LIVE_CLAUDE_CLI": "1",
+                            "SANDTABLE_LIVE_ROOT": str(live_root),
+                        },
+                        "workdir": {"env": "SANDTABLE_LIVE_ROOT"},
+                        "skipUnlessEnv": ["ASP_LIVE_CLAUDE_CLI"],
+                        "steps": [
+                            {
+                                "id": "touch-marker",
+                                "command": [
+                                    sys.executable,
+                                    "-c",
+                                    (
+                                        "from pathlib import Path; "
+                                        "Path('ran').write_text('ok')"
+                                    ),
+                                ],
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with patch.dict(os.environ, {}, clear=True):
+                result = run_scenario(repo_root, scenario_path)
+
+            self.assertEqual("pass", result.status)
+            self.assertEqual(["pass"], [step.status for step in result.steps])
+            self.assertTrue(marker.exists())
+
+    def test_workdir_git_clones_into_sandtable_repo_cache(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            origin = repo_root / "origin"
+            origin.mkdir()
+            subprocess.run(
+                ["git", "init", str(origin)], check=True, capture_output=True
+            )
+            (origin / "README.md").write_text("fixture\n", encoding="utf-8")
+            subprocess.run(
+                ["git", "-C", str(origin), "add", "README.md"],
+                check=True,
+                capture_output=True,
+            )
+            subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(origin),
+                    "-c",
+                    "user.name=Sandtable",
+                    "-c",
+                    "user.email=sandtable@example.invalid",
+                    "commit",
+                    "-m",
+                    "fixture",
+                ],
+                check=True,
+                capture_output=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(origin), "tag", "v1"],
+                check=True,
+                capture_output=True,
+            )
+            scenario_path = repo_root / "scenario.json"
+            scenario_path.write_text(
+                json.dumps(
+                    {
+                        "id": "root.cached-git-workdir",
+                        "language": "root",
+                        "workdir": {
+                            "git": {
+                                "url": origin.as_uri(),
+                                "ref": "v1",
+                                "depth": 1,
+                                "cacheKey": "fixture-v1",
+                                "subdir": ".",
+                            }
+                        },
+                        "steps": [
+                            {
+                                "id": "touch-marker",
+                                "command": [
+                                    sys.executable,
+                                    "-c",
+                                    (
+                                        "from pathlib import Path; "
+                                        "Path('ran').write_text('ok')"
+                                    ),
+                                ],
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = run_scenario(repo_root, scenario_path)
+            cache_checkout = repo_root / ".cache" / "sandtable-repos" / "fixture-v1"
+
+            self.assertEqual("pass", result.status)
+            self.assertEqual(cache_checkout.resolve(), result.workdir)
+            self.assertTrue((cache_checkout / ".git").exists())
+            self.assertTrue((cache_checkout / "ran").exists())
 
 
 if __name__ == "__main__":

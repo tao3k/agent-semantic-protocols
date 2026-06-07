@@ -21,8 +21,8 @@ mod search_pipe_candidates;
 mod search_pipe_dependency_facts;
 mod search_pipe_graph_turbo;
 mod search_pipe_plan;
+mod search_pipe_provider_facts;
 mod search_pipe_render;
-mod search_pipe_semantic_facts;
 mod search_suggest;
 mod source_access;
 

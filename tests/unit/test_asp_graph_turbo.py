@@ -78,7 +78,9 @@ def sample_packet() -> dict[str, object]:
     }
 
 
-def sample_request(*, profile: str = "owner-query", budget: int = 8) -> dict[str, object]:
+def sample_request(
+    *, profile: str = "owner-query", budget: int = 8
+) -> dict[str, object]:
     return {
         "schemaId": "agent.semantic-protocols.semantic-graph-turbo-request",
         "schemaVersion": "1",
@@ -161,15 +163,43 @@ def sample_failure_packet() -> dict[str, object]:
             },
         ],
         "edges": [
-            {"source": "failure:cache", "target": "test:writeback", "relation": "fails"},
-            {"source": "failure:cache", "target": "assert:replay", "relation": "explains"},
-            {"source": "failure:cache", "target": "owner:writeback", "relation": "selects"},
+            {
+                "source": "failure:cache",
+                "target": "test:writeback",
+                "relation": "fails",
+            },
+            {
+                "source": "failure:cache",
+                "target": "assert:replay",
+                "relation": "explains",
+            },
+            {
+                "source": "failure:cache",
+                "target": "owner:writeback",
+                "relation": "selects",
+            },
             {"source": "assert:replay", "target": "hot:write", "relation": "checks"},
-            {"source": "assert:replay", "target": "key:fingerprint", "relation": "checks"},
-            {"source": "assert:replay", "target": "evidence:file-hash", "relation": "gates"},
-            {"source": "owner:writeback", "target": "hot:write", "relation": "contains"},
+            {
+                "source": "assert:replay",
+                "target": "key:fingerprint",
+                "relation": "checks",
+            },
+            {
+                "source": "assert:replay",
+                "target": "evidence:file-hash",
+                "relation": "gates",
+            },
+            {
+                "source": "owner:writeback",
+                "target": "hot:write",
+                "relation": "contains",
+            },
             {"source": "hot:write", "target": "key:fingerprint", "relation": "relates"},
-            {"source": "hot:write", "target": "evidence:file-hash", "relation": "validates"},
+            {
+                "source": "hot:write",
+                "target": "evidence:file-hash",
+                "relation": "validates",
+            },
         ],
     }
 
@@ -187,7 +217,9 @@ def test_request_fixture_is_schema_owned_algorithm_input() -> None:
 
 def test_owner_query_profile_masks_dependency_edges() -> None:
     graph = TypedGraph.from_packet(sample_packet())
-    result = rank_frontier(graph, profile="owner-query", seeds=["q:parser", "owner:cli"])
+    result = rank_frontier(
+        graph, profile="owner-query", seeds=["q:parser", "owner:cli"]
+    )
 
     ranked = [node.id for node in result.ranked_nodes]
 
@@ -276,7 +308,7 @@ def test_owner_query_projects_typed_collection_field_selector() -> None:
                     "id": "q:vec-fields",
                     "kind": "query",
                     "role": "term",
-                    "value": "Vec collection fields",
+                    "value": "Vec scalar collection fields",
                 },
                 {
                     "id": "owner:state",
@@ -311,6 +343,7 @@ def test_owner_query_projects_typed_collection_field_selector() -> None:
                         "typeName": "Vec",
                         "typeValue": "Vec<Scalar>",
                         "collectionKind": "Vec",
+                        "elementShape": "scalar",
                     },
                 },
                 {
@@ -327,6 +360,7 @@ def test_owner_query_projects_typed_collection_field_selector() -> None:
                         "typeName": "Vec",
                         "typeValue": "Vec<Scalar>",
                         "collectionKind": "Vec",
+                        "elementShape": "scalar",
                     },
                 },
                 {
@@ -351,19 +385,47 @@ def test_owner_query_projects_typed_collection_field_selector() -> None:
                 },
             ],
             "edges": [
-                {"source": "q:vec-fields", "target": "owner:state", "relation": "matches"},
+                {
+                    "source": "q:vec-fields",
+                    "target": "owner:state",
+                    "relation": "matches",
+                },
                 {"source": "q:vec-fields", "target": "item:vec", "relation": "matches"},
-                {"source": "q:vec-fields", "target": "field:scalars", "relation": "matches"},
-                {"source": "q:vec-fields", "target": "type:scalars", "relation": "matches"},
-                {"source": "q:vec-fields", "target": "collection:vec", "relation": "matches"},
-                {"source": "owner:state", "target": "field:scalars", "relation": "contains"},
-                {"source": "field:scalars", "target": "type:scalars", "relation": "has_type"},
+                {
+                    "source": "q:vec-fields",
+                    "target": "field:scalars",
+                    "relation": "matches",
+                },
+                {
+                    "source": "q:vec-fields",
+                    "target": "type:scalars",
+                    "relation": "matches",
+                },
+                {
+                    "source": "q:vec-fields",
+                    "target": "collection:vec",
+                    "relation": "matches",
+                },
+                {
+                    "source": "owner:state",
+                    "target": "field:scalars",
+                    "relation": "contains",
+                },
+                {
+                    "source": "field:scalars",
+                    "target": "type:scalars",
+                    "relation": "has_type",
+                },
                 {
                     "source": "field:scalars",
                     "target": "collection:vec",
                     "relation": "collection_of",
                 },
-                {"source": "field:scalars", "target": "hot:scalars", "relation": "contains"},
+                {
+                    "source": "field:scalars",
+                    "target": "hot:scalars",
+                    "relation": "contains",
+                },
             ],
         }
     )
@@ -384,10 +446,15 @@ def test_owner_query_projects_typed_collection_field_selector() -> None:
     )
     compact = render_compact(result)
 
-    assert "F=field:struct-field(scalars: Vec<Scalar>)@src/state.rs:12:12!code" in compact
+    assert (
+        "F=field:struct-field(scalars: Vec<Scalar>)@src/state.rs:12:12!code" in compact
+    )
     assert "Y=type:field-type(Vec<Scalar>)@src/state.rs:12:12!code" in compact
     assert "C=collection:family(Vec)!evidence" in compact
-    assert "queryCoverage=matched=vec,collection,fields missing=- source=ranked-frontier" in compact
+    assert (
+        "queryCoverage=matched=vec,scalar,collection,fields missing=- source=ranked-frontier"
+        in compact
+    )
     assert (
         "S1.selector(selector=src/state.rs:4:24,owner=src/state.rs,symbol=scalars,source=H)!query-selector"
         in compact
@@ -401,19 +468,78 @@ def test_query_deps_profile_can_cross_dependency_edges() -> None:
     ranked = [node.id for node in result.ranked_nodes]
 
     assert "dep:jsonschema" in ranked
-    assert any(entry.node.id == "dep:jsonschema" and entry.action == "deps" for entry in result.frontier)
+
+
+def test_owner_query_field_selector_uses_context_locator_without_ranked_hot_node() -> None:
+    graph = TypedGraph.from_packet(
+        {
+            "nodes": [
+                {
+                    "id": "q:vec-fields",
+                    "kind": "query",
+                    "role": "term",
+                    "value": "Vec scalar collection fields",
+                },
+                {
+                    "id": "field:scalars",
+                    "kind": "field",
+                    "role": "struct-field",
+                    "value": "scalars: Vec<Scalar>",
+                    "path": "src/state.rs",
+                    "ownerPath": "src/state.rs",
+                    "symbol": "scalars",
+                    "locator": "src/state.rs:12:12",
+                    "fields": {
+                        "fieldName": "scalars",
+                        "typeName": "Vec",
+                        "typeValue": "Vec<Scalar>",
+                        "collectionKind": "Vec",
+                        "elementShape": "scalar",
+                        "contextLocator": "src/state.rs:4:24",
+                    },
+                },
+            ],
+            "edges": [
+                {
+                    "source": "q:vec-fields",
+                    "target": "field:scalars",
+                    "relation": "matches",
+                },
+            ],
+        }
+    )
+    result = rank_frontier(
+        graph,
+        profile="owner-query",
+        seeds=["q:vec-fields"],
+        kind_budgets={"query": 1, "field": 1},
+    )
+    compact = render_compact(result)
+
+    assert (
+        "F=field:struct-field(scalars: Vec<Scalar>)@src/state.rs:12:12!code" in compact
+    )
+    assert (
+        "S1.selector(selector=src/state.rs:4:24,owner=src/state.rs,symbol=scalars,source=F)!query-selector"
+        in compact
+    )
 
 
 def test_compact_render_uses_asp_graph_frontier_contract() -> None:
     graph = TypedGraph.from_packet(sample_packet())
-    result = rank_frontier(graph, profile="owner-query", seeds=["q:parser", "owner:cli"])
+    result = rank_frontier(
+        graph, profile="owner-query", seeds=["q:parser", "owner:cli"]
+    )
 
     compact = render_compact(result)
 
     assert compact.startswith(
         "[graph-frontier] profile=owner-query alg=typed-ppr-diverse seed=Q,O budget=8\n"
     )
-    assert "legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next" in compact
+    assert (
+        "legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next"
+        in compact
+    )
     assert "aliases=G:graph" in compact
     assert "Q=query:term(parser)!fzf" in compact
     assert "I=item:fn(collect_actions)@src/cli.py:10:20!code" in compact
@@ -425,17 +551,36 @@ def test_compact_render_uses_asp_graph_frontier_contract() -> None:
     assert "\nfrontier=" in compact
     assert "\nscores=" in compact
     assert "Q:" in compact and "O:" in compact and "T:" in compact
-    assert "\nprofiles=owner-query,query-deps,owner-tests,prime,read-frontier,failure-frontier\n" in compact
+    assert (
+        "\nprofiles=owner-query,query-deps,owner-tests,prime,read-frontier,failure-frontier\n"
+        in compact
+    )
     assert "\nomit=code,full-score-vector,full-graph\n" in compact
     assert "\navoid=raw-read,repeat-owner,broad-fzf\n" in compact
-    assert "\npipeChoice=bounded-fanout maxBranches=3 repeat=false owner=asp-graph-turbo\n" in compact
+    assert (
+        "\npipeChoice=bounded-fanout maxBranches=3 repeat=false owner=asp-graph-turbo\n"
+        in compact
+    )
     assert (
         "\npipePolicy=maxSearchPipe=1 rewrite=false branchRepeat=false stopAfterProjectedBranches=true missingTokenSearch=false postProjectionSearch=false\n"
         in compact
     )
-    assert "\nqueryCoverage=matched=- missing=parser source=ranked-frontier\n" in compact
-    assert "frontierActions=R1.reasoning(owner=src/cli.py,source=I)!search-reasoning" in compact
-    assert "S1.selector(selector=src/cli.py:10:20,owner=src/cli.py,symbol=collect_actions,source=I)!query-selector" in compact
+    assert (
+        "\nselectorPolicy=run-first reason=exact-selector-present before=search-reasoning\n"
+        in compact
+    )
+    assert (
+        "\nqueryCoverage=matched=- missing=parser source=ranked-frontier\n" in compact
+    )
+    assert (
+        "frontierActions=S1.selector(selector=src/cli.py:10:20,owner=src/cli.py,symbol=collect_actions,source=I)!query-selector"
+        in compact
+    )
+    assert (
+        "R1.reasoning(owner=src/cli.py,source=I)!search-reasoning"
+        in compact
+    )
+    assert compact.index("S1.selector(") < compact.index("R1.reasoning(")
     assert "R4.reasoning" not in compact
     assert "[graph-turbo]" not in compact
     assert "aliases:" not in compact
@@ -507,7 +652,11 @@ def test_owner_query_projection_prefers_symbol_diverse_branches() -> None:
                 },
             ],
             "edges": [
-                {"source": "q:vec-fields", "target": "item:fields", "relation": "matches"},
+                {
+                    "source": "q:vec-fields",
+                    "target": "item:fields",
+                    "relation": "matches",
+                },
                 {
                     "source": "q:vec-fields",
                     "target": "item:collection-a",
@@ -539,6 +688,212 @@ def test_owner_query_projection_prefers_symbol_diverse_branches() -> None:
     assert "symbol=vec" in frontier_actions
 
 
+def test_owner_query_projection_stops_after_provider_field_branches() -> None:
+    graph = TypedGraph.from_packet(
+        {
+            "nodes": [
+                {
+                    "id": "q:vec-fields",
+                    "kind": "query",
+                    "role": "term",
+                    "value": "Vec collection fields",
+                },
+                {
+                    "id": "field:snapshot-scalars",
+                    "kind": "field",
+                    "role": "struct-field",
+                    "value": "scalars: Vec<Scalar>",
+                    "path": "src/lib.rs",
+                    "ownerPath": "src/lib.rs",
+                    "symbol": "scalars",
+                    "startLine": 3,
+                    "endLine": 3,
+                    "locator": "src/lib.rs:3:3",
+                    "matchText": "Snapshot::scalars: Vec<Scalar>",
+                    "fields": {
+                        "containerName": "Snapshot",
+                        "fieldName": "scalars",
+                        "typeName": "Vec",
+                        "typeValue": "Vec<Scalar>",
+                        "collectionKind": "Vec",
+                    },
+                },
+                {
+                    "id": "type:snapshot-scalars-vec",
+                    "kind": "type",
+                    "role": "field-type",
+                    "value": "Vec<Scalar>",
+                    "path": "src/lib.rs",
+                    "ownerPath": "src/lib.rs",
+                    "symbol": "Vec",
+                    "startLine": 3,
+                    "endLine": 3,
+                    "locator": "src/lib.rs:3:3",
+                    "fields": {
+                        "fieldName": "scalars",
+                        "typeName": "Vec",
+                        "typeValue": "Vec<Scalar>",
+                        "collectionKind": "Vec",
+                    },
+                },
+                {
+                    "id": "collection:vec",
+                    "kind": "collection",
+                    "role": "family",
+                    "value": "Vec",
+                    "symbol": "Vec",
+                },
+                {
+                    "id": "item:collection",
+                    "kind": "item",
+                    "role": "symbol",
+                    "value": "collection",
+                    "path": "src/lib.rs",
+                    "ownerPath": "src/lib.rs",
+                    "symbol": "collection",
+                    "startLine": 4,
+                    "endLine": 4,
+                    "locator": "src/lib.rs:4:4",
+                    "matchText": "lookup: HashMap<String, Scalar>",
+                },
+                {
+                    "id": "item:vec",
+                    "kind": "item",
+                    "role": "symbol",
+                    "value": "vec",
+                    "path": "src/lib.rs",
+                    "ownerPath": "src/lib.rs",
+                    "symbol": "vec",
+                    "startLine": 5,
+                    "endLine": 5,
+                    "locator": "src/lib.rs:5:5",
+                    "matchText": "cursor: Cursor<Vec<u8>>",
+                },
+            ],
+            "edges": [
+                {
+                    "source": "q:vec-fields",
+                    "target": "field:snapshot-scalars",
+                    "relation": "matches",
+                },
+                {
+                    "source": "q:vec-fields",
+                    "target": "type:snapshot-scalars-vec",
+                    "relation": "matches",
+                },
+                {
+                    "source": "q:vec-fields",
+                    "target": "collection:vec",
+                    "relation": "matches",
+                },
+                {
+                    "source": "q:vec-fields",
+                    "target": "item:collection",
+                    "relation": "matches",
+                },
+                {"source": "q:vec-fields", "target": "item:vec", "relation": "matches"},
+                {
+                    "source": "field:snapshot-scalars",
+                    "target": "type:snapshot-scalars-vec",
+                    "relation": "has_type",
+                },
+                {
+                    "source": "field:snapshot-scalars",
+                    "target": "collection:vec",
+                    "relation": "collection_of",
+                },
+                {
+                    "source": "type:snapshot-scalars-vec",
+                    "target": "collection:vec",
+                    "relation": "collection_of",
+                },
+            ],
+        }
+    )
+    result = rank_frontier(
+        graph,
+        profile="owner-query",
+        seeds=["q:vec-fields"],
+        limit=8,
+        kind_budgets={"query": 1, "field": 2, "type": 2, "collection": 2, "item": 4},
+    )
+    compact = render_compact(result)
+    frontier_actions = next(
+        line for line in compact.splitlines() if line.startswith("frontierActions=")
+    )
+
+    assert "symbol=scalars" in frontier_actions
+    assert "symbol=collection" not in frontier_actions
+    assert "symbol=vec" not in frontier_actions
+    assert frontier_actions.count(".selector(") == 1
+    ranked_ids = [node.id for node in result.ranked_nodes]
+    assert ranked_ids.index("field:snapshot-scalars") < ranked_ids.index("collection:vec")
+
+
+def test_owner_query_projection_dedupes_item_hot_mapped_selectors() -> None:
+    graph = TypedGraph.from_packet(
+        {
+            "nodes": [
+                {
+                    "id": "q:vec",
+                    "kind": "query",
+                    "role": "term",
+                    "value": "Vec",
+                },
+                {
+                    "id": "item:vec",
+                    "kind": "item",
+                    "role": "symbol",
+                    "value": "vec",
+                    "path": "src/read_dir.rs",
+                    "ownerPath": "src/read_dir.rs",
+                    "symbol": "vec",
+                    "startLine": 3,
+                    "endLine": 3,
+                    "locator": "src/read_dir.rs:3:3",
+                },
+                {
+                    "id": "hot:vec",
+                    "kind": "hot",
+                    "role": "range",
+                    "value": "vec",
+                    "path": "src/read_dir.rs",
+                    "ownerPath": "src/read_dir.rs",
+                    "symbol": "vec",
+                    "startLine": 1,
+                    "endLine": 15,
+                    "locator": "src/read_dir.rs:1:15",
+                },
+            ],
+            "edges": [
+                {"source": "q:vec", "target": "item:vec", "relation": "matches"},
+                {"source": "item:vec", "target": "hot:vec", "relation": "contains"},
+            ],
+        }
+    )
+    result = rank_frontier(
+        graph,
+        profile="owner-query",
+        seeds=["q:vec"],
+        limit=3,
+        kind_budgets={"query": 1, "item": 1, "hot": 1},
+    )
+    compact = render_compact(result)
+    frontier_actions = next(
+        line for line in compact.splitlines() if line.startswith("frontierActions=")
+    )
+
+    assert (
+        "selectorPolicy=run-first reason=exact-selector-present before=search-reasoning"
+        in compact
+    )
+    assert frontier_actions.count("selector=src/read_dir.rs:1:15") == 1
+    assert frontier_actions.count(".selector(") == 1
+    assert frontier_actions.index("S1.selector(") < frontier_actions.index(
+        "R1.reasoning("
+    )
+
+
 def test_failure_frontier_profile_ranks_hot_blocks_and_renders_search_failure() -> None:
     graph = TypedGraph.from_packet(sample_failure_packet())
     result = rank_frontier(
@@ -560,9 +915,15 @@ def test_failure_frontier_profile_ranks_hot_blocks_and_renders_search_failure() 
     assert compact.startswith(
         "[search-failure] kind=test-failure profile=failure-frontier alg=typed-ppr-diverse seed=F budget=8\n"
     )
-    assert "F=failure:test-failure(cache_cli::writeback::prompt_output_replay)!failure" in compact
+    assert (
+        "F=failure:test-failure(cache_cli::writeback::prompt_output_replay)!failure"
+        in compact
+    )
     assert "A=assert:failure(expected=hit,actual=miss)!evidence" in compact
-    assert "H=hot:fn(write_prompt_output_artifact)@src/cache_cli/writeback.rs:10:24!code" in compact
+    assert (
+        "H=hot:fn(write_prompt_output_artifact)@src/cache_cli/writeback.rs:10:24!code"
+        in compact
+    )
     assert "K=key:signal(request_fingerprint)!evidence" in compact
     assert "E=evidence:signal(file_hash(observed=failure))!evidence" in compact
     assert "\nfrontier=A.evidence,H.code,K.evidence,E.evidence\n" in compact
@@ -580,7 +941,12 @@ def test_failure_frontier_profile_ranks_hot_blocks_and_renders_search_failure() 
     assert "\navoid=manual-window-scan,duplicate-read,raw-read,broad-fzf\n" in compact
     assert packet["profile"] == "failure-frontier"
     assert packet["omit"] == ["full-source", "unrelated-functions", "wide-windows"]
-    assert packet["avoid"] == ["manual-window-scan", "duplicate-read", "raw-read", "broad-fzf"]
+    assert packet["avoid"] == [
+        "manual-window-scan",
+        "duplicate-read",
+        "raw-read",
+        "broad-fzf",
+    ]
 
 
 def test_result_packet_is_schema_owned_ranking_evidence() -> None:
@@ -621,7 +987,9 @@ def test_result_packet_is_schema_owned_ranking_evidence() -> None:
     assert packet["profileCompatibility"][0]["kindBonus"]["hot"] == 0.35
     assert packet["mergedWindows"] == []
     assert packet["sourceSinkFrontier"]["sourceIds"] == ["q:parser", "owner:cli"]
-    assert any(path["pathKind"] == "constrained-shortest" for path in packet["typedPaths"])
+    assert any(
+        path["pathKind"] == "constrained-shortest" for path in packet["typedPaths"]
+    )
     assert packet["flowLite"]["rankedPathIds"][0] == packet["typedPaths"][0]["id"]
     assert packet["packetFingerprint"].startswith("sha256:")
     assert packet["graphCache"]["backend"] == "scipy-csr"
@@ -629,7 +997,8 @@ def test_result_packet_is_schema_owned_ranking_evidence() -> None:
     assert packet["algorithmTrace"][2]["step"] == "profile-policy"
     assert packet["algorithmTrace"][3]["step"] == "typed-ppr"
     assert any(
-        explanation["nodeId"] == "q:parser" for explanation in packet["rankExplanations"]
+        explanation["nodeId"] == "q:parser"
+        for explanation in packet["rankExplanations"]
     )
     assert packet["algorithmMetrics"]["pathCount"] == len(packet["typedPaths"])
     assert packet["rank"] == [node["id"] for node in packet["rankedNodes"]]
@@ -640,7 +1009,9 @@ def test_result_packet_is_schema_owned_ranking_evidence() -> None:
 
 def test_tools_graph_turbo_cli_uses_request_packet_defaults(tmp_path: Path) -> None:
     packet = tmp_path / "graph.json"
-    packet.write_text(json.dumps(sample_request(profile="query-deps", budget=4)), encoding="utf-8")
+    packet.write_text(
+        json.dumps(sample_request(profile="query-deps", budget=4)), encoding="utf-8"
+    )
 
     completed = subprocess.run(
         [

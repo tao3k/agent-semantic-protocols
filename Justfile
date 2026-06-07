@@ -111,18 +111,16 @@ agent-tools-install-hook bin_dir="":
     @just agent-tools-install-protocol "{{bin_dir}}"
 
 # Install only the core asp-graph-turbo ranking binary.
+# Keep this entry repo-owned; uv tool install moves the same tool executable between bin dirs.
 agent-tools-install-asp-graph-turbo bin_dir="":
     @bin_dir="{{bin_dir}}"; \
       if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-$HOME/.local/bin}"; fi; \
       mkdir -p "${bin_dir}"; \
-      uv tool install --force --editable packages/python/asp_graph_turbo; \
-      uv_tool_bin="$(uv tool dir --bin)"; \
-      tool_bin="${uv_tool_bin}/asp-graph-turbo"; \
-      test -x "${tool_bin}"; \
-      if [ "${tool_bin}" != "${bin_dir}/asp-graph-turbo" ]; then \
-        ln -sfn "${tool_bin}" "${bin_dir}/asp-graph-turbo"; \
-      fi; \
-      rm -f "${bin_dir}/graph-turbo" "${uv_tool_bin}/graph-turbo"; \
+      rm -f "${bin_dir}/asp-graph-turbo"; \
+      printf '#!/usr/bin/env bash\nexec uv run --project "%s/packages/python/asp_graph_turbo" asp-graph-turbo "$@"\n' "$PWD" > "${bin_dir}/asp-graph-turbo"; \
+      chmod 755 "${bin_dir}/asp-graph-turbo"; \
+      rm -f "${bin_dir}/graph-turbo"; \
+      test -x "${bin_dir}/asp-graph-turbo"; \
       "${bin_dir}/asp-graph-turbo" --help >/dev/null
 
 # Install only the Rust provider binary.
@@ -159,11 +157,8 @@ agent-tools-install-py bin_dir="":
     @bin_dir="{{bin_dir}}"; \
       if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-$HOME/.local/bin}"; fi; \
       mkdir -p "${bin_dir}"; \
-      uv tool install --force --editable {{python_harness_project}}; \
-      py_bin="$(uv tool dir --bin)/py-harness"; \
-      if [ "${py_bin}" != "${bin_dir}/py-harness" ]; then \
-        ln -sfn "${py_bin}" "${bin_dir}/py-harness"; \
-      fi; \
+      UV_TOOL_BIN_DIR="${bin_dir}" uv tool install --force --editable {{python_harness_project}}; \
+      test -x "${bin_dir}/py-harness"; \
       "${bin_dir}/py-harness" --help >/dev/null
 
 # Install only the Julia provider binary.

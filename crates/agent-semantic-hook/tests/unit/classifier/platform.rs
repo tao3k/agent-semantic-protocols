@@ -38,7 +38,12 @@ fn platform_response_wraps_denied_decision_for_codex_hooks() {
     let reason = response["hookSpecificOutput"]["permissionDecisionReason"]
         .as_str()
         .expect("permission decision reason");
-    assert!(reason.starts_with("# ASP Hook Recovery"), "{reason}");
+    assert!(reason.starts_with("ASP hook denied `"), "{reason}");
+    assert!(
+        reason.contains("@.agents/skills/agent-semantic-protocols/SKILL.md"),
+        "{reason}"
+    );
+    assert!(reason.contains("## ASP Hook Recovery"), "{reason}");
     let system_message = response["systemMessage"].as_str().expect("system message");
     assert_eq!(system_message, reason);
     assert!(system_message.contains("## Stop"), "{system_message}");

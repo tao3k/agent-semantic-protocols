@@ -10,15 +10,15 @@ use agent_semantic_hook::{
     ActiveContextRecord, DecisionKind, DecisionSubject, HOOK_DECISION_SCHEMA_ID,
     HOOK_DECISION_SCHEMA_VERSION, HOOK_PROTOCOL_ID, HOOK_PROTOCOL_VERSION,
     HookClassificationRequest, HookDecision, ROOT_BLOCK_BEGIN, ROOT_BLOCK_END, ReasonKind,
-    RuntimeProviderHealthStatus, append_hook_event_state, build_default_activation,
-    classify_hook_with_config, claude_hook_block, codex_hook_block, codex_user_trust_state_status,
-    default_activation_path, default_claude_settings_path, default_client_config_path,
-    default_client_config_template, discover_activation_path, install_codex_user_trust_state,
-    load_activation, load_client_config, load_or_sync_activation, merge_claude_settings,
-    merge_codex_config, parse_payload, record_active_context, remove_incompatible_hook_event_state,
-    remove_legacy_codex_hook_cache_files, render_platform_response,
-    runtime_profiles_for_activation, runtime_profiles_for_runtime, validate_claude_settings_json,
-    validate_codex_config_toml, write_activation,
+    RuntimeProviderHealthStatus, append_hook_event_state, apply_repeated_deny_replay,
+    build_default_activation, classify_hook_with_config, claude_hook_block, codex_hook_block,
+    codex_user_trust_state_status, default_activation_path, default_claude_settings_path,
+    default_client_config_path, default_client_config_template, discover_activation_path,
+    install_codex_user_trust_state, load_activation, load_client_config, load_or_sync_activation,
+    merge_claude_settings, merge_codex_config, parse_payload, record_active_context,
+    remove_incompatible_hook_event_state, remove_legacy_codex_hook_cache_files,
+    render_platform_response, runtime_profiles_for_activation, runtime_profiles_for_runtime,
+    validate_claude_settings_json, validate_codex_config_toml, write_activation,
 };
 use agent_semantic_runtime::ensure_project_hook_cache_dir;
 use hook_runtime_skill::install_agent_semantic_protocols_skill;
@@ -95,13 +95,17 @@ fn run_hook(args: &[String]) -> Result<(), String> {
             return Ok(());
         }
     };
-    let decision = classify_hook_with_config(HookClassificationRequest {
+    let mut decision = classify_hook_with_config(HookClassificationRequest {
         registry: &runtime,
         config: &hook_config,
         platform: client,
         event,
         payload: &payload,
     });
+    annotate_payload_context(&mut decision, &payload);
+    if let Err(error) = apply_repeated_deny_replay(&project_root, &mut decision) {
+        eprintln!("[agent-semantic-hook] failed to inspect hook replay state: {error}");
+    }
     record_active_context(ActiveContextRecord {
         activation_path: &activation_path,
         platform: client,
@@ -132,6 +136,24 @@ fn run_hook(args: &[String]) -> Result<(), String> {
 fn default_or_discovered_activation_path() -> PathBuf {
     let cwd = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     discover_activation_path(&cwd).unwrap_or_else(|| default_activation_path(&PathBuf::from(".")))
+}
+
+fn annotate_payload_context(decision: &mut HookDecision, payload: &serde_json::Value) {
+    for (field, keys) in [
+        ("sessionId", &["session_id", "sessionId"][..]),
+        ("transcriptPath", &["transcript_path", "transcriptPath"][..]),
+        ("toolUseId", &["tool_use_id", "toolUseId"][..]),
+        ("cwd", &["cwd"][..]),
+    ] {
+        if decision.fields.contains_key(field) {
+            continue;
+        }
+        if let Some(value) = string_field(payload, keys) {
+            decision
+                .fields
+                .insert(field.to_string(), serde_json::Value::String(value));
+        }
+    }
 }
 
 fn emit_activation_load_failure(

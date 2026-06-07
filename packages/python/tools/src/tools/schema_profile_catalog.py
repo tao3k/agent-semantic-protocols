@@ -82,6 +82,16 @@ LANGUAGE_SCHEMA_PROFILES: tuple[LanguageSchemaProfile, ...] = (
         ),
         provider_schema_files=("python-semantic-capabilities.v1.schema.json",),
     ),
+    LanguageSchemaProfile(
+        language_id="julia",
+        package_root="languages/JuliaLangProjectHarness.jl",
+        shared_schema_files=(
+            *_CORE_QUERY_SCHEMAS,
+            "semantic-native-syntax-fact-index.v1.schema.json",
+            *_AGENT_REASONING_SCHEMAS,
+        ),
+        provider_schema_files=(),
+    ),
 )
 
 

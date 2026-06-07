@@ -106,6 +106,32 @@ fn rtk_read_line_locator_routes_to_provider_query_with_range() {
 }
 
 #[test]
+fn rtk_read_whole_source_file_routes_to_frontier_not_direct_source_read() {
+    let decision = classify_hook(
+        &polyglot_registry(),
+        "codex",
+        "pre-tool",
+        &json!({
+            "tool_name": "functions.exec_command",
+            "tool_input": {"cmd": "rtk read crates/agent-semantic-hook/src/lib.rs"}
+        }),
+    );
+
+    assert_eq!(decision.decision, DecisionKind::Deny);
+    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Query);
+    assert!(
+        !decision.routes[0].argv.iter().any(|arg| arg == "--code"),
+        "{:?}",
+        decision.routes[0].argv
+    );
+    assert!(
+        decision.routes[0].argv.iter().any(|arg| arg == "--view"),
+        "{:?}",
+        decision.routes[0].argv
+    );
+}
+
+#[test]
 fn document_direct_read_uses_from_hook_without_content_flag() {
     let decision = classify_hook(
         &document_registry(),

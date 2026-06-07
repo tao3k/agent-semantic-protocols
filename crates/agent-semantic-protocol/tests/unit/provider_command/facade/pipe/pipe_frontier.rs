@@ -1,5 +1,6 @@
 use crate::provider_command::support::{
-    asp_command, prepend_path, provider, temp_project_root, write_activation, write_marker_provider,
+    asp_command, prepend_path, provider, temp_project_root, write_activation,
+    write_marker_provider, write_stdout_stderr_provider,
 };
 
 use super::assert_graph_turbo_request_contract;
@@ -83,7 +84,13 @@ fn search_pipe_is_asp_owned_and_renders_generated_candidates_without_provider_sp
     assert!(!stdout.contains("R4=>"), "{stdout}");
     assert!(!stdout.contains("frontierActions=R4."), "{stdout}");
     assert!(
-        stdout.contains("pipeStages=search-prime,search-pipe,search-reasoning,query-selector"),
+        stdout.contains("pipeStages=search-prime,search-pipe,query-selector,search-reasoning"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains(
+            "selectorPolicy=run-first reason=exact-selector-present before=search-reasoning"
+        ),
         "{stdout}"
     );
     assert!(
@@ -114,11 +121,40 @@ fn search_pipe_is_asp_owned_and_renders_generated_candidates_without_provider_sp
         "{stdout}"
     );
     assert!(
+        stdout.contains("recommendedNext=S1.query-selector"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("nextCommand=asp rust query --selector src/lib.rs:")
+            && stdout.contains(" --code ."),
+        "{stdout}"
+    );
+    let first_selector_action = stdout
+        .find("frontierActions=S1.selector(")
+        .expect("S1 frontier action");
+    let first_reasoning_action = stdout
+        .find("frontierActions=R1.reasoning(")
+        .expect("R1 frontier action");
+    assert!(
+        first_selector_action < first_reasoning_action,
+        "selector action should be rendered before reasoning action: {stdout}"
+    );
+    let first_selector_command = stdout.find("S1=>asp rust query").expect("S1 command");
+    let first_reasoning_command = stdout
+        .find("R1=>asp rust search reasoning")
+        .expect("R1 command");
+    assert!(
+        first_selector_command < first_reasoning_command,
+        "selector command should be rendered before reasoning command: {stdout}"
+    );
+    assert!(
         !stdout.contains("<selector>") && !stdout.contains("<owner-path>"),
         "{stdout}"
     );
     assert!(
-        stdout.contains("avoid=repeat-prime,repeat-pipe,query-rewrite-pipe,repeat-fzf"),
+        stdout.contains(
+            "avoid=repeat-prime,repeat-pipe,query-rewrite-pipe,reasoning-before-selector,repeat-fzf"
+        ),
         "{stdout}"
     );
     assert!(
@@ -173,7 +209,6 @@ fn search_pipe_commands_view_points_to_search_suggest() {
 fn search_pipe_graph_turbo_request_keeps_late_query_token_candidates() {
     let root = temp_project_root("search-pipe-graph-candidate-limit");
     let bin_dir = root.join(".bin");
-    let marker = root.join("provider-called");
     std::fs::create_dir_all(root.join("src")).expect("create src");
     let mut source = String::new();
     for index in 0..80 {
@@ -185,7 +220,12 @@ fn search_pipe_graph_turbo_request_keeps_late_query_token_candidates() {
     source
         .push_str("pub struct Scalar;\npub struct Snapshot {\n    pub scalars: Vec<Scalar>,\n}\n");
     std::fs::write(root.join("src/lib.rs"), source).expect("write source");
-    write_marker_provider(&bin_dir, "rs-harness", &marker);
+    write_stdout_stderr_provider(
+        &bin_dir,
+        "rs-harness",
+        r#"{"nodes":[{"id":"field:src/lib.rs-scalars-84","kind":"field","role":"struct-field","value":"scalars: Vec<Scalar>","action":"code","path":"src/lib.rs","ownerPath":"src/lib.rs","symbol":"scalars","startLine":84,"endLine":84,"locator":"src/lib.rs:84:84","matchText":"Snapshot::scalars: Vec<Scalar>","fields":{"containerName":"Snapshot","fieldName":"scalars","typeName":"Vec","typeValue":"Vec<Scalar>","typeArgs":"Scalar","collectionKind":"Vec"}},{"id":"type:src/lib.rs-scalars-vec-84","kind":"type","role":"field-type","value":"Vec<Scalar>","action":"evidence","path":"src/lib.rs","ownerPath":"src/lib.rs","symbol":"Vec","startLine":84,"endLine":84,"locator":"src/lib.rs:84:84","fields":{"fieldName":"scalars","typeName":"Vec","typeValue":"Vec<Scalar>","typeArgs":"Scalar","collectionKind":"Vec"}},{"id":"collection:vec","kind":"collection","role":"family","value":"Vec","action":"evidence","symbol":"Vec","fields":{"collectionKind":"Vec"}}],"edges":[{"source":"field:src/lib.rs-scalars-84","target":"type:src/lib.rs-scalars-vec-84","relation":"has_type"},{"source":"field:src/lib.rs-scalars-84","target":"collection:vec","relation":"collection_of"}]}"#,
+        "",
+    );
     write_activation(&root, &[provider("rust", Vec::new())]);
 
     let output = asp_command(&root)
@@ -255,6 +295,5 @@ fn search_pipe_graph_turbo_request_keeps_late_query_token_candidates() {
             .any(|edge| edge["relation"].as_str() == Some("collection_of")),
         "{payload}"
     );
-    assert!(!marker.exists(), "graph request should not spawn provider");
     let _ = std::fs::remove_dir_all(root);
 }

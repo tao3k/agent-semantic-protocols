@@ -38,6 +38,28 @@ pub(super) fn run_provider_command(
     Ok(())
 }
 
+pub(super) fn run_provider_command_with_stdin(
+    language_id: &str,
+    provider: &ActivatedProvider,
+    invocation: &[String],
+    project_root: &Path,
+    cache_home: &Path,
+    stdin: Vec<u8>,
+) -> Result<ProviderProcessOutput, String> {
+    let (program, forwarded) = invocation
+        .split_first()
+        .ok_or_else(|| format!("language `{language_id}` has an empty provider command"))?;
+    run_provider_process_with_stdin(
+        language_id,
+        provider,
+        program,
+        forwarded,
+        project_root,
+        cache_home,
+        StdinMode::bytes(stdin),
+    )
+}
+
 pub(super) fn run_guide_command(
     language_id: &str,
     provider: &ActivatedProvider,
@@ -78,6 +100,26 @@ fn run_provider_process(
     project_root: &Path,
     cache_home: &Path,
 ) -> Result<ProviderProcessOutput, String> {
+    run_provider_process_with_stdin(
+        language_id,
+        provider,
+        program,
+        forwarded,
+        project_root,
+        cache_home,
+        StdinMode::Inherit,
+    )
+}
+
+fn run_provider_process_with_stdin(
+    language_id: &str,
+    provider: &ActivatedProvider,
+    program: &str,
+    forwarded: &[String],
+    project_root: &Path,
+    cache_home: &Path,
+    stdin: StdinMode,
+) -> Result<ProviderProcessOutput, String> {
     let runtime_bin = cache_home.join("agent-semantic-protocol/runtime/bin");
     let mut envs = BTreeMap::new();
     envs.insert(
@@ -107,7 +149,7 @@ fn run_provider_process(
         args: forwarded.to_vec(),
         cwd: project_root.to_path_buf(),
         env: envs,
-        stdin: StdinMode::Inherit,
+        stdin,
         stdout: OutputMode::Capture,
         stderr: OutputMode::Capture,
         limits: ProviderProcessLimits::default(),

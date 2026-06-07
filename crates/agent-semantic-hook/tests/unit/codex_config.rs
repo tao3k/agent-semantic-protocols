@@ -16,6 +16,20 @@ fn codex_hook_matcher_includes_apply_patch_surfaces() {
 }
 
 #[test]
+fn claude_hook_matcher_reuses_shared_tool_surfaces() {
+    let block = claude_hook_block();
+    let pre_tool = block["hooks"]["PreToolUse"][0]["matcher"]
+        .as_str()
+        .expect("pre-tool matcher");
+
+    assert_ne!(pre_tool, "*");
+    assert!(pre_tool.contains("Bash|Shell"));
+    assert!(pre_tool.contains("functions\\.exec_command"));
+    assert_eq!(block["hooks"]["PermissionRequest"][0]["matcher"], pre_tool);
+    assert_eq!(block["hooks"]["PostToolUse"][0]["matcher"], pre_tool);
+}
+
+#[test]
 fn claude_settings_merge_preserves_unmanaged_hooks_and_replaces_managed_hooks() {
     let existing = r#"{
       "hooks": {
@@ -31,5 +45,6 @@ fn claude_settings_merge_preserves_unmanaged_hooks_and_replaces_managed_hooks() 
     assert_eq!(pre_tool.len(), 2);
     assert!(merged.contains("echo keep"));
     assert!(!merged.contains("--old"));
+    assert!(!merged.contains(r#""matcher": "*""#));
     assert!(merged.contains("exec asp hook pre-tool --client claude"));
 }

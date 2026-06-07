@@ -131,6 +131,18 @@ def _large_library_skip_message(result: ScenarioResult) -> str:
 
 def _large_library_skip_action(result: ScenarioResult) -> str:
     workdir_spec = dict_value(result.workdir_spec)
+    git_spec = dict_value(workdir_spec.get("git"))
+    if git_spec:
+        cache_key = git_spec.get("cacheKey")
+        cache_hint = (
+            f".cache/sandtable-repos/{cache_key}"
+            if isinstance(cache_key, str)
+            else ".cache/sandtable-repos/<cacheKey>"
+        )
+        return (
+            "set the missing live-run environment flags and use cached git "
+            f"workdir {cache_hint}; delete that checkout only when the pinned ref changes"
+        )
     env_name = workdir_spec.get("env")
     candidates = string_list(workdir_spec.get("candidates"))
     if isinstance(env_name, str) and candidates:

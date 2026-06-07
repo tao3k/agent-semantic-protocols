@@ -212,6 +212,71 @@ This suggests the live prompt should not carry the whole burden.  The provider
 needs an agent-facing pipe command or graph frontier that encodes the intended
 next actions, budgets, and avoid rules as data.
 
+The 2026-06-07 live rerun after removing the private =ASP_LIVE_CLAUDE_CLI=
+gate proved the runtime environment is no longer the blocker: Claude was found
+from the inherited global =PATH= and the SDK produced token/cost evidence.
+The flow still failed because =search pipe= rendered reasoning commands before
+selector commands, so the agent spent its limited turns on =search reasoning=
+and never crossed into =asp rust query --selector ... --code .=.  The durable
+fix is selector-first pipe projection: when graph-turbo has an exact selector,
+=recommendedNext=, =nextCommand=, =frontierActions=, and =pipeCommands= should
+make that selector read the first executable branch action.
+
+After applying selector-first projection in both =asp-graph-turbo= and ASP
+=pipePlan=, the single-prompt Tokio live run passed within the existing budget:
+
+#+begin_example
+elapsedMs=58813 asp=4 search=3 querySelector=1 reasoning=1 repeated=0 fzf=0
+totalTokens=334897 costUsd=0.399453 stdoutBytes=59831
+#+end_example
+
+The observed ASP sequence was:
+
+#+begin_example
+asp rust search prime --view seeds .
+asp rust search pipe 'Vec scalar collection fields' --view seeds .
+asp rust query --selector stress-test/examples/simple_echo_tcp.rs:39:39 --code .
+asp rust search reasoning owner-query --owner stress-test/examples/simple_echo_tcp.rs --query 'Vec scalar collection fields' --view seeds .
+#+end_example
+
+This validates the ordering fix: the agent crossed into the exact selector
+before branch reasoning, did not repeat prime or pipe, and did not fall back to
+=search fzf=.  The remaining research problem is evidence quality for Tokio
+itself: the selected branch is executable but still not the ideal
+field/type/collection owner for the question.
+
+The next optimization moved Rust =semantic-facts= from lexical-owner gating to
+a provider-owned =syn= project scan.  Search-pipe candidates now seed priority
+only; they do not decide whether field/type/collection facts can exist.  The
+Tokio no-token smoke now emits parser-owned facts:
+
+#+begin_example
+nodeKinds=field:6,type:6,collection:1
+queryCoverage=matched=vec,scalar,collection,fields missing=-
+frontierActions=S1.selector(selector=tokio/src/io/blocking.rs:23:23,symbol=buf)!query-selector
+frontierActions=S2.selector(selector=tokio/src/runtime/dump.rs:23:23,symbol=tasks)!query-selector
+frontierActions=S3.selector(selector=tokio/src/runtime/io/registration_set.rs:29:29,symbol=pending_release)!query-selector
+#+end_example
+
+This changes the remaining problem again: the pipe now reaches actual
+field/type/collection evidence.  The next quality question is ranking among
+valid field facts, not recovering from missing parser facts.
+
+The graph-turbo query weighting then started reading provider nested
+=fields=, so =elementShape=scalar= participates in =query_node_match_bonus=.
+For the same Tokio smoke, field nodes now rank ahead of the collection family
+node:
+
+#+begin_example
+rank=Q,F,C,I,F2,F3,F4,H,Y,I2
+scores=F:0.82,C:0.81
+#+end_example
+
+Field nodes also carry a parser-owned =contextLocator=.  The compact node still
+prints the exact declaration locator, but =nextCommand= / =pipeCommands= should
+use the bounded context selector when available.  This keeps the next read
+structural and avoids a follow-up manual window widening step.
+
 ** 31.22-E Non-zero Claude SDK exits can contain valid evidence
 
 Both completed prompts returned exit code 1 but still produced usable stream
@@ -252,8 +317,9 @@ steps[].expect.pipeFlow
 
 The canonical command list is not a brittle exact transcript.  It is the target
 pipe shape: run =search prime= once to establish the project graph context,
-start =search pipe= for the concrete question, follow the emitted
-=pipeCommands= into reasoning profiles, then select an exact query locator.
+start =search pipe= for the concrete question, follow the emitted exact
+=query-selector= command when one exists, then use reasoning profiles only for
+branch expansion or selector-less fallback.
 Concrete owner paths and selectors can vary by fixture, but the stage budget
 and forbidden behavior should not vary.
 
@@ -281,8 +347,10 @@ Claude used the stale repository =.bin/asp=.  Refreshing the hook with:
 updated =.bin/asp= so the live agent saw:
 
 #+begin_example
-pipeStages=search-prime,search-pipe,search-reasoning,query-selector
-pipeCommands=context=>asp rust search prime --view seeds .,pipe=>asp rust search pipe ...
+pipeStages=search-prime,search-pipe,query-selector,search-reasoning
+recommendedNext=S1.query-selector
+nextCommand=asp rust query --selector <exact-selector> --code .
+pipeCommands=context=>asp rust search prime --view seeds .,pipe=>asp rust search pipe ...,S1=>asp rust query --selector <exact-selector> --code .,R1=>asp rust search reasoning ...
 #+end_example
 
 The optimization-after report is:
@@ -616,8 +684,10 @@ The optimization landed in three layers:
 
 - RFC contract: =owner-query= now allows =field=, =type=, and =collection=
   nodes plus =has_type= and =collection_of= relations.
-- Rust fast path: bounded owner scanning adds collection field facts only after
-  the candidate set exists and without spawning the provider.
+- Provider fact path: ASP core only forwards bounded candidates to the active
+  provider.  Rust field/type/collection facts are produced by =rs-harness search
+  semantic-facts= through the Rust harness parser path, not by ASP-owned Rust
+  syntax heuristics.
 - Python graph-turbo: typed nodes are weighted and projected into top-three
   branch selectors, with query coverage aware of =field/fields= and
   =collection/collections= aliases.
@@ -625,6 +695,65 @@ The optimization landed in three layers:
 The next live Tokio run should inspect whether =asp rust search pipe 'Vec scalar
 collection fields' --view seeds= emits a =frontierActions= selector for a
 field-level hot range before launching Claude.  If the pipe output still points
-only at comments or modules, the remaining fix is to move the collection field
-fact producer from bounded syntax scanning into the Rust provider's native
-parser fact index rather than adding more prompt guidance.
+only at comments or modules, the remaining fix is to strengthen the Rust
+provider's native fact index and selector mapping rather than adding prompt
+guidance or ASP-core syntax scans.
+
+The local smoke after the provider-owned fact path showed the next branch
+projection issue: graph rank still surfaced lexical =collection= and =vec= items
+from the same owner even after the =field= node ranked first.  The graph-turbo
+projection now stops branch selection on provider-owned =field= nodes when they
+exist, so =frontierActions= and =pipeCommands= expose the =scalars= field
+selector without spending extra branches on lexical collection/Vec hot ranges.
+
+The Tokio live scenario is now pinned to a cached git checkout declared in the
+scenario JSON: =https://github.com/tokio-rs/tokio.git= at tag
+=tokio-1.52.3=, shallow clone depth =1=, under
+=.cache/sandtable-repos/tokio-1.52.3=.  The dry run resolves that checkout
+without requiring =SANDTABLE_RUST_TOKIO_060_ROOT=; that env var remains only an
+override.  A direct pipe smoke on the pinned checkout still did not produce
+provider-owned field facts for =Vec scalar collection fields=: =Scalar= is not
+present in this checkout and query coverage misses =scalar,fields=.  It did
+expose another graph projection bug, now fixed: item-to-hot mapping can collapse
+two branches onto the same selector, so the projection de-duplicates after hot
+mapping before emitting =pipeCommands=.
+
+The live run no longer requires the private =ASP_LIVE_CLAUDE_CLI= gate; global
+Claude and the inherited SDK environment are enough.  With the cached Tokio
+checkout and the current prompt, the first live run failed the expected flow:
+the agent executed five ASP commands, including one =search prime=, one
+=search pipe=, and two =search reasoning= commands, but never executed the
+projected =query --selector ... --code .= command.  The SDK summary reported
+=inputTokens=49570=, =cacheReadInputTokens=349312=, =outputTokens=2757=, and
+=costUsd=0.491431=.  This confirms the next optimization target is not live
+environment setup; it is making the pipe projection and prompt contract harder
+to ignore when selector commands are already available.
+
+After provider-owned field facts, nested graph weighting, and =contextLocator=
+projection, the next live run reached the intended selector-first shape with
+only three ASP commands: =search prime=, =search pipe 'Vec scalar collection
+fields'=, and =query --selector tokio/src/io/blocking.rs:15:35 --code .=.  The
+run had =searchReasoningCommands=0=, =searchFzfCommands=0=,
+=repeatedCommands=0=, =directReadCommands=0=, =elapsedMs=72742=,
+=totalTokens=158851=, and =costUsd=0.346455=.  It was marked failed only
+because the sandtable contract still treated =search-reasoning= as a required
+stage for a complex pipe.  That expectation is now wrong: when =search pipe=
+projects an exact parser-owned selector, =prime -> pipe -> query-selector= is
+the successful complex flow, and =search-reasoning= is an optional branch
+expansion after the selector evidence is read or a fallback when no exact
+selector exists.
+
+A follow-up live run after fixing local sibling-bin resolution for
+=.bin/asp-graph-turbo= confirmed the same behavior through the real installed
+facade.  The run executed six ASP commands: one document metadata query, one
+=search prime=, one =search pipe=, and three exact =query --selector ... --code=
+reads for =tokio/src/io/blocking.rs:15:35=, =tokio/src/runtime/dump.rs:15:35=,
+and =tokio/src/runtime/io/registration_set.rs:21:41=.  It still had
+=searchReasoningCommands=0=, =searchFzfCommands=0=, =repeatedCommands=0=, and
+=directReadCommands=0=, with =elapsedMs=86577=, =totalTokens=188119=, and
+=costUsd=0.373619=.  The scenario was marked failed only because the step-level
+=expect.pipeFlow.requiredStages= still contained the obsolete
+=search-reasoning= requirement while the deep-question contract already
+required only =search-prime=, =search-pipe=, and =query-selector=.  The step
+expectation is now synchronized with the deep-question contract so optional
+reasoning does not regress into a required gate.

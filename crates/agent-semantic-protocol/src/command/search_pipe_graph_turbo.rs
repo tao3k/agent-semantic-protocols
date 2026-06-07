@@ -8,10 +8,8 @@ use super::{
     search_pipe_dependency_facts::{
         DependencyFact, collect_dependency_facts, dependency_matches_query,
     },
+    search_pipe_provider_facts::ProviderGraphFacts,
     search_pipe_render::Candidate,
-    search_pipe_semantic_facts::{
-        CollectionFieldFact, collect_collection_field_facts, collection_field_matches_query,
-    },
 };
 
 const GRAPH_TURBO_REQUEST_SCHEMA_ID: &str = "agent.semantic-protocols.semantic-graph-turbo-request";
@@ -24,8 +22,9 @@ pub(super) fn render_graph_turbo_request(
     query: Option<&str>,
     candidates: &[Candidate],
     pipes: &[String],
+    provider_facts: &ProviderGraphFacts,
 ) -> Result<String, String> {
-    let packet = graph_turbo_request(language_id, query, candidates, pipes);
+    let packet = graph_turbo_request(language_id, query, candidates, pipes, provider_facts);
     serde_json::to_string_pretty(&packet)
         .map(|mut text| {
             text.push('\n');
@@ -39,6 +38,7 @@ fn graph_turbo_request(
     query: Option<&str>,
     candidates: &[Candidate],
     pipes: &[String],
+    provider_facts: &ProviderGraphFacts,
 ) -> Value {
     let profile = profile_for_pipes(pipes);
     let mut nodes = Vec::new();
@@ -69,9 +69,7 @@ fn graph_turbo_request(
     append_owner_nodes(&mut nodes, &owners);
     append_candidate_nodes(&mut nodes, language_id, &graph_candidates);
     append_hot_nodes(&mut nodes, &graph_candidates);
-    let collection_field_facts =
-        collect_collection_field_facts(language_id, query, &graph_candidates);
-    append_collection_field_nodes(&mut nodes, &collection_field_facts);
+    append_provider_fact_nodes(&mut nodes, provider_facts);
     let dependency_facts = collect_dependency_facts(language_id, query, &graph_candidates);
     append_dependency_nodes(&mut nodes, &dependency_facts);
     append_test_nodes(&mut nodes, &owners, pipes);
@@ -80,8 +78,8 @@ fn graph_turbo_request(
         query,
         &graph_candidates,
         &owners,
-        &collection_field_facts,
         &dependency_facts,
+        provider_facts,
         pipes,
     );
 
@@ -196,88 +194,8 @@ fn append_hot_nodes(nodes: &mut Vec<Value>, candidates: &[Candidate]) {
     }
 }
 
-fn append_collection_field_nodes(nodes: &mut Vec<Value>, facts: &[CollectionFieldFact]) {
-    let mut seen_collection_nodes = HashSet::new();
-    for fact in facts {
-        let (start_line, end_line) = hot_context_range(fact.line);
-        let locator = format!("{}:{}:{}", fact.owner_path, start_line, end_line);
-        nodes.push(json!({
-            "id": collection_field_node_id(fact),
-            "kind": "field",
-            "role": "struct-field",
-            "value": format!("{}: {}", fact.field_name, fact.type_value),
-            "action": "code",
-            "path": fact.owner_path,
-            "ownerPath": fact.owner_path,
-            "symbol": fact.field_name,
-            "startLine": fact.line,
-            "endLine": fact.line,
-            "locator": format!("{}:{}:{}", fact.owner_path, fact.line, fact.line),
-            "matchText": fact.text,
-            "fields": {
-                "fieldName": fact.field_name,
-                "typeName": fact.type_name,
-                "typeValue": fact.type_value,
-                "typeArgs": fact.type_args,
-                "collectionKind": fact.collection_kind,
-            },
-        }));
-        nodes.push(json!({
-            "id": collection_field_type_node_id(fact),
-            "kind": "type",
-            "role": "field-type",
-            "value": fact.type_value,
-            "action": "evidence",
-            "path": fact.owner_path,
-            "ownerPath": fact.owner_path,
-            "symbol": fact.type_name,
-            "startLine": fact.line,
-            "endLine": fact.line,
-            "locator": format!("{}:{}:{}", fact.owner_path, fact.line, fact.line),
-            "matchText": fact.text,
-            "fields": {
-                "fieldName": fact.field_name,
-                "typeName": fact.type_name,
-                "typeValue": fact.type_value,
-                "typeArgs": fact.type_args,
-                "collectionKind": fact.collection_kind,
-            },
-        }));
-        if seen_collection_nodes.insert(fact.collection_kind.clone()) {
-            nodes.push(json!({
-                "id": collection_node_id(&fact.collection_kind),
-                "kind": "collection",
-                "role": "family",
-                "value": fact.collection_kind,
-                "action": "evidence",
-                "symbol": fact.collection_kind,
-                "fields": {
-                    "collectionKind": fact.collection_kind,
-                },
-            }));
-        }
-        nodes.push(json!({
-            "id": collection_field_hot_node_id(fact),
-            "kind": "hot",
-            "role": "field-range",
-            "value": fact.field_name,
-            "action": "code",
-            "path": fact.owner_path,
-            "ownerPath": fact.owner_path,
-            "symbol": fact.field_name,
-            "startLine": start_line,
-            "endLine": end_line,
-            "locator": locator,
-            "matchText": fact.text,
-            "fields": {
-                "fieldName": fact.field_name,
-                "typeName": fact.type_name,
-                "typeValue": fact.type_value,
-                "typeArgs": fact.type_args,
-                "collectionKind": fact.collection_kind,
-            },
-        }));
-    }
+fn append_provider_fact_nodes(nodes: &mut Vec<Value>, provider_facts: &ProviderGraphFacts) {
+    nodes.extend(provider_facts.nodes.iter().cloned());
 }
 
 fn hot_context_range(line: usize) -> (usize, usize) {
@@ -336,18 +254,17 @@ fn append_graph_edges(
     query: Option<&str>,
     candidates: &[Candidate],
     owners: &[String],
-    collection_field_facts: &[CollectionFieldFact],
     dependency_facts: &[DependencyFact],
+    provider_facts: &ProviderGraphFacts,
     pipes: &[String],
 ) {
     if let Some(query) = query.filter(|query| !query.trim().is_empty()) {
         append_query_match_edges(edges, query, candidates, owners);
-        append_query_collection_field_edges(edges, query, collection_field_facts);
         append_query_dependency_edges(edges, query, dependency_facts);
     }
     append_owner_candidate_edges(edges, candidates);
     append_candidate_hot_edges(edges, candidates);
-    append_collection_field_edges(edges, collection_field_facts);
+    append_provider_fact_edges(edges, provider_facts);
     append_owner_dependency_edges(edges, dependency_facts);
     append_test_cover_edges(edges, owners, pipes);
 }
@@ -381,30 +298,6 @@ fn append_query_dependency_edges(edges: &mut Vec<Value>, query: &str, facts: &[D
     }
 }
 
-fn append_query_collection_field_edges(
-    edges: &mut Vec<Value>,
-    query: &str,
-    facts: &[CollectionFieldFact],
-) {
-    let query_id = stable_node_id("query", query);
-    for fact in facts
-        .iter()
-        .filter(|fact| collection_field_matches_query(fact, query))
-    {
-        edges.push(edge(&query_id, &collection_field_node_id(fact), "matches"));
-        edges.push(edge(
-            &query_id,
-            &collection_field_type_node_id(fact),
-            "matches",
-        ));
-        edges.push(edge(
-            &query_id,
-            &collection_node_id(&fact.collection_kind),
-            "matches",
-        ));
-    }
-}
-
 fn append_owner_candidate_edges(edges: &mut Vec<Value>, candidates: &[Candidate]) {
     for candidate in candidates.iter().take(GRAPH_TURBO_CANDIDATE_NODE_LIMIT) {
         edges.push(edge(
@@ -425,34 +318,8 @@ fn append_candidate_hot_edges(edges: &mut Vec<Value>, candidates: &[Candidate]) 
     }
 }
 
-fn append_collection_field_edges(edges: &mut Vec<Value>, facts: &[CollectionFieldFact]) {
-    for fact in facts {
-        edges.push(edge(
-            &stable_node_id("owner", &fact.owner_path),
-            &collection_field_node_id(fact),
-            "contains",
-        ));
-        edges.push(edge(
-            &collection_field_node_id(fact),
-            &collection_field_type_node_id(fact),
-            "has_type",
-        ));
-        edges.push(edge(
-            &collection_field_node_id(fact),
-            &collection_node_id(&fact.collection_kind),
-            "collection_of",
-        ));
-        edges.push(edge(
-            &collection_field_type_node_id(fact),
-            &collection_node_id(&fact.collection_kind),
-            "collection_of",
-        ));
-        edges.push(edge(
-            &collection_field_node_id(fact),
-            &collection_field_hot_node_id(fact),
-            "contains",
-        ));
-    }
+fn append_provider_fact_edges(edges: &mut Vec<Value>, provider_facts: &ProviderGraphFacts) {
+    edges.extend(provider_facts.edges.iter().cloned());
 }
 
 fn append_owner_dependency_edges(edges: &mut Vec<Value>, dependency_facts: &[DependencyFact]) {
@@ -532,34 +399,6 @@ fn hot_node_id(candidate: &Candidate) -> String {
     stable_node_id(
         "hot",
         &format!("{}:{}:{}", candidate.path, candidate.symbol, candidate.line),
-    )
-}
-
-fn collection_field_node_id(fact: &CollectionFieldFact) -> String {
-    stable_node_id(
-        "field",
-        &format!("{}:{}:{}", fact.owner_path, fact.field_name, fact.line),
-    )
-}
-
-fn collection_field_type_node_id(fact: &CollectionFieldFact) -> String {
-    stable_node_id(
-        "type",
-        &format!(
-            "{}:{}:{}:{}",
-            fact.owner_path, fact.field_name, fact.type_value, fact.line
-        ),
-    )
-}
-
-fn collection_node_id(collection_kind: &str) -> String {
-    stable_node_id("collection", collection_kind)
-}
-
-fn collection_field_hot_node_id(fact: &CollectionFieldFact) -> String {
-    stable_node_id(
-        "hot",
-        &format!("{}:{}:{}", fact.owner_path, fact.field_name, fact.line),
     )
 }
 

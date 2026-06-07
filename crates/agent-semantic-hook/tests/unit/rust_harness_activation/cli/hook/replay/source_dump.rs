@@ -32,6 +32,48 @@ fn cli_hook_replay_blocks_functions_exec_command_source_dump() {
 }
 
 #[test]
+fn cli_hook_replay_compacts_repeated_source_dump_lane() {
+    let root = temp_project_root("hook-repeated-source-dump");
+    let first = run_hook_decision(
+        &root,
+        "pre-tool",
+        json!({
+            "tool_name": "functions.exec_command",
+            "tool_input": {"cmd": "sed -n '1,40p' src/lib.rs"}
+        }),
+    );
+    let second = run_hook_decision(
+        &root,
+        "pre-tool",
+        json!({
+            "tool_name": "functions.exec_command",
+            "tool_input": {"cmd": "head -n 40 src/lib.rs"}
+        }),
+    );
+
+    assert_eq!(first["decision"], "deny");
+    assert_eq!(first["fields"]["denyReplay"], "record");
+    assert_eq!(second["decision"], "deny");
+    assert_eq!(second["reasonKind"], "bulk-source-dump");
+    assert_eq!(second["fields"]["denyReplay"], "repeated");
+    let message = second["message"].as_str().expect("replay message");
+    assert!(message.starts_with("ASP hook already denied `bulk-source-dump`"));
+    assert!(message.contains("Follow the previous recovery route"));
+    assert!(!message.contains("## Agent Flow"));
+    assert_eq!(second["routes"][0]["argv"][6], "src/lib.rs:1:40");
+
+    let event = last_hook_event(&root);
+    assert_eq!(event["fields"]["denyReplay"], "repeated");
+    assert!(
+        event["denyReplayKey"]
+            .as_str()
+            .is_some_and(|key| !key.is_empty())
+    );
+
+    std::fs::remove_dir_all(root).expect("cleanup temp project root");
+}
+
+#[test]
 fn cli_hook_replay_preserves_line_ranges_for_common_source_dump_pipelines() {
     for (command, selector) in [
         ("awk 'NR>=115 && NR<=240' src/lib.rs", "src/lib.rs:115:240"),

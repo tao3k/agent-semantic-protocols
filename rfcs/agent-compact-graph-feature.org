@@ -688,6 +688,32 @@ default owner-query adapter connects them through typed edges such as
 questions such as =Vec collection fields= without requiring the agent to run a
 second owner search, broad fzf, or tree-sitter guide probe after the ranked
 frontier has selected the evidence boundary.
+For Rust, these data-shape facts are provider-owned parser facts produced by
+the harness's =syn= project scan.  Search-pipe lexical candidates may seed
+priority, but they must not be the authority or the only files parsed for
+=field=/=type=/=collection= facts; otherwise a lexical =Vec= hit outside the
+struct owner prevents the graph from ever seeing the field evidence.
+Field nodes should preserve the exact field declaration locator for display
+and metadata, and may also expose a parser-owned =contextLocator= for code
+projection.  When =contextLocator= is present, branch =query-selector= commands
+should use that bounded field context selector rather than a single declaration
+line, so the next read contains enough surrounding structure without forcing a
+manual widening search.
+When provider-owned =field= nodes are present in an =owner-query= result, the
+bounded fanout projection should select branches from those field nodes first
+and must not fill the remaining branch budget with same-owner lexical =item= or
+=hot= matches merely to reach the branch cap.
+When a projected branch already has an exact selector, prompt-visible compact
+output must make =query-selector= the first next action for that branch.
+=search-reasoning= is still available for branch expansion, but it is a
+follow-up after reading the exact selector or a fallback when no exact selector
+exists.  Rendered =frontierActions=, =recommendedNext=, =nextCommand=, and
+=pipeCommands= should preserve that selector-first ordering so the agent does
+not spend turns on owner reasoning before it has consumed the ranked evidence
+boundary.  Sandtable and hook diagnostics should therefore treat
+=prime -> pipe -> query-selector= as a complete complex-pipe success when the
+pipe result exposes an exact selector; =search-reasoning= is measured as
+optional branch expansion in that case, not as a required stage.
 Command-line arguments may override request profile, seeds, or budget for
 local debugging, but provider integration should prefer the request packet so
 the algorithm input and response can be audited together.  The response is

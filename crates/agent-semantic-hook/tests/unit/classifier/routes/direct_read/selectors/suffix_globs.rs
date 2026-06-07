@@ -113,7 +113,13 @@ fn structured_direct_read_brace_glob_routes_to_all_matching_providers() {
             "."
         ]
     );
-    assert!(decision.message.starts_with("# ASP Hook Recovery"));
+    assert!(decision.message.starts_with("ASP hook denied `"));
+    assert!(
+        decision
+            .message
+            .contains("@.agents/skills/agent-semantic-protocols/SKILL.md")
+    );
+    assert!(decision.message.contains("## ASP Hook Recovery"));
     assert!(decision.message.contains("`asp rust guide .`"));
     assert!(decision.message.contains("`asp python guide .`"));
     assert!(decision.message.contains(

@@ -104,7 +104,19 @@ pub(super) fn assert_content_dump_denied(command: &str, provider_id: &str) {
 
 fn assert_agent_facade_decision(decision: &HookDecision, command: &str) {
     assert!(
-        decision.message.starts_with("# ASP Hook Recovery"),
+        decision.message.starts_with("ASP hook denied `"),
+        "{command}: {}",
+        decision.message
+    );
+    assert!(
+        decision
+            .message
+            .contains("@.agents/skills/agent-semantic-protocols/SKILL.md"),
+        "{command}: {}",
+        decision.message
+    );
+    assert!(
+        decision.message.contains("## ASP Hook Recovery"),
         "{command}: {}",
         decision.message
     );

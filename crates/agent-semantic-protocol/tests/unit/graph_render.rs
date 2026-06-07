@@ -403,6 +403,75 @@ fn graph_render_cli_uses_asp_graph_turbo_for_turbo_request_packet() {
 }
 
 #[test]
+fn graph_render_cli_prefers_sibling_asp_graph_turbo_without_path_lookup() {
+    let packet_path = temp_packet_path();
+    let args_path = temp_packet_path();
+    let stdin_path = temp_packet_path();
+    let bin_dir = std::env::temp_dir().join(format!(
+        "agent-semantic-protocol-sibling-graph-bin-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&bin_dir);
+    fs::create_dir_all(&bin_dir).unwrap();
+    let asp_copy = bin_dir.join(format!("asp{}", std::env::consts::EXE_SUFFIX));
+    fs::copy(env!("CARGO_BIN_EXE_asp"), &asp_copy).unwrap();
+    make_executable(&asp_copy);
+    let graph_turbo = bin_dir.join(format!("asp-graph-turbo{}", std::env::consts::EXE_SUFFIX));
+    fs::write(
+        &graph_turbo,
+        "#!/bin/sh\n\
+         printf '%s\n' \"$@\" > \"$ASP_GRAPH_TURBO_ARGS_OUT\"\n\
+         cat > \"$ASP_GRAPH_TURBO_STDIN_OUT\"\n\
+         printf '[graph-frontier] sibling=true\\n'\n",
+    )
+    .unwrap();
+    make_executable(&graph_turbo);
+    fs::write(
+        &packet_path,
+        sample_graph_turbo_request_packet().to_string(),
+    )
+    .unwrap();
+
+    let output = Command::new(&asp_copy)
+        .env("PATH", "/usr/bin:/bin")
+        .env("ASP_GRAPH_TURBO_ARGS_OUT", &args_path)
+        .env("ASP_GRAPH_TURBO_STDIN_OUT", &stdin_path)
+        .args([
+            "graph",
+            "render",
+            "--packet",
+            packet_path.to_str().unwrap(),
+            "--view",
+            "seeds",
+        ])
+        .output()
+        .unwrap();
+
+    fs::remove_file(&packet_path).unwrap();
+    let _ = fs::remove_dir_all(&bin_dir);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        "[graph-frontier] sibling=true\n"
+    );
+    assert_eq!(
+        fs::read_to_string(&args_path).unwrap(),
+        "rank\n-\n--format\ncompact\n"
+    );
+    assert!(
+        fs::read_to_string(&stdin_path)
+            .unwrap()
+            .contains("\"packetKind\":\"graph-turbo-request\"")
+    );
+    fs::remove_file(&args_path).unwrap();
+    fs::remove_file(&stdin_path).unwrap();
+}
+
+#[test]
 fn graph_render_cli_rejects_non_seed_view() {
     let packet_path = temp_packet_path();
     fs::write(&packet_path, sample_packet().to_string()).unwrap();

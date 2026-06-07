@@ -22,6 +22,7 @@ use super::query_direct_read::{
 };
 use super::search_config::AspConfig;
 use super::search_pipe::{is_asp_fast_search, run_asp_fast_search_command};
+use super::search_pipe_provider_facts::ProviderGraphFactsContext;
 
 const SUPPORTED_LANGUAGES: &[&str] = &["rust", "typescript", "python", "julia", "org", "md"];
 const SUPPORTED_COMMANDS: &[&str] = &["search", "query", "guide", "check", "ast-patch", "evidence"];
@@ -150,7 +151,18 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
     }
 
     let cache_home = client_backend_cache_home(&activation_root, &project_root)?;
+    let provider = runtime
+        .providers
+        .iter()
+        .find(|provider| provider.language_id == language_id)
+        .ok_or_else(|| format!("no activated provider for language {language_id}"))?;
+    let runtime_profiles = runtime_profiles_for_runtime(&project_root, &runtime);
     if is_asp_fast_search(&provider_args) {
+        let provider_context = ProviderGraphFactsContext {
+            provider,
+            profiles: &runtime_profiles,
+            cache_home: &cache_home,
+        };
         return run_asp_fast_search_command(
             language_id,
             &provider_args,
@@ -158,14 +170,9 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
             &invocation_root,
             &cache_home,
             &config,
+            Some(&provider_context),
         );
     }
-    let provider = runtime
-        .providers
-        .iter()
-        .find(|provider| provider.language_id == language_id)
-        .ok_or_else(|| format!("no activated provider for language {language_id}"))?;
-    let runtime_profiles = runtime_profiles_for_runtime(&project_root, &runtime);
     if uses_client_backend(args) {
         return run_client_backend_command(
             language_id,

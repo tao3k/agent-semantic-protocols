@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::io::{self, Read, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use agent_semantic_provider_transport::{
     OutputMode, ProviderProcessLimits, ProviderProcessSpec, StdinMode, run_provider_process,
@@ -102,7 +102,7 @@ pub(super) fn render_graph_turbo_packet(packet_bytes: &[u8]) -> Result<Option<Ve
     let cwd = std::env::current_dir()
         .map_err(|error| format!("failed to resolve current directory: {error}"))?;
     let output = match run_provider_process(ProviderProcessSpec {
-        program: "asp-graph-turbo".to_string(),
+        program: graph_turbo_program(),
         args: vec![
             "rank".to_string(),
             "-".to_string(),
@@ -137,6 +137,23 @@ pub(super) fn render_graph_turbo_packet(packet_bytes: &[u8]) -> Result<Option<Ve
         return Ok(None);
     }
     Ok(Some(output.stdout.to_vec()))
+}
+
+fn graph_turbo_program() -> String {
+    match std::env::current_exe()
+        .ok()
+        .and_then(|current_exe| sibling_graph_turbo_program(&current_exe))
+    {
+        Some(program) => program.display().to_string(),
+        None => "asp-graph-turbo".to_string(),
+    }
+}
+
+fn sibling_graph_turbo_program(current_exe: &Path) -> Option<PathBuf> {
+    let candidate = current_exe
+        .parent()?
+        .join(format!("asp-graph-turbo{}", std::env::consts::EXE_SUFFIX));
+    candidate.is_file().then_some(candidate)
 }
 
 fn flag_value(args: &[String], flag: &str) -> Option<String> {

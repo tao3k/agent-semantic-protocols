@@ -24,7 +24,7 @@ Detected from provider binaries plus `asp.toml`; only activated languages are li
 | --- | --- | --- | --- | --- |
 | rust | `asp rust` | rs-harness | external-process | `.bin/rs-harness` |
 | typescript | `asp typescript` | ts-harness | external-process | `.bin/ts-harness` |
-| python | `asp python` | py-harness | external-process | `.bin/py-harness` |
+| python | `asp python` | py-harness | external-process | `py-harness` |
 | julia | `asp julia` | julia-lang-project-harness | external-process | `.bin/asp-julia-harness` |
 | org | `asp org` | orgize | embedded | `.bin/asp` |
 | md | `asp md` | orgize | embedded | `.bin/asp` |

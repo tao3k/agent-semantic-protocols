@@ -33,7 +33,9 @@ pub use codex_config::{
     validate_codex_config_toml,
 };
 pub use dev_context::{ActiveContextRecord, record_active_context};
-pub use event_state::{append_hook_event_state, remove_incompatible_hook_event_state};
+pub use event_state::{
+    append_hook_event_state, apply_repeated_deny_replay, remove_incompatible_hook_event_state,
+};
 pub use hook_config::{
     ClientHookConfig, default_client_config_path, default_client_config_template,
     load_client_config,

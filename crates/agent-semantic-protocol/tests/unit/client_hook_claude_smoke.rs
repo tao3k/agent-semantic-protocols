@@ -16,9 +16,22 @@ fn claude_install_writes_project_settings_hooks() {
         serde_json::from_slice(&std::fs::read(&settings_path).expect("read claude settings"))
             .expect("parse claude settings");
 
+    let pre_tool_matcher = settings["hooks"]["PreToolUse"][0]["matcher"]
+        .as_str()
+        .expect("pre-tool matcher");
+    assert_ne!(
+        pre_tool_matcher, "*",
+        "Claude should reuse the shared tool-surface matcher instead of spawning hooks for every tool"
+    );
+    assert!(pre_tool_matcher.contains("Bash|Shell"));
+    assert!(pre_tool_matcher.contains("functions\\.exec_command"));
     assert_eq!(
-        settings["hooks"]["PreToolUse"][0]["matcher"], "*",
-        "tool events should use Claude matcher groups"
+        settings["hooks"]["PermissionRequest"][0]["matcher"],
+        pre_tool_matcher
+    );
+    assert_eq!(
+        settings["hooks"]["PostToolUse"][0]["matcher"],
+        pre_tool_matcher
     );
     assert!(
         settings["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
@@ -101,6 +114,41 @@ fn claude_platform_response_uses_hook_specific_permission_decision() {
     assert!(reason.contains("asp rust query --from-hook direct-source-read"));
     assert!(reason.contains("--code"));
     assert!(response.get("agentHookDecision").is_none());
+}
+
+#[test]
+fn claude_platform_response_compacts_repeated_denied_source_lane() {
+    let root = claude_fixture();
+
+    install_claude_hooks(root.as_path());
+
+    let payload = |tool_use_id: &str| {
+        json!({
+            "session_id": "session-claude-repeated-read",
+            "transcript_path": root.as_path().join("session.jsonl"),
+            "cwd": root.as_path(),
+            "hook_event_name": "PreToolUse",
+            "tool_use_id": tool_use_id,
+            "tool_name": "Read",
+            "tool_input": {
+                "file_path": root.as_path().join("src/lib.rs")
+            }
+        })
+    };
+    let first = run_claude_pre_tool_decision(root.as_path(), payload("toolu_read_1"), &[]);
+    let second = run_claude_pre_tool_decision(root.as_path(), payload("toolu_read_2"), &[]);
+
+    assert_eq!(first["hookSpecificOutput"]["permissionDecision"], "deny");
+    let reason = second["hookSpecificOutput"]["permissionDecisionReason"]
+        .as_str()
+        .expect("permission reason");
+    assert!(reason.starts_with("ASP hook already denied `direct-source-read`"));
+    assert!(reason.contains("Follow the previous recovery route"));
+    assert!(!reason.contains("## Agent Flow"));
+    let context = second["hookSpecificOutput"]["additionalContext"]
+        .as_str()
+        .expect("decision context");
+    assert!(context.contains("\"denyReplay\":\"repeated\""));
 }
 
 fn claude_fixture() -> PathBuf {

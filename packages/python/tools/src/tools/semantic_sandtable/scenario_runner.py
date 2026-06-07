@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
@@ -21,7 +20,7 @@ from .utils import (
     dict_value,
     optional_int,
     require_str,
-    resolve_workdir,
+    resolve_workdir_with_env,
     string_list,
 )
 
@@ -38,11 +37,11 @@ def _run_loaded_scenario(
     path: Path,
     scenario: dict[str, Any],
 ) -> ScenarioResult:
-    prepared = _prepare_loaded_scenario(repo_root, path, scenario)
+    env = build_env(scenario.get("env", {}), repo_root=repo_root)
+    prepared = _prepare_loaded_scenario(repo_root, path, scenario, env)
     if isinstance(prepared, ScenarioResult):
         return prepared
     scenario_id, workdir, result, steps, budgets, execution = prepared
-    env = build_env(scenario.get("env", {}), repo_root=repo_root)
     captures: dict[str, str] = {}
     totals = _run_scenario_steps(
         repo_root,
@@ -63,19 +62,20 @@ def _prepare_loaded_scenario(
     repo_root: Path,
     path: Path,
     scenario: dict[str, Any],
+    env: dict[str, str],
 ) -> (
     tuple[str, Path, ScenarioResult, list[Any], dict[str, Any], dict[str, Any]]
     | ScenarioResult
 ):
     scenario_id = require_str(scenario, "id", path.stem)
     language = require_str(scenario, "language", "unknown")
-    workdir = resolve_workdir(repo_root, scenario.get("workdir"))
+    workdir = resolve_workdir_with_env(repo_root, scenario.get("workdir"), env)
     result = _initial_scenario_result(scenario, scenario_id, language, path, workdir)
     if _apply_receipt_error(repo_root, result):
         return result
     if _apply_failure_frontier_comparison(repo_root, result):
         return result
-    if _apply_env_gate_skip(result, scenario):
+    if _apply_env_gate_skip(result, scenario, env):
         return result
     if workdir is None:
         result.status = "skip"
@@ -136,11 +136,11 @@ def _initial_scenario_result(
     )
 
 
-def _apply_env_gate_skip(result: ScenarioResult, scenario: dict[str, Any]) -> bool:
+def _apply_env_gate_skip(
+    result: ScenarioResult, scenario: dict[str, Any], env: dict[str, str]
+) -> bool:
     missing = [
-        name
-        for name in string_list(scenario.get("skipUnlessEnv"))
-        if not os.environ.get(name)
+        name for name in string_list(scenario.get("skipUnlessEnv")) if not env.get(name)
     ]
     if not missing:
         return False

@@ -636,13 +636,44 @@
             "type": "string",
             "minLength": 1
           }
+        },
+        "git": {
+          "$ref": "#/$defs/workdirGit"
         }
       },
       "anyOf": [
         {"required": ["env"]},
         {"required": ["relative"]},
-        {"required": ["candidates"]}
+        {"required": ["candidates"]},
+        {"required": ["git"]}
       ]
+    },
+    "workdirGit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url", "cacheKey"],
+      "properties": {
+        "url": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "depth": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "cacheKey": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+        },
+        "subdir": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
     },
     "budgets": {
       "type": "object",

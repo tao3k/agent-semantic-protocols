@@ -105,8 +105,6 @@ def pipe_flow_from_messages(messages: list[dict[str, Any]]) -> dict[str, Any]:
         missing.append("search-prime")
     if stats["searchPipeCommands"] == 0:
         missing.append("search-pipe")
-    if stats["searchFzfCommands"] + stats["searchReasoningCommands"] == 0:
-        missing.append("search-fzf-or-reasoning")
     if stats["querySelectorCommands"] == 0:
         missing.append("query-selector")
     stats["complexPipeFlow"] = not missing

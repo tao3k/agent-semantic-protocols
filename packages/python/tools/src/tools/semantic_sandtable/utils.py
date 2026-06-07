@@ -5,6 +5,7 @@ from __future__ import annotations
 import glob
 import os
 import re
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -12,44 +13,123 @@ from .constants import TOKEN_PATTERN
 
 
 def resolve_workdir(repo_root: Path, spec: Any) -> Path | None:
+    return resolve_workdir_with_env(repo_root, spec, os.environ)
+
+
+def resolve_workdir_with_env(
+    repo_root: Path, spec: Any, env: dict[str, str]
+) -> Path | None:
     if spec is None:
         return repo_root
     if isinstance(spec, str):
-        return resolve_path(repo_root, spec)
+        return resolve_path(repo_root, spec, env)
     if not isinstance(spec, dict):
         return None
 
     env_name = spec.get("env")
     if isinstance(env_name, str):
-        env_value = os.environ.get(env_name)
+        env_value = env.get(env_name)
         if env_value:
-            env_path = resolve_path(repo_root, env_value)
+            env_path = resolve_path(repo_root, env_value, env)
             if env_path and env_path.exists():
                 return env_path
 
     relative = spec.get("relative")
     if isinstance(relative, str):
-        relative_path = resolve_path(repo_root, relative)
+        relative_path = resolve_path(repo_root, relative, env)
         if relative_path and relative_path.exists():
             return relative_path
 
+    git_workdir = resolve_git_workdir(repo_root, spec, env)
+    if git_workdir is not None:
+        return git_workdir
     for pattern in string_list(spec.get("candidates", [])):
-        matches = resolve_glob(repo_root, pattern)
+        matches = resolve_glob(repo_root, pattern, env)
         if matches:
             return matches[0]
     return None
 
 
-def resolve_path(repo_root: Path, value: str) -> Path | None:
-    expanded = os.path.expandvars(os.path.expanduser(value))
+def resolve_git_workdir(
+    repo_root: Path, spec: dict[str, Any], env: dict[str, str]
+) -> Path | None:
+    git_spec = spec.get("git")
+    if not isinstance(git_spec, dict):
+        return None
+    url = git_spec.get("url")
+    if not isinstance(url, str) or not url:
+        return None
+    cache_key = git_spec.get("cacheKey")
+    if not isinstance(cache_key, str) or not _VALID_CACHE_KEY_RE.fullmatch(cache_key):
+        return None
+    ref = git_spec.get("ref")
+    if ref is not None and not isinstance(ref, str):
+        return None
+    depth = optional_int(git_spec.get("depth"))
+    cache_root = repo_root / ".cache" / "sandtable-repos"
+    target = (cache_root / cache_key).resolve()
+    if not _ensure_git_checkout(target, url, ref, depth):
+        return None
+    subdir = git_spec.get("subdir", ".")
+    if not isinstance(subdir, str):
+        return None
+    workdir = resolve_path(target, subdir, env)
+    if workdir is None or not _is_relative_to(workdir, target) or not workdir.exists():
+        return None
+    return workdir
+
+
+_VALID_CACHE_KEY_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
+
+
+def _ensure_git_checkout(
+    target: Path, url: str, ref: str | None, depth: int | None
+) -> bool:
+    if (target / ".git").exists():
+        return True
+    if target.exists():
+        return False
+    target.parent.mkdir(parents=True, exist_ok=True)
+    command = ["git", "clone"]
+    if depth is not None and depth > 0:
+        command.extend(["--depth", str(depth)])
+    if ref:
+        command.extend(["--branch", ref])
+    command.extend([url, str(target)])
+    return (
+        subprocess.run(
+            command,
+            text=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        ).returncode
+        == 0
+    )
+
+
+def _is_relative_to(path: Path, base: Path) -> bool:
+    try:
+        path.relative_to(base)
+    except ValueError:
+        return False
+    return True
+
+
+def resolve_path(
+    repo_root: Path, value: str, env: dict[str, str] | None = None
+) -> Path | None:
+    expanded = _expand_env_vars(os.path.expanduser(value), env or os.environ)
     path = Path(expanded)
     if not path.is_absolute():
         path = repo_root / path
     return path.resolve()
 
 
-def resolve_glob(repo_root: Path, pattern: str) -> list[Path]:
-    expanded = os.path.expandvars(os.path.expanduser(pattern))
+def resolve_glob(
+    repo_root: Path, pattern: str, env: dict[str, str] | None = None
+) -> list[Path]:
+    expanded = _expand_env_vars(os.path.expanduser(pattern), env or os.environ)
     if not Path(expanded).is_absolute():
         expanded = str(repo_root / expanded)
     matches = [Path(match).resolve() for match in glob.glob(expanded)]
@@ -61,7 +141,20 @@ def resolve_glob(repo_root: Path, pattern: str) -> list[Path]:
     )
 
 
-def expand_string_list(value: Any, captures: dict[str, str]) -> tuple[list[str], list[str]]:
+def _expand_env_vars(value: str, env: dict[str, str]) -> str:
+    return re.sub(
+        r"\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))",
+        lambda match: env.get(
+            match.group(1) or match.group(2),
+            match.group(0),
+        ),
+        value,
+    )
+
+
+def expand_string_list(
+    value: Any, captures: dict[str, str]
+) -> tuple[list[str], list[str]]:
     raw_items = string_list(value)
     errors: list[str] = []
     expanded: list[str] = []
@@ -92,12 +185,14 @@ def build_env(value: Any, *, repo_root: Path | None = None) -> dict[str, str]:
     _set_workspace_protocol_bin(env, repo_root)
     return env
 
+
 def _set_workspace_protocol_bin(env: dict[str, str], repo_root: Path | None) -> None:
     if "SEMANTIC_AGENT_PROTOCOL_BIN" in env or repo_root is None:
         return
     protocol_bin = _workspace_protocol_bin(repo_root)
     if protocol_bin is not None:
         env["SEMANTIC_AGENT_PROTOCOL_BIN"] = str(protocol_bin)
+
 
 def _workspace_protocol_bin(repo_root: Path) -> Path | None:
     for relative in (

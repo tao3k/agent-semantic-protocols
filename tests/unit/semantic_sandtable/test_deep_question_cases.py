@@ -65,11 +65,19 @@ class DeepQuestionCaseTests(unittest.TestCase):
         self.assert_valid_scenario(scenario)
         self.assertEqual(
             [
-                "ASP_LIVE_CLAUDE_CLI",
                 "ANTHROPIC_AUTH_TOKEN",
-                "SANDTABLE_RUST_TOKIO_060_ROOT",
             ],
             scenario["skipUnlessEnv"],
+        )
+        self.assertEqual(
+            {
+                "url": "https://github.com/tokio-rs/tokio.git",
+                "ref": "tokio-1.52.3",
+                "depth": 1,
+                "cacheKey": "tokio-1.52.3",
+                "subdir": ".",
+            },
+            scenario["workdir"]["git"],
         )
         step = scenario["steps"][0]
         self.assertEqual(
@@ -91,7 +99,7 @@ class DeepQuestionCaseTests(unittest.TestCase):
         step_ids = {step["id"] for step in scenario["steps"]}
         self.assertEqual(1, len(scenario["evidence"]["deepQuestionCases"]))
         for deep_question in scenario["evidence"]["deepQuestionCases"]:
-            self.assertIn("Tokio 0.6.0", deep_question["question"])
+            self.assertIn("Tokio 1.52.3", deep_question["question"])
             self.assertTrue(set(deep_question["stepIds"]).issubset(step_ids))
             self.assertTrue(deep_question["audit"]["requiresComplexPipeFlow"])
             self.assertTrue(deep_question["audit"]["requiresTokenCost"])
@@ -108,11 +116,17 @@ class DeepQuestionCaseTests(unittest.TestCase):
             )
             self.assertIn("search-prime", expected_flow["requiredStages"])
             self.assertIn("search-pipe", expected_flow["requiredStages"])
-            self.assertIn("search-reasoning", expected_flow["requiredStages"])
             self.assertIn("query-selector", expected_flow["requiredStages"])
+            self.assertNotIn("search-reasoning", expected_flow["requiredStages"])
             self.assertIn("repeated-prime", expected_flow["forbiddenStages"])
         for step in scenario["steps"]:
             pipe_flow = step["expect"]["pipeFlow"]
+            self.assertEqual(
+                scenario["evidence"]["deepQuestionCases"][0]["expectedAspFlow"][
+                    "requiredStages"
+                ],
+                pipe_flow["requiredStages"],
+            )
             self.assertEqual(8, pipe_flow["maxAspCommands"])
             self.assertEqual(4, pipe_flow["maxSearchCommands"])
             self.assertEqual(4, pipe_flow["maxQueryCommands"])
@@ -121,7 +135,8 @@ class DeepQuestionCaseTests(unittest.TestCase):
             self.assertEqual(1, pipe_flow["maxSearchPrimeCommands"])
             self.assertIn("search-prime", pipe_flow["requiredStages"])
             self.assertIn("search-pipe", pipe_flow["requiredStages"])
-            self.assertIn("search-reasoning", pipe_flow["requiredStages"])
+            self.assertIn("query-selector", pipe_flow["requiredStages"])
+            self.assertNotIn("search-reasoning", pipe_flow["requiredStages"])
             self.assertTrue(pipe_flow["requireComplexPipeFlow"])
             self.assertTrue(pipe_flow["requireTokenCost"])
 

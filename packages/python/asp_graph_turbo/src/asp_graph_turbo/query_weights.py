@@ -82,9 +82,17 @@ def _node_text(node: Node) -> str:
         str(node.fields.get("path") or ""),
         str(node.fields.get("ownerPath") or ""),
         str(node.fields.get("matchText") or ""),
+        _node_fields_text(node),
         _semantic_alias_text(node),
     ]
     return " ".join(parts).lower()
+
+
+def _node_fields_text(node: Node) -> str:
+    fields = node.fields.get("fields")
+    if not isinstance(fields, Mapping):
+        return ""
+    return " ".join(str(value) for value in fields.values())
 
 
 def _semantic_alias_text(node: Node) -> str:
