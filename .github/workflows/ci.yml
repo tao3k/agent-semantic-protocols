@@ -35,6 +35,7 @@ jobs:
         run: |
           git submodule update --init --depth 1 \
             languages/rust-lang-project-harness \
+            languages/orgize \
             languages/typescript-lang-project-harness \
             languages/python-lang-project-harness
 
@@ -122,6 +123,7 @@ jobs:
         run: |
           git submodule update --init --depth 1 \
             languages/rust-lang-project-harness \
+            languages/orgize \
             languages/typescript-lang-project-harness \
             languages/python-lang-project-harness \
             languages/JuliaLangProjectHarness.jl
