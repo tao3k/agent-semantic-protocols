@@ -27,7 +27,7 @@ PATCH"#;
     assert_eq!(decision.routes[0].provider_id, "ts-harness");
     assert!(decision.message.contains("Locator route:"));
     assert!(decision.message.contains("path-only locator output"));
-    assert!(decision.message.contains("<path:start:end> --code"));
+    assert!(decision.message.contains("<path:start:end> --workspace"));
     assert!(decision.message.contains("semantic-ast-patch.json"));
     assert!(decision.message.contains("handwritten source hunks"));
     assert!(decision.message.contains("provider-native"));
@@ -98,7 +98,7 @@ fn direct_apply_patch_tool_to_source_requires_semantic_ast_patch() {
     assert_eq!(decision.subject.paths, ["src/cli/agent-hooks.ts"]);
     assert!(decision.message.contains("Locator route:"));
     assert!(decision.message.contains("path-only locator output"));
-    assert!(decision.message.contains("<path:start:end> --code"));
+    assert!(decision.message.contains("<path:start:end> --workspace"));
     assert!(decision.message.contains("semantic-ast-patch.json"));
     assert!(decision.message.contains("handwritten source hunks"));
     assert!(decision.message.contains("provider-native"));

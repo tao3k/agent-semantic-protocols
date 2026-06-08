@@ -66,21 +66,21 @@ pub(super) fn collect_candidates(
     let mut remaining = PIPE_CANDIDATE_LINE_LIMIT;
     let per_term_limit = per_term_candidate_limit(terms.len());
     let mut term_counts = vec![0usize; terms.len()];
+    let mut collector = CandidateCollector {
+        locator_root,
+        extensions,
+        terms: &terms,
+        per_term_limit,
+        term_counts: &mut term_counts,
+        candidates: &mut candidates,
+        remaining: &mut remaining,
+        config,
+    };
     for root in roots {
-        if remaining == 0 {
+        if collector.is_done() {
             break;
         }
-        append_candidates(
-            locator_root,
-            &root,
-            extensions,
-            &terms,
-            per_term_limit,
-            &mut term_counts,
-            &mut candidates,
-            &mut remaining,
-            config,
-        )?;
+        collector.append_candidates(&root)?;
     }
     Ok(candidates)
 }
@@ -159,94 +159,105 @@ fn language_extensions(language_id: &str) -> &'static [&'static str] {
     }
 }
 
-fn append_candidates(
-    locator_root: &Path,
-    root: &Path,
-    extensions: &[&str],
-    terms: &[String],
+struct CandidateCollector<'a> {
+    locator_root: &'a Path,
+    extensions: &'static [&'static str],
+    terms: &'a [String],
     per_term_limit: usize,
-    term_counts: &mut [usize],
-    candidates: &mut Vec<Candidate>,
-    remaining: &mut usize,
-    config: &AspConfig,
-) -> Result<(), String> {
-    if *remaining == 0 || !root.exists() {
-        return Ok(());
+    term_counts: &'a mut [usize],
+    candidates: &'a mut Vec<Candidate>,
+    remaining: &'a mut usize,
+    config: &'a AspConfig,
+}
+
+impl CandidateCollector<'_> {
+    fn is_done(&self) -> bool {
+        *self.remaining == 0
     }
-    let metadata = fs::metadata(root).map_err(|error| {
-        format!(
-            "failed to inspect search pipe root {}: {error}",
-            root.display()
-        )
-    })?;
-    if metadata.is_file() {
-        append_file_candidates(
-            locator_root,
-            root,
-            extensions,
-            terms,
-            per_term_limit,
-            term_counts,
-            candidates,
-            remaining,
-        )?;
-        return Ok(());
-    }
-    let mut entries = fs::read_dir(root)
-        .map_err(|error| {
-            format!(
-                "failed to read search pipe root {}: {error}",
-                root.display()
-            )
-        })?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|error| {
-            format!(
-                "failed to read search pipe entry under {}: {error}",
-                root.display()
-            )
-        })?;
-    entries.sort_by_key(|entry| path_search_priority(&entry.path()));
-    for entry in entries {
-        if *remaining == 0 {
-            break;
+
+    fn append_candidates(&mut self, root: &Path) -> Result<(), String> {
+        if self.is_done() || !root.exists() {
+            return Ok(());
         }
-        let path = entry.path();
-        let file_type = entry.file_type().map_err(|error| {
+        let metadata = fs::metadata(root).map_err(|error| {
             format!(
-                "failed to inspect search pipe path {}: {error}",
-                path.display()
+                "failed to inspect search pipe root {}: {error}",
+                root.display()
             )
         })?;
-        if file_type.is_dir() {
-            if should_skip_dir(&path, config) {
-                continue;
+        if metadata.is_file() {
+            self.append_file_candidates(root)?;
+            return Ok(());
+        }
+        let mut entries = fs::read_dir(root)
+            .map_err(|error| {
+                format!(
+                    "failed to read search pipe root {}: {error}",
+                    root.display()
+                )
+            })?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| {
+                format!(
+                    "failed to read search pipe entry under {}: {error}",
+                    root.display()
+                )
+            })?;
+        entries.sort_by_key(|entry| path_search_priority(&entry.path()));
+        for entry in entries {
+            if self.is_done() {
+                break;
             }
-            append_candidates(
-                locator_root,
-                &path,
-                extensions,
-                terms,
-                per_term_limit,
-                term_counts,
-                candidates,
-                remaining,
-                config,
-            )?;
-        } else if file_type.is_file() {
-            append_file_candidates(
-                locator_root,
-                &path,
-                extensions,
-                terms,
-                per_term_limit,
-                term_counts,
-                candidates,
-                remaining,
-            )?;
+            let path = entry.path();
+            let file_type = entry.file_type().map_err(|error| {
+                format!(
+                    "failed to inspect search pipe path {}: {error}",
+                    path.display()
+                )
+            })?;
+            if file_type.is_dir() {
+                if should_skip_dir(&path, self.config) {
+                    continue;
+                }
+                self.append_candidates(&path)?;
+            } else if file_type.is_file() {
+                self.append_file_candidates(&path)?;
+            }
         }
+        Ok(())
     }
-    Ok(())
+
+    fn append_file_candidates(&mut self, path: &Path) -> Result<(), String> {
+        let Some(extension) = path.extension().and_then(|extension| extension.to_str()) else {
+            return Ok(());
+        };
+        if !self.extensions.contains(&extension) {
+            return Ok(());
+        }
+        let Ok(bytes) = fs::read(path) else {
+            return Ok(());
+        };
+        for (index, line) in file_candidate_lines(&bytes).enumerate() {
+            if self.is_done() {
+                break;
+            }
+            let Some((candidate, term_index)) = line_candidate(
+                self.locator_root,
+                path,
+                line,
+                index + 1,
+                self.terms,
+                self.per_term_limit,
+                self.term_counts,
+            ) else {
+                continue;
+            };
+            self.term_counts[term_index] += 1;
+            *self.remaining -= 1;
+            self.candidates.push(candidate);
+        }
+        Ok(())
+    }
 }
 
 fn path_search_priority(path: &Path) -> (u8, String) {
@@ -281,47 +292,6 @@ fn should_skip_dir(path: &Path, config: &AspConfig) -> bool {
         return true;
     }
     config.search.ignore_dirs.iter().any(|dir| dir == name)
-}
-
-fn append_file_candidates(
-    locator_root: &Path,
-    path: &Path,
-    extensions: &[&str],
-    terms: &[String],
-    per_term_limit: usize,
-    term_counts: &mut [usize],
-    candidates: &mut Vec<Candidate>,
-    remaining: &mut usize,
-) -> Result<(), String> {
-    let Some(extension) = path.extension().and_then(|extension| extension.to_str()) else {
-        return Ok(());
-    };
-    if !extensions.contains(&extension) {
-        return Ok(());
-    }
-    let Ok(bytes) = fs::read(path) else {
-        return Ok(());
-    };
-    for (index, line) in file_candidate_lines(&bytes).enumerate() {
-        if *remaining == 0 {
-            break;
-        }
-        let Some((candidate, term_index)) = line_candidate(
-            locator_root,
-            path,
-            line,
-            index + 1,
-            terms,
-            per_term_limit,
-            term_counts,
-        ) else {
-            continue;
-        };
-        term_counts[term_index] += 1;
-        *remaining -= 1;
-        candidates.push(candidate);
-    }
-    Ok(())
 }
 
 fn line_candidate(

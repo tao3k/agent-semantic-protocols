@@ -37,7 +37,8 @@ jobs:
             languages/rust-lang-project-harness \
             languages/orgize \
             languages/typescript-lang-project-harness \
-            languages/python-lang-project-harness
+            languages/python-lang-project-harness \
+            languages/JuliaLangProjectHarness.jl
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -201,6 +202,7 @@ jobs:
             tests/unit/test_cli_first_harness_ux_rfc.py \
             tests/unit/test_agent_hook_interception_protocol_rfc.py \
             tests/unit/test_docs_rfc_skill_contracts.py \
+            tests/unit/test_ci_workflow_contracts.py \
             tests/unit/semantic_query_packet_schema/test_basic.py \
             tests/unit/test_semantic_search_packet_schema.py \
             tests/unit/test_semantic_read_packet_schema.py \
@@ -246,4 +248,4 @@ jobs:
         working-directory: languages/typescript-lang-project-harness
 
       - name: Tree-sitter query contract gates
-        run: bash tools/run-tree-sitter-query-contracts.sh
+        run: uv run --project packages/python --frozen python -m tools tree-sitter validate contracts

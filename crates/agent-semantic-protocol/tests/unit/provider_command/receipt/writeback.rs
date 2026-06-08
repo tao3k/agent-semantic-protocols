@@ -700,10 +700,13 @@ esac
     let provider_args =
         std::fs::read_to_string(&provider_args_log).expect("read provider args log");
     assert!(
-        provider_args.contains("query src/lib.rs --term CacheReplay --workspace"),
+        provider_args.contains("query src/lib.rs --term CacheReplay --names-only"),
         "{provider_args}"
     );
-    assert!(provider_args.contains("--names-only"), "{provider_args}");
+    assert!(
+        !provider_args.contains("--workspace"),
+        "workspace must be consumed before provider dispatch: {provider_args}"
+    );
     assert_eq!(provider_args.lines().count(), 1, "{provider_args}");
     let receipt: Value = serde_json::from_slice(&output.stderr).expect("receipt");
     assert_eq!(receipt["route"], "local-native");

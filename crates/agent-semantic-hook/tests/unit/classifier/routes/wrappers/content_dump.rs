@@ -29,8 +29,9 @@ fn shell_path_wrapper_routes_content_dump_to_provider_query() {
             "direct-source-read",
             "--selector",
             "src/cli/agent-hooks.ts",
-            "--code",
-            "."
+            "--workspace",
+            ".",
+            "--code"
         ]
     );
 }
@@ -70,8 +71,9 @@ fn node_eval_read_file_sync_routes_content_dump_to_provider_query() {
             "direct-source-read",
             "--selector",
             "languages/typescript-lang-project-harness/src/cli/semantic-search/item-query.ts",
-            "--code",
-            "."
+            "--workspace",
+            ".",
+            "--code"
         ]
     );
 }

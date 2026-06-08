@@ -29,8 +29,9 @@ fn rtk_read_routes_to_provider_query() {
             "direct-source-read",
             "--selector",
             "src/cli/agent-hooks.ts",
-            "--code",
-            "."
+            "--workspace",
+            ".",
+            "--code"
         ]
     );
 }
@@ -60,8 +61,9 @@ fn rtk_read_routes_display_locator_to_clean_provider_selector() {
             "direct-source-read",
             "--selector",
             "src/cli/agent-hooks.ts",
-            "--code",
-            "."
+            "--workspace",
+            ".",
+            "--code"
         ]
     );
 }
@@ -105,8 +107,9 @@ fn nested_parallel_exec_command_routes_to_provider_query() {
             "direct-source-read",
             "--selector",
             "src/cli/agent-hooks.ts",
-            "--code",
-            "."
+            "--workspace",
+            ".",
+            "--code"
         ]
     );
 }

@@ -116,8 +116,9 @@ fn python_embedded_read_text_routes_to_provider_query() {
             "direct-source-read",
             "--selector",
             "src/tools/semantic_sandtable/receipt_reports.py",
-            "--code",
-            "."
+            "--workspace",
+            ".",
+            "--code"
         ]
     );
 }
@@ -158,8 +159,9 @@ fn python_nested_package_read_text_routes_to_provider_root() {
             "direct-source-read",
             "--selector",
             "src/python_lang_project_harness/_cli_query_args.py",
-            "--code",
-            "languages/python-lang-project-harness"
+            "--workspace",
+            "languages/python-lang-project-harness",
+            "--code"
         ]
     );
 }
