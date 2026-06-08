@@ -11,6 +11,7 @@ from typing import Sequence
 
 from .constants import ALGORITHM_ID
 from .model import GraphResult, TypedGraph
+from .summary_packet import result_to_summary_packet
 from .turbo import DEFAULT_PROFILES, rank_frontier, render_compact, result_to_packet
 
 
@@ -56,6 +57,8 @@ def _rank_packet(packet: Mapping[str, object], args: argparse.Namespace) -> Grap
 def _write_result(result: GraphResult, output_format: str) -> None:
     if output_format == "json":
         sys.stdout.write(json.dumps(result_to_packet(result), sort_keys=True) + "\n")
+    elif output_format == "summary-json":
+        sys.stdout.write(json.dumps(result_to_summary_packet(result), sort_keys=True) + "\n")
     else:
         sys.stdout.write(render_compact(result))
 
@@ -75,7 +78,9 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     )
     parser.add_argument("--seed", action="append", default=[])
     parser.add_argument("--limit", type=int, default=None)
-    parser.add_argument("--format", choices=["compact", "json"], default="compact")
+    parser.add_argument(
+        "--format", choices=["compact", "json", "summary-json"], default="compact"
+    )
     return parser.parse_args(argv)
 
 

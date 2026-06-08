@@ -75,11 +75,13 @@ not-recorded.
 receipt fixture for this shape, covering a graph-turbo frontier, one exact
 frontier read, and the focused receipt schema test.
 `semantic-fact-frontier-benchmark-report.v1.schema.json` owns the offline
-comparison packet that joins receipt metrics with graph-turbo benchmark metrics
-before live sandtable scoring. Its fixture catalog,
+comparison packet that joins receipt metrics, graph-turbo benchmark metrics,
+gold context, and derived ContextBench-style scoring metrics before live
+sandtable scoring. Its fixture catalog,
 `semantic-fact-frontier-benchmark-report.fixtures.v1.json`, fixes the current
-task-session, graph-turbo runtime, and ASP runtime frontier-only scenarios so
-calibration remains blocked until a followed/read/test ASP runtime case exists.
+task-session, graph-turbo runtime, ASP runtime frontier-only, and ASP runtime
+followed/read/test scenarios so calibration decisions can distinguish frontier
+emission from actual frontier use.
 
 `semantic-compact-graph-render.v1.schema.json` is the shared prompt-facing
 render template for compact graph search output. It owns the view-native

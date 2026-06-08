@@ -60,8 +60,10 @@
         "captureKind",
         "receiptFixtureId",
         "receiptId",
+        "goldContext",
         "receiptMetrics",
         "benchmarkMetrics",
+        "contextMetrics",
         "benchmarkReadiness"
       ],
       "properties": {
@@ -73,7 +75,8 @@
           "enum": [
             "task-session",
             "graph-turbo-runtime",
-            "asp-runtime-frontier"
+            "asp-runtime-frontier",
+            "asp-runtime-followed-frontier"
           ]
         },
         "receiptFixtureId": {
@@ -84,14 +87,74 @@
           "type": "string",
           "minLength": 1
         },
+        "goldContext": {
+          "$ref": "#/$defs/goldContext"
+        },
         "receiptMetrics": {
           "$ref": "#/$defs/receiptMetrics"
         },
         "benchmarkMetrics": {
           "$ref": "#/$defs/benchmarkMetrics"
         },
+        "contextMetrics": {
+          "$ref": "#/$defs/contextMetrics"
+        },
         "benchmarkReadiness": {
           "$ref": "#/$defs/benchmarkReadiness"
+        }
+      }
+    },
+    "goldContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "goldFrontierNodeIds",
+        "goldSelectors",
+        "goldTestAction"
+      ],
+      "properties": {
+        "goldFrontierNodeIds": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "goldSelectors": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "goldTestAction": {
+          "$ref": "#/$defs/goldTestAction"
+        }
+      }
+    },
+    "goldTestAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "argv",
+        "expectedStatus"
+      ],
+      "properties": {
+        "argv": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "expectedStatus": {
+          "type": "string",
+          "minLength": 1
         }
       }
     },
@@ -249,6 +312,67 @@
             "null"
           ],
           "minimum": 0
+        }
+      }
+    },
+    "contextMetrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "goldFrontierCount",
+        "emittedFrontierCount",
+        "goldFrontierHitCount",
+        "followedGoldFrontierCount",
+        "goldSelectorReadCount",
+        "contextPrecision",
+        "contextRecall",
+        "contextUtilization",
+        "exactCodeSuccess",
+        "testSelectionPrecision"
+      ],
+      "properties": {
+        "goldFrontierCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "emittedFrontierCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "goldFrontierHitCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "followedGoldFrontierCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "goldSelectorReadCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "contextPrecision": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "contextRecall": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "contextUtilization": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "exactCodeSuccess": {
+          "type": "boolean"
+        },
+        "testSelectionPrecision": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
         }
       }
     },

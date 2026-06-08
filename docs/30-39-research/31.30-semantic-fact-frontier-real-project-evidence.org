@@ -88,6 +88,12 @@ keeps stdout as the normal compact =[graph-frontier]= surface.
 - ASP runtime =relationChannelCount= :: 9
 - ASP runtime =pprIterations= :: 100
 - ASP runtime =pprResidual= :: 0.00000017495347254259386
+- ASP runtime followed output fingerprint :: =sha256:ac03643663a1dad983150b6537205f51bf3efd67e6e168be1e26593616addad9=
+- ASP runtime followed stdout bytes :: 5460
+- ASP runtime followed =frontierFollowedCount= :: 1
+- ASP runtime followed =codeActuallyReadCount= :: 1
+- ASP runtime followed =testResult.status= :: =passed=
+- ASP runtime followed =commandsToValidation= :: 3
 
 * Commands
 
@@ -154,6 +160,49 @@ direnv exec . cargo run -q -p agent-semantic-protocol --bin asp -- \
 # stdout bytes: 5326
 # output fingerprint:
 # sha256:691f79bb9b09306d56aa7a14fd522065fb529e792e4c3ebdd983a968c499b598
+
+asp python query \
+  --selector packages/python/asp_graph_turbo/src/asp_graph_turbo/frontier_receipt.py:71:91 \
+  --code .
+# exit 0
+# stdout bytes: 916
+
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
+PYTHONPATH=packages/python/asp_graph_turbo/src:tests \
+uv run --project packages/python/asp_graph_turbo --frozen pytest -q \
+  -c /dev/null \
+  -o cache_dir=/Users/guangtao/ghq/github.com/tao3k/agent-semantic-protocols/.pytest_cache \
+  tests/unit/test_asp_graph_turbo_frontier_receipt.py
+# 2 passed in 0.53s
+
+rm -f /tmp/rfc014-asp-search-frontier-followed-receipt.json \
+  /tmp/rfc014-asp-search-frontier-followed.stdout
+direnv exec . cargo run -q -p agent-semantic-protocol --bin asp -- \
+  python search fzf \
+  'semantic-fact-frontier-receipt relationChannels PPR' \
+  owner tests --view seeds \
+  --frontier-receipt-out /tmp/rfc014-asp-search-frontier-followed-receipt.json \
+  --frontier-receipt-follow-node \
+    hot:packages/python/asp_graph_turbo/src/asp_graph_turbo/frontier_receipt.py-semantic-fact-frontier-receipt-79 \
+  --frontier-receipt-read-selector \
+    packages/python/asp_graph_turbo/src/asp_graph_turbo/frontier_receipt.py:71:91 \
+  --frontier-receipt-read-kind direct-source-read \
+  --frontier-receipt-read-owner \
+    packages/python/asp_graph_turbo/src/asp_graph_turbo/frontier_receipt.py \
+  --frontier-receipt-test-argv-json \
+    '["uv","run","--project","packages/python/asp_graph_turbo","--frozen","pytest","-q","-c","/dev/null","-o","cache_dir=/Users/guangtao/ghq/github.com/tao3k/agent-semantic-protocols/.pytest_cache","tests/unit/test_asp_graph_turbo_frontier_receipt.py"]' \
+  --frontier-receipt-test-status passed \
+  --frontier-receipt-test-summary '2 passed in 0.53s' \
+  --frontier-receipt-test-exit-code 0 \
+  --frontier-receipt-commands-to-first-useful-locator 1 \
+  --frontier-receipt-commands-to-validation 3 \
+  . >/tmp/rfc014-asp-search-frontier-followed.stdout
+# receipt schema validation errors: 0
+# frontierFollowedCount: 1
+# codeActuallyReadCount: 1
+# testResult.status: passed
+# output fingerprint:
+# sha256:ac03643663a1dad983150b6537205f51bf3efd67e6e168be1e26593616addad9
 #+end_example
 
 * Benchmark record
@@ -225,11 +274,18 @@ The offline comparison table is now fixed as a schema-owned fixture catalog:
 - report fixture :: =schemas/semantic-fact-frontier-benchmark-report.fixtures.v1.json=
 - report schema :: =schemas/semantic-fact-frontier-benchmark-report.v1.schema.json=
 - scenarios :: =task-session-frontier-read-test=,
-  =graph-turbo-runtime-receipt=, =asp-runtime-frontier-only=
-- summary :: =scenarioCount=3=, =runtimeCaptureScenarioCount=2=,
-  =calibrationReadyScenarioCount=0=
-- next action :: add a followed/read/test ASP runtime scenario before relation
-  weight calibration
+  =graph-turbo-runtime-receipt=, =asp-runtime-frontier-only=,
+  =asp-runtime-followed-read-test=
+- summary :: =scenarioCount=4=, =runtimeCaptureScenarioCount=3=,
+  =calibrationReadyScenarioCount=1=
+- context scoring :: =contextPrecision=0.1= and =contextRecall=1.0= for the
+  ASP runtime cases; =asp-runtime-frontier-only= has
+  =contextUtilization=0.0=, =exactCodeSuccess=false=, and
+  =testSelectionPrecision=0.0=, while =asp-runtime-followed-read-test= has
+  =contextUtilization=0.1=, =exactCodeSuccess=true=, and
+  =testSelectionPrecision=1.0=
+- next action :: run live sandtable scoring with the calibration-ready ASP
+  runtime scenario before changing relation weights
 
 The same metric surface was also exercised against a synthetic large
 =field-impact= graph to force =scipy-yen=:
@@ -273,16 +329,15 @@ The same metric surface was also exercised against a synthetic large
   =semantic-fact-frontier-receipt.v1= receipt or fixture catalog into a single
   schema-owned comparison row.
 - The offline benchmark report fixture now joins the task-session receipt,
-  graph-turbo runtime receipt, and ASP runtime frontier-only receipt into one
-  schema-owned table.  It is enough to compare current evidence without parsing
-  debug text, but not enough to calibrate ranking weights or benchmark
-  thresholds.
+  graph-turbo runtime receipt, ASP runtime frontier-only receipt, and ASP
+  runtime followed/read/test receipt into one schema-owned table.  It is enough
+  to gate first scoring decisions without parsing debug text; relation weight
+  changes still need live sandtable scoring against this report.
 
 * Next
 
-- Add a followed/read/test ASP runtime scenario to the benchmark report so the
-  public =asp <language> search --frontier-receipt-out= path is represented by
-  actual frontier use, not only frontier emission.
+- Run live sandtable scoring with the calibration-ready ASP runtime scenario
+  before allowing relation weight changes to count as optimization.
 - Add live sandtable runs only after the offline benchmark and receipt packets
   can be compared without losing parser-owned frontier precision.
 - Use those receipts to decide whether graph-turbo ranking needs calibrated

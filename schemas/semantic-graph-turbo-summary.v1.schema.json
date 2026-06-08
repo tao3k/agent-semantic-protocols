@@ -1,0 +1,811 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-graph-turbo-summary.v1.schema.json",
+  "title": "ASP graph turbo summary packet",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "protocolId",
+    "protocolVersion",
+    "packetKind",
+    "summaryKind",
+    "sourceSchemaId",
+    "sourcePacketKind",
+    "profile",
+    "algorithm",
+    "seedIds",
+    "budget",
+    "kindBudgets",
+    "profiles",
+    "rank",
+    "rankedNodes",
+    "frontier",
+    "edges",
+    "sourceSinkFrontier",
+    "typedPaths",
+    "flowLite",
+    "packetFingerprint",
+    "graphCache",
+    "algorithmTrace",
+    "rankExplanations",
+    "receiptAdjustments",
+    "profileCompatibility",
+    "profileMatrices",
+    "algorithmMetrics",
+    "omit",
+    "avoid",
+    "projection"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.semantic-graph-turbo-summary"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "protocolId": {
+      "const": "agent.semantic-protocols.semantic-language"
+    },
+    "protocolVersion": {
+      "const": "1"
+    },
+    "packetKind": {
+      "const": "graph-turbo-summary"
+    },
+    "summaryKind": {
+      "const": "frontier-projection"
+    },
+    "sourceSchemaId": {
+      "const": "agent.semantic-protocols.semantic-graph-turbo-result"
+    },
+    "sourcePacketKind": {
+      "const": "graph-turbo-result"
+    },
+    "profile": {
+      "$ref": "#/$defs/profile"
+    },
+    "algorithm": {
+      "const": "typed-ppr-diverse"
+    },
+    "seedIds": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/nodeId"
+      }
+    },
+    "budget": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "kindBudgets": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 1
+      }
+    },
+    "profiles": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/profile"
+      },
+      "minItems": 1
+    },
+    "rank": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/nodeId"
+      }
+    },
+    "rankedNodes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/rankedNode"
+      }
+    },
+    "frontier": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/frontierEntry"
+      }
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/edge"
+      }
+    },
+    "sourceSinkFrontier": {
+      "$ref": "#/$defs/sourceSinkFrontier"
+    },
+    "typedPaths": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/typedPath"
+      }
+    },
+    "flowLite": {
+      "$ref": "#/$defs/flowLite"
+    },
+    "packetFingerprint": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "graphCache": {
+      "$ref": "#/$defs/graphCache"
+    },
+    "algorithmTrace": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/algorithmTraceStep"
+      }
+    },
+    "rankExplanations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/rankExplanation"
+      }
+    },
+    "receiptAdjustments": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/receiptAdjustment"
+      }
+    },
+    "profileCompatibility": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/profileCompatibilitySummary"
+      }
+    },
+    "profileMatrices": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/profileMatrixSummary"
+      }
+    },
+    "algorithmMetrics": {
+      "$ref": "#/$defs/algorithmMetrics"
+    },
+    "omit": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "avoid": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "projection": {
+      "$ref": "#/$defs/projection"
+    }
+  },
+  "$defs": {
+    "profile": {
+      "enum": [
+        "owner-query",
+        "query-deps",
+        "owner-tests",
+        "prime",
+        "read-frontier",
+        "failure-frontier",
+        "field-impact",
+        "type-impact",
+        "collection-impact",
+        "failure-evidence",
+        "test-selection",
+        "affected"
+      ]
+    },
+    "nodeId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "range": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "startLine", "endLine"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "startLine": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "endLine": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "rankedNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "role",
+        "value",
+        "action",
+        "score",
+        "selector",
+        "owner",
+        "symbol",
+        "range"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/nodeId"
+        },
+        "kind": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "role": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "value": {
+          "type": "string",
+          "minLength": 1
+        },
+        "action": {
+          "type": ["string", "null"],
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "score": {
+          "type": ["number", "null"]
+        },
+        "selector": {
+          "type": ["string", "null"]
+        },
+        "owner": {
+          "type": ["string", "null"]
+        },
+        "symbol": {
+          "type": ["string", "null"]
+        },
+        "range": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/range"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "frontierEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "nodeId",
+        "kind",
+        "role",
+        "value",
+        "action",
+        "score",
+        "selector",
+        "owner",
+        "symbol",
+        "range"
+      ],
+      "properties": {
+        "nodeId": {
+          "$ref": "#/$defs/nodeId"
+        },
+        "kind": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "role": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "value": {
+          "type": "string",
+          "minLength": 1
+        },
+        "action": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "score": {
+          "type": "number"
+        },
+        "selector": {
+          "type": ["string", "null"]
+        },
+        "owner": {
+          "type": ["string", "null"]
+        },
+        "symbol": {
+          "type": ["string", "null"]
+        },
+        "range": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/range"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "target", "relation", "weight"],
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/nodeId"
+        },
+        "target": {
+          "$ref": "#/$defs/nodeId"
+        },
+        "relation": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "weight": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "originalSource": {
+          "$ref": "#/$defs/nodeId"
+        },
+        "originalTarget": {
+          "$ref": "#/$defs/nodeId"
+        },
+        "reversed": {
+          "type": "boolean"
+        }
+      }
+    },
+    "sourceSinkFrontier": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceIds", "sinkIds"],
+      "properties": {
+        "sourceIds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nodeId"
+          }
+        },
+        "sinkIds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nodeId"
+          }
+        }
+      }
+    },
+    "typedPath": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "pathKind",
+        "source",
+        "sink",
+        "nodeIds",
+        "relations",
+        "cost",
+        "score",
+        "rank"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^P[0-9]+$"
+        },
+        "pathKind": {
+          "enum": ["constrained-shortest", "k-shortest"]
+        },
+        "source": {
+          "$ref": "#/$defs/nodeId"
+        },
+        "sink": {
+          "$ref": "#/$defs/nodeId"
+        },
+        "nodeIds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nodeId"
+          },
+          "minItems": 2
+        },
+        "relations": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]*$"
+          }
+        },
+        "cost": {
+          "type": "number"
+        },
+        "score": {
+          "type": "number"
+        },
+        "rank": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "flowLite": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rankedPathIds"],
+      "properties": {
+        "rankedPathIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^P[0-9]+$"
+          }
+        }
+      }
+    },
+    "graphCache": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "status", "backend", "entries"],
+      "properties": {
+        "key": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "status": {
+          "enum": ["hit", "miss", "disabled"]
+        },
+        "backend": {
+          "const": "scipy-csr"
+        },
+        "entries": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "algorithmTraceStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["step", "engine", "fields"],
+      "properties": {
+        "step": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "engine": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "fields": {
+          "type": "object"
+        }
+      }
+    },
+    "rankExplanation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["nodeId", "score", "depth", "reasons"],
+      "properties": {
+        "nodeId": {
+          "$ref": "#/$defs/nodeId"
+        },
+        "score": {
+          "type": "number"
+        },
+        "depth": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "receiptAdjustment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["nodeId", "effect", "scoreDelta", "reason"],
+      "properties": {
+        "nodeId": {
+          "$ref": "#/$defs/nodeId"
+        },
+        "effect": {
+          "enum": ["boost", "penalty"]
+        },
+        "scoreDelta": {
+          "type": "number"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "profileCompatibilitySummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile",
+        "compatible",
+        "allowedRelationCount",
+        "allowedTransitionCount"
+      ],
+      "properties": {
+        "profile": {
+          "$ref": "#/$defs/profile"
+        },
+        "compatible": {
+          "type": "boolean"
+        },
+        "allowedRelationCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "allowedTransitionCount": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "profileMatrixSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile",
+        "relationCount",
+        "transitionCount",
+        "supportedEdgeCount",
+        "reachableEdgeCount",
+        "density",
+        "relationChannels"
+      ],
+      "properties": {
+        "profile": {
+          "$ref": "#/$defs/profile"
+        },
+        "relationCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "transitionCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "supportedEdgeCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "reachableEdgeCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "density": {
+          "type": "number",
+          "minimum": 0
+        },
+        "relationChannels": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/relationChannelSummary"
+          }
+        }
+      }
+    },
+    "relationChannelSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "relation",
+        "supportedEdgeCount",
+        "reachableEdgeCount",
+        "weightMass",
+        "reachableWeightMass"
+      ],
+      "properties": {
+        "relation": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "supportedEdgeCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "reachableEdgeCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "weightMass": {
+          "type": "number",
+          "minimum": 0
+        },
+        "reachableWeightMass": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "algorithmMetrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "nodeCount",
+        "edgeCount",
+        "selectedEdgeCount",
+        "reachableNodeCount",
+        "rankedNodeCount",
+        "pathCount",
+        "pathBackend",
+        "pathFallbackCount",
+        "pathPairCount",
+        "pathCandidateCount",
+        "mergedWindowCount",
+        "cacheStatus",
+        "relationChannelCount",
+        "pprIterations",
+        "pprResidual",
+        "pprDanglingMassLast",
+        "pprMassSum",
+        "readLoopSecondPassSuppressedCount",
+        "readLoopDuplicateSelectorSuppressedCount",
+        "readLoopSameOwnerSuppressedCount"
+      ],
+      "properties": {
+        "nodeCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "edgeCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "selectedEdgeCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "reachableNodeCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "rankedNodeCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pathCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pathBackend": {
+          "enum": [
+            "python-bfs-small",
+            "scipy-yen",
+            "scipy-dijkstra",
+            "python-bfs-fallback"
+          ]
+        },
+        "pathFallbackCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pathPairCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pathCandidateCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "mergedWindowCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cacheStatus": {
+          "enum": ["hit", "miss", "disabled"]
+        },
+        "readLoopDirectCodeActionCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "readLoopDuplicateSelectorCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "readLoopAdjacentRangeWindowCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "readLoopSameOwnerScanCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "readMemorySuppressedCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "receiptBoostCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "receiptPenaltyCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "relationChannelCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pprIterations": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pprResidual": {
+          "type": "number",
+          "minimum": 0
+        },
+        "pprDanglingMassLast": {
+          "type": "number",
+          "minimum": 0
+        },
+        "pprMassSum": {
+          "type": "number",
+          "minimum": 0
+        },
+        "readLoopSecondPassSuppressedCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "readLoopDuplicateSelectorSuppressedCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "readLoopSameOwnerSuppressedCount": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "projection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["included", "omitted"],
+      "properties": {
+        "included": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "omitted": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "contains": {
+            "const": "full-score-vector"
+          }
+        }
+      }
+    }
+  }
+}

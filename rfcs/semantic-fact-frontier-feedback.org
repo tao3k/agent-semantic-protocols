@@ -329,11 +329,12 @@ fixtures for =asp-graph-turbo receipt= and the public =asp <language> search
 The graph-turbo runtime exposes this capture path through
 =asp-graph-turbo receipt=, which ranks a graph-turbo request and emits the
 receipt schema using explicit followed/read/test facts from the caller.
-The ASP search runtime exposes a frontier-only trigger through
-=--frontier-receipt-out <path>= on graph-turbo frontier search commands.  This
-trigger strips the runtime flag before provider execution, writes the receipt
-as a side effect, and keeps stdout as the normal compact =[graph-frontier]=
-output.
+The ASP search runtime exposes a receipt trigger through
+=--frontier-receipt-out <path>= on graph-turbo frontier search commands, with
+optional =--frontier-receipt-follow-node=, =--frontier-receipt-read-selector=,
+and =--frontier-receipt-test-*= facts.  This trigger strips runtime receipt
+flags before provider execution, writes the receipt as a side effect, and keeps
+stdout as the normal compact =[graph-frontier]= output.
 
 Graph-turbo must penalize:
 
@@ -413,12 +414,17 @@ nodes but agents still ignore them or fall back to manual source scans.
 
 =schemas/semantic-fact-frontier-benchmark-report.v1.schema.json= owns the
 offline comparison report before live sandtable scoring.  Each report joins a
-receipt fixture with the graph-turbo benchmark metric surface and records
-whether the scenario is ready for weight calibration.  The companion
+receipt fixture with the graph-turbo benchmark metric surface, records the
+scenario's =goldContext=, and derives =contextMetrics= such as
+=contextPrecision=, =contextRecall=, =contextUtilization=,
+=exactCodeSuccess=, and =testSelectionPrecision=.  The companion
 =schemas/semantic-fact-frontier-benchmark-report.fixtures.v1.json= currently
-fixes the task-session receipt, graph-turbo runtime receipt, and ASP runtime
-frontier-only receipt in one table; calibration stays blocked until ASP runtime
-has a followed/read/test scenario.
+fixes the task-session receipt, graph-turbo runtime receipt, ASP runtime
+frontier-only receipt, and ASP runtime followed/read/test receipt in one table.
+Only the followed/read/test ASP runtime scenario is marked ready for weight
+calibration, and =tests/unit/test_semantic_fact_frontier_benchmark_report_schema.py=
+recomputes scoring metrics from the source receipt fixtures so report rows
+cannot drift from recorded evidence.
 
 * Lightweight scoring
 
@@ -592,6 +598,9 @@ P1 audit should answer:
   promoting any ranking-weight change.
 - Record =contextPrecision=, =contextRecall=, =contextUtilization=,
   =commandsToFirstUsefulLocator=, and =stdoutBytesToPatch=.
+- Recompute =contextPrecision=, =contextRecall=, =contextUtilization=,
+  =exactCodeSuccess=, and =testSelectionPrecision= from =goldContext= plus the
+  source receipt fixture in schema tests.
 - Run one real-project scenario before allowing scoring changes to count as an
   optimization.
 
@@ -625,4 +634,5 @@ The RFC is considered landed only when:
 | read/failure/test receipt facts affect ranking | closed | =tests/unit/asp_graph_turbo_feedback_profiles/test_receipt_feedback.py=, =tests/unit/test_asp_graph_turbo_failure_frontier.py=, and read-loop memory gates in =tests/unit/test_asp_graph_turbo_read_loop.py= |
 | default agent-facing outputs stay compact with exact follow-up actions | closed | graph-turbo seed/render tests plus =tests/unit/semantic_sandtable/test_expectations_pipe_flow_drift.py= enforcing primary selector actions without broad executable branch spam |
 | receipt runtime capture is schema-owned and public-facade reachable | closed | =schemas/semantic-fact-frontier-receipt.fixtures.v1.json= records task-session, =asp-graph-turbo receipt=, and =asp <language> search --frontier-receipt-out= fixtures validated by =tests/unit/test_semantic_fact_frontier_receipt_schema.py= |
-| real-project receipt plus benchmark table drives scoring decisions | partial | =schemas/semantic-fact-frontier-benchmark-report.fixtures.v1.json= fixes the current three-scenario receipt+benchmark report; P5 still needs a followed/read/test ASP runtime scenario before ranking weight changes count as optimization |
+| real-project receipt plus benchmark table fixes scoring input | closed | =schemas/semantic-fact-frontier-benchmark-report.fixtures.v1.json= fixes the four-scenario receipt+benchmark report, including a calibration-ready ASP runtime followed/read/test scenario; =tests/unit/test_semantic_fact_frontier_benchmark_report_schema.py= recomputes gold context metrics from source receipts |
+| live sandtable scoring drives ranking-weight changes | pending | next gate is a live sandtable scoring row that consumes the calibration-ready ASP runtime scenario before any relation-weight change counts as optimization |

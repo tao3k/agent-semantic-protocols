@@ -697,7 +697,7 @@
         "codeActuallyRead": [
           {
             "selector": "packages/python/asp_graph_turbo/src/asp_graph_turbo/frontier_receipt.py:71:91",
-            "readKind": "direct-source-read",
+            "readKind": "exact-selector",
             "owner": "packages/python/asp_graph_turbo/src/asp_graph_turbo/frontier_receipt.py",
             "range": {
               "path": "packages/python/asp_graph_turbo/src/asp_graph_turbo/frontier_receipt.py",
@@ -712,20 +712,17 @@
             "uv",
             "run",
             "--project",
-            "packages/python/asp_graph_turbo",
-            "--frozen",
+            "packages/python",
             "pytest",
-            "-q",
-            "-c",
-            "/dev/null",
-            "-o",
-            "cache_dir=/Users/guangtao/ghq/github.com/tao3k/agent-semantic-protocols/.pytest_cache",
-            "tests/unit/test_asp_graph_turbo_frontier_receipt.py"
-          ]
+            "tests/unit/test_semantic_fact_frontier_receipt_schema.py",
+            "-q"
+          ],
+          "workdir": ".",
+          "fingerprint": "command:pytest:semantic-fact-frontier-receipt-schema"
         },
         "testResult": {
           "status": "passed",
-          "summary": "2 passed in 0.53s",
+          "summary": "5 receipt schema tests passed in 13.29s",
           "exitCode": 0
         },
         "editTouchedOwner": [],
