@@ -133,8 +133,8 @@ fn semantic_tree_sitter_query_row_replay_does_not_fallback_to_prompt_stdout() {
 }
 
 #[test]
-fn prompt_output_replay_rejects_legacy_compact_graph_grammar() {
-    let root = temp_root("prompt-output-legacy-graph");
+fn prompt_output_replay_rejects_obsolete_compact_graph_grammar() {
+    let root = temp_root("prompt-output-obsolete-graph");
     let cache_root = root.join("client");
     write_syntax_replay_sources(&root);
     let request = ClientRequest::new(ClientMethod::Search, ".").with_forwarded_args(vec![
@@ -192,9 +192,9 @@ fn search_packet_replay_prefers_cached_search_stdout_artifact() {
         "seeds".to_string(),
         ".".to_string(),
     ]);
-    let stdout = "[search-fzf] q=cache view=fzf alg=seed-frontier\n\
+    let stdout = "[graph-frontier] profile=owner-query alg=typed-ppr-diverse seed=Q budget=10\n\
 legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next\n\
-aliases: graph:{G=search,Q=query}\n\
+aliases=G:graph,Q:query\n\
 Q=query:term(cache)!fzf\n\
 G>{Q:matches}\n\
 rank=Q frontier=Q.fzf\n";

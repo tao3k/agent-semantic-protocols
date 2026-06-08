@@ -114,7 +114,7 @@ fn prime_seed_prompt_output_writeback_adds_search_output_replay_artifact() {
         ]);
     let stdout = "[search-prime] root=. alg=fast-prime-frontier-v1\n\
 legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next\n\
-aliases: graph:{G=search,O=owner}\n\
+aliases=G:search,O:owner\n\
 O=owner:path(src/lib.rs)!owner\n\
 G>{O:selects}\n\
 rank=O frontier=O.owner\n";

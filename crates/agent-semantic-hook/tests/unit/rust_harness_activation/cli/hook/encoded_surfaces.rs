@@ -22,8 +22,9 @@ fn cli_hook_replay_blocks_encoded_payload_escape_surfaces() {
         "direct-source-read",
         "--selector",
         "src/lib.rs",
-        "--code",
-        "."
+        "--workspace",
+        ".",
+        "--code"
     ]);
 
     let cases = vec![

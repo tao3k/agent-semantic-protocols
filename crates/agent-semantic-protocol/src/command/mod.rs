@@ -24,6 +24,7 @@ mod search_pipe_plan;
 mod search_pipe_provider_facts;
 mod search_pipe_read_memory;
 mod search_pipe_render;
+mod search_pipe_view;
 mod search_suggest;
 mod source_access;
 

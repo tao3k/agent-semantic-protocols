@@ -9,6 +9,7 @@ pub(crate) struct ParsedArgs {
     pub(crate) project_root: PathBuf,
     pub(crate) forwarded_args: Vec<String>,
     pub(crate) receipt_json: bool,
+    pub(crate) frontier_receipt_out: Option<PathBuf>,
 }
 
 pub(crate) fn parse_client_args(
@@ -22,6 +23,7 @@ pub(crate) fn parse_client_args(
     let mut explicit_project_root = false;
     let mut forwarded_args = Vec::new();
     let mut receipt_json = false;
+    let mut frontier_receipt_out = None;
     let mut iter = args.into_iter();
     if let Some(first) = iter.next() {
         command = Some(first);
@@ -41,6 +43,12 @@ pub(crate) fn parse_client_args(
             }
             "--receipt-json" => {
                 receipt_json = true;
+            }
+            "--frontier-receipt-out" => {
+                frontier_receipt_out =
+                    Some(PathBuf::from(iter.next().ok_or_else(|| {
+                        "--frontier-receipt-out requires a path".to_string()
+                    })?));
             }
             _ => forwarded_args.push(arg),
         }
@@ -68,6 +76,7 @@ pub(crate) fn parse_client_args(
         project_root,
         forwarded_args,
         receipt_json,
+        frontier_receipt_out,
     })
 }
 

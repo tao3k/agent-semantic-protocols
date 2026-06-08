@@ -70,11 +70,9 @@ fn cli_hook_emits_decision_for_root_owned_rust_activation() {
     assert!(reason.contains("# ASP Hook Recovery"));
     assert!(reason.contains("blocked `direct-source-read`"));
     let system_message = value["systemMessage"].as_str().expect("system message");
-    assert!(
-        system_message.contains(
-            "asp rust query --from-hook direct-source-read --selector src/lib.rs --code ."
-        )
-    );
+    assert!(system_message.contains(
+        "asp rust query --from-hook direct-source-read --selector src/lib.rs --workspace . --code"
+    ));
     assert!(system_message.contains("Do not retry `Read`, `cat`, `sed`, `rg`"));
     assert!(context.contains("\"binary\":\"asp\""));
     assert!(context.contains("\"src/lib.rs\""));

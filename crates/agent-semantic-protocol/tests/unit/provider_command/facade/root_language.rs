@@ -82,7 +82,15 @@ fn root_query_facade_infers_language_from_owner_path() {
     let output = asp_command(&root)
         .env("PATH", prepend_path(&bin_dir))
         .env("PRJ_CACHE_HOME", &cache_home)
-        .args(["query", "src/lib.rs", "--query", "demo", "--code", "."])
+        .args([
+            "query",
+            "src/lib.rs",
+            "--query",
+            "demo",
+            "--workspace",
+            ".",
+            "--code",
+        ])
         .output()
         .expect("run asp query inferred language");
 
@@ -93,7 +101,7 @@ fn root_query_facade_infers_language_from_owner_path() {
     );
     assert_eq!(
         String::from_utf8(output.stdout).expect("stdout"),
-        "rs args=[query][src/lib.rs][--query][demo][--code]\n"
+        "rs args=[query][src/lib.rs][--query][demo][--workspace][.][--code]\n"
     );
     let _ = std::fs::remove_dir_all(root);
 }

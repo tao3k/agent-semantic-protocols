@@ -30,8 +30,9 @@ fn read_file_command_returns_hard_deny_for_source_path() {
             "direct-source-read",
             "--selector",
             "src/cli/agent-hooks.ts",
-            "--code",
+            "--workspace",
             ".",
+            "--code",
         ])
     );
 }

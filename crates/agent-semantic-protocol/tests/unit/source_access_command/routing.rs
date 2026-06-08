@@ -54,8 +54,9 @@ fn read_file_command_rewrites_selector_to_package_root() {
             "direct-source-read",
             "--selector",
             "src/lib.rs",
-            "--code",
+            "--workspace",
             "packages/rust-crate",
+            "--code",
         ])
     );
 }

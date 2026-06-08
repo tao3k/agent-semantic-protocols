@@ -36,7 +36,7 @@ fn search_output_writeback_adds_replay_ready_stdout_artifact() {
     };
     let stdout = "[search-fzf] q=cache view=fzf alg=seed-frontier\n\
 legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next\n\
-aliases: graph:{G=search,Q=query}\n\
+aliases=G:search,Q:query\n\
 Q=query:term(cache)!fzf\n\
 G>{Q:matches}\n\
 rank=Q frontier=Q.fzf\n";
@@ -75,7 +75,7 @@ fn search_output_file_hashes_use_prompt_facing_locators() {
     let package_roots = vec!["crates/client".to_string()];
     let stdout = "[search-fzf] q=cache view=fzf alg=seed-frontier\n\
 legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next\n\
-aliases: graph:{G=search,Q=query,O=owner,T=test}\n\
+aliases=G:search,Q:query,O:owner,T:test\n\
 O=owner:path(src/cache.rs)!owner;T=test:path(tests/unit/cache.rs)!tests\n";
 
     let file_hashes =
@@ -132,7 +132,7 @@ fn search_packet_writeback_replays_rendered_stdout_artifact() {
     .expect("packet json");
     let rendered_stdout = "[search-prime] root=. view=prime alg=seed-frontier\n\
 legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next\n\
-aliases: graph:{G=search,O=owner}\n\
+aliases=G:search,O:owner\n\
 O=owner:path(src/lib.rs)!owner\n\
 G>{O:selects}\n\
 rank=O frontier=O.owner\n";

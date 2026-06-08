@@ -142,8 +142,9 @@ fn language_facade_uses_manifest_child_as_provider_project_hint() {
             "src/lib.rs",
             "--query",
             "demo",
-            "--code",
+            "--workspace",
             ".",
+            "--code",
             "--receipt-json",
         ])
         .output()

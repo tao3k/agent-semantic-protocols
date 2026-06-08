@@ -136,8 +136,9 @@ fn scoped_owner_query_code_locator_replays_from_workspace_root() {
             "query",
             "--selector",
             "crates/demo/src/lib.rs:1:4",
-            "--code",
+            "--workspace",
             ".",
+            "--code",
         ])
         .output()
         .expect("replay scoped code locator");

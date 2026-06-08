@@ -1,24 +1,21 @@
 //! ASP-owned search pipeline wrapper.
 
 use std::fs;
-use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
-use super::graph::render_graph_turbo_packet;
+use super::graph::GraphTurboReceiptRequest;
 use super::search_config::AspConfig;
 use super::search_failure_render::{render_failure_frontier, render_failure_graph_turbo_request};
 use super::search_pipe_candidates::{
     collect_candidates, parse_ingest_candidates, read_piped_stdin,
 };
-use super::search_pipe_graph_turbo::render_graph_turbo_request;
-use super::search_pipe_plan::{render_primary_frontier_actions_only, render_search_pipe_plan};
-use super::search_pipe_provider_facts::{
-    ProviderGraphFacts, ProviderGraphFactsContext, collect_provider_graph_facts,
-};
+use super::search_pipe_provider_facts::{ProviderGraphFactsContext, collect_provider_graph_facts};
 use super::search_pipe_read_memory::read_loop_memory_selectors;
 use super::search_pipe_render::{
-    Candidate, render_empty_ingest_diagnostic, render_ingest_frontier, render_owner_query_frontier,
-    render_owner_tests_frontier,
+    render_empty_ingest_diagnostic, render_owner_query_frontier, render_owner_tests_frontier,
+};
+use super::search_pipe_view::{
+    SearchPipeViewRequest, print_search_pipe_view, reject_non_graph_turbo_receipt,
 };
 use super::search_suggest::{
     is_search_suggest, is_unsupported_search_pipeline_command,
@@ -59,6 +56,16 @@ struct FailureArgs {
     view: String,
 }
 
+pub(super) struct FastSearchContext<'a> {
+    pub(super) language_id: &'a str,
+    pub(super) project_root: &'a Path,
+    pub(super) locator_root: &'a Path,
+    pub(super) cache_home: &'a Path,
+    pub(super) config: &'a AspConfig,
+    pub(super) provider_context: Option<&'a ProviderGraphFactsContext<'a>>,
+    pub(super) frontier_receipt: Option<&'a GraphTurboReceiptRequest>,
+}
+
 pub(super) fn is_asp_fast_search(args: &[String]) -> bool {
     is_search_pipe(args)
         || is_search_suggest(args)
@@ -72,69 +79,85 @@ pub(super) fn is_asp_fast_search(args: &[String]) -> bool {
 }
 
 pub(super) fn run_asp_fast_search_command(
-    language_id: &str,
     args: &[String],
-    project_root: &Path,
-    locator_root: &Path,
-    cache_home: &Path,
-    config: &AspConfig,
-    provider_context: Option<&ProviderGraphFactsContext<'_>>,
+    context: FastSearchContext<'_>,
 ) -> Result<(), String> {
-    if is_search_pipe(args) {
-        return run_search_pipe_command(
-            language_id,
-            args,
-            project_root,
-            locator_root,
-            cache_home,
-            config,
-            provider_context,
+    if context.frontier_receipt.is_some()
+        && (is_search_suggest(args)
+            || is_unsupported_search_pipeline_command(args)
+            || is_search_failure(args))
+    {
+        return Err(
+            "--frontier-receipt-out is supported only for graph-turbo frontier search commands"
+                .to_string(),
         );
     }
+    if is_search_pipe(args) {
+        return run_search_pipe_command(args, &context);
+    }
     if is_search_suggest(args) {
-        return run_search_suggest_command(language_id, args);
+        return run_search_suggest_command(context.language_id, args);
     }
     if is_unsupported_search_pipeline_command(args) {
         return reject_unsupported_search_pipeline_command();
     }
     if is_search_ingest(args) {
         return run_search_ingest_command(
-            language_id,
+            context.language_id,
             args,
-            project_root,
-            locator_root,
-            config,
-            provider_context,
+            context.project_root,
+            context.locator_root,
+            context.config,
+            context.provider_context,
+            context.frontier_receipt,
         );
     }
     if is_search_fzf(args) {
         return run_search_fzf_command(
-            language_id,
+            context.language_id,
             args,
-            project_root,
-            locator_root,
-            config,
-            provider_context,
+            context.project_root,
+            context.locator_root,
+            context.config,
+            context.provider_context,
+            context.frontier_receipt,
         );
     }
     if is_search_failure(args) {
         return run_search_failure_command(
-            language_id,
+            context.language_id,
             args,
-            project_root,
-            locator_root,
-            cache_home,
-            config,
+            context.project_root,
+            context.locator_root,
+            context.cache_home,
+            context.config,
         );
     }
     if is_reasoning_owner_query(args) {
-        return run_reasoning_owner_query_command(language_id, args, project_root, locator_root);
+        return run_reasoning_owner_query_command(
+            context.language_id,
+            args,
+            context.project_root,
+            context.locator_root,
+            context.frontier_receipt,
+        );
     }
     if is_reasoning_owner_tests(args) {
-        return run_reasoning_owner_tests_command(args, project_root, locator_root);
+        return run_reasoning_owner_tests_command(
+            args,
+            context.project_root,
+            context.locator_root,
+            context.frontier_receipt,
+        );
     }
     if is_search_owner_items_query(args) {
-        return run_search_owner_items_query_command(language_id, args, project_root, locator_root);
+        return run_search_owner_items_query_command(
+            context.language_id,
+            args,
+            context.project_root,
+            context.locator_root,
+            context.frontier_receipt,
+        );
     }
     Err("unsupported ASP fast search command".to_string())
 }
@@ -216,36 +239,28 @@ fn explicit_view(args: &[String]) -> Option<&str> {
     None
 }
 
-fn run_search_pipe_command(
-    language_id: &str,
-    args: &[String],
-    project_root: &Path,
-    locator_root: &Path,
-    cache_home: &Path,
-    config: &AspConfig,
-    provider_context: Option<&ProviderGraphFactsContext<'_>>,
-) -> Result<(), String> {
+fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> Result<(), String> {
     let pipe_args = parse_search_pipe_args(args)?;
     let candidates = collect_candidates(
-        language_id,
-        project_root,
-        locator_root,
+        context.language_id,
+        context.project_root,
+        context.locator_root,
         &pipe_args.query,
         &pipe_args.owners,
-        config,
+        context.config,
     )?;
     let provider_facts = collect_provider_graph_facts(
-        language_id,
-        project_root,
+        context.language_id,
+        context.project_root,
         Some(&pipe_args.query),
         &candidates,
-        config,
-        provider_context,
+        context.config,
+        context.provider_context,
     )?;
     print_search_pipe_view(SearchPipeViewRequest {
-        language_id,
-        project_root,
-        locator_root,
+        language_id: context.language_id,
+        project_root: context.project_root,
+        locator_root: context.locator_root,
         query: Some(&pipe_args.query),
         candidates: &candidates,
         pipes: &pipe_args.pipes,
@@ -253,7 +268,11 @@ fn run_search_pipe_command(
         view: &pipe_args.view,
         include_pipe_plan: true,
         provider_facts: &provider_facts,
-        read_memory_selectors: &read_loop_memory_selectors(cache_home, project_root),
+        read_memory_selectors: &read_loop_memory_selectors(
+            context.cache_home,
+            context.project_root,
+        ),
+        frontier_receipt: context.frontier_receipt,
     })?;
     Ok(())
 }
@@ -263,7 +282,9 @@ fn run_reasoning_owner_query_command(
     args: &[String],
     project_root: &Path,
     locator_root: &Path,
+    frontier_receipt: Option<&GraphTurboReceiptRequest>,
 ) -> Result<(), String> {
+    reject_non_graph_turbo_receipt(frontier_receipt)?;
     let owner_query_args = parse_owner_query_args(args)?;
     if owner_query_args.view != "seeds" {
         return Err("search reasoning owner-query fast path supports --view seeds".to_string());
@@ -285,7 +306,9 @@ fn run_reasoning_owner_tests_command(
     args: &[String],
     project_root: &Path,
     locator_root: &Path,
+    frontier_receipt: Option<&GraphTurboReceiptRequest>,
 ) -> Result<(), String> {
+    reject_non_graph_turbo_receipt(frontier_receipt)?;
     let owner_args = parse_owner_only_args(args, "owner-tests")?;
     if owner_args.view != "seeds" {
         return Err("search reasoning owner-tests fast path supports --view seeds".to_string());
@@ -302,7 +325,9 @@ fn run_search_owner_items_query_command(
     args: &[String],
     project_root: &Path,
     locator_root: &Path,
+    frontier_receipt: Option<&GraphTurboReceiptRequest>,
 ) -> Result<(), String> {
+    reject_non_graph_turbo_receipt(frontier_receipt)?;
     let owner_query_args = parse_search_owner_items_query_args(args)?;
     if owner_query_args.view != "seeds" {
         return Err("search owner items fast path supports --view seeds".to_string());
@@ -327,6 +352,7 @@ fn run_search_ingest_command(
     locator_root: &Path,
     config: &AspConfig,
     provider_context: Option<&ProviderGraphFactsContext<'_>>,
+    frontier_receipt: Option<&GraphTurboReceiptRequest>,
 ) -> Result<(), String> {
     let ingest_args = parse_ingest_args(args)?;
     if !matches!(ingest_args.view.as_str(), "seeds" | "graph-turbo-request") {
@@ -364,6 +390,7 @@ fn run_search_ingest_command(
         include_pipe_plan: false,
         provider_facts: &provider_facts,
         read_memory_selectors: &[],
+        frontier_receipt,
     })?;
     Ok(())
 }
@@ -375,6 +402,7 @@ fn run_search_fzf_command(
     locator_root: &Path,
     config: &AspConfig,
     provider_context: Option<&ProviderGraphFactsContext<'_>>,
+    frontier_receipt: Option<&GraphTurboReceiptRequest>,
 ) -> Result<(), String> {
     let pipe_args = parse_fzf_args(args)?;
     if !matches!(pipe_args.view.as_str(), "seeds" | "graph-turbo-request") {
@@ -410,6 +438,7 @@ fn run_search_fzf_command(
         include_pipe_plan: false,
         provider_facts: &provider_facts,
         read_memory_selectors: &[],
+        frontier_receipt,
     })?;
     Ok(())
 }
@@ -466,114 +495,6 @@ fn run_search_failure_command(
         )?
     };
     print!("{rendered}");
-    Ok(())
-}
-
-struct SearchPipeViewRequest<'a> {
-    language_id: &'a str,
-    project_root: &'a Path,
-    locator_root: &'a Path,
-    query: Option<&'a str>,
-    candidates: &'a [Candidate],
-    pipes: &'a [String],
-    scopes: &'a [PathBuf],
-    view: &'a str,
-    include_pipe_plan: bool,
-    provider_facts: &'a ProviderGraphFacts,
-    read_memory_selectors: &'a [String],
-}
-
-fn print_search_pipe_view(request: SearchPipeViewRequest<'_>) -> Result<(), String> {
-    let SearchPipeViewRequest {
-        language_id,
-        project_root,
-        locator_root,
-        query,
-        candidates,
-        pipes,
-        scopes,
-        view,
-        include_pipe_plan,
-        provider_facts,
-        read_memory_selectors,
-    } = request;
-    match view {
-        "graph-turbo-request" => {
-            print!(
-                "{}",
-                render_graph_turbo_request(
-                    language_id,
-                    query,
-                    candidates,
-                    pipes,
-                    provider_facts,
-                    read_memory_selectors,
-                )?
-            );
-        }
-        "seeds" => {
-            let request = render_graph_turbo_request(
-                language_id,
-                query,
-                candidates,
-                pipes,
-                provider_facts,
-                read_memory_selectors,
-            )?;
-            let mut ranked_compact = None;
-            if let Some(output) = render_graph_turbo_packet(request.as_bytes())? {
-                ranked_compact = std::str::from_utf8(output.as_ref())
-                    .ok()
-                    .map(str::to_string);
-                if include_pipe_plan {
-                    if let Some(compact) = ranked_compact.as_deref() {
-                        print!("{}", render_primary_frontier_actions_only(compact));
-                    } else {
-                        io::stdout().write_all(output.as_ref()).map_err(|error| {
-                            format!("failed to write asp-graph-turbo stdout: {error}")
-                        })?;
-                    }
-                } else {
-                    io::stdout().write_all(output.as_ref()).map_err(|error| {
-                        format!("failed to write asp-graph-turbo stdout: {error}")
-                    })?;
-                }
-            } else {
-                print!("{}", render_ingest_frontier(candidates, pipes));
-            }
-            if include_pipe_plan && let Some(query) = query {
-                print!(
-                    "{}",
-                    render_search_pipe_plan(
-                        language_id,
-                        project_root,
-                        locator_root,
-                        scopes,
-                        query,
-                        candidates,
-                        ranked_compact.as_deref(),
-                    )
-                );
-            }
-        }
-        _ => {
-            print!("{}", render_ingest_frontier(candidates, pipes));
-            if include_pipe_plan && let Some(query) = query {
-                print!(
-                    "{}",
-                    render_search_pipe_plan(
-                        language_id,
-                        project_root,
-                        locator_root,
-                        scopes,
-                        query,
-                        candidates,
-                        None,
-                    )
-                );
-            }
-        }
-    }
     Ok(())
 }
 

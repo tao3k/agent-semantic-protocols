@@ -14,6 +14,7 @@ use agent_semantic_provider_transport::{
     OutputMode, ProviderProcessLimits, ProviderProcessSpec, StdinMode, run_provider_process,
 };
 use bytes::Bytes;
+use sha2::{Digest, Sha256};
 
 use crate::cache_cli::{
     apply_provider_cache_probe, cache_hit_receipt, provider_cache_probe,
@@ -90,6 +91,7 @@ pub(crate) fn run_provider_method(
             &snapshot,
             &request,
             execution_cache_status,
+            parsed.frontier_receipt_out.as_deref(),
         )?
     } else {
         None
@@ -338,6 +340,7 @@ fn run_search_packet_first_miss(
     snapshot: &ProviderRegistrySnapshot,
     request: &ClientRequest,
     execution_cache_status: CacheStatus,
+    frontier_receipt_out: Option<&Path>,
 ) -> Result<Option<LocalNativeOutput>, String> {
     let Some(language_id) = request.language_id.clone() else {
         return Ok(None);
@@ -352,9 +355,17 @@ fn run_search_packet_first_miss(
     if output.status_code != 0 {
         return Ok(None);
     }
-    let Some(rendered_stdout) =
+    let receipt_request = frontier_receipt_out
+        .map(|path| search_frontier_receipt_request(path, request, &output.stdout));
+    let rendered_stdout = if let Some(receipt_request) = receipt_request.as_ref() {
+        crate::cache_replay::render_search_packet_bytes_with_receipt(
+            output.stdout.clone(),
+            receipt_request,
+        )?
+    } else {
         crate::cache_replay::render_search_packet_bytes(output.stdout.clone())
-    else {
+    };
+    let Some(rendered_stdout) = rendered_stdout else {
         return Ok(None);
     };
     let Some(writeback_probe) = write_search_packet_cache_after_provider_success(
@@ -372,6 +383,30 @@ fn run_search_packet_first_miss(
     output.receipt.stdout_bytes = ByteCount::from_len(rendered_stdout.len());
     output.stdout = rendered_stdout;
     Ok(Some(output))
+}
+
+fn search_frontier_receipt_request(
+    out_path: &Path,
+    request: &ClientRequest,
+    packet_bytes: &[u8],
+) -> crate::cache_replay::SearchFrontierReceiptRequest {
+    let packet_hash = short_sha256(packet_bytes);
+    let language_id = request
+        .language_id
+        .as_ref()
+        .map(ToString::to_string)
+        .unwrap_or_else(|| "unknown".to_string());
+    crate::cache_replay::SearchFrontierReceiptRequest {
+        out_path: out_path.to_path_buf(),
+        receipt_id: format!("asp.search-frontier.{language_id}.{packet_hash}"),
+        task_fingerprint: format!("task:asp-search-frontier:{language_id}:{packet_hash}"),
+        command_fingerprint: format!("command:asp-search:{language_id}:{packet_hash}"),
+    }
+}
+
+fn short_sha256(bytes: &[u8]) -> String {
+    let digest = Sha256::digest(bytes);
+    format!("{digest:x}").chars().take(16).collect()
 }
 
 fn insert_json_flag_before_project_root(args: &mut Vec<String>) {

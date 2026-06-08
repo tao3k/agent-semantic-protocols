@@ -23,8 +23,9 @@ fn cli_hook_replay_blocks_common_source_read_escape_surfaces() {
             "direct-source-read",
             "--selector",
             selector,
-            "--code",
-            "."
+            "--workspace",
+            ".",
+            "--code"
         ])
     };
 
@@ -375,8 +376,9 @@ fn cli_hook_replay_blocks_absolute_source_path_escape_surface() {
             "direct-source-read",
             "--selector",
             root.join("src/lib.rs").to_string_lossy(),
-            "--code",
-            "."
+            "--workspace",
+            ".",
+            "--code"
         ])
     );
 

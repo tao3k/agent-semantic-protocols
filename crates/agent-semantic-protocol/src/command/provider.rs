@@ -1,6 +1,7 @@
 //! Language provider command facade.
 
 use super::document_provider;
+use super::graph::GraphTurboReceiptRequest;
 use agent_semantic_hook::{
     HookRuntime, default_activation_path, discover_activation_path, load_or_sync_activation,
     parse_hook_activation, runtime_profiles_for_runtime,
@@ -8,7 +9,7 @@ use agent_semantic_hook::{
 use std::env;
 use std::fs;
 use std::io::ErrorKind;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use super::provider_process::{
     provider_invocation_with_profile, provider_invocations, run_guide_command, run_provider_command,
@@ -21,7 +22,7 @@ use super::query_direct_read::{
     is_asp_fast_direct_source_read, run_asp_fast_direct_source_read_command,
 };
 use super::search_config::AspConfig;
-use super::search_pipe::{is_asp_fast_search, run_asp_fast_search_command};
+use super::search_pipe::{FastSearchContext, is_asp_fast_search, run_asp_fast_search_command};
 use super::search_pipe_provider_facts::ProviderGraphFactsContext;
 
 const SUPPORTED_LANGUAGES: &[&str] = &["rust", "typescript", "python", "julia", "org", "md"];
@@ -59,8 +60,21 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
         project_root: &Path,
         activation_path: &Path,
         cache_home: &Path,
+        frontier_receipt: Option<&GraphTurboReceiptRequest>,
     ) -> Result<(), String> {
-        let client_args = args.to_vec();
+        let mut client_args = args.to_vec();
+        if let Some(receipt) = frontier_receipt {
+            if receipt.has_extra_args() {
+                return Err(
+                    "--frontier-receipt-* fact flags require an ASP graph-turbo fast search"
+                        .to_string(),
+                );
+            }
+            client_args.extend([
+                "--frontier-receipt-out".to_string(),
+                receipt.out_path.display().to_string(),
+            ]);
+        }
         let previous_prj_cache_home = env::var_os("PRJ_CACHE_HOME");
         let previous_activation_path = env::var_os("ASP_PROVIDER_ACTIVATION_PATH");
         let previous_runtime_bin = env::var_os("ASP_RUNTIME_BIN_DIR");
@@ -99,10 +113,20 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
     if !is_language_facade(language_id) {
         return Err(language_usage());
     }
-    if document_provider::is_document_language(language_id) && is_help(args) {
-        return document_provider::run_language_command(language_id, args);
+    let mut command_args = args.to_vec();
+    let frontier_receipt = take_frontier_receipt_request(&mut command_args)?;
+    if frontier_receipt.is_some()
+        && command_args
+            .first()
+            .is_none_or(|command| command != "search")
+    {
+        return Err("--frontier-receipt-out is supported only for search commands".to_string());
     }
-    if is_help(args) {
+
+    if document_provider::is_document_language(language_id) && is_help(&command_args) {
+        return document_provider::run_language_command(language_id, &command_args);
+    }
+    if is_help(&command_args) {
         println!("{}", provider_usage());
         return Ok(());
     }
@@ -122,10 +146,14 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
         if !config.language_enabled(language_id) {
             return Err(format!("language `{language_id}` is disabled by asp.toml"));
         }
-        return document_provider::run_language_command_with_config(language_id, args, &config);
+        return document_provider::run_language_command_with_config(
+            language_id,
+            &command_args,
+            &config,
+        );
     }
-    validate_provider_command(args)?;
-    if is_guide_help(args) {
+    validate_provider_command(&command_args)?;
+    if is_guide_help(&command_args) {
         println!("{}", guide_usage(language_id));
         return Ok(());
     }
@@ -135,8 +163,12 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
     let runtime = load_activation(&activation_path)?;
     let activation_root = activation_project_root(&activation_path, &runtime.project_root);
     let config = AspConfig::load(&invocation_root, &activation_root);
-    let (project_root, provider_args) =
-        effective_project_root_and_args(language_id, args, &invocation_root, &activation_root)?;
+    let (project_root, provider_args) = effective_project_root_and_args(
+        language_id,
+        &command_args,
+        &invocation_root,
+        &activation_root,
+    )?;
 
     if !config.language_enabled(language_id) {
         return Err(format!("language `{language_id}` is disabled by asp.toml"));
@@ -164,26 +196,38 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
             cache_home: &cache_home,
         };
         return run_asp_fast_search_command(
-            language_id,
             &provider_args,
-            &project_root,
-            &invocation_root,
-            &cache_home,
-            &config,
-            Some(&provider_context),
+            FastSearchContext {
+                language_id,
+                project_root: &project_root,
+                locator_root: &invocation_root,
+                cache_home: &cache_home,
+                config: &config,
+                provider_context: Some(&provider_context),
+                frontier_receipt: frontier_receipt.as_ref(),
+            },
         );
     }
-    if uses_client_backend(args) {
+    if frontier_receipt
+        .as_ref()
+        .is_some_and(GraphTurboReceiptRequest::has_extra_args)
+    {
+        return Err(
+            "--frontier-receipt-* fact flags require an ASP graph-turbo fast search".to_string(),
+        );
+    }
+    if uses_client_backend(&command_args) {
         return run_client_backend_command(
             language_id,
             &provider_args,
             &project_root,
             &activation_path,
             &cache_home,
+            frontier_receipt.as_ref(),
         );
     }
 
-    if is_guide(args) {
+    if is_guide(&command_args) {
         let guide_args = provider_guide_args(language_id, &provider_args);
         let invocation =
             provider_invocation_with_profile(&runtime_profiles, provider, &guide_args, &config)?;
@@ -211,6 +255,103 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
         )?;
     }
     Ok(())
+}
+
+const FRONTIER_RECEIPT_FACT_FLAGS: &[(&str, &str)] = &[
+    ("--frontier-receipt-follow-node", "--follow-node"),
+    ("--frontier-receipt-read-selector", "--read-selector"),
+    ("--frontier-receipt-read-kind", "--read-kind"),
+    ("--frontier-receipt-read-owner", "--read-owner"),
+    ("--frontier-receipt-test-argv-json", "--test-argv-json"),
+    ("--frontier-receipt-test-status", "--test-status"),
+    ("--frontier-receipt-test-summary", "--test-summary"),
+    ("--frontier-receipt-test-exit-code", "--test-exit-code"),
+    ("--frontier-receipt-test-workdir", "--test-workdir"),
+    ("--frontier-receipt-test-fingerprint", "--test-fingerprint"),
+    (
+        "--frontier-receipt-commands-to-first-useful-locator",
+        "--commands-to-first-useful-locator",
+    ),
+    (
+        "--frontier-receipt-commands-to-validation",
+        "--commands-to-validation",
+    ),
+];
+
+fn take_frontier_receipt_request(
+    args: &mut Vec<String>,
+) -> Result<Option<GraphTurboReceiptRequest>, String> {
+    let mut normalized = Vec::with_capacity(args.len());
+    let mut frontier_receipt_out = None;
+    let mut receipt_args = Vec::new();
+    let mut seen_fact_flags = Vec::<&'static str>::new();
+    let mut index = 0;
+    while index < args.len() {
+        let arg = &args[index];
+        if arg == "--frontier-receipt-out" {
+            if frontier_receipt_out.is_some() {
+                return Err("--frontier-receipt-out may be passed only once".to_string());
+            }
+            let value = args
+                .get(index + 1)
+                .ok_or_else(|| "--frontier-receipt-out requires a path".to_string())?;
+            frontier_receipt_out = Some(PathBuf::from(value));
+            index += 2;
+        } else if let Some(value) = arg.strip_prefix("--frontier-receipt-out=") {
+            if frontier_receipt_out.is_some() {
+                return Err("--frontier-receipt-out may be passed only once".to_string());
+            }
+            if value.is_empty() {
+                return Err("--frontier-receipt-out requires a path".to_string());
+            }
+            frontier_receipt_out = Some(PathBuf::from(value));
+            index += 1;
+        } else if let Some((target_flag, value, public_flag)) =
+            frontier_receipt_fact_arg(arg, args.get(index + 1).map(String::as_str))
+        {
+            if seen_fact_flags.contains(&public_flag) {
+                return Err(format!("{public_flag} may be passed only once"));
+            }
+            if value.is_empty() {
+                return Err(format!("{public_flag} requires a value"));
+            }
+            seen_fact_flags.push(public_flag);
+            receipt_args.push(target_flag.to_string());
+            receipt_args.push(value.to_string());
+            if arg == public_flag {
+                index += 2;
+            } else {
+                index += 1;
+            }
+        } else {
+            normalized.push(arg.clone());
+            index += 1;
+        }
+    }
+    *args = normalized;
+    let Some(out_path) = frontier_receipt_out else {
+        if receipt_args.is_empty() {
+            return Ok(None);
+        }
+        return Err("--frontier-receipt-* fact flags require --frontier-receipt-out".to_string());
+    };
+    Ok(Some(GraphTurboReceiptRequest::new(out_path, receipt_args)))
+}
+
+fn frontier_receipt_fact_arg<'a>(
+    arg: &'a str,
+    next: Option<&'a str>,
+) -> Option<(&'static str, &'a str, &'static str)> {
+    for (public_flag, target_flag) in FRONTIER_RECEIPT_FACT_FLAGS {
+        if arg == *public_flag {
+            return Some((*target_flag, next.unwrap_or(""), *public_flag));
+        }
+        let prefix = format!("{public_flag}=");
+        if let Some(value) = arg.strip_prefix(&prefix) {
+            return Some((*target_flag, value, *public_flag));
+        }
+    }
+    None
 }
 
 fn load_activation(path: &Path) -> Result<HookRuntime, String> {

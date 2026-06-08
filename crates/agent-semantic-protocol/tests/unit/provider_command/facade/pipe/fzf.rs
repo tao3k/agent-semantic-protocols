@@ -74,6 +74,111 @@ fn fzf_seeds_is_asp_owned_for_cheap_discovery() {
 }
 
 #[test]
+fn fzf_frontier_receipt_out_is_asp_owned_runtime_capture() {
+    let root = temp_project_root("search-fzf-frontier-receipt-out");
+    let bin_dir = root.join(".bin");
+    let marker = root.join("provider-called");
+    let args_path = root.join("graph-turbo-args");
+    let stdin_path = root.join("graph-turbo-stdin.json");
+    let receipt_path = root.join("frontier-receipt.json");
+    let receipt_args_path = root.join("graph-turbo-receipt-args");
+    let receipt_stdin_path = root.join("graph-turbo-receipt-stdin.json");
+    std::fs::create_dir_all(root.join("src")).expect("create src");
+    std::fs::write(root.join("src/lib.rs"), "pub fn cache_root() {}\n").expect("write source");
+    write_marker_provider(&bin_dir, "rs-harness", &marker);
+    write_graph_turbo_ranker(&bin_dir);
+    write_activation(&root, &[provider("rust", Vec::new())]);
+
+    let output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .env("ASP_GRAPH_TURBO_ARGS_OUT", &args_path)
+        .env("ASP_GRAPH_TURBO_STDIN_OUT", &stdin_path)
+        .env("ASP_GRAPH_TURBO_RECEIPT_ARGS_OUT", &receipt_args_path)
+        .env("ASP_GRAPH_TURBO_RECEIPT_STDIN_OUT", &receipt_stdin_path)
+        .args([
+            "rust",
+            "search",
+            "fzf",
+            "cache_root",
+            "owner",
+            "tests",
+            "--view",
+            "seeds",
+            "--frontier-receipt-out",
+            receipt_path.to_str().expect("receipt path"),
+            "--frontier-receipt-follow-node",
+            "query:cache_root",
+            "--frontier-receipt-read-selector",
+            "src/lib.rs:1:1",
+            "--frontier-receipt-read-kind",
+            "direct-source-read",
+            "--frontier-receipt-test-argv-json",
+            "[\"cargo\",\"test\"]",
+            "--frontier-receipt-test-status",
+            "passed",
+            "--frontier-receipt-test-summary",
+            "1 passed",
+            "--frontier-receipt-test-exit-code",
+            "0",
+            "--frontier-receipt-commands-to-first-useful-locator",
+            "1",
+            "--frontier-receipt-commands-to-validation",
+            "2",
+            ".",
+        ])
+        .output()
+        .expect("run asp rust search fzf with frontier receipt");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8(output.stdout).expect("stdout"),
+        "[graph-frontier] external=fzf\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&args_path).expect("read rank args"),
+        "rank\n-\n--format\ncompact\n"
+    );
+    let receipt_args = std::fs::read_to_string(&receipt_args_path).expect("read receipt args");
+    assert!(
+        receipt_args.starts_with("receipt\n-\n--receipt-id\nasp.search-frontier.rust-cache-root\n")
+    );
+    assert!(receipt_args.contains("\n--follow-node\nquery:cache_root\n"));
+    assert!(receipt_args.contains("\n--read-selector\nsrc/lib.rs:1:1\n"));
+    assert!(receipt_args.contains("\n--read-kind\ndirect-source-read\n"));
+    assert!(receipt_args.contains("\n--test-argv-json\n[\"cargo\",\"test\"]\n"));
+    assert!(receipt_args.contains("\n--test-status\npassed\n"));
+    assert!(receipt_args.contains("\n--test-summary\n1 passed\n"));
+    assert!(receipt_args.contains("\n--test-exit-code\n0\n"));
+    assert!(receipt_args.contains("\n--commands-to-first-useful-locator\n1\n"));
+    assert!(receipt_args.contains("\n--commands-to-validation\n2\n"));
+    assert!(receipt_args.contains("\n--field\ncaptureSource=asp fast search\n"));
+    let receipt: Value =
+        serde_json::from_slice(&std::fs::read(&receipt_path).expect("read receipt"))
+            .expect("receipt JSON");
+    assert_eq!(
+        receipt["schemaId"],
+        "agent.semantic-protocols.semantic-fact-frontier-receipt"
+    );
+    let rank_payload: Value =
+        serde_json::from_slice(&std::fs::read(&stdin_path).expect("read rank stdin"))
+            .expect("rank graph turbo stdin JSON");
+    let receipt_payload: Value =
+        serde_json::from_slice(&std::fs::read(&receipt_stdin_path).expect("read receipt stdin"))
+            .expect("receipt graph turbo stdin JSON");
+    assert_eq!(rank_payload, receipt_payload);
+    assert!(
+        !marker.exists(),
+        "--frontier-receipt-out should not reach provider"
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn fzf_scoped_root_outputs_workspace_relative_replayable_locators() {
     let root = temp_project_root("search-fzf-scoped-root-locators");
     let bin_dir = root.join(".bin");
@@ -378,9 +483,18 @@ fn write_graph_turbo_ranker(bin_dir: &std::path::Path) {
     std::fs::write(
         &graph_turbo,
         "#!/bin/sh\n\
-         printf '%s\n' \"$@\" > \"$ASP_GRAPH_TURBO_ARGS_OUT\"\n\
-         cat > \"$ASP_GRAPH_TURBO_STDIN_OUT\"\n\
-         printf '[graph-frontier] external=fzf\\n'\n",
+         case \"$1\" in\n\
+           receipt)\n\
+             printf '%s\n' \"$@\" > \"$ASP_GRAPH_TURBO_RECEIPT_ARGS_OUT\"\n\
+             cat > \"$ASP_GRAPH_TURBO_RECEIPT_STDIN_OUT\"\n\
+             printf '{\"schemaId\":\"agent.semantic-protocols.semantic-fact-frontier-receipt\"}\\n'\n\
+             ;;\n\
+           *)\n\
+             printf '%s\n' \"$@\" > \"$ASP_GRAPH_TURBO_ARGS_OUT\"\n\
+             cat > \"$ASP_GRAPH_TURBO_STDIN_OUT\"\n\
+             printf '[graph-frontier] external=fzf\\n'\n\
+             ;;\n\
+         esac\n",
     )
     .expect("write fake asp-graph-turbo");
     make_executable(&graph_turbo);

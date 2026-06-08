@@ -1,4 +1,7 @@
-use crate::cache_replay::{query_packet_matches_request, search_fzf_packet_matches_request};
+use crate::cache_replay::{
+    query_packet_matches_request, search_fzf_packet_matches_request,
+    search_output_artifact_replay_safe,
+};
 use agent_semantic_client_core::{ClientMethod, ClientRequest};
 use serde_json::{Value, json};
 
@@ -83,6 +86,28 @@ fn search_fzf_packet_replay_requires_matching_query() {
     assert!(
         search_fzf_packet_matches_request(&fzf_packet("cache replay"), &code_request).is_none()
     );
+}
+
+#[test]
+fn search_packet_replay_accepts_graph_turbo_frontier() {
+    let stdout = "\
+[graph-frontier] profile=owner-query alg=typed-ppr-diverse seed=Q budget=10\n\
+legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next\n\
+aliases=G:graph,Q:query\n\
+rank=Q frontier=Q.fzf\n";
+
+    assert!(search_output_artifact_replay_safe(stdout.as_bytes()));
+}
+
+#[test]
+fn search_packet_replay_rejects_obsolete_search_frontier() {
+    let stdout = "\
+[search-fzf] q=cache view=hits\n\
+legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next\n\
+aliases: graph:{G=search,Q=query}\n\
+rank=Q frontier=Q.fzf\n";
+
+    assert!(!search_output_artifact_replay_safe(stdout.as_bytes()));
 }
 
 fn query_request(owner_path: &str, query: &str) -> ClientRequest {

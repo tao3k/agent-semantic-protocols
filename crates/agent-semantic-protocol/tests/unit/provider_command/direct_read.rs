@@ -22,8 +22,9 @@ fn direct_source_read_accepts_whole_file_selector() {
             "direct-source-read",
             "--selector",
             "src/lib.rs",
-            "--code",
+            "--workspace",
             ".",
+            "--code",
         ])
         .output()
         .expect("run asp");
@@ -50,8 +51,9 @@ fn direct_source_read_accepts_wide_selector_range() {
             "direct-source-read",
             "--selector",
             "src/lib.rs:1-41",
-            "--code",
+            "--workspace",
             ".",
+            "--code",
         ])
         .output()
         .expect("run asp");
@@ -78,8 +80,9 @@ fn direct_source_read_accepts_bounded_selector_range() {
             "direct-source-read",
             "--selector",
             "src/lib.rs:2-3",
-            "--code",
+            "--workspace",
             ".",
+            "--code",
         ])
         .output()
         .expect("run asp");
@@ -103,8 +106,9 @@ fn ordinary_selector_query_does_not_use_direct_source_read_limit() {
             "query",
             "--selector",
             "src/lib.rs:1-41",
-            "--code",
+            "--workspace",
             ".",
+            "--code",
         ])
         .output()
         .expect("run asp");

@@ -157,7 +157,7 @@ fn prime_seed_probe_reuses_latest_fresh_prime_generation_after_fingerprint_miss(
     let db_path = ClientDb::default_path(&cache_root);
     let stdout = "[search-prime] root=. view=seeds alg=seed-frontier\n\
 legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next\n\
-aliases: graph:{G=search,O=owner}\n\
+aliases=G:search,O:owner\n\
 O=owner:path(src/lib.rs)!owner\n\
 G>{O:selects}\n\
 rank=O frontier=O.owner\n";
@@ -208,7 +208,7 @@ fn fzf_seed_probe_reuses_latest_fresh_matching_query_after_fingerprint_miss() {
     let db_path = ClientDb::default_path(&cache_root);
     let stdout = "[search-fzf] q=cache replay view=seeds alg=seed-frontier\n\
 legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next\n\
-aliases: graph:{G=search,Q=query}\n\
+aliases=G:search,Q:query\n\
 Q=query:term(cache replay)!fzf\n\
 G>{Q:matches}\n\
 rank=Q frontier=Q.fzf\n";

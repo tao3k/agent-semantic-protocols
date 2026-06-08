@@ -93,6 +93,44 @@ fn workspace_flag_is_forwarded_to_language_provider() {
 }
 
 #[test]
+fn frontier_receipt_out_is_owned_by_client_runtime() {
+    let cwd = temp_dir("frontier-receipt-out");
+    let receipt_path = cwd.join("frontier-receipt.json");
+
+    let parsed = parse_client_args(
+        vec![
+            "search".to_string(),
+            "fzf".to_string(),
+            "semantic-fact-frontier-receipt".to_string(),
+            "owner".to_string(),
+            "tests".to_string(),
+            "--view".to_string(),
+            "seeds".to_string(),
+            "--frontier-receipt-out".to_string(),
+            receipt_path.display().to_string(),
+            ".".to_string(),
+        ],
+        cwd.clone(),
+        Some("python"),
+    )
+    .expect("frontier receipt path is a client runtime option");
+
+    assert_eq!(parsed.frontier_receipt_out, Some(receipt_path));
+    assert_eq!(
+        parsed.forwarded_args,
+        vec![
+            "fzf",
+            "semantic-fact-frontier-receipt",
+            "owner",
+            "tests",
+            "--view",
+            "seeds",
+        ]
+    );
+    let _ = fs::remove_dir_all(cwd);
+}
+
+#[test]
 fn positional_project_root_preserves_activation_root() {
     let cwd = temp_dir("positional-root-activation");
     let provider_root = cwd.join("languages/rust-lang-project-harness");

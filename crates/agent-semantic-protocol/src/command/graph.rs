@@ -35,10 +35,38 @@ fn run_graph_render_command(args: &[String]) -> Result<(), String> {
     if is_graph_turbo_request(&packet)
         && let Some(output) = render_graph_turbo_packet(&packet_bytes)?
     {
+        if request.frontier_receipt_out.is_some() {
+            write_graph_turbo_receipt(
+                &packet_bytes,
+                &GraphTurboReceiptCapture {
+                    out_path: request
+                        .frontier_receipt_out
+                        .as_deref()
+                        .ok_or_else(|| "missing frontier receipt output path".to_string())?,
+                    receipt_id: request
+                        .receipt_id
+                        .as_deref()
+                        .ok_or_else(|| "missing receipt id".to_string())?,
+                    task_fingerprint: request
+                        .task_fingerprint
+                        .as_deref()
+                        .ok_or_else(|| "missing task fingerprint".to_string())?,
+                    command_fingerprint: request
+                        .command_fingerprint
+                        .as_deref()
+                        .ok_or_else(|| "missing command fingerprint".to_string())?,
+                    capture_source: "asp graph render",
+                    extra_args: &[],
+                },
+            )?;
+        }
         io::stdout()
             .write_all(output.as_ref())
             .map_err(|error| format!("failed to write asp-graph-turbo stdout: {error}"))?;
         return Ok(());
+    }
+    if request.frontier_receipt_out.is_some() {
+        return Err("--frontier-receipt-out requires a graph-turbo request packet".to_string());
     }
     let output = render_search_graph_packet(
         &packet,
@@ -54,6 +82,10 @@ struct GraphRenderRequest {
     packet_path: PathBuf,
     view: String,
     seed_limit: Option<usize>,
+    frontier_receipt_out: Option<PathBuf>,
+    receipt_id: Option<String>,
+    task_fingerprint: Option<String>,
+    command_fingerprint: Option<String>,
 }
 
 impl GraphRenderRequest {
@@ -68,10 +100,26 @@ impl GraphRenderRequest {
                     .map_err(|error| format!("invalid --seeds value: {error}"))
             })
             .transpose()?;
+        let frontier_receipt_out = flag_value(args, "--frontier-receipt-out").map(PathBuf::from);
+        let receipt_id = flag_value(args, "--receipt-id");
+        let task_fingerprint = flag_value(args, "--task-fingerprint");
+        let command_fingerprint = flag_value(args, "--command-fingerprint");
+        if frontier_receipt_out.is_some()
+            && (receipt_id.is_none() || task_fingerprint.is_none() || command_fingerprint.is_none())
+        {
+            return Err(
+                "--frontier-receipt-out requires --receipt-id, --task-fingerprint, and --command-fingerprint"
+                    .to_string(),
+            );
+        }
         Ok(Self {
             packet_path: PathBuf::from(packet_path),
             view,
             seed_limit,
+            frontier_receipt_out,
+            receipt_id,
+            task_fingerprint,
+            command_fingerprint,
         })
     }
 }
@@ -139,6 +187,87 @@ pub(super) fn render_graph_turbo_packet(packet_bytes: &[u8]) -> Result<Option<Ve
     Ok(Some(output.stdout.to_vec()))
 }
 
+pub(super) struct GraphTurboReceiptCapture<'a> {
+    pub(super) out_path: &'a Path,
+    pub(super) receipt_id: &'a str,
+    pub(super) task_fingerprint: &'a str,
+    pub(super) command_fingerprint: &'a str,
+    pub(super) capture_source: &'a str,
+    pub(super) extra_args: &'a [String],
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub(super) struct GraphTurboReceiptRequest {
+    pub(super) out_path: PathBuf,
+    pub(super) extra_args: Vec<String>,
+}
+
+impl GraphTurboReceiptRequest {
+    pub(super) fn new(out_path: PathBuf, extra_args: Vec<String>) -> Self {
+        Self {
+            out_path,
+            extra_args,
+        }
+    }
+
+    pub(super) fn has_extra_args(&self) -> bool {
+        !self.extra_args.is_empty()
+    }
+}
+
+pub(super) fn write_graph_turbo_receipt(
+    packet_bytes: &[u8],
+    capture: &GraphTurboReceiptCapture<'_>,
+) -> Result<(), String> {
+    let cwd = std::env::current_dir()
+        .map_err(|error| format!("failed to resolve current directory: {error}"))?;
+    let mut args = vec![
+        "receipt".to_string(),
+        "-".to_string(),
+        "--receipt-id".to_string(),
+        capture.receipt_id.to_string(),
+        "--task-fingerprint".to_string(),
+        capture.task_fingerprint.to_string(),
+        "--command-fingerprint".to_string(),
+        capture.command_fingerprint.to_string(),
+    ];
+    args.extend(capture.extra_args.iter().cloned());
+    args.extend([
+        "--field".to_string(),
+        format!("captureSource={}", capture.capture_source),
+    ]);
+    let output = run_provider_process(ProviderProcessSpec {
+        program: graph_turbo_program(),
+        args,
+        cwd,
+        env: BTreeMap::new(),
+        stdin: StdinMode::bytes(packet_bytes.to_vec()),
+        stdout: OutputMode::Capture,
+        stderr: OutputMode::Capture,
+        limits: ProviderProcessLimits::default(),
+    })
+    .map_err(|error| format!("failed to run asp-graph-turbo receipt: {error}"))?;
+    if !output.stderr.is_empty() {
+        io::stderr()
+            .write_all(output.stderr.as_ref())
+            .map_err(|error| format!("failed to write asp-graph-turbo receipt stderr: {error}"))?;
+    }
+    if !output.status.success() {
+        return Err(format!(
+            "asp-graph-turbo receipt exited with status {}",
+            output.status.code().unwrap_or(1)
+        ));
+    }
+    if let Some(parent) = capture.out_path.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
+    }
+    fs::write(capture.out_path, output.stdout)
+        .map_err(|error| format!("failed to write {}: {error}", capture.out_path.display()))
+}
+
 fn graph_turbo_program() -> String {
     match std::env::current_exe()
         .ok()
@@ -163,5 +292,5 @@ fn flag_value(args: &[String], flag: &str) -> Option<String> {
 }
 
 fn usage() -> String {
-    "usage: asp graph render --packet <path-or-> [--view seeds] [--seeds N]".to_string()
+    "usage: asp graph render --packet <path-or-> [--view seeds] [--seeds N] [--frontier-receipt-out PATH --receipt-id ID --task-fingerprint VALUE --command-fingerprint VALUE]".to_string()
 }

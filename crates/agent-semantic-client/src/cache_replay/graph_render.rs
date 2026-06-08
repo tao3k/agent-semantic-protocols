@@ -12,12 +12,23 @@ use bytes::Bytes;
 
 const SEMANTIC_AGENT_PROTOCOL_BIN_ENV: &str = "SEMANTIC_AGENT_PROTOCOL_BIN";
 
+pub(crate) struct GraphRenderReceiptRequest {
+    pub(crate) out_path: PathBuf,
+    pub(crate) receipt_id: String,
+    pub(crate) task_fingerprint: String,
+    pub(crate) command_fingerprint: String,
+}
+
 pub(crate) fn run_graph_render_packet(packet_path: &Path, max_stdout_bytes: u64) -> Option<Bytes> {
     run_graph_render_process(
         packet_path.display().to_string(),
         StdinMode::Closed,
         max_stdout_bytes,
+        None,
+        false,
     )
+    .ok()
+    .flatten()
 }
 
 pub(crate) fn run_graph_render_packet_bytes(
@@ -28,6 +39,24 @@ pub(crate) fn run_graph_render_packet_bytes(
         "-".to_string(),
         StdinMode::bytes(packet_bytes.into()),
         max_stdout_bytes,
+        None,
+        false,
+    )
+    .ok()
+    .flatten()
+}
+
+pub(crate) fn run_graph_render_packet_bytes_with_receipt(
+    packet_bytes: impl Into<Bytes>,
+    max_stdout_bytes: u64,
+    receipt: &GraphRenderReceiptRequest,
+) -> Result<Option<Bytes>, String> {
+    run_graph_render_process(
+        "-".to_string(),
+        StdinMode::bytes(packet_bytes.into()),
+        max_stdout_bytes,
+        Some(receipt),
+        true,
     )
 }
 
@@ -35,17 +64,32 @@ fn run_graph_render_process(
     packet_arg: String,
     stdin: StdinMode,
     max_stdout_bytes: u64,
-) -> Option<Bytes> {
-    let output = run_transport_process(ProviderProcessSpec {
+    receipt: Option<&GraphRenderReceiptRequest>,
+    strict: bool,
+) -> Result<Option<Bytes>, String> {
+    let mut args = vec![
+        "graph".to_string(),
+        "render".to_string(),
+        "--packet".to_string(),
+        packet_arg,
+        "--view".to_string(),
+        "seeds".to_string(),
+    ];
+    if let Some(receipt) = receipt {
+        args.extend([
+            "--frontier-receipt-out".to_string(),
+            receipt.out_path.display().to_string(),
+            "--receipt-id".to_string(),
+            receipt.receipt_id.clone(),
+            "--task-fingerprint".to_string(),
+            receipt.task_fingerprint.clone(),
+            "--command-fingerprint".to_string(),
+            receipt.command_fingerprint.clone(),
+        ]);
+    }
+    let output = match run_transport_process(ProviderProcessSpec {
         program: protocol_graph_renderer_binary().display().to_string(),
-        args: vec![
-            "graph".to_string(),
-            "render".to_string(),
-            "--packet".to_string(),
-            packet_arg,
-            "--view".to_string(),
-            "seeds".to_string(),
-        ],
+        args,
         cwd: env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
         env: BTreeMap::new(),
         stdin,
@@ -56,15 +100,26 @@ fn run_graph_render_process(
             max_stderr_bytes: Some(64 * 1024),
             timeout: None,
         },
-    })
-    .ok()?;
+    }) {
+        Ok(output) => output,
+        Err(error) if strict => return Err(format!("failed to run graph renderer: {error}")),
+        Err(_) => return Ok(None),
+    };
     if !output.status.success()
         || output.stdout.is_empty()
         || output.receipt.stdout_bytes as u64 > max_stdout_bytes
     {
-        return None;
+        if strict {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!(
+                "graph renderer failed while writing frontier receipt: status={} stderr={}",
+                output.status.code().unwrap_or(1),
+                stderr.trim()
+            ));
+        }
+        return Ok(None);
     }
-    Some(output.stdout)
+    Ok(Some(output.stdout))
 }
 
 fn protocol_graph_renderer_binary() -> PathBuf {
