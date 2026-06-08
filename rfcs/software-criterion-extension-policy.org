@@ -1,0 +1,151 @@
+#+title: RFC - Software Criterion Extension Policy
+#+date: 2026-06-07
+#+status: accepted-v1-baseline
+
+* One-sentence summary
+
+Software criteria use a shared core canon for navigation vocabulary and severity
+semantics, while strong ecosystem doctrine lives in optional provider-owned
+extension or profile criterion packs such as =typescript.extension.effect=,
+=rust.extension.tokio=, =julia.extension.moshi=, and =julia.profile.sciml=.
+
+* Decision
+
+The root protocol must not model large-library practices as a cross-language
+mapping table.  The durable layering is:
+
+#+begin_src text
+core software criteria canon -> optional ecosystem extension -> project profile ->
+parser/compiler facts -> compact agent guidance
+#+end_src
+
+The core canon defines language-neutral criterion domains such as domain/type,
+error, resource, concurrency, observability, and verification.  Those names are
+shared vocabulary for navigation, ranking, and severity promotion.  They are not
+an implementation requirement that every language must express through the same
+rules.
+
+Ecosystem-specific rules belong in provider-owned extension or profile criterion packs.
+For example, an Effect-enabled TypeScript project should receive Effect-shaped
+repair advice about =Effect.Effect<Success, Error, Requirements>=,
+=Schema.decodeUnknown=, =Effect.acquireRelease=, =Layer=, explicit concurrency
+options, =Match.exhaustive=, and observability boundaries.  A Tokio-enabled Rust
+project should receive Tokio-shaped advice about bounded channels, supervised
+tasks, cancellation tokens, =spawn_blocking= boundaries, and graceful shutdown.
+Julia Moshi and SciML follow the same model: Moshi is an optional extension pack;
+SciML is a project software-standard profile.
+
+* Root ownership
+
+This repository owns:
+
+- extension report schema envelopes and schema ids;
+- activation mode vocabulary: =off=, =detect=, =enable=, =strict=;
+- shared criterion-domain vocabulary;
+- severity vocabulary and promotion semantics;
+- compact agent-facing fields that let clients compare extension findings
+  without knowing the provider implementation;
+- registry advertisement of the shared extension report packet.
+
+This repository does not own:
+
+- Effect, Tokio, Moshi, SciML, React, CodeQL, or other ecosystem rule engines;
+- parser/compiler fact extraction for an extension;
+- dependency parsing shortcuts inside rule packs;
+- default strict activation for any ecosystem;
+- provider-local repair recipes beyond the shared envelope.
+
+* Activation modes
+
+Extension activation is explicit and monotonic:
+
+| Mode   | Meaning |
+|--------+---------|
+| off    | Do not run extension policy. |
+| detect | Detect dependencies/imports/config and emit capability candidates only. |
+| enable | Emit advisory findings and compact repair guidance. |
+| strict | Project commits to the ecosystem policy; provider may promote configured rules to gates or blocking candidates. |
+
+Dependency detection alone should not silently turn a project into strict mode.
+A project that installs =effect= may be experimenting, while a project that
+configures =typescript.extension.effect mode=strict= has made an architectural
+commitment.  Providers may suggest candidates in =detect= mode, but strong
+findings require =enable= or =strict=.
+
+* Shared runtime envelope
+
+Providers that emit ecosystem policy output should use
+=schemas/software-criterion-extension-report.v1.schema.json=.  The envelope records:
+
+- =extensionId=, for example =typescript.extension.effect=;
+- =ecosystem=, for example =effect= or =tokio=;
+- =mode= and optional =profile=;
+- activation evidence from parser/compiler/config facts;
+- findings with =ruleId=, =criterionDomain=, =agentRisk=, provider facts, and
+  concrete repair recipes;
+- source doctrine references when the provider can cite stable docs or local
+  research snapshots;
+- receipt/artifact refs when extension checks are produced outside the default
+  hot path.
+
+Findings may use shared criterion domains such as =resource-lifetime= or =concurrency=,
+but their =ruleId= and repairs must stay ecosystem-specific.  For example,
+=effect.resource.acquire-without-scope= and =tokio.concurrency.unbounded-channel=
+can both map to =resource-lifetime= or =concurrency= for ranking, but the repair
+text should stay Effect- or Tokio-shaped.
+
+* Provider examples
+
+** TypeScript Effect
+
+The TypeScript harness may own =typescript.extension.effect=.  Its first policy
+surface should consume parser-owned package extension facts, imports, return
+types, runtime calls, error-channel strength, =tryPromise= interop, Schema decode
+evidence, resource-scope evidence, concurrency option evidence, and production
+observability facts.
+
+The root contract only requires that those facts appear as structured
+=activationEvidence= and =findings[].facts= in the shared report envelope.
+
+** Rust Tokio
+
+The Rust harness may own =rust.extension.tokio=.  It should consume Cargo facts,
+native parser facts, async call/task/channel facts, cancellation and shutdown
+evidence, =spawn_blocking= evidence, and tracing/span facts.  The root contract
+does not define a generic =no-backpressure= rule; it only gives Tokio findings a
+stable envelope and shared criterion-domain tags.
+
+** Julia Moshi and SciML
+
+The Julia harness may own =julia.extension.moshi= and =julia.profile.sciml=.
+Moshi should use JuliaSyntax and Project.toml extension facts around =@data=,
+=@match=, and =@derive=.  SciML should be a profile because it is a scientific
+engineering doctrine rather than one package dependency.
+
+* Compatibility with core criterion catalog
+
+=software-criterion-catalog.v1= is the core software criterion canon and shared
+criterion catalog.  Its domains are vocabulary and promotion scaffolding, not a
+mandate to translate ecosystem practices into lowest-common-denominator rules.
+
+=software-criterion-extension-report.v1= extends that core catalog.  Providers
+may emit both:
+
+- core criterion findings that reference =software-criterion-catalog= ids; and
+- extension findings that reference ecosystem rule ids while tagging shared
+  =criterionDomain= values.
+
+* Rollout
+
+1. Add the shared extension report schema and advertise it from source-language
+   provider registrations.
+2. Migrate existing core criterion providers to the software-criterion naming
+   lane.
+3. Let TypeScript Effect remain the first implementation proof because
+   TypeScript already exposes Effect extension activation and parser-owned
+   runtime/resource/schema/concurrency facts.
+4. Add Rust Tokio and Julia Moshi/SciML only when their provider-owned parser
+   facts exist.
+5. Do not promote any extension finding to strict/blocking behavior from root
+   protocol defaults.  Promotion requires explicit project config and provider
+   evidence.

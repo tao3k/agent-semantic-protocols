@@ -1,4 +1,4 @@
-#+TITLE: RFC: Agent Coding Quality Policy
+#+TITLE: RFC: Software Criterion Policy
 #+AUTHOR: agent-semantic-protocols
 #+DATE: 2026-06-07
 #+RFC: 013
@@ -7,22 +7,22 @@
 #+DEPENDS: rfcs/cli-first-harness-ux.org (005)
 #+DEPENDS: rfcs/agent-compact-graph-feature.org (006)
 #+DEPENDS: rfcs/semantic-tree-sitter-query-protocol.org (011)
-#+SEE_ALSO: schemas/agent-quality-signal.v1.schema.json
+#+SEE_ALSO: schemas/software-criterion-catalog.v1.schema.json
 #+SEE_ALSO: schemas/semantic-search-packet.v1.schema.json
 #+SEE_ALSO: schemas/semantic-type-surface.v1.schema.json
 
 * One-sentence summary
 
-=agent-coding-quality.v1= is the cross-language policy canon for code that an
+=software-criterion.v1= is the cross-language policy canon for code that an
 agent can reliably locate, explain, edit, and verify: language providers keep
-parser authority, while this repository owns the shared signal names, evidence
+parser authority, while this repository owns the shared criterion names, evidence
 model, severity promotion policy, and provider adaptation sequence.
 
 * Problem
 
 The current policy vocabulary is too narrow if it stops at control-flow shape.
 Deep nesting, literal dispatch chains, broad linear functions, and manual loops
-are valuable early signals, but they are only one part of the larger agent
+are valuable early criteria, but they are only one part of the larger agent
 quality problem.
 
 The target is not aesthetic lint.  A finding should help the next agent recover
@@ -36,13 +36,13 @@ owner -> intent -> input domain -> decision model -> algorithm phase
 If a policy says only "function has high complexity", the agent still has to
 infer the hidden predicate stack, the domain model, the error boundary, and the
 safe repair path.  This RFC makes those concepts schema-visible as
-language-neutral quality signals.
+language-neutral software criteria.
 
 * Plan audit
 
 The proposed direction is correct: the first layer should be named
-=agent-coding-quality=, not =control-flow policy=.  Control-flow becomes the
-first high-value signal domain because Rust, Python, and TypeScript already
+=software-criterion=, not =control-flow policy=.  Control-flow becomes the
+first high-value criterion domain because Rust, Python, and TypeScript already
 have parser surfaces that can prove enough facts for useful findings.
 
 The plan needs three corrections before implementation:
@@ -50,10 +50,10 @@ The plan needs three corrections before implementation:
 1. /Separate canon from findings./  The shared RFC and schema define signal
    identity, evidence shape, risk wording, repair recipes, and promotion rules.
    Provider findings remain provider-owned packets until each language maps its
-   parser facts into the shared signal catalog.
+   parser facts into the shared criterion catalog.
 
-2. /Treat severity as evidence-weighted./  Agent coding quality starts as
-   =info= or advisory.  A signal becomes a blocking candidate only after
+2. /Treat severity as evidence-weighted./  Software criterion starts as
+   =info= or advisory.  A criterion becomes a blocking candidate only after
    parser facts, official language guidance, community practice, and local
    fixtures agree.  This keeps the policy out of subjective style wars and
    avoids encouraging config allowlists.
@@ -68,13 +68,13 @@ The plan needs three corrections before implementation:
 
 This RFC owns:
 
-- shared =agent-coding-quality.*= signal taxonomy
-- the =schemas/agent-quality-signal.v1.schema.json= catalog shape
+- shared =software-criterion.*= criterion taxonomy
+- the =schemas/software-criterion-catalog.v1.schema.json= catalog shape
 - language-neutral evidence kinds and severity promotion rules
 - provider mapping requirements for Rust, Python, TypeScript, Julia, and future
   languages
 - compact vocabulary that provider findings should use when they reference a
-  shared signal
+  shared criterion
 
 This RFC does not own:
 
@@ -86,11 +86,11 @@ This RFC does not own:
 
 * Evidence model
 
-Agent coding quality signals need three evidence layers.
+Software criteria need three evidence layers.
 
 ** Official language guidance
 
-Official manuals and language-owned guides define what "native quality" means
+Official manuals and language-owned guides define what "native software criteria" means
 for each language:
 
 - Python: explicit, readable, flat-enough code; =match/case= for finite pattern
@@ -98,7 +98,7 @@ for each language:
 - Rust: exhaustive =match=, iterator pipelines for collection transforms,
   meaningful error types, type-visible domain models, and API clarity.
 - TypeScript: control-flow should help compiler narrowing; discriminated
-  unions and =never= exhaustiveness are first-class quality surfaces.
+  unions and =never= exhaustiveness are first-class criterion surfaces.
 - Julia: functions clarify steps, inputs, and outputs; performance-sensitive
   code should be function-local, generic, type-stable, and explicit about
   mutation.
@@ -113,19 +113,19 @@ useful to agents:
 - Effect: typed error channels, resource scopes, structured concurrency, and
   pattern matching make failure and dependency requirements visible.
 - SciML: generic code, trait/interface boundaries, mutation contracts, domain
-  errors, type-stability, and type-space tests define high-quality Julia code.
+  errors, type-stability, and type-space tests define robust Julia code.
 
-** Agent quality research
+** Software criterion research
 
-Agent and LLM-code quality papers support the core product requirement: passing
+Agent and LLM-code code-repair research support the core product requirement: passing
 tests is not enough.  Agent-computer interfaces, localization -> repair ->
 validation flows, static analysis feedback loops, code-smell evidence, and
 skill-fit results all point to the same policy shape: findings should serve
 localization, repair, and validation rather than produce generic style advice.
 
-* Signal taxonomy
+* Criterion taxonomy
 
-=agent-coding-quality.v1= starts with these domains:
+=software-criterion.v1= starts with these domains:
 
 | Domain              | Purpose                                           |
 |---------------------+---------------------------------------------------|
@@ -139,7 +139,7 @@ localization, repair, and validation rather than produce generic style advice.
 
 Control-flow is the v1 rollout domain, not the whole canon.
 
-* Control-flow v1 signals
+* Control-flow v1 criteria
 
 ** =control-flow.decision-stack=
 
@@ -260,11 +260,11 @@ Repair recipes:
 
 * Finding vocabulary
 
-Provider findings that map to this RFC should speak in the shared signal name
+Provider findings that map to this RFC should speak in the shared criterion name
 first, then language-specific evidence.
 
 #+begin_example
-agent-coding-quality/control-flow.decision-stack
+software-criterion/control-flow.decision-stack
 
 Risk:
   Agent must retain nested predicates and terminal paths in hidden context.
@@ -280,22 +280,22 @@ Repair:
   Split traversal and accumulator phases.
 #+end_example
 
-The shared wording is not a prompt-only convention.  The signal id must be
+The shared wording is not a prompt-only convention.  The criterion id must be
 schema-visible so compact text, JSON artifacts, provider fixtures, and future
 cache/replay rows can compare the same finding.
 
 * Schema implications
 
-=schemas/agent-quality-signal.v1.schema.json= is a catalog schema, not a
+=schemas/software-criterion-catalog.v1.schema.json= is a catalog schema, not a
 provider finding packet.
 
 It defines:
 
-- =signalId=, for example =control-flow.decision-stack=
+- =criterionId=, for example =control-flow.decision-stack=
 - =domain=, such as =control-flow= or =domain-type=
 - =agentRisk=, the agent-local failure mode
 - =sourceEvidence[]=, with kinds such as =official-manual=,
-  =community-practice=, =agent-quality-paper=, =parser-fact=,
+  =community-practice=, =agent-code-research=, =parser-fact=,
   =self-fixture=, and =real-project-evidence=
 - =parserFacts[]=, language-neutral fact keys that providers can map from
   native parser facts
@@ -304,36 +304,36 @@ It defines:
 - =promotionPolicy=, the evidence threshold for stronger severity
 - =providerMappings[]=, the staged readiness state per language/provider
 
-Provider finding packets may later reference this catalog by =signalId=.  They
+Provider finding packets may later reference this catalog by =criterionId=.  They
 should not duplicate the catalog text or invent compatible aliases.
 
 * Provider adaptation plan
 
 ** Phase 0: RFC and schema
 
-This phase lands the shared RFC and =agent-quality-signal.v1= catalog shape.
+This phase lands the shared RFC and =software-criterion-catalog.v1= catalog shape.
 No provider becomes blocking from this phase.
 
 ** Phase 1: package-local schema copies and registry descriptors
 
 Each language provider should copy or reference the shared schema according to
-its current package convention, then add registry metadata for the signal
+its current package convention, then add registry metadata for the criterion
 domains it can emit.
 
 Providers must distinguish:
 
-- =ready=: parser facts already support the signal
+- =ready=: parser facts already support the criterion
 - =partial=: related parser facts exist but need mapping
 - =planned=: provider has syntax/parser access but no rule yet
-- =blocked=: provider cannot prove the signal without a new parser capability
+- =blocked=: provider cannot prove the criterion without a new parser capability
 
 ** Phase 2: first control-flow fixtures
 
 Ready providers should add the five v1 fixtures before changing default policy
 output.  Partial providers should add the subset they can prove from
-provider-owned parser facts and keep the missing signal ids out of emitted
+provider-owned parser facts and keep the missing criterion ids out of emitted
 findings until the facts exist.  Planned providers should advertise readiness
-only through registry/schema metadata and must not emit shared signal ids yet.
+only through registry/schema metadata and must not emit shared criterion ids yet.
 
 | Fixture                       | Signal                                    |
 |-------------------------------+-------------------------------------------|
@@ -344,74 +344,74 @@ only through registry/schema metadata and must not emit shared signal ids yet.
 | manual native transform loop  | =native-idiom.manual-transform-loop=      |
 
 Each emitted fixture must prove both parser facts and compact finding
-vocabulary.  A provider does not become =ready= for a signal by copying the
+vocabulary.  A provider does not become =ready= for a criterion by copying the
 catalog; it becomes ready only when a stable provider fixture proves the
-language-owned facts and the shared signal vocabulary together.
+language-owned facts and the shared criterion vocabulary together.
 
 ** Phase 3: compact output convergence
 
-Provider compact output should converge on the same signal ids and risk/repair
+Provider compact output should converge on the same criterion ids and risk/repair
 headings while preserving language-owned evidence values.  Compact text remains
 the default agent surface; JSON is for validation, cache, and artifacts.
 
-Ready and partial providers that emit a signal should include the shared
-=agentQualitySignals= label in JSON-compatible finding metadata and should make
-the same signal id visible in compact/snapshot coverage.  Planned providers
+Ready and partial providers that emit a criterion should include the shared
+=softwareCriteria= label in JSON-compatible finding metadata and should make
+the same criterion id visible in compact/snapshot coverage.  Planned providers
 should expose the catalog in registry metadata only.
 
 ** Phase 4: real-project evidence and promotion
 
-After fixtures pass, exercise the signals against representative real projects.
+After fixtures pass, exercise the criterions against representative real projects.
 Capture command count, packet size, latency, repeated-trigger patterns, false
 positives, missed facts, and repair usefulness.
 
 The first ready-provider evidence pass is recorded in
-=docs/30-39-research/31.23-agent-quality-real-project-evidence.org=.  It covers
+=docs/30-39-research/31.23-software-criterion-real-project-evidence.org=.  It covers
 TypeScript, Python, and Rust harness repositories through their public policy
 check commands.  The record proves stable localization for ready providers, but
-it intentionally does not promote any signal to blocking severity: TypeScript
+it intentionally does not promote any criterion to blocking severity: TypeScript
 needed a false-positive refinement before the final run, Python emitted a
-28.58 MB JSON packet for one quality finding, and Rust policy findings make the
+28.58 MB JSON packet for one criterion finding, and Rust policy findings make the
 check command exit non-zero while still producing parseable JSON evidence.
 
 Compact-output parity is recorded in
-=docs/30-39-research/31.24-agent-quality-compact-parity-evidence.org=.  Ready
-providers now expose the same shared signal ids in default compact text that
-they expose in JSON =agentQualitySignals= labels.  The remaining promotion gap is
+=docs/30-39-research/31.24-software-criterion-compact-parity-evidence.org=.  Ready
+providers now expose the same shared criterion ids in default compact text that
+they expose in JSON =softwareCriteria= labels.  The remaining promotion gap is
 repair usefulness: a real-project pass must show that starting from a compact
-signal line improves localization and edit choice before any signal can become a
+signal line improves localization and edit choice before any criterion can become a
 blocking candidate.
 
 The first repair-oriented pass is recorded in
-=docs/30-39-research/31.25-agent-quality-repair-evidence.org=.  It starts from a
+=docs/30-39-research/31.25-software-criterion-repair-evidence.org=.  It starts from a
 TypeScript compact =native-idiom.manual-transform-loop= line, removes the
 parser-owned condition in =ownersForHits= and =uniqueOwners=, and reduces the
-TypeScript real-project quality findings from 15 to 13.  This is positive repair
-evidence for one provider and one signal; follow-up Python and Rust repair
+TypeScript real-project criterion findings from 15 to 13.  This is positive repair
+evidence for one provider and one criterion; follow-up Python and Rust repair
 passes extend this evidence before any severity promotion.
 
 The Python and Rust follow-up repair passes are recorded in
-=docs/30-39-research/31.26-agent-quality-python-rust-repair-evidence.org=.  The
+=docs/30-39-research/31.26-software-criterion-python-rust-repair-evidence.org=.  The
 Python pass starts from a compact =control-flow.broad-linear-phase= line and
-reduces Python real-project quality findings from 1 to 0 by splitting
+reduces Python real-project criterion findings from 1 to 0 by splitting
 =run_protocol_cli= into named routing steps.  The Rust pass starts from a
 compact =native-idiom.manual-transform-loop= line and reduces Rust real-project
-quality findings from 4 to 0 by replacing the =semantic_fact_owners= push loop
+criterion findings from 4 to 0 by replacing the =semantic_fact_owners= push loop
 with an iterator pipeline, moving the inline semantic-facts test into
 =tests/unit=, and splitting the remaining traversal and collection-loop helpers.
 These passes establish cross-provider repair usefulness, but broader repair
-history is still required before any advisory signal becomes a blocking
+history is still required before any advisory criterion becomes a blocking
 candidate.
 
 The final v1 implementation closure is recorded in
-=docs/30-39-research/31.27-agent-quality-final-implementation-evidence.org=.
+=docs/30-39-research/31.27-software-criterion-final-implementation-evidence.org=.
 It closes the strict compact vocabulary requirement by rendering
-=agent-coding-quality/<domain.signal>= in compact text while keeping raw
-=signalId= values in JSON =agentQualitySignals= metadata, and it records the
+=software-criterion/<criterion-id>= in compact text while keeping raw
+=criterionId= values in JSON =softwareCriteria= metadata, and it records the
 Python root policy repair that removed the remaining module ownership blockers.
 
 The final closure audit is recorded in
-=docs/30-39-research/31.29-agent-quality-final-closure-evidence.org=.  It
+=docs/30-39-research/31.29-software-criterion-final-closure-evidence.org=.  It
 records the schema-profile cleanup, the Rust full-test compile drift repair,
 the Python full-policy clean run, and the final cross-provider gates for the v1
 ready-provider rollout.
@@ -453,7 +453,7 @@ agent-policy algorithm shape and native syntax control-flow surfaces:
 
 The first Rust mapping should prefer enum/match, iterator pipelines, typed
 errors, domain newtypes, type-state, and explicit async boundaries.  RFC 004
-continues to own structural/config policy; this RFC only owns shared signal
+continues to own structural/config policy; this RFC only owns shared criterion
 identity and cross-language wording.
 
 ** TypeScript
@@ -463,7 +463,7 @@ mapping.  The provider exposes agent-policy, function-shape, and
 discriminated-union related surfaces:
 
 - =languages/typescript-lang-project-harness/src/rules/agent_policy/pack.ts=
-- =languages/typescript-lang-project-harness/src/rules/agent_policy/quality_signals.ts=
+- =languages/typescript-lang-project-harness/src/rules/agent_policy/software_criteria.ts=
 - =languages/typescript-lang-project-harness/src/parser/function-shape.ts=
 - =languages/typescript-lang-project-harness/src/parser/native_syntax/control_flow.ts=
 - =languages/typescript-lang-project-harness/src/cli/semantic-search/api.ts=
@@ -488,7 +488,7 @@ The first Julia work should add JuliaSyntax-derived facts for setup/kernel
 separation, type-stable returns, variable type changes, mutation contracts
 through =!= naming, macro-heavy public surfaces, generic indexing assumptions,
 and global-state algorithm dependencies.  Until those parser facts exist, Julia
-should advertise planned or partial mappings rather than emit shared signal ids.
+should advertise planned or partial mappings rather than emit shared criterion ids.
 
 * Severity policy
 
@@ -502,25 +502,25 @@ official manual + community practice + paper risk + self-fixture =
 #+end_example
 
 Blocking is provider-local and opt-in until a real-project evidence pass proves
-that the signal improves agent localization, repair, and validation without
+that the criterion improves agent localization, repair, and validation without
 creating broad allowlist pressure.
 
 * Acceptance criteria
 
-- =schemas/agent-quality-signal.v1.schema.json= validates as JSON Schema.
-- RFC 013 names =agent-coding-quality.v1= and does not rename existing search,
+- =schemas/software-criterion-catalog.v1.schema.json= validates as JSON Schema.
+- RFC 013 names =software-criterion.v1= and does not rename existing search,
   query, compact graph, or structural config contracts.
-- RFC 013 defines at least the v1 control-flow signals listed above, and future
-  catalog instances must validate against =agent-quality-signal.v1=.
+- RFC 013 defines at least the v1 control-flow criteria listed above, and future
+  catalog instances must validate against =software-criterion-catalog.v1=.
 - Provider mappings record readiness honestly: Python/Rust/TypeScript as ready
   or partial for v1 control-flow, Julia as planned until parser facts land.
 - Compact finding vocabulary starts with
-  =agent-coding-quality/<domain.signal>=.
+  =software-criterion/<criterion-id>=.
 - No provider emits a blocking finding solely from this RFC.
 
 * Open questions
 
-1. Should future provider finding packets embed =agentQualitySignals[]= inside
+1. Should future provider finding packets embed =softwareCriteria[]= inside
    =semantic-search-packet= / =semantic-query-packet=, or should policy checks
    keep a separate packet family?
 

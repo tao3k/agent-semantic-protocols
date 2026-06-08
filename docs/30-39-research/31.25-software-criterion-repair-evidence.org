@@ -1,11 +1,11 @@
 #+TITLE: Agent Quality Signal Repair Evidence
 #+DATE: 2026-06-07
-#+STATUS: agent-quality-repair-evidence-recorded
-#+RFC: rfcs/agent-coding-quality-policy.org
+#+STATUS: software-criterion-repair-evidence-recorded
+#+RFC: rfcs/software-criterion-policy.org
 
 * Scope
 
-This records the first repair-oriented real-project pass for the agent quality
+This records the first repair-oriented real-project pass for the software criterion
 signal contract.  The pass starts from the default compact output rather than
 JSON, follows one =native-idiom.manual-transform-loop= signal in the TypeScript
 harness, applies a small repair, and re-runs the same real-project checks.
@@ -16,14 +16,14 @@ not enough to promote the whole signal catalog to blocking severity.
 * Evidence record
 
 #+begin_example
-[agent-quality-repair-evidence] language=typescript provider=ts-harness project=languages/typescript-lang-project-harness
+[software-criterion-repair-evidence] language=typescript provider=ts-harness project=languages/typescript-lang-project-harness
 start=compact-signal-line
 signal=native-idiom.manual-transform-loop
 target=src/cli/semantic-search/owners.ts ownersForHits,uniqueOwners
 repair=replace seen+push return-collection loops with uniqueBy(...).map/filter composition
 before=compactPacketBytes=13528,jsonPacketBytes=9423005,findingCount=28,qualityFindingCount=15,native-idiom.manual-transform-loop=6
 after=compactPacketBytes=12618,jsonPacketBytes=9421977,findingCount=26,qualityFindingCount=13,native-idiom.manual-transform-loop=4
-tests=npm-run-build,node-test-agent-quality-policy-search,asp-typescript-check-changed
+tests=npm-run-build,node-test-software-criterion-policy-search,asp-typescript-check-changed
 claim=signal-improved-localization-and-edit-choice
 #+end_example
 
@@ -51,7 +51,7 @@ to source-text and native-syntax fact collection functions.
 
 #+begin_example
 npm run build
-node --test dist/tests/unit/agent_quality_signal_snapshot.test.js dist/tests/unit/agent_policy.test.js dist/tests/unit/cli_semantic_search.test.js
+node --test dist/tests/unit/software_criterion_snapshot.test.js dist/tests/unit/agent_policy.test.js dist/tests/unit/cli_semantic_search.test.js
 asp typescript check --changed .
 node dist/src/cli/main.js check --full .
 node dist/src/cli/main.js check --full --json .
@@ -61,7 +61,7 @@ node dist/src/cli/main.js check --full --json .
 
 - The compact signal id was sufficient to choose the edit boundary without
   reading JSON.
-- The repair reduced TypeScript real-project quality findings from 15 to 13 and
+- The repair reduced TypeScript real-project criterion findings from 15 to 13 and
   reduced =native-idiom.manual-transform-loop= findings from 6 to 4.
 - The fix did not require provider-private allowlists or suppressions; it
   removed the parser-owned condition that produced the signal.
@@ -71,6 +71,6 @@ node dist/src/cli/main.js check --full --json .
 * Next
 
 - Python and Rust follow-up passes are recorded in
-  =docs/30-39-research/31.26-agent-quality-python-rust-repair-evidence.org=.
+  =docs/30-39-research/31.26-software-criterion-python-rust-repair-evidence.org=.
 - Keep collecting before/after signal counts rather than relying on snapshot
   fixture stability alone.

@@ -1,14 +1,14 @@
 {
-  "schemaId": "agent.semantic-protocols.agent-quality-signal",
+  "schemaId": "agent.semantic-protocols.software-criterion-catalog",
   "schemaVersion": "1",
-  "protocolId": "agent.semantic-protocols.agent-coding-quality",
+  "protocolId": "agent.semantic-protocols.software-criterion",
   "protocolVersion": "1",
-  "signalSetId": "agent-coding-quality.v1.control-flow",
-  "description": "Initial agent coding quality signal catalog for cross-language control-flow and native-idiom policy mapping.",
-  "sourceVersion": "rfcs/agent-coding-quality-policy.org#013",
-  "signals": [
+  "criterionSetId": "software-criterion.v1.control-flow",
+  "description": "Legacy-named software criterion canon for cross-language control-flow and native-idiom navigation vocabulary; ecosystem doctrine is provider-owned criterion extension policy.",
+  "sourceVersion": "rfcs/software-criterion-policy.org#013",
+  "criteria": [
     {
-      "signalId": "control-flow.decision-stack",
+      "criterionId": "control-flow.decision-stack",
       "domain": "control-flow",
       "title": "Decision stack",
       "agentRisk": "Agent must retain nested predicates and terminal paths before editing one branch.",
@@ -61,7 +61,7 @@
       ]
     },
     {
-      "signalId": "control-flow.traversal-knot",
+      "criterionId": "control-flow.traversal-knot",
       "domain": "control-flow",
       "title": "Traversal knot",
       "agentRisk": "Traversal, filtering, accumulation, and failure handling are interleaved, making local edits unsafe.",
@@ -71,7 +71,7 @@
           "claim": "Language-native iteration and phase boundaries make algorithm intent easier to verify."
         },
         {
-          "kind": "agent-quality-paper",
+          "kind": "agent-code-research",
           "claim": "LLM-generated code needs static feedback on maintainability risks beyond functional correctness."
         }
       ],
@@ -96,7 +96,7 @@
       "promotable": true
     },
     {
-      "signalId": "control-flow.literal-dispatch-chain",
+      "criterionId": "control-flow.literal-dispatch-chain",
       "domain": "control-flow",
       "title": "Literal dispatch chain",
       "agentRisk": "A finite domain is hidden in string, number, or bool branches instead of a visible domain model.",
@@ -131,7 +131,7 @@
       "promotable": true
     },
     {
-      "signalId": "control-flow.broad-linear-phase",
+      "criterionId": "control-flow.broad-linear-phase",
       "domain": "control-flow",
       "title": "Broad linear phase",
       "agentRisk": "A long flat function hides multiple algorithm phases behind statement order.",
@@ -141,7 +141,7 @@
           "claim": "Providers can count statements, mutation groups, and mixed phase operations."
         },
         {
-          "kind": "agent-quality-paper",
+          "kind": "agent-code-research",
           "claim": "Localization and repair improve when code exposes bounded edit surfaces."
         }
       ],
@@ -166,7 +166,7 @@
       "promotable": true
     },
     {
-      "signalId": "native-idiom.manual-transform-loop",
+      "criterionId": "native-idiom.manual-transform-loop",
       "domain": "native-idiom",
       "title": "Manual native transform loop",
       "agentRisk": "A common map, filter, count, sum, or collect transform is encoded with mutable loop state.",
@@ -201,7 +201,7 @@
       "promotable": true
     },
     {
-      "signalId": "error-resource.hidden-boundary",
+      "criterionId": "error-resource.hidden-boundary",
       "domain": "error-resource",
       "title": "Hidden error or resource boundary",
       "agentRisk": "Error, resource, cleanup, or async state behavior is hidden inside branch shape instead of a visible API or type boundary.",
@@ -241,7 +241,7 @@
       "languageId": "python",
       "providerId": "py-harness",
       "status": "ready",
-      "signalIds": [
+      "criterionIds": [
         "control-flow.decision-stack",
         "control-flow.traversal-knot",
         "control-flow.literal-dispatch-chain",
@@ -264,7 +264,7 @@
       "languageId": "rust",
       "providerId": "rs-harness",
       "status": "ready",
-      "signalIds": [
+      "criterionIds": [
         "control-flow.decision-stack",
         "control-flow.traversal-knot",
         "control-flow.literal-dispatch-chain",
@@ -284,7 +284,7 @@
       "languageId": "typescript",
       "providerId": "ts-harness",
       "status": "ready",
-      "signalIds": [
+      "criterionIds": [
         "control-flow.decision-stack",
         "control-flow.traversal-knot",
         "control-flow.literal-dispatch-chain",
@@ -293,7 +293,7 @@
       ],
       "sourceOwners": [
         "languages/typescript-lang-project-harness/src/rules/agent_policy/pack.ts",
-        "languages/typescript-lang-project-harness/src/rules/agent_policy/quality_signals.ts",
+        "languages/typescript-lang-project-harness/src/rules/agent_policy/software_criteria.ts",
         "languages/typescript-lang-project-harness/src/parser/function-shape.ts",
         "languages/typescript-lang-project-harness/src/parser/native_syntax/control_flow.ts",
         "languages/typescript-lang-project-harness/src/cli/semantic-search/api.ts"
@@ -310,7 +310,7 @@
       "languageId": "julia",
       "providerId": "julia-lang-project-harness",
       "status": "planned",
-      "signalIds": [
+      "criterionIds": [
         "control-flow.decision-stack",
         "control-flow.traversal-knot",
         "control-flow.literal-dispatch-chain",
@@ -329,7 +329,7 @@
         "function-barrier"
       ],
       "notes": [
-        "Julia must add provider-owned parser facts before emitting shared signal ids in compact policy output."
+        "Julia must add provider-owned parser facts before emitting shared criterion ids in compact policy output."
       ]
     }
   ]

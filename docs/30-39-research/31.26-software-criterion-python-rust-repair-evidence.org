@@ -1,7 +1,7 @@
 #+TITLE: Agent Quality Python and Rust Repair Evidence
 #+DATE: 2026-06-07
-#+STATUS: agent-quality-python-rust-repair-recorded
-#+RFC: rfcs/agent-coding-quality-policy.org
+#+STATUS: software-criterion-python-rust-repair-recorded
+#+RFC: rfcs/software-criterion-policy.org
 
 * Scope
 
@@ -16,24 +16,24 @@ providers.  It still does not promote any signal to blocking severity.
 * Evidence record
 
 #+begin_example
-[agent-quality-repair-evidence] language=python provider=py-harness project=languages/python-lang-project-harness
+[software-criterion-repair-evidence] language=python provider=py-harness project=languages/python-lang-project-harness
 start=compact-signal-line
 signal=control-flow.broad-linear-phase
 target=src/python_lang_project_harness/_cli_protocol.py run_protocol_cli
 repair=split the broad protocol dispatcher into ast-patch, fast-path, and harness fallback helpers
 before=compactPacketBytes=499,jsonPacketBytes=28591243,findingCount=1,qualityFindingCount=1,control-flow.broad-linear-phase=1
 after=compactPacketBytes=46,jsonPacketBytes=28608883,findingCount=0,qualityFindingCount=0
-tests=asp-python-check-changed,pytest-agent-quality-policy-snapshots
+tests=asp-python-check-changed,pytest-software-criterion-policy-snapshots
 claim=signal-improved-localization-and-edit-choice
 
-[agent-quality-repair-evidence] language=rust provider=rs-harness project=languages/rust-lang-project-harness
+[software-criterion-repair-evidence] language=rust provider=rs-harness project=languages/rust-lang-project-harness
 start=compact-signal-line
 signal=native-idiom.manual-transform-loop
 target=src/search/semantic_facts.rs semantic_fact_owners
 repair=replace seen+push owner collection loops with chain(...).filter(...).collect(), move inline test out of src, split traversal helpers, and replace remaining collection loops with iterator pipelines
 before=compactPacketBytes=5256,jsonPacketBytes=81852,findingCount=7,qualityFindingCount=4,native-idiom.manual-transform-loop=3,control-flow.traversal-knot=1
 after=compactPacketBytes=10,jsonPacketBytes=75499,findingCount=0,qualityFindingCount=0
-tests=asp-rust-check-changed,cargo-fmt,cargo-test-algorithm-shape,cargo-test-agent-quality-signal,cargo-test-semantic-facts-feature,rs-harness-compact-and-json-rerun
+tests=asp-rust-check-changed,cargo-fmt,cargo-test-algorithm-shape,cargo-test-software-criterion-signal,cargo-test-semantic-facts-feature,rs-harness-compact-and-json-rerun
 claim=signal-improved-localization-and-edit-choice
 #+end_example
 
@@ -54,7 +54,7 @@ for =ast-patch=, fast protocol rendering, and harness fallback routing.  The
 top-level function now owns only command dispatch and ValueError handling.
 
 After the repair, =asp python check --changed .= returned clean output and the
-full real-project JSON check reported zero quality findings.
+full real-project JSON check reported zero criterion findings.
 
 * Rust repair path
 
@@ -85,13 +85,13 @@ the real-project JSON check reported zero findings.
 
 #+begin_example
 asp python check --changed .
-uv run --group test pytest -q tests/unit/harness/test_agent_policy.py tests/unit/harness/test_agent_quality_signal_snapshots.py tests/unit/harness/test_agent_algorithm_policy.py
+uv run --group test pytest -q tests/unit/harness/test_agent_policy.py tests/unit/harness/test_software_criterion_snapshots.py tests/unit/harness/test_agent_algorithm_policy.py
 uv run py-harness check --full .
 uv run py-harness check --full --json .
 
 direnv exec . cargo fmt --manifest-path Cargo.toml
 direnv exec . cargo test --manifest-path Cargo.toml algorithm_shape
-direnv exec . cargo test --manifest-path Cargo.toml agent_quality_signal
+direnv exec . cargo test --manifest-path Cargo.toml software_criterion_snapshot
 direnv exec . cargo test --manifest-path Cargo.toml --features 'search cli' semantic_facts_project_scan_finds_collection_fields_without_candidate_owner
 asp rust check --changed .
 target/debug/rs-harness check --full .
@@ -100,7 +100,7 @@ target/debug/rs-harness check --full --json .
 
 * Observations
 
-- Python now has no real-project quality findings in its own harness checkout.
+- Python now has no real-project criterion findings in its own harness checkout.
 - Rust now has no real-project findings in its own harness checkout.
 - Both repairs removed real parser-owned conditions rather than adding
   allowlists or changing thresholds.

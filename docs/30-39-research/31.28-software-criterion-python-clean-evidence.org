@@ -2,7 +2,7 @@
 #+DATE: 2026-06-07
 #+RFC: 013
 #+STATUS: implemented-follow-up
-#+SEE_ALSO: docs/30-39-research/31.27-agent-quality-final-implementation-evidence.org
+#+SEE_ALSO: docs/30-39-research/31.27-software-criterion-final-implementation-evidence.org
 
 * Summary
 
@@ -10,7 +10,7 @@ This follow-up tightens the RFC 013 ready-provider evidence from "Python full
 policy gate exits successfully with advisory findings" to "Python full policy
 gate exits successfully with no compact findings".
 
-The repair started from compact =agent-coding-quality/*= advice in the
+The repair started from compact =software-criterion/*= advice in the
 =agent-semantic-protocols= repository and split the remaining broad or nested
 algorithm surfaces into named helper phases.
 

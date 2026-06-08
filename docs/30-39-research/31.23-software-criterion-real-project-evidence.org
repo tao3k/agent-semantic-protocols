@@ -1,12 +1,12 @@
 #+TITLE: Agent Quality Signal Real-Project Evidence
 #+DATE: 2026-06-07
-#+STATUS: agent-quality-evidence-recorded
-#+RFC: rfcs/agent-coding-quality-policy.org
+#+STATUS: software-criterion-evidence-recorded
+#+RFC: rfcs/software-criterion-policy.org
 
 * Scope
 
 This records the first ready-provider real-project evidence pass for the agent
-quality signal contract.  The run exercises the TypeScript, Python, and Rust
+software criterion contract.  The run exercises the TypeScript, Python, and Rust
 language harness repositories through their public policy check commands.  It
 does not claim Julia readiness, blocking severity promotion, compact-output
 parity for every signal, or repair success.
@@ -20,7 +20,7 @@ accumulation are therefore excluded from the final evidence.
 * Evidence record
 
 #+begin_example
-[agent-quality-real-evidence] language=typescript provider=ts-harness project=languages/typescript-lang-project-harness
+[software-criterion-real-evidence] language=typescript provider=ts-harness project=languages/typescript-lang-project-harness
 commands=policy-json-check
 metrics=commandCount=1,providerProcessCount=1,packetBytes=9423005,coldElapsedMs=2236,warmElapsedMs=2174
 metrics=findingCount=28,qualityFindingCount=15,exitCode=0,repeatedTriggerDelta=0
@@ -30,7 +30,7 @@ sample=src/cli/semantic-search/source-text.ts:15 TS-AGENT-R007 control-flow.trav
 sample=src/cli/semantic-search/owners.ts:10 TS-AGENT-R008 native-idiom.manual-transform-loop ownersForHits
 claim=real-project-localization
 
-[agent-quality-real-evidence] language=python provider=py-harness project=languages/python-lang-project-harness
+[software-criterion-real-evidence] language=python provider=py-harness project=languages/python-lang-project-harness
 commands=policy-json-check
 metrics=commandCount=1,providerProcessCount=1,packetBytes=28584406,coldElapsedMs=1768,warmElapsedMs=1467
 metrics=findingCount=1,qualityFindingCount=1,exitCode=0,repeatedTriggerDelta=0
@@ -38,7 +38,7 @@ signals=control-flow.broad-linear-phase:1
 sample=src/python_lang_project_harness/_cli_protocol.py:17 PY-AGENT-R010 control-flow.broad-linear-phase run_protocol_cli
 claim=real-project-localization
 
-[agent-quality-real-evidence] language=rust provider=rs-harness project=languages/rust-lang-project-harness
+[software-criterion-real-evidence] language=rust provider=rs-harness project=languages/rust-lang-project-harness
 commands=policy-json-check
 metrics=commandCount=1,providerProcessCount=1,packetBytes=81837,coldElapsedMs=7735,warmElapsedMs=7450
 metrics=findingCount=7,qualityFindingCount=4,exitCode=1,repeatedTriggerDelta=0
@@ -72,11 +72,11 @@ target/debug/rs-harness check --full --json .
   findings are functions that build and return collections, including
   =ownersForHits=, =uniqueOwners=, =sourceTextHits=,
   =collectPublicDataFields=, and =collectSemanticGraphFieldFacts=.
-- Python has a narrow quality finding in the harness CLI, but the JSON packet is
-  28.58 MB for one quality finding.  This reinforces the RFC rule that compact
+- Python has a narrow criterion finding in the harness CLI, but the JSON packet is
+  28.58 MB for one criterion finding.  This reinforces the RFC rule that compact
   text is the default agent surface and JSON remains a validation/artifact
   surface.
-- Rust returned parseable JSON with four quality findings and exit code 1.  The
+- Rust returned parseable JSON with four criterion findings and exit code 1.  The
   non-zero status reflects policy findings from the check command rather than a
   JSON evidence failure, but any CI use of this evidence needs to document that
   status convention.
@@ -86,7 +86,7 @@ target/debug/rs-harness check --full --json .
 
 * Promotion blockers
 
-- Do not promote any quality signal to blocking severity from this record alone.
+- Do not promote any software criterion to blocking severity from this record alone.
   The record proves localization, not repair usefulness.
 - Add compact-output parity checks before agents rely on JSON-only fields for
   the signal vocabulary.

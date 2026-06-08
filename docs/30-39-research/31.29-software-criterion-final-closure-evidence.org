@@ -2,9 +2,9 @@
 #+DATE: 2026-06-07
 #+RFC: 013
 #+STATUS: closed
-#+SEE_ALSO: rfcs/agent-coding-quality-policy.org
-#+SEE_ALSO: docs/30-39-research/31.27-agent-quality-final-implementation-evidence.org
-#+SEE_ALSO: docs/30-39-research/31.28-agent-quality-python-clean-evidence.org
+#+SEE_ALSO: rfcs/software-criterion-policy.org
+#+SEE_ALSO: docs/30-39-research/31.27-software-criterion-final-implementation-evidence.org
+#+SEE_ALSO: docs/30-39-research/31.28-software-criterion-python-clean-evidence.org
 
 * Summary
 
@@ -13,15 +13,15 @@ RFC 013 v1 ready-provider rollout is closed for the implemented scope:
 - shared schema and package-local schema profiles validate
 - Python, Rust, and TypeScript changed-provider checks pass
 - Python full real-project policy check is clean
-- Rust agent-quality insta snapshots compile and pass
-- TypeScript build and agent-quality snapshots pass
+- Rust software-criterion insta snapshots compile and pass
+- TypeScript build and software-criterion snapshots pass
 - no Rust =.snap.new= files remain
 - TypeScript and Julia no longer carry incorrect package-local
   =semantic-fact-ontology.v1.schema.json= copies
 
 This closure keeps the RFC boundary intact: Julia remains =planned= for signal
 emission, future taxonomy domains remain out of the v1 implementation scope,
-and no agent-quality signal is promoted to blocking severity by this RFC.
+and no software-criterion signal is promoted to blocking severity by this RFC.
 
 * Final fixes after clean evidence
 
@@ -36,7 +36,7 @@ and worktrees.  The root shared schema remains the source of truth.
 
 ** Rust full-test compile drift
 
-The Rust changed check passed, but the focused Rust agent-quality snapshot test
+The Rust changed check passed, but the focused Rust software-criterion snapshot test
 compiled a wider surface and found a stale CLI model drift:
 =QueryOptions= parsed =--workspace= into =workspace_root=, while the struct had
 no field.  The fix added =QueryOptions.workspace_root= and removed the unused
@@ -46,7 +46,7 @@ no field.  The fix added =QueryOptions.workspace_root= and removed the unused
 
 #+begin_example
 direnv exec . env PYTHONPATH=packages/python/tools/src:tests/unit pytest -q \
-  tests/unit/test_agent_quality_signal_schema.py \
+  tests/unit/test_software_criterion_catalog_schema.py \
   tests/unit/test_semantic_common_schema_copy_sync.py
 # 5 passed
 
@@ -64,7 +64,7 @@ asp rust check --changed .
 
 direnv exec . cargo test \
   --manifest-path languages/rust-lang-project-harness/Cargo.toml \
-  --features 'search cli' agent_quality_signal
+  --features 'search cli' software_criterion_snapshot
 # 5 passed
 
 asp typescript check --changed .
@@ -73,7 +73,7 @@ asp typescript check --changed .
 cd languages/typescript-lang-project-harness
 npm run build
 node --test \
-  dist/tests/unit/agent_quality_signal_snapshot.test.js \
+  dist/tests/unit/software_criterion_snapshot.test.js \
   dist/tests/unit/agent_policy.test.js
 # 14 passed
 
@@ -96,7 +96,7 @@ uv run --project packages/python/asp_graph_turbo --frozen pytest -q \
 
 * Residue audit
 
-No Rust agent-quality =.snap.new= files remain.
+No Rust software-criterion =.snap.new= files remain.
 
 Nested TypeScript and Julia provider repositories no longer report
 =schemas/semantic-fact-ontology.v1.schema.json= as staged-added then deleted.

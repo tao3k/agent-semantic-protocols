@@ -1,13 +1,13 @@
 #+TITLE: Agent Quality Signal Compact Parity Evidence
 #+DATE: 2026-06-07
-#+STATUS: agent-quality-compact-parity-recorded
-#+RFC: rfcs/agent-coding-quality-policy.org
+#+STATUS: software-criterion-compact-parity-recorded
+#+RFC: rfcs/software-criterion-policy.org
 
 * Scope
 
-This records the compact-output parity pass for agent quality signals after the
+This records the compact-output parity pass for software criterion signals after the
 first real-project evidence run.  JSON findings already carried
-=labels.agentQualitySignals=; this pass verifies that the default agent-facing
+=labels.softwareCriteria=; this pass verifies that the default agent-facing
 compact text also exposes the shared signal ids.
 
 This record covers TypeScript, Python, and Rust ready providers.  It does not
@@ -16,21 +16,21 @@ claim blocking severity promotion or repair success.
 * Evidence record
 
 #+begin_example
-[agent-quality-compact-parity] language=typescript provider=ts-harness project=languages/typescript-lang-project-harness
+[software-criterion-compact-parity] language=typescript provider=ts-harness project=languages/typescript-lang-project-harness
 command=node dist/src/cli/main.js check --full .
 metrics=exitCode=0,packetBytes=13528
 signals=control-flow.decision-stack:5,control-flow.traversal-knot:4,native-idiom.manual-transform-loop:6
 samples=runProtocolCli:control-flow.decision-stack,sourceTextHits:control-flow.traversal-knot,ownersForHits:native-idiom.manual-transform-loop
 claim=compact-signal-id-visible
 
-[agent-quality-compact-parity] language=python provider=py-harness project=languages/python-lang-project-harness
+[software-criterion-compact-parity] language=python provider=py-harness project=languages/python-lang-project-harness
 command=uv run py-harness check --full .
 metrics=exitCode=0,packetBytes=499
 signals=control-flow.broad-linear-phase:1
 samples=run_protocol_cli:control-flow.broad-linear-phase
 claim=compact-signal-id-visible
 
-[agent-quality-compact-parity] language=rust provider=rs-harness project=languages/rust-lang-project-harness
+[software-criterion-compact-parity] language=rust provider=rs-harness project=languages/rust-lang-project-harness
 command=target/debug/rs-harness check --full .
 metrics=exitCode=1,packetBytes=5256
 signals=control-flow.traversal-knot:1,native-idiom.manual-transform-loop:3
@@ -42,10 +42,10 @@ claim=compact-signal-id-visible
 
 - TypeScript scenario snapshots now fix compact =Help: ... Signals:
   <shared-signal-id>= text in
-  =tests/unit/scenarios/agent_quality_signals/control_flow_v1/expect/rendered.txt=.
+  =tests/unit/scenarios/software_criteria/control_flow_v1/expect/rendered.txt=.
 - Python scenario snapshots now fix compact =| Signals:
   <shared-signal-id>= text in
-  =tests/unit/harness/scenarios/agent_quality_signals/control_flow_v1/expect/rendered.txt=.
+  =tests/unit/harness/scenarios/software_criteria/control_flow_v1/expect/rendered.txt=.
 - Rust per-rule insta snapshots now fix compact =Help: ... Signals:
   <shared-signal-id>= text for =AGENT-R015=, =AGENT-R016=, =AGENT-R017=,
   =AGENT-R025=, and =AGENT-R026=.
@@ -61,11 +61,11 @@ claim=compact-signal-id-visible
   no matching broad-linear finding.  The broad-linear compact vocabulary remains
   covered by TypeScript, Python, and Rust fixtures.
 - Later repair-oriented passes are recorded separately in
-  =docs/30-39-research/31.25-agent-quality-repair-evidence.org= and
-  =docs/30-39-research/31.26-agent-quality-python-rust-repair-evidence.org=.
+  =docs/30-39-research/31.25-software-criterion-repair-evidence.org= and
+  =docs/30-39-research/31.26-software-criterion-python-rust-repair-evidence.org=.
 - Rust had the same non-zero check status during the parity pass; the follow-up
   full repair is recorded in
-  =docs/30-39-research/31.26-agent-quality-python-rust-repair-evidence.org=.
+  =docs/30-39-research/31.26-software-criterion-python-rust-repair-evidence.org=.
 
 * Next
 
