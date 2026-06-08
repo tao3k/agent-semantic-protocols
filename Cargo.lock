@@ -86,12 +86,19 @@ dependencies = [
  "agent-semantic-hook",
  "agent-semantic-provider-transport",
  "agent-semantic-runtime",
+ "agent-semantic-tree-sitter",
  "orgize",
+ "proc-macro2",
  "rust-lang-project-harness 0.1.0",
  "serde",
  "serde_json",
+ "syn",
  "tokio",
  "toml 0.9.12+spec-1.1.0",
+ "tree-sitter",
+ "tree-sitter-julia",
+ "tree-sitter-python",
+ "tree-sitter-typescript",
 ]
 
 [[package]]
@@ -1323,10 +1330,40 @@ dependencies = [
 ]
 
 [[package]]
+name = "tree-sitter-julia"
+version = "0.23.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4144731a178812ee867619b1e98b3b91e54c1652304b26e5ebe3175b701de323"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
+
+[[package]]
 name = "tree-sitter-language"
 version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "009994f150cc0cd50ff54917d5bc8bffe8cad10ca10d81c34da2ec421ae61782"
+
+[[package]]
+name = "tree-sitter-python"
+version = "0.25.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6bf85fd39652e740bf60f46f4cda9492c3a9ad75880575bf14960f775cb74a1c"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
+
+[[package]]
+name = "tree-sitter-typescript"
+version = "0.23.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6c5f76ed8d947a75cc446d5fccd8b602ebf0cde64ccf2ffa434d873d7a575eff"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
 
 [[package]]
 name = "typed-arena"

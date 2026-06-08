@@ -72,4 +72,9 @@ rationale = "cache performance CLI is benchmark-facing evidence"
 addopts = [
   "--python-project-harness",
 ]
-pythonpath = ["packages/python/src", "tests"]
+pythonpath = [
+  "packages/python/asp_graph_turbo/src",
+  "packages/python/tools/src",
+  "packages/python/src",
+  "tests",
+]

@@ -23,6 +23,7 @@ use super::syntax_query::{
     render_semantic_tree_sitter_query_rows_stdout, render_semantic_tree_sitter_query_stdout,
 };
 
+#[derive(Clone)]
 pub(crate) struct ProviderCacheReplay {
     pub(crate) stdout: Bytes,
     pub(crate) syntax_artifact_id: Option<CacheArtifactId>,
@@ -352,6 +353,14 @@ fn render_query_packet_artifact(
     query_packet_matches_request(&packet, request)?;
     render_query_packet_stdout(&packet)
         .map(|stdout| ProviderCacheReplay::stdout(stdout.into_bytes()))
+}
+
+pub(crate) fn render_query_packet_bytes(packet_bytes: Bytes) -> Option<Bytes> {
+    if packet_bytes.is_empty() || packet_bytes.len() as u64 > MAX_CACHE_REPLAY_ARTIFACT_BYTES {
+        return None;
+    }
+    let packet: Value = serde_json::from_slice(&packet_bytes).ok()?;
+    render_query_packet_stdout(&packet).map(Bytes::from)
 }
 
 pub(crate) fn query_packet_matches_request(packet: &Value, request: &ClientRequest) -> Option<()> {

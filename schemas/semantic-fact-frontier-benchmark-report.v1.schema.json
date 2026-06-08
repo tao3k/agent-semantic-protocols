@@ -343,6 +343,20 @@
           "type": "integer",
           "minimum": 0
         },
+        "goldFrontierBestRank": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "goldSelectorActionRank": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
         "followedGoldFrontierCount": {
           "type": "integer",
           "minimum": 0
@@ -442,7 +456,35 @@
           "type": "integer",
           "minimum": 0
         },
+        "weightCalibrationDecision": {
+          "$ref": "#/$defs/weightCalibrationDecision"
+        },
         "nextAction": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "weightCalibrationDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "reason",
+        "requiredEvidence"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "deferred-until-new-failing-receipt"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "requiredEvidence": {
           "type": "string",
           "minLength": 1
         }

@@ -76,13 +76,14 @@
             "goldFrontierCount": 1,
             "emittedFrontierCount": 10,
             "goldFrontierHitCount": 1,
+            "goldFrontierBestRank": 6,
             "followedGoldFrontierCount": 1,
             "goldSelectorReadCount": 1,
             "contextPrecision": 0.1,
-            "contextRecall": 1.0,
+            "contextRecall": 1,
             "contextUtilization": 0.1,
             "exactCodeSuccess": true,
-            "testSelectionPrecision": 1.0
+            "testSelectionPrecision": 1
           },
           "benchmarkReadiness": {
             "hasFollowedFrontier": true,
@@ -144,13 +145,14 @@
             "goldFrontierCount": 1,
             "emittedFrontierCount": 5,
             "goldFrontierHitCount": 1,
+            "goldFrontierBestRank": 1,
             "followedGoldFrontierCount": 1,
             "goldSelectorReadCount": 1,
             "contextPrecision": 0.2,
-            "contextRecall": 1.0,
+            "contextRecall": 1,
             "contextUtilization": 0.2,
             "exactCodeSuccess": true,
-            "testSelectionPrecision": 1.0
+            "testSelectionPrecision": 1
           },
           "benchmarkReadiness": {
             "hasFollowedFrontier": true,
@@ -187,7 +189,7 @@
           "receiptMetrics": {
             "frontierReturnedCount": 10,
             "frontierFollowedCount": 0,
-            "frontierFollowRate": 0.0,
+            "frontierFollowRate": 0,
             "codeActuallyReadCount": 0,
             "rawReadFallbackCount": 0,
             "duplicateSelectorCount": 0,
@@ -217,13 +219,14 @@
             "goldFrontierCount": 1,
             "emittedFrontierCount": 10,
             "goldFrontierHitCount": 1,
+            "goldFrontierBestRank": 9,
             "followedGoldFrontierCount": 0,
             "goldSelectorReadCount": 0,
             "contextPrecision": 0.1,
-            "contextRecall": 1.0,
-            "contextUtilization": 0.0,
+            "contextRecall": 1,
+            "contextUtilization": 0,
             "exactCodeSuccess": false,
-            "testSelectionPrecision": 0.0
+            "testSelectionPrecision": 0
           },
           "benchmarkReadiness": {
             "hasFollowedFrontier": false,
@@ -290,13 +293,173 @@
             "goldFrontierCount": 1,
             "emittedFrontierCount": 10,
             "goldFrontierHitCount": 1,
+            "goldFrontierBestRank": 9,
             "followedGoldFrontierCount": 1,
             "goldSelectorReadCount": 1,
             "contextPrecision": 0.1,
-            "contextRecall": 1.0,
+            "contextRecall": 1,
             "contextUtilization": 0.1,
             "exactCodeSuccess": true,
-            "testSelectionPrecision": 1.0
+            "testSelectionPrecision": 1
+          },
+          "benchmarkReadiness": {
+            "hasFollowedFrontier": true,
+            "hasValidationCommand": true,
+            "hasRuntimeCapture": true,
+            "readyForWeightCalibration": true
+          }
+        },
+        {
+          "scenarioId": "asp-runtime-sandtable-summary-followed-read-test",
+          "captureKind": "asp-runtime-followed-frontier",
+          "receiptFixtureId": "agent-semantic-protocols.asp-search-sandtable-summary-followed-runtime",
+          "receiptId": "asp.search-frontier.python-sandtable-summary-benchmark-report-contextmetrics-report-scenario",
+          "goldContext": {
+            "goldFrontierNodeIds": [
+              "hot:packages/python/asp_graph_turbo/src/asp_graph_turbo/sandtable_summary_cli.py-contextmetrics-108"
+            ],
+            "goldSelectors": [
+              "packages/python/asp_graph_turbo/src/asp_graph_turbo/sandtable_summary_cli.py:100:120"
+            ],
+            "goldTestAction": {
+              "argv": [
+                "uv",
+                "run",
+                "--project",
+                "packages/python/asp_graph_turbo",
+                "--frozen",
+                "pytest",
+                "-q",
+                "-c",
+                "/dev/null",
+                "-o",
+                "cache_dir=/Users/guangtao/ghq/github.com/tao3k/agent-semantic-protocols/.pytest_cache",
+                "tests/unit/test_asp_graph_turbo_sandtable_summary_cli.py"
+              ],
+              "expectedStatus": "passed"
+            }
+          },
+          "receiptMetrics": {
+            "frontierReturnedCount": 10,
+            "frontierFollowedCount": 1,
+            "frontierFollowRate": 0.1,
+            "codeActuallyReadCount": 1,
+            "rawReadFallbackCount": 0,
+            "duplicateSelectorCount": 0,
+            "sameOwnerScanCount": 0,
+            "relationChannelCount": 9,
+            "pprIterations": 100,
+            "pprResidual": 1.7495347243677573e-7,
+            "stdoutBytesToFrontier": 5356,
+            "commandsToFirstUsefulLocator": 1,
+            "commandsToValidation": 3
+          },
+          "benchmarkMetrics": {
+            "profile": "owner-query",
+            "cacheMode": "hit",
+            "pathBackend": "python-bfs-small",
+            "pathPairCount": 6,
+            "pathCandidateCount": 5,
+            "pathFallbackCount": 0,
+            "projectedTypedPathCount": 4,
+            "relationChannelCount": 9,
+            "pprIterations": 65,
+            "pprResidual": 9.053049976337491e-10,
+            "medianMs": 1.267271,
+            "p95Ms": 1.870416
+          },
+          "contextMetrics": {
+            "goldFrontierCount": 1,
+            "emittedFrontierCount": 10,
+            "goldFrontierHitCount": 1,
+            "goldFrontierBestRank": 9,
+            "followedGoldFrontierCount": 1,
+            "goldSelectorReadCount": 1,
+            "contextPrecision": 0.1,
+            "contextRecall": 1,
+            "contextUtilization": 0.1,
+            "exactCodeSuccess": true,
+            "testSelectionPrecision": 1
+          },
+          "benchmarkReadiness": {
+            "hasFollowedFrontier": true,
+            "hasValidationCommand": true,
+            "hasRuntimeCapture": true,
+            "readyForWeightCalibration": true
+          }
+        },
+        {
+          "scenarioId": "asp-runtime-relation-weights-followed-read-test",
+          "captureKind": "asp-runtime-followed-frontier",
+          "receiptFixtureId": "agent-semantic-protocols.asp-search-relation-weights-followed-runtime",
+          "receiptId": "asp.search-frontier.python-relation-weights-typed-transition-masks-profilecompatibility",
+          "goldContext": {
+            "goldFrontierNodeIds": [
+              "hot:packages/python/asp_graph_turbo/src/asp_graph_turbo/backend.py-weights-35"
+            ],
+            "goldSelectors": [
+              "packages/python/asp_graph_turbo/src/asp_graph_turbo/backend.py:27:47"
+            ],
+            "goldTestAction": {
+              "argv": [
+                "uv",
+                "run",
+                "--project",
+                "packages/python/asp_graph_turbo",
+                "--frozen",
+                "pytest",
+                "-q",
+                "-c",
+                "/dev/null",
+                "-o",
+                "cache_dir=/Users/guangtao/ghq/github.com/tao3k/agent-semantic-protocols/.pytest_cache",
+                "tests/unit/test_asp_graph_turbo_rank_cli.py"
+              ],
+              "expectedStatus": "passed"
+            }
+          },
+          "receiptMetrics": {
+            "codeActuallyReadCount": 1,
+            "commandsToFirstUsefulLocator": 1,
+            "commandsToValidation": 3,
+            "duplicateSelectorCount": 0,
+            "frontierFollowRate": 0.1,
+            "frontierFollowedCount": 1,
+            "frontierReturnedCount": 10,
+            "pprIterations": 100,
+            "pprResidual": 1.7495347254259386e-7,
+            "rawReadFallbackCount": 0,
+            "relationChannelCount": 9,
+            "sameOwnerScanCount": 0,
+            "stdoutBytesToFrontier": 7078
+          },
+          "benchmarkMetrics": {
+            "profile": "owner-query",
+            "cacheMode": "hit",
+            "pathBackend": "python-bfs-small",
+            "pathPairCount": 6,
+            "pathCandidateCount": 5,
+            "pathFallbackCount": 0,
+            "projectedTypedPathCount": 4,
+            "relationChannelCount": 9,
+            "pprIterations": 65,
+            "pprResidual": 9.053049976337491e-10,
+            "medianMs": 1.267271,
+            "p95Ms": 1.870416
+          },
+          "contextMetrics": {
+            "goldFrontierCount": 1,
+            "emittedFrontierCount": 10,
+            "goldFrontierHitCount": 1,
+            "goldFrontierBestRank": 3,
+            "followedGoldFrontierCount": 1,
+            "goldSelectorReadCount": 1,
+            "contextPrecision": 0.1,
+            "contextRecall": 1,
+            "contextUtilization": 0.1,
+            "exactCodeSuccess": true,
+            "testSelectionPrecision": 1,
+            "goldSelectorActionRank": 1
           },
           "benchmarkReadiness": {
             "hasFollowedFrontier": true,
@@ -307,14 +470,19 @@
         }
       ],
       "summary": {
-        "scenarioCount": 4,
-        "receiptFixtureCount": 4,
-        "minFrontierFollowRate": 0.0,
+        "scenarioCount": 6,
+        "receiptFixtureCount": 6,
+        "minFrontierFollowRate": 0,
         "maxRawReadFallbackCount": 0,
         "allRelationChannelsVisible": true,
-        "runtimeCaptureScenarioCount": 3,
-        "calibrationReadyScenarioCount": 1,
-        "nextAction": "run live sandtable scoring with the calibration-ready ASP runtime scenario before changing weights"
+        "runtimeCaptureScenarioCount": 5,
+        "calibrationReadyScenarioCount": 3,
+        "weightCalibrationDecision": {
+          "status": "deferred-until-new-failing-receipt",
+          "reason": "hot-companion ranking now preserves the relation-weight gold frontier and selector action",
+          "requiredEvidence": "new calibration-ready runtime receipt with contextRecall below 1.0 or the gold selector missing from frontierActions"
+        },
+        "nextAction": "collect new failing calibration-ready evidence before changing relation weights"
       }
     }
   ]

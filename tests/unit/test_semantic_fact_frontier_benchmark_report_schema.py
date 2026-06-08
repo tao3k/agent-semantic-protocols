@@ -54,8 +54,20 @@ def _derived_context_metrics(scenario: dict[str, Any], receipt: dict[str, Any]) 
     gold_frontier = set(gold_context["goldFrontierNodeIds"])
     gold_selectors = set(gold_context["goldSelectors"])
     returned_ids = {item["nodeId"] for item in receipt["frontierReturned"]}
+    gold_frontier_ranks = [
+        index
+        for index, item in enumerate(receipt["frontierReturned"], start=1)
+        if item["nodeId"] in gold_frontier
+    ]
     followed_ids = {item["nodeId"] for item in receipt["frontierFollowed"]}
     read_selectors = {read["selector"] for read in receipt["codeActuallyRead"]}
+    frontier_actions = receipt.get("frontierActions") or []
+    gold_selector_action_ranks = [
+        action["rank"]
+        for action in frontier_actions
+        if action.get("actionKind") == "selector"
+        and action.get("selector") in gold_selectors
+    ]
     emitted_count = len(receipt["frontierReturned"])
     gold_frontier_count = len(gold_frontier)
     gold_frontier_hit_count = len(gold_frontier & returned_ids)
@@ -71,10 +83,13 @@ def _derived_context_metrics(scenario: dict[str, Any], receipt: dict[str, Any]) 
         else 0.0
     )
 
-    return {
+    metrics = {
         "goldFrontierCount": gold_frontier_count,
         "emittedFrontierCount": emitted_count,
         "goldFrontierHitCount": gold_frontier_hit_count,
+        "goldFrontierBestRank": min(gold_frontier_ranks)
+        if gold_frontier_ranks
+        else None,
         "followedGoldFrontierCount": followed_gold_frontier_count,
         "goldSelectorReadCount": gold_selector_read_count,
         "contextPrecision": _ratio(gold_frontier_hit_count, emitted_count),
@@ -83,6 +98,11 @@ def _derived_context_metrics(scenario: dict[str, Any], receipt: dict[str, Any]) 
         "exactCodeSuccess": gold_selector_read_count > 0,
         "testSelectionPrecision": test_selection_precision,
     }
+    if frontier_actions:
+        metrics["goldSelectorActionRank"] = (
+            min(gold_selector_action_ranks) if gold_selector_action_ranks else None
+        )
+    return metrics
 
 
 def _assert_context_metrics_match(actual: dict[str, Any], expected: dict[str, Any]) -> None:
@@ -175,6 +195,8 @@ def test_frontier_benchmark_report_requires_followed_runtime_use_for_calibration
 
     asp_runtime = scenarios["asp-runtime-frontier-only"]
     followed_runtime = scenarios["asp-runtime-followed-read-test"]
+    sandtable_runtime = scenarios["asp-runtime-sandtable-summary-followed-read-test"]
+    weights_runtime = scenarios["asp-runtime-relation-weights-followed-read-test"]
 
     assert asp_runtime["benchmarkReadiness"]["hasRuntimeCapture"] is True
     assert asp_runtime["benchmarkReadiness"]["hasFollowedFrontier"] is False
@@ -187,7 +209,19 @@ def test_frontier_benchmark_report_requires_followed_runtime_use_for_calibration
     assert followed_runtime["contextMetrics"]["exactCodeSuccess"] is True
     assert followed_runtime["contextMetrics"]["testSelectionPrecision"] == 1.0
     assert followed_runtime["contextMetrics"]["contextUtilization"] > 0
-    assert report["summary"]["calibrationReadyScenarioCount"] == 1
+    assert sandtable_runtime["benchmarkReadiness"]["readyForWeightCalibration"] is True
+    assert sandtable_runtime["contextMetrics"]["exactCodeSuccess"] is True
+    assert sandtable_runtime["contextMetrics"]["testSelectionPrecision"] == 1.0
+    assert sandtable_runtime["contextMetrics"]["contextUtilization"] > 0
+    assert weights_runtime["benchmarkReadiness"]["hasRuntimeCapture"] is True
+    assert weights_runtime["benchmarkReadiness"]["hasFollowedFrontier"] is True
+    assert weights_runtime["benchmarkReadiness"]["readyForWeightCalibration"] is True
+    assert weights_runtime["contextMetrics"]["goldFrontierBestRank"] == 3
+    assert weights_runtime["contextMetrics"]["goldSelectorActionRank"] == 1
+    assert weights_runtime["contextMetrics"]["contextRecall"] == 1.0
+    assert weights_runtime["contextMetrics"]["exactCodeSuccess"] is True
+    assert weights_runtime["contextMetrics"]["testSelectionPrecision"] == 1.0
+    assert report["summary"]["calibrationReadyScenarioCount"] == 3
 
 
 def test_frontier_benchmark_report_rejects_unknown_capture_kind() -> None:

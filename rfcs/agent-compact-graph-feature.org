@@ -745,17 +745,24 @@ when a candidate locator is known, connected through typed edges such as
 ranking can select direct code follow-ups without reparsing compact text.
 When the bounded candidate set exposes data-shape intent, such as field, type,
 collection, map, set, or list terms, the request should also carry typed
-semantic nodes for =field=, =type=, and =collection=.  These are schema-visible
-graph facts rather than compact-renderer heuristics: =field= records the owner,
-field name, type text, collection kind, locator, and matched text; =type=
-records the field type; and =collection= records the collection family.  The
-default owner-query adapter connects them through typed edges such as
-=query->field matches=, =owner->field contains=, =field->type has_type=,
+semantic nodes for =field=, =type=, and =collection=.  High-concurrency,
+resource-lifecycle, and API-usage terms such as =concurrency=, =queue=,
+=stream=, =scope=, or =fiber= may also request semantic facts as candidate
+context: the provider should expand only from stdin-selected candidate owners,
+not from an unbounded whole-repository structural scan.  This keeps real API
+queries able to see parser-owned data-shape evidence without sacrificing the
+lexical/API relevance of the ranked frontier.  These are schema-visible graph
+facts rather than compact-renderer heuristics: =field= records the owner, field
+name, type text, collection kind, locator, and matched text; =type= records the
+field type; and =collection= records the collection family.  The default
+owner-query adapter connects them through typed edges such as =query->field
+matches=, =owner->field contains=, =field->type has_type=,
 =field->collection collection_of=, =type->collection collection_of=, and
 =field->hot contains=.  This lets graph turbo project field-level selectors for
-questions such as =Vec collection fields= without requiring the agent to run a
-second owner search, broad fzf, or tree-sitter guide probe after the ranked
-frontier has selected the evidence boundary.
+questions such as =Vec collection fields= or =Effect concurrency Stream Scope=
+without requiring the agent to run a second owner search, broad fzf, or
+tree-sitter guide probe after the ranked frontier has selected the evidence
+boundary.
 For Rust, these data-shape facts are provider-owned parser facts produced by
 the harness's =syn= project scan.  Search-pipe lexical candidates may seed
 priority, but they must not be the authority or the only files parsed for

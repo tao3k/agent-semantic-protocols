@@ -60,6 +60,11 @@
         "search-flow"
       ],
       "command": [
+        "uv",
+        "run",
+        "--frozen",
+        "--project",
+        "packages/python",
         "python",
         "-m",
         "tools",
@@ -136,6 +141,11 @@
                 "performance"
             ],
             "command": [
+                "uv",
+                "run",
+                "--frozen",
+                "--project",
+                "packages/python",
                 "python",
                 "-m",
                 "tools",
@@ -187,6 +197,11 @@
                 "evidence-assurance"
             ],
             "command": [
+                "uv",
+                "run",
+                "--frozen",
+                "--project",
+                "packages/python",
                 "python",
                 "-m",
                 "tools",

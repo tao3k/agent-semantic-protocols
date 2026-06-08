@@ -232,14 +232,28 @@
           "type": "integer",
           "minimum": 0
         },
-        "goldFrontierHitCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "followedGoldFrontierCount": {
-          "type": "integer",
-          "minimum": 0
-        },
+      "goldFrontierHitCount": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "goldFrontierBestRank": {
+        "type": [
+          "integer",
+          "null"
+        ],
+        "minimum": 1
+      },
+      "goldSelectorActionRank": {
+        "type": [
+          "integer",
+          "null"
+        ],
+        "minimum": 1
+      },
+      "followedGoldFrontierCount": {
+        "type": "integer",
+        "minimum": 0
+      },
         "goldSelectorReadCount": {
           "type": "integer",
           "minimum": 0

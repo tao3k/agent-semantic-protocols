@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from argparse import Namespace
 
 from tools.semantic_sandtable.agent_observations import summarize_agent_messages
 from tools.semantic_sandtable.claude_sdk_runner import (
     _asp_bash_permission,
+    _emit_final_output,
     _extra_args,
     _is_asp_command,
     _text_output,
@@ -40,6 +42,22 @@ def test_text_output_projects_assistant_text_blocks_only() -> None:
     ]
 
     assert _text_output(messages) == "first\nsecond"
+
+
+def test_summary_json_outputs_only_summary_record(capsys) -> None:
+    messages = [
+        {
+            "type": "AssistantMessage",
+            "content": [{"text": "large final answer body"}],
+        }
+    ]
+    summary = {"type": "SandtableAgentSdkSummary", "finalAnswer": {"present": True}}
+
+    _emit_final_output("summary-json", messages, summary)
+
+    output = capsys.readouterr().out.strip().splitlines()
+    assert len(output) == 1
+    assert json.loads(output[0]) == summary
 
 
 def test_is_asp_command_accepts_facade_and_workspace_binary() -> None:
@@ -138,6 +156,40 @@ def test_agent_summary_extracts_token_cost_and_complex_pipe_flow() -> None:
     assert summary["pipeFlow"]["querySelectorCommands"] == 1
     assert summary["pipeFlow"]["treesitterQueryCommands"] == 1
     assert summary["pipeFlow"]["complexPipeFlow"]
+    assert summary["finalAnswer"]["present"] is False
+
+
+def test_agent_summary_extracts_final_answer_after_last_tool_use() -> None:
+    summary = summarize_agent_messages(
+        [
+            {
+                "type": "AssistantMessage",
+                "content": [
+                    {
+                        "name": "Bash",
+                        "input": {"command": "asp rust search prime --view seeds ."},
+                    }
+                ],
+            },
+            {
+                "type": "AssistantMessage",
+                "content": [
+                    {
+                        "text": (
+                            "Vec<scalar> fields are collection fields: the Vec "
+                            "container owns repeated scalar elements, so the field is "
+                            "not modeled as one ordinary scalar value."
+                        )
+                    }
+                ],
+            },
+        ]
+    )
+
+    assert summary["finalAnswer"]["present"] is True
+    assert summary["finalAnswer"]["afterLastToolUse"] is True
+    assert summary["finalAnswer"]["textBytes"] > 80
+    assert "Vec<scalar>" in summary["finalAnswer"]["textPreview"]
 
 
 def test_agent_summary_extracts_read_loop_risk_from_direct_code_reads() -> None:

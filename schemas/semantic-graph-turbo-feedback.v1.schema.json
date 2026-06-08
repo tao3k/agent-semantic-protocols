@@ -1,0 +1,230 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agent-semantic-protocols.local/semantic-graph-turbo-feedback.v1.schema.json",
+  "title": "Semantic Graph Turbo Feedback",
+  "description": "Receipt-derived graph facts used to calibrate typed sparse graph ranking.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "protocolId",
+    "protocolVersion",
+    "packetKind",
+    "source",
+    "graph",
+    "metrics"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.semantic-graph-turbo-feedback"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "protocolId": {
+      "const": "agent.semantic-protocols.semantic-fact-frontier-feedback"
+    },
+    "protocolVersion": {
+      "const": "1"
+    },
+    "packetKind": {
+      "const": "graph-turbo-feedback"
+    },
+    "source": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "sourcePath": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "graph": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "nodes",
+        "edges"
+      ],
+      "properties": {
+        "nodes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/node"
+          }
+        },
+        "edges": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/edge"
+          }
+        }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "receiptNodeCount",
+        "receiptEdgeCount",
+        "successCount",
+        "penaltyCount"
+      ],
+      "properties": {
+        "receiptNodeCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "receiptEdgeCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "successCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "penaltyCount": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  },
+  "$defs": {
+    "nodeId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_.:/@+<>=,| -]+$"
+    },
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "role",
+        "value",
+        "fields"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/nodeId"
+        },
+        "kind": {
+          "const": "receipt"
+        },
+        "role": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "value": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fields": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "receiptKind",
+            "effect",
+            "reason",
+            "selector",
+            "scope",
+            "scoreDelta"
+          ],
+          "properties": {
+            "receiptKind": {
+              "enum": [
+                "frontier-success",
+                "frontier-waste"
+              ]
+            },
+            "effect": {
+              "enum": [
+                "boost",
+                "penalty"
+              ]
+            },
+            "reason": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]*$"
+            },
+            "selector": {
+              "type": "string",
+              "minLength": 1
+            },
+            "scope": {
+              "enum": [
+                "exact-selector",
+                "relation-neighborhood"
+              ]
+            },
+            "targetKinds": {
+              "$ref": "#/$defs/stringList"
+            },
+            "propagateRelations": {
+              "$ref": "#/$defs/stringList"
+            },
+            "propagateKinds": {
+              "$ref": "#/$defs/stringList"
+            },
+            "propagationFactor": {
+              "type": "number"
+            },
+            "ownerPath": {
+              "type": "string",
+              "minLength": 1
+            },
+            "scoreDelta": {
+              "type": "number"
+            },
+            "sourceScenario": {
+              "type": "string",
+              "minLength": 1
+            },
+            "sourceStep": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    },
+    "stringList": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "target",
+        "relation"
+      ],
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/nodeId"
+        },
+        "target": {
+          "$ref": "#/$defs/nodeId"
+        },
+        "relation": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "weight": {
+          "type": "number"
+        },
+        "fields": {
+          "type": "object"
+        }
+      }
+    }
+  }
+}

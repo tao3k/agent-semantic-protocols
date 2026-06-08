@@ -21,6 +21,7 @@ use super::provider_roots::{
 use super::query_direct_read::{
     is_asp_fast_direct_source_read, run_asp_fast_direct_source_read_command,
 };
+use super::query_owner::run_asp_fast_owner_query_command;
 use super::search_config::AspConfig;
 use super::search_pipe::{FastSearchContext, is_asp_fast_search, run_asp_fast_search_command};
 use super::search_pipe_provider_facts::ProviderGraphFactsContext;
@@ -182,14 +183,23 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
         );
     }
 
+    if run_asp_fast_owner_query_command(
+        language_id,
+        &provider_args,
+        &project_root,
+        &invocation_root,
+    )? {
+        return Ok(());
+    }
+
     let cache_home = client_backend_cache_home(&activation_root, &project_root)?;
     let provider = runtime
         .providers
         .iter()
         .find(|provider| provider.language_id == language_id)
         .ok_or_else(|| format!("no activated provider for language {language_id}"))?;
-    let runtime_profiles = runtime_profiles_for_runtime(&project_root, &runtime);
     if is_asp_fast_search(&provider_args) {
+        let runtime_profiles = runtime_profiles_for_runtime(&project_root, &runtime);
         let provider_context = ProviderGraphFactsContext {
             provider,
             profiles: &runtime_profiles,
@@ -227,6 +237,7 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
         );
     }
 
+    let runtime_profiles = runtime_profiles_for_runtime(&project_root, &runtime);
     if is_guide(&command_args) {
         let guide_args = provider_guide_args(language_id, &provider_args);
         let invocation =

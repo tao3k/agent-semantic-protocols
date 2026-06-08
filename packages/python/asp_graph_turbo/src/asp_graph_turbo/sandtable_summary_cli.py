@@ -109,6 +109,14 @@ def _summary_packet(
     return packet
 
 
+def _format_ratio(value: object) -> str:
+    if isinstance(value, bool):
+        return str(value)
+    if isinstance(value, (int, float)):
+        return f"{float(value):.1f}"
+    return str(value)
+
+
 def _render_text(packet: Mapping[str, object]) -> str:
     benchmark = _mapping(packet.get("benchmark"))
     receipt = _mapping(packet.get("receipt"))
@@ -132,13 +140,20 @@ def _render_text(packet: Mapping[str, object]) -> str:
     )
     context = _mapping(packet.get("context"))
     if context:
+        best_rank = context.get("goldFrontierBestRank")
+        rank_text = "" if best_rank is None else f",bestRank={best_rank}"
+        action_rank = context.get("goldSelectorActionRank")
+        action_rank_text = (
+            "" if action_rank is None else f",actionRank={action_rank}"
+        )
         output += (
             "\ncontext="
-            f"precision={context.get('contextPrecision')},"
-            f"recall={context.get('contextRecall')},"
-            f"utilization={context.get('contextUtilization')},"
+            f"precision={_format_ratio(context.get('contextPrecision'))},"
+            f"recall={_format_ratio(context.get('contextRecall'))},"
+            f"utilization={_format_ratio(context.get('contextUtilization'))}"
+            f"{rank_text}{action_rank_text},"
             f"exactCode={context.get('exactCodeSuccess')},"
-            f"testPrecision={context.get('testSelectionPrecision')}"
+            f"testPrecision={_format_ratio(context.get('testSelectionPrecision'))}"
         )
     return output
 

@@ -4,12 +4,17 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 
-from .diversity import normalize_kind_budgets, rank_nodes, selector_for_node
+from .diversity import (
+    normalize_kind_budgets,
+    rank_nodes,
+    selector_for_node,
+)
 from .model import GraphProfile, GraphResult, TypedGraph
 from .profiles import resolve_profile
+from .query_token_balance import query_tokens_for_seed_nodes
 from .ranking_build import build_graph_result, rank_fingerprint
 from .ranking_score import collect_scores, seed_ids as resolve_seed_ids
-from .read_loop_guard import graph_turbo_apply_read_loop_second_pass
+from .read_loop_second_pass import graph_turbo_apply_read_loop_second_pass
 
 
 def rank_frontier(
@@ -71,11 +76,14 @@ def rank_frontier(
         _candidate_limit(limit),
         normalized_kind_budgets,
         read_memory_selectors,
+        query_tokens_for_seed_nodes(graph, seed_ids),
+        coverage_limit=limit,
     )
     ranked, read_loop_second_pass = graph_turbo_apply_read_loop_second_pass(
         selected_profile,
         ranked_candidates,
         limit=limit,
+        max_gap_lines=window_merge_max_gap_lines,
     )
     return build_graph_result(
         graph,

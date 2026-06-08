@@ -139,6 +139,22 @@ fn query_requests_semantic_facts(query: &str) -> bool {
                 | "hashset"
                 | "btreemap"
                 | "btreeset"
+                | "concurrency"
+                | "concurrent"
+                | "cancellation"
+                | "interruption"
+                | "resource"
+                | "resources"
+                | "leak"
+                | "leaks"
+                | "queue"
+                | "queues"
+                | "stream"
+                | "streams"
+                | "scope"
+                | "scopes"
+                | "fiber"
+                | "fibers"
         )
     })
 }

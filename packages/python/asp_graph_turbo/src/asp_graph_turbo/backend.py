@@ -39,17 +39,20 @@ def build_sparse_backend(
     relation_weight_mass: dict[str, float] = {}
     selected_edges: dict[tuple[str, str, str, str, str], OrientedEdge] = {}
     for source_id, target_id, edge in allowed_oriented_edges(graph, profile):
+        edge_weight = _profile_edge_weight(edge, profile)
+        if edge_weight <= 0.0:
+            continue
         source = index_by_id[source_id]
         target = index_by_id[target_id]
-        oriented_edge = _oriented_edge(source_id, target_id, edge)
+        oriented_edge = _oriented_edge(source_id, target_id, edge, edge_weight)
         rows.append(source)
         cols.append(target)
-        weights.append(edge.weight)
+        weights.append(edge_weight)
         relation_rows.setdefault(edge.relation, []).append(source)
         relation_cols.setdefault(edge.relation, []).append(target)
-        relation_weights.setdefault(edge.relation, []).append(edge.weight)
+        relation_weights.setdefault(edge.relation, []).append(edge_weight)
         relation_weight_mass[edge.relation] = (
-            relation_weight_mass.get(edge.relation, 0.0) + edge.weight
+            relation_weight_mass.get(edge.relation, 0.0) + edge_weight
         )
         selected_edges[
             (source_id, target_id, edge.relation, edge.source, edge.target)
@@ -67,11 +70,16 @@ def build_sparse_backend(
             relation_cols,
             relation_weights,
             node_count=len(node_ids),
+            relations=profile.allowed_relations,
         ),
         relation_edge_counts={
-            relation: len(values) for relation, values in relation_weights.items()
+            relation: len(relation_weights.get(relation, ()))
+            for relation in sorted(profile.allowed_relations)
         },
-        relation_weight_mass=relation_weight_mass,
+        relation_weight_mass={
+            relation: relation_weight_mass.get(relation, 0.0)
+            for relation in sorted(profile.allowed_relations)
+        },
         selected_edges=tuple(selected_edges.values()),
     )
 
@@ -80,6 +88,8 @@ def sparse_backend_from_parts(
     node_ids: tuple[str, ...],
     adjacency: csr_matrix,
     selected_edges: tuple[OrientedEdge, ...],
+    *,
+    relations: Iterable[str] = (),
 ) -> SparseGraphBackend:
     index_by_id = {node_id: index for index, node_id in enumerate(node_ids)}
     relation_rows: dict[str, list[int]] = {}
@@ -105,11 +115,16 @@ def sparse_backend_from_parts(
             relation_cols,
             relation_weights,
             node_count=len(node_ids),
+            relations=frozenset(relations) | frozenset(relation_weights),
         ),
         relation_edge_counts={
-            relation: len(values) for relation, values in relation_weights.items()
+            relation: len(relation_weights.get(relation, ()))
+            for relation in sorted(frozenset(relations) | frozenset(relation_weights))
         },
-        relation_weight_mass=relation_weight_mass,
+        relation_weight_mass={
+            relation: relation_weight_mass.get(relation, 0.0)
+            for relation in sorted(frozenset(relations) | frozenset(relation_weights))
+        },
         selected_edges=selected_edges,
     )
 
@@ -169,20 +184,33 @@ def _relation_matrices(
     relation_weights: Mapping[str, list[float]],
     *,
     node_count: int,
+    relations: Iterable[str],
 ) -> Mapping[str, csr_matrix]:
     return {
         relation: csr_matrix(
             (
-                relation_weights[relation],
-                (relation_rows[relation], relation_cols[relation]),
+                relation_weights.get(relation, ()),
+                (
+                    relation_rows.get(relation, ()),
+                    relation_cols.get(relation, ()),
+                ),
             ),
             shape=(node_count, node_count),
         )
-        for relation in sorted(relation_weights)
+        for relation in sorted(relations)
     }
 
 
-def _oriented_edge(source_id: str, target_id: str, edge: Edge) -> OrientedEdge:
+def _profile_edge_weight(edge: Edge, profile: GraphProfile) -> float:
+    return edge.weight * profile.relation_weight_multiplier.get(edge.relation, 1.0)
+
+
+def _oriented_edge(
+    source_id: str,
+    target_id: str,
+    edge: Edge,
+    weight: float,
+) -> OrientedEdge:
     return OrientedEdge(
         source=source_id,
         target=target_id,
@@ -190,6 +218,6 @@ def _oriented_edge(source_id: str, target_id: str, edge: Edge) -> OrientedEdge:
         original_source=edge.source,
         original_target=edge.target,
         reversed=source_id != edge.source or target_id != edge.target,
-        weight=edge.weight,
+        weight=weight,
         fields=edge.fields,
     )

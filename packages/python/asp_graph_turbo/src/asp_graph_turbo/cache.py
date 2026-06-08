@@ -37,7 +37,13 @@ def packet_fingerprint(
         "kindBudgets": dict(sorted(kind_budgets.items())),
         "pathBudget": path_budget,
         "pathMaxHops": path_max_hops,
-        "profile": profile.name,
+        "profile": {
+            "name": profile.name,
+            "kindBonus": dict(sorted(profile.kind_bonus.items())),
+            "relationWeightMultiplier": dict(
+                sorted(profile.relation_weight_multiplier.items())
+            ),
+        },
         "seedIds": list(seed_ids),
         "windowMerge": {
             "enabled": window_merge_enabled,

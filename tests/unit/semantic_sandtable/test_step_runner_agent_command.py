@@ -111,6 +111,54 @@ class StepRunnerAgentCommandTests(unittest.TestCase):
             command,
         )
 
+    def test_agent_answer_required_rejects_sdk_max_turns(self) -> None:
+        execution = _resolve_step_execution(
+            {
+                "id": "claude-sdk",
+                "agentSdk": {
+                    "client": "claude",
+                    "prompt": "Explain ASP",
+                    "outputFormat": "stream-json",
+                    "maxTurns": 9,
+                },
+                "expect": {"agentAnswer": {"required": True}},
+            },
+            "root.claude-sdk",
+            "claude-sdk",
+            {},
+            {},
+            repo_root=Path("/workspace"),
+        )
+
+        self.assertNotIsInstance(execution, tuple)
+        self.assertEqual(
+            [
+                "step.agentSdk.maxTurns cannot be used when expect.agentAnswer.required is true; use timeoutSeconds instead"
+            ],
+            execution.errors,
+        )
+
+    def test_claude_agent_sdk_accepts_summary_json_output(self) -> None:
+        execution = _resolve_step_execution(
+            {
+                "id": "claude-sdk",
+                "agentSdk": {
+                    "client": "claude",
+                    "prompt": "Explain ASP",
+                    "outputFormat": "summary-json",
+                },
+            },
+            "root.claude-sdk",
+            "claude-sdk",
+            {},
+            {},
+            repo_root=Path("/workspace"),
+        )
+
+        self.assertIsInstance(execution, tuple)
+        command, _env = execution
+        self.assertEqual("summary-json", command[6])
+
     def test_step_cannot_define_command_and_agent_cli(self) -> None:
         execution = _resolve_step_execution(
             {

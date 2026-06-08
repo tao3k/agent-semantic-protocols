@@ -9,8 +9,11 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Sequence
 
+from .calibration import apply_profile_calibrations
 from .constants import ALGORITHM_ID
+from .feedback import merge_feedback_into_packet
 from .model import GraphResult, TypedGraph
+from .profiles import resolve_profile
 from .summary_packet import result_to_summary_packet
 from .turbo import DEFAULT_PROFILES, rank_frontier, render_compact, result_to_packet
 
@@ -18,6 +21,11 @@ from .turbo import DEFAULT_PROFILES, rank_frontier, render_compact, result_to_pa
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
     packet = _load_packet(args.packet)
+    if args.feedback:
+        packet = merge_feedback_into_packet(
+            packet,
+            [_load_feedback_packet(path) for path in args.feedback],
+        )
     result = _rank_packet(packet, args)
     _write_result(result, args.format)
     return 0
@@ -26,6 +34,10 @@ def main(argv: Sequence[str] | None = None) -> int:
 def _rank_packet(packet: Mapping[str, object], args: argparse.Namespace) -> GraphResult:
     _validate_algorithm(packet)
     profile = args.profile or _string_packet_field(packet, "profile", "owner-query")
+    selected_profile = apply_profile_calibrations(
+        resolve_profile(profile),
+        [_load_calibration_packet(path) for path in getattr(args, "calibration", [])],
+    )
     seeds = args.seed or _string_list_packet_field(packet, "seedIds")
     limit = (
         args.limit
@@ -41,7 +53,7 @@ def _rank_packet(packet: Mapping[str, object], args: argparse.Namespace) -> Grap
     graph = TypedGraph.from_packet(packet)
     return rank_frontier(
         graph,
-        profile=profile,
+        profile=selected_profile,
         seeds=seeds,
         limit=limit,
         kind_budgets=kind_budgets,
@@ -58,7 +70,9 @@ def _write_result(result: GraphResult, output_format: str) -> None:
     if output_format == "json":
         sys.stdout.write(json.dumps(result_to_packet(result), sort_keys=True) + "\n")
     elif output_format == "summary-json":
-        sys.stdout.write(json.dumps(result_to_summary_packet(result), sort_keys=True) + "\n")
+        sys.stdout.write(
+            json.dumps(result_to_summary_packet(result), sort_keys=True) + "\n"
+        )
     else:
         sys.stdout.write(render_compact(result))
 
@@ -81,6 +95,18 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser.add_argument(
         "--format", choices=["compact", "json", "summary-json"], default="compact"
     )
+    parser.add_argument(
+        "--feedback",
+        action="append",
+        default=[],
+        help="Graph-turbo feedback packet to merge before ranking.",
+    )
+    parser.add_argument(
+        "--calibration",
+        action="append",
+        default=[],
+        help="Graph-turbo profile calibration packet to apply before ranking.",
+    )
     return parser.parse_args(argv)
 
 
@@ -91,6 +117,26 @@ def _load_packet(path: str) -> Mapping[str, object]:
         packet = json.loads(Path(path).read_text(encoding="utf-8"))
     if not isinstance(packet, Mapping):
         raise SystemExit("graph turbo packet must be a JSON object")
+    return packet
+
+
+def _load_feedback_packet(path: str) -> Mapping[str, object]:
+    packet = _load_packet(path)
+    if (
+        packet.get("schemaId")
+        != "agent.semantic-protocols.semantic-graph-turbo-feedback"
+    ):
+        raise SystemExit(f"unsupported graph turbo feedback packet: {path}")
+    return packet
+
+
+def _load_calibration_packet(path: str) -> Mapping[str, object]:
+    packet = _load_packet(path)
+    if (
+        packet.get("schemaId")
+        != "agent.semantic-protocols.semantic-graph-turbo-calibration"
+    ):
+        raise SystemExit(f"unsupported graph turbo calibration packet: {path}")
     return packet
 
 

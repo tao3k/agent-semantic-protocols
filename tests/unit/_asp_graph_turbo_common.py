@@ -19,6 +19,8 @@ from .schema_validation import schema_validator_for
 __all__ = [
     "TypedGraph",
     "_GRAPH_TURBO_FIXTURE",
+    "_GRAPH_TURBO_FEEDBACK_SCHEMA",
+    "_GRAPH_TURBO_CALIBRATION_SCHEMA",
     "_GRAPH_TURBO_REQUEST_SCHEMA",
     "_GRAPH_TURBO_SCHEMA",
     "Path",
@@ -41,6 +43,12 @@ _GRAPH_TURBO_SCHEMA = (
 )
 _GRAPH_TURBO_REQUEST_SCHEMA = (
     _REPO_ROOT / "schemas" / "semantic-graph-turbo-request.v1.schema.json"
+)
+_GRAPH_TURBO_FEEDBACK_SCHEMA = (
+    _REPO_ROOT / "schemas" / "semantic-graph-turbo-feedback.v1.schema.json"
+)
+_GRAPH_TURBO_CALIBRATION_SCHEMA = (
+    _REPO_ROOT / "schemas" / "semantic-graph-turbo-calibration.v1.schema.json"
 )
 _GRAPH_TURBO_FIXTURE = (
     _REPO_ROOT / "sandtables" / "fixtures" / "asp" / "graph-turbo-owner-query.json"

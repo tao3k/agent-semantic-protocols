@@ -16,7 +16,7 @@
   "workdir": ".",
   "budgets": {
     "maxCommands": 1,
-    "maxTotalLinesWarn": 1,
+    "maxTotalLinesWarn": 2,
     "maxTotalElapsedMsWarn": 10000,
     "maxTotalStdoutBytesWarn": 3500
   },
@@ -51,6 +51,11 @@
         "performance"
       ],
       "command": [
+        "uv",
+        "run",
+        "--frozen",
+        "--project",
+        "packages/python",
         "python",
         "-m",
         "tools",

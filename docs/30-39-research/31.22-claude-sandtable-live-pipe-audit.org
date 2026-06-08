@@ -217,7 +217,7 @@ gate proved the runtime environment is no longer the blocker: Claude was found
 from the inherited global =PATH= and the SDK produced token/cost evidence.
 The flow still failed because =search pipe= rendered reasoning commands before
 selector commands, so the agent spent its limited turns on =search reasoning=
-and never crossed into =asp rust query --selector ... --code .=.  The durable
+and never crossed into =asp rust query --selector ... --workspace . --code=.  The durable
 fix is selector-first pipe projection: when graph-turbo has an exact selector,
 =recommendedNext=, =nextCommand=, =frontierActions=, and =pipeCommands= should
 make that selector read the first executable branch action.
@@ -244,6 +244,56 @@ before branch reasoning, did not repeat prime or pipe, and did not fall back to
 =search fzf=.  The remaining research problem is evidence quality for Tokio
 itself: the selected branch is executable but still not the ideal
 field/type/collection owner for the question.
+
+The first 2026-06-08 rerun reached the global Claude CLI and loaded repo
+=.claude/settings.json= hooks, but it was launched from a plain shell and used
+the low-balance login key.  The correct live invocation must go through
+=direnv exec .= so the repository authorization environment is loaded.
+
+With =direnv exec .=, =ANTHROPIC_AUTH_TOKEN= is present and the same live
+scenario passed.  The measured flow was:
+
+- elapsed: 47.6 seconds;
+- total stdout: 34,475 bytes;
+- ASP command output: 5,097 bytes;
+- ASP commands: 3;
+- search commands: 2;
+- query selector commands: 1;
+- repeated commands: 0;
+- guide commands: 0;
+- search-fzf commands: 0;
+- token cost: 133,906 total tokens, 0.271866 USD.
+
+The executed stages were exactly prime, pipe, and one selector query against
+=tokio/src/io/blocking.rs:15:35=.  The concrete commands are preserved by the
+sandtable runner observations and by the scenario fixture.
+
+The same Tokio 1.52.3 checkout was then exercised through the canonical ASP
+flow without Claude:
+
+- =asp rust search prime --view seeds .= completed, but reported =root=benches=,
+  which is a project-root precision issue to keep auditing.
+
+- =asp rust search pipe 'Vec scalar collection fields' --view seeds .= emitted
+  =recommendedNext=S1.query-selector= and a concrete primary selector.
+
+- The old generated command form
+  =asp rust query --selector <selector> --code .= failed because Rust query no
+  longer accepts a trailing project root.
+
+- The pipe command contract was fixed to emit
+  =asp rust query --selector <selector> --workspace . --code=, and that command
+  executed successfully against =tokio/src/io/blocking.rs:15:35= with a compact
+  396 byte code projection.
+
+This validates the pipe mechanics and command budget without spending Claude
+tokens.  The remaining semantic issue is not command execution: the primary
+selector is a valid =Vec<u8>= field, but the answer still needs the graph
+metadata =collection:family(Vec)= and =collection_of= edge to explain why this
+is a collection field rather than an ordinary scalar field.  The next protocol
+slice should preserve that evidence in the primary query projection or make the
+pipe answer contract explicitly carry graph evidence forward with the selector
+read.
 
 The next optimization moved Rust =semantic-facts= from lexical-owner gating to
 a provider-owned =syn= project scan.  Search-pipe candidates now seed priority
@@ -908,6 +958,87 @@ memory-backed control:
   reported =133866= total tokens with =$0.275566= cost.  The remaining cost is
   dominated by live transcript stdout rather than ASP command output.
 
+The final-answer gate is now part of the live contract.  The scenario requires
+=expect.agentAnswer= after the last tool use and no longer combines that
+requirement with =agentSdk.maxTurns=.  A guard in the SDK step resolver rejects
+that misconfiguration, so the prompt ends only by writing a final answer or by
+the step-level =timeoutSeconds= budget.
+
+The first validation run with =maxTurns= still present failed correctly: Claude
+ended on an intermediate assistant message and =finalAnswer.present=false=.
+After removing =maxTurns=, Claude produced a valid final answer but still ran a
+second selector.  Tightening the prompt to stop after the primary selector made
+the live run pass with the current budget:
+
+#+begin_example
+elapsedMs=45893
+aspCommands=3
+searchCommands=2
+queryCommands=1
+querySelectorCommands=1
+readLoopDuplicateSelectors=0
+readLoopMemorySuppressibleReads=0
+aspCommandOutputBytes=5097
+finalAnswer.present=true
+finalAnswer.afterLastToolUse=true
+finalAnswer.textBytes=3113
+totalTokens=135201
+costUsd=0.280277
+#+end_example
+
+The executed flow was the intended three-step path: prime, pipe, and the
+primary selector query for =tokio/src/io/blocking.rs:15:35=.
+
+The receipt-driven feedback loop is now executable.  =asp-graph-turbo
+feedback= converts the live sandtable JSON into a
+=semantic-graph-turbo-feedback.v1= packet containing schema-owned =receipt=
+nodes.  =asp-graph-turbo rank --feedback <packet>= merges those receipt facts
+into the typed graph before ranking, so feedback still flows through the same
+sparse graph engine and shows up in result metrics and explanations.
+
+The Tokio live receipt produced one success feedback node for
+=tokio/src/io/blocking.rs:15:35=.  Re-ranking the same =Vec scalar collection
+fields= graph request with that feedback changed the top rank from the query
+node to the successful field node and recorded:
+
+#+begin_example
+receiptBoostCount=2
+receiptPenaltyCount=0
+rank[0]=field:tokio/src/io/blocking.rs-buf-23
+explain(field)=... receipt-boost:+0.85:frontier-success
+backend=scipy-csr
+pathBackend=scipy-yen
+pprResidual=2.3569898944912626E-8
+pprMassSum=0.9999999999999999
+#+end_example
+
+This closes the first feedback-learning loop: live agent behavior can now be
+captured, converted to typed graph receipt facts, replayed through the ranking
+engine, and tested as a deterministic score/rank delta.  The next step is not a
+new command surface; it is calibration policy: deciding when a receipt should
+boost only an exact selector, when it should propagate to owner/type/collection
+neighbors, and how many receipts are needed before changing default profile
+weights.
+
+The first calibration policy pass is now explicit and schema-owned:
+
+- =scope=exact-selector= applies feedback only to nodes whose selector matches
+  the receipt selector.
+- =targetKinds= can narrow exact-selector feedback so a successful field read
+  does not accidentally boost a same-range hot node.
+- =scope=relation-neighborhood= can propagate a fractional feedback score
+  through named relations such as =collection_of= or =has_type=.
+- =propagateKinds= constrains propagated targets, and =propagationFactor=
+  controls the score delta.
+- Multiple receipts accumulate deterministically through
+  =receipt_score_adjustments= and remain visible as separate
+  =receipt-boost= / =receipt-penalty= explanation reasons.
+
+Focused tests now prove all three policy boundaries: exact kind targeting,
+relation-neighborhood propagation to a collection node, and accumulated
+multi-receipt boost.  The focused graph-turbo gate includes these tests, so
+feedback learning is no longer an ad hoc live-only check.
+
 Focused validation for this loop:
 
 #+begin_example
@@ -1002,3 +1133,433 @@ run through the package-owned environment:
 =uv run --project packages/python/asp_graph_turbo --frozen pytest ...=.  The
 graph-turbo package owns =numpy= and =scipy=; long-term gates should not rely
 on hand-written =--with numpy --with scipy= invocations.
+
+* 2026-06-08 TypeScript Effect live concurrency prompt
+
+Added =sandtables/typescript/effect-claude-concurrency-flow.json= as a live
+Claude SDK scenario against =Effect-TS/effect= pinned to =effect@3.21.3= with
+cache key =effect-3.21.3=.  The prompt asks for repo-backed high-concurrency
+practice guidance: bounded fan-out, interruption/cancellation, =Effect.forEach=
+concurrency, =Queue=, =Stream=, =Fiber=, =Scope=, and resource-leak avoidance.
+
+The first live run used:
+
+#+begin_src sh
+direnv exec . uv run --project packages/python --frozen python -m tools.semantic_sandtable --repo-root . --json sandtables/typescript/effect-claude-concurrency-flow.json
+#+end_src
+
+Observed command flow:
+
+- status: fail under strict semantic-fact precision
+- elapsed: =69615ms=
+- ASP commands: =3=
+- search commands: =2=
+- query commands: =1=
+- repeated commands: =0=
+- token cost: =102627= total tokens, =0.277831= USD
+- context precision: =1.0=
+- context utilization: =0.3333=
+- command output bytes: =5007=
+
+The agent followed the intended pipe shape:
+
+#+begin_src text
+asp typescript search prime --view seeds .
+asp typescript search pipe 'Effect concurrency Fiber Queue Stream Scope' --view seeds .
+asp typescript query --selector packages/ai/ai/src/Chat.ts:845:865 --workspace . --code
+#+end_src
+
+This proves the prompt can trigger =prime -> pipe -> selector query= without
+repeat search, raw read, guide fallback, or selector fanout.  It does not yet
+prove the TypeScript semantic-fact graph is good enough for this real Effect
+concurrency question.
+
+Strict failure facts:
+
+- =searchPipeOutputPrecision.fieldFacts=0=
+- =searchPipeOutputPrecision.typeFacts=0=
+- =searchPipeOutputPrecision.collectionFacts=0=
+- =searchPipeOutputPrecision.collectionOfEdges=0=
+- =searchPipeOutputPrecision.exactQueryCoverage=0=
+- the final answer did not include exact-case =Fiber= even though it described
+  fiber/queue misses in lower case
+
+Manual probes show the TypeScript provider can emit semantic facts on Effect:
+
+#+begin_src sh
+asp typescript search pipe 'field type collection interface Array' --view seeds packages/effect
+#+end_src
+
+That query returns =field=, =type=, =collection=, =has_type=, and
+=collection_of= facts.  The gap is therefore not "TypeScript has no semantic
+facts"; it is that Effect concurrency vocabulary ranks ordinary =item=/=hot=
+matches ahead of typed field/type/collection facts.  Adding generic structural
+terms such as =field type collection= forces facts into the frontier, but then
+the primary selector drifts toward =Arbitrary.ts= / =Array.ts= instead of the
+concurrency API.  That is a ranking/query-composition problem.
+
+The scenario now keeps =requireComplexPipeFlow=, token-cost, read-loop memory,
+query selector, and no-repeat gates as hard requirements, while recording the
+semantic-fact precision gap in scenario evidence.  Do not turn
+=requireSearchPipePrecision=true= for this Effect case until TS pipe ranking can
+simultaneously preserve concurrency query coverage and typed semantic facts.
+
+A second live run with semantic-fact precision relaxed failed differently:
+
+- status: fail due to =timeout after 120s=
+- elapsed: =120013ms=
+- stdout bytes: =111365=
+- ASP commands observed before timeout: =11=
+- query selector commands: =9=
+- context precision: =0.1111=
+- context utilization: =0.1111=
+- off-frontier selectors: =8=
+
+The agent kept reading selector ranges after the primary selector:
+=EmbeddingModel.ts=, =AiError.ts=, =Queue.ts=, =Types.ts=, =FiberRef.ts=,
+=Effect.ts=, and =Scope.ts=.  This confirms the previous prompt still left too
+much room for "primary selector insufficient" branch expansion.  The scenario
+prompt has therefore been tightened to a hard three-command contract:
+
+#+begin_src text
+prime once -> pipe once -> primary selector once -> stop tools and answer
+#+end_src
+
+This is the right benchmark shape for early optimization.  If the primary
+selector is incomplete, the agent must answer from the primary selector plus
+pipe metadata and name missing evidence explicitly, rather than spending the
+remaining budget on unconstrained selector fanout.
+
+The next hard-limit live run confirmed that prompt contract:
+
+- status: fail only under the old brittle answer substring gate
+- elapsed: =48518ms=
+- ASP commands: =3=
+- search commands: =2=
+- query commands: =1=
+- repeated commands: =0=
+- context precision: =1.0=
+- context utilization: =0.3333=
+- command output bytes: =5007=
+- token cost: =133894= total tokens, =0.268214= USD
+- final answer: present, after last tool use, =4291= bytes
+
+The command flow was exactly the intended live benchmark shape:
+
+#+begin_src text
+asp typescript search prime --view seeds .
+asp typescript search pipe 'Effect concurrency Fiber Queue Stream Scope' --view seeds .
+asp typescript query --selector packages/ai/ai/src/Chat.ts:845:865 --workspace . --code
+#+end_src
+
+The old answer gate required exact lowercase substrings such as =fiber= and
+=concurrency=.  That is the wrong acceptance boundary for this benchmark
+because the primary selector did not actually cover the =Fiber= branch and the
+model may render the same concept as =High-Concurrency=.  The agent should be
+allowed to name missing evidence instead of being forced into brittle exact word
+forms.  The scenario now validates final-answer structure: present, after the
+last tool use, and large enough to be a real answer.  The concrete question
+terms remain enforced by the prompt, stdout contract, and pipe-flow command
+shape, while the real TypeScript semantic-fact precision problem stays recorded
+as an explicit finding.
+
+The optimization target after this run is not more prompt text.  The prompt can
+already force a bounded =prime -> pipe -> selector -> answer= flow.  The
+provider/ranking problem is that =Effect concurrency Fiber Queue Stream Scope=
+does not preserve both sides of the needed frontier at once:
+
+- concrete Effect concurrency vocabulary and API owners;
+- parser-owned TypeScript field/type/collection facts and relation edges.
+
+The next TypeScript search-pipe improvement should merge those channels in the
+ranked graph instead of making the agent choose between a relevant concurrency
+selector and generic structural facts from unrelated =Array=/=Arbitrary=
+owners.
+
+A follow-up run after the =fiber= gate was removed still failed only on the
+case-sensitive answer substring =concurrency=, while preserving the same good
+flow:
+
+#+begin_example
+elapsedMs=57129
+aspCommands=3
+searchCommands=2
+queryCommands=1
+querySelectorCommands=1
+repeatedCommands=0
+contextPrecision=1.0
+contextUtilization=0.3333
+aspCommandOutputBytes=5007
+finalAnswer.present=true
+finalAnswer.afterLastToolUse=true
+finalAnswer.textBytes=4977
+totalTokens=102291
+costUsd=0.268179
+#+end_example
+
+This confirms the remaining failure was an answer-wording gate, not ASP search
+or read-loop behavior.
+
+After switching final-answer validation to structural gates, the same live
+scenario passed:
+
+#+begin_example
+status=pass
+elapsedMs=64241
+stdoutBytes=41601
+aspCommands=3
+searchCommands=2
+queryCommands=1
+querySelectorCommands=1
+repeatedCommands=0
+searchReasoningCommands=0
+guideCommands=0
+contextPrecision=1.0
+contextUtilization=0.3333
+aspCommandOutputBytes=5007
+finalAnswer.present=true
+finalAnswer.afterLastToolUse=true
+finalAnswer.textBytes=5352
+totalTokens=134672
+costUsd=0.284532
+#+end_example
+
+The green run still reports the important TypeScript precision gap:
+
+#+begin_example
+fieldFacts=0
+typeFacts=0
+collectionFacts=0
+collectionOfEdges=0
+exactQueryCoverage=0
+debugRows=0
+s1Selectors=1
+nextCommands=1
+#+end_example
+
+That is the next optimization target: make the TS pipe frontier for a real
+Effect concurrency prompt preserve parser-owned facts without losing the
+concurrency/API owner.
+
+The first optimization pass closes that gap without changing the prompt:
+
+- ASP now treats concurrency/resource terms such as =concurrency=, =queue=,
+  =stream=, =scope=, and =fiber= as provider semantic-fact context, so
+  =search pipe= can ask the active provider for parser-owned facts even when
+  the user did not type =field=, =type=, or =collection=.
+- The TypeScript provider now treats those terms as candidate-owner context
+  when stdin candidates are present.  It keeps the query relevant by scanning
+  only the stdin-selected candidate files, then returns their field/type/
+  collection facts instead of requiring every field name or type string to
+  contain =Effect= or =concurrency=.
+- The Effect scenario now sets =requireSearchPipePrecision=true=.
+
+The no-token smoke with the rebuilt ASP binary now produces semantic facts for
+the unchanged real query:
+
+#+begin_src sh
+target/debug/asp typescript search pipe 'Effect concurrency Fiber Queue Stream Scope' --view seeds .
+#+end_src
+
+Key output:
+
+#+begin_example
+F=field:interface-field(embedMany: ... readonly concurrency?: Types.Concurrency | undefined ...)
+Y=type:field-type((input: ReadonlyArray<string>, options?: ... concurrency ... ) => Effect.Effect<Array<Array<number>>, AiError.AiError>)
+C=collection:family(array)!evidence
+queryCoverage=matched=effect,concurrency,stream,scope missing=fiber,queue
+frontierActions=S1.selector(selector=packages/ai/ai/src/EmbeddingModel.ts:109:123,owner=packages/ai/ai/src/EmbeddingModel.ts,symbol=embedMany,source=F)!query-selector
+nextCommand=asp typescript query --selector packages/ai/ai/src/EmbeddingModel.ts:109:123 --workspace . --code
+#+end_example
+
+This is a stronger frontier than the earlier =Chat.ts:845:865= result: it is
+still selector-first and bounded, but the selected evidence now explains the
+high-concurrency question directly through the =embedMany= API and its typed
+=concurrency= option.  The remaining missing tokens, =fiber= and =queue=, are
+valid missing-evidence facts for this primary selector rather than a reason to
+fan out into broad selector reads.
+
+The first strict live rerun after that change exposed two remaining contract
+gaps rather than a prompt failure:
+
+- =collection= facts were present, but the selected =embedMany= field/type did
+  not emit a visible =collection_of= edge because the TypeScript provider only
+  classified direct array-like field types.  Function-signature fields such as
+  =embedMany: (input: ReadonlyArray<string>, ...) => Effect.Effect<Array<...>>=
+  now inspect parameter and return type nodes for collection evidence, so the
+  compact frontier preserves =F>{Y:has_type,C:collection_of}= and
+  =Y>{C:collection_of}=.
+- Sandtable =exactQueryCoverage= previously meant =missing=-= only.  For this
+  scenario, precision requires structured coverage accounting, not pretending
+  =Fiber= and =Queue= were covered by the primary selector.  The metric now
+  accepts a =queryCoverage= line when both =matched= and =missing= are reported.
+
+The strict live rerun then passed with the unchanged prompt and the same 120s
+limit:
+
+#+begin_example
+scenario=typescript.effect-claude-concurrency-flow status=pass elapsedMs=48551
+aspCommands=3 searchCommands=2 queryCommands=1 repeatedCommands=0
+readLoopDuplicateSelectors=0 readLoopAdjacentRangeWindows=0 directReadCommands=0
+searchPipeOutputPrecision fieldFacts=3 typeFacts=1 collectionFacts=1 collectionOfEdges=2 hasTypeEdges=1 exactQueryCoverage=1 debugRows=0
+frontierFollowedSelectors=1 frontierOffPathSelectors=0
+tokenCost totalTokens=102043 costUsd=0.256803 source=claude-sdk-stream
+#+end_example
+
+This closes the Effect precision gate without lowering evidence quality:
+=Fiber= and =Queue= remain explicit missing evidence, while the primary selector
+now carries the parser-owned field/type/collection facts needed for a direct
+answer.  The remaining optimization target is cost and stdout volume, not more
+selector fanout: the audit still reports =top-stdout-cost stdoutBytes=38547=.
+
+The next P0 output-surface pass separated sandtable observation stdout from
+Claude context cost.  The Claude SDK runner now supports =summary-json=:
+internally it still collects the full SDK message stream and computes
+=tokenCost=, =pipeFlow=, and =finalAnswer=, but it emits only the final
+=SandtableAgentSdkSummary= record on stdout.  The Effect scenario now uses that
+format.
+
+The live rerun stayed green and reduced the measured sandtable step stdout
+without changing ASP behavior:
+
+#+begin_example
+scenario=typescript.effect-claude-concurrency-flow status=pass elapsedMs=47827
+stdoutBytes=4445 stdoutLines=1 previousStdoutBytes=38547
+aspCommands=3 searchCommands=2 queryCommands=1 repeatedCommands=0
+searchPipeOutputPrecision fieldFacts=3 typeFacts=1 collectionFacts=1 collectionOfEdges=2 hasTypeEdges=1 exactQueryCoverage=1 debugRows=0
+tokenCost totalTokens=134511 costUsd=0.265319 source=claude-sdk-stream
+#+end_example
+
+This is a measurement/output improvement, not a model-context optimization.
+The token cost stayed high and even rose in this run because SDK cache-read
+tokens changed.  The next cost slice must therefore target prompt/context
+inputs or Claude SDK runtime settings; deleting ASP semantic facts would be the
+wrong direction because the precision gate depends on them.
+
+* 2026-06-08 Cost-channel audit split and prompt-contract repair
+
+The next optimization pass made the runtime audit separate three cost channels:
+
+- =top-stdout-cost= is only the sandtable runner stdout surface.
+- =top-asp-command-output-cost= is the ASP command output that the agent saw
+  through tool results.
+- =top-agent-token-cost= is Claude SDK usage metadata, including cache-read
+  tokens and cost.
+
+This matters because =summary-json= already solved the runner-output problem,
+but the next optimization decision must target either ASP projection size or
+Claude context/token behavior.  Collapsing those into =stdoutBytes= would hide
+the real bottleneck.
+
+The first live rerun failed, which exposed a prompt-contract bug rather than an
+ASP precision regression.  The prompt text placed =once= immediately after the
+prime command description, and Claude copied it as argv:
+
+#+begin_example
+status=fail elapsedMs=89579
+aspCommands=5 searchCommands=4 searchPrimeCommands=3 queryCommands=1
+aspCommandOutputBytes=14093 stdoutBytes=5319
+tokenCost totalTokens=211839 inputTokens=37031 outputTokens=3544 cacheReadInputTokens=171264 costUsd=0.359387
+failure=pipeFlow aspCommands=5 exceeds maxAspCommands=3
+failure=pipeFlow searchPrimeCommands=3 exceeds maxSearchPrimeCommands=1
+#+end_example
+
+The observed waste pattern was concrete: Claude ran an invalid
+=asp typescript search prime --view seeds . once= command, then =--help=, then
+prime and pipe variants without =--view seeds=.  The scenario prompt now lists
+the first two shell commands as standalone command blocks, explicitly says not
+to type the word =once=, and forbids =--help=/guide/reasoning/fzf/variant
+commands in the hard-limit run.
+
+The repaired live rerun passed:
+
+#+begin_example
+status=pass elapsedMs=45588
+stdoutBytes=4398 stdoutLines=1
+aspCommands=3 searchCommands=2 searchPrimeCommands=1 searchPipeCommands=1 queryCommands=1 repeatedCommands=0
+aspCommandOutputBytes=6083
+searchPipeOutputPrecision fieldFacts=3 typeFacts=1 collectionFacts=1 collectionOfEdges=2 hasTypeEdges=1 exactQueryCoverage=1 debugRows=0
+readLoopDuplicateSelectors=0 readLoopAdjacentRangeWindows=0 directReadCommands=0
+tokenCost totalTokens=101977 inputTokens=34218 outputTokens=1839 cacheReadInputTokens=65920 costUsd=0.250025
+#+end_example
+
+This run proves the current loop is precision-preserving: the parser-owned
+field/type/collection evidence stayed intact, the agent followed the primary
+frontier selector, and the read-loop guard reported no duplicate or adjacent
+range reads.  The remaining P0 is not stdout; it is reducing the prompt/context
+token envelope and improving the pipe selector quality so the primary selector
+answers more of the user's question without requiring S2/S3 expansion.
+
+* 2026-06-08 Query-token sparse frontier and semantic fact repair
+
+The next Effect audit showed that the Python ranking change was not enough by
+itself because the live command path was stale: =target/debug/asp= had the new
+Rust search-pipe candidate logic, but =.bin/asp= was still an older local
+runtime binary.  Running the unchanged Effect pipe through =target/debug/asp=
+proved the intended behavior:
+
+#+begin_example
+queryCoverage=matched=effect,concurrency,fiber,queue,stream,scope missing=- source=ranked-frontier
+frontier=Q.fzf,I.syntax,F.code,H.code,I2.syntax,F2.code,F3.code,F4.code,I3.syntax,Y.evidence
+#+end_example
+
+After syncing =target/debug/asp= into =.bin/asp=, the hook/runtime entrypoint
+matched the debug binary.  The graph-turbo request for the same query now
+contains =301= nodes and =396= edges, including =21= =fiber= nodes and =21=
+=queue= nodes.  This closes the earlier high-frequency-token failure where
+=Effect= consumed too much of the candidate budget before later query tokens
+entered the typed graph.
+
+The implementation changes are precision-preserving:
+
+- Rust search-pipe candidate collection now applies a per-query-token candidate
+  cap, so common terms cannot starve later terms.
+- =asp-graph-turbo= query-token balancing repairs ranked output when an
+  uncovered user query token has a valid candidate.
+- =asp-graph-turbo= semantic fact coverage repairs compact output when parser
+  facts exist but a =type= node would otherwise be trimmed from the top frontier.
+  The repair prefers a =type= node connected to an already selected field by
+  =has_type=, so the rendered frontier keeps both the node and the provenance
+  edge.
+
+The first live run after the query-token cap exposed the remaining ranking
+hole:
+
+#+begin_example
+status=fail elapsedMs=50550
+aspCommands=3 searchCommands=2 queryCommands=1 repeatedCommands=0
+searchPipeOutputPrecision fieldFacts=4 typeFacts=0 collectionFacts=1 collectionOfEdges=1 hasTypeEdges=0 exactQueryCoverage=1
+tokenCost totalTokens=134790 inputTokens=33870 outputTokens=2104 cacheReadInputTokens=98816 costUsd=0.271358
+#+end_example
+
+The graph request already contained =64= =type= nodes and =64= =has_type=
+edges, but compact top-10 omitted them.  After semantic fact coverage repair,
+the no-token pipe reproducer preserves the typed evidence:
+
+#+begin_example
+Y=type:field-type((input: ReadonlyArray<string>, options?: ... concurrency ... ) => Effect.Effect<Array<Array<number>>, AiError.AiError>)@packages/ai/ai/src/EmbeddingModel.ts:117:117!evidence
+F>{Y:has_type,C:collection_of}
+Y>{C:collection_of}
+queryCoverage=matched=effect,concurrency,fiber,queue,stream,scope missing=- source=ranked-frontier
+#+end_example
+
+The live rerun then passed all semantic and flow gates, with only token-budget
+warnings remaining:
+
+#+begin_example
+scenario=typescript.effect-claude-concurrency-flow status=warn elapsedMs=54951
+stdoutBytes=4403 stdoutLines=1
+aspCommands=3 searchCommands=2 searchPrimeCommands=1 searchPipeCommands=1 queryCommands=1 repeatedCommands=0
+aspCommandOutputBytes=6372
+searchPipeOutputPrecision fieldFacts=3 typeFacts=1 collectionFacts=1 collectionOfEdges=2 hasTypeEdges=1 exactQueryCoverage=1 debugRows=0
+readLoopDuplicateSelectors=0 readLoopAdjacentRangeWindows=0 directReadCommands=0
+tokenCost totalTokens=134919 inputTokens=34271 outputTokens=2344 cacheReadInputTokens=98304 costUsd=0.279107
+warnings=maxAgentCacheReadInputTokensWarn,maxAgentTotalTokensWarn
+#+end_example
+
+This validates the sparse typed graph direction: the provider returns a compact
+field/type/collection frontier, the query tokens remain covered, and the agent
+does not widen into raw reads or selector fanout.  The next optimization should
+target the Claude token envelope and cache-read context.  Do not remove
+parser-owned semantic facts to save tokens; that would regress the precision
+gate this run just closed.

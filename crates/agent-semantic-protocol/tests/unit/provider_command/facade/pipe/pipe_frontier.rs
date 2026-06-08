@@ -117,7 +117,7 @@ fn search_pipe_is_asp_owned_and_renders_generated_candidates_without_provider_sp
     );
     assert!(
         stdout.contains("S1=>asp rust query --selector src/lib.rs:")
-            && stdout.contains(" --code ."),
+            && stdout.contains(" --workspace . --code"),
         "{stdout}"
     );
     let pipe_commands_line = stdout
@@ -170,7 +170,7 @@ fn search_pipe_is_asp_owned_and_renders_generated_candidates_without_provider_sp
     );
     assert!(
         stdout.contains("nextCommand=asp rust query --selector src/lib.rs:")
-            && stdout.contains(" --code ."),
+            && stdout.contains(" --workspace . --code"),
         "{stdout}"
     );
     let first_selector_action = stdout
@@ -295,12 +295,12 @@ fn search_pipe_plan_preserves_search_scope_in_repeat_commands() {
     );
     assert!(
         stdout.contains("nextCommand=asp rust query --selector languages/rust-harness/src/lib.rs:")
-            && stdout.contains(" --code ."),
+            && stdout.contains(" --workspace . --code"),
         "{stdout}"
     );
     assert!(
         stdout.contains("S1=>asp rust query --selector languages/rust-harness/src/lib.rs:")
-            && stdout.contains(" --code ."),
+            && stdout.contains(" --workspace . --code"),
         "{stdout}"
     );
     assert!(!marker.exists(), "search pipe should not spawn provider");
@@ -371,13 +371,14 @@ fn search_pipe_plan_uses_scope_root_for_provider_local_selectors() {
     );
     assert!(
         stdout.contains(
-            "nextCommand=asp rust query --selector src/lib.rs:1:4 --code languages/rust-harness"
+            "nextCommand=asp rust query --selector src/lib.rs:1:4 --workspace languages/rust-harness --code"
         ),
         "{stdout}"
     );
     assert!(
-        stdout
-            .contains("S1=>asp rust query --selector src/lib.rs:1:4 --code languages/rust-harness"),
+        stdout.contains(
+            "S1=>asp rust query --selector src/lib.rs:1:4 --workspace languages/rust-harness --code"
+        ),
         "{stdout}"
     );
     for debug_prefix in [
@@ -490,7 +491,7 @@ fn search_pipe_graph_turbo_request_keeps_late_query_token_candidates() {
     let bin_dir = root.join(".bin");
     std::fs::create_dir_all(root.join("src")).expect("create src");
     let mut source = String::new();
-    for index in 0..80 {
+    for index in 0..300 {
         source.push_str(&format!(
             "fn early_vec_{index}() {{ let _ = Vec::<u8>::new(); }}\n"
         ));
@@ -502,7 +503,7 @@ fn search_pipe_graph_turbo_request_keeps_late_query_token_candidates() {
     write_stdout_stderr_provider(
         &bin_dir,
         "rs-harness",
-        r#"{"nodes":[{"id":"field:src/lib.rs-scalars-84","kind":"field","role":"struct-field","value":"scalars: Vec<Scalar>","action":"code","path":"src/lib.rs","ownerPath":"src/lib.rs","symbol":"scalars","startLine":84,"endLine":84,"locator":"src/lib.rs:84:84","matchText":"Snapshot::scalars: Vec<Scalar>","fields":{"containerName":"Snapshot","fieldName":"scalars","typeName":"Vec","typeValue":"Vec<Scalar>","typeArgs":"Scalar","collectionKind":"Vec"}},{"id":"type:src/lib.rs-scalars-vec-84","kind":"type","role":"field-type","value":"Vec<Scalar>","action":"evidence","path":"src/lib.rs","ownerPath":"src/lib.rs","symbol":"Vec","startLine":84,"endLine":84,"locator":"src/lib.rs:84:84","fields":{"fieldName":"scalars","typeName":"Vec","typeValue":"Vec<Scalar>","typeArgs":"Scalar","collectionKind":"Vec"}},{"id":"collection:vec","kind":"collection","role":"family","value":"Vec","action":"evidence","symbol":"Vec","fields":{"collectionKind":"Vec"}}],"edges":[{"source":"field:src/lib.rs-scalars-84","target":"type:src/lib.rs-scalars-vec-84","relation":"has_type"},{"source":"field:src/lib.rs-scalars-84","target":"collection:vec","relation":"collection_of"}]}"#,
+        r#"{"nodes":[{"id":"field:src/lib.rs-scalars-304","kind":"field","role":"struct-field","value":"scalars: Vec<Scalar>","action":"code","path":"src/lib.rs","ownerPath":"src/lib.rs","symbol":"scalars","startLine":304,"endLine":304,"locator":"src/lib.rs:304:304","matchText":"Snapshot::scalars: Vec<Scalar>","fields":{"containerName":"Snapshot","fieldName":"scalars","typeName":"Vec","typeValue":"Vec<Scalar>","typeArgs":"Scalar","collectionKind":"Vec"}},{"id":"type:src/lib.rs-scalars-vec-304","kind":"type","role":"field-type","value":"Vec<Scalar>","action":"evidence","path":"src/lib.rs","ownerPath":"src/lib.rs","symbol":"Vec","startLine":304,"endLine":304,"locator":"src/lib.rs:304:304","fields":{"fieldName":"scalars","typeName":"Vec","typeValue":"Vec<Scalar>","typeArgs":"Scalar","collectionKind":"Vec"}},{"id":"collection:vec","kind":"collection","role":"family","value":"Vec","action":"evidence","symbol":"Vec","fields":{"collectionKind":"Vec"}}],"edges":[{"source":"field:src/lib.rs-scalars-304","target":"type:src/lib.rs-scalars-vec-304","relation":"has_type"},{"source":"field:src/lib.rs-scalars-304","target":"collection:vec","relation":"collection_of"}]}"#,
         "",
     );
     write_activation(&root, &[provider("rust", Vec::new())]);

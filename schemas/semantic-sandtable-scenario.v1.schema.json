@@ -875,7 +875,7 @@
           "minLength": 1
         },
         "outputFormat": {
-          "enum": ["text", "json", "stream-json"]
+          "enum": ["text", "json", "stream-json", "summary-json"]
         },
         "includePartialMessages": {
           "type": "boolean"
@@ -984,6 +984,9 @@
         "pipeFlow": {
           "$ref": "#/$defs/pipeFlowExpectation"
         },
+        "agentAnswer": {
+          "$ref": "#/$defs/agentAnswerExpectation"
+        },
         "maxStdoutLinesWarn": {
           "type": "integer",
           "minimum": 1
@@ -999,6 +1002,48 @@
         "maxElapsedMsWarn": {
           "type": "integer",
           "minimum": 1
+        },
+        "maxAgentInputTokensWarn": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maxAgentOutputTokensWarn": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maxAgentCacheReadInputTokensWarn": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maxAgentTotalTokensWarn": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maxAgentCostUsdWarn": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      }
+    },
+    "agentAnswerExpectation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "required": {
+          "type": "boolean"
+        },
+        "afterLastToolUse": {
+          "type": "boolean"
+        },
+        "minTextBytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "contains": {
+          "$ref": "#/$defs/stringList"
+        },
+        "matches": {
+          "$ref": "#/$defs/stringList"
         }
       }
     },

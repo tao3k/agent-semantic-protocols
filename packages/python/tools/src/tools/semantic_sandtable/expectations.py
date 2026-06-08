@@ -32,6 +32,7 @@ def validate_step(
     validate_stdout_json(expect, result, stdout, repo_root)
     validate_guide_quality(expect, result, stdout)
     _validate_pipe_flow_expectation(expect, result)
+    _validate_agent_answer_expectation(expect, result)
     _validate_line_protocol_expectation(expect, result, stdout)
     _validate_budget_warnings(expect, result)
 
@@ -117,6 +118,37 @@ def _validate_pipe_flow_expectation(expect: dict[str, Any], result: StepResult) 
             result.errors.append(f"pipeFlow contains forbidden stage {stage!r}")
 
 
+def _validate_agent_answer_expectation(
+    expect: dict[str, Any], result: StepResult
+) -> None:
+    answer_expect = dict_value(expect.get("agentAnswer"))
+    if not answer_expect:
+        return
+    answer = dict_value(result.observations.get("finalAnswer"))
+    if not answer:
+        result.errors.append("agentAnswer missing from agent observations")
+        return
+    if bool(answer_expect.get("required", True)) and not bool(answer.get("present")):
+        result.errors.append("agentAnswer missing explicit final assistant answer")
+    if bool(answer_expect.get("afterLastToolUse", True)) and not bool(
+        answer.get("afterLastToolUse")
+    ):
+        result.errors.append("agentAnswer was not after the last tool use")
+    min_text_bytes = optional_int(answer_expect.get("minTextBytes"))
+    text_bytes = optional_int(answer.get("textBytes")) or 0
+    if min_text_bytes is not None and text_bytes < min_text_bytes:
+        result.errors.append(
+            f"agentAnswer textBytes={text_bytes} below {min_text_bytes}"
+        )
+    preview = str(answer.get("textPreview", ""))
+    for needle in string_list(answer_expect.get("contains")):
+        if needle not in preview:
+            result.errors.append(f"agentAnswer missing {needle!r}")
+    for pattern in string_list(answer_expect.get("matches")):
+        if re.search(pattern, preview, flags=re.MULTILINE) is None:
+            result.errors.append(f"agentAnswer regex missed {pattern!r}")
+
+
 def _validate_pipe_flow_max(
     pipe_expect: dict[str, Any],
     pipe_flow: dict[str, Any],
@@ -142,7 +174,11 @@ def _validate_pipe_flow_max(
     for expect_key, flow_key in fields.items():
         maximum = optional_int(pipe_expect.get(expect_key))
         observed = optional_int(pipe_flow.get(flow_key))
-        if maximum is not None and observed is None and flow_key == "aspCommandOutputBytes":
+        if (
+            maximum is not None
+            and observed is None
+            and flow_key == "aspCommandOutputBytes"
+        ):
             result.errors.append(f"pipeFlow {flow_key} missing for {expect_key}")
             continue
         value = observed or 0
@@ -311,9 +347,7 @@ def _pipe_flow_stage_present(stage: str, pipe_flow: dict[str, Any]) -> bool:
         same_owner_scans = optional_int(pipe_flow.get("readLoopSameOwnerScans")) or 0
         return duplicate_selectors + adjacent_windows + same_owner_scans > 0
     if stage == "read-loop-memory-risk":
-        return (
-            optional_int(pipe_flow.get("readLoopMemorySuppressibleReads")) or 0
-        ) > 0
+        return (optional_int(pipe_flow.get("readLoopMemorySuppressibleReads")) or 0) > 0
     if stage == "failure-loop-memory":
         return (optional_int(pipe_flow.get("failureLoopMemoryEntryCount")) or 0) > 0
     return False
@@ -348,6 +382,46 @@ def _validate_budget_warnings(expect: dict[str, Any], result: StepResult) -> Non
         "maxElapsedMsWarn",
         expect.get("maxElapsedMsWarn"),
     )
+    _validate_agent_token_budget_warnings(expect, result)
+
+
+def _validate_agent_token_budget_warnings(
+    expect: dict[str, Any],
+    result: StepResult,
+) -> None:
+    token_cost = dict_value(result.observations.get("tokenCost"))
+    for threshold_name, field_name in {
+        "maxAgentInputTokensWarn": "inputTokens",
+        "maxAgentOutputTokensWarn": "outputTokens",
+        "maxAgentCacheReadInputTokensWarn": "cacheReadInputTokens",
+        "maxAgentTotalTokensWarn": "totalTokens",
+    }.items():
+        limit = optional_int(expect.get(threshold_name))
+        if limit is None:
+            continue
+        observed = optional_int(token_cost.get(field_name))
+        if observed is None:
+            result.warnings.append(f"tokenCost {field_name} missing for {threshold_name}")
+            continue
+        warn_if_over(
+            result,
+            f"tokenCost.{field_name}",
+            observed,
+            threshold_name,
+            limit,
+        )
+
+    cost_limit = optional_float(expect.get("maxAgentCostUsdWarn"))
+    if cost_limit is None:
+        return
+    observed_cost = optional_float(token_cost.get("costUsd"))
+    if observed_cost is None:
+        result.warnings.append("tokenCost costUsd missing for maxAgentCostUsdWarn")
+    elif observed_cost > cost_limit:
+        result.warnings.append(
+            f"tokenCost.costUsd={observed_cost:.6f} exceeds "
+            f"maxAgentCostUsdWarn={cost_limit:.6f}"
+        )
 
 
 def capture_values(

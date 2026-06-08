@@ -226,7 +226,7 @@
           "sameOwnerScanCount": 0,
           "relationChannelCount": 9,
           "pprIterations": 100,
-          "pprResidual": 0.000000174953,
+          "pprResidual": 1.74953e-7,
           "stdoutBytesToFrontier": 5017,
           "commandsToFirstUsefulLocator": 1,
           "commandsToValidation": 3
@@ -366,7 +366,7 @@
           "sameOwnerScanCount": 0,
           "relationChannelCount": 9,
           "pprIterations": 65,
-          "pprResidual": 9.053049976337491E-10,
+          "pprResidual": 9.053049976337491e-10,
           "stdoutBytesToFrontier": 2845,
           "commandsToFirstUsefulLocator": 1,
           "commandsToValidation": 3
@@ -521,14 +521,14 @@
         "metrics": {
           "frontierReturnedCount": 10,
           "frontierFollowedCount": 0,
-          "frontierFollowRate": 0.0,
+          "frontierFollowRate": 0,
           "codeActuallyReadCount": 0,
           "rawReadFallbackCount": 0,
           "duplicateSelectorCount": 0,
           "sameOwnerScanCount": 0,
           "relationChannelCount": 9,
           "pprIterations": 100,
-          "pprResidual": 1.7495347254259386E-7,
+          "pprResidual": 1.7495347254259386e-7,
           "stdoutBytesToFrontier": 5327,
           "commandsToFirstUsefulLocator": null,
           "commandsToValidation": null
@@ -737,13 +737,491 @@
           "sameOwnerScanCount": 0,
           "relationChannelCount": 9,
           "pprIterations": 100,
-          "pprResidual": 1.7495347254259386E-7,
+          "pprResidual": 1.7495347254259386e-7,
           "stdoutBytesToFrontier": 5460,
           "commandsToFirstUsefulLocator": 1,
           "commandsToValidation": 3
         },
         "fields": {
           "captureSource": "asp fast search"
+        }
+      }
+    },
+    {
+      "fixtureId": "agent-semantic-protocols.asp-search-sandtable-summary-followed-runtime",
+      "description": "Public ASP search runtime receipt capture for sandtable-summary benchmark-report context metrics, exact provider read, and focused sandtable-summary validation.",
+      "receipt": {
+        "schemaId": "agent.semantic-protocols.semantic-fact-frontier-receipt",
+        "schemaVersion": "1",
+        "protocolId": "agent.semantic-protocols.semantic-fact-frontier-feedback",
+        "protocolVersion": "1",
+        "receiptId": "asp.search-frontier.python-sandtable-summary-benchmark-report-contextmetrics-report-scenario",
+        "receiptKind": "frontier",
+        "taskFingerprint": "task:asp-fast-search:python-sandtable-summary-benchmark-report-contextmetrics-report-scenario",
+        "commandFingerprint": "command:asp-fast-search:python-sandtable-summary-benchmark-report-contextmetrics-report-scenario",
+        "selector": "packages/python/asp_graph_turbo/src/asp_graph_turbo/sandtable_summary_cli.py:100:120",
+        "owner": "packages/python/asp_graph_turbo/src/asp_graph_turbo/sandtable_summary_cli.py",
+        "symbol": "contextmetrics",
+        "range": {
+          "path": "packages/python/asp_graph_turbo/src/asp_graph_turbo/sandtable_summary_cli.py",
+          "startLine": 100,
+          "endLine": 120
+        },
+        "frontierReturned": [
+          {
+            "nodeId": "query:sandtable-summary-benchmark-report-contextmetrics-report-scenario",
+            "action": "fzf",
+            "selector": null,
+            "owner": null,
+            "symbol": "sandtable-summary benchmark-report contextMetrics report-scenario",
+            "range": null
+          },
+          {
+            "nodeId": "item:packages/python/asp_graph_turbo/src/asp_graph_turbo/sandtable_summary_cli.py-contextmetrics-108",
+            "action": "syntax",
+            "selector": "packages/python/asp_graph_turbo/src/asp_graph_turbo/sandtable_summary_cli.py:108:108",
+            "owner": "packages/python/asp_graph_turbo/src/asp_graph_turbo/sandtable_summary_cli.py",
+            "symbol": "contextmetrics",
+            "range": {
+              "path": "packages/python/asp_graph_turbo/src/asp_graph_turbo/sandtable_summary_cli.py",
+              "startLine": 108,
+              "endLine": 108
+            }
+          },
+          {
+            "nodeId": "hot:tests/unit/test_asp_graph_turbo_sandtable_summary_cli.py-report-scenario-143",
+            "action": "code",
+            "selector": "tests/unit/test_asp_graph_turbo_sandtable_summary_cli.py:135:155",
+            "owner": "tests/unit/test_asp_graph_turbo_sandtable_summary_cli.py",
+            "symbol": "report-scenario",
+            "range": {
+              "path": "tests/unit/test_asp_graph_turbo_sandtable_summary_cli.py",
+              "startLine": 135,
+              "endLine": 155
+            }
+          },
+          {
+            "nodeId": "item:tests/unit/test_semantic_fact_frontier_benchmark_report_schema.py-benchmark-report-19",
+            "action": "syntax",
+            "selector": "tests/unit/test_semantic_fact_frontier_benchmark_report_schema.py:19:19",
+            "owner": "tests/unit/test_semantic_fact_frontier_benchmark_report_schema.py",
+            "symbol": "benchmark-report",
+            "range": {
+              "path": "tests/unit/test_semantic_fact_frontier_benchmark_report_schema.py",
+              "startLine": 19,
+              "endLine": 19
+            }
+          },
+          {
+            "nodeId": "item:packages/python/asp_graph_turbo/src/asp_graph_turbo/graph_turbo_cli.py-sandtable-summary-41",
+            "action": "syntax",
+            "selector": "packages/python/asp_graph_turbo/src/asp_graph_turbo/graph_turbo_cli.py:41:41",
+            "owner": "packages/python/asp_graph_turbo/src/asp_graph_turbo/graph_turbo_cli.py",
+            "symbol": "sandtable-summary",
+            "range": {
+              "path": "packages/python/asp_graph_turbo/src/asp_graph_turbo/graph_turbo_cli.py",
+              "startLine": 41,
+              "endLine": 41
+            }
+          },
+          {
+            "nodeId": "item:tests/unit/test_semantic_fact_frontier_benchmark_report_schema.py-contextmetrics-134",
+            "action": "syntax",
+            "selector": "tests/unit/test_semantic_fact_frontier_benchmark_report_schema.py:134:134",
+            "owner": "tests/unit/test_semantic_fact_frontier_benchmark_report_schema.py",
+            "symbol": "contextmetrics",
+            "range": {
+              "path": "tests/unit/test_semantic_fact_frontier_benchmark_report_schema.py",
+              "startLine": 134,
+              "endLine": 134
+            }
+          },
+          {
+            "nodeId": "item:tests/unit/test_semantic_fact_frontier_benchmark_report_schema.py-contextmetrics-138",
+            "action": "syntax",
+            "selector": "tests/unit/test_semantic_fact_frontier_benchmark_report_schema.py:138:138",
+            "owner": "tests/unit/test_semantic_fact_frontier_benchmark_report_schema.py",
+            "symbol": "contextmetrics",
+            "range": {
+              "path": "tests/unit/test_semantic_fact_frontier_benchmark_report_schema.py",
+              "startLine": 138,
+              "endLine": 138
+            }
+          },
+          {
+            "nodeId": "item:tests/unit/test_semantic_fact_frontier_benchmark_report_schema.py-contextmetrics-213",
+            "action": "syntax",
+            "selector": "tests/unit/test_semantic_fact_frontier_benchmark_report_schema.py:213:213",
+            "owner": "tests/unit/test_semantic_fact_frontier_benchmark_report_schema.py",
+            "symbol": "contextmetrics",
+            "range": {
+              "path": "tests/unit/test_semantic_fact_frontier_benchmark_report_schema.py",
+              "startLine": 213,
+              "endLine": 213
+            }
+          },
+          {
+            "nodeId": "hot:packages/python/asp_graph_turbo/src/asp_graph_turbo/sandtable_summary_cli.py-contextmetrics-108",
+            "action": "code",
+            "selector": "packages/python/asp_graph_turbo/src/asp_graph_turbo/sandtable_summary_cli.py:100:120",
+            "owner": "packages/python/asp_graph_turbo/src/asp_graph_turbo/sandtable_summary_cli.py",
+            "symbol": "contextmetrics",
+            "range": {
+              "path": "packages/python/asp_graph_turbo/src/asp_graph_turbo/sandtable_summary_cli.py",
+              "startLine": 100,
+              "endLine": 120
+            }
+          },
+          {
+            "nodeId": "hot:tests/unit/test_semantic_fact_frontier_benchmark_report_schema.py-contextmetrics-134",
+            "action": "code",
+            "selector": "tests/unit/test_semantic_fact_frontier_benchmark_report_schema.py:126:146",
+            "owner": "tests/unit/test_semantic_fact_frontier_benchmark_report_schema.py",
+            "symbol": "contextmetrics",
+            "range": {
+              "path": "tests/unit/test_semantic_fact_frontier_benchmark_report_schema.py",
+              "startLine": 126,
+              "endLine": 146
+            }
+          }
+        ],
+        "frontierFollowed": [
+          {
+            "nodeId": "hot:packages/python/asp_graph_turbo/src/asp_graph_turbo/sandtable_summary_cli.py-contextmetrics-108",
+            "action": "code",
+            "selector": "packages/python/asp_graph_turbo/src/asp_graph_turbo/sandtable_summary_cli.py:100:120",
+            "owner": "packages/python/asp_graph_turbo/src/asp_graph_turbo/sandtable_summary_cli.py",
+            "symbol": "contextmetrics",
+            "range": {
+              "path": "packages/python/asp_graph_turbo/src/asp_graph_turbo/sandtable_summary_cli.py",
+              "startLine": 100,
+              "endLine": 120
+            }
+          }
+        ],
+        "codeActuallyRead": [
+          {
+            "selector": "packages/python/asp_graph_turbo/src/asp_graph_turbo/sandtable_summary_cli.py:100:120",
+            "readKind": "exact-selector",
+            "owner": "packages/python/asp_graph_turbo/src/asp_graph_turbo/sandtable_summary_cli.py",
+            "range": {
+              "path": "packages/python/asp_graph_turbo/src/asp_graph_turbo/sandtable_summary_cli.py",
+              "startLine": 100,
+              "endLine": 120
+            },
+            "fromFrontier": true
+          }
+        ],
+        "testCommand": {
+          "argv": [
+            "uv",
+            "run",
+            "--project",
+            "packages/python/asp_graph_turbo",
+            "--frozen",
+            "pytest",
+            "-q",
+            "-c",
+            "/dev/null",
+            "-o",
+            "cache_dir=/Users/guangtao/ghq/github.com/tao3k/agent-semantic-protocols/.pytest_cache",
+            "tests/unit/test_asp_graph_turbo_sandtable_summary_cli.py"
+          ]
+        },
+        "testResult": {
+          "status": "passed",
+          "summary": "6 passed in 2.91s",
+          "exitCode": 0
+        },
+        "editTouchedOwner": [],
+        "outputFingerprint": "sha256:41fd54ccbc2de44c96516d21c7d389f90c5b865ebb3ba31047f80ab8f759f417",
+        "metrics": {
+          "frontierReturnedCount": 10,
+          "frontierFollowedCount": 1,
+          "frontierFollowRate": 0.1,
+          "codeActuallyReadCount": 1,
+          "rawReadFallbackCount": 0,
+          "duplicateSelectorCount": 0,
+          "sameOwnerScanCount": 0,
+          "relationChannelCount": 9,
+          "pprIterations": 100,
+          "pprResidual": 1.7495347243677573e-7,
+          "stdoutBytesToFrontier": 5356,
+          "commandsToFirstUsefulLocator": 1,
+          "commandsToValidation": 3
+        },
+        "fields": {
+          "captureSource": "asp fast search"
+        }
+      }
+    },
+    {
+      "fixtureId": "agent-semantic-protocols.asp-search-relation-weights-followed-runtime",
+      "description": "Public ASP search runtime receipt capture for relation-weight and profileCompatibility query, exact backend hot-range read, and focused rank CLI validation after hot companion ranking preserves the gold frontier.",
+      "receipt": {
+        "codeActuallyRead": [
+          {
+            "fromFrontier": true,
+            "owner": "packages/python/asp_graph_turbo/src/asp_graph_turbo/backend.py",
+            "range": {
+              "endLine": 47,
+              "path": "packages/python/asp_graph_turbo/src/asp_graph_turbo/backend.py",
+              "startLine": 27
+            },
+            "readKind": "exact-selector",
+            "selector": "packages/python/asp_graph_turbo/src/asp_graph_turbo/backend.py:27:47"
+          }
+        ],
+        "commandFingerprint": "command:asp-fast-search:python-relation-weights-typed-transition-masks-profilecompatibility",
+        "editTouchedOwner": [],
+        "fields": {
+          "captureSource": "asp fast search"
+        },
+        "frontierActions": [
+          {
+            "actionId": "S1",
+            "actionKind": "selector",
+            "next": "query-selector",
+            "owner": "packages/python/asp_graph_turbo/src/asp_graph_turbo/backend.py",
+            "rank": 1,
+            "selector": "packages/python/asp_graph_turbo/src/asp_graph_turbo/backend.py:27:47",
+            "sourceNodeId": "hot:packages/python/asp_graph_turbo/src/asp_graph_turbo/backend.py-weights-35",
+            "symbol": "weights"
+          },
+          {
+            "actionId": "R1",
+            "actionKind": "reasoning",
+            "next": "search-reasoning",
+            "owner": "packages/python/asp_graph_turbo/src/asp_graph_turbo/backend.py",
+            "rank": 1,
+            "selector": null,
+            "sourceNodeId": "hot:packages/python/asp_graph_turbo/src/asp_graph_turbo/backend.py-weights-35",
+            "symbol": null
+          },
+          {
+            "actionId": "S2",
+            "actionKind": "selector",
+            "next": "query-selector",
+            "owner": "packages/python/asp_graph_turbo/src/asp_graph_turbo/__init__.py",
+            "rank": 2,
+            "selector": "packages/python/asp_graph_turbo/src/asp_graph_turbo/__init__.py:8:28",
+            "sourceNodeId": "hot:packages/python/asp_graph_turbo/src/asp_graph_turbo/__init__.py-profilecompatibility-16",
+            "symbol": "profilecompatibility"
+          },
+          {
+            "actionId": "R2",
+            "actionKind": "reasoning",
+            "next": "search-reasoning",
+            "owner": "packages/python/asp_graph_turbo/src/asp_graph_turbo/__init__.py",
+            "rank": 2,
+            "selector": null,
+            "sourceNodeId": "hot:packages/python/asp_graph_turbo/src/asp_graph_turbo/__init__.py-profilecompatibility-16",
+            "symbol": null
+          },
+          {
+            "actionId": "S3",
+            "actionKind": "selector",
+            "next": "query-selector",
+            "owner": "packages/python/asp_graph_turbo/src/asp_graph_turbo/algorithm_evidence.py",
+            "rank": 3,
+            "selector": "packages/python/asp_graph_turbo/src/asp_graph_turbo/algorithm_evidence.py:80:100",
+            "sourceNodeId": "hot:packages/python/asp_graph_turbo/src/asp_graph_turbo/algorithm_evidence.py-transition-88",
+            "symbol": "transition"
+          },
+          {
+            "actionId": "R3",
+            "actionKind": "reasoning",
+            "next": "search-reasoning",
+            "owner": "packages/python/asp_graph_turbo/src/asp_graph_turbo/algorithm_evidence.py",
+            "rank": 3,
+            "selector": null,
+            "sourceNodeId": "hot:packages/python/asp_graph_turbo/src/asp_graph_turbo/algorithm_evidence.py-transition-88",
+            "symbol": null
+          }
+        ],
+        "frontierFollowed": [
+          {
+            "action": "code",
+            "nodeId": "hot:packages/python/asp_graph_turbo/src/asp_graph_turbo/backend.py-weights-35",
+            "owner": "packages/python/asp_graph_turbo/src/asp_graph_turbo/backend.py",
+            "range": {
+              "endLine": 47,
+              "path": "packages/python/asp_graph_turbo/src/asp_graph_turbo/backend.py",
+              "startLine": 27
+            },
+            "selector": "packages/python/asp_graph_turbo/src/asp_graph_turbo/backend.py:27:47",
+            "symbol": "weights"
+          }
+        ],
+        "frontierReturned": [
+          {
+            "action": "fzf",
+            "nodeId": "query:relation-weights-typed-transition-masks-profilecompatibility",
+            "owner": null,
+            "range": null,
+            "selector": null,
+            "symbol": "relation weights typed transition masks profileCompatibility"
+          },
+          {
+            "action": "syntax",
+            "nodeId": "item:packages/python/asp_graph_turbo/src/asp_graph_turbo/backend.py-weights-35",
+            "owner": "packages/python/asp_graph_turbo/src/asp_graph_turbo/backend.py",
+            "range": {
+              "endLine": 35,
+              "path": "packages/python/asp_graph_turbo/src/asp_graph_turbo/backend.py",
+              "startLine": 35
+            },
+            "selector": "packages/python/asp_graph_turbo/src/asp_graph_turbo/backend.py:35:35",
+            "symbol": "weights"
+          },
+          {
+            "action": "code",
+            "nodeId": "hot:packages/python/asp_graph_turbo/src/asp_graph_turbo/backend.py-weights-35",
+            "owner": "packages/python/asp_graph_turbo/src/asp_graph_turbo/backend.py",
+            "range": {
+              "endLine": 47,
+              "path": "packages/python/asp_graph_turbo/src/asp_graph_turbo/backend.py",
+              "startLine": 27
+            },
+            "selector": "packages/python/asp_graph_turbo/src/asp_graph_turbo/backend.py:27:47",
+            "symbol": "weights"
+          },
+          {
+            "action": "syntax",
+            "nodeId": "item:packages/python/asp_graph_turbo/src/asp_graph_turbo/__init__.py-profilecompatibility-16",
+            "owner": "packages/python/asp_graph_turbo/src/asp_graph_turbo/__init__.py",
+            "range": {
+              "endLine": 16,
+              "path": "packages/python/asp_graph_turbo/src/asp_graph_turbo/__init__.py",
+              "startLine": 16
+            },
+            "selector": "packages/python/asp_graph_turbo/src/asp_graph_turbo/__init__.py:16:16",
+            "symbol": "profilecompatibility"
+          },
+          {
+            "action": "syntax",
+            "nodeId": "item:packages/python/asp_graph_turbo/src/asp_graph_turbo/algorithm_evidence.py-transition-88",
+            "owner": "packages/python/asp_graph_turbo/src/asp_graph_turbo/algorithm_evidence.py",
+            "range": {
+              "endLine": 88,
+              "path": "packages/python/asp_graph_turbo/src/asp_graph_turbo/algorithm_evidence.py",
+              "startLine": 88
+            },
+            "selector": "packages/python/asp_graph_turbo/src/asp_graph_turbo/algorithm_evidence.py:88:88",
+            "symbol": "transition"
+          },
+          {
+            "action": "code",
+            "nodeId": "hot:packages/python/asp_graph_turbo/src/asp_graph_turbo/__init__.py-profilecompatibility-16",
+            "owner": "packages/python/asp_graph_turbo/src/asp_graph_turbo/__init__.py",
+            "range": {
+              "endLine": 28,
+              "path": "packages/python/asp_graph_turbo/src/asp_graph_turbo/__init__.py",
+              "startLine": 8
+            },
+            "selector": "packages/python/asp_graph_turbo/src/asp_graph_turbo/__init__.py:8:28",
+            "symbol": "profilecompatibility"
+          },
+          {
+            "action": "syntax",
+            "nodeId": "item:languages/python-lang-project-harness/src/python_lang_project_harness/_agent_snapshot_tree.py-relation-295",
+            "owner": "languages/python-lang-project-harness/src/python_lang_project_harness/_agent_snapshot_tree.py",
+            "range": {
+              "endLine": 295,
+              "path": "languages/python-lang-project-harness/src/python_lang_project_harness/_agent_snapshot_tree.py",
+              "startLine": 295
+            },
+            "selector": "languages/python-lang-project-harness/src/python_lang_project_harness/_agent_snapshot_tree.py:295:295",
+            "symbol": "relation"
+          },
+          {
+            "action": "syntax",
+            "nodeId": "item:languages/python-lang-project-harness/src/python_lang_parser/_class_shape.py-typed-43",
+            "owner": "languages/python-lang-project-harness/src/python_lang_parser/_class_shape.py",
+            "range": {
+              "endLine": 43,
+              "path": "languages/python-lang-project-harness/src/python_lang_parser/_class_shape.py",
+              "startLine": 43
+            },
+            "selector": "languages/python-lang-project-harness/src/python_lang_parser/_class_shape.py:43:43",
+            "symbol": "typed"
+          },
+          {
+            "action": "code",
+            "nodeId": "hot:packages/python/asp_graph_turbo/src/asp_graph_turbo/algorithm_evidence.py-transition-88",
+            "owner": "packages/python/asp_graph_turbo/src/asp_graph_turbo/algorithm_evidence.py",
+            "range": {
+              "endLine": 100,
+              "path": "packages/python/asp_graph_turbo/src/asp_graph_turbo/algorithm_evidence.py",
+              "startLine": 80
+            },
+            "selector": "packages/python/asp_graph_turbo/src/asp_graph_turbo/algorithm_evidence.py:80:100",
+            "symbol": "transition"
+          },
+          {
+            "action": "syntax",
+            "nodeId": "item:packages/python/asp_graph_turbo/src/asp_graph_turbo/compatibility.py-profilecompatibility-13",
+            "owner": "packages/python/asp_graph_turbo/src/asp_graph_turbo/compatibility.py",
+            "range": {
+              "endLine": 13,
+              "path": "packages/python/asp_graph_turbo/src/asp_graph_turbo/compatibility.py",
+              "startLine": 13
+            },
+            "selector": "packages/python/asp_graph_turbo/src/asp_graph_turbo/compatibility.py:13:13",
+            "symbol": "profilecompatibility"
+          }
+        ],
+        "metrics": {
+          "codeActuallyReadCount": 1,
+          "commandsToFirstUsefulLocator": 1,
+          "commandsToValidation": 3,
+          "duplicateSelectorCount": 0,
+          "frontierFollowRate": 0.1,
+          "frontierFollowedCount": 1,
+          "frontierReturnedCount": 10,
+          "pprIterations": 100,
+          "pprResidual": 1.7495347254259386e-7,
+          "rawReadFallbackCount": 0,
+          "relationChannelCount": 9,
+          "sameOwnerScanCount": 0,
+          "stdoutBytesToFrontier": 7078
+        },
+        "outputFingerprint": "sha256:9ebb0a75607b361f3348b2c8dec2a319aa8c8ab0acde8e07c442ef2de1fd74a7",
+        "owner": "packages/python/asp_graph_turbo/src/asp_graph_turbo/backend.py",
+        "protocolId": "agent.semantic-protocols.semantic-fact-frontier-feedback",
+        "protocolVersion": "1",
+        "range": {
+          "endLine": 47,
+          "path": "packages/python/asp_graph_turbo/src/asp_graph_turbo/backend.py",
+          "startLine": 27
+        },
+        "receiptId": "asp.search-frontier.python-relation-weights-typed-transition-masks-profilecompatibility",
+        "receiptKind": "frontier",
+        "schemaId": "agent.semantic-protocols.semantic-fact-frontier-receipt",
+        "schemaVersion": "1",
+        "selector": "packages/python/asp_graph_turbo/src/asp_graph_turbo/backend.py:27:47",
+        "symbol": "weights",
+        "taskFingerprint": "task:asp-fast-search:python-relation-weights-typed-transition-masks-profilecompatibility",
+        "testCommand": {
+          "argv": [
+            "uv",
+            "run",
+            "--project",
+            "packages/python/asp_graph_turbo",
+            "--frozen",
+            "pytest",
+            "-q",
+            "-c",
+            "/dev/null",
+            "-o",
+            "cache_dir=/Users/guangtao/ghq/github.com/tao3k/agent-semantic-protocols/.pytest_cache",
+            "tests/unit/test_asp_graph_turbo_rank_cli.py"
+          ]
+        },
+        "testResult": {
+          "exitCode": 0,
+          "status": "passed",
+          "summary": "4 passed in 1.17s"
         }
       }
     }

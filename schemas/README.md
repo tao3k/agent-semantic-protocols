@@ -71,17 +71,22 @@ frontier was returned, followed, read, tested, or edited. Its top-level fields
 stay present with `null` or empty-array values when a receipt kind does not use
 that field, so benchmark conversion can distinguish not-applicable from
 not-recorded.
-`semantic-fact-frontier-receipt.fixtures.v1.json` keeps the first real-project
-receipt fixture for this shape, covering a graph-turbo frontier, one exact
-frontier read, and the focused receipt schema test.
+`semantic-fact-frontier-receipt.fixtures.v1.json` keeps the real-project
+receipt catalog for this shape, covering task-session, graph-turbo runtime,
+ASP runtime frontier-only, and ASP runtime followed/read/test captures.
 `semantic-fact-frontier-benchmark-report.v1.schema.json` owns the offline
 comparison packet that joins receipt metrics, graph-turbo benchmark metrics,
 gold context, and derived ContextBench-style scoring metrics before live
 sandtable scoring. Its fixture catalog,
-`semantic-fact-frontier-benchmark-report.fixtures.v1.json`, fixes the current
-task-session, graph-turbo runtime, ASP runtime frontier-only, and ASP runtime
-followed/read/test scenarios so calibration decisions can distinguish frontier
-emission from actual frontier use.
+`semantic-fact-frontier-benchmark-report.fixtures.v1.json`, currently fixes
+six scenarios across those receipt kinds, including three calibration-ready ASP
+runtime followed/read/test rows and a relation-weight hot-companion case with
+`goldFrontierBestRank` plus `goldSelectorActionRank`, so calibration decisions
+can distinguish frontier emission, actual frontier use, selector action order,
+and missed or recovered gold context. Its report summary may also carry
+`weightCalibrationDecision`; the current fixture defers relation-weight changes
+until a new calibration-ready runtime receipt shows a frontier miss or missing
+gold selector action.
 
 `semantic-compact-graph-render.v1.schema.json` is the shared prompt-facing
 render template for compact graph search output. It owns the view-native

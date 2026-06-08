@@ -11,7 +11,6 @@ from .pagerank import (
     GraphTurboPprResult,
     graph_turbo_typed_personalized_pagerank_result,
 )
-from .policy import node_kind_bonus
 from .query_weights import query_node_match_bonus, query_token_weights
 from .receipt import receipt_score_adjustments
 
@@ -76,7 +75,7 @@ def score_nodes(
         node_id: graph.nodes[node_id].weight
         + (float(profile.max_depth - depth + 1) * 0.2)
         + (pagerank.get(node_id, 0.0) / max_pagerank if max_pagerank > 0.0 else 0.0)
-        + node_kind_bonus(profile.name, graph.nodes[node_id].kind)
+        + profile.kind_bonus.get(graph.nodes[node_id].kind, 0.0)
         + query_node_match_bonus(
             profile_name=profile.name,
             token_weights=token_weights,

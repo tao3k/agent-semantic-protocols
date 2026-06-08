@@ -365,9 +365,9 @@ fn render_next_action_lines(
     let Some(action) = actions.first() else {
         return String::new();
     };
-    let root_arg = action_root_arg(action, project_root, locator_root, scopes);
+    let workspace_arg = action_root_arg(action, project_root, locator_root, scopes);
     let command = format!(
-        "asp {language_id} query --selector {selector} --code {root_arg}",
+        "asp {language_id} query --selector {selector} --workspace {workspace_arg} --code",
         selector = shell_arg(&action.selector),
     );
     format!(
@@ -391,9 +391,9 @@ fn render_concrete_pipe_commands(
         format!("pipe=>asp {language_id} search pipe {quoted_query} --view seeds {scope_arg}"),
     ];
     if let Some(primary) = actions.first() {
-        let root_arg = action_root_arg(primary, project_root, locator_root, scopes);
+        let workspace_arg = action_root_arg(primary, project_root, locator_root, scopes);
         commands.push(format!(
-            "S{index}=>asp {language_id} query --selector {selector} --code {root_arg}",
+            "S{index}=>asp {language_id} query --selector {selector} --workspace {workspace_arg} --code",
             index = primary.index,
             selector = shell_arg(&primary.selector),
         ));

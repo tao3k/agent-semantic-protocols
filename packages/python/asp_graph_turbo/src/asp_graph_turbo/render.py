@@ -165,8 +165,27 @@ def _render_owner_query_projection_lines(
 def _render_owner_query_frontier_actions(
     result: GraphResult, aliases: Mapping[str, str]
 ) -> str:
-    branches = _owner_query_branches(result)
     actions: list[str] = []
+    for item in owner_query_frontier_action_items(result):
+        action_id = item["actionId"]
+        owner = item["owner"]
+        source = aliases.get(str(item["sourceNodeId"]), str(item["sourceNodeId"]))
+        if item["actionKind"] == "selector":
+            actions.append(
+                f"{action_id}.selector(selector={item['selector']},owner={owner},symbol={item['symbol']},source={source})!query-selector"
+            )
+        elif item["actionKind"] == "reasoning":
+            actions.append(
+                f"{action_id}.reasoning(owner={owner},source={source})!search-reasoning"
+            )
+    return ",".join(actions)
+
+
+def owner_query_frontier_action_items(result: GraphResult) -> list[dict[str, object]]:
+    if result.profile.name != "owner-query":
+        return []
+    actions: list[dict[str, object]] = []
+    branches = _owner_query_branches(result)
     for index, node in enumerate(branches, start=1):
         selector = _selector_for_node(node)
         if selector is None:
@@ -175,14 +194,31 @@ def _render_owner_query_frontier_actions(
         if owner is None:
             continue
         symbol = node.fields.get("symbol") or node.value
-        alias = aliases.get(node.id, f"B{index}")
         actions.append(
-            f"S{index}.selector(selector={selector},owner={owner},symbol={symbol},source={alias})!query-selector"
+            {
+                "rank": index,
+                "actionId": f"S{index}",
+                "actionKind": "selector",
+                "selector": selector,
+                "owner": str(owner),
+                "symbol": None if symbol is None else str(symbol),
+                "sourceNodeId": node.id,
+                "next": "query-selector",
+            }
         )
         actions.append(
-            f"R{index}.reasoning(owner={owner},source={alias})!search-reasoning"
+            {
+                "rank": index,
+                "actionId": f"R{index}",
+                "actionKind": "reasoning",
+                "selector": None,
+                "owner": str(owner),
+                "symbol": None,
+                "sourceNodeId": node.id,
+                "next": "search-reasoning",
+            }
         )
-    return ",".join(actions)
+    return actions
 
 
 def _render_query_token_coverage(result: GraphResult) -> str:
@@ -557,6 +593,7 @@ def _render_metrics(result: GraphResult) -> str:
         rendered += (
             ",readLoopSecondPass="
             f"duplicate:{metrics.read_loop_duplicate_selector_suppressed_count}|"
+            f"adjacentMerged:{metrics.read_loop_adjacent_range_merged_count}|"
             f"sameOwner:{metrics.read_loop_same_owner_suppressed_count}"
         )
     if metrics.relation_channel_count:

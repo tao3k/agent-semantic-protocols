@@ -73,7 +73,7 @@
           "canonicalCommands": [
             "asp rust search prime --view seeds .",
             "asp rust search pipe 'Vec scalar collection fields' --view seeds .",
-            "asp rust query --selector <field-or-owner-selector> --code .",
+          "asp rust query --selector <field-or-owner-selector> --workspace . --code",
             "asp rust search reasoning owner-query --owner <owner-path> --query 'Vec scalar collection fields' --view seeds ."
           ],
           "requiredStages": [
@@ -118,26 +118,36 @@
       "kind": "agent-sdk",
       "agentSdk": {
         "client": "claude",
-        "prompt": "In tokio 1.52.3, what do Vec<scalar> collection fields mean, and why are they not modeled as ordinary scalar fields? Use this repository's ASP search/query workflow. Start with asp rust search prime --view seeds . once, then asp rust search pipe 'Vec scalar collection fields' --view seeds .. If search pipe emits recommendedNext or nextCommand for an exact query selector, run that selector command first and answer from that primary selector evidence when possible. Treat conditionalActions, S2/S3 branch previews, search reasoning branches, and asp rust guide as metadata-only follow-ups unless the primary selector is insufficient; do not read all selectors or run guide by default. List the asp commands you actually ran at the end.",
+        "prompt": "In tokio 1.52.3, what do Vec<scalar> collection fields mean, and why are they not modeled as ordinary scalar fields? Use this repository's ASP search/query workflow. Start with asp rust search prime --view seeds . once, then asp rust search pipe 'Vec scalar collection fields' --view seeds .. If search pipe emits recommendedNext or nextCommand for an exact query selector, run that selector command first. If that selector returns relevant code, stop tool use and write the direct answer immediately from the primary selector plus search-pipe metadata. Do not run a second selector unless the primary selector command fails or returns no relevant code. Treat conditionalActions, S2/S3 branch previews, search reasoning branches, and asp rust guide as metadata-only follow-ups unless the primary selector is insufficient; do not read all selectors or run guide by default. Do not finish until you have written a direct answer to the question. List the asp commands you actually ran at the end.",
         "outputFormat": "stream-json",
         "includeHookEvents": true,
         "verbose": true,
-        "allowedTools": [
-          "Bash"
-        ],
-        "requireAspBashCommands": true,
-        "useRepoClaudeSettings": true,
-        "maxTurns": 9,
+      "allowedTools": [
+        "Bash"
+      ],
+      "requireAspBashCommands": true,
+      "maxTurns": 9,
+      "useRepoClaudeSettings": true,
         "env": {
-          "ANTHROPIC_AUTH_TOKEN": "${ANTHROPIC_AUTH_TOKEN}"
-        },
-        "requiredEnv": [
-          "ANTHROPIC_AUTH_TOKEN"
-        ]
+        "ANTHROPIC_AUTH_TOKEN": "${ANTHROPIC_AUTH_TOKEN}"
+      },
+      "requiredEnv": [
+        "ANTHROPIC_AUTH_TOKEN"
+      ]
       },
       "timeoutSeconds": 120,
       "expect": {
         "allowNonZeroExit": true,
+        "agentAnswer": {
+          "required": true,
+          "afterLastToolUse": true,
+          "minTextBytes": 300,
+          "contains": [
+            "Vec",
+            "scalar",
+            "collection"
+          ]
+        },
         "pipeFlow": {
         "maxAspCommands": 3,
         "maxSearchCommands": 2,

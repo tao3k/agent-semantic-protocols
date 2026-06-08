@@ -23,7 +23,7 @@ from .ranking_projection import (
     build_ranked_projection,
 )
 from .relation_contribution import graph_turbo_relation_reasons_by_node
-from .read_loop_guard import GraphTurboReadLoopSecondPass
+from .read_loop_second_pass import GraphTurboReadLoopSecondPass
 from .receipt import receipt_adjustment_counts, receipt_reasons_by_node
 from .ranking_trace import build_trace_projection, compact_avoid_actions
 

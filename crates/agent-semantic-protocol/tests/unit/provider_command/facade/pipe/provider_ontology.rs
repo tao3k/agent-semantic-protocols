@@ -144,3 +144,71 @@ fn search_pipe_graph_turbo_request_accepts_python_provider_ontology_facts() {
     );
     let _ = std::fs::remove_dir_all(root);
 }
+
+#[test]
+fn search_pipe_graph_turbo_request_accepts_typescript_context_provider_facts() {
+    let root = temp_project_root("search-pipe-typescript-context-provider-facts");
+    let bin_dir = root.join(".bin");
+    std::fs::create_dir_all(root.join("src")).expect("create src");
+    std::fs::write(
+        root.join("src/service.ts"),
+        "import * as Effect from \"effect/Effect\";\nimport * as Stream from \"effect/Stream\";\ninterface RuntimeOptions {\n  readonly handlers: Array<(input: string) => void>;\n}\nexport const service = Effect.gen(function* () {\n  return Stream.empty;\n});\n",
+    )
+    .expect("write source");
+    write_stdout_stderr_provider(
+        &bin_dir,
+        "ts-harness",
+        r#"{"nodes":[{"id":"field:src/service.ts-interface-runtimeoptions-handlers-4","kind":"field","role":"interface-field","value":"handlers: Array<(input: string) => void>","action":"code","path":"src/service.ts","ownerPath":"src/service.ts","symbol":"handlers","startLine":4,"endLine":4,"locator":"src/service.ts:3:5","matchText":"RuntimeOptions.handlers: Array<(input: string) => void>","fields":{"languageId":"typescript","providerId":"ts-harness","semanticFactKind":"field","provenance":"parser","confidence":"exact","freshness":"fresh","containerKind":"interface","containerName":"RuntimeOptions","fieldName":"handlers","typeValue":"Array<(input: string) => void>","elementShape":"collection","collectionKind":"array","collectionFamily":"sequence","collectionImpl":"array","contextLocator":"src/service.ts:3:5","field":{"ownerKind":"interface","name":"handlers","ownerPath":"src/service.ts","access":["read","append","validate"]}}},{"id":"type:src/service.ts-handlers-array--input--string----void--4","kind":"type","role":"field-type","value":"Array<(input: string) => void>","action":"evidence","path":"src/service.ts","ownerPath":"src/service.ts","symbol":"Array","startLine":4,"endLine":4,"locator":"src/service.ts:4:4","fields":{"languageId":"typescript","providerId":"ts-harness","semanticFactKind":"type","provenance":"parser","confidence":"exact","freshness":"fresh","containerKind":"interface","containerName":"RuntimeOptions","fieldName":"handlers","typeValue":"Array<(input: string) => void>","elementShape":"collection","collectionKind":"array","collectionFamily":"sequence","collectionImpl":"array","type":{"name":"Array<(input: string) => void>"}}},{"id":"collection:array","kind":"collection","role":"family","value":"array","action":"evidence","symbol":"array","fields":{"languageId":"typescript","providerId":"ts-harness","semanticFactKind":"collection","provenance":"parser","confidence":"exact","freshness":"fresh","collectionKind":"array","collectionFamily":"sequence","collectionImpl":"array","collection":{"family":"sequence","impl":"array","mutation":["append","insert","remove"]}}}],"edges":[{"source":"field:src/service.ts-interface-runtimeoptions-handlers-4","target":"type:src/service.ts-handlers-array--input--string----void--4","relation":"has_type"},{"source":"field:src/service.ts-interface-runtimeoptions-handlers-4","target":"collection:array","relation":"collection_of"}]}"#,
+        "",
+    );
+    write_activation(&root, &[provider("typescript", Vec::new())]);
+
+    let output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args([
+            "typescript",
+            "search",
+            "pipe",
+            "Effect concurrency Fiber Queue Stream Scope",
+            "--view",
+            "graph-turbo-request",
+            ".",
+        ])
+        .output()
+        .expect("run asp typescript search pipe graph request");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let payload: Value = serde_json::from_slice(&output.stdout).expect("graph request json");
+    assert_graph_turbo_request_contract(&payload);
+    let nodes = payload["graph"]["nodes"].as_array().expect("nodes");
+    assert!(
+        nodes.iter().any(|node| {
+            node["kind"].as_str() == Some("field")
+                && node["fields"]["languageId"].as_str() == Some("typescript")
+                && node["fields"]["field"]["ownerKind"].as_str() == Some("interface")
+                && node["fields"]["field"]["name"].as_str() == Some("handlers")
+        }),
+        "{payload}"
+    );
+    assert!(
+        nodes.iter().any(|node| {
+            node["kind"].as_str() == Some("type")
+                && node["fields"]["type"]["name"].as_str() == Some("Array<(input: string) => void>")
+        }),
+        "{payload}"
+    );
+    assert!(
+        nodes.iter().any(|node| {
+            node["kind"].as_str() == Some("collection")
+                && node["fields"]["collection"]["family"].as_str() == Some("sequence")
+                && node["fields"]["collection"]["impl"].as_str() == Some("array")
+        }),
+        "{payload}"
+    );
+    let _ = std::fs::remove_dir_all(root);
+}

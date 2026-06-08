@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 
 from .model import GraphProfile, Node, RankExplanation
-from .policy import node_kind_bonus
 
 
 def rank_explanations(
@@ -27,7 +26,7 @@ def rank_explanations(
             f"kind:{node.kind}",
             f"depth:{best_depth.get(node.id, 99)}",
         ]
-        bonus = node_kind_bonus(profile.name, node.kind)
+        bonus = profile.kind_bonus.get(node.kind, 0.0)
         if bonus != 0.0:
             reasons.append(f"kind-bonus:{bonus:+.2f}")
         if node.id in seed_ids:

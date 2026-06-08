@@ -75,8 +75,14 @@ def build_ranked_projection(
         edges=edges,
         merged_windows=merged_windows,
         read_loop_guard=read_loop_guard,
-        compatibility=profile_compatibility(edges, ranked),
-        matrices=profile_matrix_bank(graph, selected_profile, frozenset(best_depth)),
+        compatibility=profile_compatibility(edges, ranked, selected_profile),
+        matrices=profile_matrix_bank(
+            graph,
+            selected_profile,
+            frozenset(best_depth),
+            ranked_node_ids=tuple(node.id for node in ranked),
+            frontier_node_ids=tuple(entry.node.id for entry in frontier),
+        ),
         ranked_ids=tuple(node.id for node in ranked),
     )
 

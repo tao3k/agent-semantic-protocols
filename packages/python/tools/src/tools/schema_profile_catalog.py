@@ -31,6 +31,8 @@ _CORE_QUERY_SCHEMAS = (
     "semantic-relation-plan.v1.schema.json",
     "semantic-flow-lite.v1.schema.json",
     "semantic-codeql-evidence.v1.schema.json",
+    "semantic-fact-graph.v1.schema.json",
+    "semantic-fact-ontology.v1.schema.json",
     "semantic-graph.v1.schema.json",
     "semantic-type-surface.v1.schema.json",
     "semantic-handle.v1.schema.json",

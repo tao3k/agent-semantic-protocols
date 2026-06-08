@@ -725,6 +725,7 @@ fn parse_fzf_args(args: &[String]) -> Result<SearchPipeArgs, String> {
         .ok_or_else(|| "search fzf requires a query".to_string())?
         .clone();
     let mut pipes = Vec::new();
+    let mut owners = Vec::new();
     let mut view = "seeds".to_string();
     let mut index = 3;
     while index < args.len() {
@@ -736,6 +737,11 @@ fn parse_fzf_args(args: &[String]) -> Result<SearchPipeArgs, String> {
                     .clone();
                 index += 2;
             }
+            "--workspace" => {
+                args.get(index + 1)
+                    .ok_or_else(|| "--workspace requires a value".to_string())?;
+                index += 2;
+            }
             "--query-set" | "--owner" | "--dependency" => {
                 return Err(format!(
                     "search fzf fast path does not support {}",
@@ -745,8 +751,12 @@ fn parse_fzf_args(args: &[String]) -> Result<SearchPipeArgs, String> {
             value if value.starts_with('-') => {
                 return Err(format!("unknown search fzf option: {value}"));
             }
-            value => {
+            value if matches!(value, "items" | "tests" | "owner" | "deps" | "dependencies") => {
                 pipes.push(value.to_string());
+                index += 1;
+            }
+            value => {
+                owners.push(PathBuf::from(value));
                 index += 1;
             }
         }
@@ -757,7 +767,7 @@ fn parse_fzf_args(args: &[String]) -> Result<SearchPipeArgs, String> {
     Ok(SearchPipeArgs {
         query,
         pipes,
-        owners: Vec::new(),
+        owners,
         view,
     })
 }

@@ -80,6 +80,12 @@
         "$ref": "#/$defs/frontierItem"
       }
     },
+    "frontierActions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/frontierAction"
+      }
+    },
     "frontierFollowed": {
       "type": "array",
       "items": {
@@ -207,6 +213,64 @@
         "reason": {
           "type": "string",
           "minLength": 1
+        }
+      }
+    },
+    "frontierAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rank",
+        "actionId",
+        "actionKind",
+        "selector",
+        "owner",
+        "symbol",
+        "sourceNodeId",
+        "next"
+      ],
+      "properties": {
+        "rank": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "actionId": {
+          "type": "string",
+          "pattern": "^[A-Z][0-9]+$"
+        },
+        "actionKind": {
+          "enum": [
+            "selector",
+            "reasoning"
+          ]
+        },
+        "selector": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "owner": {
+          "type": "string",
+          "minLength": 1
+        },
+        "symbol": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "sourceNodeId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "next": {
+          "enum": [
+            "query-selector",
+            "search-reasoning"
+          ]
         }
       }
     },

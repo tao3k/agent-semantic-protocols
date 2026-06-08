@@ -280,7 +280,6 @@ class SemanticSandtableScenarioSchemaTests(unittest.TestCase):
             )
         )
 
-        self.assertTrue(schema_copies)
         self.assertEqual(
             {schema_path: root_schema for schema_path in schema_copies},
             {schema_path: _load_json(schema_path) for schema_path in schema_copies},

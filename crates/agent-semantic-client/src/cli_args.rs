@@ -18,8 +18,9 @@ pub(crate) fn parse_client_args(
     language_id: Option<&str>,
 ) -> Result<ParsedArgs, String> {
     let mut command = None;
-    let mut activation_root = cwd.clone();
-    let mut project_root = cwd;
+    let invocation_root = cwd;
+    let mut activation_root = invocation_root.clone();
+    let mut project_root = invocation_root.clone();
     let mut explicit_project_root = false;
     let mut forwarded_args = Vec::new();
     let mut receipt_json = false;
@@ -34,11 +35,33 @@ pub(crate) fn parse_client_args(
                 return Err("--language has been removed; use asp <rust|typescript|python> <search|query|check> ...".to_string());
             }
             "--root" => {
+                if explicit_project_root {
+                    return Err(
+                        "expected at most one --root, --workspace, or PROJECT_ROOT argument"
+                            .to_string(),
+                    );
+                }
                 project_root = PathBuf::from(
                     iter.next()
                         .ok_or_else(|| "--root requires a value".to_string())?,
                 );
                 activation_root = project_root.clone();
+                explicit_project_root = true;
+            }
+            "--workspace" if should_infer_positional_project_root(command.as_deref()) => {
+                if explicit_project_root {
+                    return Err(
+                        "expected at most one --root, --workspace, or PROJECT_ROOT argument"
+                            .to_string(),
+                    );
+                }
+                let value = iter
+                    .next()
+                    .ok_or_else(|| "--workspace requires a project root".to_string())?;
+                if value.starts_with('-') {
+                    return Err("--workspace requires a project root".to_string());
+                }
+                project_root = resolve_project_root(&value, &invocation_root);
                 explicit_project_root = true;
             }
             "--receipt-json" => {
@@ -49,6 +72,22 @@ pub(crate) fn parse_client_args(
                     Some(PathBuf::from(iter.next().ok_or_else(|| {
                         "--frontier-receipt-out requires a path".to_string()
                     })?));
+            }
+            _ if should_infer_positional_project_root(command.as_deref())
+                && arg.starts_with("--workspace=") =>
+            {
+                if explicit_project_root {
+                    return Err(
+                        "expected at most one --root, --workspace, or PROJECT_ROOT argument"
+                            .to_string(),
+                    );
+                }
+                let value = arg.strip_prefix("--workspace=").expect("workspace prefix");
+                if value.is_empty() || value.starts_with('-') {
+                    return Err("--workspace requires a project root".to_string());
+                }
+                project_root = resolve_project_root(value, &invocation_root);
+                explicit_project_root = true;
             }
             _ => forwarded_args.push(arg),
         }
@@ -113,6 +152,16 @@ fn positional_project_root(
     }
     let language_id = language_id?;
     language_project_marker_root(language_id, &absolute)
+}
+
+fn resolve_project_root(value: &str, invocation_root: &Path) -> PathBuf {
+    let path = PathBuf::from(value);
+    let absolute = if path.is_absolute() {
+        path
+    } else {
+        invocation_root.join(path)
+    };
+    canonical_or_existing(absolute)
 }
 
 fn language_project_marker_root(language_id: &str, path: &Path) -> Option<PathBuf> {

@@ -365,6 +365,7 @@
         "allowedRelations",
         "allowedTransitions",
         "kindBonus",
+        "relationWeightMultiplier",
         "frontierActions"
       ],
       "properties": {
@@ -402,13 +403,19 @@
           },
           "uniqueItems": true
         },
-        "kindBonus": {
-          "type": "object",
-          "additionalProperties": {
-            "type": "number"
-          }
-        },
-        "frontierActions": {
+      "kindBonus": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "number"
+        }
+      },
+      "relationWeightMultiplier": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "number"
+        }
+      },
+      "frontierActions": {
           "type": "object",
           "additionalProperties": {
             "type": "string",
@@ -445,6 +452,10 @@
         "supportedEdgeCount",
         "reachableEdgeCount",
         "density",
+        "relationMatrixCount",
+        "zeroEdgeRelationCount",
+        "transitionNonZeroCount",
+        "transitionWeightMass",
         "relationChannels"
       ],
       "properties": {
@@ -484,6 +495,22 @@
           "type": "number",
           "minimum": 0
         },
+        "relationMatrixCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "zeroEdgeRelationCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "transitionNonZeroCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "transitionWeightMass": {
+          "type": "number",
+          "minimum": 0
+        },
         "relationChannels": {
           "type": "array",
           "items": {
@@ -500,7 +527,10 @@
         "supportedEdgeCount",
         "reachableEdgeCount",
         "weightMass",
-        "reachableWeightMass"
+        "reachableWeightMass",
+        "matrixNonZeroCount",
+        "rankedContributionMass",
+        "frontierContributionMass"
       ],
       "properties": {
         "relation": {
@@ -520,6 +550,18 @@
           "minimum": 0
         },
         "reachableWeightMass": {
+          "type": "number",
+          "minimum": 0
+        },
+        "matrixNonZeroCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "rankedContributionMass": {
+          "type": "number",
+          "minimum": 0
+        },
+        "frontierContributionMass": {
           "type": "number",
           "minimum": 0
         }
@@ -755,6 +797,7 @@
         "pprMassSum",
         "readLoopSecondPassSuppressedCount",
         "readLoopDuplicateSelectorSuppressedCount",
+        "readLoopAdjacentRangeMergedCount",
         "readLoopSameOwnerSuppressedCount"
       ],
       "properties": {
@@ -866,6 +909,10 @@
           "minimum": 0
         },
         "readLoopDuplicateSelectorSuppressedCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "readLoopAdjacentRangeMergedCount": {
           "type": "integer",
           "minimum": 0
         },

@@ -33,6 +33,14 @@ def resolve_agent_sdk_step(
             step_id,
             "step.agentSdk.client must be 'claude'",
         )
+    contract_error = _validate_agent_answer_runtime_contract(
+        step,
+        spec,
+        scenario_id,
+        step_id,
+    )
+    if contract_error is not None:
+        return contract_error
 
     resolved = _resolve_claude_sdk_command(
         spec,
@@ -47,6 +55,29 @@ def resolve_agent_sdk_step(
     if isinstance(step_env, StepResult):
         return step_env
     return resolved, step_env
+
+
+def _validate_agent_answer_runtime_contract(
+    step: dict[str, Any],
+    spec: dict[str, Any],
+    scenario_id: str,
+    step_id: str,
+) -> StepResult | None:
+    expect = step.get("expect")
+    if not isinstance(expect, dict):
+        return None
+    agent_answer = expect.get("agentAnswer")
+    if not isinstance(agent_answer, dict):
+        return None
+    if agent_answer.get("required", True) is False:
+        return None
+    if "maxTurns" not in spec:
+        return None
+    return empty_step_error(
+        scenario_id,
+        step_id,
+        "step.agentSdk.maxTurns cannot be used when expect.agentAnswer.required is true; use timeoutSeconds instead",
+    )
 
 
 def _resolve_claude_sdk_command(
@@ -99,11 +130,11 @@ def _base_sdk_command(
         return prompt
     if isinstance(output_format, StepResult):
         return output_format
-    if output_format not in {"text", "json", "stream-json"}:
+    if output_format not in {"text", "json", "stream-json", "summary-json"}:
         return empty_step_error(
             scenario_id,
             step_id,
-            "step.agentSdk.outputFormat must be text, json, or stream-json",
+            "step.agentSdk.outputFormat must be text, json, stream-json, or summary-json",
         )
     return [
         sys.executable,
@@ -140,7 +171,9 @@ def _append_sdk_runtime_options(
     captures: dict[str, str],
     repo_root: Path | None,
 ) -> StepResult | None:
-    repo_error = _append_sdk_repo_settings(command, spec, scenario_id, step_id, repo_root)
+    repo_error = _append_sdk_repo_settings(
+        command, spec, scenario_id, step_id, repo_root
+    )
     if repo_error is not None:
         return repo_error
     turn_error = _append_sdk_max_turns(command, spec, scenario_id, step_id)

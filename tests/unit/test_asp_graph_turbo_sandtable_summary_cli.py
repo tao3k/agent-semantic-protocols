@@ -199,6 +199,7 @@ def test_graph_turbo_sandtable_summary_text_includes_context_metrics(
     )
 
     assert "\ncontext=precision=0.1,recall=1.0,utilization=0.1" in completed.stdout
+    assert "bestRank=9" in completed.stdout
     assert "exactCode=True" in completed.stdout
     assert "testPrecision=1.0" in completed.stdout
 

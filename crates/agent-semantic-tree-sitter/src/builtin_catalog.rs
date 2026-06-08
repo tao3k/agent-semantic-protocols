@@ -53,6 +53,7 @@ pub fn builtin_catalog_source(
         "rust" => rust_catalog_source(catalog_id),
         "typescript" => typescript_catalog_source(catalog_id),
         "python" => python_catalog_source(catalog_id),
+        "julia" => julia_catalog_source(catalog_id),
         _ => None,
     }
 }
@@ -109,6 +110,21 @@ fn python_catalog_source(catalog_id: &str) -> Option<&'static str> {
         )),
         "imports" => Some(include_str!(
             "../../../languages/python-lang-project-harness/tree-sitter/tree-sitter-python/queries/imports.scm"
+        )),
+        _ => None,
+    }
+}
+
+fn julia_catalog_source(catalog_id: &str) -> Option<&'static str> {
+    match catalog_id {
+        "calls" => Some(include_str!(
+            "../../../languages/JuliaLangProjectHarness.jl/tree-sitter/tree-sitter-julia/queries/calls.scm"
+        )),
+        "declarations" => Some(include_str!(
+            "../../../languages/JuliaLangProjectHarness.jl/tree-sitter/tree-sitter-julia/queries/declarations.scm"
+        )),
+        "imports" => Some(include_str!(
+            "../../../languages/JuliaLangProjectHarness.jl/tree-sitter/tree-sitter-julia/queries/imports.scm"
         )),
         _ => None,
     }

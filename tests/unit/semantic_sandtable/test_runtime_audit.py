@@ -26,6 +26,7 @@ class RuntimeAuditTests(unittest.TestCase):
                         "warn.json",
                         "fail.json",
                         "skip.json",
+                        "agent.json",
                     ]
                 )
 
@@ -36,6 +37,8 @@ class RuntimeAuditTests(unittest.TestCase):
         self.assertIn("kind=step-failure", output)
         self.assertIn("kind=large-library-skip", output)
         self.assertIn("kind=top-stdout-cost", output)
+        self.assertIn("kind=top-asp-command-output-cost", output)
+        self.assertIn("kind=top-agent-token-cost", output)
         self.assertIn("action=", output)
 
     def test_json_report_includes_runtime_audit_findings(self) -> None:
@@ -51,6 +54,7 @@ class RuntimeAuditTests(unittest.TestCase):
                         "warn.json",
                         "fail.json",
                         "skip.json",
+                        "agent.json",
                     ]
                 )
 
@@ -61,6 +65,11 @@ class RuntimeAuditTests(unittest.TestCase):
         self.assertIn("packet-size-budget", {finding["kind"] for finding in findings})
         self.assertIn("step-failure", {finding["kind"] for finding in findings})
         self.assertIn("large-library-skip", {finding["kind"] for finding in findings})
+        self.assertIn(
+            "top-asp-command-output-cost",
+            {finding["kind"] for finding in findings},
+        )
+        self.assertIn("top-agent-token-cost", {finding["kind"] for finding in findings})
 
 
 def _audit_fixture_repo(root: Path) -> Path:
@@ -125,6 +134,43 @@ def _audit_fixture_repo(root: Path) -> Path:
                     {
                         "id": "never",
                         "command": [sys.executable, "-c", "print('[never]')"],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (root / "agent.json").write_text(
+        json.dumps(
+            {
+                "id": "python.agent-cost",
+                "language": "python",
+                "workdir": ".",
+                "steps": [
+                    {
+                        "id": "agent-summary",
+                        "command": [
+                            sys.executable,
+                            "-c",
+                            (
+                                "import json; "
+                                "print(json.dumps({"
+                                "'type':'SandtableAgentSdkSummary',"
+                                "'tokenCost':{"
+                                "'inputTokens':100,"
+                                "'outputTokens':20,"
+                                "'cacheReadInputTokens':300,"
+                                "'totalTokens':420,"
+                                "'costUsd':0.123"
+                                "},"
+                                "'pipeFlow':{"
+                                "'aspCommands':3,"
+                                "'aspCommandOutputBytes':2048"
+                                "}"
+                                "}))"
+                            ),
+                        ],
+                        "expect": {"pipeFlow": {}},
                     }
                 ],
             }

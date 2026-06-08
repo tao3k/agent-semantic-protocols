@@ -54,7 +54,13 @@ def test_frontier_receipt_real_project_fixtures_are_valid() -> None:
         assert receipt["metrics"]["frontierFollowedCount"] == len(
             receipt["frontierFollowed"]
         )
-        assert all(read["fromFrontier"] for read in receipt["codeActuallyRead"])
+        reads_from_frontier = [
+            read["fromFrontier"] for read in receipt["codeActuallyRead"]
+        ]
+        if fixture["fixtureId"].endswith("low-recall-runtime"):
+            assert any(not from_frontier for from_frontier in reads_from_frontier)
+        else:
+            assert all(reads_from_frontier)
 
 
 def test_frontier_receipt_schema_requires_code_read_accounting() -> None:

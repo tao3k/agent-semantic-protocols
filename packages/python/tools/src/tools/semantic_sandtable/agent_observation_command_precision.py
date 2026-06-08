@@ -26,7 +26,10 @@ def search_pipe_precision_facts(command: str, output: str) -> dict[str, int]:
             for line in lines
         ),
         "exactQueryCoverage": sum(
-            line.startswith("queryCoverage=") and " missing=-" in line for line in lines
+            line.startswith("queryCoverage=")
+            and "matched=" in line
+            and " missing=" in line
+            for line in lines
         ),
         "debugRows": sum(
             line.startswith(("scores=", "paths=", "trace=", "explain="))

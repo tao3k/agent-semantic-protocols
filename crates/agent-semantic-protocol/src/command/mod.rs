@@ -13,6 +13,7 @@ mod provider;
 mod provider_process;
 mod provider_roots;
 mod query_direct_read;
+mod query_owner;
 mod root_language_facade;
 mod search_config;
 mod search_failure_render;

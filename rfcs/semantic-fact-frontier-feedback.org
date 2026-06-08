@@ -233,6 +233,16 @@ The first implementation remains SciPy/NumPy based.  Learned scoring may
 adjust profile weights later, but relation construction and profile semantics
 must remain inspectable.
 
+Profile-level calibration is a schema-owned sparse-bank input, not a hidden
+prompt hint. =schemas/semantic-graph-turbo-calibration.v1.schema.json= records
+per-profile =kindDeltas= and =relationDeltas= derived from feedback receipts.
+=asp-graph-turbo calibrate <feedback>... <request>= builds this packet, and
+=asp-graph-turbo rank --calibration <packet>= applies the deltas before sparse
+backend construction. Calibrated =kindBonus= values drive node scoring and rank
+explanations; calibrated =relationWeightMultiplier= values drive CSR edge
+weights, relation-channel weight mass, oriented-edge weights, and the rank
+fingerprint so cached backends cannot reuse a stale profile.
+
 The P1 observable contract is =profileMatrices[].relationChannels= and
 path-backend metrics in =schemas/semantic-graph-turbo-result.v1.schema.json=.
 Each profile matrix summary lists one channel per allowed relation, including
@@ -426,16 +436,24 @@ offline comparison report before live sandtable scoring.  Each report joins a
 receipt fixture with the graph-turbo benchmark metric surface, records the
 scenario's =goldContext=, and derives =contextMetrics= such as
 =contextPrecision=, =contextRecall=, =contextUtilization=,
-=exactCodeSuccess=, and =testSelectionPrecision=.  The companion
+=goldFrontierBestRank=, =goldSelectorActionRank=, =exactCodeSuccess=, and
+=testSelectionPrecision=.  The companion
 =schemas/semantic-fact-frontier-benchmark-report.fixtures.v1.json= currently
 fixes the task-session receipt, graph-turbo runtime receipt, ASP runtime
-frontier-only receipt, and ASP runtime followed/read/test receipt in one table.
-Only the followed/read/test ASP runtime scenario is marked ready for weight
-calibration, and =tests/unit/test_semantic_fact_frontier_benchmark_report_schema.py=
+frontier-only receipt, two ASP runtime followed/read/test receipts, and one
+relation-weight followed/read/test receipt in one table.  The three
+followed/read/test ASP runtime scenarios are marked ready for weight
+calibration; the relation-weight scenario records the fixed hot-companion path
+where a matched =item= keeps its backend =hot= range in the returned frontier
+and selector action queue.  Because the current calibration-ready receipts all
+have full gold recall, the benchmark report defers relation-weight changes
+until a new calibration-ready runtime receipt shows a frontier miss or a
+missing gold selector action.
+=tests/unit/test_semantic_fact_frontier_benchmark_report_schema.py=
 recomputes scoring metrics from the source receipt fixtures so report rows
 cannot drift from recorded evidence.
 =schemas/semantic-graph-turbo-sandtable-summary.v1.schema.json= accepts the
-live scoring row that consumes a calibration-ready report scenario through
+live scoring rows that consume calibration-ready report scenarios through
 =asp-graph-turbo sandtable-summary --benchmark-report ... --report-scenario ...=.
 
 * Lightweight scoring
@@ -611,17 +629,25 @@ P1 audit should answer:
 - Record =contextPrecision=, =contextRecall=, =contextUtilization=,
   =commandsToFirstUsefulLocator=, and =stdoutBytesToPatch=.
 - Recompute =contextPrecision=, =contextRecall=, =contextUtilization=,
-  =exactCodeSuccess=, and =testSelectionPrecision= from =goldContext= plus the
-  source receipt fixture in schema tests.
-- Run a live sandtable summary row that consumes the calibration-ready report
-  scenario before allowing scoring changes to count as an optimization.
-- Run one real-project scenario before allowing scoring changes to count as an
-  optimization.
+  =goldFrontierBestRank=, =goldSelectorActionRank=, =exactCodeSuccess=, and
+  =testSelectionPrecision= from =goldContext= plus the source receipt fixture
+  in schema tests.
+- Run live sandtable summary rows that consume calibration-ready report
+  scenarios before allowing scoring changes to count as an optimization.
+- Keep at least two real-project followed/read/test scenarios as the minimum
+  calibration floor, and require a new calibration-ready failing receipt before
+  changing relation weights.
 
 ** P6: Lightweight learned scoring
 
 - Fit per-profile weights from receipt graph data.
 - Keep features and weights inspectable.
+- Compile graph-turbo feedback packets into
+  =semantic-graph-turbo-calibration.v1= packets with explicit =receiptCount=
+  and =reasons= evidence for each kind or relation delta.
+- Apply calibration only through profile-owned =kindBonus= and
+  =relationWeightMultiplier= fields that are visible in =profileCompatibility=
+  and =profileMatrices=.
 - Treat PyG/GNN as a lab-only follow-up unless deterministic metrics show a
   concrete failure that weighted sparse scoring cannot address.
 
@@ -634,6 +660,9 @@ The RFC is considered landed only when:
   collection, and failure evidence flows;
 - live or recorded sandtables report context precision/utilization metrics;
 - read/failure/test receipt facts affect ranking in a tested way;
+- graph-turbo feedback can compile into profile calibration packets, and
+  =rank --calibration= changes scoring, relation-channel weights, explanations,
+  and cache fingerprints through schema-visible profile fields;
 - default agent-facing outputs remain compact and preserve exact follow-up
   actions;
 - at least one real-project run shows fewer repeated reads or broad searches
@@ -650,3 +679,4 @@ The RFC is considered landed only when:
 | receipt runtime capture is schema-owned and public-facade reachable | closed | =schemas/semantic-fact-frontier-receipt.fixtures.v1.json= records task-session, =asp-graph-turbo receipt=, and =asp <language> search --frontier-receipt-out= fixtures validated by =tests/unit/test_semantic_fact_frontier_receipt_schema.py= |
 | real-project receipt plus benchmark table fixes scoring input | closed | =schemas/semantic-fact-frontier-benchmark-report.fixtures.v1.json= fixes the four-scenario receipt+benchmark report, including a calibration-ready ASP runtime followed/read/test scenario; =tests/unit/test_semantic_fact_frontier_benchmark_report_schema.py= recomputes gold context metrics from source receipts |
 | live sandtable scoring drives ranking-weight changes | closed | =tests/unit/test_asp_graph_turbo_sandtable_summary_cli.py= covers =--benchmark-report --report-scenario=, and =docs/30-39-research/31.30-semantic-fact-frontier-real-project-evidence.org= records a schema-valid live row with =contextPrecision=0.1=, =contextRecall=1.0=, and =contextUtilization=0.1= |
+| feedback compiles into profile calibration packets | closed | =schemas/semantic-graph-turbo-calibration.v1.schema.json= plus =tests/unit/test_asp_graph_turbo_calibration.py= validate =asp-graph-turbo calibrate=, =rank --calibration=, calibrated =kindBonus= explanations, =relationWeightMultiplier= profile evidence, relation-channel weight mass, and cache-key profile inputs |

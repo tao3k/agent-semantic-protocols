@@ -26,8 +26,8 @@ def test_read_loop_second_pass_replaces_same_owner_surplus_when_alternative_exis
                     "path": "src/parser.py",
                 },
                 _item("item:head", "parse_head", "src/parser.py:10:20"),
-                _item("item:body", "parse_body", "src/parser.py:21:28"),
-                _item("item:tail", "parse_tail", "src/parser.py:29:34"),
+                _item("item:body", "parse_body", "src/parser.py:40:50"),
+                _item("item:tail", "parse_tail", "src/parser.py:80:90"),
                 _item("item:other", "parse_other", "src/other.py:5:12"),
             ],
             "edges": [
@@ -67,6 +67,67 @@ def test_read_loop_second_pass_replaces_same_owner_surplus_when_alternative_exis
     assert "item:tail" not in packet["rank"]
     assert packet["algorithmMetrics"]["readLoopSecondPassSuppressedCount"] == 1
     assert packet["algorithmMetrics"]["readLoopSameOwnerSuppressedCount"] == 1
+    assert list(schema_validator_for(_GRAPH_TURBO_SCHEMA).iter_errors(packet)) == []
+
+
+def test_read_loop_second_pass_merges_adjacent_ranges() -> None:
+    graph = TypedGraph.from_packet(
+        {
+            "nodes": [
+                {"id": "q:parse", "kind": "query", "role": "term", "value": "parse"},
+                {
+                    "id": "owner:parser",
+                    "kind": "owner",
+                    "role": "path",
+                    "value": "src/parser.py",
+                    "path": "src/parser.py",
+                },
+                _item("item:head", "parse_head", "src/parser.py:10:20"),
+                _item("item:body", "parse_body", "src/parser.py:21:28"),
+                _item("item:other", "parse_other", "src/parser.py:80:90"),
+            ],
+            "edges": [
+                {"source": "q:parse", "target": "owner:parser", "relation": "matches"},
+                {"source": "q:parse", "target": "item:head", "relation": "matches"},
+                {"source": "q:parse", "target": "item:body", "relation": "matches"},
+                {"source": "q:parse", "target": "item:other", "relation": "matches"},
+                {
+                    "source": "owner:parser",
+                    "target": "item:head",
+                    "relation": "contains",
+                },
+                {
+                    "source": "owner:parser",
+                    "target": "item:body",
+                    "relation": "contains",
+                },
+                {
+                    "source": "owner:parser",
+                    "target": "item:other",
+                    "relation": "contains",
+                },
+            ],
+        }
+    )
+    result = rank_frontier(
+        graph,
+        profile="owner-query",
+        seeds=["q:parse", "owner:parser"],
+        limit=4,
+        kind_budgets={"query": 1, "owner": 1, "item": 3},
+    )
+    packet = result_to_packet(result)
+
+    assert "item:other" in packet["rank"]
+    assert not {"item:head", "item:body"} <= set(packet["rank"])
+    assert packet["algorithmMetrics"]["readLoopSecondPassSuppressedCount"] == 1
+    assert packet["algorithmMetrics"]["readLoopAdjacentRangeMergedCount"] == 1
+    second_pass = next(
+        step
+        for step in packet["algorithmTrace"]
+        if step["step"] == "read-loop-second-pass"
+    )
+    assert second_pass["fields"]["adjacentRangeMergedCount"] == 1
     assert list(schema_validator_for(_GRAPH_TURBO_SCHEMA).iter_errors(packet)) == []
 
 

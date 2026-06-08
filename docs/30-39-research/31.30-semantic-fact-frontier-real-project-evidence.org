@@ -275,19 +275,22 @@ The offline comparison table is now fixed as a schema-owned fixture catalog:
 - report schema :: =schemas/semantic-fact-frontier-benchmark-report.v1.schema.json=
 - scenarios :: =task-session-frontier-read-test=,
   =graph-turbo-runtime-receipt=, =asp-runtime-frontier-only=,
-  =asp-runtime-followed-read-test=
-- summary :: =scenarioCount=4=, =runtimeCaptureScenarioCount=3=,
-  =calibrationReadyScenarioCount=1=
+  =asp-runtime-followed-read-test=,
+  =asp-runtime-sandtable-summary-followed-read-test=,
+  =asp-runtime-relation-weights-followed-read-test=
+- summary :: =scenarioCount=6=, =runtimeCaptureScenarioCount=5=,
+  =calibrationReadyScenarioCount=3=
 - context scoring :: =contextPrecision=0.1= and =contextRecall=1.0= for the
   ASP runtime cases; =asp-runtime-frontier-only= has
   =contextUtilization=0.0=, =exactCodeSuccess=false=, and
-  =testSelectionPrecision=0.0=, while =asp-runtime-followed-read-test= has
-  =contextUtilization=0.1=, =exactCodeSuccess=true=, and
-  =testSelectionPrecision=1.0=
-- next action :: run live sandtable scoring with the calibration-ready ASP
-  runtime scenario before changing relation weights
+  =testSelectionPrecision=0.0=, while the three calibration-ready runtime cases
+  have =contextUtilization=0.1=, =exactCodeSuccess=true=, and
+  =testSelectionPrecision=1.0=; the relation-weight hot-companion case records
+  =goldFrontierBestRank=3= and =goldSelectorActionRank=1=
+- next action :: collect a new failing calibration-ready receipt before
+  changing relation weights
 
-The live sandtable scoring row now consumes that report scenario directly:
+The live sandtable scoring rows now consume those report scenarios directly:
 
 #+begin_example
 uv run --project packages/python python -m asp_graph_turbo sandtable-summary \
@@ -308,6 +311,46 @@ uv run --project packages/python python -m asp_graph_turbo sandtable-summary \
 # testSelectionPrecision: 1.0
 # medianMs: 1.566292
 # p95Ms: 1.674666
+
+uv run --project packages/python python -m asp_graph_turbo sandtable-summary \
+  --benchmark-packet sandtables/fixtures/asp/graph-turbo-owner-query.json \
+  --benchmark-runs 5 \
+  --benchmark-warmup-runs 1 \
+  --benchmark-cache-mode disabled \
+  --benchmark-report schemas/semantic-fact-frontier-benchmark-report.fixtures.v1.json \
+  --report-scenario asp-runtime-sandtable-summary-followed-read-test \
+  --format json >/tmp/rfc014-second-live-sandtable-scoring.json
+# schema validation errors: 0
+# scenario: asp-runtime-sandtable-summary-followed-read-test
+# benchmarkReport.readyForWeightCalibration: true
+# contextPrecision: 0.1
+# contextRecall: 1.0
+# contextUtilization: 0.1
+# exactCodeSuccess: true
+# testSelectionPrecision: 1.0
+# medianMs: 1.615917
+# p95Ms: 1.8175
+
+uv run --project packages/python python -m asp_graph_turbo sandtable-summary \
+  --benchmark-packet sandtables/fixtures/asp/graph-turbo-owner-query.json \
+  --benchmark-runs 5 \
+  --benchmark-warmup-runs 1 \
+  --benchmark-cache-mode disabled \
+  --benchmark-report schemas/semantic-fact-frontier-benchmark-report.fixtures.v1.json \
+  --report-scenario asp-runtime-relation-weights-followed-read-test \
+  --format json >/tmp/rfc014-weights-live-sandtable-scoring.json
+# schema validation errors: 0
+# scenario: asp-runtime-relation-weights-followed-read-test
+# benchmarkReport.readyForWeightCalibration: true
+# contextPrecision: 0.1
+# contextRecall: 1.0
+# contextUtilization: 0.1
+# goldFrontierBestRank: 3
+# goldSelectorActionRank: 1
+# exactCodeSuccess: true
+# testSelectionPrecision: 1.0
+# medianMs: 5.609791
+# p95Ms: 5.873042
 #+end_example
 
 The graph-turbo result flow now validates the agent-facing
@@ -347,8 +390,8 @@ The same metric surface was also exercised against a synthetic large
   counts match the arrays in the receipt.
 - Graph-turbo now has an explicit =asp-graph-turbo receipt= runtime capture
   command.  The command ranks a graph-turbo request, preserves node selector
-  fields from the in-memory =GraphResult=, and emits the receipt schema from
-  caller-supplied followed/read/test facts.
+  fields and selector action queue from the in-memory =GraphResult=, and emits
+  the receipt schema from caller-supplied followed/read/test facts.
 - ASP search now has an explicit =--frontier-receipt-out= runtime capture
   trigger for graph-turbo frontier search commands.  The protocol facade
   strips this flag before provider execution and rejects non graph-turbo
@@ -360,16 +403,25 @@ The same metric surface was also exercised against a synthetic large
 - Graph-turbo now has an explicit =sandtable-summary= command.  The command
   joins =semantic-graph-turbo-benchmark.v1= with a
   =semantic-fact-frontier-receipt.v1= receipt or fixture catalog into a single
-  schema-owned comparison row.
+  schema-owned comparison row.  It can also consume
+  =semantic-fact-frontier-benchmark-report.fixtures.v1.json= through
+  =--benchmark-report --report-scenario= and emit report-derived context
+  scoring.
 - The offline benchmark report fixture now joins the task-session receipt,
   graph-turbo runtime receipt, ASP runtime frontier-only receipt, and ASP
-  runtime followed/read/test receipt into one schema-owned table.  It is enough
-  to gate first scoring decisions without parsing debug text, and the live
-  sandtable summary row now consumes its calibration-ready ASP runtime scenario.
+  runtime followed/read/test receipts into one schema-owned table.  It is
+  enough to gate first scoring decisions without parsing debug text, and the
+  live sandtable summary rows now consume three calibration-ready ASP runtime
+  scenarios.
+- The calibration-ready rows have full gold recall but only =0.1= precision
+  and =0.1= utilization.  The relation-weight case now confirms the
+  hot-companion fix: the matched =item= keeps the backend =hot= range at
+  =goldFrontierBestRank=3= and the selector action queue ranks that exact
+  backend range first.  This evidence does not justify a relation-weight change
+  without a new calibration-ready frontier miss.
 
 * Next
 
-- Compare the live sandtable scoring row against a second real-project task
-  before changing relation weights.
-- Use those receipts to decide whether graph-turbo ranking needs calibrated
-  relation weights beyond the deterministic sparse matrix bank.
+- Keep the current relation weights.
+- Collect a new calibration-ready runtime receipt with =contextRecall < 1.0= or
+  a missing gold selector action before changing relation weights.

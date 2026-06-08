@@ -18,7 +18,7 @@ from .model import (
 )
 from .pagerank import GraphTurboPprResult
 from .ranking_projection import RankedProjection
-from .read_loop_guard import GraphTurboReadLoopSecondPass
+from .read_loop_second_pass import GraphTurboReadLoopSecondPass
 
 
 @dataclass(frozen=True, slots=True)
@@ -198,6 +198,9 @@ def _algorithm_metrics(
         read_loop_second_pass_suppressed_count=(read_loop_second_pass.suppressed_count),
         read_loop_duplicate_selector_suppressed_count=(
             read_loop_second_pass.duplicate_selector_suppressed_count
+        ),
+        read_loop_adjacent_range_merged_count=(
+            read_loop_second_pass.adjacent_range_merged_count
         ),
         read_loop_same_owner_suppressed_count=(
             read_loop_second_pass.same_owner_suppressed_count

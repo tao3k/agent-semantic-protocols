@@ -12,6 +12,22 @@ from tools.semantic_sandtable.scenario_runner import run_scenario
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
+def _result_debug(result: object) -> list[object]:
+    return [
+        getattr(result, "errors", []),
+        [
+            {
+                "step": getattr(step, "step_id", None),
+                "status": getattr(step, "status", None),
+                "errors": getattr(step, "errors", []),
+                "warnings": getattr(step, "warnings", []),
+            }
+            for step in getattr(result, "steps", [])
+        ],
+        getattr(result, "warnings", []),
+    ]
+
+
 class CodeqlBackendUnavailableSandtableTests(unittest.TestCase):
     def test_codeql_backend_unavailable_evidence_scenario_passes(self) -> None:
         result = run_scenario(
@@ -19,7 +35,7 @@ class CodeqlBackendUnavailableSandtableTests(unittest.TestCase):
             _REPO_ROOT / "sandtables/rust/codeql-backend-unavailable-flow.json",
         )
 
-        self.assertEqual("pass", result.status, result.errors)
+        self.assertEqual("pass", result.status, _result_debug(result))
         self.assertEqual(["pass"], [step.status for step in result.steps])
 
     def test_codeql_cli_metadata_evidence_scenario_passes(self) -> None:
@@ -28,7 +44,7 @@ class CodeqlBackendUnavailableSandtableTests(unittest.TestCase):
             _REPO_ROOT / "sandtables/rust/codeql-cli-metadata-flow.json",
         )
 
-        self.assertEqual("pass", result.status, result.errors)
+        self.assertEqual("pass", result.status, _result_debug(result))
         self.assertEqual(["pass"], [step.status for step in result.steps])
 
     def test_codeql_hot_path_native_search_scenario_passes(self) -> None:
@@ -37,7 +53,7 @@ class CodeqlBackendUnavailableSandtableTests(unittest.TestCase):
             _REPO_ROOT / "sandtables/rust/codeql-hot-path-native-search-flow.json",
         )
 
-        self.assertEqual("pass", result.status, result.errors)
+        self.assertEqual("pass", result.status, _result_debug(result))
         self.assertEqual(["pass"], [step.status for step in result.steps])
 
     @unittest.skipUnless(
@@ -50,7 +66,7 @@ class CodeqlBackendUnavailableSandtableTests(unittest.TestCase):
             _REPO_ROOT / "sandtables/rust/codeql-bounded-source-file-flow.json",
         )
 
-        self.assertEqual("pass", result.status, result.errors)
+        self.assertEqual("pass", result.status, _result_debug(result))
         self.assertEqual(["pass"], [step.status for step in result.steps])
 
 

@@ -6,9 +6,10 @@ use std::path::{Path, PathBuf};
 
 use agent_semantic_config::project_hook_state_dir;
 use agent_semantic_hook::{
-    ActivatedProvider, ProviderExecution, RuntimeProviderHealthStatus, builtin_provider_manifests,
-    load_or_sync_activation, parse_activation, runtime_profile_command_argv,
-    runtime_profiles_for_runtime, runtime_project_root_for_activation,
+    ActivatedProvider, HookRuntime, ProviderExecution, RuntimeProviderHealthStatus,
+    builtin_provider_manifests, load_or_sync_activation, parse_activation,
+    runtime_profile_command_argv, runtime_profiles_for_runtime,
+    runtime_project_root_for_activation,
 };
 
 use crate::receipt::NativeProvenance;
@@ -185,13 +186,12 @@ impl ProviderRegistrySnapshot {
         Self::from_activation(activation_path, &activation)
     }
 
-    fn from_activation(
-        activation_path: &Path,
-        activation: &agent_semantic_hook::HookRuntime,
-    ) -> Result<Self, String> {
-        let runtime_project_root =
-            runtime_project_root_for_activation(activation_path, &activation.project_root);
-        let runtime_profiles = runtime_profiles_for_runtime(&runtime_project_root, activation);
+    fn from_activation(activation_path: &Path, activation: &HookRuntime) -> Result<Self, String> {
+        let runtime_profiles = activation_needs_runtime_profile_fallback(activation).then(|| {
+            let runtime_project_root =
+                runtime_project_root_for_activation(activation_path, &activation.project_root);
+            runtime_profiles_for_runtime(&runtime_project_root, activation)
+        });
         Ok(Self {
             activation_path: activation_path.to_path_buf(),
             providers: activation
@@ -199,18 +199,20 @@ impl ProviderRegistrySnapshot {
                 .iter()
                 .map(|provider| {
                     let mut resolved = ResolvedProvider::from(provider);
-                    resolved.runtime_command_argv =
-                        runtime_profile_command_argv(&runtime_profiles, provider);
-                    resolved.runtime_profile_status = runtime_profiles
-                        .providers
-                        .iter()
-                        .find(|profile| {
-                            profile.manifest_id == provider.manifest_id
-                                && profile.language_id == provider.language_id
-                                && profile.provider_id == provider.provider_id
-                                && profile.binary == provider.binary
-                        })
-                        .map(|profile| profile.health.status.into());
+                    if let Some(runtime_profiles) = runtime_profiles.as_ref() {
+                        resolved.runtime_command_argv =
+                            runtime_profile_command_argv(runtime_profiles, provider);
+                        resolved.runtime_profile_status = runtime_profiles
+                            .providers
+                            .iter()
+                            .find(|profile| {
+                                profile.manifest_id == provider.manifest_id
+                                    && profile.language_id == provider.language_id
+                                    && profile.provider_id == provider.provider_id
+                                    && profile.binary == provider.binary
+                            })
+                            .map(|profile| profile.health.status.into());
+                    }
                     resolved
                 })
                 .collect(),
@@ -233,6 +235,13 @@ impl ProviderRegistrySnapshot {
             .map(ResolvedProvider::provenance)
             .collect()
     }
+}
+
+fn activation_needs_runtime_profile_fallback(activation: &HookRuntime) -> bool {
+    activation
+        .providers
+        .iter()
+        .any(|provider| provider.provider_command_prefix.is_empty())
 }
 
 fn project_root_has_provider_identity(project_root: &Path) -> bool {

@@ -1,12 +1,13 @@
-"""Read-loop guard projection for graph turbo frontier results."""
+"""Detect repeated direct-code frontier shapes before rendering compact actions."""
 
 from __future__ import annotations
 
 from collections import Counter
+
 from dataclasses import dataclass
 
-from .model import FrontierEntry, GraphProfile, Node, ReadLoopGuard
-from .profiles import frontier_action
+from .model import FrontierEntry, Node, ReadLoopGuard
+
 from .selector import (
     GraphTurboSelectorRange,
     graph_turbo_node_range,
@@ -21,71 +22,6 @@ class _ReadCandidate:
     selector: str
     owner_path: str
     node_range: GraphTurboSelectorRange | None
-
-
-@dataclass(frozen=True)
-class GraphTurboReadLoopSecondPass:
-    candidate_count: int = 0
-    duplicate_selector_suppressed_count: int = 0
-    same_owner_suppressed_count: int = 0
-
-    @property
-    def suppressed_count(self) -> int:
-        return (
-            self.duplicate_selector_suppressed_count + self.same_owner_suppressed_count
-        )
-
-
-EMPTY_READ_LOOP_SECOND_PASS = GraphTurboReadLoopSecondPass()
-
-
-def graph_turbo_apply_read_loop_second_pass(
-    profile: GraphProfile,
-    ranked: tuple[Node, ...],
-    *,
-    limit: int,
-) -> tuple[tuple[Node, ...], GraphTurboReadLoopSecondPass]:
-    kept: list[Node] = []
-    owner_deferred: list[Node] = []
-    seen_selectors: set[str] = set()
-    owner_code_counts: Counter[str] = Counter()
-    duplicate_selector_suppressed_count = 0
-    for node in ranked:
-        if len(kept) >= limit:
-            break
-        if frontier_action(profile, node) != "code":
-            kept.append(node)
-            continue
-        selector = graph_turbo_selector_for_node(node)
-        if selector is not None and selector in seen_selectors:
-            duplicate_selector_suppressed_count += 1
-            continue
-        owner_path = graph_turbo_owner_path_for_node(node)
-        if owner_path is not None and owner_code_counts[owner_path] >= 2:
-            owner_deferred.append(node)
-            continue
-        _append_code_candidate(
-            kept,
-            node,
-            seen_selectors=seen_selectors,
-            owner_code_counts=owner_code_counts,
-            selector=selector,
-            owner_path=owner_path,
-        )
-    owner_restored_count = 0
-    for node in owner_deferred:
-        if len(kept) >= limit:
-            break
-        owner_restored_count += 1
-        kept.append(node)
-    return (
-        tuple(kept[:limit]),
-        GraphTurboReadLoopSecondPass(
-            candidate_count=len(ranked),
-            duplicate_selector_suppressed_count=duplicate_selector_suppressed_count,
-            same_owner_suppressed_count=len(owner_deferred) - owner_restored_count,
-        ),
-    )
 
 
 def evaluate_read_loop_guard(
@@ -166,19 +102,3 @@ def _adjacent_range_window_count(
                 adjacent_count += 1
             previous_end = max(previous_end or node_range.end_line, node_range.end_line)
     return adjacent_count
-
-
-def _append_code_candidate(
-    kept: list[Node],
-    node: Node,
-    *,
-    seen_selectors: set[str],
-    owner_code_counts: Counter[str],
-    selector: str | None,
-    owner_path: str | None,
-) -> None:
-    kept.append(node)
-    if selector is not None:
-        seen_selectors.add(selector)
-    if owner_path is not None:
-        owner_code_counts[owner_path] += 1

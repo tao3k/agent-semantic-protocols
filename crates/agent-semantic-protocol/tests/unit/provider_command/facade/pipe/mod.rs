@@ -1,6 +1,7 @@
 mod config;
 mod fzf;
 mod fzf_query_deps;
+mod fzf_workspace;
 mod ingest;
 mod pipe_frontier;
 mod provider_ontology;

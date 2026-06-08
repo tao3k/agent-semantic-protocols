@@ -7,7 +7,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 
 from .model import FrontierEntry, GraphResult, Node
-from .render import render_compact
+from .render import owner_query_frontier_action_items, render_compact
 from .selector import (
     GraphTurboSelectorRange,
     graph_turbo_node_range,
@@ -89,6 +89,7 @@ def frontier_receipt_from_result(
         "symbol": first_item.get("symbol"),
         "range": first_item.get("range"),
         "frontierReturned": frontier_returned,
+        "frontierActions": owner_query_frontier_action_items(result),
         "frontierFollowed": frontier_followed,
         "codeActuallyRead": reads,
         "testCommand": None if test_command is None else _test_command(test_command),

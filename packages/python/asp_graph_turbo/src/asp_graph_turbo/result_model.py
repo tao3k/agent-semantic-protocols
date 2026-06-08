@@ -116,6 +116,7 @@ class AlgorithmMetrics:
     ppr_mass_sum: float = 0.0
     read_loop_second_pass_suppressed_count: int = 0
     read_loop_duplicate_selector_suppressed_count: int = 0
+    read_loop_adjacent_range_merged_count: int = 0
     read_loop_same_owner_suppressed_count: int = 0
 
 

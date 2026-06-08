@@ -152,6 +152,50 @@ def test_pipe_flow_records_search_pipe_precision_facts() -> None:
     }
 
 
+def test_pipe_flow_records_structured_query_coverage_with_missing_terms() -> None:
+    output = "\n".join(
+        [
+            "F=field:interface-field(embedMany: ReadonlyArray<string>)@src/model.ts:10:10!code",
+            "Y=type:field-type(Effect.Effect<Array<number>, Error>)@src/model.ts:10:10!evidence",
+            "C=collection:family(array)!evidence",
+            "F>{Y:has_type,C:collection_of}",
+            "Y>{C:collection_of}",
+            "queryCoverage=matched=effect,concurrency,stream,scope missing=fiber,queue source=ranked-frontier",
+            "frontierActions=S1.selector(selector=src/model.ts:1:20,owner=src/model.ts,symbol=embedMany,source=F)!query-selector",
+            "nextCommand=asp typescript query --selector src/model.ts:1:20 --workspace . --code",
+        ]
+    )
+    messages = [
+        {
+            "type": "AssistantMessage",
+            "content": [
+                {
+                    "id": "call_1",
+                    "input": {
+                        "command": "asp typescript search pipe 'Effect concurrency Fiber Queue Stream Scope' --view seeds ."
+                    },
+                    "name": "Bash",
+                }
+            ],
+        },
+        {
+            "type": "UserMessage",
+            "content": [
+                {
+                    "content": output,
+                    "is_error": False,
+                    "tool_use_id": "call_1",
+                }
+            ],
+        },
+    ]
+
+    precision = pipe_flow_from_messages(messages)["searchPipeOutputPrecision"]
+
+    assert precision["collectionOfEdges"] == 2
+    assert precision["exactQueryCoverage"] == 1
+
+
 def test_pipe_flow_records_frontier_follow_and_context_utilization() -> None:
     output = "\n".join(
         [

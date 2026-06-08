@@ -197,6 +197,8 @@ check-sandtables:
 check-graph-turbo-focused:
     uv run --project packages/python/asp_graph_turbo --frozen pytest \
       tests/unit/test_asp_graph_turbo_request.py \
+      tests/unit/test_asp_graph_turbo_feedback.py \
+      tests/unit/test_asp_graph_turbo_calibration.py \
       tests/unit/test_asp_graph_turbo_projection_fields.py \
       tests/unit/test_asp_graph_turbo_ranking_collection_fields.py \
       tests/unit/test_asp_graph_turbo_read_loop.py \
@@ -407,7 +409,10 @@ provider-gate-semantic-facts:
         require("collection:family(" in output, f"{language} pipe missing compact collection node")
         require("recommendedNext=S1.query-selector" in output, f"{language} pipe missing selector-first recommendation")
         require(f"nextCommand=asp {language} query --selector" in output, f"{language} pipe missing next query command")
-        require(f"--code {project}" in output, f"{language} pipe missing scoped --code root {project}")
+        require(
+            f"--workspace {project} --code" in output,
+            f"{language} pipe missing scoped --workspace root {project}",
+        )
         print(f"[semantic-facts] pipe {language} ok")
 
 perf-calibrate-julia-cache:

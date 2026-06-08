@@ -64,6 +64,8 @@ pub(super) fn collect_candidates(
     let extensions = language_extensions(language_id);
     let mut candidates = Vec::new();
     let mut remaining = PIPE_CANDIDATE_LINE_LIMIT;
+    let per_term_limit = per_term_candidate_limit(terms.len());
+    let mut term_counts = vec![0usize; terms.len()];
     for root in roots {
         if remaining == 0 {
             break;
@@ -73,6 +75,8 @@ pub(super) fn collect_candidates(
             &root,
             extensions,
             &terms,
+            per_term_limit,
+            &mut term_counts,
             &mut candidates,
             &mut remaining,
             config,
@@ -160,6 +164,8 @@ fn append_candidates(
     root: &Path,
     extensions: &[&str],
     terms: &[String],
+    per_term_limit: usize,
+    term_counts: &mut [usize],
     candidates: &mut Vec<Candidate>,
     remaining: &mut usize,
     config: &AspConfig,
@@ -174,7 +180,16 @@ fn append_candidates(
         )
     })?;
     if metadata.is_file() {
-        append_file_candidates(locator_root, root, extensions, terms, candidates, remaining)?;
+        append_file_candidates(
+            locator_root,
+            root,
+            extensions,
+            terms,
+            per_term_limit,
+            term_counts,
+            candidates,
+            remaining,
+        )?;
         return Ok(());
     }
     let mut entries = fs::read_dir(root)
@@ -212,6 +227,8 @@ fn append_candidates(
                 &path,
                 extensions,
                 terms,
+                per_term_limit,
+                term_counts,
                 candidates,
                 remaining,
                 config,
@@ -222,6 +239,8 @@ fn append_candidates(
                 &path,
                 extensions,
                 terms,
+                per_term_limit,
+                term_counts,
                 candidates,
                 remaining,
             )?;
@@ -269,6 +288,8 @@ fn append_file_candidates(
     path: &Path,
     extensions: &[&str],
     terms: &[String],
+    per_term_limit: usize,
+    term_counts: &mut [usize],
     candidates: &mut Vec<Candidate>,
     remaining: &mut usize,
 ) -> Result<(), String> {
@@ -281,13 +302,25 @@ fn append_file_candidates(
     let Ok(bytes) = fs::read(path) else {
         return Ok(());
     };
-    let matches = file_candidate_lines(&bytes)
-        .enumerate()
-        .filter_map(|(index, line)| line_candidate(locator_root, path, line, index + 1, terms))
-        .take(*remaining)
-        .collect::<Vec<_>>();
-    *remaining -= matches.len();
-    candidates.extend(matches);
+    for (index, line) in file_candidate_lines(&bytes).enumerate() {
+        if *remaining == 0 {
+            break;
+        }
+        let Some((candidate, term_index)) = line_candidate(
+            locator_root,
+            path,
+            line,
+            index + 1,
+            terms,
+            per_term_limit,
+            term_counts,
+        ) else {
+            continue;
+        };
+        term_counts[term_index] += 1;
+        *remaining -= 1;
+        candidates.push(candidate);
+    }
     Ok(())
 }
 
@@ -297,18 +330,32 @@ fn line_candidate(
     line: &[u8],
     line_number: usize,
     terms: &[String],
-) -> Option<Candidate> {
+    per_term_limit: usize,
+    term_counts: &[usize],
+) -> Option<(Candidate, usize)> {
     let lower = byte_text::lowercase_lossy_string(line);
-    let symbol = terms
-        .iter()
-        .find(|term| lower.contains(term.as_str()))
-        .cloned()?;
-    Some(Candidate {
-        path: display_path(locator_root, path),
-        line: line_number,
-        symbol,
-        text: byte_text::lossy_string(line),
-    })
+    let (term_index, symbol) = terms.iter().enumerate().find(|(index, term)| {
+        term_counts.get(*index).copied().unwrap_or(0) < per_term_limit
+            && lower.contains(term.as_str())
+    })?;
+    Some((
+        Candidate {
+            path: display_path(locator_root, path),
+            line: line_number,
+            symbol: symbol.clone(),
+            text: byte_text::lossy_string(line),
+        },
+        term_index,
+    ))
+}
+
+fn per_term_candidate_limit(term_count: usize) -> usize {
+    if term_count == 0 {
+        return PIPE_CANDIDATE_LINE_LIMIT;
+    }
+    (PIPE_CANDIDATE_LINE_LIMIT / term_count)
+        .clamp(16, 64)
+        .min(PIPE_CANDIDATE_LINE_LIMIT)
 }
 
 fn resolve_candidate_path(project_root: &Path, locator_root: &Path, path: PathBuf) -> PathBuf {

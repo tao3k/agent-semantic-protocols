@@ -9,8 +9,22 @@ import os
 import sys
 from typing import Any
 
-from claude_code_sdk import ClaudeCodeOptions, query
-from claude_code_sdk.types import PermissionResultAllow, PermissionResultDeny
+try:
+    from claude_code_sdk import ClaudeCodeOptions, query
+    from claude_code_sdk.types import PermissionResultAllow, PermissionResultDeny
+except ModuleNotFoundError:  # pragma: no cover - exercised through import-only tests.
+    ClaudeCodeOptions = None  # type: ignore[assignment]
+    query = None  # type: ignore[assignment]
+
+    @dataclasses.dataclass(frozen=True)
+    class PermissionResultAllow:  # type: ignore[no-redef]
+        behavior: str = "allow"
+
+    @dataclasses.dataclass(frozen=True)
+    class PermissionResultDeny:  # type: ignore[no-redef]
+        message: str
+        behavior: str = "deny"
+
 
 from .agent_observations import summarize_agent_messages
 from .output import emit_json, emit_json_line, emit_text
@@ -22,6 +36,10 @@ def main(argv: list[str] | None = None) -> int:
 
 
 async def _run(args: argparse.Namespace) -> int:
+    if ClaudeCodeOptions is None or query is None:
+        raise RuntimeError(
+            "claude_code_sdk is required for live Claude SDK sandtable runs"
+        )
     process_cwd = os.getcwd()
     claude_cwd = args.claude_cwd or process_cwd
     add_dirs = list(args.add_dirs or [])
@@ -59,14 +77,21 @@ async def _run(args: argparse.Namespace) -> int:
 
     summary = summarize_agent_messages(messages)
     messages.append(summary)
-    if args.output_format == "stream-json":
-        emit_json_line(summary, flush=True)
-
-    if args.output_format == "json":
-        emit_json(messages)
-    elif args.output_format == "text":
-        emit_text(_text_output(messages))
+    _emit_final_output(args.output_format, messages, summary)
     return 0
+
+
+def _emit_final_output(
+    output_format: str,
+    messages: list[dict[str, Any]],
+    summary: dict[str, Any],
+) -> None:
+    if output_format in {"stream-json", "summary-json"}:
+        emit_json_line(summary, flush=True)
+    elif output_format == "json":
+        emit_json(messages)
+    elif output_format == "text":
+        emit_text(_text_output(messages))
 
 
 def _extra_args(args: argparse.Namespace) -> dict[str, str | None]:
@@ -97,7 +122,7 @@ def _prompt_with_target_context(
     return (
         f"Sandtable target directory: {process_cwd}\n"
         "Use that directory for language-provider commands, for example "
-        f"`cd {process_cwd} && asp rust guide .`.\n\n"
+        f"`cd {process_cwd} && asp <language> guide .`.\n\n"
         f"{prompt}"
     )
 
@@ -124,7 +149,10 @@ async def _asp_bash_permission(
     if _is_asp_command(command):
         return PermissionResultAllow()
     return PermissionResultDeny(
-        message="Use asp rust guide/search/query commands; raw shell reads are disabled."
+        message=(
+            "Use asp <language> guide/search/query commands; raw shell reads are "
+            "disabled."
+        )
     )
 
 
@@ -171,7 +199,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--output-format",
         required=True,
-        choices=["text", "json", "stream-json"],
+        choices=["text", "json", "stream-json", "summary-json"],
     )
     parser.add_argument("--include-partial-messages", action="store_true")
     parser.add_argument("--include-hook-events", action="store_true")

@@ -94,6 +94,14 @@ pub struct ClientReceipt {
     pub sqlite_read_count: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sqlite_write_count: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_writeback_provider_command_count: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_writeback_provider_processes_spawned: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_writeback_provider_elapsed_ms: Option<ElapsedMillis>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_writeback_provider_commands: Option<Vec<ProviderCommandReceipt>>,
     pub elapsed_ms: ElapsedMillis,
     pub stdout_bytes: ByteCount,
     pub stderr_bytes: ByteCount,
@@ -166,6 +174,10 @@ impl ClientReceipt {
             packet_bytes: None,
             sqlite_read_count: None,
             sqlite_write_count: None,
+            cache_writeback_provider_command_count: None,
+            cache_writeback_provider_processes_spawned: None,
+            cache_writeback_provider_elapsed_ms: None,
+            cache_writeback_provider_commands: None,
             cache_root: None,
             cache_manifest_path: None,
             cache_manifest_status: None,
@@ -220,6 +232,10 @@ impl ClientReceipt {
             packet_bytes: None,
             sqlite_read_count: None,
             sqlite_write_count: None,
+            cache_writeback_provider_command_count: None,
+            cache_writeback_provider_processes_spawned: None,
+            cache_writeback_provider_elapsed_ms: None,
+            cache_writeback_provider_commands: None,
             elapsed_ms: ElapsedMillis::new(0),
             stdout_bytes: ByteCount::new(0),
             stderr_bytes: ByteCount::new(0),

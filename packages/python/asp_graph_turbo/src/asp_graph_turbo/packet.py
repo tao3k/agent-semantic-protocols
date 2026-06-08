@@ -143,6 +143,9 @@ def result_to_packet(result: GraphResult) -> dict[str, object]:
             "readLoopDuplicateSelectorSuppressedCount": (
                 result.algorithm_metrics.read_loop_duplicate_selector_suppressed_count
             ),
+            "readLoopAdjacentRangeMergedCount": (
+                result.algorithm_metrics.read_loop_adjacent_range_merged_count
+            ),
             "readLoopSameOwnerSuppressedCount": (
                 result.algorithm_metrics.read_loop_same_owner_suppressed_count
             ),
@@ -188,6 +191,7 @@ def _profile_compatibility_to_packet(entry: ProfileCompatibility) -> dict[str, o
             for transition in entry.allowed_transitions
         ],
         "kindBonus": dict(entry.kind_bonus),
+        "relationWeightMultiplier": dict(entry.relation_weight_multiplier),
         "frontierActions": dict(entry.frontier_actions),
     }
 
@@ -200,6 +204,10 @@ def _profile_matrix_to_packet(entry: ProfileMatrixSummary) -> dict[str, object]:
         "supportedEdgeCount": entry.supported_edge_count,
         "reachableEdgeCount": entry.reachable_edge_count,
         "density": entry.density,
+        "relationMatrixCount": entry.relation_matrix_count,
+        "zeroEdgeRelationCount": entry.zero_edge_relation_count,
+        "transitionNonZeroCount": entry.transition_nonzero_count,
+        "transitionWeightMass": entry.transition_weight_mass,
         "relationChannels": [
             {
                 "relation": channel.relation,
@@ -207,6 +215,9 @@ def _profile_matrix_to_packet(entry: ProfileMatrixSummary) -> dict[str, object]:
                 "reachableEdgeCount": channel.reachable_edge_count,
                 "weightMass": channel.weight_mass,
                 "reachableWeightMass": channel.reachable_weight_mass,
+                "matrixNonZeroCount": channel.matrix_nonzero_count,
+                "rankedContributionMass": channel.ranked_contribution_mass,
+                "frontierContributionMass": channel.frontier_contribution_mass,
             }
             for channel in entry.relation_channels
         ],

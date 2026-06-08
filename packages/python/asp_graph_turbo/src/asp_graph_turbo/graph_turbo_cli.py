@@ -48,6 +48,16 @@ _COMMANDS: dict[str, tuple[str, str, str]] = {
         "main",
         "Inspect, prune, or invalidate the graph turbo backend cache.",
     ),
+    "feedback": (
+        "asp_graph_turbo.feedback_cli",
+        "main",
+        "Build graph-turbo feedback packets from sandtable reports.",
+    ),
+    "calibrate": (
+        "asp_graph_turbo.calibration_cli",
+        "main",
+        "Build profile calibration packets from graph-turbo feedback facts.",
+    ),
 }
 
 

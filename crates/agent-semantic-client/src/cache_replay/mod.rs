@@ -8,7 +8,8 @@ mod search_packet;
 mod syntax_query;
 
 pub(crate) use artifact::{
-    ProviderCacheReplay, load_replay_artifact, load_syntax_query_rows_replay, replay_artifact_path,
+    ProviderCacheReplay, load_replay_artifact, load_syntax_query_rows_replay,
+    render_query_packet_bytes, replay_artifact_path,
 };
 #[cfg(test)]
 pub(crate) use artifact::{

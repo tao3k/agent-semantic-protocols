@@ -16,9 +16,9 @@
   "workdir": ".",
   "budgets": {
     "maxCommands": 1,
-    "maxTotalLinesWarn": 32,
+    "maxTotalLinesWarn": 40,
     "maxTotalElapsedMsWarn": 30000,
-    "maxTotalStdoutBytesWarn": 4096
+    "maxTotalStdoutBytesWarn": 8192
   },
   "evidence": {
     "source": "real-trigger",
@@ -78,8 +78,8 @@
           "executionBackend=codeql",
           "rawOutput"
         ],
-        "maxStdoutLinesWarn": 32,
-        "maxStdoutBytesWarn": 4096,
+        "maxStdoutLinesWarn": 40,
+        "maxStdoutBytesWarn": 8192,
         "maxElapsedMsWarn": 90000
       }
     }

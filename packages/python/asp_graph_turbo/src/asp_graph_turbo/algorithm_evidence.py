@@ -9,7 +9,7 @@ from .model import (
     ReadLoopGuard,
     TypedGraph,
 )
-from .read_loop_guard import GraphTurboReadLoopSecondPass
+from .read_loop_second_pass import GraphTurboReadLoopSecondPass
 
 
 def algorithm_trace(
@@ -192,6 +192,9 @@ def _read_loop_second_pass_step(
             "duplicateSelectorSuppressedCount": (
                 read_loop_second_pass.duplicate_selector_suppressed_count
             ),
+            "adjacentRangeMergedCount": (
+                read_loop_second_pass.adjacent_range_merged_count
+            ),
             "sameOwnerSuppressedCount": (
                 read_loop_second_pass.same_owner_suppressed_count
             ),
@@ -223,6 +226,7 @@ def algorithm_metrics(
     ppr_mass_sum: float = 0.0,
     read_loop_second_pass_suppressed_count: int = 0,
     read_loop_duplicate_selector_suppressed_count: int = 0,
+    read_loop_adjacent_range_merged_count: int = 0,
     read_loop_same_owner_suppressed_count: int = 0,
 ) -> AlgorithmMetrics:
     guard = read_loop_guard or ReadLoopGuard(0, 0, 0, 0, ())
@@ -255,5 +259,6 @@ def algorithm_metrics(
         read_loop_duplicate_selector_suppressed_count=(
             read_loop_duplicate_selector_suppressed_count
         ),
+        read_loop_adjacent_range_merged_count=read_loop_adjacent_range_merged_count,
         read_loop_same_owner_suppressed_count=read_loop_same_owner_suppressed_count,
     )
