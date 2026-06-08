@@ -87,12 +87,10 @@ fn render_search_suggest(language_id: &str, args: &SearchSuggestArgs) -> String 
         "[search-suggest] lang={language_id} view=commands source=advisory history={history_mode}\n\
 |contract executes=false provider=false planner=false output=commands\n\
 |history audit=\"asp search history audit .\"\n\
-|prefer pipe=\"asp {language_id} search pipe {query} --pipe items,tests --view seeds .\"\n\
-|prefer graph=\"asp {language_id} search pipe {query} --pipe items,tests --view graph-turbo-request . | graph-turbo rank - --format compact\"\n\
+|prefer pipe=\"asp {language_id} search pipe {query} --view seeds .\"\n\
 |prefer fzf=\"asp {language_id} search fzf {query} owner tests --view seeds .\"\n\
-|manual ingest=\"rg -n {query} <owners> | asp {language_id} search ingest items tests --view seeds .\"\n\
 |reasoning owner-query=\"asp {language_id} search reasoning owner-query --owner <path> --query {query} --view seeds .\"\n\
-|avoid provider-spawn,source-scan,natural-language-planning\n"
+|avoid provider-spawn,source-scan,manual-ingest,shell-pipe,natural-language-planning\n"
     )
 }
 

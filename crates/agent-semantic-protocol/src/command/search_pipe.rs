@@ -12,7 +12,8 @@ use super::search_pipe_candidates::{
 use super::search_pipe_provider_facts::{ProviderGraphFactsContext, collect_provider_graph_facts};
 use super::search_pipe_read_memory::read_loop_memory_selectors;
 use super::search_pipe_render::{
-    render_empty_ingest_diagnostic, render_owner_query_frontier, render_owner_tests_frontier,
+    default_search_surfaces, parse_search_surfaces, render_empty_ingest_diagnostic,
+    render_owner_query_frontier, render_owner_tests_frontier,
 };
 use super::search_pipe_view::{
     SearchPipeViewRequest, print_search_pipe_view, reject_non_graph_turbo_receipt,
@@ -513,13 +514,6 @@ fn parse_search_pipe_args(args: &[String]) -> Result<SearchPipeArgs, String> {
     let mut index = 3;
     while index < args.len() {
         match args[index].as_str() {
-            "--pipe" => {
-                let value = args
-                    .get(index + 1)
-                    .ok_or_else(|| "--pipe requires a value".to_string())?;
-                pipes.extend(split_csv(value));
-                index += 2;
-            }
             "--owners" | "--owner" => {
                 let value = args
                     .get(index + 1)
@@ -532,6 +526,13 @@ fn parse_search_pipe_args(args: &[String]) -> Result<SearchPipeArgs, String> {
                     .get(index + 1)
                     .ok_or_else(|| "--view requires a value".to_string())?
                     .clone();
+                index += 2;
+            }
+            "--surface" | "--surfaces" => {
+                let value = args
+                    .get(index + 1)
+                    .ok_or_else(|| format!("{} requires a value", args[index]))?;
+                pipes.extend(parse_search_surfaces(value)?);
                 index += 2;
             }
             value if value.starts_with('-') => {
@@ -552,7 +553,7 @@ fn parse_search_pipe_args(args: &[String]) -> Result<SearchPipeArgs, String> {
         return Err("search pipe supports --view seeds or --view graph-turbo-request".to_string());
     }
     if pipes.is_empty() {
-        pipes.extend(["items".to_string(), "tests".to_string()]);
+        pipes.extend(default_search_surfaces());
     }
     Ok(SearchPipeArgs {
         query,
@@ -703,6 +704,10 @@ fn parse_ingest_args(args: &[String]) -> Result<IngestArgs, String> {
             value if value.starts_with('-') => {
                 return Err(format!("unknown search ingest option: {value}"));
             }
+            "owner" => {
+                pipes.push("items".to_string());
+                index += 1;
+            }
             value => {
                 pipes.push(value.to_string());
                 index += 1;
@@ -710,7 +715,7 @@ fn parse_ingest_args(args: &[String]) -> Result<IngestArgs, String> {
         }
     }
     if pipes.is_empty() {
-        pipes.extend(["items".to_string(), "tests".to_string()]);
+        pipes.extend(default_search_surfaces());
     }
     Ok(IngestArgs { pipes, view })
 }
@@ -737,6 +742,13 @@ fn parse_fzf_args(args: &[String]) -> Result<SearchPipeArgs, String> {
                     .clone();
                 index += 2;
             }
+            "--surface" | "--surfaces" => {
+                let value = args
+                    .get(index + 1)
+                    .ok_or_else(|| format!("{} requires a value", args[index]))?;
+                pipes.extend(parse_search_surfaces(value)?);
+                index += 2;
+            }
             "--workspace" => {
                 args.get(index + 1)
                     .ok_or_else(|| "--workspace requires a value".to_string())?;
@@ -751,7 +763,11 @@ fn parse_fzf_args(args: &[String]) -> Result<SearchPipeArgs, String> {
             value if value.starts_with('-') => {
                 return Err(format!("unknown search fzf option: {value}"));
             }
-            value if matches!(value, "items" | "tests" | "owner" | "deps" | "dependencies") => {
+            "owner" => {
+                pipes.push("items".to_string());
+                index += 1;
+            }
+            value if matches!(value, "items" | "tests" | "deps" | "dependencies") => {
                 pipes.push(value.to_string());
                 index += 1;
             }
@@ -762,7 +778,7 @@ fn parse_fzf_args(args: &[String]) -> Result<SearchPipeArgs, String> {
         }
     }
     if pipes.is_empty() {
-        pipes.extend(["items".to_string(), "tests".to_string()]);
+        pipes.extend(default_search_surfaces());
     }
     Ok(SearchPipeArgs {
         query,

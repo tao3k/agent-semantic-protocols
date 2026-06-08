@@ -38,13 +38,19 @@ fn search_suggest_is_advisory_and_does_not_spawn_provider() {
     );
     assert!(stdout.contains("asp search history audit ."), "{stdout}");
     assert!(
-        stdout.contains(
-            "asp rust search pipe 'HookDecision ClientReceipt' --pipe items,tests --view seeds ."
-        ),
+        stdout.contains("asp rust search pipe 'HookDecision ClientReceipt' --view seeds ."),
         "{stdout}"
     );
+    let removed_option = format!("--{}", "pipe");
+    assert!(!stdout.contains(&removed_option), "{stdout}");
     assert!(
         stdout.contains("asp rust search reasoning owner-query --owner <path>"),
+        "{stdout}"
+    );
+    assert!(!stdout.contains("rg -n"), "{stdout}");
+    assert!(!stdout.contains(" | "), "{stdout}");
+    assert!(
+        stdout.contains("manual-ingest") && stdout.contains("shell-pipe"),
         "{stdout}"
     );
     assert!(!marker.exists(), "search suggest should not spawn provider");
@@ -144,8 +150,6 @@ fn unsupported_pipeline_command_points_to_search_pipe_without_provider_spawn() {
             "HookDecision|ClientReceipt",
             "--owners",
             "src",
-            "--pipe",
-            "items,tests",
             "--view",
             "seeds",
             ".",

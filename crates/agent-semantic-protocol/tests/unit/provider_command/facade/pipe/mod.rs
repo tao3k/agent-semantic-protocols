@@ -3,10 +3,12 @@ mod fzf;
 mod fzf_query_deps;
 mod fzf_workspace;
 mod ingest;
+mod options;
 mod pipe_frontier;
 mod provider_ontology;
 mod reasoning;
 mod suggest;
+mod surface;
 
 use std::collections::BTreeSet;
 use std::path::PathBuf;

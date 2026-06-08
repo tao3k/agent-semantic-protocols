@@ -1,6 +1,7 @@
 //! Tokio-backed process runner for ASP language providers.
 
 use std::borrow::Cow;
+use std::io::ErrorKind;
 use std::process::{ExitStatus, Stdio};
 use std::time::{Duration, Instant};
 
@@ -270,14 +271,18 @@ async fn write_stdin(
 ) -> Result<(), ProviderProcessError> {
     if let StdinMode::Bytes(bytes) = stdin_mode {
         let mut stdin = stdin.ok_or(ProviderProcessError::CaptureStdin)?;
-        stdin
-            .write_all(&bytes)
-            .await
-            .map_err(|source| ProviderProcessError::StdinWrite { source })?;
-        stdin
-            .shutdown()
-            .await
-            .map_err(|source| ProviderProcessError::StdinClose { source })?;
+        if let Err(source) = stdin.write_all(&bytes).await {
+            if source.kind() == ErrorKind::BrokenPipe {
+                return Ok(());
+            }
+            return Err(ProviderProcessError::StdinWrite { source });
+        }
+        if let Err(source) = stdin.shutdown().await {
+            if source.kind() == ErrorKind::BrokenPipe {
+                return Ok(());
+            }
+            return Err(ProviderProcessError::StdinClose { source });
+        }
     }
     Ok(())
 }

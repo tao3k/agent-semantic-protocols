@@ -14,16 +14,28 @@ struct PipeAction {
     symbol: String,
 }
 
-pub(super) fn render_search_pipe_plan(
-    language_id: &str,
-    project_root: &Path,
-    locator_root: &Path,
-    scopes: &[PathBuf],
-    query: &str,
-    candidates: &[Candidate],
-    ranked_compact: Option<&str>,
-) -> String {
-    let quoted_query = shell_quote(query);
+pub(super) struct SearchPipePlanRequest<'a> {
+    pub(super) language_id: &'a str,
+    pub(super) project_root: &'a Path,
+    pub(super) locator_root: &'a Path,
+    pub(super) scopes: &'a [PathBuf],
+    pub(super) surfaces: &'a [String],
+    pub(super) query: &'a str,
+    pub(super) candidates: &'a [Candidate],
+    pub(super) ranked_compact: Option<&'a str>,
+}
+
+pub(super) fn render_search_pipe_plan(request: SearchPipePlanRequest<'_>) -> String {
+    let SearchPipePlanRequest {
+        language_id,
+        project_root,
+        locator_root,
+        scopes,
+        surfaces,
+        query,
+        candidates,
+        ranked_compact,
+    } = request;
     let scope_arg = display_scope_args(project_root, locator_root, scopes);
     let actions = concrete_pipe_actions(candidates, ranked_compact);
     let compact_prints_primary = ranked_compact
@@ -39,9 +51,7 @@ selectorPolicy=defer reason=no-exact-selector next=search-reasoning\n"
     let next_action_lines =
         render_next_action_lines(language_id, project_root, locator_root, scopes, &actions);
     let command_line = if actions.is_empty() {
-        format!(
-            "pipeCommands=context=>asp {language_id} search prime --view seeds {scope_arg},pipe=>asp {language_id} search pipe {quoted_query} --view seeds {scope_arg},owner-query=>asp {language_id} search reasoning owner-query --owner <owner-path> --query {quoted_query} --view seeds {scope_arg},selector=>asp {language_id} query --selector <selector> --code {scope_arg}\n"
-        )
+        "pipeCommands=none reason=no-exact-selector\n".to_string()
     } else {
         render_concrete_pipe_commands(
             language_id,
@@ -56,15 +66,23 @@ selectorPolicy=defer reason=no-exact-selector next=search-reasoning\n"
     let choice_line = pipe_choice_lines(ranked_compact);
     format!(
         "pipePlan=query-pipeline alg=asp-search-pipe-v1 budget=asp<=3,search<=2,query<=1,repeated=0\n\
-pipeExpr=prime|pipe(term={quoted_query})|S1.query-selector conditional=metadata-only\n\
+pipeSurfaces={surfaces}\n\
 pipeProjections=graph-frontier,S1,nextCommand,pipeCommands,conditionalActions\n\
 {choice_line}\
 {action_stages}\
 {next_action_lines}\
 {command_line}\
 stop=after-primary-query-selector-read answer-from-evidence=true conditional-branches=only-if-primary-selector-insufficient no-search-after-projected-branches=true no-duplicate-selector=true no-context-widening=true\n\
-avoid=repeat-prime,repeat-pipe,query-rewrite-pipe,reasoning-before-selector,read-all-selectors-by-default,guide-after-selector,repeat-fzf,broad-fzf,post-projection-owner-search,post-projection-fzf,post-projection-treesitter-guide,duplicate-selector,context-widening,raw-read,manual-window-scan,wide-windows\n"
+avoid=repeat-prime,repeat-pipe,query-rewrite-pipe,reasoning-before-selector,read-all-selectors-by-default,guide-after-selector,repeat-fzf,broad-fzf,post-projection-owner-search,post-projection-fzf,post-projection-treesitter-guide,duplicate-selector,context-widening,raw-read,manual-window-scan,wide-windows\n",
+        surfaces = display_surfaces(surfaces),
     )
+}
+
+fn display_surfaces(surfaces: &[String]) -> String {
+    if surfaces.is_empty() {
+        return "owner,items,tests".to_string();
+    }
+    surfaces.join(",")
 }
 
 fn pipe_choice_lines(ranked_compact: Option<&str>) -> &'static str {
@@ -381,15 +399,11 @@ fn render_concrete_pipe_commands(
     project_root: &Path,
     locator_root: &Path,
     scopes: &[PathBuf],
-    scope_arg: &str,
-    query: &str,
+    _scope_arg: &str,
+    _query: &str,
     actions: &[PipeAction],
 ) -> String {
-    let quoted_query = shell_quote(query);
-    let mut commands = vec![
-        format!("context=>asp {language_id} search prime --view seeds {scope_arg}"),
-        format!("pipe=>asp {language_id} search pipe {quoted_query} --view seeds {scope_arg}"),
-    ];
+    let mut commands = Vec::new();
     if let Some(primary) = actions.first() {
         let workspace_arg = action_root_arg(primary, project_root, locator_root, scopes);
         commands.push(format!(
@@ -407,7 +421,11 @@ fn render_concrete_pipe_commands(
             symbol = action.symbol,
         ));
     }
-    let mut rendered = format!("pipeCommands={}\n", commands.join(","));
+    let mut rendered = if commands.is_empty() {
+        "pipeCommands=none reason=no-exact-selector\n".to_string()
+    } else {
+        format!("pipeCommands={}\n", commands.join(","))
+    };
     if !conditional_actions.is_empty() {
         let _ = writeln!(
             rendered,

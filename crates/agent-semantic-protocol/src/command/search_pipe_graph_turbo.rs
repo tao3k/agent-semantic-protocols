@@ -9,7 +9,10 @@ use super::{
         DependencyFact, collect_dependency_facts, dependency_matches_query,
     },
     search_pipe_provider_facts::ProviderGraphFacts,
-    search_pipe_render::Candidate,
+    search_pipe_render::{
+        Candidate, include_deps, include_items, include_owner_context, include_tests,
+        normalized_search_surfaces,
+    },
 };
 
 const GRAPH_TURBO_REQUEST_SCHEMA_ID: &str = "agent.semantic-protocols.semantic-graph-turbo-request";
@@ -50,6 +53,11 @@ fn graph_turbo_request(
     read_memory_selectors: &[String],
 ) -> Value {
     let profile = profile_for_pipes(pipes);
+    let surfaces = normalized_search_surfaces(pipes);
+    let include_owner_context = include_owner_context(&surfaces);
+    let include_items = include_items(&surfaces);
+    let include_tests = include_tests(&surfaces);
+    let include_deps = include_deps(&surfaces);
     let mut nodes = Vec::new();
     let mut edges = Vec::new();
     let mut seed_ids = Vec::new();
@@ -75,13 +83,21 @@ fn graph_turbo_request(
                 .map(|owner| stable_node_id("owner", owner)),
         );
     }
-    append_owner_nodes(&mut nodes, &owners);
-    append_candidate_nodes(&mut nodes, language_id, &graph_candidates);
-    append_hot_nodes(&mut nodes, &graph_candidates);
-    append_provider_fact_nodes(&mut nodes, provider_facts);
+    if include_owner_context {
+        append_owner_nodes(&mut nodes, &owners);
+    }
+    if include_items {
+        append_candidate_nodes(&mut nodes, language_id, &graph_candidates);
+        append_hot_nodes(&mut nodes, &graph_candidates);
+        append_provider_fact_nodes(&mut nodes, provider_facts);
+    }
     let dependency_facts = collect_dependency_facts(language_id, query, &graph_candidates);
-    append_dependency_nodes(&mut nodes, &dependency_facts);
-    append_test_nodes(&mut nodes, &owners, pipes);
+    if include_deps {
+        append_dependency_nodes(&mut nodes, &dependency_facts);
+    }
+    if include_tests {
+        append_test_nodes(&mut nodes, &owners);
+    }
     append_graph_edges(
         &mut edges,
         query,
@@ -89,7 +105,7 @@ fn graph_turbo_request(
         &owners,
         &dependency_facts,
         provider_facts,
-        pipes,
+        &surfaces,
     );
 
     let mut packet = json!({
@@ -100,6 +116,7 @@ fn graph_turbo_request(
         "packetKind": "graph-turbo-request",
         "profile": profile,
         "algorithm": "typed-ppr-diverse",
+        "surfaces": surfaces,
         "seedIds": seed_ids,
         "budget": 10,
         "kindBudgets": {"owner": 4, "dependency": 2, "test": 3, "item": 6, "field": 4, "type": 3, "collection": 2, "hot": 3},
@@ -248,10 +265,7 @@ fn candidate_tree_sitter_pattern(language_id: &str, symbol: &str) -> Option<Stri
     }
 }
 
-fn append_test_nodes(nodes: &mut Vec<Value>, owners: &[String], pipes: &[String]) {
-    if !include_tests(pipes) {
-        return;
-    }
+fn append_test_nodes(nodes: &mut Vec<Value>, owners: &[String]) {
     for owner in owners {
         nodes.push(json!({
             "id": stable_node_id("test", owner),
@@ -271,17 +285,25 @@ fn append_graph_edges(
     owners: &[String],
     dependency_facts: &[DependencyFact],
     provider_facts: &ProviderGraphFacts,
-    pipes: &[String],
+    surfaces: &[String],
 ) {
     if let Some(query) = query.filter(|query| !query.trim().is_empty()) {
-        append_query_match_edges(edges, query, candidates, owners);
-        append_query_dependency_edges(edges, query, dependency_facts);
+        append_query_match_edges(edges, query, candidates, owners, surfaces);
+        if include_deps(surfaces) {
+            append_query_dependency_edges(edges, query, dependency_facts);
+        }
     }
-    append_owner_candidate_edges(edges, candidates);
-    append_candidate_hot_edges(edges, candidates);
-    append_provider_fact_edges(edges, provider_facts);
-    append_owner_dependency_edges(edges, dependency_facts);
-    append_test_cover_edges(edges, owners, pipes);
+    if include_items(surfaces) {
+        append_owner_candidate_edges(edges, candidates);
+        append_candidate_hot_edges(edges, candidates);
+        append_provider_fact_edges(edges, provider_facts);
+    }
+    if include_deps(surfaces) {
+        append_owner_dependency_edges(edges, dependency_facts);
+    }
+    if include_tests(surfaces) {
+        append_test_cover_edges(edges, owners);
+    }
 }
 
 fn append_query_match_edges(
@@ -289,13 +311,18 @@ fn append_query_match_edges(
     query: &str,
     candidates: &[Candidate],
     owners: &[String],
+    surfaces: &[String],
 ) {
     let query_id = stable_node_id("query", query);
-    for owner in owners {
-        edges.push(edge(&query_id, &stable_node_id("owner", owner), "matches"));
+    if include_owner_context(surfaces) {
+        for owner in owners {
+            edges.push(edge(&query_id, &stable_node_id("owner", owner), "matches"));
+        }
     }
-    for candidate in candidates.iter().take(GRAPH_TURBO_CANDIDATE_NODE_LIMIT) {
-        edges.push(edge(&query_id, &candidate_node_id(candidate), "matches"));
+    if include_items(surfaces) {
+        for candidate in candidates.iter().take(GRAPH_TURBO_CANDIDATE_NODE_LIMIT) {
+            edges.push(edge(&query_id, &candidate_node_id(candidate), "matches"));
+        }
     }
 }
 
@@ -351,15 +378,13 @@ fn append_owner_dependency_edges(edges: &mut Vec<Value>, dependency_facts: &[Dep
     }
 }
 
-fn append_test_cover_edges(edges: &mut Vec<Value>, owners: &[String], pipes: &[String]) {
-    if include_tests(pipes) {
-        for owner in owners {
-            edges.push(edge(
-                &stable_node_id("owner", owner),
-                &stable_node_id("test", owner),
-                "covers",
-            ));
-        }
+fn append_test_cover_edges(edges: &mut Vec<Value>, owners: &[String]) {
+    for owner in owners {
+        edges.push(edge(
+            &stable_node_id("owner", owner),
+            &stable_node_id("test", owner),
+            "covers",
+        ));
     }
 }
 
@@ -382,21 +407,11 @@ fn unique_candidate_paths(candidates: &[Candidate]) -> Vec<String> {
         .collect()
 }
 
-fn include_tests(pipes: &[String]) -> bool {
-    pipes.is_empty() || pipes.iter().any(|pipe| pipe == "tests")
-}
-
 fn profile_for_pipes(pipes: &[String]) -> &'static str {
-    if pipes
-        .iter()
-        .any(|pipe| matches!(pipe.as_str(), "deps" | "dependencies"))
-    {
+    let surfaces = normalized_search_surfaces(pipes);
+    if include_deps(&surfaces) {
         "query-deps"
-    } else if pipes.iter().any(|pipe| pipe == "tests")
-        && !pipes
-            .iter()
-            .any(|pipe| matches!(pipe.as_str(), "items" | "owner"))
-    {
+    } else if include_tests(&surfaces) && !include_items(&surfaces) {
         "owner-tests"
     } else {
         "owner-query"

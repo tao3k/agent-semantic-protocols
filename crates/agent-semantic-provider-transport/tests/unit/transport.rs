@@ -108,6 +108,19 @@ fn writes_bytes_to_stdin() {
 }
 
 #[test]
+fn stdin_broken_pipe_still_reports_provider_output() {
+    let root = temp_dir("stdin-broken-pipe");
+    let program = script(&root, "provider.sh", "#!/bin/sh\nprintf 'ready'\nexit 0\n");
+    let mut process = spec(program, root.clone());
+    process.stdin = StdinMode::bytes(vec![b'x'; 1024 * 1024]);
+    let output = run_provider_process(process).expect("run provider");
+
+    assert!(output.status.success());
+    assert_eq!(output.stdout.as_ref(), b"ready");
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
 fn passes_cwd_and_env() {
     let root = temp_dir("cwd-env");
     let program = script(

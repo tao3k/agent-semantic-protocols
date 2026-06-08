@@ -8,7 +8,9 @@ use super::graph::{
     write_graph_turbo_receipt,
 };
 use super::search_pipe_graph_turbo::render_graph_turbo_request;
-use super::search_pipe_plan::{render_primary_frontier_actions_only, render_search_pipe_plan};
+use super::search_pipe_plan::{
+    SearchPipePlanRequest, render_primary_frontier_actions_only, render_search_pipe_plan,
+};
 use super::search_pipe_provider_facts::ProviderGraphFacts;
 use super::search_pipe_render::{Candidate, render_ingest_frontier};
 
@@ -99,15 +101,16 @@ pub(super) fn print_search_pipe_view(request: SearchPipeViewRequest<'_>) -> Resu
             if include_pipe_plan && let Some(query) = query {
                 print!(
                     "{}",
-                    render_search_pipe_plan(
+                    render_search_pipe_plan(SearchPipePlanRequest {
                         language_id,
                         project_root,
                         locator_root,
                         scopes,
+                        surfaces: pipes,
                         query,
                         candidates,
-                        ranked_compact.as_deref(),
-                    )
+                        ranked_compact: ranked_compact.as_deref(),
+                    })
                 );
             }
         }
@@ -117,15 +120,16 @@ pub(super) fn print_search_pipe_view(request: SearchPipeViewRequest<'_>) -> Resu
             if include_pipe_plan && let Some(query) = query {
                 print!(
                     "{}",
-                    render_search_pipe_plan(
+                    render_search_pipe_plan(SearchPipePlanRequest {
                         language_id,
                         project_root,
                         locator_root,
                         scopes,
+                        surfaces: pipes,
                         query,
                         candidates,
-                        None,
-                    )
+                        ranked_compact: None,
+                    })
                 );
             }
         }
