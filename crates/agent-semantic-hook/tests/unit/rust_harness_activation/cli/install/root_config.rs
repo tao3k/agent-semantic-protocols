@@ -190,7 +190,7 @@ fn assert_installed_skill(root: &std::path::Path) {
     assert!(!skill.contains("Julia participates in language facade parity"));
     assert!(skill.contains("Do not add `--json` during agent exploration."));
     assert!(skill.contains("single-quoted argv literal"));
-    assert!(skill.contains("--query-set 'Start with `asp <language> guide .`'"));
+    assert!(!skill.contains("--query-set 'Start with `asp <language> guide .`'"));
     assert!(skill.contains("do not interpolate raw prose into a"));
     assert!(skill.contains("## Complex Flows"));
     assert!(skill.contains("### Hook Recovery"));

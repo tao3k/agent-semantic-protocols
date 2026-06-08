@@ -71,12 +71,7 @@ fn search_pipe_plan_uses_scope_root_for_provider_local_selectors() {
         ),
         "{stdout}"
     );
-    assert!(
-        stdout.contains(
-            "S1=>asp rust query --selector src/lib.rs:1:4 --workspace languages/rust-harness --code"
-        ),
-        "{stdout}"
-    );
+    assert!(!stdout.contains("S1=>asp rust query"), "{stdout}");
     for debug_prefix in [
         "scores=", "paths=", "trace=", "explain=", "cache=", "metrics=",
     ] {

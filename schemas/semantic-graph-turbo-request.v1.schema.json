@@ -11,6 +11,8 @@
     "protocolId",
     "protocolVersion",
     "packetKind",
+    "surface",
+    "queryTerms",
     "profile",
     "algorithm",
     "seedIds",
@@ -32,6 +34,25 @@
     },
     "packetKind": {
       "const": "graph-turbo-request"
+    },
+    "surface": {
+      "description": "ASP search surface that produced this graph-turbo request. This is the cache and receipt boundary for ranking semantics, not an agent-facing graph command.",
+      "enum": [
+        "search-pipe",
+        "search-rg",
+        "search-fd",
+        "search-fzf",
+        "search-ingest"
+      ]
+    },
+    "queryTerms": {
+      "type": "array",
+      "description": "LLM-supplied seed query terms or grouped query-set terms normalized as packet inputs. ASP does not model-expand these terms.",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
     },
     "profile": {
       "enum": [
@@ -64,6 +85,32 @@
         ]
       },
       "uniqueItems": true
+    },
+    "source": {
+      "description": "Candidate source selection requested by search pipe. This selects candidate acquisition only; it is not an output projection.",
+      "enum": [
+        "auto",
+        "provider",
+        "finder",
+        "ingest"
+      ]
+    },
+    "candidateSources": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "provider",
+          "finder",
+          "ingest"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "sourceTrace": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/sourceTraceEntry"
+      }
     },
     "seedIds": {
       "type": "array",
@@ -155,6 +202,44 @@
       "type": "string",
       "minLength": 1
     },
+    "sourceTraceEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "status"
+      ],
+      "properties": {
+        "source": {
+          "enum": [
+            "provider",
+            "finder",
+            "ingest"
+          ]
+        },
+        "status": {
+          "enum": [
+            "complete",
+            "partial",
+            "used",
+            "skipped",
+            "empty"
+          ]
+        },
+        "matched": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "missing": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "normalized": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
     "node": {
       "type": "object",
       "additionalProperties": false,
@@ -210,6 +295,20 @@
         "symbol": {
           "type": "string",
           "minLength": 1
+        },
+        "source": {
+          "enum": [
+            "provider",
+            "finder",
+            "ingest"
+          ]
+        },
+        "confidence": {
+          "enum": [
+            "exact",
+            "likely",
+            "heuristic"
+          ]
         },
         "matchText": {
           "type": "string",

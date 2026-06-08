@@ -10,8 +10,8 @@ use super::{
     },
     search_pipe_provider_facts::ProviderGraphFacts,
     search_pipe_render::{
-        Candidate, include_deps, include_items, include_owner_context, include_tests,
-        normalized_search_surfaces,
+        Candidate, SearchPipeSourceTrace, include_deps, include_items, include_owner_context,
+        include_tests, normalized_search_surfaces,
     },
 };
 
@@ -20,22 +20,23 @@ const GRAPH_TURBO_CANDIDATE_NODE_LIMIT: usize = 64;
 const HOT_CONTEXT_BEFORE_LINES: usize = 8;
 const HOT_CONTEXT_AFTER_LINES: usize = 12;
 
+pub(super) struct GraphTurboSearchPipeRequest<'a> {
+    pub(super) surface: &'a str,
+    pub(super) language_id: &'a str,
+    pub(super) query: Option<&'a str>,
+    pub(super) candidates: &'a [Candidate],
+    pub(super) pipes: &'a [String],
+    pub(super) source: &'a str,
+    pub(super) candidate_sources: &'a [String],
+    pub(super) source_trace: &'a [SearchPipeSourceTrace],
+    pub(super) provider_facts: &'a ProviderGraphFacts,
+    pub(super) read_memory_selectors: &'a [String],
+}
+
 pub(super) fn render_graph_turbo_request(
-    language_id: &str,
-    query: Option<&str>,
-    candidates: &[Candidate],
-    pipes: &[String],
-    provider_facts: &ProviderGraphFacts,
-    read_memory_selectors: &[String],
+    request: GraphTurboSearchPipeRequest<'_>,
 ) -> Result<String, String> {
-    let packet = graph_turbo_request(
-        language_id,
-        query,
-        candidates,
-        pipes,
-        provider_facts,
-        read_memory_selectors,
-    );
+    let packet = graph_turbo_request(&request);
     serde_json::to_string_pretty(&packet)
         .map(|mut text| {
             text.push('\n');
@@ -44,14 +45,17 @@ pub(super) fn render_graph_turbo_request(
         .map_err(|error| format!("failed to serialize graph turbo request: {error}"))
 }
 
-fn graph_turbo_request(
-    language_id: &str,
-    query: Option<&str>,
-    candidates: &[Candidate],
-    pipes: &[String],
-    provider_facts: &ProviderGraphFacts,
-    read_memory_selectors: &[String],
-) -> Value {
+fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> Value {
+    let language_id = request.language_id;
+    let surface = request.surface;
+    let query = request.query;
+    let candidates = request.candidates;
+    let pipes = request.pipes;
+    let source = request.source;
+    let candidate_sources = request.candidate_sources;
+    let source_trace = request.source_trace;
+    let provider_facts = request.provider_facts;
+    let read_memory_selectors = request.read_memory_selectors;
     let profile = profile_for_pipes(pipes);
     let surfaces = normalized_search_surfaces(pipes);
     let include_owner_context = include_owner_context(&surfaces);
@@ -114,9 +118,14 @@ fn graph_turbo_request(
         "protocolId": "agent.semantic-protocols.semantic-language",
         "protocolVersion": "1",
         "packetKind": "graph-turbo-request",
+        "surface": surface,
+        "queryTerms": query.map(query_terms).unwrap_or_default(),
         "profile": profile,
         "algorithm": "typed-ppr-diverse",
         "surfaces": surfaces,
+        "source": source,
+        "candidateSources": candidate_sources,
+        "sourceTrace": graph_turbo_source_trace(source_trace),
         "seedIds": seed_ids,
         "budget": 10,
         "kindBudgets": {"owner": 4, "dependency": 2, "test": 3, "item": 6, "field": 4, "type": 3, "collection": 2, "hot": 3},
@@ -201,6 +210,8 @@ fn append_candidate_nodes(nodes: &mut Vec<Value>, language_id: &str, candidates:
             "locator": format!("{}:{}:{}", candidate.path, candidate.line, candidate.line),
             "matchText": candidate.text,
             "syntaxQuery": candidate_tree_sitter_pattern(language_id, &candidate.symbol),
+            "source": candidate.source,
+            "confidence": candidate.confidence,
         }));
     }
 }
@@ -222,8 +233,27 @@ fn append_hot_nodes(nodes: &mut Vec<Value>, candidates: &[Candidate]) {
             "endLine": end_line,
             "locator": locator,
             "matchText": candidate.text,
+            "source": candidate.source,
+            "confidence": candidate.confidence,
         }));
     }
+}
+
+fn graph_turbo_source_trace(source_trace: &[SearchPipeSourceTrace]) -> Value {
+    Value::Array(
+        source_trace
+            .iter()
+            .map(|trace| {
+                json!({
+                    "source": trace.source,
+                    "status": trace.status,
+                    "matched": trace.matched,
+                    "missing": trace.missing,
+                    "normalized": trace.normalized,
+                })
+            })
+            .collect(),
+    )
 }
 
 fn append_provider_fact_nodes(nodes: &mut Vec<Value>, provider_facts: &ProviderGraphFacts) {
@@ -452,4 +482,18 @@ fn stable_node_id(kind: &str, value: &str) -> String {
         rendered.push_str("node");
     }
     rendered
+}
+
+fn query_terms(query: &str) -> Vec<String> {
+    query
+        .split(|character: char| character == ',' || character == '|' || character.is_whitespace())
+        .map(str::trim)
+        .filter(|term| !term.is_empty())
+        .map(ToOwned::to_owned)
+        .fold(Vec::new(), |mut terms, term| {
+            if !terms.iter().any(|seen| seen == &term) {
+                terms.push(term);
+            }
+            terms
+        })
 }

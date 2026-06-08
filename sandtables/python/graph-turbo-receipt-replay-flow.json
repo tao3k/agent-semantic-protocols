@@ -1,0 +1,97 @@
+{
+  "id": "python.graph-turbo-receipt-replay-flow",
+  "language": "python",
+  "title": "Python graph turbo receipt replay learning flow",
+  "coverage": [
+    "json-schema",
+    "search-flow",
+    "performance",
+    "evidence-assurance"
+  ],
+  "tags": [
+    "asp",
+    "graph-turbo",
+    "agent-benefit",
+    "receipt-replay"
+  ],
+  "workdir": ".",
+  "budgets": {
+    "maxCommands": 1,
+    "maxTotalLinesWarn": 1,
+    "maxTotalElapsedMsWarn": 10000,
+    "maxTotalStdoutBytesWarn": 9000
+  },
+  "evidence": {
+    "source": "handwritten",
+    "intent": "Validate that graph turbo receipt feedback and read-memory replay suppress repeated mistakes on the next ranking pass.",
+    "intentKind": "implementation-principle",
+    "editBoundary": "none",
+    "metrics": {
+      "recordedCommandCount": 1,
+      "jsonSearches": 1,
+      "compactSearches": 0,
+      "repeatedSearches": 0,
+      "tokenDelta": "lower"
+    },
+    "findings": [
+      {
+        "kind": "graph-turbo-receipt-replay",
+        "severity": "info",
+        "message": "Receipt boost and read-memory suppression are both present, proving feedback can change the next ranking pass instead of repeating the same read."
+      }
+    ]
+  },
+  "steps": [
+    {
+      "id": "agent-benefit-receipt-replay",
+      "kind": "schema-contract",
+      "coverage": [
+        "json-schema",
+        "search-flow",
+        "performance",
+        "evidence-assurance"
+      ],
+      "command": [
+        "uv",
+        "run",
+        "--frozen",
+        "--project",
+        "packages/python",
+        "python",
+        "-m",
+        "tools",
+        "graph",
+        "turbo",
+        "agent-benefit",
+        "sandtables/fixtures/asp/graph-turbo-sensitive-ablation.json",
+        "--scenario",
+        "python.graph-turbo-receipt-replay-flow",
+        "--require-repeated-mistake-suppression",
+        "--require-profile-matrix-explanation",
+        "--fail-on-quality-gate",
+        "--format",
+        "json"
+      ],
+      "expect": {
+        "stdoutJsonSchema": "schemas/semantic-graph-turbo-agent-benefit.v1.schema.json",
+        "stdoutJsonEquals": {
+          "schemaId": "agent.semantic-protocols.semantic-graph-turbo-agent-benefit",
+          "packetKind": "graph-turbo-agent-benefit",
+          "scenario": "python.graph-turbo-receipt-replay-flow",
+          "qualityGate.status": "pass",
+          "feedbackLearning.repeatedMistakeSuppressed": true,
+          "feedbackLearning.receiptFeedbackApplied": true,
+          "profileMatrixExplanation.explained": true
+        },
+        "stdoutContains": [
+          "\"receiptBoostCount\": 1",
+          "\"readMemorySuppressedCount\": 1",
+          "\"repeatedMistakeSuppressed\": true"
+        ],
+        "maxStdoutLinesWarn": 1,
+        "maxStdoutBytesWarn": 9000,
+        "maxElapsedMsWarn": 10000
+      }
+    }
+  ]
+}

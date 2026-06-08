@@ -28,6 +28,11 @@ _COMMANDS: dict[str, tuple[str, str, str]] = {
         "main",
         "Compare graph turbo ablation variants for ranking calibration.",
     ),
+    "agent-benefit": (
+        "asp_graph_turbo.agent_benefit_cli",
+        "main",
+        "Report whether graph turbo improves agent reading and locator behavior.",
+    ),
     "artifacts": (
         "asp_graph_turbo.artifacts_cli",
         "main",

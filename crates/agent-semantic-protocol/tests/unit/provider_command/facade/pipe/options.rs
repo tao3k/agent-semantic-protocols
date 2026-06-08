@@ -3,6 +3,67 @@ use crate::provider_command::support::{
 };
 
 #[test]
+fn search_pipe_help_does_not_require_activation_or_provider_spawn() {
+    let root = temp_project_root("search-pipe-help");
+    let bin_dir = root.join(".bin");
+    let marker = root.join("provider-called");
+    write_marker_provider(&bin_dir, "rs-harness", &marker);
+
+    let output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .args(["rust", "search", "pipe", "--help"])
+        .output()
+        .expect("run asp rust search pipe help");
+
+    assert!(
+        output.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    assert!(
+        stdout.contains("usage: asp rust search pipe <question-or-feature-term>"),
+        "stdout={stdout}"
+    );
+    assert!(
+        stdout.contains("LLM-compressed code search seed"),
+        "stdout={stdout}"
+    );
+    assert!(!stdout.contains("natural-intent"), "stdout={stdout}");
+    assert!(stdout.contains("--source auto|provider|finder|ingest"));
+    assert!(output.stderr.is_empty());
+    assert!(!marker.exists(), "help should not spawn provider");
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn search_pipe_version_does_not_require_activation_or_provider_spawn() {
+    let root = temp_project_root("search-pipe-version");
+    let bin_dir = root.join(".bin");
+    let marker = root.join("provider-called");
+    write_marker_provider(&bin_dir, "rs-harness", &marker);
+
+    let output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .args(["rust", "search", "pipe", "--version"])
+        .output()
+        .expect("run asp rust search pipe version");
+
+    assert!(
+        output.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8(output.stdout).expect("stdout"),
+        format!("asp {}\n", env!("CARGO_PKG_VERSION"))
+    );
+    assert!(output.stderr.is_empty());
+    assert!(!marker.exists(), "version should not spawn provider");
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn search_pipe_rejects_removed_pipeline_option_without_provider_spawn() {
     let root = temp_project_root("search-pipe-rejects-pipe-option");
     let bin_dir = root.join(".bin");
@@ -69,7 +130,7 @@ fn search_pipe_rejects_unknown_surface_without_provider_spawn() {
     assert!(!output.status.success());
     let stderr = String::from_utf8(output.stderr).expect("stderr");
     assert!(
-        stderr.contains("unknown search surface: commands"),
+        stderr.contains("unknown search pipe option: --surface"),
         "{stderr}"
     );
     assert!(

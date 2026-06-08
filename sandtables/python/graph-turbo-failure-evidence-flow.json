@@ -1,0 +1,105 @@
+{
+  "id": "python.graph-turbo-failure-evidence-flow",
+  "language": "python",
+  "title": "Python graph turbo failure evidence prioritization flow",
+  "coverage": [
+    "json-schema",
+    "search-flow",
+    "performance",
+    "evidence-assurance"
+  ],
+  "tags": [
+    "asp",
+    "graph-turbo",
+    "agent-benefit",
+    "failure-evidence"
+  ],
+  "workdir": ".",
+  "budgets": {
+    "maxCommands": 1,
+    "maxTotalLinesWarn": 1,
+    "maxTotalElapsedMsWarn": 10000,
+    "maxTotalStdoutBytesWarn": 9000
+  },
+  "evidence": {
+    "source": "handwritten",
+    "intent": "Validate that graph turbo failure-evidence profile puts actionable failure evidence near the top and explains the ranking through relation/profile matrix facts.",
+    "intentKind": "implementation-principle",
+    "editBoundary": "none",
+    "metrics": {
+      "recordedCommandCount": 1,
+      "jsonSearches": 1,
+      "compactSearches": 0,
+      "repeatedSearches": 0,
+      "tokenDelta": "lower"
+    },
+    "findings": [
+      {
+        "kind": "graph-turbo-failure-evidence",
+        "severity": "info",
+        "message": "The first actionable failure evidence is gated at rank two or earlier with matrix-backed explanation refs."
+      }
+    ]
+  },
+  "steps": [
+    {
+      "id": "agent-benefit-failure-evidence",
+      "kind": "schema-contract",
+      "coverage": [
+        "json-schema",
+        "search-flow",
+        "performance",
+        "evidence-assurance"
+      ],
+      "command": [
+        "uv",
+        "run",
+        "--frozen",
+        "--project",
+        "packages/python",
+        "python",
+        "-m",
+        "tools",
+        "graph",
+        "turbo",
+        "agent-benefit",
+        "sandtables/fixtures/asp/graph-turbo-failure-evidence.json",
+        "--scenario",
+        "python.graph-turbo-failure-evidence-flow",
+        "--require-failure-evidence",
+        "--max-failure-evidence-rank",
+        "2",
+        "--require-useful-locator",
+        "--max-useful-locator-rank",
+        "2",
+        "--require-profile-matrix-explanation",
+        "--fail-on-quality-gate",
+        "--format",
+        "json"
+      ],
+      "expect": {
+        "stdoutJsonSchema": "schemas/semantic-graph-turbo-agent-benefit.v1.schema.json",
+        "stdoutJsonEquals": {
+          "schemaId": "agent.semantic-protocols.semantic-graph-turbo-agent-benefit",
+          "packetKind": "graph-turbo-agent-benefit",
+          "scenario": "python.graph-turbo-failure-evidence-flow",
+          "profile": "failure-evidence",
+          "qualityGate.status": "pass",
+          "failureEvidence.found": true,
+          "failureEvidence.kind": "assert",
+          "usefulLocator.found": true,
+          "profileMatrixExplanation.explained": true
+        },
+        "stdoutContains": [
+          "\"failureEvidence\"",
+          "\"rank\": 2",
+          "\"relation\": \"fails\"",
+          "\"relation:fails"
+        ],
+        "maxStdoutLinesWarn": 1,
+        "maxStdoutBytesWarn": 9000,
+        "maxElapsedMsWarn": 10000
+      }
+    }
+  ]
+}

@@ -9,6 +9,7 @@ mod hook;
 mod hook_enforcement;
 mod hook_runtime;
 mod protocol_binary;
+mod protocol_version;
 mod provider;
 mod provider_process;
 mod provider_roots;
@@ -18,14 +19,18 @@ mod root_language_facade;
 mod search_config;
 mod search_failure_render;
 mod search_pipe;
+mod search_pipe_args;
 mod search_pipe_candidates;
 mod search_pipe_dependency_facts;
 mod search_pipe_graph_turbo;
+mod search_pipe_meta;
 mod search_pipe_plan;
 mod search_pipe_provider_facts;
 mod search_pipe_read_memory;
 mod search_pipe_render;
+mod search_pipe_source;
 mod search_pipe_view;
+mod search_query_wrapper;
 mod search_suggest;
 mod source_access;
 
@@ -34,3 +39,4 @@ pub(in crate::command) use hook_enforcement::codex_enforcement_report;
 pub(in crate::command) use protocol_binary::{
     ensure_protocol_binary_installed_for_path, protocol_binary_on_path,
 };
+pub(in crate::command) use protocol_version::protocol_version_line;

@@ -6,6 +6,7 @@ mod ingest;
 mod options;
 mod pipe_frontier;
 mod provider_ontology;
+mod query_wrapper;
 mod reasoning;
 mod suggest;
 mod surface;
@@ -82,6 +83,8 @@ fn assert_graph_turbo_request_contract(payload: &Value) {
                     | "owner"
                     | "ownerPath"
                     | "symbol"
+                    | "source"
+                    | "confidence"
                     | "matchText"
                     | "syntaxQuery"
                     | "name"

@@ -1166,6 +1166,8 @@
           "search-fzf",
           "search-reasoning",
           "search-failure",
+          "fd-query",
+          "rg-query",
           "search-fzf-or-reasoning",
           "query-selector",
           "treesitter-query",

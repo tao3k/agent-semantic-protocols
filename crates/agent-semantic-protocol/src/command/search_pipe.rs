@@ -1,20 +1,25 @@
 //! ASP-owned search pipeline wrapper.
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use super::graph::GraphTurboReceiptRequest;
 use super::search_config::AspConfig;
 use super::search_failure_render::{render_failure_frontier, render_failure_graph_turbo_request};
+use super::search_pipe_args::{
+    parse_failure_args, parse_fzf_args, parse_ingest_args, parse_owner_only_args,
+    parse_owner_query_args, parse_search_owner_items_query_args, parse_search_pipe_args,
+};
 use super::search_pipe_candidates::{
     collect_candidates, parse_ingest_candidates, read_piped_stdin,
 };
 use super::search_pipe_provider_facts::{ProviderGraphFactsContext, collect_provider_graph_facts};
 use super::search_pipe_read_memory::read_loop_memory_selectors;
 use super::search_pipe_render::{
-    default_search_surfaces, parse_search_surfaces, render_empty_ingest_diagnostic,
+    SearchPipeSourceTrace, default_search_surfaces, render_empty_ingest_diagnostic,
     render_owner_query_frontier, render_owner_tests_frontier,
 };
+use super::search_pipe_source::collect_search_pipe_candidates;
 use super::search_pipe_view::{
     SearchPipeViewRequest, print_search_pipe_view, reject_non_graph_turbo_receipt,
 };
@@ -22,40 +27,6 @@ use super::search_suggest::{
     is_search_suggest, is_unsupported_search_pipeline_command,
     reject_unsupported_search_pipeline_command, run_search_suggest_command,
 };
-
-#[derive(Debug, Eq, PartialEq)]
-struct SearchPipeArgs {
-    query: String,
-    pipes: Vec<String>,
-    owners: Vec<PathBuf>,
-    view: String,
-}
-
-#[derive(Debug, Eq, PartialEq)]
-struct OwnerQueryArgs {
-    owner: PathBuf,
-    query: String,
-    view: String,
-}
-
-#[derive(Debug, Eq, PartialEq)]
-struct OwnerOnlyArgs {
-    owner: PathBuf,
-    view: String,
-}
-
-#[derive(Debug, Eq, PartialEq)]
-struct IngestArgs {
-    pipes: Vec<String>,
-    view: String,
-}
-
-#[derive(Debug, Eq, PartialEq)]
-struct FailureArgs {
-    message: Option<String>,
-    from_last_check: bool,
-    view: String,
-}
 
 pub(super) struct FastSearchContext<'a> {
     pub(super) language_id: &'a str,
@@ -242,30 +213,36 @@ fn explicit_view(args: &[String]) -> Option<&str> {
 
 fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> Result<(), String> {
     let pipe_args = parse_search_pipe_args(args)?;
-    let candidates = collect_candidates(
+    let acquisition = collect_search_pipe_candidates(
         context.language_id,
         context.project_root,
         context.locator_root,
-        &pipe_args.query,
-        &pipe_args.owners,
+        &pipe_args.seed_query,
+        &pipe_args.scopes,
+        pipe_args.source,
         context.config,
     )?;
     let provider_facts = collect_provider_graph_facts(
         context.language_id,
         context.project_root,
-        Some(&pipe_args.query),
-        &candidates,
+        Some(&pipe_args.seed_query),
+        &acquisition.candidates,
         context.config,
         context.provider_context,
     )?;
+    let surfaces = default_search_surfaces();
     print_search_pipe_view(SearchPipeViewRequest {
         language_id: context.language_id,
         project_root: context.project_root,
         locator_root: context.locator_root,
-        query: Some(&pipe_args.query),
-        candidates: &candidates,
-        pipes: &pipe_args.pipes,
-        scopes: &pipe_args.owners,
+        surface: "search-pipe",
+        query: Some(&pipe_args.seed_query),
+        candidates: &acquisition.candidates,
+        pipes: &surfaces,
+        source: pipe_args.source.as_str(),
+        candidate_sources: &acquisition.candidate_sources,
+        source_trace: &acquisition.source_trace,
+        scopes: &pipe_args.scopes,
         view: &pipe_args.view,
         include_pipe_plan: true,
         provider_facts: &provider_facts,
@@ -383,9 +360,19 @@ fn run_search_ingest_command(
         language_id,
         project_root,
         locator_root,
+        surface: "search-ingest",
         query: None,
         candidates: &candidates,
         pipes: &ingest_args.pipes,
+        source: "ingest",
+        candidate_sources: &["ingest".to_string()],
+        source_trace: &[SearchPipeSourceTrace::new(
+            "ingest",
+            "used",
+            candidates.len(),
+            usize::from(candidates.is_empty()),
+            candidates.len(),
+        )],
         scopes: &[],
         view: &ingest_args.view,
         include_pipe_plan: false,
@@ -431,9 +418,23 @@ fn run_search_fzf_command(
         language_id,
         project_root,
         locator_root,
+        surface: "search-fzf",
         query: Some(&pipe_args.query),
         candidates: &candidates,
         pipes: &pipe_args.pipes,
+        source: "finder",
+        candidate_sources: &["finder".to_string()],
+        source_trace: &[SearchPipeSourceTrace::new(
+            "finder",
+            if candidates.is_empty() {
+                "empty"
+            } else {
+                "used"
+            },
+            candidates.len(),
+            usize::from(candidates.is_empty()),
+            candidates.len(),
+        )],
         scopes: &pipe_args.owners,
         view: &pipe_args.view,
         include_pipe_plan: false,
@@ -497,355 +498,6 @@ fn run_search_failure_command(
     };
     print!("{rendered}");
     Ok(())
-}
-
-fn parse_search_pipe_args(args: &[String]) -> Result<SearchPipeArgs, String> {
-    if !is_search_pipe(args) {
-        return Err("expected search pipe command".to_string());
-    }
-    let query = args
-        .get(2)
-        .filter(|query| !query.starts_with('-'))
-        .ok_or_else(|| "search pipe requires a query".to_string())?
-        .clone();
-    let mut pipes = Vec::new();
-    let mut owners = Vec::new();
-    let mut view = "seeds".to_string();
-    let mut index = 3;
-    while index < args.len() {
-        match args[index].as_str() {
-            "--owners" | "--owner" => {
-                let value = args
-                    .get(index + 1)
-                    .ok_or_else(|| format!("{} requires a value", args[index]))?;
-                owners.extend(split_csv(value).into_iter().map(PathBuf::from));
-                index += 2;
-            }
-            "--view" => {
-                view = args
-                    .get(index + 1)
-                    .ok_or_else(|| "--view requires a value".to_string())?
-                    .clone();
-                index += 2;
-            }
-            "--surface" | "--surfaces" => {
-                let value = args
-                    .get(index + 1)
-                    .ok_or_else(|| format!("{} requires a value", args[index]))?;
-                pipes.extend(parse_search_surfaces(value)?);
-                index += 2;
-            }
-            value if value.starts_with('-') => {
-                return Err(format!("unknown search pipe option: {value}"));
-            }
-            value => {
-                owners.push(PathBuf::from(value));
-                index += 1;
-            }
-        }
-    }
-    if view == "commands" {
-        return Err(
-            "search pipe --view commands moved to search suggest --view commands".to_string(),
-        );
-    }
-    if !matches!(view.as_str(), "seeds" | "graph-turbo-request") {
-        return Err("search pipe supports --view seeds or --view graph-turbo-request".to_string());
-    }
-    if pipes.is_empty() {
-        pipes.extend(default_search_surfaces());
-    }
-    Ok(SearchPipeArgs {
-        query,
-        pipes,
-        owners,
-        view,
-    })
-}
-
-fn parse_owner_query_args(args: &[String]) -> Result<OwnerQueryArgs, String> {
-    if !is_reasoning_owner_query(args) {
-        return Err("expected search reasoning owner-query command".to_string());
-    }
-    let mut owner = None;
-    let mut query = None;
-    let mut view = "seeds".to_string();
-    let mut index = 3;
-    while index < args.len() {
-        match args[index].as_str() {
-            "--owner" => {
-                owner = Some(PathBuf::from(
-                    args.get(index + 1)
-                        .ok_or_else(|| "--owner requires a value".to_string())?,
-                ));
-                index += 2;
-            }
-            "--query" => {
-                query = Some(
-                    args.get(index + 1)
-                        .ok_or_else(|| "--query requires a value".to_string())?
-                        .clone(),
-                );
-                index += 2;
-            }
-            "--view" => {
-                view = args
-                    .get(index + 1)
-                    .ok_or_else(|| "--view requires a value".to_string())?
-                    .clone();
-                index += 2;
-            }
-            value if value.starts_with('-') => {
-                return Err(format!(
-                    "unknown search reasoning owner-query option: {value}"
-                ));
-            }
-            _ => {
-                index += 1;
-            }
-        }
-    }
-    Ok(OwnerQueryArgs {
-        owner: owner.ok_or_else(|| "search reasoning owner-query requires --owner".to_string())?,
-        query: query.ok_or_else(|| "search reasoning owner-query requires --query".to_string())?,
-        view,
-    })
-}
-
-fn parse_owner_only_args(args: &[String], profile: &str) -> Result<OwnerOnlyArgs, String> {
-    let mut owner = None;
-    let mut view = "seeds".to_string();
-    let mut index = 3;
-    while index < args.len() {
-        match args[index].as_str() {
-            "--owner" => {
-                owner = Some(PathBuf::from(
-                    args.get(index + 1)
-                        .ok_or_else(|| "--owner requires a value".to_string())?,
-                ));
-                index += 2;
-            }
-            "--view" => {
-                view = args
-                    .get(index + 1)
-                    .ok_or_else(|| "--view requires a value".to_string())?
-                    .clone();
-                index += 2;
-            }
-            value if value.starts_with('-') => {
-                return Err(format!(
-                    "unknown search reasoning {profile} option: {value}"
-                ));
-            }
-            _ => {
-                index += 1;
-            }
-        }
-    }
-    Ok(OwnerOnlyArgs {
-        owner: owner.ok_or_else(|| format!("search reasoning {profile} requires --owner"))?,
-        view,
-    })
-}
-
-fn parse_search_owner_items_query_args(args: &[String]) -> Result<OwnerQueryArgs, String> {
-    let owner = args
-        .get(2)
-        .filter(|owner| !owner.starts_with('-'))
-        .ok_or_else(|| "search owner requires an owner path".to_string())?;
-    let mut query = None;
-    let mut view = "seeds".to_string();
-    let mut index = 3;
-    while index < args.len() {
-        match args[index].as_str() {
-            "--query" => {
-                query = Some(
-                    args.get(index + 1)
-                        .ok_or_else(|| "--query requires a value".to_string())?
-                        .clone(),
-                );
-                index += 2;
-            }
-            "--view" => {
-                view = args
-                    .get(index + 1)
-                    .ok_or_else(|| "--view requires a value".to_string())?
-                    .clone();
-                index += 2;
-            }
-            _ => {
-                index += 1;
-            }
-        }
-    }
-    Ok(OwnerQueryArgs {
-        owner: PathBuf::from(owner),
-        query: query.ok_or_else(|| "search owner items requires --query".to_string())?,
-        view,
-    })
-}
-
-fn parse_ingest_args(args: &[String]) -> Result<IngestArgs, String> {
-    if !is_search_ingest(args) {
-        return Err("expected search ingest command".to_string());
-    }
-    let mut pipes = Vec::new();
-    let mut view = "seeds".to_string();
-    let mut index = 2;
-    while index < args.len() {
-        match args[index].as_str() {
-            "--view" => {
-                view = args
-                    .get(index + 1)
-                    .ok_or_else(|| "--view requires a value".to_string())?
-                    .clone();
-                index += 2;
-            }
-            value if value.starts_with('-') => {
-                return Err(format!("unknown search ingest option: {value}"));
-            }
-            "owner" => {
-                pipes.push("items".to_string());
-                index += 1;
-            }
-            value => {
-                pipes.push(value.to_string());
-                index += 1;
-            }
-        }
-    }
-    if pipes.is_empty() {
-        pipes.extend(default_search_surfaces());
-    }
-    Ok(IngestArgs { pipes, view })
-}
-
-fn parse_fzf_args(args: &[String]) -> Result<SearchPipeArgs, String> {
-    if !is_search_fzf(args) {
-        return Err("expected search fzf command".to_string());
-    }
-    let query = args
-        .get(2)
-        .filter(|query| !query.starts_with('-'))
-        .ok_or_else(|| "search fzf requires a query".to_string())?
-        .clone();
-    let mut pipes = Vec::new();
-    let mut owners = Vec::new();
-    let mut view = "seeds".to_string();
-    let mut index = 3;
-    while index < args.len() {
-        match args[index].as_str() {
-            "--view" => {
-                view = args
-                    .get(index + 1)
-                    .ok_or_else(|| "--view requires a value".to_string())?
-                    .clone();
-                index += 2;
-            }
-            "--surface" | "--surfaces" => {
-                let value = args
-                    .get(index + 1)
-                    .ok_or_else(|| format!("{} requires a value", args[index]))?;
-                pipes.extend(parse_search_surfaces(value)?);
-                index += 2;
-            }
-            "--workspace" => {
-                args.get(index + 1)
-                    .ok_or_else(|| "--workspace requires a value".to_string())?;
-                index += 2;
-            }
-            "--query-set" | "--owner" | "--dependency" => {
-                return Err(format!(
-                    "search fzf fast path does not support {}",
-                    args[index]
-                ));
-            }
-            value if value.starts_with('-') => {
-                return Err(format!("unknown search fzf option: {value}"));
-            }
-            "owner" => {
-                pipes.push("items".to_string());
-                index += 1;
-            }
-            value if matches!(value, "items" | "tests" | "deps" | "dependencies") => {
-                pipes.push(value.to_string());
-                index += 1;
-            }
-            value => {
-                owners.push(PathBuf::from(value));
-                index += 1;
-            }
-        }
-    }
-    if pipes.is_empty() {
-        pipes.extend(default_search_surfaces());
-    }
-    Ok(SearchPipeArgs {
-        query,
-        pipes,
-        owners,
-        view,
-    })
-}
-
-fn parse_failure_args(args: &[String]) -> Result<FailureArgs, String> {
-    if !is_search_failure(args) {
-        return Err("expected search failure command".to_string());
-    }
-    let mut message = None;
-    let mut positional = Vec::new();
-    let mut from_last_check = false;
-    let mut view = "seeds".to_string();
-    let mut index = 2;
-    while index < args.len() {
-        match args[index].as_str() {
-            "--from-last-check" => {
-                from_last_check = true;
-                index += 1;
-            }
-            "--message" => {
-                message = Some(
-                    args.get(index + 1)
-                        .ok_or_else(|| "--message requires a value".to_string())?
-                        .clone(),
-                );
-                index += 2;
-            }
-            "--view" => {
-                view = args
-                    .get(index + 1)
-                    .ok_or_else(|| "--view requires a value".to_string())?
-                    .clone();
-                index += 2;
-            }
-            value if value.starts_with('-') => {
-                return Err(format!("unknown search failure option: {value}"));
-            }
-            "." => {
-                index += 1;
-            }
-            value => {
-                positional.push(value.to_string());
-                index += 1;
-            }
-        }
-    }
-    if message.is_none() && !positional.is_empty() {
-        message = Some(positional.join(" "));
-    }
-    if from_last_check && message.is_some() {
-        return Err(
-            "search failure accepts either --from-last-check or failure text, not both".to_string(),
-        );
-    }
-    if !from_last_check && message.is_none() {
-        return Err("search failure requires --message or --from-last-check".to_string());
-    }
-    Ok(FailureArgs {
-        message,
-        from_last_check,
-        view,
-    })
 }
 
 fn read_last_check_output(cache_home: &Path) -> Result<String, String> {
@@ -921,13 +573,4 @@ fn failure_candidate_stop_word(token: &str) -> bool {
 
 fn failure_token_character(character: char) -> bool {
     character == '_' || character == '-' || character == ':' || character.is_ascii_alphanumeric()
-}
-
-fn split_csv(value: &str) -> Vec<String> {
-    value
-        .split(',')
-        .map(str::trim)
-        .filter(|item| !item.is_empty())
-        .map(ToOwned::to_owned)
-        .collect()
 }

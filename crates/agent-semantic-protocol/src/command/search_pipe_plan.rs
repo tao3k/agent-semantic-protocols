@@ -18,8 +18,8 @@ pub(super) struct SearchPipePlanRequest<'a> {
     pub(super) language_id: &'a str,
     pub(super) project_root: &'a Path,
     pub(super) locator_root: &'a Path,
+    pub(super) source: &'a str,
     pub(super) scopes: &'a [PathBuf],
-    pub(super) surfaces: &'a [String],
     pub(super) query: &'a str,
     pub(super) candidates: &'a [Candidate],
     pub(super) ranked_compact: Option<&'a str>,
@@ -30,8 +30,8 @@ pub(super) fn render_search_pipe_plan(request: SearchPipePlanRequest<'_>) -> Str
         language_id,
         project_root,
         locator_root,
+        source,
         scopes,
-        surfaces,
         query,
         candidates,
         ranked_compact,
@@ -41,60 +41,27 @@ pub(super) fn render_search_pipe_plan(request: SearchPipePlanRequest<'_>) -> Str
     let compact_prints_primary = ranked_compact
         .map(compact_has_primary_selector_action)
         .unwrap_or(false);
-    let action_stages = if actions.is_empty() {
-        "pipeStages=search-prime,search-pipe,query-selector,search-reasoning\n\
-selectorPolicy=defer reason=no-exact-selector next=search-reasoning\n"
-            .to_string()
+    let frontier_action_lines = if actions.is_empty() {
+        "frontierActions=none reason=no-exact-selector\n".to_string()
     } else {
         render_action_lines(&actions, compact_prints_primary)
     };
     let next_action_lines =
         render_next_action_lines(language_id, project_root, locator_root, scopes, &actions);
-    let command_line = if actions.is_empty() {
-        "pipeCommands=none reason=no-exact-selector\n".to_string()
+    let recovery_lines = if actions.is_empty() {
+        render_no_hit_recovery(language_id, source, query, &scope_arg)
     } else {
-        render_concrete_pipe_commands(
-            language_id,
-            project_root,
-            locator_root,
-            scopes,
-            &scope_arg,
-            query,
-            &actions,
-        )
+        String::new()
     };
-    let choice_line = pipe_choice_lines(ranked_compact);
     format!(
-        "pipePlan=query-pipeline alg=asp-search-pipe-v1 budget=asp<=3,search<=2,query<=1,repeated=0\n\
-pipeSurfaces={surfaces}\n\
-pipeProjections=graph-frontier,S1,nextCommand,pipeCommands,conditionalActions\n\
-{choice_line}\
-{action_stages}\
+        "seedPlan=seed-query alg=asp-search-pipe-v2 budget=frontier<=3 repeated=0\n\
+{frontier_action_lines}\
 {next_action_lines}\
-{command_line}\
-stop=after-primary-query-selector-read answer-from-evidence=true conditional-branches=only-if-primary-selector-insufficient no-search-after-projected-branches=true no-duplicate-selector=true no-context-widening=true\n\
-avoid=repeat-prime,repeat-pipe,query-rewrite-pipe,reasoning-before-selector,read-all-selectors-by-default,guide-after-selector,repeat-fzf,broad-fzf,post-projection-owner-search,post-projection-fzf,post-projection-treesitter-guide,duplicate-selector,context-widening,raw-read,manual-window-scan,wide-windows\n",
-        surfaces = display_surfaces(surfaces),
+{recovery_lines}\
+nextClasses=fd-query,rg-query,owner-items,query-selector\n\
+omit=source,full-candidate-list,raw-finder-output\n\
+avoid=repeat-search-pipe,broad-fzf,raw-rg,manual-window-scan,raw-read\n",
     )
-}
-
-fn display_surfaces(surfaces: &[String]) -> String {
-    if surfaces.is_empty() {
-        return "owner,items,tests".to_string();
-    }
-    surfaces.join(",")
-}
-
-fn pipe_choice_lines(ranked_compact: Option<&str>) -> &'static str {
-    let graph_choice = ranked_compact
-        .map(|compact| compact.lines().any(|line| line.starts_with("pipeChoice=")))
-        .unwrap_or(false);
-    if graph_choice {
-        "pipeExecution=each-branch-at-most-once\n"
-    } else {
-        "pipeChoiceFallback=bounded-fanout maxBranches=3 repeat=false owner=asp-rust-fallback reason=missing-graph-turbo-projection\n\
-pipeExecution=each-branch-at-most-once\n"
-    }
 }
 
 fn concrete_pipe_actions(
@@ -318,9 +285,7 @@ fn node_symbol(node: &str) -> Option<String> {
 }
 
 fn render_action_lines(actions: &[PipeAction], compact_prints_primary: bool) -> String {
-    let mut rendered = "pipeStages=search-prime,search-pipe,query-selector,search-reasoning\n\
-selectorPolicy=run-first reason=exact-selector-present before=search-reasoning\n"
-        .to_string();
+    let mut rendered = String::new();
     if !compact_prints_primary && let Some(action) = actions.first() {
         let _ = writeln!(
             rendered,
@@ -332,6 +297,16 @@ selectorPolicy=run-first reason=exact-selector-present before=search-reasoning\n
         );
     }
     rendered
+}
+
+fn render_no_hit_recovery(language_id: &str, source: &str, query: &str, scope_arg: &str) -> String {
+    if source == "finder" {
+        return "recommendedSource=- reason=finder-exhausted\n".to_string();
+    }
+    format!(
+        "recommendedSource=finder\nnextCommand=asp {language_id} search pipe {query} --source finder --view seeds {scope_arg}\n",
+        query = shell_arg(query),
+    )
 }
 
 pub(super) fn render_primary_frontier_actions_only(compact: &str) -> String {
@@ -357,7 +332,27 @@ pub(super) fn render_primary_frontier_actions_only(compact: &str) -> String {
 fn is_graph_debug_line(line: &str) -> bool {
     matches!(
         line.split_once('=').map(|(key, _)| key),
-        Some("scores" | "paths" | "trace" | "explain" | "cache" | "metrics")
+        Some(
+            "scores"
+                | "paths"
+                | "trace"
+                | "explain"
+                | "cache"
+                | "metrics"
+                | "profiles"
+                | "omit"
+                | "pipeChoice"
+                | "pipePolicy"
+                | "pipePlan"
+                | "pipeProjections"
+                | "pipeExecution"
+                | "pipeStages"
+                | "selectorPolicy"
+                | "recommendedNext"
+                | "nextCommand"
+                | "pipeCommands"
+                | "conditionalActions"
+        )
     )
 }
 
@@ -392,48 +387,6 @@ fn render_next_action_lines(
         "recommendedNext=S{index}.query-selector\nnextCommand={command}\n",
         index = action.index,
     )
-}
-
-fn render_concrete_pipe_commands(
-    language_id: &str,
-    project_root: &Path,
-    locator_root: &Path,
-    scopes: &[PathBuf],
-    _scope_arg: &str,
-    _query: &str,
-    actions: &[PipeAction],
-) -> String {
-    let mut commands = Vec::new();
-    if let Some(primary) = actions.first() {
-        let workspace_arg = action_root_arg(primary, project_root, locator_root, scopes);
-        commands.push(format!(
-            "S{index}=>asp {language_id} query --selector {selector} --workspace {workspace_arg} --code",
-            index = primary.index,
-            selector = shell_arg(&primary.selector),
-        ));
-    }
-    let mut conditional_actions = Vec::new();
-    for action in actions.iter().skip(1) {
-        conditional_actions.push(format!(
-            "S{index}(owner={owner},symbol={symbol},selector=hidden)",
-            index = action.index,
-            owner = action.owner,
-            symbol = action.symbol,
-        ));
-    }
-    let mut rendered = if commands.is_empty() {
-        "pipeCommands=none reason=no-exact-selector\n".to_string()
-    } else {
-        format!("pipeCommands={}\n", commands.join(","))
-    };
-    if !conditional_actions.is_empty() {
-        let _ = writeln!(
-            rendered,
-            "conditionalActions=metadata-only selector=hidden run-if-primary-insufficient:{}",
-            conditional_actions.join(",")
-        );
-    }
-    rendered
 }
 
 fn is_source_preferred_owner(owner: &str) -> bool {

@@ -1,0 +1,99 @@
+{
+  "schemaId": "agent.semantic-protocols.semantic-graph-turbo-request",
+  "schemaVersion": "1",
+  "protocolId": "agent.semantic-protocols.semantic-language",
+  "protocolVersion": "1",
+  "packetKind": "graph-turbo-request",
+  "profile": "failure-evidence",
+  "algorithm": "typed-ppr-diverse",
+  "seedIds": [
+    "failure:cache"
+  ],
+  "budget": 5,
+  "graph": {
+    "nodes": [
+      {
+        "id": "failure:cache",
+        "kind": "failure",
+        "role": "panic",
+        "value": "cache replay failed"
+      },
+      {
+        "id": "assert:cache",
+        "kind": "assert",
+        "role": "assertion",
+        "value": "assert cache replay writes rows",
+        "locator": "tests/cache.rs:12:20"
+      },
+      {
+        "id": "evidence:sqlite",
+        "kind": "evidence",
+        "role": "trace",
+        "value": "sqlite rows absent",
+        "locator": "tests/cache.rs:22:28"
+      },
+      {
+        "id": "hot:writeback",
+        "kind": "hot",
+        "role": "function",
+        "value": "writeback cache rows",
+        "locator": "src/cache.rs:30:60"
+      },
+      {
+        "id": "test:cache",
+        "kind": "test",
+        "role": "path",
+        "value": "tests/cache.rs",
+        "locator": "tests/cache.rs:1:80"
+      },
+      {
+        "id": "owner:cache",
+        "kind": "owner",
+        "role": "path",
+        "value": "src/cache.rs"
+      }
+    ],
+    "edges": [
+      {
+        "source": "failure:cache",
+        "target": "assert:cache",
+        "relation": "fails",
+        "confidence": "exact",
+        "freshness": "fresh",
+        "provenance": "failure"
+      },
+      {
+        "source": "assert:cache",
+        "target": "evidence:sqlite",
+        "relation": "explains",
+        "confidence": "exact",
+        "freshness": "fresh",
+        "provenance": "test"
+      },
+      {
+        "source": "assert:cache",
+        "target": "hot:writeback",
+        "relation": "checks",
+        "confidence": "high",
+        "freshness": "fresh",
+        "provenance": "parser"
+      },
+      {
+        "source": "failure:cache",
+        "target": "test:cache",
+        "relation": "validates",
+        "confidence": "high",
+        "freshness": "fresh",
+        "provenance": "test"
+      },
+      {
+        "source": "owner:cache",
+        "target": "hot:writeback",
+        "relation": "contains",
+        "confidence": "high",
+        "freshness": "fresh",
+        "provenance": "parser"
+      }
+    ]
+  }
+}

@@ -118,6 +118,30 @@ fn language_facade_discovers_activation_from_child_directory() {
 }
 
 #[test]
+fn language_facade_version_does_not_require_activation() {
+    let root = temp_project_root("language-version-without-activation");
+
+    for arg in ["--version", "version"] {
+        let output = asp_command(&root)
+            .args(["rust", arg])
+            .output()
+            .expect("run asp rust version");
+
+        assert!(
+            output.status.success(),
+            "arg={arg} stderr={}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8(output.stdout).expect("stdout"),
+            format!("asp {}\n", env!("CARGO_PKG_VERSION"))
+        );
+        assert!(output.stderr.is_empty());
+    }
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn language_facade_uses_manifest_child_as_provider_project_hint() {
     let root = temp_project_root("child-package-search-facade");
     let bin_dir = root.join(".bin");

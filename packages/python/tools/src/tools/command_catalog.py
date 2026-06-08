@@ -70,6 +70,13 @@ COMMANDS: tuple[CommandSpec, ...] = (
         "Compare graph turbo ablation variants for ranking calibration.",
     ),
     CommandSpec(
+        ("graph", "turbo", "agent-benefit"),
+        "asp_graph_turbo.agent_benefit_cli",
+        "main",
+        "argv",
+        "Report graph turbo agent reading, locator, feedback, and explanation benefits.",
+    ),
+    CommandSpec(
         ("graph", "turbo", "artifacts"),
         "asp_graph_turbo.artifacts_cli",
         "main",

@@ -1,0 +1,107 @@
+{
+  "id": "python.graph-turbo-read-reduction-flow",
+  "language": "python",
+  "title": "Python graph turbo agent source-read reduction flow",
+  "coverage": [
+    "json-schema",
+    "search-flow",
+    "performance",
+    "evidence-assurance"
+  ],
+  "tags": [
+    "asp",
+    "graph-turbo",
+    "agent-benefit",
+    "read-reduction"
+  ],
+  "workdir": ".",
+  "budgets": {
+    "maxCommands": 1,
+    "maxTotalLinesWarn": 1,
+    "maxTotalElapsedMsWarn": 10000,
+    "maxTotalStdoutBytesWarn": 9000
+  },
+  "evidence": {
+    "source": "handwritten",
+    "intent": "Validate that graph turbo can reduce repeated source reading by surfacing useful locators and read-memory suppression as schema-owned agent benefit facts.",
+    "intentKind": "implementation-principle",
+    "editBoundary": "none",
+    "metrics": {
+      "recordedCommandCount": 1,
+      "jsonSearches": 1,
+      "compactSearches": 0,
+      "repeatedSearches": 0,
+      "tokenDelta": "lower"
+    },
+    "findings": [
+      {
+        "kind": "graph-turbo-read-reduction",
+        "severity": "info",
+        "message": "The agent benefit report gates raw read fallback, duplicate selectors, useful locator rank, read-memory suppression, and profile matrix explanation."
+      }
+    ]
+  },
+  "steps": [
+    {
+      "id": "agent-benefit-read-reduction",
+      "kind": "schema-contract",
+      "coverage": [
+        "json-schema",
+        "search-flow",
+        "performance",
+        "evidence-assurance"
+      ],
+      "command": [
+        "uv",
+        "run",
+        "--frozen",
+        "--project",
+        "packages/python",
+        "python",
+        "-m",
+        "tools",
+        "graph",
+        "turbo",
+        "agent-benefit",
+        "sandtables/fixtures/asp/graph-turbo-sensitive-ablation.json",
+        "--scenario",
+        "python.graph-turbo-read-reduction-flow",
+        "--receipt",
+        "sandtables/fixtures/asp/graph-turbo-sensitive-receipt.json",
+        "--require-useful-locator",
+        "--max-useful-locator-rank",
+        "1",
+        "--max-commands-to-first-useful-locator",
+        "1",
+        "--require-repeated-mistake-suppression",
+        "--require-profile-matrix-explanation",
+        "--fail-on-quality-gate",
+        "--format",
+        "json"
+      ],
+      "expect": {
+        "stdoutJsonSchema": "schemas/semantic-graph-turbo-agent-benefit.v1.schema.json",
+        "stdoutJsonEquals": {
+          "schemaId": "agent.semantic-protocols.semantic-graph-turbo-agent-benefit",
+          "packetKind": "graph-turbo-agent-benefit",
+          "scenario": "python.graph-turbo-read-reduction-flow",
+          "qualityGate.status": "pass",
+          "usefulLocator.found": true,
+          "usefulLocator.selector": "src/lib.rs:20:22",
+          "feedbackLearning.repeatedMistakeSuppressed": true,
+          "profileMatrixExplanation.explained": true
+        },
+        "stdoutContains": [
+          "\"readMemorySuppressedCount\": 1",
+          "\"rawReadFallbackCount\": 0",
+          "\"duplicateSelectorCount\": 0",
+          "\"commandsToFirstUsefulLocator\": 1",
+          "\"rank\": 1"
+        ],
+        "maxStdoutLinesWarn": 1,
+        "maxStdoutBytesWarn": 9000,
+        "maxElapsedMsWarn": 10000
+      }
+    }
+  ]
+}

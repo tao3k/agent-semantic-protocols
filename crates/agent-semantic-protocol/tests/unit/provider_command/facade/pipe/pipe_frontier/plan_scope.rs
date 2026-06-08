@@ -45,11 +45,7 @@ fn search_pipe_plan_preserves_search_scope_in_primary_command() {
             && stdout.contains(" --workspace . --code"),
         "{stdout}"
     );
-    assert!(
-        stdout.contains("S1=>asp rust query --selector languages/rust-harness/src/lib.rs:")
-            && stdout.contains(" --workspace . --code"),
-        "{stdout}"
-    );
+    assert!(!stdout.contains("S1=>asp rust query"), "{stdout}");
     assert!(!marker.exists(), "search pipe should not spawn provider");
     let _ = std::fs::remove_dir_all(root);
 }

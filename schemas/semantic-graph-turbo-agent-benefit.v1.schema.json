@@ -1,0 +1,340 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://agent-semantic-protocols.local/schemas/semantic-graph-turbo-agent-benefit.v1.schema.json",
+    "title": "Semantic graph turbo agent benefit report",
+    "description": "Agent-facing graph turbo quality report for source reads, locators, failure evidence, receipt feedback, and profile-matrix explanations.",
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+        "schemaId",
+        "schemaVersion",
+        "protocolId",
+        "protocolVersion",
+        "packetKind",
+        "scenario",
+        "profile",
+        "sourceReading",
+        "usefulLocator",
+        "failureEvidence",
+        "feedbackLearning",
+        "profileMatrixExplanation",
+        "qualityGate"
+    ],
+    "properties": {
+        "schemaId": {
+            "const": "agent.semantic-protocols.semantic-graph-turbo-agent-benefit"
+        },
+        "schemaVersion": {
+            "const": "1"
+        },
+        "protocolId": {
+            "const": "agent.semantic-protocols.semantic-language"
+        },
+        "protocolVersion": {
+            "const": "1"
+        },
+        "packetKind": {
+            "const": "graph-turbo-agent-benefit"
+        },
+        "scenario": {
+            "type": "string",
+            "minLength": 1
+        },
+        "profile": {
+            "type": "string",
+            "minLength": 1
+        },
+        "sourceReading": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "directCodeActionCount",
+                "rawReadFallbackCount",
+                "duplicateSelectorCount",
+                "sameOwnerScanCount",
+                "readMemorySuppressedCount",
+                "secondPassSuppressedCount",
+                "duplicateSelectorSuppressedCount",
+                "sameOwnerSuppressedCount"
+            ],
+            "properties": {
+                "directCodeActionCount": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "rawReadFallbackCount": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "duplicateSelectorCount": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "sameOwnerScanCount": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "readMemorySuppressedCount": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "secondPassSuppressedCount": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "duplicateSelectorSuppressedCount": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "sameOwnerSuppressedCount": {
+                    "type": "integer",
+                    "minimum": 0
+                }
+            }
+        },
+        "usefulLocator": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "found",
+                "selector",
+                "nodeId",
+                "rank",
+                "commandsToFirstUsefulLocator"
+            ],
+            "properties": {
+                "found": {
+                    "type": "boolean"
+                },
+                "selector": {
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "nodeId": {
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "rank": {
+                    "type": [
+                        "integer",
+                        "null"
+                    ],
+                    "minimum": 1
+                },
+                "commandsToFirstUsefulLocator": {
+                    "type": [
+                        "integer",
+                        "null"
+                    ],
+                    "minimum": 0
+                }
+            }
+        },
+        "failureEvidence": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "found",
+                "nodeId",
+                "kind",
+                "rank",
+                "selector"
+            ],
+            "properties": {
+                "found": {
+                    "type": "boolean"
+                },
+                "nodeId": {
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "kind": {
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "rank": {
+                    "type": [
+                        "integer",
+                        "null"
+                    ],
+                    "minimum": 1
+                },
+                "selector": {
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                }
+            }
+        },
+        "feedbackLearning": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "receiptBoostCount",
+                "receiptPenaltyCount",
+                "readMemorySuppressedCount",
+                "duplicateSelectorSuppressedCount",
+                "sameOwnerSuppressedCount",
+                "repeatedMistakeSuppressed",
+                "receiptFeedbackApplied"
+            ],
+            "properties": {
+                "receiptBoostCount": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "receiptPenaltyCount": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "readMemorySuppressedCount": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "duplicateSelectorSuppressedCount": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "sameOwnerSuppressedCount": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "repeatedMistakeSuppressed": {
+                    "type": "boolean"
+                },
+                "receiptFeedbackApplied": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "profileMatrixExplanation": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "profile",
+                "relationMatrixCount",
+                "transitionNonZeroCount",
+                "transitionWeightMass",
+                "topRelationChannels",
+                "explanationRefs",
+                "explained"
+            ],
+            "properties": {
+                "profile": {
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "relationMatrixCount": {
+                    "type": [
+                        "integer",
+                        "null"
+                    ],
+                    "minimum": 0
+                },
+                "transitionNonZeroCount": {
+                    "type": [
+                        "integer",
+                        "null"
+                    ],
+                    "minimum": 0
+                },
+                "transitionWeightMass": {
+                    "type": [
+                        "number",
+                        "null"
+                    ],
+                    "minimum": 0
+                },
+                "topRelationChannels": {
+                    "type": "array",
+                    "items": {
+                        "type": "object"
+                    }
+                },
+                "explanationRefs": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                            "nodeId",
+                            "reasons"
+                        ],
+                        "properties": {
+                            "nodeId": {
+                                "type": [
+                                    "string",
+                                    "null"
+                                ]
+                            },
+                            "reasons": {
+                                "type": "array",
+                                "items": {
+                                    "type": "string",
+                                    "minLength": 1
+                                }
+                            }
+                        }
+                    }
+                },
+                "explained": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "qualityGate": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "status",
+                "thresholds",
+                "failures"
+            ],
+            "properties": {
+                "status": {
+                    "enum": [
+                        "pass",
+                        "fail"
+                    ]
+                },
+                "thresholds": {
+                    "type": "object"
+                },
+                "failures": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                            "field",
+                            "actual",
+                            "expected"
+                        ],
+                        "properties": {
+                            "field": {
+                                "type": "string",
+                                "minLength": 1
+                            },
+                            "actual": true,
+                            "expected": {
+                                "type": "string",
+                                "minLength": 1
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

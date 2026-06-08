@@ -6,8 +6,8 @@ use super::assert_graph_turbo_request_contract;
 use serde_json::Value;
 
 #[test]
-fn search_pipe_surface_option_controls_graph_request_surfaces() {
-    let root = temp_project_root("search-pipe-surface-option");
+fn search_pipe_source_option_controls_graph_request_source() {
+    let root = temp_project_root("search-pipe-source-option");
     let bin_dir = root.join(".bin");
     let marker = root.join("provider-called");
     std::fs::create_dir_all(root.join("src")).expect("create src");
@@ -27,14 +27,14 @@ fn search_pipe_surface_option_controls_graph_request_surfaces() {
             "search",
             "pipe",
             "HookDecision ClientReceipt",
-            "--surface",
-            "owner,tests",
+            "--source",
+            "finder",
             "--view",
             "graph-turbo-request",
             ".",
         ])
         .output()
-        .expect("run asp rust search pipe graph request with surfaces");
+        .expect("run asp rust search pipe graph request with source");
 
     assert!(
         output.status.success(),
@@ -43,8 +43,30 @@ fn search_pipe_surface_option_controls_graph_request_surfaces() {
     );
     let payload: Value = serde_json::from_slice(&output.stdout).expect("graph request json");
     assert_graph_turbo_request_contract(&payload);
-    assert_eq!(payload["surfaces"], serde_json::json!(["owner", "tests"]));
-    assert_eq!(payload["profile"], "owner-tests");
+    assert_eq!(payload["surface"], "search-pipe");
+    assert_eq!(
+        payload["queryTerms"],
+        serde_json::json!(["HookDecision", "ClientReceipt"])
+    );
+    assert_eq!(payload["source"], "finder");
+    assert_eq!(payload["candidateSources"], serde_json::json!(["finder"]));
+    assert_eq!(
+        payload["sourceTrace"],
+        serde_json::json!([
+            {
+                "source": "finder",
+                "status": "used",
+                "matched": 2,
+                "missing": 0,
+                "normalized": 2
+            }
+        ])
+    );
+    assert_eq!(
+        payload["surfaces"],
+        serde_json::json!(["owner", "items", "tests"])
+    );
+    assert_eq!(payload["profile"], "owner-query");
     let nodes = payload["graph"]["nodes"].as_array().expect("nodes");
     assert!(
         nodes
@@ -55,13 +77,9 @@ fn search_pipe_surface_option_controls_graph_request_surfaces() {
     assert!(
         nodes
             .iter()
-            .any(|node| node["kind"].as_str() == Some("test")),
-        "{payload}"
-    );
-    assert!(
-        !nodes
-            .iter()
-            .any(|node| matches!(node["kind"].as_str(), Some("item" | "hot"))),
+            .any(|node| node["kind"].as_str() == Some("item")
+                && node["source"].as_str() == Some("finder")
+                && node["confidence"].as_str() == Some("heuristic")),
         "{payload}"
     );
     let edges = payload["graph"]["edges"].as_array().expect("edges");
@@ -72,7 +90,7 @@ fn search_pipe_surface_option_controls_graph_request_surfaces() {
         "{payload}"
     );
     assert!(
-        !edges
+        edges
             .iter()
             .any(|edge| edge["relation"].as_str() == Some("contains")),
         "{payload}"

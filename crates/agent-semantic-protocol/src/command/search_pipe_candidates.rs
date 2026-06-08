@@ -107,6 +107,8 @@ fn parse_ingest_candidate_line(
         path: display,
         line: 1,
         text: String::new(),
+        source: "ingest".to_string(),
+        confidence: "likely".to_string(),
     })
 }
 
@@ -137,6 +139,8 @@ fn parse_line_candidate(
         line: line_number,
         symbol: symbol_from_bytes(text),
         text: byte_text::lossy_string(text),
+        source: "ingest".to_string(),
+        confidence: "likely".to_string(),
     })
 }
 
@@ -314,6 +318,8 @@ fn line_candidate(
             line: line_number,
             symbol: symbol.clone(),
             text: byte_text::lossy_string(line),
+            source: "finder".to_string(),
+            confidence: "heuristic".to_string(),
         },
         term_index,
     ))

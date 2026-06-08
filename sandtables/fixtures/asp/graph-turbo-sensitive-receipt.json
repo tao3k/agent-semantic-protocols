@@ -1,0 +1,67 @@
+{
+  "schemaId": "agent.semantic-protocols.semantic-fact-frontier-receipt",
+  "schemaVersion": "1",
+  "protocolId": "agent.semantic-protocols.semantic-fact-frontier-feedback",
+  "protocolVersion": "1",
+  "receiptId": "agent-semantic-protocols.graph-turbo-sensitive-receipt",
+  "receiptKind": "frontier",
+  "taskFingerprint": "sandtable:graph-turbo-sensitive-ablation",
+  "commandFingerprint": "command:graph-turbo-agent-benefit-sensitive",
+  "selector": "src/lib.rs:20:22",
+  "owner": "src/lib.rs",
+  "symbol": "receipt",
+  "range": {
+    "path": "src/lib.rs",
+    "startLine": 20,
+    "endLine": 22
+  },
+  "frontierReturned": [
+    {
+      "nodeId": "field:receipt",
+      "action": "code",
+      "selector": "src/lib.rs:20:22",
+      "owner": "src/lib.rs",
+      "symbol": "receipt",
+      "range": {
+        "path": "src/lib.rs",
+        "startLine": 20,
+        "endLine": 22
+      },
+      "confidence": "exact",
+      "freshness": "fresh"
+    }
+  ],
+  "frontierFollowed": [
+    {
+      "nodeId": "field:receipt",
+      "action": "code",
+      "selector": "src/lib.rs:20:22",
+      "owner": "src/lib.rs",
+      "symbol": "receipt",
+      "range": {
+        "path": "src/lib.rs",
+        "startLine": 20,
+        "endLine": 22
+      },
+      "confidence": "exact",
+      "freshness": "fresh"
+    }
+  ],
+  "codeActuallyRead": [
+    {
+      "selector": "src/lib.rs:20:22",
+      "bytes": 160
+    }
+  ],
+  "metrics": {
+    "frontierReturnedCount": 1,
+    "frontierFollowedCount": 1,
+    "frontierFollowRate": 1.0,
+    "codeActuallyReadCount": 1,
+    "rawReadFallbackCount": 0,
+    "duplicateSelectorCount": 0,
+    "sameOwnerScanCount": 0,
+    "commandsToFirstUsefulLocator": 1,
+    "commandsToValidation": 2
+  }
+}

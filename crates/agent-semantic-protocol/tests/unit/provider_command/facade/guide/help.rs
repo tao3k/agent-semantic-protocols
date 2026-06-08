@@ -51,7 +51,7 @@ fn language_facade_rejects_unknown_agent_subcommand() {
     let stderr = String::from_utf8(output.stderr).expect("stderr");
     assert!(
         stderr.contains(
-            "usage: asp <rust|typescript|python|julia|org|md> [--help] <guide|search|query|check|agent doctor|ast-patch|evidence> ..."
+            "usage: asp <rust|typescript|python|julia|org|md> [--help|--version] <guide|search|query|check|agent doctor|ast-patch|evidence> ..."
         ),
         "{stderr}"
     );

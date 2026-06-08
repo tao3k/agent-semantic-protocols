@@ -11,6 +11,7 @@ use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
+use super::protocol_version_line;
 use super::provider_process::{
     provider_invocation_with_profile, provider_invocations, run_guide_command, run_provider_command,
 };
@@ -24,6 +25,7 @@ use super::query_direct_read::{
 use super::query_owner::run_asp_fast_owner_query_command;
 use super::search_config::AspConfig;
 use super::search_pipe::{FastSearchContext, is_asp_fast_search, run_asp_fast_search_command};
+use super::search_pipe_meta::run_asp_fast_search_meta_command;
 use super::search_pipe_provider_facts::ProviderGraphFactsContext;
 
 const SUPPORTED_LANGUAGES: &[&str] = &["rust", "typescript", "python", "julia", "org", "md"];
@@ -131,6 +133,10 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
         println!("{}", provider_usage());
         return Ok(());
     }
+    if is_version(&command_args) {
+        println!("{}", protocol_version_line());
+        return Ok(());
+    }
     let invocation_root =
         env::current_dir().map_err(|error| format!("failed to read current directory: {error}"))?;
     let discovered_activation_path = discover_activation_path(&invocation_root);
@@ -156,6 +162,9 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
     validate_provider_command(&command_args)?;
     if is_guide_help(&command_args) {
         println!("{}", guide_usage(language_id));
+        return Ok(());
+    }
+    if run_asp_fast_search_meta_command(language_id, &command_args) {
         return Ok(());
     }
 
@@ -420,7 +429,17 @@ fn provider_guide_args(language_id: &str, args: &[String]) -> Vec<String> {
 }
 
 fn is_help(args: &[String]) -> bool {
-    matches!(args.first().map(String::as_str), Some("--help" | "-h"))
+    matches!(
+        args.first().map(String::as_str),
+        Some("help" | "--help" | "-h")
+    )
+}
+
+fn is_version(args: &[String]) -> bool {
+    matches!(
+        args.first().map(String::as_str),
+        Some("version" | "--version" | "-V")
+    )
 }
 
 fn is_guide_help(args: &[String]) -> bool {
@@ -433,7 +452,7 @@ fn is_guide_help(args: &[String]) -> bool {
 
 fn provider_usage() -> String {
     format!(
-        "usage: asp <{}> [--help] <guide|search|query|check|agent doctor|ast-patch|evidence> ...",
+        "usage: asp <{}> [--help|--version] <guide|search|query|check|agent doctor|ast-patch|evidence> ...",
         SUPPORTED_LANGUAGES.join("|")
     )
 }

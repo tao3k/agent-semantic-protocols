@@ -66,11 +66,9 @@ are intentionally unsupported for document files.
   validators, receipts, and IDE integrations.
 - When a search/query term contains shell metacharacters copied from docs or
   code, such as backticks, pipes, `$`, globs, braces, or spaces, pass it as a
-  single-quoted argv literal. For example:
-  ``--query-set 'Start with `asp <language> guide .`'``. If the text
-  itself contains single quotes, narrow it into separate safe terms or use a
-  provider-documented file/stdin surface; do not interpolate raw prose into a
-  shell command.
+  single-quoted argv literal. If the text itself contains single quotes, narrow
+  it into separate safe terms or use a provider-documented file/stdin surface;
+  do not interpolate raw prose into a shell command.
 - `asp hook install --client codex .` installs hooks, provider activation, and
   the rendered skill for the detected providers.
 - Search and non-code query are discovery surfaces and should not inline source
@@ -103,19 +101,24 @@ asp query --language <language> --treesitter-query '<pattern>' .
 asp <language> search prime --view seeds .
 asp <language> search pipe '<question-or-feature-term>' --view seeds .
 asp <language> search fzf '<term-or-error>' owner tests --view seeds .
-asp <language> search owner <owner-path> items --query '<symbol-or-a|b|c>' .
-asp <language> query <owner-path> --term '<candidate>' --names-only .
-asp <language> query guide treesitter .
-asp <language> query --treesitter-query '<pattern>' .
-asp <language> query --selector <exact-path-or-range> --treesitter-query '<narrow-pattern>' --workspace <workspace-root> --code
+asp fd -query '<owner-or-path-term-a|term-b|term-c>' <scope>
+asp rg -query '<content-or-error-term-a|term-b|term-c>' <scope>
+asp <language> search owner <owner-path> items --query '<symbol-or-a|b|c>' --view seeds .
+asp <language> query --selector <path:start-end> --workspace <workspace-root> --code
 ```
 
 For a concrete deep question, bug, feature, or API-usage task, use
 `search prime` once to establish the project graph context, then use
-`search pipe` for the concrete term and follow its `pipeCommands`/`avoid`
-lines into reasoning profiles and selector queries. Use owner-local item
-queries and tree-sitter locator output to choose an exact selector. Only after
-that selector is known should stdout become source text through `--code`.
+`search pipe` with an LLM-generated `question-or-feature-term` and read its
+`queryTerms`, `handles`, `nextClasses`, `frontierActions`, `nextCommand`, and
+`avoid` lines. `--source` changes only candidate acquisition: `auto` is the
+default, `provider` avoids finder, `finder` uses bounded lexical recall, and
+`ingest` normalizes stdin candidates. ASP does not model-expand the seed query;
+the LLM uses the seed output to compose `asp fd -query` and `asp rg -query`
+grouped keyword packets when more owner/path or hot-block recall is needed. Use
+owner-local item queries and tree-sitter locator output only when the pipe
+frontier asks for them. Only after an exact selector is known should stdout
+become source text through `query --selector ... --code`.
 
 ### Hook Recovery
 
@@ -126,8 +129,11 @@ source-dump commands on the same matched source. Treat any
 First try the structural recovery path that matches the blocked intent:
 
 ```sh
-asp <language> search fzf '<blocked-term-or-symbol>' owner tests --view seeds .
-asp <language> search owner <owner-path> items --query '<symbol-or-a|b|c>' .
+asp <language> search pipe '<blocked question-or-feature-term>' --source finder --view seeds .
+asp <language> search fzf '<term-or-error>' owner tests --view seeds .
+asp fd -query '<owner-or-path-term-a|term-b|term-c>' <scope>
+asp rg -query '<content-or-error-term-a|term-b|term-c>' <scope>
+asp <language> search owner <owner-path> items --query '<symbol-or-a|b|c>' --view seeds .
 asp <language> query <owner-path> --term '<candidate>' --names-only .
 asp <language> query --treesitter-query '<pattern>' .
 asp <language> query --selector <exact-path-or-range> --treesitter-query '<narrow-pattern>' --workspace <workspace-root> --code
@@ -153,9 +159,9 @@ after an exact selector is known and source-preserved text is required.
 ```sh
 asp search --language <language> prime --view seeds .
 asp <language> search prime --view seeds .
-asp <language> search pipe '<question-or-feature-term>' --view seeds .
-asp <language> search fzf <term> owner tests --view seeds .
-asp <language> search owner <owner-path> items --query '<symbol-or-a|b|c>' .
+asp <language> search pipe '<natural task intent>' --view seeds .
+asp <language> search pipe '<natural task intent>' --source finder --view seeds .
+asp <language> search owner <owner-path> items --query '<same natural intent>' --view seeds .
 asp <language> query <owner-path> --term <candidate> --names-only .
 asp <language> query --treesitter-query '<pattern>' .
 asp <language> query <owner-path> --term <candidate> --code .
@@ -165,8 +171,9 @@ Use `--names-only` for broad owner-local prefixes before requesting code.
 Within one task session, do not repeat `asp <language> search pipe ...` for the
 same concrete term or `asp <language> search prime --view seeds .` for the same
 language/root after a fresh frontier is already available. Reuse that frontier
-and move to the emitted owner, fzf, query, read-plan, or query-code actions
-unless the project root, language provider state, or search scope has changed.
+and move to the emitted selector, owner, tests, read-plan, or query-code action
+unless the project root, language provider state, search scope, or requested
+`--source` has changed.
 
 ### Reasoning Search Profiles
 

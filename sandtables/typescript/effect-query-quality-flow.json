@@ -1,0 +1,296 @@
+{
+  "id": "typescript.effect-query-quality-flow",
+  "title": "Effect 3.21.3 TypeScript query-quality sandbox flow",
+  "language": "typescript",
+  "coverage": [
+    "search-flow",
+    "performance",
+    "large-library",
+    "evidence-assurance"
+  ],
+  "tags": [
+    "large-library",
+    "effect",
+    "typescript",
+    "deep-question",
+    "query-quality",
+    "sandbox",
+    "concurrency"
+  ],
+  "budgets": {
+    "maxCommands": 4,
+    "maxTotalLinesWarn": 130,
+    "maxTotalElapsedMsWarn": 18000,
+    "maxTotalStdoutBytesWarn": 26000
+  },
+  "workdir": {
+    "env": "SANDTABLE_TS_EFFECT_ROOT",
+    "git": {
+      "url": "https://github.com/Effect-TS/effect.git",
+      "ref": "effect@3.21.3",
+      "depth": 1,
+      "cacheKey": "effect-3.21.3",
+      "subdir": "."
+    },
+    "candidates": [
+      ".cache/sandtable-repos/effect-3.21.3"
+    ]
+  },
+  "evidence": {
+    "source": "handwritten",
+    "recordedAt": "2026-06-08",
+    "targetLibrary": {
+      "language": "typescript",
+      "name": "Effect",
+      "package": "effect",
+      "repository": "Effect-TS/effect",
+      "workdirKind": "checkout"
+    },
+    "intentCases": [
+      {
+        "intentKind": "api-usage",
+        "intent": "Answer a high-concurrency Effect question from parser-owned TypeScript locator/frontier evidence before reading source",
+        "stepIds": [
+          "effect-prime",
+          "effect-concurrency-pipe",
+          "effect-rg-query",
+          "effect-primary-selector-code"
+        ],
+        "queryTerms": [
+          "Effect",
+          "concurrency",
+          "Fiber",
+          "Queue",
+          "Stream",
+          "Scope"
+        ]
+      }
+    ],
+    "deepQuestionCases": [
+      {
+        "id": "effect-high-concurrency-practices",
+        "question": "In Effect 3.21.3, what repo-backed practices should a high-concurrency service use to bound fan-out, handle interruption/cancellation, choose between Effect.forEach concurrency, Queue, Stream, Fiber, and Scope, and avoid unbounded fiber or resource leaks?",
+        "stepIds": [
+          "effect-prime",
+          "effect-concurrency-pipe",
+          "effect-rg-query",
+          "effect-primary-selector-code"
+        ],
+        "queryTerms": [
+          "Effect",
+          "concurrency",
+          "Fiber",
+          "Queue",
+          "Stream",
+          "Scope"
+        ],
+        "audit": {
+          "maxAspCommands": 4,
+          "maxSearchCommands": 3,
+          "maxQueryCommands": 1,
+          "maxRepeatedCommands": 0,
+          "requiresGraphSignals": true,
+          "requiresQuerySet": true,
+          "requiresComplexPipeFlow": true
+        },
+        "expectedAspFlow": {
+          "canonicalCommands": [
+            "asp typescript search prime --view seeds .",
+            "asp typescript search pipe 'Effect concurrency Fiber Queue Stream Scope' --view seeds .",
+            "asp rg -query 'Fiber|Queue|Stream|Scope|concurrency|Runtime|Scheduler' .",
+            "asp typescript query --selector packages/ai/ai/src/EmbeddingModel.ts:109:123 --workspace . --code"
+          ],
+          "requiredStages": [
+            "search-prime",
+            "search-pipe",
+            "rg-query",
+            "query-selector"
+          ],
+          "forbiddenStages": [
+            "repeated-prime",
+            "repeated-commands",
+            "read-loop-risk",
+            "direct-read"
+          ],
+          "notes": [
+            "This sandbox fixes the provider-facing query quality contract behind the live Claude Effect flow without requiring ANTHROPIC_AUTH_TOKEN.",
+          "The pipe step must expose handles and nextClasses for a second-stage LLM-generated rg/fd query; the final query step is the only code-producing command."
+          ]
+        }
+      }
+    ],
+    "metrics": {
+      "recordedCommandCount": 4,
+      "aspCommands": 4,
+      "searchCommands": 3,
+      "queryCommands": 1,
+      "directReadCommands": 0,
+      "repeatedCommands": 0,
+      "repeatedSearches": 0,
+      "jsonSearches": 0,
+      "compactSearches": 3,
+      "tokenDelta": "lower"
+    },
+    "findings": [
+      {
+        "kind": "asp-pipe-surface-required",
+        "severity": "info",
+        "message": "TypeScript provider binaries own parser facts, but search pipe is an ASP facade surface. This sandbox intentionally uses asp typescript search pipe so Effect question quality is tested at the same boundary agents use."
+      },
+      {
+        "kind": "locator-before-code",
+        "severity": "info",
+        "message": "The pipe output must cover all query terms, expose handles/nextClasses, and select the EmbeddingModel embedMany selector before the final pure-code query."
+      },
+      {
+        "kind": "agent-benefit-gate",
+        "severity": "info",
+        "message": "The sandbox checks source-reading reduction, useful locator timing, feedback-learning via queryCoverage and seedPlan, and second-stage keyword packet behavior through rg -query; failure evidence is out of scope for this success-path Effect question but direct-read and repeated widening are forbidden."
+      }
+    ]
+  },
+  "steps": [
+    {
+      "id": "effect-prime",
+      "command": [
+        "asp",
+        "typescript",
+        "search",
+        "prime",
+        "--view",
+        "seeds",
+        "."
+      ],
+      "timeoutSeconds": 20,
+      "expect": {
+        "stdoutContains": [
+          "[search-prime]",
+          "analysis=structure",
+          "nativeSyntaxFacts=skipped",
+          "policyFindings=skipped",
+          "entries=owner-query(O,Q=>items+tests+dependency-usage),owner-tests(O=>covering-tests+test-entrypoints+fixtures)",
+          "avoid=raw-read"
+        ],
+        "stdoutNotContains": [
+          "export interface Service",
+          "readonly embedMany"
+        ],
+        "maxStdoutLinesWarn": 12,
+        "maxElapsedMsWarn": 8000
+      }
+    },
+    {
+      "id": "effect-concurrency-pipe",
+      "command": [
+        "asp",
+        "typescript",
+        "search",
+        "pipe",
+        "Effect concurrency Fiber Queue Stream Scope",
+        "--view",
+        "seeds",
+        "."
+      ],
+      "timeoutSeconds": 20,
+      "expect": {
+        "stdoutContains": [
+          "[search-pipe]",
+          "lang=typescript view=seeds source=auto ranker=graph-turbo:owner-query",
+          "query=Effect concurrency Fiber Queue Stream Scope",
+          "queryTerms=Effect,concurrency,Fiber,Queue,Stream,Scope",
+          "coverage=matched=effect,concurrency,fiber,queue,stream,scope missing=-",
+          "sourceTrace=provider:partial,finder:used",
+          "handles=ownerTerms=Effect,concurrency,Fiber,Queue,Stream,Scope pathTerms=effect,concurrency,fiber,queue,stream,scope symbolTerms=Effect,concurrency,Fiber,Queue,Stream,Scope testTerms=effect,concurrency,fiber,queue,stream,scope",
+          "nextClasses=fd-query,rg-query,owner-items,query-selector",
+          "[graph-frontier]",
+          "profile=owner-query",
+          "F=field:interface-field(embedMany:",
+          "readonly concurrency?: Types.Concurrency | undefined",
+          "Effect.Effect<Array<Array<number>>, AiError.AiError>)@packages/ai/ai/src/EmbeddingModel.ts:117:117!code",
+          "Stream.Stream<",
+          "C=collection:family(array)!evidence",
+          "queryCoverage=matched=effect,concurrency,fiber,queue,stream,scope missing=- source=ranked-frontier",
+          "frontierActions=S1.selector(selector=packages/ai/ai/src/EmbeddingModel.ts:109:123",
+          "avoid=raw-read",
+          "seedPlan=seed-query alg=asp-search-pipe-v2 budget=frontier<=3 repeated=0",
+          "recommendedNext=S1.query-selector",
+          "nextCommand=asp typescript query --selector packages/ai/ai/src/EmbeddingModel.ts:109:123 --workspace . --code",
+          "omit=source,full-candidate-list,raw-finder-output",
+          "avoid=repeat-search-pipe,broad-fzf,raw-rg,manual-window-scan,raw-read"
+        ],
+        "stdoutNotContains": [
+          "export interface Service",
+          "Command 1:",
+          "ANTHROPIC_AUTH_TOKEN"
+        ],
+        "maxStdoutLinesWarn": 56,
+        "maxStdoutBytesWarn": 9000,
+        "maxElapsedMsWarn": 8000
+      }
+    },
+    {
+      "id": "effect-rg-query",
+      "command": [
+        "asp",
+        "rg",
+        "-query",
+        "Fiber|Queue|Stream|Scope|concurrency|Runtime|Scheduler",
+        "."
+      ],
+      "timeoutSeconds": 20,
+      "expect": {
+        "stdoutContains": [
+          "[search-rg]",
+          "view=seeds querySet=7 source=finder ranker=graph-turbo:owner-query",
+          "query=Fiber|Queue|Stream|Scope|concurrency|Runtime|Scheduler",
+          "terms=fiber,queue,stream,scope,concurrency,runtime,scheduler",
+          "[graph-frontier]",
+          "Q=query:term(Fiber|Queue|Stream|Scope|concurrency|Runtime|Scheduler)!fzf",
+          "frontier=",
+          "nextClasses=query-selector,owner-items,fd-query",
+          "avoid=repeat-rg,manual-window-scan,raw-read"
+        ],
+        "stdoutNotContains": [
+          "|>",
+          "lit(",
+          "any(",
+          "export interface Service"
+        ],
+        "maxStdoutLinesWarn": 52,
+        "maxStdoutBytesWarn": 9000,
+        "maxElapsedMsWarn": 8000
+      }
+    },
+    {
+      "id": "effect-primary-selector-code",
+      "command": [
+        "asp",
+        "typescript",
+        "query",
+        "--selector",
+        "packages/ai/ai/src/EmbeddingModel.ts:109:123",
+        "--workspace",
+        ".",
+        "--code"
+      ],
+      "timeoutSeconds": 20,
+      "expect": {
+        "stdoutContains": [
+          "export interface Service",
+          "readonly embedMany",
+          "readonly concurrency?: Types.Concurrency | undefined",
+          "Effect.Effect<Array<Array<number>>, AiError.AiError>"
+        ],
+        "stdoutNotContains": [
+          "[query]",
+          "[graph-frontier]",
+          "nextCommand=",
+          "```"
+        ],
+        "maxStdoutLinesWarn": 18,
+        "maxStdoutBytesWarn": 1600,
+        "maxElapsedMsWarn": 8000
+      }
+    }
+  ]
+}

@@ -24,12 +24,12 @@ Ingest auto-detects the format from the first few KB of stdin.
 Owner, scope, hit, item, line, and per-owner caps are provider-owned
 deterministic limits unless a method descriptor explicitly advertises them.
 
-** ASP-owned candidate pipeline: =search pipe=
+** ASP-owned seed-query frontier: =search pipe=
 
 =search pipe= is the single public wrapper for cases where the agent needs ASP
-to own the expensive or error-prone shell composition.  It is not a second
-=ingest= command family and it does not replace ordinary shell pipes.  Simple
-search stays explicit:
+to turn an LLM-generated seed query into a ranked locator frontier.  It is not an
+operator DSL, not a second =ingest= command family, and not a public
+=graph_turbo= command.  Simple external shell search stays explicit:
 
 #+begin_src shell
 rg -n "contentBlocks" tests | asp python search ingest items tests --view seeds .
@@ -40,49 +40,51 @@ patterns, or the agent would otherwise hand-write a brittle pipe, the agent uses
 =search pipe=:
 
 #+begin_src shell
-asp rust search pipe "cacheRoot|ClientReceipt|cacheManifestPath" \
-  --owners crates/agent-semantic-client/src crates/agent-semantic-protocol/src \
-  --pipe items,tests \
-  --view seeds .
+asp rust search pipe "cacheRoot ClientReceipt cacheManifestPath" \
+  --source auto \
+  --view seeds \
+  crates/agent-semantic-client/src crates/agent-semantic-protocol/src
 #+end_src
 
 Contract:
 
 #+begin_src text
-search pipe <query> [--owners <path>...] [--pipe items,tests] [--view seeds|graph-turbo-request]
+search pipe <question-or-feature-term> [--source auto|provider|finder|ingest] [--view seeds|graph-turbo-request] [scope...]
 #+end_src
 
-- =search pipe= owns cheap candidate generation: lexical/file/path search,
-  bounded roots, hidden/build/cache ignore policy, and deterministic caps.
-- Candidate output is immediately routed through the same ingest semantics:
-  path normalize, owner grouping, optional item/test frontier, compact render.
-- =--view seeds= returns the graph-turbo ranked compact frontier and must avoid
-  full project parser construction before candidate bounds are known.  Omitted
+- =search pipe= accepts a =question-or-feature-term= that the LLM already
+  distilled from the task and previous seed output into a code-search axis.  It
+  is not a natural task intent parser.  ASP does not model-expand it into
+  adjacent concepts.  The query language must not become public syntax.
+- =--source= answers only one question: where candidates come from.  =auto=
+  tries provider/parser facts first and falls back to finder recall when
+  coverage is weak; =provider= does not run lexical finder and must recommend a
+  source flip when coverage is insufficient; =finder= uses bounded lexical
+  recall and normalizes results into owners/selectors/tests; =ingest= consumes
+  stdin or an external candidate stream and normalizes it through the same
+  frontier.
+- =--source= never chooses output surfaces.  Prompt-facing surfaces such as
+  selector, owner, tests, deps, failure evidence, and read-plan windows are
+  selected by graph-turbo from the seed query and candidate shape.
+- =--view seeds= returns a =search-pipe= compact frontier with =query=,
+  =queryTerms=, =coverage=, =sourceTrace=, =handles=, =nextClasses=,
+  graph-turbo =rank= and =frontier=, executable =frontierActions=, optional
+  exact-selector =nextCommand=, =omit=, and =avoid=.  It must not inline source,
+  raw finder output, full candidate lists, or any operator expression.  Omitted
   =--view= defaults to this same compact frontier.
-- For deep question and feature flows, =search pipe= must not replace the
-  project graph context from =search prime=.  The expected agent flow is:
-  =search prime= once, =search pipe <query>= once, one or more explicit
-  =search reasoning ...= profiles selected from the pipe/frontier facts, then
-  exact =query --selector= reads.  The compact seeds view may append a
-  composable pipe expression, for example =pipeExpr=prime |> search(...) |>
-  rank(...) |> filter(...) |> project(...) |> choose(...)=, plus
-  =pipeProjections=, =frontierActions=, =pipeCommands=, =pipeChoice=, =stop=,
-  and =avoid= lines.  =frontierActions= and =pipeCommands= are projections of
-  the pipe result, not the pipe definition.
-- Branch choice must stay bounded.  The default agent-facing projection should
-  expose at most the graph-ranked top 3 branches, selected by graph-turbo's
-  sparse ranking/path policy rather than raw lexical traversal order.  A larger
-  branch fanout turns pipe composition back into broad search and should require
-  an explicit debug/schema view rather than the default =--view seeds= output.
 - =--view graph-turbo-request= returns a schema-owned graph request for the
   graph-turbo ranking boundary.  It is a validation/debug view, not the default
-  agent-facing output.
+  agent-facing output.  The request includes =surface=, =queryTerms=, =source=,
+  =candidateSources=, and =sourceTrace=, but it must not include =pipeExpr=,
+  =operator=, or =stageCompose=.
 - =search suggest=, not =search pipe --view commands=, returns replacement
   command templates and slow-pattern advice.  It does not execute shell
   commands and does not spawn providers.
-- =--pipe= is the only pipeline composition knob.  Do not add another public
-  command family for pipeline execution.  =search suggest= is a separate
-  advisory command, not a composition knob.
+- =--pipe=, =pipeExpr=, =|>=, =lit(...)=, =rg(any(...))=, and public
+  command-pipeline DSL output are removed from agent-facing =search pipe=.  In
+  =asp rg -query=, =asp fd -query=, and owner-local =--query=, =a|b|c= has
+  exactly one public meaning: an LLM-generated grouped semantic query-set / OR
+  hint.  It is not a shell pipe, not exact-regex syntax, and not a complex DSL.
 - Provider-native semantic enrichment may run after the bounded candidate set
   exists, but direct source reads and cheap lexical discovery must not pay a
   project-wide semantic parse cost first.  When the query names data-shape
@@ -90,9 +92,28 @@ search pipe <query> [--owners <path>...] [--pipe items,tests] [--view seeds|grap
   collection APIs such as =Vec=, the bounded enrichment should project typed
   =field=, =type=, and =collection= facts into the graph-turbo request.  The
   default seeds view should then expose field-level selectors through
-  =frontierActions= and =pipeCommands= instead of asking the agent to run
-  another owner search, broad fzf, or tree-sitter guide probe after graph-turbo
-  already selected the top branches.
+  =frontierActions= and =nextCommand= instead of asking the agent to run another
+  owner search, broad fzf, or tree-sitter guide probe after graph-turbo already
+  selected the top branches.
+
+The intended large-repo loop is two-stage when the first seed frontier is not
+enough:
+
+#+begin_src shell
+asp typescript search pipe "Effect concurrency Fiber Queue Stream Scope" --view seeds .
+asp typescript search fzf "Fiber Queue Stream Scope" owner tests --view seeds .
+asp fd -query "Fiber|Queue|Stream|Scope|Runtime|internal" .
+asp rg -query "Fiber|Queue|Stream|Scope|fork|interrupt|runFork|Runtime" .
+asp typescript query --selector <path:start-end> --workspace . --code
+#+end_src
+
+=search fzf= remains the explicit lexical/fuzzy candidate command; it is not
+replaced by =search pipe --source finder=.  =asp fd -query= searches
+owner/path/module recall.  =asp rg -query= searches content/hot-block recall.
+In both wrappers, =-query= belongs to ASP ranking context; flags after =--=
+belong to the native tool and are accepted as pass-through context without
+changing query-set semantics.  =--source finder= is a recovery or advanced source
+override for =search pipe= when seeds show provider coverage is weak.
 
 ** Search fast path boundary
 
@@ -105,11 +126,13 @@ ASP owns the first-pass frontier for these shapes:
 
 #+begin_src text
 search ingest [items|owner|tests...] --view seeds
-search pipe <query> --pipe items,tests --view seeds
-search fzf <query> [owner|tests|items...] --view seeds
+search pipe <question-or-feature-term> [--source auto|provider|finder|ingest] --view seeds
+fd -query <owner-or-path-term-a|term-b|term-c> [scope...] [-- native-fd-argv...]
+rg -query <content-or-error-term-a|term-b|term-c> [scope...] [-- native-rg-argv...]
+search fzf <term-or-error> [owner|tests|items...] --view seeds
 search reasoning owner-query --owner <path> --query <term> --view seeds
 search reasoning owner-tests --owner <path> --view seeds
-search owner <path> items --query <term> --view seeds
+search owner <path> items --query <symbol-or-a|b|c> --view seeds
 #+end_src
 
 These commands return compact locator/frontier output without spawning the
@@ -163,13 +186,14 @@ asp rust search fzf owner-items --view seeds crates/agent-semantic-protocol
 can be replaced by:
 
 #+begin_src shell
-asp rust search pipe owner-items --pipe items,tests --view seeds crates/agent-semantic-protocol
+asp rust search pipe "owner items" --source auto --view seeds crates/agent-semantic-protocol
 #+end_src
 
-without increasing the executable public command surface beyond =search pipe=
-and without requiring the agent to paste raw =rg= or =fd= output into the
-prompt.  Advisory planning remains =search suggest= and must not execute the
-candidate pipeline.
+without exposing finder DSL and without requiring the agent to paste raw =rg= or
+=fd= output into the prompt.  The public executable wrapper surface is
+=search pipe= plus =asp fd -query= / =asp rg -query= for LLM-generated grouped
+keyword packets.  Advisory planning remains =search suggest= and must not
+execute the candidate pipeline.
 
 ** Auto-detection
 

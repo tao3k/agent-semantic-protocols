@@ -37,7 +37,38 @@ fn search_pipe_is_asp_owned_and_renders_generated_candidates_without_provider_sp
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
-    assert!(stdout.starts_with("[graph-frontier]"), "{stdout}");
+    assert!(stdout.starts_with("[search-pipe]"), "{stdout}");
+    assert!(
+        stdout.contains("lang=rust view=seeds source=auto ranker=graph-turbo:owner-query"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("query=HookDecision ClientReceipt"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("queryTerms=HookDecision,ClientReceipt"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("coverage=matched=hookdecision,clientreceipt missing=-"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("sourceTrace=provider:partial,finder:used"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains(
+            "handles=ownerTerms=HookDecision,ClientReceipt pathTerms=hookdecision,clientreceipt symbolTerms=HookDecision,ClientReceipt testTerms=hookdecision,clientreceipt"
+        ),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("nextClasses=fd-query,rg-query,owner-items,query-selector"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("[graph-frontier]"), "{stdout}");
     assert!(
         stdout.contains("Q=query:term(HookDecision ClientReceipt)!fzf"),
         "{stdout}"
@@ -58,44 +89,22 @@ fn search_pipe_is_asp_owned_and_renders_generated_candidates_without_provider_sp
         assert!(frontier_line.contains(entry), "{stdout}");
     }
     assert!(
-        stdout.contains("pipePlan=query-pipeline alg=asp-search-pipe-v1"),
-        "{stdout}"
-    );
-    assert!(
-        stdout.contains("pipeSurfaces=owner,items,tests"),
+        stdout.contains("seedPlan=seed-query alg=asp-search-pipe-v2"),
         "{stdout}"
     );
     let removed_expression_label = ["pipe", "Expr="].concat();
     let removed_operator = ['|', '>'].iter().collect::<String>();
     assert!(!stdout.contains(&removed_expression_label), "{stdout}");
     assert!(!stdout.contains(&removed_operator), "{stdout}");
-    assert!(
-        stdout.contains(
-            "pipeProjections=graph-frontier,S1,nextCommand,pipeCommands,conditionalActions"
-        ),
-        "{stdout}"
-    );
-    assert!(
-        stdout
-            .contains("pipeChoice=bounded-fanout maxBranches=3 repeat=false owner=asp-graph-turbo"),
-        "{stdout}"
-    );
-    assert!(
-        stdout.contains("pipeExecution=each-branch-at-most-once"),
-        "{stdout}"
-    );
+    assert!(!stdout.contains("pipePlan="), "{stdout}");
+    assert!(!stdout.contains("pipeSurfaces="), "{stdout}");
+    assert!(!stdout.contains("pipeProjections="), "{stdout}");
+    assert!(!stdout.contains("pipeChoice="), "{stdout}");
+    assert!(!stdout.contains("pipeExecution="), "{stdout}");
     assert!(!stdout.contains("R4=>"), "{stdout}");
     assert!(!stdout.contains("frontierActions=R4."), "{stdout}");
-    assert!(
-        stdout.contains("pipeStages=search-prime,search-pipe,query-selector,search-reasoning"),
-        "{stdout}"
-    );
-    assert!(
-        stdout.contains(
-            "selectorPolicy=run-first reason=exact-selector-present before=search-reasoning"
-        ),
-        "{stdout}"
-    );
+    assert!(!stdout.contains("pipeStages="), "{stdout}");
+    assert!(!stdout.contains("selectorPolicy="), "{stdout}");
     assert!(!stdout.contains("context=>"), "{stdout}");
     assert!(!stdout.contains("pipe=>asp rust search pipe"), "{stdout}");
     assert!(
@@ -108,59 +117,10 @@ fn search_pipe_is_asp_owned_and_renders_generated_candidates_without_provider_sp
             && stdout.contains(")!query-selector"),
         "{stdout}"
     );
-    assert!(
-        stdout.contains("S1=>asp rust query --selector src/lib.rs:")
-            && stdout.contains(" --workspace . --code"),
-        "{stdout}"
-    );
-    let pipe_commands_line = stdout
-        .lines()
-        .find(|line| line.starts_with("pipeCommands="))
-        .expect("pipeCommands line");
-    assert!(
-        pipe_commands_line.contains("S1=>asp rust query"),
-        "{stdout}"
-    );
-    assert!(!pipe_commands_line.contains("search prime"), "{stdout}");
-    assert!(!pipe_commands_line.contains("search pipe"), "{stdout}");
-    assert!(!pipe_commands_line.contains("S2=>"), "{stdout}");
-    assert!(
-        !pipe_commands_line.contains("R1=>asp rust search reasoning"),
-        "{stdout}"
-    );
-    assert!(
-        stdout.contains(
-            "conditionalActions=metadata-only selector=hidden run-if-primary-insufficient:"
-        ),
-        "{stdout}"
-    );
-    let conditional_actions_line = stdout
-        .lines()
-        .find(|line| line.starts_with("conditionalActions="))
-        .expect("conditionalActions line");
-    assert!(
-        !conditional_actions_line.contains("asp rust query"),
-        "{stdout}"
-    );
-    assert!(
-        !conditional_actions_line.contains("asp rust search reasoning"),
-        "{stdout}"
-    );
-    assert!(
-        !conditional_actions_line.contains(".reasoning("),
-        "{stdout}"
-    );
-    assert!(!conditional_actions_line.contains(".selector("), "{stdout}");
-    assert!(
-        !conditional_actions_line.contains("selector=src/lib.rs:"),
-        "{stdout}"
-    );
+    assert!(!stdout.contains("pipeCommands="), "{stdout}");
+    assert!(!stdout.contains("conditionalActions="), "{stdout}");
     assert!(
         stdout.contains("recommendedNext=S1.query-selector"),
-        "{stdout}"
-    );
-    assert!(
-        stdout.contains("no-duplicate-selector=true no-context-widening=true"),
         "{stdout}"
     );
     assert!(
@@ -175,29 +135,16 @@ fn search_pipe_is_asp_owned_and_renders_generated_candidates_without_provider_sp
         !stdout[first_selector_action..].contains("frontierActions=R1.reasoning("),
         "seeds view should not render reasoning frontier actions: {stdout}"
     );
-    let first_selector_command = stdout.find("S1=>asp rust query").expect("S1 command");
     assert!(
-        !stdout[first_selector_command..].contains("R1=>asp rust search reasoning"),
-        "seeds view should not render runnable reasoning branch commands: {stdout}"
+        !stdout.contains("R1=>asp rust search reasoning"),
+        "{stdout}"
     );
     assert!(
         !stdout.contains("<selector>") && !stdout.contains("<owner-path>"),
         "{stdout}"
     );
     assert!(
-        stdout.contains(
-            "avoid=repeat-prime,repeat-pipe,query-rewrite-pipe,reasoning-before-selector,read-all-selectors-by-default,guide-after-selector,repeat-fzf"
-        ),
-        "{stdout}"
-    );
-    assert!(
-        stdout.contains(
-            "post-projection-owner-search,post-projection-fzf,post-projection-treesitter-guide"
-        ),
-        "{stdout}"
-    );
-    assert!(
-        stdout.contains("duplicate-selector,context-widening,raw-read"),
+        stdout.contains("avoid=repeat-search-pipe,broad-fzf,raw-rg,manual-window-scan,raw-read"),
         "{stdout}"
     );
     assert!(!marker.exists(), "search pipe should not spawn provider");
