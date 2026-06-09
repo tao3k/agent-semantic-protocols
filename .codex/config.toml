@@ -15,7 +15,7 @@ type = "command"
 timeout = 5
 statusMessage = "Loading semantic agent hook activation"
 command = '''
-repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+repo_root='/Users/guangtao/ghq/github.com/tao3k/agent-semantic-protocols'
 cd "$repo_root"
 activation="$repo_root/.cache/agent-semantic-protocol/hooks/activation.json"
 config="$repo_root/.codex/agent-semantic-protocol/hooks/config.toml"
@@ -29,7 +29,7 @@ type = "command"
 timeout = 5
 statusMessage = "Planning semantic search flow"
 command = '''
-repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+repo_root='/Users/guangtao/ghq/github.com/tao3k/agent-semantic-protocols'
 cd "$repo_root"
 activation="$repo_root/.cache/agent-semantic-protocol/hooks/activation.json"
 config="$repo_root/.codex/agent-semantic-protocol/hooks/config.toml"
@@ -44,7 +44,7 @@ type = "command"
 timeout = 5
 statusMessage = "Checking semantic search flow"
 command = '''
-repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+repo_root='/Users/guangtao/ghq/github.com/tao3k/agent-semantic-protocols'
 cd "$repo_root"
 activation="$repo_root/.cache/agent-semantic-protocol/hooks/activation.json"
 config="$repo_root/.codex/agent-semantic-protocol/hooks/config.toml"
@@ -59,7 +59,7 @@ type = "command"
 timeout = 5
 statusMessage = "Checking semantic approval flow"
 command = '''
-repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+repo_root='/Users/guangtao/ghq/github.com/tao3k/agent-semantic-protocols'
 cd "$repo_root"
 activation="$repo_root/.cache/agent-semantic-protocol/hooks/activation.json"
 config="$repo_root/.codex/agent-semantic-protocol/hooks/config.toml"
@@ -74,7 +74,7 @@ type = "command"
 timeout = 5
 statusMessage = "Updating semantic search flow state"
 command = '''
-repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+repo_root='/Users/guangtao/ghq/github.com/tao3k/agent-semantic-protocols'
 cd "$repo_root"
 activation="$repo_root/.cache/agent-semantic-protocol/hooks/activation.json"
 config="$repo_root/.codex/agent-semantic-protocol/hooks/config.toml"
@@ -89,7 +89,7 @@ type = "command"
 timeout = 5
 statusMessage = "Preparing semantic subagent context"
 command = '''
-repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+repo_root='/Users/guangtao/ghq/github.com/tao3k/agent-semantic-protocols'
 cd "$repo_root"
 activation="$repo_root/.cache/agent-semantic-protocol/hooks/activation.json"
 config="$repo_root/.codex/agent-semantic-protocol/hooks/config.toml"
@@ -104,7 +104,7 @@ type = "command"
 timeout = 5
 statusMessage = "Checking semantic subagent evidence"
 command = '''
-repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+repo_root='/Users/guangtao/ghq/github.com/tao3k/agent-semantic-protocols'
 cd "$repo_root"
 activation="$repo_root/.cache/agent-semantic-protocol/hooks/activation.json"
 config="$repo_root/.codex/agent-semantic-protocol/hooks/config.toml"
@@ -118,7 +118,7 @@ type = "command"
 timeout = 5
 statusMessage = "Checking semantic changed files"
 command = '''
-repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+repo_root='/Users/guangtao/ghq/github.com/tao3k/agent-semantic-protocols'
 cd "$repo_root"
 activation="$repo_root/.cache/agent-semantic-protocol/hooks/activation.json"
 config="$repo_root/.codex/agent-semantic-protocol/hooks/config.toml"

@@ -44,7 +44,7 @@ fn search_pipe_plan_uses_scope_root_for_provider_local_selectors() {
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(
-        stdout.contains("F=field:struct-field(scalars: Vec<Scalar>)@src/lib.rs:1:4!code"),
+        stdout.contains("F=field:struct-field(scalars)@src/lib.rs:1:4!evidence"),
         "{stdout}"
     );
     assert!(
@@ -58,19 +58,24 @@ fn search_pipe_plan_uses_scope_root_for_provider_local_selectors() {
     assert!(stdout.contains("has_type"), "{stdout}");
     assert!(stdout.contains("collection_of"), "{stdout}");
     assert!(
-        stdout.contains("queryCoverage=matched=vec,collection,fields missing=-"),
+        stdout.contains("globalCoverage=matched=vec missing=collection,fields"),
         "{stdout}"
     );
     assert!(
-        stdout.contains("frontierActions=S1.selector(selector=src/lib.rs:1:4,owner=src/lib.rs,symbol=scalars,source=F)!query-selector"),
+        stdout.contains("treeSitterHandles=interface-fields:scalars;exported-declarations:Vec"),
         "{stdout}"
     );
     assert!(
-        stdout.contains(
-            "nextCommand=asp rust query --selector src/lib.rs:1:4 --workspace languages/rust-harness --code"
-        ),
+        stdout
+            .contains("actionFrontier=A1.fd-query,A2.rg-query,A3.owner-items,A4.treesitter-query"),
         "{stdout}"
     );
+    assert!(
+        stdout.contains("nextCommand=asp fd -query Vec languages/rust-harness"),
+        "{stdout}"
+    );
+    assert!(!stdout.contains("frontierActions="), "{stdout}");
+    assert!(!stdout.contains("query-code(selector="), "{stdout}");
     assert!(!stdout.contains("S1=>asp rust query"), "{stdout}");
     for debug_prefix in [
         "scores=", "paths=", "trace=", "explain=", "cache=", "metrics=",

@@ -1,291 +1,136 @@
 {
   "id": "rust.tokio-real-trigger-flow",
+  "title": "Tokio async IO live-agent prompt-only flow",
   "language": "rust",
-  "title": "Tokio real-trigger search flow with hook guide quality",
-  "coverage": [
-    "search-flow",
-    "performance",
-    "policy-blackbox",
-    "security",
-    "codex-hooks",
-    "real-trigger"
+  "skipUnlessEnv": [
+    "ANTHROPIC_AUTH_TOKEN"
   ],
   "tags": [
     "real-trigger",
     "tokio",
-    "guide-quality"
+    "async-io",
+    "prompt-only"
   ],
-  "evidence": {
-    "source": "recorded-replay",
-    "intent": "Implement a feature-level async IO change before selecting files to edit",
-    "recordedAt": "2026-05-31",
-    "receiptPath": "sandtables/receipts/rust/tokio-real-trigger-flow.receipt.json",
-    "editBoundary": "before-edit",
-    "metrics": {
-      "recordedCommandCount": 7,
-      "repeatedSearches": 1,
-      "tokenDelta": "lower"
-    },
-    "querySetOpportunities": [
-      {
-        "view": "owner",
-        "queries": 2,
-        "saveCommands": 1,
-        "selector": "exact-set",
-        "reason": "async IO owners can be merged after prime selects the axis"
-      }
-    ],
-    "findings": [
-      {
-        "kind": "prime-quality",
-        "severity": "info",
-        "message": "prime must expose async IO owners before subagent fan-out"
-      },
-      {
-        "kind": "guide-quality",
-        "severity": "info",
-        "message": "deny output must route concrete raw search terms through provider query"
-      }
-    ]
-  },
+  "coverage": [
+    "search-flow",
+    "performance",
+    "real-trigger"
+  ],
   "workdir": {
     "env": "SANDTABLE_RUST_TOKIO_ROOT",
     "candidates": [
       "~/.cargo/registry/src/*/tokio-[0-9]*"
     ]
   },
-  "budgets": {
-    "maxCommands": 7,
-    "maxTotalLinesWarn": 90,
-    "maxTotalElapsedMsWarn": 8000,
-    "maxTotalStdoutBytesWarn": 24000
+  "execution": {
+    "mode": "parallel",
+    "maxConcurrentSteps": 1
   },
-  "steps": [
-    {
-      "id": "prime",
-      "command": [
-        "rs-harness",
-        "search",
-        "prime",
-        "--view",
-        "seeds",
-        "--seeds",
-        "8",
-        "."
-      ],
-      "expect": {
-        "lineProtocol": true,
-        "stdoutContains": [
-          "[search-prime]",
-          "legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next",
-          "G>{",
-          "rank=",
-          "frontier="
-        ],
-        "maxStdoutLinesWarn": 10,
-        "maxElapsedMsWarn": 3000,
-        "stdoutNotContains": [
-          "|seed",
-          "|synthesis",
-          "G=search:result!query"
-        ]
-      }
+  "budgets": {
+    "maxTotalElapsedMsWarn": 120000,
+    "maxTotalStdoutBytesWarn": 200000
+  },
+  "evidence": {
+    "source": "real-trigger",
+    "intent": "Implement a feature-level async IO change before selecting files to edit",
+    "recordedAt": "2026-06-08",
+    "receiptPath": "sandtables/receipts/rust/tokio-real-trigger-flow.receipt.json",
+    "editBoundary": "before-edit",
+    "metrics": {
+      "tokenDelta": "lower"
     },
-    {
-      "id": "text-async-read",
-      "command": [
-        "rs-harness",
-        "search",
-        "fzf",
-        "AsyncRead",
-        "--view",
-        "seeds",
-        "--seeds",
-        "8",
-        "."
-      ],
-      "capture": {
-        "asyncOwner": "owner:path\\(([^)]+)\\)!owner"
+    "deepQuestionCases": [
+      {
+        "id": "tokio-async-io-owner-frontier",
+        "question": "In Tokio 1.52.3, where should AsyncRead and AsyncWrite poll_read or poll_write behavior be located before selecting files to edit?",
+        "stepIds": [
+          "claude-tokio-async-io"
+        ],
+        "queryTerms": [
+          "AsyncRead",
+          "AsyncWrite",
+          "poll_read",
+          "poll_write"
+        ],
+        "audit": {
+          "maxAspCommands": 5,
+          "maxSearchCommands": 3,
+          "maxQueryCommands": 2,
+          "maxRepeatedCommands": 0,
+          "requiresGraphSignals": true,
+          "requiresHookEvents": true,
+          "requiresTokenCost": true
+        },
+        "expectedAspFlow": {
+          "requiredStages": [
+            "search-prime",
+            "search-pipe"
+          ],
+          "forbiddenStages": [
+            "repeated-prime",
+            "repeated-commands",
+            "read-loop-risk"
+          ],
+          "notes": [
+            "The scenario input is only the user question. ASP commands must come from the agent workflow and hook recovery, not scripted scenario steps."
+          ]
+        }
+      }
+    ]
+  },
+  "liveAgent": {
+    "client": "claude",
+    "outputFormat": "stream-json",
+    "includeHookEvents": true,
+    "verbose": true,
+    "useRepoClaudeSettings": true,
+    "env": {
+      "ANTHROPIC_AUTH_TOKEN": "${ANTHROPIC_AUTH_TOKEN}"
+    },
+    "requiredEnv": [
+      "ANTHROPIC_AUTH_TOKEN"
+    ],
+    "timeoutSeconds": 120,
+    "expect": {
+      "allowNonZeroExit": true,
+      "agentAnswer": {
+        "required": true,
+        "afterLastToolUse": true,
+        "minTextBytes": 250,
+        "contains": [
+          "AsyncRead",
+          "poll"
+        ]
       },
-      "expect": {
-        "lineProtocol": true,
-        "stdoutContains": [
-          "[search-fzf]",
-          "legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next",
-          "G>{",
-          "rank=",
-          "frontier="
+      "pipeFlow": {
+        "maxAspCommands": 5,
+        "maxSearchCommands": 3,
+        "maxQueryCommands": 1,
+        "maxGuideCommands": 1,
+        "maxRepeatedCommands": 0,
+        "maxSearchPipeCommands": 2,
+        "maxSearchPrimeCommands": 1,
+        "maxReadLoopDuplicateSelectors": 0,
+        "maxReadLoopAdjacentRangeWindows": 0,
+        "maxReadLoopSameOwnerScans": 0,
+        "maxReadLoopMemorySuppressibleReads": 0,
+        "requireTokenCost": true,
+        "requiredStages": [
+          "search-prime",
+          "search-pipe"
         ],
-        "maxStdoutLinesWarn": 8,
-        "maxElapsedMsWarn": 2500,
-        "stdoutNotContains": [
-          "|seed",
-          "|synthesis",
-          "G=search:result!query"
+        "forbiddenStages": [
+          "repeated-prime",
+          "repeated-commands",
+          "read-loop-risk",
+          "read-loop-memory-risk"
         ]
-      }
-    },
-    {
-      "id": "owner-async-items",
-      "command": [
-        "rs-harness",
-        "search",
-        "owner",
-        "{asyncOwner}",
-        "items",
-        "--trace",
-        "--view",
-        "seeds",
-        "--seeds",
-        "8",
-        "."
+      },
+      "stdoutContains": [
+        "AsyncRead"
       ],
-      "expect": {
-        "lineProtocol": true,
-        "stdoutContains": [
-          "[search-owner]",
-          "legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next",
-          "G>{",
-          "rank=",
-          "frontier="
-        ],
-        "maxStdoutLinesWarn": 18,
-        "maxElapsedMsWarn": 1800,
-        "stdoutNotContains": [
-          "|seed",
-          "|synthesis",
-          "G=search:result!query"
-        ]
-      }
-    },
-    {
-      "id": "tests-async-owner",
-      "command": [
-        "rs-harness",
-        "search",
-        "tests",
-        "{asyncOwner}",
-        "--view",
-        "seeds",
-        "--seeds",
-        "4",
-        "."
-      ],
-      "expect": {
-        "lineProtocol": true,
-        "stdoutContains": [
-          "[search-tests]"
-        ],
-        "maxStdoutLinesWarn": 10,
-        "maxElapsedMsWarn": 2500
-      }
-    },
-    {
-      "id": "candidates-to-ingest",
-      "stdinCommand": [
-        "rg",
-        "-n",
-        "AsyncRead|AsyncWrite",
-        "src",
-        "tests"
-      ],
-      "stdinCommandAllowNonZero": true,
-      "command": [
-        "rs-harness",
-        "search",
-        "ingest",
-        "items",
-        "tests",
-        "--view",
-        "seeds",
-        "--seeds",
-        "8",
-        "."
-      ],
-      "expect": {
-        "lineProtocol": true,
-        "stdoutContains": [
-          "[search-ingest]"
-        ],
-        "maxStdoutLinesWarn": 18,
-        "maxElapsedMsWarn": 2000
-      }
-    },
-    {
-      "id": "raw-search-deny-guide",
-      "kind": "hook-replay",
-      "command": [
-        "asp",
-        "hook",
-        "pre-tool",
-        "--client",
-        "codex"
-      ],
-      "stdin": "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"functions.exec_command\",\"tool_input\":{\"cmd\":\"r\\u0067 -n \\\"AsyncRead\\\" src tests\"}}",
-      "expect": {
-        "stdoutJsonEquals": {
-          "hookSpecificOutput.permissionDecision": "deny"
-        },
-        "stdoutNotContains": [
-          "pub mod",
-          "fn main"
-        ],
-        "guideQuality": {
-          "reasonKind": "raw-broad-search",
-          "routeKind": "query",
-          "commandContains": [
-            "rs-harness agent guide .",
-            "rs-harness",
-            "query",
-            "--from-hook",
-            "direct-source-read"
-          ],
-          "sourceLeakNotContains": [
-            "pub mod",
-            "fn main"
-          ]
-        },
-        "maxStdoutLinesWarn": 1,
-        "maxElapsedMsWarn": 800
-      }
-    },
-    {
-      "id": "direct-read-deny-guide",
-      "kind": "hook-replay",
-      "command": [
-        "asp",
-        "hook",
-        "pre-tool",
-        "--client",
-        "codex"
-      ],
-      "stdin": "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Read\",\"tool_input\":{\"path\":\"src/lib.rs\"}}",
-      "expect": {
-        "stdoutJsonEquals": {
-          "hookSpecificOutput.permissionDecision": "deny"
-        },
-        "stdoutNotContains": [
-          "pub mod",
-          "fn main"
-        ],
-        "guideQuality": {
-          "reasonKind": "direct-source-read",
-          "routeKind": "query",
-          "commandContains": [
-            "rs-harness",
-            "query",
-            "--from-hook",
-            "direct-source-read",
-            "--code"
-          ],
-          "sourceLeakNotContains": [
-            "pub mod",
-            "fn main"
-          ]
-        },
-        "maxStdoutLinesWarn": 1,
-        "maxElapsedMsWarn": 800
-      }
+      "maxStdoutBytesWarn": 200000,
+      "maxElapsedMsWarn": 120000
     }
-  ]
+  }
 }

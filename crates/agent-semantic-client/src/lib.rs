@@ -2,6 +2,7 @@
 
 //! Agent-facing `asp` client command surface.
 
+mod activation_cache;
 mod cache_cli;
 mod cache_replay;
 pub mod cli;
@@ -19,6 +20,9 @@ mod tools_cli;
 pub use agent_semantic_client_core::LanguageId;
 pub use cli::{run_cli_args, run_cli_from_env};
 
+#[cfg(test)]
+#[path = "../tests/unit/activation_cache.rs"]
+mod activation_cache_tests;
 #[cfg(test)]
 #[path = "../tests/unit/cache_cli/command.rs"]
 mod cache_cli_command_tests;

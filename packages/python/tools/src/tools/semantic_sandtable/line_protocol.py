@@ -10,6 +10,10 @@ from .models import StepResult
 COMPACT_GRAPH_MICRO_LEGEND = (
     "legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next"
 )
+SEED_FRONTIER_MICRO_LEGEND = (
+    "legend: ID=kind:role(value)!next; "
+    "entries profile(selectors=>returns); frontier ID.next"
+)
 
 
 from .compact_graph_profiles import (
@@ -39,7 +43,10 @@ def _validate_compact_graph_contract(result: StepResult, lines: list[str]) -> No
         _is_compact_graph_line(line) for line in lines
     ):
         return
-    if COMPACT_GRAPH_MICRO_LEGEND not in lines:
+    if (
+        COMPACT_GRAPH_MICRO_LEGEND not in lines
+        and SEED_FRONTIER_MICRO_LEGEND not in lines
+    ):
         result.errors.append("compact graph missing micro-legend line")
     alias_lines = [line for line in lines if line.startswith("aliases: graph:{")]
     if not alias_lines:
@@ -74,8 +81,10 @@ def _requires_compact_graph_contract(command: list[str]) -> bool:
 
 
 def _is_compact_graph_line(line: str) -> bool:
-    if line == COMPACT_GRAPH_MICRO_LEGEND:
+    if line in {COMPACT_GRAPH_MICRO_LEGEND, SEED_FRONTIER_MICRO_LEGEND}:
         return True
+    if line.startswith("syntax "):
+        return _looks_like_syntax_locator_line(line)
     if line.startswith("aliases: graph:{"):
         return _looks_like_compact_graph_aliases_line(line)
     if line.startswith("rank="):
@@ -87,6 +96,17 @@ def _is_compact_graph_line(line: str) -> bool:
     if ">{" in line and line.endswith("}"):
         return _looks_like_compact_graph_edge_line(line)
     return _looks_like_compact_graph_alias_line(line)
+
+
+def _looks_like_syntax_locator_line(line: str) -> bool:
+    syntax_match = re.match(
+        r"^syntax\s+([A-Za-z][A-Za-z0-9_]*)\s+selector=([^\s]+)(?:\s+pattern='.*')?$",
+        line,
+    )
+    if syntax_match is None:
+        return False
+    alias, selector = syntax_match.groups()
+    return _looks_like_compact_graph_alias_id(alias) and ":" in selector
 
 
 def _looks_like_compact_graph_aliases_line(line: str) -> bool:

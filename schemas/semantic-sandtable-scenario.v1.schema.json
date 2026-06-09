@@ -5,7 +5,7 @@
   "description": "Language-neutral scenario descriptor for replaying bounded agent search flows against semantic language harness CLIs.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["id", "language", "workdir", "steps"],
+  "required": ["id", "language", "workdir"],
   "allOf": [
     {
       "if": {
@@ -32,6 +32,32 @@
           }
         }
       }
+    },
+    {
+      "if": {
+        "required": ["liveAgent"]
+      },
+      "then": {
+        "required": ["evidence"],
+        "properties": {
+          "evidence": {
+            "required": ["deepQuestionCases"],
+            "properties": {
+              "deepQuestionCases": {
+                "minItems": 1,
+                "maxItems": 1
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "oneOf": [
+    { "required": ["steps"] },
+    {
+      "required": ["liveAgent"],
+      "not": { "required": ["steps"] }
     }
   ],
   "properties": {
@@ -85,6 +111,9 @@
     },
     "execution": {
       "$ref": "#/$defs/execution"
+    },
+    "liveAgent": {
+      "$ref": "#/$defs/liveAgent"
     },
     "steps": {
       "type": "array",
@@ -310,7 +339,7 @@
     "expectedAspFlow": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["canonicalCommands", "requiredStages", "forbiddenStages"],
+      "required": ["requiredStages", "forbiddenStages"],
       "properties": {
         "canonicalCommands": {
           "$ref": "#/$defs/stringList"
@@ -1025,6 +1054,58 @@
         }
       }
     },
+    "liveAgent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["client", "useRepoClaudeSettings"],
+      "properties": {
+        "client": {
+          "enum": ["claude"]
+        },
+        "outputFormat": {
+          "enum": ["text", "json", "stream-json", "summary-json"]
+        },
+        "includePartialMessages": {
+          "type": "boolean"
+        },
+        "includeHookEvents": {
+          "type": "boolean"
+        },
+        "verbose": {
+          "type": "boolean"
+        },
+        "useRepoClaudeSettings": {
+          "const": true
+        },
+        "timeoutSeconds": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1
+        },
+        "env": {
+          "type": "object",
+          "propertyNames": {
+            "$ref": "#/$defs/envName"
+          },
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "requiredEnv": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/envName"
+          }
+        },
+        "expect": {
+          "$ref": "#/$defs/expect"
+        }
+      }
+    },
     "agentAnswerExpectation": {
       "type": "object",
       "additionalProperties": false,
@@ -1166,6 +1247,7 @@
           "search-fzf",
           "search-reasoning",
           "search-failure",
+          "fd-preview",
           "fd-query",
           "rg-query",
           "search-fzf-or-reasoning",

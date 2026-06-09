@@ -1,7 +1,10 @@
 {
   "id": "rust.tokio-task-abort-flow",
+  "title": "Tokio task abort live-agent prompt-only flow",
   "language": "rust",
-  "title": "Tokio real-trigger task abort and JoinSet search flow",
+  "skipUnlessEnv": [
+    "ANTHROPIC_AUTH_TOKEN"
+  ],
   "coverage": [
     "search-flow",
     "performance",
@@ -10,202 +13,127 @@
   "tags": [
     "real-trigger",
     "tokio",
-    "query-composition",
-    "tests-ranking"
+    "task-abort",
+    "prompt-only"
   ],
-  "evidence": {
-    "source": "real-trigger",
-    "intent": "Implement task abort or JoinSet shutdown behavior before selecting files to edit",
-    "recordedAt": "2026-05-31",
-    "receiptPath": "sandtables/receipts/rust/tokio-task-abort-flow.receipt.json",
-    "editBoundary": "before-edit",
-    "metrics": {
-      "recordedCommandCount": 5,
-      "recordedElapsedMs": 2959,
-      "recordedStdoutBytes": 2426,
-      "recordedStderrBytes": 0,
-      "repeatedSearches": 0,
-      "jsonSearches": 0,
-      "compactSearches": 5,
-      "tokenDelta": "lower"
-    },
-    "querySetOpportunities": [
-      {
-        "view": "fzf",
-        "queries": 3,
-        "saveCommands": 2,
-        "selector": "exact-set",
-        "reason": "abort, JoinSet, and abort_on_drop are same-intent fzf probes for task cancellation"
-      },
-      {
-        "view": "tests",
-        "queries": 2,
-        "saveCommands": 1,
-        "selector": "exact-set",
-        "reason": "abort and JoinSet owners were tested separately after the symbol packet showed the shared task axis"
-      }
-    ],
-    "findings": [
-      {
-        "kind": "prime-quality",
-        "severity": "info",
-        "message": "prime seeds for Tokio are too generic for task abort intent at a low seed cap"
-      },
-      {
-        "kind": "tests-ranking",
-        "severity": "info",
-        "message": "query-set tests search keeps tests/task_join_set.rs inside the seed budget"
-      }
-    ]
-  },
   "workdir": {
     "env": "SANDTABLE_RUST_TOKIO_ROOT",
     "candidates": [
       "~/.cargo/registry/src/*/tokio-[0-9]*"
     ]
   },
-  "budgets": {
-    "maxCommands": 5,
-    "maxTotalLinesWarn": 120,
-    "maxTotalElapsedMsWarn": 7000,
-    "maxTotalStdoutBytesWarn": 30000
+  "execution": {
+    "mode": "parallel",
+    "maxConcurrentSteps": 1
   },
-  "steps": [
-    {
-      "id": "prime",
-      "command": [
-        "rs-harness",
-        "search",
-        "prime",
-        "--view",
-        "seeds",
-        "--seeds",
-        "10",
-        "."
-      ],
-      "expect": {
-        "lineProtocol": true,
-        "stdoutContains": [
-          "[search-prime]",
-          "legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next",
-          "G>{",
-          "rank=",
-          "frontier="
+  "budgets": {
+    "maxTotalElapsedMsWarn": 120000,
+    "maxTotalStdoutBytesWarn": 200000
+  },
+  "evidence": {
+    "source": "real-trigger",
+    "intent": "Implement task abort or JoinSet shutdown behavior before selecting files to edit",
+    "recordedAt": "2026-06-08",
+    "receiptPath": "sandtables/receipts/rust/tokio-task-abort-flow.receipt.json",
+    "editBoundary": "before-edit",
+    "metrics": {
+      "tokenDelta": "lower"
+    },
+    "deepQuestionCases": [
+      {
+        "id": "tokio-task-abort-joinset-shutdown",
+        "question": "In Tokio 1.52.3, how should task abort and JoinSet shutdown behavior be implemented before selecting files to edit?",
+        "stepIds": [
+          "claude-tokio-task-abort"
         ],
-        "maxStdoutLinesWarn": 10,
-        "maxElapsedMsWarn": 3000,
-        "stdoutNotContains": [
-          "|seed",
-          "|synthesis",
-          "G=search:result!query"
+        "queryTerms": [
+          "abort",
+          "JoinSet",
+          "abort_on_drop",
+          "shutdown"
+        ],
+        "audit": {
+          "maxAspCommands": 6,
+          "maxSearchCommands": 4,
+          "maxQueryCommands": 2,
+          "maxRepeatedCommands": 0,
+          "requiresGraphSignals": true,
+          "requiresHookEvents": true,
+          "requiresComplexPipeFlow": true,
+          "requiresTokenCost": true
+        },
+        "expectedAspFlow": {
+          "requiredStages": [
+            "search-prime",
+            "search-pipe"
+          ],
+          "forbiddenStages": [
+            "repeated-prime",
+            "repeated-commands",
+            "read-loop-risk"
+          ],
+          "notes": [
+            "The scenario input is only the user question. ASP commands must come from the agent workflow and hook recovery, not scripted scenario steps."
+          ]
+        }
+      }
+    ]
+  },
+  "liveAgent": {
+    "client": "claude",
+    "outputFormat": "stream-json",
+    "includeHookEvents": true,
+    "verbose": true,
+    "useRepoClaudeSettings": true,
+    "env": {
+      "ANTHROPIC_AUTH_TOKEN": "${ANTHROPIC_AUTH_TOKEN}"
+    },
+    "requiredEnv": [
+      "ANTHROPIC_AUTH_TOKEN"
+    ],
+    "timeoutSeconds": 120,
+    "expect": {
+      "allowNonZeroExit": true,
+      "agentAnswer": {
+        "required": true,
+        "afterLastToolUse": true,
+        "minTextBytes": 250,
+        "contains": [
+          "abort",
+          "JoinSet"
         ]
-      }
-    },
-    {
-      "id": "text-task-abort-query-set",
-      "command": [
-        "rs-harness",
-        "search",
-        "fzf",
-        "--query-set",
+      },
+      "pipeFlow": {
+        "maxAspCommands": 6,
+        "maxSearchCommands": 4,
+        "maxQueryCommands": 2,
+        "maxGuideCommands": 1,
+        "maxRepeatedCommands": 0,
+        "maxSearchPipeCommands": 2,
+        "maxSearchPrimeCommands": 1,
+        "maxReadLoopDuplicateSelectors": 0,
+        "maxReadLoopAdjacentRangeWindows": 0,
+        "maxReadLoopSameOwnerScans": 0,
+        "maxReadLoopMemorySuppressibleReads": 0,
+        "requireComplexPipeFlow": true,
+        "requireTokenCost": true,
+        "requiredStages": [
+          "search-prime",
+          "search-pipe"
+        ],
+        "forbiddenStages": [
+          "repeated-prime",
+          "repeated-commands",
+          "read-loop-risk",
+          "read-loop-memory-risk"
+        ]
+      },
+      "stdoutContains": [
         "abort",
-        "--query-set",
-        "JoinSet",
-        "--query-set",
-        "abort_on_drop",
-        "--view",
-        "seeds",
-        "--seeds",
-        "24",
-        "."
+        "JoinSet"
       ],
-      "expect": {
-        "lineProtocol": true,
-        "stdoutContains": [
-          "[search-fzf]",
-          "querySet=3",
-          "src/runtime/task/abort.rs",
-          "src/task/join_set.rs"
-        ],
-        "maxStdoutLinesWarn": 8,
-        "maxElapsedMsWarn": 2500
-      }
-    },
-    {
-      "id": "owner-abort-items",
-      "command": [
-        "rs-harness",
-        "search",
-        "owner",
-        "src/runtime/task/abort.rs",
-        "items",
-        "--trace",
-        "--view",
-        "seeds",
-        "--seeds",
-        "8",
-        "."
-      ],
-      "expect": {
-        "lineProtocol": true,
-        "stdoutContains": [
-          "[search-owner]",
-          "symbol(AbortHandle)"
-        ],
-        "maxStdoutLinesWarn": 18,
-        "maxElapsedMsWarn": 1800
-      }
-    },
-    {
-      "id": "symbol-abort-handle",
-      "command": [
-        "rs-harness",
-        "search",
-        "symbol",
-        "AbortHandle",
-        "--view",
-        "seeds",
-        "--seeds",
-        "8",
-        "."
-      ],
-      "expect": {
-        "lineProtocol": true,
-        "stdoutContains": [
-          "[search-symbol]",
-          "src/runtime/task/abort.rs",
-          "src/task/join_set.rs"
-        ],
-        "maxStdoutLinesWarn": 8,
-        "maxElapsedMsWarn": 1500
-      }
-    },
-    {
-      "id": "tests-task-query-set",
-      "command": [
-        "rs-harness",
-        "search",
-        "tests",
-        "--query-set",
-        "src/runtime/task/abort.rs",
-        "--query-set",
-        "src/task/join_set.rs",
-        "--view",
-        "seeds",
-        "--seeds",
-        "8",
-        "."
-      ],
-      "expect": {
-        "lineProtocol": true,
-        "stdoutContains": [
-          "[search-tests]",
-          "querySet=2",
-          "tests/task_join_set.rs"
-        ],
-        "maxStdoutLinesWarn": 10,
-        "maxElapsedMsWarn": 2500
-      }
+      "maxStdoutBytesWarn": 200000,
+      "maxElapsedMsWarn": 120000
     }
-  ]
+  }
 }

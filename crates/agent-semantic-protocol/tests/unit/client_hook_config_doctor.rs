@@ -187,7 +187,7 @@ fn write_codex_project_config(root: &std::path::Path) {
     let config_path = root.join(".codex/config.toml");
     std::fs::create_dir_all(config_path.parent().expect("project config parent"))
         .expect("create project config dir");
-    std::fs::write(config_path, merge_codex_config("", &codex_hook_block()))
+    std::fs::write(config_path, merge_codex_config("", &codex_hook_block(root)))
         .expect("write project Codex config");
 }
 

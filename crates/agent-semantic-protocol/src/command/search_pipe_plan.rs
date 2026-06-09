@@ -1,24 +1,20 @@
 //! Query-pipeline projection helpers for ASP-owned search pipe.
 
 use std::collections::{HashMap, HashSet};
-use std::fmt::Write;
 use std::path::{Path, PathBuf};
 
-use super::search_pipe_render::Candidate;
-
-#[derive(Clone, Debug)]
-struct PipeAction {
-    index: usize,
-    owner: String,
-    selector: String,
-    symbol: String,
-}
+use super::search_pipe_action_model::PipeAction;
+use super::search_pipe_actions::{
+    SearchPipeActionRequest, render_action_frontier, sanitize_evidence_line,
+};
+use super::search_pipe_model::Candidate;
+use super::search_pipe_quality::analyze_search_pipe_quality;
+use super::search_query_wrapper_candidates::fd_query_preview;
 
 pub(super) struct SearchPipePlanRequest<'a> {
     pub(super) language_id: &'a str,
     pub(super) project_root: &'a Path,
     pub(super) locator_root: &'a Path,
-    pub(super) source: &'a str,
     pub(super) scopes: &'a [PathBuf],
     pub(super) query: &'a str,
     pub(super) candidates: &'a [Candidate],
@@ -30,38 +26,68 @@ pub(super) fn render_search_pipe_plan(request: SearchPipePlanRequest<'_>) -> Str
         language_id,
         project_root,
         locator_root,
-        source,
         scopes,
         query,
         candidates,
         ranked_compact,
     } = request;
-    let scope_arg = display_scope_args(project_root, locator_root, scopes);
-    let actions = concrete_pipe_actions(candidates, ranked_compact);
-    let compact_prints_primary = ranked_compact
-        .map(compact_has_primary_selector_action)
-        .unwrap_or(false);
-    let frontier_action_lines = if actions.is_empty() {
-        "frontierActions=none reason=no-exact-selector\n".to_string()
+    let mut quality = analyze_search_pipe_quality(language_id, query, candidates);
+    if quality.query_pack_quality != "low"
+        && quality.package_cohesion != "low"
+        && ranked_compact
+            .map(|compact| compact_has_provider_semantic_answer(query, compact))
+            .unwrap_or(false)
+    {
+        quality.allow_query_selector = true;
+    }
+    let actions = if quality.allow_query_selector {
+        concrete_pipe_actions(candidates, ranked_compact)
     } else {
-        render_action_lines(&actions, compact_prints_primary)
+        Vec::new()
     };
-    let next_action_lines =
-        render_next_action_lines(language_id, project_root, locator_root, scopes, &actions);
-    let recovery_lines = if actions.is_empty() {
-        render_no_hit_recovery(language_id, source, query, &scope_arg)
+    let fd_preview = if !quality.allow_query_selector {
+        quality
+            .fd_query
+            .as_deref()
+            .and_then(|query| fd_query_preview(project_root, locator_root, scopes, query))
     } else {
-        String::new()
+        None
     };
+    let action_frontier_lines = render_action_frontier(SearchPipeActionRequest {
+        language_id,
+        project_root,
+        locator_root,
+        scopes,
+        quality: &quality,
+        candidates,
+        ranked_compact,
+        selector_actions: &actions,
+        fd_preview: fd_preview.as_ref(),
+    });
     format!(
         "seedPlan=seed-query alg=asp-search-pipe-v2 budget=frontier<=3 repeated=0\n\
-{frontier_action_lines}\
-{next_action_lines}\
-{recovery_lines}\
-nextClasses=fd-query,rg-query,owner-items,query-selector\n\
-omit=source,full-candidate-list,raw-finder-output\n\
-avoid=repeat-search-pipe,broad-fzf,raw-rg,manual-window-scan,raw-read\n",
+{action_frontier_lines}\
+nextClasses=fd-query,rg-query,owner-items,treesitter-query,query-selector\n\
+omit=source,full-candidate-list,raw-finder-output,generated-files,long-field-signatures\n\
+avoid=repeat-search-pipe,broad-fzf,raw-rg,manual-window-scan,direct-source-read,raw-read\n",
     )
+}
+
+fn compact_has_provider_semantic_answer(query: &str, compact: &str) -> bool {
+    let lower_query = query.to_ascii_lowercase();
+    let requests_structural_field = [
+        "field",
+        "fields",
+        "type",
+        "types",
+        "collection",
+        "collections",
+    ]
+    .iter()
+    .any(|term| lower_query.contains(term));
+    requests_structural_field
+        && compact.contains("field:")
+        && (compact.contains("collection:") || compact.contains("type:"))
 }
 
 fn concrete_pipe_actions(
@@ -284,49 +310,128 @@ fn node_symbol(node: &str) -> Option<String> {
     }
 }
 
-fn render_action_lines(actions: &[PipeAction], compact_prints_primary: bool) -> String {
-    let mut rendered = String::new();
-    if !compact_prints_primary && let Some(action) = actions.first() {
-        let _ = writeln!(
-            rendered,
-            "frontierActions=S{index}.selector(selector={selector},owner={owner},symbol={symbol})!query-selector",
-            index = action.index,
-            selector = action.selector,
-            owner = action.owner,
-            symbol = action.symbol,
-        );
-    }
-    rendered
-}
-
-fn render_no_hit_recovery(language_id: &str, source: &str, query: &str, scope_arg: &str) -> String {
-    if source == "finder" {
-        return "recommendedSource=- reason=finder-exhausted\n".to_string();
-    }
-    format!(
-        "recommendedSource=finder\nnextCommand=asp {language_id} search pipe {query} --source finder --view seeds {scope_arg}\n",
-        query = shell_arg(query),
-    )
-}
-
 pub(super) fn render_primary_frontier_actions_only(compact: &str) -> String {
     let mut rendered = String::new();
     for line in compact.lines() {
         if is_graph_debug_line(line) {
             continue;
         }
-        if let Some(value) = line.strip_prefix("frontierActions=")
-            && let Some(primary) = action_segments(value)
-                .into_iter()
-                .find(|part| part.trim().starts_with("S1.selector("))
-        {
-            let _ = writeln!(rendered, "frontierActions={}", primary.trim());
+        if line.starts_with("Q=query:") {
             continue;
         }
-        rendered.push_str(line);
+        if let Some(filtered) = seedless_rank_or_frontier_line(line) {
+            rendered.push_str(&filtered);
+            rendered.push('\n');
+            continue;
+        }
+        if line.starts_with("frontierActions=") {
+            continue;
+        }
+        rendered.push_str(&sanitize_evidence_line(line));
         rendered.push('\n');
     }
     rendered
+}
+
+pub(super) fn render_search_pipe_decision_projection(compact: &str) -> String {
+    let mut rendered = String::new();
+    let mut nodes = Vec::new();
+    let mut edges = Vec::new();
+    for line in compact.lines() {
+        if is_graph_debug_line(line)
+            || line.starts_with("legend:")
+            || line.starts_with("aliases=")
+            || line.starts_with("Q=query:")
+            || line.starts_with("frontierActions=")
+            || line.starts_with("avoid=")
+        {
+            continue;
+        }
+        if let Some(filtered) = seedless_rank_or_frontier_line(line) {
+            rendered.push_str(&filtered);
+            rendered.push('\n');
+            continue;
+        }
+        if line.starts_with("[graph-frontier]") {
+            rendered.push_str(line);
+            rendered.push('\n');
+            continue;
+        }
+        if is_graph_edge_line(line) {
+            if !line.starts_with("G>{") && !line.starts_with("Q>{") {
+                edges.push(line.to_string());
+            }
+            continue;
+        }
+        if is_graph_node_line(line) {
+            nodes.push(sanitize_evidence_line(line));
+            continue;
+        }
+        rendered.push_str(&sanitize_evidence_line(line));
+        rendered.push('\n');
+    }
+    if !nodes.is_empty() {
+        rendered.push_str("evidenceNodes=");
+        rendered.push_str(&nodes.join(";"));
+        rendered.push('\n');
+    }
+    if !edges.is_empty() {
+        rendered.push_str("evidenceEdges=");
+        rendered.push_str(&edges.join(";"));
+        rendered.push('\n');
+    }
+    rendered
+}
+
+fn seedless_rank_or_frontier_line(line: &str) -> Option<String> {
+    let (prefix, value) = if let Some(value) = line.strip_prefix("rank=") {
+        ("rankedEvidence", value)
+    } else if let Some(value) = line.strip_prefix("frontier=") {
+        ("evidenceFrontier", value)
+    } else {
+        return None;
+    };
+    let filtered = value
+        .split(',')
+        .filter(|entry| {
+            let entry = entry.trim();
+            entry != "Q" && entry != "Q.fzf"
+        })
+        .map(evidence_frontier_entry)
+        .collect::<Vec<_>>();
+    Some(format!("{prefix}={}", filtered.join(",")))
+}
+
+fn is_graph_node_line(line: &str) -> bool {
+    let Some((alias, value)) = line.split_once('=') else {
+        return false;
+    };
+    !alias.is_empty()
+        && alias
+            .chars()
+            .all(|character| character.is_ascii_uppercase() || character.is_ascii_digit())
+        && value.contains(':')
+}
+
+fn is_graph_edge_line(line: &str) -> bool {
+    line.contains(">{") && line.ends_with('}')
+}
+
+fn evidence_frontier_entry(entry: &str) -> String {
+    let Some((alias, action)) = entry.split_once('.') else {
+        return entry.to_string();
+    };
+    if action != "code" {
+        return entry.to_string();
+    }
+    let replacement = if alias.starts_with('H') {
+        "hot"
+    } else if alias.starts_with('F') || alias.starts_with('Y') || alias.starts_with('C') {
+        "evidence"
+    } else {
+        "syntax"
+    };
+    format!("{alias}.{replacement}")
 }
 
 fn is_graph_debug_line(line: &str) -> bool {
@@ -338,6 +443,7 @@ fn is_graph_debug_line(line: &str) -> bool {
                 | "trace"
                 | "explain"
                 | "cache"
+                | "queryCoverage"
                 | "metrics"
                 | "profiles"
                 | "omit"
@@ -356,39 +462,6 @@ fn is_graph_debug_line(line: &str) -> bool {
     )
 }
 
-fn compact_has_primary_selector_action(compact: &str) -> bool {
-    compact.lines().any(|line| {
-        line.strip_prefix("frontierActions=")
-            .map(|value| {
-                action_segments(value)
-                    .into_iter()
-                    .any(|part| part.trim().starts_with("S1.selector("))
-            })
-            .unwrap_or(false)
-    })
-}
-
-fn render_next_action_lines(
-    language_id: &str,
-    project_root: &Path,
-    locator_root: &Path,
-    scopes: &[PathBuf],
-    actions: &[PipeAction],
-) -> String {
-    let Some(action) = actions.first() else {
-        return String::new();
-    };
-    let workspace_arg = action_root_arg(action, project_root, locator_root, scopes);
-    let command = format!(
-        "asp {language_id} query --selector {selector} --workspace {workspace_arg} --code",
-        selector = shell_arg(&action.selector),
-    );
-    format!(
-        "recommendedNext=S{index}.query-selector\nnextCommand={command}\n",
-        index = action.index,
-    )
-}
-
 fn is_source_preferred_owner(owner: &str) -> bool {
     !(owner.contains("/tests/")
         || owner.ends_with("/tests")
@@ -397,109 +470,4 @@ fn is_source_preferred_owner(owner: &str) -> bool {
         || owner.contains("/examples/")
         || owner.ends_with("/examples")
         || owner.contains("stress-test/"))
-}
-
-fn shell_arg(value: &str) -> String {
-    if value
-        .chars()
-        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '/' | '.' | '_' | '-' | ':'))
-    {
-        value.to_string()
-    } else {
-        shell_quote(value)
-    }
-}
-
-fn display_project_root_arg(project_root: &Path) -> String {
-    let Ok(cwd) = std::env::current_dir() else {
-        return shell_arg(&slash_path(project_root));
-    };
-    if project_root == cwd {
-        return ".".to_string();
-    }
-    let display = project_root
-        .strip_prefix(&cwd)
-        .map(slash_path)
-        .unwrap_or_else(|_| slash_path(project_root));
-    if display.is_empty() {
-        ".".to_string()
-    } else {
-        shell_arg(&display)
-    }
-}
-
-fn display_scope_args(project_root: &Path, locator_root: &Path, scopes: &[PathBuf]) -> String {
-    if scopes.is_empty() {
-        return display_project_root_arg(project_root);
-    }
-    scopes
-        .iter()
-        .map(|scope| display_scope_arg(project_root, locator_root, scope))
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
-fn action_root_arg(
-    action: &PipeAction,
-    project_root: &Path,
-    locator_root: &Path,
-    scopes: &[PathBuf],
-) -> String {
-    let Some(path) = selector_path(&action.selector) else {
-        return display_project_root_arg(project_root);
-    };
-    let path = Path::new(path);
-    if locator_root.join(path).exists() || path.is_absolute() {
-        return display_project_root_arg(project_root);
-    }
-    for scope in scopes {
-        let absolute = scope_absolute(project_root, scope);
-        if absolute.join(path).exists() {
-            return display_scope_arg(project_root, locator_root, scope);
-        }
-    }
-    display_project_root_arg(project_root)
-}
-
-fn selector_path(selector: &str) -> Option<&str> {
-    let mut parts = selector.rsplitn(3, ':');
-    let _end = parts.next()?;
-    let _start = parts.next()?;
-    let path = parts.next()?;
-    (!path.is_empty()).then_some(path)
-}
-
-fn display_scope_arg(project_root: &Path, locator_root: &Path, scope: &Path) -> String {
-    let absolute = scope_absolute(project_root, scope);
-    if absolute == locator_root {
-        return ".".to_string();
-    }
-    let display = absolute
-        .strip_prefix(locator_root)
-        .map(slash_path)
-        .unwrap_or_else(|_| slash_path(&absolute));
-    if display.is_empty() {
-        ".".to_string()
-    } else {
-        shell_arg(&display)
-    }
-}
-
-fn scope_absolute(project_root: &Path, scope: &Path) -> PathBuf {
-    if scope.is_absolute() {
-        scope.to_path_buf()
-    } else {
-        project_root.join(scope)
-    }
-}
-
-fn slash_path(path: &Path) -> String {
-    path.to_string_lossy().replace('\\', "/")
-}
-
-fn shell_quote(value: &str) -> String {
-    if value.is_empty() {
-        return "''".to_string();
-    }
-    format!("'{}'", value.replace('\'', "'\\''"))
 }

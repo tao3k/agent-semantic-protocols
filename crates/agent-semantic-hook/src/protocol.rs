@@ -246,19 +246,54 @@ pub fn render_platform_response(decision: &HookDecision) -> Result<Value, AgentH
             }));
         }
         DecisionKind::Block => {
+            let additional_context = if decision.event == "stop" {
+                format!("{decision_context}\n\n{}", decision.message)
+            } else {
+                decision_context
+            };
             return Ok(json!({
                 "decision": "block",
                 "reason": decision.message,
                 "hookSpecificOutput": {
                     "hookEventName": platform_hook_event_name(&decision.event),
-                    "additionalContext": decision_context,
+                    "additionalContext": additional_context,
                 },
                 "systemMessage": decision.message,
             }));
         }
-        DecisionKind::Allow => {}
+        DecisionKind::Allow => {
+            if decision.event == "permission-request" {
+                return Ok(json!({
+                    "hookSpecificOutput": {
+                        "hookEventName": platform_hook_event_name(&decision.event),
+                        "permissionDecision": "allow",
+                        "additionalContext": decision_context,
+                    }
+                }));
+            }
+            if decision.event == "user-prompt" {
+                let locator_only = decision
+                    .fields
+                    .get("promptWorkflow")
+                    .and_then(|value| value.as_str())
+                    == Some("locator-only");
+                return Ok(json!({
+                    "hookSpecificOutput": {
+                        "hookEventName": platform_hook_event_name(&decision.event),
+                        "additionalContext": user_prompt_search_first_context(locator_only),
+                    }
+                }));
+            }
+        }
     }
     Ok(json!({}))
+}
+
+fn user_prompt_search_first_context(locator_only: bool) -> &'static str {
+    if locator_only {
+        return "ASP search-first workflow is active for this prompt. This is a locator/frontier question: answer where to look before editing, not by reading source code. Run `asp <language> search prime --view seeds .` at most once, then the immediate next ASP command must be one `asp <language> search pipe '<question-or-feature-term>' --view seeds .`. Do not answer from prime alone; prime is only a project map and is never final evidence. Do not repeat an exact ASP command. Use owner/frontier/locator metadata from search output. Do not run `query --code` unless the user explicitly asks for code contents. ASP facades are language IDs, not package names; for Effect use `asp typescript ...`.";
+    }
+    "ASP search-first workflow is active for this prompt. Before reading source or running raw grep/find, use parser-owned ASP discovery. Run `asp <language> search prime --view seeds .` at most once, then the immediate next ASP command must be one `asp <language> search pipe '<question-or-feature-term>' --view seeds .`. Do not answer from prime alone; prime is only a project map and is never final evidence. Do not repeat an exact ASP command. Follow `recommendedNext` or `nextCommand` from ASP output. Use one `asp <language> query --selector <path:start-end> --workspace . --code` only after ASP provides an exact selector, then answer from that selector plus search metadata. Do not use direct source reads as the first step. ASP facades are language IDs, not package names; for Effect use `asp typescript ...`."
 }
 
 pub(crate) fn normalize_source_selector(selector: &str) -> &str {

@@ -49,6 +49,43 @@ class LineProtocolCompactGraphTests(unittest.TestCase):
 
             self.assertEqual("pass", result.status)
 
+    def test_line_protocol_accepts_seed_frontier_legend(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            scenario_path = repo_root / "scenario.json"
+            scenario_path.write_text(
+                json.dumps(
+                    {
+                        "id": "rust.seed-frontier-line-protocol",
+                        "language": "rust",
+                        "workdir": ".",
+                        "steps": [
+                            {
+                                "id": "prime",
+                                "command": [
+                                    sys.executable,
+                                    "-c",
+                                    (
+                                        "print('[search-prime] root=. alg=budgeted-prime-frontier-v1')\n"
+                                        "print('legend: ID=kind:role(value)!next; entries profile(selectors=>returns); frontier ID.next')\n"
+                                        "print('aliases: graph:{G=search,F=feature}')\n"
+                                        "print('F=feature:feature(io-util)!features')\n"
+                                        "print('G>{F:gates}')\n"
+                                        "print('rank=F frontier=F.features')"
+                                    ),
+                                ],
+                                "expect": {"lineProtocol": True},
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = run_scenario(repo_root, scenario_path)
+
+            self.assertEqual("pass", result.status)
+
     def test_line_protocol_rejects_legacy_compact_graph_aliases_line(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)
@@ -118,6 +155,44 @@ class LineProtocolCompactGraphTests(unittest.TestCase):
                                         "print('rank=O frontier=O.owner')\n"
                                         "print('omit=code,comments,blank-lines,nonmatching-items')\n"
                                         "print('avoid=raw-read,source-dump')"
+                                    ),
+                                ],
+                                "expect": {"lineProtocol": True},
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = run_scenario(repo_root, scenario_path)
+
+            self.assertEqual("pass", result.status)
+
+    def test_line_protocol_accepts_syntax_locator_lines(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            scenario_path = repo_root / "scenario.json"
+            scenario_path.write_text(
+                json.dumps(
+                    {
+                        "id": "rust.syntax-locator-line-protocol",
+                        "language": "rust",
+                        "workdir": ".",
+                        "steps": [
+                            {
+                                "id": "syntax-locator",
+                                "command": [
+                                    sys.executable,
+                                    "-c",
+                                    (
+                                        "print('[search-owner] owner=src/lib.rs alg=owner')\n"
+                                        "print('legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next')\n"
+                                        "print('aliases: graph:{G=search,O=owner,I=item}')\n"
+                                        "print('O=owner:path(src/lib.rs)!owner;I=item:symbol(run)@src/lib.rs:3:8!syntax')\n"
+                                        "print(\"syntax I selector=src/lib.rs:3:8 pattern='((function_item name: (_) @function.name))'\")\n"
+                                        "print('G>{O:selects,I:contains}')\n"
+                                        "print('rank=O,I frontier=O.owner,I.syntax')"
                                     ),
                                 ],
                                 "expect": {"lineProtocol": True},

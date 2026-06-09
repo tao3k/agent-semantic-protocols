@@ -110,14 +110,27 @@ asp <language> query --selector <path:start-end> --workspace <workspace-root> --
 For a concrete deep question, bug, feature, or API-usage task, use
 `search prime` once to establish the project graph context, then use
 `search pipe` with an LLM-generated `question-or-feature-term` and read its
-`queryTerms`, `handles`, `nextClasses`, `frontierActions`, `nextCommand`, and
-`avoid` lines. `--source` changes only candidate acquisition: `auto` is the
-default, `provider` avoids finder, `finder` uses bounded lexical recall, and
-`ingest` normalizes stdin candidates. ASP does not model-expand the seed query;
-the LLM uses the seed output to compose `asp fd -query` and `asp rg -query`
-grouped keyword packets when more owner/path or hot-block recall is needed. Use
-owner-local item queries and tree-sitter locator output only when the pipe
-frontier asks for them. Only after an exact selector is known should stdout
+`queryPack`, `queryTerms`, `globalCoverage`, `pathCoverage`,
+`declarationCoverage`, `strongCoverage`, `symbolTextCoverage`,
+`clauseCoverage`, `ownerCoverage`, `packageCohesion`, `queryQuality`,
+`handles`, `rankedEvidence`, `evidenceFrontier`, `commandHandles`,
+`treeSitterHandles`, optional `fdPreview`, `actionRank`, `actionFrontier`,
+`recommendedNext`, `nextCommand`, `nextClasses`, and `avoid` lines.
+`--source` changes only candidate acquisition:
+`auto` is the default, `provider` avoids finder, `finder` uses bounded lexical
+recall, and `ingest` normalizes stdin candidates. ASP does not model-expand the
+seed query. When more owner/path recall is needed, low-quality pipe output may
+include bounded `fdPreview` rows with `ownerCandidates`, `packageClusters`,
+`parserIndexNext`, and `rgScopeNext`; use those preview facts before running a
+separate `asp fd -query`. Use owner-local item queries and tree-sitter locator
+output only when the pipe action frontier asks for them. Do not follow a code
+selector when `queryQuality=low` or the output says
+`query-selector-low-confidence`; use `recommendedNext` and the ranked `A*`
+action rows, normally `owner-items`, `rg-query`, `treesitter-query`, or
+query-pack refinement, instead. A
+single broad clause can have strong declaration coverage while still being low
+quality; split it into 2-4 short clauses before reading code. Only after an
+exact selector is known and the frontier permits `query-selector` should stdout
 become source text through `query --selector ... --code`.
 
 ### Hook Recovery
@@ -159,9 +172,10 @@ after an exact selector is known and source-preserved text is required.
 ```sh
 asp search --language <language> prime --view seeds .
 asp <language> search prime --view seeds .
-asp <language> search pipe '<natural task intent>' --view seeds .
-asp <language> search pipe '<natural task intent>' --source finder --view seeds .
-asp <language> search owner <owner-path> items --query '<same natural intent>' --view seeds .
+asp <language> search pipe '<seed-query>' --view seeds .
+asp fd -query '<term1|term2|term3>' .
+asp rg -query '<term1|term2|term3>' .
+asp <language> search owner <owner-path> items --query '<seed-query>' --view seeds .
 asp <language> query <owner-path> --term <candidate> --names-only .
 asp <language> query --treesitter-query '<pattern>' .
 asp <language> query <owner-path> --term <candidate> --code .
@@ -171,9 +185,9 @@ Use `--names-only` for broad owner-local prefixes before requesting code.
 Within one task session, do not repeat `asp <language> search pipe ...` for the
 same concrete term or `asp <language> search prime --view seeds .` for the same
 language/root after a fresh frontier is already available. Reuse that frontier
-and move to the emitted selector, owner, tests, read-plan, or query-code action
-unless the project root, language provider state, search scope, or requested
-`--source` has changed.
+and move to the emitted selector, owner, tests, read-plan, `fd -query`,
+`rg -query`, or query-code action unless the project root, language provider
+state, search scope, or requested `--source` has changed.
 
 ### Reasoning Search Profiles
 

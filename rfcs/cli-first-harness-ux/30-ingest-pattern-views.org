@@ -67,11 +67,36 @@ search pipe <question-or-feature-term> [--source auto|provider|finder|ingest] [-
   selector, owner, tests, deps, failure evidence, and read-plan windows are
   selected by graph-turbo from the seed query and candidate shape.
 - =--view seeds= returns a =search-pipe= compact frontier with =query=,
-  =queryTerms=, =coverage=, =sourceTrace=, =handles=, =nextClasses=,
-  graph-turbo =rank= and =frontier=, executable =frontierActions=, optional
-  exact-selector =nextCommand=, =omit=, and =avoid=.  It must not inline source,
-  raw finder output, full candidate lists, or any operator expression.  Omitted
-  =--view= defaults to this same compact frontier.
+  =queryPack=, typed =queryTerms=, =globalCoverage=, =pathCoverage=,
+  =declarationCoverage=, =strongCoverage=, =symbolTextCoverage=,
+  =clauseCoverage=, =ownerCoverage=, =packageCohesion=, =queryQuality=,
+  optional =risk=, =sourceTrace=, evidence-derived =handles=, =nextClasses=,
+  graph-turbo =rankedEvidence= and =evidenceFrontier=, executable
+  =commandHandles=, =treeSitterHandles=, =actionRank=, =actionFrontier=,
+  optional bounded =fdPreview=, =recommendedNext=, =nextCommand=, =omit=, and
+  =avoid=.  It must not inline source, raw finder output, full candidate lists,
+  any operator expression, or legacy =frontierActions= rows.  The default graph
+  portion is a decision projection: keep =rankedEvidence=, =evidenceFrontier=,
+  compact =evidenceNodes=, and compact =evidenceEdges= rather than full graph
+  debug rows.  Omitted =--view= defaults to this same compact frontier.
+- Exact selector precision is not enough to emit =query --selector --code=.  The
+  seed view may recommend a code selector only when =queryQuality= and
+  =packageCohesion= are at least medium, or when provider-owned structural facts
+  answer an explicit field/type/collection query.  If coverage is global but
+  terms are scattered across unrelated owners/packages, the safe next action is
+  =owner-items= from a bounded =fdPreview=, =rg-query=, =treesitter-query=, or
+  query-pack refinement rather than reading the top ranked code range.  A
+  separate =asp fd -query= remains valid when the pipe did not include
+  =fdPreview= or when the preview shows insufficient owner/path recall.
+- =strongCoverage= and =queryQuality= are different dimensions.  Path basename,
+  export/declaration, and owner-local exact symbol hits may make
+  =strongCoverage= high, while a single broad clause such as =Effect concurrency
+  Fiber Queue Stream Scope= still has =queryQuality=low= with
+  =reason=single-broad-clause=.  In that case =rankedEvidence= and
+  =evidenceFrontier= may show useful nodes, but =actionFrontier= must start with
+  =owner-items=, =rg-query=, =treesitter-query=, or =fd-query= actions instead
+  of =query-code=.  If =fdPreview= is present, =fd-query= is already replayed
+  inside the pipe boundary and should not be the first repeated action.
 - =--view graph-turbo-request= returns a schema-owned graph request for the
   graph-turbo ranking boundary.  It is a validation/debug view, not the default
   agent-facing output.  The request includes =surface=, =queryTerms=, =source=,
@@ -85,16 +110,35 @@ search pipe <question-or-feature-term> [--source auto|provider|finder|ingest] [-
   =asp rg -query=, =asp fd -query=, and owner-local =--query=, =a|b|c= has
   exactly one public meaning: an LLM-generated grouped semantic query-set / OR
   hint.  It is not a shell pipe, not exact-regex syntax, and not a complex DSL.
+- The ASP-owned finder wrappers make =-query= repeatable.  Each =-query=
+  occurrence is one semantic clause; =|= inside one occurrence is only an OR
+  hint within that clause.  Wrapper output must render =queryPack=,
+  =queryClauses=, =scopeQuality=, =packageCohesion=, =clauseCoverage=, optional
+  =noise=, and dynamic =nextClasses=.  A single broad OR clause over a broad
+  workspace is a recall probe, not a selector-ready strategy: it must not emit
+  =query-selector= as a next class, and its first action should be bounded
+  =fd-query= or scoped repeated-clause =rg-query= refinement rather than code
+  selection.  Multiple =-query= clauses must prefer candidates with
+  owner/window/package cohesion across clauses before recommending selector
+  reads.
+- Generated files, vendored files, and long provider fact signatures are not
+  normal frontier actions by default.  Generated/vendor candidates are omitted
+  unless the query explicitly asks for generated/API/client/schema surfaces, and
+  field/type signatures in seeds view are compact labels rather than source-like
+  declarations.
 - Provider-native semantic enrichment may run after the bounded candidate set
   exists, but direct source reads and cheap lexical discovery must not pay a
   project-wide semantic parse cost first.  When the query names data-shape
   concepts such as fields, types, collections, maps, sets, lists, or concrete
   collection APIs such as =Vec=, the bounded enrichment should project typed
   =field=, =type=, and =collection= facts into the graph-turbo request.  The
-  default seeds view should then expose field-level selectors through
-  =frontierActions= and =nextCommand= instead of asking the agent to run another
-  owner search, broad fzf, or tree-sitter guide probe after graph-turbo already
-  selected the top branches.
+  default seeds view should keep those facts in =rankedEvidence= /
+  =evidenceFrontier= and expose only confidence-gated field-level code reads
+  through =actionRank=, =actionFrontier=, =recommendedNext=, and =nextCommand=.
+  If confidence is low, the same facts should compile into =commandHandles=,
+  =treeSitterHandles=, and non-code =A*= actions instead of asking the agent to
+  run another broad fzf, guide probe, or direct source read after graph-turbo
+  already selected the evidence boundary.
 
 The intended large-repo loop is two-stage when the first seed frontier is not
 enough:
@@ -112,8 +156,11 @@ replaced by =search pipe --source finder=.  =asp fd -query= searches
 owner/path/module recall.  =asp rg -query= searches content/hot-block recall.
 In both wrappers, =-query= belongs to ASP ranking context; flags after =--=
 belong to the native tool and are accepted as pass-through context without
-changing query-set semantics.  =--source finder= is a recovery or advanced source
-override for =search pipe= when seeds show provider coverage is weak.
+changing query-set semantics.  =asp fd -query= must expose =ownerCandidates=,
+=packageClusters=, =parserIndexNext=, and =rgScopeNext= so the result becomes a
+second-stage seed base rather than a raw path dump.  =--source finder= is a
+recovery or advanced source override for =search pipe= when seeds show provider
+coverage is weak.
 
 ** Search fast path boundary
 

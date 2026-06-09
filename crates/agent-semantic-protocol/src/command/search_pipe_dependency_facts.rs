@@ -2,7 +2,7 @@
 
 use std::{collections::HashSet, fs};
 
-use super::search_pipe_render::Candidate;
+use super::search_pipe_model::Candidate;
 
 const DEPENDENCY_SCAN_LINE_LIMIT: usize = 256;
 const DEPENDENCY_FACT_LIMIT: usize = 24;

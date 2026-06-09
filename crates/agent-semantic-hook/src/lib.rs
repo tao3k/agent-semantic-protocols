@@ -55,7 +55,10 @@ pub use protocol_activation::{
     HookActivation, HookRuntime, ManifestSourceDefaults, ProviderExecution, ProviderManifest,
     parse_activation, provider_manifest_digest,
 };
-pub use provider_manifest::{build_default_activation, builtin_provider_manifests};
+pub use provider_manifest::{
+    ProviderCommandSelection, build_default_activation, builtin_provider_manifests,
+    provider_command_selections,
+};
 pub use runtime_profile::{
     RUNTIME_PROFILES_PROTOCOL_ID, RUNTIME_PROFILES_PROTOCOL_VERSION, RUNTIME_PROFILES_SCHEMA_ID,
     RUNTIME_PROFILES_SCHEMA_VERSION, RuntimeProfiles, RuntimeProfilesGeneratedBy,

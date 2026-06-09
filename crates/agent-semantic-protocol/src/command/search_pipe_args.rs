@@ -2,8 +2,8 @@
 
 use std::path::PathBuf;
 
-use super::search_pipe_render::{default_search_surfaces, parse_search_surfaces};
 use super::search_pipe_source::{SourceSpec, parse_source_spec};
+use super::search_pipe_surfaces::{default_search_surfaces, parse_search_surfaces};
 
 #[derive(Debug, Eq, PartialEq)]
 pub(super) struct SearchPipeArgs {

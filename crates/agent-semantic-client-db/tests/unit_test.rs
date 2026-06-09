@@ -6,6 +6,8 @@ mod db;
 mod db_artifact_events;
 #[path = "unit/db/invalidation.rs"]
 mod db_invalidation;
+#[path = "unit/db/provider_command_selection.rs"]
+mod db_provider_command_selection;
 #[path = "unit/db/recent_generations.rs"]
 mod db_recent_generations;
 #[path = "unit/db/syntax_query.rs"]

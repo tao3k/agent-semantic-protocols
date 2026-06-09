@@ -7,6 +7,7 @@ mod activation_contract;
 mod platform;
 mod raw_search_policy;
 mod routes;
+mod search_flow_feedback;
 
 pub(crate) fn command(argv: &[&str]) -> CommandTemplate {
     CommandTemplate {

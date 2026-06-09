@@ -78,8 +78,9 @@ fn search_pipe_injects_read_loop_memory_into_graph_turbo_request_and_suppresses_
         String::from_utf8_lossy(&seeds_output.stderr)
     );
     let stdout = String::from_utf8(seeds_output.stdout).expect("stdout");
+    assert!(stdout.contains("rankedEvidence="), "{stdout}");
     assert!(
-        stdout.contains("avoid=") && stdout.contains("seen-selector"),
+        stdout.contains("evidenceFrontier=I.syntax,H.hot,I2.syntax,H2.hot"),
         "{stdout}"
     );
     assert!(
@@ -88,10 +89,19 @@ fn search_pipe_injects_read_loop_memory_into_graph_turbo_request_and_suppresses_
         ),
         "{stdout}"
     );
+    assert!(!stdout.contains("frontierActions="), "{stdout}");
     assert!(
-        stdout.contains(
-            "frontierActions=S1.selector(selector=languages/rust-harness/src/lib.rs:1:18"
-        ),
+        stdout
+            .contains("actionFrontier=A1.fd-query,A2.rg-query,A3.owner-items,A4.treesitter-query"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("recommendedNext=A1.fd-query"), "{stdout}");
+    assert!(
+        stdout.contains("nextCommand=asp fd -query Vec languages/rust-harness"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("reason=query-selector-low-confidence,owner-seed-base-required"),
         "{stdout}"
     );
     let _ = std::fs::remove_dir_all(root);

@@ -38,6 +38,25 @@ fn bash_ast_tokens_preserve_pipeline_separator() {
 }
 
 #[test]
+fn bash_ast_tokens_keep_quoted_search_pipe_stage() {
+    assert_eq!(
+        semantic_shell_tokens(
+            "asp typescript search pipe 'Effect concurrency Fiber' --view seeds ."
+        ),
+        vec![
+            "asp",
+            "typescript",
+            "search",
+            "pipe",
+            "Effect concurrency Fiber",
+            "--view",
+            "seeds",
+            "."
+        ]
+    );
+}
+
+#[test]
 fn bash_ast_tokens_decode_escaped_path_space() {
     assert_eq!(
         semantic_shell_tokens("cat src/my\\ file.rs"),

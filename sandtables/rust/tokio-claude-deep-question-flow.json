@@ -1,6 +1,6 @@
 {
   "id": "rust.tokio-claude-deep-question-flow",
-  "title": "Tokio 1.52.3 live Claude deep question command audit flow",
+  "title": "Tokio 1.52.3 live Claude deep question prompt-only flow",
   "language": "rust",
   "coverage": [
     "search-flow",
@@ -12,7 +12,8 @@
     "tokio",
     "claude",
     "deep-question",
-    "live"
+    "live",
+    "prompt-only"
   ],
   "skipUnlessEnv": [
     "ANTHROPIC_AUTH_TOKEN"
@@ -70,12 +71,6 @@
           "requiresTokenCost": true
         },
         "expectedAspFlow": {
-          "canonicalCommands": [
-            "asp rust search prime --view seeds .",
-            "asp rust search pipe 'Vec scalar collection fields' --view seeds .",
-          "asp rust query --selector <field-or-owner-selector> --workspace . --code",
-            "asp rust search reasoning owner-query --owner <owner-path> --query 'Vec scalar collection fields' --view seeds ."
-          ],
           "requiredStages": [
             "search-prime",
             "search-pipe",
@@ -87,8 +82,7 @@
             "read-loop-risk"
           ],
           "notes": [
-            "Prime exactly once to build the project graph context, then start search pipe and follow recommendedNext/nextCommand when it exposes an exact selector.",
-            "The owner-query command is branch expansion after the selector read, or fallback when the first pipe frontier does not expose an exact selector."
+            "The scenario input is only the user question. ASP commands must come from the agent workflow and hook recovery, not scripted scenario steps."
           ]
         }
       }
@@ -108,86 +102,72 @@
     ]
   },
   "budgets": {
-    "maxCommands": 1,
     "maxTotalElapsedMsWarn": 120000,
     "maxTotalStdoutBytesWarn": 200000
   },
-  "steps": [
-    {
-      "id": "claude-tokio-vec-scalar-meaning",
-      "kind": "agent-sdk",
-      "agentSdk": {
-        "client": "claude",
-        "prompt": "In tokio 1.52.3, what do Vec<scalar> collection fields mean, and why are they not modeled as ordinary scalar fields? Use this repository's ASP search/query workflow. Start with asp rust search prime --view seeds . once, then asp rust search pipe 'Vec scalar collection fields' --view seeds .. If search pipe emits recommendedNext or nextCommand for an exact query selector, run that selector command first. If that selector returns relevant code, stop tool use and write the direct answer immediately from the primary selector plus search-pipe metadata. Do not run a second selector unless the primary selector command fails or returns no relevant code. Treat conditionalActions, S2/S3 branch previews, search reasoning branches, and asp rust guide as metadata-only follow-ups unless the primary selector is insufficient; do not read all selectors or run guide by default. Do not finish until you have written a direct answer to the question. List the asp commands you actually ran at the end.",
-        "outputFormat": "stream-json",
-        "includeHookEvents": true,
-        "verbose": true,
-      "allowedTools": [
-        "Bash"
-      ],
-      "requireAspBashCommands": true,
-      "maxTurns": 9,
-      "useRepoClaudeSettings": true,
-        "env": {
-        "ANTHROPIC_AUTH_TOKEN": "${ANTHROPIC_AUTH_TOKEN}"
+  "liveAgent": {
+    "client": "claude",
+    "outputFormat": "stream-json",
+    "includeHookEvents": true,
+    "verbose": true,
+    "useRepoClaudeSettings": true,
+    "env": {
+      "ANTHROPIC_AUTH_TOKEN": "${ANTHROPIC_AUTH_TOKEN}"
+    },
+    "requiredEnv": [
+      "ANTHROPIC_AUTH_TOKEN"
+    ],
+    "timeoutSeconds": 120,
+    "expect": {
+      "allowNonZeroExit": true,
+      "agentAnswer": {
+        "required": true,
+        "afterLastToolUse": true,
+        "minTextBytes": 300,
+        "contains": [
+          "Vec",
+          "scalar",
+          "collection"
+        ]
       },
-      "requiredEnv": [
-        "ANTHROPIC_AUTH_TOKEN"
-      ]
-      },
-      "timeoutSeconds": 120,
-      "expect": {
-        "allowNonZeroExit": true,
-        "agentAnswer": {
-          "required": true,
-          "afterLastToolUse": true,
-          "minTextBytes": 300,
-          "contains": [
-            "Vec",
-            "scalar",
-            "collection"
-          ]
-        },
-        "pipeFlow": {
+      "pipeFlow": {
         "maxAspCommands": 3,
         "maxSearchCommands": 2,
         "maxQueryCommands": 1,
-          "maxGuideCommands": 0,
-          "maxRepeatedCommands": 0,
-          "maxSearchPipeCommands": 1,
-          "maxSearchPrimeCommands": 1,
-          "maxReadLoopDuplicateSelectors": 0,
-          "maxReadLoopAdjacentRangeWindows": 0,
-          "maxReadLoopSameOwnerScans": 0,
-          "maxReadLoopMemorySuppressibleReads": 0,
-        "maxAspCommandOutputBytes": 7000,
+        "maxGuideCommands": 0,
+        "maxRepeatedCommands": 0,
+        "maxSearchPipeCommands": 1,
+        "maxSearchPrimeCommands": 1,
+        "maxReadLoopDuplicateSelectors": 0,
+        "maxReadLoopAdjacentRangeWindows": 0,
+        "maxReadLoopSameOwnerScans": 0,
+        "maxReadLoopMemorySuppressibleReads": 0,
         "minQuerySelectorCommands": 1,
         "minFrontierFollowRate": 0.25,
         "minContextPrecision": 0.5,
         "minContextUtilization": 0.25,
         "requireComplexPipeFlow": true,
-          "requireTokenCost": true,
-          "requireSearchPipePrecision": true,
-          "requireReadLoopMemory": true,
-          "requiredStages": [
-            "search-prime",
-            "search-pipe",
-            "query-selector"
-          ],
-          "forbiddenStages": [
-            "repeated-prime",
-            "repeated-commands",
-            "read-loop-risk",
-            "read-loop-memory-risk"
-          ]
-        },
-        "stdoutContains": [
-          "Vec",
-          "scalar"
+        "requireTokenCost": true,
+        "requireSearchPipePrecision": true,
+        "requireReadLoopMemory": true,
+        "requiredStages": [
+          "search-prime",
+          "search-pipe",
+          "query-selector"
         ],
-        "maxStdoutBytesWarn": 200000,
-        "maxElapsedMsWarn": 120000
-      }
+        "forbiddenStages": [
+          "repeated-prime",
+          "repeated-commands",
+          "read-loop-risk",
+          "read-loop-memory-risk"
+        ]
+      },
+      "stdoutContains": [
+        "Vec",
+        "scalar"
+      ],
+      "maxStdoutBytesWarn": 200000,
+      "maxElapsedMsWarn": 120000
     }
-  ]
+  }
 }

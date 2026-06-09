@@ -4,6 +4,7 @@ mod fzf_query_deps;
 mod fzf_workspace;
 mod ingest;
 mod options;
+mod owner_items_typescript;
 mod pipe_frontier;
 mod provider_ontology;
 mod query_wrapper;

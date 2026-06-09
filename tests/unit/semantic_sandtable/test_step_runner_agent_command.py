@@ -64,7 +64,6 @@ class StepRunnerAgentCommandTests(unittest.TestCase):
                 "includePartialMessages": True,
                 "includeHookEvents": True,
                 "verbose": True,
-                "allowedTools": ["Bash"],
                 "requireAspBashCommands": True,
                 "useRepoClaudeSettings": True,
                 "maxTurns": 9,
@@ -95,8 +94,6 @@ class StepRunnerAgentCommandTests(unittest.TestCase):
                 "--include-partial-messages",
                 "--include-hook-events",
                 "--verbose",
-                "--allowed-tool",
-                "Bash",
                 "--require-asp-bash-commands",
                 "--claude-cwd",
                 "/workspace",
@@ -109,6 +106,33 @@ class StepRunnerAgentCommandTests(unittest.TestCase):
                 "sonnet",
             ],
             command,
+        )
+
+    def test_claude_agent_sdk_rejects_preallowed_bash_with_asp_permission(self) -> None:
+        execution = _resolve_step_execution(
+            {
+                "id": "claude-sdk",
+                "agentSdk": {
+                    "client": "claude",
+                    "prompt": "Explain ASP",
+                    "outputFormat": "stream-json",
+                    "allowedTools": ["Bash"],
+                    "requireAspBashCommands": True,
+                },
+            },
+            "root.claude-sdk",
+            "claude-sdk",
+            {},
+            {},
+            repo_root=Path("/workspace"),
+        )
+
+        self.assertNotIsInstance(execution, tuple)
+        self.assertEqual(
+            [
+                "step.agentSdk.allowedTools cannot be used when requireAspBashCommands is true; ASP Bash permission is owned by claude_sdk_runner"
+            ],
+            execution.errors,
         )
 
     def test_agent_answer_required_rejects_sdk_max_turns(self) -> None:

@@ -11,6 +11,7 @@ use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
+use super::client_backend_worker::run_client_backend_on_worker;
 use super::protocol_version_line;
 use super::provider_process::{
     provider_invocation_with_profile, provider_invocations, run_guide_command, run_provider_command,
@@ -100,11 +101,8 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
                 env::set_var("PATH", path);
             }
         }
-        let result = agent_semantic_client::run_cli_args(
-            Some(agent_semantic_client::LanguageId::from(language_id)),
-            client_args,
-            project_root.to_path_buf(),
-        );
+        let result =
+            run_client_backend_on_worker(language_id, client_args, project_root.to_path_buf());
         restore_env_var!("PRJ_CACHE_HOME", previous_prj_cache_home);
         restore_env_var!("ASP_PROVIDER_ACTIVATION_PATH", previous_activation_path);
         restore_env_var!("ASP_RUNTIME_BIN_DIR", previous_runtime_bin);

@@ -67,11 +67,11 @@ struct ClaudeHookEvent {
 }
 
 /// Render the managed Codex hook block that dispatches through `asp hook`.
-pub fn codex_hook_block() -> String {
+pub fn codex_hook_block(project_root: &Path) -> String {
     let events = codex_hook_events();
     let body = events
         .iter()
-        .map(codex_hook_event_block)
+        .map(|event| codex_hook_event_block(event, project_root))
         .collect::<Vec<_>>()
         .join("\n\n");
     format!(
@@ -87,6 +87,7 @@ pub fn install_codex_user_trust_state(project_config_path: &Path) -> Result<Path
             project_config_path.display()
         )
     })?;
+    let project_root = project_root_for_codex_config_path(&project_config_path)?;
     let codex_home = codex_home_path()?;
     fs::create_dir_all(&codex_home)
         .map_err(|error| format!("failed to create {}: {error}", codex_home.display()))?;
@@ -100,7 +101,7 @@ pub fn install_codex_user_trust_state(project_config_path: &Path) -> Result<Path
             )
         })?;
     }
-    let trust_block = codex_trust_state_block(&project_config_path);
+    let trust_block = codex_trust_state_block(&project_config_path, &project_root);
     let merged = merge_codex_trust_config(&existing, &project_config_path, &trust_block);
     validate_codex_config_toml(&merged).map_err(|error| {
         format!(
@@ -123,6 +124,7 @@ pub fn codex_user_trust_state_status(
             project_config_path.display()
         )
     })?;
+    let project_root = project_root_for_codex_config_path(&project_config_path)?;
     let trust_config_path = codex_home_path()?.join("config.toml");
     let content = fs::read_to_string(&trust_config_path).unwrap_or_default();
     let parsed =
@@ -143,7 +145,7 @@ pub fn codex_user_trust_state_status(
                 project_config_path.display(),
                 event.state_label
             );
-            let expected_hash = codex_hook_trusted_hash(event);
+            let expected_hash = codex_hook_trusted_hash(event, &project_root);
             let trusted = state
                 .and_then(|state| state.get(&key))
                 .and_then(toml::Value::as_table)
@@ -247,12 +249,12 @@ fn codex_hook_events() -> [CodexHookEvent; 8] {
     ]
 }
 
-fn codex_hook_event_block(event: &CodexHookEvent) -> String {
+fn codex_hook_event_block(event: &CodexHookEvent, project_root: &Path) -> String {
     let matcher_line = event
         .matcher
         .map(|value| format!("matcher = {}\n\n", toml_basic_string(value)))
         .unwrap_or_else(|| "\n".to_string());
-    let command = codex_hook_command(event.hook_event);
+    let command = codex_hook_command(event.hook_event, project_root);
     format!(
         "[[hooks.{event_name}]]\n{matcher_line}[[hooks.{event_name}.hooks]]\ntype = \"command\"\ntimeout = 5\nstatusMessage = \"{status}\"\ncommand = '''\n{command}'''",
         event_name = event.event,
@@ -260,15 +262,20 @@ fn codex_hook_event_block(event: &CodexHookEvent) -> String {
     )
 }
 
-fn codex_hook_command(hook_event: &str) -> String {
+fn codex_hook_command(hook_event: &str, project_root: &Path) -> String {
+    let project_root = shell_single_quoted(&project_root.display().to_string());
     format!(
-        "repo_root=\"$(git rev-parse --show-toplevel 2>/dev/null || pwd)\"\ncd \"$repo_root\"\nactivation=\"$repo_root/.cache/agent-semantic-protocol/hooks/activation.json\"\nconfig=\"$repo_root/.codex/agent-semantic-protocol/hooks/config.toml\"\nexec asp hook {hook_event} --client codex --activation \"$activation\" --config \"$config\"\n"
+        "repo_root={project_root}\ncd \"$repo_root\"\nactivation=\"$repo_root/.cache/agent-semantic-protocol/hooks/activation.json\"\nconfig=\"$repo_root/.codex/agent-semantic-protocol/hooks/config.toml\"\nexec asp hook {hook_event} --client codex --activation \"$activation\" --config \"$config\"\n"
     )
 }
 
-fn codex_hook_state_block(config_source_path: &Path, event: &CodexHookEvent) -> String {
+fn codex_hook_state_block(
+    config_source_path: &Path,
+    event: &CodexHookEvent,
+    project_root: &Path,
+) -> String {
     let key = format!("{}:{}:0:0", config_source_path.display(), event.state_label);
-    let hash = codex_hook_trusted_hash(event);
+    let hash = codex_hook_trusted_hash(event, project_root);
     format!(
         "[hooks.state.{}]\ntrusted_hash = {}",
         toml_basic_string(&key),
@@ -288,10 +295,10 @@ fn codex_home_path() -> Result<PathBuf, String> {
         })
 }
 
-fn codex_trust_state_block(config_source_path: &Path) -> String {
+fn codex_trust_state_block(config_source_path: &Path, project_root: &Path) -> String {
     let state = codex_hook_events()
         .iter()
-        .map(|event| codex_hook_state_block(config_source_path, event))
+        .map(|event| codex_hook_state_block(config_source_path, event, project_root))
         .collect::<Vec<_>>()
         .join("\n\n");
     format!(
@@ -300,7 +307,7 @@ fn codex_trust_state_block(config_source_path: &Path) -> String {
     )
 }
 
-fn codex_hook_trusted_hash(event: &CodexHookEvent) -> String {
+fn codex_hook_trusted_hash(event: &CodexHookEvent, project_root: &Path) -> String {
     let mut identity = serde_json::Map::new();
     identity.insert(
         "event_name".to_string(),
@@ -313,7 +320,7 @@ fn codex_hook_trusted_hash(event: &CodexHookEvent) -> String {
         "hooks".to_string(),
         Value::Array(vec![json!({
             "type": "command",
-            "command": codex_hook_command(event.hook_event),
+            "command": codex_hook_command(event.hook_event, project_root),
             "timeout": 5,
             "async": false,
             "statusMessage": event.status,
@@ -341,12 +348,12 @@ pub fn default_claude_settings_path(project_root: &str) -> PathBuf {
 }
 
 /// Render the managed Claude hook settings fragment.
-pub fn claude_hook_block() -> Value {
+pub fn claude_hook_block(project_root: &Path) -> Value {
     let mut hooks = Map::new();
     for event in claude_hook_events() {
         hooks.insert(
             event.event.to_string(),
-            Value::Array(vec![claude_hook_event_group(&event)]),
+            Value::Array(vec![claude_hook_event_group(&event, project_root)]),
         );
     }
     json!({ "hooks": hooks })
@@ -382,6 +389,17 @@ pub fn merge_claude_settings(existing: &str, block: &Value) -> Result<String, St
         .get("hooks")
         .and_then(Value::as_object)
         .ok_or_else(|| "managed Claude hook block must contain hooks object".to_string())?;
+    let existing_event_names = hooks_object.keys().cloned().collect::<Vec<_>>();
+    for event_name in existing_event_names {
+        let Some(groups) = hooks_object
+            .get_mut(&event_name)
+            .and_then(Value::as_array_mut)
+        else {
+            continue;
+        };
+        groups.retain(|group| !is_managed_claude_group(group));
+    }
+    hooks_object.retain(|_, groups| groups.as_array().is_none_or(|groups| !groups.is_empty()));
     for (event_name, managed_groups) in block_hooks {
         let groups = hooks_object
             .entry(event_name.clone())
@@ -389,7 +407,6 @@ pub fn merge_claude_settings(existing: &str, block: &Value) -> Result<String, St
         let groups = groups
             .as_array_mut()
             .ok_or_else(|| format!("Claude settings hooks.{event_name} must be an array"))?;
-        groups.retain(|group| !is_managed_claude_group(group));
         let Some(managed_groups) = managed_groups.as_array() else {
             return Err(format!(
                 "managed Claude hook block hooks.{event_name} must be an array"
@@ -402,7 +419,7 @@ pub fn merge_claude_settings(existing: &str, block: &Value) -> Result<String, St
         .map_err(|error| error.to_string())
 }
 
-fn claude_hook_events() -> [ClaudeHookEvent; 8] {
+fn claude_hook_events() -> [ClaudeHookEvent; 7] {
     [
         ClaudeHookEvent {
             event: "SessionStart",
@@ -418,11 +435,6 @@ fn claude_hook_events() -> [ClaudeHookEvent; 8] {
             event: "PreToolUse",
             matcher: Some(TOOL_SURFACE_MATCHER),
             hook_event: "pre-tool",
-        },
-        ClaudeHookEvent {
-            event: "PermissionRequest",
-            matcher: Some(TOOL_SURFACE_MATCHER),
-            hook_event: "permission-request",
         },
         ClaudeHookEvent {
             event: "PostToolUse",
@@ -447,7 +459,7 @@ fn claude_hook_events() -> [ClaudeHookEvent; 8] {
     ]
 }
 
-fn claude_hook_event_group(event: &ClaudeHookEvent) -> Value {
+fn claude_hook_event_group(event: &ClaudeHookEvent, project_root: &Path) -> Value {
     let mut group = Map::new();
     if let Some(matcher) = event.matcher {
         group.insert("matcher".to_string(), Value::String(matcher.to_string()));
@@ -457,16 +469,37 @@ fn claude_hook_event_group(event: &ClaudeHookEvent) -> Value {
         Value::Array(vec![json!({
             "type": "command",
             "timeout": 5,
-            "command": claude_hook_command(event.hook_event),
+            "command": claude_hook_command(event.hook_event, project_root),
         })]),
     );
     Value::Object(group)
 }
 
-fn claude_hook_command(hook_event: &str) -> String {
+fn claude_hook_command(hook_event: &str, project_root: &Path) -> String {
+    let project_root = shell_single_quoted(&project_root.display().to_string());
     format!(
-        "{CLAUDE_MANAGED_COMMAND_MARKER}\nrepo_root=\"$(git rev-parse --show-toplevel 2>/dev/null || pwd)\"\ncd \"$repo_root\"\nactivation=\"$repo_root/.cache/agent-semantic-protocol/hooks/activation.json\"\nconfig=\"$repo_root/.codex/agent-semantic-protocol/hooks/config.toml\"\nexec asp hook {hook_event} --client claude --activation \"$activation\" --config \"$config\"\n"
+        "{CLAUDE_MANAGED_COMMAND_MARKER}\nrepo_root={project_root}\ncd \"$repo_root\"\nactivation=\"$repo_root/.cache/agent-semantic-protocol/hooks/activation.json\"\nconfig=\"$repo_root/.codex/agent-semantic-protocol/hooks/config.toml\"\nexec asp hook {hook_event} --client claude --activation \"$activation\" --config \"$config\"\n"
     )
+}
+
+fn project_root_for_codex_config_path(project_config_path: &Path) -> Result<PathBuf, String> {
+    let codex_dir = project_config_path
+        .parent()
+        .ok_or_else(|| "Codex config path has no parent directory".to_string())?;
+    if codex_dir.file_name().and_then(|value| value.to_str()) != Some(".codex") {
+        return Err(format!(
+            "Codex config path {} is not under a .codex directory",
+            project_config_path.display()
+        ));
+    }
+    codex_dir
+        .parent()
+        .map(Path::to_path_buf)
+        .ok_or_else(|| "Codex config path has no project root".to_string())
+}
+
+fn shell_single_quoted(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\"'\"'"))
 }
 
 fn is_managed_claude_group(group: &Value) -> bool {

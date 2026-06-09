@@ -1,6 +1,6 @@
 {
   "id": "typescript.effect-claude-concurrency-flow",
-  "title": "Effect 3.21.3 live Claude concurrency practice command audit flow",
+  "title": "Effect 3.21.3 live Claude concurrency practice prompt-only flow",
   "language": "typescript",
   "coverage": [
     "search-flow",
@@ -14,7 +14,8 @@
     "claude",
     "deep-question",
     "live",
-    "concurrency"
+    "concurrency",
+    "prompt-only"
   ],
   "skipUnlessEnv": [
     "ANTHROPIC_AUTH_TOKEN"
@@ -59,12 +60,12 @@
       {
         "kind": "branch-expansion-timeout",
         "severity": "warning",
-        "message": "A follow-up live run with semantic precision relaxed timed out at 120s after Claude read nine selector ranges. The scenario prompt now uses a hard three-command contract and requires the agent to answer from the primary selector plus pipe metadata instead of widening to S2/S3 or off-frontier selectors."
+        "message": "A follow-up live run with semantic precision relaxed timed out at 120s after Claude read nine selector ranges. The prompt-only scenario now relies on .claude hook guidance and validates the observed pipeFlow instead of scripting the commands in JSON."
       },
       {
         "kind": "hard-limit-flow-pass",
         "severity": "info",
-        "message": "The tightened live prompt passed in 64.2s with exactly three ASP commands: prime, pipe, and one primary selector query. Previous answer-text gates failed on case-sensitive wording such as lowercase fiber or concurrency even when the final answer was present after the last tool use, so the scenario now validates final-answer structure instead of brittle substrings while preserving the semantic-fact precision gap as a separate finding."
+        "message": "Previous answer-text gates failed on case-sensitive wording such as lowercase fiber or concurrency even when the final answer was present after the last tool use, so the scenario validates final-answer structure and observed pipeFlow instead of brittle substrings while preserving the semantic-fact precision gap as a separate finding."
       }
     ],
     "deepQuestionCases": [
@@ -94,11 +95,6 @@
           "requiresTokenCost": true
         },
         "expectedAspFlow": {
-          "canonicalCommands": [
-            "asp typescript search prime --view seeds .",
-            "asp typescript search pipe 'Effect concurrency Fiber Queue Stream Scope' --view seeds .",
-            "asp typescript query --selector <effect-concurrency-selector> --workspace . --code"
-          ],
           "requiredStages": [
             "search-prime",
             "search-pipe",
@@ -110,8 +106,7 @@
             "read-loop-risk"
           ],
           "notes": [
-            "Prime exactly once to build the TypeScript project graph context, then use search pipe for the concrete Effect concurrency question.",
-            "If search pipe emits an exact selector, read that selector and then stop tool use even when the selector is incomplete; answer from the primary selector plus pipe metadata and name missing evidence explicitly."
+            "The scenario input is only the user question. ASP commands must come from the agent workflow and hook recovery, not scripted scenario steps."
           ]
         }
       }
@@ -131,85 +126,72 @@
     ]
   },
   "budgets": {
-    "maxCommands": 1,
     "maxTotalElapsedMsWarn": 120000,
     "maxTotalStdoutBytesWarn": 220000
   },
-  "steps": [
-    {
-      "id": "claude-effect-concurrency-practices",
-      "kind": "agent-sdk",
-      "agentSdk": {
-        "client": "claude",
-        "prompt": "In Effect 3.21.3, what repo-backed practices should a high-concurrency service use to bound fan-out, handle interruption/cancellation, choose between Effect.forEach concurrency, Queue, Stream, Fiber, and Scope, and avoid unbounded fiber or resource leaks? Use this repository's ASP search/query workflow with a hard three-command limit. Run these exact shell commands, exactly once each where listed, and run no ASP --help, guide, reasoning, owner, fzf, treesitter, or variant commands. Do not type the word once into any shell command.\n\nCommand 1:\nasp typescript search prime --view seeds .\n\nCommand 2:\nasp typescript search pipe 'Effect concurrency Fiber Queue Stream Scope' --view seeds .\n\nCommand 3:\nRun only the primary exact query-selector command emitted by Command 2, preserving its selector, --workspace, and --code arguments. After Command 3, stop all tool use even if the selector is incomplete. Do not run S2/S3, conditionalActions, search reasoning, guide, owner search, fzf, treesitter, or any second selector. Write the direct answer from the primary selector plus search-pipe metadata, and explicitly name any missing evidence such as Fiber or Queue if the primary selector did not cover it. Do not finish until you have written a direct answer to the question. List the asp commands you actually ran at the end.",
-          "outputFormat": "summary-json",
-        "includeHookEvents": true,
-        "verbose": true,
-        "allowedTools": [
-          "Bash"
+  "liveAgent": {
+    "client": "claude",
+    "outputFormat": "stream-json",
+    "includeHookEvents": true,
+    "verbose": true,
+    "useRepoClaudeSettings": true,
+    "env": {
+      "ANTHROPIC_AUTH_TOKEN": "${ANTHROPIC_AUTH_TOKEN}"
+    },
+    "requiredEnv": [
+      "ANTHROPIC_AUTH_TOKEN"
+    ],
+    "timeoutSeconds": 120,
+    "expect": {
+      "allowNonZeroExit": true,
+      "agentAnswer": {
+        "required": true,
+        "afterLastToolUse": true,
+        "minTextBytes": 300
+      },
+      "pipeFlow": {
+        "maxAspCommands": 3,
+        "maxSearchCommands": 2,
+        "maxQueryCommands": 1,
+        "maxGuideCommands": 0,
+        "maxRepeatedCommands": 0,
+        "maxSearchPipeCommands": 1,
+        "maxSearchPrimeCommands": 1,
+        "maxReadLoopDuplicateSelectors": 0,
+        "maxReadLoopAdjacentRangeWindows": 0,
+        "maxReadLoopSameOwnerScans": 0,
+        "maxReadLoopMemorySuppressibleReads": 0,
+        "minQuerySelectorCommands": 1,
+        "minFrontierFollowRate": 0.25,
+        "minContextPrecision": 0.4,
+        "minContextUtilization": 0.25,
+        "requireComplexPipeFlow": true,
+        "requireTokenCost": true,
+        "requireSearchPipePrecision": true,
+        "requireReadLoopMemory": true,
+        "requiredStages": [
+          "search-prime",
+          "search-pipe",
+          "query-selector"
         ],
-        "requireAspBashCommands": true,
-        "useRepoClaudeSettings": true,
-        "env": {
-          "ANTHROPIC_AUTH_TOKEN": "${ANTHROPIC_AUTH_TOKEN}"
-        },
-        "requiredEnv": [
-          "ANTHROPIC_AUTH_TOKEN"
+        "forbiddenStages": [
+          "repeated-prime",
+          "repeated-commands",
+          "read-loop-risk",
+          "read-loop-memory-risk"
         ]
       },
-      "timeoutSeconds": 120,
-      "expect": {
-        "allowNonZeroExit": true,
-        "agentAnswer": {
-          "required": true,
-          "afterLastToolUse": true,
-          "minTextBytes": 300
-        },
-        "pipeFlow": {
-          "maxAspCommands": 3,
-          "maxSearchCommands": 2,
-          "maxQueryCommands": 1,
-          "maxGuideCommands": 0,
-          "maxRepeatedCommands": 0,
-          "maxSearchPipeCommands": 1,
-          "maxSearchPrimeCommands": 1,
-          "maxReadLoopDuplicateSelectors": 0,
-          "maxReadLoopAdjacentRangeWindows": 0,
-          "maxReadLoopSameOwnerScans": 0,
-          "maxReadLoopMemorySuppressibleReads": 0,
-          "maxAspCommandOutputBytes": 8000,
-          "minQuerySelectorCommands": 1,
-          "minFrontierFollowRate": 0.25,
-          "minContextPrecision": 0.4,
-          "minContextUtilization": 0.25,
-          "requireComplexPipeFlow": true,
-          "requireTokenCost": true,
-          "requireSearchPipePrecision": true,
-          "requireReadLoopMemory": true,
-          "requiredStages": [
-            "search-prime",
-            "search-pipe",
-            "query-selector"
-          ],
-          "forbiddenStages": [
-            "repeated-prime",
-            "repeated-commands",
-            "read-loop-risk",
-            "read-loop-memory-risk"
-          ]
-        },
-        "stdoutContains": [
-          "Effect",
-          "concurrency"
-        ],
-        "maxAgentInputTokensWarn": 40000,
-        "maxAgentOutputTokensWarn": 3000,
-        "maxAgentCacheReadInputTokensWarn": 80000,
-        "maxAgentTotalTokensWarn": 120000,
-        "maxAgentCostUsdWarn": 0.3,
-        "maxStdoutBytesWarn": 220000,
-        "maxElapsedMsWarn": 120000
-      }
+      "stdoutContains": [
+        "Effect",
+        "concurrency"
+      ],
+      "maxAgentInputTokensWarn": 40000,
+      "maxAgentOutputTokensWarn": 3000,
+      "maxAgentCacheReadInputTokensWarn": 80000,
+      "maxAgentTotalTokensWarn": 120000,
+      "maxAgentCostUsdWarn": 0.3,
+      "maxStdoutBytesWarn": 220000,
+      "maxElapsedMsWarn": 120000
     }
-  ]
+  }
 }

@@ -667,10 +667,12 @@ compact graph grammar owned by this RFC: header, legend, =aliases=, node
 aliases, edge lines, =rank=, =frontier=, profile-specific projection lines,
 =scores=, =paths=, =cache=, =trace=, =explain=, =metrics=, =profiles=,
 =omit=, and =avoid=.  ASP-owned fast-search adapters may append query-pipeline
-projection lines after the graph frontier, such as =pipePlan=, =pipeExpr=,
-=pipeProjections=, =pipeStages=, =frontierActions=, =pipeCommands=, and
-=pipeChoice=, and =stop=.  Those lines describe the ASP pipe expression and
-selected agent-facing projections; they must not be treated as graph-turbo ranking facts.  The
+projection lines after the graph frontier, such as =queryPack=, =queryTerms=,
+=handles=, =evidenceFrontier=, =evidenceNodes=, =evidenceEdges=,
+=commandHandles=, =treeSitterHandles=, =fdPreview=, =actionRank=,
+=actionFrontier=, =recommendedNext=, =nextCommand=, and =stop=.
+Those lines describe ASP's compiled search/query actions; they must not be
+treated as graph-turbo ranking facts.  The
 default search frontier header is
 =[graph-frontier]=.  A profile-specific surface such as =failure-frontier= may
 use a narrower header such as =[search-failure]= only when the rest of the
@@ -787,45 +789,59 @@ bounded fanout projection should select branches from those field nodes first
 and must not fill the remaining branch budget with same-owner lexical =item= or
 =hot= matches merely to reach the branch cap.
 When a projected branch already has an exact selector, prompt-visible compact
-output must make =query-selector= the first next action for that branch.
+output may make =query-code= the first next action for that branch only when the
+query packet is confidence-gated by =queryQuality= and =packageCohesion=.
 =search-reasoning= is still available for branch expansion, but it is a
 follow-up after reading the exact selector or a fallback when no exact selector
-exists.  Rendered =frontierActions=, =recommendedNext=, =nextCommand=, and
-=pipeCommands= should preserve that selector-first ordering so the agent does
+exists.  Rendered =actionRank=, =actionFrontier=, =recommendedNext=, and
+=nextCommand= should preserve that confidence-gated ordering so the agent does
 not spend turns on owner reasoning before it has consumed the ranked evidence
-boundary.  Sandtable and hook diagnostics should therefore treat
-=prime -> pipe -> query-selector= as a complete complex-pipe success when the
-pipe result exposes an exact selector; =search-reasoning= is measured as
-optional branch expansion in that case, not as a required stage.
+boundary, and does not read code when a broad seed only deserves more locator
+recall.  Sandtable and hook diagnostics should therefore treat
+=prime -> pipe -> query-code= as a complete complex-pipe success only when the
+pipe result exposes a high-confidence exact selector; =search-reasoning= is
+measured as optional branch expansion in that case, not as a required stage.
 The prompt-visible top-three fanout is a conditional frontier, not the default
-read plan.  The ranked graph may retain =S1=/=S2=/=S3= internally for audit and
-debug views, but =search pipe --view seeds= should expose only the primary
-=S1= exact selector in =frontierActions= and =pipeCommands= when =S1= is exact.
-Secondary selectors and reasoning branches belong in =conditionalActions= as
-metadata-only branch previews, without runnable =asp ...= commands or exact
-secondary selector ranges.  A commands/advisory surface may materialize those
-branch commands only after an explicit request or after the primary selector
-evidence is known insufficient.
+read plan.  The ranked graph may retain branch identifiers internally for audit
+and debug views, but =search pipe --view seeds= should expose executable next
+steps through =A*= action rows.  Secondary selectors and reasoning branches
+belong in explicit advisory/debug surfaces, without runnable =asp ...= commands
+or exact secondary selector ranges in the default seeds view.  A
+commands/advisory surface may materialize those branch commands only after an
+explicit request or after the primary selector evidence is known insufficient.
 The seeds view is a decision packet, not a graph-debug dump.  When an exact
 primary selector is projected, prompt-visible seeds output should keep the
-primary graph facts, =frontierActions=S1=, =nextCommand=, compact policy,
-cache/metric summaries, and avoid/stop guidance, while omitting score vectors,
-typed path lists, full algorithm traces, and rank explanations.  Debug callers
-can still request the graph-turbo packet/result surfaces for those diagnostics;
-agents deciding the next command should not pay that token cost by default.
+primary graph facts, =evidenceFrontier=, =actionRank=, =actionFrontier=,
+=recommendedNext=, =nextCommand=, compact =evidenceNodes= / =evidenceEdges=,
+compact policy, cache/metric summaries, and avoid/stop guidance, while omitting
+score vectors, typed path lists, full algorithm traces, and rank explanations.
+Debug callers can still request the graph-turbo packet/result surfaces for
+those diagnostics; agents deciding the next command should not pay that token
+cost by default.
 Output compaction is precision-preserving only.  It may remove diagnostic
 volume such as score vectors, typed path lists, full traces, and rank
 explanations, but it must not remove parser-owned semantic evidence that
 changes the agent's decision.  For field/type/collection questions, seeds
 output must still expose the primary =field=, =type=, =collection= facts,
-the =has_type= / =collection_of= relationships, query coverage, the exact
-=S1= selector, and the same =nextCommand=.  If a proposed compaction hides
+the =has_type= / =collection_of= relationships, query coverage, the selected
+=A*= action, and the same =nextCommand=.  If a proposed compaction hides
 those facts or changes the selected frontier, it is a correctness regression,
 not a token optimization.
 Language =guide= output is a pre-search tool map.  Once a pipe result has
 projected an exact primary selector, guide should not be run as a post-selector
 confirmation step; diagnostics may count =guideCommands= so this drift is
 visible in live sandtable reports.
+Live sandtable reports are prompt-only.  A live scenario descriptor must not
+script =asp= commands, allowed tools, required command families, or an
+=agentSdk.prompt= payload.  Its single user input is the
+=deepQuestionCases[].question= text, and the runner derives one Claude SDK
+prompt execution from that question while forcing repository
+=.claude/settings.json= loading.  Any =asp search=, =asp query=, hook denial,
+or hook recovery command observed during the run must be produced by the
+client, repo hook, and ASP guidance at runtime.  Deterministic command replays
+remain useful as provider/facade contract fixtures, but they are not live
+sandtable simulations and should live outside discoverable sandtable scenario
+paths.
 Command-line arguments may override request profile, seeds, or budget for
 local debugging, but provider integration should prefer the request packet so
 the algorithm input and response can be audited together.  The response is

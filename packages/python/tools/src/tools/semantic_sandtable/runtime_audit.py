@@ -184,8 +184,7 @@ def _top_asp_command_output_findings(
     results: list[ScenarioResult],
 ) -> list[RuntimeAuditFinding]:
     measured = [
-        (result, _scenario_asp_command_output_bytes(result))
-        for result in results
+        (result, _scenario_asp_command_output_bytes(result)) for result in results
     ]
     measured = [(result, bytes_) for result, bytes_ in measured if bytes_ > 0]
     if not measured:
@@ -197,7 +196,7 @@ def _top_asp_command_output_findings(
             kind="top-asp-command-output-cost",
             severity="info",
             scenario_id=result.scenario_id,
-            message=f"aspCommandOutputBytes={bytes_} commands={totals['commands']}",
+            message=f"aspCommandOutputBytes={bytes_} {_run_count_fragment(result, totals)}",
             action=(
                 "tighten ASP pipe/query projections before reducing parser-owned "
                 "semantic facts"
@@ -209,10 +208,7 @@ def _top_asp_command_output_findings(
 def _top_agent_token_findings(
     results: list[ScenarioResult],
 ) -> list[RuntimeAuditFinding]:
-    measured = [
-        (result, _scenario_agent_token_cost(result))
-        for result in results
-    ]
+    measured = [(result, _scenario_agent_token_cost(result)) for result in results]
     measured = [
         (result, token_cost)
         for result, token_cost in measured
@@ -230,7 +226,9 @@ def _top_agent_token_findings(
             kind="top-agent-token-cost",
             severity="info",
             scenario_id=result.scenario_id,
-            message=_agent_token_cost_message(token_cost, totals["commands"]),
+            message=_agent_token_cost_message(
+                token_cost, _run_count_fragment(result, totals)
+            ),
             action=(
                 "optimize prompt, runtime settings, and selected context after "
                 "preserving required ASP semantic facts"
@@ -245,7 +243,7 @@ def _top_stdout_finding(result: ScenarioResult) -> RuntimeAuditFinding:
         kind="top-stdout-cost",
         severity="info",
         scenario_id=result.scenario_id,
-        message=f"stdoutBytes={totals['stdoutBytes']} commands={totals['commands']}",
+        message=f"stdoutBytes={totals['stdoutBytes']} {_run_count_fragment(result, totals)}",
         action="inspect runner stdout separately from agent-visible ASP output and SDK token usage",
     )
 
@@ -256,7 +254,7 @@ def _top_elapsed_finding(result: ScenarioResult) -> RuntimeAuditFinding:
         kind="top-latency-cost",
         severity="info",
         scenario_id=result.scenario_id,
-        message=f"elapsedMs={totals['elapsedMs']} commands={totals['commands']}",
+        message=f"elapsedMs={totals['elapsedMs']} {_run_count_fragment(result, totals)}",
         action="check provider startup/indexing cost before widening this scenario",
     )
 
@@ -306,7 +304,9 @@ def _scenario_agent_token_cost(result: ScenarioResult) -> dict[str, int | float]
     return compact
 
 
-def _agent_token_cost_message(token_cost: dict[str, int | float], commands: int) -> str:
+def _agent_token_cost_message(
+    token_cost: dict[str, int | float], run_count: str
+) -> str:
     parts = [
         f"totalTokens={optional_int(token_cost.get('totalTokens')) or 0}",
         f"inputTokens={optional_int(token_cost.get('inputTokens')) or 0}",
@@ -316,5 +316,10 @@ def _agent_token_cost_message(token_cost: dict[str, int | float], commands: int)
     cost_usd = optional_float(token_cost.get("costUsd"))
     if cost_usd is not None:
         parts.append(f"costUsd={cost_usd:.6f}")
-    parts.append(f"commands={commands}")
+    parts.append(run_count)
     return " ".join(parts)
+
+
+def _run_count_fragment(result: ScenarioResult, totals: dict[str, int]) -> str:
+    label = "prompts" if "prompt-only" in result.tags else "commands"
+    return f"{label}={totals['commands']}"

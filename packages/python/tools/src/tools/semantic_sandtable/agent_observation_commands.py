@@ -19,6 +19,8 @@ from .agent_observation_failure_memory import (
 )
 from .agent_observation_json import walk
 
+_HOOK_FEEDBACK_JSON = re.compile(r'"hookFeedback"\s*:\s*"([^"]+)"')
+_HOOK_FEEDBACK_FIELD = re.compile(r"\bhookFeedback=([A-Za-z0-9_-]+)")
 _ASP_TEXT_COMMAND = re.compile(
     r"(?<![A-Za-z0-9_./-])"
     r"(?:(?:direnv\s+exec\s+\S+\s+)|(?:cd\s+\S+\s+&&\s+))?"
@@ -64,6 +66,7 @@ def asp_command_output_records_from_messages(
             if not command:
                 continue
             output = _tool_result_text(value.get("content"))
+            denied = _is_denied_tool_result(value, output)
             records.append(
                 {
                     "command": _normalize_command(command),
@@ -71,6 +74,10 @@ def asp_command_output_records_from_messages(
                     "outputBytes": len(output.encode()),
                     "outputLines": len(output.splitlines()),
                     "outputFingerprint": _text_fingerprint(output),
+                    "denied": denied,
+                    "hookFeedback": _hook_feedback_from_output(output)
+                    if denied
+                    else None,
                     "precision": _search_pipe_precision_facts(command, output),
                     "failurePrecision": _failure_frontier_precision_facts(
                         command, output
@@ -129,6 +136,28 @@ def _tool_result_text(value: Any) -> str:
     if isinstance(value, list):
         return "".join(_tool_result_text(item) for item in value)
     return ""
+
+
+def _is_denied_tool_result(value: dict[str, Any], output: str) -> bool:
+    return (
+        "ASP hook denied" in output
+        or "Command blocked by PreToolUse hook" in output
+        or _hook_feedback_from_output(output) is not None
+    )
+
+
+def _hook_feedback_from_output(output: str) -> str | None:
+    for pattern in (_HOOK_FEEDBACK_JSON, _HOOK_FEEDBACK_FIELD):
+        match = pattern.search(output)
+        if match:
+            return match.group(1)
+    if "repeated `search prime` before `search pipe`" in output:
+        return "repeat-prime-before-pipe"
+    if "code/direct read before `search pipe`" in output:
+        return "read-before-pipe"
+    if "unknown ASP facade" in output:
+        return "invalid-asp-facade"
+    return None
 
 
 def _text_fingerprint(text: str) -> str:

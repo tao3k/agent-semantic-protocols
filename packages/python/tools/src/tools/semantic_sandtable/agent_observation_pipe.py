@@ -15,14 +15,19 @@ from .agent_observation_read_loop import read_loop_memory, read_loop_stats
 
 
 def pipe_flow_from_messages(messages: list[dict[str, Any]]) -> dict[str, Any]:
-    commands = asp_commands_from_messages(messages)
+    output_records = asp_command_output_records_from_messages(messages)
+    commands = _flow_commands(output_records, asp_commands_from_messages(messages))
     if not commands:
+        if output_records:
+            stats = _initial_pipe_flow_stats([], [])
+            _attach_denied_command_observations(stats, output_records)
+            return stats if stats.get("deniedAspCommands") else {}
         return {}
     normalized = [normalize_command(command) for command in commands]
     stats = _initial_pipe_flow_stats(commands, normalized)
     for command in commands:
         _classify_asp_command(command, stats)
-    output_records = asp_command_output_records_from_messages(messages)
+    _attach_denied_command_observations(stats, output_records)
     _attach_read_loop_observations(stats, commands, output_records)
     _attach_output_record_observations(stats, output_records)
     _attach_frontier_context_observations(stats, commands, output_records)
@@ -52,6 +57,60 @@ def _initial_pipe_flow_stats(
         "treesitterQueryCommands": 0,
         "repeatedCommands": repeated,
     }
+
+
+def _flow_commands(
+    output_records: list[dict[str, Any]],
+    structured_commands: list[str],
+) -> list[str]:
+    if not output_records:
+        return structured_commands
+    record_commands = {
+        str(record["command"])
+        for record in output_records
+        if isinstance(record.get("command"), str)
+    }
+    commands = _executed_commands_from_output_records(output_records)
+    commands.extend(
+        command
+        for command in structured_commands
+        if normalize_command(command) not in record_commands
+    )
+    return commands
+
+
+def _executed_commands_from_output_records(
+    output_records: list[dict[str, Any]],
+) -> list[str]:
+    return [
+        str(record["command"])
+        for record in output_records
+        if isinstance(record.get("command"), str) and not record.get("denied")
+    ]
+
+
+def _attach_denied_command_observations(
+    stats: dict[str, Any],
+    output_records: list[dict[str, Any]],
+) -> None:
+    denied = [record for record in output_records if record.get("denied")]
+    if not denied:
+        return
+    stats["deniedAspCommands"] = len(denied)
+    feedback = sorted(
+        {
+            str(record["hookFeedback"])
+            for record in denied
+            if isinstance(record.get("hookFeedback"), str)
+        }
+    )
+    if feedback:
+        stats["deniedHookFeedback"] = feedback
+    stats["deniedCommands"] = [
+        str(record["command"])
+        for record in denied[:8]
+        if isinstance(record.get("command"), str)
+    ]
 
 
 def _attach_read_loop_observations(
@@ -106,7 +165,33 @@ def _attach_frontier_context_observations(
 
 
 def _public_output_record(record: dict[str, Any]) -> dict[str, Any]:
-    return {key: value for key, value in record.items() if key != "output"}
+    public = {
+        key: value
+        for key, value in record.items()
+        if key != "output"
+        and (key != "hookFeedback" or value is not None)
+        and (key != "denied" or value)
+    }
+    preview = _safe_output_preview(record)
+    if preview:
+        public["outputPreview"] = preview
+    return public
+
+
+def _safe_output_preview(record: dict[str, Any]) -> str:
+    output = record.get("output")
+    command = record.get("command")
+    if not isinstance(output, str) or not isinstance(command, str):
+        return ""
+    if not record.get("denied") and _command_may_emit_code(command):
+        return ""
+    preview = " ".join(output.split())
+    return preview if len(preview) <= 180 else f"{preview[:177]}..."
+
+
+def _command_may_emit_code(command: str) -> bool:
+    args = asp_args(command)
+    return "--code" in args or "direct-source-read" in args
 
 
 def _attach_latest_precision(

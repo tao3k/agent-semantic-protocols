@@ -20,6 +20,12 @@ RUST_MATRIX_PATHS = [
 LIVE_TOKIO_PATH = (
     REPO_ROOT / "sandtables" / "rust" / "tokio-claude-deep-question-flow.json"
 )
+LIVE_PROMPT_ONLY_PATHS = [
+    LIVE_TOKIO_PATH,
+    REPO_ROOT / "sandtables" / "rust" / "tokio-real-trigger-flow.json",
+    REPO_ROOT / "sandtables" / "rust" / "tokio-task-abort-flow.json",
+    REPO_ROOT / "sandtables" / "typescript" / "effect-claude-concurrency-flow.json",
+]
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -79,78 +85,85 @@ class DeepQuestionCaseTests(unittest.TestCase):
             },
             scenario["workdir"]["git"],
         )
-        step = scenario["steps"][0]
         self.assertEqual(
             {"mode": "parallel", "maxConcurrentSteps": 1}, scenario["execution"]
         )
-        self.assertEqual(1, len(scenario["steps"]))
+        self.assertNotIn("steps", scenario)
+        live_agent = scenario["liveAgent"]
         self.assertEqual(120000, scenario["budgets"]["maxTotalElapsedMsWarn"])
+        self.assertEqual(120, live_agent["timeoutSeconds"])
+        self.assertEqual("claude", live_agent["client"])
+        self.assertTrue(live_agent["includeHookEvents"])
+        self.assertTrue(live_agent["useRepoClaudeSettings"])
+        self.assertNotIn("prompt", live_agent)
+        self.assertNotIn("command", live_agent)
+        self.assertNotIn("maxTurns", live_agent)
+        self.assertNotIn("allowedTools", live_agent)
+        self.assertNotIn("requireAspBashCommands", live_agent)
         self.assertEqual(
-            [120],
-            [step["timeoutSeconds"] for step in scenario["steps"]],
+            scenario["evidence"]["deepQuestionCases"][0]["question"],
+            "In Tokio 1.52.3, what do Vec<scalar> collection fields mean, and why are they not modeled as ordinary scalar fields?",
         )
-        self.assertEqual("agent-sdk", step["kind"])
-        self.assertEqual("claude", step["agentSdk"]["client"])
-        self.assertTrue(step["agentSdk"]["includeHookEvents"])
-        self.assertEqual(["Bash"], step["agentSdk"]["allowedTools"])
-        self.assertTrue(step["agentSdk"]["requireAspBashCommands"])
-        self.assertTrue(step["agentSdk"]["useRepoClaudeSettings"])
-        self.assertEqual(9, step["agentSdk"]["maxTurns"])
-        self.assertIn("conditionalActions", step["agentSdk"]["prompt"])
-        self.assertIn(
-            "do not read all selectors or run guide by default",
-            step["agentSdk"]["prompt"],
-        )
-        step_ids = {step["id"] for step in scenario["steps"]}
         self.assertEqual(1, len(scenario["evidence"]["deepQuestionCases"]))
         for deep_question in scenario["evidence"]["deepQuestionCases"]:
             self.assertIn("Tokio 1.52.3", deep_question["question"])
-            self.assertTrue(set(deep_question["stepIds"]).issubset(step_ids))
+            self.assertNotIn("asp rust", deep_question["question"])
             self.assertTrue(deep_question["audit"]["requiresComplexPipeFlow"])
             self.assertTrue(deep_question["audit"]["requiresTokenCost"])
             expected_flow = deep_question["expectedAspFlow"]
-            self.assertTrue(
-                any(
-                    command.startswith("asp rust search pipe ")
-                    for command in expected_flow["canonicalCommands"]
-                )
-            )
-            self.assertIn(
-                "asp rust search prime --view seeds .",
-                expected_flow["canonicalCommands"],
-            )
             self.assertIn("search-prime", expected_flow["requiredStages"])
             self.assertIn("search-pipe", expected_flow["requiredStages"])
             self.assertIn("query-selector", expected_flow["requiredStages"])
             self.assertNotIn("search-reasoning", expected_flow["requiredStages"])
             self.assertIn("repeated-prime", expected_flow["forbiddenStages"])
-        for step in scenario["steps"]:
-            pipe_flow = step["expect"]["pipeFlow"]
-            self.assertEqual(
-                scenario["evidence"]["deepQuestionCases"][0]["expectedAspFlow"][
-                    "requiredStages"
-                ],
-                pipe_flow["requiredStages"],
-            )
-            self.assertEqual(3, pipe_flow["maxAspCommands"])
-            self.assertEqual(2, pipe_flow["maxSearchCommands"])
-            self.assertEqual(1, pipe_flow["maxQueryCommands"])
-            self.assertEqual(0, pipe_flow["maxGuideCommands"])
-            self.assertEqual(0, pipe_flow["maxRepeatedCommands"])
-            self.assertEqual(1, pipe_flow["maxSearchPipeCommands"])
-            self.assertEqual(1, pipe_flow["maxSearchPrimeCommands"])
-            self.assertEqual(0, pipe_flow["maxReadLoopDuplicateSelectors"])
-            self.assertEqual(0, pipe_flow["maxReadLoopAdjacentRangeWindows"])
-            self.assertEqual(0, pipe_flow["maxReadLoopSameOwnerScans"])
-            self.assertEqual(7000, pipe_flow["maxAspCommandOutputBytes"])
-            self.assertIn("search-prime", pipe_flow["requiredStages"])
-            self.assertIn("search-pipe", pipe_flow["requiredStages"])
-            self.assertIn("query-selector", pipe_flow["requiredStages"])
-            self.assertNotIn("search-reasoning", pipe_flow["requiredStages"])
-            self.assertIn("read-loop-risk", pipe_flow["forbiddenStages"])
-            self.assertTrue(pipe_flow["requireComplexPipeFlow"])
-            self.assertTrue(pipe_flow["requireTokenCost"])
-            self.assertTrue(pipe_flow["requireSearchPipePrecision"])
+        pipe_flow = live_agent["expect"]["pipeFlow"]
+        self.assertEqual(
+            scenario["evidence"]["deepQuestionCases"][0]["expectedAspFlow"][
+                "requiredStages"
+            ],
+            pipe_flow["requiredStages"],
+        )
+        self.assertEqual(3, pipe_flow["maxAspCommands"])
+        self.assertEqual(2, pipe_flow["maxSearchCommands"])
+        self.assertEqual(1, pipe_flow["maxQueryCommands"])
+        self.assertEqual(0, pipe_flow["maxGuideCommands"])
+        self.assertEqual(0, pipe_flow["maxRepeatedCommands"])
+        self.assertEqual(1, pipe_flow["maxSearchPipeCommands"])
+        self.assertEqual(1, pipe_flow["maxSearchPrimeCommands"])
+        self.assertEqual(0, pipe_flow["maxReadLoopDuplicateSelectors"])
+        self.assertEqual(0, pipe_flow["maxReadLoopAdjacentRangeWindows"])
+        self.assertEqual(0, pipe_flow["maxReadLoopSameOwnerScans"])
+        self.assertIn("search-prime", pipe_flow["requiredStages"])
+        self.assertIn("search-pipe", pipe_flow["requiredStages"])
+        self.assertIn("query-selector", pipe_flow["requiredStages"])
+        self.assertNotIn("search-reasoning", pipe_flow["requiredStages"])
+        self.assertIn("read-loop-risk", pipe_flow["forbiddenStages"])
+        self.assertTrue(pipe_flow["requireComplexPipeFlow"])
+        self.assertTrue(pipe_flow["requireTokenCost"])
+        self.assertTrue(pipe_flow["requireSearchPipePrecision"])
+
+    def test_live_agent_scenarios_are_prompt_only(self) -> None:
+        for path in LIVE_PROMPT_ONLY_PATHS:
+            with self.subTest(path=str(path.relative_to(REPO_ROOT))):
+                scenario = _load_json(path)
+                self.assert_valid_scenario(scenario)
+                self.assertEqual(["ANTHROPIC_AUTH_TOKEN"], scenario["skipUnlessEnv"])
+                self.assertNotIn("steps", scenario)
+                live_agent = scenario["liveAgent"]
+                self.assertEqual("claude", live_agent["client"])
+                self.assertTrue(live_agent["useRepoClaudeSettings"])
+                self.assertTrue(live_agent["includeHookEvents"])
+                self.assertNotIn("prompt", live_agent)
+                self.assertNotIn("command", live_agent)
+                self.assertNotIn("allowedTools", live_agent)
+                self.assertNotIn("requireAspBashCommands", live_agent)
+                questions = [
+                    case["question"]
+                    for case in scenario["evidence"].get("deepQuestionCases", [])
+                ]
+                self.assertEqual(1, len(questions))
+                self.assertNotIn("asp ", questions[0])
+                self.assertNotIn("Command ", questions[0])
 
 
 if __name__ == "__main__":

@@ -33,6 +33,11 @@ def resolve_agent_sdk_step(
             step_id,
             "step.agentSdk.client must be 'claude'",
         )
+    tool_contract_error = _validate_asp_bash_tool_contract(
+        spec, scenario_id, step_id
+    )
+    if tool_contract_error is not None:
+        return tool_contract_error
     contract_error = _validate_agent_answer_runtime_contract(
         step,
         spec,
@@ -43,6 +48,7 @@ def resolve_agent_sdk_step(
         return contract_error
 
     resolved = _resolve_claude_sdk_command(
+        step,
         spec,
         scenario_id,
         step_id,
@@ -80,7 +86,24 @@ def _validate_agent_answer_runtime_contract(
     )
 
 
+def _validate_asp_bash_tool_contract(
+    spec: dict[str, Any],
+    scenario_id: str,
+    step_id: str,
+) -> StepResult | None:
+    if not bool(spec.get("requireAspBashCommands", False)):
+        return None
+    if not string_list(spec.get("allowedTools")):
+        return None
+    return empty_step_error(
+        scenario_id,
+        step_id,
+        "step.agentSdk.allowedTools cannot be used when requireAspBashCommands is true; ASP Bash permission is owned by claude_sdk_runner",
+    )
+
+
 def _resolve_claude_sdk_command(
+    step: dict[str, Any],
     spec: dict[str, Any],
     scenario_id: str,
     step_id: str,
@@ -95,6 +118,15 @@ def _resolve_claude_sdk_command(
     _append_sdk_tool_options(command, spec)
     if bool(spec.get("requireAspBashCommands", False)):
         command.append("--require-asp-bash-commands")
+    budget_error = _append_sdk_asp_bash_budget(
+        command,
+        spec,
+        step,
+        scenario_id,
+        step_id,
+    )
+    if budget_error is not None:
+        return budget_error
 
     setup_error = _append_sdk_runtime_options(
         command,
@@ -161,6 +193,39 @@ def _append_sdk_tool_options(command: list[str], spec: dict[str, Any]) -> None:
         command.extend(["--allowed-tool", tool])
     for tool in string_list(spec.get("disallowedTools")):
         command.extend(["--disallowed-tool", tool])
+
+
+def _append_sdk_asp_bash_budget(
+    command: list[str],
+    spec: dict[str, Any],
+    step: dict[str, Any],
+    scenario_id: str,
+    step_id: str,
+) -> StepResult | None:
+    max_commands = _max_asp_bash_commands(spec, step)
+    if max_commands is None:
+        return None
+    if not isinstance(max_commands, int) or max_commands <= 0:
+        return empty_step_error(
+            scenario_id,
+            step_id,
+            "step.agentSdk.maxAspBashCommands must be a positive integer",
+        )
+    command.extend(["--max-asp-bash-commands", str(max_commands)])
+    return None
+
+
+def _max_asp_bash_commands(spec: dict[str, Any], step: dict[str, Any]) -> Any:
+    explicit = spec.get("maxAspBashCommands")
+    if explicit is not None:
+        return explicit
+    expect = step.get("expect")
+    if not isinstance(expect, dict):
+        return None
+    pipe_flow = expect.get("pipeFlow")
+    if not isinstance(pipe_flow, dict):
+        return None
+    return pipe_flow.get("maxAspCommands")
 
 
 def _append_sdk_runtime_options(

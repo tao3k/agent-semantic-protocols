@@ -1,6 +1,7 @@
 //! Command tree for the `asp` binary.
 
 mod ast_patch;
+mod client_backend_worker;
 mod dispatch;
 mod document_provider;
 mod graph;
@@ -19,18 +20,31 @@ mod root_language_facade;
 mod search_config;
 mod search_failure_render;
 mod search_pipe;
+mod search_pipe_action_model;
+mod search_pipe_actions;
 mod search_pipe_args;
 mod search_pipe_candidates;
 mod search_pipe_dependency_facts;
 mod search_pipe_graph_turbo;
 mod search_pipe_meta;
+mod search_pipe_model;
+mod search_pipe_owner_query;
 mod search_pipe_plan;
 mod search_pipe_provider_facts;
+mod search_pipe_quality;
+mod search_pipe_query_evidence;
+mod search_pipe_query_model;
+mod search_pipe_query_pack;
 mod search_pipe_read_memory;
 mod search_pipe_render;
 mod search_pipe_source;
+mod search_pipe_surfaces;
 mod search_pipe_view;
 mod search_query_wrapper;
+mod search_query_wrapper_candidates;
+mod search_query_wrapper_frontier;
+mod search_query_wrapper_model;
+mod search_query_wrapper_quality;
 mod search_suggest;
 mod source_access;
 

@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use agent_semantic_provider_transport::byte_text;
 
 use super::search_config::AspConfig;
-use super::search_pipe_render::Candidate;
+use super::search_pipe_model::Candidate;
 
 const PIPE_CANDIDATE_LINE_LIMIT: usize = 256;
 
@@ -207,7 +207,7 @@ impl CandidateCollector<'_> {
                     root.display()
                 )
             })?;
-        entries.sort_by_key(|entry| path_search_priority(&entry.path()));
+        entries.sort_by_key(|entry| path_search_priority(&entry.path(), self.terms));
         for entry in entries {
             if self.is_done() {
                 break;
@@ -238,6 +238,7 @@ impl CandidateCollector<'_> {
         if !self.extensions.contains(&extension) {
             return Ok(());
         }
+        self.append_path_candidate(path);
         let Ok(bytes) = fs::read(path) else {
             return Ok(());
         };
@@ -262,11 +263,43 @@ impl CandidateCollector<'_> {
         }
         Ok(())
     }
+
+    fn append_path_candidate(&mut self, path: &Path) {
+        if self.is_done() {
+            return;
+        }
+        let display = display_path(self.locator_root, path);
+        let lower = display.to_ascii_lowercase();
+        let Some((term_index, term)) = self.terms.iter().enumerate().find(|(index, term)| {
+            self.term_counts.get(*index).copied().unwrap_or(0) < self.per_term_limit
+                && lower.contains(term.as_str())
+        }) else {
+            return;
+        };
+        self.term_counts[term_index] += 1;
+        *self.remaining -= 1;
+        self.candidates.push(Candidate {
+            path: display.clone(),
+            line: 1,
+            symbol: term.clone(),
+            text: display,
+            source: "finder-path".to_string(),
+            confidence: "path-exact".to_string(),
+        });
+    }
 }
 
-fn path_search_priority(path: &Path) -> (u8, String) {
+fn path_search_priority(path: &Path, terms: &[String]) -> (u8, u8, String) {
     let display = path.to_string_lossy().replace('\\', "/");
-    let priority = if display.ends_with("/src") || display.contains("/src/") {
+    let lower = display.to_ascii_lowercase();
+    let query_priority = if terms.iter().any(|term| path_basename_matches(&lower, term)) {
+        0
+    } else if terms.iter().any(|term| lower.contains(term)) {
+        1
+    } else {
+        2
+    };
+    let layout_priority = if display.ends_with("/src") || display.contains("/src/") {
         0
     } else if display.contains("/tests/")
         || display.ends_with("/tests")
@@ -279,7 +312,24 @@ fn path_search_priority(path: &Path) -> (u8, String) {
     } else {
         1
     };
-    (priority, display)
+    (query_priority, layout_priority, display)
+}
+
+fn path_basename_matches(lower_path: &str, term: &str) -> bool {
+    lower_path
+        .rsplit('/')
+        .next()
+        .map(|name| {
+            name.trim_end_matches(".tsx")
+                .trim_end_matches(".ts")
+                .trim_end_matches(".jsx")
+                .trim_end_matches(".js")
+                .trim_end_matches(".rs")
+                .trim_end_matches(".py")
+                .trim_end_matches(".jl")
+                == term
+        })
+        .unwrap_or(false)
 }
 
 fn should_skip_dir(path: &Path, config: &AspConfig) -> bool {

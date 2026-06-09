@@ -25,9 +25,9 @@ fn claude_install_writes_project_settings_hooks() {
     );
     assert!(pre_tool_matcher.contains("Bash|Shell"));
     assert!(pre_tool_matcher.contains("functions\\.exec_command"));
-    assert_eq!(
-        settings["hooks"]["PermissionRequest"][0]["matcher"],
-        pre_tool_matcher
+    assert!(
+        settings["hooks"].get("PermissionRequest").is_none(),
+        "Claude SDK-backed sandtables use can_use_tool for permission; managed Claude settings must not install PermissionRequest hooks"
     );
     assert_eq!(
         settings["hooks"]["PostToolUse"][0]["matcher"],
@@ -38,12 +38,6 @@ fn claude_install_writes_project_settings_hooks() {
             .as_str()
             .expect("pre-tool command")
             .contains("asp hook pre-tool --client claude")
-    );
-    assert!(
-        settings["hooks"]["PermissionRequest"][0]["hooks"][0]["command"]
-            .as_str()
-            .expect("permission command")
-            .contains("asp hook permission-request --client claude")
     );
 }
 

@@ -9,8 +9,9 @@ mod syntax_query;
 pub use agent_semantic_client_core::ClientDbStatus;
 pub use db::{
     AGENT_SEMANTIC_CLIENT_DB_FILE, AGENT_SEMANTIC_CLIENT_DB_SCHEMA_VERSION, ClientDb,
-    ClientDbArtifactEvent, ClientDbGenerationHit, ClientDbGenerationLookup, ClientDbReport,
-    ClientDbSummary, ClientDbSyntaxCaptureReplay, ClientDbSyntaxNodeType,
-    ClientDbSyntaxQueryInputKind, ClientDbSyntaxQueryLookup, ClientDbSyntaxQueryReplay,
+    ClientDbArtifactEvent, ClientDbGenerationHit, ClientDbGenerationLookup,
+    ClientDbProviderCommandSelection, ClientDbReport, ClientDbSummary, ClientDbSyntaxCaptureReplay,
+    ClientDbSyntaxNodeType, ClientDbSyntaxQueryInputKind, ClientDbSyntaxQueryLookup,
+    ClientDbSyntaxQueryReplay,
 };
 pub use pragmas::{ClientDbJournalMode, ClientDbRuntimePragmas};

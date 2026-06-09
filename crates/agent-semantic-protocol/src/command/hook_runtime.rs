@@ -407,7 +407,7 @@ fn emit_hook_runtime_failure(
 fn run_doctor(args: &[String]) -> Result<(), String> {
     let client = flag_value(args, "--client").unwrap_or("codex");
     ensure_supported_client(client)?;
-    let project_root = project_root_arg(args);
+    let project_root = project_root_arg(args)?;
     let activation_path = flag_value(args, "--activation")
         .map(PathBuf::from)
         .unwrap_or_else(|| default_activation_path(&project_root));
@@ -537,7 +537,7 @@ fn run_doctor(args: &[String]) -> Result<(), String> {
 fn run_install(args: &[String]) -> Result<(), String> {
     let client = flag_value(args, "--client").unwrap_or("codex");
     ensure_supported_client(client)?;
-    let project_root = project_root_arg(args);
+    let project_root = project_root_arg(args)?;
     let binary_install = ensure_protocol_binary_installed_for_path()?;
     remove_legacy_codex_hook_cache_files(&project_root)?;
     let activation_path = ensure_project_hook_cache_dir(&project_root)?.join("activation.json");
@@ -590,7 +590,7 @@ fn install_codex_project_hooks(project_root: &Path) -> Result<(PathBuf, String),
         validate_codex_config_toml(&existing)
             .map_err(|error| format!("refusing to write invalid Codex config TOML: {error}"))?;
     }
-    let merged = merge_codex_config(&existing, &codex_hook_block());
+    let merged = merge_codex_config(&existing, &codex_hook_block(project_root));
     validate_codex_config_toml(&merged)
         .map_err(|error| format!("refusing to write invalid Codex config TOML: {error}"))?;
     fs::write(&config_path, merged.as_bytes())
@@ -613,7 +613,7 @@ fn install_claude_project_hooks(project_root: &Path) -> Result<(PathBuf, String)
         validate_claude_settings_json(&existing)
             .map_err(|error| format!("refusing to write invalid Claude settings JSON: {error}"))?;
     }
-    let merged = merge_claude_settings(&existing, &claude_hook_block())?;
+    let merged = merge_claude_settings(&existing, &claude_hook_block(project_root))?;
     validate_claude_settings_json(&merged)
         .map_err(|error| format!("refusing to write invalid Claude settings JSON: {error}"))?;
     fs::write(&settings_path, merged.as_bytes())
@@ -639,11 +639,13 @@ fn install_default_client_config(path: &Path) -> Result<(), String> {
         .map_err(|error| format!("generated invalid client hook config: {error}"))
 }
 
-fn project_root_arg(args: &[String]) -> PathBuf {
-    positionals(args)
+fn project_root_arg(args: &[String]) -> Result<PathBuf, String> {
+    let root = positionals(args)
         .first()
         .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("."))
+        .unwrap_or_else(|| PathBuf::from("."));
+    fs::canonicalize(&root)
+        .map_err(|error| format!("failed to resolve project root {}: {error}", root.display()))
 }
 
 fn ensure_supported_client(client: &str) -> Result<(), String> {

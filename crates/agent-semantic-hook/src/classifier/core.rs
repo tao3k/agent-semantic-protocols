@@ -12,6 +12,11 @@ use super::source_access_routes::{
     classify_direct_read_action, classify_raw_search_command, classify_source_read_command,
     direct_read_language_ids, direct_read_routes,
 };
+use crate::event_state::{
+    AspSearchCommandStage, asp_query_code_or_direct_read_command,
+    asp_query_direct_source_read_command, asp_search_stage, missing_search_pipe_after_prime,
+    prompt_search_flow_after_prime,
+};
 use crate::{
     ActivatedProvider, ClientHookConfig, DecisionKind, DecisionRoute, DecisionRouteKind,
     DecisionSubject, HOOK_DECISION_SCHEMA_ID, HOOK_DECISION_SCHEMA_VERSION, HOOK_PROTOCOL_ID,
@@ -51,17 +56,20 @@ pub fn classify_hook(
 
 /// Classify one hook payload using a named `HookClassificationRequest`.
 pub fn classify_hook_with_config(request: HookClassificationRequest<'_>) -> HookDecision {
-    let HookClassificationRequest {
-        registry,
-        config,
-        platform,
-        event,
-        payload,
-    } = request;
-    if let Some(decision) = classify_subagent_stop(platform, event, payload) {
+    if let Some(decision) = classify_non_tool_event(&request) {
         return decision;
     }
 
+    let actions = collect_payload_tool_actions(request.payload);
+    if let Some(decision) = classify_tool_actions(&request, &actions) {
+        return decision;
+    }
+
+    let subject = actions.first().map(subject_for_action).unwrap_or_default();
+    allow(request.platform, request.event, subject)
+}
+
+fn collect_payload_tool_actions(payload: &Value) -> Vec<ToolAction> {
     let tool_name = payload_string(payload, "tool_name")
         .or_else(|| payload_string(payload, "toolName"))
         .unwrap_or_default();
@@ -72,12 +80,47 @@ pub fn classify_hook_with_config(request: HookClassificationRequest<'_>) -> Hook
         .or_else(|| payload.get("input"))
         .or_else(|| payload.get("arguments"))
         .unwrap_or(payload);
-    let actions = collect_tool_actions(&tool_name, tool_input);
+    collect_tool_actions(&tool_name, tool_input)
+}
+
+fn classify_non_tool_event(request: &HookClassificationRequest<'_>) -> Option<HookDecision> {
+    classify_stop(
+        request.registry,
+        request.platform,
+        request.event,
+        request.payload,
+    )
+    .or_else(|| classify_subagent_stop(request.platform, request.event, request.payload))
+    .or_else(|| classify_user_prompt(request.platform, request.event, request.payload))
+}
+
+fn classify_tool_actions(
+    request: &HookClassificationRequest<'_>,
+    actions: &[ToolAction],
+) -> Option<HookDecision> {
+    let HookClassificationRequest {
+        registry,
+        config,
+        platform,
+        event,
+        payload,
+    } = request;
     if let Some(decision) = actions
         .iter()
         .find_map(|action| config.classify(registry, platform, event, action))
     {
-        return decision;
+        return Some(decision);
+    }
+    if let Some(decision) = actions
+        .iter()
+        .find_map(|action| classify_invalid_asp_facade(registry, platform, event, action))
+    {
+        return Some(decision);
+    }
+    if let Some(decision) = actions.iter().find_map(|action| {
+        classify_prompt_search_flow_feedback(registry, platform, event, payload, action)
+    }) {
+        return Some(decision);
     }
 
     if config.semantic_ast_patch_enabled()
@@ -85,7 +128,7 @@ pub fn classify_hook_with_config(request: HookClassificationRequest<'_>) -> Hook
             classify_structured_apply_patch_action(registry, platform, event, action)
         })
     {
-        return decision;
+        return Some(decision);
     }
 
     if let Some(decision) = actions.iter().find_map(|action| {
@@ -97,7 +140,7 @@ pub fn classify_hook_with_config(request: HookClassificationRequest<'_>) -> Hook
             config.semantic_ast_patch_enabled(),
         )
     }) {
-        return decision;
+        return Some(decision);
     }
     if let Some(decision) = actions.iter().find_map(|action| {
         classify_command_action(
@@ -108,11 +151,426 @@ pub fn classify_hook_with_config(request: HookClassificationRequest<'_>) -> Hook
             config.semantic_ast_patch_enabled(),
         )
     }) {
-        return decision;
+        return Some(decision);
     }
+    None
+}
 
-    let subject = actions.first().map(subject_for_action).unwrap_or_default();
-    allow(platform, event, subject)
+fn classify_invalid_asp_facade(
+    registry: &HookRuntime,
+    platform: &str,
+    event: &str,
+    action: &ToolAction,
+) -> Option<HookDecision> {
+    if event != "pre-tool" {
+        return None;
+    }
+    let command = action.command.as_deref()?;
+    let invalid_facade = invalid_asp_facade(command, registry)?;
+    let preferred_language = preferred_language_for_invalid_facade(&invalid_facade, registry);
+    let mut fields = std::collections::BTreeMap::new();
+    fields.insert(
+        "hookFeedback".to_string(),
+        Value::String("invalid-asp-facade".to_string()),
+    );
+    fields.insert(
+        "invalidFacade".to_string(),
+        Value::String(invalid_facade.clone()),
+    );
+    if let Some(language_id) = preferred_language.as_deref() {
+        fields.insert(
+            "languageId".to_string(),
+            Value::String(language_id.to_string()),
+        );
+    }
+    Some(HookDecision {
+        schema_id: HOOK_DECISION_SCHEMA_ID,
+        schema_version: HOOK_DECISION_SCHEMA_VERSION,
+        protocol_id: HOOK_PROTOCOL_ID,
+        protocol_version: HOOK_PROTOCOL_VERSION,
+        platform: platform.to_string(),
+        event: event.to_string(),
+        decision: DecisionKind::Deny,
+        reason_kind: ReasonKind::None,
+        language_ids: preferred_language.iter().cloned().collect(),
+        subject: subject_for_action(action),
+        routes: Vec::new(),
+        message: invalid_asp_facade_message(
+            &invalid_facade,
+            preferred_language.as_deref(),
+            registry,
+        ),
+        fields,
+    })
+}
+
+fn invalid_asp_facade(command: &str, registry: &HookRuntime) -> Option<String> {
+    let tokens = semantic_shell_tokens(command);
+    let asp_index = tokens.iter().enumerate().find_map(|(index, token)| {
+        is_asp_binary_token(token)
+            .then_some(index)
+            .filter(|index| is_asp_invocation_position(&tokens, *index))
+    })?;
+    let facade = tokens.get(asp_index + 1)?;
+    if facade.starts_with('-')
+        || is_root_asp_command(facade)
+        || registry
+            .providers
+            .iter()
+            .any(|provider| provider.language_id == *facade)
+    {
+        return None;
+    }
+    Some(facade.clone())
+}
+
+fn is_asp_binary_token(token: &str) -> bool {
+    token == "asp" || token.ends_with("/asp") || token.ends_with(".bin/asp")
+}
+
+fn is_asp_invocation_position(tokens: &[String], index: usize) -> bool {
+    if index == 0 {
+        return true;
+    }
+    let previous = tokens[index - 1].as_str();
+    if matches!(previous, "&&" | ";" | "|" | "||" | "rtk") {
+        return true;
+    }
+    if tokens[..index].iter().all(|token| is_env_assignment(token)) {
+        return true;
+    }
+    if is_env_assignment(previous) {
+        return true;
+    }
+    index >= 3 && tokens[index - 3] == "direnv" && tokens[index - 2] == "exec"
+}
+
+fn is_env_assignment(token: &str) -> bool {
+    let Some((name, _value)) = token.split_once('=') else {
+        return false;
+    };
+    !name.is_empty()
+        && !name.starts_with('-')
+        && name
+            .chars()
+            .all(|character| character == '_' || character.is_ascii_alphanumeric())
+}
+
+fn is_root_asp_command(value: &str) -> bool {
+    matches!(
+        value,
+        "search" | "query" | "check" | "providers" | "doctor" | "hook" | "fd" | "rg" | "cache"
+    )
+}
+
+fn preferred_language_for_invalid_facade(
+    invalid_facade: &str,
+    registry: &HookRuntime,
+) -> Option<String> {
+    if invalid_facade.eq_ignore_ascii_case("effect")
+        && registry
+            .providers
+            .iter()
+            .any(|provider| provider.language_id == "typescript")
+    {
+        return Some("typescript".to_string());
+    }
+    registry
+        .providers
+        .iter()
+        .find(|provider| provider.language_id == "typescript")
+        .or_else(|| registry.providers.first())
+        .map(|provider| provider.language_id.clone())
+}
+
+fn invalid_asp_facade_message(
+    invalid_facade: &str,
+    preferred_language: Option<&str>,
+    registry: &HookRuntime,
+) -> String {
+    let active_languages = registry
+        .providers
+        .iter()
+        .map(|provider| provider.language_id.as_str())
+        .collect::<Vec<_>>()
+        .join(",");
+    let run_next = preferred_language
+        .map(|language_id| format!("asp {language_id} search prime --view seeds ."))
+        .unwrap_or_else(|| "asp <language> search prime --view seeds .".to_string());
+    [
+        format!("ASP hook denied unknown ASP facade `{invalid_facade}`."),
+        "ASP facades are language IDs, not package or library names.".to_string(),
+        format!("Active language facades: {active_languages}."),
+        String::new(),
+        "## Run Next".to_string(),
+        run_next,
+        String::new(),
+        "## Rules".to_string(),
+        "Use `asp <language> search prime --view seeds .`, then `asp <language> search pipe '<question-or-feature-term>' --view seeds .`."
+            .to_string(),
+        "For the Effect package, use the TypeScript facade: `asp typescript ...`."
+            .to_string(),
+    ]
+    .join("\n")
+}
+
+fn classify_user_prompt(platform: &str, event: &str, payload: &Value) -> Option<HookDecision> {
+    if event != "user-prompt" {
+        return None;
+    }
+    let prompt = payload_string(payload, "prompt").unwrap_or_default();
+    let mut decision = allow(platform, event, DecisionSubject::default());
+    if prompt_is_locator_only(&prompt) {
+        decision.fields.insert(
+            "promptWorkflow".to_string(),
+            Value::String("locator-only".to_string()),
+        );
+    }
+    Some(decision)
+}
+
+fn prompt_is_locator_only(prompt: &str) -> bool {
+    let prompt = prompt.to_ascii_lowercase();
+    (prompt.contains("where ")
+        || prompt.contains("locate")
+        || prompt.contains("located")
+        || prompt.contains("selecting files")
+        || prompt.contains("before selecting"))
+        && !prompt.contains("show code")
+        && !prompt.contains("read code")
+        && !prompt.contains("extract code")
+}
+
+fn classify_stop(
+    registry: &HookRuntime,
+    platform: &str,
+    event: &str,
+    payload: &Value,
+) -> Option<HookDecision> {
+    if event != "stop" {
+        return None;
+    }
+    let session_id =
+        payload_string(payload, "session_id").or_else(|| payload_string(payload, "sessionId"));
+    let transcript_path = payload_string(payload, "transcript_path")
+        .or_else(|| payload_string(payload, "transcriptPath"));
+    let feedback = missing_search_pipe_after_prime(
+        std::path::Path::new(&registry.project_root),
+        session_id.as_deref(),
+        transcript_path.as_deref(),
+    )
+    .ok()
+    .flatten()?;
+    let mut fields = std::collections::BTreeMap::new();
+    fields.insert(
+        "hookFeedback".to_string(),
+        Value::String("search-pipe-required".to_string()),
+    );
+    fields.insert(
+        "languageId".to_string(),
+        Value::String(feedback.language_id.clone()),
+    );
+    Some(HookDecision {
+        schema_id: HOOK_DECISION_SCHEMA_ID,
+        schema_version: HOOK_DECISION_SCHEMA_VERSION,
+        protocol_id: HOOK_PROTOCOL_ID,
+        protocol_version: HOOK_PROTOCOL_VERSION,
+        platform: platform.to_string(),
+        event: event.to_string(),
+        decision: DecisionKind::Block,
+        reason_kind: ReasonKind::None,
+        language_ids: vec![feedback.language_id.clone()],
+        subject: DecisionSubject::default(),
+        routes: Vec::new(),
+        message: search_pipe_required_stop_message(&feedback.language_id),
+        fields,
+    })
+}
+
+fn search_pipe_required_stop_message(language_id: &str) -> String {
+    [
+        "ASP hook blocked Stop because this prompt ran `search prime` but did not run `search pipe`."
+            .to_string(),
+        "The prime packet is only a project map; it is not enough evidence for a final answer."
+            .to_string(),
+        String::new(),
+        "## Run Next".to_string(),
+        format!("asp {language_id} search pipe '<question-or-feature-term>' --view seeds ."),
+        String::new(),
+        "## Rules".to_string(),
+        "Compress the user's question into one code-search seed before running the pipe."
+            .to_string(),
+        "Do not repeat `search prime`. Do not answer from prime alone.".to_string(),
+        "After pipe, follow `recommendedNext` or answer from locator/frontier metadata when the question only asks where to look."
+            .to_string(),
+    ]
+    .join("\n")
+}
+
+fn classify_prompt_search_flow_feedback(
+    registry: &HookRuntime,
+    platform: &str,
+    event: &str,
+    payload: &Value,
+    action: &ToolAction,
+) -> Option<HookDecision> {
+    if event != "pre-tool" {
+        return None;
+    }
+    let command = action.command.as_deref()?;
+    let session_id =
+        payload_string(payload, "session_id").or_else(|| payload_string(payload, "sessionId"));
+    let transcript_path = payload_string(payload, "transcript_path")
+        .or_else(|| payload_string(payload, "transcriptPath"));
+    let feedback = prompt_search_flow_after_prime(
+        std::path::Path::new(&registry.project_root),
+        session_id.as_deref(),
+        transcript_path.as_deref(),
+    )
+    .ok()
+    .flatten()?;
+    if !feedback.saw_pipe {
+        match asp_search_stage(command) {
+            Some(AspSearchCommandStage::Prime(language_id))
+                if language_id == feedback.language_id =>
+            {
+                return Some(search_flow_feedback_decision(
+                    platform,
+                    event,
+                    action,
+                    &feedback.language_id,
+                    "repeat-prime-before-pipe",
+                    "ASP hook denied repeated `search prime` before `search pipe`.",
+                ));
+            }
+            _ => {}
+        }
+        if asp_query_code_or_direct_read_command(command) {
+            return Some(search_flow_feedback_decision(
+                platform,
+                event,
+                action,
+                &feedback.language_id,
+                "read-before-pipe",
+                "ASP hook denied code/direct read before `search pipe`.",
+            ));
+        }
+        return None;
+    }
+    match asp_search_stage(command) {
+        Some(AspSearchCommandStage::Pipe(language_id)) if language_id == feedback.language_id => {
+            return Some(search_flow_feedback_decision(
+                platform,
+                event,
+                action,
+                &feedback.language_id,
+                "repeat-search-pipe",
+                "ASP hook denied repeated `search pipe` in the same prompt.",
+            ));
+        }
+        _ => {}
+    }
+    if asp_query_direct_source_read_command(command) {
+        return Some(search_flow_feedback_decision(
+            platform,
+            event,
+            action,
+            &feedback.language_id,
+            "direct-source-read-after-pipe",
+            "ASP hook denied manual `direct-source-read` after `search pipe`.",
+        ));
+    }
+    None
+}
+
+fn search_flow_feedback_decision(
+    platform: &str,
+    event: &str,
+    action: &ToolAction,
+    language_id: &str,
+    feedback_kind: &str,
+    heading: &str,
+) -> HookDecision {
+    let mut fields = std::collections::BTreeMap::new();
+    fields.insert(
+        "hookFeedback".to_string(),
+        Value::String(feedback_kind.to_string()),
+    );
+    fields.insert(
+        "languageId".to_string(),
+        Value::String(language_id.to_string()),
+    );
+    HookDecision {
+        schema_id: HOOK_DECISION_SCHEMA_ID,
+        schema_version: HOOK_DECISION_SCHEMA_VERSION,
+        protocol_id: HOOK_PROTOCOL_ID,
+        protocol_version: HOOK_PROTOCOL_VERSION,
+        platform: platform.to_string(),
+        event: event.to_string(),
+        decision: DecisionKind::Deny,
+        reason_kind: ReasonKind::None,
+        language_ids: vec![language_id.to_string()],
+        subject: subject_for_action(action),
+        routes: Vec::new(),
+        message: search_flow_feedback_message(language_id, feedback_kind, heading),
+        fields,
+    }
+}
+
+fn search_flow_feedback_message(language_id: &str, feedback_kind: &str, heading: &str) -> String {
+    match feedback_kind {
+        "repeat-search-pipe" => [
+            heading.to_string(),
+            "The current prompt has already run `search pipe`; pipe is a once-per-prompt frontier."
+                .to_string(),
+            String::new(),
+            "## Run Next".to_string(),
+            "Follow the previous `recommendedNext` / `nextCommand` from the pipe output."
+                .to_string(),
+            format!(
+                "Use `asp {language_id} search owner <owner-path> items --query '<symbol-or-a|b|c>' --view seeds .`, `asp fd -query '<owner-or-path-term-a|term-b|term-c>' <scope>`, `asp rg -query '<content-or-error-term-a|term-b|term-c>' <scope>`, or `asp {language_id} query --selector <path:start-end> --workspace <workspace-root> --code`."
+            ),
+            String::new(),
+            "## Rules".to_string(),
+            "Do not rerun `search pipe` with a narrower natural term in the same prompt."
+                .to_string(),
+            "Move from frontier to locator/action; keep source reads behind exact `query --selector --code`."
+                .to_string(),
+        ]
+        .join("\n"),
+        "direct-source-read-after-pipe" => [
+            heading.to_string(),
+            "`--from-hook direct-source-read` is hook recovery only, not a public query path."
+                .to_string(),
+            String::new(),
+            "## Run Next".to_string(),
+            format!(
+                "asp {language_id} query --selector <path:start-end> --workspace <workspace-root> --code"
+            ),
+            String::new(),
+            "## Rules".to_string(),
+            "Use direct-source-read only when the hook just emitted that exact recovery route."
+                .to_string(),
+            "After `search pipe`, follow locator/frontier commands and extract code with ordinary `query --selector --code`."
+                .to_string(),
+        ]
+        .join("\n"),
+        _ => [
+            heading.to_string(),
+            "The current prompt has already run `search prime`; prime is only a project map."
+                .to_string(),
+            String::new(),
+            "## Run Next".to_string(),
+            format!("asp {language_id} search pipe '<question-or-feature-term>' --view seeds ."),
+            String::new(),
+            "## Rules".to_string(),
+            "Compress the user's question into one code-search seed before running the pipe."
+                .to_string(),
+            "Do not repeat `search prime`. Do not read source or code before the pipe frontier."
+                .to_string(),
+        ]
+        .join("\n"),
+    }
 }
 
 fn classify_subagent_stop(platform: &str, event: &str, payload: &Value) -> Option<HookDecision> {

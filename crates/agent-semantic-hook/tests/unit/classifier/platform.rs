@@ -96,6 +96,127 @@ fn platform_response_wraps_denied_decision_for_codex_hooks() {
 }
 
 #[test]
+fn permission_request_allow_renders_explicit_allow_for_claude() {
+    let decision = classify_hook(
+        &registry(),
+        "claude",
+        "permission-request",
+        &json!({
+            "hook_event_name": "PermissionRequest",
+            "tool_name": "Bash",
+            "tool_input": {
+                "command": "asp typescript search prime --view seeds ."
+            }
+        }),
+    );
+
+    let response = render_platform_response(&decision).unwrap();
+
+    assert_eq!(decision.decision, agent_semantic_hook::DecisionKind::Allow);
+    assert_eq!(
+        response["hookSpecificOutput"]["hookEventName"],
+        "PermissionRequest"
+    );
+    assert_eq!(
+        response["hookSpecificOutput"]["permissionDecision"],
+        "allow"
+    );
+    let context = response["hookSpecificOutput"]["additionalContext"]
+        .as_str()
+        .expect("decision context");
+    assert!(context.contains("\"decision\":\"allow\""), "{context}");
+}
+
+#[test]
+fn user_prompt_submit_allow_adds_search_first_context_for_claude() {
+    let decision = classify_hook(
+        &registry(),
+        "claude",
+        "user-prompt",
+        &json!({
+            "hook_event_name": "UserPromptSubmit",
+            "prompt": "How is AsyncRead implemented?"
+        }),
+    );
+
+    let response = render_platform_response(&decision).unwrap();
+
+    assert_eq!(
+        response["hookSpecificOutput"]["hookEventName"],
+        "UserPromptSubmit"
+    );
+    assert!(response["hookSpecificOutput"]["permissionDecision"].is_null());
+    let context = response["hookSpecificOutput"]["additionalContext"]
+        .as_str()
+        .expect("user prompt additional context");
+    assert!(context.contains("ASP search-first workflow"), "{context}");
+    assert!(
+        context.contains("asp <language> search prime --view seeds ."),
+        "{context}"
+    );
+    assert!(context.contains("at most once"), "{context}");
+    assert!(context.contains("immediate next ASP command"), "{context}");
+    assert!(
+        context.contains("asp <language> search pipe '<question-or-feature-term>' --view seeds ."),
+        "{context}"
+    );
+    assert!(
+        context.contains("Do not answer from prime alone"),
+        "{context}"
+    );
+    assert!(context.contains("prime is only a project map"), "{context}");
+    assert!(
+        context.contains("ASP facades are language IDs"),
+        "{context}"
+    );
+    assert!(
+        context.contains("Do not repeat an exact ASP command"),
+        "{context}"
+    );
+    assert!(
+        context.contains("query --selector <path:start-end> --workspace . --code"),
+        "{context}"
+    );
+    assert!(
+        context.contains("Do not use direct source reads as the first step"),
+        "{context}"
+    );
+}
+
+#[test]
+fn user_prompt_submit_locator_questions_do_not_push_code_reads() {
+    let decision = classify_hook(
+        &registry(),
+        "claude",
+        "user-prompt",
+        &json!({
+            "hook_event_name": "UserPromptSubmit",
+            "prompt": "Where is AsyncRead implemented before selecting files to edit?"
+        }),
+    );
+
+    let response = render_platform_response(&decision).unwrap();
+    let context = response["hookSpecificOutput"]["additionalContext"]
+        .as_str()
+        .expect("user prompt additional context");
+
+    assert!(context.contains("locator/frontier question"), "{context}");
+    assert!(
+        context.contains("answer where to look before editing"),
+        "{context}"
+    );
+    assert!(
+        context.contains("Do not answer from prime alone"),
+        "{context}"
+    );
+    assert!(
+        context.contains("ASP facades are language IDs"),
+        "{context}"
+    );
+    assert!(context.contains("Do not run `query --code`"), "{context}");
+}
+
+#[test]
 fn platform_response_keeps_multi_language_agent_flows_separate() {
     let runtime = HookRuntime {
         project_root: ".".to_string(),

@@ -26,7 +26,7 @@ pub use crate::syntax_query::{
 /// File name used for the local SQLite client cache.
 pub const AGENT_SEMANTIC_CLIENT_DB_FILE: &str = "client.sqlite3";
 /// Current SQLite schema version for the local agent semantic client DB.
-pub const AGENT_SEMANTIC_CLIENT_DB_SCHEMA_VERSION: i64 = 5;
+pub const AGENT_SEMANTIC_CLIENT_DB_SCHEMA_VERSION: i64 = 6;
 
 /// Read-only diagnostic summary for a local SQLite client DB path.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -65,6 +65,100 @@ pub struct ClientDbGenerationHit {
     pub request_fingerprint: Option<String>,
     pub file_hashes: Vec<ClientCacheFileHash>,
     pub artifact_ids: Vec<CacheArtifactId>,
+}
+
+/// Cached provider command selection for one activation context.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ClientDbProviderCommandSelection {
+    manifest_id: String,
+    manifest_digest: String,
+    language_id: String,
+    provider_id: String,
+    binary: String,
+    execution: String,
+    provider_command_prefix: Vec<String>,
+    executable_path: Option<String>,
+    executable_len: Option<i64>,
+    executable_mtime_ms: Option<i64>,
+}
+
+impl ClientDbProviderCommandSelection {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        manifest_id: String,
+        manifest_digest: String,
+        language_id: String,
+        provider_id: String,
+        binary: String,
+        execution: String,
+        provider_command_prefix: Vec<String>,
+        executable_path: Option<String>,
+        executable_len: Option<i64>,
+        executable_mtime_ms: Option<i64>,
+    ) -> Self {
+        Self {
+            manifest_id,
+            manifest_digest,
+            language_id,
+            provider_id,
+            binary,
+            execution,
+            provider_command_prefix,
+            executable_path,
+            executable_len,
+            executable_mtime_ms,
+        }
+    }
+
+    #[must_use]
+    pub fn manifest_id(&self) -> &str {
+        &self.manifest_id
+    }
+
+    #[must_use]
+    pub fn manifest_digest(&self) -> &str {
+        &self.manifest_digest
+    }
+
+    #[must_use]
+    pub fn language_id(&self) -> &str {
+        &self.language_id
+    }
+
+    #[must_use]
+    pub fn provider_id(&self) -> &str {
+        &self.provider_id
+    }
+
+    #[must_use]
+    pub fn binary(&self) -> &str {
+        &self.binary
+    }
+
+    #[must_use]
+    pub fn execution(&self) -> &str {
+        &self.execution
+    }
+
+    #[must_use]
+    pub fn provider_command_prefix(&self) -> &[String] {
+        &self.provider_command_prefix
+    }
+
+    #[must_use]
+    pub fn executable_path(&self) -> Option<&str> {
+        self.executable_path.as_deref()
+    }
+
+    #[must_use]
+    pub fn executable_len(&self) -> Option<i64> {
+        self.executable_len
+    }
+
+    #[must_use]
+    pub fn executable_mtime_ms(&self) -> Option<i64> {
+        self.executable_mtime_ms
+    }
 }
 
 /// Graph-turbo artifact event row stored in Rust SQLite for fast timeline audits.
@@ -284,6 +378,127 @@ impl ClientDb {
         tx.commit()
             .map_err(|error| format!("failed to commit cache generation import: {error}"))?;
         Ok(())
+    }
+
+    /// Replace cached provider command selections for a project/context pair.
+    pub fn replace_provider_command_selections(
+        &mut self,
+        project_root: &Path,
+        context_fingerprint: &str,
+        selections: &[ClientDbProviderCommandSelection],
+    ) -> Result<(), String> {
+        let project_root = normalized_project_root(project_root);
+        let tx = self.conn.transaction().map_err(|error| {
+            format!(
+                "failed to start provider command selection transaction at {}: {error}",
+                self.db_path.display()
+            )
+        })?;
+        tx.execute(
+            "DELETE FROM provider_command_selection WHERE project_root = ?1",
+            params![&project_root],
+        )
+        .map_err(|error| format!("failed to delete provider command selections: {error}"))?;
+        for selection in selections {
+            let command_prefix_json = serde_json::to_string(&selection.provider_command_prefix)
+                .map_err(|error| format!("failed to serialize provider command prefix: {error}"))?;
+            tx.execute(
+                "INSERT INTO provider_command_selection (
+                    project_root,
+                    context_fingerprint,
+                    manifest_id,
+                    manifest_digest,
+                    language_id,
+                    provider_id,
+                    binary,
+                    execution,
+                    provider_command_prefix_json,
+                    executable_path,
+                    executable_len,
+                    executable_mtime_ms
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                params![
+                    &project_root,
+                    context_fingerprint,
+                    &selection.manifest_id,
+                    &selection.manifest_digest,
+                    &selection.language_id,
+                    &selection.provider_id,
+                    &selection.binary,
+                    &selection.execution,
+                    command_prefix_json,
+                    &selection.executable_path,
+                    &selection.executable_len,
+                    &selection.executable_mtime_ms,
+                ],
+            )
+            .map_err(|error| format!("failed to write provider command selection: {error}"))?;
+        }
+        tx.commit()
+            .map_err(|error| format!("failed to commit provider command selections: {error}"))?;
+        Ok(())
+    }
+
+    /// Return cached provider command selections for a project/context pair.
+    pub fn lookup_provider_command_selections(
+        &self,
+        project_root: &Path,
+        context_fingerprint: &str,
+    ) -> Result<Option<Vec<ClientDbProviderCommandSelection>>, String> {
+        let project_root = normalized_project_root(project_root);
+        let mut statement = self
+            .conn
+            .prepare(
+                "SELECT
+                    manifest_id,
+                    manifest_digest,
+                    language_id,
+                    provider_id,
+                    binary,
+                    execution,
+                    provider_command_prefix_json,
+                    executable_path,
+                    executable_len,
+                    executable_mtime_ms
+                FROM provider_command_selection
+                WHERE project_root = ?1 AND context_fingerprint = ?2
+                ORDER BY language_id, provider_id, manifest_id",
+            )
+            .map_err(|error| {
+                format!("failed to prepare provider command selection lookup: {error}")
+            })?;
+        let rows = statement
+            .query_map(params![project_root, context_fingerprint], |row| {
+                let command_prefix_json = row.get::<_, String>(6)?;
+                let provider_command_prefix =
+                    serde_json::from_str::<Vec<String>>(&command_prefix_json).map_err(|error| {
+                        rusqlite::Error::FromSqlConversionFailure(
+                            6,
+                            rusqlite::types::Type::Text,
+                            Box::new(error),
+                        )
+                    })?;
+                Ok(ClientDbProviderCommandSelection::new(
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                    provider_command_prefix,
+                    row.get(7)?,
+                    row.get(8)?,
+                    row.get(9)?,
+                ))
+            })
+            .map_err(|error| format!("failed to read provider command selections: {error}"))?;
+        let mut selections = Vec::new();
+        for row in rows {
+            selections.push(
+                row.map_err(|error| format!("failed to read provider command selection: {error}"))?,
+            );
+        }
+        Ok((!selections.is_empty()).then_some(selections))
     }
 
     /// Import normalized rows derived from a validated `semantic-tree-sitter-query` packet.
@@ -1029,6 +1244,30 @@ impl ClientDb {
               ON artifact_event(timestamp_ms, artifact_path, event_ordinal);
             CREATE INDEX IF NOT EXISTS artifact_event_project_idx
               ON artifact_event(project_root, timestamp_ms);
+            CREATE TABLE IF NOT EXISTS provider_command_selection (
+                project_root TEXT NOT NULL,
+                context_fingerprint TEXT NOT NULL,
+                manifest_id TEXT NOT NULL,
+                manifest_digest TEXT NOT NULL,
+                language_id TEXT NOT NULL,
+                provider_id TEXT NOT NULL,
+                binary TEXT NOT NULL,
+                execution TEXT NOT NULL,
+                provider_command_prefix_json TEXT NOT NULL,
+                executable_path TEXT,
+                executable_len INTEGER,
+                executable_mtime_ms INTEGER,
+                updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+                PRIMARY KEY (
+                    project_root,
+                    context_fingerprint,
+                    language_id,
+                    provider_id,
+                    manifest_id
+                )
+            );
+            CREATE INDEX IF NOT EXISTS provider_command_selection_project_idx
+              ON provider_command_selection(project_root, context_fingerprint);
             ",
             )
             .map_err(|error| {

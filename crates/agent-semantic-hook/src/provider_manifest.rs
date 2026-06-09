@@ -12,7 +12,7 @@ use crate::protocol::{
 };
 use crate::protocol_activation::{
     ActivatedProviderConfig, ActivationCoverage, ActivationGeneratedBy, HookActivation,
-    ProviderManifest, provider_manifest_digest,
+    ProviderExecution, ProviderManifest, provider_manifest_digest,
 };
 use crate::provider_registry::schema_registry_provider_manifests;
 
@@ -58,6 +58,50 @@ pub fn build_default_activation(project_root: &Path) -> Result<HookActivation, S
         generated_at: None,
         providers,
     })
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProviderCommandSelection {
+    pub manifest_id: String,
+    pub manifest_digest: String,
+    pub language_id: String,
+    pub provider_id: String,
+    pub binary: String,
+    pub execution: ProviderExecution,
+    pub provider_command_prefix: Vec<String>,
+}
+
+pub fn provider_command_selections(
+    project_root: &Path,
+) -> Result<Vec<ProviderCommandSelection>, String> {
+    let project_config = ProjectProviderConfigSet::load(project_root)?;
+    let mut providers = Vec::new();
+    for manifest in provider_manifests() {
+        let Some(provider_config) = project_config.provider_config(&manifest.language_id) else {
+            continue;
+        };
+        let Some(command_prefix) =
+            provider_command_prefix(project_root, &manifest, provider_config)?
+        else {
+            continue;
+        };
+        providers.push(ProviderCommandSelection {
+            manifest_id: manifest.manifest_id.clone(),
+            manifest_digest: provider_manifest_digest(&manifest)
+                .map_err(|error| format!("failed to digest provider manifest: {error:?}"))?,
+            language_id: manifest.language_id.clone(),
+            provider_id: manifest.provider_id.clone(),
+            binary: manifest.binary.clone(),
+            execution: manifest.execution,
+            provider_command_prefix: command_prefix,
+        });
+    }
+    if providers.is_empty() {
+        return Err(
+            "expected PATH to contain at least one executable semantic provider binary".to_string(),
+        );
+    }
+    Ok(providers)
 }
 
 fn activate_provider(

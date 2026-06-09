@@ -11,22 +11,12 @@ from typing import Any
 
 try:
     from claude_code_sdk import ClaudeCodeOptions, query
-    from claude_code_sdk.types import PermissionResultAllow, PermissionResultDeny
 except ModuleNotFoundError:  # pragma: no cover - exercised through import-only tests.
     ClaudeCodeOptions = None  # type: ignore[assignment]
     query = None  # type: ignore[assignment]
 
-    @dataclasses.dataclass(frozen=True)
-    class PermissionResultAllow:  # type: ignore[no-redef]
-        behavior: str = "allow"
-
-    @dataclasses.dataclass(frozen=True)
-    class PermissionResultDeny:  # type: ignore[no-redef]
-        message: str
-        behavior: str = "deny"
-
-
 from .agent_observations import summarize_agent_messages
+from .claude_sdk_permissions import asp_bash_permission_for_budget
 from .output import emit_json, emit_json_line, emit_text
 
 
@@ -40,6 +30,10 @@ async def _run(args: argparse.Namespace) -> int:
         raise RuntimeError(
             "claude_code_sdk is required for live Claude SDK sandtable runs"
         )
+    if args.require_asp_bash_commands and args.allowed_tools:
+        raise ValueError(
+            "--allowed-tool cannot be combined with --require-asp-bash-commands"
+        )
     process_cwd = os.getcwd()
     claude_cwd = args.claude_cwd or process_cwd
     add_dirs = list(args.add_dirs or [])
@@ -51,16 +45,22 @@ async def _run(args: argparse.Namespace) -> int:
         claude_cwd,
         add_dirs,
     )
+    asp_permission = (
+        asp_bash_permission_for_budget(args.max_asp_bash_commands)
+        if args.require_asp_bash_commands
+        else None
+    )
     options = ClaudeCodeOptions(
         cwd=claude_cwd,
         settings=_settings_path(args.settings, claude_cwd),
         add_dirs=add_dirs,
         model=args.model,
+        permission_mode=_permission_mode(args),
         allowed_tools=args.allowed_tools or [],
         disallowed_tools=args.disallowed_tools or [],
         include_partial_messages=args.include_partial_messages,
         extra_args=_extra_args(args),
-        can_use_tool=_asp_bash_permission if args.require_asp_bash_commands else None,
+        can_use_tool=asp_permission,
         max_turns=args.max_turns,
     )
     messages: list[dict[str, Any]] = []
@@ -74,6 +74,14 @@ async def _run(args: argparse.Namespace) -> int:
         messages.append(payload)
         if args.output_format == "stream-json":
             emit_json_line(payload, flush=True)
+        if asp_permission is not None and asp_permission.budget_exhausted:
+            budget_payload = _budget_exhausted_payload(
+                asp_permission.asp_command_count
+            )
+            messages.append(budget_payload)
+            if args.output_format == "stream-json":
+                emit_json_line(budget_payload, flush=True)
+            break
 
     summary = summarize_agent_messages(messages)
     messages.append(summary)
@@ -94,6 +102,14 @@ def _emit_final_output(
         emit_text(_text_output(messages))
 
 
+def _budget_exhausted_payload(asp_command_count: int) -> dict[str, Any]:
+    return {
+        "type": "SandtableAgentBudgetStop",
+        "aspCommandCount": asp_command_count,
+        "reason": "max-asp-bash-commands",
+    }
+
+
 def _extra_args(args: argparse.Namespace) -> dict[str, str | None]:
     extra_args: dict[str, str | None] = {}
     if args.include_hook_events:
@@ -101,6 +117,14 @@ def _extra_args(args: argparse.Namespace) -> dict[str, str | None]:
     if args.verbose:
         extra_args["verbose"] = None
     return extra_args
+
+
+def _permission_mode(args: argparse.Namespace) -> str | None:
+    if args.permission_mode:
+        return args.permission_mode
+    if args.require_asp_bash_commands:
+        return "bypassPermissions"
+    return None
 
 
 def _settings_path(settings: str | None, claude_cwd: str) -> str | None:
@@ -134,40 +158,6 @@ async def _streaming_prompt(prompt: str):
         "parent_tool_use_id": None,
         "session_id": "semantic-sandtable-agent-sdk",
     }
-
-
-async def _asp_bash_permission(
-    tool_name: str,
-    tool_input: dict[str, Any],
-    _context: Any,
-) -> PermissionResultAllow | PermissionResultDeny:
-    if tool_name != "Bash":
-        return PermissionResultDeny(
-            message="Use Bash with asp commands only; non-Bash tools are disabled."
-        )
-    command = str(tool_input.get("command", "")).strip()
-    if _is_asp_command(command):
-        return PermissionResultAllow()
-    return PermissionResultDeny(
-        message=(
-            "Use asp <language> guide/search/query commands; raw shell reads are "
-            "disabled."
-        )
-    )
-
-
-def _is_asp_command(command: str) -> bool:
-    stripped = command.strip()
-    return (
-        stripped.startswith("asp ")
-        or "/.bin/asp " in stripped
-        or stripped.startswith("./.bin/asp ")
-        or " && asp " in stripped
-        or (
-            " direnv exec " in f" {stripped} "
-            and (" asp " in f" {stripped} " or " ./.bin/asp " in f" {stripped} ")
-        )
-    )
 
 
 def _message_payload(message: Any) -> dict[str, Any]:
@@ -205,9 +195,14 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--include-hook-events", action="store_true")
     parser.add_argument("--verbose", action="store_true")
     parser.add_argument("--model")
+    parser.add_argument(
+        "--permission-mode",
+        choices=["default", "acceptEdits", "plan", "bypassPermissions"],
+    )
     parser.add_argument("--allowed-tool", action="append", dest="allowed_tools")
     parser.add_argument("--disallowed-tool", action="append", dest="disallowed_tools")
     parser.add_argument("--require-asp-bash-commands", action="store_true")
+    parser.add_argument("--max-asp-bash-commands", type=int)
     parser.add_argument("--settings")
     parser.add_argument("--claude-cwd")
     parser.add_argument("--add-dir", action="append", dest="add_dirs")

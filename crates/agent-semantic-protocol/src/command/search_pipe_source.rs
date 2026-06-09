@@ -6,7 +6,7 @@ use super::search_config::AspConfig;
 use super::search_pipe_candidates::{
     collect_candidates, parse_ingest_candidates, read_piped_stdin,
 };
-use super::search_pipe_render::{Candidate, SearchPipeSourceTrace};
+use super::search_pipe_model::{Candidate, SearchPipeSourceTrace};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum SourceSpec {

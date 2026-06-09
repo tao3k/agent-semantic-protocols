@@ -8,11 +8,13 @@ use super::graph::{
     write_graph_turbo_receipt,
 };
 use super::search_pipe_graph_turbo::{GraphTurboSearchPipeRequest, render_graph_turbo_request};
+use super::search_pipe_model::{Candidate, SearchPipeSourceTrace};
 use super::search_pipe_plan::{
-    SearchPipePlanRequest, render_primary_frontier_actions_only, render_search_pipe_plan,
+    SearchPipePlanRequest, render_search_pipe_decision_projection, render_search_pipe_plan,
 };
 use super::search_pipe_provider_facts::ProviderGraphFacts;
-use super::search_pipe_render::{Candidate, SearchPipeSourceTrace, render_ingest_frontier};
+use super::search_pipe_quality::analyze_search_pipe_quality;
+use super::search_pipe_render::render_ingest_frontier;
 
 pub(super) struct SearchPipeViewRequest<'a> {
     pub(super) language_id: &'a str,
@@ -52,6 +54,12 @@ pub(super) fn print_search_pipe_view(request: SearchPipeViewRequest<'_>) -> Resu
         read_memory_selectors,
         frontier_receipt,
     } = request;
+    let display_candidates = if surface == "search-pipe" {
+        normalize_candidates_for_scopes(project_root, locator_root, scopes, candidates)
+    } else {
+        candidates.to_vec()
+    };
+    let candidates = display_candidates.as_slice();
     match view {
         "graph-turbo-request" => {
             let request = render_graph_turbo_request(GraphTurboSearchPipeRequest {
@@ -75,15 +83,20 @@ pub(super) fn print_search_pipe_view(request: SearchPipeViewRequest<'_>) -> Resu
             print!("{request}");
         }
         "seeds" => {
+            let quality =
+                query.map(|query| analyze_search_pipe_quality(language_id, query, candidates));
             if include_pipe_plan && let Some(query) = query {
-                print_search_pipe_header(
+                let quality = quality.as_ref().expect("quality is computed with query");
+                print_search_pipe_header(SearchPipeHeader {
                     language_id,
-                    "seeds",
+                    project_root,
+                    locator_root,
+                    view: "seeds",
                     source,
                     query,
-                    candidates,
+                    quality,
                     source_trace,
-                );
+                });
             }
             let request = render_graph_turbo_request(GraphTurboSearchPipeRequest {
                 surface,
@@ -110,7 +123,7 @@ pub(super) fn print_search_pipe_view(request: SearchPipeViewRequest<'_>) -> Resu
                     .map(str::to_string);
                 if include_pipe_plan {
                     if let Some(compact) = ranked_compact.as_deref() {
-                        print!("{}", render_primary_frontier_actions_only(compact));
+                        print!("{}", render_search_pipe_decision_projection(compact));
                     } else {
                         io::stdout().write_all(output.as_ref()).map_err(|error| {
                             format!("failed to write asp-graph-turbo stdout: {error}")
@@ -131,7 +144,6 @@ pub(super) fn print_search_pipe_view(request: SearchPipeViewRequest<'_>) -> Resu
                         language_id,
                         project_root,
                         locator_root,
-                        source,
                         scopes,
                         query,
                         candidates,
@@ -144,21 +156,23 @@ pub(super) fn print_search_pipe_view(request: SearchPipeViewRequest<'_>) -> Resu
             reject_non_graph_turbo_receipt(frontier_receipt)?;
             print!("{}", render_ingest_frontier(candidates, pipes));
             if include_pipe_plan && let Some(query) = query {
-                print_search_pipe_header(
+                let quality = analyze_search_pipe_quality(language_id, query, candidates);
+                print_search_pipe_header(SearchPipeHeader {
                     language_id,
+                    project_root,
+                    locator_root,
                     view,
                     source,
                     query,
-                    candidates,
+                    quality: &quality,
                     source_trace,
-                );
+                });
                 print!(
                     "{}",
                     render_search_pipe_plan(SearchPipePlanRequest {
                         language_id,
                         project_root,
                         locator_root,
-                        source,
                         scopes,
                         query,
                         candidates,
@@ -171,100 +185,52 @@ pub(super) fn print_search_pipe_view(request: SearchPipeViewRequest<'_>) -> Resu
     Ok(())
 }
 
-fn print_search_pipe_header(
-    language_id: &str,
-    view: &str,
-    source: &str,
-    query: &str,
-    candidates: &[Candidate],
-    source_trace: &[SearchPipeSourceTrace],
-) {
+struct SearchPipeHeader<'a> {
+    language_id: &'a str,
+    project_root: &'a Path,
+    locator_root: &'a Path,
+    view: &'a str,
+    source: &'a str,
+    query: &'a str,
+    quality: &'a super::search_pipe_quality::SearchPipeQuality,
+    source_trace: &'a [SearchPipeSourceTrace],
+}
+
+fn print_search_pipe_header(header: SearchPipeHeader<'_>) {
+    let SearchPipeHeader {
+        language_id,
+        project_root,
+        locator_root,
+        view,
+        source,
+        query,
+        quality,
+        source_trace,
+    } = header;
     println!(
         "[search-pipe] lang={language_id} view={view} source={source} ranker=graph-turbo:owner-query"
     );
     println!("query={query}");
+    if let Some(workspace) = workspace_label(project_root, locator_root) {
+        println!("workspace={workspace}");
+    }
     println!(
-        "queryTerms={}",
-        display_terms(&query_terms_preserve_case(query))
+        "queryPack=clauses={} quality={} raw={}",
+        quality.clause_count,
+        quality.query_pack_quality,
+        shell_quote(query)
     );
-    println!("{}", coverage_line(query, candidates));
+    println!("{}", quality.query_terms_line(language_id, query));
+    for line in quality.lines() {
+        println!("{line}");
+    }
     println!("sourceTrace={}", compact_source_trace(source_trace));
-    println!("{}", handles_line(query));
-    println!("nextClasses=fd-query,rg-query,owner-items,query-selector");
+    println!("{}", quality.handles_line());
+    println!("nextClasses=fd-query,rg-query,owner-items,treesitter-query,query-selector");
 }
 
-fn coverage_line(query: &str, candidates: &[Candidate]) -> String {
-    let terms = query_terms(query);
-    if terms.is_empty() {
-        return "coverage=matched=- missing=-".to_string();
-    }
-    let (matched, missing): (Vec<_>, Vec<_>) = terms.into_iter().partition(|term| {
-        candidates
-            .iter()
-            .any(|candidate| candidate_matches(candidate, term))
-    });
-    format!(
-        "coverage=matched={} missing={}",
-        display_terms(&matched),
-        display_terms(&missing)
-    )
-}
-
-fn query_terms(query: &str) -> Vec<String> {
-    query
-        .split(|character: char| !(character == '_' || character.is_ascii_alphanumeric()))
-        .map(str::trim)
-        .filter(|term| !term.is_empty())
-        .map(str::to_ascii_lowercase)
-        .fold(Vec::new(), |mut terms, term| {
-            if !terms.contains(&term) {
-                terms.push(term);
-            }
-            terms
-        })
-}
-
-fn query_terms_preserve_case(query: &str) -> Vec<String> {
-    query
-        .split(|character: char| character == ',' || character == '|' || character.is_whitespace())
-        .map(str::trim)
-        .filter(|term| !term.is_empty())
-        .map(ToOwned::to_owned)
-        .fold(Vec::new(), |mut terms, term| {
-            if !terms.iter().any(|seen| seen == &term) {
-                terms.push(term);
-            }
-            terms
-        })
-}
-
-fn handles_line(query: &str) -> String {
-    let terms = query_terms_preserve_case(query);
-    let lowercase = terms
-        .iter()
-        .map(|term| term.to_ascii_lowercase())
-        .collect::<Vec<_>>();
-    format!(
-        "handles=ownerTerms={} pathTerms={} symbolTerms={} testTerms={}",
-        display_terms(&terms),
-        display_terms(&lowercase),
-        display_terms(&terms),
-        display_terms(&lowercase),
-    )
-}
-
-fn candidate_matches(candidate: &Candidate, term: &str) -> bool {
-    candidate.symbol.to_ascii_lowercase().contains(term)
-        || candidate.path.to_ascii_lowercase().contains(term)
-        || candidate.text.to_ascii_lowercase().contains(term)
-}
-
-fn display_terms(terms: &[String]) -> String {
-    if terms.is_empty() {
-        "-".to_string()
-    } else {
-        terms.join(",")
-    }
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
 }
 
 fn compact_source_trace(source_trace: &[SearchPipeSourceTrace]) -> String {
@@ -276,6 +242,62 @@ fn compact_source_trace(source_trace: &[SearchPipeSourceTrace]) -> String {
         .map(SearchPipeSourceTrace::compact)
         .collect::<Vec<_>>()
         .join(",")
+}
+
+fn workspace_label(project_root: &Path, locator_root: &Path) -> Option<String> {
+    if project_root == locator_root {
+        return None;
+    }
+    let display = project_root
+        .strip_prefix(locator_root)
+        .map(slash_path)
+        .unwrap_or_else(|_| slash_path(project_root));
+    (!display.is_empty()).then_some(display)
+}
+
+fn normalize_candidates_for_scopes(
+    project_root: &Path,
+    locator_root: &Path,
+    scopes: &[PathBuf],
+    candidates: &[Candidate],
+) -> Vec<Candidate> {
+    let target_root = if let Some(scope) = scopes.first().filter(|_| scopes.len() == 1) {
+        if scope.is_absolute() {
+            scope.clone()
+        } else {
+            project_root.join(scope)
+        }
+    } else if project_root != locator_root {
+        project_root.to_path_buf()
+    } else {
+        return candidates.to_vec();
+    };
+    let absolute_prefix = slash_path(&target_root);
+    let locator_prefix = target_root
+        .strip_prefix(locator_root)
+        .map(slash_path)
+        .unwrap_or_else(|_| absolute_prefix.clone());
+    candidates
+        .iter()
+        .map(|candidate| {
+            let mut candidate = candidate.clone();
+            candidate.path = strip_scope_prefix(&candidate.path, &absolute_prefix)
+                .or_else(|| strip_scope_prefix(&candidate.path, &locator_prefix))
+                .unwrap_or(candidate.path);
+            candidate
+        })
+        .collect()
+}
+
+fn strip_scope_prefix(path: &str, prefix: &str) -> Option<String> {
+    let prefix = prefix.trim_end_matches('/');
+    path.strip_prefix(prefix)
+        .and_then(|rest| rest.strip_prefix('/'))
+        .map(ToOwned::to_owned)
+}
+
+fn slash_path(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
 }
 
 pub(super) fn reject_non_graph_turbo_receipt(

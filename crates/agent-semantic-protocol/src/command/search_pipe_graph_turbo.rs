@@ -8,10 +8,12 @@ use super::{
     search_pipe_dependency_facts::{
         DependencyFact, collect_dependency_facts, dependency_matches_query,
     },
+    search_pipe_model::{Candidate, SearchPipeSourceTrace},
     search_pipe_provider_facts::ProviderGraphFacts,
-    search_pipe_render::{
-        Candidate, SearchPipeSourceTrace, include_deps, include_items, include_owner_context,
-        include_tests, normalized_search_surfaces,
+    search_pipe_quality::{compact_fact_value, is_generated_path, query_allows_generated},
+    search_pipe_surfaces::{
+        include_deps, include_items, include_owner_context, include_tests,
+        normalized_search_surfaces,
     },
 };
 
@@ -77,7 +79,7 @@ fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> Value {
         }));
     }
 
-    let graph_candidates = sparse_graph_candidates(candidates);
+    let graph_candidates = sparse_graph_candidates(candidates, query);
     let owners = unique_candidate_paths(&graph_candidates);
     if seed_ids.is_empty() {
         seed_ids.extend(
@@ -146,7 +148,18 @@ fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> Value {
     packet
 }
 
-fn sparse_graph_candidates(candidates: &[Candidate]) -> Vec<Candidate> {
+fn sparse_graph_candidates(candidates: &[Candidate], query: Option<&str>) -> Vec<Candidate> {
+    let allow_generated = query_allows_generated(query);
+    let filtered = candidates
+        .iter()
+        .filter(|candidate| allow_generated || !is_generated_path(&candidate.path))
+        .cloned()
+        .collect::<Vec<_>>();
+    let candidates = if filtered.is_empty() {
+        candidates.to_vec()
+    } else {
+        filtered
+    };
     let mut selected = Vec::new();
     let mut selected_indices = HashSet::new();
     let mut symbol_counts: HashMap<String, usize> = HashMap::new();
@@ -257,7 +270,23 @@ fn graph_turbo_source_trace(source_trace: &[SearchPipeSourceTrace]) -> Value {
 }
 
 fn append_provider_fact_nodes(nodes: &mut Vec<Value>, provider_facts: &ProviderGraphFacts) {
-    nodes.extend(provider_facts.nodes.iter().cloned());
+    nodes.extend(
+        provider_facts
+            .nodes
+            .iter()
+            .cloned()
+            .map(compact_provider_fact_node),
+    );
+}
+
+fn compact_provider_fact_node(mut node: Value) -> Value {
+    if let Some(value) = node.get("value").and_then(Value::as_str) {
+        node["value"] = json!(compact_fact_value(value));
+    }
+    if let Some(value) = node.get("matchText").and_then(Value::as_str) {
+        node["matchText"] = json!(compact_fact_value(value));
+    }
+    node
 }
 
 fn hot_context_range(line: usize) -> (usize, usize) {

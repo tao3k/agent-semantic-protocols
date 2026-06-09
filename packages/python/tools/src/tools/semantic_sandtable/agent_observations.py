@@ -64,6 +64,9 @@ def final_answer_from_messages(messages: list[dict[str, Any]]) -> dict[str, Any]
 
 
 def _assistant_text(message: dict[str, Any]) -> str:
+    if message.get("type") == "ResultMessage":
+        result = message.get("result")
+        return result.strip() if isinstance(result, str) else ""
     if message.get("type") != "AssistantMessage":
         return ""
     content = message.get("content")

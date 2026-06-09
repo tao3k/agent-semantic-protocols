@@ -13,13 +13,13 @@ use super::search_pipe_args::{
 use super::search_pipe_candidates::{
     collect_candidates, parse_ingest_candidates, read_piped_stdin,
 };
+use super::search_pipe_model::SearchPipeSourceTrace;
+use super::search_pipe_owner_query::render_owner_query_frontier;
 use super::search_pipe_provider_facts::{ProviderGraphFactsContext, collect_provider_graph_facts};
 use super::search_pipe_read_memory::read_loop_memory_selectors;
-use super::search_pipe_render::{
-    SearchPipeSourceTrace, default_search_surfaces, render_empty_ingest_diagnostic,
-    render_owner_query_frontier, render_owner_tests_frontier,
-};
+use super::search_pipe_render::{render_empty_ingest_diagnostic, render_owner_tests_frontier};
 use super::search_pipe_source::collect_search_pipe_candidates;
+use super::search_pipe_surfaces::default_search_surfaces;
 use super::search_pipe_view::{
     SearchPipeViewRequest, print_search_pipe_view, reject_non_graph_turbo_receipt,
 };

@@ -1,0 +1,251 @@
+{
+  "id": "typescript.effect-query-quality-flow",
+  "title": "Effect 3.21.3 TypeScript query-quality sandbox flow",
+  "language": "typescript",
+  "coverage": [
+    "search-flow",
+    "performance",
+    "large-library",
+    "evidence-assurance"
+  ],
+  "tags": [
+    "large-library",
+    "effect",
+    "typescript",
+    "deep-question",
+    "query-quality",
+    "sandbox",
+    "concurrency"
+  ],
+  "budgets": {
+    "maxCommands": 2,
+    "maxTotalLinesWarn": 100,
+    "maxTotalElapsedMsWarn": 18000,
+    "maxTotalStdoutBytesWarn": 20000
+  },
+  "workdir": {
+    "env": "SANDTABLE_TS_EFFECT_ROOT",
+    "git": {
+      "url": "https://github.com/Effect-TS/effect.git",
+      "ref": "effect@3.21.3",
+      "depth": 1,
+      "cacheKey": "effect-3.21.3",
+      "subdir": "."
+    },
+    "candidates": [
+      ".cache/sandtable-repos/effect-3.21.3"
+    ]
+  },
+  "evidence": {
+    "source": "handwritten",
+    "recordedAt": "2026-06-08",
+    "targetLibrary": {
+      "language": "typescript",
+      "name": "Effect",
+      "package": "effect",
+      "repository": "Effect-TS/effect",
+      "workdirKind": "checkout"
+    },
+    "intentCases": [
+      {
+        "intentKind": "api-usage",
+        "intent": "Answer a high-concurrency Effect question from parser-owned TypeScript locator/frontier evidence before reading source",
+        "stepIds": [
+          "effect-prime",
+          "effect-concurrency-pipe"
+        ],
+        "queryTerms": [
+          "Effect",
+          "concurrency",
+          "Fiber",
+          "Queue",
+          "Stream",
+          "Scope"
+        ]
+      }
+    ],
+    "deepQuestionCases": [
+      {
+        "id": "effect-high-concurrency-practices",
+        "question": "In Effect 3.21.3, what repo-backed practices should a high-concurrency service use to bound fan-out, handle interruption/cancellation, choose between Effect.forEach concurrency, Queue, Stream, Fiber, and Scope, and avoid unbounded fiber or resource leaks?",
+        "stepIds": [
+          "effect-prime",
+          "effect-concurrency-pipe"
+        ],
+        "queryTerms": [
+          "Effect",
+          "concurrency",
+          "Fiber",
+          "Queue",
+          "Stream",
+          "Scope"
+        ],
+        "audit": {
+          "maxAspCommands": 2,
+          "maxSearchCommands": 2,
+          "maxQueryCommands": 0,
+          "maxRepeatedCommands": 0,
+          "requiresGraphSignals": true,
+          "requiresQuerySet": true,
+          "requiresComplexPipeFlow": true
+        },
+        "expectedAspFlow": {
+          "canonicalCommands": [
+            "asp typescript search prime --view seeds .",
+            "asp typescript search pipe 'Effect concurrency Fiber Queue Stream Scope' --view seeds ."
+          ],
+          "requiredStages": [
+            "search-prime",
+            "search-pipe",
+            "fd-preview"
+          ],
+          "forbiddenStages": [
+            "repeated-prime",
+            "repeated-commands",
+            "read-loop-risk",
+            "direct-read",
+            "query-selector"
+          ],
+          "notes": [
+            "This sandbox fixes the provider-facing query quality contract behind the live Claude Effect flow without requiring ANTHROPIC_AUTH_TOKEN.",
+            "The pipe step must expose low query quality, withhold query-selector nextCommand, include a bounded fd preview, and recommend owner-items/rg/tree-sitter actions instead of reading unrelated AI embedding code."
+          ]
+        }
+      }
+    ],
+    "metrics": {
+      "recordedCommandCount": 2,
+      "aspCommands": 2,
+      "searchCommands": 2,
+      "queryCommands": 0,
+      "directReadCommands": 0,
+      "repeatedCommands": 0,
+      "repeatedSearches": 0,
+      "jsonSearches": 0,
+      "compactSearches": 2,
+      "tokenDelta": "lower"
+    },
+    "findings": [
+      {
+        "kind": "asp-pipe-surface-required",
+        "severity": "info",
+        "message": "TypeScript provider binaries own parser facts, but search pipe is an ASP facade surface. This sandbox intentionally uses asp typescript search pipe so Effect question quality is tested at the same boundary agents use."
+      },
+      {
+        "kind": "low-quality-blocks-code-selector",
+        "severity": "info",
+        "message": "The pipe output must expose package drift and low query quality, then include bounded fd preview evidence and recommend owner-items rather than a precise but irrelevant EmbeddingModel code selector."
+      },
+      {
+        "kind": "agent-benefit-gate",
+        "severity": "info",
+        "message": "The sandbox checks source-reading reduction, useful locator timing, feedback-learning via queryPack/queryQuality and seedPlan, and inline bounded fd-preview behavior; failure evidence is out of scope for this success-path Effect question but direct-read and repeated widening are forbidden."
+      }
+    ]
+  },
+  "steps": [
+    {
+      "id": "effect-prime",
+      "command": [
+        "asp",
+        "typescript",
+        "search",
+        "prime",
+        "--view",
+        "seeds",
+        "."
+      ],
+      "timeoutSeconds": 20,
+      "expect": {
+        "stdoutContains": [
+          "[search-prime]",
+          "analysis=structure",
+          "nativeSyntaxFacts=skipped",
+          "policyFindings=skipped",
+          "entries=owner-query(O,Q=>items+tests+dependency-usage),owner-tests(O=>covering-tests+test-entrypoints+fixtures)",
+          "avoid=raw-read"
+        ],
+        "stdoutNotContains": [
+          "export interface Service",
+          "readonly embedMany"
+        ],
+        "maxStdoutLinesWarn": 12,
+        "maxElapsedMsWarn": 8000
+      }
+    },
+    {
+      "id": "effect-concurrency-pipe",
+      "command": [
+        "asp",
+        "typescript",
+        "search",
+        "pipe",
+        "Effect concurrency Fiber Queue Stream Scope",
+        "--view",
+        "seeds",
+        "."
+      ],
+      "timeoutSeconds": 20,
+      "expect": {
+        "stdoutContains": [
+          "[search-pipe]",
+          "lang=typescript view=seeds source=auto ranker=graph-turbo:owner-query",
+          "query=Effect concurrency Fiber Queue Stream Scope",
+          "queryPack=clauses=1 quality=low raw='Effect concurrency Fiber Queue Stream Scope'",
+          "queryTerms=Effect:context,concurrency:concept,Fiber:symbol,Queue:symbol,Stream:symbol,Scope:symbol",
+          "globalCoverage=matched=effect,concurrency,fiber,queue,stream,scope missing=-",
+          "pathCoverage=matched=Queue,Stream missing=Fiber,Scope",
+          "declarationCoverage=matched=Fiber,Queue,Stream,Scope missing=-",
+          "strongCoverage=matched=Fiber,Queue,Stream,Scope weak=-",
+          "clauseCoverage=C1 matched=effect,concurrency,fiber,queue,stream,scope missing=-",
+          "packageCohesion=high packages=packages/effect/src",
+          "queryQuality=low reason=single-broad-clause",
+          "risk=single-broad-clause",
+          "sourceTrace=provider:partial,finder:used",
+          "handles=inputTerms=Effect,concurrency,Fiber,Queue,Stream,Scope contextTerms=Effect ownerSeedTerms=Fiber,Queue,Stream,Scope conceptTerms=concurrency",
+          "pageIndexHandles=packages/effect/src/Effect.ts,packages/effect/src/Queue.ts,packages/effect/src/Stream.ts",
+          "parserHandles=Fiber@packages/effect/src/Effect.ts:18,Scope@packages/effect/src/Effect.ts:62,Queue@packages/effect/src/Queue.ts:67,Stream@packages/effect/src/Stream.ts:54",
+          "nextQueryPackHint='Fiber Queue Stream Scope|concurrency runtime scheduling|Scope lifecycle|Queue Stream backpressure'",
+          "nextClasses=fd-query,rg-query,owner-items,treesitter-query,query-selector",
+          "[graph-frontier]",
+          "profile=owner-query",
+          "rankedEvidence=",
+          "evidenceFrontier=I.syntax,F.evidence,H.hot,F2.evidence,C.evidence,I2.syntax,Y.evidence,I3.syntax,I4.syntax",
+          "evidenceNodes=I=item:symbol(concurrency)@packages/effect/src/Effect.ts:101:101!syntax;F=field:interface-field([Unify.ignoreSymbol])@packages/effect/src/Stream.ts:74:74!evidence",
+          "H=hot:range(concurrency)@packages/effect/src/Effect.ts:93:113!hot",
+          "evidenceEdges=F>{Y:has_type};I>{H:contains}",
+          "seedPlan=seed-query alg=asp-search-pipe-v2 budget=frontier<=3 repeated=0",
+          "commandHandles=fdQuery=Fiber|Queue|Stream|Scope;rgQuery=concurrency|Fiber|Queue|Stream|Scope|awaitShutdown;ownerItems=packages/effect/src/Effect.ts:concurrency|Fiber|Queue|Stream|Scope|effect",
+          "treeSitterHandles=interface-fields:awaitShutdown;exported-declarations:Fiber|Queue|Stream|Scope",
+          "fdPreview=ownerCandidates=packages/effect/src/Fiber.ts,packages/effect/src/Queue.ts,packages/effect/src/Scope.ts,packages/effect/src/Stream.ts packageClusters=packages/effect/src parserIndexNext=owner-items rgScopeNext=packages/effect/src",
+          "actionRank=A1,A2,A3",
+          "A1=owner-items(owner=packages/effect/src/Fiber.ts,query=concurrency|Fiber|Queue|Stream|Scope)!owner-items",
+          "actionFrontier=A1.owner-items,A2.rg-query,A3.treesitter-query",
+          "recommendedNext=A1.owner-items",
+          "nextCommand=asp typescript search owner packages/effect/src/Fiber.ts items --query 'concurrency|Fiber|Queue|Stream|Scope' --view seeds .",
+          "llmHint=after-fd-query-combine-owner-candidates-with-declaration-names-before-rg-query",
+          "omit=source,full-candidate-list,raw-finder-output,generated-files,long-field-signatures",
+          "avoid=repeat-search-pipe,broad-fzf,raw-rg,manual-window-scan,direct-source-read,raw-read"
+        ],
+        "stdoutNotContains": [
+          "export interface Service",
+          "!code",
+          "actionableFrontier",
+          "frontierActions=",
+          "A1=fd-query",
+          "queryCoverage=matched=effect,concurrency,fiber,queue,stream,scope",
+          "frontier=Q.fzf",
+          "packages/ai/google/src/Generated.ts",
+          "nextCommand=asp typescript query --selector packages/ai/ai/src/EmbeddingModel.ts",
+          "embedMany: (input:",
+          "readonly concurrency?: Types.Concurrency | undefined",
+          "Command 1:",
+          "ANTHROPIC_AUTH_TOKEN"
+        ],
+        "maxStdoutLinesWarn": 48,
+        "maxStdoutBytesWarn": 8000,
+        "maxElapsedMsWarn": 8000
+      }
+    }
+  ]
+}

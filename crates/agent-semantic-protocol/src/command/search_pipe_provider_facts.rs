@@ -8,7 +8,7 @@ use serde_json::Value;
 
 use super::provider_process::{provider_invocation_with_profile, run_provider_command_with_stdin};
 use super::search_config::AspConfig;
-use super::search_pipe_render::Candidate;
+use super::search_pipe_model::Candidate;
 
 #[derive(Debug, Default)]
 pub(super) struct ProviderGraphFacts {

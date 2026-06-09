@@ -8,7 +8,7 @@ use agent_semantic_provider_transport::byte_text;
 use serde_json::{Value, json};
 
 use super::graph::render_graph_turbo_packet;
-use super::search_pipe_render::Candidate;
+use super::search_pipe_model::Candidate;
 
 const GRAPH_TURBO_REQUEST_SCHEMA_ID: &str = "agent.semantic-protocols.semantic-graph-turbo-request";
 const FAILURE_HOT_BLOCK_MAX_LINES: usize = 80;

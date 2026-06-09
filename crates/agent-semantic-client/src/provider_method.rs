@@ -25,20 +25,36 @@ use crate::cache_cli::{
 };
 use crate::cli_args::ParsedArgs;
 
+const ASP_DEBUG_CLIENT_STAGE_ENV: &str = "ASP_DEBUG_CLIENT_STAGE";
+
+fn debug_client_stage(stage: &str) {
+    if env::var_os(ASP_DEBUG_CLIENT_STAGE_ENV).is_some() {
+        eprintln!("[asp-client-stage] {stage}");
+    }
+}
+
 pub(crate) fn run_provider_method(
     parsed: ParsedArgs,
     method: ClientMethod,
     language_id: LanguageId,
 ) -> Result<(), String> {
-    let snapshot = ProviderRegistrySnapshot::load(&parsed.activation_root)?;
+    debug_client_stage("provider-method:load-registry");
+    let snapshot = crate::activation_cache::load_provider_registry_snapshot(
+        &parsed.activation_root,
+        &parsed.project_root,
+    )?;
+    debug_client_stage("provider-method:forward-args");
     let check_failure_frontier_view =
         method == ClientMethod::Check && has_seed_view(&parsed.forwarded_args);
     let forwarded_args = provider_forwarded_args(&method, parsed.forwarded_args);
     let request_language_id = language_id.clone();
+    debug_client_stage("provider-method:new-request");
     let mut request = ClientRequest::new(method, parsed.project_root.clone())
         .with_forwarded_args(forwarded_args)
         .with_language(language_id);
+    debug_client_stage("provider-method:syntax-preflight");
     crate::syntax_query_preflight::validate_syntax_query_request(&request)?;
+    debug_client_stage("provider-method:stdin-check");
     if is_stdin_candidate_ingest_request(&request) {
         let stdin = managed_stdin_bytes()?;
         if stdin.is_empty() && wants_agent_compact_output(&request.forwarded_args) {
@@ -49,12 +65,14 @@ pub(crate) fn run_provider_method(
         }
         request = request.with_stdin(stdin);
     }
+    debug_client_stage("provider-method:cache-probe");
     let request_started_at = std::time::Instant::now();
     let cache_probe = if request.stdin.is_some() {
         None
     } else {
         provider_cache_probe(&parsed.project_root, &snapshot, &request)
     };
+    debug_client_stage("provider-method:cache-replay");
     if let Some(cache_probe) = &cache_probe
         && let Some(replay) = &cache_probe.replay
     {
@@ -87,8 +105,10 @@ pub(crate) fn run_provider_method(
     let execution_cache_status = cache_probe
         .as_ref()
         .map_or(CacheStatus::Miss, |probe| probe.cache_status);
+    debug_client_stage("provider-method:manifest-policy");
     let cache_manifest_allows_packet_first =
         cache_manifest_allows_packet_first(&parsed.project_root);
+    debug_client_stage("provider-method:packet-first");
     let packet_first_output =
         if cache_manifest_allows_packet_first && should_try_search_packet_first(&request) {
             run_search_packet_first_miss(
@@ -111,9 +131,13 @@ pub(crate) fn run_provider_method(
     let mut output = if let Some(output) = packet_first_output {
         output
     } else {
+        debug_client_stage("provider-method:clone-snapshot");
         let writeback_snapshot = snapshot.clone();
+        debug_client_stage("provider-method:new-backend");
         let backend = LocalNativeCliBackend::new(snapshot);
+        debug_client_stage("provider-method:execute");
         let mut output = backend.execute(&request)?;
+        debug_client_stage("provider-method:execute-done");
         if output.status_code == 0 {
             crate::compact_mode::validate_compact_provider_stdout(&request, &output.stdout)?;
         }
@@ -177,6 +201,7 @@ pub(crate) fn run_provider_method(
             return Ok(());
         }
     }
+    debug_client_stage("provider-method:backend");
     if !parsed.receipt_json {
         io::stderr()
             .write_all(&output.stderr)

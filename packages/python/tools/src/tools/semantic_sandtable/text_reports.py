@@ -110,6 +110,57 @@ def _print_step_observations(step: StepResult) -> None:
         f"complex={str(bool(pipe_flow.get('complexPipeFlow'))).lower()} "
         f"missing={quote_value(','.join(str(item) for item in missing) or '-')}"
     )
+    _print_pipe_flow_commands(step.step_id, pipe_flow)
+    _print_pipe_flow_outputs(step.step_id, pipe_flow)
+
+
+def _print_pipe_flow_commands(step_id: str, pipe_flow: dict[str, object]) -> None:
+    commands = [
+        str(command)
+        for command in list_value(pipe_flow.get("commands"))
+        if isinstance(command, str)
+    ]
+    if not commands:
+        return
+    parts = [
+        f"C{index}={quote_value(_compact_command(command))}"
+        for index, command in enumerate(commands[:8], start=1)
+    ]
+    emit(f"|pipeCommands step={step_id} {' '.join(parts)}")
+
+
+def _print_pipe_flow_outputs(step_id: str, pipe_flow: dict[str, object]) -> None:
+    records = [
+        record
+        for record in list_value(pipe_flow.get("aspCommandOutputRecords"))
+        if isinstance(record, dict)
+    ]
+    if not records:
+        return
+    for index, record in enumerate(records[:4], start=1):
+        command = require_str(record, "command", "-")
+        parts = [
+            f"R{index}",
+            f"bytes={optional_int(record.get('outputBytes')) or 0}",
+            f"lines={optional_int(record.get('outputLines')) or 0}",
+            f"denied={str(bool(record.get('denied'))).lower()}",
+            f"cmd={quote_value(_compact_command(command))}",
+        ]
+        fingerprint = record.get("outputFingerprint")
+        if isinstance(fingerprint, str):
+            parts.append(f"fp={quote_value(fingerprint)}")
+        feedback = record.get("hookFeedback")
+        if isinstance(feedback, str):
+            parts.append(f"hookFeedback={quote_value(feedback)}")
+        preview = record.get("outputPreview")
+        if isinstance(preview, str):
+            parts.append(f"preview={quote_value(preview)}")
+        emit(f"|pipeOutput step={step_id} {' '.join(parts)}")
+
+
+def _compact_command(command: str) -> str:
+    command = " ".join(command.split())
+    return command if len(command) <= 220 else f"{command[:217]}..."
 
 
 def _print_runtime_audit(results: list[ScenarioResult]) -> None:
@@ -138,10 +189,11 @@ def _print_flow_report(result: ScenarioResult) -> None:
     totals = scenario_totals(result)
     source = require_str(result.evidence, "source", "unknown")
     edit_boundary = require_str(result.evidence, "editBoundary", "unknown")
+    run_count = _scenario_run_count(result, totals)
     emit(
         "[sandtable-flow] "
         f"scenario={result.scenario_id} source={source} "
-        f"commands={totals['commands']} stdoutBytes={totals['stdoutBytes']} "
+        f"{run_count} stdoutBytes={totals['stdoutBytes']} "
         f"stderrBytes={totals['stderrBytes']} elapsedMs={totals['elapsedMs']} "
         f"editBoundary={edit_boundary}"
     )
@@ -180,6 +232,11 @@ def _print_flow_report(result: ScenarioResult) -> None:
         severity = require_str(finding, "severity", "info")
         message = require_str(finding, "message", "")
         emit(f"|finding kind={kind} severity={severity} message={quote_value(message)}")
+
+
+def _scenario_run_count(result: ScenarioResult, totals: dict[str, int]) -> str:
+    label = "prompts" if "prompt-only" in result.tags else "commands"
+    return f"{label}={totals['commands']}"
 
 
 def _print_failure_frontier_comparison(result: ScenarioResult) -> None:

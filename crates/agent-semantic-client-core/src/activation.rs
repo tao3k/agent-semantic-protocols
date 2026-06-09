@@ -123,7 +123,7 @@ impl ProviderRegistrySnapshot {
         if let Some(activation_path) = env::var_os(ASP_PROVIDER_ACTIVATION_PATH_ENV) {
             let activation_path = PathBuf::from(activation_path);
             if activation_path.is_file() {
-                return Self::load_from_path(&activation_path);
+                return Self::load_from_path_for_project(&activation_path, project_root);
             }
         }
         let direct_activation_path = match project_hook_state_dir(project_root) {
