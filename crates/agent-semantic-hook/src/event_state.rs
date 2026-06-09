@@ -186,6 +186,43 @@ pub(crate) fn prompt_search_flow_after_prime(
     }))
 }
 
+/// Count ASP commands that completed in the current prompt/session.
+pub(crate) fn prompt_asp_command_count(
+    project_root: &Path,
+    session_id: Option<&str>,
+    transcript_path: Option<&str>,
+) -> Result<usize, String> {
+    if session_id.is_none() && transcript_path.is_none() {
+        return Ok(0);
+    }
+    let state_path = ensure_project_hook_state_dir(project_root)?.join(HOOK_EVENT_STATE_FILE);
+    if !state_path.is_file() {
+        return Ok(0);
+    }
+    let now = unix_time_ms();
+    let content = fs::read_to_string(&state_path).map_err(|error| {
+        format!(
+            "failed to read hook state {}: {error}",
+            state_path.display()
+        )
+    })?;
+    Ok(content
+        .lines()
+        .rev()
+        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+        .take_while(|event| is_recent_for_window(event, now, SEARCH_PIPE_FEEDBACK_WINDOW_MS))
+        .filter(|event| event_matches_prompt_scope(event, session_id, transcript_path))
+        .filter(|event| event.get("event").and_then(Value::as_str) == Some("post-tool"))
+        .filter_map(|event| {
+            event
+                .pointer("/subject/command")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        })
+        .filter(|command| asp_command(command))
+        .count())
+}
+
 /// Remove cached hook event state when it belongs to an older hook protocol.
 pub fn remove_incompatible_hook_event_state(
     project_root: &Path,
@@ -331,6 +368,12 @@ pub(crate) fn asp_query_direct_source_read_command(command: &str) -> bool {
     query_tokens
         .windows(2)
         .any(|pair| pair[0] == "--from-hook" && pair[1] == "direct-source-read")
+}
+
+/// Return true when a shell command invokes ASP.
+pub(crate) fn asp_command(command: &str) -> bool {
+    let tokens = semantic_shell_tokens(command);
+    asp_token_index(&tokens).is_some()
 }
 
 fn asp_token_index(tokens: &[String]) -> Option<usize> {

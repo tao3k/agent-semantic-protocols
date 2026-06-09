@@ -136,7 +136,80 @@ def test_read_memory_suppresses_seen_selector_from_frontier() -> None:
 
     assert "item:collect" not in packet["rank"]
     assert "src/cli.py:10:20" not in compact
-    assert packet["algorithmMetrics"]["readMemorySuppressedCount"] == 1
+    assert packet["algorithmMetrics"]["readMemorySuppressedCount"] == 2
     assert "seen-selector" in packet["avoid"]
     assert "\navoid=" in compact and "seen-selector" in compact
+    assert list(schema_validator_for(_GRAPH_TURBO_SCHEMA).iter_errors(packet)) == []
+
+
+def test_read_memory_suppresses_adjacent_seen_range_from_frontier() -> None:
+    graph = TypedGraph.from_packet(
+        {
+            "nodes": [
+                {"id": "q:parse", "kind": "query", "role": "term", "value": "parse"},
+                {
+                    "id": "owner:cli",
+                    "kind": "owner",
+                    "role": "path",
+                    "value": "src/cli.py",
+                    "path": "src/cli.py",
+                },
+                {
+                    "id": "item:seen",
+                    "kind": "item",
+                    "role": "fn",
+                    "value": "parse_seen",
+                    "path": "src/cli.py",
+                    "ownerPath": "src/cli.py",
+                    "symbol": "parse_seen",
+                    "locator": "src/cli.py:10:20",
+                },
+                {
+                    "id": "item:adjacent",
+                    "kind": "item",
+                    "role": "fn",
+                    "value": "parse_adjacent",
+                    "path": "src/cli.py",
+                    "ownerPath": "src/cli.py",
+                    "symbol": "parse_adjacent",
+                    "locator": "src/cli.py:18:26",
+                },
+                {
+                    "id": "item:far",
+                    "kind": "item",
+                    "role": "fn",
+                    "value": "parse_far",
+                    "path": "src/cli.py",
+                    "ownerPath": "src/cli.py",
+                    "symbol": "parse_far",
+                    "locator": "src/cli.py:60:70",
+                },
+            ],
+            "edges": [
+                {"source": "q:parse", "target": "owner:cli", "relation": "matches"},
+                {"source": "q:parse", "target": "item:seen", "relation": "matches"},
+                {"source": "q:parse", "target": "item:adjacent", "relation": "matches"},
+                {"source": "q:parse", "target": "item:far", "relation": "matches"},
+                {"source": "owner:cli", "target": "item:seen", "relation": "contains"},
+                {"source": "owner:cli", "target": "item:adjacent", "relation": "contains"},
+                {"source": "owner:cli", "target": "item:far", "relation": "contains"},
+            ],
+        }
+    )
+    result = rank_frontier(
+        graph,
+        profile="owner-query",
+        seeds=["q:parse", "owner:cli"],
+        seen_selectors=["src/cli.py:10:20"],
+    )
+    compact = render_compact(result)
+    packet = result_to_packet(result)
+
+    assert "item:seen" not in packet["rank"]
+    assert "item:adjacent" not in packet["rank"]
+    assert "item:far" in packet["rank"]
+    assert "src/cli.py:10:20" not in compact
+    assert "src/cli.py:18:26" not in compact
+    assert packet["algorithmMetrics"]["readMemorySuppressedCount"] == 2
+    assert "seen-selector" in packet["avoid"]
     assert list(schema_validator_for(_GRAPH_TURBO_SCHEMA).iter_errors(packet)) == []

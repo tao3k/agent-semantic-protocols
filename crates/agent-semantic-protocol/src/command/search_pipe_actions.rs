@@ -217,6 +217,7 @@ fn action_nodes(request: &SearchPipeActionRequest<'_>, scope_arg: &str) -> Vec<A
 }
 
 fn query_code_action(request: &SearchPipeActionRequest<'_>, action: &PipeAction) -> ActionNode {
+    let selector = query_code_selector(action);
     let workspace_arg = action_root_arg(
         action,
         request.project_root,
@@ -226,18 +227,30 @@ fn query_code_action(request: &SearchPipeActionRequest<'_>, action: &PipeAction)
     let command = format!(
         "asp {language} query --selector {selector} --workspace {workspace_arg} --code",
         language = request.language_id,
-        selector = shell_arg(&action.selector),
+        selector = shell_arg(&selector),
     );
     ActionNode {
         id: String::new(),
         kind: "query-code".to_string(),
         body: format!(
             "selector={},owner={},symbol={}",
-            action.selector, action.owner, action.symbol
+            selector, action.owner, action.symbol
         ),
         suffix: "terminal-code".to_string(),
         command: Some(command),
     }
+}
+
+fn query_code_selector(action: &PipeAction) -> String {
+    if action.source_alias.starts_with('I')
+        && let Some((path, start, end)) = selector_parts(&action.selector)
+        && start == end
+    {
+        let context_start = start.saturating_sub(8).max(1);
+        let context_end = end + 12;
+        return format!("{path}:{context_start}:{context_end}");
+    }
+    action.selector.clone()
 }
 
 fn rg_query(quality: &SearchPipeQuality, compact: Option<&str>) -> Option<String> {
@@ -491,6 +504,14 @@ fn selector_path(selector: &str) -> Option<&str> {
     let _start = parts.next()?;
     let path = parts.next()?;
     (!path.is_empty()).then_some(path)
+}
+
+fn selector_parts(selector: &str) -> Option<(&str, usize, usize)> {
+    let mut parts = selector.rsplitn(3, ':');
+    let end = parts.next()?.parse::<usize>().ok()?;
+    let start = parts.next()?.parse::<usize>().ok()?;
+    let path = parts.next()?;
+    (!path.is_empty() && start <= end).then_some((path, start, end))
 }
 
 fn display_project_root_arg(project_root: &Path) -> String {

@@ -1,5 +1,6 @@
 //! Candidate collection for ASP-owned cheap search frontiers.
 
+use std::collections::HashSet;
 use std::fs;
 use std::io::{self, IsTerminal, Read};
 use std::path::{Path, PathBuf};
@@ -66,6 +67,7 @@ pub(super) fn collect_candidates(
     let mut remaining = PIPE_CANDIDATE_LINE_LIMIT;
     let per_term_limit = per_term_candidate_limit(terms.len());
     let mut term_counts = vec![0usize; terms.len()];
+    let mut seen = HashSet::new();
     let mut collector = CandidateCollector {
         locator_root,
         extensions,
@@ -74,8 +76,15 @@ pub(super) fn collect_candidates(
         term_counts: &mut term_counts,
         candidates: &mut candidates,
         remaining: &mut remaining,
+        seen: &mut seen,
         config,
     };
+    for root in &roots {
+        if collector.is_done() {
+            break;
+        }
+        collector.append_path_candidates(root)?;
+    }
     for root in roots {
         if collector.is_done() {
             break;
@@ -171,12 +180,65 @@ struct CandidateCollector<'a> {
     term_counts: &'a mut [usize],
     candidates: &'a mut Vec<Candidate>,
     remaining: &'a mut usize,
+    seen: &'a mut HashSet<String>,
     config: &'a AspConfig,
 }
 
 impl CandidateCollector<'_> {
     fn is_done(&self) -> bool {
         *self.remaining == 0
+    }
+
+    fn append_path_candidates(&mut self, root: &Path) -> Result<(), String> {
+        if self.is_done() || !root.exists() {
+            return Ok(());
+        }
+        let metadata = fs::metadata(root).map_err(|error| {
+            format!(
+                "failed to inspect search pipe root {}: {error}",
+                root.display()
+            )
+        })?;
+        if metadata.is_file() {
+            self.append_path_candidate(root);
+            return Ok(());
+        }
+        let mut entries = fs::read_dir(root)
+            .map_err(|error| {
+                format!(
+                    "failed to read search pipe root {}: {error}",
+                    root.display()
+                )
+            })?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| {
+                format!(
+                    "failed to read search pipe entry under {}: {error}",
+                    root.display()
+                )
+            })?;
+        entries.sort_by_key(|entry| path_search_priority(&entry.path(), self.terms));
+        for entry in entries {
+            if self.is_done() {
+                break;
+            }
+            let path = entry.path();
+            let file_type = entry.file_type().map_err(|error| {
+                format!(
+                    "failed to inspect search pipe path {}: {error}",
+                    path.display()
+                )
+            })?;
+            if file_type.is_dir() {
+                if should_skip_dir(&path, self.config) {
+                    continue;
+                }
+                self.append_path_candidates(&path)?;
+            } else if file_type.is_file() {
+                self.append_path_candidate(&path);
+            }
+        }
+        Ok(())
     }
 
     fn append_candidates(&mut self, root: &Path) -> Result<(), String> {
@@ -257,9 +319,10 @@ impl CandidateCollector<'_> {
             ) else {
                 continue;
             };
-            self.term_counts[term_index] += 1;
-            *self.remaining -= 1;
-            self.candidates.push(candidate);
+            if self.push_candidate(candidate) {
+                self.term_counts[term_index] += 1;
+                *self.remaining -= 1;
+            }
         }
         Ok(())
     }
@@ -276,16 +339,30 @@ impl CandidateCollector<'_> {
         }) else {
             return;
         };
-        self.term_counts[term_index] += 1;
-        *self.remaining -= 1;
-        self.candidates.push(Candidate {
+        let candidate = Candidate {
             path: display.clone(),
             line: 1,
             symbol: term.clone(),
             text: display,
             source: "finder-path".to_string(),
             confidence: "path-exact".to_string(),
-        });
+        };
+        if self.push_candidate(candidate) {
+            self.term_counts[term_index] += 1;
+            *self.remaining -= 1;
+        }
+    }
+
+    fn push_candidate(&mut self, candidate: Candidate) -> bool {
+        let key = format!(
+            "{}:{}:{}:{}",
+            candidate.path, candidate.line, candidate.symbol, candidate.source
+        );
+        if !self.seen.insert(key) {
+            return false;
+        }
+        self.candidates.push(candidate);
+        true
     }
 }
 

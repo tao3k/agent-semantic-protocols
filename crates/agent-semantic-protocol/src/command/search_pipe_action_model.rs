@@ -6,4 +6,5 @@ pub(super) struct PipeAction {
     pub(super) owner: String,
     pub(super) selector: String,
     pub(super) symbol: String,
+    pub(super) source_alias: String,
 }

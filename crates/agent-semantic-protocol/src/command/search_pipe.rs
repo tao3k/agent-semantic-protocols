@@ -249,6 +249,8 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
         read_memory_selectors: &read_loop_memory_selectors(
             context.cache_home,
             context.project_root,
+            context.locator_root,
+            &pipe_args.scopes,
         ),
         frontier_receipt: context.frontier_receipt,
     })?;

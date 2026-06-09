@@ -8,9 +8,9 @@ from collections.abc import Mapping
 from .model import Node, TypedGraph
 from .query_token_balance import query_tokens_for_node
 
-SEMANTIC_FACT_KINDS = frozenset({"type"})
-SEMANTIC_FACT_RELATIONS = {"type": "has_type"}
-PROTECTED_FACT_KINDS = frozenset({"collection", "type"})
+SEMANTIC_FACT_KINDS = frozenset({"collection", "field", "type"})
+SEMANTIC_FACT_RELATIONS = {"collection": "collection_of", "type": "has_type"}
+PROTECTED_FACT_KINDS = frozenset({"collection", "field", "type"})
 
 
 def repair_semantic_fact_coverage(

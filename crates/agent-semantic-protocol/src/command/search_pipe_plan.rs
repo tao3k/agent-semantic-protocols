@@ -8,7 +8,7 @@ use super::search_pipe_actions::{
     SearchPipeActionRequest, render_action_frontier, sanitize_evidence_line,
 };
 use super::search_pipe_model::Candidate;
-use super::search_pipe_quality::analyze_search_pipe_quality;
+use super::search_pipe_quality::{SearchPipeQuality, analyze_search_pipe_quality};
 use super::search_query_wrapper_candidates::fd_query_preview;
 
 pub(super) struct SearchPipePlanRequest<'a> {
@@ -32,6 +32,13 @@ pub(super) fn render_search_pipe_plan(request: SearchPipePlanRequest<'_>) -> Str
         ranked_compact,
     } = request;
     let mut quality = analyze_search_pipe_quality(language_id, query, candidates);
+    let projected_selector_actions = rank_projected_selector_actions(
+        query,
+        &quality,
+        ranked_compact
+            .map(concrete_pipe_actions_from_compact)
+            .unwrap_or_default(),
+    );
     if quality.query_pack_quality != "low"
         && quality.package_cohesion != "low"
         && ranked_compact
@@ -40,7 +47,12 @@ pub(super) fn render_search_pipe_plan(request: SearchPipePlanRequest<'_>) -> Str
     {
         quality.allow_query_selector = true;
     }
-    let actions = if quality.allow_query_selector {
+    if !projected_selector_actions.is_empty() {
+        quality.allow_query_selector = true;
+    }
+    let actions = if !projected_selector_actions.is_empty() {
+        projected_selector_actions
+    } else if quality.allow_query_selector {
         concrete_pipe_actions(candidates, ranked_compact)
     } else {
         Vec::new()
@@ -90,6 +102,83 @@ fn compact_has_provider_semantic_answer(query: &str, compact: &str) -> bool {
         && (compact.contains("collection:") || compact.contains("type:"))
 }
 
+fn rank_projected_selector_actions(
+    query: &str,
+    quality: &SearchPipeQuality,
+    mut actions: Vec<PipeAction>,
+) -> Vec<PipeAction> {
+    if actions.len() <= 1 {
+        return actions;
+    }
+    let structural_query = query_requests_structural_fact(query);
+    actions.sort_by_key(|action| {
+        (
+            -selector_action_score(action, quality, structural_query),
+            action.index,
+        )
+    });
+    for (index, action) in actions.iter_mut().enumerate() {
+        action.index = index + 1;
+    }
+    actions
+}
+
+fn selector_action_score(
+    action: &PipeAction,
+    quality: &SearchPipeQuality,
+    structural_query: bool,
+) -> i32 {
+    let mut score = 0;
+    if quality
+        .page_index_handles
+        .iter()
+        .any(|handle| handle == &action.owner)
+    {
+        score += 120;
+    }
+    if let Some(prefix) = package_prefix(&action.owner) {
+        let package_votes = quality
+            .page_index_handles
+            .iter()
+            .filter(|handle| package_prefix(handle).as_deref() == Some(prefix.as_str()))
+            .count() as i32;
+        score += package_votes * 30;
+    }
+    if action.owner.contains("/src/") {
+        score += 20;
+    }
+    if action.owner.contains("/test/") || action.owner.contains("/tests/") {
+        score -= 40;
+    }
+    if !structural_query && fact_source_alias(&action.source_alias) {
+        score -= 100;
+    }
+    score
+}
+
+fn query_requests_structural_fact(query: &str) -> bool {
+    query
+        .split(|character: char| !(character == '_' || character.is_ascii_alphanumeric()))
+        .map(str::to_ascii_lowercase)
+        .any(|term| {
+            matches!(
+                term.as_str(),
+                "field" | "fields" | "type" | "types" | "collection" | "collections"
+            )
+        })
+}
+
+fn fact_source_alias(alias: &str) -> bool {
+    alias.starts_with('F') || alias.starts_with('Y') || alias.starts_with('C')
+}
+
+fn package_prefix(path: &str) -> Option<String> {
+    let mut parts = path.split('/');
+    let root = parts.next()?;
+    let package = parts.next()?;
+    (root == "packages" && !package.is_empty()).then(|| format!("{root}/{package}"))
+}
+
 fn concrete_pipe_actions(
     candidates: &[Candidate],
     ranked_compact: Option<&str>,
@@ -116,6 +205,7 @@ fn concrete_pipe_actions_from_candidates(candidates: &[Candidate]) -> Vec<PipeAc
             owner: candidate.path.clone(),
             selector,
             symbol: candidate.symbol.clone(),
+            source_alias: String::new(),
         });
         if actions.len() >= 3 {
             break;
@@ -125,11 +215,27 @@ fn concrete_pipe_actions_from_candidates(candidates: &[Candidate]) -> Vec<PipeAc
 }
 
 fn concrete_pipe_actions_from_compact(compact: &str) -> Vec<PipeAction> {
-    let projected = concrete_pipe_actions_from_projected_frontier(compact);
+    let mut projected = concrete_pipe_actions_from_projected_frontier(compact);
+    let ranked_actions = concrete_pipe_actions_from_ranked_compact(compact);
     if !projected.is_empty() {
-        return projected;
+        let mut selectors = projected
+            .iter()
+            .map(|action| action.selector.clone())
+            .collect::<HashSet<_>>();
+        for action in ranked_actions {
+            if selectors.insert(action.selector.clone()) {
+                projected.push(action);
+            }
+        }
+        for (index, action) in projected.iter_mut().enumerate() {
+            action.index = index + 1;
+        }
+        return projected.into_iter().take(8).collect();
     }
+    ranked_actions
+}
 
+fn concrete_pipe_actions_from_ranked_compact(compact: &str) -> Vec<PipeAction> {
     let mut nodes = HashMap::new();
     let mut rank = Vec::new();
     for line in compact.lines() {
@@ -247,11 +353,15 @@ fn parse_selector_action(value: &str) -> Option<PipeAction> {
     let symbol = action_field(fields, "symbol")
         .unwrap_or("match")
         .to_string();
+    let source_alias = action_field(fields, "source")
+        .unwrap_or_default()
+        .to_string();
     Some(PipeAction {
         index,
         owner,
         selector,
         symbol,
+        source_alias,
     })
 }
 
@@ -284,6 +394,7 @@ fn pipe_action_from_node_segment(segment: &str) -> Option<(String, PipeAction)> 
             owner,
             selector,
             symbol,
+            source_alias: alias.to_string(),
         },
     ))
 }

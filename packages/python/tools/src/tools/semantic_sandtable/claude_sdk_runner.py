@@ -60,6 +60,7 @@ async def _run(args: argparse.Namespace) -> int:
         disallowed_tools=args.disallowed_tools or [],
         include_partial_messages=args.include_partial_messages,
         extra_args=_extra_args(args),
+        env=_claude_env(args),
         can_use_tool=asp_permission,
         max_turns=args.max_turns,
     )
@@ -125,6 +126,13 @@ def _permission_mode(args: argparse.Namespace) -> str | None:
     if args.require_asp_bash_commands:
         return "bypassPermissions"
     return None
+
+
+def _claude_env(args: argparse.Namespace) -> dict[str, str]:
+    env: dict[str, str] = {}
+    if args.max_asp_bash_commands is not None:
+        env["ASP_HOOK_MAX_ASP_COMMANDS"] = str(args.max_asp_bash_commands)
+    return env
 
 
 def _settings_path(settings: str | None, claude_cwd: str) -> str | None:

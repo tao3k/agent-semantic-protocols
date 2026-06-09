@@ -13,6 +13,7 @@ use std::{
 use super::registry;
 
 mod after_pipe;
+mod budget;
 
 #[test]
 fn stop_hook_blocks_prime_only_flow_until_search_pipe_runs() {

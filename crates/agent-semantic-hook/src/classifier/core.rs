@@ -13,9 +13,9 @@ use super::source_access_routes::{
     direct_read_language_ids, direct_read_routes,
 };
 use crate::event_state::{
-    AspSearchCommandStage, asp_query_code_or_direct_read_command,
+    AspSearchCommandStage, asp_command, asp_query_code_or_direct_read_command,
     asp_query_direct_source_read_command, asp_search_stage, missing_search_pipe_after_prime,
-    prompt_search_flow_after_prime,
+    prompt_asp_command_count, prompt_search_flow_after_prime,
 };
 use crate::{
     ActivatedProvider, ClientHookConfig, DecisionKind, DecisionRoute, DecisionRouteKind,
@@ -422,6 +422,17 @@ fn classify_prompt_search_flow_feedback(
         payload_string(payload, "session_id").or_else(|| payload_string(payload, "sessionId"));
     let transcript_path = payload_string(payload, "transcript_path")
         .or_else(|| payload_string(payload, "transcriptPath"));
+    if let Some(decision) = classify_prompt_asp_command_budget(
+        registry,
+        platform,
+        event,
+        action,
+        command,
+        session_id.as_deref(),
+        transcript_path.as_deref(),
+    ) {
+        return Some(decision);
+    }
     let feedback = prompt_search_flow_after_prime(
         std::path::Path::new(&registry.project_root),
         session_id.as_deref(),
@@ -481,6 +492,79 @@ fn classify_prompt_search_flow_feedback(
         ));
     }
     None
+}
+
+fn classify_prompt_asp_command_budget(
+    registry: &HookRuntime,
+    platform: &str,
+    event: &str,
+    action: &ToolAction,
+    command: &str,
+    session_id: Option<&str>,
+    transcript_path: Option<&str>,
+) -> Option<HookDecision> {
+    let max_commands = prompt_asp_command_budget()?;
+    if !asp_command(command) {
+        return None;
+    }
+    let command_count = prompt_asp_command_count(
+        std::path::Path::new(&registry.project_root),
+        session_id,
+        transcript_path,
+    )
+    .ok()?;
+    if command_count < max_commands {
+        return None;
+    }
+    let mut fields = std::collections::BTreeMap::new();
+    fields.insert(
+        "hookFeedback".to_string(),
+        Value::String("asp-command-budget-exhausted".to_string()),
+    );
+    fields.insert(
+        "aspCommandCount".to_string(),
+        Value::Number(serde_json::Number::from(command_count)),
+    );
+    fields.insert(
+        "maxAspCommands".to_string(),
+        Value::Number(serde_json::Number::from(max_commands)),
+    );
+    Some(HookDecision {
+        schema_id: HOOK_DECISION_SCHEMA_ID,
+        schema_version: HOOK_DECISION_SCHEMA_VERSION,
+        protocol_id: HOOK_PROTOCOL_ID,
+        protocol_version: HOOK_PROTOCOL_VERSION,
+        platform: platform.to_string(),
+        event: event.to_string(),
+        decision: DecisionKind::Deny,
+        reason_kind: ReasonKind::None,
+        language_ids: Vec::new(),
+        subject: subject_for_action(action),
+        routes: Vec::new(),
+        message: asp_command_budget_message(command_count, max_commands),
+        fields,
+    })
+}
+
+fn prompt_asp_command_budget() -> Option<usize> {
+    std::env::var("ASP_HOOK_MAX_ASP_COMMANDS")
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        .filter(|value| *value > 0)
+}
+
+fn asp_command_budget_message(command_count: usize, max_commands: usize) -> String {
+    [
+        format!(
+            "ASP hook denied ASP command budget exhaustion: {command_count}/{max_commands} commands already completed."
+        ),
+        "Answer from the existing ASP frontier, recommendedNext, nextCommand, owner, locator, and output metadata instead of running more commands.".to_string(),
+        String::new(),
+        "## Rules".to_string(),
+        "Do not run more ASP commands in this prompt after the budget is exhausted.".to_string(),
+        "Do not switch to raw shell reads; use the evidence already returned by ASP.".to_string(),
+    ]
+    .join("\n")
 }
 
 fn search_flow_feedback_decision(

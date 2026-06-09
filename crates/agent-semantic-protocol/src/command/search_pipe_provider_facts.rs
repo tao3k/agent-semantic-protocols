@@ -62,9 +62,25 @@ pub(super) fn collect_provider_graph_facts(
 }
 
 fn provider_graph_facts_from_stdout(stdout: &[u8]) -> Result<ProviderGraphFacts, String> {
-    let Ok(value) = serde_json::from_slice::<Value>(stdout) else {
+    let Some(value) = provider_graph_facts_json(stdout) else {
         return Ok(ProviderGraphFacts::default());
     };
+    Ok(provider_graph_facts_from_value(value))
+}
+
+fn provider_graph_facts_json(stdout: &[u8]) -> Option<Value> {
+    if let Ok(value) = serde_json::from_slice::<Value>(stdout) {
+        return Some(value);
+    }
+    let start = stdout.iter().position(|byte| *byte == b'{')?;
+    let end = stdout.iter().rposition(|byte| *byte == b'}')?;
+    if end <= start {
+        return None;
+    }
+    serde_json::from_slice::<Value>(&stdout[start..=end]).ok()
+}
+
+fn provider_graph_facts_from_value(value: Value) -> ProviderGraphFacts {
     let nodes = value
         .get("nodes")
         .and_then(Value::as_array)
@@ -75,7 +91,7 @@ fn provider_graph_facts_from_stdout(stdout: &[u8]) -> Result<ProviderGraphFacts,
         .and_then(Value::as_array)
         .cloned()
         .unwrap_or_default();
-    Ok(ProviderGraphFacts { nodes, edges })
+    ProviderGraphFacts { nodes, edges }
 }
 
 fn candidate_stdin(project_root: &Path, candidates: &[Candidate]) -> Vec<u8> {

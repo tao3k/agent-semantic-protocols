@@ -12,6 +12,7 @@ from tools.semantic_sandtable.claude_sdk_permissions import (
 )
 from tools.semantic_sandtable.claude_sdk_runner import (
     _budget_exhausted_payload,
+    _claude_env,
     _emit_final_output,
     _extra_args,
     _permission_mode,
@@ -47,6 +48,13 @@ def test_require_asp_bash_defaults_to_bypass_permission_mode() -> None:
         )
         is None
     )
+
+
+def test_max_asp_bash_commands_projects_hook_budget_env() -> None:
+    assert _claude_env(Namespace(max_asp_bash_commands=3)) == {
+        "ASP_HOOK_MAX_ASP_COMMANDS": "3"
+    }
+    assert _claude_env(Namespace(max_asp_bash_commands=None)) == {}
 
 
 def test_text_output_projects_assistant_text_blocks_only() -> None:
