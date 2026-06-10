@@ -46,8 +46,6 @@ pub(super) fn typescript_provider() -> ActivatedProvider {
                 "asp",
                 "typescript",
                 "query",
-                "--from-hook",
-                "direct-source-read",
                 "--selector",
                 "{selector}",
                 "{termArgs}",

@@ -29,7 +29,9 @@ def test_pipe_flow_records_asp_tool_result_output_bytes() -> None:
                     {
                         "type": "tool_result",
                         "tool_use_id": "toolu_1",
-                        "content": [{"type": "text", "text": "frontier\nnextCommand\n"}],
+                        "content": [
+                            {"type": "text", "text": "frontier\nnextCommand\n"}
+                        ],
                     }
                 ]
             },
@@ -96,6 +98,7 @@ def test_pipe_flow_records_claude_sdk_dataclass_block_shape() -> None:
             "precision": {},
             "failurePrecision": {},
             "failureMemory": {},
+            "outputPreview": "[search-prime] rank=O",
         }
     ]
 
@@ -232,12 +235,16 @@ def test_pipe_flow_records_frontier_follow_and_context_utilization() -> None:
             "content": [
                 {
                     "id": "call_2",
-                    "input": {"command": "asp rust query --selector src/lib.rs:1:3 --code ."},
+                    "input": {
+                        "command": "asp rust query --selector src/lib.rs:1:3 --code ."
+                    },
                     "name": "Bash",
                 },
                 {
                     "id": "call_3",
-                    "input": {"command": "asp rust query --selector src/lib.rs:40:50 --code ."},
+                    "input": {
+                        "command": "asp rust query --selector src/lib.rs:40:50 --code ."
+                    },
                     "name": "Bash",
                 },
             ],

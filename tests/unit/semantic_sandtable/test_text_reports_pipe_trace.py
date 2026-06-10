@@ -71,6 +71,7 @@ def test_text_report_prints_pipe_commands_and_output_records(capsys) -> None:
 
     output = capsys.readouterr().out
     assert "|pipeFlow step=claude-effect asp=3 search=2 query=1" in output
+    assert "directReadBounded=0 directReadRisk=0" in output
     assert "|pipeCommands step=claude-effect" in output
     assert 'C2="asp typescript search pipe' in output
     assert "|pipeOutput step=claude-effect R1 bytes=514 lines=9 denied=false" in output

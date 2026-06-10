@@ -171,6 +171,15 @@ fn command_method(argv: &[String]) -> String {
         return format!("search/{}", surface.unwrap_or("unknown"));
     }
     if argv.iter().any(|arg| arg == "query") {
+        if command_is_direct_source_read(argv) {
+            return "query/direct-source-read".to_string();
+        }
+        if command_is_tree_sitter_query(argv) {
+            return "query/tree-sitter".to_string();
+        }
+        if command_is_selector_code_query(argv) {
+            return "query/code".to_string();
+        }
         return "query".to_string();
     }
     "command/unknown".to_string()
@@ -192,6 +201,13 @@ fn command_target(argv: &[String]) -> String {
 }
 
 fn command_query(argv: &[String]) -> String {
+    if command_is_tree_sitter_query(argv) {
+        return option_value(argv, "--treesitter-query")
+            .or_else(|| option_value(argv, "--tree-sitter-query"))
+            .or_else(|| option_value(argv, "--query-catalog"))
+            .unwrap_or("")
+            .to_string();
+    }
     let Some(search_index) = argv.iter().position(|arg| arg == "search") else {
         return String::new();
     };
@@ -203,6 +219,22 @@ fn command_query(argv: &[String]) -> String {
     } else {
         String::new()
     }
+}
+
+fn command_is_direct_source_read(argv: &[String]) -> bool {
+    argv.iter().any(|arg| arg == "--from-hook")
+        && argv.iter().any(|arg| arg == "direct-source-read")
+}
+
+fn command_is_tree_sitter_query(argv: &[String]) -> bool {
+    option_value(argv, "--treesitter-query")
+        .or_else(|| option_value(argv, "--tree-sitter-query"))
+        .or_else(|| option_value(argv, "--query-catalog"))
+        .is_some()
+}
+
+fn command_is_selector_code_query(argv: &[String]) -> bool {
+    option_value(argv, "--selector").is_some() && argv.iter().any(|arg| arg == "--code")
 }
 
 fn command_surface(argv: &[String], start: usize) -> (Option<&str>, usize) {
@@ -237,10 +269,23 @@ fn command_option_has_value(option: &str) -> bool {
             | "--package"
             | "--query"
             | "--query-set"
+            | "--query-catalog"
             | "--seeds"
             | "--selector"
+            | "--tree-sitter-query"
+            | "--treesitter-query"
             | "--view"
     )
+}
+
+fn option_value<'a>(argv: &'a [String], option: &str) -> Option<&'a str> {
+    argv.windows(2).find_map(|window| {
+        if window[0] == option {
+            Some(window[1].as_str())
+        } else {
+            None
+        }
+    })
 }
 
 fn current_timestamp_ms() -> i64 {

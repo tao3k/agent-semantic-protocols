@@ -13,9 +13,9 @@ use super::source_access_routes::{
     direct_read_language_ids, direct_read_routes,
 };
 use crate::event_state::{
-    AspSearchCommandStage, asp_command, asp_query_code_or_direct_read_command,
-    asp_query_direct_source_read_command, asp_search_stage, missing_search_pipe_after_prime,
-    prompt_asp_command_count, prompt_search_flow_after_prime,
+    AspDirectSourceReadShape, AspSearchCommandStage, asp_command,
+    asp_query_code_or_direct_read_command, asp_query_direct_source_read_shape, asp_search_stage,
+    missing_search_pipe_after_prime, prompt_asp_command_count, prompt_search_flow_after_prime,
 };
 use crate::{
     ActivatedProvider, ClientHookConfig, DecisionKind, DecisionRoute, DecisionRouteKind,
@@ -23,6 +23,8 @@ use crate::{
     HOOK_PROTOCOL_VERSION, HookDecision, HookRuntime, OperationIntent, ReasonKind, ToolAction,
     collect_source_selector_matches, collect_tool_actions, payload_string, subject_for_action,
 };
+
+const LOW_PRIORITY_DIRECT_SOURCE_READ_MAX_LINES: usize = 80;
 
 /// Named input for hook classification with optional client policy config.
 pub struct HookClassificationRequest<'a> {
@@ -422,17 +424,6 @@ fn classify_prompt_search_flow_feedback(
         payload_string(payload, "session_id").or_else(|| payload_string(payload, "sessionId"));
     let transcript_path = payload_string(payload, "transcript_path")
         .or_else(|| payload_string(payload, "transcriptPath"));
-    if let Some(decision) = classify_prompt_asp_command_budget(
-        registry,
-        platform,
-        event,
-        action,
-        command,
-        session_id.as_deref(),
-        transcript_path.as_deref(),
-    ) {
-        return Some(decision);
-    }
     let feedback = prompt_search_flow_after_prime(
         std::path::Path::new(&registry.project_root),
         session_id.as_deref(),
@@ -481,15 +472,32 @@ fn classify_prompt_search_flow_feedback(
         }
         _ => {}
     }
-    if asp_query_direct_source_read_command(command) {
-        return Some(search_flow_feedback_decision(
-            platform,
-            event,
-            action,
-            &feedback.language_id,
-            "direct-source-read-after-pipe",
-            "ASP hook denied manual `direct-source-read` after `search pipe`.",
-        ));
+    if let Some(shape) = asp_query_direct_source_read_shape(command) {
+        match shape {
+            AspDirectSourceReadShape::Bounded { line_span }
+                if line_span <= LOW_PRIORITY_DIRECT_SOURCE_READ_MAX_LINES => {}
+            _ => {
+                return Some(search_flow_feedback_decision(
+                    platform,
+                    event,
+                    action,
+                    &feedback.language_id,
+                    "direct-source-read-after-pipe",
+                    "ASP hook denied broad manual `direct-source-read` after `search pipe`.",
+                ));
+            }
+        }
+    }
+    if let Some(decision) = classify_prompt_asp_command_budget(
+        registry,
+        platform,
+        event,
+        action,
+        command,
+        session_id.as_deref(),
+        transcript_path.as_deref(),
+    ) {
+        return Some(decision);
     }
     None
 }
@@ -624,7 +632,7 @@ fn search_flow_feedback_message(language_id: &str, feedback_kind: &str, heading:
         .join("\n"),
         "direct-source-read-after-pipe" => [
             heading.to_string(),
-            "`--from-hook direct-source-read` is hook recovery only, not a public query path."
+            "`--from-hook direct-source-read` is a low-priority exact-window fallback, not the first code extraction path."
                 .to_string(),
             String::new(),
             "## Run Next".to_string(),
@@ -633,9 +641,8 @@ fn search_flow_feedback_message(language_id: &str, feedback_kind: &str, heading:
             ),
             String::new(),
             "## Rules".to_string(),
-            "Use direct-source-read only when the hook just emitted that exact recovery route."
-                .to_string(),
-            "After `search pipe`, follow locator/frontier commands and extract code with ordinary `query --selector --code`."
+            format!("A direct-source-read fallback is allowed only after `search pipe` when the selector is an exact bounded range of {LOW_PRIORITY_DIRECT_SOURCE_READ_MAX_LINES} lines or fewer."),
+            "For file-wide or broad ranges, follow locator/frontier commands and extract code with ordinary `query --selector --code` or a read-plan frontier."
                 .to_string(),
         ]
         .join("\n"),
@@ -815,7 +822,7 @@ fn classify_apply_patch_paths(
         .collect::<Vec<_>>()
         .join("; ");
     let message = format!(
-        "source apply_patch denied; handwritten source hunks are not a supported workflow for protected source. Locator route: {route_guide}. Treat path-only locator output as a frontier/read-plan, not patch preimage; only stdout from `asp {language} query --from-hook direct-source-read --selector <path:start:end> --workspace {project_root} --code` is byte-preserving exact source for patch context. Build semantic-ast-patch.json with `asp ast-patch template --language {language} --owner <owner-path> --read <path:start:end> --op <operation> --field <key=value> {project_root}`; verify with `asp {language} ast-patch dry-run --packet semantic-ast-patch.json {project_root}`; apply with provider-native `asp {language} ast-patch apply --packet semantic-ast-patch.json {project_root}` when the receipt reports mutationSource=provider-native. Codex text patching is only a codex-text-fallback or controlled maintenance policy path, not the normal AST patch route."
+        "source apply_patch denied; handwritten source hunks are not a supported workflow for protected source. Locator route: {route_guide}. Treat path-only locator output as a frontier/read-plan, not patch preimage; exact patch context must come from normal selector/code stdout: `asp {language} query --selector <path:start:end> --workspace {project_root} --code`. Build semantic-ast-patch.json with `asp ast-patch template --language {language} --owner <owner-path> --read <path:start:end> --op <operation> --field <key=value> {project_root}`; verify with `asp {language} ast-patch dry-run --packet semantic-ast-patch.json {project_root}`; apply with provider-native `asp {language} ast-patch apply --packet semantic-ast-patch.json {project_root}` when the receipt reports mutationSource=provider-native. Codex text patching is only a codex-text-fallback or controlled maintenance policy path, not the normal AST patch route."
     );
     Some(deny_for_action(
         platform,

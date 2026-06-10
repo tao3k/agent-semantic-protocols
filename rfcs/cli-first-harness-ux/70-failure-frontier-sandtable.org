@@ -19,7 +19,7 @@ uv run --project packages/python/tools --frozen python -m tools.semantic_sandtab
 The comparison succeeds only when all of these are true:
 
 - candidate command count is lower by at least =minCommandReduction=
-- candidate =direct-source-read --code= count is within budget
+- candidate selector-code count is within budget
 - candidate selectors have no duplicates
 - candidate selectors do not fan out repeated windows in the same file
 - every expected hot block is covered by a candidate direct-read selector or a

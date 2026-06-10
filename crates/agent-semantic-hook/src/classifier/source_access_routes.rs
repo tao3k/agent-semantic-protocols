@@ -1,9 +1,9 @@
 //! Source-access, direct-read, and raw-search classifier routes.
 
 use crate::command::{
-    CommandIntent, command_intent, contains_ingest_pipe, direct_source_query_route,
-    looks_like_command_transcript, path_like_tokens, raw_search_plan, search_query_route,
-    search_query_route_for_selector,
+    CommandIntent, command_intent, contains_ingest_pipe, looks_like_command_transcript,
+    path_like_tokens, raw_search_plan, search_query_route, search_query_route_for_selector,
+    selector_query_route,
 };
 use crate::{
     ActivatedProvider, DecisionRoute, DecisionRouteKind, HookDecision, HookRuntime,
@@ -366,7 +366,7 @@ fn direct_read_route(
     selector_kind: SourceSelectorKind,
 ) -> DecisionRoute {
     match selector_kind {
-        SourceSelectorKind::ExactPath => direct_source_query_route(provider, path),
+        SourceSelectorKind::ExactPath => selector_query_route(provider, path),
         SourceSelectorKind::Pattern => {
             let route_context = provider.route_path_context(path);
             search_query_route_for_selector(

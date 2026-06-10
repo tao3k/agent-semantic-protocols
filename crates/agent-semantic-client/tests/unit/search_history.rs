@@ -33,6 +33,10 @@ fn search_history_backfills_artifacts_and_passes_rust_sqlite_events() {
     {
       "argv": ["rs-harness", "query", "--from-hook", "direct-source-read", "--selector", "src/lib.rs:1-10", "--code"],
       "languageId": "rust"
+    },
+    {
+      "argv": ["rs-harness", "query", "--selector", "src/main.rs:20-24", "--workspace", ".", "--code"],
+      "languageId": "rust"
     }
   ]
 }"#,
@@ -130,6 +134,14 @@ fn search_history_backfills_artifacts_and_passes_rust_sqlite_events() {
             event.artifact_path == "prompt-output/rust-query-direct-source-read-abc123.command.json"
                 && event.method == "query/direct-source-read"
                 && event.target == "src/lib.rs:1-10"
+        }),
+        "{events:?}"
+    );
+    assert!(
+        events.iter().any(|event| {
+            event.artifact_path == "prompt-output/rust-query-direct-source-read-abc123.command.json"
+                && event.method == "query/code"
+                && event.target == "src/main.rs:20-24"
         }),
         "{events:?}"
     );

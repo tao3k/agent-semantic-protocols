@@ -77,10 +77,9 @@ routes. =query --term <term> --view metadata= returns a bounded document
 metadata frontier. Adding =--content= to an explicit =--selector=, =--term=,
 =--kind=, or =--field= query changes stdout to the pure content of the matched
 document elements; it is still query output and must not become a whole-file
-read. Source-preserved document reads use
-=query --from-hook direct-source-read --selector <path-or-range>= and must not
-be combined with =--content=. =--code= remains reserved for source-language
-providers.
+read. Document text recovery uses =query --selector <path-or-range> --content=
+and stays a filtered element-content projection, not a whole-file read.
+=--code= remains reserved for source-language providers.
 
 =guide= and =query guide= for document languages must expose the parser-owned
 query vocabulary, not just command names.  The prompt-facing guide should
@@ -116,9 +115,9 @@ Document query no-hit output is still a protocol surface.  A query with
 =hit=0= must not stop at a count-only receipt.  It must state that combined
 terms/kinds/fields are an intersection, then return bounded next actions such
 as =search fzf= for one term, a single-term =query --term= retry, =query guide=,
-and the selector requirement for =direct-source-read=.  These rows are
+and the selector requirement for =query --selector ... --content=.  These rows are
 agent-facing recovery guidance; they must not include raw source snippets or
-pretend that =direct-source-read= can run without a selector.
+pretend that document recovery can run without a selector.
 
 Document facts are a navigation element map, not a full document AST dump.
 The shared packet keeps language-neutral element categories in =kind= and
@@ -252,7 +251,7 @@ contract for JSON output through the language facade:
 asp julia query src/CliExample.jl --term run --json languages/JuliaLangProjectHarness.jl
 #+end_src
 
-For an exact =direct-source-read= selector with =--code=, the provider should
+For an exact selector-code query with =--code=, the provider should
 return a bounded source-preserved local window for that path/range, not owner
 metadata and not compact projection text.  The selector already carries the
 path/range, so =--code= must not repeat =line= or =endLine= metadata or return
@@ -269,8 +268,7 @@ artifacts.
 workspace root for source-language query/code commands.  =--code= is a boolean
 output selector and must never consume or be followed by a project root.  The
 stale shape =query ... --code .= or =query ... --code <root>= is invalid for
-owner item queries, tree-sitter syntax-code queries, direct-source-read exact
-reads, and =search owner ... items --query ... --code=.  A selector query
+owner item queries, tree-sitter syntax-code queries, selector-code exact reads, and =search owner ... items --query ... --code=.  A selector query
 without =--workspace= resolves against the invocation workspace, selector
 absolute path, or provider-owned workspace inference.
 
@@ -326,7 +324,7 @@ and encourages follow-up raw reads.  That is a protocol bug, not a user
 preference.
 
 The language provider must make that bounded selector useful.  A query such as
-=asp <language> query --from-hook direct-source-read --selector src/lib.rs:10:20 --workspace <workspace-root> --code=
+=asp <language> query --selector src/lib.rs:10:20 --workspace <workspace-root> --code=
 should return the exact bounded source window for that range, not whole-owner
 item names and not a lossy ancestor projection.  Ranges inside an inline module,
 impl, function, or other containing item must preserve the selected source
@@ -581,7 +579,7 @@ code.  The agent should not have to choose among these layers blindly; provider
 certainty, item size, and token budget decide the projection.  =--code= is the
 explicit override after the agent has selected the item to read.
 
-Python direct-source-read queries with an exact file selector plus terms use the
+Python selector queries with an exact file selector plus terms use the
 same parser compact projection as owner item queries.  They must not render a
 second ad-hoc truncated source snippet for matched functions.  Small matched
 items return =save-token-ruff= rows backed by =projection.nodes[]=,
@@ -653,7 +651,7 @@ The durable plan is:
 3. /Keep projection bidirectional./  Every hot node that affects editing must
    carry a stable =id=, =parentId= when nested, an exact =read= locator, and an
    executable =expandAction= whose =--selector= equals that exact locator.
-   Direct-source-read selectors with line ranges must return the bounded parser
+   Selector-code queries with line ranges must return the bounded parser
    item or source window, not owner top-items.
 
 4. /Add capability tests by language feature./  After the baseline snapshot,
@@ -873,7 +871,7 @@ the provider's local index, the provider may return =next=ingest:<query>= and
 the agent must route external candidates through =search ingest=.
 
 Hook wildcard direct-read recovery uses the =query= surface as the wrapper
-entrypoint, not raw =search fzf=.  When =--from-hook direct-source-read= carries
+entrypoint, not raw =search fzf=.  When =query --selector= carries
 a broad selector and a code-shaped term such as =ClientReceipt {=, the provider
 must normalize syntax delimiters out of the lexical fallback term set before
 rendering a compact frontier.  The delimiter remains provider-owned query
@@ -1057,11 +1055,13 @@ or accept the retired search-query hook form as a compatibility alias; keeping b
 forms creates route drift and breaks guide-quality replay.
 
 When the selector is one exact project-relative source path and the agent has no
-reliable item query yet, top-level =query --from-hook direct-source-read
---selector <path>= without =--code= may return owner =items= context directly.  This is still
-parser-owned compact context, not source rendering: it lists item names, line
-ranges, read locators, and owner/test frontiers so the next step can be a precise
-item query or focused edit.
+reliable item query yet, top-level =query --selector <path> --workspace
+<workspace-root>= without =--code= may return owner =items= context directly.
+This is still parser-owned compact context, not source rendering: it lists item
+names, line ranges, read locators, and owner/test frontiers so the next step can
+be a precise item query or focused edit.  The =--from-hook direct-source-read=
+form remains available only as a low-priority bounded fallback after parser-owned
+frontier evidence has selected the exact small window.
 
 Rust adds Cargo-native views under the same search namespace:
 
@@ -1309,9 +1309,11 @@ tools: for example, a Rust =PreToolUse= denial for =Read=, =cat=, =sed=, or
 =asp rust guide .= as the main progressive tool map, with =asp rust search guide
 .=, =asp rust query guide .=, and =asp rust query guide treesitter .= listed
 only as specialized reference guides when that decision is needed.
-The concrete recovery route remains
-=asp rust query --from-hook direct-source-read ...= when the hook has an exact
-selector.
+The concrete recovery route is the normal selector/code surface:
+=asp rust query --selector <path-or-range> --workspace <workspace-root> --code=.
+=--from-hook direct-source-read= is reserved for low-priority exact-window
+fallbacks after parser-owned frontier evidence has already selected a bounded
+small range.
 
 The agent-prefixed guide spelling is retired for prompt-facing flows.
 Providers may keep compatibility aliases for old tests or manual debugging,
@@ -1451,7 +1453,7 @@ artifacts, SQLite cache ids, and receipts are debugging/integration surfaces
 and should not appear in the default guide output or non-JSON query output.
 =python -m tools tree-sitter validate search-read-plan-frontier-contract= is
 the package-local executable gate for this search/read-plan rule across Rust,
-TypeScript, and Python.  =python -m tools tree-sitter validate exact-direct-read-contract= is the paired gate for exact direct-source-read:
+TypeScript, and Python.  =python -m tools tree-sitter validate exact-direct-read-contract= is the paired gate for exact selector-code:
 non-=--code= output must be bounded =read-owner= source window or =read-plan=
 frontier protocol output, must keep code omitted and provide executable read locators, and =--code= output must be pure source text.  The repository runs the
 composite =python -m tools tree-sitter validate contracts= command from

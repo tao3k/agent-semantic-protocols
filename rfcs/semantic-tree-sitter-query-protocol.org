@@ -181,15 +181,28 @@ S-expression capture, the public workflow collapses back into manual range
 scanning.
 
 Provider guides, hook recovery text, and the installed =SKILL.md= must therefore
-present direct-source-read as a last-mile source-preserved transport after a
-parser-owned frontier has selected an exact locator.  Discovery should route
-through =search prime=, =search fzf=, =search owner ... items=, normal
-=query --names-only=, or =query --treesitter-query= locator/frontier output.
-Wide direct-source-read recovery should return read-plan or syntax frontier
-refs before any inline code.  The graph-turbo history audit must keep
-=query/direct-source-read= and =query/tree-sitter= as distinct action methods so
-future evidence can detect regressions directly instead of folding both into
-plain =query=.
+present normal =query --selector <path-or-range> --workspace <workspace-root>
+--code= as the last-mile source-preserved transport after a parser-owned
+frontier has selected an exact locator.  =--from-hook direct-source-read=
+remains a low-priority exact-window fallback, not the normal discovery or public
+recovery route: it is acceptable only after =search pipe= or equivalent
+parser-owned frontier output, with an exact bounded selector, and with a span
+small enough for the current policy threshold.  Discovery should route through
+=search prime=, =search fzf=, =search owner ... items=, normal =query
+--names-only=, or =query --treesitter-query= locator/frontier output.  Wide or
+unbounded source recovery should return read-plan or syntax frontier refs before
+any inline code.  The graph-turbo history audit must keep
+=query/direct-source-read=, =query/code=, and =query/tree-sitter= as distinct
+action methods so future evidence can detect regressions directly instead of
+folding them into plain =query=.
+
+The initial exact-window threshold is history-derived, not aesthetic.  The local
+artifact audit over 1,033 cached =direct-source-read= prompt outputs showed a
+median window of 76 lines, p75 of 158 lines, p90 of 243 lines, 487 outputs over
+80 lines, 251 over 160 lines, and 108 over 240 lines.  The first policy
+therefore allows bounded fallback windows of 80 lines or fewer after parser-owned
+frontier evidence, while treating wider reads as read-plan/frontier work.  This
+threshold is hook policy and receipt feedback, not part of the syntax ABI.
 
 * Next projection layers
 

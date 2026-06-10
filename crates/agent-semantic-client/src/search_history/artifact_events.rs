@@ -350,6 +350,9 @@ fn command_method(argv: &[String]) -> String {
         if command_is_tree_sitter_query(argv) {
             return "query/tree-sitter".to_string();
         }
+        if command_is_selector_code_query(argv) {
+            return "query/code".to_string();
+        }
         return "query".to_string();
     }
     "command/unknown".to_string()
@@ -396,6 +399,10 @@ fn command_query(argv: &[String]) -> String {
 fn command_is_direct_source_read(argv: &[String]) -> bool {
     argv.iter().any(|arg| arg == "--from-hook")
         && argv.iter().any(|arg| arg == "direct-source-read")
+}
+
+fn command_is_selector_code_query(argv: &[String]) -> bool {
+    option_value(argv, "--selector").is_some() && argv.iter().any(|arg| arg == "--code")
 }
 
 fn command_is_tree_sitter_query(argv: &[String]) -> bool {

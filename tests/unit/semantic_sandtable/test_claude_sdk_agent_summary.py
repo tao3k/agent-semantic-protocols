@@ -198,7 +198,46 @@ def test_agent_summary_extracts_read_loop_risk_from_direct_code_reads() -> None:
     )
 
     assert summary["pipeFlow"]["directReadCommands"] == 5
+    assert summary["pipeFlow"]["directReadBoundedCommands"] == 5
+    assert summary["pipeFlow"]["directReadBroadCommands"] == 0
+    assert summary["pipeFlow"]["directReadUnboundedCommands"] == 0
+    assert summary["pipeFlow"]["directReadRiskCommands"] == 0
     assert summary["pipeFlow"]["readLoopDirectCodeCommands"] == 5
     assert summary["pipeFlow"]["readLoopDuplicateSelectors"] == 1
     assert summary["pipeFlow"]["readLoopAdjacentRangeWindows"] == 1
     assert summary["pipeFlow"]["readLoopSameOwnerScans"] == 2
+
+
+def test_agent_summary_classifies_broad_direct_reads_as_risk() -> None:
+    summary = summarize_agent_messages(
+        [
+            {
+                "type": "AssistantMessage",
+                "content": [
+                    {
+                        "name": "Bash",
+                        "input": {
+                            "command": (
+                                "asp rust query --from-hook direct-source-read "
+                                "--selector src/lib.rs:1:120 --code ."
+                            ),
+                        },
+                    },
+                    {
+                        "name": "Bash",
+                        "input": {
+                            "command": (
+                                "asp rust query --from-hook direct-source-read --code ."
+                            ),
+                        },
+                    },
+                ],
+            },
+        ]
+    )
+
+    assert summary["pipeFlow"]["directReadCommands"] == 2
+    assert summary["pipeFlow"]["directReadBoundedCommands"] == 0
+    assert summary["pipeFlow"]["directReadBroadCommands"] == 1
+    assert summary["pipeFlow"]["directReadUnboundedCommands"] == 1
+    assert summary["pipeFlow"]["directReadRiskCommands"] == 2

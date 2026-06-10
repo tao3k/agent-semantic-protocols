@@ -181,6 +181,22 @@
         "type": "integer",
         "minimum": 0
       },
+      "directReadBoundedCommands": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "directReadBroadCommands": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "directReadUnboundedCommands": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "directReadRiskCommands": {
+        "type": "integer",
+        "minimum": 0
+      },
       "repeatedCommands": {
         "type": "integer",
         "minimum": 0

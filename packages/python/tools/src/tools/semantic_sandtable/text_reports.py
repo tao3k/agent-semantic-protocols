@@ -106,6 +106,8 @@ def _print_step_observations(step: StepResult) -> None:
         f"search={optional_int(pipe_flow.get('searchCommands')) or 0} "
         f"query={optional_int(pipe_flow.get('queryCommands')) or 0} "
         f"directRead={optional_int(pipe_flow.get('directReadCommands')) or 0} "
+        f"directReadBounded={optional_int(pipe_flow.get('directReadBoundedCommands')) or 0} "
+        f"directReadRisk={optional_int(pipe_flow.get('directReadRiskCommands')) or 0} "
         f"repeated={optional_int(pipe_flow.get('repeatedCommands')) or 0} "
         f"complex={str(bool(pipe_flow.get('complexPipeFlow'))).lower()} "
         f"missing={quote_value(','.join(str(item) for item in missing) or '-')}"

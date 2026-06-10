@@ -127,7 +127,7 @@ The Python harness now exposes the same CLI-first protocol lane:
 - Transitional Codex hooks deny direct Python source reads, including shell
   content readers such as =sed ... file.py= and tool-native =Read= calls, with
   =reasonKind=direct-source-read= plus a concrete public hook route
-  =asp python query --from-hook direct-source-read --selector <path> --code .=.
+  =asp python query --selector <path> --workspace <workspace-root> --code=.
 - A provider registry emitted by =py-harness agent doctor --json=
 - Python-local capability schema:
   =schemas/python-semantic-capabilities.v1.schema.json=

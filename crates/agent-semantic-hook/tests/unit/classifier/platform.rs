@@ -59,7 +59,7 @@ fn platform_response_wraps_denied_decision_for_codex_hooks() {
     );
     assert!(
         system_message.contains(
-            "asp typescript query --from-hook direct-source-read --selector src/cli/agent-hooks.ts --workspace . --code"
+            "asp typescript query --selector src/cli/agent-hooks.ts --workspace . --code"
         ),
         "{system_message}"
     );

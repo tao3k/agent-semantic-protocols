@@ -50,9 +50,16 @@ fn query_export_method(args: &[String]) -> String {
         "query/direct-source-read".to_string()
     } else if has_tree_sitter_query(args) {
         "query/tree-sitter".to_string()
+    } else if is_selector_code_query(args) {
+        "query/code".to_string()
     } else {
         "query/owner-items".to_string()
     }
+}
+
+fn is_selector_code_query(args: &[String]) -> bool {
+    args.windows(2).any(|window| window[0] == "--selector")
+        && args.iter().any(|arg| arg == "--code")
 }
 
 pub(super) fn has_tree_sitter_query(args: &[String]) -> bool {

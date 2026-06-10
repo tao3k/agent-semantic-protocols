@@ -95,8 +95,6 @@ fn rtk_read_line_locator_routes_to_provider_query_with_range() {
             "asp",
             "rust",
             "query",
-            "--from-hook",
-            "direct-source-read",
             "--selector",
             "crates/agent-semantic-hook/src/lib.rs:10-20",
             "--workspace",
@@ -107,7 +105,7 @@ fn rtk_read_line_locator_routes_to_provider_query_with_range() {
 }
 
 #[test]
-fn rtk_read_whole_source_file_routes_to_direct_source_read() {
+fn rtk_read_whole_source_file_routes_to_selector_code_query() {
     let decision = classify_hook(
         &polyglot_registry(),
         "codex",
@@ -126,8 +124,6 @@ fn rtk_read_whole_source_file_routes_to_direct_source_read() {
             "asp",
             "rust",
             "query",
-            "--from-hook",
-            "direct-source-read",
             "--selector",
             "crates/agent-semantic-hook/src/lib.rs",
             "--workspace",
@@ -138,7 +134,7 @@ fn rtk_read_whole_source_file_routes_to_direct_source_read() {
 }
 
 #[test]
-fn document_direct_read_uses_from_hook_without_content_flag() {
+fn document_direct_read_routes_to_selector_content_query() {
     let decision = classify_hook(
         &document_registry(),
         "codex",
@@ -157,22 +153,24 @@ fn document_direct_read_uses_from_hook_without_content_flag() {
             "asp",
             "md",
             "query",
-            "--from-hook",
-            "direct-source-read",
             "--selector",
             "README.md:1-4",
+            "--content",
             "."
         ]
     );
     assert!(
-        !decision.routes[0].argv.iter().any(|arg| arg == "--content"),
+        !decision.routes[0]
+            .argv
+            .windows(2)
+            .any(|pair| pair[0] == "--from-hook" && pair[1] == "direct-source-read"),
         "{:?}",
         decision.routes[0].argv
     );
     assert!(
         decision
             .message
-            .contains("Do not combine `--content` with `--from-hook direct-source-read`"),
+            .contains("Document recovery routes use `query --selector --content`"),
         "{}",
         decision.message
     );
@@ -212,8 +210,6 @@ fn rtk_read_source_globs_route_to_provider_query_not_owner() {
             "asp",
             "python",
             "query",
-            "--from-hook",
-            "direct-source-read",
             "--selector",
             "packages/*/src/**/*.py",
             "--surface",

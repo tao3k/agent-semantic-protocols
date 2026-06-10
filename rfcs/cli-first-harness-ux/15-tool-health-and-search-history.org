@@ -168,7 +168,7 @@ Suggested commands should prefer existing high-signal surfaces:
 - =search owner <owner> items --query a|b|c --view seeds= for owner-local
   parser-visible item discovery;
 - =query <owner> --term <symbol> --names-only= before code extraction;
-- =query --from-hook direct-source-read --selector <exact-range> --code= only
+- =query --selector <exact-range> --workspace <workspace-root> --code= only
   after an exact selector exists.
 
 Suggest is intentionally separate from =search pipe=.  =search suggest= can use

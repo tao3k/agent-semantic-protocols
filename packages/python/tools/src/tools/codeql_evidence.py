@@ -20,8 +20,14 @@ def emit_codeql_evidence(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--generated-at")
     args = parser.parse_args(argv)
 
-    version_payload = _run_codeql_json(["version", "--format=json"])
-    languages_payload = _run_codeql_json(["resolve", "languages", "--format=json"])
+    cli_error = None
+    try:
+        version_payload = _run_codeql_json(["version", "--format=json"])
+        languages_payload = _run_codeql_json(["resolve", "languages", "--format=json"])
+    except CodeqlCliUnavailable as error:
+        cli_error = str(error)
+        version_payload = {"version": "unavailable", "sha": "unavailable"}
+        languages_payload = {}
     evidence = _build_evidence(
         language_id=args.language_id,
         provider_id=args.provider_id,
@@ -30,20 +36,34 @@ def emit_codeql_evidence(argv: Sequence[str] | None = None) -> int:
         generated_at=args.generated_at or _utc_now(),
         version_payload=version_payload,
         languages_payload=languages_payload,
+        cli_error=cli_error,
     )
     sys.stdout.write(json.dumps(evidence, sort_keys=True, separators=(",", ":")) + "\n")
     return 0
 
 
+class CodeqlCliUnavailable(RuntimeError):
+    """Raised when CodeQL CLI metadata cannot be collected locally."""
+
+
 def _run_codeql_json(args: list[str]) -> Any:
-    completed = subprocess.run(
-        ["codeql", *args],
-        check=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
-    return json.loads(completed.stdout)
+    try:
+        completed = subprocess.run(
+            ["codeql", *args],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+    except FileNotFoundError as error:
+        raise CodeqlCliUnavailable("CodeQL CLI is not installed") from error
+    except subprocess.CalledProcessError as error:
+        detail = (error.stderr or error.stdout or str(error)).strip()
+        raise CodeqlCliUnavailable(f"CodeQL CLI command failed: {detail}") from error
+    try:
+        return json.loads(completed.stdout)
+    except json.JSONDecodeError as error:
+        raise CodeqlCliUnavailable("CodeQL CLI returned non-JSON metadata") from error
 
 
 def _build_evidence(
@@ -55,6 +75,7 @@ def _build_evidence(
     generated_at: str,
     version_payload: dict[str, Any],
     languages_payload: dict[str, Any],
+    cli_error: str | None,
 ) -> dict[str, Any]:
     visible_languages = sorted(str(language) for language in languages_payload)
     language_paths = languages_payload.get(codeql_language, [])
@@ -67,6 +88,7 @@ def _build_evidence(
             "codeqlLanguage": codeql_language,
             "codeqlSha": codeql_sha,
             "codeqlVersion": codeql_version,
+            "codeqlCliAvailable": cli_error is None,
             "languageAvailable": language_available,
             "visibleLanguages": visible_languages,
         }
@@ -93,6 +115,7 @@ def _build_evidence(
             "generatedFrom": "codeql resolve languages --format=json",
             "fields": {
                 "codeqlVersion": codeql_version,
+                "codeqlCliAvailable": cli_error is None,
                 "languageAvailable": language_available,
             },
         },
@@ -103,8 +126,11 @@ def _build_evidence(
             "codeqlLanguage": codeql_language,
             "codeqlSha": codeql_sha,
             "codeqlVersion": codeql_version,
+            "codeqlCliAvailable": cli_error is None,
             "languageAvailable": language_available,
-            "languagePackCount": len(language_paths) if isinstance(language_paths, list) else 0,
+            "languagePackCount": len(language_paths)
+            if isinstance(language_paths, list)
+            else 0,
             "visibleLanguageCount": len(visible_languages),
             "visibleLanguages": visible_languages,
         },
@@ -119,6 +145,15 @@ def _build_evidence(
                     "languageAvailable": True,
                     "languagePackCount": len(language_paths),
                 },
+            }
+        )
+    elif cli_error:
+        evidence["omissions"].append(
+            {
+                "kind": "backend-unavailable",
+                "message": cli_error,
+                "target": "codeql:cli",
+                "fields": {"executionBackend": "codeql"},
             }
         )
     else:

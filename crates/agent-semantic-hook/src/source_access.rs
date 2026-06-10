@@ -1,6 +1,6 @@
 //! Codex-internal source access decision packet models.
 
-use crate::command::direct_source_query_route;
+use crate::command::selector_query_route;
 use crate::protocol::DecisionRoute;
 use crate::protocol_activation::HookRuntime;
 use crate::source_selector::collect_source_selector_matches;
@@ -489,7 +489,7 @@ pub fn codex_fs_read_file_decision(
     })
     .into_iter()
     .next()?;
-    let route = direct_source_query_route(matched.provider, path);
+    let route = selector_query_route(matched.provider, path);
     Some(SourceAccessDecision::hard_fs_deny(
         SourceAccessHardFsDenyInput {
             language_id: route.language_id,
@@ -514,7 +514,7 @@ pub fn codex_shell_egress_suppression_decision(
     })
     .into_iter()
     .next()?;
-    let route = direct_source_query_route(matched.provider, path);
+    let route = selector_query_route(matched.provider, path);
     Some(SourceAccessDecision::shell_egress_suppressed(
         SourceAccessShellEgressSuppressedInput {
             language_id: route.language_id,

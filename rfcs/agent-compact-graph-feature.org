@@ -1190,8 +1190,7 @@ Completed:
   cache_generation_hit_from_row=, covering =|test= rows, and the existing
   bounded owner graph =|synthesis= line.
 - [X] Artifact timeline method normalization now treats command receipt argv
-  options as modifiers rather than methods.  Hook recovery commands such as
-  =query --from-hook direct-source-read --selector ...= collapse to =query=,
+  options as modifiers rather than methods.  Audited low-priority hook fallback commands such as =query --from-hook direct-source-read --selector ...= normalize to =query/direct-source-read=, ordinary selector-code commands normalize to =query/code=,
   and search modifiers such as =search --view seeds owner ...= still resolve to
   =search/owner=.  This removes pseudo-methods like =query/--from-hook=,
   =query/--selector=, and =search/--view= from fanout and mixed-profile

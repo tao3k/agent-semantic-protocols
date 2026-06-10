@@ -24,7 +24,7 @@ pub(crate) fn search_query_route(
     search_fzf_route_for_selector(provider, &selector, ".", terms)
 }
 
-pub(crate) fn direct_source_query_route(provider: &ActivatedProvider, path: &str) -> DecisionRoute {
+pub(crate) fn selector_query_route(provider: &ActivatedProvider, path: &str) -> DecisionRoute {
     let route_context = provider.route_path_context(path);
     if is_document_provider(provider) {
         return DecisionRoute {
@@ -34,10 +34,9 @@ pub(crate) fn direct_source_query_route(provider: &ActivatedProvider, path: &str
             kind: DecisionRouteKind::Query,
             argv: provider.agent_facade_argv([
                 "query",
-                "--from-hook",
-                "direct-source-read",
                 "--selector",
                 route_context.selector.as_str(),
+                "--content",
                 route_context.project_root.as_str(),
             ]),
             stdin_mode: None,
@@ -45,8 +44,6 @@ pub(crate) fn direct_source_query_route(provider: &ActivatedProvider, path: &str
     }
     let args = vec![
         "query".to_string(),
-        "--from-hook".to_string(),
-        "direct-source-read".to_string(),
         "--selector".to_string(),
         route_context.selector,
         "--workspace".to_string(),

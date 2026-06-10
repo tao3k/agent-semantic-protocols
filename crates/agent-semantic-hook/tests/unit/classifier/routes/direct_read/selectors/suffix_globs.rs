@@ -43,8 +43,6 @@ fn structured_direct_read_globs_are_matched_by_suffix_not_project_shape() {
                 "asp",
                 language_id,
                 "query",
-                "--from-hook",
-                "direct-source-read",
                 "--selector",
                 selector,
                 "--surface",
@@ -85,8 +83,6 @@ fn structured_direct_read_brace_glob_routes_to_all_matching_providers() {
             "asp",
             "rust",
             "query",
-            "--from-hook",
-            "direct-source-read",
             "--selector",
             "*.{rs,py}",
             "--surface",
@@ -102,8 +98,6 @@ fn structured_direct_read_brace_glob_routes_to_all_matching_providers() {
             "asp",
             "python",
             "query",
-            "--from-hook",
-            "direct-source-read",
             "--selector",
             "*.{rs,py}",
             "--surface",
@@ -122,11 +116,13 @@ fn structured_direct_read_brace_glob_routes_to_all_matching_providers() {
     assert!(decision.message.contains("## ASP Hook Recovery"));
     assert!(decision.message.contains("`asp rust guide .`"));
     assert!(decision.message.contains("`asp python guide .`"));
+    assert!(
+        decision.message.contains(
+            "asp rust query --selector '*.{rs,py}' --surface 'owners,tests' --view seeds ."
+        )
+    );
     assert!(decision.message.contains(
-        "asp rust query --from-hook direct-source-read --selector '*.{rs,py}' --surface 'owners,tests' --view seeds ."
-    ));
-    assert!(decision.message.contains(
-        "asp python query --from-hook direct-source-read --selector '*.{rs,py}' --surface 'owners,tests' --view seeds ."
+        "asp python query --selector '*.{rs,py}' --surface 'owners,tests' --view seeds ."
     ));
     assert!(!decision.message.contains("|run-next"));
 }

@@ -269,8 +269,6 @@ pub(super) fn typescript_provider() -> ActivatedProvider {
                 "asp",
                 "typescript",
                 "query",
-                "--from-hook",
-                "direct-source-read",
                 "--selector",
                 "{selector}",
                 "{termArgs}",
@@ -291,8 +289,6 @@ pub(super) fn rust_provider() -> ActivatedProvider {
             "asp",
             "rust",
             "query",
-            "--from-hook",
-            "direct-source-read",
             "--selector",
             "{selector}",
             "{termArgs}",
@@ -304,14 +300,7 @@ pub(super) fn rust_provider() -> ActivatedProvider {
         ])),
     );
     routes.owner = command(&[
-        "asp",
-        "rust",
-        "query",
-        "--from-hook",
-        "direct-source-read",
-        "--selector",
-        "{path}",
-        ".",
+        "asp", "rust", "search", "owner", "{path}", "items", "--view", "seeds", ".",
     ]);
     routes.ingest = command_with_stdin(
         &[
@@ -339,8 +328,6 @@ pub(super) fn python_provider() -> ActivatedProvider {
             "asp",
             "python",
             "query",
-            "--from-hook",
-            "direct-source-read",
             "--selector",
             "{selector}",
             "{termArgs}",

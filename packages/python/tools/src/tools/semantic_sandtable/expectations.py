@@ -160,6 +160,10 @@ def _validate_pipe_flow_max(
         "maxQueryCommands": "queryCommands",
         "maxGuideCommands": "guideCommands",
         "maxDirectReadCommands": "directReadCommands",
+        "maxDirectReadBoundedCommands": "directReadBoundedCommands",
+        "maxDirectReadBroadCommands": "directReadBroadCommands",
+        "maxDirectReadUnboundedCommands": "directReadUnboundedCommands",
+        "maxDirectReadRiskCommands": "directReadRiskCommands",
         "maxRepeatedCommands": "repeatedCommands",
         "maxSearchPipeCommands": "searchPipeCommands",
         "maxSearchPrimeCommands": "searchPrimeCommands",
@@ -401,7 +405,9 @@ def _validate_agent_token_budget_warnings(
             continue
         observed = optional_int(token_cost.get(field_name))
         if observed is None:
-            result.warnings.append(f"tokenCost {field_name} missing for {threshold_name}")
+            result.warnings.append(
+                f"tokenCost {field_name} missing for {threshold_name}"
+            )
             continue
         warn_if_over(
             result,

@@ -730,10 +730,11 @@ this stage is metadata discovery such as =git status --short= or
 Blocking decisions must include the next safe route, not only a denial.  The
 =routes= array is the machine-readable next-action source of truth.  For one
 exact project-relative source path, the hook should surface the owning
-provider's exact =query --from-hook direct-source-read= route instead of
-falling back to a generic guide pointer or source rendering.  For TypeScript,
-direct-source-read recovery therefore routes through the public =asp=
-language facade while preserving =providerId=ts-harness=:
+provider's exact =query --selector ... --workspace ... --code= route instead of
+falling back to a generic guide pointer, source rendering, or
+=--from-hook direct-source-read=.  For TypeScript, source-read recovery
+therefore routes through the public =asp= language facade while preserving
+=providerId=ts-harness=:
 
 #+begin_example
 direct-source-read denied; route: asp typescript query --from-hook direct-source-read --selector src/components/WorkflowExecution.tsx --code .
@@ -790,11 +791,14 @@ client hook config, the rendered flow must explicitly tell agents to use
 =apply_patch= and not route ordinary edits through provider =ast-patch=.
 
 The root hook must not maintain a parser/query engine.  Exact selected source
-paths route back to the owning provider's =query --from-hook
-direct-source-read= surface through =asp <language>=, while =providerId=
-records the native provider identity such as =rs-harness=, =ts-harness=, or
-=py-harness=.  Hook routes must not expose provider implementation binaries as
-the executable command surface.
+paths route back to the owning provider's normal =query --selector
+<path-or-range> --workspace <workspace-root> --code= surface through =asp
+<language>=, while =providerId= records the native provider identity such as
+=rs-harness=, =ts-harness=, or =py-harness=.  Hook routes must not expose
+provider implementation binaries as the executable command surface.
+=--from-hook direct-source-read= is reserved for audited low-priority exact
+windows after parser-owned search/frontier evidence, and must not be advertised
+as the normal direct-read recovery route for broad or unbounded source access.
 
 If a provider wants to return bounded source windows after that route, it may
 emit =semantic-read-packet.v1= from its =query/*= method with
@@ -923,7 +927,7 @@ when the following implementation gates pass:
    shapes: =path=, =file=, =absolutePath=, nested =resource.path=,
    =resources[].filePath=, and =file://= URI lists.  Each source match denies
    with =reasonKind=direct-source-read= and a route shaped as
-   =asp <language> query --from-hook direct-source-read --selector <path> --workspace <workspace-root> --code=.
+   =asp <language> query --selector <path> --workspace <workspace-root> --code=.
 10. Concurrent hook invocations cannot corrupt =events.jsonl=.  Unit tests must
     exercise overlapping appends, and a real-runtime smoke must prove that
     every event log line parses as JSON with
@@ -944,7 +948,7 @@ when the following implementation gates pass:
     agent-prefixed guide spelling or the old search-wrapper hook query
     spelling.  The accepted guide entrypoint is =asp <language> guide .=, its
     help surface is =asp <language> guide --help .=, and the accepted hook
-    recovery route is top-level =query --from-hook direct-source-read=.
+    recovery route is top-level =query --selector <path-or-range> --workspace <workspace-root> --code=.
 
 * Downstream Plan
 
@@ -973,7 +977,8 @@ when the following implementation gates pass:
    - replace any transitional provider-owned hook wrapper with =asp hook=, or
      keep only a thin compatibility wrapper that invokes =asp hook=;
    - deny direct Python source reads with =reasonKind=direct-source-read= and a
-     concrete =asp python query --from-hook direct-source-read --selector <path> --workspace <workspace-root> --code=
+     concrete =asp python query --selector <path> --workspace <workspace-root>
+  --code=
      route when the root runtime is installed;
    - continue moving shared classification into the root hook runtime behind
      =asp hook= for raw-search-to-ingest, edit-before-prime,

@@ -12,6 +12,7 @@ from .receipts import (
     receipt_command_output_mode,
     validate_receipt_consistency,
 )
+from .direct_read_shape import direct_source_read_shape
 from .trace_receipt_events import TraceCommandFilter, trace_commands_from_path
 from .utils import dict_value, optional_int
 
@@ -82,6 +83,12 @@ def _summary(commands: list[dict[str, Any]]) -> dict[str, int]:
         "searchCommands": _semantic_command_count(commands, verb="search"),
         "queryCommands": _semantic_command_count(commands, verb="query"),
         "directReadCommands": _direct_read_command_count(commands),
+        "directReadBoundedCommands": _direct_read_command_count(commands, "bounded"),
+        "directReadBroadCommands": _direct_read_command_count(commands, "broad"),
+        "directReadUnboundedCommands": _direct_read_command_count(
+            commands, "unbounded"
+        ),
+        "directReadRiskCommands": _direct_read_risk_command_count(commands),
         "repeatedCommands": _repeated_semantic_command_count(commands),
         "repeatedSearches": _repeated_semantic_command_count(commands, verb="search"),
         "jsonSearches": _search_output_mode_count(commands, "json"),
@@ -112,13 +119,22 @@ def _semantic_command_count(
     )
 
 
-def _direct_read_command_count(commands: list[dict[str, Any]]) -> int:
+def _direct_read_command_count(
+    commands: list[dict[str, Any]], shape: str | None = None
+) -> int:
     return sum(
         1
         for command in commands
         if _is_semantic_command(command)
         and "--from-hook" in _argv(command)
         and "direct-source-read" in _argv(command)
+        and (shape is None or direct_source_read_shape(_argv(command)) == shape)
+    )
+
+
+def _direct_read_risk_command_count(commands: list[dict[str, Any]]) -> int:
+    return _direct_read_command_count(commands, "broad") + _direct_read_command_count(
+        commands, "unbounded"
     )
 
 

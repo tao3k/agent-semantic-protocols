@@ -12,6 +12,7 @@ from .agent_observation_commands import (
 )
 from .agent_observation_frontier import frontier_context_metrics
 from .agent_observation_read_loop import read_loop_memory, read_loop_stats
+from .direct_read_shape import direct_source_read_shape
 
 
 def pipe_flow_from_messages(messages: list[dict[str, Any]]) -> dict[str, Any]:
@@ -48,6 +49,10 @@ def _initial_pipe_flow_stats(
         "checkCommands": 0,
         "guideCommands": 0,
         "directReadCommands": 0,
+        "directReadBoundedCommands": 0,
+        "directReadBroadCommands": 0,
+        "directReadUnboundedCommands": 0,
+        "directReadRiskCommands": 0,
         "searchPipeCommands": 0,
         "searchPrimeCommands": 0,
         "searchFzfCommands": 0,
@@ -247,6 +252,15 @@ def _classify_asp_command(command: str, stats: dict[str, Any]) -> None:
             stats["treesitterQueryCommands"] += 1
         if "direct-source-read" in args:
             stats["directReadCommands"] += 1
+            direct_read_shape = direct_source_read_shape(args)
+            if direct_read_shape == "bounded":
+                stats["directReadBoundedCommands"] += 1
+            elif direct_read_shape == "broad":
+                stats["directReadBroadCommands"] += 1
+                stats["directReadRiskCommands"] += 1
+            else:
+                stats["directReadUnboundedCommands"] += 1
+                stats["directReadRiskCommands"] += 1
     elif surface == "check":
         stats["checkCommands"] += 1
     elif surface == "guide":

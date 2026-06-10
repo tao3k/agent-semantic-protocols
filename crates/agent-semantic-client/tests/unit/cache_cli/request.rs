@@ -5,7 +5,10 @@ use agent_semantic_client_core::{
     ResolvedProvider,
 };
 
-use super::{exact_request_fingerprint, request_lookup_fingerprint, syntax_query_cache_provenance};
+use super::{
+    exact_request_fingerprint, request_export_method, request_lookup_fingerprint,
+    syntax_query_cache_provenance,
+};
 
 #[test]
 fn syntax_query_cache_provenance_records_compiled_abi_plan() {
@@ -112,6 +115,44 @@ fn tree_sitter_generation_probe_defers_to_ast_row_lookup() {
     assert_eq!(
         request_lookup_fingerprint(&provider, Path::new("."), &export_method, &request),
         None
+    );
+}
+
+#[test]
+fn selector_code_query_uses_code_export_method_not_direct_source_read() {
+    let request = ClientRequest::new(ClientMethod::Query, ".").with_forwarded_args(vec![
+        "--selector".to_string(),
+        "src/lib.rs:10:20".to_string(),
+        "--workspace".to_string(),
+        ".".to_string(),
+        "--code".to_string(),
+    ]);
+
+    assert_eq!(
+        request_export_method(&request)
+            .expect("export method")
+            .as_str(),
+        "query/code"
+    );
+}
+
+#[test]
+fn legacy_from_hook_direct_source_read_keeps_audit_method() {
+    let request = ClientRequest::new(ClientMethod::Query, ".").with_forwarded_args(vec![
+        "--from-hook".to_string(),
+        "direct-source-read".to_string(),
+        "--selector".to_string(),
+        "src/lib.rs:10:20".to_string(),
+        "--workspace".to_string(),
+        ".".to_string(),
+        "--code".to_string(),
+    ]);
+
+    assert_eq!(
+        request_export_method(&request)
+            .expect("export method")
+            .as_str(),
+        "query/direct-source-read"
     );
 }
 

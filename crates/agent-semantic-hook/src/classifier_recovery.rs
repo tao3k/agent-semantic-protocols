@@ -111,9 +111,8 @@ fn render_document_flow(lines: &mut Vec<String>, language_id: &str) {
             .to_string(),
     );
     lines.push(format!(
-        "5. For hook recovery source-preserved direct reads only, use `asp {language_id} query --from-hook direct-source-read --selector <path-or-range> .`."
+        "5. Extract matched document text with `asp {language_id} query --selector <path-or-range> --content .`."
     ));
-    lines.push("6. Do not combine `--content` with `--from-hook direct-source-read`.".to_string());
 }
 
 fn render_source_flow(
@@ -135,7 +134,7 @@ fn render_source_flow(
     ));
     lines.push("6. Select one exact locator from the frontier.".to_string());
     lines.push(format!(
-        "7. Extract pure code with `asp {language_id} query --selector <path-or-range> --treesitter-query '<narrow-pattern>' --workspace <workspace-root> --code`."
+        "7. Extract pure code with `asp {language_id} query --selector <path-or-range> --workspace <workspace-root> --code`."
     ));
     lines.push("8. Treat stdout from `query --code` as pure source code only.".to_string());
     if semantic_ast_patch_enabled {
@@ -158,10 +157,7 @@ fn render_rules(
     {
         lines.push("- Document query is parser-owned element metadata by default; `--content` is a filtered element-content projection, not a direct file read.".to_string());
         lines.push(
-            "- Direct source-preserved document reads use `--from-hook direct-source-read` after an exact selector is known.".to_string(),
-        );
-        lines.push(
-            "- Do not combine document `--content` with `--from-hook direct-source-read`."
+            "- Document recovery routes use `query --selector --content`, not direct source reads."
                 .to_string(),
         );
     }

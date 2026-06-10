@@ -70,7 +70,7 @@
           "frontier="
         ],
         "stdoutNotContains": [
-          "codeql-evidence",
+          "codeql-evidence/metadata",
           "databaseFingerprint",
           "databaseCacheStatus",
           "codeql database create",

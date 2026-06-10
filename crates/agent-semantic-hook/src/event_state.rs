@@ -351,23 +351,73 @@ pub(crate) fn asp_query_code_or_direct_read_command(command: &str) -> bool {
             .any(|pair| pair[0] == "--from-hook" && pair[1] == "direct-source-read")
 }
 
-/// Return true for manually-invoked hook recovery reads.
-pub(crate) fn asp_query_direct_source_read_command(command: &str) -> bool {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum AspDirectSourceReadShape {
+    Bounded { line_span: usize },
+    Unbounded,
+}
+
+pub(crate) fn asp_query_direct_source_read_shape(
+    command: &str,
+) -> Option<AspDirectSourceReadShape> {
     let tokens = semantic_shell_tokens(command);
-    let Some(asp_index) = asp_token_index(&tokens) else {
-        return false;
-    };
+    let asp_index = asp_token_index(&tokens)?;
     let after_asp = &tokens[asp_index + 1..];
     let query_tokens = if after_asp.first().map(String::as_str) == Some("query") {
         after_asp
     } else if after_asp.get(1).map(String::as_str) == Some("query") {
         &after_asp[1..]
     } else {
-        return false;
+        return None;
     };
-    query_tokens
+    if !query_tokens
         .windows(2)
         .any(|pair| pair[0] == "--from-hook" && pair[1] == "direct-source-read")
+    {
+        return None;
+    }
+    let Some(selector) = option_value(query_tokens, "--selector") else {
+        return Some(AspDirectSourceReadShape::Unbounded);
+    };
+    selector_line_span(selector)
+        .map(|line_span| AspDirectSourceReadShape::Bounded { line_span })
+        .or(Some(AspDirectSourceReadShape::Unbounded))
+}
+
+fn selector_line_span(selector: &str) -> Option<usize> {
+    parse_colon_line_span(selector).or_else(|| parse_dash_line_span(selector))
+}
+
+fn parse_colon_line_span(selector: &str) -> Option<usize> {
+    let (path_or_start, end_text) = selector.rsplit_once(':')?;
+    let end = end_text.parse::<usize>().ok()?;
+    let Some((_, start_text)) = path_or_start.rsplit_once(':') else {
+        return (end > 0).then_some(1);
+    };
+    let start = start_text.parse::<usize>().ok()?;
+    valid_line_span(start, end)
+}
+
+fn parse_dash_line_span(selector: &str) -> Option<usize> {
+    let (_, range_text) = selector.rsplit_once(':')?;
+    let (start_text, end_text) = range_text.split_once('-')?;
+    let start = start_text.parse::<usize>().ok()?;
+    let end = end_text.parse::<usize>().ok()?;
+    valid_line_span(start, end)
+}
+
+fn valid_line_span(start: usize, end: usize) -> Option<usize> {
+    (start > 0 && end >= start).then_some(end - start + 1)
+}
+
+fn option_value<'a>(args: &'a [String], option: &str) -> Option<&'a str> {
+    args.windows(2).find_map(|window| {
+        if window[0] == option {
+            Some(window[1].as_str())
+        } else {
+            None
+        }
+    })
 }
 
 /// Return true when a shell command invokes ASP.
