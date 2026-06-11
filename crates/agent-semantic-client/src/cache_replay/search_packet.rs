@@ -137,11 +137,11 @@ fn delegation_hint_line(hint: &Value) -> Option<String> {
         return None;
     }
     let profile = safe_token(string_field(hint, "profile")?)?;
-    let model_class = optional_safe_token(hint, "modelClass").unwrap_or("cheap");
+    let model_class = model_class_or_default(hint)?;
     let target_actions = safe_string_array(hint.get("targetActions")?, safe_action_token)?;
     let required_fields = safe_string_array(receipt.get("requiredFields")?, safe_token)?;
-    let max_commands = optional_u64(hint, "maxCommands").unwrap_or(8);
-    let max_turns = optional_u64(hint, "maxTurns").unwrap_or(1);
+    let max_commands = positive_u64_or_default(hint, "maxCommands", 8)?;
+    let max_turns = positive_u64_or_default(hint, "maxTurns", 1)?;
     let reason = safe_token(string_field(hint, "reason")?)?;
 
     Some(format!(
@@ -165,15 +165,26 @@ fn bool_field(value: &Value, field: &str) -> Option<bool> {
     value.get(field).and_then(Value::as_bool)
 }
 
-fn optional_u64(value: &Value, field: &str) -> Option<u64> {
-    value.get(field).and_then(Value::as_u64)
+fn model_class_or_default(value: &Value) -> Option<&str> {
+    match value.get("modelClass") {
+        None => Some("cheap"),
+        Some(Value::String(model_class))
+            if matches!(
+                model_class.as_str(),
+                "cheap" | "standard" | "strong" | "inherit" | "custom"
+            ) =>
+        {
+            Some(model_class)
+        }
+        Some(_) => None,
+    }
 }
 
-fn optional_safe_token<'a>(value: &'a Value, field: &str) -> Option<&'a str> {
-    value
-        .get(field)
-        .and_then(Value::as_str)
-        .and_then(safe_token)
+fn positive_u64_or_default(value: &Value, field: &str, default: u64) -> Option<u64> {
+    match value.get(field) {
+        None => Some(default),
+        Some(value) => value.as_u64().filter(|value| *value > 0),
+    }
 }
 
 fn safe_string_array(value: &Value, token_filter: fn(&str) -> Option<&str>) -> Option<Vec<String>> {

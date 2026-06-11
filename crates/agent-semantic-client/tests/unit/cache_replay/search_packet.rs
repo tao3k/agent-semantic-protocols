@@ -87,6 +87,33 @@ fn search_packet_replay_ignores_non_client_delegation_hints() {
     assert!(!rendered.contains("subagentHint="));
 }
 
+#[test]
+fn search_packet_replay_rejects_invalid_hint_limits() {
+    let output = frontier_output_without_hint();
+    let packet = json!({
+        "delegationHints": [{
+            "profile": "asp-explorer",
+            "decision": "advisory",
+            "runtimeOwner": "agent-client",
+            "modelClass": "expensive-model",
+            "readOnly": true,
+            "noCode": true,
+            "targetActions": ["A1.rg-query"],
+            "maxCommands": 0,
+            "reason": "query-selector-low-confidence",
+            "receipt": {
+                "kind": "search-subagent",
+                "requiredFields": ["role"]
+            }
+        }]
+    });
+
+    let rendered = output_with_delegation_hint_lines(output, packet.to_string().as_bytes());
+    let rendered = std::str::from_utf8(&rendered).expect("utf8 output");
+
+    assert!(!rendered.contains("subagentHint="));
+}
+
 fn frontier_output_without_hint() -> Bytes {
     Bytes::from_static(
         b"[search-pipe] q=delegation view=seeds alg=seed-frontier\n\
