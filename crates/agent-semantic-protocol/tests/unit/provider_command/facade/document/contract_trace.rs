@@ -25,6 +25,22 @@ fn org_facade_exposes_contract_trace_json_without_runtime_verdict() {
     );
     let packet: serde_json::Value =
         serde_json::from_slice(&output.stdout).expect("parse contract trace");
+    assert_eq!(
+        contract_trace_snapshot(&packet),
+        "\
+schemaVersion=1
+file=notes.org
+evaluations=1
+contractId=agent.evidence-link-task.v1
+scope=section title=Task A
+assertion=task.evidence-has-link severity=warning status=passed actualCount=1
+expectation=count operator=>= count=1
+matchedIds=1
+binding:evidence=1
+score=<absent>
+verdict=<absent>
+"
+    );
     let assertion = &packet["files"][0]["evaluations"][0]["assertions"][0];
     assert_eq!(packet["schemaVersion"], 1);
     assert_eq!(
@@ -109,4 +125,59 @@ fn target_source() -> &'static str {
 ** Evidence
 [[https://example.test][inside]]
 "#
+}
+
+fn contract_trace_snapshot(packet: &serde_json::Value) -> String {
+    let evaluation = &packet["files"][0]["evaluations"][0];
+    let assertion = &evaluation["assertions"][0];
+    let score = if packet.get("score").is_some() {
+        "<present>"
+    } else {
+        "<absent>"
+    };
+    let verdict = if packet.get("verdict").is_some() {
+        "<present>"
+    } else {
+        "<absent>"
+    };
+    format!(
+        "\
+schemaVersion={}
+file={}
+evaluations={}
+contractId={}
+scope={} title={}
+assertion={} severity={} status={} actualCount={}
+expectation={} operator={} count={}
+matchedIds={}
+binding:evidence={}
+score={}
+verdict={}
+",
+        packet["schemaVersion"],
+        packet["files"][0]["path"].as_str().unwrap_or_default(),
+        packet["files"][0]["evaluations"]
+            .as_array()
+            .map_or(0, Vec::len),
+        evaluation["contractId"].as_str().unwrap_or_default(),
+        evaluation["scope"]["kind"].as_str().unwrap_or_default(),
+        evaluation["scope"]["title"].as_str().unwrap_or_default(),
+        assertion["assertionId"].as_str().unwrap_or_default(),
+        assertion["severity"].as_str().unwrap_or_default(),
+        assertion["status"].as_str().unwrap_or_default(),
+        assertion["actualCount"],
+        assertion["expectation"]["kind"]
+            .as_str()
+            .unwrap_or_default(),
+        assertion["expectation"]["operator"]
+            .as_str()
+            .unwrap_or_default(),
+        assertion["expectation"]["count"],
+        assertion["matchedIds"].as_array().map_or(0, Vec::len),
+        assertion["bindings"]["evidence"]
+            .as_array()
+            .map_or(0, Vec::len),
+        score,
+        verdict,
+    )
 }

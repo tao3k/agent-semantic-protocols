@@ -64,6 +64,18 @@ fn org_facade_guide_explains_element_query_axes() {
         ),
         "{stdout}"
     );
+    assert!(
+        stdout.contains(
+            "|surface contract-trace purpose=contract-org-evaluation-trace output=json content=false"
+        ),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains(
+            "|cmd contract-trace=asp org contract trace --org-contract-registry <contract.org> <target.org>"
+        ),
+        "{stdout}"
+    );
 
     let query_output = asp_command(&root)
         .args(["org", "query", "guide", "."])
