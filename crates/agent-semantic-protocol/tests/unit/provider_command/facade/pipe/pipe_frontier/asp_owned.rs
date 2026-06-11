@@ -160,6 +160,72 @@ fn search_pipe_is_asp_owned_and_renders_generated_candidates_without_provider_sp
 }
 
 #[test]
+fn gerbil_search_pipe_recalls_source_and_config_files_without_provider_spawn() {
+    let root = temp_project_root("gerbil-search-pipe-config-recall");
+    let bin_dir = root.join(".bin");
+    let marker = root.join("provider-called");
+    std::fs::create_dir_all(root.join("src")).expect("create src");
+    std::fs::write(
+        root.join("gerbil.pkg"),
+        "(package: sample/local-alias)\n(export main)\n",
+    )
+    .expect("write gerbil package config");
+    std::fs::write(
+        root.join("build.ss"),
+        "(import :std/build-script)\n(defbuild-script main)\n",
+    )
+    .expect("write gerbil build config");
+    std::fs::write(
+        root.join("src/main.ss"),
+        "(package: sample/local-alias)\n(def (use-let-star)\n  (let* ((star-value \"ok\")\n         (star-alias star-value))\n    (needs-string star-alias)))\n",
+    )
+    .expect("write gerbil source");
+    write_marker_provider(&bin_dir, "gerbil-scheme-harness", &marker);
+    write_activation(&root, &[provider("gerbil-scheme", Vec::new())]);
+
+    let output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args([
+            "gerbil-scheme",
+            "search",
+            "pipe",
+            "gerbil.pkg build.ss local alias",
+            "--view",
+            "seeds",
+            ".",
+        ])
+        .output()
+        .expect("run asp gerbil-scheme search pipe");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    assert!(stdout.contains("lang=gerbil-scheme"), "{stdout}");
+    assert!(
+        stdout.contains("pageIndexHandles=gerbil.pkg,build.ss")
+            || stdout.contains("pageIndexHandles=build.ss,gerbil.pkg"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("src/main.ss"), "{stdout}");
+    assert!(stdout.contains("fdQuery=gerbil.pkg|build.ss"), "{stdout}");
+    assert!(
+        stdout.contains("recommendedNext=A1.fd-query")
+            || stdout.contains("recommendedNext=A2.fd-query"),
+        "{stdout}"
+    );
+    assert!(!stdout.contains("A1=query-code"), "{stdout}");
+    assert!(
+        !marker.exists(),
+        "search pipe config/source recall should not spawn provider"
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn search_pipe_reports_multi_clause_query_pack_coverage() {
     let root = temp_project_root("search-pipe-multi-clause");
     let bin_dir = root.join(".bin");
@@ -220,6 +286,84 @@ fn search_pipe_reports_multi_clause_query_pack_coverage() {
         stdout.contains("treeSitterHandles=exported-declarations:Fiber|Queue|Scope"),
         "{stdout}"
     );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn search_pipe_keeps_gerbil_package_terms_on_gerbil_candidates() {
+    let root = temp_project_root("search-pipe-gerbil-package-candidates");
+    let bin_dir = root.join(".bin");
+    let marker = root.join("provider-called");
+    std::fs::create_dir_all(root.join("src/extensions")).expect("create gerbil src");
+    std::fs::create_dir_all(root.join("analyzers/WendaoGraph.jl/src/reasoning/page_index"))
+        .expect("create distractor src");
+    std::fs::write(
+        root.join("gerbil.pkg"),
+        "(package: sample/app\n depend: (\"git.cons.io/mighty-gerbils/gerbil-poo\"))\n",
+    )
+    .expect("write gerbil package");
+    std::fs::write(
+        root.join("src/extensions/poo.ss"),
+        ";;; gxpkg required dependency extension facts for Poo\n(def poo-extension-active? #t)\n",
+    )
+    .expect("write gerbil source");
+    std::fs::write(
+        root.join("analyzers/WendaoGraph.jl/src/reasoning/page_index/actions.jl"),
+        "GitHub Actions matrix cache build restore key\n",
+    )
+    .expect("write distractor source");
+    write_marker_provider(&bin_dir, "gerbil-scheme-harness", &marker);
+    write_activation(&root, &[provider("gerbil-scheme", Vec::new())]);
+
+    let output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args([
+            "gerbil-scheme",
+            "search",
+            "pipe",
+            "GitHub Actions matrix gxpkg deps install gerbil.pkg Poo cache",
+            "--view",
+            "seeds",
+            ".",
+        ])
+        .output()
+        .expect("run asp gerbil-scheme search pipe");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    assert!(
+        stdout.starts_with("[search-pipe] lang=gerbil-scheme"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("gerbil.pkg"), "{stdout}");
+    assert!(stdout.contains("src/extensions/poo.ss"), "{stdout}");
+    assert!(
+        stdout.contains("globalCoverage=matched=gerbil.pkg,poo,gxpkg"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("recommendedNext=A1.fd-query"), "{stdout}");
+    assert!(
+        stdout.contains("nextCommand=asp fd -query gerbil.pkg ."),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("finderHandles=") && stdout.contains("poo"),
+        "{stdout}"
+    );
+    assert!(
+        !stdout.contains("analyzers/WendaoGraph.jl"),
+        "Gerbil package query drifted to unrelated owner:\n{stdout}"
+    );
+    assert!(
+        !stdout.contains("provider-called"),
+        "search pipe should stay ASP-owned:\n{stdout}"
+    );
+    assert!(!marker.exists(), "search pipe should not spawn provider");
     let _ = std::fs::remove_dir_all(root);
 }
 

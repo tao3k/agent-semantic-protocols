@@ -111,6 +111,7 @@ class SemanticSearchPacketGraphRuntimeSchemaTests(unittest.TestCase):
             {
                 "name": "poo",
                 "activation": "gerbil.pkg",
+                "dependencyMode": "required",
                 "packageManager": "gxpkg",
                 "package": "clan/poo",
                 "dependencies": ["git.cons.io/mighty-gerbils/gerbil-utils"],

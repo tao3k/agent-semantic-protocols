@@ -66,6 +66,14 @@ search pipe <question-or-feature-term> [--source auto|provider|finder|ingest] [-
 - =--source= never chooses output surfaces.  Prompt-facing surfaces such as
   selector, owner, tests, deps, failure evidence, and read-plan windows are
   selected by graph-turbo from the seed query and candidate shape.
+- Finder-backed =search pipe= candidates must use the active provider's source
+  extension and config-file facts as the language boundary.  Config files such
+  as =gerbil.pkg=, =Cargo.toml=, =package.json=, =pyproject.toml=, and
+  =Project.toml= are valid provider-owned candidates even when they do not have
+  ordinary source extensions.  A root-scope query that contains
+  language-specific package/config terms must not let unrelated language files
+  win only because broad natural terms such as =GitHub=, =Actions=, =matrix=,
+  or =cache= appear elsewhere in the repository.
 - =--view seeds= returns a =search-pipe= compact frontier with =query=,
   =queryPack=, typed =queryTerms=, =globalCoverage=, =pathCoverage=,
   =declarationCoverage=, =strongCoverage=, =symbolTextCoverage=,

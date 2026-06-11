@@ -161,6 +161,7 @@ struct OwnerQueryMatch {
     end: usize,
     kind: &'static str,
     term: String,
+    match_rank: u8,
 }
 
 fn find_owner_query_matches(path: &Path, query: &str) -> Vec<OwnerQueryMatch> {
@@ -174,13 +175,29 @@ fn find_owner_query_matches(path: &Path, query: &str) -> Vec<OwnerQueryMatch> {
         let Some(kind) = item_kind_for_line(path, line) else {
             continue;
         };
+        let symbol = item_symbol_for_line(path, line);
         let lower = byte_text::lowercase_lossy_string(line);
         for term in &terms {
-            if !lower.contains(&term.lower) {
+            if !lower.contains(&term.lower)
+                && !symbol
+                    .as_ref()
+                    .is_some_and(|symbol| symbol.to_lowercase().contains(&term.lower))
+            {
                 continue;
             }
+            let term_display = symbol.as_ref().unwrap_or(&term.display);
+            let match_rank = symbol
+                .as_ref()
+                .map(|symbol| {
+                    if symbol.to_lowercase().starts_with(&term.lower) {
+                        0
+                    } else {
+                        1
+                    }
+                })
+                .unwrap_or(0);
             if matches.iter().any(|item: &OwnerQueryMatch| {
-                item.start == index + 1 && item.term.eq_ignore_ascii_case(&term.display)
+                item.start == index + 1 && item.term.eq_ignore_ascii_case(term_display)
             }) {
                 continue;
             }
@@ -190,9 +207,11 @@ fn find_owner_query_matches(path: &Path, query: &str) -> Vec<OwnerQueryMatch> {
                 end: rust_block_end(path, &lines, index)
                     .or_else(|| python_block_end(path, &lines, index))
                     .or_else(|| typescript_block_end(path, &lines, index))
+                    .or_else(|| scheme_block_end(path, &lines, index))
                     .unwrap_or(start + 1),
                 kind,
-                term: term.display.clone(),
+                term: term_display.clone(),
+                match_rank,
             });
             if matches.len() >= 8 {
                 sort_owner_query_matches(&mut matches);
@@ -207,6 +226,7 @@ fn find_owner_query_matches(path: &Path, query: &str) -> Vec<OwnerQueryMatch> {
 fn sort_owner_query_matches(matches: &mut [OwnerQueryMatch]) {
     matches.sort_by_key(|item| {
         (
+            item.match_rank,
             item.end.saturating_sub(item.start),
             item_kind_priority(item.kind),
             item.start,
@@ -232,6 +252,14 @@ fn item_kind_for_line(path: &Path, line: &[u8]) -> Option<&'static str> {
         Some("ts" | "tsx" | "js" | "jsx" | "mts" | "cts" | "mjs" | "cjs") => {
             typescript_item_kind_for_line(&lower)
         }
+        Some("ss" | "ssi" | "scm" | "sld") => scheme_item_kind_for_line(&lower),
+        _ => None,
+    }
+}
+
+fn item_symbol_for_line(path: &Path, line: &[u8]) -> Option<String> {
+    match path.extension().and_then(|extension| extension.to_str()) {
+        Some("ss" | "ssi" | "scm" | "sld") => scheme_item_symbol_for_line(line),
         _ => None,
     }
 }
@@ -287,6 +315,41 @@ fn typescript_item_kind_for_line(line: &str) -> Option<&'static str> {
         Some("function")
     } else {
         None
+    }
+}
+
+fn scheme_item_kind_for_line(line: &str) -> Option<&'static str> {
+    let line = line.trim_start();
+    if line.starts_with("(defstruct ") {
+        Some("struct")
+    } else if line.starts_with("(def ")
+        || line.starts_with("(def* ")
+        || line.starts_with("(defmethod ")
+    {
+        Some("function")
+    } else {
+        None
+    }
+}
+
+fn scheme_item_symbol_for_line(line: &[u8]) -> Option<String> {
+    let line = String::from_utf8_lossy(line);
+    let line = line.trim_start();
+    let rest = line
+        .strip_prefix("(defstruct ")
+        .or_else(|| line.strip_prefix("(defmethod "))
+        .or_else(|| line.strip_prefix("(def* "))
+        .or_else(|| line.strip_prefix("(def "))?
+        .trim_start();
+    let rest = rest.strip_prefix('(').unwrap_or(rest);
+    let symbol = rest
+        .split(|ch: char| ch.is_whitespace() || matches!(ch, '(' | ')'))
+        .next()
+        .unwrap_or_default();
+    if symbol.is_empty() {
+        None
+    } else {
+        Some(symbol.to_string())
     }
 }
 
@@ -360,6 +423,35 @@ fn typescript_block_end(path: &Path, lines: &[&[u8]], start_index: usize) -> Opt
         if saw_open && brace_depth <= 0 {
             let end = offset + 1;
             return Some(if end == start_index + 1 { end + 1 } else { end });
+        }
+    }
+    Some(lines.len())
+}
+
+fn scheme_block_end(path: &Path, lines: &[&[u8]], start_index: usize) -> Option<usize> {
+    if !matches!(
+        path.extension().and_then(|extension| extension.to_str()),
+        Some("ss" | "ssi" | "scm" | "sld")
+    ) {
+        return None;
+    }
+    let mut depth = 0isize;
+    let mut saw_open = false;
+    for (offset, line) in lines.iter().enumerate().skip(start_index) {
+        for byte in *line {
+            match byte {
+                b'(' => {
+                    saw_open = true;
+                    depth += 1;
+                }
+                b')' if saw_open => {
+                    depth -= 1;
+                }
+                _ => {}
+            }
+        }
+        if saw_open && depth <= 0 {
+            return Some(offset + 1);
         }
     }
     Some(lines.len())

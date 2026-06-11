@@ -82,6 +82,7 @@ pub(super) fn collect_native_finder_candidates(
         }));
     }
     let extensions = language_extensions(language_id);
+    let config_files = language_config_filenames(language_id);
     let mut collector = NativeFinderCollector {
         surface,
         project_root,
@@ -90,6 +91,7 @@ pub(super) fn collect_native_finder_candidates(
         terms,
         normalized_terms: terms.iter().map(|term| term.to_ascii_lowercase()).collect(),
         extensions,
+        config_files,
         config,
         seen: HashSet::new(),
         candidates: Vec::new(),
@@ -122,6 +124,7 @@ struct NativeFinderCollector<'a> {
     terms: &'a [String],
     normalized_terms: Vec<String>,
     extensions: &'static [&'static str],
+    config_files: &'static [&'static str],
     config: &'a AspConfig,
     seen: HashSet<String>,
     candidates: Vec<Candidate>,
@@ -268,11 +271,12 @@ impl NativeFinderCollector<'_> {
             .arg("f")
             .arg("--color")
             .arg("never")
-            .arg("--strip-cwd-prefix")
             .arg(term)
             .arg(root);
-        for extension in self.extensions {
-            command.arg("--extension").arg(extension);
+        if self.config_files.is_empty() {
+            for extension in self.extensions {
+                command.arg("--extension").arg(extension);
+            }
         }
         append_fd_ignores(&mut command, self.config);
         native_stdout(command, "fd")
@@ -308,6 +312,9 @@ impl NativeFinderCollector<'_> {
         for extension in self.extensions {
             command.arg("--glob").arg(format!("*.{extension}"));
         }
+        for config_file in self.config_files {
+            command.arg("--glob").arg(format!("**/{config_file}"));
+        }
         for dir in &self.config.search.ignore_dirs {
             command.arg("--glob").arg(format!("!{dir}/**"));
         }
@@ -323,7 +330,7 @@ impl NativeFinderCollector<'_> {
     fn path_candidate_from_raw(&self, raw: &str, term: &str) -> Option<Candidate> {
         let path = resolve_native_path(self.project_root, raw);
         if !path.is_file()
-            || !extension_matches(&path, self.extensions)
+            || !language_file_matches(&path, self.extensions, self.config_files)
             || ignored_by_config(&path, self.project_root, self.config)
         {
             return None;
@@ -349,7 +356,10 @@ impl NativeFinderCollector<'_> {
     fn rg_candidate(&self, line: &[u8], term: &str) -> Option<Candidate> {
         let (path, line_number, text) = parse_rg_line(line)?;
         let path = resolve_native_path(self.project_root, &path);
-        if !path.is_file() {
+        if !path.is_file()
+            || !language_file_matches(&path, self.extensions, self.config_files)
+            || ignored_by_config(&path, self.project_root, self.config)
+        {
             return None;
         }
         Some(Candidate {
@@ -462,14 +472,6 @@ fn resolve_native_path(project_root: &Path, raw: &str) -> PathBuf {
     cwd_relative.unwrap_or_else(|| project_root.join(path))
 }
 
-fn extension_matches(path: &Path, extensions: &[&str]) -> bool {
-    extensions.is_empty()
-        || path
-            .extension()
-            .and_then(|extension| extension.to_str())
-            .is_some_and(|extension| extensions.contains(&extension))
-}
-
 fn ignored_by_config(path: &Path, project_root: &Path, config: &AspConfig) -> bool {
     let relative = path.strip_prefix(project_root).unwrap_or(path);
     relative.components().any(|component| {
@@ -484,8 +486,30 @@ fn language_extensions(language_id: &str) -> &'static [&'static str] {
         "typescript" => &["ts", "tsx", "js", "jsx"],
         "python" => &["py"],
         "julia" => &["jl"],
+        "gerbil-scheme" => &["ss", "ssi", "scm", "sld"],
         _ => &[],
     }
+}
+
+fn language_config_filenames(language_id: &str) -> &'static [&'static str] {
+    match language_id {
+        "rust" => &["Cargo.toml"],
+        "typescript" => &["package.json", "tsconfig.json", "pnpm-workspace.yaml"],
+        "python" => &["pyproject.toml"],
+        "julia" => &["Project.toml"],
+        "gerbil-scheme" => &["gerbil.pkg", "build.ss"],
+        _ => &[],
+    }
+}
+
+fn language_file_matches(path: &Path, extensions: &[&str], config_files: &[&str]) -> bool {
+    path.extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| extensions.contains(&extension))
+        || path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| config_files.contains(&name))
 }
 
 fn display_path(project_root: &Path, path: &Path) -> String {

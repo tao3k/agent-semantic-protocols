@@ -77,6 +77,7 @@ pub(super) fn collect_candidates(
         return Ok(collection.candidates);
     }
     let extensions = language_extensions(language_id);
+    let config_files = language_config_filenames(language_id);
     let mut candidates = Vec::new();
     let mut remaining = PIPE_CANDIDATE_LINE_LIMIT;
     let per_term_limit = per_term_candidate_limit(terms.len());
@@ -85,6 +86,7 @@ pub(super) fn collect_candidates(
     let mut collector = CandidateCollector {
         locator_root,
         extensions,
+        config_files,
         terms: &terms,
         per_term_limit,
         term_counts: &mut term_counts,
@@ -182,13 +184,36 @@ fn language_extensions(language_id: &str) -> &'static [&'static str] {
         "typescript" => &["ts", "tsx", "js", "jsx"],
         "python" => &["py"],
         "julia" => &["jl"],
+        "gerbil-scheme" => &["ss", "ssi", "scm", "sld"],
         _ => &[],
     }
+}
+
+fn language_config_filenames(language_id: &str) -> &'static [&'static str] {
+    match language_id {
+        "rust" => &["Cargo.toml"],
+        "typescript" => &["package.json", "tsconfig.json", "pnpm-workspace.yaml"],
+        "python" => &["pyproject.toml"],
+        "julia" => &["Project.toml"],
+        "gerbil-scheme" => &["gerbil.pkg", "build.ss"],
+        _ => &[],
+    }
+}
+
+fn language_file_matches(path: &Path, extensions: &[&str], config_files: &[&str]) -> bool {
+    path.extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| extensions.contains(&extension))
+        || path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| config_files.contains(&name))
 }
 
 struct CandidateCollector<'a> {
     locator_root: &'a Path,
     extensions: &'static [&'static str],
+    config_files: &'static [&'static str],
     terms: &'a [String],
     per_term_limit: usize,
     term_counts: &'a mut [usize],
@@ -308,10 +333,7 @@ impl CandidateCollector<'_> {
     }
 
     fn append_file_candidates(&mut self, path: &Path) -> Result<(), String> {
-        let Some(extension) = path.extension().and_then(|extension| extension.to_str()) else {
-            return Ok(());
-        };
-        if !self.extensions.contains(&extension) {
+        if !language_file_matches(path, self.extensions, self.config_files) {
             return Ok(());
         }
         self.append_path_candidate(path);
@@ -343,6 +365,9 @@ impl CandidateCollector<'_> {
 
     fn append_path_candidate(&mut self, path: &Path) {
         if self.is_done() {
+            return;
+        }
+        if !language_file_matches(path, self.extensions, self.config_files) {
             return;
         }
         let display = display_path(self.locator_root, path);
@@ -418,6 +443,10 @@ fn path_basename_matches(lower_path: &str, term: &str) -> bool {
                 .trim_end_matches(".rs")
                 .trim_end_matches(".py")
                 .trim_end_matches(".jl")
+                .trim_end_matches(".ss")
+                .trim_end_matches(".ssi")
+                .trim_end_matches(".scm")
+                .trim_end_matches(".sld")
                 == term
         })
         .unwrap_or(false)

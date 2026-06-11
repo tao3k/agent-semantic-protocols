@@ -547,6 +547,15 @@
           "type": "string",
           "minLength": 1
         },
+        "dependencyMode": {
+          "description": "How the package manager relation activates this provider extension.",
+          "enum": [
+            "required",
+            "optional",
+            "implicit",
+            "unknown"
+          ]
+        },
         "packageManager": {
           "type": "string",
           "minLength": 1
