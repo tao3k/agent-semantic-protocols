@@ -34,6 +34,12 @@ and filtered `--content` element projections, with explicit `queryKind`,
 document `query` routes, not source `search owner` or owner/items routes. These
 providers must not report document facts through source-language
 `nativeSyntaxFacts`.
+`semantic-org-elements-query-packet.v1.schema.json` owns the host-facing
+org-elements index query input used by `orgize elements-query --packet ...`.
+It keeps `CONTRACT_ORG` and other consumers on parser-owned org element
+predicates, such as category, kind, affiliated names, context, outline,
+property, summary, relations, and boolean composition, instead of treating
+contracts as a skeleton DSL or search stdout.
 `semantic-content-compaction.v1.schema.json` owns content-level compaction
 metadata for source code, documentation, logs, test output, schema JSON, review
 judgments, and proof/evidence text. It records `contentKind`, `criticality`,
