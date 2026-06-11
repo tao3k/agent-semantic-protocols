@@ -20,6 +20,8 @@ pub(crate) use limits::MAX_CACHE_REPLAY_ARTIFACT_BYTES;
 pub(crate) use search_fzf::search_fzf_generation_matches_request;
 #[cfg(test)]
 pub(crate) use search_fzf::search_fzf_packet_matches_request;
+#[cfg(test)]
+pub(crate) use search_packet::output_with_delegation_hint_lines;
 pub(crate) use search_packet::{
     SearchFrontierReceiptRequest, render_search_packet_bytes,
     render_search_packet_bytes_with_receipt, search_output_artifact_replay_safe,

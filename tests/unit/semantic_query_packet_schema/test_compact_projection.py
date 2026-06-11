@@ -50,3 +50,23 @@ def test_compact_projection_node_requires_native_identity_metadata() -> None:
         del node[field_name]
 
         assert validation_errors(packet) != []
+
+
+def test_source_code_match_accepts_content_compaction_policy() -> None:
+    packet = semantic_query_minimal_packet()
+    packet["matches"][0]["contentKind"] = "source-code"
+    packet["matches"][0]["criticality"] = "exact-source-required-for-edit"
+    packet["matches"][0]["compaction"] = {
+        "mode": "source-code-call-skeleton",
+        "lossiness": "bounded",
+        "trustLevel": "parser-backed",
+        "sourceOfTruth": "parser-facts",
+        "validFor": ["navigation", "reasoning"],
+        "notValidFor": ["patch", "line-edit", "exact-source"],
+        "preserved": ["signature", "called-symbols", "return-points"],
+        "omitted": ["large-literals", "private-branch-body"],
+        "requiresExactSourceFor": ["patch", "compile-fix"],
+        "exactSourceRequired": True,
+    }
+
+    assert validation_errors(packet) == []

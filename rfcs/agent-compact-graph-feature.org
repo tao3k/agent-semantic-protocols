@@ -672,54 +672,53 @@ represent every prompt-visible fact:
 - anti-actions: =avoidNextActions=
 - omitted facts and expansion locators: query/read projection metadata
 
-If a field is missing, extend the schema before provider-specific rendering.
-Do not hide projection-only decisions in language-private =fields= maps.
+If a field is missing, extend the schema before provider-specific projection or
+rendering.  Do not hide projection-only decisions in language-private =fields=
+maps.
 
-The prompt-facing text template is also schema-owned.  Providers must align to
-=schemas/semantic-compact-graph-render.v1.schema.json= for:
+The durable boundary is:
 
-- view-native header grammar
-- micro-legend grammar
-- alias line grammar
-- dense alias separator
-- combined =rank=... frontier=...= line
-- optional =entries=...=>returns= return-entry line
-- source-kind to node/target-role/action vocabulary
+#+begin_src text
+protocol   = schema-owned JSON packet
+projection = schema-owned JSON field pruning
+compaction = content payload transform with declared lossiness
+rendering  = stdout serialization
+#+end_src
 
-Rust, TypeScript, Python, and future language providers must not implement
-independent prompt-facing compact graph renderers.  They construct
-schema-valid packets and invoke the shared renderer through
-=asp graph render=.  Provider-local code may contain only a
-thin process adapter and tests that prove the adapter passes canonical packets
-to the shared renderer without fallback.
+Graph/frontier/rank/action evidence stays in protocol packets and JSON
+projections.  Compact graph text is not a protocol, and production code must
+not parse compact graph text back into actions.  The historical
+=semantic-compact-graph-render.v1= template may describe legacy/debug stdout
+grammar, but it does not supersede =semantic-search-packet.v1=,
+=semantic-graph-turbo-result.v1=, or =semantic-graph-turbo-summary.v1= as the
+trusted machine surface.
+
+Compact mode belongs to content payloads such as code, Markdown, Org, logs,
+test output, and schema JSON.  Those payloads must carry =contentKind=,
+=criticality=, =lossiness=, =validFor=, =notValidFor=, =preserved=, =omitted=,
+and an exact-source expansion route when the compact body is not source of
+truth.  Code compaction is parser/language-aware and conservative; document
+compaction may be metadata-heavy, but normative RFC text, proof notes, review
+judgments, and security policy must use conservative criticality settings.
 
 ** Graph turbo packet boundary
 
 =asp-graph-turbo= is a typed ranking engine for parser-owned graph facts, not a
-second prompt renderer.  Its durable output is
-=semantic-graph-turbo-result.v1=, which records the selected profile, seed
-nodes, ranked node ids, ranking budget, frontier actions, relation edges,
-scores, typed paths, cache trace, algorithm trace, rank explanations, and
-algorithm metrics.  When graph turbo emits compact text, it must use the same
-compact graph grammar owned by this RFC: header, legend, =aliases=, node
-aliases, edge lines, =rank=, =frontier=, profile-specific projection lines,
-=scores=, =paths=, =cache=, =trace=, =explain=, =metrics=, =profiles=,
-=omit=, and =avoid=.  ASP-owned fast-search adapters may append query-pipeline
-projection lines after the graph frontier, such as =queryPack=, =queryTerms=,
-=handles=, =evidenceFrontier=, =evidenceNodes=, =evidenceEdges=,
-=commandHandles=, =treeSitterHandles=, =fdPreview=, =actionRank=,
-=actionFrontier=, =recommendedNext=, =nextCommand=, and =stop=.
-Those lines describe ASP's compiled search/query actions; they must not be
-treated as graph-turbo ranking facts.  The
-default search frontier header is
-=[graph-frontier]=.  A profile-specific surface such as =failure-frontier= may
-use a narrower header such as =[search-failure]= only when the rest of the
-grammar and =semantic-graph-turbo-result.v1= evidence remain graph-turbo
-owned.  It must not invent a second =[graph-turbo]= prompt format.  Ordinary
-non-turbo =semantic-search-packet= fallback output may continue to render
-through the shared =semantic-compact-graph-render.v1= template, but
-ranking/profile/path/score/trace projection for graph-turbo requests is owned
-by =asp-graph-turbo=.
+compact text protocol.  Its durable output is =semantic-graph-turbo-result.v1=,
+which records the selected profile, seed nodes, ranked node ids, ranking
+budget, frontier actions, relation edges, scores, typed paths, cache trace,
+algorithm trace, rank explanations, and algorithm metrics.  A lighter
+agent-facing surface is =semantic-graph-turbo-summary.v1= or another explicit
+JSON projection that names which fields are included and omitted.  Text rows
+such as =queryPack=, =evidenceFrontier=, =actionRank=, =recommendedNext=, and
+=nextCommand= are renderings of schema-owned actions; they are not a second
+grammar that Rust, Python, or an agent should parse as authority.
+
+Action materialization must start from typed JSON objects.  A =query-code=
+action carries a capability, language id, selector, workspace policy, and
+safety constraints in the packet; the trusted materializer then builds argv.
+It must not derive argv by parsing display text such as =rank=..., =frontier=...,
+or a compact alias DSL.
 
 Graph turbo must not infer missing relation labels, node roles, or frontier
 actions from prose.  Any prompt-visible rank or action produced by the turbo
@@ -957,12 +956,13 @@ windows.
 1. Keep this RFC as the language-neutral contract.
 2. Audit =semantic-graph.v1= and =semantic-search-packet.v1= for alias,
    action, rank, frontier seed, synthesis, omission, and avoid coverage.
-3. Maintain =semantic-compact-graph-render.v1= as the shared prompt-facing
-   text template.
+3. Keep graph/frontier/action authority in JSON packets and JSON projections;
+   treat =semantic-compact-graph-render.v1= as legacy/debug stdout grammar
+   rather than a protocol surface.
 4. Add schema tests for any missing fields or template vocabulary drift.
-5. Implement shared renderer tests that prove prime, owner, query-set, ingest,
-   tests, and item query outputs derive their compact lines from the graph
-   feature.
+5. Implement projection/materializer tests that prove prime, owner, query-set,
+   ingest, tests, and item query outputs derive next actions from schema-owned
+   graph facts before any text rendering.
 6. Replace renderer assertions that target independent =|seed= or
    =|synthesis= rows with assertions over =rank=, =frontier=, =avoid=, aliases,
    and grouped edges.
@@ -985,13 +985,12 @@ now use the same shared prompt renderer through shell-out adapters.
 Completed:
 
 - [X] RFC 006 exists as the independent graph feature contract.
-- [X] RFC 005 points to RFC 006 for compact graph rendering semantics.
-- [X] =semantic-compact-graph-render.v1= owns the prompt-facing render
-  template so providers do not hand-invent headers, aliases, or rank/frontier
-  line shapes.
-- [X] =semantic-compact-graph-render.v1= declares =[search-<view>]= as the
-  compact graph packet header for =search --view seeds= so graph output is the
-  default render contract, not an optional feature appended after a search row.
+- [X] RFC 005 points to RFC 006 for graph-derived search semantics.
+- [X] =semantic-graph-turbo-result.v1= and
+  =semantic-graph-turbo-summary.v1= own graph/frontier/rank/action authority;
+  compact graph text is only a render/debug projection.
+- [X] =semantic-content-compaction.v1= separates content payload compaction
+  from graph/frontier/action protocol output.
 - [X] Rust =search fzf --query-set ... --view seeds= renders graph-frontier
   output instead of legacy =|seed= / =|synthesis= rows.
 - [X] Rust =--view seeds= renders compact graph output from the search packet
@@ -1041,9 +1040,10 @@ Completed:
   packets from typed graph facts, and a Python sandtable validates the package
   CLI through schema-owned stdout instead of treating compact debug text as the
   source of truth.
-- [X] ASP fast search routes default compact candidate frontiers through
-  =asp-graph-turbo rank - --format compact=.  =--view seeds= and omitted
-  =--view= stay prompt-compact and must not print request JSON.  The explicit
+- [X] ASP fast search routes default candidate frontiers through
+  =asp-graph-turbo= ranking and keeps the trusted response in
+  =semantic-graph-turbo-result.v1= or a schema-owned JSON projection.
+  =--view seeds= and omitted =--view= may stay prompt-compact, but the explicit
   =--view graph-turbo-request= surface exists only for schema validation and
   debugging of the =semantic-graph-turbo-request.v1= packet sent to the ranking
   boundary.

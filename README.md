@@ -110,17 +110,19 @@ asp wrap asp-graph-turbo -- help
 asp tools wrap asp-graph-turbo -- help
 ```
 
-Graph-turbo request packets use the ranking engine by default through the
-`asp graph render --packet <path-or-> --view seeds` boundary. The Rust compact
-graph renderer remains the fallback for ordinary semantic search packets and
-for graph-turbo runtime failures.
+Graph-turbo request packets use the ranking engine through schema-owned JSON:
+`semantic-graph-turbo-request.v1` enters `asp-graph-turbo`, and
+`semantic-graph-turbo-result.v1` or its JSON projection leaves that boundary.
+The legacy compact graph renderer is a prompt/debug projection only; it is not a
+trusted graph, frontier, rank, or action protocol.
 
-Agent-facing fast search uses the ranked compact graph-turbo frontier by
-default. `asp rust search fzf <term> owner tests .` and the explicit compact
-form `asp rust search fzf <term> owner tests --view seeds .` both stay compact;
-neither prints the JSON request packet. The compact frontier is still
-algorithm-owned by `asp-graph-turbo`: rank, profile, paths, scores, cache,
-trace, explanations, and metrics are projected by the Python ranking engine.
+Agent-facing fast search uses graph-turbo ranking by default.
+`asp rust search fzf <term> owner tests .` and the explicit seeds form
+`asp rust search fzf <term> owner tests --view seeds .` avoid printing the
+request packet, but the trusted structure remains the schema packet and any
+schema-owned JSON projection. Rank, profile, paths, scores, cache, trace,
+explanations, metrics, and frontier actions must be packet-visible before any
+text renderer serializes them.
 Default fast-search request packets include candidate hot range nodes and
 `item -> hot` typed edges when locators are available, plus owner-scoped
 dependency nodes and `owner -> dependency` import edges for query-deps routing,

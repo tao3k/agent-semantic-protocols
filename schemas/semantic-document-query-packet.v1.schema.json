@@ -143,6 +143,19 @@
         "parserAuthority": {
           "$ref": "semantic-document-search-packet.v1.schema.json#/$defs/parserAuthority"
         },
+        "contentKind": {
+          "$ref": "semantic-content-compaction.v1.schema.json#/$defs/contentKind"
+        },
+        "criticality": {
+          "$ref": "semantic-content-compaction.v1.schema.json#/$defs/criticality"
+        },
+        "sourceFingerprint": {
+          "type": "string",
+          "minLength": 1
+        },
+        "compaction": {
+          "$ref": "semantic-content-compaction.v1.schema.json#/$defs/compaction"
+        },
         "content": {
           "type": "string"
         }

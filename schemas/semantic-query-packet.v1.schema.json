@@ -213,6 +213,15 @@
           "type": "string",
           "description": "Agent-facing compact code projection. This is parser-owned understanding text, not necessarily exact editable source. Line-protocol code text fields and --code output serialize this same projection value."
         },
+        "contentKind": {
+          "const": "source-code"
+        },
+        "criticality": {
+          "$ref": "semantic-content-compaction.v1.schema.json#/$defs/criticality"
+        },
+        "compaction": {
+          "$ref": "semantic-content-compaction.v1.schema.json#/$defs/compaction"
+        },
         "projection": {
           "$ref": "#/$defs/projection"
         },

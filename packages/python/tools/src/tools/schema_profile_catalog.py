@@ -23,6 +23,7 @@ class LanguageSchemaProfile:
 _CORE_QUERY_SCHEMAS = (
     "semantic-search-packet.v1.schema.json",
     "semantic-query-packet.v1.schema.json",
+    "semantic-content-compaction.v1.schema.json",
     "semantic-read-packet.v1.schema.json",
     "semantic-source-location.v1.schema.json",
     "semantic-tree-sitter-provenance.v1.schema.json",

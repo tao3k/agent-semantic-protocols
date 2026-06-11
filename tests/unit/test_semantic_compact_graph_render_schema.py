@@ -175,7 +175,7 @@ class SemanticCompactGraphRenderSchemaTests(unittest.TestCase):
             template["lineGrammar"]["avoid"],
         )
 
-    def test_view_header_is_the_graph_packet_header(self) -> None:
+    def test_view_header_is_legacy_compact_graph_stdout(self) -> None:
         template = minimal_render_template()
 
         self.assertEqual(

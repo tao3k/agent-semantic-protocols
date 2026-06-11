@@ -4,6 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use bytes::Bytes;
+use serde_json::Value;
 
 use super::graph_render::{
     GraphRenderReceiptRequest, run_graph_render_packet, run_graph_render_packet_bytes,
@@ -42,7 +43,9 @@ pub(crate) fn render_search_packet_bytes(packet_bytes: Bytes) -> Option<Bytes> {
     if packet_bytes.is_empty() || packet_bytes.len() as u64 > MAX_CACHE_REPLAY_ARTIFACT_BYTES {
         return None;
     }
-    let output = run_graph_render_packet_bytes(packet_bytes, MAX_CACHE_REPLAY_ARTIFACT_BYTES)?;
+    let output =
+        run_graph_render_packet_bytes(packet_bytes.clone(), MAX_CACHE_REPLAY_ARTIFACT_BYTES)?;
+    let output = output_with_delegation_hint_lines(output, &packet_bytes);
     if !search_output_artifact_replay_safe(&output) {
         return None;
     }
@@ -57,7 +60,7 @@ pub(crate) fn render_search_packet_bytes_with_receipt(
         return Ok(None);
     }
     let output = run_graph_render_packet_bytes_with_receipt(
-        packet_bytes,
+        packet_bytes.clone(),
         MAX_CACHE_REPLAY_ARTIFACT_BYTES,
         &GraphRenderReceiptRequest {
             out_path: receipt.out_path.clone(),
@@ -72,7 +75,10 @@ pub(crate) fn render_search_packet_bytes_with_receipt(
     if !search_output_artifact_replay_safe(&output) {
         return Ok(None);
     }
-    Ok(Some(output))
+    Ok(Some(output_with_delegation_hint_lines(
+        output,
+        &packet_bytes,
+    )))
 }
 
 pub(crate) fn render_search_packet_artifact_stdout(artifact_path: &Path) -> Option<Bytes> {
@@ -81,4 +87,115 @@ pub(crate) fn render_search_packet_artifact_stdout(artifact_path: &Path) -> Opti
         return None;
     }
     run_graph_render_packet(artifact_path, MAX_CACHE_REPLAY_ARTIFACT_BYTES)
+}
+
+pub(crate) fn output_with_delegation_hint_lines(output: Bytes, packet_bytes: &[u8]) -> Bytes {
+    if bytes_contains(&output, b"subagentHint=") {
+        return output;
+    }
+    let lines = delegation_hint_lines(packet_bytes);
+    if lines.is_empty() {
+        return output;
+    }
+    let mut rendered = Vec::with_capacity(
+        output.len() + lines.iter().map(|line| line.len() + 1).sum::<usize>() + 1,
+    );
+    rendered.extend_from_slice(&output);
+    if !rendered.ends_with(b"\n") {
+        rendered.push(b'\n');
+    }
+    for line in lines {
+        rendered.extend_from_slice(line.as_bytes());
+        rendered.push(b'\n');
+    }
+    Bytes::from(rendered)
+}
+
+fn delegation_hint_lines(packet_bytes: &[u8]) -> Vec<String> {
+    let Ok(packet) = serde_json::from_slice::<Value>(packet_bytes) else {
+        return Vec::new();
+    };
+    packet
+        .get("delegationHints")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(delegation_hint_line)
+        .collect()
+}
+
+fn delegation_hint_line(hint: &Value) -> Option<String> {
+    if string_field(hint, "decision")? != "advisory"
+        || string_field(hint, "runtimeOwner")? != "agent-client"
+        || !bool_field(hint, "readOnly")?
+        || !bool_field(hint, "noCode")?
+    {
+        return None;
+    }
+    let receipt = hint.get("receipt")?;
+    if string_field(receipt, "kind")? != "search-subagent" {
+        return None;
+    }
+    let profile = safe_token(string_field(hint, "profile")?)?;
+    let model_class = optional_safe_token(hint, "modelClass").unwrap_or("cheap");
+    let target_actions = safe_string_array(hint.get("targetActions")?, safe_action_token)?;
+    let required_fields = safe_string_array(receipt.get("requiredFields")?, safe_token)?;
+    let max_commands = optional_u64(hint, "maxCommands").unwrap_or(8);
+    let max_turns = optional_u64(hint, "maxTurns").unwrap_or(1);
+    let reason = safe_token(string_field(hint, "reason")?)?;
+
+    Some(format!(
+        "subagentHint=profile={profile} decision=advisory runtimeOwner=agent-client modelClass={model_class} readOnly=true noCode=true targetActions={} maxCommands={max_commands} maxTurns={max_turns} receipt=search-subagent({}) reason={reason}",
+        target_actions.join(","),
+        required_fields.join(",")
+    ))
+}
+
+fn bytes_contains(haystack: &[u8], needle: &[u8]) -> bool {
+    haystack
+        .windows(needle.len())
+        .any(|window| window == needle)
+}
+
+fn string_field<'a>(value: &'a Value, field: &str) -> Option<&'a str> {
+    value.get(field).and_then(Value::as_str)
+}
+
+fn bool_field(value: &Value, field: &str) -> Option<bool> {
+    value.get(field).and_then(Value::as_bool)
+}
+
+fn optional_u64(value: &Value, field: &str) -> Option<u64> {
+    value.get(field).and_then(Value::as_u64)
+}
+
+fn optional_safe_token<'a>(value: &'a Value, field: &str) -> Option<&'a str> {
+    value
+        .get(field)
+        .and_then(Value::as_str)
+        .and_then(safe_token)
+}
+
+fn safe_string_array(value: &Value, token_filter: fn(&str) -> Option<&str>) -> Option<Vec<String>> {
+    let tokens = value
+        .as_array()?
+        .iter()
+        .map(Value::as_str)
+        .map(|token| token.and_then(token_filter).map(str::to_string))
+        .collect::<Option<Vec<_>>>()?;
+    (!tokens.is_empty()).then_some(tokens)
+}
+
+fn safe_token(value: &str) -> Option<&str> {
+    value
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-'))
+        .then_some(value)
+}
+
+fn safe_action_token(value: &str) -> Option<&str> {
+    value
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.'))
+        .then_some(value)
 }

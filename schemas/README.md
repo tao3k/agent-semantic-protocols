@@ -34,6 +34,12 @@ and filtered `--content` element projections, with explicit `queryKind`,
 document `query` routes, not source `search owner` or owner/items routes. These
 providers must not report document facts through source-language
 `nativeSyntaxFacts`.
+`semantic-content-compaction.v1.schema.json` owns content-level compaction
+metadata for source code, documentation, logs, test output, schema JSON, review
+judgments, and proof/evidence text. It records `contentKind`, `criticality`,
+`lossiness`, `trustLevel`, `validFor`, `notValidFor`, `preserved`, `omitted`,
+and exact-source requirements. This is a content payload transform, not a graph,
+frontier, rank, action, or command-materialization protocol.
 For tree-sitter-backed source query rendering, non-`--code` output is
 locator/frontier evidence only, while `--code` prints pure source code. Query
 render profiles such as the `compact-graph-frontier` profile and
@@ -88,25 +94,21 @@ and missed or recovered gold context. Its report summary may also carry
 until a new calibration-ready runtime receipt shows a frontier miss or missing
 gold selector action.
 
-`semantic-compact-graph-render.v1.schema.json` is the shared prompt-facing
-render template for compact graph search output. It owns the view-native
+`semantic-compact-graph-render.v1.schema.json` is the legacy shared stdout
+render template for compact graph search output. It describes the view-native
 header contract, micro-legend grammar, role-typed alias line grammar, dense
 alias separator, combined `rank=... frontier=...` line, legend-declared search
 root, renderer ownership, and source-kind to node/target-role/action/relation
-vocabulary used by Rust, TypeScript, Python, and future providers. The
-`[search-<view>]` header in `search --view seeds` is the compact graph packet
-header; the graph block is required, not an optional feature row, and legacy
-`|seed` / `|synthesis` rows must not become a second prompt-facing action
-protocol. Providers still derive facts from
-`semantic-search-packet.v1.schema.json`; `agent-semantic-protocol` owns the
-shared graph renderer, and language providers under `languages/` call it through
-`asp graph render` instead of adding renderer library
-dependencies. The agent semantic client hot path may call the Rust renderer library over
-validated provider artifacts or cache rows instead of asking every language to
-maintain a separate compact graph renderer. Input packets use one canonical
-field vocabulary: query-set count comes from root-level `querySet`, and graph
-frontier source locators use `searchSynthesis.seeds[].read`; provider-specific
-field aliases are schema violations rather than renderer compatibility cases.
+vocabulary used by Rust, TypeScript, Python, and future providers. It is not
+the trusted machine protocol for graph/frontier/rank/action evidence; providers
+derive facts from `semantic-search-packet.v1.schema.json`,
+`semantic-graph-turbo-result.v1.schema.json`, or an explicit JSON projection.
+Language providers under `languages/` may call `asp graph render` for legacy
+stdout compatibility instead of adding renderer library dependencies. Input
+packets use one canonical field vocabulary: query-set count comes from
+root-level `querySet`, and graph frontier source locators use
+`searchSynthesis.seeds[].read`; provider-specific field aliases are schema
+violations rather than renderer compatibility cases.
 Owner-local item search must retain `owner=`, `selector=items`, term count,
 and `view=seeds` in the header, declare every packet-local alias id in the
 legend, split search-match and owner-containment edges, rank matched symbols
@@ -952,8 +954,9 @@ scores, merged windows, profile compatibility, source/sink frontier, typed
 paths, flow-lite path ranking, packet fingerprint, graph cache metadata,
 algorithm trace, rank explanations, supported profiles, and prompt-visible
 `omit`/`avoid` facts from the turbo ranking engine. It is ranking evidence,
-not a prompt-facing render template; provider output should still use
-`semantic-compact-graph-render.v1` and the shared `asp graph render` boundary.
+not a prompt-facing render template or compact text protocol. Graph/frontier
+token reduction should use schema-owned JSON projections, not an inline DSL
+that another component parses back into actions.
 `semantic-graph-turbo-summary.v1.schema.json` is the agent-facing JSON
 projection of that result packet. It keeps ranked node locators, frontier
 actions, selected edges, typed paths, algorithm trace, algorithm metrics, and

@@ -1,0 +1,259 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-content-compaction.v1.schema.json",
+  "title": "Semantic Content Compaction",
+  "description": "Shared contract for compacting packet content payloads. This schema describes content-level compaction policy and safety metadata; it is not a graph, frontier, rank, or action protocol.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "protocolId",
+    "protocolVersion",
+    "packetKind",
+    "contentBlocks"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.semantic-content-compaction"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "protocolId": {
+      "const": "agent.semantic-protocols.semantic-language"
+    },
+    "protocolVersion": {
+      "const": "1"
+    },
+    "packetKind": {
+      "const": "content-compaction-result"
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "$ref": "semantic-source-location.v1.schema.json#/$defs/projectPath"
+        },
+        "fingerprint": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "contentBlocks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/contentBlock"
+      }
+    }
+  },
+  "$defs": {
+    "contentKind": {
+      "enum": [
+        "source-code",
+        "documentation",
+        "documentation-metadata",
+        "schema-json",
+        "test-output",
+        "log",
+        "review",
+        "proof",
+        "metadata",
+        "text"
+      ]
+    },
+    "criticality": {
+      "enum": [
+        "metadata",
+        "narrative",
+        "normative",
+        "evidence",
+        "review-judgment",
+        "proof",
+        "exact-source-required-for-edit"
+      ]
+    },
+    "lossiness": {
+      "enum": [
+        "lossless",
+        "bounded",
+        "moderate",
+        "aggressive"
+      ]
+    },
+    "trustLevel": {
+      "enum": [
+        "exact",
+        "parser-backed",
+        "metadata-backed",
+        "derived",
+        "debug-only"
+      ]
+    },
+    "useCase": {
+      "enum": [
+        "discovery",
+        "routing",
+        "navigation",
+        "reasoning",
+        "summary",
+        "evidence-selection",
+        "patch",
+        "compile-fix",
+        "line-edit",
+        "exact-source",
+        "quoting",
+        "normative-proof"
+      ]
+    },
+    "compactionMode": {
+      "enum": [
+        "exact",
+        "auto",
+        "source-code-outline",
+        "source-code-signature",
+        "source-code-call-skeleton",
+        "source-code-control-flow-skeleton",
+        "source-code-elide-literals",
+        "documentation-heading-outline",
+        "documentation-heading-link-digest",
+        "documentation-metadata-digest",
+        "documentation-normative-outline",
+        "markdown-heading-link-digest",
+        "org-metadata-outline",
+        "schema-key-path",
+        "log-error-window",
+        "test-failure-window",
+        "review-judgment-digest",
+        "proof-obligation-outline"
+      ]
+    },
+    "compaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "lossiness",
+        "trustLevel",
+        "validFor",
+        "notValidFor",
+        "preserved",
+        "omitted",
+        "sourceOfTruth"
+      ],
+      "properties": {
+        "mode": {
+          "$ref": "#/$defs/compactionMode"
+        },
+        "lossiness": {
+          "$ref": "#/$defs/lossiness"
+        },
+        "trustLevel": {
+          "$ref": "#/$defs/trustLevel"
+        },
+        "sourceOfTruth": {
+          "enum": [
+            "exact-source",
+            "parser-facts",
+            "document-parser-facts",
+            "schema-json",
+            "runtime-output",
+            "derived-metadata"
+          ]
+        },
+        "validFor": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/useCase"
+          }
+        },
+        "notValidFor": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/useCase"
+          }
+        },
+        "preserved": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "omitted": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "requiresExactSourceFor": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/useCase"
+          }
+        },
+        "exactSourceRequired": {
+          "type": "boolean"
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "contentBlock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "contentKind",
+        "compaction"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[a-zA-Z0-9_.:-]+$"
+        },
+        "contentKind": {
+          "$ref": "#/$defs/contentKind"
+        },
+        "mediaType": {
+          "type": "string",
+          "minLength": 1
+        },
+        "languageId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "criticality": {
+          "$ref": "#/$defs/criticality"
+        },
+        "locator": {
+          "$ref": "semantic-source-location.v1.schema.json#/$defs/location"
+        },
+        "sourceFingerprint": {
+          "type": "string",
+          "minLength": 1
+        },
+        "compaction": {
+          "$ref": "#/$defs/compaction"
+        },
+        "content": {
+          "type": "string"
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    }
+  }
+}
