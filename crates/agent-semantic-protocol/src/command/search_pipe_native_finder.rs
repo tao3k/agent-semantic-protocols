@@ -9,6 +9,7 @@ use agent_semantic_provider_transport::byte_text;
 use serde_json::{Value, json};
 
 use super::search_config::AspConfig;
+use super::search_language_files::{LanguageFileSpec, language_file_spec};
 use super::search_pipe_model::Candidate;
 
 const NATIVE_CANDIDATE_LIMIT: usize = 256;
@@ -81,8 +82,7 @@ pub(super) fn collect_native_finder_candidates(
             provenance: NativeFinderProvenance::default(),
         }));
     }
-    let extensions = language_extensions(language_id);
-    let config_files = language_config_filenames(language_id);
+    let file_spec = language_file_spec(language_id);
     let mut collector = NativeFinderCollector {
         surface,
         project_root,
@@ -90,8 +90,7 @@ pub(super) fn collect_native_finder_candidates(
         roots,
         terms,
         normalized_terms: terms.iter().map(|term| term.to_ascii_lowercase()).collect(),
-        extensions,
-        config_files,
+        file_spec,
         config,
         seen: HashSet::new(),
         candidates: Vec::new(),
@@ -123,8 +122,7 @@ struct NativeFinderCollector<'a> {
     roots: &'a [PathBuf],
     terms: &'a [String],
     normalized_terms: Vec<String>,
-    extensions: &'static [&'static str],
-    config_files: &'static [&'static str],
+    file_spec: LanguageFileSpec,
     config: &'a AspConfig,
     seen: HashSet<String>,
     candidates: Vec<Candidate>,
@@ -273,8 +271,8 @@ impl NativeFinderCollector<'_> {
             .arg("never")
             .arg(term)
             .arg(root);
-        if self.config_files.is_empty() {
-            for extension in self.extensions {
+        if self.file_spec.config_filenames().is_empty() {
+            for extension in self.file_spec.extensions() {
                 command.arg("--extension").arg(extension);
             }
         }
@@ -309,10 +307,10 @@ impl NativeFinderCollector<'_> {
             .arg("--fixed-strings")
             .arg("--ignore-case")
             .arg(term);
-        for extension in self.extensions {
+        for extension in self.file_spec.extensions() {
             command.arg("--glob").arg(format!("*.{extension}"));
         }
-        for config_file in self.config_files {
+        for config_file in self.file_spec.config_filenames() {
             command.arg("--glob").arg(format!("**/{config_file}"));
         }
         for dir in &self.config.search.ignore_dirs {
@@ -330,7 +328,7 @@ impl NativeFinderCollector<'_> {
     fn path_candidate_from_raw(&self, raw: &str, term: &str) -> Option<Candidate> {
         let path = resolve_native_path(self.project_root, raw);
         if !path.is_file()
-            || !language_file_matches(&path, self.extensions, self.config_files)
+            || !self.file_spec.matches(&path)
             || ignored_by_config(&path, self.project_root, self.config)
         {
             return None;
@@ -357,7 +355,7 @@ impl NativeFinderCollector<'_> {
         let (path, line_number, text) = parse_rg_line(line)?;
         let path = resolve_native_path(self.project_root, &path);
         if !path.is_file()
-            || !language_file_matches(&path, self.extensions, self.config_files)
+            || !self.file_spec.matches(&path)
             || ignored_by_config(&path, self.project_root, self.config)
         {
             return None;
@@ -478,38 +476,6 @@ fn ignored_by_config(path: &Path, project_root: &Path, config: &AspConfig) -> bo
         let label = component.as_os_str().to_string_lossy();
         config.search.ignore_dirs.iter().any(|dir| dir == &label)
     })
-}
-
-fn language_extensions(language_id: &str) -> &'static [&'static str] {
-    match language_id {
-        "rust" => &["rs"],
-        "typescript" => &["ts", "tsx", "js", "jsx"],
-        "python" => &["py"],
-        "julia" => &["jl"],
-        "gerbil-scheme" => &["ss", "ssi", "scm", "sld"],
-        _ => &[],
-    }
-}
-
-fn language_config_filenames(language_id: &str) -> &'static [&'static str] {
-    match language_id {
-        "rust" => &["Cargo.toml"],
-        "typescript" => &["package.json", "tsconfig.json", "pnpm-workspace.yaml"],
-        "python" => &["pyproject.toml"],
-        "julia" => &["Project.toml"],
-        "gerbil-scheme" => &["gerbil.pkg", "build.ss"],
-        _ => &[],
-    }
-}
-
-fn language_file_matches(path: &Path, extensions: &[&str], config_files: &[&str]) -> bool {
-    path.extension()
-        .and_then(|extension| extension.to_str())
-        .is_some_and(|extension| extensions.contains(&extension))
-        || path
-            .file_name()
-            .and_then(|name| name.to_str())
-            .is_some_and(|name| config_files.contains(&name))
 }
 
 fn display_path(project_root: &Path, path: &Path) -> String {

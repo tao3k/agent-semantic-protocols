@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use agent_semantic_provider_transport::byte_text;
 
 use super::search_config::AspConfig;
+use super::search_language_files::{LanguageFileSpec, language_file_spec};
 use super::search_pipe_model::Candidate;
 use super::search_pipe_native_finder::{NativeFinderSurface, collect_native_finder_candidates};
 
@@ -76,8 +77,7 @@ pub(super) fn collect_candidates(
     {
         return Ok(collection.candidates);
     }
-    let extensions = language_extensions(language_id);
-    let config_files = language_config_filenames(language_id);
+    let file_spec = language_file_spec(language_id);
     let mut candidates = Vec::new();
     let mut remaining = PIPE_CANDIDATE_LINE_LIMIT;
     let per_term_limit = per_term_candidate_limit(terms.len());
@@ -85,8 +85,7 @@ pub(super) fn collect_candidates(
     let mut seen = HashSet::new();
     let mut collector = CandidateCollector {
         locator_root,
-        extensions,
-        config_files,
+        file_spec,
         terms: &terms,
         per_term_limit,
         term_counts: &mut term_counts,
@@ -178,42 +177,9 @@ fn query_terms(query: &str) -> Vec<String> {
         .collect()
 }
 
-fn language_extensions(language_id: &str) -> &'static [&'static str] {
-    match language_id {
-        "rust" => &["rs"],
-        "typescript" => &["ts", "tsx", "js", "jsx"],
-        "python" => &["py"],
-        "julia" => &["jl"],
-        "gerbil-scheme" => &["ss", "ssi", "scm", "sld"],
-        _ => &[],
-    }
-}
-
-fn language_config_filenames(language_id: &str) -> &'static [&'static str] {
-    match language_id {
-        "rust" => &["Cargo.toml"],
-        "typescript" => &["package.json", "tsconfig.json", "pnpm-workspace.yaml"],
-        "python" => &["pyproject.toml"],
-        "julia" => &["Project.toml"],
-        "gerbil-scheme" => &["gerbil.pkg", "build.ss"],
-        _ => &[],
-    }
-}
-
-fn language_file_matches(path: &Path, extensions: &[&str], config_files: &[&str]) -> bool {
-    path.extension()
-        .and_then(|extension| extension.to_str())
-        .is_some_and(|extension| extensions.contains(&extension))
-        || path
-            .file_name()
-            .and_then(|name| name.to_str())
-            .is_some_and(|name| config_files.contains(&name))
-}
-
 struct CandidateCollector<'a> {
     locator_root: &'a Path,
-    extensions: &'static [&'static str],
-    config_files: &'static [&'static str],
+    file_spec: LanguageFileSpec,
     terms: &'a [String],
     per_term_limit: usize,
     term_counts: &'a mut [usize],
@@ -333,7 +299,7 @@ impl CandidateCollector<'_> {
     }
 
     fn append_file_candidates(&mut self, path: &Path) -> Result<(), String> {
-        if !language_file_matches(path, self.extensions, self.config_files) {
+        if !self.file_spec.matches(path) {
             return Ok(());
         }
         self.append_path_candidate(path);
@@ -367,7 +333,7 @@ impl CandidateCollector<'_> {
         if self.is_done() {
             return;
         }
-        if !language_file_matches(path, self.extensions, self.config_files) {
+        if !self.file_spec.matches(path) {
             return;
         }
         let display = display_path(self.locator_root, path);

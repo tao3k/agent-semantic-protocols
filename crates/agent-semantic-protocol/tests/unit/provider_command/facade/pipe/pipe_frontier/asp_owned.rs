@@ -213,8 +213,8 @@ fn gerbil_search_pipe_recalls_source_and_config_files_without_provider_spawn() {
     assert!(stdout.contains("src/main.ss"), "{stdout}");
     assert!(stdout.contains("fdQuery=gerbil.pkg|build.ss"), "{stdout}");
     assert!(
-        stdout.contains("recommendedNext=A1.fd-query")
-            || stdout.contains("recommendedNext=A2.fd-query"),
+        stdout.contains("recommendedNext=A1.owner-items")
+            || stdout.contains("recommendedNext=A2.owner-items"),
         "{stdout}"
     );
     assert!(!stdout.contains("A1=query-code"), "{stdout}");
@@ -346,9 +346,12 @@ fn search_pipe_keeps_gerbil_package_terms_on_gerbil_candidates() {
         stdout.contains("globalCoverage=matched=gerbil.pkg,poo,gxpkg"),
         "{stdout}"
     );
-    assert!(stdout.contains("recommendedNext=A1.fd-query"), "{stdout}");
     assert!(
-        stdout.contains("nextCommand=asp fd -query gerbil.pkg ."),
+        stdout.contains("recommendedNext=A1.owner-items"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("nextCommand=asp gerbil-scheme search owner gerbil.pkg items"),
         "{stdout}"
     );
     assert!(

@@ -6,16 +6,7 @@ use std::path::Path;
 
 use agent_semantic_provider_transport::byte_text;
 
-const CONFIG_OWNER_FILENAMES: &[&str] = &[
-    "Cargo.toml",
-    "package.json",
-    "tsconfig.json",
-    "pnpm-workspace.yaml",
-    "pyproject.toml",
-    "Project.toml",
-    "gerbil.pkg",
-    "build.ss",
-];
+use super::search_language_files::language_file_spec;
 
 pub(super) fn render_owner_query_frontier(
     language_id: &str,
@@ -30,7 +21,7 @@ pub(super) fn render_owner_query_frontier(
         project_root.join(owner)
     };
     let display_owner = display_path(locator_root, &owner_path);
-    let item_matches = find_owner_query_matches(&owner_path, query);
+    let item_matches = find_owner_query_matches(language_id, &owner_path, query);
     let mut rendered = String::from(
         "[search-reasoning] q=owner-query alg=asp-fast-owner-query-v1\n\
 legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next\n\
@@ -175,7 +166,7 @@ struct OwnerQueryMatch {
     match_rank: u8,
 }
 
-fn find_owner_query_matches(path: &Path, query: &str) -> Vec<OwnerQueryMatch> {
+fn find_owner_query_matches(language_id: &str, path: &Path, query: &str) -> Vec<OwnerQueryMatch> {
     let Ok(bytes) = fs::read(path) else {
         return Vec::new();
     };
@@ -232,7 +223,7 @@ fn find_owner_query_matches(path: &Path, query: &str) -> Vec<OwnerQueryMatch> {
     }
     sort_owner_query_matches(&mut matches);
     if matches.is_empty()
-        && let Some(config_match) = config_owner_query_match(path, &terms, &lines)
+        && let Some(config_match) = config_owner_query_match(language_id, path, &terms, &lines)
     {
         matches.push(config_match);
     }
@@ -262,14 +253,16 @@ fn item_kind_priority(kind: &str) -> u8 {
 }
 
 fn config_owner_query_match(
+    language_id: &str,
     path: &Path,
     terms: &[QueryTerm],
     lines: &[&[u8]],
 ) -> Option<OwnerQueryMatch> {
-    let filename = path.file_name().and_then(|name| name.to_str())?;
-    if !CONFIG_OWNER_FILENAMES.contains(&filename) {
+    let file_spec = language_file_spec(language_id);
+    if !file_spec.is_config_path(path) {
         return None;
     }
+    let filename = path.file_name().and_then(|name| name.to_str())?;
     let filename_lower = filename.to_ascii_lowercase();
     if terms
         .iter()

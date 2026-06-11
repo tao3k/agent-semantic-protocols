@@ -175,3 +175,52 @@ fn gerbil_owner_items_query_set_renders_config_owner_selector_without_provider()
     );
     let _ = std::fs::remove_dir_all(root);
 }
+
+#[test]
+fn gerbil_owner_items_query_set_rejects_other_language_config_owner() {
+    let root = temp_project_root("search-owner-gerbil-non-gerbil-config");
+    let bin_dir = root.join(".bin");
+    let marker = root.join("provider-called");
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"not-gerbil\"\n",
+    )
+    .expect("write rust package");
+    write_marker_provider(&bin_dir, "gerbil-scheme-harness", &marker);
+    write_activation(&root, &[provider("gerbil-scheme", Vec::new())]);
+
+    let output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args([
+            "gerbil-scheme",
+            "search",
+            "owner",
+            "Cargo.toml",
+            "items",
+            "--query",
+            "Cargo.toml",
+            "--view",
+            "seeds",
+            ".",
+        ])
+        .output()
+        .expect("run asp gerbil search owner items");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    assert!(stdout.contains("reason=no-owner-item-match"), "{stdout}");
+    assert!(
+        !stdout.contains("I=item:symbol(Cargo.toml)@Cargo.toml:1:1!syntax"),
+        "{stdout}"
+    );
+    assert!(
+        !marker.exists(),
+        "Gerbil non-config owner-items fast path should not spawn provider"
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
