@@ -25,9 +25,9 @@ pub(crate) fn run_language_command_with_config(
     let Some(command) = args.first().map(String::as_str) else {
         return Err(usage(language_id));
     };
-    if !matches!(command, "guide" | "search" | "query") {
+    if !matches!(command, "guide" | "search" | "query" | "elements-query") {
         return Err(format!(
-            "asp {language_id}: unsupported document command `{command}`; supported commands are guide, search, query"
+            "asp {language_id}: unsupported document command `{command}`; supported commands are guide, search, query, elements-query"
         ));
     }
 
@@ -55,5 +55,5 @@ fn document_language(language_id: &str) -> Result<DocumentLanguage, String> {
 }
 
 fn usage(language_id: &str) -> String {
-    format!("usage: asp {language_id} <guide|search|query> ...")
+    format!("usage: asp {language_id} <guide|search|query|elements-query> ...")
 }
