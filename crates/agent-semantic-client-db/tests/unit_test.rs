@@ -14,3 +14,5 @@ mod db_recent_generations;
 mod db_syntax_query;
 #[path = "unit/db/syntax_query_flush.rs"]
 mod db_syntax_query_flush;
+#[path = "unit/db/syntax_query_structural.rs"]
+mod db_syntax_query_structural;
