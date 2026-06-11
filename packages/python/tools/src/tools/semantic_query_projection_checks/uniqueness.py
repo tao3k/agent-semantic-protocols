@@ -143,7 +143,9 @@ def _single_omission_errors(
     has_read = isinstance(omission, dict) and "read" in omission
     errors = []
     if node_id is None and not has_read:
-        errors.append(f"matches[{match_index}].projection omitted fact lacks nodeId/read")
+        errors.append(
+            f"matches[{match_index}].projection omitted fact lacks nodeId/read"
+        )
     if node_id is not None and node_id not in node_id_set:
         errors.append(
             f"matches[{match_index}].projection omitted fact references "
@@ -187,26 +189,4 @@ def _single_expand_action_errors(
             f"matches[{match_index}].projection expand action target {target} "
             "is neither a node id nor an exact read action"
         )
-    return [*errors, *_expand_action_selector_errors(match_index, action_kind, action)]
-
-
-def _expand_action_selector_errors(
-    match_index: int,
-    action_kind: object,
-    action: dict[object, object],
-) -> list[str]:
-    argv = action.get("argv")
-    if (
-        action_kind not in {"exact-read", "hot-block"}
-        or not isinstance(argv, list)
-        or "--selector" not in argv
-    ):
-        return []
-    selector_index = argv.index("--selector")
-    selector = argv[selector_index + 1] if selector_index + 1 < len(argv) else None
-    if selector == action.get("read"):
-        return []
-    return [
-        f"matches[{match_index}].projection {action_kind} argv selector "
-        f"{selector} does not match read locator {action.get('read')}"
-    ]
+    return errors

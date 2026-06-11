@@ -752,6 +752,14 @@ impl ClientDb {
         Self::open_read_only(db_path)?.lookup_syntax_query_replay_for(lookup)
     }
 
+    /// Return normalized syntax query rows using this already opened DB handle.
+    pub fn lookup_syntax_query_replay_open(
+        &self,
+        lookup: &ClientDbSyntaxQueryLookup,
+    ) -> Result<Option<ClientDbSyntaxQueryReplay>, String> {
+        self.lookup_syntax_query_replay_for(lookup)
+    }
+
     /// Return aggregate cache generation counts from the DB.
     pub fn summary(&self) -> Result<ClientDbSummary, String> {
         let (generation_count, raw_source_stored): (i64, i64) = self

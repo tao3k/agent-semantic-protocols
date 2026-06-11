@@ -657,8 +657,9 @@ useful denial must include the reason category, language/provider route, next
 safe command, pipe shape for =search ingest= when needed, subagent receipt
 requirements when applicable, and no leaked source text.  The route argv is a
 separate assertion surface from the human-readable message: sandtables may
-require canonical command fragments such as =query --from-hook= and reject stale
-fragments such as the retired search-query hook form or non-canonical surface names.
+require canonical argv token sequences such as =query --from-hook= and reject
+stale token sequences such as the retired search-query hook form or
+non-canonical surface names.
 Guide quality may also assert prompt-visible output facts.  When compact graph
 or search-guide optimization is under test, scenarios can require exact
 =entries=profile(selectors=>returns)= text through

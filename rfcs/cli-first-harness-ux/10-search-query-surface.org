@@ -574,12 +574,14 @@ Rendered compact rows are views over projection nodes:
   =owner-names= belong to query/candidate output, not to compact AST
   =projection.expandActions=
 - every projection action must be executable without guessing: =exact-read=
-  and =hot-block= actions carry a =read= locator; =node-query= actions carry
-  provider =argv= and must target an existing projection node rather than a
-  read locator
-- if an =exact-read= or =hot-block= action also emits provider =argv=, its
-  =--selector= argument must be the same canonical =read= locator; it must not
-  widen back to an owner path or glob
+  and =hot-block= actions carry a =read= locator; =node-query= actions carry a
+  typed capability/selector route and must target an existing projection node
+  rather than a read locator
+- projection packets do not carry materialized provider =argv= in
+  =expandActions[]=.  Consumers must build =argv= through the trusted
+  materializer from typed action fields and the provider registry, not from
+  rendered compact rows, ARI text, =nextCommand= displays, or ad hoc command
+  templates
 
 Nested owners need an explicit mode.  A provider may either summarize a nested
 function/class/closure under its parent or expose it as a child projection node

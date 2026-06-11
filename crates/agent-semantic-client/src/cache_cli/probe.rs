@@ -18,7 +18,7 @@ use crate::cache_cli::request::{
 };
 use crate::cache_replay::{
     ProviderCacheReplay, load_replay_artifact, load_syntax_query_rows_replay,
-    search_fzf_generation_matches_request,
+    load_syntax_query_rows_replay_open, search_fzf_generation_matches_request,
 };
 
 const FRESH_FZF_CANDIDATE_LIMIT: u32 = 20;
@@ -136,13 +136,23 @@ pub(crate) fn provider_cache_probe(
             {
                 return None;
             }
-            load_syntax_query_rows_replay(
-                cache_root,
-                &provider.language_id,
-                &provider.provider_id,
-                project_root,
-                request,
-            )
+            if let Some(db) = db.as_ref() {
+                load_syntax_query_rows_replay_open(
+                    db,
+                    &provider.language_id,
+                    &provider.provider_id,
+                    project_root,
+                    request,
+                )
+            } else {
+                load_syntax_query_rows_replay(
+                    cache_root,
+                    &provider.language_id,
+                    &provider.provider_id,
+                    project_root,
+                    request,
+                )
+            }
         });
     let cache_status = if replay.is_some() {
         CacheStatus::Hit

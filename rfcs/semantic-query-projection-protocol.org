@@ -265,15 +265,19 @@ projection-local action kinds are:
 |------+-----------------|
 | =exact-read= | existing node id plus exact =read= locator |
 | =hot-block= | existing node id or hot block plus exact =read= locator |
-| =node-query= | existing node id plus provider =argv= |
+| =node-query= | existing node id plus typed query capability/selector route |
 
 Routing actions such as owner-local name listing, query repair candidates, or
 search-profile fanout belong to query/search synthesis fields, not to
 =projection.expandActions=.
 
-If an =exact-read= or =hot-block= action includes provider =argv= with
-=--selector=, that selector must equal the action's canonical =read= locator.
-It must not widen back to an owner path or glob.
+Projection actions carry typed route facts such as action kind, target node id,
+capability id, selector/read locator, language id, workspace policy, and safety
+constraints.  =semantic-query-packet= does not carry materialized provider
+=argv= in =expandActions[]=.  The trusted materializer builds =argv= from those
+typed facts plus the active provider registry.  Implementations must not derive
+=argv= from compact projection text, ARI rows, =nextCommand= displays, or ad hoc
+string templates.
 
 * Token control
 

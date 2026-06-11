@@ -81,15 +81,26 @@ The durable pipeline is:
 
 #+begin_src text
 parser/compiler/static-analysis facts
+  -> semantic JSON packet
   -> typed code/repo graph
-  -> ranked frontier
-  -> compact prompt serialization
-  -> executable next action
+  -> ranked frontier and typed capability actions
+  -> typed render IR
+  -> safe ARI line serialization
+  -> agent prompt
+
+typed capability action
+  -> trusted materializer
+  -> executable argv
 #+end_src
 
 Terminology is deliberately narrow:
 
 - =frontier= means locator/next-action candidates selected from typed facts.
+- =ARI= means the line-oriented agent render interface: the last-mile stdout
+  serialization read by an agent, not the internal data model.
+- =typed render IR= means the renderer-owned object model between JSON packets
+  and ARI lines.  It contains typed aliases, locators, rank, frontier, omit,
+  avoid, and display fields, never preformatted command strings.
 - =compact graph render= means the prompt-facing serialization format for those
   facts; it is not a second kind of frontier.
 - =code compact= means parser/format-aware code projection used by query/code
@@ -104,8 +115,8 @@ grammar.  Compact graph output therefore follows six invariants:
 - Typed Edge: every relation has an explicit relation label.
 - Algorithmic Rank: =rank= comes from =searchSynthesis.algorithm=, not renderer
   sorting.
-- Executable Frontier: every =frontier= entry maps to a provider follow-up
-  action.
+- Executable Frontier: every =frontier= entry maps to a schema-owned typed
+  follow-up action before any ARI text is emitted.
 - Bounded Locator: every read/edit/query frontier has an exact locator or a
   target that the provider can recover into one.
 
@@ -190,15 +201,43 @@ The graph feature is a renderer over schema-owned facts:
 
 #+begin_src text
 provider parser facts
-  -> semantic-search-packet nodes/edges/searchSynthesis
-  -> asp graph render
+  -> semantic-search-packet nodes/edges/searchSynthesis/nextActions
+  -> typed render IR
+  -> safe ARI encoder
   -> agent compact graph feature
+
+semantic-search-packet typed action
+  -> trusted materializer
+  -> argv
 #+end_src
 
 Provider-private maps must not determine prompt-visible rank, relation labels,
 or next actions.  If a relation or action changes the agent's decision, it must
 be representable in the JSON packet before it is rendered in compact graph
 output.
+
+ARI keeps the useful line interface and removes the unsafe part: untyped,
+injectable inline strings that production code later splits to recover
+semantics.  JSON packets remain the source of truth for nodes, edges, locators,
+rank, frontier, actions, profiles, trace, explanations, omission, avoidance,
+and metrics.  ARI is only the prompt serialization of a typed render IR derived
+from that JSON packet.
+
+The safe ARI encoder owns escaping, single-line safety, locator canonicalization,
+renderer-assigned alias stability, field length limits, control-character and
+ANSI removal, and display truncation.  It must not derive rank, infer missing
+relations, choose actions, or materialize commands.
+
+Production code must not recover actions by ad hoc parsing ARI lines such as
+=rank=..., =frontier=..., =A.code=, or =next=owner:...=.  A strict ARI parser is
+allowed only for golden tests, fuzzing, replay/backcompat, transcript recovery,
+and debug validation.  Executable commands are built only from typed capability
+actions and registry/workspace policy by a trusted materializer.
+
+Provider facts may supply parser-owned data, capability ids, targets, locators,
+and safety constraints; they must not supply executable shell strings as search
+facts.  Every ARI alias, locator, frontier action, and omit/avoid reference must
+correspond to a node or action in the source JSON packet.
 
 * Dependency topology cache boundary
 
@@ -957,21 +996,24 @@ windows.
 2. Audit =semantic-graph.v1= and =semantic-search-packet.v1= for alias,
    action, rank, frontier seed, synthesis, omission, and avoid coverage.
 3. Keep graph/frontier/action authority in JSON packets and JSON projections;
-   treat =semantic-compact-graph-render.v1= as legacy/debug stdout grammar
-   rather than a protocol surface.
-4. Add schema tests for any missing fields or template vocabulary drift.
-5. Implement projection/materializer tests that prove prime, owner, query-set,
+   treat =semantic-compact-graph-render.v1= as ARI/legacy/debug stdout grammar
+   rather than a trusted graph/frontier/action protocol surface.
+4. Introduce or preserve a typed render IR and safe ARI encoder boundary before
+   renderer string templates; keep any ARI parser restricted to tests, replay,
+   backcompat, transcript recovery, and debug validation.
+5. Add schema tests for any missing fields or template vocabulary drift.
+6. Implement projection/materializer tests that prove prime, owner, query-set,
    ingest, tests, and item query outputs derive next actions from schema-owned
    graph facts before any text rendering.
-6. Replace renderer assertions that target independent =|seed= or
+7. Replace renderer assertions that target independent =|seed= or
    =|synthesis= rows with assertions over =rank=, =frontier=, =avoid=, aliases,
    and grouped edges.
-7. Align Rust, TypeScript, and Python provider integration tests to the same
+8. Align Rust, TypeScript, and Python provider integration tests to the same
    examples and surface classes by asserting packet construction plus shell-out
    rendering, not provider-local renderer implementations.
-8. Add sandtable scenarios that measure command count, token size, repeated
+9. Add sandtable scenarios that measure command count, token size, repeated
    search loops, and hook-recovery clarity.
-9. Use real-project traces before widening graph rendering beyond the proven
+10. Use real-project traces before widening graph rendering beyond the proven
    surfaces; require every =--view seeds= follow-up action to remain
    graph-derived from the start.
 

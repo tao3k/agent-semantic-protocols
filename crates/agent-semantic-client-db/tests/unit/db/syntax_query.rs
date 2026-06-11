@@ -69,7 +69,7 @@ fn import_semantic_tree_sitter_query_packet_writes_replay_rows() {
         .expect("import syntax rows");
     let summary = db.summary().expect("db summary after syntax import");
 
-    let replay = ClientDb::lookup_syntax_query_replay(&ClientDbSyntaxQueryLookup {
+    let lookup = ClientDbSyntaxQueryLookup {
         db_path: db_path.clone(),
         language_id: LanguageId::from("rust"),
         provider_id: ProviderId::from("rs-harness"),
@@ -79,10 +79,16 @@ fn import_semantic_tree_sitter_query_packet_writes_replay_rows() {
         )
         .expect("syntax query AST fingerprint"),
         selector: Some("src/lib.rs:1:80".to_string()),
-    })
-    .expect("lookup syntax rows")
-    .expect("syntax rows");
+    };
+    let replay = ClientDb::lookup_syntax_query_replay(&lookup)
+        .expect("lookup syntax rows")
+        .expect("syntax rows");
+    let open_replay = db
+        .lookup_syntax_query_replay_open(&lookup)
+        .expect("lookup open syntax rows")
+        .expect("open syntax rows");
 
+    assert_eq!(open_replay, replay);
     assert_eq!(replay.grammar_id, "tree-sitter-rust");
     assert_eq!(summary.syntax_row_generation_count, 1);
     assert_eq!(summary.syntax_row_match_count, 2);

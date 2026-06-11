@@ -499,7 +499,12 @@ column numbers, or command prefixes.  In particular, values such as
 =0:src/components/WorkflowExecution.tsx=, =owner:src/lib.rs=, and
 =src/lib.rs:42:90= are not paths.  Put rank/score in separate fields
 (for example =rank=0= or =score=2), put line/column data in =locations=, and
-use command fragments only inside =next= values.
+render compact action labels only inside =next= values.
+
+Those labels are ARI prompt hints backed by typed packet actions.  Client and
+provider code must materialize executable commands from schema-owned action
+objects, registry capabilities, and workspace policy; they must not recover
+argv by parsing =next= text, owner lines, rank lines, or frontier strings.
 
 This rule also applies when the provider internally works with package-local
 paths.  Agent-facing owner paths, hit paths, query selectors, and next-action
@@ -555,7 +560,7 @@ the value is exceptional.
 line type.  A standalone =|next= line is only used when no owner/item
 context exists to attach to.
 
-Next actions use compact command fragments:
+Next actions render compact action labels:
 
 #+begin_src text
 next=dependency:reqwest
@@ -569,6 +574,9 @@ next=bench:parse
 
 If the next action targets the current owner, the owner is implicit.  If it
 targets a different owner, it is explicit: =next=owner:src/api/orders.rs=.
+The source JSON packet still carries the typed action target, capability, and
+locator.  The rendered label is allowed for agent navigation and strict
+golden/backcompat validation; it is not a production action API.
 
 Node prefixes:
 

@@ -363,22 +363,63 @@ pub(crate) fn load_syntax_query_rows_replay(
     project_root: &Path,
     request: &ClientRequest,
 ) -> Option<ProviderCacheReplay> {
+    let lookup = syntax_query_rows_lookup(
+        &ClientDb::default_path(cache_root),
+        language_id,
+        provider_id,
+        project_root,
+        request,
+    )?;
+    render_syntax_query_rows_replay(
+        ClientDb::lookup_syntax_query_replay(&lookup)
+            .ok()
+            .flatten()?,
+        project_root,
+    )
+}
+
+pub(crate) fn load_syntax_query_rows_replay_open(
+    db: &ClientDb,
+    language_id: &LanguageId,
+    provider_id: &ProviderId,
+    project_root: &Path,
+    request: &ClientRequest,
+) -> Option<ProviderCacheReplay> {
+    let lookup =
+        syntax_query_rows_lookup(db.path(), language_id, provider_id, project_root, request)?;
+    render_syntax_query_rows_replay(
+        db.lookup_syntax_query_replay_open(&lookup).ok().flatten()?,
+        project_root,
+    )
+}
+
+fn syntax_query_rows_lookup(
+    db_path: &Path,
+    language_id: &LanguageId,
+    provider_id: &ProviderId,
+    project_root: &Path,
+    request: &ClientRequest,
+) -> Option<ClientDbSyntaxQueryLookup> {
     if request.method != ClientMethod::Query
         || request.forwarded_args.iter().any(|arg| arg == "--code")
     {
         return None;
     }
     let query_ast_fingerprint = request_tree_sitter_query_ast_fingerprint(&request.forwarded_args)?;
-    let replay = ClientDb::lookup_syntax_query_replay(&ClientDbSyntaxQueryLookup {
-        db_path: ClientDb::default_path(cache_root),
+    Some(ClientDbSyntaxQueryLookup {
+        db_path: db_path.to_path_buf(),
         language_id: language_id.clone(),
         provider_id: provider_id.clone(),
         project_root: project_root.to_path_buf(),
         query_ast_fingerprint,
         selector: request_flag_value(&request.forwarded_args, "--selector").map(str::to_string),
     })
-    .ok()
-    .flatten()?;
+}
+
+fn render_syntax_query_rows_replay(
+    replay: agent_semantic_client_db::ClientDbSyntaxQueryReplay,
+    project_root: &Path,
+) -> Option<ProviderCacheReplay> {
     if !replay_file_hashes_match(project_root, &replay.file_hashes) {
         return None;
     }

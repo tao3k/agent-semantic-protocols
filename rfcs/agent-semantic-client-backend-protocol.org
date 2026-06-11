@@ -82,10 +82,12 @@ Machine output: compact JSON artifacts and local SQL rows outside the prompt; Ar
    not accept a shared =--backend= flag.  Backend mode is configuration and
    diagnostics state.  This preserves RFC 005's intent-level command surface.
 
-7. /Compact text is the prompt surface./  Agents should not request provider
-   JSON during interactive exploration.  =agent-semantic-client= may use structured
-   provider packets internally for cache and artifacts, then render compact
-   text to stdout.
+7. /ARI compact text is the prompt surface./  Agents should not request
+   provider JSON during interactive exploration.  =agent-semantic-client= may
+   use structured provider packets internally for cache and artifacts, then
+   render compact ARI text to stdout through the shared typed render IR and
+   safe encoder.  Production client code must not parse that prompt text back
+   into graph facts, frontier actions, or executable commands.
 
 8. /Compact graph rendering is shared protocol logic./  Native providers emit
    schema-valid search/query packets and parser-owned facts.  The compact graph
@@ -134,6 +136,15 @@ Machine output: compact JSON artifacts and local SQL rows outside the prompt; Ar
    parser widening, lexical rescue, or a license for the client to invent facts.
    If no native provider can prove the requested fact, the client returns a
    visible miss or unsupported-method receipt.
+
+13. /Command materialization is typed action binding, not ARI parsing./
+   Provider packets may expose typed =nextActions=, graph frontier actions,
+   capability ids, targets, locators, and safety constraints.  The client
+   materializes executable =argv= only from those typed objects plus registry
+   descriptors, activation state, and workspace policy.  Provider facts must
+   not smuggle executable shell strings into search packets, and prompt-visible
+   ARI rows such as =next=, =frontier=, =recommendedNext=, or =nextCommand= are
+   display/advisory output, not production command APIs.
 
 * Architecture
 
@@ -528,6 +539,12 @@ must not invent provider commands from string templates when a registry
 descriptor exists.  A cache miss always delegates to a native provider or
 returns a visible miss.  It must not trigger generic text search inside the
 client.
+
+Follow-up command construction must remain action-owned.  When a search packet
+recommends a query/code/test/owner action, =agent-semantic-client= binds the
+typed action object to a registry capability and builds =argv= as a vector of
+arguments.  It must not split ARI output, compact =next= labels, or
+=nextCommand= display text to recover command semantics.
 
 *** Receipt stream contract
 
@@ -1067,12 +1084,13 @@ making native-provider provenance explicit:
 - =agent-semantic-client-receipt.v1= for execution-route selection, cache
   hit/miss, provider command count, cloud request id, upload policy, native
   provenance, compact artifact ids, and performance calibration metrics.
-- =semantic-compact-graph-render.v1= owns the shared renderer contract:
+- =semantic-compact-graph-render.v1= owns the shared ARI renderer contract:
   renderer owner, =asp graph render= migration adapter,
-  Rust library hot path, required graph packet header, and the rule that
-  provider-local compact graph renderer implementations are replaced by packet
-  construction plus shell-out adapters rather than kept as compatibility
-  fallback.
+  Rust library hot path, required graph packet header, safe line encoding, and
+  the rule that provider-local compact graph renderer implementations are
+  replaced by packet construction plus shell-out adapters rather than kept as
+  compatibility fallback.  It is a render grammar/debug validator, not the
+  trusted graph/frontier/action protocol.
 - Optional =semantic-cloud-index-upload.v1= for Cloud Flight upload receipts.
 
 Provider registries should also advertise explicit machine export capabilities

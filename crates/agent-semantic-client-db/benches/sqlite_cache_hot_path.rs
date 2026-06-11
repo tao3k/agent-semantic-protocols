@@ -63,6 +63,15 @@ fn sqlite_cache_hot_path(c: &mut Criterion) {
             black_box(replay.rows.len());
         });
     });
+    c.bench_function("sqlite_cache_hot_path/syntax_query_replay_open_512", |b| {
+        b.iter(|| {
+            let replay = read_db
+                .lookup_syntax_query_replay_open(black_box(&syntax_lookup))
+                .expect("syntax replay lookup")
+                .expect("syntax replay rows");
+            black_box(replay.rows.len());
+        });
+    });
     let _ = std::fs::remove_dir_all(cache_root);
 }
 
