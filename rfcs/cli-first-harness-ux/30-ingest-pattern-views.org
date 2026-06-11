@@ -121,6 +121,16 @@ search pipe <question-or-feature-term> [--source auto|provider|finder|ingest] [-
   selection.  Multiple =-query= clauses must prefer candidates with
   owner/window/package cohesion across clauses before recommending selector
   reads.
+- When =search pipe= receives one long natural query without explicit clause
+  separators, it may synthesize =queryClauses= from term roles before ranking.
+  File/path-like terms, package-like terms, owner/test symbol terms, concept
+  terms, and weak natural terms are separate evidence axes.  Weak natural terms
+  such as =through=, =smoke=, =dev=, and =dependency= may explain context, but
+  they must not select the best owner or outrank file/path/test/fn evidence.
+  If =packageCohesion= is low while a strong owner/path axis exists, projected
+  graph selectors are evidence only: =actionFrontier= must start with
+  =fd-query=, =rg-query=, =owner-items=, or =treesitter-query= until a focused
+  clause or owner path proves selector safety.
 - Generated files, vendored files, and long provider fact signatures are not
   normal frontier actions by default.  Generated/vendor candidates are omitted
   unless the query explicitly asks for generated/API/client/schema surfaces, and

@@ -306,6 +306,7 @@ fn best_owner_coverage(terms: &[QueryTerm], candidates: &[Candidate]) -> Option<
     for candidate in candidates {
         let matched = terms
             .iter()
+            .filter(|term| !matches!(term.role, TermRole::Context))
             .filter(|term| weak_match(candidate, term))
             .map(|term| term.lower.clone())
             .collect::<Vec<_>>();
@@ -323,6 +324,7 @@ fn best_owner_coverage(terms: &[QueryTerm], candidates: &[Candidate]) -> Option<
     let matched = matched.into_iter().collect::<Vec<_>>();
     let missing = terms
         .iter()
+        .filter(|term| !matches!(term.role, TermRole::Context))
         .map(|term| term.lower.clone())
         .filter(|term| !matched.iter().any(|matched| matched == term))
         .collect::<Vec<_>>();

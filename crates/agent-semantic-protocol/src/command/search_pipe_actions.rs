@@ -329,9 +329,9 @@ fn rg_query(quality: &SearchPipeQuality, compact: Option<&str>) -> Option<String
         compact_symbols(compact, "field")
             .into_iter()
             .chain(compact_symbols(compact, "hot"))
-            .filter(|symbol| usable_query_term(symbol)),
+            .filter(|symbol| usable_query_term(symbol) && !weak_natural_action_term(symbol)),
     );
-    unique_terms(terms, 8).map(|terms| terms.join("|"))
+    unique_terms_without_weak_natural(terms, 8).map(|terms| terms.join("|"))
 }
 
 fn owner_items_handle(quality: &SearchPipeQuality, candidates: &[Candidate]) -> Option<String> {
@@ -345,7 +345,7 @@ fn owner_items_handle(quality: &SearchPipeQuality, candidates: &[Candidate]) -> 
             .filter(|candidate| candidate.path == owner)
             .map(|candidate| candidate.symbol.clone()),
     );
-    let query = unique_terms(query_terms, 6)?.join("|");
+    let query = unique_terms_without_weak_natural(query_terms, 6)?.join("|");
     Some(format!("{owner}:{query}"))
 }
 
@@ -357,7 +357,7 @@ fn preview_owner_items_handle(
     let mut query_terms = Vec::new();
     query_terms.extend(quality.concept_terms.iter().cloned());
     query_terms.extend(quality.owner_seed_terms.iter().cloned());
-    let query = unique_terms(query_terms, 6)?.join("|");
+    let query = unique_terms_without_weak_natural(query_terms, 6)?.join("|");
     Some(format!("{owner}:{query}"))
 }
 
@@ -531,6 +531,31 @@ fn unique_terms(terms: Vec<String>, limit: usize) -> Option<Vec<String>> {
         .take(limit)
         .collect::<Vec<_>>();
     (!result.is_empty()).then_some(result)
+}
+
+fn unique_terms_without_weak_natural(terms: Vec<String>, limit: usize) -> Option<Vec<String>> {
+    unique_terms(
+        terms
+            .into_iter()
+            .filter(|term| !weak_natural_action_term(term))
+            .collect(),
+        limit,
+    )
+}
+
+fn weak_natural_action_term(term: &str) -> bool {
+    matches!(
+        term.to_ascii_lowercase().as_str(),
+        "through"
+            | "smoke"
+            | "dev"
+            | "dependency"
+            | "dependencies"
+            | "weak"
+            | "natural"
+            | "term"
+            | "terms"
+    )
 }
 
 fn display_scope_args(project_root: &Path, locator_root: &Path, scopes: &[PathBuf]) -> String {

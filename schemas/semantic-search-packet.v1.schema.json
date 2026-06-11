@@ -597,6 +597,73 @@
         "scope": {
           "$ref": "#/$defs/queryScope"
         },
+        "clauses": {
+          "type": "array",
+          "description": "Provider-planned semantic query clauses. Explicit query-set clauses and provider-synthesized clauses share this shape.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "terms"
+            ],
+            "properties": {
+              "id": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "role": {
+                "enum": [
+                  "path",
+                  "package",
+                  "symbol",
+                  "concept",
+                  "context"
+                ]
+              },
+              "terms": {
+                "$ref": "#/$defs/stringList"
+              }
+            }
+          }
+        },
+        "termRoles": {
+          "type": "object",
+          "description": "Normalized query term role map used by clause planning and action ranking.",
+          "additionalProperties": {
+            "enum": [
+              "context",
+              "concept",
+              "symbol"
+            ]
+          }
+        },
+        "driftSuppression": {
+          "type": "object",
+          "description": "Search-pipe safety decision that prevents weak or cross-package evidence from selecting code reads.",
+          "additionalProperties": false,
+          "properties": {
+            "packageCohesion": {
+              "enum": [
+                "low",
+                "medium",
+                "high"
+              ]
+            },
+            "weakTerms": {
+              "$ref": "#/$defs/stringList"
+            },
+            "risks": {
+              "$ref": "#/$defs/stringList"
+            },
+            "selectorReadsAllowed": {
+              "type": "boolean"
+            },
+            "reason": {
+              "type": "string"
+            }
+          }
+        },
         "merge": {
           "type": "array",
           "minItems": 1,

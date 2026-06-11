@@ -47,9 +47,6 @@ pub(super) fn render_search_pipe_plan(request: SearchPipePlanRequest<'_>) -> Str
     {
         quality.allow_query_selector = true;
     }
-    if !projected_selector_actions.is_empty() {
-        quality.allow_query_selector = true;
-    }
     let actions = if !projected_selector_actions.is_empty() {
         projected_selector_actions
     } else if quality.allow_query_selector {

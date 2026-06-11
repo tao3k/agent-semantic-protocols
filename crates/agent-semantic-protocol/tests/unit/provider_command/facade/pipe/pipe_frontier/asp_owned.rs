@@ -222,3 +222,86 @@ fn search_pipe_reports_multi_clause_query_pack_coverage() {
     );
     let _ = std::fs::remove_dir_all(root);
 }
+
+#[test]
+fn search_pipe_auto_clauses_suppress_cross_package_selector_drift() {
+    let root = temp_project_root("search-pipe-package-drift");
+    let bin_dir = root.join(".bin");
+    let marker = root.join("provider-called");
+    for path in [
+        "marlin-gerbil-scheme/src",
+        "marlin-org-workflow/src",
+        "marlin-gerbil-ir/src",
+        "tools/dev-dependency/src",
+    ] {
+        std::fs::create_dir_all(root.join(path)).expect("create package");
+    }
+    std::fs::write(
+        root.join("marlin-gerbil-scheme/src/real_gxi.rs"),
+        "pub fn real_gxi_smoke_path() {}\n",
+    )
+    .expect("write real_gxi");
+    std::fs::write(
+        root.join("marlin-org-workflow/src/lib.rs"),
+        "pub fn marlin_org_workflow_dependency() {}\n",
+    )
+    .expect("write org workflow");
+    std::fs::write(
+        root.join("marlin-gerbil-ir/src/lib.rs"),
+        "pub struct IrFact { pub long_field_signatures: Vec<(String, String, String, String, String, String, String, String, String, String, String, String, String, String, String)> }\n",
+    )
+    .expect("write gerbil ir");
+    std::fs::write(
+        root.join("tools/dev-dependency/src/lib.rs"),
+        "pub fn through_smoke_dev_dependency() {}\n",
+    )
+    .expect("write dev dependency");
+    write_marker_provider(&bin_dir, "rs-harness", &marker);
+    write_activation(&root, &[provider("rust", Vec::new())]);
+
+    let output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args([
+            "rust",
+            "search",
+            "pipe",
+            "marlin-gerbil-scheme marlin-org-workflow marlin-gerbil-ir real_gxi.rs through smoke dev dependency long-field-signatures",
+            "--view",
+            "seeds",
+            ".",
+        ])
+        .output()
+        .expect("run asp rust search pipe package drift");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    assert!(
+        stdout.contains("queryPack=clauses=4 quality=low"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("real_gxi.rs:symbol"), "{stdout}");
+    assert!(stdout.contains("marlin-gerbil-scheme:symbol"), "{stdout}");
+    assert!(stdout.contains("long-field-signatures:concept"), "{stdout}");
+    assert!(
+        stdout.contains("through:context,smoke:context,dev:context,dependency:context"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("rgQuery=real_gxi.rs"), "{stdout}");
+    assert!(stdout.contains("risk=package-drift"), "{stdout}");
+    assert!(!stdout.contains("A1=query-code"), "{stdout}");
+    assert!(
+        !stdout.contains("recommendedNext=A1.query-code"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("reason=query-selector-low-confidence,owner-seed-base-required"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("subagentHint="), "{stdout}");
+    let _ = std::fs::remove_dir_all(root);
+}
