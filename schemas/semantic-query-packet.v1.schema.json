@@ -893,7 +893,8 @@
           },
           "then": {
             "required": [
-              "argv"
+              "capabilityId",
+              "selector"
             ],
             "not": {
               "required": [
@@ -919,13 +920,21 @@
           "type": "string",
           "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*):[1-9][0-9]*:[1-9][0-9]*$"
         },
-        "argv": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "type": "string",
-            "minLength": 1
-          }
+        "capabilityId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "selector": {
+          "type": "string",
+          "minLength": 1
+        },
+        "languageId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "workspacePolicy": {
+          "type": "string",
+          "minLength": 1
         },
         "reason": {
           "type": "string",

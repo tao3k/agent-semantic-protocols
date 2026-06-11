@@ -96,15 +96,6 @@ def semantic_query_minimal_packet() -> dict[str, object]:
                             "kind": "exact-read",
                             "target": "load",
                             "read": "src/lib.rs:6:6",
-                            "argv": [
-                                "rs-harness",
-                                "query",
-                                "--from-hook",
-                                "direct-source-read",
-                                "--selector",
-                                "src/lib.rs:6:6",
-                                ".",
-                            ],
                             "reason": "read exact source before editing",
                         }
                     ],

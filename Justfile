@@ -170,9 +170,7 @@ agent-tools-install-jl bin_dir="":
       if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-$HOME/.local/bin}"; fi; \
       mkdir -p "${bin_dir}"; \
       if [ ! -x "{{julia_compiled_harness}}" ]; then \
-        (cd "{{julia_harness_project}}" && \
-          julia --project=juliac -e 'using Pkg; Pkg.instantiate()' && \
-          ASP_JULIA_BUILD_DIR=build/juliac-asp-local julia --project=juliac juliac/compile.jl); \
+        (cd "{{julia_harness_project}}" && ASP_JULIA_BUILD_DIR=build/juliac-asp-local juliac/build_provider.sh); \
       fi; \
       install -m 755 "{{julia_compiled_harness}}" "${bin_dir}/asp-julia-harness"; \
       "${bin_dir}/asp-julia-harness" guide {{julia_harness_project}} >/dev/null

@@ -50,7 +50,7 @@ def test_projection_hot_block_action_requires_read_locator() -> None:
     assert validation_errors(packet) != []
 
 
-def test_projection_node_query_action_requires_argv() -> None:
+def test_projection_node_query_action_requires_typed_route() -> None:
     packet = semantic_query_minimal_packet()
     packet["matches"][0]["projection"] = _projection_with_actions(
         [
@@ -65,20 +65,37 @@ def test_projection_node_query_action_requires_argv() -> None:
     assert validation_errors(packet) != []
 
 
-def test_projection_node_query_action_rejects_empty_argv() -> None:
+def test_projection_node_query_action_rejects_materialized_argv() -> None:
     packet = semantic_query_minimal_packet()
     packet["matches"][0]["projection"] = _projection_with_actions(
         [
             {
                 "kind": "node-query",
                 "target": "load:branch",
-                "argv": [],
+                "capabilityId": "query",
+                "selector": "load:branch",
+                "argv": ["rs-harness", "search", "owner", "src/lib.rs", "items", "."],
                 "reason": "expand node through provider query",
             }
         ]
     )
 
     assert validation_errors(packet) != []
+
+
+def test_projection_node_query_action_accepts_typed_route() -> None:
+    packet = semantic_query_minimal_packet()
+    packet["matches"][0]["projection"]["expandActions"] = [
+        {
+            "kind": "node-query",
+            "target": "load:branch",
+            "capabilityId": "query",
+            "selector": "load:branch",
+            "reason": "expand node through provider query",
+        }
+    ]
+
+    assert validation_errors(packet) == []
 
 
 def test_projection_node_query_action_rejects_read_locator() -> None:
@@ -89,8 +106,9 @@ def test_projection_node_query_action_rejects_read_locator() -> None:
                 "kind": "node-query",
                 "target": "load:branch",
                 "read": "src/lib.rs:6:6",
-                "argv": ["rs-harness", "search", "owner", "src/lib.rs", "items", "."],
-                "reason": "node queries must use provider argv, not read locators",
+                "capabilityId": "query",
+                "selector": "load:branch",
+                "reason": "node queries must use typed selectors, not read locators",
             }
         ]
     )
@@ -103,7 +121,33 @@ def _projection_with_actions(actions: list[dict[str, object]]) -> dict[str, obje
         "mode": "compact",
         "syntax": "semantic-outline",
         "sourceAuthority": "native-parser",
+        "sourceFingerprint": "src/lib.rs:6:6:39",
         "losslessStructure": True,
         "exactRead": "src/lib.rs:6:6",
+        "nodeCount": 1,
+        "nodeLimit": 24,
+        "nodesTruncated": False,
+        "nodes": [
+            {
+                "id": "load",
+                "nativeId": "rust:fn:load",
+                "kind": "fn",
+                "role": "declaration",
+                "label": "load",
+                "depth": 0,
+                "read": "src/lib.rs:6:6",
+                "structuralFingerprint": "fn:declaration:load",
+                "flags": ["call", "return"],
+            }
+        ],
+        "renderedNodeIds": ["load"],
+        "renderedRows": [
+            {
+                "nodeId": "load",
+                "rowKind": "declaration",
+                "text": "pub fn load() -> Thing",
+                "semanticWeight": 1,
+            }
+        ],
         "expandActions": actions,
     }
