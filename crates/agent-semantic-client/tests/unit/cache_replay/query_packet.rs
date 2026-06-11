@@ -100,6 +100,27 @@ rank=Q frontier=Q.fzf\n";
 }
 
 #[test]
+fn search_packet_replay_accepts_dependency_search_output() {
+    let stdout = "\
+[search-deps] q=serde@1::Serialize pkg=. dep=1 own=1 api=0 requestedVersion=1 currentWorkspaceVersion=1 versionScope=current apiQuery=Serialize\n\
+|dep serde import=serde pkg=serde version=1 kind=normal opt=false source=manifest manager=cargo feat=derive\n\
+|owner src/lib.rs hit_kind=dependency-api apiQuery=Serialize locations=3:1 next=owner:src/lib.rs\n\
+|next dependency:serde,docs:serde::Serialize,text:Serialize,tests:Serialize\n";
+
+    assert!(search_output_artifact_replay_safe(stdout.as_bytes()));
+}
+
+#[test]
+fn search_packet_replay_rejects_dependency_search_source_lines() {
+    let stdout = "\
+[search-deps] q=serde@1::Serialize pkg=. dep=1 own=1 api=0\n\
+pub fn serialize(value: Thing) -> String { format!(\"{value:?}\") }\n\
+|next dependency:serde\n";
+
+    assert!(!search_output_artifact_replay_safe(stdout.as_bytes()));
+}
+
+#[test]
 fn search_packet_replay_rejects_obsolete_search_frontier() {
     let stdout = "\
 [search-fzf] q=cache view=hits\n\

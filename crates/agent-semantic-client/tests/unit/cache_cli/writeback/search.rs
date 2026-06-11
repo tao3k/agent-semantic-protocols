@@ -152,3 +152,58 @@ rank=O frontier=O.owner\n";
     assert_eq!(probe.sqlite_write_count, 2);
     let _ = std::fs::remove_dir_all(root);
 }
+
+#[test]
+fn dependency_search_packet_writeback_replays_rendered_stdout_artifact() {
+    let _guard = crate::test_support::CACHE_TEST_LOCK
+        .lock()
+        .expect("cache test lock");
+    let root = temp_root("dependency-search-packet-writeback");
+    std::fs::create_dir_all(root.join(".git")).expect("create git marker");
+    std::fs::create_dir_all(root.join("src")).expect("create src");
+    let source = b"use serde::Serialize;\n#[derive(Serialize)]\npub struct Thing;\n";
+    std::fs::write(root.join("src/lib.rs"), source).expect("write source");
+    let digest = Sha256::digest(source);
+    let snapshot = ProviderRegistrySnapshot {
+        activation_path: root.join("activation.json"),
+        providers: vec![rust_provider()],
+    };
+    let request = ClientRequest::new(ClientMethod::Search, &root)
+        .with_language(LanguageId::from("rust"))
+        .with_forwarded_args(vec![
+            "deps".to_string(),
+            "serde@1::Serialize".to_string(),
+            ".".to_string(),
+        ]);
+    let packet = serde_json::to_vec(&json!({
+        "schemaId": "agent.semantic-protocols.semantic-search-packet",
+        "schemaVersion": "1",
+        "languageId": "rust",
+        "providerId": "rs-harness",
+        "renderMode": "deps",
+        "query": "serde@1::Serialize",
+        "owners": [{"path": "src/lib.rs"}],
+        "hits": [],
+        "searchSynthesis": {"algorithm": "dependency-frontier", "seeds": []},
+        "cache": {"fileHashes": [{"path": "src/lib.rs", "sha256": format!("{digest:x}")}]}
+    }))
+    .expect("packet json");
+    let rendered_stdout = "[search-deps] q=serde@1::Serialize pkg=. dep=1 own=1 api=0 requestedVersion=1 currentWorkspaceVersion=1 versionScope=current apiQuery=Serialize\n\
+|dep serde import=serde pkg=serde version=1 kind=normal opt=false source=manifest manager=cargo feat=derive\n\
+|owner src/lib.rs hit_kind=dependency-api apiQuery=Serialize locations=1:1 next=owner:src/lib.rs\n\
+|next dependency:serde,docs:serde::Serialize,text:Serialize,tests:Serialize\n";
+
+    let probe = write_search_packet_cache_after_provider_success(
+        &root,
+        &snapshot,
+        &request,
+        &packet,
+        rendered_stdout.as_bytes(),
+    )
+    .expect("writeback probe");
+    let replay = probe.replay.expect("dependency search output replay");
+
+    assert_eq!(replay.stdout, rendered_stdout.as_bytes());
+    assert_eq!(probe.sqlite_write_count, 2);
+    let _ = std::fs::remove_dir_all(root);
+}

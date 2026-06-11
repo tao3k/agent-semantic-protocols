@@ -26,6 +26,9 @@ pub(crate) fn search_output_artifact_replay_safe(stdout: &[u8]) -> bool {
     let Some(header) = stdout.lines().next() else {
         return false;
     };
+    if header.starts_with("[search-deps]") {
+        return deps_search_output_replay_safe(stdout);
+    }
     let has_frontier_header = header.contains("[graph-frontier]") || header.starts_with("[search-");
     if header.starts_with("[search-prime]") && !stdout.contains("|decision purpose=decision-primer")
     {
@@ -37,6 +40,17 @@ pub(crate) fn search_output_artifact_replay_safe(stdout: &[u8]) -> bool {
         && stdout.contains("legend: ID=kind:role(value)!next;")
         && stdout.contains("frontier ID.next")
         && !stdout.contains('\0')
+}
+
+fn deps_search_output_replay_safe(stdout: &str) -> bool {
+    !stdout.contains('\0')
+        && stdout.lines().skip(1).all(|line| {
+            line.is_empty()
+                || line.starts_with("|dep ")
+                || line.starts_with("|owner ")
+                || line.starts_with("|note ")
+                || line.starts_with("|next ")
+        })
 }
 
 pub(crate) fn render_search_packet_bytes(packet_bytes: Bytes) -> Option<Bytes> {

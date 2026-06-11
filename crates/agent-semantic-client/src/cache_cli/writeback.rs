@@ -903,7 +903,11 @@ fn is_replayable_search_prompt_output(args: &[String]) -> bool {
     if args.iter().any(|arg| arg == "--code" || arg == "--json") {
         return false;
     }
-    is_seed_search_without_code(args) || is_owner_items_search(args)
+    is_seed_search_without_code(args) || is_owner_items_search(args) || is_dependency_search(args)
+}
+
+fn is_dependency_search(args: &[String]) -> bool {
+    args.first().is_some_and(|arg| arg == "deps")
 }
 
 fn is_owner_items_search(args: &[String]) -> bool {
