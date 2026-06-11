@@ -29,6 +29,29 @@ fn search_packet_first_still_handles_seed_fzf() {
 }
 
 #[test]
+fn search_packet_first_handles_dependency_search_without_seed_view() {
+    let request = ClientRequest::new(ClientMethod::Search, ".").with_forwarded_args(vec![
+        "deps".to_string(),
+        "serde@1::Serialize".to_string(),
+        ".".to_string(),
+    ]);
+
+    assert!(should_try_search_packet_first(&request));
+}
+
+#[test]
+fn search_packet_first_skips_dependency_search_json_passthrough() {
+    let request = ClientRequest::new(ClientMethod::Search, ".").with_forwarded_args(vec![
+        "deps".to_string(),
+        "serde@1::Serialize".to_string(),
+        "--json".to_string(),
+        ".".to_string(),
+    ]);
+
+    assert!(!should_try_search_packet_first(&request));
+}
+
+#[test]
 fn failed_check_output_is_persisted_for_failure_frontier_search() {
     let _guard = CACHE_TEST_LOCK.lock().expect("cache test lock");
     let root = temp_project_root("failed-check-output");

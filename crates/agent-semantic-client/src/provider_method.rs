@@ -370,7 +370,7 @@ pub(crate) fn should_try_search_packet_first(request: &ClientRequest) -> bool {
             .forwarded_args
             .iter()
             .any(|arg| arg == "items" || arg == "ingest" || arg == "--code" || arg == "--json")
-        && has_seed_view(&request.forwarded_args)
+        && (has_seed_view(&request.forwarded_args) || is_dependency_search(&request.forwarded_args))
 }
 
 pub(crate) fn should_try_query_packet_first(request: &ClientRequest) -> bool {
@@ -417,6 +417,10 @@ fn has_seed_view(args: &[String]) -> bool {
     args.windows(2)
         .any(|window| window[0] == "--view" && window[1] == "seeds")
         || args.iter().any(|arg| arg == "--view=seeds")
+}
+
+fn is_dependency_search(args: &[String]) -> bool {
+    args.first().is_some_and(|arg| arg == "deps")
 }
 
 fn run_search_packet_first_miss(
