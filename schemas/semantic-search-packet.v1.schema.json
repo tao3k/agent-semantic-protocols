@@ -252,6 +252,12 @@
         "$ref": "#/$defs/nextAction"
       }
     },
+    "delegationHints": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/delegationHint"
+      }
+    },
     "notes": {
       "type": "array",
       "items": {
@@ -608,6 +614,7 @@
               "hits",
               "findings",
               "nextActions",
+              "delegationHints",
               "notes"
             ]
           }
@@ -1470,6 +1477,101 @@
         },
         "fields": {
           "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "delegationHint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile",
+        "decision",
+        "runtimeOwner",
+        "readOnly",
+        "noCode",
+        "targetActions",
+        "reason",
+        "receipt"
+      ],
+      "properties": {
+        "profile": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "decision": {
+          "const": "advisory"
+        },
+        "runtimeOwner": {
+          "const": "agent-client"
+        },
+        "modelClass": {
+          "enum": [
+            "cheap",
+            "standard",
+            "strong",
+            "inherit",
+            "custom"
+          ]
+        },
+        "readOnly": {
+          "type": "boolean"
+        },
+        "noCode": {
+          "type": "boolean"
+        },
+        "targetActions": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^A[1-9][0-9]*\\.[a-z][a-z0-9_-]*$"
+          }
+        },
+        "maxCommands": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maxTurns": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "receipt": {
+          "$ref": "#/$defs/delegationReceipt"
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "delegationReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "requiredFields"
+      ],
+      "properties": {
+        "kind": {
+          "const": "search-subagent"
+        },
+        "requiredFields": {
+          "type": "array",
+          "minItems": 5,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "role",
+              "evidence",
+              "missing",
+              "next",
+              "risk"
+            ]
+          }
         }
       }
     },

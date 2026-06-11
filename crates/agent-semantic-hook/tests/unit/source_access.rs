@@ -83,8 +83,7 @@ fn provider_capability_allow_keeps_authorization_explicit() {
         SourceAccessDecision::provider_capability_allow(SourceAccessProviderCapabilityAllowInput {
             language_id: "rust".to_string(),
             provider_id: "rs-harness".into(),
-            command: "asp rust query --from-hook direct-source-read --selector src/lib.rs --workspace . --code"
-                .to_string(),
+            command: "asp rust query --selector src/lib.rs --workspace . --code".to_string(),
             path: "src/lib.rs".to_string(),
         });
 
@@ -116,7 +115,7 @@ fn provider_capability_allow_keeps_authorization_explicit() {
             "providerId": "rs-harness",
             "subject": {
                 "toolName": "asp",
-                "command": "asp rust query --from-hook direct-source-read --selector src/lib.rs --workspace . --code",
+                "command": "asp rust query --selector src/lib.rs --workspace . --code",
                 "paths": ["src/lib.rs"]
             },
             "message": "provider-capability allowed compact source access."
@@ -141,8 +140,6 @@ fn codex_fs_read_file_policy_denies_activated_source_path() {
             "asp",
             "typescript",
             "query",
-            "--from-hook",
-            "direct-source-read",
             "--selector",
             "src/cli/agent-hooks.ts",
             "--workspace",

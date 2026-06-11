@@ -200,6 +200,44 @@ or next actions.  If a relation or action changes the agent's decision, it must
 be representable in the JSON packet before it is rendered in compact graph
 output.
 
+* Dependency topology cache boundary
+
+Graph-turbo may consume dependency topology as schema-owned evidence, but it
+must not cache source text as a ranking shortcut.  The stable cache boundary is
+manifest and lockfile state plus parser-owned usage locators:
+
+#+begin_src text
+manifest/lockfile fingerprint -> dependency/version nodes
+source imports -> import-site/api-symbol locators
+docs/tests/examples -> evidence edges
+graph-turbo profile -> frontier rank
+#+end_src
+
+=semantic-dependency-topology.v1= owns this packet shape.  It records the
+language id, package manager, manifest hash, lockfile hash, package name,
+source files that contributed import-site evidence, and typed graph nodes such
+as =package=, =dependency=, =dependency-version=, =import-site=, and
+=api-symbol=.  Edges such as =depends_on=, =version_locked=, =imports=,
+=uses_api=, =documented_by=, =example_of=, and =tested_by= are graph facts for
+ranking and search-scope narrowing.
+
+The contract is intentionally evidence-first:
+
+1. manifests and lockfiles are the dependency truth
+
+2. source scans only attach usage locators to known dependencies
+
+3. packet fingerprints cover topology facts and source-file hashes, not source
+   text bodies
+
+4. providers may omit this packet until they can emit equivalent facts, but they
+   must not replace it with provider-private dependency heuristics when the
+   facts change search frontier behavior
+
+This keeps dependency API calibration available to =search pipe= and
+=query-deps= without teaching agents to broad-grep for third-party API terms or
+reuse stale code windows from a content cache.
+
 Field names are canonical, not provider aliases.  For example, query-set count
 is derived from root-level =querySet=, and source read locators on graph
 frontier actions use =searchSynthesis.seeds[].read=.  The shared renderer must

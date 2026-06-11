@@ -65,6 +65,7 @@ pub(super) fn print_search_pipe_view(request: SearchPipeViewRequest<'_>) -> Resu
             let request = render_graph_turbo_request(GraphTurboSearchPipeRequest {
                 surface,
                 language_id,
+                dependency_root: locator_root,
                 query,
                 candidates,
                 pipes,
@@ -101,6 +102,7 @@ pub(super) fn print_search_pipe_view(request: SearchPipeViewRequest<'_>) -> Resu
             let request = render_graph_turbo_request(GraphTurboSearchPipeRequest {
                 surface,
                 language_id,
+                dependency_root: locator_root,
                 query,
                 candidates,
                 pipes,

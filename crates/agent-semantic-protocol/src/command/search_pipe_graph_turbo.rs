@@ -5,12 +5,15 @@ use std::collections::{HashMap, HashSet};
 use serde_json::{Value, json};
 
 use super::{
+    search_pipe_actions::{SearchPipeActionRequest, delegation_hints_for_request},
     search_pipe_dependency_facts::{
         DependencyFact, collect_dependency_facts, dependency_matches_query,
     },
     search_pipe_model::{Candidate, SearchPipeSourceTrace},
     search_pipe_provider_facts::ProviderGraphFacts,
-    search_pipe_quality::{compact_fact_value, is_generated_path, query_allows_generated},
+    search_pipe_quality::{
+        analyze_search_pipe_quality, compact_fact_value, is_generated_path, query_allows_generated,
+    },
     search_pipe_surfaces::{
         include_deps, include_items, include_owner_context, include_tests,
         normalized_search_surfaces,
@@ -25,6 +28,7 @@ const HOT_CONTEXT_AFTER_LINES: usize = 12;
 pub(super) struct GraphTurboSearchPipeRequest<'a> {
     pub(super) surface: &'a str,
     pub(super) language_id: &'a str,
+    pub(super) dependency_root: &'a std::path::Path,
     pub(super) query: Option<&'a str>,
     pub(super) candidates: &'a [Candidate],
     pub(super) pipes: &'a [String],
@@ -49,6 +53,7 @@ pub(super) fn render_graph_turbo_request(
 
 fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> Value {
     let language_id = request.language_id;
+    let dependency_root = request.dependency_root;
     let surface = request.surface;
     let query = request.query;
     let candidates = request.candidates;
@@ -58,12 +63,7 @@ fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> Value {
     let source_trace = request.source_trace;
     let provider_facts = request.provider_facts;
     let read_memory_selectors = request.read_memory_selectors;
-    let profile = profile_for_pipes(pipes);
-    let surfaces = normalized_search_surfaces(pipes);
-    let include_owner_context = include_owner_context(&surfaces);
-    let include_items = include_items(&surfaces);
-    let include_tests = include_tests(&surfaces);
-    let include_deps = include_deps(&surfaces);
+    let mut surfaces = normalized_search_surfaces(pipes);
     let mut nodes = Vec::new();
     let mut edges = Vec::new();
     let mut seed_ids = Vec::new();
@@ -81,6 +81,16 @@ fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> Value {
 
     let graph_candidates = sparse_graph_candidates(candidates, query);
     let owners = unique_candidate_paths(&graph_candidates);
+    let dependency_facts =
+        collect_dependency_facts(language_id, dependency_root, query, &graph_candidates);
+    if should_auto_include_dependency_surface(query, &surfaces, &dependency_facts) {
+        surfaces.push("deps".to_string());
+    }
+    let profile = profile_for_surfaces(&surfaces);
+    let include_owner_context = include_owner_context(&surfaces);
+    let include_items = include_items(&surfaces);
+    let include_tests = include_tests(&surfaces);
+    let include_deps = include_deps(&surfaces);
     if seed_ids.is_empty() {
         seed_ids.extend(
             owners
@@ -97,7 +107,6 @@ fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> Value {
         append_hot_nodes(&mut nodes, &graph_candidates);
         append_provider_fact_nodes(&mut nodes, provider_facts);
     }
-    let dependency_facts = collect_dependency_facts(language_id, query, &graph_candidates);
     if include_deps {
         append_dependency_nodes(&mut nodes, &dependency_facts);
     }
@@ -144,6 +153,30 @@ fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> Value {
         packet["readMemory"] = json!({
             "seenSelectors": read_memory_selectors,
         });
+    }
+    if surface == "search-pipe"
+        && let Some(query) = query.filter(|query| !query.trim().is_empty())
+    {
+        let quality = analyze_search_pipe_quality(language_id, query, candidates);
+        let delegation_hints = delegation_hints_for_request(SearchPipeActionRequest {
+            language_id,
+            project_root: dependency_root,
+            locator_root: dependency_root,
+            scopes: &[],
+            quality: &quality,
+            candidates,
+            ranked_compact: None,
+            selector_actions: &[],
+            fd_preview: None,
+        });
+        if !delegation_hints.is_empty() {
+            packet["delegationHints"] = Value::Array(
+                delegation_hints
+                    .into_iter()
+                    .map(|hint| hint.as_json())
+                    .collect(),
+            );
+        }
     }
     packet
 }
@@ -257,13 +290,17 @@ fn graph_turbo_source_trace(source_trace: &[SearchPipeSourceTrace]) -> Value {
         source_trace
             .iter()
             .map(|trace| {
-                json!({
+                let mut entry = json!({
                     "source": trace.source,
                     "status": trace.status,
                     "matched": trace.matched,
                     "missing": trace.missing,
                     "normalized": trace.normalized,
-                })
+                });
+                if !trace.fields.is_empty() {
+                    entry["fields"] = json!(trace.fields);
+                }
+                entry
             })
             .collect(),
     )
@@ -298,6 +335,7 @@ fn hot_context_range(line: usize) -> (usize, usize) {
 
 fn append_dependency_nodes(nodes: &mut Vec<Value>, dependency_facts: &[DependencyFact]) {
     let mut seen = HashSet::new();
+    let mut seen_versions = HashSet::new();
     for fact in dependency_facts {
         if seen.insert(fact.dependency.clone()) {
             nodes.push(json!({
@@ -306,8 +344,31 @@ fn append_dependency_nodes(nodes: &mut Vec<Value>, dependency_facts: &[Dependenc
                 "role": "pkg",
                 "value": fact.dependency,
                 "action": "deps",
+                "source": "finder",
+                "confidence": dependency_confidence(fact),
             }));
         }
+        if let Some(version) = fact.version.as_deref()
+            && seen_versions.insert(format!("{}@{version}", fact.dependency))
+        {
+            nodes.push(json!({
+                "id": stable_node_id("dependency-version", &format!("{}@{version}", fact.dependency)),
+                "kind": "dependency-version",
+                "role": "version",
+                "value": format!("{}@{version}", fact.dependency),
+                "action": "evidence",
+                "source": "finder",
+                "confidence": dependency_confidence(fact),
+            }));
+        }
+    }
+}
+
+fn dependency_confidence(fact: &DependencyFact) -> &'static str {
+    if fact.source == "manifest" {
+        "exact"
+    } else {
+        "likely"
     }
 }
 
@@ -359,6 +420,7 @@ fn append_graph_edges(
     }
     if include_deps(surfaces) {
         append_owner_dependency_edges(edges, dependency_facts);
+        append_dependency_version_edges(edges, dependency_facts);
     }
     if include_tests(surfaces) {
         append_test_cover_edges(edges, owners);
@@ -426,12 +488,32 @@ fn append_provider_fact_edges(edges: &mut Vec<Value>, provider_facts: &ProviderG
 fn append_owner_dependency_edges(edges: &mut Vec<Value>, dependency_facts: &[DependencyFact]) {
     let mut seen = HashSet::new();
     for fact in dependency_facts {
+        if fact.source == "manifest" {
+            continue;
+        }
         let key = format!("{}:{}", fact.owner_path, fact.dependency);
         if seen.insert(key) {
             edges.push(edge(
                 &stable_node_id("owner", &fact.owner_path),
                 &stable_node_id("dependency", &fact.dependency),
                 "imports",
+            ));
+        }
+    }
+}
+
+fn append_dependency_version_edges(edges: &mut Vec<Value>, dependency_facts: &[DependencyFact]) {
+    let mut seen = HashSet::new();
+    for fact in dependency_facts {
+        let Some(version) = fact.version.as_deref() else {
+            continue;
+        };
+        let key = format!("{}@{version}", fact.dependency);
+        if seen.insert(key.clone()) {
+            edges.push(edge(
+                &stable_node_id("dependency", &fact.dependency),
+                &stable_node_id("dependency-version", &key),
+                "version_locked",
             ));
         }
     }
@@ -466,11 +548,24 @@ fn unique_candidate_paths(candidates: &[Candidate]) -> Vec<String> {
         .collect()
 }
 
-fn profile_for_pipes(pipes: &[String]) -> &'static str {
-    let surfaces = normalized_search_surfaces(pipes);
-    if include_deps(&surfaces) {
+fn should_auto_include_dependency_surface(
+    query: Option<&str>,
+    surfaces: &[String],
+    dependency_facts: &[DependencyFact],
+) -> bool {
+    let Some(query) = query else {
+        return false;
+    };
+    !include_deps(surfaces)
+        && dependency_facts
+            .iter()
+            .any(|fact| dependency_matches_query(&fact.dependency, query))
+}
+
+fn profile_for_surfaces(surfaces: &[String]) -> &'static str {
+    if include_deps(surfaces) {
         "query-deps"
-    } else if include_tests(&surfaces) && !include_items(&surfaces) {
+    } else if include_tests(surfaces) && !include_items(surfaces) {
         "owner-tests"
     } else {
         "owner-query"

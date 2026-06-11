@@ -271,6 +271,15 @@ asp rust query --from-hook ...         => allow provider-capability
 
 The public status/doctor surface should report enforcement honestly:
 
+Doctor reports two different checks.  =classifierProbe= is the fast in-process
+hook classifier self-test: it feeds a representative =functions.exec_command=
+source-dump payload through the same decision code and should return
+=deny/bulk-source-dump= when client config is present.  =enforcementProbe= is
+the live Codex runtime probe: it only proves the real tool channel when the
+Codex exec probe is explicitly run.  If that runtime probe is disabled, doctor
+must say =enforcement=unproven= and =enforcementProbe=codex-exec-disabled=,
+not imply live filesystem/tool interception.
+
 #+begin_src text
 fsApi=enforced
 toolAction=enforced

@@ -568,8 +568,18 @@ Clients with tool parallelism can run independent search commands in parallel
 inside the parent turn.  Clients without either capability must run the same
 command groups sequentially.  The protocol does not depend on the client
 feature flag.  The portable contract is the prime packet, the bounded search
-packets, the =[search-subagent]= receipts, and the parent
-=[search-synthesis]= line.
+packets, advisory delegation hints, the =[search-subagent]= receipts, and the
+parent =[search-synthesis]= line.
+
+Delegation hints are not a scheduler.  Providers may attach them to a search
+packet, graph-turbo request, or seed rendering when the current frontier is
+useful for a read-only explorer, for example when =queryQuality= is low or the
+next action is =fd-query=, =rg-query=, =owner-items=, or =treesitter-query=.
+The hint only names the target action, read-only/no-code constraints, command
+or turn budget, and required receipt fields.  The agent client decides whether
+it has multi-agent support, which model or role to use, and whether the task
+belongs on the current critical path.  Clients without subagents follow the
+same =recommendedNext= or =nextCommand= sequentially.
 
 This differs from query-set composition.  A query-set merges repeated queries
 inside one view and one scope.  Fan-out runs distinct views or scopes in

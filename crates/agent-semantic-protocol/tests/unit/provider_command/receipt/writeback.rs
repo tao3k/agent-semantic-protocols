@@ -9,6 +9,12 @@ use crate::provider_command::support::{
     write_echo_provider, write_marker_provider, write_stdout_stderr_provider,
 };
 
+const PRIME_DECISION_LINE: &str = "|decision purpose=decision-primer answer=false code=false capabilities=pipe,fzf,fd-query,rg-query,owner-items,selector-code,treesitter-query ladder=pipe>fzf>fd-query|rg-query>owner-items>selector-code history=asp-artifacts:directReadRisk,repeatedPrime,repeatedPipe,bestPath risk=broad-direct-read,manual-window-scan,repeat-prime next=\"asp rust search pipe '<question-or-feature-term>' --view seeds .\"";
+
+fn shell_single_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
+}
+
 #[test]
 fn client_search_miss_writes_prompt_output_cache_for_next_hit() {
     let root = temp_project_root("client-search-writeback");
@@ -16,10 +22,11 @@ fn client_search_miss_writes_prompt_output_cache_for_next_hit() {
     let called = root.join("provider-called-after-writeback");
     let called_after_invalidate = root.join("provider-called-after-invalidate");
     let different_args_called = root.join("provider-called-for-different-args");
-    let stdout_text = "[search-prime] cached\n|owner src/lib.rs\n";
-    let stdout_after_invalidate = "[search-prime] after invalidate\n|owner src/lib.rs\n";
+    let stdout_text = format!("[search-prime] cached\n{PRIME_DECISION_LINE}\n|owner src/lib.rs\n");
+    let stdout_after_invalidate =
+        format!("[search-prime] after invalidate\n{PRIME_DECISION_LINE}\n|owner src/lib.rs\n");
     write_cache_source_fixture(&root);
-    write_stdout_stderr_provider(&bin_dir, "rs-harness", stdout_text, "");
+    write_stdout_stderr_provider(&bin_dir, "rs-harness", &stdout_text, "");
     write_activation(&root, &[provider("rust", Vec::new())]);
 
     let first_output = Command::new(env!("CARGO_BIN_EXE_asp"))
@@ -185,7 +192,7 @@ fn client_search_miss_writes_prompt_output_cache_for_next_hit() {
     assert_eq!(invalidate_receipt["providerCommandCount"], 0);
     assert_eq!(invalidate_receipt["providerProcessesSpawned"], 0);
 
-    write_stdout_stderr_provider(&bin_dir, "rs-harness", stdout_after_invalidate, "");
+    write_stdout_stderr_provider(&bin_dir, "rs-harness", &stdout_after_invalidate, "");
     let third_output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .current_dir(&root)
         .env("PATH", &bin_dir)
@@ -363,14 +370,13 @@ printf '%s
 ' "$*" >> '{}'
 case " $* " in
   *' --json '*|*' --json') /bin/cat '{}' ;;
-  *) printf '[search-prime] CacheReplay
-|seed owner:src/lib.rs
-|seed symbol:CacheReplay
-' ;;
+        *) printf '%s
+' '[search-prime] CacheReplay' {} '|seed owner:src/lib.rs' '|seed symbol:CacheReplay' ;;
 esac
 "#,
         search_provider_args_log.display(),
-        search_packet_path.display()
+        search_packet_path.display(),
+        shell_single_quote(PRIME_DECISION_LINE)
     );
     let search_provider_path = search_bin_dir.join("rs-harness");
     std::fs::write(&search_provider_path, search_script).expect("write search packet provider");

@@ -167,6 +167,26 @@ too close to a path list and causes the LLM to fan out across unrelated files.
 The compact seed packet should run the same owner graph ranking as full prime
 and derive its frontier actions from =searchSynthesis=:
 
+Prime is a /decision primer/, not a candidate answer.  Prompt-facing prime output
+MUST say that explicitly with a compact decision row carrying at least:
+=purpose=decision-primer=, =answer=false=, =code=false=, the available search
+capabilities, the first-hop ladder, history fields owned by ASP artifacts, risk
+guidance, and the canonical next command shape
+=search pipe '<question-or-feature-term>' --view seeds .=.  The shared ASP graph
+renderer and any provider-local fast-prime renderer MUST emit the same
+decision-primer contract before owner/dependency/test graph facts.
+Provider-local prime may expose owner/dependency/test graph facts, but
+artifact-history counters such as =directReadRisk=, =repeatedPrime=,
+=repeatedPipe=, and =bestPath= are ASP client facts and should be identified as
+such rather than inferred by language providers from local source.
+
+Prime prompt-output cache identity MUST include a render ABI fingerprint derived
+from the decision-primer contract.  A cached =search-prime= stdout artifact
+without =|decision purpose=decision-primer= is not replay-safe, even when source
+file hashes are fresh.  This prevents old locator/frontier stdout from
+surviving renderer-contract changes; the preferred replay path remains a
+structured search packet rendered by the current ASP graph renderer.
+
 #+begin_src text
 highImpactOwners  ranked owners shown in the packet
 frontierOwners    adjacent owners one parser-owned graph step outside the packet

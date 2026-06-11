@@ -143,6 +143,7 @@ fn search_pipe_is_asp_owned_and_renders_generated_candidates_without_provider_sp
             && stdout.contains(" --workspace . --code"),
         "{stdout}"
     );
+    assert!(!stdout.contains("subagentHint="), "{stdout}");
     assert!(
         !stdout.contains("R1=>asp rust search reasoning"),
         "{stdout}"
@@ -214,6 +215,7 @@ fn search_pipe_reports_multi_clause_query_pack_coverage() {
         stdout.contains("actionFrontier=A1.query-code,A2.fd-query,A3.rg-query,A4.owner-items,A5.treesitter-query"),
         "{stdout}"
     );
+    assert!(!stdout.contains("subagentHint="), "{stdout}");
     assert!(
         stdout.contains("treeSitterHandles=exported-declarations:Fiber|Queue|Scope"),
         "{stdout}"

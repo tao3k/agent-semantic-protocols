@@ -12,7 +12,7 @@ use super::search_pipe_provider_facts::ProviderGraphFacts;
 use super::search_pipe_render::render_ingest_frontier;
 use super::search_pipe_surfaces::default_search_surfaces;
 use super::search_query_wrapper_candidates::{
-    absolute_scope, collect_query_candidates, infer_language_id, owner_candidates,
+    absolute_scope, collect_query_candidate_collection, infer_language_id, owner_candidates,
     package_clusters, query_clauses, rg_scope_next, unique_clause_terms,
 };
 use super::search_query_wrapper_frontier::{
@@ -56,7 +56,7 @@ pub(crate) fn run_query_wrapper_command(command: &str, args: &[String]) -> Resul
     let config = AspConfig::load(&invocation_root, &project_root);
     let clauses = query_clauses(&wrapper_args.queries);
     let terms = unique_clause_terms(&clauses);
-    let candidates = collect_query_candidates(
+    let candidate_collection = collect_query_candidate_collection(
         surface,
         &project_root,
         &invocation_root,
@@ -65,6 +65,7 @@ pub(crate) fn run_query_wrapper_command(command: &str, args: &[String]) -> Resul
         &terms,
         &config,
     )?;
+    let candidates = candidate_collection.candidates;
     let quality =
         analyze_query_wrapper_quality(&wrapper_args.scopes, &clauses, &terms, &candidates);
     print_query_wrapper_view(QueryWrapperViewRequest {
@@ -78,6 +79,7 @@ pub(crate) fn run_query_wrapper_command(command: &str, args: &[String]) -> Resul
         quality: &quality,
         view: &wrapper_args.view,
         native_args: &wrapper_args.native_args,
+        trace_fields: candidate_collection.trace_fields,
     })
 }
 
@@ -179,6 +181,7 @@ struct QueryWrapperViewRequest<'a> {
     quality: &'a QueryWrapperQuality,
     view: &'a str,
     native_args: &'a [String],
+    trace_fields: std::collections::BTreeMap<String, serde_json::Value>,
 }
 
 fn print_query_wrapper_view(request: QueryWrapperViewRequest<'_>) -> Result<(), String> {
@@ -193,24 +196,29 @@ fn print_query_wrapper_view(request: QueryWrapperViewRequest<'_>) -> Result<(), 
         quality,
         view,
         native_args,
+        trace_fields,
     } = request;
     let language_id = infer_language_id(project_root);
     let pipes = default_search_surfaces();
     let query = query_display(queries);
-    let source_trace = vec![SearchPipeSourceTrace::new(
-        surface.source_name(),
-        if candidates.is_empty() {
-            "empty"
-        } else {
-            "used"
-        },
-        candidates.len(),
-        usize::from(candidates.is_empty()),
-        candidates.len(),
-    )];
+    let source_trace = vec![
+        SearchPipeSourceTrace::new(
+            surface.source_name(),
+            if candidates.is_empty() {
+                "empty"
+            } else {
+                "used"
+            },
+            candidates.len(),
+            usize::from(candidates.is_empty()),
+            candidates.len(),
+        )
+        .with_fields(trace_fields),
+    ];
     let request = render_graph_turbo_request(GraphTurboSearchPipeRequest {
         surface: surface.graph_surface(),
         language_id,
+        dependency_root: project_root,
         query: Some(&query),
         candidates,
         pipes: &pipes,
@@ -262,6 +270,7 @@ fn print_query_wrapper_view(request: QueryWrapperViewRequest<'_>) -> Result<(), 
     if !quality.risks.is_empty() {
         println!("risk={}", display_terms(&quality.risks));
     }
+    println!("sourceTrace={}", source_trace[0].compact());
     if surface == QueryWrapperSurface::Fd {
         println!(
             "ownerCandidates={}",

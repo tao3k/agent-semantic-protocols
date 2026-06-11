@@ -29,8 +29,8 @@ fn cached_activation_loader_refreshes_stale_provider_command_prefix() {
         std::env::set_var("PRJ_CACHE_HOME", root.join(".cache-home"));
     }
 
-    let snapshot =
-        crate::activation_cache::load_provider_registry_snapshot(&root, &root).expect("snapshot");
+    let snapshot = crate::activation_cache::load_provider_registry_snapshot(&root, &root, true)
+        .expect("snapshot");
 
     restore_env_var(ASP_PROVIDER_ACTIVATION_PATH_ENV, previous_activation_path);
     restore_env_var("PRJ_CACHE_HOME", previous_cache_home);

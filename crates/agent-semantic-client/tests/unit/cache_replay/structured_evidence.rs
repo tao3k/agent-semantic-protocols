@@ -140,13 +140,14 @@ fn prompt_output_request_fingerprint(root: &Path, request: &ClientRequest) -> St
         .display()
         .to_string();
     let seed = format!(
-        "{}\0{}\0{}\0{}\0{}\0{}",
+        "{}\0{}\0{}\0{}\0{}\0{}\0{}",
         "rust",
         "rs-harness",
         project_root,
         "search/fzf",
         request.forwarded_args.join("\0"),
-        "syntax-query-ast-abi:none"
+        "syntax-query-ast-abi:none",
+        "prompt-output-render-abi:none"
     );
     format!("fnv64:{}", stable_hash_hex(&seed))
 }

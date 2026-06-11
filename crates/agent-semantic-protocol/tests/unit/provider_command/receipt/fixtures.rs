@@ -112,17 +112,41 @@ fn fresh_file_hashes(root: &std::path::Path) -> Value {
 }
 
 fn request_fingerprint(root: &std::path::Path, export_method: &str, args: &[&str]) -> String {
+    let prompt_output_provenance = prompt_output_render_abi_provenance(export_method);
     let seed = format!(
-        "{}\0{}\0{}\0{}\0{}\0{}",
+        "{}\0{}\0{}\0{}\0{}\0{}\0{}",
         "rust",
         "rs-harness",
         normalized_path(root),
         export_method,
         args.join("\0"),
-        "syntax-query-ast-abi:none"
+        "syntax-query-ast-abi:none",
+        prompt_output_provenance
     );
     format!("fnv64:{}", stable_hash_hex(&seed))
 }
+
+fn prompt_output_render_abi_provenance(export_method: &str) -> String {
+    if matches!(export_method, "search/prime" | "search/package") {
+        return format!(
+            "prompt-output-render-abi:fnv64:{}",
+            stable_hash_hex(PRIME_DECISION_PRIMER_RENDER_ABI)
+        );
+    }
+    "prompt-output-render-abi:none".to_string()
+}
+
+const PRIME_DECISION_PRIMER_RENDER_ABI: &str = concat!(
+    "semantic-search-prime;",
+    "purpose=decision-primer;",
+    "answer=false;",
+    "code=false;",
+    "capabilities=pipe,fzf,fd-query,rg-query,owner-items,selector-code,treesitter-query;",
+    "ladder=pipe>fzf>fd-query|rg-query>owner-items>selector-code;",
+    "history=asp-artifacts:directReadRisk,repeatedPrime,repeatedPipe,bestPath;",
+    "risk=broad-direct-read,manual-window-scan,repeat-prime;",
+    "next=search pipe <question-or-feature-term> --view seeds"
+);
 
 fn normalized_path(path: &std::path::Path) -> String {
     path.canonicalize()

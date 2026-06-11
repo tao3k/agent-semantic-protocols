@@ -119,8 +119,21 @@ def sample_request(
         "protocolId": "agent.semantic-protocols.semantic-language",
         "protocolVersion": "1",
         "packetKind": "graph-turbo-request",
+        "surface": "search-pipe",
+        "queryTerms": ["parser"],
         "profile": profile,
         "algorithm": "typed-ppr-diverse",
+        "source": "finder",
+        "candidateSources": ["finder"],
+        "sourceTrace": [
+            {
+                "source": "finder",
+                "status": "used",
+                "matched": 3,
+                "missing": 0,
+                "normalized": 3,
+            }
+        ],
         "seedIds": ["q:parser", "owner:cli"],
         "budget": budget,
         "kindBudgets": {"owner": 1, "dependency": 1, "test": 1},

@@ -20,14 +20,19 @@ const PROVIDER_COMMAND_SELECTION_FINGERPRINT_VERSION: &str = "provider-command-s
 pub(crate) fn load_provider_registry_snapshot(
     activation_root: &Path,
     project_root: &Path,
+    emit_stderr_diagnostics: bool,
 ) -> Result<ProviderRegistrySnapshot, String> {
-    ensure_generated_activation_provider_commands_current(project_root)?;
+    ensure_generated_activation_provider_commands_current(project_root, emit_stderr_diagnostics)?;
     ProviderRegistrySnapshot::load(activation_root)
 }
 
 fn ensure_generated_activation_provider_commands_current(
     project_root: &Path,
+    emit_stderr_diagnostics: bool,
 ) -> Result<(), String> {
+    if activation_refresh_disabled() {
+        return Ok(());
+    }
     let Some(activation_path) = active_generated_activation_path(project_root) else {
         return Ok(());
     };
@@ -46,7 +51,11 @@ fn ensure_generated_activation_provider_commands_current(
         if runtime_matches_cached_provider_commands(&runtime, &cached) {
             return Ok(());
         }
-        sync_activation_from_current_selection(project_root, &activation_path)?;
+        sync_activation_from_current_selection(
+            project_root,
+            &activation_path,
+            emit_stderr_diagnostics,
+        )?;
         return Ok(());
     }
 
@@ -57,9 +66,18 @@ fn ensure_generated_activation_provider_commands_current(
         .collect::<Vec<_>>();
     db.replace_provider_command_selections(project_root, &context_fingerprint, &current_rows)?;
     if !runtime_matches_provider_commands(&runtime, &current) {
-        sync_activation_from_current_selection(project_root, &activation_path)?;
+        sync_activation_from_current_selection(
+            project_root,
+            &activation_path,
+            emit_stderr_diagnostics,
+        )?;
     }
     Ok(())
+}
+
+fn activation_refresh_disabled() -> bool {
+    env::var("ASP_PROVIDER_ACTIVATION_REFRESH")
+        .is_ok_and(|value| matches!(value.as_str(), "0" | "false" | "off"))
 }
 
 fn active_generated_activation_path(project_root: &Path) -> Option<PathBuf> {
@@ -77,11 +95,14 @@ fn is_generated_activation_path(path: &Path) -> bool {
 fn sync_activation_from_current_selection(
     project_root: &Path,
     activation_path: &Path,
+    emit_stderr_diagnostics: bool,
 ) -> Result<(), String> {
-    eprintln!(
-        "[agent-semantic-client] syncing generated activation {}: provider command selection changed",
-        activation_path.display()
-    );
+    if emit_stderr_diagnostics {
+        eprintln!(
+            "[agent-semantic-client] syncing generated activation {}: provider command selection changed",
+            activation_path.display()
+        );
+    }
     let activation = build_default_activation(project_root)?;
     write_activation(activation_path, &activation)
 }

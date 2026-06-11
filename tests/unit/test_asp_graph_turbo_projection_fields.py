@@ -151,3 +151,71 @@ def test_owner_query_projection_stops_after_provider_field_branches() -> None:
     assert ranked_ids.index("field:snapshot-scalars") < ranked_ids.index(
         "collection:vec"
     )
+
+
+def test_owner_query_projection_keeps_unscored_semantic_fact_nodes() -> None:
+    graph = TypedGraph.from_packet(
+        {
+            "nodes": [
+                {
+                    "id": "q:vec-fields",
+                    "kind": "query",
+                    "role": "term",
+                    "value": "Vec collection fields",
+                },
+                {
+                    "id": "item:buffer",
+                    "kind": "item",
+                    "role": "symbol",
+                    "value": "buffer",
+                    "path": "src/lib.rs",
+                    "ownerPath": "src/lib.rs",
+                    "symbol": "buffer",
+                    "startLine": 3,
+                    "endLine": 3,
+                    "locator": "src/lib.rs:3:3",
+                    "matchText": "let buffer = Vec::new();",
+                    "fields": {
+                        "collectionKind": "Vec",
+                    },
+                },
+                {
+                    "id": "collection:vec",
+                    "kind": "collection",
+                    "role": "family",
+                    "value": "Vec",
+                    "symbol": "Vec",
+                    "fields": {"collectionKind": "Vec"},
+                },
+            ],
+            "edges": [
+                {
+                    "source": "q:vec-fields",
+                    "target": "item:buffer",
+                    "relation": "matches",
+                },
+                {
+                    "source": "item:buffer",
+                    "target": "collection:vec",
+                    "relation": "collection_of",
+                },
+            ],
+        }
+    )
+
+    result = rank_frontier(
+        graph,
+        profile="owner-query",
+        seeds=["q:vec-fields"],
+        limit=3,
+        kind_budgets={"query": 1, "item": 1, "collection": 1},
+    )
+    compact = render_compact(result)
+
+    assert any(node.id == "collection:vec" for node in result.ranked_nodes)
+    assert any(
+        entry.node.id == "collection:vec" and entry.score == 0.0
+        for entry in result.frontier
+    )
+    assert "collection:vec" not in result.scores
+    assert "frontierActions=" in compact

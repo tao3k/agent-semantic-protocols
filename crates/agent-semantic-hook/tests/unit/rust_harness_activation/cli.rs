@@ -5,7 +5,10 @@ mod activation_sync;
 mod hook;
 mod install;
 
-use super::support::{asp_command, temp_project_root, write_root_owned_rust_activation};
+use super::support::{
+    asp_command, temp_project_root, write_default_client_hook_config,
+    write_root_owned_rust_activation,
+};
 
 #[test]
 fn cli_doctor_accepts_root_owned_rust_activation() {
@@ -17,6 +20,7 @@ fn cli_doctor_accepts_root_owned_rust_activation() {
             "doctor",
             "--activation",
             activation_path.to_str().expect("utf8 activation path"),
+            root.to_str().expect("utf8 project root"),
         ])
         .output()
         .expect("run agent-semantic-protocol doctor");
@@ -25,7 +29,41 @@ fn cli_doctor_accepts_root_owned_rust_activation() {
     let stdout = String::from_utf8(output.stdout).expect("doctor stdout");
     assert!(stdout.contains("[agent-doctor] status=ok"));
     assert!(stdout.contains("providers=1"));
+    assert!(stdout.contains("clientConfigStatus=missing"));
+    assert!(stdout.contains("classifierProbe=unavailable"));
+    assert!(stdout.contains("classifierReason=client-config-missing"));
+    assert!(stdout.contains("enforcement=unavailable"));
+    assert!(stdout.contains("enforcementProbe=skipped"));
+    assert!(stdout.contains("enforcementReason=project-hook-missing"));
     assert!(stdout.contains("|provider language=rust provider=rs-harness"));
+    std::fs::remove_dir_all(root).expect("cleanup temp project root");
+}
+
+#[test]
+fn cli_doctor_reports_classifier_probe_for_codex_exec_command_source_dump() {
+    let root = temp_project_root("doctor-classifier-probe");
+    let activation_path = write_root_owned_rust_activation(&root);
+    write_default_client_hook_config(&root);
+    let output = asp_command()
+        .args([
+            "hook",
+            "doctor",
+            "--activation",
+            activation_path.to_str().expect("utf8 activation path"),
+            root.to_str().expect("utf8 project root"),
+        ])
+        .output()
+        .expect("run agent-semantic-protocol doctor");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).expect("doctor stdout");
+    assert!(stdout.contains("[agent-doctor] status=ok"));
+    assert!(stdout.contains("clientConfigStatus=ok"));
+    assert!(stdout.contains("classifierProbe=deny"));
+    assert!(stdout.contains("classifierReason=bulk-source-dump"));
+    assert!(stdout.contains("enforcement=unavailable"));
+    assert!(stdout.contains("enforcementProbe=skipped"));
+    assert!(stdout.contains("enforcementReason=project-hook-missing"));
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
 }
 
@@ -70,12 +108,53 @@ fn cli_hook_emits_decision_for_root_owned_rust_activation() {
     assert!(reason.contains("# ASP Hook Recovery"));
     assert!(reason.contains("blocked `direct-source-read`"));
     let system_message = value["systemMessage"].as_str().expect("system message");
-    assert!(system_message.contains(
-        "asp rust query --from-hook direct-source-read --selector src/lib.rs --workspace . --code"
-    ));
+    assert!(system_message.contains("asp rust query --selector src/lib.rs --workspace . --code"));
     assert!(system_message.contains("Do not retry `Read`, `cat`, `sed`, `rg`"));
     assert!(context.contains("\"binary\":\"asp\""));
     assert!(context.contains("\"src/lib.rs\""));
+    std::fs::remove_dir_all(root).expect("cleanup temp project root");
+}
+
+#[test]
+fn cli_hook_denies_codex_exec_command_source_dump() {
+    let root = temp_project_root("hook-exec-command-source-dump");
+    let activation_path = write_root_owned_rust_activation(&root);
+    let mut child = asp_command()
+        .args([
+            "hook",
+            "--client",
+            "codex",
+            "pre-tool",
+            "--activation",
+            activation_path.to_str().expect("utf8 activation path"),
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("run asp hook");
+    child
+        .stdin
+        .as_mut()
+        .expect("hook stdin")
+        .write_all(
+            br#"{"tool_name":"functions.exec_command","tool_input":{"cmd":"nl -ba src/lib.rs"}}"#,
+        )
+        .expect("write hook payload");
+
+    let output = child.wait_with_output().expect("wait for hook output");
+
+    assert!(output.status.success());
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("hook JSON");
+    assert_eq!(value["hookSpecificOutput"]["permissionDecision"], "deny");
+    let context = value["hookSpecificOutput"]["additionalContext"]
+        .as_str()
+        .expect("decision context");
+    assert!(context.contains("\"reasonKind\":\"bulk-source-dump\""));
+    assert!(context.contains("\"toolName\":\"functions.exec_command\""));
+    assert!(context.contains("\"src/lib.rs\""));
+    let system_message = value["systemMessage"].as_str().expect("system message");
+    assert!(system_message.contains("Do not retry `Read`, `cat`, `sed`, `rg`"));
+    assert!(system_message.contains("asp rust query --selector src/lib.rs --workspace . --code"));
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
 }
 

@@ -295,6 +295,19 @@ fn shared_renderer_projects_prime_packet_into_tool_map_frontier() {
     assert!(output.starts_with("[search-prime] root=languages/rust-lang-project-harness"));
     assert!(output.contains("alg=budgeted-prime-frontier-v1"));
     assert!(output.contains("budget=handles:12"));
+    assert!(output.contains("|decision purpose=decision-primer answer=false code=false"));
+    assert!(output.contains(
+        "capabilities=pipe,fzf,fd-query,rg-query,owner-items,selector-code,treesitter-query"
+    ));
+    assert!(output.contains("ladder=pipe>fzf>fd-query|rg-query>owner-items>selector-code"));
+    assert!(
+        output.contains("history=asp-artifacts:directReadRisk,repeatedPrime,repeatedPipe,bestPath")
+    );
+    assert!(output.contains("risk=broad-direct-read,manual-window-scan,repeat-prime"));
+    assert!(
+        output
+            .contains("next=\"asp rust search pipe '<question-or-feature-term>' --view seeds .\"")
+    );
     assert!(output.contains(
         "legend: ID=kind:role(value)!next; entries profile(selectors=>returns); frontier ID.next"
     ));

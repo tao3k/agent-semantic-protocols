@@ -67,15 +67,17 @@ fn search_pipe_plan_uses_scope_root_for_provider_local_selectors() {
     );
     assert!(
         stdout
-            .contains("actionFrontier=A1.fd-query,A2.rg-query,A3.owner-items,A4.treesitter-query"),
+            .contains("actionFrontier=A1.query-code,A2.fd-query,A3.rg-query,A4.owner-items,A5.treesitter-query"),
         "{stdout}"
     );
     assert!(
-        stdout.contains("nextCommand=asp fd -query Vec languages/rust-harness"),
+        stdout.contains(
+            "nextCommand=asp rust query --selector src/lib.rs:1:4 --workspace languages/rust-harness --code"
+        ),
         "{stdout}"
     );
+    assert!(!stdout.contains("subagentHint="), "{stdout}");
     assert!(!stdout.contains("frontierActions="), "{stdout}");
-    assert!(!stdout.contains("query-code(selector="), "{stdout}");
     assert!(!stdout.contains("S1=>asp rust query"), "{stdout}");
     for debug_prefix in [
         "scores=", "paths=", "trace=", "explain=", "cache=", "metrics=",

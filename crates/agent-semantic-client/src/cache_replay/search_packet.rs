@@ -26,6 +26,10 @@ pub(crate) fn search_output_artifact_replay_safe(stdout: &[u8]) -> bool {
         return false;
     };
     let has_frontier_header = header.contains("[graph-frontier]") || header.starts_with("[search-");
+    if header.starts_with("[search-prime]") && !stdout.contains("|decision purpose=decision-primer")
+    {
+        return false;
+    }
     let has_alias_graph = stdout.contains("aliases=");
     has_frontier_header
         && has_alias_graph

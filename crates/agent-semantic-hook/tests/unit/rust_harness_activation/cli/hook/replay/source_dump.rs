@@ -21,7 +21,7 @@ fn cli_hook_replay_blocks_functions_exec_command_source_dump() {
     assert_eq!(decision["subject"]["toolName"], "functions.exec_command");
     assert_eq!(decision["subject"]["command"], "sed -n '1,40p' src/lib.rs");
     assert_eq!(decision["routes"][0]["providerId"], "rs-harness");
-    assert_eq!(decision["routes"][0]["argv"][6], "src/lib.rs:1:40");
+    assert_eq!(decision["routes"][0]["argv"][4], "src/lib.rs:1:40");
     let event = last_hook_event(&root);
     assert_eq!(event["event"], "pre-tool");
     assert_eq!(event["decision"], "deny");
@@ -60,7 +60,7 @@ fn cli_hook_replay_compacts_repeated_source_dump_lane() {
     assert!(message.starts_with("ASP hook already denied `bulk-source-dump`"));
     assert!(message.contains("Follow the previous recovery route"));
     assert!(!message.contains("## Agent Flow"));
-    assert_eq!(second["routes"][0]["argv"][6], "src/lib.rs:1:40");
+    assert_eq!(second["routes"][0]["argv"][4], "src/lib.rs:1:40");
 
     let event = last_hook_event(&root);
     assert_eq!(event["fields"]["denyReplay"], "repeated");
@@ -106,7 +106,7 @@ fn cli_hook_replay_preserves_line_ranges_for_common_source_dump_pipelines() {
             decision["routes"][0]["providerId"], "rs-harness",
             "{command}"
         );
-        assert_eq!(decision["routes"][0]["argv"][6], selector, "{command}");
+        assert_eq!(decision["routes"][0]["argv"][4], selector, "{command}");
     }
 }
 
@@ -135,7 +135,7 @@ fn cli_hook_replay_blocks_nested_parallel_exec_command() {
     assert_eq!(decision["routes"][0]["argv"][0], "asp");
     assert_eq!(decision["routes"][0]["argv"][1], "rust");
     assert_eq!(decision["routes"][0]["argv"][2], "query");
-    assert_eq!(decision["routes"][0]["argv"][6], "src/lib.rs:1-2");
+    assert_eq!(decision["routes"][0]["argv"][4], "src/lib.rs:1-2");
     let event = last_hook_event(&root);
     assert_eq!(event["event"], "pre-tool");
     assert_eq!(event["decision"], "deny");

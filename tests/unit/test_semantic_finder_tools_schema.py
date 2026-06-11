@@ -219,6 +219,42 @@ class SemanticFinderToolsSchemaTests(unittest.TestCase):
             [error.message for error in errors],
         )
 
+    def test_fd_exa_path_fallback_provenance_validates(self) -> None:
+        document = copy.deepcopy(_valid_catalog())
+        document["provenanceSamples"].append(
+            {
+                "pipelineId": "fd-exa-paths",
+                "backend": "fd+exa",
+                "matchMode": "literal",
+                "candidateBasis": "paths",
+                "sourceSearchPasses": 1,
+                "inputCandidates": 2048,
+                "selectedCandidates": 1,
+                "stages": [
+                    {
+                        "stageId": "exa-path-list",
+                        "toolId": "exa",
+                        "role": "path-list",
+                        "inputFormat": "path-list",
+                        "outputFormat": "path-list",
+                        "candidatesIn": 0,
+                        "candidatesOut": 2048,
+                        "elapsedMs": 7,
+                        "fields": {
+                            "fileListPasses": 1,
+                            "queryTerms": ["fromexaruntime", "missingterm"],
+                        },
+                    }
+                ],
+                "fields": {
+                    "fallbackFrom": "fd",
+                    "queryTerms": ["fromexaruntime", "missingterm"],
+                },
+            }
+        )
+
+        self._assert_valid(document)
+
     def test_raw_command_fields_are_not_part_of_the_contract(self) -> None:
         document = copy.deepcopy(_valid_catalog())
         document["pipelines"][0]["stages"][0]["argv"] = ["rg", "--json", "needle", "."]

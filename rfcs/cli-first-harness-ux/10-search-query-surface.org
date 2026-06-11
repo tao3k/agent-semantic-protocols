@@ -251,7 +251,7 @@ contract for JSON output through the language facade:
 asp julia query src/CliExample.jl --term run --json languages/JuliaLangProjectHarness.jl
 #+end_src
 
-For an exact selector-code query with =--code=, the provider should
+For an exact =direct-source-read= selector with =--code=, the provider should
 return a bounded source-preserved local window for that path/range, not owner
 metadata and not compact projection text.  The selector already carries the
 path/range, so =--code= must not repeat =line= or =endLine= metadata or return

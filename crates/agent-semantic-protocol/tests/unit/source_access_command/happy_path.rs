@@ -26,8 +26,6 @@ fn read_file_command_returns_hard_deny_for_source_path() {
             "asp",
             "typescript",
             "query",
-            "--from-hook",
-            "direct-source-read",
             "--selector",
             "src/cli/agent-hooks.ts",
             "--workspace",

@@ -103,7 +103,8 @@ For a concrete deep question, bug, feature, or API-usage task, use
 `clauseCoverage`, `ownerCoverage`, `packageCohesion`, `queryQuality`,
 `handles`, `rankedEvidence`, `evidenceFrontier`, `commandHandles`,
 `treeSitterHandles`, optional `fdPreview`, `actionRank`, `actionFrontier`,
-`recommendedNext`, `nextCommand`, `nextClasses`, and `avoid` lines.
+`recommendedNext`, optional `subagentHint`, `nextCommand`, `nextClasses`, and
+`avoid` lines.
 `--source` changes only candidate acquisition:
 `auto` is the default, `provider` avoids finder, `finder` uses bounded lexical
 recall, and `ingest` normalizes stdin candidates. ASP does not model-expand the
@@ -115,7 +116,10 @@ output only when the pipe action frontier asks for them. Do not follow a code
 selector when `queryQuality=low` or the output says
 `query-selector-low-confidence`; use `recommendedNext` and the ranked `A*`
 action rows, normally `owner-items`, `rg-query`, `treesitter-query`, or
-query-pack refinement, instead. A
+query-pack refinement, instead. When `subagentHint` is present it is advisory:
+client runtimes with subagents may delegate the named `targetActions` to a
+read-only explorer, while runtimes without subagents should follow the same
+`recommendedNext` sequentially. A
 single broad clause can have strong declaration coverage while still being low
 quality; split it into 2-4 short clauses before reading code. Only after an
 exact selector is known and the frontier permits `query-selector` should stdout

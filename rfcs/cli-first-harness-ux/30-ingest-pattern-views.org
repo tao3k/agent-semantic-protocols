@@ -156,7 +156,19 @@ replaced by =search pipe --source finder=.  =asp fd -query= searches
 owner/path/module recall.  =asp rg -query= searches content/hot-block recall.
 In both wrappers, =-query= belongs to ASP ranking context; flags after =--=
 belong to the native tool and are accepted as pass-through context without
-changing query-set semantics.  =asp fd -query= must expose =ownerCandidates=,
+changing query-set semantics.  Runtime finder wrappers may prefer project-local
+=fd=, =rg=, or =exa= executables from the ASP runtime bin directory before
+=PATH=, but fallback tools must not change the public query-set meaning.  When
+=fd= is unavailable, =exa= may provide a path enumeration fallback only once per
+root and the wrapper must still filter candidates by the ASP query terms,
+language extensions, and ignore configuration before ranking.  Tool-level
+runtime facts such as =backend=, =candidateBasis=, =sourceSearchPasses=,
+=fileListPasses=, =fallbackFrom=, and candidate counts belong under
+=sourceTrace.fields=; they must not create new public =source= or
+=candidateSources= values.  Compact seeds output may render those fields as
+=sourceTrace=finder:used[backend=rg;candidateBasis=source-lines;...]= so the
+agent can see runtime cost/provenance without requesting the full graph JSON.
+=asp fd -query= must expose =ownerCandidates=,
 =packageClusters=, =parserIndexNext=, and =rgScopeNext= so the result becomes a
 second-stage seed base rather than a raw path dump.  =--source finder= is a
 recovery or advanced source override for =search pipe= when seeds show provider

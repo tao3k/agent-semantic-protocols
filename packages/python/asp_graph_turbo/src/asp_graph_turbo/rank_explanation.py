@@ -38,7 +38,7 @@ def rank_explanations(
         explanations.append(
             RankExplanation(
                 node_id=node.id,
-                score=scores[node.id],
+                score=scores.get(node.id, 0.0),
                 depth=best_depth.get(node.id, 99),
                 reasons=tuple(reasons),
             )

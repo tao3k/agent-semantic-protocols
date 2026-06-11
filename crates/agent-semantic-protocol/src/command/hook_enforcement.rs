@@ -28,10 +28,10 @@ pub(super) struct CodexEnforcementDetail {
 }
 
 impl CodexEnforcementReport {
-    fn not_run(reason: &'static str) -> Self {
+    fn unproven(reason: &'static str) -> Self {
         Self {
-            status: "not-run",
-            probe: "disabled",
+            status: "unproven",
+            probe: "codex-exec-disabled",
             reason,
             detail: None,
         }
@@ -52,14 +52,14 @@ pub(super) fn codex_enforcement_report(
     root_hook: bool,
     hook_binary: bool,
 ) -> CodexEnforcementReport {
-    if env::var(CODEX_ENFORCEMENT_PROBE_ENV).ok().as_deref() != Some("1") {
-        return CodexEnforcementReport::not_run("probe-disabled");
-    }
     if !root_hook {
         return CodexEnforcementReport::unavailable("project-hook-missing");
     }
     if !hook_binary {
         return CodexEnforcementReport::unavailable("asp-binary-missing");
+    }
+    if env::var(CODEX_ENFORCEMENT_PROBE_ENV).ok().as_deref() != Some("1") {
+        return CodexEnforcementReport::unproven("codex-exec-probe-disabled");
     }
     let Some(codex_cli) = codex_cli_path() else {
         return CodexEnforcementReport::unavailable("codex-cli-missing");

@@ -29,7 +29,7 @@ PATCH"#;
     assert_eq!(decision["routes"][0]["argv"][0], "asp");
     assert_eq!(decision["routes"][0]["argv"][1], "rust");
     assert_eq!(decision["routes"][0]["argv"][2], "query");
-    assert_eq!(decision["routes"][0]["argv"][6], "src/lib.rs");
+    assert_eq!(decision["routes"][0]["argv"][4], "src/lib.rs");
     let message = decision["message"].as_str().unwrap();
     assert!(message.contains("asp rust ast-patch dry-run"));
     assert!(message.contains("source apply_patch denied"));

@@ -28,6 +28,7 @@ mod search_pipe_dependency_facts;
 mod search_pipe_graph_turbo;
 mod search_pipe_meta;
 mod search_pipe_model;
+mod search_pipe_native_finder;
 mod search_pipe_owner_query;
 mod search_pipe_plan;
 mod search_pipe_provider_facts;

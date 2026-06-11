@@ -1,4 +1,4 @@
-use crate::provider_command::support::{asp_command, temp_project_root};
+use crate::provider_command::support::{asp_command, make_executable, temp_project_root};
 
 use super::assert_graph_turbo_request_contract;
 
@@ -260,5 +260,225 @@ fn asp_fd_query_graph_request_carries_surface_and_query_terms() {
         }),
         "{payload}"
     );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn asp_rg_query_graph_request_uses_native_content_finder_source() {
+    let root = temp_project_root("asp-rg-query-wrapper-graph-request");
+    std::fs::create_dir_all(root.join("src")).expect("create src");
+    std::fs::write(
+        root.join("package.json"),
+        r#"{"name":"query-wrapper-fixture"}"#,
+    )
+    .expect("write package json");
+    std::fs::write(
+        root.join("src/runtime.ts"),
+        "export const FiberRuntime = 'runtime';\n",
+    )
+    .expect("write source");
+
+    let output = asp_command(&root)
+        .args([
+            "rg",
+            "-query",
+            "FiberRuntime",
+            "--view",
+            "graph-turbo-request",
+            ".",
+        ])
+        .output()
+        .expect("run asp rg -query graph request");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let payload: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("graph request json");
+    assert_graph_turbo_request_contract(&payload);
+    assert_eq!(payload["surface"], "search-rg");
+    assert_eq!(payload["source"], "finder");
+    assert_eq!(payload["candidateSources"], serde_json::json!(["finder"]));
+    let nodes = payload["graph"]["nodes"].as_array().expect("nodes");
+    assert!(
+        nodes.iter().any(|node| {
+            node["kind"].as_str() == Some("item")
+                && node["path"].as_str() == Some("src/runtime.ts")
+                && node["source"].as_str() == Some("rg-query")
+                && node["symbol"].as_str() == Some("fiberruntime")
+                && node["matchText"]
+                    .as_str()
+                    .is_some_and(|text| text.contains("FiberRuntime"))
+        }),
+        "{payload}"
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn asp_rg_query_prefers_runtime_bin_wrapper() {
+    let root = temp_project_root("asp-rg-query-runtime-wrapper");
+    let runtime_bin = root.join(".cache/agent-semantic-protocol/runtime/bin");
+    std::fs::create_dir_all(root.join("src")).expect("create src");
+    std::fs::create_dir_all(&runtime_bin).expect("create runtime bin");
+    std::fs::write(
+        root.join("package.json"),
+        r#"{"name":"query-wrapper-fixture"}"#,
+    )
+    .expect("write package json");
+    std::fs::write(root.join("src/runtime.ts"), "export const LocalOnly = 1;\n")
+        .expect("write source");
+    let rg = runtime_bin.join("rg");
+    std::fs::write(
+        &rg,
+        "#!/bin/sh\nprintf 'src/runtime.ts:1:export const WrappedRuntime = 1;\\n'\n",
+    )
+    .expect("write rg wrapper");
+    make_executable(&rg);
+
+    let output = asp_command(&root)
+        .env("ASP_RUNTIME_BIN_DIR", &runtime_bin)
+        .args([
+            "rg",
+            "-query",
+            "OnlyWrapperCanEmit",
+            "--view",
+            "graph-turbo-request",
+            ".",
+        ])
+        .output()
+        .expect("run asp rg -query graph request through runtime wrapper");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let payload: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("graph request json");
+    assert_graph_turbo_request_contract(&payload);
+    assert_eq!(
+        payload["sourceTrace"][0]["fields"]["backend"],
+        serde_json::json!("rg")
+    );
+    assert_eq!(
+        payload["sourceTrace"][0]["fields"]["candidateBasis"],
+        serde_json::json!("source-lines")
+    );
+    assert_eq!(
+        payload["sourceTrace"][0]["fields"]["sourceSearchPasses"],
+        serde_json::json!(1)
+    );
+    let nodes = payload["graph"]["nodes"].as_array().expect("nodes");
+    assert!(
+        nodes.iter().any(|node| {
+            node["kind"].as_str() == Some("item")
+                && node["source"].as_str() == Some("rg-query")
+                && node["matchText"]
+                    .as_str()
+                    .is_some_and(|text| text.contains("WrappedRuntime"))
+        }),
+        "{payload}"
+    );
+    let seeds_output = asp_command(&root)
+        .env("ASP_RUNTIME_BIN_DIR", &runtime_bin)
+        .args(["rg", "-query", "WrappedRuntime", "--view", "seeds", "."])
+        .output()
+        .expect("run asp rg -query seeds through runtime wrapper");
+    assert!(
+        seeds_output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&seeds_output.stderr)
+    );
+    let stdout = String::from_utf8(seeds_output.stdout).expect("stdout");
+    assert!(
+        stdout.contains(
+            "sourceTrace=finder:used[backend=rg;candidateBasis=source-lines;inputCandidates=1;selectedCandidates=1;sourceSearchPasses=1]"
+        ),
+        "{stdout}"
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn asp_fd_query_uses_runtime_exa_when_fd_is_unavailable() {
+    let root = temp_project_root("asp-fd-query-runtime-exa-wrapper");
+    let runtime_bin = root.join(".cache/agent-semantic-protocol/runtime/bin");
+    std::fs::create_dir_all(root.join("src/internal")).expect("create src");
+    std::fs::create_dir_all(&runtime_bin).expect("create runtime bin");
+    std::fs::write(
+        root.join("package.json"),
+        r#"{"name":"query-wrapper-fixture"}"#,
+    )
+    .expect("write package json");
+    std::fs::write(
+        root.join("src/internal/FromExaRuntime.ts"),
+        "export const LocalOnly = 1;\n",
+    )
+    .expect("write source");
+    std::fs::write(
+        root.join("src/internal/OtherRuntime.ts"),
+        "export const y = 1;\n",
+    )
+    .expect("write unrelated source");
+    let trace = root.join("exa-trace.txt");
+    let exa = runtime_bin.join("exa");
+    std::fs::write(
+        &exa,
+        "#!/bin/sh\nprintf 'exa\\n' >> \"$EXA_TRACE_FILE\"\nprintf 'src/internal/FromExaRuntime.ts\\nsrc/internal/OtherRuntime.ts\\n'\n",
+    )
+    .expect("write exa wrapper");
+    make_executable(&exa);
+
+    let output = asp_command(&root)
+        .env("ASP_RUNTIME_BIN_DIR", &runtime_bin)
+        .env("EXA_TRACE_FILE", &trace)
+        .env("PATH", &runtime_bin)
+        .args([
+            "fd",
+            "-query",
+            "FromExaRuntime|MissingTerm",
+            "--view",
+            "graph-turbo-request",
+            ".",
+        ])
+        .output()
+        .expect("run asp fd -query graph request through runtime exa wrapper");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let payload: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("graph request json");
+    assert_graph_turbo_request_contract(&payload);
+    let trace_fields = &payload["sourceTrace"][0]["fields"];
+    assert_eq!(trace_fields["backend"], serde_json::json!("fd+exa"));
+    assert_eq!(trace_fields["fallbackFrom"], serde_json::json!("fd"));
+    assert_eq!(trace_fields["candidateBasis"], serde_json::json!("paths"));
+    assert_eq!(trace_fields["sourceSearchPasses"], serde_json::json!(1));
+    assert_eq!(trace_fields["fileListPasses"], serde_json::json!(1));
+    assert_eq!(trace_fields["inputCandidates"], serde_json::json!(2));
+    assert_eq!(trace_fields["selectedCandidates"], serde_json::json!(1));
+    let nodes = payload["graph"]["nodes"].as_array().expect("nodes");
+    assert!(
+        nodes.iter().any(|node| {
+            node["kind"].as_str() == Some("item")
+                && node["path"].as_str() == Some("src/internal/FromExaRuntime.ts")
+                && node["source"].as_str() == Some("fd-query")
+        }),
+        "{payload}"
+    );
+    assert!(
+        nodes
+            .iter()
+            .all(|node| node["path"].as_str() != Some("src/internal/OtherRuntime.ts")),
+        "{payload}"
+    );
+    let exa_trace = std::fs::read_to_string(&trace).expect("read exa trace");
+    assert_eq!(exa_trace.lines().count(), 1, "{exa_trace}");
     let _ = std::fs::remove_dir_all(root);
 }

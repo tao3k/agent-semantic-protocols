@@ -106,6 +106,7 @@
         "rg",
         "fzf",
         "fd",
+        "exa",
         "ast-grep",
         "ugrep",
         "provider-index",
@@ -519,7 +520,17 @@
           "pattern": "^[a-z][a-z0-9_-]*$"
         },
         "backend": {
-          "enum": ["rg", "rg+fzf", "fzf", "ugrep", "ast-grep", "provider-index", "custom"]
+          "enum": [
+            "rg",
+            "rg+fzf",
+            "fzf",
+            "fd",
+            "fd+exa",
+            "ugrep",
+            "ast-grep",
+            "provider-index",
+            "custom"
+          ]
         },
         "matchMode": {
           "$ref": "#/$defs/stageMode"

@@ -420,13 +420,17 @@ fn run_doctor(args: &[String]) -> Result<(), String> {
     };
     let config = fs::read_to_string(&config_path).unwrap_or_default();
     let client_config_path = default_client_config_path(&project_root.to_string_lossy());
-    let client_config_status = if client_config_path.is_file() {
-        load_client_config(&client_config_path).map_err(|error| {
+    let hook_config = if client_config_path.is_file() {
+        Some(load_client_config(&client_config_path).map_err(|error| {
             format!(
                 "invalid client hook config {}: {error}",
                 display_path(&project_root, &client_config_path)
             )
-        })?;
+        })?)
+    } else {
+        None
+    };
+    let client_config_status = if hook_config.is_some() {
         "ok"
     } else {
         "missing"
@@ -451,6 +455,31 @@ fn run_doctor(args: &[String]) -> Result<(), String> {
     } else {
         None
     };
+    let (classifier_probe, classifier_reason) = if client == "codex" {
+        if let Some(hook_config) = hook_config.as_ref() {
+            let probe_payload = serde_json::json!({
+                "tool_name": "functions.exec_command",
+                "tool_input": {
+                    "cmd": "sed -n '1,120p' src/lib.rs"
+                }
+            });
+            let decision = classify_hook_with_config(HookClassificationRequest {
+                registry: &runtime,
+                config: hook_config,
+                platform: client,
+                event: "PreToolUse",
+                payload: &probe_payload,
+            });
+            (
+                decision_kind_label(decision.decision),
+                reason_kind_label(decision.reason_kind),
+            )
+        } else {
+            ("unavailable", "client-config-missing")
+        }
+    } else {
+        ("not-applicable", "non-codex-client")
+    };
     let trust_status = if client == "codex" {
         codex_user_trust_state_status(&config_path).ok()
     } else {
@@ -462,7 +491,7 @@ fn run_doctor(args: &[String]) -> Result<(), String> {
         .map(|status| status.trust_config_path.display().to_string())
         .unwrap_or_else(|| "unavailable".to_string());
     println!(
-        "[agent-doctor] status=ok client={client} providers={} activation={} activationRuntime=derived config={} clientConfig={} clientConfigStatus={} hook={} trust={} trustConfig={} binary={} binaryPath={} enforcement={} enforcementProbe={} enforcementReason={} protocol={}",
+        "[agent-doctor] status=ok client={client} providers={} activation={} activationRuntime=derived config={} clientConfig={} clientConfigStatus={} hook={} trust={} trustConfig={} binary={} binaryPath={} classifierProbe={} classifierReason={} enforcement={} enforcementProbe={} enforcementReason={} protocol={}",
         runtime.providers.len(),
         display_path(&project_root, &activation_path),
         config_path.is_file(),
@@ -473,6 +502,8 @@ fn run_doctor(args: &[String]) -> Result<(), String> {
         trust_config,
         hook_binary,
         hook_binary_path,
+        classifier_probe,
+        classifier_reason,
         enforcement
             .as_ref()
             .map(|report| report.status)
@@ -663,6 +694,27 @@ fn display_path(project_root: &Path, path: &Path) -> String {
         .unwrap_or(path)
         .to_string_lossy()
         .replace('\\', "/")
+}
+
+fn decision_kind_label(kind: DecisionKind) -> &'static str {
+    match kind {
+        DecisionKind::Allow => "allow",
+        DecisionKind::Block => "block",
+        DecisionKind::Deny => "deny",
+    }
+}
+
+fn reason_kind_label(kind: ReasonKind) -> &'static str {
+    match kind {
+        ReasonKind::None => "none",
+        ReasonKind::DirectSourceRead => "direct-source-read",
+        ReasonKind::BulkSourceDump => "bulk-source-dump",
+        ReasonKind::RawBroadSearch => "raw-broad-search",
+        ReasonKind::SourceDirectoryEnumeration => "source-directory-enumeration",
+        ReasonKind::AgentSearchJson => "agent-search-json",
+        ReasonKind::SemanticAstPatchRequired => "semantic-ast-patch-required",
+        ReasonKind::SubagentReceiptRequired => "subagent-receipt-required",
+    }
 }
 
 fn runtime_profile_status_label(status: RuntimeProviderHealthStatus) -> &'static str {

@@ -146,7 +146,7 @@ fn tree_sitter_rows_are_stale_when_matching_source_hash_changes() {
 }
 
 #[test]
-fn prime_seed_probe_reuses_latest_fresh_prime_generation_after_fingerprint_miss() {
+fn prime_seed_probe_rejects_latest_fresh_prime_generation_after_fingerprint_miss() {
     let root = temp_root("fresh-prime-reuse");
     std::fs::create_dir_all(root.join(".git")).expect("create git marker");
     std::fs::create_dir_all(root.join("src")).expect("create src dir");
@@ -185,13 +185,9 @@ rank=O frontier=O.owner\n";
     ]);
 
     let probe = provider_cache_probe(&root, &snapshot, &request).expect("probe");
-    let replay = probe.replay.as_ref().expect("fresh prime replay");
 
-    assert_eq!(probe.cache_status, CacheStatus::Hit);
-    assert_eq!(
-        std::str::from_utf8(replay.stdout.as_ref()).expect("utf8"),
-        stdout
-    );
+    assert_eq!(probe.cache_status, CacheStatus::Miss);
+    assert!(probe.replay.is_none());
     assert_eq!(probe.sqlite_read_count, 3);
     let _ = std::fs::remove_dir_all(root);
 }

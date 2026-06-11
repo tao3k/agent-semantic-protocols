@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import subprocess
 import sys
 from datetime import UTC, datetime
@@ -47,9 +48,12 @@ class CodeqlCliUnavailable(RuntimeError):
 
 
 def _run_codeql_json(args: list[str]) -> Any:
+    codeql_cli = os.environ.get("ASP_CODEQL_CLI", "codeql").strip() or "codeql"
+    if codeql_cli == "unavailable":
+        raise CodeqlCliUnavailable("CodeQL CLI disabled by ASP_CODEQL_CLI")
     try:
         completed = subprocess.run(
-            ["codeql", *args],
+            [codeql_cli, *args],
             check=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,

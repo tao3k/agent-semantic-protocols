@@ -42,6 +42,7 @@ pub(crate) fn run_provider_method(
     let snapshot = crate::activation_cache::load_provider_registry_snapshot(
         &parsed.activation_root,
         &parsed.project_root,
+        !parsed.receipt_json,
     )?;
     debug_client_stage("provider-method:forward-args");
     let check_failure_frontier_view =

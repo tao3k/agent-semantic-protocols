@@ -9,6 +9,7 @@ use agent_semantic_provider_transport::byte_text;
 
 use super::search_config::AspConfig;
 use super::search_pipe_model::Candidate;
+use super::search_pipe_native_finder::{NativeFinderSurface, collect_native_finder_candidates};
 
 const PIPE_CANDIDATE_LINE_LIMIT: usize = 256;
 
@@ -62,6 +63,19 @@ pub(super) fn collect_candidates(
             })
             .collect()
     };
+    if let Some(collection) = collect_native_finder_candidates(
+        NativeFinderSurface::Both,
+        language_id,
+        project_root,
+        locator_root,
+        &roots,
+        &terms,
+        config,
+    )?
+    .filter(|collection| !collection.candidates.is_empty())
+    {
+        return Ok(collection.candidates);
+    }
     let extensions = language_extensions(language_id);
     let mut candidates = Vec::new();
     let mut remaining = PIPE_CANDIDATE_LINE_LIMIT;

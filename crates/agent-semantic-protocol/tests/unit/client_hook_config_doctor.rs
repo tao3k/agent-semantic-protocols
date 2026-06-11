@@ -43,8 +43,8 @@ tool = "Bash"
     assert!(output.status.success(), "stderr: {}", stderr(&output));
     let stdout = stdout(&output);
     assert!(stdout.contains("clientConfigStatus=ok"));
-    assert!(stdout.contains("enforcement=not-run"));
-    assert!(stdout.contains("enforcementReason=probe-disabled"));
+    assert!(stdout.contains("enforcement=unavailable"));
+    assert!(stdout.contains("enforcementReason=project-hook-missing"));
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
 }
 

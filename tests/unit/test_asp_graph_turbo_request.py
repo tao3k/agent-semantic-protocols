@@ -39,6 +39,32 @@ def test_request_schema_accepts_read_memory_seen_selectors() -> None:
     assert errors == []
 
 
+def test_request_schema_accepts_advisory_delegation_hints() -> None:
+    packet = sample_request()
+    packet["delegationHints"] = [
+        {
+            "profile": "asp-explorer",
+            "decision": "advisory",
+            "runtimeOwner": "agent-client",
+            "modelClass": "cheap",
+            "readOnly": True,
+            "noCode": True,
+            "targetActions": ["A1.fd-query", "A2.rg-query"],
+            "maxCommands": 8,
+            "maxTurns": 1,
+            "reason": "query-selector-low-confidence",
+            "receipt": {
+                "kind": "search-subagent",
+                "requiredFields": ["role", "evidence", "missing", "next", "risk"],
+            },
+        }
+    ]
+
+    errors = list(schema_validator_for(_GRAPH_TURBO_REQUEST_SCHEMA).iter_errors(packet))
+
+    assert errors == []
+
+
 def test_result_packet_is_schema_owned_ranking_evidence() -> None:
     graph = TypedGraph.from_packet(sample_packet())
     result = rank_frontier(
@@ -167,5 +193,6 @@ def test_tools_graph_turbo_cli_applies_read_memory_suppression(tmp_path: Path) -
     payload = json.loads(completed.stdout)
 
     assert "item:collect" not in payload["rank"]
-    assert payload["algorithmMetrics"]["readMemorySuppressedCount"] == 1
+    assert "hot:command" not in payload["rank"]
+    assert payload["algorithmMetrics"]["readMemorySuppressedCount"] == 2
     assert "seen-selector" in payload["avoid"]

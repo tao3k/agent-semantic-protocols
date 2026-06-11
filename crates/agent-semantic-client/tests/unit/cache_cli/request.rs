@@ -6,8 +6,8 @@ use agent_semantic_client_core::{
 };
 
 use super::{
-    exact_request_fingerprint, request_export_method, request_lookup_fingerprint,
-    syntax_query_cache_provenance,
+    exact_request_fingerprint, prompt_output_render_abi_provenance, request_export_method,
+    request_lookup_fingerprint, syntax_query_cache_provenance,
 };
 
 #[test]
@@ -100,6 +100,17 @@ fn tree_sitter_request_fingerprint_changes_when_compiled_abi_plan_changes() {
     );
 
     assert_ne!(function_fingerprint, struct_fingerprint);
+}
+
+#[test]
+fn search_prime_request_fingerprint_records_prompt_output_render_abi() {
+    let prime = prompt_output_render_abi_provenance(&CacheExportMethod::from("search/prime"));
+    let package = prompt_output_render_abi_provenance(&CacheExportMethod::from("search/package"));
+    let query_code = prompt_output_render_abi_provenance(&CacheExportMethod::from("query/code"));
+
+    assert!(prime.starts_with("prompt-output-render-abi:fnv64:"));
+    assert_eq!(prime, package);
+    assert_eq!(query_code, "prompt-output-render-abi:none");
 }
 
 #[test]

@@ -18,8 +18,6 @@ fn cli_hook_replay_blocks_encoded_payload_escape_surfaces() {
         "asp",
         "rust",
         "query",
-        "--from-hook",
-        "direct-source-read",
         "--selector",
         "src/lib.rs",
         "--workspace",

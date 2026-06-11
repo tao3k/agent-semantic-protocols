@@ -113,6 +113,7 @@ fn prime_seed_prompt_output_writeback_adds_search_output_replay_artifact() {
             ".".to_string(),
         ]);
     let stdout = "[search-prime] root=. alg=fast-prime-frontier-v1\n\
+|decision purpose=decision-primer answer=false code=false capabilities=pipe,fzf,fd-query,rg-query,owner-items,selector-code,treesitter-query ladder=pipe>fzf>fd-query|rg-query>owner-items>selector-code history=asp-artifacts:directReadRisk,repeatedPrime,repeatedPipe,bestPath risk=broad-direct-read,manual-window-scan,repeat-prime next=\"asp rust search pipe '<question-or-feature-term>' --view seeds .\"\n\
 legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next\n\
 aliases=G:search,O:owner\n\
 O=owner:path(src/lib.rs)!owner\n\
@@ -131,5 +132,46 @@ rank=O frontier=O.owner\n";
 
     assert_eq!(replay.stdout, stdout.as_bytes());
     assert_eq!(probe.sqlite_write_count, 2);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn legacy_prime_seed_prompt_output_without_decision_primer_does_not_replay() {
+    let _guard = crate::test_support::CACHE_TEST_LOCK
+        .lock()
+        .expect("cache test lock");
+    let root = temp_root("legacy-prime-seed-prompt-output");
+    std::fs::create_dir_all(root.join(".git")).expect("create git marker");
+    std::fs::create_dir_all(root.join("src")).expect("create source dir");
+    std::fs::write(root.join("src/lib.rs"), "pub fn cached_prime() {}\n").expect("write source");
+    let snapshot = ProviderRegistrySnapshot {
+        activation_path: root.join("activation.json"),
+        providers: vec![rust_provider()],
+    };
+    let request = ClientRequest::new(ClientMethod::Search, &root)
+        .with_language(LanguageId::from("rust"))
+        .with_forwarded_args(vec![
+            "prime".to_string(),
+            "--view".to_string(),
+            "seeds".to_string(),
+            ".".to_string(),
+        ]);
+    let stdout = "[search-prime] root=. alg=fast-prime-frontier-v1\n\
+legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next\n\
+aliases=G:search,O:owner\n\
+O=owner:path(src/lib.rs)!owner\n\
+G>{O:selects}\n\
+rank=O frontier=O.owner\n";
+
+    let probe = write_prompt_output_cache_after_provider_success(
+        &root,
+        &snapshot,
+        &request,
+        stdout.as_bytes(),
+        &[],
+    )
+    .expect("writeback probe");
+
+    assert!(probe.replay.is_none());
     let _ = std::fs::remove_dir_all(root);
 }

@@ -983,6 +983,16 @@ Python ranking boundary. PyG/HeteroData export remains an optional lab surface
 and must not become part of the default request/result contract or package
 dependency set.
 
+`semantic-dependency-topology.v1.schema.json` owns the manifest-first dependency
+cache packet used as graph-turbo evidence. It records language id, package
+manager, manifest and lockfile hashes, source files that contributed import-site
+locators, and typed graph nodes for packages, dependencies, dependency
+versions, import sites, and API symbols. This packet caches topology and
+locators rather than source text: manifests and lockfiles are the dependency
+truth, while source import scans only add usage evidence through relations such
+as `depends_on`, `version_locked`, `imports`, `uses_api`, `documented_by`,
+`example_of`, and `tested_by`.
+
 `semantic-graph-turbo-artifact-events.v1.schema.json` is the schema-owned event
 stream between ASP's Rust SQLite cache and graph-turbo timeline audit. It
 records compact artifact events for command, prompt-output, search, query,

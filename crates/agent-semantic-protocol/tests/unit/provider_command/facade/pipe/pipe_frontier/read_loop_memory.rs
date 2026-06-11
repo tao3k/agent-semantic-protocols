@@ -52,9 +52,31 @@ fn search_pipe_injects_read_loop_memory_into_graph_turbo_request_and_suppresses_
     );
     let payload: Value =
         serde_json::from_slice(&request_output.stdout).expect("graph request json");
+    super::assert_graph_turbo_request_contract(&payload);
     assert_eq!(
         payload["readMemory"]["seenSelectors"][0], "languages/rust-harness/src/lib.rs:1:15",
         "{payload}"
+    );
+    assert_eq!(
+        payload["delegationHints"][0]["decision"],
+        serde_json::json!("advisory")
+    );
+    assert_eq!(
+        payload["delegationHints"][0]["runtimeOwner"],
+        serde_json::json!("agent-client")
+    );
+    assert_eq!(
+        payload["delegationHints"][0]["targetActions"],
+        serde_json::json!([
+            "A1.fd-query",
+            "A2.rg-query",
+            "A3.owner-items",
+            "A4.treesitter-query"
+        ])
+    );
+    assert_eq!(
+        payload["delegationHints"][0]["receipt"]["requiredFields"],
+        serde_json::json!(["role", "evidence", "missing", "next", "risk"])
     );
 
     let seeds_output = asp_command(&root)
@@ -97,6 +119,10 @@ fn search_pipe_injects_read_loop_memory_into_graph_turbo_request_and_suppresses_
     assert!(stdout.contains("recommendedNext=A1.fd-query"), "{stdout}");
     assert!(
         stdout.contains("nextCommand=asp fd -query Vec languages/rust-harness"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("subagentHint=profile=asp-explorer decision=advisory runtimeOwner=agent-client modelClass=cheap readOnly=true noCode=true targetActions=A1.fd-query,A2.rg-query,A3.owner-items,A4.treesitter-query maxCommands=8 maxTurns=1 receipt=search-subagent(role,evidence,missing,next,risk) reason=query-selector-low-confidence"),
         "{stdout}"
     );
     assert!(

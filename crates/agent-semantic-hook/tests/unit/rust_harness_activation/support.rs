@@ -1,41 +1,81 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use agent_semantic_hook::{
-    HookRuntime, builtin_provider_manifests, parse_hook_activation, provider_manifest_digest,
+    HookRuntime, builtin_provider_manifests, default_client_config_template, parse_hook_activation,
+    provider_manifest_digest,
 };
 use serde_json::json;
 
 pub(super) fn asp_command() -> Command {
+    if let Ok(path) = std::env::var("ASP_TEST_ASP_BIN") {
+        return checked_asp_command(PathBuf::from(path), "ASP_TEST_ASP_BIN");
+    }
     if let Some(path) = option_env!("CARGO_BIN_EXE_asp") {
-        return Command::new(path);
+        return checked_asp_command(PathBuf::from(path), "CARGO_BIN_EXE_asp");
     }
     if let Ok(path) = std::env::var("CARGO_BIN_EXE_asp") {
-        return Command::new(path);
+        return checked_asp_command(PathBuf::from(path), "CARGO_BIN_EXE_asp");
     }
     if let Some(path) = target_debug_asp() {
         return Command::new(path);
     }
-    if let Some(path) = path_binary("asp") {
-        return Command::new(path);
-    }
-    Command::new("asp")
+    panic!(
+        "agent-semantic-hook CLI tests require a fresh asp binary; run `cargo build -p agent-semantic-protocol --bin asp` or set ASP_TEST_ASP_BIN"
+    );
 }
 
 fn target_debug_asp() -> Option<PathBuf> {
     let current_exe = std::env::current_exe().ok()?;
     let debug_dir = current_exe.parent()?.parent()?;
     let asp = debug_dir.join(format!("asp{}", std::env::consts::EXE_SUFFIX));
-    asp.exists().then_some(asp)
+    if !asp.exists() {
+        return None;
+    }
+    assert_asp_binary_fresh(&asp);
+    Some(asp)
 }
 
-fn path_binary(binary: &str) -> Option<PathBuf> {
-    std::env::var_os("PATH")
-        .into_iter()
-        .flat_map(|paths| std::env::split_paths(&paths).collect::<Vec<_>>())
-        .map(|path| path.join(binary))
-        .find(|path| path.exists())
+fn checked_asp_command(path: PathBuf, source: &str) -> Command {
+    assert!(
+        path.exists(),
+        "{source} points to a missing asp binary: {}",
+        path.display()
+    );
+    assert_asp_binary_fresh(&path);
+    Command::new(path)
+}
+
+fn assert_asp_binary_fresh(binary: &Path) {
+    let Some(newest_source) = newest_asp_hook_surface_source_mtime() else {
+        return;
+    };
+    let binary_mtime = binary
+        .metadata()
+        .and_then(|metadata| metadata.modified())
+        .unwrap_or(SystemTime::UNIX_EPOCH);
+    assert!(
+        binary_mtime >= newest_source,
+        "asp binary {} is older than hook doctor/probe sources; rebuild with `cargo build -p agent-semantic-protocol --bin asp`",
+        binary.display()
+    );
+}
+
+fn newest_asp_hook_surface_source_mtime() -> Option<SystemTime> {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()?
+        .parent()?
+        .to_path_buf();
+    [
+        "crates/agent-semantic-protocol/src/main.rs",
+        "crates/agent-semantic-protocol/src/command/hook.rs",
+        "crates/agent-semantic-protocol/src/command/hook_runtime.rs",
+        "crates/agent-semantic-protocol/src/command/hook_enforcement.rs",
+    ]
+    .into_iter()
+    .filter_map(|relative| root.join(relative).metadata().ok()?.modified().ok())
+    .max()
 }
 
 pub(super) fn temp_project_root(name: &str) -> PathBuf {
@@ -84,6 +124,18 @@ pub(super) fn root_owned_rust_activation_json() -> String {
 pub(super) fn write_root_owned_rust_activation(root: &std::path::Path) -> PathBuf {
     let path = root.join("rust-activation.json");
     std::fs::write(&path, root_owned_rust_activation_json()).expect("write rust activation");
+    path
+}
+
+pub(super) fn write_default_client_hook_config(root: &std::path::Path) -> PathBuf {
+    let path = root
+        .join(".codex")
+        .join("agent-semantic-protocol")
+        .join("hooks")
+        .join("config.toml");
+    std::fs::create_dir_all(path.parent().expect("client hook config parent"))
+        .expect("create client hook config parent");
+    std::fs::write(&path, default_client_config_template()).expect("write client hook config");
     path
 }
 

@@ -34,6 +34,7 @@ fn fzf_seeds_is_asp_owned_for_cheap_discovery() {
             "fzf",
             "cache_root",
             "owner",
+            "items",
             "tests",
             "--view",
             "seeds",
@@ -102,6 +103,7 @@ fn fzf_frontier_receipt_out_is_asp_owned_runtime_capture() {
             "fzf",
             "cache_root",
             "owner",
+            "items",
             "tests",
             "--view",
             "seeds",
@@ -216,6 +218,7 @@ fn fzf_scoped_root_outputs_workspace_relative_replayable_locators() {
             "fzf",
             "cache_root",
             "owner",
+            "items",
             "tests",
             "--view",
             "seeds",
@@ -280,6 +283,7 @@ fn fzf_can_emit_graph_turbo_request_for_live_candidate_frontier() {
             "fzf",
             "cache_root",
             "owner",
+            "items",
             "tests",
             "--view",
             "graph-turbo-request",
@@ -334,6 +338,7 @@ fn typescript_fzf_can_emit_typed_hot_request_for_live_candidate_frontier() {
             "fzf",
             "cacheRoot",
             "owner",
+            "items",
             "tests",
             "--view",
             "graph-turbo-request",
@@ -381,7 +386,16 @@ fn fzf_default_view_uses_builtin_ranker_for_live_candidate_frontier() {
         .env("PRJ_CACHE_HOME", root.join(".cache"))
         .env("ASP_GRAPH_TURBO_ARGS_OUT", &args_path)
         .env("ASP_GRAPH_TURBO_STDIN_OUT", &stdin_path)
-        .args(["rust", "search", "fzf", "cache_root", "owner", "tests", "."])
+        .args([
+            "rust",
+            "search",
+            "fzf",
+            "cache_root",
+            "owner",
+            "items",
+            "tests",
+            ".",
+        ])
         .output()
         .expect("run asp rust search fzf default view");
 
@@ -439,6 +453,7 @@ fn typescript_fzf_default_view_uses_shared_graph_turbo_ranker() {
             "fzf",
             "cacheRoot",
             "owner",
+            "items",
             "tests",
             ".",
         ])

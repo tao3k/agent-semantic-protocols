@@ -756,7 +756,7 @@ dependencies = [
  "memchr",
  "nom",
  "rowan",
- "rust-lang-project-harness 0.1.0 (git+https://github.com/tao3k/rust-lang-project-harness?rev=2184bf574e4cf48b90752bdc71d58743603b7114)",
+ "rust-lang-project-harness 0.1.0 (git+https://github.com/tao3k/rust-lang-project-harness?rev=7ea58b53da8ec18b07fb89dc7517ae81c9757030)",
  "serde_json",
 ]
 
@@ -959,11 +959,12 @@ dependencies = [
 [[package]]
 name = "rust-lang-project-harness"
 version = "0.1.0"
-source = "git+https://github.com/tao3k/rust-lang-project-harness?rev=2184bf574e4cf48b90752bdc71d58743603b7114#2184bf574e4cf48b90752bdc71d58743603b7114"
+source = "git+https://github.com/tao3k/rust-lang-project-harness?rev=7ea58b53da8ec18b07fb89dc7517ae81c9757030#7ea58b53da8ec18b07fb89dc7517ae81c9757030"
 dependencies = [
  "cargo_toml",
  "proc-macro2",
  "quote",
+ "regex",
  "serde",
  "serde_json",
  "syn",

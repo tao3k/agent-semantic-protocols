@@ -12,11 +12,14 @@ _DEFAULT_FRONTIER_ACTIONS = {
     "build": "build",
     "collection": "code",
     "dependency": "deps",
+    "dependency-version": "evidence",
     "evidence": "evidence",
     "failure": "failure",
     "field": "code",
     "finding": "owner",
     "hot": "code",
+    "api-symbol": "code",
+    "import-site": "code",
     "item": "code",
     "key": "evidence",
     "owner": "owner",
@@ -72,12 +75,21 @@ DEFAULT_PROFILES: dict[str, GraphProfile] = {
     "query-deps": GraphProfile(
         name="query-deps",
         allowed_relations=frozenset(
-            {"matches", "selects", "uses", "imports", "depends_on", "covers"}
+            {
+                "matches",
+                "selects",
+                "uses",
+                "imports",
+                "depends_on",
+                "version_locked",
+                "covers",
+            }
         ),
         allowed_transitions=_transitions(
             (
                 ("query", "owner"),
                 ("owner", "dependency"),
+                ("dependency", "dependency-version"),
                 ("dependency", "owner"),
                 ("owner", "test"),
             )

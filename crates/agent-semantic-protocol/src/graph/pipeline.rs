@@ -54,6 +54,9 @@ pub(super) fn render_search_graph_packet(packet: &Value, options: GraphRenderOpt
         header.push_str(&format!(" budget=handles:{seed_limit}"));
     }
     let mut lines = vec![header];
+    if prime_mode {
+        lines.push(prime_decision_line(packet));
+    }
     lines.push(if prime_mode {
         PRIME_GRAPH_LEGEND.to_string()
     } else {
@@ -157,6 +160,17 @@ fn prime_graph_entries_line(aliases: &[aliases::GraphAlias]) -> Option<String> {
         ));
     }
     (!entries.is_empty()).then(|| format!("entries={}", entries.join(",")))
+}
+
+fn prime_decision_line(packet: &Value) -> String {
+    let language_id = packet
+        .get("languageId")
+        .and_then(Value::as_str)
+        .filter(|language_id| !language_id.trim().is_empty())
+        .unwrap_or("<language>");
+    format!(
+        "|decision purpose=decision-primer answer=false code=false capabilities=pipe,fzf,fd-query,rg-query,owner-items,selector-code,treesitter-query ladder=pipe>fzf>fd-query|rg-query>owner-items>selector-code history=asp-artifacts:directReadRisk,repeatedPrime,repeatedPipe,bestPath risk=broad-direct-read,manual-window-scan,repeat-prime next=\"asp {language_id} search pipe '<question-or-feature-term>' --view seeds .\""
+    )
 }
 
 fn graph_seed_limit(seed_limit: Option<usize>) -> usize {

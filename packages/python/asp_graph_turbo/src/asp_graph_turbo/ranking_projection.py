@@ -127,7 +127,7 @@ def _frontier_entries(
         action = frontier_action(profile, node)
         if action is None:
             continue
-        entries.append(FrontierEntry(node, action, scores[node.id]))
+        entries.append(FrontierEntry(node, action, scores.get(node.id, 0.0)))
     return tuple(entries)
 
 

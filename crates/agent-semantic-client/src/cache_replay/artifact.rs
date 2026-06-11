@@ -97,17 +97,42 @@ pub(crate) fn load_replay_artifact(
         generation_hit: &ClientDbGenerationHit,
         request: &ClientRequest,
     ) -> String {
+        let prompt_output_provenance =
+            prompt_output_render_abi_provenance(generation_hit.export_method.as_str());
         let seed = format!(
-            "{}\0{}\0{}\0{}\0{}\0{}",
+            "{}\0{}\0{}\0{}\0{}\0{}\0{}",
             generation_hit.language_id,
             generation_hit.provider_id,
             normalized_path(&generation_hit.project_root),
             generation_hit.export_method,
             request.forwarded_args.join("\0"),
-            "syntax-query-ast-abi:none"
+            "syntax-query-ast-abi:none",
+            prompt_output_provenance
         );
         format!("fnv64:{}", stable_hash_hex(&seed))
     }
+
+    fn prompt_output_render_abi_provenance(export_method: &str) -> String {
+        if matches!(export_method, "search/prime" | "search/package") {
+            return format!(
+                "prompt-output-render-abi:fnv64:{}",
+                stable_hash_hex(PRIME_DECISION_PRIMER_RENDER_ABI)
+            );
+        }
+        "prompt-output-render-abi:none".to_string()
+    }
+
+    const PRIME_DECISION_PRIMER_RENDER_ABI: &str = concat!(
+        "semantic-search-prime;",
+        "purpose=decision-primer;",
+        "answer=false;",
+        "code=false;",
+        "capabilities=pipe,fzf,fd-query,rg-query,owner-items,selector-code,treesitter-query;",
+        "ladder=pipe>fzf>fd-query|rg-query>owner-items>selector-code;",
+        "history=asp-artifacts:directReadRisk,repeatedPrime,repeatedPipe,bestPath;",
+        "risk=broad-direct-read,manual-window-scan,repeat-prime;",
+        "next=search pipe <question-or-feature-term> --view seeds"
+    );
 
     fn load_prompt_output_artifact(
         cache_root: &Path,
@@ -139,6 +164,12 @@ pub(crate) fn load_replay_artifact(
     if !replay_file_hashes_match(&generation_hit.project_root, &generation_hit.file_hashes) {
         return None;
     }
+    if is_prime_seed_search_request(request)
+        && generation_hit.request_fingerprint.as_deref()?
+            != prompt_output_request_fingerprint(generation_hit, request)
+    {
+        return None;
+    }
 
     let has_structured_evidence_artifact = generation_hit
         .artifact_ids
@@ -167,9 +198,29 @@ pub(crate) fn load_replay_artifact(
 }
 
 fn prompt_output_artifact_replay_safe(stdout: &str) -> bool {
+    if stdout.starts_with("[search-prime]") && !stdout.contains("|decision purpose=decision-primer")
+    {
+        return false;
+    }
     !stdout.contains("alias: graph:{")
         && !stdout
             .contains("legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next")
+}
+
+fn is_prime_seed_search_request(request: &ClientRequest) -> bool {
+    request.method == ClientMethod::Search
+        && request
+            .forwarded_args
+            .first()
+            .is_some_and(|arg| arg == "prime")
+        && (request
+            .forwarded_args
+            .windows(2)
+            .any(|window| window[0] == "--view" && window[1] == "seeds")
+            || request
+                .forwarded_args
+                .iter()
+                .any(|arg| arg == "--view=seeds"))
 }
 
 pub(crate) fn replay_artifact_path(

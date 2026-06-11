@@ -116,7 +116,7 @@ PATCH
     assert_eq!(deny_decision["routes"][0]["providerId"], "rs-harness");
     assert_eq!(deny_decision["routes"][0]["argv"][0], "asp");
     assert_eq!(deny_decision["routes"][0]["argv"][1], "rust");
-    assert_eq!(deny_decision["routes"][0]["argv"][6], "src/lib.rs");
+    assert_eq!(deny_decision["routes"][0]["argv"][4], "src/lib.rs");
     assert!(
         deny_decision["message"]
             .as_str()

@@ -1,0 +1,353 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-dependency-topology.v1.schema.json",
+  "title": "Semantic Dependency Topology Packet v1",
+  "description": "Manifest- and lockfile-owned dependency topology cache packet consumed as graph-turbo evidence. Source files contribute import-site locators only; source text is not cached.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "protocolId",
+    "protocolVersion",
+    "packetKind",
+    "languageId",
+    "projectRoot",
+    "fingerprint",
+    "generatedAt",
+    "cacheKey",
+    "sources",
+    "graph"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.semantic-dependency-topology"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "protocolId": {
+      "const": "agent.semantic-protocols.semantic-language"
+    },
+    "protocolVersion": {
+      "const": "1"
+    },
+    "packetKind": {
+      "const": "dependency-topology"
+    },
+    "languageId": {
+      "$ref": "#/$defs/languageId"
+    },
+    "projectRoot": {
+      "type": "string",
+      "minLength": 1
+    },
+    "fingerprint": {
+      "$ref": "#/$defs/sha256"
+    },
+    "generatedAt": {
+      "type": "string",
+      "minLength": 1
+    },
+    "cacheKey": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "languageId",
+        "packageManager",
+        "manifestHash",
+        "lockfileHash",
+        "projectPackageName"
+      ],
+      "properties": {
+        "languageId": {
+          "$ref": "#/$defs/languageId"
+        },
+        "packageManager": {
+          "enum": [
+            "cargo",
+            "uv",
+            "pip",
+            "npm",
+            "pnpm",
+            "yarn",
+            "julia-pkg",
+            "unknown"
+          ]
+        },
+        "manifestHash": {
+          "$ref": "#/$defs/sha256"
+        },
+        "lockfileHash": {
+          "$ref": "#/$defs/sha256"
+        },
+        "projectPackageName": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "sources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "manifests",
+        "lockfiles",
+        "usageSites"
+      ],
+      "properties": {
+        "manifests": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/sourceFile"
+          }
+        },
+        "lockfiles": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/sourceFile"
+          }
+        },
+        "usageSites": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "graph": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "nodes",
+        "edges"
+      ],
+      "properties": {
+        "nodes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/node"
+          }
+        },
+        "edges": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/edge"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "languageId": {
+      "enum": [
+        "rust",
+        "python",
+        "typescript",
+        "julia"
+      ]
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "sourceFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "sha256"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "nodeId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "nodeKind": {
+      "enum": [
+        "workspace",
+        "package",
+        "dependency",
+        "dependency-version",
+        "import-site",
+        "api-symbol",
+        "example",
+        "doc",
+        "changelog-entry",
+        "known-pr",
+        "known-issue",
+        "test-usage"
+      ]
+    },
+    "nodeAction": {
+      "enum": [
+        "package",
+        "deps",
+        "evidence",
+        "code",
+        "tests"
+      ]
+    },
+    "relation": {
+      "enum": [
+        "contains",
+        "belongs_to",
+        "depends_on",
+        "version_locked",
+        "imports",
+        "uses_api",
+        "documented_by",
+        "example_of",
+        "changed_by_pr",
+        "tested_by",
+        "compatible_with",
+        "deprecated_by",
+        "references"
+      ]
+    },
+    "qualityFields": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "languageId": {
+          "$ref": "#/$defs/languageId"
+        },
+        "packageManager": {
+          "type": "string",
+          "minLength": 1
+        },
+        "dependencyName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "dependencyGroup": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "importName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "provenance": {
+          "enum": [
+            "parser",
+            "build",
+            "test",
+            "failure",
+            "receipt",
+            "heuristic"
+          ]
+        },
+        "confidence": {
+          "enum": [
+            "exact",
+            "high",
+            "medium",
+            "low",
+            "heuristic"
+          ]
+        },
+        "freshness": {
+          "enum": [
+            "fresh",
+            "cache-hit",
+            "stale",
+            "unknown"
+          ]
+        }
+      }
+    },
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "role",
+        "value",
+        "action"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/nodeId"
+        },
+        "kind": {
+          "$ref": "#/$defs/nodeKind"
+        },
+        "role": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "value": {
+          "type": "string",
+          "minLength": 1
+        },
+        "action": {
+          "$ref": "#/$defs/nodeAction"
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "startLine": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "endLine": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "locator": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fields": {
+          "$ref": "#/$defs/qualityFields"
+        }
+      }
+    },
+    "edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "target",
+        "relation"
+      ],
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/nodeId"
+        },
+        "target": {
+          "$ref": "#/$defs/nodeId"
+        },
+        "relation": {
+          "$ref": "#/$defs/relation"
+        },
+        "weight": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "fields": {
+          "$ref": "#/$defs/qualityFields"
+        }
+      }
+    }
+  }
+}

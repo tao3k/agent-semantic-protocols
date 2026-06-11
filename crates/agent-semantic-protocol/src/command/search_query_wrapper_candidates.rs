@@ -4,12 +4,20 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use serde_json::Value;
+
 use super::search_config::AspConfig;
 use super::search_pipe_model::Candidate;
+use super::search_pipe_native_finder::{NativeFinderSurface, collect_native_finder_candidates};
 use super::search_query_wrapper_model::{FdQueryPreview, QueryWrapperClause, QueryWrapperSurface};
 
 const QUERY_CANDIDATE_LIMIT: usize = 256;
 const SUPPORTED_EXTENSIONS: &[&str] = &["rs", "ts", "tsx", "js", "jsx", "py", "jl"];
+
+pub(super) struct QueryCandidateCollection {
+    pub(super) candidates: Vec<Candidate>,
+    pub(super) trace_fields: BTreeMap<String, Value>,
+}
 
 pub(super) fn fd_query_preview(
     project_root: &Path,
@@ -58,6 +66,27 @@ pub(super) fn collect_query_candidates(
     terms: &[String],
     config: &AspConfig,
 ) -> Result<Vec<Candidate>, String> {
+    collect_query_candidate_collection(
+        surface,
+        project_root,
+        locator_root,
+        scopes,
+        clauses,
+        terms,
+        config,
+    )
+    .map(|collection| collection.candidates)
+}
+
+pub(super) fn collect_query_candidate_collection(
+    surface: QueryWrapperSurface,
+    project_root: &Path,
+    locator_root: &Path,
+    scopes: &[PathBuf],
+    clauses: &[QueryWrapperClause],
+    terms: &[String],
+    config: &AspConfig,
+) -> Result<QueryCandidateCollection, String> {
     if terms.is_empty() {
         return Err(format!(
             "asp {} -query requires non-empty terms",
@@ -80,6 +109,31 @@ pub(super) fn collect_query_candidates(
     } else {
         locator_root.to_path_buf()
     };
+    let native_surface = match surface {
+        QueryWrapperSurface::Fd => NativeFinderSurface::Path,
+        QueryWrapperSurface::Rg => NativeFinderSurface::Content,
+    };
+    if let Some(mut collection) = collect_native_finder_candidates(
+        native_surface,
+        infer_language_id(project_root),
+        project_root,
+        &display_root,
+        &roots,
+        terms,
+        config,
+    )?
+    .filter(|collection| !collection.candidates.is_empty())
+    {
+        collection
+            .candidates
+            .sort_by_key(|candidate| query_candidate_priority(&candidate.path, terms));
+        let candidates = cohesive_query_candidates(collection.candidates, clauses);
+        let trace_fields = collection.provenance.trace_fields(candidates.len());
+        return Ok(QueryCandidateCollection {
+            candidates,
+            trace_fields,
+        });
+    }
     let mut candidates = Vec::new();
     let mut seen = HashSet::new();
     for root in roots {
@@ -97,7 +151,10 @@ pub(super) fn collect_query_candidates(
         )?;
     }
     candidates.sort_by_key(|candidate| query_candidate_priority(&candidate.path, terms));
-    Ok(cohesive_query_candidates(candidates, clauses))
+    Ok(QueryCandidateCollection {
+        candidates: cohesive_query_candidates(candidates, clauses),
+        trace_fields: BTreeMap::new(),
+    })
 }
 
 fn append_query_candidates(

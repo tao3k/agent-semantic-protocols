@@ -3,11 +3,14 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
+use serde_json::{Value, json};
+
 use super::search_pipe_action_model::PipeAction;
 use super::search_pipe_model::Candidate;
 use super::search_pipe_quality::SearchPipeQuality;
 use super::search_query_wrapper_model::FdQueryPreview;
 
+#[derive(Clone, Copy)]
 pub(super) struct SearchPipeActionRequest<'a> {
     pub(super) language_id: &'a str,
     pub(super) project_root: &'a Path,
@@ -27,6 +30,39 @@ struct ActionNode {
     body: String,
     suffix: String,
     command: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct DelegationHint {
+    target_actions: Vec<String>,
+}
+
+impl DelegationHint {
+    fn render_line(&self) -> String {
+        format!(
+            "subagentHint=profile=asp-explorer decision=advisory runtimeOwner=agent-client modelClass=cheap readOnly=true noCode=true targetActions={} maxCommands=8 maxTurns=1 receipt=search-subagent(role,evidence,missing,next,risk) reason=query-selector-low-confidence",
+            self.target_actions.join(",")
+        )
+    }
+
+    pub(super) fn as_json(&self) -> Value {
+        json!({
+            "profile": "asp-explorer",
+            "decision": "advisory",
+            "runtimeOwner": "agent-client",
+            "modelClass": "cheap",
+            "readOnly": true,
+            "noCode": true,
+            "targetActions": self.target_actions.clone(),
+            "maxCommands": 8,
+            "maxTurns": 1,
+            "reason": "query-selector-low-confidence",
+            "receipt": {
+                "kind": "search-subagent",
+                "requiredFields": ["role", "evidence", "missing", "next", "risk"]
+            }
+        })
+    }
 }
 
 pub(super) fn render_action_frontier(request: SearchPipeActionRequest<'_>) -> String {
@@ -74,6 +110,10 @@ pub(super) fn render_action_frontier(request: SearchPipeActionRequest<'_>) -> St
     if let Some(command) = &first.command {
         rendered.push_str(&format!("nextCommand={command}\n"));
     }
+    for hint in delegation_hints(request.quality, &actions) {
+        rendered.push_str(&hint.render_line());
+        rendered.push('\n');
+    }
     if !request.quality.allow_query_selector {
         rendered.push_str("reason=query-selector-low-confidence,owner-seed-base-required\n");
         rendered.push_str(
@@ -81,6 +121,14 @@ pub(super) fn render_action_frontier(request: SearchPipeActionRequest<'_>) -> St
         );
     }
     rendered
+}
+
+pub(super) fn delegation_hints_for_request(
+    request: SearchPipeActionRequest<'_>,
+) -> Vec<DelegationHint> {
+    let scope_arg = display_scope_args(request.project_root, request.locator_root, request.scopes);
+    let actions = action_nodes(&request, &scope_arg);
+    delegation_hints(request.quality, &actions)
 }
 
 pub(super) fn sanitize_evidence_line(line: &str) -> String {
@@ -134,6 +182,26 @@ fn tree_sitter_handles(quality: &SearchPipeQuality, compact: Option<&str>) -> St
     } else {
         handles.join(";")
     }
+}
+
+fn delegation_hints(quality: &SearchPipeQuality, actions: &[ActionNode]) -> Vec<DelegationHint> {
+    if quality.allow_query_selector {
+        return Vec::new();
+    }
+    let target_actions = actions
+        .iter()
+        .filter(|action| {
+            matches!(
+                action.kind.as_str(),
+                "fd-query" | "rg-query" | "owner-items" | "treesitter-query"
+            )
+        })
+        .map(|action| format!("{}.{}", action.id, action.kind))
+        .collect::<Vec<_>>();
+    if target_actions.is_empty() {
+        return Vec::new();
+    }
+    vec![DelegationHint { target_actions }]
 }
 
 fn action_nodes(request: &SearchPipeActionRequest<'_>, scope_arg: &str) -> Vec<ActionNode> {

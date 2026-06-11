@@ -131,6 +131,7 @@ fn search_packet_writeback_replays_rendered_stdout_artifact() {
     }))
     .expect("packet json");
     let rendered_stdout = "[search-prime] root=. view=prime alg=seed-frontier\n\
+|decision purpose=decision-primer answer=false code=false capabilities=pipe,fzf,fd-query,rg-query,owner-items,selector-code,treesitter-query ladder=pipe>fzf>fd-query|rg-query>owner-items>selector-code history=asp-artifacts:directReadRisk,repeatedPrime,repeatedPipe,bestPath risk=broad-direct-read,manual-window-scan,repeat-prime next=\"asp rust search pipe '<question-or-feature-term>' --view seeds .\"\n\
 legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next\n\
 aliases=G:search,O:owner\n\
 O=owner:path(src/lib.rs)!owner\n\

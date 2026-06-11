@@ -105,7 +105,7 @@ fn claude_platform_response_uses_hook_specific_permission_decision() {
         .expect("permission reason");
     assert!(reason.contains("# ASP Hook Recovery"), "{reason}");
     assert!(reason.contains("direct-source-read"), "{reason}");
-    assert!(reason.contains("asp rust query --from-hook direct-source-read"));
+    assert!(reason.contains("asp rust query --selector"));
     assert!(reason.contains("--code"));
     assert!(response.get("agentHookDecision").is_none());
 }

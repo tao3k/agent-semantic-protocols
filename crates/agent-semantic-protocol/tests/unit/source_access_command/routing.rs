@@ -50,8 +50,6 @@ fn read_file_command_rewrites_selector_to_package_root() {
             "asp",
             "rust",
             "query",
-            "--from-hook",
-            "direct-source-read",
             "--selector",
             "src/lib.rs",
             "--workspace",

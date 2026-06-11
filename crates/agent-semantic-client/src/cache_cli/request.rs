@@ -98,19 +98,43 @@ pub(super) fn exact_request_fingerprint(
 ) -> String {
     let syntax_query_provenance = syntax_query_cache_provenance(provider, forwarded_args)
         .unwrap_or_else(|| "syntax-query-ast-abi:none".to_string());
+    let prompt_output_provenance = prompt_output_render_abi_provenance(export_method);
     let seed = format!(
-        "{}\0{}\0{}\0{}\0{}\0{}",
+        "{}\0{}\0{}\0{}\0{}\0{}\0{}",
         provider.language_id,
         provider.provider_id,
         normalized_path(project_root),
         export_method,
         forwarded_args.join("\0"),
-        syntax_query_provenance
+        syntax_query_provenance,
+        prompt_output_provenance
     );
     format!("fnv64:{}", stable_hash_hex(&seed))
 }
 
-fn syntax_query_cache_provenance(
+pub(super) fn prompt_output_render_abi_provenance(export_method: &CacheExportMethod) -> String {
+    if matches!(export_method.as_str(), "search/prime" | "search/package") {
+        return format!(
+            "prompt-output-render-abi:fnv64:{}",
+            stable_hash_hex(PRIME_DECISION_PRIMER_RENDER_ABI)
+        );
+    }
+    "prompt-output-render-abi:none".to_string()
+}
+
+const PRIME_DECISION_PRIMER_RENDER_ABI: &str = concat!(
+    "semantic-search-prime;",
+    "purpose=decision-primer;",
+    "answer=false;",
+    "code=false;",
+    "capabilities=pipe,fzf,fd-query,rg-query,owner-items,selector-code,treesitter-query;",
+    "ladder=pipe>fzf>fd-query|rg-query>owner-items>selector-code;",
+    "history=asp-artifacts:directReadRisk,repeatedPrime,repeatedPipe,bestPath;",
+    "risk=broad-direct-read,manual-window-scan,repeat-prime;",
+    "next=search pipe <question-or-feature-term> --view seeds"
+);
+
+pub(super) fn syntax_query_cache_provenance(
     provider: &ResolvedProvider,
     forwarded_args: &[String],
 ) -> Option<String> {
