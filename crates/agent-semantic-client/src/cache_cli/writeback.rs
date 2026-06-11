@@ -65,18 +65,6 @@ pub(crate) fn write_prompt_output_cache_after_provider_success(
     stdout: &[u8],
     provider_commands: &[ProviderCommandReceipt],
 ) -> Option<CacheWritebackProbe> {
-    fn request_search_packet_writeback_method(
-        request: &ClientRequest,
-    ) -> Option<CacheExportMethod> {
-        if request.method != ClientMethod::Search
-            || is_prime_seed_search(&request.forwarded_args)
-            || !is_seed_search_without_code(&request.forwarded_args)
-        {
-            return None;
-        }
-        request_export_method(request)
-    }
-
     fn request_query_packet_writeback_method(request: &ClientRequest) -> Option<CacheExportMethod> {
         if request.method != ClientMethod::Query
             || request
@@ -384,7 +372,7 @@ pub(crate) fn write_prompt_output_cache_after_provider_success(
         return None;
     }
     let search_packet_writeback =
-        request_search_packet_writeback_method(request).and_then(|export_method| {
+        request_search_packet_provider_export_method(request).and_then(|export_method| {
             let export = export_provider_packet(provider, request)?;
             validate_search_packet(&export.packet_bytes, provider)?;
             Some((
@@ -599,7 +587,7 @@ pub(crate) fn write_search_packet_cache_after_provider_success(
     rendered_stdout: &[u8],
 ) -> Option<ProviderCacheProbe> {
     let provider = selected_provider_for_request(snapshot, request)?;
-    let export_method = request_prompt_output_writeback_method(request)?;
+    let export_method = request_search_packet_writeback_method(request)?;
     validate_search_packet_for_provider(packet_bytes, provider)?;
 
     let cache_report = ClientCacheManifest::inspect_project(project_root);
@@ -897,6 +885,29 @@ fn request_prompt_output_writeback_method(request: &ClientRequest) -> Option<Cac
         }
         _ => None,
     }
+}
+
+fn request_search_packet_writeback_method(request: &ClientRequest) -> Option<CacheExportMethod> {
+    if request.method != ClientMethod::Search
+        || request
+            .forwarded_args
+            .iter()
+            .any(|arg| arg == "items" || arg == "ingest" || arg == "--code" || arg == "--json")
+        || !(is_seed_search_without_code(&request.forwarded_args)
+            || is_dependency_search(&request.forwarded_args))
+    {
+        return None;
+    }
+    request_export_method(request)
+}
+
+fn request_search_packet_provider_export_method(
+    request: &ClientRequest,
+) -> Option<CacheExportMethod> {
+    if is_prime_seed_search(&request.forwarded_args) {
+        return None;
+    }
+    request_search_packet_writeback_method(request)
 }
 
 fn is_replayable_search_prompt_output(args: &[String]) -> bool {
