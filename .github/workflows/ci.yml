@@ -30,6 +30,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
+      - name: Enable Windows Git long paths
+        if: ${{ matrix.os == 'windows-latest' }}
+        shell: bash
+        run: git config --global core.longpaths true
+
       - name: Checkout provider catalog submodules
         shell: bash
         run: |
