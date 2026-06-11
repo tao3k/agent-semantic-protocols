@@ -6,6 +6,17 @@ use std::path::Path;
 
 use agent_semantic_provider_transport::byte_text;
 
+const CONFIG_OWNER_FILENAMES: &[&str] = &[
+    "Cargo.toml",
+    "package.json",
+    "tsconfig.json",
+    "pnpm-workspace.yaml",
+    "pyproject.toml",
+    "Project.toml",
+    "gerbil.pkg",
+    "build.ss",
+];
+
 pub(super) fn render_owner_query_frontier(
     language_id: &str,
     project_root: &Path,
@@ -220,6 +231,11 @@ fn find_owner_query_matches(path: &Path, query: &str) -> Vec<OwnerQueryMatch> {
         }
     }
     sort_owner_query_matches(&mut matches);
+    if matches.is_empty()
+        && let Some(config_match) = config_owner_query_match(path, &terms, &lines)
+    {
+        matches.push(config_match);
+    }
     matches
 }
 
@@ -240,8 +256,46 @@ fn item_kind_priority(kind: &str) -> u8 {
         "type" => 1,
         "function" | "fn" => 2,
         "const" | "static" => 3,
+        "config" => 4,
         _ => 4,
     }
+}
+
+fn config_owner_query_match(
+    path: &Path,
+    terms: &[QueryTerm],
+    lines: &[&[u8]],
+) -> Option<OwnerQueryMatch> {
+    let filename = path.file_name().and_then(|name| name.to_str())?;
+    if !CONFIG_OWNER_FILENAMES.contains(&filename) {
+        return None;
+    }
+    let filename_lower = filename.to_ascii_lowercase();
+    if terms
+        .iter()
+        .any(|term| filename_lower.contains(&term.lower))
+    {
+        return Some(OwnerQueryMatch {
+            start: 1,
+            end: 1,
+            kind: "config",
+            term: filename.to_string(),
+            match_rank: 0,
+        });
+    }
+    for (index, line) in lines.iter().enumerate() {
+        let lower = byte_text::lowercase_lossy_string(line);
+        if let Some(term) = terms.iter().find(|term| lower.contains(&term.lower)) {
+            return Some(OwnerQueryMatch {
+                start: index + 1,
+                end: index + 1,
+                kind: "config",
+                term: term.display.clone(),
+                match_rank: 1,
+            });
+        }
+    }
+    None
 }
 
 fn item_kind_for_line(path: &Path, line: &[u8]) -> Option<&'static str> {

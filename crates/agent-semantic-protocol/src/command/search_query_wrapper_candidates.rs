@@ -12,7 +12,19 @@ use super::search_pipe_native_finder::{NativeFinderSurface, collect_native_finde
 use super::search_query_wrapper_model::{FdQueryPreview, QueryWrapperClause, QueryWrapperSurface};
 
 const QUERY_CANDIDATE_LIMIT: usize = 256;
-const SUPPORTED_EXTENSIONS: &[&str] = &["rs", "ts", "tsx", "js", "jsx", "py", "jl"];
+const SUPPORTED_EXTENSIONS: &[&str] = &[
+    "rs", "ts", "tsx", "js", "jsx", "py", "jl", "ss", "ssi", "scm", "sld",
+];
+const SUPPORTED_CONFIG_FILENAMES: &[&str] = &[
+    "Cargo.toml",
+    "package.json",
+    "tsconfig.json",
+    "pnpm-workspace.yaml",
+    "pyproject.toml",
+    "Project.toml",
+    "gerbil.pkg",
+    "build.ss",
+];
 
 pub(super) struct QueryCandidateCollection {
     pub(super) candidates: Vec<Candidate>,
@@ -233,10 +245,7 @@ fn append_file_query_candidates(
     seen: &mut HashSet<String>,
     candidates: &mut Vec<Candidate>,
 ) {
-    let Some(extension) = path.extension().and_then(|extension| extension.to_str()) else {
-        return;
-    };
-    if !SUPPORTED_EXTENSIONS.contains(&extension) {
+    if !supported_query_file(path) {
         return;
     }
     match surface {
@@ -247,6 +256,16 @@ fn append_file_query_candidates(
             append_content_candidates(locator_root, path, terms, seen, candidates)
         }
     }
+}
+
+fn supported_query_file(path: &Path) -> bool {
+    path.extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| SUPPORTED_EXTENSIONS.contains(&extension))
+        || path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| SUPPORTED_CONFIG_FILENAMES.contains(&name))
 }
 
 fn append_path_candidate(
@@ -522,6 +541,10 @@ fn path_basename_matches(lower_path: &str, term: &str) -> bool {
                 .trim_end_matches(".rs")
                 .trim_end_matches(".py")
                 .trim_end_matches(".jl")
+                .trim_end_matches(".ss")
+                .trim_end_matches(".ssi")
+                .trim_end_matches(".scm")
+                .trim_end_matches(".sld")
                 == term
         })
         .unwrap_or(false)
