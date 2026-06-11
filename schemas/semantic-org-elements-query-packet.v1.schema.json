@@ -1,0 +1,280 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-org-elements-query-packet.v1.schema.json",
+  "title": "Semantic Org Elements Query Packet",
+  "description": "Host-facing query packet compiled by orgize into the shared OrgElementsIndexQuery and OrgElementQueryPredicate AST.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion"],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "category": {
+      "$ref": "#/$defs/category"
+    },
+    "kind": {
+      "$ref": "#/$defs/nonEmptyString"
+    },
+    "affiliatedName": {
+      "$ref": "#/$defs/nonEmptyString"
+    },
+    "context": {
+      "$ref": "#/$defs/nonEmptyString"
+    },
+    "outlinePathPrefix": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/nonEmptyString"
+      }
+    },
+    "outlinePathExactLen": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "propertyEquals": {
+      "$ref": "#/$defs/summaryPredicates"
+    },
+    "propertyContains": {
+      "$ref": "#/$defs/textPredicates"
+    },
+    "summaryEquals": {
+      "$ref": "#/$defs/summaryPredicates"
+    },
+    "summaryContains": {
+      "$ref": "#/$defs/textPredicates"
+    },
+    "relations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/relation"
+      }
+    },
+    "predicate": {
+      "$ref": "#/$defs/predicate"
+    },
+    "limit": {
+      "type": "integer",
+      "minimum": 0
+    }
+  },
+  "$defs": {
+    "nonEmptyString": {
+      "type": "string",
+      "minLength": 1
+    },
+    "category": {
+      "enum": ["document", "section", "element", "property", "keyword", "object"]
+    },
+    "summaryValue": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "integer"
+        },
+        {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nonEmptyString"
+          }
+        }
+      ]
+    },
+    "summaryPredicate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "value"],
+      "properties": {
+        "key": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "value": {
+          "$ref": "#/$defs/summaryValue"
+        }
+      }
+    },
+    "summaryPredicates": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/summaryPredicate"
+      }
+    },
+    "textPredicate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "needle"],
+      "properties": {
+        "key": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "needle": {
+          "$ref": "#/$defs/nonEmptyString"
+        }
+      }
+    },
+    "textPredicates": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/textPredicate"
+      }
+    },
+    "relation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "ids"],
+      "properties": {
+        "type": {
+          "enum": ["childOf", "descendantOf", "ancestorOf", "at"]
+        },
+        "ids": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    },
+    "predicate": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["all"],
+          "properties": {
+            "all": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/$defs/predicate"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["any"],
+          "properties": {
+            "any": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/$defs/predicate"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["not"],
+          "properties": {
+            "not": {
+              "$ref": "#/$defs/predicate"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["category"],
+          "properties": {
+            "category": {
+              "$ref": "#/$defs/category"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": {
+            "kind": {
+              "$ref": "#/$defs/nonEmptyString"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["affiliatedName"],
+          "properties": {
+            "affiliatedName": {
+              "$ref": "#/$defs/nonEmptyString"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["context"],
+          "properties": {
+            "context": {
+              "$ref": "#/$defs/nonEmptyString"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["property"],
+          "properties": {
+            "property": {
+              "$ref": "#/$defs/fieldPredicate"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["summary"],
+          "properties": {
+            "summary": {
+              "$ref": "#/$defs/fieldPredicate"
+            }
+          }
+        }
+      ]
+    },
+    "fieldPredicate": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["key", "equals"],
+          "properties": {
+            "key": {
+              "$ref": "#/$defs/nonEmptyString"
+            },
+            "equals": {
+              "$ref": "#/$defs/summaryValue"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["key", "contains"],
+          "properties": {
+            "key": {
+              "$ref": "#/$defs/nonEmptyString"
+            },
+            "contains": {
+              "$ref": "#/$defs/nonEmptyString"
+            }
+          }
+        }
+      ]
+    }
+  }
+}
