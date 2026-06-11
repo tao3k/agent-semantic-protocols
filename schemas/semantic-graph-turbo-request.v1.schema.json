@@ -182,6 +182,14 @@
       },
       "uniqueItems": true
     },
+    "actionFrontier": {
+      "description": "Typed action facts projected from the search-pipe frontier. These facts are the materializer input for prompt-visible nextCommand text; they must not carry materialized shell strings or argv.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/actionFrontierEntry"
+      },
+      "uniqueItems": true
+    },
     "graph": {
       "type": "object",
       "additionalProperties": false,
@@ -338,6 +346,84 @@
               "missing",
               "next",
               "risk"
+            ]
+          }
+        }
+      }
+    },
+    "actionFrontierEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "capabilityId",
+        "target",
+        "targetRole",
+        "fields"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^A[1-9][0-9]*$"
+        },
+        "kind": {
+          "enum": [
+            "query-code",
+            "fd-query",
+            "rg-query",
+            "owner-items",
+            "treesitter-query"
+          ]
+        },
+        "capabilityId": {
+          "enum": [
+            "query",
+            "fd",
+            "rg",
+            "owner-items",
+            "treesitter-query"
+          ]
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1
+        },
+        "targetRole": {
+          "enum": [
+            "selector",
+            "query",
+            "owner",
+            "syntax-recipe"
+          ]
+        },
+        "fields": {
+          "type": "object",
+          "propertyNames": {
+            "not": {
+              "enum": [
+                "command",
+                "argv"
+              ]
+            }
+          },
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
             ]
           }
         }

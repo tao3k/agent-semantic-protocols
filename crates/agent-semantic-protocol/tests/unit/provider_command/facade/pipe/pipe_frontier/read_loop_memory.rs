@@ -78,6 +78,30 @@ fn search_pipe_injects_read_loop_memory_into_graph_turbo_request_and_suppresses_
         payload["delegationHints"][0]["receipt"]["requiredFields"],
         serde_json::json!(["role", "evidence", "missing", "next", "risk"])
     );
+    assert_eq!(
+        payload["actionFrontier"][0]["id"],
+        serde_json::json!("A1"),
+        "{payload}"
+    );
+    assert_eq!(
+        payload["actionFrontier"][0]["kind"],
+        serde_json::json!("fd-query"),
+        "{payload}"
+    );
+    assert_eq!(
+        payload["actionFrontier"][0]["capabilityId"],
+        serde_json::json!("fd"),
+        "{payload}"
+    );
+    assert!(
+        payload["actionFrontier"][0].get("command").is_none()
+            && payload["actionFrontier"][0].get("argv").is_none()
+            && payload["actionFrontier"][0]["fields"]
+                .get("command")
+                .is_none()
+            && payload["actionFrontier"][0]["fields"].get("argv").is_none(),
+        "{payload}"
+    );
 
     let seeds_output = asp_command(&root)
         .env("PATH", prepend_path(&bin_dir))

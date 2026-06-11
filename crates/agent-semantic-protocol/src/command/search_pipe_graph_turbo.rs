@@ -5,7 +5,9 @@ use std::collections::{HashMap, HashSet};
 use serde_json::{Value, json};
 
 use super::{
-    search_pipe_actions::{SearchPipeActionRequest, delegation_hints_for_request},
+    search_pipe_actions::{
+        SearchPipeActionRequest, action_frontier_for_request, delegation_hints_for_request,
+    },
     search_pipe_dependency_facts::{
         DependencyFact, collect_dependency_facts, dependency_matches_query,
     },
@@ -158,7 +160,7 @@ fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> Value {
         && let Some(query) = query.filter(|query| !query.trim().is_empty())
     {
         let quality = analyze_search_pipe_quality(language_id, query, candidates);
-        let delegation_hints = delegation_hints_for_request(SearchPipeActionRequest {
+        let action_request = SearchPipeActionRequest {
             language_id,
             project_root: dependency_root,
             locator_root: dependency_root,
@@ -168,7 +170,12 @@ fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> Value {
             ranked_compact: None,
             selector_actions: &[],
             fd_preview: None,
-        });
+        };
+        let action_frontier = action_frontier_for_request(action_request);
+        if !action_frontier.is_empty() {
+            packet["actionFrontier"] = Value::Array(action_frontier);
+        }
+        let delegation_hints = delegation_hints_for_request(action_request);
         if !delegation_hints.is_empty() {
             packet["delegationHints"] = Value::Array(
                 delegation_hints

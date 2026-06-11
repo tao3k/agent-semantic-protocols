@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 
+use super::search_pipe_action_frontier::{ActionNode, ActionRoute};
 use super::search_pipe_action_model::PipeAction;
 use super::search_pipe_model::Candidate;
 use super::search_pipe_quality::SearchPipeQuality;
@@ -21,15 +22,6 @@ pub(super) struct SearchPipeActionRequest<'a> {
     pub(super) ranked_compact: Option<&'a str>,
     pub(super) selector_actions: &'a [PipeAction],
     pub(super) fd_preview: Option<&'a FdQueryPreview>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-struct ActionNode {
-    id: String,
-    kind: String,
-    body: String,
-    suffix: String,
-    command: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -94,7 +86,10 @@ pub(super) fn render_action_frontier(request: SearchPipeActionRequest<'_>) -> St
     for action in &actions {
         rendered.push_str(&format!(
             "{}={}({})!{}\n",
-            action.id, action.kind, action.body, action.suffix
+            action.id,
+            action.kind,
+            action.render_body(),
+            action.suffix
         ));
     }
     rendered.push_str(&format!(
@@ -107,7 +102,7 @@ pub(super) fn render_action_frontier(request: SearchPipeActionRequest<'_>) -> St
     ));
     let first = actions.first().expect("non-empty actions");
     rendered.push_str(&format!("recommendedNext={}.{}\n", first.id, first.kind));
-    if let Some(command) = &first.command {
+    if let Some(command) = first.materialized_command() {
         rendered.push_str(&format!("nextCommand={command}\n"));
     }
     for hint in delegation_hints(request.quality, &actions) {
@@ -129,6 +124,14 @@ pub(super) fn delegation_hints_for_request(
     let scope_arg = display_scope_args(request.project_root, request.locator_root, request.scopes);
     let actions = action_nodes(&request, &scope_arg);
     delegation_hints(request.quality, &actions)
+}
+
+pub(super) fn action_frontier_for_request(request: SearchPipeActionRequest<'_>) -> Vec<Value> {
+    let scope_arg = display_scope_args(request.project_root, request.locator_root, request.scopes);
+    action_nodes(&request, &scope_arg)
+        .into_iter()
+        .map(|action| action.as_json())
+        .collect()
 }
 
 pub(super) fn sanitize_evidence_line(line: &str) -> String {
@@ -217,14 +220,13 @@ fn action_nodes(request: &SearchPipeActionRequest<'_>, scope_arg: &str) -> Vec<A
         actions.push(ActionNode {
             id: String::new(),
             kind: "owner-items".to_string(),
-            body: format!("owner={owner},query={query}"),
             suffix: "owner-items".to_string(),
-            command: Some(format!(
-                "asp {language} search owner {owner} items --query {query} --view seeds {scope_arg}",
-                language = request.language_id,
-                owner = shell_arg(owner),
-                query = shell_arg(query),
-            )),
+            route: ActionRoute::OwnerItems {
+                language_id: request.language_id.to_string(),
+                owner: owner.to_string(),
+                query: query.to_string(),
+                scope: scope_arg.to_string(),
+            },
         });
     }
     if request.fd_preview.is_none()
@@ -233,18 +235,22 @@ fn action_nodes(request: &SearchPipeActionRequest<'_>, scope_arg: &str) -> Vec<A
         actions.push(ActionNode {
             id: String::new(),
             kind: "fd-query".to_string(),
-            body: format!("query={fd_query},scope={scope_arg}"),
             suffix: "finder-owner".to_string(),
-            command: Some(format!("asp fd -query {} {scope_arg}", shell_arg(fd_query))),
+            route: ActionRoute::FdQuery {
+                query: fd_query.to_string(),
+                scope: scope_arg.to_string(),
+            },
         });
     }
     if let Some(query) = rg_query(request.quality, request.ranked_compact) {
         actions.push(ActionNode {
             id: String::new(),
             kind: "rg-query".to_string(),
-            body: format!("query={query},scope={scope_arg}"),
             suffix: "finder-content".to_string(),
-            command: Some(format!("asp rg -query {} {scope_arg}", shell_arg(&query))),
+            route: ActionRoute::RgQuery {
+                query,
+                scope: scope_arg.to_string(),
+            },
         });
     }
     if request.fd_preview.is_none()
@@ -254,24 +260,44 @@ fn action_nodes(request: &SearchPipeActionRequest<'_>, scope_arg: &str) -> Vec<A
         actions.push(ActionNode {
             id: String::new(),
             kind: "owner-items".to_string(),
-            body: format!("owner={owner},query={query}"),
             suffix: "owner-items".to_string(),
-            command: Some(format!(
-                "asp {language} search owner {owner} items --query {query} --view seeds {scope_arg}",
-                language = request.language_id,
-                owner = shell_arg(owner),
-                query = shell_arg(query),
-            )),
+            route: ActionRoute::OwnerItems {
+                language_id: request.language_id.to_string(),
+                owner: owner.to_string(),
+                query: query.to_string(),
+                scope: scope_arg.to_string(),
+            },
         });
     }
     if let Some(handle) = tree_sitter_action_handle(request.quality, request.ranked_compact) {
-        let command = tree_sitter_action_command(request.language_id, &handle, scope_arg);
+        let recipe = handle_field(&handle, "recipe").map(str::to_string);
+        let names = handle_field(&handle, "names").map(|names| {
+            names
+                .split('|')
+                .filter(|name| usable_query_term(name))
+                .map(ToOwned::to_owned)
+                .collect::<Vec<_>>()
+        });
+        let Some((recipe, names)) = recipe.zip(names).filter(|(_, names)| !names.is_empty()) else {
+            return actions
+                .into_iter()
+                .enumerate()
+                .map(|(index, mut action)| {
+                    action.id = format!("A{}", index + 1);
+                    action
+                })
+                .collect();
+        };
         actions.push(ActionNode {
             id: String::new(),
             kind: "treesitter-query".to_string(),
-            body: handle,
             suffix: "syntax-locator".to_string(),
-            command,
+            route: ActionRoute::TreeSitterQuery {
+                language_id: request.language_id.to_string(),
+                recipe,
+                names,
+                scope: scope_arg.to_string(),
+            },
         });
     }
     actions
@@ -292,20 +318,17 @@ fn query_code_action(request: &SearchPipeActionRequest<'_>, action: &PipeAction)
         request.locator_root,
         request.scopes,
     );
-    let command = format!(
-        "asp {language} query --selector {selector} --workspace {workspace_arg} --code",
-        language = request.language_id,
-        selector = shell_arg(&selector),
-    );
     ActionNode {
         id: String::new(),
         kind: "query-code".to_string(),
-        body: format!(
-            "selector={},owner={},symbol={}",
-            selector, action.owner, action.symbol
-        ),
         suffix: "terminal-code".to_string(),
-        command: Some(command),
+        route: ActionRoute::QueryCode {
+            language_id: request.language_id.to_string(),
+            selector,
+            owner: action.owner.clone(),
+            symbol: action.symbol.clone(),
+            workspace: workspace_arg,
+        },
     }
 }
 
@@ -381,118 +404,11 @@ fn tree_sitter_action_handle(quality: &SearchPipeQuality, compact: Option<&str>)
     None
 }
 
-fn tree_sitter_action_command(language_id: &str, handle: &str, scope_arg: &str) -> Option<String> {
-    let recipe = handle_field(handle, "recipe")?;
-    let names = handle_field(handle, "names")?
-        .split('|')
-        .filter(|name| usable_query_term(name))
-        .collect::<Vec<_>>();
-    let query = tree_sitter_query_pattern(language_id, recipe, &names)?;
-    Some(format!(
-        "asp {language_id} query --treesitter-query {} {scope_arg}",
-        shell_arg(&query)
-    ))
-}
-
 fn handle_field<'a>(handle: &'a str, key: &str) -> Option<&'a str> {
     handle.split(',').find_map(|field| {
         let (field_key, value) = field.split_once('=')?;
         (field_key == key && !value.is_empty()).then_some(value)
     })
-}
-
-fn tree_sitter_query_pattern(language_id: &str, recipe: &str, names: &[&str]) -> Option<String> {
-    if names.is_empty() {
-        return None;
-    }
-    let patterns = match (language_id, recipe) {
-        ("rust", "interface-fields") => names
-            .iter()
-            .map(|name| {
-                eq_name_pattern("field_declaration", "field_identifier", "field.name", name)
-            })
-            .collect::<Vec<_>>(),
-        ("rust", "exported-declarations") => names
-            .iter()
-            .flat_map(|name| {
-                [
-                    eq_name_pattern("function_item", "identifier", "declaration.name", name),
-                    eq_name_pattern("struct_item", "type_identifier", "declaration.name", name),
-                    eq_name_pattern("enum_item", "type_identifier", "declaration.name", name),
-                    eq_name_pattern("trait_item", "type_identifier", "declaration.name", name),
-                    eq_name_pattern("type_item", "type_identifier", "declaration.name", name),
-                ]
-            })
-            .collect::<Vec<_>>(),
-        ("typescript", "interface-fields") => names
-            .iter()
-            .map(|name| {
-                eq_name_pattern(
-                    "property_signature",
-                    "property_identifier",
-                    "field.name",
-                    name,
-                )
-            })
-            .collect::<Vec<_>>(),
-        ("typescript", "exported-declarations") => names
-            .iter()
-            .flat_map(|name| {
-                [
-                    eq_name_pattern(
-                        "function_declaration",
-                        "identifier",
-                        "declaration.name",
-                        name,
-                    ),
-                    eq_name_pattern(
-                        "class_declaration",
-                        "type_identifier",
-                        "declaration.name",
-                        name,
-                    ),
-                    eq_name_pattern(
-                        "interface_declaration",
-                        "type_identifier",
-                        "declaration.name",
-                        name,
-                    ),
-                    eq_name_pattern(
-                        "type_alias_declaration",
-                        "type_identifier",
-                        "declaration.name",
-                        name,
-                    ),
-                    eq_name_pattern(
-                        "variable_declarator",
-                        "identifier",
-                        "declaration.name",
-                        name,
-                    ),
-                ]
-            })
-            .collect::<Vec<_>>(),
-        ("python", "exported-declarations") => names
-            .iter()
-            .flat_map(|name| {
-                [
-                    eq_name_pattern(
-                        "function_definition",
-                        "identifier",
-                        "declaration.name",
-                        name,
-                    ),
-                    eq_name_pattern("class_definition", "identifier", "declaration.name", name),
-                ]
-            })
-            .collect::<Vec<_>>(),
-        _ => return None,
-    };
-    Some(patterns.join(" "))
-}
-
-fn eq_name_pattern(node: &str, name_node: &str, capture: &str, name: &str) -> String {
-    format!("({node} name: ({name_node}) @{capture} (#eq? @{capture} \"{name}\"))")
 }
 
 fn compact_symbols(compact: Option<&str>, kind: &str) -> Vec<String> {

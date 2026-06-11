@@ -65,6 +65,53 @@ def test_request_schema_accepts_advisory_delegation_hints() -> None:
     assert errors == []
 
 
+def test_request_schema_accepts_typed_action_frontier_without_materialized_commands() -> None:
+    packet = sample_request()
+    packet["actionFrontier"] = [
+        {
+            "id": "A1",
+            "kind": "owner-items",
+            "capabilityId": "owner-items",
+            "target": "src/lib.rs",
+            "targetRole": "owner",
+            "fields": {
+                "languageId": "rust",
+                "ownerPath": "src/lib.rs",
+                "query": "CacheReplay|receipt",
+                "scope": ".",
+            },
+        }
+    ]
+
+    errors = list(schema_validator_for(_GRAPH_TURBO_REQUEST_SCHEMA).iter_errors(packet))
+
+    assert errors == []
+
+
+def test_request_schema_rejects_materialized_command_in_action_frontier() -> None:
+    packet = sample_request()
+    packet["actionFrontier"] = [
+        {
+            "id": "A1",
+            "kind": "owner-items",
+            "capabilityId": "owner-items",
+            "target": "src/lib.rs",
+            "targetRole": "owner",
+            "fields": {
+                "languageId": "rust",
+                "ownerPath": "src/lib.rs",
+                "query": "CacheReplay|receipt",
+                "scope": ".",
+                "argv": ["asp", "rust", "search", "owner", "src/lib.rs"],
+            },
+        }
+    ]
+
+    errors = list(schema_validator_for(_GRAPH_TURBO_REQUEST_SCHEMA).iter_errors(packet))
+
+    assert errors != []
+
+
 def test_result_packet_is_schema_owned_ranking_evidence() -> None:
     graph = TypedGraph.from_packet(sample_packet())
     result = rank_frontier(

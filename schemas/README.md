@@ -952,7 +952,12 @@ optional per-kind budgets, optional window-merge controls, and typed graph
 facts under `graph.nodes[]` and `graph.edges[]`. Fast-search request nodes may
 carry parser-owned `syntaxQuery` locators for candidate symbols, hot range
 nodes for direct code follow-ups, and dependency package nodes connected by
-`owner -> dependency` import edges for query-deps routing.
+`owner -> dependency` import edges for query-deps routing. Search-pipe request
+packets may also carry `actionFrontier[]`: typed action facts with action id,
+kind, capability id, target, target role, and fields such as selector, owner
+path, query, scope, recipe, or names. These action facts are materializer input
+for display-only `nextCommand` text and intentionally reject materialized
+`command` or `argv` fields.
 `semantic-graph-turbo-result.v1.schema.json` is the matching schema-owned
 response packet. It records the effective profile, algorithm, seed nodes,
 budget, per-kind budgets, ranked node ids, frontier actions, relation edges,

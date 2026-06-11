@@ -17,6 +17,8 @@ def sample_graph_turbo_request() -> dict[str, object]:
         "protocolId": "agent.semantic-protocols.semantic-language",
         "protocolVersion": "1",
         "packetKind": "graph-turbo-request",
+        "surface": "search-pipe",
+        "queryTerms": ["cache"],
         "profile": "owner-query",
         "algorithm": "typed-ppr-diverse",
         "seedIds": ["query:cache"],

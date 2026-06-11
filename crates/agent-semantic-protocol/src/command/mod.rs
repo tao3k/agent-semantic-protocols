@@ -21,6 +21,7 @@ mod search_config;
 mod search_failure_render;
 mod search_language_files;
 mod search_pipe;
+mod search_pipe_action_frontier;
 mod search_pipe_action_model;
 mod search_pipe_actions;
 mod search_pipe_args;

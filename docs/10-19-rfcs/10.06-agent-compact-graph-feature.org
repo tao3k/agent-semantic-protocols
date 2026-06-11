@@ -239,6 +239,16 @@ and safety constraints; they must not supply executable shell strings as search
 facts.  Every ARI alias, locator, frontier action, and omit/avoid reference must
 correspond to a node or action in the source JSON packet.
 
+The incremental =search pipe= landing path is to expose typed
+=actionFrontier[]= facts in the =semantic-graph-turbo-request.v1= packet before
+or alongside prompt-visible ARI action rows.  Each action fact carries the
+renderer action id, action kind, capability id, target, target role, and typed
+fields such as =selector=, =ownerPath=, =query=, =scope=, =recipe=, or =names=.
+It must not carry =command=, =argv=, or provider-supplied shell strings.  The
+visible =nextCommand= line remains a display convenience materialized from
+these typed facts, not a protocol fact that production code parses back into an
+action.
+
 * Dependency topology cache boundary
 
 Graph-turbo may consume dependency topology as schema-owned evidence, but it
