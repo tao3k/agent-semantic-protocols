@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-import json
 import unittest
 from pathlib import Path
 
-from jsonschema import Draft202012Validator
 
 
 _PROTOCOL_REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -98,6 +96,34 @@ class SemanticSearchPacketGraphRuntimeSchemaTests(unittest.TestCase):
                 }
 
                 self.assertEqual([], self.validation_errors(packet))
+
+    def test_search_packet_accepts_provider_package_extensions(self) -> None:
+        packet = semantic_search_graph_runtime_minimal_packet()
+        packet["languageId"] = "gerbil-scheme"
+        packet["providerId"] = "gerbil-scheme-harness"
+        packet["projectPackage"] = {
+            "path": "gerbil.pkg",
+            "name": "clan/poo",
+            "dependencies": ["git.cons.io/mighty-gerbils/gerbil-utils"],
+            "fields": {"packageManager": "gxpkg"},
+        }
+        packet["extensions"] = [
+            {
+                "name": "poo",
+                "activation": "gerbil.pkg",
+                "packageManager": "gxpkg",
+                "package": "clan/poo",
+                "dependencies": ["git.cons.io/mighty-gerbils/gerbil-utils"],
+                "capabilities": [
+                    "object-system",
+                    "metaobject-protocol",
+                    "protocols",
+                ],
+                "fields": {"provider": "gerbil-scheme-harness"},
+            }
+        ]
+
+        self.assertEqual([], self.validation_errors(packet))
 
     def test_large_library_packet_can_report_coverage_tests_and_runtime(self) -> None:
         packet = semantic_search_graph_runtime_minimal_packet()
