@@ -53,12 +53,14 @@ def _validate_evidence(evidence: CachePerformanceEvidence) -> None:
 
     assert miss["route"] == "local-native", miss
     assert miss["providerProcessesSpawned"] >= 1, miss
-    assert miss.get("packetBytes", 0) > 0, miss
+    assert miss.get("stdoutBytes", 0) > 0, miss
     assert miss.get("sqliteWriteCount", 0) >= 1, miss
+    assert miss.get("rawSourceStored") is False, miss
     assert hit["route"] == "local-cache", hit
     assert hit["cacheStatus"] == "hit", hit
     assert hit["providerProcessesSpawned"] == 0, hit
     assert hit["providerCommandCount"] == 0, hit
+    assert hit.get("rawSourceStored") is False, hit
     assert (evidence.root / "miss.out").read_bytes() == (
         evidence.root / "hit.out"
     ).read_bytes()
@@ -71,10 +73,18 @@ def _render_summary(evidence: CachePerformanceEvidence) -> str:
         "[perf-calibrate-julia-cache] "
         f"missElapsedMs={miss.get('elapsedMs')} "
         f"hitElapsedMs={hit.get('elapsedMs')} "
-        f"packetBytes={miss.get('packetBytes')} "
+        f"stdoutBytes={miss.get('stdoutBytes')} "
+        f"writebackPacketBytes={_writeback_packet_bytes(miss) or '-'} "
         f"sqliteWriteCount={miss.get('sqliteWriteCount')} "
         f"evidence={evidence.root}\n"
     )
+
+
+def _writeback_packet_bytes(receipt: Receipt) -> int:
+    commands = receipt.get("cacheWritebackProviderCommands", [])
+    if not commands:
+        return 0
+    return int(commands[0].get("stdoutBytes", 0))
 
 
 def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:

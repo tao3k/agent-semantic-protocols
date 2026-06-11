@@ -20,9 +20,11 @@ def test_julia_cache_performance_summary_validates_hit_replay(
         {
             "route": "local-native",
             "providerProcessesSpawned": 1,
-            "packetBytes": 128,
+            "stdoutBytes": 128,
+            "cacheWritebackProviderCommands": [{"stdoutBytes": 4096}],
             "sqliteWriteCount": 4,
             "elapsedMs": 80,
+            "rawSourceStored": False,
         },
     )
     _write_receipt(
@@ -34,6 +36,7 @@ def test_julia_cache_performance_summary_validates_hit_replay(
             "providerProcessesSpawned": 0,
             "providerCommandCount": 0,
             "elapsedMs": 5,
+            "rawSourceStored": False,
         },
     )
     (tmp_path / "miss.out").write_text("same packet\n", encoding="utf-8")
@@ -45,7 +48,8 @@ def test_julia_cache_performance_summary_validates_hit_replay(
     assert output.startswith("[perf-calibrate-julia-cache] ")
     assert "missElapsedMs=80" in output
     assert "hitElapsedMs=5" in output
-    assert "packetBytes=128" in output
+    assert "stdoutBytes=128" in output
+    assert "writebackPacketBytes=4096" in output
     assert f"evidence={tmp_path}" in output
 
 
@@ -58,8 +62,10 @@ def test_julia_cache_performance_rejects_provider_backed_hit(
         {
             "route": "local-native",
             "providerProcessesSpawned": 1,
-            "packetBytes": 128,
+            "stdoutBytes": 128,
+            "cacheWritebackProviderCommands": [{"stdoutBytes": 4096}],
             "sqliteWriteCount": 4,
+            "rawSourceStored": False,
         },
     )
     _write_receipt(
@@ -70,6 +76,7 @@ def test_julia_cache_performance_rejects_provider_backed_hit(
             "cacheStatus": "hit",
             "providerProcessesSpawned": 1,
             "providerCommandCount": 1,
+            "rawSourceStored": False,
         },
     )
     (tmp_path / "miss.out").write_text("same packet\n", encoding="utf-8")
@@ -77,6 +84,42 @@ def test_julia_cache_performance_rejects_provider_backed_hit(
 
     with pytest.raises(AssertionError):
         main([tmp_path.as_posix()])
+
+
+def test_julia_cache_performance_allows_prime_receipts_without_writeback_json(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _write_receipt(
+        tmp_path,
+        "miss",
+        {
+            "route": "local-native",
+            "providerProcessesSpawned": 1,
+            "stdoutBytes": 1724,
+            "sqliteWriteCount": 2,
+            "elapsedMs": 5000,
+            "rawSourceStored": False,
+        },
+    )
+    _write_receipt(
+        tmp_path,
+        "hit",
+        {
+            "route": "local-cache",
+            "cacheStatus": "hit",
+            "providerProcessesSpawned": 0,
+            "providerCommandCount": 0,
+            "elapsedMs": 50,
+            "rawSourceStored": False,
+        },
+    )
+    (tmp_path / "miss.out").write_text("same prime\n", encoding="utf-8")
+    (tmp_path / "hit.out").write_text("same prime\n", encoding="utf-8")
+
+    assert main([tmp_path.as_posix()]) == 0
+
+    assert "writebackPacketBytes=-" in capsys.readouterr().out
 
 
 def test_load_receipt_requires_json_line(tmp_path: Path) -> None:
