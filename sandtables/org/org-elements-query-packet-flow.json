@@ -52,6 +52,7 @@
         "search-flow",
         "real-trigger"
       ],
+      "timeoutSeconds": 120,
       "command": [
         "cargo",
         "run",

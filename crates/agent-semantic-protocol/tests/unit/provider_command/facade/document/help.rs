@@ -61,7 +61,9 @@ fn document_facade_help_does_not_spawn_orgize() {
         );
         let stdout = String::from_utf8(output.stdout).expect("stdout");
         assert!(
-            stdout.contains(&format!("usage: asp {language} <guide|search|query> ...")),
+            stdout.contains(&format!(
+                "usage: asp {language} <guide|search|query|elements-query> ..."
+            )),
             "stdout={stdout}"
         );
     }
