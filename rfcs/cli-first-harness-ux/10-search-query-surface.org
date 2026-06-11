@@ -250,6 +250,17 @@ outside the parser module set may return =source=path-only= and
 =next=ingest:<path>= so agents can keep the path in the protocol instead of
 falling back to raw shell output.
 
+=search deps <dependency[@version][::api]>= is the provider-owned dependency
+usage view.  The language provider resolves project manifests, lockfiles,
+package metadata, imports, and use-sites with its native project model, then
+emits dependency hits, owner/test frontiers, and the replay-safe
+=cache.fileHashes= evidence in the =semantic-search-packet=.  The ASP client
+may validate and compare those hashes for warm-hit replay, but it must not
+hard-code dependency manifests, package layouts, or source roots outside the
+language provider.  Providers should set =cache.rawSourceStored=false= for this
+view because replay stores compact search output and packet artifacts, not raw
+dependency source.
+
 ** =query= — first-class parser-native extraction and reroutes
 
 Provider-native item query is the default code extraction path for agents:
