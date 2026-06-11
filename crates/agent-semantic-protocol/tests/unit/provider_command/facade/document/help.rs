@@ -47,7 +47,10 @@ fn top_level_version_prints_package_version() {
 fn document_facade_help_does_not_spawn_orgize() {
     let root = temp_project_root("document-facade-help");
 
-    for language in ["org", "md"] {
+    for (language, commands) in [
+        ("org", "guide|search|query|elements-query|contract"),
+        ("md", "guide|search|query|elements-query"),
+    ] {
         let output = asp_command(&root)
             .env("PATH", "")
             .args([language, "--help"])
@@ -61,9 +64,7 @@ fn document_facade_help_does_not_spawn_orgize() {
         );
         let stdout = String::from_utf8(output.stdout).expect("stdout");
         assert!(
-            stdout.contains(&format!(
-                "usage: asp {language} <guide|search|query|elements-query> ..."
-            )),
+            stdout.contains(&format!("usage: asp {language} <{commands}> ...")),
             "stdout={stdout}"
         );
     }
