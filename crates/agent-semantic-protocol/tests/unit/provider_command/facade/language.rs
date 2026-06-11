@@ -147,6 +147,7 @@ fn language_facade_rejects_unsupported_language_without_unrelated_provider_recov
     write_activation(
         &root,
         &[
+            provider("gerbil-scheme", Vec::new()),
             provider("rust", Vec::new()),
             provider("typescript", Vec::new()),
         ],
@@ -163,7 +164,10 @@ fn language_facade_rejects_unsupported_language_without_unrelated_provider_recov
         stderr.contains("unsupported ASP language facade `scheme`"),
         "{stderr}"
     );
-    assert!(stderr.contains("Active language facades: rust|typescript."), "{stderr}");
+    assert!(
+        stderr.contains("Active language facades: gerbil-scheme|rust|typescript."),
+        "{stderr}"
+    );
     assert!(stderr.contains("asp providers"), "{stderr}");
     assert!(stderr.contains("asp fd -query"), "{stderr}");
     assert!(
@@ -174,6 +178,8 @@ fn language_facade_rejects_unsupported_language_without_unrelated_provider_recov
         !stderr.contains("asp typescript search prime"),
         "{stderr}"
     );
+    assert!(!stderr.contains("Suggested matching facade"), "{stderr}");
+    assert!(!stderr.contains("asp gerbil-scheme search"), "{stderr}");
     let _ = std::fs::remove_dir_all(root);
 }
 

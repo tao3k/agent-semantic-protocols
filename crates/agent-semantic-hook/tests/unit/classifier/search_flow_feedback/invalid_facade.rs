@@ -3,6 +3,7 @@ use serde_json::json;
 use std::fs;
 
 use super::{runtime_for_project, temp_project_root};
+use crate::classifier::{provider, provider_routes};
 
 #[test]
 fn pre_tool_denies_package_name_as_asp_facade() {
@@ -47,7 +48,18 @@ fn pre_tool_denies_package_name_as_asp_facade() {
 #[test]
 fn pre_tool_denies_unknown_facade_without_unrelated_provider_recovery() {
     let project_root = temp_project_root("asp-hook-unknown-facade");
-    let runtime = runtime_for_project(&project_root);
+    let mut runtime = runtime_for_project(&project_root);
+    runtime.providers.push(provider(
+        "gerbil-scheme",
+        "gerbil-scheme-harness",
+        "gerbil-scheme-harness",
+        "agent.semantic-protocols.languages.gerbil-scheme.gerbil-scheme-harness",
+        &[".ss", ".scm"],
+        &["gerbil.pkg"],
+        &["src", "test"],
+        &[],
+        provider_routes("gerbil-scheme-harness", None),
+    ));
 
     let decision = classify_hook(
         &runtime,
@@ -90,6 +102,18 @@ fn pre_tool_denies_unknown_facade_without_unrelated_provider_recovery() {
         !decision
             .message
             .contains("asp typescript search prime --view seeds ."),
+        "{}",
+        decision.message
+    );
+    assert!(
+        !decision
+            .message
+            .contains("asp gerbil-scheme search prime --view seeds ."),
+        "{}",
+        decision.message
+    );
+    assert!(
+        !decision.message.contains("Suggested matching facade"),
         "{}",
         decision.message
     );

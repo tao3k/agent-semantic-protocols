@@ -101,6 +101,7 @@ fn root_search_facade_rejects_unsupported_explicit_language_with_finder_recovery
     write_activation(
         &root,
         &[
+            provider("gerbil-scheme", Vec::new()),
             provider("rust", Vec::new()),
             provider("typescript", Vec::new()),
         ],
@@ -126,7 +127,7 @@ fn root_search_facade_rejects_unsupported_explicit_language_with_finder_recovery
         "{stderr}"
     );
     assert!(
-        stderr.contains("Active language facades: rust|typescript."),
+        stderr.contains("Active language facades: gerbil-scheme|rust|typescript."),
         "{stderr}"
     );
     assert!(stderr.contains("asp providers"), "{stderr}");
@@ -136,5 +137,7 @@ fn root_search_facade_rejects_unsupported_explicit_language_with_finder_recovery
         "{stderr}"
     );
     assert!(!stderr.contains("asp typescript search prime"), "{stderr}");
+    assert!(!stderr.contains("Suggested matching facade"), "{stderr}");
+    assert!(!stderr.contains("asp gerbil-scheme search"), "{stderr}");
     let _ = std::fs::remove_dir_all(root);
 }

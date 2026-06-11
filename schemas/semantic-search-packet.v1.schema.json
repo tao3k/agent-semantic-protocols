@@ -144,6 +144,9 @@
     "runtimeCost": {
       "$ref": "#/$defs/runtimeCost"
     },
+    "cache": {
+      "$ref": "#/$defs/cache"
+    },
     "searchSynthesis": {
       "$ref": "#/$defs/searchSynthesis"
     },
@@ -1186,6 +1189,43 @@
         }
       }
     },
+    "cache": {
+      "type": "object",
+      "description": "Provider-owned cache invalidation facts for replay-safe search packets. Providers decide which workspace files affect the packet; clients only validate and compare these hashes.",
+      "additionalProperties": false,
+      "required": [
+        "fileHashes"
+      ],
+      "properties": {
+        "fileHashes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/fileHash"
+          }
+        },
+        "rawSourceStored": {
+          "const": false
+        }
+      }
+    },
+    "fileHash": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "sha256"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/projectPath"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      }
+    },
     "queryScope": {
       "type": "object",
       "additionalProperties": false,
@@ -1299,7 +1339,7 @@
         "suggestedFacade": {
           "type": "string",
           "minLength": 1,
-          "description": "Present only when the requested facade maps to one active language facade without ambiguity."
+          "description": "Present only when the requested facade has a protocol-owned or configuration-owned explicit mapping to one active language facade. Do not derive this from substrings, suffixes, or hyphen components."
         },
         "recoveryCommands": {
           "type": "array",

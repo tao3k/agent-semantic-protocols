@@ -274,7 +274,7 @@ fn is_locator_key(key: &str) -> bool {
     )
 }
 
-fn collect_locator_paths(line: &str, paths: &mut BTreeSet<String>) {
+pub(super) fn collect_locator_paths(line: &str, paths: &mut BTreeSet<String>) {
     for token in line.split_whitespace() {
         let token = token.trim_matches(|character: char| {
             matches!(character, ',' | ';' | '(' | ')' | '[' | ']' | '{' | '}')
@@ -291,6 +291,7 @@ fn collect_locator_paths(line: &str, paths: &mut BTreeSet<String>) {
         let token = token
             .strip_prefix("owner:")
             .or_else(|| token.strip_prefix("path:"))
+            .or_else(|| token.strip_prefix("path="))
             .or_else(|| token.strip_prefix("read="))
             .or_else(|| token.strip_prefix("target="))
             .unwrap_or(token);

@@ -277,21 +277,7 @@ fn preferred_language_for_invalid_facade(
     {
         return Some("typescript".to_string());
     }
-    let matches = registry
-        .providers
-        .iter()
-        .filter(|provider| language_facade_alias_matches(invalid_facade, &provider.language_id))
-        .map(|provider| provider.language_id.clone())
-        .collect::<Vec<_>>();
-    (matches.len() == 1).then(|| matches[0].clone())
-}
-
-fn language_facade_alias_matches(invalid_facade: &str, active_facade: &str) -> bool {
-    let invalid_facade = invalid_facade.to_ascii_lowercase();
-    active_facade
-        .to_ascii_lowercase()
-        .split('-')
-        .any(|part| part == invalid_facade)
+    None
 }
 
 fn invalid_asp_facade_message(

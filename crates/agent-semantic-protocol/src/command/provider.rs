@@ -116,25 +116,14 @@ fn suggested_language_facade_for_request(
     requested_facade: &str,
     active_facades: &str,
 ) -> Option<String> {
-    let active_facades = active_facades.split('|').collect::<Vec<_>>();
     if requested_facade.eq_ignore_ascii_case("effect")
-        && active_facades.iter().any(|facade| *facade == "typescript")
+        && active_facades
+            .split('|')
+            .any(|facade| facade == "typescript")
     {
         return Some("typescript".to_string());
     }
-    let matches = active_facades
-        .into_iter()
-        .filter(|facade| language_facade_alias_matches(requested_facade, facade))
-        .collect::<Vec<_>>();
-    (matches.len() == 1).then(|| matches[0].to_string())
-}
-
-fn language_facade_alias_matches(requested_facade: &str, active_facade: &str) -> bool {
-    let requested_facade = requested_facade.to_ascii_lowercase();
-    active_facade
-        .to_ascii_lowercase()
-        .split('-')
-        .any(|part| part == requested_facade)
+    None
 }
 
 fn load_activation_for_language_message() -> Option<HookRuntime> {

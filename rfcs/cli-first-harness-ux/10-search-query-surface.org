@@ -41,7 +41,11 @@ forms such as =asp search --language <id> ...= and language forms such as
 provider execution and emit a structured advisory: the requested facade, the
 active language facades, known protocol facades, and bounded next commands.
 Only an exact or explicitly mapped active facade may be recommended as the next
-=asp <language>= command.  Otherwise the recovery route must use
+=asp <language>= command.  An explicit mapping is a protocol-owned or
+configuration-owned alias, not a derived substring, token, suffix, or hyphen
+component match; =scheme= must not be inferred as =gerbil-scheme= while the
+Gerbil/Scheme provider is still being implemented.  Otherwise the recovery
+route must use
 provider-neutral finder commands such as =asp fd -query ...= or
 =asp rg -query ... <bounded-scope>=, or ask the user to install/activate a
 provider.  Agents must not switch a Gerbil/Scheme, Scheme, or other unsupported

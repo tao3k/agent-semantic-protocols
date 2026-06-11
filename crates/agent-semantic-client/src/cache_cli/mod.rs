@@ -7,6 +7,10 @@ mod request;
 mod writeback;
 mod writeback_artifact_events;
 
+#[cfg(test)]
+#[path = "../../tests/unit/cache_cli/locator_artifact.rs"]
+mod locator_artifact_tests;
+
 pub(crate) use command::run_cache;
 #[cfg(test)]
 pub(crate) use probe::generation_file_hashes_match;
