@@ -1,0 +1,57 @@
+{
+  "id": "rust.search-pipe-package-drift-flow",
+  "language": "rust",
+  "title": "Search pipe package drift suppression flow",
+  "coverage": [
+    "search-flow",
+    "real-trigger"
+  ],
+  "tags": [
+    "search-pipe",
+    "package-drift",
+    "real-trigger"
+  ],
+  "workdir": {
+    "relative": "."
+  },
+  "steps": [
+    {
+      "id": "marlin-package-drift-query",
+      "kind": "command",
+      "coverage": [
+        "search-flow",
+        "real-trigger"
+      ],
+      "timeoutSeconds": 120,
+      "command": [
+        "asp",
+        "rust",
+        "search",
+        "pipe",
+        "package-drift long-field-signatures marlin-gerbil-scheme marlin-org-workflow marlin-gerbil-ir through smoke dev dependency real_gxi.rs ownerCoverage weak natural terms path test fn weight suppress cross-package drift",
+        "--view",
+        "seeds",
+        "."
+      ],
+      "expect": {
+        "stdoutContains": [
+          "[search-pipe] lang=rust view=seeds source=auto ranker=graph-turbo:owner-query",
+          "queryPack=clauses=4 quality=low",
+          "real_gxi.rs:symbol",
+          "marlin-gerbil-scheme:symbol",
+          "long-field-signatures:concept",
+          "through:context,smoke:context,dev:context,dependency:context",
+          "risk=package-drift",
+          "actionFrontier=A1.fd-query",
+          "recommendedNext=A1.fd-query",
+          "nextCommand=asp fd -query 'real_gxi.rs|marlin-gerbil-scheme|marlin-org-workflow|marlin-gerbil-ir' ."
+        ],
+        "stdoutNotContains": [
+          "A1=query-code",
+          "recommendedNext=A1.query-code"
+        ],
+        "maxStdoutBytesWarn": 14000
+      }
+    }
+  ]
+}
