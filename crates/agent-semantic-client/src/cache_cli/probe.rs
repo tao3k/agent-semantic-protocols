@@ -38,6 +38,9 @@ pub(crate) fn provider_cache_probe(
     snapshot: &ProviderRegistrySnapshot,
     request: &ClientRequest,
 ) -> Option<ProviderCacheProbe> {
+    if request.is_hook_direct_source_read() || request.is_source_content_output() {
+        return None;
+    }
     let cache_report = ClientCacheManifest::inspect_project(project_root);
     let cache_root = cache_report.cache_root.as_ref()?;
     let db_path = ClientDb::default_path(cache_root);

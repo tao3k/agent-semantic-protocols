@@ -880,9 +880,6 @@ fn request_prompt_output_writeback_method(request: &ClientRequest) -> Option<Cac
         ClientMethod::Search if is_replayable_search_prompt_output(&request.forwarded_args) => {
             request_export_method(request)
         }
-        ClientMethod::Query if is_exact_selector_code_query(&request.forwarded_args) => {
-            request_export_method(request)
-        }
         _ => None,
     }
 }
@@ -923,15 +920,6 @@ fn is_dependency_search(args: &[String]) -> bool {
 
 fn is_owner_items_search(args: &[String]) -> bool {
     args.first().is_some_and(|arg| arg == "owner") && args.iter().any(|arg| arg == "items")
-}
-
-fn is_exact_selector_code_query(args: &[String]) -> bool {
-    args.iter()
-        .any(|arg| arg == "--selector" || arg.starts_with("--selector="))
-        && args.iter().any(|arg| arg == "--code")
-        && !args
-            .iter()
-            .any(|arg| arg == "--json" || arg == "--treesitter-query" || arg == "--catalog")
 }
 
 fn insert_json_flag_before_project_root(args: &mut Vec<String>) {

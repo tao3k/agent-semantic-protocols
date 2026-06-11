@@ -35,6 +35,28 @@ fn generation_without_file_hash_evidence_is_stale() {
 }
 
 #[test]
+fn hook_direct_source_read_bypasses_cache_probe() {
+    let root = temp_root("hook-direct-source-read-no-probe");
+    let snapshot = ProviderRegistrySnapshot {
+        activation_path: root.join(".cache/agent-semantic-protocol/hooks/activation.json"),
+        providers: vec![rust_provider()],
+    };
+    let request = ClientRequest::new(ClientMethod::Query, &root)
+        .with_language(LanguageId::from("rust"))
+        .with_forwarded_args(vec![
+            "--from-hook".to_string(),
+            "direct-source-read".to_string(),
+            "--selector".to_string(),
+            "src/lib.rs:1:12".to_string(),
+            "--code".to_string(),
+            ".".to_string(),
+        ]);
+
+    assert!(provider_cache_probe(&root, &snapshot, &request).is_none());
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn tree_sitter_rows_replay_when_latest_unrelated_generation_is_stale() {
     let root = temp_root("syntax-row-replay-beats-unrelated-stale-generation");
     std::fs::create_dir_all(root.join(".git")).expect("create git marker");

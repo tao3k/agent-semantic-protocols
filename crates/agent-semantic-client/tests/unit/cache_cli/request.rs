@@ -165,6 +165,63 @@ fn legacy_from_hook_direct_source_read_keeps_audit_method() {
             .as_str(),
         "query/direct-source-read"
     );
+    assert!(request.is_hook_direct_source_read());
+}
+
+#[test]
+fn inline_from_hook_direct_source_read_keeps_audit_method() {
+    let request = ClientRequest::new(ClientMethod::Query, ".").with_forwarded_args(vec![
+        "--from-hook=direct-source-read".to_string(),
+        "--selector".to_string(),
+        "src/lib.rs:10:20".to_string(),
+        "--workspace".to_string(),
+        ".".to_string(),
+        "--code".to_string(),
+    ]);
+
+    assert_eq!(
+        request_export_method(&request)
+            .expect("export method")
+            .as_str(),
+        "query/direct-source-read"
+    );
+    assert!(request.is_hook_direct_source_read());
+    assert!(request.is_source_content_output());
+}
+
+#[test]
+fn selector_code_query_is_source_content_output() {
+    let split_selector = ClientRequest::new(ClientMethod::Query, ".").with_forwarded_args(vec![
+        "--selector".to_string(),
+        "src/lib.rs:1:12".to_string(),
+        "--code".to_string(),
+        ".".to_string(),
+    ]);
+    let inline_selector = ClientRequest::new(ClientMethod::Query, ".").with_forwarded_args(vec![
+        "--selector=src/lib.rs:1:12".to_string(),
+        "--code".to_string(),
+        ".".to_string(),
+    ]);
+    let json_selector = ClientRequest::new(ClientMethod::Query, ".").with_forwarded_args(vec![
+        "--selector".to_string(),
+        "src/lib.rs:1:12".to_string(),
+        "--code".to_string(),
+        "--json".to_string(),
+        ".".to_string(),
+    ]);
+    let tree_sitter_code = ClientRequest::new(ClientMethod::Query, ".").with_forwarded_args(vec![
+        "--treesitter-query".to_string(),
+        "(function_item name: (identifier) @function.name)".to_string(),
+        "--selector".to_string(),
+        "src/lib.rs:1:12".to_string(),
+        "--code".to_string(),
+        ".".to_string(),
+    ]);
+
+    assert!(split_selector.is_source_content_output());
+    assert!(inline_selector.is_source_content_output());
+    assert!(tree_sitter_code.is_source_content_output());
+    assert!(!json_selector.is_source_content_output());
 }
 
 #[test]

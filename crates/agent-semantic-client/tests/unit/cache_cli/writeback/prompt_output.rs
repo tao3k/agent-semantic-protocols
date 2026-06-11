@@ -48,7 +48,7 @@ fn owner_items_search_writeback_replays_prompt_output_artifact() {
 }
 
 #[test]
-fn query_selector_code_writeback_replays_prompt_output_artifact() {
+fn query_selector_code_output_is_not_written_to_prompt_cache() {
     let _guard = crate::test_support::CACHE_TEST_LOCK
         .lock()
         .expect("cache test lock");
@@ -82,12 +82,48 @@ fn query_selector_code_writeback_replays_prompt_output_artifact() {
         &request,
         stdout.as_bytes(),
         &[],
-    )
-    .expect("writeback probe");
-    let replay = probe.replay.expect("query code output replay");
+    );
 
-    assert_eq!(replay.stdout, stdout.as_bytes());
-    assert_eq!(probe.sqlite_write_count, 2);
+    assert!(probe.is_none());
+    assert!(!root.join("artifacts/prompt-output").exists());
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn hook_direct_source_read_code_output_is_not_written_to_prompt_cache() {
+    let _guard = crate::test_support::CACHE_TEST_LOCK
+        .lock()
+        .expect("cache test lock");
+    let root = temp_root("hook-direct-source-read-no-writeback");
+    std::fs::create_dir_all(root.join(".git")).expect("create git marker");
+    std::fs::create_dir_all(root.join("src")).expect("create source dir");
+    std::fs::write(root.join("src/lib.rs"), "pub fn direct_read() {}\n").expect("write source");
+    let snapshot = ProviderRegistrySnapshot {
+        activation_path: root.join("activation.json"),
+        providers: vec![rust_provider()],
+    };
+    let request = ClientRequest::new(ClientMethod::Query, &root)
+        .with_language(LanguageId::from("rust"))
+        .with_forwarded_args(vec![
+            "--from-hook".to_string(),
+            "direct-source-read".to_string(),
+            "--selector".to_string(),
+            "src/lib.rs:1:1".to_string(),
+            "--code".to_string(),
+            ".".to_string(),
+        ]);
+    let stdout = "pub fn direct_read() {}\n";
+
+    let probe = write_prompt_output_cache_after_provider_success(
+        &root,
+        &snapshot,
+        &request,
+        stdout.as_bytes(),
+        &[],
+    );
+
+    assert!(probe.is_none());
+    assert!(!root.join("artifacts/prompt-output").exists());
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -113,7 +149,7 @@ fn prime_seed_prompt_output_writeback_adds_search_output_replay_artifact() {
             ".".to_string(),
         ]);
     let stdout = "[search-prime] root=. alg=fast-prime-frontier-v1\n\
-|decision purpose=decision-primer answer=false code=false capabilities=pipe,fzf,fd-query,rg-query,owner-items,selector-code,treesitter-query ladder=pipe>fzf>fd-query|rg-query>owner-items>selector-code history=asp-artifacts:directReadRisk,repeatedPrime,repeatedPipe,bestPath risk=broad-direct-read,manual-window-scan,repeat-prime next=\"asp rust search pipe '<question-or-feature-term>' --view seeds .\"\n\
+|decision purpose=decision-primer answer=false code=false capabilities=pipe,fzf,fd-query,rg-query,owner-items,selector-code,treesitter-query ladder=pipe>fzf>fd-query|rg-query>owner-items>selector-code history=asp-artifacts:directReadRisk,repeatedPrime,repeatedPipe,bestPath risk=broad-direct-read,manual-window-scan,repeat-prime next=\"asp rust search pipe '<question-or-feature-term>' --workspace . --view seeds\"\n\
 legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next\n\
 aliases=G:search,O:owner\n\
 O=owner:path(src/lib.rs)!owner\n\

@@ -26,9 +26,7 @@ pub(super) fn request_export_method(request: &ClientRequest) -> Option<CacheExpo
         ClientMethod::Search => Some(CacheExportMethod::from(search_export_method(
             &request.forwarded_args,
         ))),
-        ClientMethod::Query => Some(CacheExportMethod::from(query_export_method(
-            &request.forwarded_args,
-        ))),
+        ClientMethod::Query => Some(CacheExportMethod::from(query_export_method(request))),
         ClientMethod::Check => Some(CacheExportMethod::from(check_export_method(
             &request.forwarded_args,
         ))),
@@ -42,11 +40,9 @@ fn search_export_method(args: &[String]) -> String {
         .map_or_else(|| "search".to_string(), |arg| format!("search/{arg}"))
 }
 
-fn query_export_method(args: &[String]) -> String {
-    if args
-        .windows(2)
-        .any(|window| window[0] == "--from-hook" && window[1] == "direct-source-read")
-    {
+fn query_export_method(request: &ClientRequest) -> String {
+    let args = &request.forwarded_args;
+    if request.is_hook_direct_source_read() {
         "query/direct-source-read".to_string()
     } else if has_tree_sitter_query(args) {
         "query/tree-sitter".to_string()

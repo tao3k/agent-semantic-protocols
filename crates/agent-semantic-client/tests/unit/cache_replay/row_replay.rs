@@ -181,6 +181,36 @@ fn prompt_output_replay_rejects_stale_generation_file_hashes() {
 }
 
 #[test]
+fn hook_direct_source_read_prompt_output_artifact_does_not_replay() {
+    let root = temp_root("hook-direct-source-read-prompt-replay");
+    let cache_root = root.join("client");
+    write_syntax_replay_sources(&root);
+    let request = ClientRequest::new(ClientMethod::Query, &root).with_forwarded_args(vec![
+        "--from-hook".to_string(),
+        "direct-source-read".to_string(),
+        "--selector".to_string(),
+        "src/lib.rs:1:3".to_string(),
+        "--code".to_string(),
+        ".".to_string(),
+    ]);
+    write_prompt_output_artifact(&root, "pub fn parse_query() -> usize {\n    1\n}\n");
+    let hit = prompt_generation_hit(&root, &request, "query/direct-source-read");
+
+    assert!(load_replay_artifact(&cache_root, &hit, &request).is_none());
+    let selector_request =
+        ClientRequest::new(ClientMethod::Query, &root).with_forwarded_args(vec![
+            "--selector".to_string(),
+            "src/lib.rs:1:3".to_string(),
+            "--code".to_string(),
+            ".".to_string(),
+        ]);
+    let selector_hit = prompt_generation_hit(&root, &selector_request, "query/code");
+
+    assert!(load_replay_artifact(&cache_root, &selector_hit, &selector_request).is_none());
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn search_packet_replay_prefers_cached_search_stdout_artifact() {
     let root = temp_root("search-output-replay");
     let cache_root = root.join("client");
@@ -466,16 +496,39 @@ fn prompt_output_request_fingerprint(
         .display()
         .to_string();
     let seed = format!(
-        "{}\0{}\0{}\0{}\0{}\0{}",
+        "{}\0{}\0{}\0{}\0{}\0{}\0{}",
         "rust",
         "rs-harness",
         project_root,
         export_method,
         request.forwarded_args.join("\0"),
-        "syntax-query-ast-abi:none"
+        "syntax-query-ast-abi:none",
+        prompt_output_render_abi_provenance(export_method)
     );
     format!("fnv64:{}", stable_hash_hex(&seed))
 }
+
+fn prompt_output_render_abi_provenance(export_method: &str) -> String {
+    if matches!(export_method, "search/prime" | "search/package") {
+        return format!(
+            "prompt-output-render-abi:fnv64:{}",
+            stable_hash_hex(PRIME_DECISION_PRIMER_RENDER_ABI)
+        );
+    }
+    "prompt-output-render-abi:none".to_string()
+}
+
+const PRIME_DECISION_PRIMER_RENDER_ABI: &str = concat!(
+    "semantic-search-prime;",
+    "purpose=decision-primer;",
+    "answer=false;",
+    "code=false;",
+    "capabilities=pipe,fzf,fd-query,rg-query,owner-items,selector-code,treesitter-query;",
+    "ladder=pipe>fzf>fd-query|rg-query>owner-items>selector-code;",
+    "history=asp-artifacts:directReadRisk,repeatedPrime,repeatedPipe,bestPath;",
+    "risk=broad-direct-read,manual-window-scan,repeat-prime;",
+    "next=search pipe <question-or-feature-term> --view seeds"
+);
 
 fn stable_hash_hex(value: &str) -> String {
     let mut hash = 0xcbf29ce484222325u64;

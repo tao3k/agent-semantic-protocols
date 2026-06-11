@@ -87,6 +87,49 @@ impl ClientRequest {
         self.stdin = Some(stdin.into());
         self
     }
+
+    /// Return true when this request is the hook recovery direct-source-read
+    /// route. This route is an explicit policy escape for exact bounded source
+    /// recovery and must not be treated as a generic cache-replayable query.
+    #[must_use]
+    pub fn is_hook_direct_source_read(&self) -> bool {
+        self.method == ClientMethod::Query
+            && option_value(&self.forwarded_args, "--from-hook")
+                .is_some_and(|value| value == "direct-source-read")
+    }
+
+    /// Return true for request shapes whose stdout is source text copied from
+    /// a selected locator. These outputs are useful last-mile reads, but they
+    /// are too volatile to cache or replay safely.
+    #[must_use]
+    pub fn is_source_content_output(&self) -> bool {
+        self.method == ClientMethod::Query
+            && self
+                .forwarded_args
+                .iter()
+                .any(|arg| arg == "--selector" || arg.starts_with("--selector="))
+            && self.forwarded_args.iter().any(|arg| arg == "--code")
+            && !self
+                .forwarded_args
+                .iter()
+                .any(|arg| arg == "--json" || arg == "--catalog")
+    }
+}
+
+fn option_value<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
+    let prefix = format!("{name}=");
+    let mut index = 0;
+    while index < args.len() {
+        let arg = args[index].as_str();
+        if arg == name {
+            return args.get(index + 1).map(String::as_str);
+        }
+        if let Some(value) = arg.strip_prefix(&prefix) {
+            return Some(value);
+        }
+        index += 1;
+    }
+    None
 }
 
 /// Append ASP-compiled tree-sitter query ABI metadata for native projection.
