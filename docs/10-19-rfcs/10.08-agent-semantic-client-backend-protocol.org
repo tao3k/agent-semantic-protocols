@@ -3,10 +3,10 @@
 #+DATE: 2026-06-02
 #+STATUS: draft
 #+RFC: 008
-#+DEPENDS: rfcs/code-intelligence-lane.org (003), rfcs/cli-first-harness-ux.org (005)
-#+SEE_ALSO: rfcs/agent-hook-interception-protocol.org - hook routing over provider manifests.
-#+SEE_ALSO: rfcs/semantic-ast-apply-patch-protocol.org (007) - shared binary growth path.
-#+SEE_ALSO: rfcs/agent-compact-graph-feature.org (006) - shared compact graph render contract.
+#+DEPENDS: docs/10-19-rfcs/10.03-code-intelligence-lane.org (003), docs/10-19-rfcs/10.05-cli-first-harness-ux.org (005)
+#+SEE_ALSO: docs/10-19-rfcs/10.15-agent-hook-interception-protocol.org - hook routing over provider manifests.
+#+SEE_ALSO: docs/10-19-rfcs/10.07-semantic-ast-apply-patch-protocol.org (007) - shared binary growth path.
+#+SEE_ALSO: docs/10-19-rfcs/10.06-agent-compact-graph-feature.org (006) - shared compact graph render contract.
 
 * One-sentence summary
 

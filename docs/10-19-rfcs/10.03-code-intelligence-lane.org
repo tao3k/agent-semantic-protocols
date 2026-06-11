@@ -2,8 +2,8 @@
 #+AUTHOR: agent-semantic-protocols
 #+DATE: 2026-01-18
 #+RFC: 003
-#+DEPENDS: rfcs/cargo-execution-lanes.org (001), rfcs/evidence-layer-architecture.org (002)
-#+SEE_ALSO: rfcs/cli-first-harness-ux.org (005) — the public CLI protocol.  RFC 003
+#+DEPENDS: docs/10-19-rfcs/10.01-cargo-execution-lanes.org (001), docs/10-19-rfcs/10.02-evidence-layer-architecture.org (002)
+#+SEE_ALSO: docs/10-19-rfcs/10.05-cli-first-harness-ux.org (005) — the public CLI protocol.  RFC 003
 #+  describes /what/ routes a code-intel service exposes; RFC 005 describes
 #+  /how/ agents invoke them — through stable CLI commands, not MCP.
 
@@ -234,7 +234,7 @@ EditPlan
 
 This is NOT a patch — it's a /semantic edit operation/.  The Rust agent-core
 (or the LLM) decides how to apply it.  RFC 007
-(=rfcs/semantic-ast-apply-patch-protocol.org=) refines this lane with an
+(=docs/10-19-rfcs/10.07-semantic-ast-apply-patch-protocol.org=) refines this lane with an
 AST-native dry-run/apply receipt for cases where parser-owned structural edits
 are safer than text hunks.
 

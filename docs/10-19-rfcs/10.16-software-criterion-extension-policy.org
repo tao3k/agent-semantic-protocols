@@ -1,6 +1,8 @@
-#+title: RFC - Software Criterion Extension Policy
-#+date: 2026-06-07
-#+status: accepted-v1-baseline
+#+TITLE: RFC: Software Criterion Extension Policy
+#+AUTHOR: agent-semantic-protocols
+#+DATE: 2026-06-07
+#+RFC: 016
+#+STATUS: accepted-v1-baseline
 
 * One-sentence summary
 

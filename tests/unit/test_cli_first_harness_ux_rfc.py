@@ -3,8 +3,10 @@
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
-_RFC_PATH = _REPO_ROOT / "rfcs" / "cli-first-harness-ux.org"
-_RFC_MODULE_DIR = _REPO_ROOT / "rfcs" / "cli-first-harness-ux"
+_RFC_PATH = _REPO_ROOT / "docs" / "10-19-rfcs" / "10.05-cli-first-harness-ux.org"
+_RFC_MODULE_DIR = (
+    _REPO_ROOT / "docs" / "10-19-rfcs" / "10.05-cli-first-harness-ux"
+)
 
 
 def _read_cli_first_rfc_text() -> str:
@@ -20,11 +22,11 @@ def test_cli_first_rfc_is_module_index() -> None:
 
     required_terms = [
         "This file is the stable RFC 005 entry point.",
-        "split into focused Org modules under =rfcs/cli-first-harness-ux/=",
+        "split into focused Org modules under =docs/10-19-rfcs/10.05-cli-first-harness-ux/=",
         "Tests read this file plus the module directory explicitly",
-        'cli-first-harness-ux/10-search-query-surface.org',
-        'cli-first-harness-ux/40-daemon-guide-hooks.org',
-        'rfcs/asp-native-relation-flow-codeql.org (012)',
+        '10.05-cli-first-harness-ux/10.05.10-search-query-surface.org',
+        '10.05-cli-first-harness-ux/10.05.40-daemon-guide-hooks.org',
+        'docs/10-19-rfcs/10.12-asp-native-relation-flow-codeql.org (012)',
     ]
 
     missing_terms = [term for term in required_terms if term not in text]

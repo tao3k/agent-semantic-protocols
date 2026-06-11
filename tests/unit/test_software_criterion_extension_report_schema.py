@@ -18,7 +18,12 @@ from schema_validation import schema_validator_for  # noqa: E402
 
 _SCHEMA_PATH = _ROOT / "schemas" / "software-criterion-extension-report.v1.schema.json"
 _REGISTRY_PATH = _ROOT / "schemas" / "semantic-language-registry.providers.v1.json"
-_RFC_PATH = _ROOT / "rfcs" / "software-criterion-extension-policy.org"
+_RFC_PATH = (
+    _ROOT
+    / "docs"
+    / "10-19-rfcs"
+    / "10.16-software-criterion-extension-policy.org"
+)
 
 
 def _load_json(path: Path) -> dict[str, Any]:

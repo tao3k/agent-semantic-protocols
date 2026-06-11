@@ -1,7 +1,7 @@
 #+TITLE: Agent Quality Signal Real-Project Evidence
 #+DATE: 2026-06-07
 #+STATUS: software-criterion-evidence-recorded
-#+RFC: rfcs/software-criterion-policy.org
+#+RFC: docs/10-19-rfcs/10.13-software-criterion-policy.org
 
 * Scope
 

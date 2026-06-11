@@ -11,7 +11,7 @@ aligned.
 
 ## What Lives Here
 
-- `rfcs/`: protocol intent and change process. Start here before changing
+- `docs/10-19-rfcs/`: protocol intent and change process. Start here before changing
   search behavior or hook behavior.
 - `schemas/`: shared JSON contracts for search packets, language registries,
   hook decisions, hook activations, provider manifests, sandtable scenarios,
@@ -45,12 +45,12 @@ in the RFC and schema first, then align providers and sandtable evidence.
 
 ## Documentation Map
 
-- `rfcs/semantic-tree-sitter-query-protocol.org` owns the portable
+- `docs/10-19-rfcs/10.11-semantic-tree-sitter-query-protocol.org` owns the portable
   tree-sitter-compatible syntax ABI, catalog/profile/corpus layout, native
   projection boundary, and pattern-graph roadmap.
-- `rfcs/cli-first-harness-ux.org` owns the agent-facing `asp <language> guide`,
+- `docs/10-19-rfcs/10.05-cli-first-harness-ux.org` owns the agent-facing `asp <language> guide`,
   search/query/read-plan stdout contracts, and syntax locate/code flows.
-- `rfcs/agent-hook-interception-protocol.org` owns hook decision packets,
+- `docs/10-19-rfcs/10.15-agent-hook-interception-protocol.org` owns hook decision packets,
   Markdown recovery prompts, `Detected Binaries`, and ast-patch config
   branching.
 - `schemas/README.md` owns the schema catalog and explains how query/search/read
@@ -274,5 +274,5 @@ just check-python-policy
   should publish profile descriptors instead of duplicating platform parsing.
 - Use sandtable receipts and real-trigger scenarios to prove that a workflow
   saves commands, bytes, latency, or repeated searches.
-- Keep README short. Put design detail in `rfcs/`, `schemas/README.md`, or
+- Keep README short. Put design detail in `docs/10-19-rfcs/`, `schemas/README.md`, or
   `docs/`.

@@ -4,13 +4,13 @@
 #+JOHNNY_DECIMAL: 31.13
 #+AREA: 30-39 Research
 #+CATEGORY: 31 Search Flow Research
-#+RFC: rfcs/semantic-ast-apply-patch-protocol.org
+#+RFC: docs/10-19-rfcs/10.07-semantic-ast-apply-patch-protocol.org
 
 * Purpose
 
 This report records the real agent-edit failures that motivate a first-class
 =ast_apply_patch= protocol.  It is research evidence for
-=rfcs/semantic-ast-apply-patch-protocol.org=, not an implementation plan.
+=docs/10-19-rfcs/10.07-semantic-ast-apply-patch-protocol.org=, not an implementation plan.
 
 The key distinction is:
 

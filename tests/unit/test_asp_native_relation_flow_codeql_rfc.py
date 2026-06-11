@@ -3,7 +3,12 @@
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
-_RFC_PATH = _REPO_ROOT / "rfcs" / "asp-native-relation-flow-codeql.org"
+_RFC_PATH = (
+    _REPO_ROOT
+    / "docs"
+    / "10-19-rfcs"
+    / "10.12-asp-native-relation-flow-codeql.org"
+)
 
 
 def test_asp_relation_flow_rfc_defines_native_first_boundary() -> None:

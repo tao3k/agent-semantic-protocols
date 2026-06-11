@@ -2,7 +2,7 @@
 #+AUTHOR: agent-semantic-protocols
 #+DATE: 2026-01-18
 #+RFC: 002
-#+DEPENDS: rfcs/cargo-execution-lanes.org (RFC 001 — Cargo Execution Lanes)
+#+DEPENDS: docs/10-19-rfcs/10.01-cargo-execution-lanes.org (RFC 001 — Cargo Execution Lanes)
 
 * One-Sentence Design Principle
 
@@ -754,10 +754,10 @@ continuously-optimizable engineering system.
 - [[https://doc.rust-lang.org/cargo/guide/tests.html][Cargo Book — Tests]]
 - [[https://doc.rust-lang.org/cargo/commands/cargo-test.html][Cargo Book — cargo test]]
 - [[https://arxiv.org/abs/2604.05278][Spec Kit Agents: Context-Grounded Agentic Workflows (arXiv)]]
-- [[file:../languages/rust-lang-project-harness/docs/01_core/101_harness_boundary.md][Harness Boundary]]
-- [[file:../languages/rust-lang-project-harness/docs/03_features/201_rule_catalog.md][Rule Catalog]]
-- [[file:../languages/rust-lang-project-harness/docs/03_features/202_runner_modes.md][Runner Modes]]
-- [[file:../languages/rust-lang-project-harness/docs/03_features/204_verification_policy.md][Verification Policy]]
-- [[file:../languages/rust-lang-project-harness/src/agent_snapshot.rs][agent_snapshot.rs — snapshot renderer]]
-- [[file:../languages/rust-lang-project-harness/src/model.rs][model.rs — RustRulePack::rule_ids()]]
-- [[file:../languages/rust-lang-project-harness/src/rules/project_policy/pack.rs][pack.rs — RUST_PROJ_R015]]
+- [[file:../../languages/rust-lang-project-harness/docs/01_core/101_harness_boundary.md][Harness Boundary]]
+- [[file:../../languages/rust-lang-project-harness/docs/03_features/201_rule_catalog.md][Rule Catalog]]
+- [[file:../../languages/rust-lang-project-harness/docs/03_features/202_runner_modes.md][Runner Modes]]
+- [[file:../../languages/rust-lang-project-harness/docs/03_features/204_verification_policy.md][Verification Policy]]
+- [[file:../../languages/rust-lang-project-harness/src/agent_snapshot.rs][agent_snapshot.rs — snapshot renderer]]
+- [[file:../../languages/rust-lang-project-harness/src/model.rs][model.rs — RustRulePack::rule_ids()]]
+- [[file:../../languages/rust-lang-project-harness/src/rules/project_policy/pack.rs][pack.rs — RUST_PROJ_R015]]

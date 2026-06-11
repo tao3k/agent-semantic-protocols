@@ -25,6 +25,9 @@ from asp_graph_turbo.protocol_vocabulary import (  # noqa: E402
 
 _ONTOLOGY_SCHEMA = _ROOT / "schemas" / "semantic-fact-ontology.v1.schema.json"
 _FACT_GRAPH_SCHEMA = _ROOT / "schemas" / "semantic-fact-graph.v1.schema.json"
+_DEPENDENCY_TOPOLOGY_SCHEMA = (
+    _ROOT / "schemas" / "semantic-dependency-topology.v1.schema.json"
+)
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -41,7 +44,7 @@ def _schema_enum(path: Path, *keys: str) -> frozenset[str]:
 def test_semantic_fact_rfc_numbers_are_unique() -> None:
     rfcs: dict[str, list[str]] = defaultdict(list)
 
-    for path in sorted((_ROOT / "rfcs").iterdir()):
+    for path in sorted((_ROOT / "docs" / "10-19-rfcs").iterdir()):
         if path.suffix != ".org":
             continue
         match = re.search(r"(?m)^#\+RFC:\s*(\d+)\s*$", path.read_text(encoding="utf-8"))
@@ -50,8 +53,8 @@ def test_semantic_fact_rfc_numbers_are_unique() -> None:
 
     duplicates = {number: paths for number, paths in rfcs.items() if len(paths) > 1}
     assert duplicates == {}
-    assert rfcs["013"] == ["software-criterion-policy.org"]
-    assert rfcs["014"] == ["semantic-fact-frontier-feedback.org"]
+    assert rfcs["013"] == ["10.13-software-criterion-policy.org"]
+    assert rfcs["014"] == ["10.14-semantic-fact-frontier-feedback.org"]
 
 
 def test_semantic_fact_relation_boundaries_are_explicit() -> None:
@@ -69,7 +72,12 @@ def test_graph_turbo_profile_relations_are_declared_or_internal() -> None:
     fact_graph_relations = _schema_enum(
         _FACT_GRAPH_SCHEMA, "$defs", "edge", "properties", "relation"
     )
-    schema_relations = ontology_relations | fact_graph_relations
+    dependency_topology_relations = _schema_enum(
+        _DEPENDENCY_TOPOLOGY_SCHEMA, "$defs", "relation"
+    )
+    schema_relations = (
+        ontology_relations | fact_graph_relations | dependency_topology_relations
+    )
     profile_relations = frozenset(
         relation
         for profile in DEFAULT_PROFILES.values()

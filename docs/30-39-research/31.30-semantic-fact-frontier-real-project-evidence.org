@@ -2,7 +2,7 @@
 #+DATE: 2026-06-07
 #+RFC: 014
 #+STATUS: evidence
-#+SEE_ALSO: rfcs/semantic-fact-frontier-feedback.org
+#+SEE_ALSO: docs/10-19-rfcs/10.14-semantic-fact-frontier-feedback.org
 #+SEE_ALSO: schemas/semantic-fact-frontier-receipt.v1.schema.json
 #+SEE_ALSO: schemas/semantic-fact-frontier-receipt.fixtures.v1.json
 

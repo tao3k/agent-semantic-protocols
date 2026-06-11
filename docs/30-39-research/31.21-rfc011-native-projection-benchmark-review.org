@@ -1,7 +1,7 @@
 #+TITLE: RFC 011 Native-Projection Benchmark Review
 #+DATE: 2026-06-06
 #+STATUS: rust-typescript-reviewed
-#+RFC: rfcs/semantic-tree-sitter-query-protocol.org
+#+RFC: docs/10-19-rfcs/10.11-semantic-tree-sitter-query-protocol.org
 
 * Decision
 

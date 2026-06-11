@@ -2,7 +2,7 @@
 #+AUTHOR: agent-semantic-protocols
 #+DATE: 2026-06-03
 #+STATUS: research
-#+DEPENDS: rfcs/agent-compact-graph-feature.org, rfcs/graph-reasoning-code-research.org
+#+DEPENDS: docs/10-19-rfcs/10.06-agent-compact-graph-feature.org, docs/10-19-rfcs/10.09-graph-reasoning-code-research.org
 
 * Problem
 

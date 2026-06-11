@@ -8,9 +8,9 @@ When work touches semantic search behavior, query composition, search output,
 search packets, or agent-facing search guidance, follow this order:
 
 1. Update the search RFC first. Use Org format and keep the protocol intent in
-   `rfcs/`, especially `rfcs/cli-first-harness-ux.org` when the public search
+   `docs/10-19-rfcs/`, especially `docs/10-19-rfcs/10.05-cli-first-harness-ux.org` when the public search
    CLI or agent workflow changes. Use
-   `rfcs/agent-compact-graph-feature.org` when work changes compact graph
+   `docs/10-19-rfcs/10.06-agent-compact-graph-feature.org` when work changes compact graph
    rendering, graph-derived rank, LLM-oriented code reasoning projection, or
    graph facts that should be available across the agent-facing `search`
    interface.

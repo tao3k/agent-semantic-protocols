@@ -3,7 +3,12 @@
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
-_RFC_PATH = _REPO_ROOT / "rfcs" / "semantic-query-projection-protocol.org"
+_RFC_PATH = (
+    _REPO_ROOT
+    / "docs"
+    / "10-19-rfcs"
+    / "10.10-semantic-query-projection-protocol.org"
+)
 
 
 def test_projection_rfc_names_schema_and_reverse_navigation_contract() -> None:
@@ -30,4 +35,4 @@ def test_projection_rfc_names_schema_and_reverse_navigation_contract() -> None:
 def test_schema_readme_points_to_projection_rfc() -> None:
     text = (_REPO_ROOT / "schemas" / "README.md").read_text(encoding="utf-8")
 
-    assert "rfcs/semantic-query-projection-protocol.org" in text
+    assert "docs/10-19-rfcs/10.10-semantic-query-projection-protocol.org" in text

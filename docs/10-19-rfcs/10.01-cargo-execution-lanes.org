@@ -1,6 +1,7 @@
 #+TITLE: RFC: Cargo Execution Lanes — check / test / build / verification
 #+AUTHOR: agent-semantic-protocols
 #+DATE: 2026-01-18
+#+RFC: 001
 
 * Summary
 
@@ -228,20 +229,20 @@ structured search surface when they need to expand context.
 
 * References
 
-- [[file:../languages/rust-lang-project-harness/docs/01_core/101_harness_boundary.md][Harness Boundary]] — compact text contract, self-apply policy, advice handling
-- [[file:../languages/rust-lang-project-harness/docs/03_features/201_rule_catalog.md][Rule Catalog]] — blocking rules, agent advice rules, rendered diagnostic policy
-- [[file:../languages/rust-lang-project-harness/docs/03_features/202_runner_modes.md][Runner Modes]] — project runner, cargo-test embedding, build gate config
-- [[file:../languages/rust-lang-project-harness/docs/03_features/203_cli.md][CLI]] — compact text default, agent snapshot flag, exit status
-- [[file:../languages/rust-lang-project-harness/docs/03_features/204_verification_policy.md][Verification Policy]] — task families, receipt/waiver lifecycle, report obligations
-- [[file:../languages/rust-lang-project-harness/src/model.rs][model.rs:106-114]] — =RustRulePack::rule_ids()= (lacks R015)
-- [[file:../languages/rust-lang-project-harness/src/rules/project_policy/pack.rs][pack.rs:36]] — =RUST_PROJ_R015= definition
-- [[file:../languages/rust-lang-project-harness/src/runner.rs][runner.rs:104-108]] — =assert_rust_project_harness_cargo_test_clean()= (advice-as-fail)
-- [[file:../languages/rust-lang-project-harness/src/build_gate.rs][build_gate.rs:19-23]] — build gate: =assert_clean()= only, no advice check
-- [[file:../languages/rust-lang-project-harness/src/agent_snapshot.rs][agent_snapshot.rs]] — snapshot renderer, branch/dependency cap, finding groups
+- [[file:../../languages/rust-lang-project-harness/docs/01_core/101_harness_boundary.md][Harness Boundary]] — compact text contract, self-apply policy, advice handling
+- [[file:../../languages/rust-lang-project-harness/docs/03_features/201_rule_catalog.md][Rule Catalog]] — blocking rules, agent advice rules, rendered diagnostic policy
+- [[file:../../languages/rust-lang-project-harness/docs/03_features/202_runner_modes.md][Runner Modes]] — project runner, cargo-test embedding, build gate config
+- [[file:../../languages/rust-lang-project-harness/docs/03_features/203_cli.md][CLI]] — compact text default, agent snapshot flag, exit status
+- [[file:../../languages/rust-lang-project-harness/docs/03_features/204_verification_policy.md][Verification Policy]] — task families, receipt/waiver lifecycle, report obligations
+- [[file:../../languages/rust-lang-project-harness/src/model.rs][model.rs:106-114]] — =RustRulePack::rule_ids()= (lacks R015)
+- [[file:../../languages/rust-lang-project-harness/src/rules/project_policy/pack.rs][pack.rs:36]] — =RUST_PROJ_R015= definition
+- [[file:../../languages/rust-lang-project-harness/src/runner.rs][runner.rs:104-108]] — =assert_rust_project_harness_cargo_test_clean()= (advice-as-fail)
+- [[file:../../languages/rust-lang-project-harness/src/build_gate.rs][build_gate.rs:19-23]] — build gate: =assert_clean()= only, no advice check
+- [[file:../../languages/rust-lang-project-harness/src/agent_snapshot.rs][agent_snapshot.rs]] — snapshot renderer, branch/dependency cap, finding groups
 
 * See Also
 
-- [[file:evidence-layer-architecture.org][RFC 002 — Evidence-Layer Architecture]]: the broader vision of syntax facts →
+- [[file:10.02-evidence-layer-architecture.org][RFC 002 — Evidence-Layer Architecture]]: the broader vision of syntax facts →
   semantic facts → performance evidence → SDD flowhub, with M1–M6 roadmap.
 
 * Appendix: Summary of the four lanes

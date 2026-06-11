@@ -376,7 +376,7 @@ field shape and direct uniqueness such as `renderedNodeIds`; cross-field
 projection identity invariants are enforced by
 `test_semantic_query_packet_projection_uniqueness.py`. The protocol semantics
 for these fields are owned by
-`rfcs/semantic-query-projection-protocol.org`.
+`docs/10-19-rfcs/10.10-semantic-query-projection-protocol.org`.
 
 `semantic-tree-sitter-query.v1.schema.json` is the shared portable ABI for
 tree-sitter-compatible syntax query results exposed through the existing
@@ -412,7 +412,7 @@ query. The first CodeQL-aligned target is `flow-lite` local source/sink/path fro
 still rendered through frontier-first packets and exact `--code` follow-up
 selectors.
 Compact contract: CodeQL is an optional semantic backend for `flow-lite` local source/sink/path frontier.
-`rfcs/asp-native-relation-flow-codeql.org` owns the native relation catalog,
+`docs/10-19-rfcs/10.12-asp-native-relation-flow-codeql.org` owns the native relation catalog,
 flow-lite packet plan, artifact policy, and CodeQL promotion gates that sit
 above this schema field.
 Provider registry method descriptors may advertise supported engines with

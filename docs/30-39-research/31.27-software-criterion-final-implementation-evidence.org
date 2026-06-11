@@ -2,7 +2,7 @@
 #+DATE: 2026-06-07
 #+RFC: 013
 #+STATUS: implemented
-#+SEE_ALSO: rfcs/software-criterion-policy.org
+#+SEE_ALSO: docs/10-19-rfcs/10.13-software-criterion-policy.org
 #+SEE_ALSO: schemas/software-criterion-signal.v1.schema.json
 #+SEE_ALSO: schemas/software-criterion-signals.v1.json
 

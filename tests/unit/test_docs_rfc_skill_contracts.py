@@ -20,9 +20,15 @@ _ACTIVE_DOC_PATHS = [
     _README_PATH,
     _ROOT_SKILL_PATH,
     _INSTALLED_SKILL_PATH,
-    _REPO_ROOT / "rfcs" / "agent-hook-interception-protocol.org",
-    _REPO_ROOT / "rfcs" / "cli-first-harness-ux.org",
-    _REPO_ROOT / "rfcs" / "semantic-tree-sitter-query-protocol.org",
+    _REPO_ROOT
+    / "docs"
+    / "10-19-rfcs"
+    / "10.15-agent-hook-interception-protocol.org",
+    _REPO_ROOT / "docs" / "10-19-rfcs" / "10.05-cli-first-harness-ux.org",
+    _REPO_ROOT
+    / "docs"
+    / "10-19-rfcs"
+    / "10.11-semantic-tree-sitter-query-protocol.org",
     _REPO_ROOT / "schemas" / "README.md",
     _ROADMAP_PATH,
 ]
@@ -33,11 +39,11 @@ def test_readme_points_to_rfc_and_docs_owners() -> None:
 
     required_terms = [
         "## Documentation Map",
-        "rfcs/semantic-tree-sitter-query-protocol.org",
+        "docs/10-19-rfcs/10.11-semantic-tree-sitter-query-protocol.org",
         "tree-sitter-compatible syntax ABI",
-        "rfcs/cli-first-harness-ux.org",
+        "docs/10-19-rfcs/10.05-cli-first-harness-ux.org",
         "asp <language> guide",
-        "rfcs/agent-hook-interception-protocol.org",
+        "docs/10-19-rfcs/10.15-agent-hook-interception-protocol.org",
         "Detected Binaries",
         "schemas/README.md",
         "share tree-sitter provenance without merging packet envelopes",

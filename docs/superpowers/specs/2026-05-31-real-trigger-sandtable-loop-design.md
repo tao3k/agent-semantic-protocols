@@ -46,7 +46,7 @@ RFC -> shared schema -> language alignment -> Rust implementation/tests ->
 sandtable alignment -> real-project evidence -> optimization loop
 ```
 
-`rfcs/cli-first-harness-ux.org` owns the public search workflow language. It
+`docs/10-19-rfcs/10.05-cli-first-harness-ux.org` owns the public search workflow language. It
 should gain a section for the real-trigger loop: selected project, task intent,
 prime-first requirement, subagent search constraints, edit-stop boundary, and
 evidence that feeds back into schema and provider behavior.
@@ -165,7 +165,7 @@ axes.
 
 Implementation should land in this order:
 
-1. Update `rfcs/cli-first-harness-ux.org` with the real-trigger loop.
+1. Update `docs/10-19-rfcs/10.05-cli-first-harness-ux.org` with the real-trigger loop.
 2. Add additive schema fields for evidence and guide-quality assertions.
 3. Add or update sandtable runner tests for new schema and summary behavior.
 4. Add the first Rust/Tokio real-trigger scenario.

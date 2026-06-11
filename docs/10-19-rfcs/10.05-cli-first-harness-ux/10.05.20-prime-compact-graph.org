@@ -219,7 +219,7 @@ rank=L,T frontier=L.owner,T.owner
 #+end_src
 
 Agent-facing graph feature semantics are specified separately in RFC 006,
-=rfcs/agent-compact-graph-feature.org=.  RFC 005 owns the CLI surface and
+=docs/10-19-rfcs/10.06-agent-compact-graph-feature.org=.  RFC 005 owns the CLI surface and
 search/query command lifecycle; RFC 006 owns the LLM-oriented graph facts,
 rank, compact projection, and next-action semantics shared by all =search=
 surfaces.

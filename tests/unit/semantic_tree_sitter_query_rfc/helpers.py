@@ -4,7 +4,12 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-RFC_PATH = REPO_ROOT / "rfcs" / "semantic-tree-sitter-query-protocol.org"
+RFC_PATH = (
+    REPO_ROOT
+    / "docs"
+    / "10-19-rfcs"
+    / "10.11-semantic-tree-sitter-query-protocol.org"
+)
 SCHEMA_README_PATH = REPO_ROOT / "schemas" / "README.md"
 
 

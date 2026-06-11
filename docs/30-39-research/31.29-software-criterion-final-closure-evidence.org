@@ -2,7 +2,7 @@
 #+DATE: 2026-06-07
 #+RFC: 013
 #+STATUS: closed
-#+SEE_ALSO: rfcs/software-criterion-policy.org
+#+SEE_ALSO: docs/10-19-rfcs/10.13-software-criterion-policy.org
 #+SEE_ALSO: docs/30-39-research/31.27-software-criterion-final-implementation-evidence.org
 #+SEE_ALSO: docs/30-39-research/31.28-software-criterion-python-clean-evidence.org
 
