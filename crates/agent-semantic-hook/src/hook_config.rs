@@ -6,7 +6,7 @@ use agent_semantic_config::{
     HookClientRuleMatchConfig, HookClientRuleRouteConfig, default_hook_client_config_path,
     default_hook_client_config_template, load_hook_client_config_file,
 };
-use aho_corasick::AhoCorasick;
+use aho_corasick::{AhoCorasick, AhoCorasickBuilder, MatchKind};
 use globset::{GlobBuilder, GlobSet, GlobSetBuilder};
 use std::path::{Path, PathBuf};
 
@@ -118,7 +118,6 @@ impl ClientHookConfig {
             .find(|rule| rule.matches(runtime, platform, event, action, command_token_slice))
             .map(|rule| rule.decision(runtime, platform, event, action))
     }
-
 }
 
 impl CompiledHookRule {
@@ -462,7 +461,10 @@ fn compile_command_contains(patterns: Vec<String>) -> Result<CompiledCommandCont
     if patterns.is_empty() {
         return Ok(CompiledCommandContains::default());
     }
-    AhoCorasick::new(patterns)
+    AhoCorasickBuilder::new()
+        .ascii_case_insensitive(true)
+        .match_kind(MatchKind::LeftmostFirst)
+        .build(patterns)
         .map(|matcher| CompiledCommandContains {
             matcher: Some(matcher),
         })
