@@ -30,5 +30,6 @@ path = "src/main.rs"
 rust-lang-project-harness = { workspace = true }
 
 [dev-dependencies]
+rs-harness = { path = "../../languages/rust-lang-project-harness/rs-harness" }
 rust-lang-project-harness = { workspace = true }
 toml = "0.9"

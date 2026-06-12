@@ -6,6 +6,7 @@ use agent_semantic_config::{
     HookClientRuleMatchConfig, HookClientRuleRouteConfig, default_hook_client_config_path,
     default_hook_client_config_template, load_hook_client_config_file,
 };
+use aho_corasick::AhoCorasick;
 use globset::{GlobBuilder, GlobSet, GlobSetBuilder};
 use std::path::{Path, PathBuf};
 
@@ -24,6 +25,7 @@ use crate::tool_action::{ToolAction, subject_for_action};
 pub struct ClientHookConfig {
     rules: Vec<CompiledHookRule>,
     semantic_ast_patch_disabled: bool,
+    needs_command_tokens: bool,
 }
 
 #[derive(Debug)]
@@ -44,12 +46,29 @@ struct CompiledHookRule {
 struct RuleMatch {
     tool_any: Vec<String>,
     command_any: Vec<String>,
-    command_contains_any: Vec<String>,
+    command_contains_any: CompiledCommandContains,
     path_any: Vec<String>,
     path_glob_any: Option<GlobSet>,
     argv_source_any: Vec<String>,
     argv_source_glob_any: Option<GlobSet>,
     argv_source_exclude_flag_any: Vec<String>,
+}
+
+#[derive(Debug, Default)]
+struct CompiledCommandContains {
+    matcher: Option<AhoCorasick>,
+}
+
+impl CompiledCommandContains {
+    fn is_empty(&self) -> bool {
+        self.matcher.is_none()
+    }
+
+    fn matches(&self, command: &str) -> bool {
+        self.matcher
+            .as_ref()
+            .is_some_and(|matcher| matcher.is_match(command))
+    }
 }
 
 #[derive(Debug)]
@@ -90,11 +109,16 @@ impl ClientHookConfig {
         event: &str,
         action: &ToolAction,
     ) -> Option<HookDecision> {
+        let command_tokens = self.needs_command_tokens.then(|| action.command_tokens());
+        let command_token_slice = command_tokens
+            .as_ref()
+            .and_then(|tokens| tokens.as_ref().map(|tokens| tokens.as_ref()));
         self.rules
             .iter()
-            .find(|rule| rule.matches(runtime, platform, event, action))
+            .find(|rule| rule.matches(runtime, platform, event, action, command_token_slice))
             .map(|rule| rule.decision(runtime, platform, event, action))
     }
+
 }
 
 impl CompiledHookRule {
@@ -104,6 +128,7 @@ impl CompiledHookRule {
         platform: &str,
         event: &str,
         action: &ToolAction,
+        command_tokens: Option<&[String]>,
     ) -> bool {
         self.platform
             .as_deref()
@@ -113,7 +138,7 @@ impl CompiledHookRule {
                 .as_deref()
                 .is_none_or(|expected| canonical_event(expected) == canonical_event(event))
             && self.matches_language(runtime, action)
-            && self.match_config.matches(action)
+            && self.match_config.matches(action, command_tokens)
     }
 
     fn matches_language(&self, runtime: &HookRuntime, action: &ToolAction) -> bool {
@@ -179,18 +204,11 @@ impl CompiledHookRule {
 }
 
 impl RuleMatch {
-    fn matches(&self, action: &ToolAction) -> bool {
+    fn matches(&self, action: &ToolAction, command_tokens: Option<&[String]>) -> bool {
         if !self.matches_tool(action) || !self.matches_path(action) {
             return false;
         }
-        let command_tokens = if self.needs_command_tokens() {
-            action.command_tokens()
-        } else {
-            None
-        };
-        let command_token_slice = command_tokens.as_ref().map(|tokens| tokens.as_ref());
-        self.matches_command(action, command_token_slice)
-            && self.matches_argv_source(command_token_slice)
+        self.matches_command(action, command_tokens) && self.matches_argv_source(command_tokens)
     }
 
     fn matches_tool(&self, action: &ToolAction) -> bool {
@@ -223,11 +241,8 @@ impl RuleMatch {
                     })
                 })
             });
-        let contains_match = self.command_contains_any.is_empty()
-            || self
-                .command_contains_any
-                .iter()
-                .any(|expected| command.contains(expected));
+        let contains_match =
+            self.command_contains_any.is_empty() || self.command_contains_any.matches(command);
         token_match && contains_match
     }
 
@@ -312,9 +327,13 @@ fn compile_config(config: HookClientConfigFile) -> Result<ClientHookConfig, Stri
         .collect::<Result<Vec<_>, _>>()?;
     // `sort_by_key` is stable, so equal-priority rules keep config file order.
     rules.sort_by_key(|rule| std::cmp::Reverse(rule.priority));
+    let needs_command_tokens = rules
+        .iter()
+        .any(|rule| rule.match_config.needs_command_tokens());
     Ok(ClientHookConfig {
         rules,
         semantic_ast_patch_disabled: !semantic_ast_patch_enabled,
+        needs_command_tokens,
     })
 }
 
@@ -355,7 +374,7 @@ impl TryFrom<HookClientRuleMatchConfig> for RuleMatch {
         Ok(Self {
             tool_any,
             command_any: config.command_any,
-            command_contains_any: config.command_contains_any,
+            command_contains_any: compile_command_contains(config.command_contains_any)?,
             path_any: config.path_any,
             path_glob_any: compile_globs("pathGlobAny", config.path_glob_any)?,
             argv_source_any: config.argv_source_any,
@@ -437,6 +456,17 @@ fn compile_globs(label: &str, patterns: Vec<String>) -> Result<Option<GlobSet>, 
         .build()
         .map(Some)
         .map_err(|error| format!("failed to compile {label} patterns: {error}"))
+}
+
+fn compile_command_contains(patterns: Vec<String>) -> Result<CompiledCommandContains, String> {
+    if patterns.is_empty() {
+        return Ok(CompiledCommandContains::default());
+    }
+    AhoCorasick::new(patterns)
+        .map(|matcher| CompiledCommandContains {
+            matcher: Some(matcher),
+        })
+        .map_err(|error| format!("failed to compile commandContainsAny patterns: {error}"))
 }
 
 fn canonical_event(value: &str) -> String {

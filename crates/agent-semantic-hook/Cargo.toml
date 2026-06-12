@@ -8,6 +8,7 @@ license = "MIT"
 [dependencies]
 agent-semantic-config = { path = "../agent-semantic-config" }
 agent-semantic-runtime = { path = "../agent-semantic-runtime" }
+aho-corasick = "1.1.4"
 fs2 = { workspace = true }
 globset = { workspace = true }
 serde = { workspace = true }

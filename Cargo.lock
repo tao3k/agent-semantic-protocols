@@ -67,6 +67,7 @@ version = "0.1.0"
 dependencies = [
  "agent-semantic-config",
  "agent-semantic-runtime",
+ "aho-corasick",
  "fs2",
  "globset",
  "rust-lang-project-harness 0.1.0",
@@ -90,6 +91,7 @@ dependencies = [
  "agent-semantic-tree-sitter",
  "orgize",
  "proc-macro2",
+ "rs-harness",
  "rust-lang-project-harness 0.1.0",
  "serde",
  "serde_json",
@@ -926,6 +928,15 @@ dependencies = [
  "hashbrown 0.14.5",
  "rustc-hash 1.1.0",
  "text-size",
+]
+
+[[package]]
+name = "rs-harness"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]

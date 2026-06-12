@@ -25,6 +25,8 @@ mod healthcheck;
 mod hook_command;
 #[path = "unit/provider_command/mod.rs"]
 mod provider_command;
+#[path = "unit/rs_harness_attribute.rs"]
+mod rs_harness_attribute;
 #[path = "../../agent-semantic-hook/tests/unit/rust_harness_activation/mod.rs"]
 mod rust_harness_activation;
 #[path = "unit/source_access_command/mod.rs"]
