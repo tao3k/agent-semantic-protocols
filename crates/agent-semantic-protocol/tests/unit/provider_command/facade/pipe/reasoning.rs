@@ -309,7 +309,7 @@ fn search_failure_frontier_is_asp_owned_and_points_to_hot_blocks() {
     );
     assert!(
         stdout.contains(
-            "frontierActions=H.code=>asp rust query --selector src/cache_cli/writeback.rs:1:5 --code .,H2.code=>asp rust query --selector src/cache_cli/writeback.rs:7:10 --code ."
+            "frontierActions=C1.query-code(selector=src/cache_cli/writeback.rs:1:5,owner=src/cache_cli/writeback.rs,symbol=write_prompt_output_artifact,source=H,language=rust)!query-code,C2.query-code(selector=src/cache_cli/writeback.rs:7:10,owner=src/cache_cli/writeback.rs,symbol=load_prompt_output_artifact,source=H2,language=rust)!query-code"
         ),
         "{stdout}"
     );
@@ -487,7 +487,7 @@ fn check_changed_view_seeds_projects_failure_frontier() {
     );
     assert!(
         stdout.contains(
-            "frontierActions=H.code=>asp rust query --selector src/cache_cli/writeback.rs:1:5 --code ."
+            "frontierActions=C1.query-code(selector=src/cache_cli/writeback.rs:1:5,owner=src/cache_cli/writeback.rs,symbol=write_prompt_output_artifact,source=H,language=rust)!query-code"
         ),
         "{stdout}"
     );

@@ -87,12 +87,12 @@
           "scenario": "python.graph-turbo-read-reduction-flow",
           "qualityGate.status": "pass",
           "usefulLocator.found": true,
-          "usefulLocator.selector": "src/lib.rs:20:22",
+          "usefulLocator.selector": "src/lib.rs:30:32",
           "feedbackLearning.repeatedMistakeSuppressed": true,
           "profileMatrixExplanation.explained": true
         },
         "stdoutContains": [
-          "\"readMemorySuppressedCount\": 1",
+          "\"readMemorySuppressedCount\": 2",
           "\"rawReadFallbackCount\": 0",
           "\"duplicateSelectorCount\": 0",
           "\"commandsToFirstUsefulLocator\": 1",

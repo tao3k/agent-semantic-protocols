@@ -77,5 +77,5 @@ fn forwarded_event_args(event: &str, rest: &[String]) -> Result<Vec<String>, Str
 }
 
 fn usage() -> String {
-    "usage: asp hook <install|doctor> --client <codex|claude> ...\n       asp hook --client <codex|claude> --event <event> ...\n       asp hook <pre-tool|post-tool|stop|event> ...".to_string()
+    "usage: asp hook <install|doctor> --client <codex|claude> [--subagent-model MODEL] ...\n       asp hook --client <codex|claude> --event <event> ...\n       asp hook <pre-tool|post-tool|stop|event> ...".to_string()
 }

@@ -3,6 +3,7 @@
 use serde::de;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 
 /// Schema identifier for semantic hook project activations.
@@ -228,7 +229,17 @@ pub fn parse_payload(input: &str) -> Result<Value, AgentHookError> {
 
 /// Render a shared hook decision into the selected platform response envelope.
 pub fn render_platform_response(decision: &HookDecision) -> Result<Value, AgentHookError> {
-    let decision_value = serde_json::to_value(decision).map_err(AgentHookError::InvalidOutput)?;
+    let message = platform_decision_message(decision);
+    let mut decision_value =
+        serde_json::to_value(decision).map_err(AgentHookError::InvalidOutput)?;
+    if message.as_ref() != decision.message {
+        if let Some(object) = decision_value.as_object_mut() {
+            object.insert(
+                "message".to_string(),
+                Value::String(message.as_ref().to_string()),
+            );
+        }
+    }
     let decision_context = format!(
         "[agent-hook-decision] {}",
         serde_json::to_string(&decision_value).map_err(AgentHookError::InvalidOutput)?
@@ -239,26 +250,26 @@ pub fn render_platform_response(decision: &HookDecision) -> Result<Value, AgentH
                 "hookSpecificOutput": {
                     "hookEventName": platform_hook_event_name(&decision.event),
                     "permissionDecision": "deny",
-                    "permissionDecisionReason": decision.message,
+                    "permissionDecisionReason": message.as_ref(),
                     "additionalContext": decision_context,
                 },
-                "systemMessage": decision.message,
+                "systemMessage": message.as_ref(),
             }));
         }
         DecisionKind::Block => {
             let additional_context = if decision.event == "stop" {
-                format!("{decision_context}\n\n{}", decision.message)
+                format!("{decision_context}\n\n{}", message.as_ref())
             } else {
                 decision_context
             };
             return Ok(json!({
                 "decision": "block",
-                "reason": decision.message,
+                "reason": message.as_ref(),
                 "hookSpecificOutput": {
                     "hookEventName": platform_hook_event_name(&decision.event),
                     "additionalContext": additional_context,
                 },
-                "systemMessage": decision.message,
+                "systemMessage": message.as_ref(),
             }));
         }
         DecisionKind::Allow => {
@@ -289,11 +300,48 @@ pub fn render_platform_response(decision: &HookDecision) -> Result<Value, AgentH
     Ok(json!({}))
 }
 
+fn platform_decision_message(decision: &HookDecision) -> Cow<'_, str> {
+    if decision.decision == DecisionKind::Deny && is_subagent_context(decision) {
+        Cow::Owned(subagent_deny_message(&decision.message))
+    } else {
+        Cow::Borrowed(&decision.message)
+    }
+}
+
+fn is_subagent_context(decision: &HookDecision) -> bool {
+    ["subagentContext", "isSubagent", "subagent"]
+        .iter()
+        .any(|field| decision.fields.get(*field).and_then(Value::as_bool) == Some(true))
+}
+
+pub fn subagent_deny_message(message: &str) -> String {
+    let mut lines = Vec::new();
+    let mut inserted_subagent_instruction = false;
+    for line in message.lines() {
+        if line.contains("spawn_agent") || line.contains("send_input") {
+            if !inserted_subagent_instruction {
+                lines.push(
+                    "Codex: already running inside a subagent; run the safe route below directly and return a compact `[asp-search-subagent]` receipt.",
+                );
+                inserted_subagent_instruction = true;
+            }
+            continue;
+        }
+        if line.starts_with("If subagents are unavailable")
+            || line.starts_with("No subagent available?")
+        {
+            continue;
+        }
+        lines.push(line);
+    }
+    lines.join("\n")
+}
+
 fn user_prompt_search_first_context(locator_only: bool) -> &'static str {
     if locator_only {
-        return "ASP search-first workflow is active for this prompt. This is a locator/frontier question: answer where to look before editing, not by reading source code. Run `asp <language> search prime --view seeds .` at most once, then the immediate next ASP command must be one `asp <language> search pipe '<question-or-feature-term>' --view seeds .`. Do not answer from prime alone; prime is only a project map and is never final evidence. Do not repeat an exact ASP command. Use owner/frontier/locator metadata from search output. Do not run `query --code` unless the user explicitly asks for code contents. ASP facades are language IDs, not package names; for Effect use `asp typescript ...`.";
+        return "ASP search-first workflow is active for this prompt. This is a locator/frontier question: answer where to look before editing, not by reading source code. Run `asp <language> search prime --workspace <workspace-root> --view seeds` at most once, then the immediate next ASP command must be one `asp <language> search pipe '<question-or-feature-term>' --workspace <workspace-root> --view seeds`. Do not answer from prime alone; prime is only a project map and is never final evidence. Do not repeat an exact ASP command. Use owner/frontier/locator metadata from search output. Do not run `query --code` unless the user explicitly asks for code contents. ASP facades are language IDs, not package names; for Effect use `asp typescript ...`.";
     }
-    "ASP search-first workflow is active for this prompt. Before reading source or running raw grep/find, use parser-owned ASP discovery. Run `asp <language> search prime --view seeds .` at most once, then the immediate next ASP command must be one `asp <language> search pipe '<question-or-feature-term>' --view seeds .`. Do not answer from prime alone; prime is only a project map and is never final evidence. Do not repeat an exact ASP command. Follow `recommendedNext` or `nextCommand` from ASP output. Use one `asp <language> query --selector <path:start-end> --workspace . --code` only after ASP provides an exact selector, then answer from that selector plus search metadata. Do not use direct source reads as the first step. ASP facades are language IDs, not package names; for Effect use `asp typescript ...`."
+    "ASP search-first workflow is active for this prompt. Before reading source or running raw grep/find, use parser-owned ASP discovery. Run `asp <language> search prime --workspace <workspace-root> --view seeds` at most once, then the immediate next ASP command must be one `asp <language> search pipe '<question-or-feature-term>' --workspace <workspace-root> --view seeds`. Do not answer from prime alone; prime is only a project map and is never final evidence. Do not repeat an exact ASP command. Follow `recommendedNext` or `nextCommand` from ASP output. Use one `asp <language> query --selector <path:start-end> --workspace . --code` only after ASP provides an exact selector, then answer from that selector plus search metadata. Do not use direct source reads as the first step. ASP facades are language IDs, not package names; for Effect use `asp typescript ...`."
 }
 
 pub(crate) fn normalize_source_selector(selector: &str) -> &str {

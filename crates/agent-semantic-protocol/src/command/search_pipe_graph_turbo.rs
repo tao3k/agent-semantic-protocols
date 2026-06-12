@@ -39,6 +39,7 @@ pub(super) struct GraphTurboSearchPipeRequest<'a> {
     pub(super) source_trace: &'a [SearchPipeSourceTrace],
     pub(super) provider_facts: &'a ProviderGraphFacts,
     pub(super) read_memory_selectors: &'a [String],
+    pub(super) action_frontier: &'a [Value],
 }
 
 pub(super) fn render_graph_turbo_request(
@@ -65,6 +66,7 @@ fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> Value {
     let source_trace = request.source_trace;
     let provider_facts = request.provider_facts;
     let read_memory_selectors = request.read_memory_selectors;
+    let external_action_frontier = request.action_frontier;
     let mut surfaces = normalized_search_surfaces(pipes);
     let mut nodes = Vec::new();
     let mut edges = Vec::new();
@@ -155,6 +157,9 @@ fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> Value {
         packet["readMemory"] = json!({
             "seenSelectors": read_memory_selectors,
         });
+    }
+    if !external_action_frontier.is_empty() {
+        packet["actionFrontier"] = Value::Array(external_action_frontier.to_vec());
     }
     if surface == "search-pipe"
         && let Some(query) = query.filter(|query| !query.trim().is_empty())

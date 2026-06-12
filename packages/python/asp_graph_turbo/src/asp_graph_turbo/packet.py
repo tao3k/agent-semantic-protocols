@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from .constants import ALGORITHM_ID
+from .frontier_actions import frontier_action_packets
 from .model import (
     GraphProfile,
     GraphResult,
@@ -36,6 +37,7 @@ def result_to_packet(result: GraphResult) -> dict[str, object]:
             {"nodeId": entry.node.id, "action": entry.action, "score": entry.score}
             for entry in result.frontier
         ],
+        "frontierActions": frontier_action_packets(result),
         "scores": dict(result.scores),
         "edges": [
             {

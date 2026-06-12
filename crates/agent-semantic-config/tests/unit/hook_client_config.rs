@@ -26,7 +26,20 @@ fn default_template_round_trips_through_config_parser() {
             .and_then(|feature| feature.get("enabled")),
         Some(&false)
     );
-    assert!(config.rules.is_empty());
+    assert_eq!(config.rules.len(), 1);
+    let rule = config.rules.first().expect("default rule");
+    assert_eq!(rule.id, "deny-shell-source-argv");
+    assert_eq!(rule.match_config.command_any, ["sed", "perl", "rg", "wl"]);
+    assert!(
+        rule.match_config
+            .argv_source_glob_any
+            .iter()
+            .any(|glob| glob == "**/*.rs")
+    );
+    assert_eq!(
+        rule.match_config.argv_source_exclude_flag_any,
+        ["--output", "--output-file", "--out", "-o"]
+    );
     let _ = fs::remove_dir_all(root);
 }
 
@@ -67,6 +80,40 @@ argv = ["asp", "rust"]
     let error = load_hook_client_config_file(&config_path).expect_err("invalid route kind");
 
     assert!(error.contains("legacy-alias"), "{error}");
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn argv_source_match_fields_round_trip_through_config_parser() {
+    let root = temp_root("hook-client-argv-source");
+    let config_path = root.join("config.toml");
+    fs::write(
+        &config_path,
+        r#"
+schemaId = "agent.semantic-protocols.hook.client-config"
+schemaVersion = "1"
+protocolId = "agent.semantic-protocols.hook"
+protocolVersion = "1"
+
+[[rules]]
+id = "deny-argv-source"
+decision = "deny"
+
+[rules.match]
+commandAny = ["wl"]
+argvSourceAny = ["src/main.ts"]
+argvSourceGlobAny = ["*.ts"]
+argvSourceExcludeFlagAny = ["--output"]
+"#,
+    )
+    .expect("write config");
+
+    let config = load_hook_client_config_file(&config_path).expect("load config");
+    let rule = config.rules.first().expect("config rule");
+
+    assert_eq!(rule.match_config.argv_source_any, ["src/main.ts"]);
+    assert_eq!(rule.match_config.argv_source_glob_any, ["*.ts"]);
+    assert_eq!(rule.match_config.argv_source_exclude_flag_any, ["--output"]);
     let _ = fs::remove_dir_all(root);
 }
 

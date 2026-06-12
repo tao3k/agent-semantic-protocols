@@ -7,7 +7,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use agent_semantic_hook::{
     DecisionKind, DecisionRoute, DecisionRouteKind, DecisionSubject, HOOK_DECISION_SCHEMA_ID,
     HOOK_DECISION_SCHEMA_VERSION, HOOK_PROTOCOL_ID, HOOK_PROTOCOL_VERSION, HookDecision,
-    ReasonKind, StdinMode, append_hook_event_state,
+    ReasonKind, StdinMode, append_hook_event_state, has_recorded_subagent_context,
 };
 use serde_json::Value;
 
@@ -61,6 +61,41 @@ fn concurrent_hook_event_appends_write_valid_json_lines() {
     fs::remove_dir_all(&project_root).ok();
 }
 
+#[test]
+fn recorded_subagent_context_tracks_latest_lifecycle_event() {
+    let project_root = unique_project_root();
+    let session_id = "subagent-session-123";
+    let transcript_path = "/tmp/subagent-session-123.jsonl";
+
+    append_hook_event_state(
+        &project_root,
+        &lifecycle_decision("subagent-start", session_id, transcript_path),
+    )
+    .expect("record subagent start");
+
+    assert!(
+        has_recorded_subagent_context(&project_root, Some(session_id), None)
+            .expect("lookup by session")
+    );
+    assert!(
+        has_recorded_subagent_context(&project_root, None, Some(transcript_path))
+            .expect("lookup by transcript")
+    );
+
+    append_hook_event_state(
+        &project_root,
+        &lifecycle_decision("subagent-stop", session_id, transcript_path),
+    )
+    .expect("record subagent stop");
+
+    assert!(
+        !has_recorded_subagent_context(&project_root, Some(session_id), Some(transcript_path))
+            .expect("latest matching lifecycle event wins")
+    );
+
+    fs::remove_dir_all(&project_root).ok();
+}
+
 fn unique_project_root() -> PathBuf {
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -101,5 +136,32 @@ fn decision(run_id: &str, index: usize) -> HookDecision {
         }],
         message: "read Rust source through asp query".to_string(),
         fields: BTreeMap::new(),
+    }
+}
+
+fn lifecycle_decision(event: &str, session_id: &str, transcript_path: &str) -> HookDecision {
+    let mut fields = BTreeMap::new();
+    fields.insert(
+        "sessionId".to_string(),
+        Value::String(session_id.to_string()),
+    );
+    fields.insert(
+        "transcriptPath".to_string(),
+        Value::String(transcript_path.to_string()),
+    );
+    HookDecision {
+        schema_id: HOOK_DECISION_SCHEMA_ID,
+        schema_version: HOOK_DECISION_SCHEMA_VERSION,
+        protocol_id: HOOK_PROTOCOL_ID,
+        protocol_version: HOOK_PROTOCOL_VERSION,
+        platform: "codex".to_string(),
+        event: event.to_string(),
+        decision: DecisionKind::Allow,
+        reason_kind: ReasonKind::None,
+        language_ids: Vec::new(),
+        subject: DecisionSubject::default(),
+        routes: Vec::new(),
+        message: String::new(),
+        fields,
     }
 }

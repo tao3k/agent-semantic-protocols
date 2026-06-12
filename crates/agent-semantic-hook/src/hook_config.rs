@@ -9,7 +9,7 @@ use agent_semantic_config::{
 use globset::{GlobBuilder, GlobSet, GlobSetBuilder};
 use std::path::{Path, PathBuf};
 
-use crate::command::semantic_shell_tokens;
+use crate::command::path_like_tokens;
 use crate::protocol::{
     DecisionKind, DecisionRoute, DecisionRouteKind, HOOK_DECISION_SCHEMA_ID,
     HOOK_DECISION_SCHEMA_VERSION, HOOK_PROTOCOL_ID, HOOK_PROTOCOL_VERSION, HookDecision,
@@ -47,6 +47,9 @@ struct RuleMatch {
     command_contains_any: Vec<String>,
     path_any: Vec<String>,
     path_glob_any: Option<GlobSet>,
+    argv_source_any: Vec<String>,
+    argv_source_glob_any: Option<GlobSet>,
+    argv_source_exclude_flag_any: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -177,7 +180,17 @@ impl CompiledHookRule {
 
 impl RuleMatch {
     fn matches(&self, action: &ToolAction) -> bool {
-        self.matches_tool(action) && self.matches_command(action) && self.matches_path(action)
+        if !self.matches_tool(action) || !self.matches_path(action) {
+            return false;
+        }
+        let command_tokens = if self.needs_command_tokens() {
+            action.command_tokens()
+        } else {
+            None
+        };
+        let command_token_slice = command_tokens.as_ref().map(|tokens| tokens.as_ref());
+        self.matches_command(action, command_token_slice)
+            && self.matches_argv_source(command_token_slice)
     }
 
     fn matches_tool(&self, action: &ToolAction) -> bool {
@@ -188,16 +201,27 @@ impl RuleMatch {
                 .any(|tool| tool.eq_ignore_ascii_case(&action.tool_name))
     }
 
-    fn matches_command(&self, action: &ToolAction) -> bool {
+    fn needs_command_tokens(&self) -> bool {
+        !self.command_any.is_empty()
+            || !self.argv_source_any.is_empty()
+            || self.argv_source_glob_any.is_some()
+    }
+
+    fn matches_command(&self, action: &ToolAction, command_tokens: Option<&[String]>) -> bool {
+        if self.command_any.is_empty() && self.command_contains_any.is_empty() {
+            return true;
+        }
         let Some(command) = action.command.as_deref() else {
-            return self.command_any.is_empty() && self.command_contains_any.is_empty();
+            return false;
         };
-        let tokens = semantic_shell_tokens(command);
         let token_match = self.command_any.is_empty()
             || self.command_any.iter().any(|expected| {
-                tokens
-                    .iter()
-                    .any(|token| token.eq_ignore_ascii_case(expected))
+                command_tokens.is_some_and(|tokens| {
+                    command_name_tokens(tokens).any(|token| {
+                        token.eq_ignore_ascii_case(expected)
+                            || command_token_basename(token).eq_ignore_ascii_case(expected)
+                    })
+                })
             });
         let contains_match = self.command_contains_any.is_empty()
             || self
@@ -223,6 +247,27 @@ impl RuleMatch {
                 .iter()
                 .any(|path| globset.is_match(path.as_str()))
         });
+        exact_match || glob_match
+    }
+
+    fn matches_argv_source(&self, command_tokens: Option<&[String]>) -> bool {
+        if self.argv_source_any.is_empty() && self.argv_source_glob_any.is_none() {
+            return true;
+        }
+        let Some(tokens) = command_tokens else {
+            return false;
+        };
+        let source_tokens = argv_source_tokens(tokens, &self.argv_source_exclude_flag_any);
+        let exact_match = !self.argv_source_any.is_empty()
+            && source_tokens.iter().any(|path| {
+                self.argv_source_any
+                    .iter()
+                    .any(|expected| path == &expected || path.ends_with(expected))
+            });
+        let glob_match = self
+            .argv_source_glob_any
+            .as_ref()
+            .is_some_and(|globset| source_tokens.iter().any(|path| globset.is_match(path)));
         exact_match || glob_match
     }
 }
@@ -312,7 +357,10 @@ impl TryFrom<HookClientRuleMatchConfig> for RuleMatch {
             command_any: config.command_any,
             command_contains_any: config.command_contains_any,
             path_any: config.path_any,
-            path_glob_any: compile_globs(config.path_glob_any)?,
+            path_glob_any: compile_globs("pathGlobAny", config.path_glob_any)?,
+            argv_source_any: config.argv_source_any,
+            argv_source_glob_any: compile_globs("argvSourceGlobAny", config.argv_source_glob_any)?,
+            argv_source_exclude_flag_any: config.argv_source_exclude_flag_any,
         })
     }
 }
@@ -373,7 +421,7 @@ impl From<HookClientConfigStdinMode> for StdinMode {
     }
 }
 
-fn compile_globs(patterns: Vec<String>) -> Result<Option<GlobSet>, String> {
+fn compile_globs(label: &str, patterns: Vec<String>) -> Result<Option<GlobSet>, String> {
     if patterns.is_empty() {
         return Ok(None);
     }
@@ -382,15 +430,83 @@ fn compile_globs(patterns: Vec<String>) -> Result<Option<GlobSet>, String> {
         let glob = GlobBuilder::new(&pattern)
             .literal_separator(true)
             .build()
-            .map_err(|error| format!("invalid pathGlobAny pattern `{pattern}`: {error}"))?;
+            .map_err(|error| format!("invalid {label} pattern `{pattern}`: {error}"))?;
         builder.add(glob);
     }
     builder
         .build()
         .map(Some)
-        .map_err(|error| format!("failed to compile pathGlobAny patterns: {error}"))
+        .map_err(|error| format!("failed to compile {label} patterns: {error}"))
 }
 
 fn canonical_event(value: &str) -> String {
     value.to_ascii_lowercase().replace('_', "-")
+}
+
+fn command_name_tokens(tokens: &[String]) -> impl Iterator<Item = &str> {
+    let mut stage_start = true;
+    tokens.iter().filter_map(move |token| {
+        if is_shell_stage_separator(token) {
+            stage_start = true;
+            return None;
+        }
+        if stage_start {
+            stage_start = false;
+            Some(token.as_str())
+        } else {
+            None
+        }
+    })
+}
+
+fn command_token_basename(token: &str) -> &str {
+    token.rsplit('/').next().unwrap_or(token)
+}
+
+fn is_shell_stage_separator(token: &str) -> bool {
+    matches!(token, "|" | ";" | "&&" | "||" | "&")
+}
+
+fn argv_source_tokens<'a>(tokens: &'a [String], excluded_value_flags: &[String]) -> Vec<&'a str> {
+    let mut source_tokens = Vec::new();
+    let mut skip_next = false;
+    let mut positional_only = false;
+
+    for token in tokens {
+        if skip_next {
+            skip_next = false;
+            continue;
+        }
+        if token == "--" {
+            positional_only = true;
+            continue;
+        }
+        if !positional_only
+            && excluded_value_flags
+                .iter()
+                .any(|flag| token.as_str() == flag.as_str())
+        {
+            skip_next = true;
+            continue;
+        }
+        if !positional_only
+            && excluded_value_flags.iter().any(|flag| {
+                token
+                    .strip_prefix(flag.as_str())
+                    .is_some_and(|suffix| suffix.starts_with('='))
+            })
+        {
+            continue;
+        }
+        for source_token in path_like_tokens(std::slice::from_ref(token)) {
+            if !source_tokens
+                .iter()
+                .any(|existing| existing == &source_token)
+            {
+                source_tokens.push(source_token);
+            }
+        }
+    }
+
+    source_tokens
 }

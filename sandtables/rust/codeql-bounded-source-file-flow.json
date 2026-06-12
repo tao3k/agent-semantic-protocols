@@ -60,8 +60,14 @@
       ],
       "timeoutSeconds": 90,
       "command": [
+        "uv",
+        "run",
+        "--frozen",
+        "--project",
+        "packages/python",
         "python",
-        "packages/python/src/tools/codeql_bounded_evidence.py",
+        "-m",
+        "tools.codeql_bounded_evidence",
         "--generated-at",
         "2026-06-05T12:10:00Z"
       ],

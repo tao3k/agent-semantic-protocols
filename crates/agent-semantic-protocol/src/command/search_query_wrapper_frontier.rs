@@ -2,6 +2,7 @@
 
 use std::path::PathBuf;
 
+use super::search_pipe_action_frontier::{ActionNode, ActionRoute, render_action_rows};
 use super::search_pipe_model::Candidate;
 use super::search_query_wrapper_candidates::{owner_candidates, rg_scope_next};
 use super::search_query_wrapper_model::{QueryWrapperSurface, display_terms, shell_arg};
@@ -32,14 +33,6 @@ pub(super) fn print_query_wrapper_refinement_frontier(
 ) {
     let fd_query = terms.join("|");
     let multi_clause_queries = multi_clause_queries(queries, terms);
-    let multi_clause_display = multi_clause_queries
-        .iter()
-        .enumerate()
-        .map(|(index, query)| format!("C{}={}", index + 1, shell_arg(query)))
-        .collect::<Vec<_>>()
-        .join(";");
-    let scope_label = scope_label(scopes);
-    let command_scope = scope_args_for_command(scopes);
     let evidence = evidence_preview(candidates);
     let owner = owner_candidates(candidates)
         .into_iter()
@@ -53,37 +46,125 @@ pub(super) fn print_query_wrapper_refinement_frontier(
         repeated_query_args(&multi_clause_queries),
         owner
     );
+    let actions = query_wrapper_action_nodes(surface, scopes, queries, terms, candidates);
+    print!("{}", render_action_rows(&actions));
+    println!("reason=query-selector-low-confidence,clause-cohesion-required");
+}
+
+pub(super) fn print_query_wrapper_empty_receipt(
+    surface: QueryWrapperSurface,
+    scopes: &[PathBuf],
+    queries: &[String],
+    terms: &[String],
+    source_trace: &str,
+    avoid: &str,
+) {
+    println!("noOutput reason=no-candidates sourceTrace={source_trace}");
+    println!(
+        "nextCommand={}",
+        query_wrapper_empty_next_command(surface, scopes, queries, terms)
+    );
+    println!("avoid={avoid}");
+}
+
+pub(super) fn query_wrapper_action_frontier(
+    surface: QueryWrapperSurface,
+    scopes: &[PathBuf],
+    queries: &[String],
+    terms: &[String],
+    candidates: &[Candidate],
+) -> Vec<serde_json::Value> {
+    query_wrapper_action_nodes(surface, scopes, queries, terms, candidates)
+        .into_iter()
+        .map(|action| action.as_json())
+        .collect()
+}
+
+fn query_wrapper_action_nodes(
+    surface: QueryWrapperSurface,
+    scopes: &[PathBuf],
+    queries: &[String],
+    terms: &[String],
+    candidates: &[Candidate],
+) -> Vec<ActionNode> {
+    let fd_query = terms.join("|");
+    let multi_clause_queries = multi_clause_queries(queries, terms);
+    let scope_label = scope_label(scopes);
+    let command_scope = scope_args_for_command(scopes);
+    let owner = owner_candidates(candidates)
+        .into_iter()
+        .next()
+        .unwrap_or_else(|| "-".to_string());
     match surface {
         QueryWrapperSurface::Rg => {
-            println!("actionRank=A1,A2");
-            println!("A1=fd-query(query={fd_query},scope={scope_label})!finder-owner");
-            println!(
-                "A2=multi-clause-rg-query(queryClauses={multi_clause_display},scope={scope_label})!query-pack-refine"
-            );
-            println!("actionFrontier=A1.fd-query,A2.multi-clause-rg-query");
-            println!("recommendedNext=A1.fd-query");
-            println!(
-                "nextCommand=asp fd -query {} {command_scope}",
-                shell_arg(&fd_query)
-            );
+            vec![
+                ActionNode {
+                    id: "A1".to_string(),
+                    kind: "fd-query".to_string(),
+                    suffix: "finder-owner".to_string(),
+                    route: ActionRoute::FdQuery {
+                        query: fd_query,
+                        scope: scope_label.clone(),
+                        command_scope: Some(command_scope.clone()),
+                    },
+                },
+                ActionNode {
+                    id: "A2".to_string(),
+                    kind: "multi-clause-rg-query".to_string(),
+                    suffix: "query-pack-refine".to_string(),
+                    route: ActionRoute::RgQuerySet {
+                        queries: multi_clause_queries,
+                        scope: scope_label,
+                        command_scope,
+                    },
+                },
+            ]
         }
         QueryWrapperSurface::Fd => {
             let rg_scope = best_rg_scope(candidates).unwrap_or_else(|| command_scope.clone());
-            println!("actionRank=A1,A2");
-            println!(
-                "A1=scoped-rg-query(queryClauses={multi_clause_display},scope={rg_scope})!finder-content"
-            );
-            println!("A2=owner-items(owner={owner})!owner-items");
-            println!("actionFrontier=A1.scoped-rg-query,A2.owner-items");
-            println!("recommendedNext=A1.scoped-rg-query");
-            println!(
-                "nextCommand=asp rg {} {}",
-                repeated_query_args(&multi_clause_queries),
-                shell_arg(&rg_scope)
-            );
+            vec![
+                ActionNode {
+                    id: "A1".to_string(),
+                    kind: "scoped-rg-query".to_string(),
+                    suffix: "finder-content".to_string(),
+                    route: ActionRoute::RgQuerySet {
+                        queries: multi_clause_queries,
+                        scope: rg_scope.clone(),
+                        command_scope: shell_arg(&rg_scope),
+                    },
+                },
+                ActionNode {
+                    id: "A2".to_string(),
+                    kind: "owner-items".to_string(),
+                    suffix: "owner-items".to_string(),
+                    route: ActionRoute::OwnerItemsHint { owner },
+                },
+            ]
         }
     }
-    println!("reason=query-selector-low-confidence,clause-cohesion-required");
+}
+
+fn query_wrapper_empty_next_command(
+    surface: QueryWrapperSurface,
+    scopes: &[PathBuf],
+    queries: &[String],
+    terms: &[String],
+) -> String {
+    let command_scope = scope_args_for_command(scopes);
+    match surface {
+        QueryWrapperSurface::Fd => format!(
+            "asp rg {} {}",
+            repeated_query_args(&multi_clause_queries(queries, terms)),
+            command_scope
+        ),
+        QueryWrapperSurface::Rg => {
+            format!(
+                "asp fd -query {} {}",
+                shell_arg(&terms.join("|")),
+                command_scope
+            )
+        }
+    }
 }
 
 fn multi_clause_queries(queries: &[String], terms: &[String]) -> Vec<String> {

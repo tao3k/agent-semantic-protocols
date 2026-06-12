@@ -304,10 +304,9 @@ fn shared_renderer_projects_prime_packet_into_tool_map_frontier() {
         output.contains("history=asp-artifacts:directReadRisk,repeatedPrime,repeatedPipe,bestPath")
     );
     assert!(output.contains("risk=broad-direct-read,manual-window-scan,repeat-prime"));
-    assert!(
-        output
-            .contains("next=\"asp rust search pipe '<question-or-feature-term>' --view seeds .\"")
-    );
+    assert!(output.contains(
+        "next=\"asp rust search pipe '<question-or-feature-term>' --workspace . --view seeds\""
+    ));
     assert!(output.contains(
         "legend: ID=kind:role(value)!next; entries profile(selectors=>returns); frontier ID.next"
     ));

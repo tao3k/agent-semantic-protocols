@@ -27,13 +27,14 @@
         "seeds",
         "--seeds",
         "8",
+        "--workspace",
         "."
       ],
       "expect": {
         "lineProtocol": true,
         "stdoutContains": [
           "[search-prime]",
-          "legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next",
+          "legend: ID=kind:role(value)!next; entries profile(selectors=>returns); frontier ID.next",
           "G>{",
           "rank=",
           "frontier="
@@ -58,6 +59,7 @@
         "seeds",
         "--seeds",
         "8",
+        "--workspace",
         "."
       ],
       "capture": {
@@ -94,6 +96,7 @@
         "seeds",
         "--seeds",
         "8",
+        "--workspace",
         "."
       ],
       "expect": {
@@ -105,7 +108,7 @@
           "rank=",
           "frontier="
         ],
-        "maxStdoutLinesWarn": 18,
+        "maxStdoutLinesWarn": 20,
         "maxElapsedMsWarn": 1800,
         "stdoutNotContains": [
           "|seed",
@@ -125,6 +128,7 @@
         "seeds",
         "--seeds",
         "4",
+        "--workspace",
         "."
       ],
       "expect": {

@@ -33,9 +33,9 @@ fn direct_read_routes_to_provider_query() {
         ]
     );
     assert!(
-        decision
-            .message
-            .contains("--workspace <workspace-root> --code"),
+        decision.message.contains(
+            "asp typescript query --selector src/cli/agent-hooks.ts --workspace . --code"
+        ),
         "{}",
         decision.message
     );

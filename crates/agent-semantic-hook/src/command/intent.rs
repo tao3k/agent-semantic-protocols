@@ -1,3 +1,4 @@
+use super::provider_candidates::path_like_tokens;
 use super::raw_search;
 use super::shell::{command_name, is_separator};
 
@@ -10,6 +11,19 @@ pub(crate) enum CommandIntent {
 }
 
 pub(crate) fn command_intent(tokens: &[String]) -> CommandIntent {
+    for stage in command_stages(tokens) {
+        match command_stage_intent(stage) {
+            CommandIntent::Other | CommandIntent::RawSearch => {}
+            intent => return intent,
+        }
+    }
+    if raw_search::raw_search_stage(tokens).is_some() {
+        return CommandIntent::RawSearch;
+    }
+    CommandIntent::Other
+}
+
+fn command_stage_intent(tokens: &[String]) -> CommandIntent {
     let command = first_stage_command(tokens);
     if matches!(command.as_deref().map(command_name), Some("read")) {
         return CommandIntent::DirectRead;
@@ -22,13 +36,66 @@ pub(crate) fn command_intent(tokens: &[String]) -> CommandIntent {
     if matches!(
         command.as_deref().map(command_name),
         Some("cat" | "sed" | "nl" | "bat" | "head" | "tail" | "awk" | "less")
-    ) {
+    ) && !path_like_tokens(tokens).is_empty()
+    {
         return CommandIntent::ContentDump;
     }
-    if raw_search::raw_search_stage(tokens).is_some() {
-        return CommandIntent::RawSearch;
+    if interpreter_outputs_source(command.as_deref(), tokens) {
+        return CommandIntent::ContentDump;
     }
     CommandIntent::Other
+}
+
+fn command_stages(tokens: &[String]) -> Vec<&[String]> {
+    let mut stages = Vec::new();
+    let mut start = 0;
+    for (index, token) in tokens.iter().enumerate() {
+        if !is_separator(token) {
+            continue;
+        }
+        if start < index {
+            stages.push(&tokens[start..index]);
+        }
+        start = index + 1;
+    }
+    if start < tokens.len() {
+        stages.push(&tokens[start..]);
+    }
+    stages
+}
+
+fn interpreter_outputs_source(command: Option<&str>, tokens: &[String]) -> bool {
+    let Some(command) = command.map(command_name) else {
+        return false;
+    };
+    let has_source_path = !path_like_tokens(tokens).is_empty();
+    if !has_source_path {
+        return false;
+    }
+    match command {
+        "python" | "python3" | "node" | "ruby" => tokens.iter().any(|token| {
+            let token = token.as_str();
+            token.contains("read_text")
+                || token.contains("readFileSync")
+                || token.contains("read_file")
+                || token.contains(".read(")
+                || token.contains("open(")
+                || token.contains("File.read")
+        }),
+        "perl" => tokens.iter().any(|token| {
+            perl_reads_files(token) || token.contains("open(") || token.contains("readline")
+        }),
+        _ => false,
+    }
+}
+
+fn perl_reads_files(token: &str) -> bool {
+    token.starts_with('-')
+        && !token.starts_with("--")
+        && token
+            .chars()
+            .skip(1)
+            .any(|character| matches!(character, 'n' | 'p'))
 }
 
 fn git_diff_outputs_source(tokens: &[String]) -> bool {

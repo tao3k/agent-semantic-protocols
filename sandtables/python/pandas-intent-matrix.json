@@ -81,6 +81,7 @@
         "core/groupby",
         "--view",
         "seeds",
+        "--workspace",
         "."
       ],
       "expect": {
@@ -109,6 +110,7 @@
         "core/groupby",
         "--view",
         "seeds",
+        "--workspace",
         "."
       ],
       "expect": {
@@ -136,6 +138,7 @@
         "core/internals",
         "--view",
         "seeds",
+        "--workspace",
         "."
       ],
       "expect": {

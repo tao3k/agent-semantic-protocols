@@ -10,6 +10,11 @@ fn search_pipe_plan_preserves_search_scope_in_primary_command() {
     let package_root = root.join("languages/rust-harness");
     std::fs::create_dir_all(package_root.join("src")).expect("create package src");
     std::fs::write(
+        package_root.join("Cargo.toml"),
+        "[package]\nname = \"rust-harness\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .expect("write package manifest");
+    std::fs::write(
         package_root.join("src/lib.rs"),
         "pub struct HookDecision;\npub struct ClientReceipt;\n",
     )
@@ -25,6 +30,8 @@ fn search_pipe_plan_preserves_search_scope_in_primary_command() {
             "search",
             "pipe",
             "HookDecision ClientReceipt",
+            "--workspace",
+            ".",
             "--view",
             "seeds",
             "languages/rust-harness",

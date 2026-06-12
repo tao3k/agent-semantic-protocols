@@ -2,31 +2,41 @@
 
 #[path = "hook_runtime_skill.rs"]
 mod hook_runtime_skill;
+#[path = "hook_runtime_subagent.rs"]
+mod hook_runtime_subagent;
 
 use super::{
-    codex_enforcement_report, ensure_protocol_binary_installed_for_path, protocol_binary_on_path,
+    codex_enforcement_report, ensure_protocol_binary_installed_for_path,
+    payload_indicates_subagent_context, protocol_binary_on_path,
 };
 use agent_semantic_hook::{
     ActiveContextRecord, DecisionKind, DecisionSubject, HOOK_DECISION_SCHEMA_ID,
     HOOK_DECISION_SCHEMA_VERSION, HOOK_PROTOCOL_ID, HOOK_PROTOCOL_VERSION,
-    HookClassificationRequest, HookDecision, ROOT_BLOCK_BEGIN, ROOT_BLOCK_END, ReasonKind,
-    RuntimeProviderHealthStatus, append_hook_event_state, apply_repeated_deny_replay,
-    build_default_activation, classify_hook_with_config, claude_hook_block, codex_hook_block,
+    HOOK_TRIGGER_PROMPT_FILE_NAME, HookClassificationRequest, HookDecision, ROOT_BLOCK_BEGIN,
+    ROOT_BLOCK_END, ReasonKind, RuntimeProviderHealthStatus, append_hook_event_state,
+    apply_repeated_deny_replay, classify_hook_with_config, claude_hook_block, codex_hook_block,
     codex_user_trust_state_status, default_activation_path, default_claude_settings_path,
-    default_client_config_path, default_client_config_template, discover_activation_path,
-    install_codex_user_trust_state, load_activation, load_client_config, load_or_sync_activation,
-    merge_claude_settings, merge_codex_config, parse_payload, record_active_context,
+    default_client_config_path, default_client_config_template,
+    default_hook_trigger_prompt_message, discover_activation_path, has_recorded_subagent_context,
+    install_codex_user_trust_state, load_activation, load_client_config,
+    load_or_refresh_default_activation, load_or_sync_activation, merge_claude_settings,
+    merge_codex_config, merge_hook_trigger_prompt_document, parse_payload, record_active_context,
     remove_incompatible_hook_event_state, remove_legacy_codex_hook_cache_files,
-    render_platform_response, runtime_profiles_for_activation, runtime_profiles_for_runtime,
-    validate_claude_settings_json, validate_codex_config_toml, write_activation,
+    render_hook_trigger_prompt_document, render_platform_response, runtime_profiles_for_activation,
+    runtime_profiles_for_runtime, subagent_deny_message, validate_claude_settings_json,
+    validate_codex_config_toml,
 };
 use agent_semantic_runtime::ensure_project_hook_cache_dir;
 use hook_runtime_skill::install_agent_semantic_protocols_skill;
+use hook_runtime_subagent::{
+    install_claude_asp_explorer_agent, install_codex_asp_explorer_agent, subagent_model_arg,
+};
 use std::collections::BTreeMap;
 use std::env;
 use std::fs;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
+use std::time::Instant;
 
 pub(super) fn run_hook_runtime_args<I, S>(args: I) -> Result<(), String>
 where
@@ -102,7 +112,12 @@ fn run_hook(args: &[String]) -> Result<(), String> {
         event,
         payload: &payload,
     });
-    annotate_payload_context(&mut decision, &payload);
+    if let Err(error) = annotate_payload_context(&project_root, &mut decision, &payload) {
+        eprintln!("[agent-semantic-hook] failed to annotate hook payload context: {error}");
+    }
+    if let Err(error) = apply_project_hook_trigger_prompt(&project_root, client, &mut decision) {
+        eprintln!("[agent-semantic-hook] failed to apply hook trigger prompt: {error}");
+    }
     if let Err(error) = apply_repeated_deny_replay(&project_root, &mut decision) {
         eprintln!("[agent-semantic-hook] failed to inspect hook replay state: {error}");
     }
@@ -138,7 +153,11 @@ fn default_or_discovered_activation_path() -> PathBuf {
     discover_activation_path(&cwd).unwrap_or_else(|| default_activation_path(&PathBuf::from(".")))
 }
 
-fn annotate_payload_context(decision: &mut HookDecision, payload: &serde_json::Value) {
+fn annotate_payload_context(
+    project_root: &Path,
+    decision: &mut HookDecision,
+    payload: &serde_json::Value,
+) -> Result<(), String> {
     for (field, keys) in [
         ("sessionId", &["session_id", "sessionId"][..]),
         ("transcriptPath", &["transcript_path", "transcriptPath"][..]),
@@ -154,6 +173,27 @@ fn annotate_payload_context(decision: &mut HookDecision, payload: &serde_json::V
                 .insert(field.to_string(), serde_json::Value::String(value));
         }
     }
+    let subagent_context = payload_indicates_subagent_context(payload)
+        || has_recorded_subagent_context(
+            project_root,
+            decision
+                .fields
+                .get("sessionId")
+                .and_then(serde_json::Value::as_str),
+            decision
+                .fields
+                .get("transcriptPath")
+                .and_then(serde_json::Value::as_str),
+        )?;
+    if !decision.fields.contains_key("subagentContext") && subagent_context {
+        decision
+            .fields
+            .insert("subagentContext".to_string(), serde_json::Value::Bool(true));
+    }
+    if decision.decision == DecisionKind::Deny && subagent_context {
+        decision.message = subagent_deny_message(&decision.message);
+    }
+    Ok(())
 }
 
 fn emit_activation_load_failure(
@@ -262,6 +302,25 @@ fn emit_decision(emit: &str, decision: &HookDecision) -> Result<(), String> {
     let output = serde_json::to_string(&output_value)
         .map_err(|error| format!("failed to serialize hook response: {error}"))?;
     println!("{output}");
+    Ok(())
+}
+
+fn apply_project_hook_trigger_prompt(
+    project_root: &Path,
+    client: &str,
+    decision: &mut HookDecision,
+) -> Result<(), String> {
+    let reason = reason_kind_label(decision.reason_kind);
+    if decision.message != default_hook_trigger_prompt_message(reason, &decision.routes) {
+        return Ok(());
+    }
+    let prompt_path = hook_trigger_prompt_path(project_root, client);
+    if !prompt_path.is_file() {
+        return Ok(());
+    }
+    let prompt = fs::read_to_string(&prompt_path)
+        .map_err(|error| format!("failed to read {}: {error}", prompt_path.display()))?;
+    decision.message = render_hook_trigger_prompt_document(&prompt, reason, &decision.routes);
     Ok(())
 }
 
@@ -566,28 +625,42 @@ fn run_doctor(args: &[String]) -> Result<(), String> {
 }
 
 fn run_install(args: &[String]) -> Result<(), String> {
+    let mut timings = InstallTimings::new();
     let client = flag_value(args, "--client").unwrap_or("codex");
     ensure_supported_client(client)?;
+    let subagent_model =
+        subagent_model_arg(client, optional_flag_value(args, "--subagent-model")?)?;
     let project_root = project_root_arg(args)?;
+    timings.mark("args");
     let binary_install = ensure_protocol_binary_installed_for_path()?;
+    timings.mark("binary");
     remove_legacy_codex_hook_cache_files(&project_root)?;
+    timings.mark("legacy-cleanup");
     let activation_path = ensure_project_hook_cache_dir(&project_root)?.join("activation.json");
-    let activation = build_default_activation(&project_root)?;
-    write_activation(&activation_path, &activation)?;
+    let activation_sync = load_or_refresh_default_activation(&activation_path, &project_root)?;
+    let activation_status = activation_sync.status;
+    let activation = activation_sync.activation;
+    timings.mark("activation");
     let runtime_profiles = runtime_profiles_for_activation(&project_root, &activation)?;
+    timings.mark("runtime-profiles");
     remove_incompatible_hook_event_state(&project_root)?;
+    timings.mark("event-state");
     let client_config_path = default_client_config_path(&project_root.to_string_lossy());
     install_default_client_config(&client_config_path)?;
+    timings.mark("client-config");
     let skill_path =
         install_agent_semantic_protocols_skill(&project_root, &activation, &runtime_profiles)?;
+    timings.mark("skill");
     let (config_path, extra_config_receipt) = match client {
-        "codex" => install_codex_project_hooks(&project_root)?,
-        "claude" => install_claude_project_hooks(&project_root)?,
+        "codex" => install_codex_project_hooks(&project_root, &subagent_model)?,
+        "claude" => install_claude_project_hooks(&project_root, &subagent_model)?,
         _ => unreachable!("client support checked before install"),
     };
+    timings.mark("project-hooks");
     println!(
-        "[agent-install] client={client} activation={} activationRuntime=derived clientConfig={} config={}{} skill={} binary=asp binaryPath={} binaryInstall={} mode=updated",
+        "[agent-install] client={client} activation={} activationRuntime=derived activationSync={} clientConfig={} config={}{} skill={} binary=asp binaryPath={} binaryInstall={} mode=updated",
         display_path(&project_root, &activation_path),
+        activation_status,
         display_path(&project_root, &client_config_path),
         display_path(&project_root, &config_path),
         extra_config_receipt,
@@ -596,6 +669,74 @@ fn run_install(args: &[String]) -> Result<(), String> {
         binary_install.status,
     );
     Ok(())
+}
+
+struct InstallTimings {
+    start: Option<Instant>,
+    last: Option<Instant>,
+}
+
+impl InstallTimings {
+    fn new() -> Self {
+        if env::var_os("ASP_HOOK_INSTALL_TIMINGS").is_some() {
+            let now = Instant::now();
+            Self {
+                start: Some(now),
+                last: Some(now),
+            }
+        } else {
+            Self {
+                start: None,
+                last: None,
+            }
+        }
+    }
+
+    fn mark(&mut self, label: &str) {
+        let (Some(start), Some(last)) = (self.start, self.last) else {
+            return;
+        };
+        let now = Instant::now();
+        eprintln!(
+            "[agent-install-timing] step={label} stepMs={:.3} totalMs={:.3}",
+            (now - last).as_secs_f64() * 1000.0,
+            (now - start).as_secs_f64() * 1000.0,
+        );
+        self.last = Some(now);
+    }
+}
+
+fn hook_trigger_prompt_path(project_root: &Path, client: &str) -> PathBuf {
+    match client {
+        "codex" => project_root
+            .join(".codex")
+            .join("agent-semantic-protocol")
+            .join("hooks")
+            .join(HOOK_TRIGGER_PROMPT_FILE_NAME),
+        "claude" => project_root
+            .join(".claude")
+            .join("agent-semantic-protocol")
+            .join("hooks")
+            .join(HOOK_TRIGGER_PROMPT_FILE_NAME),
+        _ => unreachable!("client support checked before prompt path"),
+    }
+}
+
+fn install_hook_trigger_prompt(project_root: &Path, client: &str) -> Result<PathBuf, String> {
+    let path = hook_trigger_prompt_path(project_root, client);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
+    }
+    let existing = match fs::read_to_string(&path) {
+        Ok(contents) => Some(contents),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => None,
+        Err(error) => return Err(format!("failed to read {}: {error}", path.display())),
+    };
+    let merged = merge_hook_trigger_prompt_document(existing.as_deref());
+    fs::write(&path, merged.as_bytes())
+        .map_err(|error| format!("failed to write {}: {error}", path.display()))?;
+    Ok(path)
 }
 
 fn activation_relative_project_root(activation_path: &Path, project_root: &str) -> PathBuf {
@@ -611,7 +752,10 @@ fn activation_relative_project_root(activation_path: &Path, project_root: &str) 
     fs::canonicalize(&root).unwrap_or(root)
 }
 
-fn install_codex_project_hooks(project_root: &Path) -> Result<(PathBuf, String), String> {
+fn install_codex_project_hooks(
+    project_root: &Path,
+    subagent_model: &str,
+) -> Result<(PathBuf, String), String> {
     let codex_dir = project_root.join(".codex");
     fs::create_dir_all(&codex_dir)
         .map_err(|error| format!("failed to create {}: {error}", codex_dir.display()))?;
@@ -627,13 +771,23 @@ fn install_codex_project_hooks(project_root: &Path) -> Result<(PathBuf, String),
     fs::write(&config_path, merged.as_bytes())
         .map_err(|error| format!("failed to write {}: {error}", config_path.display()))?;
     let user_config_path = install_codex_user_trust_state(&config_path)?;
+    let trigger_prompt_path = install_hook_trigger_prompt(project_root, "codex")?;
+    let subagent_path = install_codex_asp_explorer_agent(project_root, subagent_model)?;
     Ok((
         config_path,
-        format!(" trustConfig={}", user_config_path.display()),
+        format!(
+            " trustConfig={} triggerPrompt={} subagent={}",
+            user_config_path.display(),
+            display_path(project_root, &trigger_prompt_path),
+            display_path(project_root, &subagent_path)
+        ),
     ))
 }
 
-fn install_claude_project_hooks(project_root: &Path) -> Result<(PathBuf, String), String> {
+fn install_claude_project_hooks(
+    project_root: &Path,
+    subagent_model: &str,
+) -> Result<(PathBuf, String), String> {
     let settings_path = default_claude_settings_path(&project_root.to_string_lossy());
     if let Some(parent) = settings_path.parent() {
         fs::create_dir_all(parent)
@@ -649,7 +803,16 @@ fn install_claude_project_hooks(project_root: &Path) -> Result<(PathBuf, String)
         .map_err(|error| format!("refusing to write invalid Claude settings JSON: {error}"))?;
     fs::write(&settings_path, merged.as_bytes())
         .map_err(|error| format!("failed to write {}: {error}", settings_path.display()))?;
-    Ok((settings_path, String::new()))
+    let trigger_prompt_path = install_hook_trigger_prompt(project_root, "claude")?;
+    let subagent_path = install_claude_asp_explorer_agent(project_root, subagent_model)?;
+    Ok((
+        settings_path,
+        format!(
+            " triggerPrompt={} subagent={}",
+            display_path(project_root, &trigger_prompt_path),
+            display_path(project_root, &subagent_path)
+        ),
+    ))
 }
 
 fn install_default_client_config(path: &Path) -> Result<(), String> {
@@ -731,6 +894,25 @@ fn flag_value<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
         .map(|window| window[1].as_str())
 }
 
+fn optional_flag_value<'a>(args: &'a [String], flag: &str) -> Result<Option<&'a str>, String> {
+    let inline_prefix = format!("{flag}=");
+    for (index, arg) in args.iter().enumerate() {
+        if let Some(value) = arg.strip_prefix(&inline_prefix) {
+            return Ok(Some(value));
+        }
+        if arg == flag {
+            let value = args
+                .get(index + 1)
+                .ok_or_else(|| format!("{flag} requires a value"))?;
+            if value.starts_with("--") {
+                return Err(format!("{flag} requires a value"));
+            }
+            return Ok(Some(value));
+        }
+    }
+    Ok(None)
+}
+
 fn first_positional(args: &[String]) -> Option<&str> {
     positionals(args).first().copied()
 }
@@ -745,7 +927,7 @@ fn positionals(args: &[String]) -> Vec<&str> {
         }
         if matches!(
             arg.as_str(),
-            "--client" | "--activation" | "--config" | "--emit" | "--output"
+            "--client" | "--activation" | "--config" | "--emit" | "--output" | "--subagent-model"
         ) {
             skip_next = true;
             continue;

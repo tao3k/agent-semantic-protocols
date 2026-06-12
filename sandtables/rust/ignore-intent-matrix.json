@@ -149,17 +149,18 @@
         "seeds",
         "--seeds",
         "4",
+        "--workspace",
         "."
       ],
       "expect": {
         "lineProtocol": true,
         "stdoutContains": [
-          "[search-prime]",
-          "legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next",
-          "G>{",
-          "rank=",
-          "frontier=",
-          "entries=owner-tests(O=>covering-tests+test-entrypoints+fixtures)"
+        "[search-prime]",
+        "legend: ID=kind:role(value)!next; entries profile(selectors=>returns); frontier ID.next",
+        "entries=owner-tests(O=>covering-tests+test-entrypoints+fixtures)",
+        "G>{",
+        "rank=",
+          "frontier="
         ],
         "maxStdoutLinesWarn": 10,
         "maxElapsedMsWarn": 2500,
@@ -186,6 +187,7 @@
         "seeds",
         "--seeds",
         "4",
+        "--workspace",
         "."
       ],
       "expect": {

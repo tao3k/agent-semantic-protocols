@@ -52,7 +52,7 @@
         "stdoutContains": [
           "[guide] lang=rust provider=asp-rust protocol=guide.v1",
           "|catalog reasoningProfiles=owner-query,query-deps,owner-tests,finding-frontier,feature-cfg entries=owner-query,query-deps,owner-tests,finding-frontier,feature-cfg routes=path,read-frontier",
-          "next=\"search reasoning <owner-query|query-deps|owner-tests|finding-frontier|feature-cfg> <typed-selectors>\""
+          "next=\"use search-guide command=search reasoning <profile> --owner/--query/--dependency ... --view seeds\""
         ],
         "stdoutNotContains": [
           "owner-items",
@@ -138,7 +138,6 @@
         ],
         "stdoutNotContains": [
           "profiles=",
-          "owner-items",
           "read-frontier("
         ],
         "guideQuality": {
@@ -150,7 +149,6 @@
           },
           "outputNotContains": [
             "profiles=",
-            "owner-items",
             "read-frontier("
           ]
         },

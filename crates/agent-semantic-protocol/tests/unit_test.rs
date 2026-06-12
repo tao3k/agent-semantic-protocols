@@ -21,9 +21,10 @@ mod document_provider;
 mod graph_render;
 #[path = "unit/healthcheck.rs"]
 mod healthcheck;
-
 #[path = "unit/hook_command.rs"]
 mod hook_command;
+#[path = "unit/hook_runtime_context.rs"]
+mod hook_runtime_context;
 #[path = "unit/provider_command/mod.rs"]
 mod provider_command;
 #[path = "../../agent-semantic-hook/tests/unit/rust_harness_activation/mod.rs"]

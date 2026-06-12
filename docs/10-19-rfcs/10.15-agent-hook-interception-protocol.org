@@ -130,6 +130,30 @@ through =PATH=.  Copying a per-repository binary into
 the activation file and config block are repository-owned, but the classifier
 binary is a global toolchain component.
 
+=asp hook install= also owns the project-scoped custom subagent bootstrap for
+clients that support native subagents.  For Codex, install creates a small
+read-only =asp-explorer= custom-agent profile under =.codex/agents/= by
+default, using the official standalone custom-agent TOML shape with =name=, =description=,
+=developer_instructions=, =model=, =model_reasoning_effort=, and
+=sandbox_mode=.  The default Codex model is =gpt-5.3-codex-spark= so routine
+ASP exploration can run on cheap, read-only workers.  For Claude Code, install
+creates the matching =.claude/agents/asp-explorer.md= profile by default with YAML
+frontmatter, model =haiku=, =permissionMode: plan=, and bounded turn budgets.
+The parent or main agent, not the hook, owns the shared reasoning tree and
+receipt ledger.  It may spawn several instances of the same =asp-explorer=
+profile, one per =actionFrontier= or =targetActions= reasoning branch, then fan
+in compact =[search-subagent]= receipts, update the tree, and optionally issue
+another round before final main-model verification.  Worker instances do not
+share context windows; their only shared state is the parent-owned branch
+prompt plus receipt ledger.  The installer SHOULD remove stale generated
+role-specific profiles from earlier revisions, such as =asp-explorer-owner=,
+=asp-explorer-rg=, and =asp-explorer-selector=.  The optional
+=--subagent-model <model>= install flag pins the generated model field for the
+selected client's one generated profile; it is not an opt-in switch for the
+feature.  Hooks still do not spawn subagents or rewrite prompts.  They install
+the native agent configuration and continue to enforce tool/runtime policy when
+the client later chooses to spawn those agents.
+
 =.codex/agent-semantic-protocol/hooks= is durable project hook policy.  The
 versioned client policy lives at =config.toml= there.  Generated activation,
 provider profile registries, and hook event logs must live under

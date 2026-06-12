@@ -239,15 +239,17 @@ and safety constraints; they must not supply executable shell strings as search
 facts.  Every ARI alias, locator, frontier action, and omit/avoid reference must
 correspond to a node or action in the source JSON packet.
 
-The incremental =search pipe= landing path is to expose typed
-=actionFrontier[]= facts in the =semantic-graph-turbo-request.v1= packet before
-or alongside prompt-visible ARI action rows.  Each action fact carries the
-renderer action id, action kind, capability id, target, target role, and typed
-fields such as =selector=, =ownerPath=, =query=, =scope=, =recipe=, or =names=.
-It must not carry =command=, =argv=, or provider-supplied shell strings.  The
-visible =nextCommand= line remains a display convenience materialized from
-these typed facts, not a protocol fact that production code parses back into an
-action.
+The incremental fast-search landing path is to expose typed =actionFrontier[]=
+facts in the =semantic-graph-turbo-request.v1= packet before or alongside
+prompt-visible ARI action rows.  This applies to =search pipe= and the
+query-wrapper surfaces =asp fd -query= and =asp rg -query=.  Each action fact
+carries the renderer action id, action kind, capability id, target, target role,
+and typed fields such as =selector=, =ownerPath=, =query=, =queryClauses=,
+=scope=, =recipe=, or =names=.  It must not carry =command=, =argv=, or
+provider-supplied shell strings.  The visible =nextCommand= line remains a
+display convenience materialized from these typed facts, not a protocol fact
+that production code parses back into an action.  =search pipe --view
+graph-turbo-request= is the typed packet spelling for this migration.
 
 * Dependency topology cache boundary
 
@@ -805,6 +807,10 @@ frontier order, or synthesize =frontierActions= outside the graph-turbo result.
 The =failure-frontier= profile owns failure, assert, owner, hot, key, evidence,
 and test node transitions; the compact =[search-failure]= text is only a
 projection of that profile result.
+Failure-frontier follow-up reads are =query-code= actions in the result packet.
+Compact output may render them as =C1.query-code(...)!query-code= rows for
+prompt readability, but it must not render or require legacy
+=H.code=>asp ... query --selector ...= command strings as the machine contract.
 The default =[search-failure]= projection is an agent prompt surface, so it
 must keep failure facts, candidate owners, hot blocks, query profiles,
 frontier actions, =omit=, and =avoid=, while omitting diagnostic rows such as
@@ -1199,12 +1205,12 @@ Completed:
   24 calls / 23 suppressible and 11 calls / 10 suppressible.
 - [X] =primeSuppression= now emits executable guidance rows as well as counts:
   each action records =decision=suppress=, =replacement=reuse-prime-frontier=,
-  the avoided =asp <language> search prime --view seeds .= command, the kept
+  the avoided =asp <language> search prime --workspace <workspace-root> --view seeds= command, the kept
   packet path, and the suppressed packet path.  This keeps runtime suppression
   and agent guidance grounded in packet history rather than hidden prompt
   heuristics.
 - [X] The local client cache probe now performs fresh-prime reuse for
-  =search prime --view seeds .=.  Exact request-fingerprint replay still wins;
+  =search prime --workspace <workspace-root> --view seeds=.  Exact request-fingerprint replay still wins;
   when that misses, the probe may reuse the latest same provider/project
   =search/prime= generation if its file hashes are fresh and its
   =search-output= artifact is replay-safe.  This turns the repeated-prime

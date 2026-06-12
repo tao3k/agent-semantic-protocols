@@ -6,6 +6,9 @@ use serde_json::json;
 
 use crate::classifier::{command, command_with_stdin, provider, provider_routes};
 
+const HOOK_TRIGGER_PROMPT_TEMPLATE: &str =
+    include_str!("../../../../templates/hook_trigger_prompt.md");
+
 pub(super) fn assert_raw_search_denied(command: &str, provider_id: &str) {
     let decision = classify_hook(
         &polyglot_registry(),
@@ -103,69 +106,16 @@ pub(super) fn assert_content_dump_denied(command: &str, provider_id: &str) {
 }
 
 fn assert_agent_facade_decision(decision: &HookDecision, command: &str) {
-    assert!(
-        decision.message.starts_with("ASP hook denied `"),
-        "{command}: {}",
-        decision.message
-    );
-    assert!(
-        decision
-            .message
-            .contains("@.agents/skills/agent-semantic-protocols/SKILL.md"),
-        "{command}: {}",
-        decision.message
-    );
-    assert!(
-        decision.message.contains("## ASP Hook Recovery"),
-        "{command}: {}",
-        decision.message
-    );
-    assert!(
-        decision.message.contains(&format!(
-            "blocked `{}`",
-            reason_kind_label(decision.reason_kind)
-        )),
-        "{command}: {}",
-        decision.message
-    );
-    assert!(
-        decision.message.contains("## Stop")
-            && decision.message.contains("## Run Next")
-            && decision.message.contains("## Agent Flow")
-            && decision.message.contains("## Rules"),
-        "{command}: {}",
-        decision.message
-    );
-    assert!(
-        decision
-            .message
-            .contains("Do not retry `Read`, `cat`, `sed`, `rg`, or source-dump commands"),
-        "{command}: {}",
-        decision.message
-    );
+    let expected_message = managed_prompt_template()
+        .replace("{reason}", reason_kind_label(decision.reason_kind))
+        .replace("{routes}", &routes_markdown_for_test(&decision.routes));
+    assert_eq!(decision.message, expected_message, "{command}");
     for route in &decision.routes {
         assert_eq!(route.binary, "asp", "{command}: {:?}", route.argv);
         assert_eq!(
             route.argv.first().map(String::as_str),
             Some("asp"),
             "{command}"
-        );
-        assert!(
-            decision
-                .message
-                .contains(&format!("asp {} query", route.language_id))
-                || decision
-                    .message
-                    .contains(&format!("asp {} search", route.language_id)),
-            "{command}: {}",
-            decision.message
-        );
-        assert!(
-            decision
-                .message
-                .contains(&format!("asp {} guide .", route.language_id)),
-            "{command}: {}",
-            decision.message
         );
     }
     for stale in [
@@ -184,6 +134,44 @@ fn assert_agent_facade_decision(decision: &HookDecision, command: &str) {
             decision.message
         );
     }
+}
+
+fn managed_prompt_template() -> &'static str {
+    HOOK_TRIGGER_PROMPT_TEMPLATE
+        .split("<!-- ASP-HOOK-TRIGGER-PROMPT:MANAGED-BEGIN -->")
+        .nth(1)
+        .expect("managed prompt begin")
+        .split("<!-- ASP-HOOK-TRIGGER-PROMPT:MANAGED-END -->")
+        .next()
+        .expect("managed prompt end")
+        .trim_matches('\n')
+}
+
+fn routes_markdown_for_test(routes: &[agent_semantic_hook::DecisionRoute]) -> String {
+    if routes.is_empty() {
+        return "```sh\nasp guide\n```".to_string();
+    }
+    routes
+        .iter()
+        .map(|route| format!("```sh\n{}\n```", command_line_for_test(&route.argv)))
+        .collect::<Vec<_>>()
+        .join("\n\n")
+}
+
+fn command_line_for_test(argv: &[String]) -> String {
+    argv.iter()
+        .map(|arg| {
+            if arg.chars().all(|character| {
+                character.is_ascii_alphanumeric()
+                    || matches!(character, '-' | '_' | '.' | '/' | ':')
+            }) {
+                arg.to_string()
+            } else {
+                format!("'{}'", arg.replace('\'', "'\\''"))
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn reason_kind_label(reason_kind: ReasonKind) -> &'static str {

@@ -38,7 +38,9 @@ fn search_suggest_is_advisory_and_does_not_spawn_provider() {
     );
     assert!(stdout.contains("asp search history audit ."), "{stdout}");
     assert!(
-        stdout.contains("asp rust search pipe 'HookDecision ClientReceipt' --view seeds ."),
+        stdout.contains(
+            "asp rust search pipe 'HookDecision ClientReceipt' --workspace . --view seeds"
+        ),
         "{stdout}"
     );
     let removed_option = format!("--{}", "pipe");

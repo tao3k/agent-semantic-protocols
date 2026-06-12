@@ -38,23 +38,23 @@ fn platform_response_wraps_denied_decision_for_codex_hooks() {
     let reason = response["hookSpecificOutput"]["permissionDecisionReason"]
         .as_str()
         .expect("permission decision reason");
-    assert!(reason.starts_with("ASP hook denied `"), "{reason}");
     assert!(
-        reason.contains("@.agents/skills/agent-semantic-protocols/SKILL.md"),
+        reason.starts_with("ASP hook blocked `direct-source-read`"),
         "{reason}"
     );
-    assert!(reason.contains("## ASP Hook Recovery"), "{reason}");
+    assert!(reason.contains("call `send_input`"), "{reason}");
+    assert!(reason.contains("call `spawn_agent`"), "{reason}");
+    assert!(reason.contains("`fork_context=true`"), "{reason}");
+    assert!(reason.contains("`asp-search-subagent(role,action,evidence,missing,next,risk)`"));
+    assert!(reason.contains("keep model and reasoning settings in Codex config"));
+    assert!(
+        reason.contains("If subagents are unavailable, run the safe route directly."),
+        "{reason}"
+    );
     let system_message = response["systemMessage"].as_str().expect("system message");
     assert_eq!(system_message, reason);
-    assert!(system_message.contains("## Stop"), "{system_message}");
-    assert!(system_message.contains("## Run Next"), "{system_message}");
     assert!(
-        system_message.contains("## Detected Binaries"),
-        "{system_message}"
-    );
-    assert!(system_message.contains("## Agent Flow"), "{system_message}");
-    assert!(
-        system_message.contains("Do not retry `Read`, `cat`, `sed`, `rg`, or source-dump commands"),
+        system_message.contains("do not retry raw read/search commands on the same source"),
         "{system_message}"
     );
     assert!(
@@ -63,36 +63,54 @@ fn platform_response_wraps_denied_decision_for_codex_hooks() {
         ),
         "{system_message}"
     );
-    assert!(
-        system_message.contains("`asp typescript guide .`"),
-        "{system_message}"
-    );
-    assert!(
-        system_message.contains(
-            "- language=typescript provider=ts-harness command=`ts-harness` facade=`asp typescript`"
-        ),
-        "{system_message}"
-    );
-    assert!(
-        system_message.contains("asp typescript search prime --view seeds ."),
-        "{system_message}"
-    );
-    assert!(
-        system_message.contains("asp typescript query guide treesitter ."),
-        "{system_message}"
-    );
-    assert!(system_message.contains("apply_patch"), "{system_message}");
-    assert!(
-        system_message.contains(
-            "`ast-patch` is available for structural/mechanical edits after a provider dry-run receipt"
-        ),
-        "{system_message}"
-    );
     assert!(!system_message.contains("|run-next"), "{system_message}");
     assert!(
         !system_message.contains("protocol=asp-hook-recovery.v1"),
         "{system_message}"
     );
+}
+
+#[test]
+fn subagent_platform_response_does_not_prompt_nested_spawn() {
+    let mut decision = classify_hook(
+        &registry(),
+        "codex",
+        "pre-tool",
+        &json!({
+            "tool_name": "Read",
+            "tool_input": {"path": "src/cli/agent-hooks.ts"}
+        }),
+    );
+    decision
+        .fields
+        .insert("subagentContext".to_string(), json!(true));
+
+    let response = render_platform_response(&decision).unwrap();
+
+    let reason = response["hookSpecificOutput"]["permissionDecisionReason"]
+        .as_str()
+        .expect("permission decision reason");
+    assert!(!reason.contains("send_input"), "{reason}");
+    assert!(!reason.contains("spawn_agent"), "{reason}");
+    assert!(!reason.contains("agent_type"), "{reason}");
+    assert!(
+        reason.contains("already running inside a subagent"),
+        "{reason}"
+    );
+    assert!(reason.contains("`[asp-search-subagent]`"), "{reason}");
+    assert!(
+        reason.contains(
+            "asp typescript query --selector src/cli/agent-hooks.ts --workspace . --code"
+        ),
+        "{reason}"
+    );
+    let context = response["hookSpecificOutput"]["additionalContext"]
+        .as_str()
+        .expect("decision context");
+    assert!(!context.contains("send_input"), "{context}");
+    assert!(!context.contains("spawn_agent"), "{context}");
+    assert!(!context.contains("agent_type"), "{context}");
+    assert!(context.contains("\"subagentContext\":true"), "{context}");
 }
 
 #[test]
@@ -105,7 +123,7 @@ fn permission_request_allow_renders_explicit_allow_for_claude() {
             "hook_event_name": "PermissionRequest",
             "tool_name": "Bash",
             "tool_input": {
-                "command": "asp typescript search prime --view seeds ."
+                "command": "asp typescript search prime --workspace . --view seeds"
             }
         }),
     );
@@ -151,13 +169,13 @@ fn user_prompt_submit_allow_adds_search_first_context_for_claude() {
         .expect("user prompt additional context");
     assert!(context.contains("ASP search-first workflow"), "{context}");
     assert!(
-        context.contains("asp <language> search prime --view seeds ."),
+        context.contains("asp <language> search prime --workspace <workspace-root> --view seeds"),
         "{context}"
     );
     assert!(context.contains("at most once"), "{context}");
     assert!(context.contains("immediate next ASP command"), "{context}");
     assert!(
-        context.contains("asp <language> search pipe '<question-or-feature-term>' --view seeds ."),
+        context.contains("asp <language> search pipe '<question-or-feature-term>' --workspace <workspace-root> --view seeds"),
         "{context}"
     );
     assert!(
@@ -263,60 +281,26 @@ fn platform_response_keeps_multi_language_agent_flows_separate() {
     let reason = response["hookSpecificOutput"]["permissionDecisionReason"]
         .as_str()
         .expect("permission decision reason");
-    let rust_flow = language_flow(reason, "Rust", "TypeScript");
-    let typescript_flow = language_flow(reason, "TypeScript", "Python");
-    let python_flow = language_flow(reason, "Python", "Rules");
-
-    assert!(reason.contains("## Detected Binaries"), "{reason}");
-    assert!(
-        reason
-            .contains("- language=rust provider=rs-harness command=`rs-harness` facade=`asp rust`"),
-        "{reason}"
-    );
     assert!(
         reason.contains(
-            "- language=typescript provider=ts-harness command=`ts-harness` facade=`asp typescript`"
+            "asp rust query --selector crates/agent-semantic-hook/src/classifier.rs --workspace . --code"
         ),
         "{reason}"
     );
     assert!(
         reason.contains(
-            "- language=python provider=py-harness command=`py-harness` facade=`asp python`"
+            "asp typescript query --selector languages/typescript-lang-project-harness/src/config.ts --workspace . --code"
         ),
         "{reason}"
     );
     assert!(
-        rust_flow.contains("1. Start from the language guide"),
+        reason.contains(
+            "asp python query --selector languages/python-lang-project-harness/src/python_lang_project_harness/_project_config.py --workspace . --code"
+        ),
         "{reason}"
     );
-    assert!(rust_flow.contains("`asp rust guide .`"), "{reason}");
-    assert!(
-        rust_flow.contains("`asp rust check --changed .`"),
-        "{reason}"
-    );
-    assert!(!rust_flow.contains("asp typescript"), "{reason}");
-    assert!(!rust_flow.contains("asp python"), "{reason}");
-    assert!(
-        typescript_flow.contains("1. Start from the language guide"),
-        "{reason}"
-    );
-    assert!(
-        typescript_flow.contains("`asp typescript guide .`"),
-        "{reason}"
-    );
-    assert!(
-        typescript_flow.contains("`asp typescript check --changed .`"),
-        "{reason}"
-    );
-    assert!(
-        python_flow.contains("1. Start from the language guide"),
-        "{reason}"
-    );
-    assert!(python_flow.contains("`asp python guide .`"), "{reason}");
-    assert!(
-        python_flow.contains("`asp python check --changed .`"),
-        "{reason}"
-    );
+    assert!(!reason.contains("## Detected Binaries"), "{reason}");
+    assert!(!reason.contains("### TypeScript"), "{reason}");
 }
 
 #[test]
@@ -361,15 +345,10 @@ enabled = false
         .as_str()
         .expect("permission decision reason");
 
-    assert!(
-        reason.contains("experimental.semanticAstPatch.enabled = false"),
-        "{reason}"
-    );
-    assert!(reason.contains("patch with `apply_patch`"), "{reason}");
-    assert!(
-        reason.contains("`ast-patch` is disabled by hook config"),
-        "{reason}"
-    );
+    assert!(reason.contains("call `send_input`"), "{reason}");
+    assert!(reason.contains("call `spawn_agent`"), "{reason}");
+    assert!(reason.contains("`fork_context=true`"), "{reason}");
+    assert!(reason.contains("keep model and reasoning settings in Codex config"));
     assert!(
         !reason.contains(
             "`ast-patch` is available for structural/mechanical edits after a provider dry-run receipt"
@@ -417,20 +396,4 @@ fn provider_for_language(
             ])),
         ),
     )
-}
-
-fn language_flow<'a>(message: &'a str, heading: &str, next_heading: &str) -> &'a str {
-    let start = message
-        .find(&format!("### {heading}"))
-        .unwrap_or_else(|| panic!("missing {heading} flow:\n{message}"));
-    let end = message[start..]
-        .find(&format!("### {next_heading}"))
-        .map(|offset| start + offset)
-        .or_else(|| {
-            message[start..]
-                .find("## Rules")
-                .map(|offset| start + offset)
-        })
-        .unwrap_or_else(|| panic!("missing {next_heading} boundary:\n{message}"));
-    &message[start..end]
 }

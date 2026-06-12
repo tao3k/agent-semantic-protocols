@@ -34,8 +34,7 @@
           "routes.0.kind": "query"
         },
         "stdoutJsonContains": {
-          "message": "py-harness agent guide .",
-          "routes.0.argv": "py-harness"
+          "routes.0.argv": "asp"
         }
       }
     },
@@ -58,8 +57,9 @@
           "reasonKind": "direct-source-read",
           "languageIds.0": "python",
           "routes.0.kind": "query",
-          "routes.0.argv.3": "direct-source-read",
-          "routes.0.argv.5": "src/tools/semantic_sandtable/guide_quality.py"
+          "routes.0.argv.3": "--selector",
+          "routes.0.argv.4": "src/tools/semantic_sandtable/guide_quality.py",
+          "routes.0.argv.5": "--workspace"
         }
       }
     },
@@ -83,8 +83,9 @@
           "languageIds.0": "python",
           "subject.toolName": "functions.read_file",
           "routes.0.kind": "query",
-          "routes.0.argv.3": "direct-source-read",
-          "routes.0.argv.5": "src/tools/semantic_sandtable/guide_quality.py"
+          "routes.0.argv.3": "--selector",
+          "routes.0.argv.4": "src/tools/semantic_sandtable/guide_quality.py",
+          "routes.0.argv.5": "--workspace"
         }
       }
     }

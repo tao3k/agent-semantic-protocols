@@ -3,6 +3,9 @@
 #[path = "unit/classifier/mod.rs"]
 mod classifier;
 
+#[path = "unit/client_hook_config.rs"]
+mod client_hook_config;
+
 #[path = "unit/codex_config.rs"]
 mod codex_config;
 

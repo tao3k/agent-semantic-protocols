@@ -73,6 +73,26 @@ semantic-search packet.  TypeScript =callsite= is owner-level in this slice: it
 uses parser-owned import/reexport edges, and can later be upgraded with
 language-service identifier references without changing the packet schema.
 
+* Custom subagent execution
+
+When the client runtime exposes a project custom agent role such as
+=asp_explorer=, the parent agent may spawn one read-only worker per independent
+=actionFrontier= or =targetActions= branch.  The branch prompt carries the safe
+ASP command group, parent-known evidence, missing facts, and risk; the worker
+returns one =[search-subagent]= receipt for parent fan-in and main-model
+verification.
+
+The custom role name is not a shared protocol requirement.  If the runtime only
+exposes built-in subagent roles, the parent should use the built-in explorer role
+with the same ASP Explorer branch prompt.  If subagents are unavailable, the
+parent runs the same command groups sequentially and synthesizes the same
+receipts.
+
+Codex role visibility is owned by the loaded config layer stack.  Installing the
+project role writes both the role file and its project config declaration, but an
+already-running thread may need a reload or new thread before the generated
+=spawn_agent= tool schema lists =asp_explorer=.
+
 * Config: LLM generates, harness validates
 
 The agent can write:

@@ -78,6 +78,12 @@ pub struct HookClientRuleMatchConfig {
     pub path_any: Vec<String>,
     #[serde(default)]
     pub path_glob_any: Vec<String>,
+    #[serde(default)]
+    pub argv_source_any: Vec<String>,
+    #[serde(default)]
+    pub argv_source_glob_any: Vec<String>,
+    #[serde(default)]
+    pub argv_source_exclude_flag_any: Vec<String>,
 }
 
 /// Route suggestion from project-local hook config.
@@ -156,7 +162,7 @@ pub fn default_hook_client_config_template() -> String {
     format!(
         r#"# Semantic agent client hook config.
 # Loaded by `asp hook` on every client hook invocation.
-# Missing or comment-only rules preserve the built-in classifier behavior.
+# Generated rules extend the built-in classifier with configurable shell argv evidence.
 schemaId = "{CLIENT_HOOK_CONFIG_SCHEMA_ID}"
 schemaVersion = "{CLIENT_HOOK_CONFIG_SCHEMA_VERSION}"
 protocolId = "{HOOK_PROTOCOL_ID}"
@@ -166,29 +172,35 @@ protocolVersion = "{HOOK_PROTOCOL_VERSION}"
 [experimental.semanticAstPatch]
 enabled = false
 
-# Uncomment and edit this example to add a project-local rule.
-# [[rules]]
-# id = "deny-rust-raw-search"
-# enabled = true
-# event = "pre-tool"
-# priority = 100
-# decision = "deny"
-# reasonKind = "raw-broad-search"
-# languageIds = ["rust"]
-# message = "Use asp rust search ingest instead of raw Rust source search."
-#
-# [rules.match]
-# tool = "Bash"
-# commandAny = ["rg", "grep", "fd", "find"]
-# pathGlobAny = ["**/*.rs"]
-#
-# [[rules.routes]]
-# providerId = "rs-harness"
-# languageId = "rust"
-# binary = "asp"
-# kind = "ingest"
-# argv = ["asp", "rust", "search", "ingest", "items", "tests", "--view", "seeds", "."]
-# stdinMode = "pipe-candidates"
+[[rules]]
+id = "deny-shell-source-argv"
+enabled = true
+event = "pre-tool"
+priority = 80
+decision = "deny"
+reasonKind = "bulk-source-dump"
+message = "Use the language harness instead of shell argv source reads."
+
+[rules.match]
+tool = "Bash"
+commandAny = ["sed", "perl", "rg", "wl"]
+argvSourceGlobAny = [
+  "*.rs", "**/*.rs",
+  "*.py", "**/*.py",
+  "*.ts", "**/*.ts",
+  "*.tsx", "**/*.tsx",
+  "*.js", "**/*.js",
+  "*.jsx", "**/*.jsx",
+  "*.mts", "**/*.mts",
+  "*.cts", "**/*.cts",
+  "*.mjs", "**/*.mjs",
+  "*.cjs", "**/*.cjs",
+  "*.ss", "**/*.ss",
+  "*.scm", "**/*.scm",
+  "*.sld", "**/*.sld",
+  "*.jl", "**/*.jl",
+]
+argvSourceExcludeFlagAny = ["--output", "--output-file", "--out", "-o"]
 "#
     )
 }
@@ -271,6 +283,18 @@ fn validate_match_schema_shape(match_config: &HookClientRuleMatchConfig) -> Resu
     )?;
     validate_non_empty_values("rules[].match.pathAny[]", &match_config.path_any)?;
     validate_non_empty_values("rules[].match.pathGlobAny[]", &match_config.path_glob_any)?;
+    validate_non_empty_values(
+        "rules[].match.argvSourceAny[]",
+        &match_config.argv_source_any,
+    )?;
+    validate_non_empty_values(
+        "rules[].match.argvSourceGlobAny[]",
+        &match_config.argv_source_glob_any,
+    )?;
+    validate_non_empty_values(
+        "rules[].match.argvSourceExcludeFlagAny[]",
+        &match_config.argv_source_exclude_flag_any,
+    )?;
     Ok(())
 }
 

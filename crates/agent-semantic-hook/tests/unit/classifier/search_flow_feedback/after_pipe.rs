@@ -14,7 +14,7 @@ fn pre_tool_denies_repeated_search_pipe_after_pipe() {
             "post-tool",
             "session-effect",
             "transcript-effect.jsonl",
-            "asp typescript search prime --view seeds .",
+            "asp typescript search prime --workspace . --view seeds",
         ),
     )
     .expect("write prime event");
@@ -25,7 +25,7 @@ fn pre_tool_denies_repeated_search_pipe_after_pipe() {
             "post-tool",
             "session-effect",
             "transcript-effect.jsonl",
-            "asp typescript search pipe 'Effect concurrency Fiber' --view seeds .",
+            "asp typescript search pipe 'Effect concurrency Fiber' --workspace . --view seeds",
         ),
     )
     .expect("write pipe event");
@@ -41,7 +41,7 @@ fn pre_tool_denies_repeated_search_pipe_after_pipe() {
             "transcript_path": "transcript-effect.jsonl",
             "tool_name": "Bash",
             "tool_input": {
-                "command": "asp typescript search pipe 'concurrency' --view seeds ."
+                "command": "asp typescript search pipe 'concurrency' --workspace . --view seeds"
             }
         }),
     );
@@ -68,7 +68,7 @@ fn pre_tool_denies_unbounded_direct_source_read_after_pipe() {
             "post-tool",
             "session-effect",
             "transcript-effect.jsonl",
-            "asp typescript search pipe 'Effect concurrency Fiber' --view seeds .",
+            "asp typescript search pipe 'Effect concurrency Fiber' --workspace . --view seeds",
         ),
     )
     .expect("write pipe event");
@@ -114,7 +114,7 @@ fn pre_tool_allows_bounded_low_priority_direct_source_read_after_pipe() {
             "post-tool",
             "session-effect",
             "transcript-effect.jsonl",
-            "asp typescript search pipe 'Effect concurrency Fiber' --view seeds .",
+            "asp typescript search pipe 'Effect concurrency Fiber' --workspace . --view seeds",
         ),
     )
     .expect("write pipe event");
@@ -150,7 +150,7 @@ fn pre_tool_denies_broad_direct_source_read_after_pipe() {
             "post-tool",
             "session-effect",
             "transcript-effect.jsonl",
-            "asp typescript search pipe 'Effect concurrency Fiber' --view seeds .",
+            "asp typescript search pipe 'Effect concurrency Fiber' --workspace . --view seeds",
         ),
     )
     .expect("write pipe event");
@@ -194,7 +194,7 @@ fn pre_tool_allows_selector_code_query_after_pipe() {
             "post-tool",
             "session-effect",
             "transcript-effect.jsonl",
-            "asp typescript search pipe 'Effect concurrency Fiber' --view seeds .",
+            "asp typescript search pipe 'Effect concurrency Fiber' --workspace . --view seeds",
         ),
     )
     .expect("write pipe event");
@@ -211,6 +211,52 @@ fn pre_tool_allows_selector_code_query_after_pipe() {
             "tool_name": "Bash",
             "tool_input": {
                 "command": "asp typescript query --selector packages/effect/src/Fiber.ts:110:112 --workspace . --code"
+            }
+        }),
+    );
+
+    assert_eq!(decision.decision, DecisionKind::Allow);
+    assert!(!decision.fields.contains_key("hookFeedback"));
+    let _ = fs::remove_dir_all(project_root);
+}
+
+#[test]
+fn pre_tool_does_not_parse_apply_patch_text_as_search_flow_command() {
+    let project_root = temp_project_root("asp-hook-apply-patch-text-after-pipe");
+    append_hook_event_state(
+        &project_root,
+        &allowed_command_decision(
+            "codex",
+            "post-tool",
+            "session-effect",
+            "transcript-effect.jsonl",
+            "asp typescript search pipe 'Effect concurrency Fiber' --workspace . --view seeds",
+        ),
+    )
+    .expect("write pipe event");
+    let runtime = runtime_for_project(&project_root);
+    let embedded_command = format!(
+        "asp typescript search {} 'concurrency' --workspace . --view seeds",
+        "pipe"
+    );
+    let patch = format!(
+        r#"*** Begin Patch
+*** Add File: notes.txt
++{embedded_command}
+*** End Patch"#
+    );
+
+    let decision = classify_hook(
+        &runtime,
+        "codex",
+        "pre-tool",
+        &json!({
+            "hook_event_name": "PreToolUse",
+            "session_id": "session-effect",
+            "transcript_path": "transcript-effect.jsonl",
+            "tool_name": "apply_patch",
+            "tool_input": {
+                "patch": patch
             }
         }),
     );

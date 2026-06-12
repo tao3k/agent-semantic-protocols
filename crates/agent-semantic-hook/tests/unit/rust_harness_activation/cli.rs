@@ -105,11 +105,11 @@ fn cli_hook_emits_decision_for_root_owned_rust_activation() {
     let reason = value["hookSpecificOutput"]["permissionDecisionReason"]
         .as_str()
         .expect("permission reason");
-    assert!(reason.contains("# ASP Hook Recovery"));
-    assert!(reason.contains("blocked `direct-source-read`"));
+    assert!(reason.contains("ASP hook blocked `direct-source-read`"));
+    assert!(reason.contains("spawn_agent"));
     let system_message = value["systemMessage"].as_str().expect("system message");
     assert!(system_message.contains("asp rust query --selector src/lib.rs --workspace . --code"));
-    assert!(system_message.contains("Do not retry `Read`, `cat`, `sed`, `rg`"));
+    assert!(system_message.contains("do not retry raw read/search commands"));
     assert!(context.contains("\"binary\":\"asp\""));
     assert!(context.contains("\"src/lib.rs\""));
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
@@ -153,7 +153,8 @@ fn cli_hook_denies_codex_exec_command_source_dump() {
     assert!(context.contains("\"toolName\":\"functions.exec_command\""));
     assert!(context.contains("\"src/lib.rs\""));
     let system_message = value["systemMessage"].as_str().expect("system message");
-    assert!(system_message.contains("Do not retry `Read`, `cat`, `sed`, `rg`"));
+    assert!(system_message.contains("do not retry raw read/search commands"));
+    assert!(system_message.contains("spawn_agent"));
     assert!(system_message.contains("asp rust query --selector src/lib.rs --workspace . --code"));
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
 }
@@ -272,7 +273,7 @@ fn cli_hook_blocks_subagent_stop_without_search_receipt() {
         value["message"]
             .as_str()
             .expect("message")
-            .contains("[search-subagent]")
+            .contains("asp-search-subagent")
     );
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
 }

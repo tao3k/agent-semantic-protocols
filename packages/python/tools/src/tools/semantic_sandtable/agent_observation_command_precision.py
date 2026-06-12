@@ -51,7 +51,7 @@ def failure_frontier_precision_facts(command: str, output: str) -> dict[str, int
         "keyFacts": _count_matching_lines(lines, r"^[A-Z][0-9]*=key:"),
         "evidenceFacts": _count_matching_lines(lines, r"^[A-Z][0-9]*=evidence:"),
         "frontierActions": sum(
-            line.startswith("frontierActions=") and " query --selector " in line
+            line.startswith("frontierActions=") and ".query-code(" in line
             for line in lines
         ),
         "queryProfiles": sum(line.startswith("queryProfiles=") for line in lines),

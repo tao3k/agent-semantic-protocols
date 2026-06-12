@@ -10,6 +10,36 @@ protocolVersion = "1"
 [experimental.semanticAstPatch]
 enabled = false
 
+[[rules]]
+id = "deny-shell-source-argv"
+enabled = true
+event = "pre-tool"
+priority = 80
+decision = "deny"
+reasonKind = "bulk-source-dump"
+message = "Use the language harness instead of shell argv source reads."
+
+[rules.match]
+tool = "Bash"
+commandAny = ["sed", "perl", "rg", "wl"]
+argvSourceGlobAny = [
+  "*.rs", "**/*.rs",
+  "*.py", "**/*.py",
+  "*.ts", "**/*.ts",
+  "*.tsx", "**/*.tsx",
+  "*.js", "**/*.js",
+  "*.jsx", "**/*.jsx",
+  "*.mts", "**/*.mts",
+  "*.cts", "**/*.cts",
+  "*.mjs", "**/*.mjs",
+  "*.cjs", "**/*.cjs",
+  "*.ss", "**/*.ss",
+  "*.scm", "**/*.scm",
+  "*.sld", "**/*.sld",
+  "*.jl", "**/*.jl",
+]
+argvSourceExcludeFlagAny = ["--output", "--output-file", "--out", "-o"]
+
 # Uncomment and edit this example to add a project-local rule.
 # [[rules]]
 # id = "deny-rust-raw-search"

@@ -54,7 +54,7 @@
         "run",
         "python",
         "-c",
-        "import json; print(json.dumps({'agentHookDecision': {'schemaId': 'agent.semantic-protocols.agent-hook-decision', 'schemaVersion': '1', 'protocolId': 'agent.semantic-protocols.agent-hooks', 'protocolVersion': '1', 'platform': 'codex', 'event': 'pre-tool', 'decision': 'deny', 'reasonKind': 'agent-search-json', 'languageIds': ['typescript'], 'subject': {'toolName': 'Bash', 'command': 'ts-harness search fzf projectRoot owner tests --json .'}, 'routes': [{'languageId': 'typescript', 'providerId': 'ts-harness', 'binary': 'ts-harness', 'kind': 'fzf', 'argv': ['ts-harness', 'search', 'fzf', 'projectRoot', 'owner', 'tests', '--view', 'seeds', '.']}], 'message': 'agent-search-json denied; provider guide: ts-harness => ts-harness agent guide .'}}))"
+      "import json; print(json.dumps({'agentHookDecision': {'schemaId': 'agent.semantic-protocols.hook.decision', 'schemaVersion': '1', 'protocolId': 'agent.semantic-protocols.hook', 'protocolVersion': '1', 'platform': 'codex', 'event': 'pre-tool', 'decision': 'deny', 'reasonKind': 'agent-search-json', 'languageIds': ['typescript'], 'subject': {'toolName': 'Bash', 'command': 'ts-harness search fzf projectRoot owner tests --json .'}, 'routes': [{'languageId': 'typescript', 'providerId': 'ts-harness', 'binary': 'ts-harness', 'kind': 'fzf', 'argv': ['ts-harness', 'search', 'fzf', 'projectRoot', 'owner', 'tests', '--view', 'seeds', '.']}], 'message': 'agent-search-json denied; provider guide: ts-harness => ts-harness agent guide .'}}))"
       ],
       "expect": {
         "stdoutJsonSchemaAt": {

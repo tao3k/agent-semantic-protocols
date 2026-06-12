@@ -76,7 +76,7 @@ fn search_pipe_injects_read_loop_memory_into_graph_turbo_request_and_suppresses_
     );
     assert_eq!(
         payload["delegationHints"][0]["receipt"]["requiredFields"],
-        serde_json::json!(["role", "evidence", "missing", "next", "risk"])
+        serde_json::json!(["role", "action", "evidence", "missing", "next", "risk"])
     );
     assert_eq!(
         payload["actionFrontier"][0]["id"],
@@ -146,7 +146,7 @@ fn search_pipe_injects_read_loop_memory_into_graph_turbo_request_and_suppresses_
         "{stdout}"
     );
     assert!(
-        stdout.contains("subagentHint=profile=asp-explorer decision=advisory runtimeOwner=agent-client modelClass=cheap readOnly=true noCode=true targetActions=A1.fd-query,A2.rg-query,A3.owner-items,A4.treesitter-query maxCommands=8 maxTurns=1 receipt=search-subagent(role,evidence,missing,next,risk) reason=query-selector-low-confidence"),
+        stdout.contains("subagentHint=profile=asp-explorer fanout=parallel instances=targetActions branchPrompt=reasoning-tree stateOwner=parent fanin=receipt iterative=true decision=advisory runtimeOwner=agent-client modelClass=cheap readOnly=true noCode=true targetActions=A1.fd-query,A2.rg-query,A3.owner-items,A4.treesitter-query maxCommands=8 maxTurns=1 receipt=asp-search-subagent(role,action,evidence,missing,next,risk) reason=query-selector-low-confidence"),
         "{stdout}"
     );
     assert!(

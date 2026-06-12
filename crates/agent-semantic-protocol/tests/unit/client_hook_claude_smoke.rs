@@ -1,9 +1,14 @@
 use std::io::Write;
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde_json::{Value, json};
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
+
+const HOOK_TRIGGER_PROMPT_USER_EXTENSIONS_END: &str =
+    "<!-- ASP-HOOK-TRIGGER-PROMPT:USER-EXTENSIONS-END -->";
+static NEXT_TEMP_ID: AtomicU64 = AtomicU64::new(0);
 
 #[test]
 fn claude_install_writes_project_settings_hooks() {
@@ -39,6 +44,83 @@ fn claude_install_writes_project_settings_hooks() {
             .expect("pre-tool command")
             .contains("asp hook pre-tool --client claude")
     );
+    let prompt_path = root
+        .join(".claude")
+        .join("agent-semantic-protocol")
+        .join("hooks")
+        .join("hook_trigger_prompt.md");
+    let prompt = std::fs::read_to_string(&prompt_path).expect("read hook trigger prompt");
+    assert!(prompt.contains("ASP-HOOK-TRIGGER-PROMPT:MANAGED-BEGIN"));
+    assert!(prompt.contains("ASP-HOOK-TRIGGER-PROMPT:USER-EXTENSIONS-BEGIN"));
+    assert!(prompt.contains("spawn_agent"));
+    assert!(prompt.contains("asp-search-subagent"));
+}
+
+#[test]
+fn codex_install_writes_hook_trigger_prompt_and_preserves_user_extensions() {
+    let root = claude_fixture();
+    let codex_home = root.join(".codex-home");
+    std::fs::create_dir_all(&codex_home).expect("create codex home");
+
+    let first_install_stdout = install_codex_hooks(root.as_path(), &codex_home);
+    assert!(
+        first_install_stdout.contains("activationSync=created")
+            || first_install_stdout.contains("activationSync=refreshed"),
+        "{first_install_stdout}"
+    );
+
+    let prompt_path = root
+        .join(".codex")
+        .join("agent-semantic-protocol")
+        .join("hooks")
+        .join("hook_trigger_prompt.md");
+    let prompt = std::fs::read_to_string(&prompt_path).expect("read hook trigger prompt");
+    assert!(prompt.contains("ASP-HOOK-TRIGGER-PROMPT:MANAGED-BEGIN"));
+    assert!(prompt.contains("ASP-HOOK-TRIGGER-PROMPT:USER-EXTENSIONS-BEGIN"));
+    assert!(prompt.contains("spawn_agent"));
+    assert!(!prompt.contains("source_access_recovery"));
+
+    let codex_config =
+        std::fs::read_to_string(root.join(".codex").join("config.toml")).expect("read config");
+    assert!(codex_config.contains("[agents.asp_explorer]"));
+    assert!(codex_config.contains("config_file = \"agents/asp-explorer.toml\""));
+
+    let extension = "Project local extension: include branch evidence before returning.";
+    std::fs::write(
+        &prompt_path,
+        prompt.replace(
+            HOOK_TRIGGER_PROMPT_USER_EXTENSIONS_END,
+            &format!("{extension}\n{HOOK_TRIGGER_PROMPT_USER_EXTENSIONS_END}"),
+        ),
+    )
+    .expect("write prompt extension");
+
+    let second_install_stdout = install_codex_hooks(root.as_path(), &codex_home);
+    assert!(
+        second_install_stdout.contains("activationSync=reused"),
+        "{second_install_stdout}"
+    );
+
+    let updated = std::fs::read_to_string(&prompt_path).expect("read updated hook trigger prompt");
+    assert!(updated.contains(extension), "{updated}");
+    assert!(updated.contains("hook_trigger_prompt.md") || updated.contains("spawn_agent"));
+    assert!(!updated.contains("source_access_recovery"));
+
+    let decision = run_codex_pre_tool_decision(
+        root.as_path(),
+        json!({
+            "session_id": "session-codex-read",
+            "transcript_path": root.as_path().join("session.jsonl"),
+            "cwd": root.as_path(),
+            "tool_name": "Read",
+            "tool_input": {
+                "file_path": root.as_path().join("src/lib.rs")
+            }
+        }),
+    );
+    let message = decision["message"].as_str().expect("decision message");
+    assert!(message.contains("spawn_agent"), "{message}");
+    assert!(message.contains(extension), "{message}");
 }
 
 #[test]
@@ -103,7 +185,7 @@ fn claude_platform_response_uses_hook_specific_permission_decision() {
     let reason = response["hookSpecificOutput"]["permissionDecisionReason"]
         .as_str()
         .expect("permission reason");
-    assert!(reason.contains("# ASP Hook Recovery"), "{reason}");
+    assert!(reason.contains("ASP hook blocked"), "{reason}");
     assert!(reason.contains("direct-source-read"), "{reason}");
     assert!(reason.contains("asp rust query --selector"));
     assert!(reason.contains("--code"));
@@ -146,13 +228,15 @@ fn claude_platform_response_compacts_repeated_denied_source_lane() {
 }
 
 fn claude_fixture() -> PathBuf {
+    let unique = NEXT_TEMP_ID.fetch_add(1, Ordering::Relaxed);
     let root = std::env::temp_dir().join(format!(
-        "asp-claude-smoke-{}-{}",
+        "asp-claude-smoke-{}-{}-{}",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .expect("system time")
-            .as_nanos()
+            .as_nanos(),
+        unique,
     ));
     std::fs::create_dir_all(&root).expect("create temp root");
     Command::new("git")
@@ -187,6 +271,63 @@ fn install_claude_hooks(root: &Path) {
         "install stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+}
+
+fn install_codex_hooks(root: &Path, codex_home: &Path) -> String {
+    let output = Command::new(env!("CARGO_BIN_EXE_asp"))
+        .args(["hook", "install", "--client", "codex"])
+        .arg(root)
+        .env("PATH", prepend_path(&root.join(".bin")))
+        .env("CODEX_HOME", codex_home)
+        .env_remove("PRJ_CACHE_HOME")
+        .output()
+        .expect("run asp hook install");
+    assert!(
+        output.status.success(),
+        "install stdout: {}\ninstall stderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stdout)
+            .contains("triggerPrompt=.codex/agent-semantic-protocol/hooks/hook_trigger_prompt.md"),
+        "install stdout: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    String::from_utf8(output.stdout).expect("install stdout is utf8")
+}
+
+fn run_codex_pre_tool_decision(root: &Path, payload: Value) -> Value {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_asp"));
+    command
+        .args([
+            "hook", "pre-tool", "--client", "codex", "--emit", "decision",
+        ])
+        .arg("--activation")
+        .arg(root.join(".cache/agent-semantic-protocol/hooks/activation.json"))
+        .arg("--config")
+        .arg(root.join(".codex/agent-semantic-protocol/hooks/config.toml"))
+        .current_dir(root)
+        .env_remove("PRJ_CACHE_HOME")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    let mut child = command.spawn().expect("spawn asp hook pre-tool");
+    child
+        .stdin
+        .as_mut()
+        .expect("stdin")
+        .write_all(payload.to_string().as_bytes())
+        .expect("write payload");
+    let output = child.wait_with_output().expect("wait hook");
+    assert!(
+        output.status.success(),
+        "hook stdout: {}\nhook stderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    serde_json::from_slice(&output.stdout).expect("parse hook stdout")
 }
 
 fn run_claude_pre_tool_decision(root: &Path, payload: Value, extra_args: &[&str]) -> Value {

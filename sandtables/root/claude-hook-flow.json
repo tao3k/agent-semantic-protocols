@@ -32,9 +32,9 @@
           "hookSpecificOutput.permissionDecision": "deny"
         },
         "stdoutContains": [
-          "direct-source-read denied"
+          "direct-source-read"
         ],
-        "maxElapsedMsWarn": 6500
+      "maxElapsedMsWarn": 12000
       }
     },
     {
@@ -57,7 +57,7 @@
           "routes.0.kind": "ingest",
           "subject.command": "ls crates/agent-semantic-hook/src"
         },
-        "maxElapsedMsWarn": 6500
+      "maxElapsedMsWarn": 12000
       }
     }
   ]

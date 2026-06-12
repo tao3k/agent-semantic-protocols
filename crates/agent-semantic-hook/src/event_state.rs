@@ -3,7 +3,7 @@
 use crate::command::semantic_shell_tokens;
 use fs2::FileExt;
 use std::fs::{self, OpenOptions};
-use std::io::Write;
+use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -122,6 +122,38 @@ pub fn append_hook_event_state(
     Ok(state_path)
 }
 
+/// Return whether the latest matching subagent lifecycle event marks this hook
+/// payload as running inside a subagent.
+pub fn has_recorded_subagent_context(
+    project_root: &Path,
+    session_id: Option<&str>,
+    transcript_path: Option<&str>,
+) -> Result<bool, String> {
+    if session_id.is_none() && transcript_path.is_none() {
+        return Ok(false);
+    }
+    let state_path = ensure_project_hook_state_dir(project_root)?.join(HOOK_EVENT_STATE_FILE);
+    if !state_path.is_file() {
+        return Ok(false);
+    }
+    let content = fs::read_to_string(&state_path).map_err(|error| {
+        format!(
+            "failed to read hook state {}: {error}",
+            state_path.display()
+        )
+    })?;
+    for line in content.lines().rev() {
+        let Ok(event) = serde_json::from_str::<Value>(line) else {
+            continue;
+        };
+        if !matches_subagent_identity(&event, session_id, transcript_path) {
+            continue;
+        }
+        return Ok(event.get("event").and_then(Value::as_str) == Some("subagent-start"));
+    }
+    Ok(false)
+}
+
 /// Return feedback when a prompt/session has run `search prime` but no pipe.
 pub(crate) fn missing_search_pipe_after_prime(
     project_root: &Path,
@@ -231,18 +263,32 @@ pub fn remove_incompatible_hook_event_state(
     if !state_path.is_file() {
         return Ok(None);
     }
-    let content = fs::read_to_string(&state_path).map_err(|error| {
+    let file = fs::File::open(&state_path).map_err(|error| {
         format!(
             "failed to read hook state {}: {error}",
             state_path.display()
         )
     })?;
-    if content
-        .lines()
-        .filter(|line| !line.trim().is_empty())
-        .all(is_current_hook_event_state_line)
-    {
-        return Ok(None);
+    let mut reader = BufReader::new(file);
+    let mut line = String::new();
+    loop {
+        line.clear();
+        let bytes = reader.read_line(&mut line).map_err(|error| {
+            format!(
+                "failed to read hook state {}: {error}",
+                state_path.display()
+            )
+        })?;
+        if bytes == 0 {
+            return Ok(None);
+        }
+        if line.trim().is_empty() {
+            continue;
+        }
+        if is_current_hook_event_state_line(&line) {
+            return Ok(None);
+        }
+        break;
     }
     fs::remove_file(&state_path).map_err(|error| {
         format!(
@@ -259,6 +305,30 @@ fn is_current_hook_event_state_line(line: &str) -> bool {
     };
     value.get("schemaId").and_then(serde_json::Value::as_str) == Some(HOOK_EVENT_SCHEMA_ID)
         && value.get("protocolId").and_then(serde_json::Value::as_str) == Some(HOOK_PROTOCOL_ID)
+}
+
+fn matches_subagent_identity(
+    event: &Value,
+    session_id: Option<&str>,
+    transcript_path: Option<&str>,
+) -> bool {
+    let event_name = event.get("event").and_then(Value::as_str);
+    if !matches!(event_name, Some("subagent-start" | "subagent-stop")) {
+        return false;
+    }
+    let fields = event.get("fields").unwrap_or(event);
+    session_id.is_some_and(|session_id| {
+        field_string(fields, &["sessionId", "session_id"]).is_some_and(|value| value == session_id)
+    }) || transcript_path.is_some_and(|transcript_path| {
+        field_string(fields, &["transcriptPath", "transcript_path"])
+            .is_some_and(|value| value == transcript_path)
+    })
+}
+
+fn field_string<'a>(value: &'a Value, fields: &[&str]) -> Option<&'a str> {
+    fields
+        .iter()
+        .find_map(|field| value.get(*field).and_then(Value::as_str))
 }
 
 fn unix_time_ms() -> u128 {

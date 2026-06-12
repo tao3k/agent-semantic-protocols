@@ -14,7 +14,7 @@ fn pre_tool_denies_asp_command_after_prompt_budget_is_exhausted() {
             "post-tool",
             "session-effect",
             "transcript-effect.jsonl",
-            "asp typescript search prime --view seeds .",
+            "asp typescript search prime --workspace . --view seeds",
         ),
     )
     .expect("write prime event");
@@ -25,7 +25,7 @@ fn pre_tool_denies_asp_command_after_prompt_budget_is_exhausted() {
             "post-tool",
             "session-effect",
             "transcript-effect.jsonl",
-            "asp typescript search pipe 'Effect concurrency Fiber' --view seeds .",
+            "asp typescript search pipe 'Effect concurrency Fiber' --workspace . --view seeds",
         ),
     )
     .expect("write pipe event");

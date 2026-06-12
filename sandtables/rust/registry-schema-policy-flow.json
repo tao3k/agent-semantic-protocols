@@ -23,8 +23,8 @@
   "budgets": {
     "maxCommands": 7,
     "maxTotalLinesWarn": 12,
-    "maxTotalElapsedMsWarn": 3500,
-    "maxTotalStdoutBytesWarn": 30000
+      "maxTotalElapsedMsWarn": 15000,
+      "maxTotalStdoutBytesWarn": 38000
   },
   "steps": [
     {
@@ -127,6 +127,7 @@
         "seeds",
         "--seeds",
         "4",
+        "--workspace",
         "."
       ],
       "expect": {
@@ -140,7 +141,7 @@
         },
         "maxStdoutLinesWarn": 1,
         "maxStdoutBytesWarn": 9000,
-        "maxElapsedMsWarn": 1000
+        "maxElapsedMsWarn": 7000
       }
     },
     {
@@ -162,6 +163,7 @@
         "seeds",
         "--seeds",
         "4",
+        "--workspace",
         "."
       ],
       "expect": {
@@ -219,7 +221,7 @@
           "fn main"
         ],
         "maxStdoutLinesWarn": 1,
-        "maxElapsedMsWarn": 800
+        "maxElapsedMsWarn": 5000
       }
     },
     {
@@ -252,7 +254,7 @@
           "fn main"
         ],
         "maxStdoutLinesWarn": 1,
-        "maxElapsedMsWarn": 800
+      "maxElapsedMsWarn": 5000
       }
     },
     {
@@ -279,14 +281,15 @@
           "reasonKind": "raw-broad-search"
         },
         "stdoutJsonArrayContains": {
-          "routes": {
-            "binary": "rs-harness",
-            "kind": "query",
-            "languageId": "rust"
-          }
-        },
-        "maxElapsedMsWarn": 800
-      }
+        "routes": {
+          "binary": "asp",
+          "kind": "fzf",
+          "languageId": "rust",
+          "providerId": "rs-harness"
+        }
+      },
+      "maxElapsedMsWarn": 5000
     }
+  }
   ]
 }

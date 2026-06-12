@@ -280,7 +280,7 @@ def test_pipe_flow_records_failure_frontier_precision_and_memory() -> None:
             "K=key:signal(request_fingerprint)!evidence",
             "E=evidence:signal(file_hash(observed=failure))!evidence",
             "frontier=A.evidence,H.code,K.evidence,E.evidence",
-            "frontierActions=H.code=>asp rust query --selector src/cache_cli/writeback.rs:10:24 --code .",
+            "frontierActions=C1.query-code(selector=src/cache_cli/writeback.rs:10:24,owner=src/cache_cli/writeback.rs,symbol=write_prompt_output_artifact,source=H,language=rust)!query-code",
             "queryProfiles=failure-frontier(F=>failure-facts+owners+hot-blocks)",
             "omit=full-source,unrelated-functions,wide-windows",
             "avoid=manual-window-scan,duplicate-read,raw-read,broad-fzf",
@@ -331,6 +331,8 @@ def test_pipe_flow_records_failure_frontier_precision_and_memory() -> None:
     assert stats["failureLoopMemory"]["entries"][0]["selector"] == (
         "src/cache_cli/writeback.rs:10:24"
     )
+    assert stats["failureLoopMemory"]["entries"][0]["actionKind"] == "query-code"
+    assert "command" not in stats["failureLoopMemory"]["entries"][0]
 
 
 def test_pipe_flow_ignores_non_asp_tool_result_output_bytes() -> None:

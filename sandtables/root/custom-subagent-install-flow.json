@@ -1,0 +1,29 @@
+{
+  "id": "root.custom-subagent-install-flow",
+  "language": "root",
+  "coverage": [
+    "codex-hooks",
+    "cli-hooks",
+    "real-trigger"
+  ],
+  "workdir": ".",
+  "steps": [
+    {
+      "id": "hook-install-writes-custom-subagents",
+      "command": [
+        "python",
+        "sandtables/root/fixtures/custom_subagent_install.py"
+      ],
+      "expect": {
+          "stdoutContains": [
+            "codex-subagent=.codex/agents/asp-explorer.toml",
+            "codex-model=gpt-5.3-codex-spark",
+            "codex-override=gpt-5.4-mini",
+            "claude-subagent=.claude/agents/asp-explorer.md",
+            "claude-model=haiku"
+          ],
+        "maxElapsedMsWarn": 8000
+      }
+    }
+  ]
+}

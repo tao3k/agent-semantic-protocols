@@ -49,9 +49,31 @@ def test_failure_frontier_profile_ranks_hot_blocks_and_renders_search_failure() 
     assert "frontier=F.failure" not in compact
     assert "T.code" not in compact.split("\nfrontier=", 1)[1].split("\n", 1)[0]
     assert (
-        "frontierActions=H.code=>asp rust query --selector src/cache_cli/writeback.rs:10:24 --code ."
+        "frontierActions=C1.query-code(selector=src/cache_cli/writeback.rs:10:24,owner=src/cache_cli/writeback.rs,symbol=write_prompt_output_artifact,source=H,language=rust)!query-code"
         in compact
     )
+    assert packet["frontierActions"] == [
+        {
+            "rank": 1,
+            "actionId": "C1",
+            "actionKind": "query-code",
+            "selector": "src/cache_cli/writeback.rs:10:24",
+            "owner": "src/cache_cli/writeback.rs",
+            "symbol": "write_prompt_output_artifact",
+            "sourceNodeId": "hot:write",
+            "next": "query-code",
+            "capabilityId": "query",
+            "target": "src/cache_cli/writeback.rs:10:24",
+            "targetRole": "selector",
+            "fields": {
+                "languageId": "rust",
+                "selector": "src/cache_cli/writeback.rs:10:24",
+                "ownerPath": "src/cache_cli/writeback.rs",
+                "symbol": "write_prompt_output_artifact",
+                "sourceNodeId": "hot:write",
+            },
+        }
+    ]
     assert (
         "queryProfiles=failure-frontier(F=>failure-facts+owners+hot-blocks),owner-query(O,K=>items+tests+dependency-usage),owner-tests(O=>covering-tests)"
         in compact

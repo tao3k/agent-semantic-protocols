@@ -34,14 +34,13 @@ fn structured_direct_read_source_glob_routes_to_provider_query() {
             "."
         ]
     );
-    assert!(decision.message.starts_with("ASP hook denied `"));
     assert!(
         decision
             .message
-            .contains("@.agents/skills/agent-semantic-protocols/SKILL.md")
+            .starts_with("ASP hook blocked `direct-source-read`")
     );
-    assert!(decision.message.contains("## ASP Hook Recovery"));
-    assert!(decision.message.contains("`asp typescript guide .`"));
+    assert!(decision.message.contains("spawn_agent"));
+    assert!(decision.message.contains("asp-search-subagent"));
     assert!(decision.message.contains(
         "asp typescript query --selector '*.ts' --surface 'owners,tests' --view seeds ."
     ));

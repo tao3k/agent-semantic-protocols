@@ -210,8 +210,8 @@ finder pipelines, not separate public views.  =search fzf= is not a language
 query: code-shaped questions, known owners, symbols, declarations, parser
 items, and hook read reroutes should use top-level =query= first.
 
-Agent-facing =search fzf= grammar keeps search composition and fzf-native
-options separate:
+Agent-facing =search fzf= grammar keeps search composition, workspace
+selection, and fzf-native options separate:
 
 #+begin_src text
 <lang-harness> search fzf <query> [owner|tests|items|...] [--scope <path-or-kind>] \
@@ -220,12 +220,14 @@ options separate:
 <lang-harness> search fzf <query> [search-options...] [PROJECT_ROOT] --fzf <fzf-options...>
 #+end_src
 
-=--scope=, =--pipe=, =--view=, =--query-set=, and the optional project root
-belong to the harness search grammar.  =--fzf-arg <value>= passes one
-provider-approved fzf-native option without changing grammar ownership.
-=--fzf= is a boundary marker: it must be the last harness option and all
-following tokens are fzf-native options, so agents should place =PROJECT_ROOT=
-before =--fzf= or omit it and let the provider discover the project root.
+=--scope=, =--pipe=, =--view=, =--query-set=, and =--workspace= belong to the
+harness search grammar.  Positional paths in =search fzf= are search scopes,
+not project roots; they resolve under the selected workspace unless they are
+absolute paths.  =--fzf-arg <value>= passes one provider-approved fzf-native
+option without changing grammar ownership.  =--fzf= is a boundary marker: it
+must be the last harness option and all following tokens are fzf-native
+options, so agents should place =--workspace <workspace-root>= before =--fzf=
+or omit it and let the provider use the invocation workspace.
 Providers must reject interactive or shell-shaped fzf options on agent paths
 and record accepted/rejected options in the search packet =finder= field.
 
@@ -261,6 +263,18 @@ language provider.  Providers should set =cache.rawSourceStored=false= for this
 view because replay stores compact search output and packet artifacts, not raw
 dependency source.
 
+Dependency API and documentation questions must stay local-first.  When a query
+mentions a dependency plus an API, module path, platform concept, or external
+documentation target, the dependency view should emit executable local next
+actions such as =dependency:<crate>=, =docs:<crate>::<api>=,
+=docs-use:<crate>::<api>=, =crate-source:<crate>=, =import:<crate>=, and
+=tests:<api>= before any external documentation fallback.  Prompt-facing
+output must include =avoid=web-search,docs.rs-search= unless the provider has
+exhausted manifest facts, local dependency usage, local public API facts, and
+available crate source/doc artifacts.  A =doc= or =docs= frontier node is a
+provider-owned local documentation/API frontier; agents must not interpret it
+as permission to browse docs.rs while local dependency actions are available.
+
 ** =query= — first-class parser-native extraction and reroutes
 
 Provider-native item query is the default code extraction path for agents:
@@ -274,6 +288,12 @@ Provider-native item query is the default code extraction path for agents:
 
 The language provider owns parser/AST lookup, exact item matching, multi-term
 query expressions, hook reroute normalization, and compact code rendering.
+Workspace-wide lexical or fuzzy discovery is not a =query --names-only= mode:
+agents and hooks must use =search fzf <term> owner tests --view seeds=, adding
+=--workspace <workspace-root>= only when the invocation workspace is not the
+desired root.  Providers should reject
+=query --term <term> --names-only= without an owner selector and print the
+explicit =search fzf= route instead of silently rerouting it.
 Julia owner-local item query uses this same shared =semantic-query-packet=
 contract for JSON output through the language facade:
 
@@ -301,6 +321,10 @@ stale shape =query ... --code .= or =query ... --code <root>= is invalid for
 owner item queries, tree-sitter syntax-code queries, selector-code exact reads, and =search owner ... items --query ... --code=.  A selector query
 without =--workspace= resolves against the invocation workspace, selector
 absolute path, or provider-owned workspace inference.
+In public CLI grammar, =workspace= is the root semantic.  Agent-facing paths,
+selectors, and search scopes are workspace-relative unless absolute; package
+roots and project roots are provider-owned narrowing facts, not positional
+root arguments.
 
 If the selector is too wide for bounded code transport, the provider returns a
 =read-plan= frontier, not a denial-only outline.  The active contract is
@@ -725,6 +749,9 @@ exact follow-up query before requesting compact code.  Names-only hit or mixed
 results should use =next=select-item=.  Misses or weak fallback top-item
 inventories should use =next=revise-query= unless the provider has a
 high-confidence parser-owned replacement item.
+Names-only is explicitly owner-local.  Combining =--names-only= with only
+=--term= or =--query= at workspace scope is ambiguous and must fail fast; the
+widening command for that situation is =search fzf=.
 
 When an owner-local item query misses, the provider should emit bounded
 parser-owned candidates if they can be inferred from the selected owner's item
@@ -1000,6 +1027,17 @@ with a compact error or recorded as rejected finder arguments in JSON.
 Agent-facing finder runs must be headless and provider-owned.  Human-facing
 diagnostics may later expose interactive =fzf= preview, but that is outside
 the agent protocol path.
+
+Finder no-hit output is a protocol receipt, not a low-quality graph frontier.
+When an agent-facing finder wrapper such as =asp fd -query ... --view seeds=
+or =asp rg -query ... --view seeds= has no selected candidates, compact stdout
+must emit a bounded =noOutput= row with =reason=no-candidates=, the finder
+source trace, one executable widening/refinement =nextCommand=, and the
+applicable =avoid= list.  It must not print empty ranked evidence, empty
+frontiers, placeholder owners such as =ownerItems=-=, or synthesized
+=owner-items= actions.  JSON artifact views may still carry the normal graph
+request with empty candidate arrays for cache/replay validation, but prompt
+facing seeds output should spend tokens only on the next decision.
 
 *** ast-grep boundary
 

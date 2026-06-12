@@ -30,14 +30,14 @@
         "--emit",
         "decision"
       ],
-      "stdin": "{\"tool_name\":\"functions.exec_command\",\"tool_input\":{\"cmd\":\"direnv exec . rg -n HookDecision crates\"}}",
+      "stdin": "{\"tool_name\":\"functions.exec_command\",\"tool_input\":{\"cmd\":\"direnv exec . rg -n HookDecision -g '*.rs' crates\"}}",
       "expect": {
         "stdoutJsonSchema": "schemas/semantic-agent-hook-decision.v1.schema.json",
         "stdoutJsonEquals": {
           "decision": "deny",
           "reasonKind": "raw-broad-search",
           "languageIds.0": "rust",
-          "routes.0.kind": "query",
+          "routes.0.kind": "fzf",
           "routes.0.providerId": "rs-harness"
         },
         "maxElapsedMsWarn": 6000
@@ -62,7 +62,7 @@
           "decision": "deny",
           "reasonKind": "raw-broad-search",
           "languageIds.0": "typescript",
-          "routes.0.kind": "query",
+          "routes.0.kind": "fzf",
           "routes.0.providerId": "ts-harness"
         },
         "maxElapsedMsWarn": 6000
@@ -121,7 +121,7 @@
       }
     },
     {
-      "id": "markdown-search-allow",
+    "id": "markdown-search-deny",
       "kind": "hook-replay",
       "command": [
         "asp",
@@ -136,8 +136,11 @@
       "expect": {
         "stdoutJsonSchema": "schemas/semantic-agent-hook-decision.v1.schema.json",
         "stdoutJsonEquals": {
-          "decision": "allow",
-          "reasonKind": "none"
+          "decision": "deny",
+          "reasonKind": "raw-broad-search",
+          "languageIds.0": "md",
+          "routes.0.kind": "ingest",
+          "routes.0.providerId": "orgize"
         },
         "maxElapsedMsWarn": 6000
       }

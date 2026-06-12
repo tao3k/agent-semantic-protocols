@@ -69,6 +69,7 @@
         "ts-harness",
         "search",
         "workspace",
+        "--workspace",
         "."
       ],
       "expect": {
@@ -90,6 +91,7 @@
         "prime",
         "--view",
         "seeds",
+        "--workspace",
         "."
       ],
       "expect": {
@@ -99,7 +101,7 @@
           "root=playwright-internal",
           "packages/playwright-core/src/server/fetch.ts"
         ],
-        "maxStdoutLinesWarn": 8,
+        "maxStdoutLinesWarn": 10,
         "maxElapsedMsWarn": 9000
       }
     },
@@ -119,6 +121,7 @@
         "tests",
         "--view",
         "seeds",
+        "--workspace",
         "."
       ],
       "expect": {
@@ -142,8 +145,11 @@
         "owner",
         "packages/playwright-core/src/server/fetch.ts",
         "items",
+        "--query",
+        "APIRequestContext|BrowserContextAPIRequestContext",
         "--view",
         "seeds",
+        "--workspace",
         "."
       ],
       "expect": {
@@ -165,6 +171,7 @@
         "packages/playwright-core/src/server/fetch.ts",
         "--view",
         "seeds",
+        "--workspace",
         "."
       ],
       "expect": {
@@ -174,7 +181,7 @@
           "test:path(packages/playwright-core/src/server/fetch.ts)",
           "owner:path(packages/playwright-core/src/server/fetch.ts)"
         ],
-        "maxStdoutLinesWarn": 8,
+        "maxStdoutLinesWarn": 10,
         "maxElapsedMsWarn": 8000
       }
     },
@@ -194,6 +201,7 @@
         "ingest",
         "--view",
         "seeds",
+        "--workspace",
         "."
       ],
       "expect": {
@@ -203,7 +211,7 @@
           "root=.",
           "tests/library/global-fetch.spec.ts"
         ],
-        "maxStdoutLinesWarn": 6,
+        "maxStdoutLinesWarn": 7,
         "maxElapsedMsWarn": 8000
       }
     }

@@ -38,7 +38,7 @@ fn pre_tool_denies_package_name_as_asp_facade() {
     assert!(
         decision
             .message
-            .contains("asp typescript search prime --view seeds ."),
+            .contains("asp typescript search prime --workspace . --view seeds"),
         "{}",
         decision.message
     );
@@ -71,7 +71,7 @@ fn pre_tool_denies_unknown_facade_without_unrelated_provider_recovery() {
             "transcript_path": "transcript-effect.jsonl",
             "tool_name": "Bash",
             "tool_input": {
-                "command": "asp scheme search prime --view seeds ."
+                "command": "asp scheme search prime --workspace . --view seeds"
             }
         }),
     );
@@ -101,14 +101,14 @@ fn pre_tool_denies_unknown_facade_without_unrelated_provider_recovery() {
     assert!(
         !decision
             .message
-            .contains("asp typescript search prime --view seeds ."),
+            .contains("asp typescript search prime --workspace . --view seeds"),
         "{}",
         decision.message
     );
     assert!(
         !decision
             .message
-            .contains("asp gerbil-scheme search prime --view seeds ."),
+            .contains("asp gerbil-scheme search prime --workspace . --view seeds"),
         "{}",
         decision.message
     );

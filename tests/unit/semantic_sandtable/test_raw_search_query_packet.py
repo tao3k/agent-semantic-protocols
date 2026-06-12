@@ -83,6 +83,7 @@ class RawSearchQueryPacketTests(unittest.TestCase):
                                     "parse_ripgrep_scope",
                                     "--names-only",
                                     "--json",
+                                    "--workspace",
                                     "crates/agent-semantic-hook",
                                 ),
                                 "expect": {
@@ -109,6 +110,7 @@ class RawSearchQueryPacketTests(unittest.TestCase):
                                     "--term",
                                     "parse_",
                                     "--names-only",
+                                    "--workspace",
                                     "crates/agent-semantic-hook",
                                 ),
                                 "expect": {
@@ -140,9 +142,10 @@ class RawSearchQueryPacketTests(unittest.TestCase):
                                         "querySet=3",
                                         "aliases: graph:{G=search",
                                         "Q=query:term(DecisionRouteKind::Read,window_set,direct-source-read)!fzf",
-                                        "test:path(tests/unit/syntax_query_preflight.rs)!tests",
+                                        "test:path(tests/unit/rust_harness_activation/cli/hook/escape_surfaces.rs)!tests",
                                         "G>{Q:matches",
                                         "frontier=Q.fzf",
+                                        "entries=owner-query(O,Q=>items+tests+dependency-usage),owner-tests(O=>covering-tests+test-entrypoints+fixtures)",
                                     ],
                                 },
                             },

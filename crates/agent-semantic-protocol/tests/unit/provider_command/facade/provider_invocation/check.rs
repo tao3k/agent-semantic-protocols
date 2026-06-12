@@ -46,8 +46,7 @@ fn check_changed_view_seeds_renders_failure_frontier_after_provider_failure() {
     );
     assert!(
         stdout.contains("frontierActions=")
-            && stdout.contains("asp rust query --selector")
-            && stdout.contains(" --code ."),
+            && stdout.contains("C1.query-code(selector=src/cache_cli/writeback.rs:1:5"),
         "{stdout}"
     );
     assert!(

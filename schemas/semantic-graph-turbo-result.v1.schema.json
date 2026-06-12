@@ -129,6 +129,13 @@
         "$ref": "#/$defs/frontierEntry"
       }
     },
+    "frontierActions": {
+      "description": "Typed graph-owned frontier actions projected by graph turbo. Compact frontierActions text is a rendering of these facts and must not be parsed as the action authority.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/frontierAction"
+      }
+    },
     "scores": {
       "type": "object",
       "additionalProperties": {
@@ -286,6 +293,112 @@
         },
         "score": {
           "type": "number"
+        }
+      }
+    },
+    "frontierAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rank",
+        "actionId",
+        "actionKind",
+        "selector",
+        "owner",
+        "symbol",
+        "sourceNodeId",
+        "next",
+        "capabilityId",
+        "target",
+        "targetRole",
+        "fields"
+      ],
+      "properties": {
+        "rank": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "actionId": {
+          "type": "string",
+          "pattern": "^[A-Z][0-9]+$"
+        },
+        "actionKind": {
+          "enum": [
+            "selector",
+            "reasoning",
+            "query-code"
+          ]
+        },
+        "selector": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "owner": {
+          "type": "string",
+          "minLength": 1
+        },
+        "symbol": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "sourceNodeId": {
+          "$ref": "#/$defs/nodeId"
+        },
+        "next": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "capabilityId": {
+          "enum": [
+            "query",
+            "search-reasoning"
+          ]
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1
+        },
+        "targetRole": {
+          "enum": [
+            "selector",
+            "owner"
+          ]
+        },
+        "fields": {
+          "type": "object",
+          "propertyNames": {
+            "not": {
+              "enum": [
+                "command",
+                "argv"
+              ]
+            }
+          },
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            ]
+          }
         }
       }
     },

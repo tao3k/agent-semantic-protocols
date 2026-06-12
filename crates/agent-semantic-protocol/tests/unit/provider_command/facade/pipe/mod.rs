@@ -9,6 +9,7 @@ mod owner_items_typescript;
 mod pipe_frontier;
 mod provider_ontology;
 mod query_wrapper;
+mod query_wrapper_empty;
 mod query_wrapper_gerbil;
 mod reasoning;
 mod suggest;

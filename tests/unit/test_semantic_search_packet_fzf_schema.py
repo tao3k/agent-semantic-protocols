@@ -68,6 +68,73 @@ class SemanticSearchPacketFzfSchemaTests(unittest.TestCase):
 
         self.assertEqual([], errors)
 
+    def test_finder_no_output_receipt_is_valid(self) -> None:
+        schema = json.loads(_SCHEMA_PATH.read_text(encoding="utf-8"))
+        validator = Draft202012Validator(schema)
+        packet = {
+            "schemaId": "agent.semantic-protocols.semantic-search-packet",
+            "schemaVersion": "1",
+            "protocolId": "agent.semantic-protocols.semantic-language",
+            "protocolVersion": "1",
+            "languageId": "rust",
+            "providerId": "rs-harness",
+            "binary": "rs-harness",
+            "namespace": "agent.semantic-protocols.languages.rust.rs-harness",
+            "method": "search/fzf",
+            "projectRoot": ".",
+            "view": "fzf",
+            "renderMode": "seeds",
+            "query": "missing-owner",
+            "header": {
+                "kind": "search-fzf",
+                "fields": {
+                    "backend": "fd",
+                    "candidateBasis": "paths",
+                },
+            },
+            "nodes": [],
+            "edges": [],
+            "owners": [],
+            "hits": [],
+            "findings": [],
+            "nextActions": [],
+            "notes": [],
+            "noOutput": {
+                "reason": "no-candidates",
+                "sourceTrace": [
+                    {
+                        "source": "finder",
+                        "status": "empty",
+                        "candidateCount": 0,
+                        "fields": {
+                            "backend": "fd",
+                            "candidateBasis": "paths",
+                        },
+                    }
+                ],
+                "nextActions": [
+                    {
+                        "kind": "rg-query",
+                        "target": "missing-owner",
+                        "fields": {
+                            "command": "asp rg -query 'missing-owner' '.'",
+                        },
+                    }
+                ],
+                "avoidNextActions": [
+                    {
+                        "kind": "repeat-flat-fd",
+                        "target": "missing-owner",
+                        "reason": "finder returned no candidates",
+                    }
+                ],
+            },
+        }
+
+        errors = sorted(validator.iter_errors(packet), key=lambda error: list(error.path))
+
+        self.assertEqual([], errors)
+
 
 if __name__ == "__main__":
     unittest.main()

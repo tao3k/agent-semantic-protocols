@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .agent_observation_asp import asp_args, normalize_command
+from .agent_observation_asp import asp_args
 
 
 def failure_frontier_memory(command: str, output: str) -> dict[str, Any]:
@@ -37,16 +37,28 @@ def _projected_query_actions(value: str) -> list[dict[str, str]]:
 
 
 def _projected_query_action(segment: str) -> dict[str, str] | None:
-    if "=>asp " not in segment or " query --selector " not in segment:
+    typed_action = _typed_query_code_action(segment)
+    if typed_action is not None:
+        return typed_action
+    return None
+
+
+def _typed_query_code_action(segment: str) -> dict[str, str] | None:
+    label, separator, rest = segment.strip().partition(".query-code(")
+    if not separator:
         return None
-    label, projected_command = segment.split("=>", 1)
-    selector = _selector_from_projected_command(projected_command)
+    fields_text, separator, next_action = rest.partition(")!")
+    if not separator or next_action != "query-code":
+        return None
+    fields = _action_fields(fields_text)
+    selector = fields.get("selector")
     if selector is None:
         return None
     return {
         "label": label.strip(),
         "selector": selector,
-        "command": normalize_command(projected_command.strip()),
+        "actionKind": "query-code",
+        "targetRole": "selector",
     }
 
 
@@ -60,14 +72,13 @@ def _failure_frontier_memory_packet(actions: list[dict[str, str]]) -> dict[str, 
     }
 
 
-def _selector_from_projected_command(command: str) -> str | None:
-    args = asp_args(command)
-    for index, arg in enumerate(args):
-        if arg == "--selector" and index + 1 < len(args):
-            return args[index + 1]
-        if arg.startswith("--selector="):
-            return arg.split("=", 1)[1]
-    return None
+def _action_fields(fields_text: str) -> dict[str, str]:
+    fields: dict[str, str] = {}
+    for field in _action_segments(fields_text):
+        key, separator, value = field.strip().partition("=")
+        if separator:
+            fields[key] = value
+    return fields
 
 
 def _action_segments(value: str) -> list[str]:

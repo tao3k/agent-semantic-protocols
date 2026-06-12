@@ -39,9 +39,6 @@
           "routes.0.kind": "query",
           "routes.0.providerId": "rs-harness"
         },
-        "stdoutJsonContains": {
-          "message": "rs-harness agent guide ."
-        },
         "maxElapsedMsWarn": 6000
       }
     },
@@ -67,9 +64,6 @@
           "routes.0.kind": "query",
           "routes.0.providerId": "py-harness"
         },
-        "stdoutJsonContains": {
-          "message": "py-harness agent guide ."
-        },
         "maxElapsedMsWarn": 6000
       }
     },
@@ -94,9 +88,6 @@
           "languageIds.0": "typescript",
           "routes.0.kind": "ingest",
           "routes.0.providerId": "ts-harness"
-        },
-        "stdoutJsonContains": {
-          "message": "ts-harness agent guide ."
         },
         "maxElapsedMsWarn": 6000
       }

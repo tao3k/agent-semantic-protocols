@@ -80,6 +80,7 @@
         "prime",
         "--view",
         "seeds",
+        "--workspace",
         "."
       ],
       "expect": {
@@ -87,10 +88,11 @@
         "stdoutContains": [
           "[search-prime]",
           "root=fastapi",
-          "fastapi/routing.py",
-          "entries=owner-query(O,Q=>items+tests+dependency-usage),query-deps(Q,D=>owners+imports+usage-tests),owner-tests(O=>covering-tests+test-entrypoints+fixtures)"
+          "alg=fast-prime-frontier-v1",
+          "entries=owner-tests(O=>covering-tests+test-entrypoints+fixtures)",
+          "omit=items,blocks,code,full-json reason=fast-seeds-frontier"
         ],
-        "maxStdoutLinesWarn": 8,
+        "maxStdoutLinesWarn": 9,
         "maxElapsedMsWarn": 16000
       }
     },
@@ -110,6 +112,7 @@
         "tests",
         "--view",
         "seeds",
+        "--workspace",
         "."
       ],
       "expect": {

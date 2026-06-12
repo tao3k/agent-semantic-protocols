@@ -1,232 +1,112 @@
-use std::collections::HashSet;
-
 use crate::{ActivatedProvider, DecisionRoute};
+
+pub const HOOK_TRIGGER_PROMPT_FILE_NAME: &str = "hook_trigger_prompt.md";
+
+const HOOK_TRIGGER_PROMPT_MD: &str = include_str!("../templates/hook_trigger_prompt.md");
+const MANAGED_BEGIN: &str = "<!-- ASP-HOOK-TRIGGER-PROMPT:MANAGED-BEGIN -->";
+const MANAGED_END: &str = "<!-- ASP-HOOK-TRIGGER-PROMPT:MANAGED-END -->";
+const USER_EXTENSIONS_BEGIN: &str = "<!-- ASP-HOOK-TRIGGER-PROMPT:USER-EXTENSIONS-BEGIN -->";
+const USER_EXTENSIONS_END: &str = "<!-- ASP-HOOK-TRIGGER-PROMPT:USER-EXTENSIONS-END -->";
 
 pub(crate) fn source_access_recovery_message(
     reason: &str,
-    providers: &[&ActivatedProvider],
+    _providers: &[&ActivatedProvider],
     routes: &[DecisionRoute],
-    semantic_ast_patch_enabled: bool,
+    _semantic_ast_patch_enabled: bool,
 ) -> String {
-    let mut lines = vec![
-        format!("ASP hook denied `{reason}` on language source."),
-        "See @.agents/skills/agent-semantic-protocols/SKILL.md for the active ASP agent workflow."
-            .to_string(),
-        String::new(),
-        "## ASP Hook Recovery".to_string(),
-        format!("The pre-tool hook blocked `{reason}` on language source."),
-        String::new(),
-        "## Stop".to_string(),
-        "Do not retry `Read`, `cat`, `sed`, `rg`, or source-dump commands on the matched source. The hook runs before the tool and will deny the same raw access again.".to_string(),
-        String::new(),
-        "## Run Next".to_string(),
-    ];
-    render_routes(&mut lines, routes);
-    let unique_providers = unique_activated_providers(providers);
-    render_detected_binaries(&mut lines, &unique_providers);
-    render_agent_flow(&mut lines, &unique_providers, semantic_ast_patch_enabled);
-    render_rules(&mut lines, &unique_providers, semantic_ast_patch_enabled);
-    lines.join("\n")
+    default_hook_trigger_prompt_message(reason, routes)
 }
 
-fn render_routes(lines: &mut Vec<String>, routes: &[DecisionRoute]) {
-    for route in routes {
-        lines.push(String::new());
-        lines.push("```sh".to_string());
-        lines.push(command_line(&route.argv));
-        lines.push("```".to_string());
+pub fn hook_trigger_prompt_document() -> &'static str {
+    HOOK_TRIGGER_PROMPT_MD
+}
+
+pub fn default_hook_trigger_prompt_message(reason: &str, routes: &[DecisionRoute]) -> String {
+    render_hook_trigger_prompt_document(HOOK_TRIGGER_PROMPT_MD, reason, routes)
+}
+
+pub fn render_hook_trigger_prompt_document(
+    document: &str,
+    reason: &str,
+    routes: &[DecisionRoute],
+) -> String {
+    let managed = section_body(document, MANAGED_BEGIN, MANAGED_END).unwrap_or(document);
+    let mut rendered = render_hook_trigger_prompt_template(managed, reason, routes);
+    if let Some(user_extensions) = runtime_user_extensions(document) {
+        rendered.push_str("\n\n");
+        rendered.push_str(user_extensions);
     }
+    rendered
+}
+
+pub fn merge_hook_trigger_prompt_document(existing: Option<&str>) -> String {
+    let Some(existing) = existing else {
+        return HOOK_TRIGGER_PROMPT_MD.to_string();
+    };
+    let Some(user_extensions) = section_body(existing, USER_EXTENSIONS_BEGIN, USER_EXTENSIONS_END)
+    else {
+        return HOOK_TRIGGER_PROMPT_MD.to_string();
+    };
+    replace_section(
+        HOOK_TRIGGER_PROMPT_MD,
+        USER_EXTENSIONS_BEGIN,
+        USER_EXTENSIONS_END,
+        user_extensions,
+    )
+    .unwrap_or_else(|| HOOK_TRIGGER_PROMPT_MD.to_string())
+}
+
+fn render_hook_trigger_prompt_template(
+    template: &str,
+    reason: &str,
+    routes: &[DecisionRoute],
+) -> String {
+    template
+        .trim_matches('\n')
+        .replace("{reason}", reason)
+        .replace("{routes}", &routes_markdown(routes))
+}
+
+fn runtime_user_extensions(document: &str) -> Option<&str> {
+    let user_extensions = section_body(document, USER_EXTENSIONS_BEGIN, USER_EXTENSIONS_END)?;
+    let has_visible_content = user_extensions.lines().any(|line| {
+        let trimmed = line.trim();
+        !trimmed.is_empty() && !(trimmed.starts_with("<!--") && trimmed.ends_with("-->"))
+    });
+    has_visible_content.then_some(user_extensions)
+}
+
+fn section_body<'a>(document: &'a str, begin: &str, end: &str) -> Option<&'a str> {
+    let start = document.find(begin)? + begin.len();
+    let rest = &document[start..];
+    let end = rest.find(end)?;
+    Some(rest[..end].trim_matches('\n'))
+}
+
+fn replace_section(document: &str, begin: &str, end: &str, body: &str) -> Option<String> {
+    let start = document.find(begin)?;
+    let body_start = start + begin.len();
+    let rest = &document[body_start..];
+    let body_end = body_start + rest.find(end)?;
+
+    let mut output = String::new();
+    output.push_str(&document[..body_start]);
+    output.push('\n');
+    output.push_str(body.trim_matches('\n'));
+    output.push('\n');
+    output.push_str(&document[body_end..]);
+    Some(output)
+}
+
+fn routes_markdown(routes: &[DecisionRoute]) -> String {
     if routes.is_empty() {
-        lines.push(String::new());
-        lines.push("```sh".to_string());
-        lines.push("asp guide".to_string());
-        lines.push("```".to_string());
+        return "```sh\nasp guide\n```".to_string();
     }
-}
-
-fn render_detected_binaries(lines: &mut Vec<String>, providers: &[&ActivatedProvider]) {
-    if providers.is_empty() {
-        return;
-    }
-    lines.push(String::new());
-    lines.push("## Detected Binaries".to_string());
-    for provider in providers {
-        lines.push(format!(
-            "- language={} provider={} command=`{}` facade=`asp {}`",
-            provider.language_id,
-            provider.provider_id,
-            command_line(&provider_detected_command(provider)),
-            provider.language_id
-        ));
-    }
-}
-
-fn render_agent_flow(
-    lines: &mut Vec<String>,
-    providers: &[&ActivatedProvider],
-    semantic_ast_patch_enabled: bool,
-) {
-    lines.push(String::new());
-    lines.push("## Agent Flow".to_string());
-    lines.push(
-        "Follow this flow after the hook recovery command gives you a frontier or exact locator."
-            .to_string(),
-    );
-    for provider in providers {
-        lines.push(String::new());
-        lines.push(format!(
-            "### {}",
-            agent_flow_language_heading(&provider.language_id)
-        ));
-        if is_document_language(&provider.language_id) {
-            render_document_flow(lines, &provider.language_id);
-        } else {
-            render_source_flow(lines, &provider.language_id, semantic_ast_patch_enabled);
-        }
-    }
-    if providers.is_empty() {
-        lines.push(String::new());
-        lines.push("### Provider Discovery".to_string());
-        lines.push("1. Start from the generic guide.".to_string());
-        lines.push("   - `asp guide`".to_string());
-        lines.push(
-            "2. Inspect active providers, then rerun the language-specific guide.".to_string(),
-        );
-    }
-}
-
-fn render_document_flow(lines: &mut Vec<String>, language_id: &str) {
-    lines.push(
-        "1. Start from the document guide when you need the provider-owned tool map.".to_string(),
-    );
-    lines.push(format!("   - `asp {language_id} guide .`"));
-    lines.push(format!(
-        "2. Search parser-owned document elements with `asp {language_id} search prime --view seeds .`."
-    ));
-    lines.push(format!(
-        "3. Query element metadata with `asp {language_id} query --term <term> --view metadata .`, `asp {language_id} query --kind <element-kind> --view metadata .`, `asp {language_id} query --field <key=value> --view metadata .`, or `asp {language_id} query --selector <path-or-range> --view metadata .`."
-    ));
-    lines.push(
-        "4. For pure matched element text, add `--content` to an explicit query with `--selector`, `--term`, `--kind`, or `--field`."
-            .to_string(),
-    );
-    lines.push(format!(
-        "5. Extract matched document text with `asp {language_id} query --selector <path-or-range> --content .`."
-    ));
-}
-
-fn render_source_flow(
-    lines: &mut Vec<String>,
-    language_id: &str,
-    semantic_ast_patch_enabled: bool,
-) {
-    lines.push("1. Start from the language guide when you need the agent tool map.".to_string());
-    lines.push(format!("   - `asp {language_id} guide .`"));
-    lines.push(format!(
-        "2. Map the project with `asp {language_id} search prime --view seeds .`."
-    ));
-    lines.push("3. Choose an owner, query, dependency, test, or syntax profile from the user intent and the seed frontier.".to_string());
-    lines.push(format!(
-        "4. When you need syntax location, read `asp {language_id} query guide treesitter .`."
-    ));
-    lines.push(format!(
-        "5. Execute `asp {language_id} query --treesitter-query '<pattern>' .` for a capture/frontier result."
-    ));
-    lines.push("6. Select one exact locator from the frontier.".to_string());
-    lines.push(format!(
-        "7. Extract pure code with `asp {language_id} query --selector <path-or-range> --workspace <workspace-root> --code`."
-    ));
-    lines.push("8. Treat stdout from `query --code` as pure source code only.".to_string());
-    if semantic_ast_patch_enabled {
-        lines.push(format!("9. Patch with `apply_patch` for normal edits, or use provider `ast-patch` for structural/mechanical edits after a dry-run receipt; then run `asp {language_id} check --changed .`."));
-    } else {
-        lines.push(format!("9. Hook config has `experimental.semanticAstPatch.enabled = false`, so patch with `apply_patch`; use provider `ast-patch` only after enabling that config and validating a dry-run receipt, then run `asp {language_id} check --changed .`."));
-    }
-}
-
-fn render_rules(
-    lines: &mut Vec<String>,
-    providers: &[&ActivatedProvider],
-    semantic_ast_patch_enabled: bool,
-) {
-    lines.push(String::new());
-    lines.push("## Rules".to_string());
-    if providers
+    routes
         .iter()
-        .any(|provider| is_document_language(&provider.language_id))
-    {
-        lines.push("- Document query is parser-owned element metadata by default; `--content` is a filtered element-content projection, not a direct file read.".to_string());
-        lines.push(
-            "- Document recovery routes use `query --selector --content`, not direct source reads."
-                .to_string(),
-        );
-    }
-    if providers
-        .iter()
-        .any(|provider| !is_document_language(&provider.language_id))
-    {
-        lines.push("- Search is for discovery and should not inline code.".to_string());
-        lines.push("- Query with `--code` is for exact or unique code extraction.".to_string());
-        lines.push(
-            "- Tree-sitter query is the syntax base; native parser facts enrich the capture/frontier."
-                .to_string(),
-        );
-    }
-    lines.push(
-        "- Do not read full guide bodies unless the current step needs that guide.".to_string(),
-    );
-    lines.push(
-        "- Codex and Claude share the same tool-surface matcher; platform differences should stay in hook envelopes, not recovery routing."
-            .to_string(),
-    );
-    if semantic_ast_patch_enabled {
-        lines.push(
-            "- `ast-patch` is available for structural/mechanical edits after a provider dry-run receipt."
-                .to_string(),
-        );
-    } else {
-        lines.push(
-            "- `ast-patch` is disabled by hook config; do not route ordinary edits through provider mutation."
-                .to_string(),
-        );
-    }
-}
-
-fn unique_activated_providers<'a>(
-    providers: &'a [&'a ActivatedProvider],
-) -> Vec<&'a ActivatedProvider> {
-    let mut seen = HashSet::new();
-    providers
-        .iter()
-        .copied()
-        .filter(|provider| {
-            seen.insert((provider.language_id.clone(), provider.provider_id.clone()))
-        })
-        .collect()
-}
-
-fn provider_detected_command(provider: &ActivatedProvider) -> Vec<String> {
-    if provider.provider_command_prefix.is_empty() {
-        vec![provider.binary.clone()]
-    } else {
-        provider.provider_command_prefix.clone()
-    }
-}
-
-fn agent_flow_language_heading(language_id: &str) -> String {
-    match language_id {
-        "rust" => "Rust".to_string(),
-        "typescript" => "TypeScript".to_string(),
-        "python" => "Python".to_string(),
-        "julia" => "Julia".to_string(),
-        "org" => "Org Document".to_string(),
-        "md" => "Markdown Document".to_string(),
-        other => other.to_string(),
-    }
-}
-
-fn is_document_language(language_id: &str) -> bool {
-    matches!(language_id, "org" | "md")
+        .map(|route| format!("```sh\n{}\n```", command_line(&route.argv)))
+        .collect::<Vec<_>>()
+        .join("\n\n")
 }
 
 pub(crate) fn command_line(argv: &[String]) -> String {

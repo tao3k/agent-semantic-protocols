@@ -26,7 +26,7 @@ fn stop_hook_blocks_prime_only_flow_until_search_pipe_runs() {
             "post-tool",
             "session-effect",
             "transcript-effect.jsonl",
-            "asp typescript search prime --view seeds .",
+            "asp typescript search prime --workspace . --view seeds",
         ),
     )
     .expect("write hook event");
@@ -78,7 +78,7 @@ fn stop_hook_allows_after_search_pipe_runs() {
             "post-tool",
             "session-effect",
             "transcript-effect.jsonl",
-            "asp typescript search prime --view seeds .",
+            "asp typescript search prime --workspace . --view seeds",
         ),
     )
     .expect("write prime event");
@@ -89,7 +89,7 @@ fn stop_hook_allows_after_search_pipe_runs() {
             "post-tool",
             "session-effect",
             "transcript-effect.jsonl",
-            "asp typescript search pipe 'Effect concurrency Fiber Queue Stream Scope' --view seeds .",
+            "asp typescript search pipe 'Effect concurrency Fiber Queue Stream Scope' --workspace . --view seeds",
         ),
     )
     .expect("write pipe event");
@@ -120,7 +120,7 @@ fn pre_tool_denies_repeated_prime_before_pipe() {
             "pre-tool",
             "session-effect",
             "transcript-effect.jsonl",
-            "asp typescript search prime --view seeds .",
+            "asp typescript search prime --workspace . --view seeds",
         ),
     )
     .expect("write prime event");
@@ -136,7 +136,7 @@ fn pre_tool_denies_repeated_prime_before_pipe() {
             "transcript_path": "transcript-effect.jsonl",
             "tool_name": "Bash",
             "tool_input": {
-                "command": "cd /repo && asp typescript search prime --view seeds . 2>&1 | head -100"
+                "command": "cd /repo && asp typescript search prime --workspace . --view seeds 2>&1 | head -100"
             }
         }),
     );
@@ -161,7 +161,7 @@ fn pre_tool_denies_direct_read_before_pipe() {
             "pre-tool",
             "session-effect",
             "transcript-effect.jsonl",
-            "asp typescript search prime --view seeds .",
+            "asp typescript search prime --workspace . --view seeds",
         ),
     )
     .expect("write prime event");
@@ -244,7 +244,7 @@ fn pre_tool_allows_asp_binary_probe_without_treating_asp_as_facade() {
 }
 
 fn pipe_command() -> &'static str {
-    "asp typescript search pipe '<question-or-feature-term>' --view seeds ."
+    "asp typescript search pipe '<question-or-feature-term>' --workspace . --view seeds"
 }
 
 fn runtime_for_project(project_root: &std::path::Path) -> HookRuntime {

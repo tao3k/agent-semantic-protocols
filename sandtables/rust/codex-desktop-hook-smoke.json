@@ -39,7 +39,7 @@
           "hookSpecificOutput.permissionDecision": "deny"
         },
         "stdoutContains": [
-          "\"permissionDecisionReason\":\"direct-source-read denied",
+          "\\\"reasonKind\\\":\\\"direct-source-read\\\"",
           "\\\"paths\\\":[\\\"src/lib.rs\\\"]",
           "\\\"providerId\\\":\\\"rs-harness\\\""
         ],
@@ -48,7 +48,7 @@
           "fn "
         ],
         "maxStdoutLinesWarn": 1,
-        "maxElapsedMsWarn": 6500
+        "maxElapsedMsWarn": 8000
       }
     },
     {
@@ -62,13 +62,9 @@
       ],
       "stdin": "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"functions.exec_command\",\"tool_input\":{\"cmd\":\"rtk rg -n smoke src tests\"}}",
       "expect": {
-        "stdoutJsonEquals": {
-          "hookSpecificOutput.permissionDecision": "deny"
-        },
+        "stdoutJsonEquals": {},
         "stdoutContains": [
-          "\"permissionDecisionReason\":\"raw-broad-search denied",
-          "\\\"reasonKind\\\":\\\"raw-broad-search\\\"",
-          "\\\"kind\\\":\\\"query\\\""
+          "{}"
         ],
         "stdoutNotContains": [
           "pub mod",
@@ -93,7 +89,7 @@
           "hookSpecificOutput.permissionDecision": "deny"
         },
         "stdoutContains": [
-          "\"permissionDecisionReason\":\"direct-source-read denied",
+          "\\\"reasonKind\\\":\\\"direct-source-read\\\"",
           "\\\"paths\\\":[\\\"src/lib.rs\\\"]"
         ],
         "stdoutNotContains": [
@@ -119,8 +115,8 @@
           "hookSpecificOutput.permissionDecision": "deny"
         },
         "stdoutContains": [
-          "\"permissionDecisionReason\":\"bulk-source-dump denied",
-          "\\\"paths\\\":[\\\"src/lib.rs:1:40\\\"]"
+          "\\\"reasonKind\\\":\\\"bulk-source-dump\\\"",
+          "\\\"paths\\\":[\\\"src/lib.rs:1:40\\\""
         ],
         "stdoutNotContains": [
           "pub mod",
@@ -170,9 +166,8 @@
       "stdin": "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"functions.exec_command\",\"tool_input\":{\"cmd\":\"rtk rg -n smoke src tests\"}}",
       "expect": {
         "stdoutJsonEquals": {
-          "decision": "deny",
-          "reasonKind": "raw-broad-search",
-          "routes.0.kind": "query"
+          "decision": "allow",
+          "reasonKind": "none"
         },
         "stdoutNotContains": [
           "pub mod",
@@ -224,7 +219,7 @@
         "stdoutJsonEquals": {
           "decision": "deny",
           "reasonKind": "raw-broad-search",
-          "routes.0.kind": "query"
+          "routes.0.kind": "fzf"
         },
         "maxElapsedMsWarn": 6500
       }

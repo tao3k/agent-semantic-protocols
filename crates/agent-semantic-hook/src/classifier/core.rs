@@ -167,6 +167,9 @@ fn classify_invalid_asp_facade(
     if event != "pre-tool" {
         return None;
     }
+    if !action_supports_asp_command_feedback(action) {
+        return None;
+    }
     let command = action.command.as_deref()?;
     let invalid_facade = invalid_asp_facade(command, registry)?;
     let preferred_language = preferred_language_for_invalid_facade(&invalid_facade, registry);
@@ -301,7 +304,9 @@ fn invalid_asp_facade_message(
     }
     lines.extend([String::new(), "## Run Next".to_string()]);
     if let Some(language_id) = preferred_language {
-        lines.push(format!("asp {language_id} search prime --view seeds ."));
+        lines.push(format!(
+            "asp {language_id} search prime --workspace . --view seeds"
+        ));
     } else {
         lines.extend([
             "asp providers".to_string(),
@@ -402,7 +407,9 @@ fn search_pipe_required_stop_message(language_id: &str) -> String {
             .to_string(),
         String::new(),
         "## Run Next".to_string(),
-        format!("asp {language_id} search pipe '<question-or-feature-term>' --view seeds ."),
+        format!(
+            "asp {language_id} search pipe '<question-or-feature-term>' --workspace . --view seeds"
+        ),
         String::new(),
         "## Rules".to_string(),
         "Compress the user's question into one code-search seed before running the pipe."
@@ -422,6 +429,9 @@ fn classify_prompt_search_flow_feedback(
     action: &ToolAction,
 ) -> Option<HookDecision> {
     if event != "pre-tool" {
+        return None;
+    }
+    if !action_supports_prompt_search_flow_feedback(action) {
         return None;
     }
     let command = action.command.as_deref()?;
@@ -505,6 +515,17 @@ fn classify_prompt_search_flow_feedback(
         return Some(decision);
     }
     None
+}
+
+fn action_supports_prompt_search_flow_feedback(action: &ToolAction) -> bool {
+    action_supports_asp_command_feedback(action)
+}
+
+fn action_supports_asp_command_feedback(action: &ToolAction) -> bool {
+    matches!(
+        action.operation,
+        OperationIntent::ShellCommand | OperationIntent::StdinContinuation
+    )
 }
 
 fn classify_prompt_asp_command_budget(
@@ -657,7 +678,9 @@ fn search_flow_feedback_message(language_id: &str, feedback_kind: &str, heading:
                 .to_string(),
             String::new(),
             "## Run Next".to_string(),
-            format!("asp {language_id} search pipe '<question-or-feature-term>' --view seeds ."),
+            format!(
+                "asp {language_id} search pipe '<question-or-feature-term>' --workspace . --view seeds"
+            ),
             String::new(),
             "## Rules".to_string(),
             "Compress the user's question into one code-search seed before running the pipe."
@@ -676,7 +699,7 @@ fn classify_subagent_stop(platform: &str, event: &str, payload: &Value) -> Optio
     let last_message = payload_string(payload, "last_assistant_message")
         .or_else(|| payload_string(payload, "lastAssistantMessage"))
         .unwrap_or_default();
-    if last_message.contains("[search-subagent]") {
+    if last_message.contains("[asp-search-subagent]") {
         return Some(allow(platform, event, DecisionSubject::default()));
     }
     Some(HookDecision {
@@ -691,7 +714,7 @@ fn classify_subagent_stop(platform: &str, event: &str, payload: &Value) -> Optio
         language_ids: Vec::new(),
         subject: DecisionSubject::default(),
         routes: Vec::new(),
-        message: "SubagentStop requires compact [search-subagent] evidence before fan-in."
+        message: "SubagentStop requires compact [asp-search-subagent] evidence before fan-in."
             .to_string(),
         fields: std::collections::BTreeMap::new(),
     })

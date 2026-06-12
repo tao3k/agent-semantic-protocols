@@ -765,7 +765,11 @@ is the fastest replay path and may be paired with
   from packet-provided =/cache/fileHashes= or from client-computed path+sha256
   values over validated locator fields such as =selector=, =read=, =path=, and
   capture/match ranges.  This freshness fallback stores no raw source and does
-  not infer language semantics.  Both syntax paths render the current
+  not infer language semantics.  Query requests whose stdout is selected source
+  content, such as =--selector ... --code= or =--from-hook direct-source-read
+  --selector ... --code=, are last-mile transport only: the client must not
+  treat them as prompt-output write-back or direct prompt-output replay inputs.
+  Both syntax paths render the current
   locator/frontier prompt surface from structured facts and must not store or replay
   raw source.  Exact
   syntax query cache identity is the ASP-compiled query AST/ABI fingerprint plus
@@ -819,6 +823,36 @@ native provenance:
 Provider-specific fields belong in provider-owned sub-schemas advertised by the
 registry.  Do not widen =semantic-search-packet.v1= only to support a cache
 optimization.
+
+** Structural Index v1
+
+=semantic-structural-index.v1= is the local cache-side index contract for warm
+search replay.  It is not a replacement for =semantic-search-packet.v1=,
+=semantic-query-packet.v1=, or =semantic-native-syntax-fact-index.v1=.  Providers
+remain the authority for language facts; the Rust client owns validated row
+storage, file/lock hash freshness checks, and index-first recall.
+
+The index stores only structural rows:
+
+- owner/file rows: project-relative owner path, owner kind, parser authority,
+  optional source location, and query keys;
+- symbol rows: name, qualified name when available, kind, visibility, locator,
+  native fact refs, and query keys;
+- dependency usage rows: package identity, optional locked version, API/import
+  name, manifest path, lockfile hash, locator, and query keys;
+- freshness rows: project-relative file/manifest/lockfile paths plus sha256.
+
+The index must not store raw source, source windows, snippets, or provider
+stdout.  =rawSourceStored= is always =false=.  Exact code remains a last-mile
+=query --code= operation after an index row has selected a parser-owned locator.
+
+The SQLite implementation hangs structural rows off =cache_generations= via
+=generation_id= so existing invalidation deletes stale index rows without a
+parallel cleanup path.  Warm =search= may use structural rows before spawning a
+provider only when all required file or lock hashes still match.  Receipts for
+that path should expose =indexHit=, =indexRowsRead=, =indexStaleReason=,
+=providerProcessesSpawned=, and elapsed timing so performance calibration can
+distinguish provider warm-up from client index replay.
 
 ** Julia warm-up adaptation
 

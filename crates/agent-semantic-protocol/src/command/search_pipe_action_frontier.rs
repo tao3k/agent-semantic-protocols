@@ -22,16 +22,26 @@ pub(super) enum ActionRoute {
     FdQuery {
         query: String,
         scope: String,
+        command_scope: Option<String>,
     },
     RgQuery {
         query: String,
         scope: String,
+        command_scope: Option<String>,
+    },
+    RgQuerySet {
+        queries: Vec<String>,
+        scope: String,
+        command_scope: String,
     },
     OwnerItems {
         language_id: String,
         owner: String,
         query: String,
         scope: String,
+    },
+    OwnerItemsHint {
+        owner: String,
     },
     TreeSitterQuery {
         language_id: String,
@@ -52,12 +62,18 @@ impl ActionNode {
             } => {
                 format!("selector={selector},owner={owner},symbol={symbol}")
             }
-            ActionRoute::FdQuery { query, scope } | ActionRoute::RgQuery { query, scope } => {
-                format!("query={query},scope={scope}")
+            ActionRoute::FdQuery { query, scope, .. }
+            | ActionRoute::RgQuery { query, scope, .. } => format!("query={query},scope={scope}"),
+            ActionRoute::RgQuerySet { queries, scope, .. } => {
+                format!(
+                    "queryClauses={},scope={scope}",
+                    query_clauses_display(queries)
+                )
             }
             ActionRoute::OwnerItems { owner, query, .. } => {
                 format!("owner={owner},query={query}")
             }
+            ActionRoute::OwnerItemsHint { owner } => format!("owner={owner}"),
             ActionRoute::TreeSitterQuery { recipe, names, .. } => {
                 format!("recipe={recipe},names={}", names.join("|"))
             }
@@ -75,12 +91,32 @@ impl ActionNode {
                 "asp {language_id} query --selector {} --workspace {workspace} --code",
                 shell_arg(selector)
             )),
-            ActionRoute::FdQuery { query, scope } => {
-                Some(format!("asp fd -query {} {scope}", shell_arg(query)))
-            }
-            ActionRoute::RgQuery { query, scope } => {
-                Some(format!("asp rg -query {} {scope}", shell_arg(query)))
-            }
+            ActionRoute::FdQuery {
+                query,
+                scope,
+                command_scope,
+            } => Some(format!(
+                "asp fd -query {} {}",
+                shell_arg(query),
+                command_scope.as_deref().unwrap_or(scope)
+            )),
+            ActionRoute::RgQuery {
+                query,
+                scope,
+                command_scope,
+            } => Some(format!(
+                "asp rg -query {} {}",
+                shell_arg(query),
+                command_scope.as_deref().unwrap_or(scope)
+            )),
+            ActionRoute::RgQuerySet {
+                queries,
+                command_scope,
+                ..
+            } => Some(format!(
+                "asp rg {} {command_scope}",
+                repeated_query_args(queries)
+            )),
             ActionRoute::OwnerItems {
                 language_id,
                 owner,
@@ -91,6 +127,7 @@ impl ActionNode {
                 shell_arg(owner),
                 shell_arg(query),
             )),
+            ActionRoute::OwnerItemsHint { .. } => None,
             ActionRoute::TreeSitterQuery {
                 language_id,
                 recipe,
@@ -124,15 +161,20 @@ impl ActionNode {
                 fields.insert("workspace".to_string(), json!(workspace));
                 ("query", selector.as_str(), "selector")
             }
-            ActionRoute::FdQuery { query, scope } => {
+            ActionRoute::FdQuery { query, scope, .. } => {
                 fields.insert("query".to_string(), json!(query));
                 fields.insert("scope".to_string(), json!(scope));
                 ("fd", query.as_str(), "query")
             }
-            ActionRoute::RgQuery { query, scope } => {
+            ActionRoute::RgQuery { query, scope, .. } => {
                 fields.insert("query".to_string(), json!(query));
                 fields.insert("scope".to_string(), json!(scope));
                 ("rg", query.as_str(), "query")
+            }
+            ActionRoute::RgQuerySet { queries, scope, .. } => {
+                fields.insert("queryClauses".to_string(), json!(queries));
+                fields.insert("scope".to_string(), json!(scope));
+                ("rg", scope.as_str(), "query-set")
             }
             ActionRoute::OwnerItems {
                 language_id,
@@ -144,6 +186,10 @@ impl ActionNode {
                 fields.insert("ownerPath".to_string(), json!(owner));
                 fields.insert("query".to_string(), json!(query));
                 fields.insert("scope".to_string(), json!(scope));
+                ("owner-items", owner.as_str(), "owner")
+            }
+            ActionRoute::OwnerItemsHint { owner } => {
+                fields.insert("ownerPath".to_string(), json!(owner));
                 ("owner-items", owner.as_str(), "owner")
             }
             ActionRoute::TreeSitterQuery {
@@ -168,6 +214,64 @@ impl ActionNode {
             "fields": fields,
         })
     }
+}
+
+pub(super) fn render_action_rows(actions: &[ActionNode]) -> String {
+    let mut rendered = String::new();
+    if actions.is_empty() {
+        rendered.push_str("actionRank=-\n");
+        rendered.push_str("actionFrontier=-\n");
+        rendered.push_str("recommendedNext=-\n");
+        return rendered;
+    }
+    rendered.push_str(&format!(
+        "actionRank={}\n",
+        actions
+            .iter()
+            .map(|action| action.id.as_str())
+            .collect::<Vec<_>>()
+            .join(",")
+    ));
+    for action in actions {
+        rendered.push_str(&format!(
+            "{}={}({})!{}\n",
+            action.id,
+            action.kind,
+            action.render_body(),
+            action.suffix
+        ));
+    }
+    rendered.push_str(&format!(
+        "actionFrontier={}\n",
+        actions
+            .iter()
+            .map(|action| format!("{}.{}", action.id, action.kind))
+            .collect::<Vec<_>>()
+            .join(",")
+    ));
+    let first = actions.first().expect("non-empty actions");
+    rendered.push_str(&format!("recommendedNext={}.{}\n", first.id, first.kind));
+    if let Some(command) = first.materialized_command() {
+        rendered.push_str(&format!("nextCommand={command}\n"));
+    }
+    rendered
+}
+
+fn query_clauses_display(queries: &[String]) -> String {
+    queries
+        .iter()
+        .enumerate()
+        .map(|(index, query)| format!("C{}={}", index + 1, shell_arg(query)))
+        .collect::<Vec<_>>()
+        .join(";")
+}
+
+fn repeated_query_args(queries: &[String]) -> String {
+    queries
+        .iter()
+        .map(|query| format!("-query {}", shell_arg(query)))
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn tree_sitter_query_pattern(language_id: &str, recipe: &str, names: &[&str]) -> Option<String> {

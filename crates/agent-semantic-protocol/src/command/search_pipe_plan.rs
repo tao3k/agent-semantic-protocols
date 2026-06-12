@@ -300,7 +300,10 @@ fn parse_projected_frontier_actions(value: &str) -> Vec<PipeAction> {
         .collect::<HashMap<_, _>>();
     let mut selector_actions = segments
         .iter()
-        .filter_map(|part| parse_selector_action(part.trim()))
+        .filter_map(|part| {
+            let part = part.trim();
+            parse_selector_action(part).or_else(|| parse_query_code_action(part))
+        })
         .map(|mut action| {
             if let Some(owner) = reasoning_owners.get(&action.index) {
                 action.owner = owner.clone();
@@ -341,6 +344,30 @@ fn parse_reasoning_action(value: &str) -> Option<(usize, String)> {
 fn parse_selector_action(value: &str) -> Option<PipeAction> {
     let rest = value.strip_prefix('S')?;
     let (index, rest) = rest.split_once(".selector(")?;
+    let index = index.parse::<usize>().ok()?;
+    let fields = rest.split_once(")!")?.0;
+    let selector = action_field(fields, "selector")?.to_string();
+    let owner = action_field(fields, "owner")
+        .unwrap_or_default()
+        .to_string();
+    let symbol = action_field(fields, "symbol")
+        .unwrap_or("match")
+        .to_string();
+    let source_alias = action_field(fields, "source")
+        .unwrap_or_default()
+        .to_string();
+    Some(PipeAction {
+        index,
+        owner,
+        selector,
+        symbol,
+        source_alias,
+    })
+}
+
+fn parse_query_code_action(value: &str) -> Option<PipeAction> {
+    let rest = value.strip_prefix('C')?;
+    let (index, rest) = rest.split_once(".query-code(")?;
     let index = index.parse::<usize>().ok()?;
     let fields = rest.split_once(")!")?.0;
     let selector = action_field(fields, "selector")?.to_string();

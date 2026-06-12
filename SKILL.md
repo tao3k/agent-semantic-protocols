@@ -7,6 +7,28 @@ description: Use when working with the language provider binaries maintained by 
 
 <!-- ASP_INSTALLED_SKILL_NOTICE -->
 
+## ASP Explorer Subagent
+
+When a hook deny message or `search pipe` output points to `asp-explorer`,
+Codex should reuse the ASP search agent thread already opened for the current
+main task. If no such thread exists, call `spawn_agent` with
+`fork_context=true` and include the ASP Explorer branch prompt plus the safe ASP
+command group in the message. Keep model, reasoning, and agent-type defaults in
+Codex config, not in the prompt. Spawn one read-only instance per independent
+`actionFrontier` or `targetActions` branch, and require a compact
+`[asp-search-subagent] role=... action=... evidence=... missing=... next=... risk=...`
+receipt.
+
+Keep reasoning state in the parent. `asp-explorer` workers inherit the main
+thread context through `fork_context=true`, do not share sibling context, must
+not edit files, and must not spawn child subagents. If the custom subagent is
+unavailable, run the same ASP routes sequentially and synthesize the receipts in
+the parent.
+
+`asp hook install --client codex .` registers the role in project Codex config,
+but a thread that was already running before install may need a reload or new
+thread before `spawn_agent` lists `asp_explorer`.
+
 ## Provider Activation
 
 This root `SKILL.md` is the embedded template source used by `asp hook install`.
@@ -84,10 +106,10 @@ are intentionally unsupported for document files.
 For code tasks, keep the command order structural-first:
 
 ```sh
-asp search --language <language> prime --view seeds .
+asp search --language <language> prime --workspace <workspace-root> --view seeds
 asp query --language <language> --treesitter-query '<pattern>' .
-asp <language> search prime --view seeds .
-asp <language> search pipe '<question-or-feature-term>' --view seeds .
+asp <language> search prime --workspace <workspace-root> --view seeds
+asp <language> search pipe '<question-or-feature-term>' --workspace <workspace-root> --view seeds
 asp <language> search fzf '<term-or-error>' owner tests --view seeds .
 asp fd -query '<owner-or-path-term-a|term-b|term-c>' <scope>
 asp rg -query '<content-or-error-term-a|term-b|term-c>' <scope>
@@ -134,7 +156,7 @@ source-dump commands on the same matched source. Treat any
 First try the structural recovery path that matches the blocked intent:
 
 ```sh
-asp <language> search pipe '<blocked question-or-feature-term>' --source finder --view seeds .
+asp <language> search pipe '<blocked question-or-feature-term>' --workspace <workspace-root> --source finder --view seeds
 asp <language> search fzf '<term-or-error>' owner tests --view seeds .
 asp fd -query '<owner-or-path-term-a|term-b|term-c>' <scope>
 asp rg -query '<content-or-error-term-a|term-b|term-c>' <scope>
@@ -162,9 +184,9 @@ after an exact selector is known and source-preserved text is required.
 ### Search Before Code
 
 ```sh
-asp search --language <language> prime --view seeds .
-asp <language> search prime --view seeds .
-asp <language> search pipe '<seed-query>' --view seeds .
+asp search --language <language> prime --workspace <workspace-root> --view seeds
+asp <language> search prime --workspace <workspace-root> --view seeds
+asp <language> search pipe '<seed-query>' --workspace <workspace-root> --view seeds
 asp fd -query '<term1|term2|term3>' .
 asp rg -query '<term1|term2|term3>' .
 asp <language> search owner <owner-path> items --query '<seed-query>' --view seeds .
@@ -175,7 +197,7 @@ asp <language> query <owner-path> --term <candidate> --code .
 
 Use `--names-only` for broad owner-local prefixes before requesting code.
 Within one task session, do not repeat `asp <language> search pipe ...` for the
-same concrete term or `asp <language> search prime --view seeds .` for the same
+same concrete term or `asp <language> search prime --workspace <workspace-root> --view seeds` for the same
 language/root after a fresh frontier is already available. Reuse that frontier
 and move to the emitted selector, owner, tests, read-plan, `fd -query`,
 `rg -query`, or query-code action unless the project root, language provider

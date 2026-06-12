@@ -24,9 +24,10 @@ fn search_pipe_is_asp_owned_and_renders_generated_candidates_without_provider_sp
             "search",
             "pipe",
             "HookDecision ClientReceipt",
+            "--workspace",
+            ".",
             "--view",
             "seeds",
-            ".",
         ])
         .output()
         .expect("run asp rust search pipe");

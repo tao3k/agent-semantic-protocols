@@ -16,6 +16,7 @@
     "prompt-only"
   ],
   "skipUnlessEnv": [
+    "ASP_LIVE_CLAUDE_CLI",
     "ANTHROPIC_AUTH_TOKEN"
   ],
   "execution": {

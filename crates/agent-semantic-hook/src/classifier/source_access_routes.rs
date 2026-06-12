@@ -208,17 +208,21 @@ pub(super) fn classify_source_read_command(
             collect_direct_read_matches(registry, action_path_selectors(action, tokens)),
         ),
         CommandIntent::ContentDump => {
-            let matches =
-                collect_content_dump_matches(registry, action_path_selectors(action, tokens));
+            let selectors = action_path_selectors(action, tokens);
+            let matches = collect_content_dump_matches(registry, selectors.iter().copied());
             if matches.is_empty() {
                 return None;
             }
+            let subject_paths = selectors
+                .into_iter()
+                .map(str::to_string)
+                .collect::<Vec<_>>();
             Some(content_dump_decision(
                 platform,
                 event,
                 action,
                 matches,
-                None,
+                Some(subject_paths),
                 semantic_ast_patch_enabled,
             ))
         }

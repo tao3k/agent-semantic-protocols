@@ -2,6 +2,8 @@
 
 //! Converts client tool payloads into action-level source access intents.
 
+use std::borrow::Cow;
+
 use serde_json::Value;
 
 use crate::command::{apply_patch_source_paths, path_like_tokens, semantic_shell_tokens};
@@ -60,7 +62,21 @@ pub(crate) struct ToolAction {
     pub(crate) surface: ToolSurface,
     pub(crate) operation: OperationIntent,
     pub(crate) command: Option<String>,
+    pub(crate) command_tokens: Option<Vec<String>>,
     pub(crate) paths: Vec<String>,
+}
+
+impl ToolAction {
+    pub(crate) fn command_tokens(&self) -> Option<Cow<'_, [String]>> {
+        self.command_tokens
+            .as_deref()
+            .map(Cow::Borrowed)
+            .or_else(|| {
+                self.command
+                    .as_deref()
+                    .map(|command| Cow::Owned(semantic_shell_tokens(command)))
+            })
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -216,6 +232,22 @@ pub(crate) fn payload_string(payload: &Value, key: &str) -> Option<String> {
 /// Collects direct, shell, nested, and Codex `CommandAction` intents.
 /// Extract source read/search/list/write intents from a client tool payload.
 pub fn collect_tool_actions(tool_name: &str, tool_input: &Value) -> Vec<ToolAction> {
+    const CODEX_COMMAND_ACTION_KEYS: &[&str] = &["commandActions", "command_actions"];
+    const CODEX_DIRECT_ACTION_KEYS: &[&str] = &["action", "toolAction", "tool_action"];
+    const CODEX_ACTION_CONTAINER_KEYS: &[&str] = &[
+        "item",
+        "items",
+        "input",
+        "arguments",
+        "args",
+        "parameters",
+        "params",
+        "toolInput",
+        "tool_input",
+        "toolUse",
+        "tool_use",
+    ];
+
     fn codex_command_actions(tool_name: &str, value: &Value) -> Vec<ToolAction> {
         let mut actions = Vec::new();
         collect_codex_command_actions(tool_name, value, &mut actions, false);
@@ -237,17 +269,21 @@ pub fn collect_tool_actions(tool_name: &str, tool_input: &Value) -> Vec<ToolActi
             return;
         };
 
-        for key in ["commandActions", "command_actions"] {
-            if let Some(command_actions) = object.get(key) {
+        for key in CODEX_COMMAND_ACTION_KEYS {
+            if let Some(command_actions) = object.get(*key) {
                 collect_codex_command_action_values(tool_name, command_actions, actions);
             }
         }
 
-        if let Some(item) = object.get("item") {
-            collect_codex_item_actions(tool_name, item, actions);
+        for key in CODEX_DIRECT_ACTION_KEYS {
+            if let Some(action) = object.get(*key) {
+                collect_codex_command_actions(tool_name, action, actions, true);
+            }
         }
-        if let Some(items) = object.get("items") {
-            collect_codex_item_actions(tool_name, items, actions);
+        for key in CODEX_ACTION_CONTAINER_KEYS {
+            if let Some(value) = object.get(*key) {
+                collect_codex_item_actions(tool_name, value, actions);
+            }
         }
 
         if is_codex_command_execution_tool(tool_name)
@@ -280,14 +316,15 @@ pub fn collect_tool_actions(tool_name: &str, tool_input: &Value) -> Vec<ToolActi
                 }
             }
             Value::Object(object) => {
-                if let Some(action) = object.get("action") {
-                    collect_codex_command_actions(tool_name, action, actions, true);
+                for key in CODEX_DIRECT_ACTION_KEYS {
+                    if let Some(action) = object.get(*key) {
+                        collect_codex_command_actions(tool_name, action, actions, true);
+                    }
                 }
-                if let Some(item) = object.get("item") {
-                    collect_codex_item_actions(tool_name, item, actions);
-                }
-                if let Some(items) = object.get("items") {
-                    collect_codex_item_actions(tool_name, items, actions);
+                for key in CODEX_ACTION_CONTAINER_KEYS {
+                    if let Some(value) = object.get(*key) {
+                        collect_codex_item_actions(tool_name, value, actions);
+                    }
                 }
             }
             _ => {}
@@ -344,12 +381,14 @@ pub fn collect_tool_actions(tool_name: &str, tool_input: &Value) -> Vec<ToolActi
         if command.is_none() && paths.is_empty() {
             return None;
         }
+        let command_tokens = command.as_deref().map(semantic_shell_tokens);
 
         Some(ToolAction {
             tool_name: format!("{tool_name}.command_action.{action_type}"),
             surface,
             operation,
             command,
+            command_tokens,
             paths,
         })
     }
@@ -389,11 +428,15 @@ pub fn collect_tool_actions(tool_name: &str, tool_input: &Value) -> Vec<ToolActi
     let tool_input = &decoded_tool_input;
     let surface = ToolSurface::from_tool_name(tool_name);
     let command = extract_command_direct(surface, tool_name, tool_input);
+    let command_tokens = command.as_deref().map(semantic_shell_tokens);
     let mut paths = extract_paths_direct(tool_input);
     if let Some(command) = command.as_deref() {
         let patch_paths = apply_patch_source_paths(tool_name, command);
         let command_paths = if patch_paths.is_empty() {
-            command_source_paths(command)
+            command_tokens
+                .as_deref()
+                .map(|tokens| command_source_paths(command, tokens))
+                .unwrap_or_default()
         } else {
             patch_paths
         };
@@ -409,6 +452,7 @@ pub fn collect_tool_actions(tool_name: &str, tool_input: &Value) -> Vec<ToolActi
         surface,
         operation,
         command,
+        command_tokens,
         paths,
     }];
     actions.extend(codex_command_actions(tool_name, tool_input));
@@ -637,8 +681,7 @@ fn shell_quote_arg(value: &str) -> String {
     }
 }
 
-fn command_source_paths(command: &str) -> Vec<String> {
-    let tokens = semantic_shell_tokens(command);
+fn command_source_paths(command: &str, tokens: &[String]) -> Vec<String> {
     let range_paths = crate::source_dump_range::line_range_source_paths(command);
     if !range_paths.is_empty() {
         return range_paths;

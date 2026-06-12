@@ -41,12 +41,6 @@ pub(super) fn effective_project_root_and_args(
 ) -> Result<(PathBuf, Vec<String>), String> {
     validate_code_flag_boundary(args)?;
     if let Some(workspace_root) = explicit_workspace_project_root(args, invocation_root)? {
-        if explicit_positional_project_root(language_id, args, invocation_root)?.is_some() {
-            return Err(
-                "query/search accepts project root via --workspace or positional PROJECT_ROOT, not both"
-                    .to_string(),
-            );
-        }
         return Ok((workspace_root, args.to_vec()));
     }
     if let Some((root, args)) =

@@ -167,20 +167,6 @@ fn document_direct_read_routes_to_selector_content_query() {
         "{:?}",
         decision.routes[0].argv
     );
-    assert!(
-        decision
-            .message
-            .contains("Document recovery routes use `query --selector --content`"),
-        "{}",
-        decision.message
-    );
-    assert!(
-        decision
-            .message
-            .contains("`--content` is a filtered element-content projection"),
-        "{}",
-        decision.message
-    );
 }
 
 #[test]

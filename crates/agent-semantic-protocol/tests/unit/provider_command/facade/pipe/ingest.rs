@@ -64,7 +64,7 @@ fn empty_search_ingest_seeds_is_facade_diagnostic_for_all_languages() {
         let stdout = String::from_utf8(output.stdout).expect("stdout");
         assert!(stdout.starts_with("[search-ingest]"));
         assert!(stdout.contains("|note kind=stdin-required"));
-        assert!(stdout.contains("search prime --view seeds"));
+        assert!(stdout.contains("search prime --workspace . --view seeds"));
         assert!(stdout.contains("|next prime:"));
         assert!(!stdout.contains("test:path(.)"));
         assert!(!stdout.contains("owner:path(search prime"));

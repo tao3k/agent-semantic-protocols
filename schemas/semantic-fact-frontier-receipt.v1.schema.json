@@ -226,10 +226,10 @@
         "selector",
         "owner",
         "symbol",
-        "sourceNodeId",
-        "next"
-      ],
-      "properties": {
+      "sourceNodeId",
+      "next"
+    ],
+    "properties": {
         "rank": {
           "type": "integer",
           "minimum": 1
@@ -266,14 +266,34 @@
           "type": "string",
           "minLength": 1
         },
-        "next": {
-          "enum": [
-            "query-selector",
-            "search-reasoning"
-          ]
+      "next": {
+        "enum": [
+          "query-selector",
+          "search-reasoning"
+        ]
+      },
+      "capabilityId": {
+        "type": "string",
+        "minLength": 1
+      },
+      "target": {
+        "type": "string",
+        "minLength": 1
+      },
+      "targetRole": {
+        "enum": [
+          "selector",
+          "owner"
+        ]
+      },
+      "fields": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "string"
         }
       }
-    },
+    }
+  },
     "codeRead": {
       "type": "object",
       "additionalProperties": false,

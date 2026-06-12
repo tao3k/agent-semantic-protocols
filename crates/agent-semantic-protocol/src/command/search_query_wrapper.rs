@@ -16,7 +16,8 @@ use super::search_query_wrapper_candidates::{
     package_clusters, query_clauses, rg_scope_next, unique_clause_terms,
 };
 use super::search_query_wrapper_frontier::{
-    print_query_wrapper_refinement_frontier, query_clauses_line, query_display,
+    print_query_wrapper_empty_receipt, print_query_wrapper_refinement_frontier, query_clauses_line,
+    query_display, query_wrapper_action_frontier,
 };
 use super::search_query_wrapper_model::{
     QueryWrapperClause, QueryWrapperQuality, QueryWrapperSurface, display_terms,
@@ -215,6 +216,8 @@ fn print_query_wrapper_view(request: QueryWrapperViewRequest<'_>) -> Result<(), 
         )
         .with_fields(trace_fields),
     ];
+    let action_frontier =
+        query_wrapper_action_frontier(surface, scopes, queries, terms, candidates);
     let request = render_graph_turbo_request(GraphTurboSearchPipeRequest {
         surface: surface.graph_surface(),
         language_id,
@@ -227,6 +230,7 @@ fn print_query_wrapper_view(request: QueryWrapperViewRequest<'_>) -> Result<(), 
         source_trace: &source_trace,
         provider_facts: &ProviderGraphFacts::default(),
         read_memory_selectors: &[],
+        action_frontier: &action_frontier,
     })?;
     if view == "graph-turbo-request" {
         print!("{request}");
@@ -238,6 +242,17 @@ fn print_query_wrapper_view(request: QueryWrapperViewRequest<'_>) -> Result<(), 
         terms.len(),
     );
     println!("query={query}");
+    if candidates.is_empty() {
+        print_query_wrapper_empty_receipt(
+            surface,
+            scopes,
+            queries,
+            terms,
+            &source_trace[0].compact(),
+            surface.avoid(quality),
+        );
+        return Ok(());
+    }
     println!(
         "queryPack=clauses={} quality={} reason={}",
         clauses.len(),

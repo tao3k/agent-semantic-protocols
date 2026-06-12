@@ -4,18 +4,20 @@ use std::path::Path;
 const PROJECT_ROOT: &str = "/workspace/agent-semantic-protocols";
 
 #[test]
-fn codex_hook_matcher_includes_apply_patch_surfaces() {
+fn codex_hook_matcher_omits_apply_patch_surfaces_by_default() {
     let block = codex_hook_block(Path::new(PROJECT_ROOT));
 
-    assert!(block.contains("apply_patch|applypatch"));
     assert!(block.contains(PROJECT_ROOT));
-    assert!(block.contains("functions\\\\.apply_patch"));
     assert!(block.contains("readFile"));
     assert!(block.contains("FsReadFile"));
     assert!(block.contains("fs/readFile"));
-    assert!(block.contains("FsWriteFile"));
     assert!(block.contains("functions\\\\.exec_command"));
     assert!(block.contains("multi_tool_use\\\\.parallel"));
+    assert!(!block.contains("apply_patch"));
+    assert!(!block.contains("applypatch"));
+    assert!(!block.contains("functions\\\\.apply_patch"));
+    assert!(!block.contains("FsWriteFile"));
+    assert!(!block.contains("functions\\\\.write"));
     assert!(!block.contains("matcher = \".*\""));
 }
 
@@ -30,6 +32,8 @@ fn claude_hook_matcher_reuses_shared_tool_surfaces() {
     assert!(block.to_string().contains(PROJECT_ROOT));
     assert!(pre_tool.contains("Bash|Shell"));
     assert!(pre_tool.contains("functions\\.exec_command"));
+    assert!(!pre_tool.contains("apply_patch"));
+    assert!(!pre_tool.contains("functions\\.write"));
     assert!(block["hooks"].get("PermissionRequest").is_none());
     assert_eq!(block["hooks"]["PostToolUse"][0]["matcher"], pre_tool);
     assert!(!block.to_string().contains("ASP_HOOK_PROJECT_ROOT"));

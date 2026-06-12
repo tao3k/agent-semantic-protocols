@@ -86,6 +86,7 @@
         "prime",
         "--view",
         "seeds",
+        "--workspace",
         "."
       ],
       "expect": {
@@ -113,6 +114,7 @@
         "tests",
         "--view",
         "seeds",
+        "--workspace",
         "."
       ],
       "expect": {
@@ -141,6 +143,7 @@
         "owner",
         "tests",
         "--json",
+        "--workspace",
         "."
       ],
       "expect": {
@@ -174,6 +177,7 @@
         "src/cli/protocol.ts",
         "--view",
         "seeds",
+        "--workspace",
         "."
       ],
       "expect": {
@@ -182,7 +186,7 @@
           "[search-owner]",
           "CliStreams"
         ],
-        "maxStdoutLinesWarn": 8,
+        "maxStdoutLinesWarn": 10,
         "maxElapsedMsWarn": 6000
       }
     },
@@ -196,6 +200,7 @@
         "src/cli/protocol.ts",
         "--view",
         "seeds",
+        "--workspace",
         "."
       ],
       "expect": {
@@ -218,6 +223,7 @@
         "--json",
         "--view",
         "seeds",
+        "--workspace",
         "."
       ],
       "expect": {

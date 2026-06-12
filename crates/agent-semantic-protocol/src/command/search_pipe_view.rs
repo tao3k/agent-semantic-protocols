@@ -74,6 +74,7 @@ pub(super) fn print_search_pipe_view(request: SearchPipeViewRequest<'_>) -> Resu
                 source_trace,
                 provider_facts,
                 read_memory_selectors,
+                action_frontier: &[],
             })?;
             write_fast_search_frontier_receipt(
                 frontier_receipt,
@@ -111,6 +112,7 @@ pub(super) fn print_search_pipe_view(request: SearchPipeViewRequest<'_>) -> Resu
                 source_trace,
                 provider_facts,
                 read_memory_selectors,
+                action_frontier: &[],
             })?;
             write_fast_search_frontier_receipt(
                 frontier_receipt,

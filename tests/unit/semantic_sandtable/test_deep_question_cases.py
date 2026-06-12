@@ -71,6 +71,7 @@ class DeepQuestionCaseTests(unittest.TestCase):
         self.assert_valid_scenario(scenario)
         self.assertEqual(
             [
+                "ASP_LIVE_CLAUDE_CLI",
                 "ANTHROPIC_AUTH_TOKEN",
             ],
             scenario["skipUnlessEnv"],
@@ -147,7 +148,10 @@ class DeepQuestionCaseTests(unittest.TestCase):
             with self.subTest(path=str(path.relative_to(REPO_ROOT))):
                 scenario = _load_json(path)
                 self.assert_valid_scenario(scenario)
-                self.assertEqual(["ANTHROPIC_AUTH_TOKEN"], scenario["skipUnlessEnv"])
+                self.assertEqual(
+                    ["ASP_LIVE_CLAUDE_CLI", "ANTHROPIC_AUTH_TOKEN"],
+                    scenario["skipUnlessEnv"],
+                )
                 self.assertNotIn("steps", scenario)
                 live_agent = scenario["liveAgent"]
                 self.assertEqual("claude", live_agent["client"])

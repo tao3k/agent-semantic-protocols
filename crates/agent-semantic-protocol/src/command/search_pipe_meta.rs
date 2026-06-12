@@ -31,7 +31,7 @@ fn is_version_arg(arg: &str) -> bool {
 fn fast_search_usage(language_id: &str, subcommand: Option<&str>) -> String {
     match subcommand {
         Some("pipe") => format!(
-            "usage: asp {language_id} search pipe <question-or-feature-term> [--source auto|provider|finder|ingest] [--view seeds|graph-turbo-request] [scope...]\n\nBuilds an ASP-owned search frontier from an LLM-compressed code search seed."
+            "usage: asp {language_id} search pipe <question-or-feature-term> [--workspace PROJECT_ROOT] [--source auto|provider|finder|ingest] [--view seeds|graph-turbo-request] [scope...]\n\nBuilds an ASP-owned search frontier from an LLM-compressed code search seed."
         ),
         Some("fzf") => format!(
             "usage: asp {language_id} search fzf <term-or-error> [items|tests|deps] [--view seeds|graph-turbo-request] [owner...]\n\nRuns bounded lexical/fuzzy recall and renders an ASP-owned search frontier."

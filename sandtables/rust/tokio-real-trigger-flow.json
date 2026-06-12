@@ -3,6 +3,7 @@
   "title": "Tokio async IO live-agent prompt-only flow",
   "language": "rust",
   "skipUnlessEnv": [
+    "ASP_LIVE_CLAUDE_CLI",
     "ANTHROPIC_AUTH_TOKEN"
   ],
   "tags": [

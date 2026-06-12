@@ -76,6 +76,7 @@
         "ts-harness",
         "search",
         "workspace",
+        "--workspace",
         "."
       ],
       "expect": {
@@ -105,6 +106,7 @@
         "tests",
         "--view",
         "seeds",
+        "--workspace",
         "packages/runtime-core"
       ],
       "expect": {
@@ -127,8 +129,11 @@
         "owner",
         "src/scheduler.ts",
         "items",
+        "--query",
+        "queueJob|flushPostFlushCbs",
         "--view",
         "seeds",
+        "--workspace",
         "packages/runtime-core"
       ],
       "expect": {
@@ -150,6 +155,7 @@
         "src/scheduler.ts",
         "--view",
         "seeds",
+        "--workspace",
         "packages/runtime-core"
       ],
       "expect": {
@@ -172,6 +178,7 @@
         "packages/runtime-core/src/scheduler.ts",
         "--view",
         "seeds",
+        "--workspace",
         "."
       ],
       "expect": {
@@ -197,6 +204,7 @@
         "src/apiWatch.ts",
         "--view",
         "seeds",
+        "--workspace",
         "packages/runtime-core"
       ],
       "expect": {

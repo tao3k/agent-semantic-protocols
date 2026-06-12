@@ -144,3 +144,41 @@ fn cli_hook_replay_blocks_nested_parallel_exec_command() {
 
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
 }
+
+#[test]
+fn cli_hook_replay_blocks_nested_parallel_exec_command_source_dump() {
+    let root = temp_project_root("hook-parallel-exec-source-dump");
+    let command = "nl -ba src/lib.rs | sed -n '1,40p'";
+    let decision = run_hook_decision(
+        &root,
+        "pre-tool",
+        json!({
+            "tool_name": "multi_tool_use.parallel",
+            "tool_input": {
+                "tool_uses": [{
+                    "recipient_name": "functions.exec_command",
+                    "parameters": {"cmd": command}
+                }]
+            }
+        }),
+    );
+
+    assert_eq!(decision["decision"], "deny");
+    assert_eq!(decision["reasonKind"], "bulk-source-dump");
+    assert_eq!(decision["subject"]["toolName"], "functions.exec_command");
+    assert_eq!(decision["subject"]["command"], command);
+    assert_eq!(decision["subject"]["paths"][0], "src/lib.rs:1:40");
+    assert_eq!(decision["routes"][0]["providerId"], "rs-harness");
+    assert_eq!(decision["routes"][0]["argv"][0], "asp");
+    assert_eq!(decision["routes"][0]["argv"][1], "rust");
+    assert_eq!(decision["routes"][0]["argv"][2], "query");
+    assert_eq!(decision["routes"][0]["argv"][4], "src/lib.rs:1:40");
+
+    let event = last_hook_event(&root);
+    assert_eq!(event["event"], "pre-tool");
+    assert_eq!(event["decision"], "deny");
+    assert_eq!(event["reasonKind"], "bulk-source-dump");
+    assert_eq!(event["subject"]["toolName"], "functions.exec_command");
+
+    std::fs::remove_dir_all(root).expect("cleanup temp project root");
+}

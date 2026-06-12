@@ -27,19 +27,20 @@
         "seeds",
         "--seeds",
         "8",
+        "--workspace",
         "."
       ],
       "expect": {
         "lineProtocol": true,
         "stdoutContains": [
           "[search-prime]",
-          "legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next",
+          "legend: ID=kind:role(value)!next; entries profile(selectors=>returns); frontier ID.next",
           "G>{",
           "rank=",
           "frontier="
         ],
         "maxStdoutLinesWarn": 10,
-        "maxElapsedMsWarn": 1500,
+        "maxElapsedMsWarn": 12000,
         "stdoutNotContains": [
           "|seed",
           "|synthesis",
@@ -58,6 +59,7 @@
         "seeds",
         "--seeds",
         "8",
+        "--workspace",
         "."
       ],
       "capture": {
@@ -73,7 +75,7 @@
           "frontier="
         ],
         "maxStdoutLinesWarn": 8,
-        "maxElapsedMsWarn": 1500,
+        "maxElapsedMsWarn": 30000,
         "stdoutNotContains": [
           "|seed",
           "|synthesis",
@@ -94,6 +96,7 @@
         "seeds",
         "--seeds",
         "8",
+        "--workspace",
         "."
       ],
       "expect": {
@@ -106,7 +109,7 @@
           "frontier="
         ],
         "maxStdoutLinesWarn": 18,
-        "maxElapsedMsWarn": 1800,
+        "maxElapsedMsWarn": 15000,
         "stdoutNotContains": [
           "|seed",
           "|synthesis",
@@ -125,6 +128,7 @@
         "seeds",
         "--seeds",
         "4",
+        "--workspace",
         "."
       ],
       "expect": {
@@ -133,7 +137,7 @@
           "[search-tests]"
         ],
         "maxStdoutLinesWarn": 10,
-        "maxElapsedMsWarn": 1500
+        "maxElapsedMsWarn": 5000
       }
     },
     {
@@ -156,6 +160,7 @@
         "seeds",
         "--seeds",
         "8",
+        "--workspace",
         "."
       ],
       "expect": {

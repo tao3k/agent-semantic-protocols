@@ -15,6 +15,12 @@ fn search_packet_replay_appends_advisory_delegation_hint_line() {
         "delegationHints": [{
             "profile": "asp-explorer",
             "decision": "advisory",
+            "fanout": "parallel",
+            "instances": "targetActions",
+            "branchPrompt": "reasoning-tree",
+            "stateOwner": "parent",
+            "fanin": "receipt",
+            "iterative": true,
             "runtimeOwner": "agent-client",
             "modelClass": "cheap",
             "readOnly": true,
@@ -24,8 +30,8 @@ fn search_packet_replay_appends_advisory_delegation_hint_line() {
             "maxTurns": 1,
             "reason": "query-selector-low-confidence",
             "receipt": {
-                "kind": "search-subagent",
-                "requiredFields": ["role", "evidence", "missing", "next", "risk"]
+                "kind": "asp-search-subagent",
+                "requiredFields": ["role", "action", "evidence", "missing", "next", "risk"]
             }
         }]
     });
@@ -34,14 +40,14 @@ fn search_packet_replay_appends_advisory_delegation_hint_line() {
     let rendered = std::str::from_utf8(&rendered).expect("utf8 output");
 
     assert!(rendered.contains(
-        "subagentHint=profile=asp-explorer decision=advisory runtimeOwner=agent-client modelClass=cheap readOnly=true noCode=true targetActions=A1.rg-query,A2.owner-items maxCommands=8 maxTurns=1 receipt=search-subagent(role,evidence,missing,next,risk) reason=query-selector-low-confidence"
+        "subagentHint=profile=asp-explorer fanout=parallel instances=targetActions branchPrompt=reasoning-tree stateOwner=parent fanin=receipt iterative=true decision=advisory runtimeOwner=agent-client modelClass=cheap readOnly=true noCode=true targetActions=A1.rg-query,A2.owner-items maxCommands=8 maxTurns=1 receipt=asp-search-subagent(role,action,evidence,missing,next,risk) reason=query-selector-low-confidence"
     ));
 }
 
 #[test]
 fn search_packet_replay_does_not_duplicate_existing_hint_line() {
     let output = Bytes::from(format!(
-        "{}subagentHint=profile=asp-explorer decision=advisory runtimeOwner=agent-client modelClass=cheap readOnly=true noCode=true targetActions=A1.rg-query maxCommands=8 maxTurns=1 receipt=search-subagent(role,evidence,missing,next,risk) reason=query-selector-low-confidence\n",
+        "{}subagentHint=profile=asp-explorer fanout=parallel instances=targetActions branchPrompt=reasoning-tree stateOwner=parent fanin=receipt iterative=true decision=advisory runtimeOwner=agent-client modelClass=cheap readOnly=true noCode=true targetActions=A1.rg-query maxCommands=8 maxTurns=1 receipt=asp-search-subagent(role,action,evidence,missing,next,risk) reason=query-selector-low-confidence\n",
         std::str::from_utf8(&frontier_output_without_hint()).expect("utf8 output")
     ));
     let packet = json!({
@@ -54,8 +60,8 @@ fn search_packet_replay_does_not_duplicate_existing_hint_line() {
             "targetActions": ["A2.owner-items"],
             "reason": "query-selector-low-confidence",
             "receipt": {
-                "kind": "search-subagent",
-                "requiredFields": ["role", "evidence"]
+                "kind": "asp-search-subagent",
+                "requiredFields": ["role", "action", "evidence"]
             }
         }]
     });
@@ -80,7 +86,7 @@ fn search_packet_replay_ignores_non_client_delegation_hints() {
             "targetActions": ["A1.rg-query"],
             "reason": "query-selector-low-confidence",
             "receipt": {
-                "kind": "search-subagent",
+                "kind": "asp-search-subagent",
                 "requiredFields": ["role"]
             }
         }]
@@ -107,7 +113,7 @@ fn search_packet_replay_rejects_invalid_hint_limits() {
             "maxCommands": 0,
             "reason": "query-selector-low-confidence",
             "receipt": {
-                "kind": "search-subagent",
+                "kind": "asp-search-subagent",
                 "requiredFields": ["role"]
             }
         }]
@@ -139,7 +145,7 @@ fn search_packet_replay_appends_delegation_hint_after_graph_render() {
             "maxTurns": 1,
             "reason": "query-selector-low-confidence",
             "receipt": {
-                "kind": "search-subagent",
+                "kind": "asp-search-subagent",
                 "requiredFields": ["role", "evidence"]
             }
         }]

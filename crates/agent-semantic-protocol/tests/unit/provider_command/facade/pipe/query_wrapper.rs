@@ -301,6 +301,22 @@ fn asp_rg_query_graph_request_uses_native_content_finder_source() {
     assert_eq!(payload["surface"], "search-rg");
     assert_eq!(payload["source"], "finder");
     assert_eq!(payload["candidateSources"], serde_json::json!(["finder"]));
+    let actions = payload["actionFrontier"]
+        .as_array()
+        .expect("actionFrontier");
+    assert_eq!(actions[0]["kind"], serde_json::json!("fd-query"));
+    assert_eq!(
+        actions[0]["capabilityId"],
+        serde_json::json!("fd"),
+        "{payload}"
+    );
+    assert!(
+        actions[0].get("command").is_none()
+            && actions[0].get("argv").is_none()
+            && actions[0]["fields"].get("command").is_none()
+            && actions[0]["fields"].get("argv").is_none(),
+        "{payload}"
+    );
     let nodes = payload["graph"]["nodes"].as_array().expect("nodes");
     assert!(
         nodes.iter().any(|node| {

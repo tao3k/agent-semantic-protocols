@@ -80,6 +80,7 @@
         "prime",
         "--view",
         "seeds",
+        "--workspace",
         "."
       ],
       "expect": {
@@ -111,6 +112,7 @@
         "tests",
         "--view",
         "seeds",
+        "--workspace",
         "."
       ],
       "expect": {

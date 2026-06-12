@@ -285,8 +285,8 @@ legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next\n\
 aliases: graph:{G=search}\n\
 G>{}\n\
 rank= frontier=\n\
-|note kind=stdin-required message=\"search ingest consumes stdin candidate paths; use search prime --view seeds for project discovery\"\n\
-|next prime:\"search prime --view seeds\"(scope=project-discovery),ingest:\"pipe candidate paths into search ingest items tests --view seeds\"(scope=stdin-candidates)\n"
+|note kind=stdin-required message=\"search ingest consumes stdin candidate paths; use search prime --workspace . --view seeds for project discovery\"\n\
+|next prime:\"search prime --workspace . --view seeds\"(scope=project-discovery),ingest:\"pipe candidate paths into search ingest items tests --view seeds\"(scope=stdin-candidates)\n"
 }
 
 fn provider_forwarded_args(method: &ClientMethod, args: Vec<String>) -> Vec<String> {

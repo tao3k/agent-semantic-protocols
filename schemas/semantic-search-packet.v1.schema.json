@@ -162,6 +162,9 @@
     "finder": {
       "$ref": "#/$defs/finder"
     },
+    "noOutput": {
+      "$ref": "#/$defs/noOutput"
+    },
     "avoidNextActions": {
       "type": "array",
       "items": {
@@ -985,6 +988,36 @@
         }
       }
     },
+    "sourceTrace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "status"
+      ],
+      "properties": {
+        "source": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "status": {
+          "enum": [
+            "empty",
+            "used",
+            "partial",
+            "skipped",
+            "unknown"
+          ]
+        },
+        "candidateCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
     "testResolution": {
       "type": "object",
       "additionalProperties": false,
@@ -1230,6 +1263,43 @@
         },
         "fields": {
           "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "noOutput": {
+      "type": "object",
+      "description": "Compact no-candidate receipt for prompt-facing search views.",
+      "additionalProperties": false,
+      "required": [
+        "reason",
+        "sourceTrace",
+        "nextActions",
+        "avoidNextActions"
+      ],
+      "properties": {
+        "reason": {
+          "enum": [
+            "no-candidates"
+          ]
+        },
+        "sourceTrace": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/sourceTrace"
+          }
+        },
+        "nextActions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/nextAction"
+          }
+        },
+        "avoidNextActions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/avoidNextAction"
+          }
         }
       }
     },
@@ -1750,6 +1820,24 @@
           "type": "string",
           "pattern": "^[a-z][a-z0-9_-]*$"
         },
+        "fanout": {
+          "const": "parallel"
+        },
+        "instances": {
+          "const": "targetActions"
+        },
+        "branchPrompt": {
+          "const": "reasoning-tree"
+        },
+        "stateOwner": {
+          "const": "parent"
+        },
+        "fanin": {
+          "const": "receipt"
+        },
+        "iterative": {
+          "type": "boolean"
+        },
         "decision": {
           "const": "advisory"
         },
@@ -1818,6 +1906,7 @@
           "items": {
             "enum": [
               "role",
+              "action",
               "evidence",
               "missing",
               "next",

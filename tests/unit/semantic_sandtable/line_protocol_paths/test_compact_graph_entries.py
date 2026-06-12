@@ -44,6 +44,23 @@ class LineProtocolCompactGraphEntriesTests(unittest.TestCase):
 
         self.assertEqual("pass", result.status)
 
+    def test_line_protocol_accepts_compact_graph_omit_reason_metadata(self) -> None:
+        result = _run_entry_scenario(
+            "python.compact-graph-omit-reason-metadata",
+            (
+                "print('[search-prime] root=. mode=fast')\n"
+                "print('legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next')\n"
+                "print('aliases: graph:{G=search,Q=query,O=owner}')\n"
+                "print('Q=query:term(prime)!query;O=owner:path(src/lib.rs)!owner')\n"
+                "print('G>{Q:matches,O:selects}')\n"
+                "print('rank=Q,O frontier=Q.query,O.owner')\n"
+                "print('entries=owner-query(O,Q=>items+tests)')\n"
+                "print('omit=items,blocks,code,full-json reason=fast-seeds-frontier')"
+            ),
+        )
+
+        self.assertEqual("pass", result.status)
+
     def test_line_protocol_rejects_entry_alias_missing_from_graph(self) -> None:
         result = _run_entry_scenario(
             "python.compact-graph-entry-missing-alias",

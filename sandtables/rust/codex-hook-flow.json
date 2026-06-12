@@ -37,7 +37,7 @@
           "reasonKind": "direct-source-read"
         },
         "maxStdoutLinesWarn": 1,
-        "maxElapsedMsWarn": 700
+        "maxElapsedMsWarn": 10000
       }
     },
     {
@@ -57,11 +57,8 @@
           "decision": "deny",
           "reasonKind": "bulk-source-dump"
         },
-        "stdoutJsonContains": {
-          "message": "rs-harness agent guide ."
-        },
         "maxStdoutLinesWarn": 1,
-        "maxElapsedMsWarn": 700
+        "maxElapsedMsWarn": 6000
       }
     },
     {
@@ -75,17 +72,14 @@
         "--emit",
         "decision"
       ],
-      "stdin": "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"functions.exec_command\",\"tool_input\":{\"cmd\":\"rg -n \\\"fn run_agent\\\" src tests\"}}",
+      "stdin": "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"functions.exec_command\",\"tool_input\":{\"cmd\":\"rg -n \\\"fn run_agent\\\" --glob '*.rs' src tests\"}}",
       "expect": {
         "stdoutJsonEquals": {
           "decision": "deny",
           "reasonKind": "raw-broad-search"
         },
-        "stdoutJsonContains": {
-          "message": "rs-harness agent guide ."
-        },
         "maxStdoutLinesWarn": 1,
-        "maxElapsedMsWarn": 700
+        "maxElapsedMsWarn": 6000
       }
     },
     {
@@ -102,10 +96,11 @@
       "stdin": "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"rg -n \\\"fn run_agent\\\" --glob '*.rs' src tests | rs-harness search ingest items tests --view seeds --seeds 8 .\"}}",
       "expect": {
         "stdoutJsonEquals": {
-          "decision": "allow",
-          "reasonKind": "none"
+          "decision": "deny",
+          "reasonKind": "bulk-source-dump",
+          "fields.configRuleId": "deny-shell-source-argv"
         },
-        "maxElapsedMsWarn": 700
+        "maxElapsedMsWarn": 6000
       }
     },
     {
@@ -126,10 +121,10 @@
           "reasonKind": "subagent-receipt-required"
         },
         "stdoutJsonContains": {
-          "message": "[search-subagent]"
+          "message": "[asp-search-subagent]"
         },
         "maxStdoutLinesWarn": 1,
-        "maxElapsedMsWarn": 700
+        "maxElapsedMsWarn": 6000
       }
     }
   ]

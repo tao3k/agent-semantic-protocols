@@ -25,8 +25,12 @@ pub use crate::syntax_query::{
 
 /// File name used for the local SQLite client cache.
 pub const AGENT_SEMANTIC_CLIENT_DB_FILE: &str = "client.sqlite3";
-/// Current SQLite schema version for the local agent semantic client DB.
-pub const AGENT_SEMANTIC_CLIENT_DB_SCHEMA_VERSION: i64 = 6;
+/// Current released SQLite schema version for the local agent semantic client DB.
+///
+/// Keep this stable until a versioned release/migration boundary is declared.
+/// Internal cache tables are added through idempotent migrations and do not by
+/// themselves advance the public schema contract.
+pub const AGENT_SEMANTIC_CLIENT_DB_SCHEMA_VERSION: i64 = 1;
 
 /// Read-only diagnostic summary for a local SQLite client DB path.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -37,6 +41,10 @@ pub struct ClientDbReport {
     pub syntax_row_generation_count: u32,
     pub syntax_row_match_count: u32,
     pub syntax_row_capture_count: u32,
+    pub structural_index_generation_count: u32,
+    pub structural_index_owner_count: u32,
+    pub structural_index_symbol_count: u32,
+    pub structural_index_dependency_usage_count: u32,
     pub artifact_event_count: u32,
     pub raw_source_stored: bool,
     pub runtime_pragmas: Option<ClientDbRuntimePragmas>,
@@ -194,8 +202,8 @@ type CacheGenerationRow = (
 /// Open SQLite client DB handle.
 #[derive(Debug)]
 pub struct ClientDb {
-    conn: Connection,
-    db_path: PathBuf,
+    pub(crate) conn: Connection,
+    pub(crate) db_path: PathBuf,
 }
 
 impl ClientDb {
@@ -223,6 +231,10 @@ impl ClientDb {
                 syntax_row_generation_count: 0,
                 syntax_row_match_count: 0,
                 syntax_row_capture_count: 0,
+                structural_index_generation_count: 0,
+                structural_index_owner_count: 0,
+                structural_index_symbol_count: 0,
+                structural_index_dependency_usage_count: 0,
                 artifact_event_count: 0,
                 raw_source_stored: false,
                 runtime_pragmas: None,
@@ -239,6 +251,10 @@ impl ClientDb {
                 syntax_row_generation_count: 0,
                 syntax_row_match_count: 0,
                 syntax_row_capture_count: 0,
+                structural_index_generation_count: 0,
+                structural_index_owner_count: 0,
+                structural_index_symbol_count: 0,
+                structural_index_dependency_usage_count: 0,
                 artifact_event_count: 0,
                 raw_source_stored: false,
                 runtime_pragmas: None,
@@ -270,6 +286,11 @@ impl ClientDb {
             syntax_row_generation_count: summary.syntax_row_generation_count,
             syntax_row_match_count: summary.syntax_row_match_count,
             syntax_row_capture_count: summary.syntax_row_capture_count,
+            structural_index_generation_count: summary.structural_index_generation_count,
+            structural_index_owner_count: summary.structural_index_owner_count,
+            structural_index_symbol_count: summary.structural_index_symbol_count,
+            structural_index_dependency_usage_count: summary
+                .structural_index_dependency_usage_count,
             artifact_event_count: summary.artifact_event_count,
             raw_source_stored: summary.raw_source_stored,
             runtime_pragmas: Some(runtime_pragmas),
@@ -770,12 +791,18 @@ impl ClientDb {
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .map_err(|error| format!("failed to read client db cache summary: {error}"))?;
+        let table_counts = self.table_counts()?;
         Ok(ClientDbSummary {
             generation_count: generation_count.max(0).min(i64::from(u32::MAX)) as u32,
-            syntax_row_generation_count: self.count_table_rows("syntax_query_generation")?,
-            syntax_row_match_count: self.count_table_rows("syntax_query_match")?,
-            syntax_row_capture_count: self.count_table_rows("syntax_query_capture")?,
-            artifact_event_count: self.count_table_rows("artifact_event")?,
+            syntax_row_generation_count: table_counts.syntax_row_generation_count,
+            syntax_row_match_count: table_counts.syntax_row_match_count,
+            syntax_row_capture_count: table_counts.syntax_row_capture_count,
+            structural_index_generation_count: table_counts.structural_index_generation_count,
+            structural_index_owner_count: table_counts.structural_index_owner_count,
+            structural_index_symbol_count: table_counts.structural_index_symbol_count,
+            structural_index_dependency_usage_count: table_counts
+                .structural_index_dependency_usage_count,
+            artifact_event_count: table_counts.artifact_event_count,
             raw_source_stored: raw_source_stored != 0,
         })
     }
@@ -785,22 +812,62 @@ impl ClientDb {
         read_runtime_pragmas(&self.conn, &self.db_path)
     }
 
-    fn count_table_rows(&self, table: &str) -> Result<u32, String> {
-        let sql = match table {
-            "syntax_query_generation" => "SELECT COUNT(*) FROM syntax_query_generation",
-            "syntax_query_match" => "SELECT COUNT(*) FROM syntax_query_match",
-            "syntax_query_capture" => "SELECT COUNT(*) FROM syntax_query_capture",
-            "artifact_event" => "SELECT COUNT(*) FROM artifact_event",
-            _ => return Err(format!("unsupported client db count table `{table}`")),
-        };
-        if !self.table_exists(table)? {
-            return Ok(0);
+    fn table_counts(&self) -> Result<ClientDbTableCounts, String> {
+        const COUNT_TABLES: &[&str] = &[
+            "syntax_query_generation",
+            "syntax_query_match",
+            "syntax_query_capture",
+            "structural_index_generation",
+            "structural_index_owner",
+            "structural_index_symbol",
+            "structural_index_dependency_usage",
+            "artifact_event",
+        ];
+
+        let existing_tables = self.existing_tables()?;
+        let selects = COUNT_TABLES
+            .iter()
+            .filter(|table| existing_tables.iter().any(|existing| existing == **table))
+            .map(|table| {
+                format!("SELECT '{table}' AS table_name, COUNT(*) AS row_count FROM {table}")
+            })
+            .collect::<Vec<_>>();
+        if selects.is_empty() {
+            return Ok(ClientDbTableCounts::default());
         }
-        let count: i64 = self
+
+        let sql = selects.join(" UNION ALL ");
+        let mut statement = self
             .conn
-            .query_row(sql, [], |row| row.get(0))
-            .map_err(|error| format!("failed to count client db {table} rows: {error}"))?;
-        Ok(count.max(0).min(i64::from(u32::MAX)) as u32)
+            .prepare(&sql)
+            .map_err(|error| format!("failed to prepare client db table counts: {error}"))?;
+        let rows = statement
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })
+            .map_err(|error| format!("failed to read client db table counts: {error}"))?;
+        let mut counts = ClientDbTableCounts::default();
+        for row in rows {
+            let (table, count) =
+                row.map_err(|error| format!("failed to decode client db table count: {error}"))?;
+            counts.set(&table, count);
+        }
+        Ok(counts)
+    }
+
+    fn existing_tables(&self) -> Result<Vec<String>, String> {
+        let mut statement = self
+            .conn
+            .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
+            .map_err(|error| format!("failed to prepare client db table list: {error}"))?;
+        let rows = statement
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(|error| format!("failed to read client db table list: {error}"))?;
+        let mut tables = Vec::new();
+        for row in rows {
+            tables.push(row.map_err(|error| format!("failed to decode table name: {error}"))?);
+        }
+        Ok(tables)
     }
 
     fn lookup_generation_for(
@@ -1233,6 +1300,73 @@ impl ClientDb {
                 artifact_id TEXT NOT NULL,
                 PRIMARY KEY (generation_id, artifact_ordinal)
             );
+            CREATE TABLE IF NOT EXISTS structural_index_generation (
+                generation_id TEXT PRIMARY KEY
+                    REFERENCES cache_generations(generation_id) ON DELETE CASCADE,
+                language_id TEXT NOT NULL,
+                provider_id TEXT NOT NULL,
+                provider_version TEXT,
+                export_method TEXT,
+                project_root TEXT NOT NULL,
+                package_root TEXT,
+                schema_id TEXT NOT NULL,
+                schema_version TEXT NOT NULL,
+                source_artifact_id TEXT,
+                file_hashes_json TEXT NOT NULL DEFAULT '[]',
+                raw_source_stored INTEGER NOT NULL DEFAULT 0 CHECK(raw_source_stored IN (0, 1)),
+                updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+            );
+            CREATE INDEX IF NOT EXISTS structural_index_generation_project_idx
+              ON structural_index_generation(language_id, provider_id, project_root);
+            CREATE TABLE IF NOT EXISTS structural_index_owner (
+                generation_id TEXT NOT NULL
+                    REFERENCES structural_index_generation(generation_id) ON DELETE CASCADE,
+                owner_ordinal INTEGER NOT NULL,
+                owner_path TEXT NOT NULL,
+                owner_kind TEXT NOT NULL,
+                source_authority TEXT NOT NULL,
+                start_line INTEGER,
+                end_line INTEGER,
+                query_keys_json TEXT NOT NULL DEFAULT '[]',
+                search_text TEXT NOT NULL,
+                PRIMARY KEY (generation_id, owner_ordinal)
+            );
+            CREATE INDEX IF NOT EXISTS structural_index_owner_path_idx
+              ON structural_index_owner(owner_path);
+            CREATE TABLE IF NOT EXISTS structural_index_symbol (
+                generation_id TEXT NOT NULL
+                    REFERENCES structural_index_generation(generation_id) ON DELETE CASCADE,
+                symbol_ordinal INTEGER NOT NULL,
+                owner_path TEXT NOT NULL,
+                name TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                visibility TEXT,
+                source_locator TEXT,
+                query_keys_json TEXT NOT NULL DEFAULT '[]',
+                search_text TEXT NOT NULL,
+                PRIMARY KEY (generation_id, symbol_ordinal)
+            );
+            CREATE INDEX IF NOT EXISTS structural_index_symbol_name_idx
+              ON structural_index_symbol(name, kind);
+            CREATE TABLE IF NOT EXISTS structural_index_dependency_usage (
+                generation_id TEXT NOT NULL
+                    REFERENCES structural_index_generation(generation_id) ON DELETE CASCADE,
+                usage_ordinal INTEGER NOT NULL,
+                owner_path TEXT NOT NULL,
+                package_name TEXT NOT NULL,
+                package_version TEXT,
+                api_name TEXT,
+                import_path TEXT,
+                manifest_path TEXT,
+                lockfile_hash TEXT,
+                source TEXT NOT NULL,
+                source_locator TEXT,
+                query_keys_json TEXT NOT NULL DEFAULT '[]',
+                search_text TEXT NOT NULL,
+                PRIMARY KEY (generation_id, usage_ordinal)
+            );
+            CREATE INDEX IF NOT EXISTS structural_index_dependency_pkg_idx
+              ON structural_index_dependency_usage(package_name, api_name);
             CREATE TABLE IF NOT EXISTS artifact_event (
                 artifact_path TEXT NOT NULL,
                 event_ordinal INTEGER NOT NULL,
@@ -1364,6 +1498,16 @@ impl ClientDb {
                 )
                 .map_err(|error| format!("failed to add syntax item node type column: {error}"))?;
         }
+        if !self.table_has_column("structural_index_dependency_usage", "source_locator")? {
+            self.conn
+                .execute(
+                    "ALTER TABLE structural_index_dependency_usage ADD COLUMN source_locator TEXT",
+                    [],
+                )
+                .map_err(|error| {
+                    format!("failed to add structural dependency source locator column: {error}")
+                })?;
+        }
 
         self.flush_stale_syntax_query_rows()?;
 
@@ -1422,18 +1566,6 @@ impl ClientDb {
             }
         }
         Ok(false)
-    }
-
-    fn table_exists(&self, table: &str) -> Result<bool, String> {
-        let exists: i64 = self
-            .conn
-            .query_row(
-                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?1",
-                params![table],
-                |row| row.get(0),
-            )
-            .map_err(|error| format!("failed to inspect client db table {table}: {error}"))?;
-        Ok(exists > 0)
     }
 }
 
@@ -1499,6 +1631,41 @@ pub struct ClientDbSummary {
     pub syntax_row_generation_count: u32,
     pub syntax_row_match_count: u32,
     pub syntax_row_capture_count: u32,
+    pub structural_index_generation_count: u32,
+    pub structural_index_owner_count: u32,
+    pub structural_index_symbol_count: u32,
+    pub structural_index_dependency_usage_count: u32,
     pub artifact_event_count: u32,
     pub raw_source_stored: bool,
+}
+
+#[derive(Default)]
+struct ClientDbTableCounts {
+    syntax_row_generation_count: u32,
+    syntax_row_match_count: u32,
+    syntax_row_capture_count: u32,
+    structural_index_generation_count: u32,
+    structural_index_owner_count: u32,
+    structural_index_symbol_count: u32,
+    structural_index_dependency_usage_count: u32,
+    artifact_event_count: u32,
+}
+
+impl ClientDbTableCounts {
+    fn set(&mut self, table: &str, count: i64) {
+        let count = count.max(0).min(i64::from(u32::MAX)) as u32;
+        match table {
+            "syntax_query_generation" => self.syntax_row_generation_count = count,
+            "syntax_query_match" => self.syntax_row_match_count = count,
+            "syntax_query_capture" => self.syntax_row_capture_count = count,
+            "structural_index_generation" => self.structural_index_generation_count = count,
+            "structural_index_owner" => self.structural_index_owner_count = count,
+            "structural_index_symbol" => self.structural_index_symbol_count = count,
+            "structural_index_dependency_usage" => {
+                self.structural_index_dependency_usage_count = count;
+            }
+            "artifact_event" => self.artifact_event_count = count,
+            _ => {}
+        }
+    }
 }

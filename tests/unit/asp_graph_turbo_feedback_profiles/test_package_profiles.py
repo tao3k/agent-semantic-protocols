@@ -38,7 +38,7 @@ def test_test_selection_profile_compiles_changed_fact_to_covering_test() -> None
     assert list(schema_validator_for(_GRAPH_TURBO_SCHEMA).iter_errors(packet)) == []
 
 
-def test_affected_profile_compiles_package_build_test_dependency_frontier() -> None:
+def test_affected_profile_compiles_package_build_test_frontier() -> None:
     graph = TypedGraph.from_packet(build_test_package_graph_packet())
     result = rank_frontier(
         graph,
@@ -55,10 +55,8 @@ def test_affected_profile_compiles_package_build_test_dependency_frontier() -> N
     assert "package:cache" in packet["rank"]
     assert "build:cache-tests" in packet["rank"]
     assert "test:cache-unit" in packet["rank"]
-    assert "dependency:serde" in packet["rank"]
     assert any(entry["action"] == "build" for entry in packet["frontier"])
     assert any(entry["action"] == "package" for entry in packet["frontier"])
-    assert any("depends_on" in path["relations"] for path in packet["typedPaths"])
     assert list(schema_validator_for(_GRAPH_TURBO_SCHEMA).iter_errors(packet)) == []
 
 

@@ -38,10 +38,54 @@ fn bash_ast_tokens_preserve_pipeline_separator() {
 }
 
 #[test]
+fn bash_ast_tokens_surface_nl_sed_python_source_dump_pipeline() {
+    assert_eq!(
+        semantic_shell_tokens(
+            "nl -ba packages/python/tools/src/tools/semantic_sandtable/step_agent_cli.py | sed -n '1,130p'",
+        ),
+        vec![
+            "nl",
+            "-ba",
+            "packages/python/tools/src/tools/semantic_sandtable/step_agent_cli.py",
+            "|",
+            "sed",
+            "-n",
+            "1,130p",
+        ]
+    );
+}
+
+#[test]
+fn bash_ast_tokens_surface_nested_command_stages() {
+    assert_eq!(
+        semantic_shell_tokens("echo $(cat src/lib.rs) && cat <(sed -n '1,3p' tests/unit.rs)"),
+        vec![
+            "echo",
+            ";",
+            "cat",
+            "src/lib.rs",
+            ";",
+            "&&",
+            "cat",
+            ";",
+            "sed",
+            "-n",
+            "1,3p",
+            "tests/unit.rs",
+            ";",
+        ]
+    );
+    assert_eq!(
+        semantic_shell_tokens("(cat src/lib.rs) || true"),
+        vec!["cat", "src/lib.rs", "||", "true"]
+    );
+}
+
+#[test]
 fn bash_ast_tokens_keep_quoted_search_pipe_stage() {
     assert_eq!(
         semantic_shell_tokens(
-            "asp typescript search pipe 'Effect concurrency Fiber' --view seeds ."
+            "asp typescript search pipe 'Effect concurrency Fiber' --workspace . --view seeds",
         ),
         vec![
             "asp",
@@ -49,9 +93,10 @@ fn bash_ast_tokens_keep_quoted_search_pipe_stage() {
             "search",
             "pipe",
             "Effect concurrency Fiber",
+            "--workspace",
+            ".",
             "--view",
             "seeds",
-            "."
         ]
     );
 }

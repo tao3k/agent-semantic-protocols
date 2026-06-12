@@ -4,6 +4,10 @@ from __future__ import annotations
 
 import re
 
+from .compact_graph_profiles import (
+    COMPACT_GRAPH_ENTRY_PROFILE_CONTRACTS,
+    compact_graph_entry_selector_summary,
+)
 from .constants import PROJECT_PATH_PATTERN, RANK_PREFIXED_PATH_PATTERN
 from .models import StepResult
 
@@ -15,11 +19,6 @@ SEED_FRONTIER_MICRO_LEGEND = (
     "entries profile(selectors=>returns); frontier ID.next"
 )
 
-
-from .compact_graph_profiles import (
-    COMPACT_GRAPH_ENTRY_PROFILE_CONTRACTS,
-    compact_graph_entry_selector_summary,
-)
 
 def validate_line_protocol(result: StepResult, stdout: str) -> None:
     lines = [line for line in stdout.splitlines() if line.strip()]
@@ -262,9 +261,25 @@ def _looks_like_compact_graph_return_entry(entry: str) -> bool:
 
 def _looks_like_compact_graph_csv_metadata_line(line: str) -> bool:
     _, sep, values = line.partition("=")
-    return bool(sep and values) and all(
-        _looks_like_compact_graph_metadata_value(value) for value in values.split(",")
-    )
+    if not sep or not values:
+        return False
+    for index, token in enumerate(values.split()):
+        if index > 0:
+            key, sep, token_values = token.partition("=")
+            if (
+                not sep
+                or not _looks_like_compact_graph_metadata_value(key)
+                or not token_values
+            ):
+                return False
+        else:
+            token_values = token
+        if not all(
+            _looks_like_compact_graph_metadata_value(value)
+            for value in token_values.split(",")
+        ):
+            return False
+    return True
 
 
 def _looks_like_compact_graph_metadata_value(value: str) -> bool:

@@ -581,6 +581,38 @@ it has multi-agent support, which model or role to use, and whether the task
 belongs on the current critical path.  Clients without subagents follow the
 same =recommendedNext= or =nextCommand= sequentially.
 
+ASP may install one client-native custom subagent profile so the client has a
+stable, low-cost read-only search worker available when it chooses to delegate.
+This is a runtime adapter, not a provider scheduler: =asp hook install --client
+codex= SHOULD create =.codex/agents/asp-explorer.toml=, and =asp hook install
+--client claude= SHOULD create =.claude/agents/asp-explorer.md=.  The installer
+SHOULD remove stale generated role-specific profiles from earlier revisions,
+such as =asp-explorer-owner=, =asp-explorer-rg=, and
+=asp-explorer-selector=.
+
+The custom profile is not the shared reasoning context.  The parent or main
+agent owns the reasoning tree, branch prompts, receipt ledger, fan-out, fan-in,
+and final verification.  When =actionFrontier= or =targetActions= expose
+independent axes, the parent may run multiple instances of the same
+=asp-explorer= profile, one instance per reasoning-tree branch.  Each branch
+prompt carries the action id, parent-known evidence, missing facts, risk, and
+allowed ASP command group.  Worker instances do not share context windows with
+each other.  They share state only by returning compact =[search-subagent]=
+receipts to the parent.  After fan-in, the main model may update the reasoning
+tree and issue another round of branch prompts before accepting an edit
+boundary.
+
+Codex agents use =sandbox_mode="read-only"= and default model
+=gpt-5.3-codex-spark=.  Claude agents use =permissionMode: plan= and default
+model =haiku=.  Both installers MAY accept =--subagent-model <model>= to pin
+the generated model field for the installed profile, but the feature is
+installed by default and does not require an opt-in flag.  The custom subagent
+instructions must keep work read-only and ASP-first: build query packs, run
+bounded =asp fd= / =asp rg= / =search owner= / exact =query --selector=
+commands, and return compact frontier evidence to the parent.  Client runtimes
+without subagents follow the same =recommendedNext= or =nextCommand=
+sequentially.
+
 This differs from query-set composition.  A query-set merges repeated queries
 inside one view and one scope.  Fan-out runs distinct views or scopes in
 parallel after prime has selected them.  Providers should keep both visible:

@@ -69,6 +69,7 @@
         "ts-harness",
         "search",
         "workspace",
+        "--workspace",
         "."
       ],
       "expect": {
@@ -90,6 +91,7 @@
         "prime",
         "--view",
         "seeds",
+        "--workspace",
         "packages/vite"
       ],
       "expect": {
@@ -99,7 +101,7 @@
           "root=vite",
           "scripts/generateTarget.ts"
         ],
-        "maxStdoutLinesWarn": 8,
+        "maxStdoutLinesWarn": 10,
         "maxElapsedMsWarn": 5000
       }
     },
@@ -117,6 +119,7 @@
         "tests",
         "--view",
         "seeds",
+        "--workspace",
         "packages/vite"
       ],
       "expect": {
@@ -141,6 +144,7 @@
         "items",
         "--view",
         "seeds",
+        "--workspace",
         "packages/vite"
       ],
       "expect": {
@@ -168,6 +172,7 @@
         "ingest",
         "--view",
         "seeds",
+        "--workspace",
         "packages/vite"
       ],
       "expect": {
@@ -177,7 +182,7 @@
           "root=.",
           "packages/vite/src/node/server/pluginContainer.ts"
         ],
-        "maxStdoutLinesWarn": 6,
+        "maxStdoutLinesWarn": 7,
         "maxElapsedMsWarn": 5000
       }
     }

@@ -149,10 +149,17 @@ fn delegation_hint_line(hint: &Value) -> Option<String> {
         return None;
     }
     let receipt = hint.get("receipt")?;
-    if string_field(receipt, "kind")? != "search-subagent" {
+    if string_field(receipt, "kind")? != "asp-search-subagent" {
         return None;
     }
     let profile = safe_token(string_field(hint, "profile")?)?;
+    let fanout = literal_or_default(hint, "fanout", "parallel", &["parallel"])?;
+    let instances = literal_or_default(hint, "instances", "targetActions", &["targetActions"])?;
+    let branch_prompt =
+        literal_or_default(hint, "branchPrompt", "reasoning-tree", &["reasoning-tree"])?;
+    let state_owner = literal_or_default(hint, "stateOwner", "parent", &["parent"])?;
+    let fanin = literal_or_default(hint, "fanin", "receipt", &["receipt"])?;
+    let iterative = bool_or_default(hint, "iterative", true)?;
     let model_class = model_class_or_default(hint)?;
     let target_actions = safe_string_array(hint.get("targetActions")?, safe_action_token)?;
     let required_fields = safe_string_array(receipt.get("requiredFields")?, safe_token)?;
@@ -161,7 +168,7 @@ fn delegation_hint_line(hint: &Value) -> Option<String> {
     let reason = safe_token(string_field(hint, "reason")?)?;
 
     Some(format!(
-        "subagentHint=profile={profile} decision=advisory runtimeOwner=agent-client modelClass={model_class} readOnly=true noCode=true targetActions={} maxCommands={max_commands} maxTurns={max_turns} receipt=search-subagent({}) reason={reason}",
+        "subagentHint=profile={profile} fanout={fanout} instances={instances} branchPrompt={branch_prompt} stateOwner={state_owner} fanin={fanin} iterative={iterative} decision=advisory runtimeOwner=agent-client modelClass={model_class} readOnly=true noCode=true targetActions={} maxCommands={max_commands} maxTurns={max_turns} receipt=asp-search-subagent({}) reason={reason}",
         target_actions.join(","),
         required_fields.join(",")
     ))
@@ -193,6 +200,26 @@ fn model_class_or_default(value: &Value) -> Option<&str> {
             Some(model_class)
         }
         Some(_) => None,
+    }
+}
+
+fn literal_or_default<'a>(
+    value: &'a Value,
+    field: &str,
+    default: &'static str,
+    allowed: &[&'static str],
+) -> Option<&'a str> {
+    match value.get(field) {
+        None => Some(default),
+        Some(Value::String(value)) if allowed.contains(&value.as_str()) => Some(value.as_str()),
+        Some(_) => None,
+    }
+}
+
+fn bool_or_default(value: &Value, field: &str, default: bool) -> Option<bool> {
+    match value.get(field) {
+        None => Some(default),
+        Some(value) => value.as_bool(),
     }
 }
 

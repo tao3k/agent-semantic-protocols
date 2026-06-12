@@ -52,6 +52,8 @@ def ontology_catalog_to_graph_request(
         "protocolId": "agent.semantic-protocols.semantic-language",
         "protocolVersion": "1",
         "packetKind": "graph-turbo-request",
+        "surface": "search-fzf",
+        "queryTerms": [query],
         "profile": profile,
         "algorithm": ALGORITHM_ID,
         "seedIds": [seed_id],

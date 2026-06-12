@@ -1,5 +1,40 @@
+macro_rules! shell_kind_matcher {
+    ($name:ident, [$($kind:literal),+ $(,)?]) => {
+        fn $name(kind: &str) -> bool {
+            matches!(kind, $($kind)|+)
+        }
+    };
+}
+
+const NESTED_STAGE_SEPARATOR: &str = ";";
+
+shell_kind_matcher!(
+    is_command_word_node,
+    [
+        "command_name",
+        "word",
+        "string",
+        "raw_string",
+        "concatenation",
+        "simple_expansion",
+        "variable_assignment",
+    ]
+);
+
+shell_kind_matcher!(
+    is_nested_command_stage_node,
+    ["command_substitution", "process_substitution", "subshell"]
+);
+
 fn shell_tokens(command: &str) -> Vec<String> {
+    if can_use_legacy_shell_tokens(command) {
+        return legacy_shell_tokens(command);
+    }
     bash_ast_tokens(command).unwrap_or_else(|| legacy_shell_tokens(command))
+}
+
+fn can_use_legacy_shell_tokens(command: &str) -> bool {
+    !command.contains(['$', '`', '<', '>', '\n', '\\', '(', ')']) && !command.contains("||")
 }
 
 fn bash_ast_tokens(command: &str) -> Option<Vec<String>> {
@@ -38,8 +73,19 @@ fn collect_bash_tokens(node: tree_sitter::Node<'_>, source: &[u8], tokens: &mut 
 }
 
 fn collect_command_words(node: tree_sitter::Node<'_>, source: &[u8], tokens: &mut Vec<String>) {
+    if is_nested_command_stage_node(node.kind()) {
+        push_nested_stage_separator(tokens);
+        collect_bash_tokens(node, source, tokens);
+        push_nested_stage_separator(tokens);
+        return;
+    }
     if is_command_word_node(node.kind()) {
-        if let Some(text) = node_text(node, source).map(normalize_shell_word_text)
+        if node_contains_nested_command_stage(node) {
+            let mut cursor = node.walk();
+            for child in node.children(&mut cursor) {
+                collect_command_words(child, source, tokens);
+            }
+        } else if let Some(text) = node_text(node, source).map(normalize_shell_word_text)
             && !text.is_empty()
         {
             tokens.push(text);
@@ -52,17 +98,20 @@ fn collect_command_words(node: tree_sitter::Node<'_>, source: &[u8], tokens: &mu
     }
 }
 
-fn is_command_word_node(kind: &str) -> bool {
-    matches!(
-        kind,
-        "command_name"
-            | "word"
-            | "string"
-            | "raw_string"
-            | "concatenation"
-            | "simple_expansion"
-            | "variable_assignment"
-    )
+fn node_contains_nested_command_stage(node: tree_sitter::Node<'_>) -> bool {
+    if is_nested_command_stage_node(node.kind()) {
+        return true;
+    }
+    let mut cursor = node.walk();
+    node.children(&mut cursor)
+        .any(node_contains_nested_command_stage)
+}
+
+fn push_nested_stage_separator(tokens: &mut Vec<String>) {
+    if tokens.last().is_some_and(|token| is_separator(token)) {
+        return;
+    }
+    tokens.push(NESTED_STAGE_SEPARATOR.to_string());
 }
 
 fn node_text(node: tree_sitter::Node<'_>, source: &[u8]) -> Option<String> {
@@ -139,7 +188,7 @@ pub(super) fn command_name(command: &str) -> &str {
 }
 
 pub(super) fn is_separator(token: &str) -> bool {
-    matches!(token, "|" | ";" | "&&" | "&")
+    matches!(token, "|" | ";" | "&&" | "||" | "&")
 }
 
 fn split_command_stages(tokens: Vec<String>) -> Vec<Vec<String>> {

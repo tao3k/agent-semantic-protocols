@@ -6,9 +6,9 @@ import re
 from collections.abc import Iterable, Mapping
 
 from .constants import ALGORITHM_ID
+from .frontier_actions import FrontierAction, frontier_action_items
 from .model import Edge, GraphProfile, GraphResult, Node
 from .profiles import frontier_action
-from .selector import graph_turbo_selector_for_node
 
 _TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9_]*")
 
@@ -165,60 +165,7 @@ def _render_owner_query_projection_lines(
 def _render_owner_query_frontier_actions(
     result: GraphResult, aliases: Mapping[str, str]
 ) -> str:
-    actions: list[str] = []
-    for item in owner_query_frontier_action_items(result):
-        action_id = item["actionId"]
-        owner = item["owner"]
-        source = aliases.get(str(item["sourceNodeId"]), str(item["sourceNodeId"]))
-        if item["actionKind"] == "selector":
-            actions.append(
-                f"{action_id}.selector(selector={item['selector']},owner={owner},symbol={item['symbol']},source={source})!query-selector"
-            )
-        elif item["actionKind"] == "reasoning":
-            actions.append(
-                f"{action_id}.reasoning(owner={owner},source={source})!search-reasoning"
-            )
-    return ",".join(actions)
-
-
-def owner_query_frontier_action_items(result: GraphResult) -> list[dict[str, object]]:
-    if result.profile.name != "owner-query":
-        return []
-    actions: list[dict[str, object]] = []
-    branches = _owner_query_branches(result)
-    for index, node in enumerate(branches, start=1):
-        selector = _selector_for_node(node)
-        if selector is None:
-            continue
-        owner = node.fields.get("ownerPath") or node.fields.get("path")
-        if owner is None:
-            continue
-        symbol = node.fields.get("symbol") or node.value
-        actions.append(
-            {
-                "rank": index,
-                "actionId": f"S{index}",
-                "actionKind": "selector",
-                "selector": selector,
-                "owner": str(owner),
-                "symbol": None if symbol is None else str(symbol),
-                "sourceNodeId": node.id,
-                "next": "query-selector",
-            }
-        )
-        actions.append(
-            {
-                "rank": index,
-                "actionId": f"R{index}",
-                "actionKind": "reasoning",
-                "selector": None,
-                "owner": str(owner),
-                "symbol": None,
-                "sourceNodeId": node.id,
-                "next": "search-reasoning",
-            }
-        )
-    return actions
+    return _render_frontier_actions(result, aliases)
 
 
 def _render_query_token_coverage(result: GraphResult) -> str:
@@ -290,143 +237,37 @@ def _comma_or_dash(values: Iterable[str]) -> str:
     return ",".join(values) if values else "-"
 
 
-def _owner_query_branches(result: GraphResult) -> list[Node]:
-    hot_by_key = _owner_query_hot_nodes(result)
-    candidates = [
-        entry.node
-        for entry in _prompt_frontier_entries(result)
-        if entry.node.kind in {"field", "hot", "item"}
-        and _selector_for_node(entry.node)
-    ]
-    field_candidates = [node for node in candidates if node.kind == "field"]
-    if field_candidates:
-        return _dedupe_mapped_branches(
-            _owner_query_diverse_candidates(field_candidates),
-            hot_by_key,
-        )
-    return _dedupe_mapped_branches(
-        _owner_query_diverse_candidates(candidates),
-        hot_by_key,
-    )
-
-
-def _dedupe_mapped_branches(
-    branches: list[Node], hot_by_key: Mapping[tuple[str, str], Node]
-) -> list[Node]:
-    selected: list[Node] = []
-    seen_selectors: set[str] = set()
-    for node in branches:
-        mapped = _hot_node_for_branch(node, hot_by_key)
-        selector = _selector_for_node(mapped)
-        if selector is None or selector in seen_selectors:
-            continue
-        seen_selectors.add(selector)
-        selected.append(mapped)
-    return selected
-
-
-def _owner_query_diverse_candidates(candidates: list[Node]) -> list[Node]:
-    preferred = [node for node in candidates if _source_preferred_node(node)]
-    diverse: list[Node] = []
-    fallback: list[Node] = []
-    seen_selectors: set[str] = set()
-    seen_symbols: set[str] = set()
-    _append_symbol_diverse_branches(
-        preferred, diverse, fallback, seen_selectors, seen_symbols
-    )
-    if len(diverse) < 3:
-        _append_symbol_diverse_branches(
-            candidates, diverse, fallback, seen_selectors, seen_symbols
-        )
-    for node in fallback:
-        if len(diverse) >= 3:
-            break
-        selector = _selector_for_node(node)
-        if selector is None or selector in seen_selectors:
-            continue
-        seen_selectors.add(selector)
-        diverse.append(node)
-    return diverse
-
-
-def _owner_query_hot_nodes(result: GraphResult) -> dict[tuple[str, str], Node]:
-    hot_nodes: dict[tuple[str, str], Node] = {}
-    for entry in _prompt_frontier_entries(result):
-        node = entry.node
-        if node.kind != "hot" or _selector_for_node(node) is None:
-            continue
-        hot_nodes.setdefault(_branch_key(node), node)
-    return hot_nodes
-
-
-def _hot_node_for_branch(
-    node: Node, hot_by_key: Mapping[tuple[str, str], Node]
-) -> Node:
-    if node.kind == "hot":
-        return node
-    return hot_by_key.get(_branch_key(node), node)
-
-
-def _branch_key(node: Node) -> tuple[str, str]:
-    owner = str(node.fields.get("ownerPath") or node.fields.get("path") or "")
-    return owner, _branch_symbol(node)
-
-
-def _append_symbol_diverse_branches(
-    nodes: list[Node],
-    diverse: list[Node],
-    fallback: list[Node],
-    seen_selectors: set[str],
-    seen_symbols: set[str],
-) -> None:
-    for node in nodes:
-        if len(diverse) >= 3:
-            return
-        selector = _selector_for_node(node)
-        if selector is None or selector in seen_selectors:
-            continue
-        symbol = _branch_symbol(node)
-        if symbol in seen_symbols:
-            fallback.append(node)
-            continue
-        seen_selectors.add(selector)
-        seen_symbols.add(symbol)
-        diverse.append(node)
-
-
-def _branch_symbol(node: Node) -> str:
-    fields = node.fields.get("fields")
-    field_name = fields.get("fieldName") if isinstance(fields, Mapping) else None
-    return str(node.fields.get("symbol") or field_name or node.value).lower()
-
-
-def _source_preferred_node(node: Node) -> bool:
-    path = str(node.fields.get("path") or node.fields.get("ownerPath") or "")
-    return not (
-        "/tests/" in path
-        or path.endswith("/tests")
-        or "/benches/" in path
-        or path.endswith("/benches")
-        or "/examples/" in path
-        or path.endswith("/examples")
-        or "stress-test/" in path
-    )
-
-
 def _render_frontier_actions(result: GraphResult, aliases: Mapping[str, str]) -> str:
-    actions = []
-    for entry in result.frontier:
-        node = entry.node
-        if node.kind != "hot" or entry.action != "code":
-            continue
-        selector = _selector_for_node(node)
-        if selector is None:
-            continue
-        language = node.fields.get("languageId") or "rust"
-        actions.append(
-            f"{aliases[node.id]}.code=>asp {language} query --selector {selector} --code ."
+    return ",".join(
+        _render_frontier_action(action, aliases)
+        for action in frontier_action_items(result)
+    )
+
+
+def _render_frontier_action(
+    action: FrontierAction, aliases: Mapping[str, str]
+) -> str:
+    source = aliases.get(action.source_node_id, action.source_node_id)
+    if action.action_kind == "selector":
+        return (
+            f"{action.action_id}.selector(selector={action.selector},owner={action.owner},"
+            f"symbol={action.symbol},source={source})!{action.next}"
         )
-    return ",".join(actions)
+    if action.action_kind == "reasoning":
+        return (
+            f"{action.action_id}.reasoning(owner={action.owner},source={source})!"
+            f"{action.next}"
+        )
+    if action.action_kind == "query-code":
+        language = action.fields.get("languageId") or "-"
+        return (
+            f"{action.action_id}.query-code(selector={action.selector},owner={action.owner},"
+            f"symbol={action.symbol},source={source},language={language})!{action.next}"
+        )
+    return (
+        f"{action.action_id}.{action.action_kind}(target={action.target},source={source})!"
+        f"{action.next}"
+    )
 
 
 def _render_frontier(result: GraphResult, aliases: Mapping[str, str]) -> str:
@@ -450,10 +291,6 @@ def _prompt_frontier_entries(result: GraphResult):
         )
     )
     return tuple(entries) if entries else result.frontier
-
-
-def _selector_for_node(node: Node) -> str | None:
-    return graph_turbo_selector_for_node(node)
 
 
 def _node_locator(node: Node) -> str:

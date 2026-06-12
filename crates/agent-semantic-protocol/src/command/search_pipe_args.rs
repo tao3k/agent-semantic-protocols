@@ -9,6 +9,7 @@ use super::search_pipe_surfaces::{default_search_surfaces, parse_search_surfaces
 pub(super) struct SearchPipeArgs {
     pub(super) seed_query: String,
     pub(super) source: SourceSpec,
+    pub(super) workspace: Option<PathBuf>,
     pub(super) scopes: Vec<PathBuf>,
     pub(super) view: String,
 }
@@ -54,6 +55,7 @@ pub(super) fn parse_search_pipe_args(args: &[String]) -> Result<SearchPipeArgs, 
         .ok_or_else(|| "search pipe requires a seed query".to_string())?
         .clone();
     let mut source = SourceSpec::Auto;
+    let mut workspace = None;
     let mut scopes = Vec::new();
     let mut view = "seeds".to_string();
     let mut index = 3;
@@ -71,6 +73,16 @@ pub(super) fn parse_search_pipe_args(args: &[String]) -> Result<SearchPipeArgs, 
                     args.get(index + 1)
                         .ok_or_else(|| "--source requires a value".to_string())?,
                 )?;
+                index += 2;
+            }
+            "--workspace" => {
+                let value = args
+                    .get(index + 1)
+                    .ok_or_else(|| "--workspace requires a project root".to_string())?;
+                if value.starts_with('-') {
+                    return Err("--workspace requires a project root".to_string());
+                }
+                workspace = Some(PathBuf::from(value));
                 index += 2;
             }
             "--view" => {
@@ -100,6 +112,7 @@ pub(super) fn parse_search_pipe_args(args: &[String]) -> Result<SearchPipeArgs, 
     Ok(SearchPipeArgs {
         seed_query,
         source,
+        workspace,
         scopes,
         view,
     })

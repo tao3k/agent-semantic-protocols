@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 
-use super::search_pipe_action_frontier::{ActionNode, ActionRoute};
+use super::search_pipe_action_frontier::{ActionNode, ActionRoute, render_action_rows};
 use super::search_pipe_action_model::PipeAction;
 use super::search_pipe_model::Candidate;
 use super::search_pipe_quality::SearchPipeQuality;
@@ -32,7 +32,7 @@ pub(super) struct DelegationHint {
 impl DelegationHint {
     fn render_line(&self) -> String {
         format!(
-            "subagentHint=profile=asp-explorer decision=advisory runtimeOwner=agent-client modelClass=cheap readOnly=true noCode=true targetActions={} maxCommands=8 maxTurns=1 receipt=search-subagent(role,evidence,missing,next,risk) reason=query-selector-low-confidence",
+            "subagentHint=profile=asp-explorer fanout=parallel instances=targetActions branchPrompt=reasoning-tree stateOwner=parent fanin=receipt iterative=true decision=advisory runtimeOwner=agent-client modelClass=cheap readOnly=true noCode=true targetActions={} maxCommands=8 maxTurns=1 receipt=asp-search-subagent(role,action,evidence,missing,next,risk) reason=query-selector-low-confidence",
             self.target_actions.join(",")
         )
     }
@@ -40,6 +40,12 @@ impl DelegationHint {
     pub(super) fn as_json(&self) -> Value {
         json!({
             "profile": "asp-explorer",
+            "fanout": "parallel",
+            "instances": "targetActions",
+            "branchPrompt": "reasoning-tree",
+            "stateOwner": "parent",
+            "fanin": "receipt",
+            "iterative": true,
             "decision": "advisory",
             "runtimeOwner": "agent-client",
             "modelClass": "cheap",
@@ -50,8 +56,8 @@ impl DelegationHint {
             "maxTurns": 1,
             "reason": "query-selector-low-confidence",
             "receipt": {
-                "kind": "search-subagent",
-                "requiredFields": ["role", "evidence", "missing", "next", "risk"]
+                "kind": "asp-search-subagent",
+                "requiredFields": ["role", "action", "evidence", "missing", "next", "risk"]
             }
         })
     }
@@ -69,41 +75,9 @@ pub(super) fn render_action_frontier(request: SearchPipeActionRequest<'_>) -> St
         rendered.push_str(&preview.render_line());
         rendered.push('\n');
     }
+    rendered.push_str(&render_action_rows(&actions));
     if actions.is_empty() {
-        rendered.push_str("actionRank=-\n");
-        rendered.push_str("actionFrontier=-\n");
-        rendered.push_str("recommendedNext=-\n");
         return rendered;
-    }
-    rendered.push_str(&format!(
-        "actionRank={}\n",
-        actions
-            .iter()
-            .map(|action| action.id.as_str())
-            .collect::<Vec<_>>()
-            .join(",")
-    ));
-    for action in &actions {
-        rendered.push_str(&format!(
-            "{}={}({})!{}\n",
-            action.id,
-            action.kind,
-            action.render_body(),
-            action.suffix
-        ));
-    }
-    rendered.push_str(&format!(
-        "actionFrontier={}\n",
-        actions
-            .iter()
-            .map(|action| format!("{}.{}", action.id, action.kind))
-            .collect::<Vec<_>>()
-            .join(",")
-    ));
-    let first = actions.first().expect("non-empty actions");
-    rendered.push_str(&format!("recommendedNext={}.{}\n", first.id, first.kind));
-    if let Some(command) = first.materialized_command() {
-        rendered.push_str(&format!("nextCommand={command}\n"));
     }
     for hint in delegation_hints(request.quality, &actions) {
         rendered.push_str(&hint.render_line());
@@ -239,6 +213,7 @@ fn action_nodes(request: &SearchPipeActionRequest<'_>, scope_arg: &str) -> Vec<A
             route: ActionRoute::FdQuery {
                 query: fd_query.to_string(),
                 scope: scope_arg.to_string(),
+                command_scope: None,
             },
         });
     }
@@ -250,6 +225,7 @@ fn action_nodes(request: &SearchPipeActionRequest<'_>, scope_arg: &str) -> Vec<A
             route: ActionRoute::RgQuery {
                 query,
                 scope: scope_arg.to_string(),
+                command_scope: None,
             },
         });
     }

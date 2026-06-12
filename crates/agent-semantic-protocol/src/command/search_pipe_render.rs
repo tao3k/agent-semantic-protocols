@@ -37,7 +37,7 @@ pub(super) fn render_empty_ingest_diagnostic(language_id: &str) -> String {
     format!(
         "[search-ingest] root=. alg=asp-fast-seed-frontier-v1\n\
 |note kind=stdin-required message=\"search ingest requires candidate stdin; no provider full report was started\"\n\
-|next prime: asp {language_id} search prime --view seeds .\n"
+|next prime: asp {language_id} search prime --workspace . --view seeds\n"
     )
 }
 

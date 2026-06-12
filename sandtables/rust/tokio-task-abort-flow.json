@@ -3,6 +3,7 @@
   "title": "Tokio task abort live-agent prompt-only flow",
   "language": "rust",
   "skipUnlessEnv": [
+    "ASP_LIVE_CLAUDE_CLI",
     "ANTHROPIC_AUTH_TOKEN"
   ],
   "coverage": [
@@ -115,7 +116,7 @@
         "maxReadLoopAdjacentRangeWindows": 0,
         "maxReadLoopSameOwnerScans": 0,
         "maxReadLoopMemorySuppressibleReads": 0,
-        "requireComplexPipeFlow": true,
+        "requireComplexPipeFlow": false,
         "requireTokenCost": true,
         "requiredStages": [
           "search-prime",

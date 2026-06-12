@@ -22,10 +22,15 @@ mod source_selector;
 mod tool_action;
 
 pub use crate::activation_store::{
-    default_activation_path, discover_activation_path, load_activation, load_or_sync_activation,
-    parse_hook_activation, write_activation,
+    DefaultActivationSync, default_activation_path, discover_activation_path, load_activation,
+    load_or_refresh_default_activation, load_or_sync_activation, parse_hook_activation,
+    write_activation,
 };
-pub use classifier::{HookClassificationRequest, classify_hook, classify_hook_with_config};
+pub use classifier::{
+    HOOK_TRIGGER_PROMPT_FILE_NAME, HookClassificationRequest, classify_hook,
+    classify_hook_with_config, default_hook_trigger_prompt_message, hook_trigger_prompt_document,
+    merge_hook_trigger_prompt_document, render_hook_trigger_prompt_document,
+};
 pub use codex_config::{
     CodexUserTrustStatus, ROOT_BLOCK_BEGIN, ROOT_BLOCK_END, claude_hook_block, codex_hook_block,
     codex_user_trust_state_status, default_claude_settings_path, install_codex_user_trust_state,
@@ -34,7 +39,8 @@ pub use codex_config::{
 };
 pub use dev_context::{ActiveContextRecord, record_active_context};
 pub use event_state::{
-    append_hook_event_state, apply_repeated_deny_replay, remove_incompatible_hook_event_state,
+    append_hook_event_state, apply_repeated_deny_replay, has_recorded_subagent_context,
+    remove_incompatible_hook_event_state,
 };
 pub use hook_config::{
     ClientHookConfig, default_client_config_path, default_client_config_template,
@@ -47,7 +53,7 @@ pub use protocol::{
     HOOK_DECISION_SCHEMA_ID, HOOK_DECISION_SCHEMA_VERSION, HOOK_PROTOCOL_ID, HOOK_PROTOCOL_VERSION,
     HookDecision, HookPolicy, HookRoutes, PROVIDER_MANIFEST_SCHEMA_ID,
     PROVIDER_MANIFEST_SCHEMA_VERSION, ReasonKind, StdinMode, parse_payload,
-    render_platform_response,
+    render_platform_response, subagent_deny_message,
 };
 pub(crate) use protocol_activation::SourceSelectorKind;
 pub use protocol_activation::{

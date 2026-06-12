@@ -7,6 +7,14 @@ use agent_semantic_client_db::{ClientDb, ClientDbGenerationLookup, ClientDbStatu
 use serde_json::json;
 
 #[test]
+fn schema_version_stays_on_first_release_contract() {
+    assert_eq!(
+        agent_semantic_client_db::AGENT_SEMANTIC_CLIENT_DB_SCHEMA_VERSION,
+        1
+    );
+}
+
+#[test]
 fn inspect_reports_missing_without_creating_db() {
     let root = temp_root("missing");
     let db_path = root.join("client.sqlite3");

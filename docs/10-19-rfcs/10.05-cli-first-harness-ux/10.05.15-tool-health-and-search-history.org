@@ -147,8 +147,8 @@ The compact output contract is line-oriented:
 [search-suggest] lang=<language> view=commands source=advisory history=<optional|requested>
 |contract executes=false provider=false planner=false output=commands
 |history audit="asp search history audit ."
-|prefer pipe="asp <language> search pipe <query> --pipe items,tests --view seeds ."
-|prefer graph="asp <language> search pipe <query> --pipe items,tests --view graph-turbo-request . | graph-turbo rank - --format compact"
+|prefer pipe="asp <language> search pipe <query> --view seeds ."
+|prefer graph="asp <language> search pipe <query> --view graph-turbo-request ."
 |prefer fzf="asp <language> search fzf <query> owner tests --view seeds ."
 |manual ingest="rg -n <query> <owners> | asp <language> search ingest items tests --view seeds ."
 |reasoning owner-query="asp <language> search reasoning owner-query --owner <path> --query <query> --view seeds ."

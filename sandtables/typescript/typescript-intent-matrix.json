@@ -89,6 +89,7 @@
         "src/compiler",
         "--view",
         "seeds",
+        "--workspace",
         "."
       ],
       "expect": {
@@ -123,6 +124,7 @@
         "src/compiler",
         "--view",
         "seeds",
+        "--workspace",
         "."
       ],
       "expect": {

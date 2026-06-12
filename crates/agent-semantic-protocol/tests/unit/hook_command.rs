@@ -6,10 +6,13 @@ mod hook;
 mod hook_enforcement;
 #[path = "../../src/command/hook_runtime.rs"]
 mod hook_runtime;
+#[path = "../../src/command/hook_runtime_context.rs"]
+mod hook_runtime_context;
 #[path = "../../src/command/protocol_binary.rs"]
 mod protocol_binary;
 
 use hook_enforcement::codex_enforcement_report;
+use hook_runtime_context::payload_indicates_subagent_context;
 use protocol_binary::{ensure_protocol_binary_installed_for_path, protocol_binary_on_path};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};

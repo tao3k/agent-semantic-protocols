@@ -21,7 +21,7 @@
   "budgets": {
     "maxCommands": 10,
     "maxTotalLinesWarn": 120,
-    "maxTotalStdoutBytesWarn": 70000
+      "maxTotalStdoutBytesWarn": 75000
   },
   "steps": [
     {
@@ -53,7 +53,7 @@
           }
         },
         "maxStdoutLinesWarn": 12,
-        "maxStdoutBytesWarn": 13000,
+        "maxStdoutBytesWarn": 19000,
         "maxElapsedMsWarn": 1500
       }
     },
@@ -70,6 +70,7 @@
         "search",
         "prime",
         "--json",
+        "--workspace",
         "."
       ],
       "expect": {
@@ -101,6 +102,7 @@
         "dependency",
         "ruff",
         "--json",
+        "--workspace",
         "."
       ],
       "expect": {
@@ -123,6 +125,7 @@
         ".venv/bin/py-harness",
         "search",
         "workspace",
+        "--workspace",
         "."
       ],
       "expect": {
@@ -130,7 +133,7 @@
         "stdoutContains": [
           "[search-workspace]"
         ],
-        "maxStdoutLinesWarn": 6,
+        "maxStdoutLinesWarn": 8,
         "maxElapsedMsWarn": 4500
       }
     },
@@ -142,17 +145,20 @@
         "prime",
         "--view",
         "seeds",
+        "--workspace",
         "."
       ],
       "expect": {
         "lineProtocol": true,
         "stdoutContains": [
           "[search-prime]",
-          "alg=owner-rank-frontier",
-          "legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next",
+          "alg=fast-prime-frontier-v1",
+        "legend: ID=kind:role(value)!next; entries profile(selectors=>returns); frontier ID.next",
           "G>{",
           "rank=",
-          "frontier="
+          "frontier=",
+          "entries=owner-tests(O=>covering-tests+test-entrypoints+fixtures)",
+          "omit=items,blocks,code,full-json reason=fast-seeds-frontier"
         ],
         "maxStdoutLinesWarn": 18,
         "maxElapsedMsWarn": 3000,
@@ -177,6 +183,7 @@
         "tests",
         "--owner",
         "src/python_lang_project_harness/__init__.py",
+        "--workspace",
         "."
       ],
       "capture": {
@@ -230,6 +237,7 @@
         "tests",
         "--view",
         "seeds",
+        "--workspace",
         "."
       ],
       "expect": {
@@ -272,6 +280,7 @@
         "owner",
         "tests",
         "--json",
+        "--workspace",
         "."
       ],
       "expect": {
@@ -298,6 +307,7 @@
         "{pyOwner}",
         "--view",
         "seeds",
+        "--workspace",
         "."
       ],
       "expect": {
@@ -333,6 +343,7 @@
         ".venv/bin/py-harness",
         "search",
         "ingest",
+        "--workspace",
         "."
       ],
       "expect": {

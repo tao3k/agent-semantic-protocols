@@ -1,7 +1,7 @@
 //! ASP-owned search pipeline wrapper.
 
 use std::fs;
-use std::path::Path;
+use std::path::{Component, Path, PathBuf};
 
 use super::graph::GraphTurboReceiptRequest;
 use super::search_config::AspConfig;
@@ -213,9 +213,14 @@ fn explicit_view(args: &[String]) -> Option<&str> {
 
 fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> Result<(), String> {
     let pipe_args = parse_search_pipe_args(args)?;
+    let project_root = search_workspace_root(
+        context.project_root,
+        context.locator_root,
+        pipe_args.workspace.as_deref(),
+    );
     let acquisition = collect_search_pipe_candidates(
         context.language_id,
-        context.project_root,
+        &project_root,
         context.locator_root,
         &pipe_args.seed_query,
         &pipe_args.scopes,
@@ -224,7 +229,7 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
     )?;
     let provider_facts = collect_provider_graph_facts(
         context.language_id,
-        context.project_root,
+        &project_root,
         Some(&pipe_args.seed_query),
         &acquisition.candidates,
         context.config,
@@ -233,7 +238,7 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
     let surfaces = default_search_surfaces();
     print_search_pipe_view(SearchPipeViewRequest {
         language_id: context.language_id,
-        project_root: context.project_root,
+        project_root: &project_root,
         locator_root: context.locator_root,
         surface: "search-pipe",
         query: Some(&pipe_args.seed_query),
@@ -248,13 +253,44 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
         provider_facts: &provider_facts,
         read_memory_selectors: &read_loop_memory_selectors(
             context.cache_home,
-            context.project_root,
+            &project_root,
             context.locator_root,
             &pipe_args.scopes,
         ),
         frontier_receipt: context.frontier_receipt,
     })?;
     Ok(())
+}
+
+fn search_workspace_root(
+    project_root: &Path,
+    locator_root: &Path,
+    explicit_workspace: Option<&Path>,
+) -> PathBuf {
+    let Some(workspace) = explicit_workspace else {
+        return project_root.to_path_buf();
+    };
+    let workspace = if workspace.is_absolute() {
+        workspace.to_path_buf()
+    } else {
+        locator_root.join(workspace)
+    };
+    normalize_path(&workspace)
+}
+
+fn normalize_path(path: &Path) -> PathBuf {
+    let mut normalized = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                normalized.pop();
+            }
+            Component::Normal(value) => normalized.push(value),
+            Component::RootDir | Component::Prefix(_) => normalized.push(component.as_os_str()),
+        }
+    }
+    normalized
 }
 
 fn run_reasoning_owner_query_command(

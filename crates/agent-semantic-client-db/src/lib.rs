@@ -4,6 +4,7 @@
 
 pub mod db;
 pub mod pragmas;
+mod structural_index;
 mod syntax_query;
 
 pub use agent_semantic_client_core::ClientDbStatus;
@@ -15,3 +16,10 @@ pub use db::{
     ClientDbSyntaxQueryReplay,
 };
 pub use pragmas::{ClientDbJournalMode, ClientDbRuntimePragmas};
+pub use structural_index::{
+    ClientDbStructuralDependencyUsage, ClientDbStructuralHash, ClientDbStructuralIndexImport,
+    ClientDbStructuralIndexLookup, ClientDbStructuralIndexStats, ClientDbStructuralKind,
+    ClientDbStructuralLocator, ClientDbStructuralName, ClientDbStructuralOwner,
+    ClientDbStructuralPath, ClientDbStructuralQueryKey, ClientDbStructuralSource,
+    ClientDbStructuralSymbol,
+};

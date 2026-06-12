@@ -85,7 +85,7 @@
         },
         "stdoutContains": [
           "\"receiptBoostCount\": 1",
-          "\"readMemorySuppressedCount\": 1",
+          "\"readMemorySuppressedCount\": 2",
           "\"repeatedMistakeSuppressed\": true"
         ],
         "maxStdoutLinesWarn": 1,

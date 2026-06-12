@@ -78,6 +78,12 @@ fact graph output rather than `semantic-graph.v1`. The companion
 matrix executable: `Vec`/`HashMap`, `Array`/`Map`, `list`/`dict`, and
 `Vector`/`Dict` must validate through the same schema before graph-turbo ranking
 or sparse relation banks consume those facts.
+`semantic-structural-index.v1.schema.json` is the local client cache export
+shape for parser-owned owner, symbol, file-hash, and dependency-usage rows. It
+exists to make warm search replay index-first without storing source code:
+providers emit names, locators, dependency identities, query keys, and freshness
+hashes; the Rust client owns SQLite storage, invalidation, and replay
+eligibility.
 `semantic-fact-frontier-receipt.v1.schema.json` records whether a task-session
 frontier was returned, followed, read, tested, or edited. Its top-level fields
 stay present with `null` or empty-array values when a receipt kind does not use
@@ -952,12 +958,14 @@ optional per-kind budgets, optional window-merge controls, and typed graph
 facts under `graph.nodes[]` and `graph.edges[]`. Fast-search request nodes may
 carry parser-owned `syntaxQuery` locators for candidate symbols, hot range
 nodes for direct code follow-ups, and dependency package nodes connected by
-`owner -> dependency` import edges for query-deps routing. Search-pipe request
-packets may also carry `actionFrontier[]`: typed action facts with action id,
-kind, capability id, target, target role, and fields such as selector, owner
-path, query, scope, recipe, or names. These action facts are materializer input
-for display-only `nextCommand` text and intentionally reject materialized
-`command` or `argv` fields.
+`owner -> dependency` import edges for query-deps routing. Fast-search request
+packets from `search pipe`, `asp fd -query`, and `asp rg -query` may also carry
+`actionFrontier[]`: typed action facts with action id, kind, capability id,
+target, target role, and fields such as selector, owner path, query, query
+clauses, scope, recipe, or names. These action facts are materializer input for
+display-only `nextCommand` text and intentionally reject materialized `command`
+or `argv` fields. `search pipe --view graph-turbo-request` is the typed packet
+spelling for this migration.
 `semantic-graph-turbo-result.v1.schema.json` is the matching schema-owned
 response packet. It records the effective profile, algorithm, seed nodes,
 budget, per-kind budgets, ranked node ids, frontier actions, relation edges,

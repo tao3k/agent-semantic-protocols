@@ -15,7 +15,7 @@
   "budgets": {
     "maxCommands": 8,
     "maxTotalLinesWarn": 120,
-    "maxTotalStdoutBytesWarn": 85000
+      "maxTotalStdoutBytesWarn": 90000
   },
   "steps": [
     {
@@ -42,7 +42,7 @@
           "languages.0.binary": "ts-harness"
         },
         "maxStdoutLinesWarn": 12,
-        "maxStdoutBytesWarn": 15000,
+        "maxStdoutBytesWarn": 20000,
         "maxElapsedMsWarn": 3500
       }
     },
@@ -60,6 +60,7 @@
         "search",
         "prime",
         "--json",
+        "--workspace",
         "."
       ],
       "expect": {
@@ -74,10 +75,10 @@
         },
         "stdoutJsonArrayContains": {
           "searchSynthesis.highImpactOwners": "src/cli/protocol.ts",
-          "searchSynthesis.frontierOwners": "src/cli/semantic-search/types.ts",
+          "searchSynthesis.frontierOwners": "src/cli/search-prefilter.ts",
           "searchSynthesis.seeds": {
             "kind": "owner",
-            "target": "src/cli/semantic-search/types.ts"
+            "target": "src/cli/search-prefilter.ts"
           }
         },
         "maxStdoutLinesWarn": 12,
@@ -100,6 +101,7 @@
         "dependency",
         "typescript",
         "--json",
+        "--workspace",
         "."
       ],
       "expect": {
@@ -112,7 +114,7 @@
           "query": "typescript"
         },
         "maxStdoutLinesWarn": 12,
-        "maxStdoutBytesWarn": 42000,
+        "maxStdoutBytesWarn": 46000,
         "maxElapsedMsWarn": 5000
       }
     },
@@ -123,6 +125,7 @@
         "dist/src/cli/main.js",
         "search",
         "workspace",
+        "--workspace",
         "."
       ],
       "expect": {
@@ -144,14 +147,15 @@
         "prime",
         "--view",
         "seeds",
+        "--workspace",
         "."
       ],
       "expect": {
         "lineProtocol": true,
         "stdoutContains": [
           "[search-prime]",
-          "alg=owner-rank-frontier",
-          "legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next",
+          "alg=budgeted-prime-frontier-v1",
+          "legend: ID=kind:role(value)!next; entries profile(selectors=>returns); frontier ID.next",
           "G>{",
           "rank=",
           "frontier="
@@ -182,6 +186,7 @@
         "src/cli/semantic-search/owner-fallback.ts",
         "--view",
         "seeds",
+        "--workspace",
         "."
       ],
       "capture": {
@@ -220,6 +225,7 @@
         "{tsOwner}",
         "--view",
         "seeds",
+        "--workspace",
         "."
       ],
       "expect": {
@@ -250,6 +256,7 @@
         "ingest",
         "--view",
         "seeds",
+        "--workspace",
         "."
       ],
       "expect": {

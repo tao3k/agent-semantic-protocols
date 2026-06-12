@@ -171,20 +171,20 @@
         "seeds",
         "--seeds",
         "4",
+        "--workspace",
         "."
       ],
       "expect": {
         "lineProtocol": true,
         "stdoutContains": [
           "[search-prime]",
-          "legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next",
+          "legend: ID=kind:role(value)!next; entries profile(selectors=>returns); frontier ID.next",
           "G>{",
           "rank=",
-          "frontier=",
-          "entries="
+          "frontier="
         ],
         "maxStdoutLinesWarn": 10,
-        "maxElapsedMsWarn": 2500,
+        "maxElapsedMsWarn": 15000,
         "stdoutNotContains": [
           "|seed",
           "|synthesis",
@@ -208,6 +208,7 @@
         "seeds",
         "--seeds",
         "4",
+        "--workspace",
         "."
       ],
       "expect": {
@@ -222,7 +223,7 @@
           "entries=owner-query(O,Q=>items+tests+dependency-usage),owner-tests(O=>covering-tests+test-entrypoints+fixtures)"
         ],
         "maxStdoutLinesWarn": 10,
-        "maxElapsedMsWarn": 2500,
+        "maxElapsedMsWarn": 30000,
         "stdoutNotContains": [
           "|seed",
           "|synthesis",

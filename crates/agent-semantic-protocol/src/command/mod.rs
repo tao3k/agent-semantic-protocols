@@ -9,6 +9,7 @@ mod healthcheck;
 mod hook;
 mod hook_enforcement;
 mod hook_runtime;
+mod hook_runtime_context;
 mod protocol_binary;
 mod protocol_version;
 mod provider;
@@ -53,6 +54,7 @@ mod source_access;
 
 pub(crate) use dispatch::run_protocol_command;
 pub(in crate::command) use hook_enforcement::codex_enforcement_report;
+pub(in crate::command) use hook_runtime_context::payload_indicates_subagent_context;
 pub(in crate::command) use protocol_binary::{
     ensure_protocol_binary_installed_for_path, protocol_binary_on_path,
 };

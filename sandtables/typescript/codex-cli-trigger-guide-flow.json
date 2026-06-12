@@ -98,7 +98,7 @@
           ]
         },
         "maxStdoutBytesWarn": 1800,
-        "maxElapsedMsWarn": 4000
+        "maxElapsedMsWarn": 6000
       }
     },
     {
@@ -131,21 +131,21 @@
           "languageId": "typescript",
           "routeKind": "query",
           "commandContains": [
-            "ts-harness",
+            "asp",
+            "typescript",
             "query",
-            "--from-hook",
-            "direct-source-read",
             "--selector",
             "sdk/typescript/src/codex.ts",
-            "--code",
-            "languages/typescript-lang-project-harness"
+            "--workspace",
+            "languages/typescript-lang-project-harness",
+            "--code"
           ],
           "sourceLeakNotContains": [
             "export class Codex"
           ]
         },
-        "maxStdoutBytesWarn": 1600,
-        "maxElapsedMsWarn": 4000
+        "maxStdoutBytesWarn": 1800,
+        "maxElapsedMsWarn": 7000
       }
     },
     {
@@ -186,6 +186,7 @@
         "prime",
         "--view",
         "seeds",
+        "--workspace",
         "sdk/typescript"
       ],
       "expect": {
@@ -194,7 +195,7 @@
           "[search-prime]",
           "root=@openai/codex-sdk",
           "src/index.ts",
-          "alg=owner-rank-frontier",
+          "alg=budgeted-prime-frontier-v1",
           "entries=",
           "analysis=structure",
           "nativeSyntaxFacts=skipped",

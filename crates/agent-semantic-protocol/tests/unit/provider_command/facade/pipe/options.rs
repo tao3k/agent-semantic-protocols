@@ -30,6 +30,7 @@ fn search_pipe_help_does_not_require_activation_or_provider_spawn() {
         "stdout={stdout}"
     );
     assert!(!stdout.contains("natural-intent"), "stdout={stdout}");
+    assert!(stdout.contains("--workspace PROJECT_ROOT"));
     assert!(stdout.contains("--source auto|provider|finder|ingest"));
     assert!(output.stderr.is_empty());
     assert!(!marker.exists(), "help should not spawn provider");
@@ -99,6 +100,39 @@ fn search_pipe_rejects_removed_pipeline_option_without_provider_spawn() {
         !marker.exists(),
         "removed pipeline option should not spawn provider"
     );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn search_pipe_rejects_json_alias_without_provider_spawn() {
+    let root = temp_project_root("search-pipe-rejects-json-alias");
+    let bin_dir = root.join(".bin");
+    let marker = root.join("provider-called");
+    write_marker_provider(&bin_dir, "rs-harness", &marker);
+    write_activation(&root, &[provider("rust", Vec::new())]);
+
+    let output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args([
+            "rust",
+            "search",
+            "pipe",
+            "HookDecision",
+            "--json",
+            "--workspace",
+            ".",
+        ])
+        .output()
+        .expect("run asp rust search pipe with removed json alias");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).expect("stderr");
+    assert!(
+        stderr.contains("unknown search pipe option: --json"),
+        "{stderr}"
+    );
+    assert!(!marker.exists(), "json alias should not spawn provider");
     let _ = std::fs::remove_dir_all(root);
 }
 
