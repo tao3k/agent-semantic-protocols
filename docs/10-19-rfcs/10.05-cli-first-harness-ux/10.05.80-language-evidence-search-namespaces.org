@@ -444,6 +444,15 @@ through the shared =semantic-native-syntax-fact-index= shape under
 =syntaxFacts=.  Search renderers may rank or summarize them, but they must not
 invent parser facts by matching rendered strings.
 
+Compact text renderers should expose a bounded set of =|syntaxFact= rows for
+agent-facing seed views.  These rows are summaries of native parser facts, not
+new evidence: each row should include the shared kind, language kind, owner,
+source range, and provider-owned fields that prevent dialect guessing.  For
+Gerbil POO this means a =defclass= row carries supers, slots, and options, and a
+=defmethod= row carries the generic name, receiver, and receiver type.  The JSON
+packet remains the complete machine interface; compact rows exist so an agent
+can proceed without inventing syntax from memory.
+
 * Evidence grades
 
 All namespace output should classify evidence so the agent can reason about
