@@ -93,6 +93,28 @@
         }
       ]
     },
+    "selectorResolver": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/selectorResolver"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "sourceExamples": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/sourceExample"
+      }
+    },
+    "sourceComments": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/sourceComment"
+      }
+    },
     "facts": {
       "type": "array",
       "items": {
@@ -211,6 +233,127 @@
           "minLength": 1
         },
         "indexOwner": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "selectorResolver": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scheme",
+        "owner",
+        "stateNamespace",
+        "versionKey",
+        "selectorFormat",
+        "output",
+        "indexOwner"
+      ],
+      "properties": {
+        "scheme": {
+          "type": "string",
+          "minLength": 1
+        },
+        "owner": {
+          "const": "asp"
+        },
+        "stateNamespace": {
+          "type": "string",
+          "minLength": 1
+        },
+        "versionKey": {
+          "type": "string",
+          "minLength": 1
+        },
+        "selectorFormat": {
+          "type": "string",
+          "minLength": 1
+        },
+        "output": {
+          "const": "code-with-comments"
+        },
+        "indexOwner": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "sourceExample": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "role", "symbol", "selector", "form", "commentMode"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "role": {
+          "type": "string",
+          "minLength": 1
+        },
+        "symbol": {
+          "type": "string",
+          "minLength": 1
+        },
+        "selector": {
+          "type": "string",
+          "minLength": 1
+        },
+        "form": {
+          "$ref": "#/$defs/sourceForm"
+        },
+        "commentMode": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "sourceForm": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["head", "operands", "keywords"],
+      "properties": {
+        "head": {
+          "type": "string",
+          "minLength": 1
+        },
+        "operands": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "keywords": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "sourceComment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "selector", "extractor", "summary", "fallback"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "selector": {
+          "type": "string",
+          "minLength": 1
+        },
+        "extractor": {
+          "type": "string",
+          "minLength": 1
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fallback": {
           "type": "string",
           "minLength": 1
         }
