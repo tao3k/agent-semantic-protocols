@@ -9,8 +9,8 @@ mod types;
 
 pub use types::{
     ClientDbStructuralDependencyUsage, ClientDbStructuralHash, ClientDbStructuralIndexImport,
-    ClientDbStructuralIndexLookup, ClientDbStructuralIndexStats, ClientDbStructuralKind,
-    ClientDbStructuralLocator, ClientDbStructuralName, ClientDbStructuralOwner,
-    ClientDbStructuralPath, ClientDbStructuralQueryKey, ClientDbStructuralSource,
-    ClientDbStructuralSymbol,
+    ClientDbStructuralIndexLookup, ClientDbStructuralIndexRefreshPlan,
+    ClientDbStructuralIndexStats, ClientDbStructuralKind, ClientDbStructuralLocator,
+    ClientDbStructuralName, ClientDbStructuralOwner, ClientDbStructuralPath,
+    ClientDbStructuralQueryKey, ClientDbStructuralSource, ClientDbStructuralSymbol,
 };

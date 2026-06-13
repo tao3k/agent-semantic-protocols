@@ -31,6 +31,7 @@
     "algorithmTrace",
     "rankExplanations",
     "receiptAdjustments",
+    "evidenceReliability",
     "profileCompatibility",
     "profileMatrices",
     "algorithmMetrics",
@@ -154,6 +155,9 @@
         "$ref": "#/$defs/receiptAdjustment"
       }
     },
+    "evidenceReliability": {
+      "$ref": "#/$defs/evidenceReliability"
+    },
     "profileCompatibility": {
       "type": "array",
       "items": {
@@ -186,6 +190,106 @@
     }
   },
   "$defs": {
+    "evidenceReliability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile",
+        "reliable",
+        "score",
+        "findingCount",
+        "blockingCount",
+        "gates",
+        "findings"
+      ],
+      "properties": {
+        "profile": {
+          "$ref": "#/$defs/profile"
+        },
+        "reliable": {
+          "type": "boolean"
+        },
+        "score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "findingCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "blockingCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "gates": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]*$"
+          },
+          "uniqueItems": true
+        },
+        "findings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/evidenceReliabilityFinding"
+          }
+        }
+      }
+    },
+    "evidenceReliabilityFinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "severity",
+        "nodeId",
+        "action",
+        "message",
+        "blocking",
+        "evidence"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "severity": {
+          "enum": [
+            "error",
+            "warning",
+            "info"
+          ]
+        },
+        "nodeId": {
+          "$ref": "#/$defs/nodeId"
+        },
+        "action": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        },
+        "blocking": {
+          "type": "boolean"
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
     "profile": {
       "enum": [
         "owner-query",
@@ -196,12 +300,14 @@
         "failure-frontier",
         "field-impact",
         "type-impact",
-        "collection-impact",
-        "failure-evidence",
-        "test-selection",
-        "affected"
-      ]
-    },
+      "collection-impact",
+      "failure-evidence",
+      "test-selection",
+      "affected",
+      "evidence-quality",
+      "rust-evidence-quality"
+    ]
+  },
     "nodeId": {
       "type": "string",
       "minLength": 1

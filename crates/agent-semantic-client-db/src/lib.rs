@@ -18,8 +18,8 @@ pub use db::{
 pub use pragmas::{ClientDbJournalMode, ClientDbRuntimePragmas};
 pub use structural_index::{
     ClientDbStructuralDependencyUsage, ClientDbStructuralHash, ClientDbStructuralIndexImport,
-    ClientDbStructuralIndexLookup, ClientDbStructuralIndexStats, ClientDbStructuralKind,
-    ClientDbStructuralLocator, ClientDbStructuralName, ClientDbStructuralOwner,
-    ClientDbStructuralPath, ClientDbStructuralQueryKey, ClientDbStructuralSource,
-    ClientDbStructuralSymbol,
+    ClientDbStructuralIndexLookup, ClientDbStructuralIndexRefreshPlan,
+    ClientDbStructuralIndexStats, ClientDbStructuralKind, ClientDbStructuralLocator,
+    ClientDbStructuralName, ClientDbStructuralOwner, ClientDbStructuralPath,
+    ClientDbStructuralQueryKey, ClientDbStructuralSource, ClientDbStructuralSymbol,
 };

@@ -16,6 +16,8 @@ shell_kind_matcher!(
         "string",
         "raw_string",
         "concatenation",
+        "file_descriptor",
+        "number",
         "simple_expansion",
         "variable_assignment",
     ]

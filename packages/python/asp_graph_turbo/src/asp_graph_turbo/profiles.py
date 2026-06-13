@@ -14,10 +14,15 @@ _DEFAULT_FRONTIER_ACTIONS = {
     "dependency": "deps",
     "dependency-version": "evidence",
     "evidence": "evidence",
+    "evidence-gap": "evidence",
     "failure": "failure",
     "field": "code",
     "finding": "owner",
+    "behavior-snapshot": "evidence",
+    "determinism-readiness": "evidence",
+    "formal-proof-pilot": "evidence",
     "hot": "code",
+    "invariant-candidate": "evidence",
     "api-symbol": "code",
     "import-site": "code",
     "item": "code",
@@ -26,15 +31,64 @@ _DEFAULT_FRONTIER_ACTIONS = {
     "package": "package",
     "query": "fzf",
     "range": "code",
+    "review-action": "evidence",
+    "review-packet": "evidence",
     "symbol": "code",
     "test": "tests",
     "type": "code",
+    "verification-receipt": "evidence",
+    "waiver": "evidence",
     "window": "code",
 }
 
 
 def _transitions(items: Iterable[tuple[str, str]]) -> frozenset[AllowedTransition]:
     return frozenset(AllowedTransition(source, target) for source, target in items)
+
+
+_EVIDENCE_QUALITY_RELATIONS = frozenset(
+    {
+        "derived-from",
+        "requires-evidence",
+        "verified-by",
+        "observed-by",
+        "waived-by",
+        "reviewed-by",
+        "suggests-action",
+        "supports-claim",
+        "selects",
+    }
+)
+
+_EVIDENCE_QUALITY_TRANSITIONS = _transitions(
+    (
+        ("query", "owner"),
+        ("query", "invariant-candidate"),
+        ("owner", "invariant-candidate"),
+        ("owner", "evidence-gap"),
+        ("invariant-candidate", "verification-receipt"),
+        ("invariant-candidate", "behavior-snapshot"),
+        ("invariant-candidate", "determinism-readiness"),
+        ("invariant-candidate", "formal-proof-pilot"),
+        ("invariant-candidate", "evidence-gap"),
+        ("invariant-candidate", "review-action"),
+        ("invariant-candidate", "waiver"),
+        ("review-packet", "invariant-candidate"),
+        ("review-packet", "review-action"),
+        ("review-action", "invariant-candidate"),
+    )
+)
+
+
+def _evidence_quality_profile(name: str) -> GraphProfile:
+    return GraphProfile(
+        name=name,
+        allowed_relations=_EVIDENCE_QUALITY_RELATIONS,
+        allowed_transitions=_EVIDENCE_QUALITY_TRANSITIONS,
+        frontier_actions=_DEFAULT_FRONTIER_ACTIONS,
+        kind_bonus=NODE_KIND_BONUS_BY_PROFILE[name],
+        max_depth=4,
+    )
 
 
 DEFAULT_PROFILES: dict[str, GraphProfile] = {
@@ -380,6 +434,8 @@ DEFAULT_PROFILES: dict[str, GraphProfile] = {
         kind_bonus=NODE_KIND_BONUS_BY_PROFILE["affected"],
         max_depth=4,
     ),
+    "evidence-quality": _evidence_quality_profile("evidence-quality"),
+    "rust-evidence-quality": _evidence_quality_profile("rust-evidence-quality"),
 }
 
 _PROFILE_ALIASES = {"read-plan": "read-frontier"}

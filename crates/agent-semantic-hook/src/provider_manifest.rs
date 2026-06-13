@@ -145,6 +145,8 @@ fn activate_provider(
 struct AgentSemanticProjectConfig {
     #[serde(default)]
     providers: BTreeMap<String, ProjectProviderConfig>,
+    #[serde(default)]
+    languages: BTreeMap<String, ProjectProviderConfig>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -153,6 +155,7 @@ struct ProjectProviderConfig {
     #[serde(default)]
     enabled: Option<bool>,
     #[serde(default)]
+    #[serde(alias = "bin")]
     binary: Option<String>,
 }
 
@@ -171,9 +174,9 @@ impl ProjectProviderConfigSet {
             .map_err(|error| format!("failed to read {}: {error}", config_path.display()))?;
         let config: AgentSemanticProjectConfig = toml::from_str(&contents)
             .map_err(|error| format!("invalid {}: {error}", config_path.display()))?;
-        Ok(Self {
-            providers: config.providers,
-        })
+        let mut providers = config.languages;
+        providers.extend(config.providers);
+        Ok(Self { providers })
     }
 
     fn provider_config(&self, language_id: &str) -> Option<&ProjectProviderConfig> {

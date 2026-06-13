@@ -1,3 +1,5 @@
+use super::command::semantic_shell_tokens;
+
 pub(crate) fn line_range_source_paths(command: &str) -> Vec<String> {
     for paths in [
         piped_sed_line_range_source_paths(command),
@@ -15,10 +17,10 @@ pub(crate) fn line_range_source_paths(command: &str) -> Vec<String> {
 }
 
 fn sed_line_range_source_paths(command: &str) -> Vec<String> {
-    let raw_tokens = command.split_whitespace().collect::<Vec<_>>();
+    let raw_tokens = command_tokens(command);
     if !raw_tokens
         .first()
-        .is_some_and(|token| matches!(*token, "sed" | "gsed"))
+        .is_some_and(|token| matches!(token.as_str(), "sed" | "gsed"))
     {
         return Vec::new();
     }
@@ -40,14 +42,14 @@ fn sed_line_range_source_paths(command: &str) -> Vec<String> {
 }
 
 fn piped_sed_line_range_source_paths(command: &str) -> Vec<String> {
-    let segments = command.split('|').map(str::trim).collect::<Vec<_>>();
+    let segments = pipeline_segments(command);
     if segments.len() < 2 {
         return Vec::new();
     }
     let Some((start_line, end_line)) = segments
         .iter()
         .rev()
-        .find_map(|segment| parse_sed_segment_line_range(segment))
+        .find_map(|segment| parse_sed_tokens_line_range(segment))
     else {
         return Vec::new();
     };
@@ -55,7 +57,7 @@ fn piped_sed_line_range_source_paths(command: &str) -> Vec<String> {
     for segment in segments.iter().take(segments.len() - 1) {
         append_ranged_source_paths(
             &mut paths,
-            &source_paths_from_command_segment(segment),
+            &source_paths_from_raw_tokens(segment),
             start_line,
             end_line,
         );
@@ -64,10 +66,10 @@ fn piped_sed_line_range_source_paths(command: &str) -> Vec<String> {
 }
 
 fn awk_line_range_source_paths(command: &str) -> Vec<String> {
-    let raw_tokens = command.split_whitespace().collect::<Vec<_>>();
+    let raw_tokens = command_tokens(command);
     if !raw_tokens
         .first()
-        .is_some_and(|token| matches!(*token, "awk" | "gawk"))
+        .is_some_and(|token| matches!(token.as_str(), "awk" | "gawk"))
     {
         return Vec::new();
     }
@@ -85,7 +87,7 @@ fn awk_line_range_source_paths(command: &str) -> Vec<String> {
 }
 
 fn head_line_range_source_paths(command: &str) -> Vec<String> {
-    let raw_tokens = command.split_whitespace().collect::<Vec<_>>();
+    let raw_tokens = command_tokens(command);
     let Some((line_count, token_index)) = parse_head_line_count(&raw_tokens) else {
         return Vec::new();
     };
@@ -100,16 +102,16 @@ fn head_line_range_source_paths(command: &str) -> Vec<String> {
 }
 
 fn head_tail_line_range_source_paths(command: &str) -> Vec<String> {
-    let segments = command.split('|').map(str::trim).collect::<Vec<_>>();
+    let segments = pipeline_segments(command);
     if segments.len() != 2 {
         return Vec::new();
     }
-    let head_tokens = segments[0].split_whitespace().collect::<Vec<_>>();
-    let tail_tokens = segments[1].split_whitespace().collect::<Vec<_>>();
-    let Some((head_count, head_path_index)) = parse_head_line_count(&head_tokens) else {
+    let head_tokens = &segments[0];
+    let tail_tokens = &segments[1];
+    let Some((head_count, head_path_index)) = parse_head_line_count(head_tokens) else {
         return Vec::new();
     };
-    let Some((tail_count, _tail_path_index)) = parse_tail_line_count(&tail_tokens) else {
+    let Some((tail_count, _tail_path_index)) = parse_tail_line_count(tail_tokens) else {
         return Vec::new();
     };
     if tail_count > head_count {
@@ -127,16 +129,16 @@ fn head_tail_line_range_source_paths(command: &str) -> Vec<String> {
 }
 
 fn tail_head_line_range_source_paths(command: &str) -> Vec<String> {
-    let segments = command.split('|').map(str::trim).collect::<Vec<_>>();
+    let segments = pipeline_segments(command);
     if segments.len() != 2 {
         return Vec::new();
     }
-    let tail_tokens = segments[0].split_whitespace().collect::<Vec<_>>();
-    let head_tokens = segments[1].split_whitespace().collect::<Vec<_>>();
-    let Some((start_line, tail_path_index)) = parse_tail_start_line(&tail_tokens) else {
+    let tail_tokens = &segments[0];
+    let head_tokens = &segments[1];
+    let Some((start_line, tail_path_index)) = parse_tail_start_line(tail_tokens) else {
         return Vec::new();
     };
-    let Some((head_count, _head_path_index)) = parse_head_line_count(&head_tokens) else {
+    let Some((head_count, _head_path_index)) = parse_head_line_count(head_tokens) else {
         return Vec::new();
     };
     let mut paths = Vec::new();
@@ -149,11 +151,10 @@ fn tail_head_line_range_source_paths(command: &str) -> Vec<String> {
     paths
 }
 
-fn parse_sed_segment_line_range(segment: &str) -> Option<(usize, usize)> {
-    let tokens = segment.split_whitespace().collect::<Vec<_>>();
+fn parse_sed_tokens_line_range(tokens: &[String]) -> Option<(usize, usize)> {
     if !tokens
         .first()
-        .is_some_and(|token| matches!(*token, "sed" | "gsed"))
+        .is_some_and(|token| matches!(token.as_str(), "sed" | "gsed"))
     {
         return None;
     }
@@ -205,20 +206,20 @@ fn number_after(text: &str, marker: &str) -> Option<usize> {
     digits.parse().ok()
 }
 
-fn parse_head_line_count(tokens: &[&str]) -> Option<(usize, usize)> {
+fn parse_head_line_count(tokens: &[String]) -> Option<(usize, usize)> {
     if !tokens
         .first()
-        .is_some_and(|token| matches!(*token, "head" | "ghead"))
+        .is_some_and(|token| matches!(token.as_str(), "head" | "ghead"))
     {
         return None;
     }
     parse_count_option(tokens, 1)
 }
 
-fn parse_tail_line_count(tokens: &[&str]) -> Option<(usize, usize)> {
+fn parse_tail_line_count(tokens: &[String]) -> Option<(usize, usize)> {
     if !tokens
         .first()
-        .is_some_and(|token| matches!(*token, "tail" | "gtail"))
+        .is_some_and(|token| matches!(token.as_str(), "tail" | "gtail"))
     {
         return None;
     }
@@ -229,10 +230,10 @@ fn parse_tail_line_count(tokens: &[&str]) -> Option<(usize, usize)> {
     Some((count, index))
 }
 
-fn parse_tail_start_line(tokens: &[&str]) -> Option<(usize, usize)> {
+fn parse_tail_start_line(tokens: &[String]) -> Option<(usize, usize)> {
     if !tokens
         .first()
-        .is_some_and(|token| matches!(*token, "tail" | "gtail"))
+        .is_some_and(|token| matches!(token.as_str(), "tail" | "gtail"))
     {
         return None;
     }
@@ -243,7 +244,7 @@ fn parse_tail_start_line(tokens: &[&str]) -> Option<(usize, usize)> {
     Some((start_line, index))
 }
 
-fn parse_count_option(tokens: &[&str], start_index: usize) -> Option<(usize, usize)> {
+fn parse_count_option(tokens: &[String], start_index: usize) -> Option<(usize, usize)> {
     if let Some(option) = tokens.get(start_index) {
         if let Some(count) = option.strip_prefix("-n") {
             if count.is_empty() {
@@ -264,7 +265,7 @@ fn parse_count_option(tokens: &[&str], start_index: usize) -> Option<(usize, usi
 }
 
 fn parse_signed_count_option(
-    tokens: &[&str],
+    tokens: &[String],
     start_index: usize,
     sign: char,
 ) -> Option<(usize, usize)> {
@@ -296,15 +297,31 @@ fn append_ranged_source_paths(
     }
 }
 
-fn source_paths_from_command_segment(segment: &str) -> Vec<String> {
-    let tokens = segment.split_whitespace().collect::<Vec<_>>();
-    source_paths_from_raw_tokens(&tokens)
+fn command_tokens(command: &str) -> Vec<String> {
+    semantic_shell_tokens(command)
 }
 
-fn source_paths_from_raw_tokens(tokens: &[&str]) -> Vec<String> {
+fn pipeline_segments(command: &str) -> Vec<Vec<String>> {
+    command_tokens(command)
+        .split(|token| token == "|")
+        .filter(|segment| !segment.is_empty())
+        .map(<[String]>::to_vec)
+        .collect()
+}
+
+fn source_paths_from_raw_tokens(tokens: &[String]) -> Vec<String> {
     let mut paths = Vec::new();
-    for token in tokens {
+    let mut token_index = 0;
+    while let Some(token) = tokens.get(token_index) {
         if token.starts_with('-') || parse_sed_line_range(token).is_some() {
+            token_index += 1;
+            continue;
+        }
+        let (token, consumed) = unescape_joined_path_token(tokens, token_index);
+        token_index += consumed;
+        let token = token.trim_matches(|ch| matches!(ch, '\'' | '"' | '`'));
+        if is_embedded_source_path_candidate(token) {
+            push_unique_path(&mut paths, token);
             continue;
         }
         for path in embedded_source_path_candidates(token) {
@@ -312,6 +329,21 @@ fn source_paths_from_raw_tokens(tokens: &[&str]) -> Vec<String> {
         }
     }
     paths
+}
+
+fn unescape_joined_path_token(tokens: &[String], start_index: usize) -> (String, usize) {
+    let mut token = tokens[start_index].clone();
+    let mut consumed = 1;
+    while token.ends_with('\\') {
+        let Some(next) = tokens.get(start_index + consumed) else {
+            break;
+        };
+        token.pop();
+        token.push(' ');
+        token.push_str(next);
+        consumed += 1;
+    }
+    (token, consumed)
 }
 
 fn embedded_source_path_candidates(token: &str) -> Vec<String> {

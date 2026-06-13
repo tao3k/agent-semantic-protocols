@@ -87,7 +87,7 @@ fn selector_specificity(selector: &str) -> u8 {
     u8::from(selector != source_selector_base(selector))
 }
 
-fn source_selector_base(selector: &str) -> &str {
+pub(crate) fn source_selector_base(selector: &str) -> &str {
     let mut base = normalize_source_selector(selector);
     while let Some((path, suffix)) = base.rsplit_once(':') {
         if !is_line_locator_suffix(suffix) {

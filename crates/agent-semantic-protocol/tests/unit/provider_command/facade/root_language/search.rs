@@ -38,6 +38,43 @@ fn root_search_facade_routes_explicit_language_to_provider() {
 }
 
 #[test]
+fn root_search_facade_routes_compare_namespace_to_provider() {
+    let root = temp_project_root("root-search-compare-language");
+    let bin_dir = root.join(".bin");
+    let cache_home = root.join(".cache");
+    write_echo_provider(&bin_dir, "rs-harness", "rs");
+    write_activation(&root, &[provider("rust", Vec::new())]);
+
+    let output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .env("PRJ_CACHE_HOME", &cache_home)
+        .args([
+            "search",
+            "--language",
+            "rust",
+            "compare",
+            "env",
+            "stable",
+            "nightly",
+            "--json",
+            ".",
+        ])
+        .output()
+        .expect("run asp search compare explicit language");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8(output.stdout).expect("stdout"),
+        "rs args=[search][compare][env][stable][nightly][--json]\n"
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn root_search_facade_infers_language_from_single_project_marker() {
     let root = temp_project_root("root-search-single-marker");
     let bin_dir = root.join(".bin");

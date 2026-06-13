@@ -40,11 +40,13 @@ pub(super) fn effective_project_root_and_args(
     activation_root: &Path,
 ) -> Result<(PathBuf, Vec<String>), String> {
     validate_code_flag_boundary(args)?;
-    if let Some(workspace_root) = explicit_workspace_project_root(args, invocation_root)? {
-        return Ok((workspace_root, args.to_vec()));
+    if let Some((workspace_root, normalized_args)) =
+        explicit_workspace_project_root(args, invocation_root, activation_root)?
+    {
+        return Ok((workspace_root, normalized_args));
     }
     if let Some((root, args)) =
-        explicit_positional_project_root(language_id, args, invocation_root)?
+        explicit_positional_project_root(language_id, args, invocation_root, activation_root)?
     {
         return Ok((root, args));
     }
@@ -83,11 +85,14 @@ fn validate_code_flag_boundary(args: &[String]) -> Result<(), String> {
 fn explicit_workspace_project_root(
     args: &[String],
     invocation_root: &Path,
-) -> Result<Option<PathBuf>, String> {
+    activation_root: &Path,
+) -> Result<Option<(PathBuf, Vec<String>)>, String> {
     let mut selected = None::<PathBuf>;
+    let mut normalized_args = Vec::new();
     let mut index = 0;
     while index < args.len() {
         if args[index] != "--workspace" {
+            normalized_args.push(args[index].clone());
             index += 1;
             continue;
         }
@@ -106,10 +111,25 @@ fn explicit_workspace_project_root(
         } else {
             invocation_root.join(path)
         };
-        selected = Some(canonical_or_existing(absolute));
+        selected = Some(workspace_bounded_root(
+            canonical_or_existing(absolute),
+            activation_root,
+        )?);
         index += 2;
     }
-    Ok(selected)
+    Ok(selected.map(|root| (root, normalized_args)))
+}
+
+fn workspace_bounded_root(root: PathBuf, activation_root: &Path) -> Result<PathBuf, String> {
+    let workspace_root = canonical_or_existing(activation_root.to_path_buf());
+    if root.starts_with(&workspace_root) {
+        return Ok(root);
+    }
+    Err(format!(
+        "project root `{}` is outside workspace `{}`",
+        root.display(),
+        workspace_root.display()
+    ))
 }
 
 pub(super) fn activation_storage_root(activation_path: &Path) -> PathBuf {
@@ -126,6 +146,7 @@ fn explicit_positional_project_root(
     language_id: &str,
     args: &[String],
     invocation_root: &Path,
+    activation_root: &Path,
 ) -> Result<Option<(PathBuf, Vec<String>)>, String> {
     let mut selected = None;
     for (index, value) in args.iter().enumerate().rev() {
@@ -144,7 +165,10 @@ fn explicit_positional_project_root(
         if selected.is_some() {
             return Err("expected at most one PROJECT_ROOT argument".to_string());
         }
-        selected = Some((index, selected_root));
+        selected = Some((
+            index,
+            workspace_bounded_root(selected_root, activation_root)?,
+        ));
     }
     let Some((index, selected_root)) = selected else {
         return Ok(None);

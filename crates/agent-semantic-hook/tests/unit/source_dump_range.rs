@@ -1,3 +1,7 @@
+mod command {
+    pub(crate) use crate::command::semantic_shell_tokens;
+}
+
 #[path = "../../src/source_dump_range.rs"]
 mod source_dump_range_impl;
 
@@ -30,6 +34,15 @@ fn extracts_deterministic_source_ranges() {
             vec!["src/lib.rs:115:240"],
         ),
         ("head -n 20 src/cli/main.ts", vec!["src/cli/main.ts:1:20"]),
+        ("head -n 20 'src/my file.rs'", vec!["src/my file.rs:1:20"]),
+        (
+            "head -n 240 'src/my file.rs' | tail -n 126",
+            vec!["src/my file.rs:115:240"],
+        ),
+        (
+            "tail -n +115 src/my\\ file.rs | head -n 126",
+            vec!["src/my file.rs:115:240"],
+        ),
         (
             "tail -n +10 packages/python/src/tools/semantic_sandtable/receipts.py | head -n 21",
             vec!["packages/python/src/tools/semantic_sandtable/receipts.py:10:30"],

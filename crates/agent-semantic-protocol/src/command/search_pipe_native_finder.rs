@@ -410,13 +410,7 @@ fn native_command_path(label: &str) -> Option<PathBuf> {
         .map(PathBuf::from)
         .map(|runtime_bin| runtime_bin.join(label))
         .filter(|candidate| candidate.is_file())
-        .or_else(|| {
-            env::var_os("PATH").and_then(|path| {
-                env::split_paths(&path)
-                    .map(|dir| dir.join(label))
-                    .find(|candidate| candidate.is_file())
-            })
-        })
+        .or_else(|| which::which(label).ok())
 }
 
 struct NativeFinderRequest {

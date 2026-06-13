@@ -58,17 +58,38 @@ pub fn classify_hook(
 
 /// Classify one hook payload using a named `HookClassificationRequest`.
 pub fn classify_hook_with_config(request: HookClassificationRequest<'_>) -> HookDecision {
-    if let Some(decision) = classify_non_tool_event(&request) {
-        return decision;
-    }
+    let decision = if let Some(decision) = classify_non_tool_event(&request) {
+        decision
+    } else {
+        let actions = collect_payload_tool_actions(request.payload);
+        if let Some(decision) = classify_tool_actions(&request, &actions) {
+            decision
+        } else {
+            let subject = actions.first().map(subject_for_action).unwrap_or_default();
+            allow(request.platform, request.event, subject)
+        }
+    };
+    with_prompt_scope_fields(decision, request.payload)
+}
 
-    let actions = collect_payload_tool_actions(request.payload);
-    if let Some(decision) = classify_tool_actions(&request, &actions) {
-        return decision;
+fn with_prompt_scope_fields(mut decision: HookDecision, payload: &Value) -> HookDecision {
+    if let Some(session_id) =
+        payload_string(payload, "session_id").or_else(|| payload_string(payload, "sessionId"))
+    {
+        decision
+            .fields
+            .entry("sessionId".to_string())
+            .or_insert_with(|| Value::String(session_id));
     }
-
-    let subject = actions.first().map(subject_for_action).unwrap_or_default();
-    allow(request.platform, request.event, subject)
+    if let Some(transcript_path) = payload_string(payload, "transcript_path")
+        .or_else(|| payload_string(payload, "transcriptPath"))
+    {
+        decision
+            .fields
+            .entry("transcriptPath".to_string())
+            .or_insert_with(|| Value::String(transcript_path));
+    }
+    decision
 }
 
 fn collect_payload_tool_actions(payload: &Value) -> Vec<ToolAction> {
@@ -264,7 +285,22 @@ fn is_env_assignment(token: &str) -> bool {
 fn is_root_asp_command(value: &str) -> bool {
     matches!(
         value,
-        "search" | "query" | "check" | "providers" | "doctor" | "hook" | "fd" | "rg" | "cache"
+        "guide"
+            | "providers"
+            | "tools"
+            | "wrap"
+            | "cache"
+            | "cloud"
+            | "hook"
+            | "healthcheck"
+            | "source-access"
+            | "ast-patch"
+            | "graph"
+            | "fd"
+            | "rg"
+            | "search"
+            | "query"
+            | "check"
     )
 }
 

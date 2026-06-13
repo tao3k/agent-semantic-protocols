@@ -3,7 +3,7 @@
 use std::borrow::Cow;
 
 use bstr::{BStr, ByteSlice};
-use memchr::{memchr, memchr_iter};
+use memchr::{memchr, memchr_iter, memchr2_iter};
 
 /// Return a byte string view without assuming UTF-8 validity.
 pub fn as_bstr(bytes: &[u8]) -> &BStr {
@@ -50,9 +50,14 @@ pub fn trim_line_ending(bytes: &[u8]) -> &[u8] {
 
 /// Split stdin-style records on LF or NUL and trim ASCII whitespace.
 pub fn split_lf_or_nul_records(bytes: &[u8]) -> impl Iterator<Item = &[u8]> {
-    bytes
-        .split(|byte| matches!(*byte, b'\n' | b'\0'))
-        .map(trim_ascii)
+    let mut start = 0;
+    memchr2_iter(b'\n', b'\0', bytes)
+        .chain(std::iter::once(bytes.len()))
+        .map(move |end| {
+            let record = trim_ascii(&bytes[start..end]);
+            start = end.saturating_add(1);
+            record
+        })
 }
 
 /// Split LF-delimited text into borrowed lines, trimming a trailing CR.

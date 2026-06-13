@@ -1,0 +1,135 @@
+#+title: Gerbil Scheme style conventions from gerbil-utils
+#+date: 2026-06-12
+
+* Gerbil Scheme style conventions from gerbil-utils
+:PROPERTIES:
+:ID: 10.05.90-gerbil-scheme-style-conventions
+:END:
+
+The Gerbil Scheme harness should learn from the official =gerbil-utils=
+project without copying its code.  The useful contract is not a set of inline
+snippets; it is a set of structural expectations that the provider can expose as
+policy findings, search facts, and agent-facing guidance.
+
+This audit used =https://git.cons.io/mighty-gerbils/gerbil-utils= as the
+reference project.  Local checkout paths are evidence only and must not appear in
+project configuration, generated docs, or user-facing guidance.
+
+* Reference observations
+
+** Package and owner shape
+
+=gerbil-utils= uses package name =clan= and keeps most public owners at the
+package root, such as =base.ss=, =concurrency.ss=, =generator.ss=,
+=path-config.ss=, and =building.ss=.  Deeper folders are used when the domain
+needs ownership, for example =pure/dict/t/assq-test.ss= for dictionary tests.
+
+The owner names are domain names, not generic buckets.  This matches the harness
+policy direction that rejects vague owner segments such as =utils=, =helpers=, or
+=common= when a more precise owner exists.
+
+** Test layout
+
+Tests live under =t/=, not top-level =test/=.  Subdomains may also own their
+tests under a local =t/= directory, for example =pure/dict/t/assq-test.ss=.
+The root =t/base-test.ss= suite in =gerbil-utils= is also a real-project
+witness for package-level tests under =t/=.
+
+The important distinction is directory convention versus test granularity.  The
+harness should use =t/= for Gerbil project convention, but still keep explicit
+unit tests.  Each test owner should export one named suite such as
+=base-test= or =assq-test= and build that suite with =:std/test=.
+
+** Build and test exclusion
+
+=building.ss= treats =t= as a default exclude directory for ordinary module
+build discovery.  This is the right boundary: tests are first-class owners, but
+they should not be mixed into runtime module enumeration.
+
+** Naming for data flow
+
+=generator.ss= uses directional names such as =generating<-list= and
+=list<-generating=.  This is a useful Scheme convention for agent guidance:
+conversion direction belongs in the function name when both sides are common
+domain values.
+
+This naming is especially valuable for high-order and stream-like APIs because
+it prevents vague names such as =convert=, =process=, or =handle=.
+
+** Control flow
+
+=base.ss= uses =case-lambda= for arity-specific behavior such as composition and
+pipeline helpers.  =concurrency.ss= separates shutdown, race, retry, and
+parallel mapping behavior into named functions instead of embedding ad hoc
+thread management at call sites.
+
+The harness should teach agents to prefer named local helpers and small
+continuation boundaries for complex control flow.  A long inline macro body or
+deep anonymous control-flow block should be treated as a quality risk unless the
+owner has a parser-backed reason for it.
+
+* Harness decisions
+
+** Adopt =t/= for Gerbil tests
+
+The Gerbil Scheme harness stores its tests under =t/= and keeps unit helpers
+under =t/unit/=.  The load path for local verification is therefore =src:t=.
+
+Top-level =test/= is a legacy layout for this harness.  The policy layer should
+warn when a Gerbil source file is discovered under =test/= and should recommend
+=t/= while preserving explicit unit tests.
+
+Top-level =tests/= is not an alias for =t/=.  By default the provider treats
+=test/= and =tests/= as non-native test directories and reports
+=GERBIL-SCHEME-MOD-R006=.  This rule is intentionally strict because a
+self-applying harness must not give an agent an easy escape hatch: renaming or
+creating a second test tree to avoid =t/= would hide coverage from the native
+verification lane.
+
+Projects that truly cannot use =t/= must opt in through parser-owned package
+policy in =gerbil.pkg=.  The policy must list the non-=t= directory explicitly
+and must include a clear explanation for why =t/= cannot be used.  A missing,
+empty, or placeholder explanation keeps the finding active.  The override only
+affects policy acceptance; it must not trigger any automatic directory rewrite.
+
+** Keep unit tests explicit
+
+Moving to =t/= does not mean copying =gerbil-utils= wholesale.  This harness has
+schema, snapshot, parser, checker, policy, search, and extension unit surfaces.
+Those should remain separately owned and runnable through native Gerbil
+=:std/test=.
+
+** Prefer structured guidance over inline examples
+
+When the provider teaches a style rule, it should expose structured fields:
+owner, selector, rule id, risk kind, corrective action, and witness.  Renderer
+text can summarize the result, but the underlying evidence should remain
+machine-checkable.
+
+* Policy mapping
+
+| Reference practice | Harness policy |
+| =t/= test owners | =GERBIL-SCHEME-MOD-R006= warns on non-native =test/*.ss= and =tests/*.ss= unless explicit package policy allows the directory with explanation |
+| Domain owner names | agent policy rejects vague owner segments |
+| Facades are thin | modularity policy rejects facade implementations |
+| Runtime build excludes tests | build discovery should not include =t/= as runtime source |
+| Directional conversion names | search guidance should prefer =A<-B= names for converter APIs |
+| Vague helper names | =GERBIL-SCHEME-AGENT-R004= warns on =helper=, =process=, =handle=, =convert=, and similar definition names |
+| No runtime effects at source top level | =GERBIL-SCHEME-AGENT-R005= warns on executable calls at =src/*.ss= top level |
+
+* Agent-facing guidance
+
+An agent writing Gerbil Scheme should first identify the owner and then choose a
+small native test owner under =t/=.  It should not create Python wrappers,
+top-level =test/= folders, or generic =utils.ss= modules when a domain owner can
+be named.
+
+For complex control flow, the agent should introduce named helper functions,
+use =case-lambda= for arity-specific public behavior, and keep retry, shutdown,
+or generator state transitions in owner-local functions with tests.
+
+The policy layer should prefer parser-owned evidence over style prose.  It can
+prove vague definition names from definition facts, and it can prove top-level
+runtime effects from call facts whose caller is absent in =src/=.  Those facts
+are good enough to warn the agent before low-quality Scheme lands in the
+project.

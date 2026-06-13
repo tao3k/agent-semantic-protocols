@@ -101,10 +101,11 @@ impl LocalNativeCliBackend {
         let (program, args) = invocation
             .split_first()
             .ok_or_else(|| "provider command is empty".to_string())?;
+        let project_root = provider_process_cwd(&request.project_root)?;
         Ok(LocalNativeCommand {
             program: program.clone(),
             args: args.to_vec(),
-            project_root: request.project_root.clone(),
+            project_root,
             provider: provider.clone(),
         })
     }
@@ -217,6 +218,8 @@ impl LocalNativeCliBackend {
         let mut provider_commands = Vec::new();
 
         for prepared in prepared_commands {
+            let provider_argv = prepared.argv();
+            let provider_cwd = prepared.project_root.clone();
             let output = run_transport_process(ProviderProcessSpec {
                 program: prepared.program.clone(),
                 args: prepared.args.clone(),
@@ -232,15 +235,18 @@ impl LocalNativeCliBackend {
             })
             .map_err(|error| {
                 format!(
-                    "failed to execute provider `{}` for language `{}`: {error}",
-                    prepared.provider.provider_id, prepared.provider.language_id
+                    "failed to execute provider `{}` for language `{}` with cwd `{}` argv `{}`: {error}",
+                    prepared.provider.provider_id,
+                    prepared.provider.language_id,
+                    provider_cwd.display(),
+                    provider_argv.join(" ")
                 )
             })?;
             let command_status = output.status.code().unwrap_or(1);
             provider_commands.push(ProviderCommandReceipt {
                 language_id: prepared.provider.language_id.clone(),
                 provider_id: prepared.provider.provider_id.clone(),
-                argv: prepared.argv(),
+                argv: provider_argv,
                 exit_code: command_status,
                 stdout_bytes: ByteCount::from_len(output.receipt.stdout_bytes),
                 stderr_bytes: ByteCount::from_len(output.receipt.stderr_bytes),
@@ -332,6 +338,18 @@ impl LocalNativeCliBackend {
                 .to_string(),
         )
     }
+}
+
+fn provider_process_cwd(project_root: &std::path::Path) -> Result<PathBuf, String> {
+    if project_root.is_absolute() {
+        return Ok(project_root.to_path_buf());
+    }
+    project_root.canonicalize().map_err(|error| {
+        format!(
+            "provider project root `{}` is not executable: {error}",
+            project_root.display()
+        )
+    })
 }
 
 impl LocalNativeCommand {

@@ -98,6 +98,33 @@ fn workspace_flag_selects_project_root_without_provider_forwarding() {
 }
 
 #[test]
+fn workspace_flag_rejects_project_root_outside_activation_root() {
+    let cwd = temp_dir("workspace-flag-outside");
+    let outside = temp_dir("workspace-flag-outside-target");
+
+    let err = parse_client_args(
+        vec![
+            "query".to_string(),
+            "--workspace".to_string(),
+            outside.display().to_string(),
+            "--selector".to_string(),
+            "src/lib.rs:1:20".to_string(),
+            "--code".to_string(),
+        ],
+        cwd.clone(),
+        Some("rust"),
+    )
+    .expect_err("workspace flag outside activation root should fail");
+
+    assert!(
+        err.contains("is outside workspace"),
+        "unexpected error: {err}"
+    );
+    let _ = fs::remove_dir_all(cwd);
+    let _ = fs::remove_dir_all(outside);
+}
+
+#[test]
 fn workspace_flag_after_default_query_does_not_leave_orphan_provider_arg() {
     let cwd = temp_dir("workspace-default-query");
 
@@ -195,6 +222,37 @@ fn positional_project_root_preserves_activation_root() {
     );
     assert_eq!(parsed.forwarded_args, vec!["workspace", "--view", "seeds"]);
     let _ = fs::remove_dir_all(parsed.activation_root);
+}
+
+#[test]
+fn positional_project_root_rejects_provider_root_outside_activation_root() {
+    let cwd = temp_dir("positional-root-outside");
+    let outside = temp_dir("positional-root-outside-target");
+    fs::write(
+        outside.join("Cargo.toml"),
+        "[package]\nname = \"outside-provider\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .expect("write manifest");
+
+    let err = parse_client_args(
+        vec![
+            "search".to_string(),
+            "workspace".to_string(),
+            "--view".to_string(),
+            "seeds".to_string(),
+            outside.display().to_string(),
+        ],
+        cwd.clone(),
+        Some("rust"),
+    )
+    .expect_err("positional project root outside activation root should fail");
+
+    assert!(
+        err.contains("is outside workspace"),
+        "unexpected error: {err}"
+    );
+    let _ = fs::remove_dir_all(cwd);
+    let _ = fs::remove_dir_all(outside);
 }
 
 fn temp_dir(name: &str) -> PathBuf {

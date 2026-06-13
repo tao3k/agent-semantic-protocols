@@ -7,7 +7,7 @@ use agent_semantic_client_core::{
 use agent_semantic_client_db::{
     ClientDb, ClientDbStructuralIndexLookup, ClientDbStructuralQueryKey, ClientDbSyntaxQueryLookup,
 };
-use criterion::{Criterion, criterion_group, criterion_main};
+use criterion::{Criterion, Throughput, criterion_group, criterion_main};
 use serde_json::{Value, json};
 use std::hint::black_box;
 
@@ -146,6 +146,9 @@ fn sqlite_cache_hot_path(c: &mut Criterion) {
     import_group.sample_size(30);
     import_group.warm_up_time(Duration::from_secs(1));
     import_group.measurement_time(Duration::from_secs(5));
+    import_group.throughput(Throughput::Elements(
+        (STRUCTURAL_SYMBOL_COUNT + STRUCTURAL_DEPENDENCY_COUNT) as u64,
+    ));
     import_group.bench_function("structural_import_refresh_512_symbols_256_deps", |b| {
         b.iter(|| {
             let stats = import_db

@@ -87,6 +87,9 @@
         "lineProtocol": true,
         "stdoutContains": [
           "[search-prime]",
+          "analysis=structure",
+          "nativeSyntaxFacts=skipped",
+          "policyFindings=skipped",
           "root=fastapi",
           "alg=fast-prime-frontier-v1",
           "entries=owner-tests(O=>covering-tests+test-entrypoints+fixtures)",

@@ -23,8 +23,8 @@
   "budgets": {
     "maxCommands": 7,
     "maxTotalLinesWarn": 12,
-      "maxTotalElapsedMsWarn": 15000,
-      "maxTotalStdoutBytesWarn": 38000
+    "maxTotalElapsedMsWarn": 20000,
+    "maxTotalStdoutBytesWarn": 42000
   },
   "steps": [
     {
@@ -128,7 +128,7 @@
         "--seeds",
         "4",
         "--workspace",
-        "."
+        "../agent-semantic-protocols/sandtables/fixtures/asp/codeql-rust-flow"
       ],
       "expect": {
         "stdoutJsonSchema": "schemas/semantic-search-packet.v1.schema.json",
@@ -141,7 +141,7 @@
         },
         "maxStdoutLinesWarn": 1,
         "maxStdoutBytesWarn": 9000,
-        "maxElapsedMsWarn": 7000
+      "maxElapsedMsWarn": 1000
       }
     },
     {

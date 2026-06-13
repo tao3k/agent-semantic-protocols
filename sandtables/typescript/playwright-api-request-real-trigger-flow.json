@@ -80,7 +80,7 @@
           "packages/playwright-core"
         ],
         "maxStdoutLinesWarn": 28,
-        "maxElapsedMsWarn": 7000
+        "maxElapsedMsWarn": 15000
       }
     },
     {

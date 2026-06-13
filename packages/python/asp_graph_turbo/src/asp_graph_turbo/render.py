@@ -6,11 +6,13 @@ import re
 from collections.abc import Iterable, Mapping
 
 from .constants import ALGORITHM_ID
+from .evidence_reliability import evidence_reliability_report
 from .frontier_actions import FrontierAction, frontier_action_items
 from .model import Edge, GraphProfile, GraphResult, Node
 from .profiles import frontier_action
 
 _TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9_]*")
+_EVIDENCE_QUALITY_PROFILES = {"evidence-quality", "rust-evidence-quality"}
 
 
 def render_compact(result: GraphResult) -> str:
@@ -36,6 +38,7 @@ def render_compact(result: GraphResult) -> str:
         f"rank={rank_line}",
         f"frontier={frontier_line}",
         *_render_profile_projection_lines(result, aliases),
+        *_render_evidence_reliability_lines(result, aliases),
         *_render_debug_projection_lines(result, aliases, score_line),
         f"profiles={','.join(result.profiles)}",
         f"omit={','.join(result.omit)}",
@@ -86,6 +89,7 @@ def _aliases(nodes: Iterable[Node]) -> Mapping[str, str]:
         "collection": "C",
         "dependency": "D",
         "evidence": "E",
+        "evidence-gap": "GAP",
         "field": "F",
         "failure": "F",
         "finding": "F",
@@ -166,6 +170,46 @@ def _render_owner_query_frontier_actions(
     result: GraphResult, aliases: Mapping[str, str]
 ) -> str:
     return _render_frontier_actions(result, aliases)
+
+
+def _render_evidence_reliability_lines(
+    result: GraphResult, aliases: Mapping[str, str]
+) -> list[str]:
+    if result.profile.name not in _EVIDENCE_QUALITY_PROFILES:
+        return []
+    report = evidence_reliability_report(result)
+    gates = report["gates"]
+    findings = report["findings"]
+    lines = [
+        "reliability="
+        f"{'pass' if report['reliable'] else 'fail'} "
+        f"score={report['score']} "
+        f"blocking={report['blockingCount']} "
+        f"findings={report['findingCount']} "
+        f"gates={_comma_or_dash(gates)}"
+    ]
+    if findings:
+        lines.append(f"reliabilityFindings={_render_reliability_findings(findings, aliases)}")
+    return lines
+
+
+def _render_reliability_findings(
+    findings: object, aliases: Mapping[str, str], limit: int = 5
+) -> str:
+    if not isinstance(findings, list):
+        return "-"
+    rendered: list[str] = []
+    for index, finding in enumerate(findings[:limit], start=1):
+        if not isinstance(finding, Mapping):
+            continue
+        node_id = str(finding.get("nodeId") or "-")
+        node = aliases.get(node_id, node_id)
+        rendered.append(
+            "R"
+            f"{index}:{finding.get('severity')}:{finding.get('kind')}:"
+            f"{node}!{finding.get('action')}"
+        )
+    return ",".join(rendered) if rendered else "-"
 
 
 def _render_query_token_coverage(result: GraphResult) -> str:

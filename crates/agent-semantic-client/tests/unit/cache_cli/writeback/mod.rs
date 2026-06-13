@@ -5,6 +5,7 @@ use serde_json::{Value, json};
 
 mod prompt_output;
 mod search;
+mod structural_index;
 mod syntax;
 
 fn syntax_packet(input: &str, volatile_id: u64) -> Value {
@@ -58,6 +59,19 @@ fn python_provider() -> ResolvedProvider {
         language_id: LanguageId::from("python"),
         provider_id: ProviderId::from("py-harness"),
         binary: "py-harness".to_string(),
+        execution: ProviderExecution::ExternalProcess,
+        provider_command_prefix: Vec::new(),
+        runtime_command_argv: None,
+        runtime_profile_status: None,
+        package_roots: vec![".".to_string()],
+    }
+}
+
+fn gerbil_scheme_provider() -> ResolvedProvider {
+    ResolvedProvider {
+        language_id: LanguageId::from("gerbil-scheme"),
+        provider_id: ProviderId::from("gerbil-scheme-harness"),
+        binary: "gerbil-scheme-harness".to_string(),
         execution: ProviderExecution::ExternalProcess,
         provider_command_prefix: Vec::new(),
         runtime_command_argv: None,

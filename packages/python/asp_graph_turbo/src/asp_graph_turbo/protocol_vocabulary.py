@@ -28,10 +28,18 @@ FACT_GRAPH_ONLY_RELATIONS = frozenset(
     {
         "affects",
         "covered_by",
+        "derived-from",
         "depends_on",
+        "observed-by",
         "packages",
+        "requires-evidence",
+        "reviewed-by",
+        "suggests-action",
+        "supports-claim",
         "targets",
         "tests",
+        "verified-by",
+        "waived-by",
     }
 )
 

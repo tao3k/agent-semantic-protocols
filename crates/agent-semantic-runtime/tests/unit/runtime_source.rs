@@ -1,0 +1,115 @@
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    process::Command,
+};
+
+use super::{RuntimeSourceSpec, ensure_runtime_source_checkout, runtime_source_checkout_dir};
+
+#[test]
+fn runtime_source_dir_uses_client_cache_namespace() {
+    let root = temp_root("runtime-source-dir");
+    let package_root = root.join("crates/example");
+    fs::create_dir_all(&package_root).expect("create package root");
+    fs::create_dir_all(root.join(".git")).expect("create git marker");
+
+    let checkout_dir =
+        runtime_source_checkout_dir(&package_root, "runtime-source/gerbil-scheme", "v0.18.2")
+            .expect("runtime source checkout dir");
+
+    assert_eq!(
+        checkout_dir,
+        root.join(".cache/agent-semantic-protocol/client/runtime-source/gerbil-scheme/v0.18.2")
+    );
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn runtime_source_dir_rejects_path_escape_segments() {
+    let root = temp_root("runtime-source-invalid-segment");
+    fs::create_dir_all(root.join(".git")).expect("create git marker");
+
+    let error = runtime_source_checkout_dir(&root, "runtime-source/../gerbil-scheme", "v0.18.2")
+        .expect_err("reject parent path segment");
+    assert!(error.contains("invalid runtime source path segment"));
+
+    let error = runtime_source_checkout_dir(&root, "runtime-source/gerbil-scheme", "v0.18.2/alt")
+        .expect_err("reject checkout path segment");
+    assert!(error.contains("invalid runtime source path segment"));
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn runtime_source_acquisition_clones_and_checks_out_version() {
+    let root = temp_root("runtime-source-acquire");
+    fs::create_dir_all(root.join(".git")).expect("create git marker");
+    let upstream = root.join("upstream-gerbil");
+    create_tagged_repo(&upstream, "v0.18.2");
+
+    let spec = RuntimeSourceSpec {
+        language_id: "gerbil-scheme".to_string(),
+        repository: upstream.display().to_string(),
+        checkout: "v0.18.2".to_string(),
+        state_namespace: "runtime-source/gerbil-scheme".to_string(),
+        index_owner: "asp-structural-index".to_string(),
+    };
+
+    let checkout = ensure_runtime_source_checkout(&root, &spec).expect("runtime source checkout");
+
+    assert_eq!(checkout.language_id, "gerbil-scheme");
+    assert_eq!(checkout.state_namespace, "runtime-source/gerbil-scheme");
+    assert_eq!(checkout.index_owner, "asp-structural-index");
+    assert_eq!(
+        checkout.checkout_dir,
+        root.join(".cache/agent-semantic-protocol/client/runtime-source/gerbil-scheme/v0.18.2")
+    );
+    assert_eq!(
+        fs::read_to_string(checkout.checkout_dir.join("runtime.ss")).expect("runtime source file"),
+        ";; runtime source fixture\n"
+    );
+
+    let _ = fs::remove_dir_all(root);
+}
+
+fn create_tagged_repo(repo: &Path, tag: &str) {
+    fs::create_dir_all(repo).expect("create upstream repo");
+    git(repo, ["init"]);
+    fs::write(repo.join("runtime.ss"), ";; runtime source fixture\n").expect("write fixture");
+    git(repo, ["add", "."]);
+    git(
+        repo,
+        [
+            "-c",
+            "user.name=ASP Test",
+            "-c",
+            "user.email=asp-test@example.invalid",
+            "commit",
+            "-m",
+            "runtime source fixture",
+        ],
+    );
+    git(repo, ["tag", tag]);
+}
+
+fn git<const N: usize>(cwd: &Path, args: [&str; N]) {
+    let status = Command::new("git")
+        .args(args)
+        .current_dir(cwd)
+        .status()
+        .expect("run git");
+    assert!(status.success(), "git failed in {}", cwd.display());
+}
+
+fn temp_root(label: &str) -> PathBuf {
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("system time")
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!("agent-semantic-runtime-{label}-{nonce}"));
+    fs::create_dir_all(&root).expect("create temp root");
+    canonical(&root)
+}
+
+fn canonical(path: &Path) -> PathBuf {
+    path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
+}

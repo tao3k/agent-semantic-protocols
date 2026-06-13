@@ -4,6 +4,7 @@ mod command;
 mod locator_artifact;
 mod probe;
 mod request;
+mod structural_index_import;
 mod writeback;
 mod writeback_artifact_events;
 

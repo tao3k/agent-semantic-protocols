@@ -196,6 +196,43 @@ fn default_activation_records_project_bin_provider_prefix() {
 }
 
 #[test]
+fn default_activation_accepts_languages_bin_provider_override() {
+    let root = temp_root("languages-bin-provider-override");
+    fs::create_dir_all(root.join("tools")).expect("create tools");
+    fs::create_dir_all(root.join("src")).expect("create src");
+    fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"languages-bin-provider-override\"\nversion = \"0.1.0\"\n",
+    )
+    .expect("write Cargo.toml");
+    let provider_bin = root.join("tools/custom-rs-harness");
+    fs::write(&provider_bin, "#!/bin/sh\nexit 0\n").expect("write provider bin");
+    make_executable(&provider_bin);
+    fs::write(
+        root.join("asp.toml"),
+        "[languages.rust]\nbin = \"tools/custom-rs-harness\"\n",
+    )
+    .expect("write asp.toml");
+
+    let activation = build_default_activation(&root).expect("build activation");
+    let rust = activation
+        .providers
+        .iter()
+        .find(|provider| provider.language_id == "rust")
+        .expect("rust provider activated from languages bin override");
+
+    assert_eq!(rust.binary, "rs-harness");
+    let expected_provider_bin =
+        fs::canonicalize(&provider_bin).unwrap_or_else(|_| provider_bin.clone());
+    assert_eq!(
+        rust.provider_command_prefix,
+        vec![expected_provider_bin.display().to_string()]
+    );
+
+    fs::remove_dir_all(root).expect("remove temp root");
+}
+
+#[test]
 fn asp_toml_can_disable_document_language_hook_activation() {
     let root = temp_root("document-provider-disable");
     fs::create_dir_all(root.join(".bin")).expect("create project bin");

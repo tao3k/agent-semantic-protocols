@@ -44,7 +44,8 @@ fn platform_response_wraps_denied_decision_for_codex_hooks() {
     );
     assert!(reason.contains("call `send_input`"), "{reason}");
     assert!(reason.contains("call `spawn_agent`"), "{reason}");
-    assert!(reason.contains("`fork_context=true`"), "{reason}");
+    assert!(reason.contains("`fork_turns=\"none\"`"), "{reason}");
+    assert!(!reason.contains("fork_context"), "{reason}");
     assert!(reason.contains("`asp-search-subagent(role,action,evidence,missing,next,risk)`"));
     assert!(reason.contains("keep model and reasoning settings in Codex config"));
     assert!(
@@ -347,7 +348,8 @@ enabled = false
 
     assert!(reason.contains("call `send_input`"), "{reason}");
     assert!(reason.contains("call `spawn_agent`"), "{reason}");
-    assert!(reason.contains("`fork_context=true`"), "{reason}");
+    assert!(reason.contains("`fork_turns=\"none\"`"), "{reason}");
+    assert!(!reason.contains("fork_context"), "{reason}");
     assert!(reason.contains("keep model and reasoning settings in Codex config"));
     assert!(
         !reason.contains(

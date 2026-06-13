@@ -119,3 +119,29 @@ fn pre_tool_denies_unknown_facade_without_unrelated_provider_recovery() {
     );
     let _ = fs::remove_dir_all(project_root);
 }
+
+#[test]
+fn pre_tool_allows_root_graph_command_without_facade_feedback() {
+    let project_root = temp_project_root("asp-hook-root-graph-command");
+    let runtime = runtime_for_project(&project_root);
+
+    let decision = classify_hook(
+        &runtime,
+        "codex",
+        "pre-tool",
+        &json!({
+            "hook_event_name": "PreToolUse",
+            "session_id": "session-graph",
+            "transcript_path": "transcript-graph.jsonl",
+            "tool_name": "Bash",
+            "tool_input": {
+                "command": "asp graph render --packet - --view seeds"
+            }
+        }),
+    );
+
+    assert_eq!(decision.decision, DecisionKind::Allow);
+    assert!(!decision.fields.contains_key("hookFeedback"));
+    assert!(!decision.fields.contains_key("invalidFacade"));
+    let _ = fs::remove_dir_all(project_root);
+}

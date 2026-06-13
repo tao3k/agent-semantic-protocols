@@ -1,6 +1,6 @@
 use rust_lang_project_harness::{
     assert_rust_project_harness_cargo_check_clean_from_env_with_config,
-    assert_rust_project_harness_performance_verification_from_env, default_rust_harness_config,
+    assert_rust_project_harness_verification_from_env_with_config, default_rust_harness_config,
 };
 
 fn main() {
@@ -20,7 +20,11 @@ fn main() {
         .with_latency_sensitive_performance_owner(
             "src/byte_text.rs",
             "byte-text projection is reused by compact search and provider output rendering",
+        )
+        .with_availability_stability_owner(
+            "src/transport.rs",
+            "provider process orchestration must keep timeout, kill, and broken-pipe behavior deterministic",
         );
     assert_rust_project_harness_cargo_check_clean_from_env_with_config(&config);
-    assert_rust_project_harness_performance_verification_from_env(&config, "provider transport");
+    assert_rust_project_harness_verification_from_env_with_config(&config, "provider transport");
 }

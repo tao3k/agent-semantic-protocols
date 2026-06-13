@@ -10,7 +10,7 @@ mod db_invalidation;
 mod db_provider_command_selection;
 #[path = "unit/db/recent_generations.rs"]
 mod db_recent_generations;
-#[path = "unit/db/structural_index.rs"]
+#[path = "unit/db/structural_index/mod.rs"]
 mod db_structural_index;
 #[path = "unit/db/syntax_query.rs"]
 mod db_syntax_query;

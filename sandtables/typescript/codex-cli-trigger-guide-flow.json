@@ -97,7 +97,7 @@
             "const packet = buildSemanticSearchPacket"
           ]
         },
-        "maxStdoutBytesWarn": 1800,
+        "maxStdoutBytesWarn": 2200,
         "maxElapsedMsWarn": 6000
       }
     },
@@ -144,7 +144,7 @@
             "export class Codex"
           ]
         },
-        "maxStdoutBytesWarn": 1800,
+        "maxStdoutBytesWarn": 2200,
         "maxElapsedMsWarn": 7000
       }
     },

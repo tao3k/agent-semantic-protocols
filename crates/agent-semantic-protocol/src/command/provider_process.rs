@@ -145,7 +145,7 @@ fn run_provider_process_with_stdin(
     }
 
     run_transport_process(ProviderProcessSpec {
-        program: program.to_string(),
+        program: resolve_provider_program(program, project_root),
         args: forwarded.to_vec(),
         cwd: project_root.to_path_buf(),
         env: envs,
@@ -160,6 +160,40 @@ fn run_provider_process_with_stdin(
             provider.provider_id
         )
     })
+}
+
+fn resolve_provider_program(program: &str, project_root: &Path) -> String {
+    let launch_cwd = env::current_dir().ok();
+    resolve_provider_program_from(program, project_root, launch_cwd.as_deref())
+}
+
+fn resolve_provider_program_from(
+    program: &str,
+    project_root: &Path,
+    launch_cwd: Option<&Path>,
+) -> String {
+    let program_path = Path::new(program);
+    if program_path.is_absolute() || program_path.components().count() <= 1 {
+        return program.to_string();
+    }
+
+    let candidates = launch_cwd
+        .into_iter()
+        .map(|cwd| cwd.join(program_path))
+        .chain(std::iter::once(project_root.join(program_path)));
+
+    for candidate in candidates {
+        if !candidate.exists() {
+            continue;
+        }
+        return candidate
+            .canonicalize()
+            .unwrap_or(candidate)
+            .to_string_lossy()
+            .to_string();
+    }
+
+    program.to_string()
 }
 
 pub(super) fn provider_invocation_with_profile(

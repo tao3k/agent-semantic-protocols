@@ -54,6 +54,38 @@ fn missing_config_loads_empty_defaults() {
 }
 
 #[test]
+fn existing_config_uses_figment_metadata_defaults() {
+    let root = temp_root("hook-client-metadata-defaults");
+    let config_path = root.join("config.toml");
+    fs::write(
+        &config_path,
+        r#"
+[[rules]]
+id = "deny-rust-read"
+decision = "deny"
+"#,
+    )
+    .expect("write config");
+
+    let config = load_hook_client_config_file(&config_path).expect("load config");
+
+    assert_eq!(
+        config.schema_id.as_deref(),
+        Some(CLIENT_HOOK_CONFIG_SCHEMA_ID)
+    );
+    assert_eq!(config.schema_version.as_deref(), Some("1"));
+    assert_eq!(
+        config.protocol_id.as_deref(),
+        Some("agent.semantic-protocols.hook")
+    );
+    assert_eq!(config.protocol_version.as_deref(), Some("1"));
+    assert_eq!(config.rules.len(), 1);
+    assert_eq!(config.rules[0].id, "deny-rust-read");
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
 fn invalid_route_kind_is_rejected_by_config_layer() {
     let root = temp_root("hook-client-invalid-route");
     let config_path = root.join("config.toml");

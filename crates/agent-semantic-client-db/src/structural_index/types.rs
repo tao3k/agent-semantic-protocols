@@ -89,6 +89,14 @@ pub struct ClientDbStructuralIndexImport {
     pub dependency_usages: Vec<ClientDbStructuralDependencyUsage>,
 }
 
+/// ASP-owned refresh plan derived from provider file hash evidence.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ClientDbStructuralIndexRefreshPlan {
+    pub unchanged_paths: Vec<ClientDbStructuralPath>,
+    pub changed_paths: Vec<ClientDbStructuralPath>,
+    pub deleted_paths: Vec<ClientDbStructuralPath>,
+}
+
 /// Parser-owned file/owner row retained for index-first cache recall.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ClientDbStructuralOwner {

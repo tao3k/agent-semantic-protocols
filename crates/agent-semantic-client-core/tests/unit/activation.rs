@@ -4,12 +4,16 @@ use agent_semantic_hook::{
     provider_manifest_digest,
 };
 use serde_json::json;
+use std::ffi::OsString;
+use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::{
-    LanguageId, ProviderExecution, ProviderId, ProviderRegistrySnapshot, ResolvedProvider,
-    RuntimeProfileStatus,
+    ASP_PROVIDER_ACTIVATION_PATH_ENV, LanguageId, ProviderExecution, ProviderId,
+    ProviderRegistrySnapshot, ResolvedProvider, RuntimeProfileStatus,
 };
+
+static ENV_LOCK: Mutex<()> = Mutex::new(());
 
 #[test]
 fn runtime_profile_status_preserves_receipt_labels() {
@@ -107,6 +111,36 @@ fn activation_snapshot_skips_runtime_profile_when_prefix_is_present() {
     std::fs::remove_dir_all(root).expect("remove temp root");
 }
 
+#[test]
+fn parent_activation_sync_keeps_requested_project_root() {
+    let _guard = ENV_LOCK.lock().expect("env lock");
+    let _activation_env = EnvVarGuard::unset(ASP_PROVIDER_ACTIVATION_PATH_ENV);
+    let _cache_home_env = EnvVarGuard::unset("PRJ_CACHE_HOME");
+    let root = temp_root("activation-parent-sync");
+    let child = root.join("packages/child");
+    let activation_path = root.join(".cache/agent-semantic-protocol/hooks/activation.json");
+    std::fs::create_dir_all(&child).expect("create child project");
+    std::fs::create_dir_all(activation_path.parent().expect("activation parent"))
+        .expect("create activation parent");
+    std::fs::write(&activation_path, "{not json").expect("write stale activation");
+
+    let snapshot = ProviderRegistrySnapshot::load(&child).expect("snapshot");
+    assert_eq!(snapshot.activation_path, activation_path);
+
+    let expected_project_root = child.display().to_string();
+    let activation_json: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(&snapshot.activation_path).expect("read activation"),
+    )
+    .expect("activation json");
+    assert_eq!(
+        activation_json
+            .get("projectRoot")
+            .and_then(serde_json::Value::as_str),
+        Some(expected_project_root.as_str())
+    );
+    std::fs::remove_dir_all(root).expect("remove temp root");
+}
+
 fn temp_root(name: &str) -> std::path::PathBuf {
     let unique = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -115,4 +149,31 @@ fn temp_root(name: &str) -> std::path::PathBuf {
     let root = std::env::temp_dir().join(format!("agent-semantic-client-core-{name}-{unique}"));
     std::fs::create_dir_all(&root).expect("create temp root");
     root
+}
+
+struct EnvVarGuard {
+    name: &'static str,
+    previous: Option<OsString>,
+}
+
+impl EnvVarGuard {
+    fn unset(name: &'static str) -> Self {
+        let previous = std::env::var_os(name);
+        unsafe {
+            std::env::remove_var(name);
+        }
+        Self { name, previous }
+    }
+}
+
+impl Drop for EnvVarGuard {
+    fn drop(&mut self) {
+        unsafe {
+            if let Some(value) = self.previous.as_ref() {
+                std::env::set_var(self.name, value);
+            } else {
+                std::env::remove_var(self.name);
+            }
+        }
+    }
 }

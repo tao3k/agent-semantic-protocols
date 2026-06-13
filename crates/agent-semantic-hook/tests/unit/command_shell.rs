@@ -1,7 +1,4 @@
-#[path = "../../src/command/shell.rs"]
-mod shell_impl;
-
-use shell_impl::{looks_like_command_transcript, semantic_shell_tokens};
+use crate::command::{looks_like_command_transcript, semantic_shell_tokens};
 
 #[test]
 fn bash_ast_tokens_strip_quotes_from_source_dump_range() {
@@ -106,6 +103,19 @@ fn bash_ast_tokens_decode_escaped_path_space() {
     assert_eq!(
         semantic_shell_tokens("cat src/my\\ file.rs"),
         vec!["cat", "src/my file.rs"]
+    );
+    assert_eq!(
+        semantic_shell_tokens("tail -n +115 src/my\\ file.rs | head -n 126"),
+        vec![
+            "tail",
+            "-n",
+            "+115",
+            "src/my file.rs",
+            "|",
+            "head",
+            "-n",
+            "126"
+        ]
     );
 }
 

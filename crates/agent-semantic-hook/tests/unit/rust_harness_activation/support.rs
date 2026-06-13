@@ -71,6 +71,7 @@ fn newest_asp_hook_surface_source_mtime() -> Option<SystemTime> {
         "crates/agent-semantic-protocol/src/main.rs",
         "crates/agent-semantic-protocol/src/command/hook.rs",
         "crates/agent-semantic-protocol/src/command/hook_runtime.rs",
+        "crates/agent-semantic-protocol/src/command/hook_runtime_subagent.rs",
         "crates/agent-semantic-protocol/src/command/hook_enforcement.rs",
         "crates/agent-semantic-config/src/hook_client_config.rs",
     ]

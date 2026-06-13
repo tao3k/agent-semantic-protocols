@@ -88,6 +88,9 @@
         "lineProtocol": true,
         "stdoutContains": [
           "[search-prime]",
+          "analysis=structure",
+          "nativeSyntaxFacts=skipped",
+          "policyFindings=skipped",
           "entries="
         ],
         "maxStdoutLinesWarn": 8,

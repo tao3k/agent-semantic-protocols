@@ -83,7 +83,7 @@
       "minLength": 1
     },
     "semanticFactKind": {
-      "enum": ["field", "type", "collection", "hot", "test", "package", "build", "dependency", "owner", "query", "evidence"]
+      "enum": ["field", "type", "collection", "hot", "test", "package", "build", "dependency", "owner", "query", "evidence", "evidence-gap"]
     },
     "node": {
       "type": "object",
@@ -94,7 +94,7 @@
           "$ref": "#/$defs/nodeId"
         },
         "kind": {
-          "enum": ["query", "owner", "field", "type", "collection", "hot", "test", "package", "build", "dependency", "failure", "assert", "key", "evidence"]
+          "enum": ["query", "owner", "field", "type", "collection", "hot", "test", "package", "build", "dependency", "failure", "assert", "key", "evidence", "evidence-gap"]
         },
         "role": {
           "type": "string",
@@ -342,7 +342,7 @@
           "$ref": "#/$defs/nodeId"
         },
         "relation": {
-          "enum": ["matches", "contains", "has_type", "collection_of", "covers", "covered_by", "tests", "belongs_to", "packages", "builds", "targets", "depends_on", "affects", "fails", "explains", "points_to", "validates"]
+          "enum": ["matches", "contains", "has_type", "collection_of", "covers", "covered_by", "derived-from", "tests", "belongs_to", "packages", "builds", "targets", "depends_on", "affects", "requires-evidence", "verified-by", "observed-by", "waived-by", "reviewed-by", "suggests-action", "supports-claim", "fails", "explains", "points_to", "validates"]
         },
         "weight": {
           "type": "number",

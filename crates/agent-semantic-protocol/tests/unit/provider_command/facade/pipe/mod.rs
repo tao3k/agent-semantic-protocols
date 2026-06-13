@@ -1,7 +1,9 @@
 mod config;
 mod fzf;
+mod fzf_fallback;
 mod fzf_query_deps;
 mod fzf_workspace;
+mod guide_gerbil;
 mod ingest;
 mod options;
 mod owner_items_gerbil;
@@ -137,7 +139,7 @@ fn assert_graph_turbo_request_matches_shared_schema(payload: &Value) {
     assert_allowed_keys(payload.keys(), &property_keys(&schema["properties"]));
 
     let graph = payload["graph"].as_object().expect("graph object");
-    let graph_schema = &schema["properties"]["graph"];
+    let graph_schema = &schema["$defs"]["graph"];
     assert_required_fields(graph, &graph_schema["required"]);
     assert_allowed_keys(graph.keys(), &property_keys(&graph_schema["properties"]));
 

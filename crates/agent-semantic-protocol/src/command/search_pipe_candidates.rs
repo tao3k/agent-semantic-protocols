@@ -6,6 +6,8 @@ use std::io::{self, IsTerminal, Read};
 use std::path::{Path, PathBuf};
 
 use agent_semantic_provider_transport::byte_text;
+use aho_corasick::{AhoCorasick, AhoCorasickBuilder};
+use ignore::{DirEntry, WalkBuilder};
 
 use super::search_config::AspConfig;
 use super::search_language_files::{LanguageFileSpec, language_file_spec};
@@ -78,6 +80,11 @@ pub(super) fn collect_candidates(
         return Ok(collection.candidates);
     }
     let file_spec = language_file_spec(language_id);
+    let term_matcher = CandidateTermMatcher::new(&terms)?;
+    let search_roots = roots
+        .iter()
+        .map(|root| sorted_search_root_files(root, config, file_spec, &terms))
+        .collect::<Result<Vec<_>, _>>()?;
     let mut candidates = Vec::new();
     let mut remaining = PIPE_CANDIDATE_LINE_LIMIT;
     let per_term_limit = per_term_candidate_limit(terms.len());
@@ -87,24 +94,24 @@ pub(super) fn collect_candidates(
         locator_root,
         file_spec,
         terms: &terms,
+        term_matcher: &term_matcher,
         per_term_limit,
         term_counts: &mut term_counts,
         candidates: &mut candidates,
         remaining: &mut remaining,
         seen: &mut seen,
-        config,
     };
-    for root in &roots {
+    for paths in &search_roots {
         if collector.is_done() {
             break;
         }
-        collector.append_path_candidates(root)?;
+        collector.append_path_candidates(paths);
     }
-    for root in roots {
+    for paths in &search_roots {
         if collector.is_done() {
             break;
         }
-        collector.append_candidates(&root)?;
+        collector.append_candidates(paths)?;
     }
     Ok(candidates)
 }
@@ -181,12 +188,12 @@ struct CandidateCollector<'a> {
     locator_root: &'a Path,
     file_spec: LanguageFileSpec,
     terms: &'a [String],
+    term_matcher: &'a CandidateTermMatcher,
     per_term_limit: usize,
     term_counts: &'a mut [usize],
     candidates: &'a mut Vec<Candidate>,
     remaining: &'a mut usize,
     seen: &'a mut HashSet<String>,
-    config: &'a AspConfig,
 }
 
 impl CandidateCollector<'_> {
@@ -194,106 +201,21 @@ impl CandidateCollector<'_> {
         *self.remaining == 0
     }
 
-    fn append_path_candidates(&mut self, root: &Path) -> Result<(), String> {
-        if self.is_done() || !root.exists() {
-            return Ok(());
-        }
-        let metadata = fs::metadata(root).map_err(|error| {
-            format!(
-                "failed to inspect search pipe root {}: {error}",
-                root.display()
-            )
-        })?;
-        if metadata.is_file() {
-            self.append_path_candidate(root);
-            return Ok(());
-        }
-        let mut entries = fs::read_dir(root)
-            .map_err(|error| {
-                format!(
-                    "failed to read search pipe root {}: {error}",
-                    root.display()
-                )
-            })?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|error| {
-                format!(
-                    "failed to read search pipe entry under {}: {error}",
-                    root.display()
-                )
-            })?;
-        entries.sort_by_key(|entry| path_search_priority(&entry.path(), self.terms));
-        for entry in entries {
+    fn append_path_candidates(&mut self, paths: &[PathBuf]) {
+        for path in paths {
             if self.is_done() {
                 break;
             }
-            let path = entry.path();
-            let file_type = entry.file_type().map_err(|error| {
-                format!(
-                    "failed to inspect search pipe path {}: {error}",
-                    path.display()
-                )
-            })?;
-            if file_type.is_dir() {
-                if should_skip_dir(&path, self.config) {
-                    continue;
-                }
-                self.append_path_candidates(&path)?;
-            } else if file_type.is_file() {
-                self.append_path_candidate(&path);
-            }
+            self.append_path_candidate(path);
         }
-        Ok(())
     }
 
-    fn append_candidates(&mut self, root: &Path) -> Result<(), String> {
-        if self.is_done() || !root.exists() {
-            return Ok(());
-        }
-        let metadata = fs::metadata(root).map_err(|error| {
-            format!(
-                "failed to inspect search pipe root {}: {error}",
-                root.display()
-            )
-        })?;
-        if metadata.is_file() {
-            self.append_file_candidates(root)?;
-            return Ok(());
-        }
-        let mut entries = fs::read_dir(root)
-            .map_err(|error| {
-                format!(
-                    "failed to read search pipe root {}: {error}",
-                    root.display()
-                )
-            })?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|error| {
-                format!(
-                    "failed to read search pipe entry under {}: {error}",
-                    root.display()
-                )
-            })?;
-        entries.sort_by_key(|entry| path_search_priority(&entry.path(), self.terms));
-        for entry in entries {
+    fn append_candidates(&mut self, paths: &[PathBuf]) -> Result<(), String> {
+        for path in paths {
             if self.is_done() {
                 break;
             }
-            let path = entry.path();
-            let file_type = entry.file_type().map_err(|error| {
-                format!(
-                    "failed to inspect search pipe path {}: {error}",
-                    path.display()
-                )
-            })?;
-            if file_type.is_dir() {
-                if should_skip_dir(&path, self.config) {
-                    continue;
-                }
-                self.append_candidates(&path)?;
-            } else if file_type.is_file() {
-                self.append_file_candidates(&path)?;
-            }
+            self.append_file_candidates(path)?;
         }
         Ok(())
     }
@@ -310,15 +232,7 @@ impl CandidateCollector<'_> {
             if self.is_done() {
                 break;
             }
-            let Some((candidate, term_index)) = line_candidate(
-                self.locator_root,
-                path,
-                line,
-                index + 1,
-                self.terms,
-                self.per_term_limit,
-                self.term_counts,
-            ) else {
+            let Some((candidate, term_index)) = self.line_candidate(path, line, index + 1) else {
                 continue;
             };
             if self.push_candidate(candidate) {
@@ -337,17 +251,18 @@ impl CandidateCollector<'_> {
             return;
         }
         let display = display_path(self.locator_root, path);
-        let lower = display.to_ascii_lowercase();
-        let Some((term_index, term)) = self.terms.iter().enumerate().find(|(index, term)| {
-            self.term_counts.get(*index).copied().unwrap_or(0) < self.per_term_limit
-                && lower.contains(term.as_str())
-        }) else {
+        let Some(term_index) = self.term_matcher.find_available_str(
+            &display,
+            self.terms,
+            self.per_term_limit,
+            self.term_counts,
+        ) else {
             return;
         };
         let candidate = Candidate {
             path: display.clone(),
             line: 1,
-            symbol: term.clone(),
+            symbol: self.terms[term_index].clone(),
             text: display,
             source: "finder-path".to_string(),
             confidence: "path-exact".to_string(),
@@ -369,6 +284,90 @@ impl CandidateCollector<'_> {
         self.candidates.push(candidate);
         true
     }
+
+    fn line_candidate(
+        &self,
+        path: &Path,
+        line: &[u8],
+        line_number: usize,
+    ) -> Option<(Candidate, usize)> {
+        let term_index = self.term_matcher.find_available_bytes(
+            line,
+            self.terms,
+            self.per_term_limit,
+            self.term_counts,
+        )?;
+        Some((
+            Candidate {
+                path: display_path(self.locator_root, path),
+                line: line_number,
+                symbol: self.terms[term_index].clone(),
+                text: byte_text::lossy_string(line),
+                source: "finder".to_string(),
+                confidence: "heuristic".to_string(),
+            },
+            term_index,
+        ))
+    }
+}
+
+enum CandidateTermMatcher {
+    Ascii(AhoCorasick),
+    UnicodeFallback,
+}
+
+impl CandidateTermMatcher {
+    fn new(terms: &[String]) -> Result<Self, String> {
+        if !terms.iter().all(|term| term.is_ascii()) {
+            return Ok(Self::UnicodeFallback);
+        }
+        AhoCorasickBuilder::new()
+            .ascii_case_insensitive(true)
+            .build(terms)
+            .map(Self::Ascii)
+            .map_err(|error| format!("failed to compile search pipe term matcher: {error}"))
+    }
+
+    fn find_available_str(
+        &self,
+        haystack: &str,
+        terms: &[String],
+        per_term_limit: usize,
+        term_counts: &[usize],
+    ) -> Option<usize> {
+        self.find_available_bytes(haystack.as_bytes(), terms, per_term_limit, term_counts)
+    }
+
+    fn find_available_bytes(
+        &self,
+        haystack: &[u8],
+        terms: &[String],
+        per_term_limit: usize,
+        term_counts: &[usize],
+    ) -> Option<usize> {
+        match self {
+            Self::Ascii(matcher) => matcher
+                .find_overlapping_iter(haystack)
+                .map(|mat| mat.pattern().as_usize())
+                .filter(|index| term_available(*index, per_term_limit, term_counts))
+                .min(),
+            Self::UnicodeFallback => {
+                let lower = byte_text::lowercase_lossy_string(haystack);
+                terms
+                    .iter()
+                    .enumerate()
+                    .find(|(index, term)| {
+                        term_available(*index, per_term_limit, term_counts)
+                            && lower.contains(term.as_str())
+                    })
+                    .map(|(index, _)| index)
+            }
+        }
+    }
+}
+
+fn term_available(index: usize, per_term_limit: usize, term_counts: &[usize]) -> bool {
+    term_counts.get(index).copied().unwrap_or(0) < per_term_limit
 }
 
 fn path_search_priority(path: &Path, terms: &[String]) -> (u8, u8, String) {
@@ -418,47 +417,102 @@ fn path_basename_matches(lower_path: &str, term: &str) -> bool {
         .unwrap_or(false)
 }
 
-fn should_skip_dir(path: &Path, config: &AspConfig) -> bool {
+fn sorted_search_root_files(
+    root: &Path,
+    config: &AspConfig,
+    file_spec: LanguageFileSpec,
+    terms: &[String],
+) -> Result<Vec<PathBuf>, String> {
+    if !root.exists() {
+        return Ok(Vec::new());
+    }
+    let metadata = fs::metadata(root).map_err(|error| {
+        format!(
+            "failed to inspect search pipe root {}: {error}",
+            root.display()
+        )
+    })?;
+    if metadata.is_file() {
+        return Ok(vec![root.to_path_buf()]);
+    }
+    sorted_search_files(root, config, file_spec, terms)
+}
+
+fn sorted_search_files(
+    root: &Path,
+    config: &AspConfig,
+    file_spec: LanguageFileSpec,
+    terms: &[String],
+) -> Result<Vec<PathBuf>, String> {
+    let mut builder = WalkBuilder::new(root);
+    builder.hidden(false);
+    builder.filter_entry(search_entry_filter(config, file_spec));
+    let mut paths = Vec::new();
+    for result in builder.build() {
+        let entry = result.map_err(|error| {
+            format!(
+                "failed to walk search pipe root {}: {error}",
+                root.display()
+            )
+        })?;
+        if entry.depth() == 0 {
+            continue;
+        }
+        let Some(file_type) = entry.file_type() else {
+            continue;
+        };
+        if file_type.is_file() {
+            paths.push(entry.into_path());
+        }
+    }
+    paths.sort_by_key(|path| path_search_priority(path, terms));
+    Ok(paths)
+}
+
+fn search_entry_filter(
+    config: &AspConfig,
+    file_spec: LanguageFileSpec,
+) -> impl Fn(&DirEntry) -> bool + Send + Sync + 'static {
+    let ignore_dirs = config.search.ignore_dirs.clone();
+    let include_hidden_dirs = config.search.include_hidden_dirs.clone();
+    move |entry| {
+        if entry
+            .file_type()
+            .is_some_and(|file_type| file_type.is_file())
+        {
+            return file_spec.matches(entry.path());
+        }
+        !should_skip_walk_dir(entry, &ignore_dirs, &include_hidden_dirs)
+    }
+}
+
+fn should_skip_walk_dir(
+    entry: &DirEntry,
+    ignore_dirs: &[String],
+    include_hidden_dirs: &[String],
+) -> bool {
+    if entry.depth() == 0
+        || !entry
+            .file_type()
+            .is_some_and(|file_type| file_type.is_dir())
+    {
+        return false;
+    }
+    should_skip_dir_name(entry.path(), ignore_dirs, include_hidden_dirs)
+}
+
+fn should_skip_dir_name(
+    path: &Path,
+    ignore_dirs: &[String],
+    include_hidden_dirs: &[String],
+) -> bool {
     let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
         return false;
     };
-    if name.starts_with('.')
-        && !config
-            .search
-            .include_hidden_dirs
-            .iter()
-            .any(|dir| dir == name)
-    {
+    if name.starts_with('.') && !include_hidden_dirs.iter().any(|dir| dir == name) {
         return true;
     }
-    config.search.ignore_dirs.iter().any(|dir| dir == name)
-}
-
-fn line_candidate(
-    locator_root: &Path,
-    path: &Path,
-    line: &[u8],
-    line_number: usize,
-    terms: &[String],
-    per_term_limit: usize,
-    term_counts: &[usize],
-) -> Option<(Candidate, usize)> {
-    let lower = byte_text::lowercase_lossy_string(line);
-    let (term_index, symbol) = terms.iter().enumerate().find(|(index, term)| {
-        term_counts.get(*index).copied().unwrap_or(0) < per_term_limit
-            && lower.contains(term.as_str())
-    })?;
-    Some((
-        Candidate {
-            path: display_path(locator_root, path),
-            line: line_number,
-            symbol: symbol.clone(),
-            text: byte_text::lossy_string(line),
-            source: "finder".to_string(),
-            confidence: "heuristic".to_string(),
-        },
-        term_index,
-    ))
+    ignore_dirs.iter().any(|dir| dir == name)
 }
 
 fn per_term_candidate_limit(term_count: usize) -> usize {

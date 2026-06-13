@@ -839,7 +839,7 @@ impl ClientDb {
         let sql = selects.join(" UNION ALL ");
         let mut statement = self
             .conn
-            .prepare(&sql)
+            .prepare_cached(&sql)
             .map_err(|error| format!("failed to prepare client db table counts: {error}"))?;
         let rows = statement
             .query_map([], |row| {
@@ -858,7 +858,7 @@ impl ClientDb {
     fn existing_tables(&self) -> Result<Vec<String>, String> {
         let mut statement = self
             .conn
-            .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
+            .prepare_cached("SELECT name FROM sqlite_master WHERE type = 'table'")
             .map_err(|error| format!("failed to prepare client db table list: {error}"))?;
         let rows = statement
             .query_map([], |row| row.get::<_, String>(0))
@@ -1054,7 +1054,7 @@ impl ClientDb {
             .map(CacheArtifactId::from);
         let mut statement = self
             .conn
-            .prepare(
+            .prepare_cached(
                 "SELECT m.path,
                         m.start_line,
                         m.end_line,

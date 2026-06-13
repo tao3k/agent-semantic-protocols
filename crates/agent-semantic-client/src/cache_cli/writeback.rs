@@ -39,6 +39,8 @@ use crate::cache_replay::ProviderCacheReplay;
 use crate::cache_replay::{MAX_CACHE_REPLAY_ARTIFACT_BYTES, replay_artifact_path};
 
 const CLIENT_PROMPT_OUTPUT_SCHEMA_ID: &str = "agent.semantic-protocols.client-prompt-output";
+const SEMANTIC_STRUCTURAL_INDEX_SCHEMA_ID: &str =
+    "agent.semantic-protocols.semantic-structural-index";
 const SEMANTIC_TREE_SITTER_QUERY_SCHEMA_ID: &str =
     "agent.semantic-protocols.semantic-tree-sitter-query";
 
@@ -371,6 +373,22 @@ pub(crate) fn write_prompt_output_cache_after_provider_success(
     ) {
         return None;
     }
+    let structural_index_stdout_writeback = if !stdout.is_empty()
+        && (stdout.len() as u64) <= MAX_CACHE_REPLAY_ARTIFACT_BYTES
+        && validate_structural_index_packet_for_provider(stdout, provider).is_some()
+    {
+        Some((
+            CacheExportMethod::from("index/structural"),
+            Bytes::copy_from_slice(stdout),
+            "structural-index/",
+            ".json",
+            ArtifactKind::SemanticStructuralIndex,
+            Vec::new(),
+            ElapsedMillis::new(0),
+        ))
+    } else {
+        None
+    };
     let search_packet_writeback =
         request_search_packet_provider_export_method(request).and_then(|export_method| {
             let export = export_provider_packet(provider, request)?;
@@ -394,7 +412,9 @@ pub(crate) fn write_prompt_output_cache_after_provider_success(
         artifact_kind,
         writeback_provider_commands,
         writeback_provider_elapsed_ms,
-    ) = if let Some(search_packet_writeback) = search_packet_writeback {
+    ) = if let Some(structural_index_stdout_writeback) = structural_index_stdout_writeback {
+        structural_index_stdout_writeback
+    } else if let Some(search_packet_writeback) = search_packet_writeback {
         search_packet_writeback
     } else if let Some(export_method) = request_prompt_output_writeback_method(request) {
         if stdout.is_empty() || stdout.len() as u64 > MAX_CACHE_REPLAY_ARTIFACT_BYTES {
@@ -477,6 +497,9 @@ pub(crate) fn write_prompt_output_cache_after_provider_success(
                 &export_method,
                 &artifact_bytes,
             )?,
+            ArtifactKind::SemanticStructuralIndex => {
+                structural_index_generation_from_packet(project_root, provider, &artifact_bytes)?
+            }
         };
         let artifact_id = generation.artifact_ids.as_ref()?.first()?.clone();
         let syntax_generation = if matches!(artifact_kind, ArtifactKind::SemanticTreeSitterQuery) {
@@ -484,6 +507,12 @@ pub(crate) fn write_prompt_output_cache_after_provider_success(
         } else {
             None
         };
+        let structural_generation =
+            if matches!(artifact_kind, ArtifactKind::SemanticStructuralIndex) {
+                Some(generation.clone())
+            } else {
+                None
+            };
         let command_artifact_id = if matches!(artifact_kind, ArtifactKind::PromptOutput)
             && !provider_commands.is_empty()
         {
@@ -557,6 +586,14 @@ pub(crate) fn write_prompt_output_cache_after_provider_success(
         if let Some(syntax_generation) = syntax_generation {
             db.import_semantic_tree_sitter_query_packet(&syntax_generation, &artifact_bytes)
                 .ok()?;
+            sqlite_write_count += 1;
+        }
+        if let Some(structural_generation) = structural_generation {
+            db.import_semantic_structural_index_refresh_packet(
+                &structural_generation,
+                &artifact_bytes,
+            )
+            .ok()?;
             sqlite_write_count += 1;
         }
         let mut probe = provider_cache_probe(project_root, snapshot, request)?;
@@ -764,6 +801,39 @@ fn validate_query_packet_for_provider(
     Some(())
 }
 
+fn validate_structural_index_packet_for_provider(
+    packet_bytes: &[u8],
+    provider: &ResolvedProvider,
+) -> Option<()> {
+    let packet: serde_json::Value = serde_json::from_slice(packet_bytes).ok()?;
+    if packet.get("schemaId")?.as_str()? != SEMANTIC_STRUCTURAL_INDEX_SCHEMA_ID {
+        return None;
+    }
+    if packet.get("schemaVersion")?.as_str()? != "1" {
+        return None;
+    }
+    if packet.get("languageId")?.as_str()? != provider.language_id.as_str() {
+        return None;
+    }
+    if packet.get("providerId")?.as_str()? != provider.provider_id.as_str() {
+        return None;
+    }
+    if packet
+        .get("rawSourceStored")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(true)
+    {
+        return None;
+    }
+    if structural_index_file_hashes(&packet)?.is_empty() {
+        return None;
+    }
+    packet.get("owners")?.as_array()?;
+    packet.get("symbols")?.as_array()?;
+    packet.get("dependencyUsages")?.as_array()?;
+    Some(())
+}
+
 fn search_packet_generation_from_packet(
     project_root: &Path,
     provider: &ResolvedProvider,
@@ -858,6 +928,50 @@ fn query_packet_generation_from_packet(
     }
 }
 
+fn structural_index_generation_from_packet(
+    project_root: &Path,
+    provider: &ResolvedProvider,
+    packet_bytes: &[u8],
+) -> Option<ClientCacheGeneration> {
+    let packet: serde_json::Value = serde_json::from_slice(packet_bytes).ok()?;
+    let generation_id = packet.get("generationId")?.as_str()?.to_string();
+    let artifact_id = packet
+        .get("sourceArtifactId")
+        .and_then(serde_json::Value::as_str)
+        .filter(|artifact_id| {
+            artifact_id.starts_with("structural-index/") && artifact_id.ends_with(".json")
+        })
+        .map_or_else(
+            || format!("structural-index/{generation_id}.json"),
+            ToString::to_string,
+        );
+    Some(ClientCacheGeneration {
+        generation_id: CacheGenerationId::from(generation_id),
+        language_id: provider.language_id.clone(),
+        provider_id: provider.provider_id.clone(),
+        provider_version: packet
+            .get("providerVersion")
+            .and_then(serde_json::Value::as_str)
+            .map(ToString::to_string),
+        export_method: Some("index/structural".to_string()),
+        project_root: packet
+            .get("projectRoot")
+            .and_then(serde_json::Value::as_str)
+            .map_or_else(|| normalized_path(project_root), ToString::to_string),
+        package_root: packet
+            .get("packageRoot")
+            .and_then(serde_json::Value::as_str)
+            .map(ToString::to_string)
+            .or_else(|| Some(".".to_string())),
+        schema_ids: vec![SemanticSchemaId::from(SEMANTIC_STRUCTURAL_INDEX_SCHEMA_ID)],
+        cache_status: CacheStatus::Hit,
+        raw_source_stored: false,
+        request_fingerprint: Some(structural_index_request_fingerprint(provider, &packet)),
+        file_hashes: Some(structural_index_file_hashes(&packet)?),
+        artifact_ids: Some(vec![CacheArtifactId::from(artifact_id)]),
+    })
+}
+
 fn query_packet_file_hashes(packet_bytes: &[u8]) -> Option<Vec<ClientCacheFileHash>> {
     let packet: serde_json::Value = serde_json::from_slice(packet_bytes).ok()?;
     let hashes = packet.pointer("/cache/fileHashes")?.as_array()?;
@@ -873,6 +987,43 @@ fn query_packet_file_hashes(packet_bytes: &[u8]) -> Option<Vec<ClientCacheFileHa
     } else {
         Some(file_hashes)
     }
+}
+
+fn structural_index_file_hashes(packet: &serde_json::Value) -> Option<Vec<ClientCacheFileHash>> {
+    let hashes = packet.get("fileHashes")?.as_array()?;
+    let file_hashes = hashes
+        .iter()
+        .map(|hash| {
+            Some(ClientCacheFileHash {
+                path: hash.get("path")?.as_str()?.to_string(),
+                sha256: hash.get("sha256")?.as_str()?.to_string(),
+            })
+        })
+        .collect::<Option<Vec<_>>>()?;
+    if file_hashes.is_empty() {
+        None
+    } else {
+        Some(file_hashes)
+    }
+}
+
+fn structural_index_request_fingerprint(
+    provider: &ResolvedProvider,
+    packet: &serde_json::Value,
+) -> String {
+    let generation_id = packet
+        .get("generationId")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default();
+    let index_fingerprint = packet
+        .get("indexFingerprint")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or(generation_id);
+    let seed = format!(
+        "{}\0{}\0{}\0{}",
+        provider.language_id, provider.provider_id, generation_id, index_fingerprint
+    );
+    format!("fnv64:{}", stable_hash_hex(&seed))
 }
 
 fn request_prompt_output_writeback_method(request: &ClientRequest) -> Option<CacheExportMethod> {

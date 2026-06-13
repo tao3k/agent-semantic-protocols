@@ -425,12 +425,20 @@ fn assert_codex_asp_explorer(root: &std::path::Path, model: &str) {
     let agent = std::fs::read_to_string(&path).expect("installed Codex ASP explorer agent");
     let parsed = toml::from_str::<toml::Value>(&agent).expect("Codex ASP explorer is valid TOML");
     assert_eq!(parsed["name"].as_str(), Some("asp_explorer"));
+    assert!(
+        agent.contains("Parent callers must pass `fork_turns = \"none\"`"),
+        "{agent}"
+    );
     assert_eq!(parsed["model"].as_str(), Some(model));
     assert_eq!(parsed["model_reasoning_effort"].as_str(), Some("medium"));
     assert_eq!(parsed["sandbox_mode"].as_str(), Some("read-only"));
     let instructions = parsed["developer_instructions"]
         .as_str()
         .unwrap_or_default();
+    assert!(
+        instructions.contains("fork_turns=\"none\""),
+        "{instructions}"
+    );
     assert_asp_explorer_instructions(instructions);
     for stale in [
         "asp-explorer-owner.toml",

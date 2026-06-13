@@ -1,0 +1,220 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent.semantic-protocols/schemas/semantic-runtime-source-acquisition.v1.schema.json",
+  "title": "Semantic Runtime Source Acquisition",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "protocolId",
+    "protocolVersion",
+    "languageId",
+    "providerId",
+    "namespace",
+    "authority",
+    "evidenceGrade",
+    "quality",
+    "query",
+    "runtime",
+    "sourceRef",
+    "acquisition",
+    "facts",
+    "failureCases",
+    "qualitySignals",
+    "missing",
+    "witness",
+    "next"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.semantic-runtime-source-acquisition"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "protocolId": {
+      "const": "agent.semantic-protocols"
+    },
+    "protocolVersion": {
+      "type": "string"
+    },
+    "languageId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "providerId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "namespace": {
+      "const": "runtime-source"
+    },
+    "authority": {
+      "type": "string",
+      "minLength": 1
+    },
+    "evidenceGrade": {
+      "enum": ["fact", "unknown"]
+    },
+    "quality": {
+      "enum": ["version-matched-source-plan", "insufficient"]
+    },
+    "query": {
+      "type": "string"
+    },
+    "runtime": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/runtime"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "sourceRef": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/sourceRef"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "acquisition": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/acquisition"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "facts": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "failureCases": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "qualitySignals": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "missing": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "witness": {
+      "type": "string"
+    },
+    "next": {
+      "type": "string"
+    }
+  },
+  "$defs": {
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["gerbilHome", "gxi", "systemVersion", "tag"],
+      "properties": {
+        "gerbilHome": {
+          "type": "string"
+        },
+        "gxi": {
+          "type": "string"
+        },
+        "systemVersion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tag": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "sourceRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "manager",
+        "repository",
+        "checkout",
+        "checkoutPolicy",
+        "statePathPolicy",
+        "selectorScheme"
+      ],
+      "properties": {
+        "kind": {
+          "const": "runtime-version-source"
+        },
+        "manager": {
+          "const": "git"
+        },
+        "repository": {
+          "type": "string",
+          "format": "uri"
+        },
+        "checkout": {
+          "type": "string",
+          "minLength": 1
+        },
+        "checkoutPolicy": {
+          "const": "exact-tag-from-active-runtime"
+        },
+        "statePathPolicy": {
+          "const": "asp-state-managed"
+        },
+        "selectorScheme": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "acquisition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "owner",
+        "operation",
+        "stateNamespace",
+        "versionKey",
+        "indexOwner"
+      ],
+      "properties": {
+        "owner": {
+          "const": "asp"
+        },
+        "operation": {
+          "const": "clone-or-fetch-checkout-index"
+        },
+        "stateNamespace": {
+          "type": "string",
+          "minLength": 1
+        },
+        "versionKey": {
+          "type": "string",
+          "minLength": 1
+        },
+        "indexOwner": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

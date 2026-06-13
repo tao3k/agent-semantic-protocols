@@ -2,7 +2,9 @@ use agent_semantic_hook::{DecisionKind, append_hook_event_state, classify_hook};
 use serde_json::json;
 use std::fs;
 
-use super::{allowed_command_decision, runtime_for_project, temp_project_root};
+use super::{
+    allowed_command_decision, allowed_prompt_decision, runtime_for_project, temp_project_root,
+};
 
 #[test]
 fn pre_tool_denies_repeated_search_pipe_after_pipe() {
@@ -55,6 +57,58 @@ fn pre_tool_denies_repeated_search_pipe_after_pipe() {
         "{}",
         decision.message
     );
+    let _ = fs::remove_dir_all(project_root);
+}
+
+#[test]
+fn pre_tool_allows_first_search_pipe_after_new_user_prompt_boundary() {
+    let project_root = temp_project_root("asp-hook-pipe-new-user-prompt");
+    append_hook_event_state(
+        &project_root,
+        &allowed_command_decision(
+            "claude",
+            "post-tool",
+            "session-effect",
+            "transcript-effect.jsonl",
+            "asp typescript search prime --workspace . --view seeds",
+        ),
+    )
+    .expect("write old prime event");
+    append_hook_event_state(
+        &project_root,
+        &allowed_command_decision(
+            "claude",
+            "post-tool",
+            "session-effect",
+            "transcript-effect.jsonl",
+            "asp typescript search pipe 'Effect concurrency Fiber' --workspace . --view seeds",
+        ),
+    )
+    .expect("write old pipe event");
+    append_hook_event_state(
+        &project_root,
+        &allowed_prompt_decision("claude", "session-effect", "transcript-effect.jsonl"),
+    )
+    .expect("write prompt boundary");
+    let runtime = runtime_for_project(&project_root);
+
+    let decision = classify_hook(
+        &runtime,
+        "claude",
+        "pre-tool",
+        &json!({
+            "hook_event_name": "PreToolUse",
+            "session_id": "session-effect",
+            "transcript_path": "transcript-effect.jsonl",
+            "tool_name": "Bash",
+            "tool_input": {
+                "command": "asp typescript search pipe 'fresh prompt question' --workspace . --view seeds"
+            }
+        }),
+    );
+
+    assert_eq!(decision.decision, DecisionKind::Allow);
+    assert!(!decision.fields.contains_key("hookFeedback"));
     let _ = fs::remove_dir_all(project_root);
 }
 

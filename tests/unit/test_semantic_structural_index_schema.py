@@ -84,6 +84,11 @@ def structural_index_validation_errors(packet: dict[str, Any]) -> list[str]:
     return [error.message for error in validator.iter_errors(packet)]
 
 
+def structural_index_validation_error_validators(packet: dict[str, Any]) -> list[str]:
+    validator = schema_validator_for(_SCHEMA_PATH)
+    return [str(error.validator) for error in validator.iter_errors(packet)]
+
+
 def test_semantic_structural_index_accepts_structural_cache_rows() -> None:
     assert structural_index_validation_errors(structural_index_packet()) == []
 
@@ -102,7 +107,4 @@ def test_semantic_structural_index_rejects_source_payload_fields() -> None:
     packet = structural_index_packet()
     packet["symbols"][0]["sourceText"] = "pub fn parse_config() {}"
 
-    assert any(
-        "Additional properties are not allowed" in error
-        for error in structural_index_validation_errors(packet)
-    )
+    assert "not" in structural_index_validation_error_validators(packet)

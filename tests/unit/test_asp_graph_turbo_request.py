@@ -141,6 +141,8 @@ def test_result_packet_is_schema_owned_ranking_evidence() -> None:
         "failure-evidence",
         "test-selection",
         "affected",
+        "evidence-quality",
+        "rust-evidence-quality",
     ]
     assert packet["profileCompatibility"][0]["profile"] == "owner-query"
     assert packet["profileCompatibility"][0]["compatible"] is True

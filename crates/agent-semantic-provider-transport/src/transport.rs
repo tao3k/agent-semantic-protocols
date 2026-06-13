@@ -10,6 +10,7 @@ use bytes::Bytes;
 use tokio::io::AsyncWriteExt;
 use tokio::process::{Child, ChildStdin, Command};
 use tokio::task::JoinHandle;
+use tracing::{Instrument, debug, info_span, warn};
 
 use crate::byte_text;
 use crate::capture::{LimitedRead, ProviderOutputStream, capture_output_stream};
@@ -85,21 +86,35 @@ pub async fn run_provider_process_async_with_framing(
     spec: ProviderProcessSpec,
     framing: ProviderProcessFraming,
 ) -> Result<ProviderProcessOutput, ProviderProcessError> {
-    let start = Instant::now();
-    let stdin_mode = spec.stdin.clone();
-    let stdout_mode = spec.stdout;
-    let stderr_mode = spec.stderr;
-    let limits = spec.limits;
-    let mut child = spawn_provider_process(&spec, &stdin_mode)?;
-    let io_tasks = spawn_provider_io_tasks(
-        &mut child,
-        stdin_mode,
-        stdout_mode,
-        stderr_mode,
-        limits,
-        framing,
-    )?;
-    collect_provider_output(child, io_tasks, limits.timeout, start).await
+    let timeout_ms = spec.limits.timeout.map(|timeout| timeout.as_millis());
+    let span = info_span!(
+        "provider_process",
+        program = %spec.program,
+        cwd = %spec.cwd.display(),
+        args = spec.args.len(),
+        timeout_ms = ?timeout_ms,
+    );
+
+    async move {
+        let start = Instant::now();
+        let stdin_mode = spec.stdin.clone();
+        let stdout_mode = spec.stdout;
+        let stderr_mode = spec.stderr;
+        let limits = spec.limits;
+        let mut child = spawn_provider_process(&spec, &stdin_mode)?;
+        debug!("spawned provider process");
+        let io_tasks = spawn_provider_io_tasks(
+            &mut child,
+            stdin_mode,
+            stdout_mode,
+            stderr_mode,
+            limits,
+            framing,
+        )?;
+        collect_provider_output(child, io_tasks, limits.timeout, start).await
+    }
+    .instrument(span)
+    .await
 }
 
 fn spawn_provider_process(
@@ -196,6 +211,10 @@ async fn collect_provider_output(
                 result.map_err(|source| ProviderProcessError::Wait { source })?
             }
             _ = tokio::time::sleep(timeout) => {
+                warn!(
+                    timeout_ms = timeout.as_millis(),
+                    "provider process timed out; requesting kill"
+                );
                 let _ = child.start_kill();
                 let _ = child.wait().await;
                 let _ = join_transport_task(stdin_task, "stdin").await;
@@ -214,6 +233,11 @@ async fn collect_provider_output(
             .map_err(|source| ProviderProcessError::Wait { source })?
     };
 
+    debug!(
+        status = ?status.code(),
+        elapsed_ms = start.elapsed().as_millis(),
+        "provider process exited"
+    );
     join_transport_task(stdin_task, "stdin").await?;
     let stdout = join_transport_task(stdout_task, "stdout").await?;
     let stderr = join_transport_task(stderr_task, "stderr").await?;

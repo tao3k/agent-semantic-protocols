@@ -366,6 +366,7 @@ pub(crate) fn should_try_search_packet_first(request: &ClientRequest) -> bool {
     request.method == ClientMethod::Search
         && !is_prime_seed_search(&request.forwarded_args)
         && !is_workspace_seed_search(&request.forwarded_args)
+        && !is_compare_search(&request.forwarded_args)
         && !request
             .forwarded_args
             .iter()
@@ -411,6 +412,10 @@ fn is_prime_seed_search(args: &[String]) -> bool {
 
 fn is_workspace_seed_search(args: &[String]) -> bool {
     args.first().is_some_and(|arg| arg == "workspace") && has_seed_view(args)
+}
+
+fn is_compare_search(args: &[String]) -> bool {
+    args.first().is_some_and(|arg| arg == "compare")
 }
 
 fn has_seed_view(args: &[String]) -> bool {

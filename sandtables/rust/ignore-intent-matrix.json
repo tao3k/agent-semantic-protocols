@@ -155,9 +155,12 @@
       "expect": {
         "lineProtocol": true,
         "stdoutContains": [
-        "[search-prime]",
-        "legend: ID=kind:role(value)!next; entries profile(selectors=>returns); frontier ID.next",
-        "entries=owner-tests(O=>covering-tests+test-entrypoints+fixtures)",
+          "[search-prime]",
+          "analysis=structure",
+          "nativeSyntaxFacts=skipped",
+          "policyFindings=skipped",
+          "legend: ID=kind:role(value)!next; entries profile(selectors=>returns); frontier ID.next",
+          "entries=owner-tests(O=>covering-tests+test-entrypoints+fixtures)",
         "G>{",
         "rank=",
           "frontier="

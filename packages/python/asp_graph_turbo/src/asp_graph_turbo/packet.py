@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from .constants import ALGORITHM_ID
+from .evidence_reliability import evidence_reliability_report
 from .frontier_actions import frontier_action_packets
 from .model import (
     GraphProfile,
@@ -104,6 +105,7 @@ def result_to_packet(result: GraphResult) -> dict[str, object]:
             _receipt_adjustment_to_packet(adjustment)
             for adjustment in result.receipt_adjustments
         ],
+        "evidenceReliability": evidence_reliability_report(result),
         "algorithmMetrics": {
             "nodeCount": result.algorithm_metrics.node_count,
             "edgeCount": result.algorithm_metrics.edge_count,

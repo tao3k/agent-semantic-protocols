@@ -98,3 +98,69 @@ fn search_pipe_source_option_controls_graph_request_source() {
     assert!(!marker.exists(), "search pipe should not spawn provider");
     let _ = std::fs::remove_dir_all(root);
 }
+
+#[test]
+fn search_pipe_finder_respects_gitignore_and_configured_hidden_dirs() {
+    let root = temp_project_root("search-pipe-finder-ignore-walk");
+    let bin_dir = root.join(".bin");
+    let marker = root.join("provider-called");
+    for path in ["src", "ignored/src", ".allowed/src", ".blocked/src"] {
+        std::fs::create_dir_all(root.join(path)).expect("create source dir");
+    }
+    std::fs::write(root.join(".gitignore"), "ignored/\n").expect("write gitignore");
+    std::fs::write(
+        root.join("asp.toml"),
+        "[search]\nincludeHiddenDirs = [\".allowed\"]\n",
+    )
+    .expect("write asp config");
+    std::fs::write(root.join("src/lib.rs"), "pub struct VisibleHit;\n").expect("write visible");
+    std::fs::write(root.join(".allowed/src/lib.rs"), "pub struct HiddenHit;\n")
+        .expect("write allowed hidden");
+    std::fs::write(root.join("ignored/src/lib.rs"), "pub struct IgnoredHit;\n")
+        .expect("write ignored");
+    std::fs::write(root.join(".blocked/src/lib.rs"), "pub struct BlockedHit;\n")
+        .expect("write blocked hidden");
+    write_marker_provider(&bin_dir, "rs-harness", &marker);
+    write_activation(&root, &[provider("rust", Vec::new())]);
+
+    let output = asp_command(&root)
+        .env("PATH", &bin_dir)
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args([
+            "rust",
+            "search",
+            "pipe",
+            "VisibleHit HiddenHit IgnoredHit BlockedHit",
+            "--source",
+            "finder",
+            "--view",
+            "graph-turbo-request",
+            ".",
+        ])
+        .output()
+        .expect("run asp rust finder graph request");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let payload: Value = serde_json::from_slice(&output.stdout).expect("graph request json");
+    assert_graph_turbo_request_contract(&payload);
+    let payload_text = serde_json::to_string(&payload).expect("serialize payload");
+    assert!(payload_text.contains("src/lib.rs"), "{payload_text}");
+    assert!(
+        payload_text.contains(".allowed/src/lib.rs"),
+        "{payload_text}"
+    );
+    assert!(
+        !payload_text.contains("ignored/src/lib.rs"),
+        "{payload_text}"
+    );
+    assert!(
+        !payload_text.contains(".blocked/src/lib.rs"),
+        "{payload_text}"
+    );
+    assert!(!marker.exists(), "search pipe should not spawn provider");
+    let _ = std::fs::remove_dir_all(root);
+}

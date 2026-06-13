@@ -44,7 +44,7 @@
     },
     "method": {
       "type": "string",
-      "pattern": "^(?:guide|query|(search|query|check|proof|review|evidence|ast-patch|agent)/[a-z][a-z0-9_-]*)$"
+      "pattern": "^(?:guide|query|(search|query|check|proof|review|verification|evidence|ast-patch|agent)/[a-z][a-z0-9_-]*)$"
     },
     "command": {
       "enum": [
@@ -54,6 +54,7 @@
         "check",
         "proof",
         "review",
+        "verification",
         "evidence",
         "ast-patch",
         "agent"
@@ -426,6 +427,30 @@
               },
               "outputSchemaIds": {
                 "minItems": 1
+              }
+            },
+            "not": {
+              "required": [
+                "view"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "pattern": "^verification/"
+              }
+            },
+            "required": [
+              "method"
+            ]
+          },
+          "then": {
+            "properties": {
+              "command": {
+                "const": "verification"
               }
             },
             "not": {

@@ -1,10 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agent-semantic-protocols.local/schemas/semantic-structural-index.v1.schema.json",
-  "title": "Semantic Structural Index",
-  "description": "Language-neutral, parser-owned structural cache index for owner, symbol, file, and dependency recall. This packet stores locators, names, dependency identities, and freshness hashes, never source text.",
+  "$id": "https://agent.semantic-protocols/schemas/semantic-structural-index.v1.schema.json",
+  "title": "Semantic structural index feed",
   "type": "object",
-  "additionalProperties": false,
   "required": [
     "schemaId",
     "schemaVersion",
@@ -13,8 +11,8 @@
     "generationId",
     "languageId",
     "providerId",
+    "exportMethod",
     "projectRoot",
-    "sourceAuthority",
     "rawSourceStored",
     "fileHashes",
     "owners",
@@ -40,44 +38,36 @@
     },
     "languageId": {
       "type": "string",
-      "pattern": "^[a-z][a-z0-9_-]*$"
+      "minLength": 1
     },
     "providerId": {
       "type": "string",
-      "pattern": "^[a-z][a-z0-9_-]*$"
+      "minLength": 1
     },
     "providerVersion": {
-      "type": "string",
-      "minLength": 1
+      "type": "string"
     },
     "exportMethod": {
-      "type": "string",
-      "minLength": 1
+      "const": "index/structural"
     },
     "projectRoot": {
       "type": "string",
       "minLength": 1
     },
     "packageRoot": {
-      "type": "string",
-      "minLength": 1
+      "type": "string"
     },
     "sourceAuthority": {
-      "enum": ["native-parser", "type-checker", "manifest", "provider-index"]
+      "type": "string"
     },
     "sourceArtifactId": {
       "type": "string",
-      "minLength": 1
-    },
-    "indexFingerprint": {
-      "type": "string",
-      "pattern": "^[a-z0-9_-]+:[a-f0-9]{16,64}$"
+      "pattern": "^structural-index/[^/]+[.]json$"
     },
     "rawSourceStored": {
       "const": false
     },
     "fileHashes": {
-      "description": "Freshness evidence for every source or manifest path that contributed rows. This must be non-empty for replayable rows.",
       "type": "array",
       "minItems": 1,
       "items": {
@@ -87,84 +77,57 @@
     "owners": {
       "type": "array",
       "items": {
-        "$ref": "#/$defs/ownerRow"
+        "$ref": "#/$defs/owner"
       }
     },
     "symbols": {
       "type": "array",
       "items": {
-        "$ref": "#/$defs/symbolRow"
+        "$ref": "#/$defs/symbol"
       }
     },
     "dependencyUsages": {
       "type": "array",
       "items": {
-        "$ref": "#/$defs/dependencyUsageRow"
-      }
-    },
-    "notes": {
-      "type": "array",
-      "items": {
-        "$ref": "#/$defs/note"
+        "$ref": "#/$defs/dependencyUsage"
       }
     }
   },
+  "additionalProperties": true,
   "$defs": {
-    "projectPath": {
-      "$ref": "semantic-source-location.v1.schema.json#/$defs/projectPath"
-    },
-    "location": {
-      "$ref": "semantic-source-location.v1.schema.json#/$defs/location"
-    },
-    "sourceLocator": {
-      "$ref": "semantic-source-location.v1.schema.json#/$defs/sourceLocator"
-    },
     "fileHash": {
       "type": "object",
-      "additionalProperties": false,
       "required": ["path", "sha256"],
       "properties": {
         "path": {
-          "$ref": "#/$defs/projectPath"
+          "type": "string",
+          "minLength": 1
         },
         "sha256": {
           "type": "string",
-          "pattern": "^[a-f0-9]{64}$"
+          "pattern": "^[0-9a-f]{64}$"
         },
         "source": {
-          "enum": ["provider", "client-derived", "manifest", "lockfile"]
+          "type": "string"
         }
-      }
+      },
+      "additionalProperties": true
     },
-    "queryKeys": {
-      "type": "array",
-      "uniqueItems": true,
-      "items": {
-        "type": "string",
-        "minLength": 1
-      }
-    },
-    "nativeFactRefs": {
-      "type": "array",
-      "uniqueItems": true,
-      "items": {
-        "type": "string",
-        "minLength": 1
-      }
-    },
-    "ownerRow": {
+    "owner": {
       "type": "object",
-      "additionalProperties": false,
       "required": ["ownerPath", "ownerKind", "sourceAuthority", "queryKeys"],
       "properties": {
         "ownerPath": {
-          "$ref": "#/$defs/projectPath"
+          "type": "string",
+          "minLength": 1
         },
         "ownerKind": {
-          "enum": ["source", "test", "manifest", "module", "package", "document", "custom"]
+          "type": "string",
+          "minLength": 1
         },
         "sourceAuthority": {
-          "enum": ["native-parser", "type-checker", "manifest", "provider-index"]
+          "type": "string",
+          "minLength": 1
         },
         "location": {
           "$ref": "#/$defs/location"
@@ -172,121 +135,118 @@
         "queryKeys": {
           "$ref": "#/$defs/queryKeys"
         }
-      }
+      },
+      "not": {
+        "$ref": "#/$defs/rawSourceFields"
+      },
+      "additionalProperties": true
     },
-    "symbolKind": {
-      "enum": [
-        "module",
-        "function",
-        "method",
-        "class",
-        "struct",
-        "enum",
-        "interface",
-        "trait",
-        "type",
-        "constant",
-        "field",
-        "test",
-        "custom"
-      ]
-    },
-    "symbolRow": {
+    "symbol": {
       "type": "object",
-      "additionalProperties": false,
       "required": ["ownerPath", "name", "kind", "queryKeys"],
       "properties": {
         "ownerPath": {
-          "$ref": "#/$defs/projectPath"
+          "type": "string",
+          "minLength": 1
         },
         "name": {
           "type": "string",
           "minLength": 1
         },
         "qualifiedName": {
+          "type": "string"
+        },
+        "kind": {
           "type": "string",
           "minLength": 1
         },
-        "kind": {
-          "$ref": "#/$defs/symbolKind"
-        },
         "visibility": {
-          "enum": [
-            "public",
-            "private",
-            "protected",
-            "internal",
-            "crate",
-            "package",
-            "unknown"
-          ]
+          "type": "string"
         },
         "sourceLocator": {
-          "$ref": "#/$defs/sourceLocator"
-        },
-        "nativeFactRefs": {
-          "$ref": "#/$defs/nativeFactRefs"
+          "type": "string"
         },
         "queryKeys": {
           "$ref": "#/$defs/queryKeys"
         }
-      }
+      },
+      "not": {
+        "$ref": "#/$defs/rawSourceFields"
+      },
+      "additionalProperties": true
     },
-    "dependencyUsageRow": {
+    "dependencyUsage": {
       "type": "object",
-      "additionalProperties": false,
       "required": ["ownerPath", "packageName", "source", "queryKeys"],
       "properties": {
         "ownerPath": {
-          "$ref": "#/$defs/projectPath"
+          "type": "string",
+          "minLength": 1
         },
         "packageName": {
           "type": "string",
           "minLength": 1
         },
         "packageVersion": {
-          "type": "string",
-          "minLength": 1
+          "type": ["string", "null"]
         },
         "apiName": {
-          "type": "string",
-          "minLength": 1
+          "type": ["string", "null"]
         },
         "importPath": {
+          "type": ["string", "null"]
+        },
+        "manifestPath": {
+          "type": ["string", "null"]
+        },
+        "lockfileHash": {
+          "type": ["string", "null"]
+        },
+        "source": {
           "type": "string",
           "minLength": 1
         },
-        "manifestPath": {
-          "$ref": "#/$defs/projectPath"
-        },
-        "lockfileHash": {
-          "type": "string",
-          "pattern": "^sha256:[a-f0-9]{64}$"
-        },
-        "source": {
-          "enum": ["manifest", "native-parser", "type-checker", "manifest+native-parser"]
-        },
         "sourceLocator": {
-          "$ref": "#/$defs/sourceLocator"
+          "type": ["string", "null"]
         },
         "queryKeys": {
           "$ref": "#/$defs/queryKeys"
         }
-      }
+      },
+      "not": {
+        "$ref": "#/$defs/rawSourceFields"
+      },
+      "additionalProperties": true
     },
-    "note": {
+    "location": {
       "type": "object",
-      "additionalProperties": false,
-      "required": ["kind", "message"],
       "properties": {
-        "kind": {
-          "type": "string",
-          "pattern": "^[a-z][a-z0-9_-]*$"
+        "path": {
+          "type": "string"
         },
-        "message": {
+        "lineRange": {
           "type": "string"
         }
+      },
+      "additionalProperties": true
+    },
+    "queryKeys": {
+      "type": "array",
+      "items": {
+        "type": "string"
       }
+    },
+    "rawSourceFields": {
+      "anyOf": [
+        { "required": ["body"] },
+        { "required": ["code"] },
+        { "required": ["content"] },
+        { "required": ["rawSource"] },
+        { "required": ["rawSourceText"] },
+        { "required": ["snippet"] },
+        { "required": ["sourceText"] },
+        { "required": ["text"] }
+      ]
     }
   }
 }

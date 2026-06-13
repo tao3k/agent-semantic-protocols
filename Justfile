@@ -169,8 +169,14 @@ agent-tools-install-jl bin_dir="":
     @bin_dir="{{bin_dir}}"; \
       if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-$HOME/.local/bin}"; fi; \
       mkdir -p "${bin_dir}"; \
+      needs_build=0; \
       if [ ! -x "{{julia_compiled_harness}}" ]; then \
-        (cd "{{julia_harness_project}}" && ASP_JULIA_BUILD_DIR=build/juliac-asp-local juliac/build_provider.sh); \
+        needs_build=1; \
+      elif [ -n "$$(find "{{julia_harness_project}}/src" "{{julia_harness_project}}/juliac" "{{julia_harness_project}}/Project.toml" -type f -newer "{{julia_compiled_harness}}" -print -quit)" ]; then \
+        needs_build=1; \
+      fi; \
+      if [ "${needs_build}" -eq 1 ]; then \
+        (cd "{{julia_harness_project}}" && rm -rf build/juliac-asp-local && ASP_JULIA_BUILD_DIR=build/juliac-asp-local juliac/build_provider.sh); \
       fi; \
       install -m 755 "{{julia_compiled_harness}}" "${bin_dir}/asp-julia-harness"; \
       "${bin_dir}/asp-julia-harness" guide {{julia_harness_project}} >/dev/null
@@ -206,6 +212,43 @@ check-graph-turbo-focused:
       tests/unit/semantic_sandtable/test_agent_observation_read_loop.py \
       tests/unit/semantic_sandtable/test_expectations.py
 
+check-language-evidence-smoke-setup:
+    mkdir -p .bin
+    cargo build -q --manifest-path Cargo.toml --package agent-semantic-protocol --bin asp
+    install -m 755 target/debug/asp .bin/asp
+    cargo build -q --manifest-path {{rust_harness_project}}/Cargo.toml --features cli --bin rs-harness
+    install -m 755 {{rust_harness_project}}/target/debug/rs-harness .bin/rs-harness
+    npm --prefix {{typescript_harness_project}} run -s build >/dev/null
+    printf '#!/usr/bin/env bash\nexec node "%s/%s/dist/src/cli/main.js" "$@"\n' "$PWD" "{{typescript_harness_project}}" > .bin/ts-harness
+    chmod 755 .bin/ts-harness
+    printf '#!/usr/bin/env bash\nexec uv run --project "%s/%s" --frozen py-harness "$@"\n' "$PWD" "{{python_harness_project}}" > .bin/py-harness
+    chmod 755 .bin/py-harness
+    PATH="$PWD/.bin:$PATH" .bin/asp hook install --client codex .
+
+check-language-evidence-smoke-core: check-language-evidence-smoke-setup
+    PATH="$PWD/.bin:$PATH" \
+      ASP_LANGUAGE_EVIDENCE_SMOKE_SCOPE=core-fast \
+      ASP_LANGUAGE_EVIDENCE_LANGUAGES=rust,python,typescript \
+      ASP_LANGUAGE_EVIDENCE_TIMING_JSON=.cache/agent-semantic-protocol/language-evidence-smoke-core-fast.json \
+      uv run --project packages/python/asp_graph_turbo --frozen pytest tests/unit/test_language_evidence_smoke.py -q
+    cat .cache/agent-semantic-protocol/language-evidence-smoke-core-fast.json
+
+check-language-evidence-smoke: check-language-evidence-smoke-core
+    @true
+
+check-language-evidence-smoke-all-setup: check-language-evidence-smoke-setup
+    just agent-tools-install-julia .bin
+    PATH="$PWD/.bin:$PATH" .bin/asp hook install --client codex .
+    PATH="$PWD/.bin:$PATH" .bin/asp julia guide {{julia_harness_project}} >/dev/null
+
+check-language-evidence-smoke-all: check-language-evidence-smoke-all-setup
+    PATH="$PWD/.bin:$PATH" \
+      ASP_LANGUAGE_EVIDENCE_SMOKE_SCOPE=all-providers \
+      ASP_LANGUAGE_EVIDENCE_MAX_COMMAND_SECONDS_JULIA=2 \
+      ASP_LANGUAGE_EVIDENCE_TIMING_JSON=.cache/agent-semantic-protocol/language-evidence-smoke-all-providers.json \
+      uv run --project packages/python/asp_graph_turbo --frozen pytest tests/unit/test_language_evidence_smoke.py -q
+    cat .cache/agent-semantic-protocol/language-evidence-smoke-all-providers.json
+
 provider-gate: check-rust-warnings check-schema-profiles check-rfc-docs check-tree-sitter-query-contracts check-language-workspace-search-contracts check-graph-turbo-focused provider-gate-root provider-gate-rust provider-gate-typescript provider-gate-python provider-gate-julia
 
 check-rust-warnings:
@@ -227,7 +270,7 @@ check-rfc-docs:
       tests/unit/test_docs_rfc_skill_contracts.py \
       -q
 
-provider-gate-root:
+provider-gate-root: check-language-evidence-smoke
     cargo test -p agent-semantic-hook
     uv run --project packages/python --frozen python -m pytest \
       tests/unit/test_semantic_*_schema.py \
@@ -260,9 +303,9 @@ provider-gate-typescript:
       {{typescript_harness_project}}/dist/tests/unit/semantic_search_schema.test.js
 
 provider-gate-python:
-    uv run --project {{python_harness_project}} --frozen py-harness search policy PY-PROJ-R001 owner tests --view seeds {{python_harness_project}}
-    uv run --project {{python_harness_project}} --frozen py-harness search policy PY-AGENT-R008 owner tests --view seeds {{python_harness_project}}
-    uv run --project {{python_harness_project}} --frozen py-harness query src/python_lang_project_harness/_semantic_language.py --term semantic_language_registry_document --names-only {{python_harness_project}}
+    uv run --project {{python_harness_project}} --frozen py-harness search policy PY-PROJ-R001 owner tests --view seeds --workspace {{python_harness_project}}
+    uv run --project {{python_harness_project}} --frozen py-harness search policy PY-AGENT-R008 owner tests --view seeds --workspace {{python_harness_project}}
+    uv run --project {{python_harness_project}} --frozen py-harness query src/python_lang_project_harness/_semantic_language.py --term semantic_language_registry_document --names-only --workspace {{python_harness_project}}
     uv run --project {{python_harness_project}} --frozen python -m pytest \
       {{python_harness_project}}/tests/unit/harness/test_semantic_cli_query_set.py \
       {{python_harness_project}}/tests/unit/harness/test_semantic_cli_owner_items.py \
@@ -276,6 +319,7 @@ provider-gate-julia:
 	{{julia_harness}} agent doctor --json {{julia_harness_project}} >/dev/null
 	{{julia_compiled_harness}} guide {{julia_harness_project}} >/dev/null
 	{{julia_compiled_harness}} agent doctor --json {{julia_harness_project}} >/dev/null
+	just check-language-evidence-smoke-all
 
 # Refresh the local runtime boundary used by semantic-facts pipe smokes.
 provider-gate-semantic-facts-setup:

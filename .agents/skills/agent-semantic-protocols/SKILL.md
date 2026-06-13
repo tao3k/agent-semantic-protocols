@@ -10,20 +10,26 @@ description: Use when working with the language provider binaries maintained by 
 
 ## ASP Explorer Subagent
 
-When Codex exposes the custom subagent role and a hook deny message or
-`search pipe` output points to `asp-explorer`, the parent agent should call
-`spawn_agent` with `agent_type=asp_explorer`. If the current runtime only lists
-built-in roles, call `spawn_agent` with `agent_type=explorer` and include the
-ASP Explorer branch prompt plus the safe ASP command group in the message.
-Spawn one read-only instance per independent `actionFrontier` or
-`targetActions` branch, and require a compact
-`[search-subagent] role=... action=... evidence=... missing=... next=... risk=...`
+When a hook deny message or `search pipe` output points to `asp-explorer`,
+Codex should reuse the ASP search agent thread already opened for the current
+main task. If no such thread exists, call `spawn_agent` with
+`fork_turns="none"` and include a self-contained ASP Explorer branch prompt plus
+the safe ASP command group in the message. Keep model, reasoning, and agent-type
+defaults in Codex config, not in the prompt. Spawn one read-only instance per
+independent `actionFrontier` or `targetActions` branch, and require a compact
+`[asp-search-subagent] role=... action=... evidence=... missing=... next=... risk=...`
 receipt.
 
-Keep reasoning state in the parent. `asp-explorer` workers do not share sibling
+Keep reasoning state in the parent. `asp-explorer` workers receive only the
+explicit branch prompt through `fork_turns="none"`, do not share sibling
 context, must not edit files, and must not spawn child subagents. If the custom
-subagent is unavailable, run the same ASP routes sequentially and synthesize the
-receipts in the parent.
+subagent remains open, reuse it with `send_input` so it keeps its own thread
+history. If the custom subagent is unavailable, run the same ASP routes
+sequentially and synthesize the receipts in the parent.
+
+`asp hook install --client codex .` registers the role in project Codex config,
+but a thread that was already running before install may need a reload or new
+thread before `spawn_agent` lists `asp_explorer`.
 
 ## Provider Activation
 

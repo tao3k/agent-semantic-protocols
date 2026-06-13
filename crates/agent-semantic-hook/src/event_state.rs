@@ -198,6 +198,9 @@ pub(crate) fn prompt_search_flow_after_prime(
         if !event_matches_prompt_scope(&event, session_id, transcript_path) {
             continue;
         }
+        if is_prompt_scope_boundary(&event) {
+            break;
+        }
         let Some(command) = event.pointer("/subject/command").and_then(Value::as_str) else {
             continue;
         };
@@ -238,21 +241,32 @@ pub(crate) fn prompt_asp_command_count(
             state_path.display()
         )
     })?;
-    Ok(content
+    let mut count = 0;
+    for event in content
         .lines()
         .rev()
         .filter_map(|line| serde_json::from_str::<Value>(line).ok())
-        .take_while(|event| is_recent_for_window(event, now, SEARCH_PIPE_FEEDBACK_WINDOW_MS))
-        .filter(|event| event_matches_prompt_scope(event, session_id, transcript_path))
-        .filter(|event| event.get("event").and_then(Value::as_str) == Some("post-tool"))
-        .filter_map(|event| {
-            event
-                .pointer("/subject/command")
-                .and_then(Value::as_str)
-                .map(str::to_string)
-        })
-        .filter(|command| asp_command(command))
-        .count())
+    {
+        if !is_recent_for_window(&event, now, SEARCH_PIPE_FEEDBACK_WINDOW_MS) {
+            break;
+        }
+        if !event_matches_prompt_scope(&event, session_id, transcript_path) {
+            continue;
+        }
+        if is_prompt_scope_boundary(&event) {
+            break;
+        }
+        if event.get("event").and_then(Value::as_str) != Some("post-tool") {
+            continue;
+        }
+        let Some(command) = event.pointer("/subject/command").and_then(Value::as_str) else {
+            continue;
+        };
+        if asp_command(command) {
+            count += 1;
+        }
+    }
+    Ok(count)
 }
 
 /// Remove cached hook event state when it belongs to an older hook protocol.
@@ -383,6 +397,10 @@ fn event_matches_prompt_scope(
         fields.get("transcriptPath").and_then(Value::as_str) == Some(expected)
     });
     session_matches || transcript_matches
+}
+
+fn is_prompt_scope_boundary(event: &Value) -> bool {
+    event.get("event").and_then(Value::as_str) == Some("user-prompt")
 }
 
 /// Classify an ASP search command into prime/pipe stages.

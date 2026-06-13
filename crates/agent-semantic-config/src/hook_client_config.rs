@@ -2,9 +2,9 @@
 
 use figment::{
     Figment,
-    providers::{Format, Toml},
+    providers::{Format, Serialized, Toml},
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, HashSet},
     path::{Path, PathBuf},
@@ -34,6 +34,15 @@ pub struct HookClientConfigFile {
     pub experimental: BTreeMap<String, BTreeMap<String, bool>>,
     #[serde(default)]
     pub rules: Vec<HookClientRuleConfig>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct HookClientConfigMetadataDefaults {
+    schema_id: &'static str,
+    schema_version: &'static str,
+    protocol_id: &'static str,
+    protocol_version: &'static str,
 }
 
 /// One declarative hook rule from project-local config.
@@ -210,11 +219,21 @@ pub fn load_hook_client_config_file(path: &Path) -> Result<HookClientConfigFile,
     if !path.is_file() {
         return Ok(HookClientConfigFile::default());
     }
-    let parsed = Figment::from(Toml::file(path))
+    let parsed = Figment::from(Serialized::defaults(hook_client_config_metadata_defaults()))
+        .merge(Toml::file(path))
         .extract::<HookClientConfigFile>()
         .map_err(|error| format!("failed to parse {}: {error}", path.display()))?;
     validate_config(&parsed)?;
     Ok(parsed)
+}
+
+fn hook_client_config_metadata_defaults() -> HookClientConfigMetadataDefaults {
+    HookClientConfigMetadataDefaults {
+        schema_id: CLIENT_HOOK_CONFIG_SCHEMA_ID,
+        schema_version: CLIENT_HOOK_CONFIG_SCHEMA_VERSION,
+        protocol_id: HOOK_PROTOCOL_ID,
+        protocol_version: HOOK_PROTOCOL_VERSION,
+    }
 }
 
 fn validate_config(config: &HookClientConfigFile) -> Result<(), String> {

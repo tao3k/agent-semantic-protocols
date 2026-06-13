@@ -5,6 +5,7 @@ use crate::command::{
     path_like_tokens, raw_search_plan, search_query_route, search_query_route_for_selector,
     selector_query_route,
 };
+use crate::source_selector::source_selector_base;
 use crate::{
     ActivatedProvider, DecisionRoute, DecisionRouteKind, HookDecision, HookRuntime,
     OperationIntent, ReasonKind, SourceSelectorKind, SourceSelectorMatch, ToolAction,
@@ -242,7 +243,16 @@ fn action_path_selectors<'a>(action: &'a ToolAction, tokens: &'a [String]) -> Ve
 }
 
 fn push_unique_selector<'a>(selectors: &mut Vec<&'a str>, selector: &'a str) {
-    if !selectors.iter().any(|existing| existing == &selector) {
+    let selector_base = source_selector_base(selector);
+    if let Some(existing) = selectors
+        .iter_mut()
+        .find(|existing| source_selector_base(existing) == selector_base)
+    {
+        let existing_base = source_selector_base(existing);
+        if selector != selector_base && *existing == existing_base {
+            *existing = selector;
+        }
+    } else {
         selectors.push(selector);
     }
 }

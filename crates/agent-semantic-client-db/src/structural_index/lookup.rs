@@ -48,7 +48,7 @@ pub(super) fn lookup_structural_symbols(
     let like_query = structural_like_query(lookup.query.as_str());
     let mut statement = db
         .conn
-        .prepare(
+        .prepare_cached(
             "SELECT
                 s.owner_path,
                 s.name,
@@ -61,6 +61,15 @@ pub(super) fn lookup_structural_symbols(
             WHERE g.language_id = ?1
               AND g.provider_id = ?2
               AND g.project_root = ?3
+              AND g.generation_id = (
+                SELECT latest.generation_id
+                FROM structural_index_generation latest
+                WHERE latest.language_id = ?1
+                  AND latest.provider_id = ?2
+                  AND latest.project_root = ?3
+                ORDER BY latest.updated_at DESC, latest.generation_id DESC
+                LIMIT 1
+              )
               AND s.search_text LIKE ?4 ESCAPE '\\'
             ORDER BY g.updated_at DESC, s.symbol_ordinal
             LIMIT ?5",
@@ -92,7 +101,7 @@ pub(super) fn lookup_structural_dependency_usages(
     let like_query = structural_like_query(lookup.query.as_str());
     let mut statement = db
         .conn
-        .prepare(
+        .prepare_cached(
             "SELECT
                 d.owner_path,
                 d.package_name,
@@ -109,6 +118,15 @@ pub(super) fn lookup_structural_dependency_usages(
             WHERE g.language_id = ?1
               AND g.provider_id = ?2
               AND g.project_root = ?3
+              AND g.generation_id = (
+                SELECT latest.generation_id
+                FROM structural_index_generation latest
+                WHERE latest.language_id = ?1
+                  AND latest.provider_id = ?2
+                  AND latest.project_root = ?3
+                ORDER BY latest.updated_at DESC, latest.generation_id DESC
+                LIMIT 1
+              )
               AND d.search_text LIKE ?4 ESCAPE '\\'
             ORDER BY g.updated_at DESC, d.usage_ordinal
             LIMIT ?5",

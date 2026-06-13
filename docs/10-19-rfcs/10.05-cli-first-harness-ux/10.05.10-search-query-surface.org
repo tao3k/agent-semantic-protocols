@@ -63,6 +63,15 @@ registry descriptors, cache receipts, and hook recovery routes continue to use
 the language facade as the canonical shape whenever the active language is
 known.
 
+When a root or language facade consumes =--workspace <workspace-root>= to choose
+the provider project root and process cwd, that routing flag must be removed
+before invoking the client backend/provider command.  The provider receives the
+normalized search or query argv under the selected cwd; it must not see the same
+relative workspace token again and resolve it a second time.  This keeps
+=asp rust search prime --workspace languages/rust-lang-project-harness --view seeds=
+equivalent to running the Rust provider once in
+=languages/rust-lang-project-harness= with =search prime --view seeds=.
+
 Document languages are a separate facade class.  =asp org= and =asp md= expose
 parser-owned document structure, not code harness policy.  The executable
 runtime is =asp= with a native =orgize= dependency.  The =orgize= binary remains
@@ -275,6 +284,16 @@ available crate source/doc artifacts.  A =doc= or =docs= frontier node is a
 provider-owned local documentation/API frontier; agents must not interpret it
 as permission to browse docs.rs while local dependency actions are available.
 
+Dependency usage guidance is a capability-coverage surface, not just a
+declared-or-unused check.  When a provider has local dependency usage owners, it
+may emit =dependency-guidance= facts that classify the observed usage as
+=basic_usage= or =capability_boundary= and name missing boundary capabilities.
+For example, Rust can distinguish a =tokio= owner that only imports task APIs
+from one that uses timeout, cancellation, child-process lifecycle, or stream
+drain APIs.  These facts should point agents toward local =search deps
+<crate>::<capability>= queries and engineering follow-up, rather than treating a
+used dependency as already operationalized.
+
 ** =query= — first-class parser-native extraction and reroutes
 
 Provider-native item query is the default code extraction path for agents:
@@ -325,6 +344,12 @@ In public CLI grammar, =workspace= is the root semantic.  Agent-facing paths,
 selectors, and search scopes are workspace-relative unless absolute; package
 roots and project roots are provider-owned narrowing facts, not positional
 root arguments.
+The selected workspace is also the containment boundary.  Root/language facades
+must reject explicit =--workspace= values, positional project roots, selectors,
+cache paths, and provider cwd choices that canonicalize outside the activated
+workspace.  A package root may narrow execution only when it remains under that
+workspace; outside-workspace execution is invalid even if the target path has a
+valid language marker such as =Cargo.toml=.
 
 If the selector is too wide for bounded code transport, the provider returns a
 =read-plan= frontier, not a denial-only outline.  The active contract is

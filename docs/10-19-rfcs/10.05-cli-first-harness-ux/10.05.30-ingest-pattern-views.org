@@ -598,6 +598,14 @@ scope.  A query for a specific version outside that scope is explicit external
 research; it may route to docs/API facts, but local owner usage must remain
 empty unless the provider has source facts for that external version.
 
+If the requested dependency is not present in the current workspace metadata,
+=search deps= must emit a compact no-output receipt instead of expanding into a
+documentation-search frontier.  The receipt should explain that no local
+dependency fact was found, such as =noOutput reason=no-local-dependency= with a
+source trace for manifest and usage evidence.  Agent-facing follow-up must stay
+inside local dependency facts unless the user explicitly asks for external
+documentation research.
+
 ** =search symbol= / =search callsite=
 
 #+begin_src shell

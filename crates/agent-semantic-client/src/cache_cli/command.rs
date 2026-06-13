@@ -11,6 +11,10 @@ use agent_semantic_client_core::{
     ProviderRegistrySnapshot,
 };
 use agent_semantic_client_db::{ClientDb, ClientDbReport};
+use agent_semantic_runtime::{RuntimeSourceSpec, ensure_runtime_source_checkout};
+use serde_json::json;
+
+use super::structural_index_import::import_structural_index_artifacts;
 
 pub(crate) fn run_cache(
     project_root: &Path,
@@ -18,6 +22,46 @@ pub(crate) fn run_cache(
     receipt_json: bool,
 ) -> Result<(), String> {
     match forwarded_args {
+        [subcommand, action, rest @ ..]
+            if subcommand == "runtime-source" && action == "acquire" =>
+        {
+            let spec = parse_runtime_source_acquire_args(rest)?;
+            let checkout = ensure_runtime_source_checkout(project_root, &spec)?;
+            println!(
+                "[asp-cache-runtime-source] status=ready language={} stateNamespace={} checkout={} statePathPolicy=asp-state-managed indexOwner={}",
+                checkout.language_id,
+                checkout.state_namespace,
+                checkout.checkout,
+                checkout.index_owner
+            );
+            println!(
+                "|sourceRef manager=git repository={} checkout={}",
+                checkout.repository, checkout.checkout
+            );
+            println!(
+                "|acquisition owner=asp operation=clone-or-fetch-checkout-index checkoutDir={} indexOwner={}",
+                checkout.checkout_dir.display(),
+                checkout.index_owner
+            );
+            println!("next=asp cache import");
+            if receipt_json {
+                let receipt = json!({
+                    "schemaId": "agent.semantic-protocols.semantic-runtime-source-acquisition.receipt",
+                    "schemaVersion": "1",
+                    "status": "ready",
+                    "languageId": checkout.language_id,
+                    "repository": checkout.repository,
+                    "checkout": checkout.checkout,
+                    "stateNamespace": checkout.state_namespace,
+                    "statePathPolicy": "asp-state-managed",
+                    "indexOwner": checkout.index_owner,
+                    "checkoutDir": checkout.checkout_dir,
+                    "next": "asp cache import"
+                });
+                eprintln!("{receipt}");
+            }
+            Ok(())
+        }
         [subcommand] if subcommand == "status" => {
             let snapshot = ProviderRegistrySnapshot::load(project_root);
             let provenance = snapshot
@@ -94,6 +138,8 @@ pub(crate) fn run_cache(
             let db_path = ClientDb::default_path(cache_root);
             let mut db = ClientDb::open_or_create(db_path.clone())?;
             db.import_manifest(&manifest)?;
+            let structural_index_imported_count =
+                import_structural_index_artifacts(cache_root, &mut db, &manifest)?;
             let db_report = db
                 .inspect_open()
                 .unwrap_or_else(|_| ClientDb::inspect(db_path));
@@ -101,13 +147,14 @@ pub(crate) fn run_cache(
                 ClientReceipt::cache_report(ClientMethod::CacheImport, provenance, &cache_report);
             apply_db_report_to_receipt(&mut receipt, &db_report);
             receipt.sqlite_read_count = Some(1);
-            receipt.sqlite_write_count = Some(1);
+            receipt.sqlite_write_count = Some(1 + structural_index_imported_count);
             println!(
-                "[asp-cache] status=imported route=local-cache cacheRoot={} manifest={} generations={} rawSourceStored={}",
+                "[asp-cache] status=imported route=local-cache cacheRoot={} manifest={} generations={} rawSourceStored={} structuralIndexImported={}",
                 display_optional_path(cache_report.cache_root.as_deref()),
                 cache_report.status.as_str(),
                 cache_report.generation_count,
-                cache_report.raw_source_stored
+                cache_report.raw_source_stored,
+                structural_index_imported_count
             );
             println!(
                 "|cache manifestPath={} cacheManifestStatus={}",
@@ -238,9 +285,56 @@ pub(crate) fn run_cache(
             Ok(())
         }
         _ => Err(
-            "usage: asp cache <status|import|invalidate|flush [syntax-rows]> [--root <path>]"
+            "usage: asp cache <status|import|invalidate|flush [syntax-rows]|runtime-source acquire --language-id <id> --repository <url> --checkout <ref> --state-namespace <namespace> --index-owner <owner>> [--root <path>]"
                 .to_string(),
         ),
+    }
+}
+
+fn parse_runtime_source_acquire_args(args: &[String]) -> Result<RuntimeSourceSpec, String> {
+    let mut language_id = None;
+    let mut repository = None;
+    let mut checkout = None;
+    let mut state_namespace = None;
+    let mut index_owner = None;
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--language-id" => language_id = Some(next_flag_value("--language-id", &mut iter)?),
+            "--repository" => repository = Some(next_flag_value("--repository", &mut iter)?),
+            "--checkout" => checkout = Some(next_flag_value("--checkout", &mut iter)?),
+            "--state-namespace" => {
+                state_namespace = Some(next_flag_value("--state-namespace", &mut iter)?);
+            }
+            "--index-owner" => index_owner = Some(next_flag_value("--index-owner", &mut iter)?),
+            other => {
+                return Err(format!(
+                    "unexpected runtime-source acquire argument: {other}"
+                ));
+            }
+        }
+    }
+    Ok(RuntimeSourceSpec {
+        language_id: language_id.ok_or_else(|| "--language-id is required".to_string())?,
+        repository: repository.ok_or_else(|| "--repository is required".to_string())?,
+        checkout: checkout.ok_or_else(|| "--checkout is required".to_string())?,
+        state_namespace: state_namespace
+            .ok_or_else(|| "--state-namespace is required".to_string())?,
+        index_owner: index_owner.ok_or_else(|| "--index-owner is required".to_string())?,
+    })
+}
+
+fn next_flag_value<'a>(
+    flag: &str,
+    iter: &mut impl Iterator<Item = &'a String>,
+) -> Result<String, String> {
+    let value = iter
+        .next()
+        .ok_or_else(|| format!("{flag} requires a value"))?;
+    if value.starts_with('-') {
+        Err(format!("{flag} requires a value"))
+    } else {
+        Ok(value.clone())
     }
 }
 

@@ -14,6 +14,7 @@ pub(super) enum ArtifactKind {
     SearchPacket,
     QueryPacket,
     SemanticTreeSitterQuery,
+    SemanticStructuralIndex,
 }
 
 pub(super) struct ArtifactEventWriteback<'a> {
@@ -148,6 +149,7 @@ fn artifact_event_kind(kind: ArtifactKind) -> &'static str {
         ArtifactKind::SearchPacket => "search",
         ArtifactKind::QueryPacket => "query",
         ArtifactKind::SemanticTreeSitterQuery => "tree-sitter-query",
+        ArtifactKind::SemanticStructuralIndex => "structural-index",
     }
 }
 
@@ -159,7 +161,7 @@ fn packet_target(packet: &serde_json::Value) -> String {
         .get("owners")
         .and_then(serde_json::Value::as_array)
         .and_then(|owners| owners.first())
-        .and_then(|owner| owner.get("path"))
+        .and_then(|owner| owner.get("path").or_else(|| owner.get("ownerPath")))
         .and_then(serde_json::Value::as_str)
         .unwrap_or("")
         .to_string()

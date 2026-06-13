@@ -134,7 +134,7 @@ impl ProviderRegistrySnapshot {
                     let candidate =
                         candidate_root.join(".cache/agent-semantic-protocol/hooks/activation.json");
                     if candidate.is_file() {
-                        return Self::load_from_path_for_project(&candidate, candidate_root);
+                        return Self::load_from_path_for_project(&candidate, project_root);
                     }
                     current = candidate_root.parent();
                 }
@@ -154,7 +154,7 @@ impl ProviderRegistrySnapshot {
                 let candidate =
                     candidate_root.join(".cache/agent-semantic-protocol/hooks/activation.json");
                 if candidate.is_file() {
-                    return Self::load_from_path_for_project(&candidate, candidate_root);
+                    return Self::load_from_path_for_project(&candidate, project_root);
                 }
                 current = candidate_root.parent();
             }

@@ -17,6 +17,28 @@ mod budget;
 mod invalid_facade;
 
 #[test]
+fn user_prompt_decision_records_prompt_scope_fields() {
+    let runtime = runtime_for_project(&temp_project_root("asp-hook-user-prompt-scope"));
+
+    let decision = classify_hook(
+        &runtime,
+        "claude",
+        "user-prompt",
+        &json!({
+            "hook_event_name": "UserPromptSubmit",
+            "session_id": "session-effect",
+            "transcript_path": "transcript-effect.jsonl",
+            "prompt": "How is search pipe scoped?"
+        }),
+    );
+
+    assert_eq!(decision.decision, DecisionKind::Allow);
+    assert_eq!(decision.fields["sessionId"], "session-effect");
+    assert_eq!(decision.fields["transcriptPath"], "transcript-effect.jsonl");
+    let _ = fs::remove_dir_all(runtime.project_root);
+}
+
+#[test]
 fn stop_hook_blocks_prime_only_flow_until_search_pipe_runs() {
     let project_root = temp_project_root("asp-hook-stop-prime-only");
     append_hook_event_state(
@@ -299,6 +321,37 @@ fn allowed_command_decision(
             command: Some(command.to_string()),
             paths: Vec::new(),
         },
+        routes: Vec::new(),
+        message: String::new(),
+        fields,
+    }
+}
+
+fn allowed_prompt_decision(
+    platform: &str,
+    session_id: &str,
+    transcript_path: &str,
+) -> HookDecision {
+    let mut fields = BTreeMap::new();
+    fields.insert(
+        "sessionId".to_string(),
+        serde_json::Value::String(session_id.to_string()),
+    );
+    fields.insert(
+        "transcriptPath".to_string(),
+        serde_json::Value::String(transcript_path.to_string()),
+    );
+    HookDecision {
+        schema_id: HOOK_DECISION_SCHEMA_ID,
+        schema_version: HOOK_DECISION_SCHEMA_VERSION,
+        protocol_id: HOOK_PROTOCOL_ID,
+        protocol_version: HOOK_PROTOCOL_VERSION,
+        platform: platform.to_string(),
+        event: "user-prompt".to_string(),
+        decision: DecisionKind::Allow,
+        reason_kind: ReasonKind::None,
+        language_ids: Vec::new(),
+        subject: DecisionSubject::default(),
         routes: Vec::new(),
         message: String::new(),
         fields,

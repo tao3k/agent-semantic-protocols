@@ -61,6 +61,21 @@ class LineProtocolCompactGraphEntriesTests(unittest.TestCase):
 
         self.assertEqual("pass", result.status)
 
+    def test_line_protocol_accepts_hyphenated_alias_node_kinds(self) -> None:
+        result = _run_entry_scenario(
+            "python.compact-graph-hyphenated-alias-node-kinds",
+            (
+                "print('[search-dependency] q=walkdir alg=dependency-frontier')\n"
+                "print('legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next')\n"
+                "print('aliases: graph:{G=search,U=doc-use,C=crate-source,O=owner}')\n"
+                "print('U=doc-use:path(README.md)!docs;C=crate-source:pkg(walkdir)!deps;O=owner:path(src/lib.rs)!owner')\n"
+                "print('G>{U:documents,C:uses,O:selects}')\n"
+                "print('rank=U,C,O frontier=U.docs,C.deps,O.owner')"
+            ),
+        )
+
+        self.assertEqual("pass", result.status)
+
     def test_line_protocol_rejects_entry_alias_missing_from_graph(self) -> None:
         result = _run_entry_scenario(
             "python.compact-graph-entry-missing-alias",

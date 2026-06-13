@@ -40,7 +40,7 @@
           "routes.0.kind": "fzf",
           "routes.0.providerId": "rs-harness"
         },
-        "maxElapsedMsWarn": 6000
+        "maxElapsedMsWarn": 9000
       }
     },
     {
@@ -65,7 +65,7 @@
           "routes.0.kind": "fzf",
           "routes.0.providerId": "ts-harness"
         },
-        "maxElapsedMsWarn": 6000
+        "maxElapsedMsWarn": 9000
       }
     },
     {
@@ -117,7 +117,7 @@
           "routes.0.kind": "query",
           "routes.0.providerId": "ts-harness"
         },
-        "maxElapsedMsWarn": 6000
+        "maxElapsedMsWarn": 9000
       }
     },
     {

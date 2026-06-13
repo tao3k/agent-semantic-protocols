@@ -61,7 +61,10 @@ pub(crate) fn parse_client_args(
                 if value.starts_with('-') {
                     return Err("--workspace requires a project root".to_string());
                 }
-                project_root = resolve_project_root(&value, &invocation_root);
+                project_root = workspace_bounded_root(
+                    resolve_project_root(&value, &invocation_root),
+                    &activation_root,
+                )?;
                 explicit_project_root = true;
             }
             "--receipt-json" => {
@@ -86,7 +89,10 @@ pub(crate) fn parse_client_args(
                 if value.is_empty() || value.starts_with('-') {
                     return Err("--workspace requires a project root".to_string());
                 }
-                project_root = resolve_project_root(value, &invocation_root);
+                project_root = workspace_bounded_root(
+                    resolve_project_root(value, &invocation_root),
+                    &activation_root,
+                )?;
                 explicit_project_root = true;
             }
             _ => forwarded_args.push(arg),
@@ -106,7 +112,7 @@ pub(crate) fn parse_client_args(
         {
             return Err("expected at most one PROJECT_ROOT argument".to_string());
         }
-        project_root = root;
+        project_root = workspace_bounded_root(root, &activation_root)?;
         forwarded_args.pop();
     }
     Ok(ParsedArgs {
@@ -162,6 +168,19 @@ fn resolve_project_root(value: &str, invocation_root: &Path) -> PathBuf {
         invocation_root.join(path)
     };
     canonical_or_existing(absolute)
+}
+
+fn workspace_bounded_root(root: PathBuf, activation_root: &Path) -> Result<PathBuf, String> {
+    let workspace_root = canonical_or_existing(activation_root.to_path_buf());
+    if root.starts_with(&workspace_root) {
+        Ok(root)
+    } else {
+        Err(format!(
+            "project root `{}` is outside workspace `{}`",
+            root.display(),
+            workspace_root.display()
+        ))
+    }
 }
 
 fn language_project_marker_root(language_id: &str, path: &Path) -> Option<PathBuf> {

@@ -155,6 +155,10 @@
         "lineProtocol": true,
         "stdoutContains": [
           "[search-prime]",
+          "analysis=structure",
+          "nativeSyntaxFacts=skipped",
+          "policyFindings=skipped",
+          "entries=",
           "legend: ID=kind:role(value)!next; entries profile(selectors=>returns); frontier ID.next",
           "G>{",
           "rank=",

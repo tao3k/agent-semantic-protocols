@@ -160,6 +160,20 @@ fn activation_prefix_takes_precedence_over_runtime_profile_argv() {
 }
 
 #[test]
+fn relative_project_root_is_canonicalized_for_provider_cwd() {
+    let backend = LocalNativeCliBackend::new(snapshot(vec![provider("rust", "rs-harness")]));
+    let current_dir = std::env::current_dir().expect("current dir");
+    let request = ClientRequest::new(ClientMethod::Search, PathBuf::from("."))
+        .with_language("rust")
+        .with_forwarded_args(vec!["prime".to_string()]);
+
+    let command = backend.prepare(&request).expect("prepare command");
+
+    assert!(command.project_root.is_absolute());
+    assert_eq!(command.project_root, current_dir);
+}
+
+#[test]
 fn execute_records_transport_receipt_fields() {
     let mut provider = provider("rust", "fake-rust-provider");
     provider.provider_command_prefix = vec![

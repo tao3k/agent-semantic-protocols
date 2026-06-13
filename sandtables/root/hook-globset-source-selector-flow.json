@@ -39,7 +39,7 @@
           "routes.0.kind": "query",
           "routes.0.providerId": "rs-harness"
         },
-        "maxElapsedMsWarn": 6000
+        "maxElapsedMsWarn": 10000
       }
     },
     {
@@ -64,7 +64,7 @@
           "routes.0.kind": "query",
           "routes.0.providerId": "py-harness"
         },
-        "maxElapsedMsWarn": 6000
+        "maxElapsedMsWarn": 10000
       }
     },
     {

@@ -52,6 +52,7 @@ def result_to_summary_packet(result: GraphResult) -> dict[str, object]:
         "algorithmTrace": full["algorithmTrace"],
         "rankExplanations": full["rankExplanations"],
         "receiptAdjustments": full["receiptAdjustments"],
+        "evidenceReliability": full["evidenceReliability"],
         "profileCompatibility": [
             _profile_compatibility_summary(entry)
             for entry in result.profile_compatibility

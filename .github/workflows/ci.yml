@@ -254,5 +254,25 @@ jobs:
             dist/tests/unit/semantic_language_registry_read_packet.test.js
         working-directory: languages/typescript-lang-project-harness
 
+      - name: Language evidence and facade smoke gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .bin
+          install -m 755 target/debug/asp .bin/asp
+          cargo build --manifest-path languages/rust-lang-project-harness/Cargo.toml --features cli --bin rs-harness
+          install -m 755 languages/rust-lang-project-harness/target/debug/rs-harness .bin/rs-harness
+          printf '#!/usr/bin/env bash\nexec node "%s/languages/typescript-lang-project-harness/dist/src/cli/main.js" "$@"\n' "$PWD" > .bin/ts-harness
+          chmod 755 .bin/ts-harness
+          printf '#!/usr/bin/env bash\nexec uv run --project "%s/languages/python-lang-project-harness" --frozen py-harness "$@"\n' "$PWD" > .bin/py-harness
+          chmod 755 .bin/py-harness
+          PATH="$PWD/.bin:$PATH" .bin/asp hook install --client codex .
+          PATH="$PWD/.bin:$PATH" \
+            ASP_LANGUAGE_EVIDENCE_SMOKE_SCOPE=core-fast \
+            ASP_LANGUAGE_EVIDENCE_LANGUAGES=rust,python,typescript \
+            ASP_LANGUAGE_EVIDENCE_TIMING_JSON=.cache/agent-semantic-protocol/language-evidence-smoke-core-fast.json \
+            uv run --project packages/python/asp_graph_turbo --frozen pytest tests/unit/test_language_evidence_smoke.py -q
+          cat .cache/agent-semantic-protocol/language-evidence-smoke-core-fast.json
+
       - name: Tree-sitter query contract gates
         run: uv run --project packages/python --frozen python -m tools tree-sitter validate contracts

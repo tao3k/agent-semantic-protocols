@@ -94,21 +94,34 @@ fn remove_stale_agent_files(parent: &Path, file_names: &[&str]) -> Result<(), St
 }
 
 fn codex_asp_explorer_agent(subagent_model: &str) -> Result<String, String> {
+    validate_subagent_model(subagent_model)?;
+    let agent = CodexAspExplorerAgent {
+        name: "asp_explorer",
+        description: "Read-only ASP search explorer for codebase mapping, query-pack construction, fan-out axes, and hook-safe evidence collection.",
+        nickname_candidates: ["ASP owner", "ASP rg", "ASP selector", "ASP search"],
+        model: subagent_model,
+        model_reasoning_effort: "medium",
+        sandbox_mode: "read-only",
+        developer_instructions: asp_explorer_instructions(),
+    };
+    let body = toml::to_string_pretty(&agent)
+        .map_err(|error| format!("failed to render Codex custom agent TOML: {error}"))?;
     Ok(format!(
-        r#"name = "asp_explorer"
-description = "Read-only ASP search explorer for codebase mapping, query-pack construction, fan-out axes, and hook-safe evidence collection."
-nickname_candidates = ["ASP owner", "ASP rg", "ASP selector", "ASP search"]
-model = {}
-model_reasoning_effort = "medium"
-sandbox_mode = "read-only"
-
-developer_instructions = """
-{}
-"""
-"#,
-        toml_basic_string(subagent_model)?,
-        asp_explorer_instructions()
+        "# Spawn policy: `fork_turns` is a `spawn_agent` argument, not a Codex\n\
+         # custom-agent config key. Parent callers must pass `fork_turns = \"none\"`.\n\
+         {body}"
     ))
+}
+
+#[derive(serde::Serialize)]
+struct CodexAspExplorerAgent<'a> {
+    name: &'a str,
+    description: &'a str,
+    nickname_candidates: [&'a str; 4],
+    model: &'a str,
+    model_reasoning_effort: &'a str,
+    sandbox_mode: &'a str,
+    developer_instructions: &'a str,
 }
 
 fn claude_asp_explorer_agent(subagent_model: &str) -> Result<String, String> {
@@ -135,6 +148,7 @@ fn asp_explorer_instructions() -> &'static str {
 Do not edit files.
 Do not run broad raw source reads.
 Use ASP provider commands before source reads.
+You are normally spawned with fork_turns="none"; parent/task context must arrive in the branch prompt or later send_input messages.
 Use at most one search prime and at most one search pipe per task.
 After prime, the immediate next ASP command must be search pipe.
 Compress broad prose into 2-4 stable terms before search pipe; prefer symbols, owners, paths, and error terms over long natural phrases.
@@ -171,22 +185,6 @@ fn validate_subagent_model(model: &str) -> Result<(), String> {
         return Err("--subagent-model must not contain control characters".to_string());
     }
     Ok(())
-}
-
-fn toml_basic_string(value: &str) -> Result<String, String> {
-    validate_subagent_model(value)?;
-    let mut escaped = String::with_capacity(value.len() + 2);
-    escaped.push('"');
-    for ch in value.chars() {
-        match ch {
-            '"' => escaped.push_str("\\\""),
-            '\\' => escaped.push_str("\\\\"),
-            '\t' => escaped.push_str("\\t"),
-            ch => escaped.push(ch),
-        }
-    }
-    escaped.push('"');
-    Ok(escaped)
 }
 
 fn yaml_single_quoted(value: &str) -> Result<String, String> {

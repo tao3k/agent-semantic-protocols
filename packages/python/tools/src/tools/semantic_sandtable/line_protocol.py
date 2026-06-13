@@ -119,7 +119,7 @@ def _looks_like_compact_graph_aliases_line(line: str) -> bool:
         alias, sep, node_type = entry.partition("=")
         if not sep or not _looks_like_compact_graph_alias_id(alias):
             return False
-        if not node_type.replace("_", "").isalnum():
+    if not node_type.replace("_", "").replace("-", "").isalnum():
             return False
     return True
 

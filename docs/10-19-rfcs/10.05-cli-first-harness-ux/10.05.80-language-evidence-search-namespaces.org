@@ -1,0 +1,732 @@
+#+TITLE: Language Evidence Search Namespaces
+#+PROPERTY: RFC 10.05.80
+
+* Language evidence search namespaces
+:PROPERTIES:
+:ID: 10.05.80-language-evidence-search-namespaces
+:END:
+
+Agent-facing search must prevent the model from guessing language facts from
+training memory.  The public search surface therefore needs programming
+language native namespaces that tell the agent which authority owns the answer:
+current project code, dependency resolution, language ecosystem extensions,
+active compiler or interpreter environment, language rules, standard library
+facts, executable patterns, or version comparison.
+
+This RFC extends the =search= namespace model from
+=10.05.30-ingest-pattern-views.org=.  It does not replace =search prime=,
+=search pipe=, =search owner=, =search deps=, or =search pattern=.  It makes the
+authority boundary explicit so language harnesses can converge without adding a
+loose natural-language =concept= surface.
+
+* Motivation
+
+Large language models often carry stale or mixed language knowledge.  A model
+may confuse Gerbil Scheme with Racket or other Scheme dialects, use an old Rust
+nightly API on a stable toolchain, or trust a comment that no longer matches the
+code.  The harness must turn these questions into parser, dependency,
+extension, runtime, and witness facts before the agent writes code.
+
+The central rule is:
+
+#+begin_src text
+Do not let the agent use remembered language facts when an active harness can
+resolve the same question from project, dependency, environment, language, std,
+pattern, or compare evidence.
+#+end_src
+
+* Namespace contract
+
+** =search code=
+
+Current project code.  This namespace owns source-local facts: symbols, owners,
+definitions, callsites, imports, exports, tests, docstrings, comments, and
+comment-derived claims.
+
+Comments are not ground truth.  They are author-intent evidence that must be
+checked against parser facts and executable witnesses when the claim matters.
+
+Example shapes:
+
+#+begin_src shell
+asp rust search code symbol OrderStatus --view seeds .
+asp rust search code comments --near enqueue --view seeds .
+asp gerbil-scheme search code comments --near defsyntax --view seeds .
+#+end_src
+
+Comment claim output should distinguish the claim, the code evidence, and the
+verdict:
+
+#+begin_src text
+commentClaim=macro-preserves-hygiene
+codeEvidence=uses-datum->syntax-without-lexical-context
+witness=expand-captures-binding
+verdict=comment-code-mismatch
+next=search lang macro hygiene
+#+end_src
+
+** =search deps=
+
+Resolved dependency facts.  This namespace owns package versions, enabled
+features, public API usage, dependency type leakage, dependency documentation
+facts, and external API guidance.  The local lockfile or package resolver
+defines the local dependency scope.
+
+Rust already has this direction through =search deps=.  Other language
+harnesses should converge on the same authority boundary instead of adding
+language-specific ad hoc names.
+
+The namespace must distinguish local dependency evidence from external
+documentation advice.  When the resolver and source-usage pass both miss the
+dependency, the provider should return a compact no-output fact and must not
+invent a =docs-use= frontier.  A =docs-use= or docs/API follow-up is valid only
+when local dependency facts exist, or when the user asked for explicit external
+research outside the current workspace resolution.
+
+Example shapes:
+
+#+begin_src shell
+asp rust search deps tokio --view seeds .
+asp rust search deps tokio::timeout --view seeds .
+asp gerbil-scheme search deps :std/sugar --view seeds .
+#+end_src
+
+** =search extension=
+
+Language harness ecosystem extensions.  This namespace owns curated framework or
+package knowledge that the language harness brings into the agent workflow:
+framework APIs, syntax conventions, idioms, examples, and pattern guidance.
+
+=search deps= answers "what dependency is resolved in this project?".
+=search extension= answers "what provider-owned ecosystem knowledge package is
+available for this language, and how should the agent use it?".  An extension
+may be activated by a dependency declaration, but its guidance is provider-owned
+and can include source-derived API facts, examples, comments, documentation
+claims, and executable witnesses.
+
+Examples:
+
+- TypeScript =effect= extension: Effect API, fiber/concurrency idioms, resource
+  safety patterns, and project-specific usage guidance.
+- Gerbil Scheme =poo= extension: object system, metaobject protocol, protocol
+  syntax, and POO-specific examples.
+- Rust =tokio= extension: async runtime APIs, cancellation, timeout, process
+  lifecycle, stream drain, and task ownership patterns.
+
+Example shapes:
+
+#+begin_src shell
+asp typescript search extension effect api --view seeds .
+asp gerbil-scheme search extension poo syntax --view seeds .
+asp gerbil-scheme search extension poo pattern object-system --view seeds .
+asp rust search extension tokio cancellation --view seeds .
+#+end_src
+
+Extension output should expose the activated extension fact first, then route to
+the more specific namespace that owns the requested evidence:
+
+#+begin_src text
+namespace=extension
+extension=poo
+authority=ecosystem-extension
+evidenceGrade=fact
+capabilities=object-system,metaobject-protocol,protocols
+next=search pattern poo object-system
+#+end_src
+
+** =search env=
+
+Active compiler, interpreter, runtime, toolchain, configuration, and load path.
+This namespace owns what the current machine can actually compile or execute.
+
+For Rust, =search env= must derive facts from active toolchain evidence such as
+=rust-toolchain.toml=, =rustup show active-toolchain=, =rustc -Vv=, =cargo
+metadata=, =Cargo.lock=, =rustc --print cfg=, edition, resolver, and enabled
+features.
+
+For Gerbil Scheme, =search env= must derive facts from the active =gxi= binary,
+Gerbil home, load path, importable modules, and runnable probes.  The user may
+have a concrete runtime such as a Homebrew =gxi= installation; the harness must
+discover that active runtime instead of assuming a version from documentation.
+
+Example shapes:
+
+#+begin_src shell
+asp rust search env toolchain --view seeds .
+asp rust search env cfg --view seeds .
+asp gerbil-scheme search env gxi --view seeds .
+asp gerbil-scheme search env load-path --view seeds .
+#+end_src
+
+** =search runtime-source=
+
+When the agent needs language, macro, standard-library, or framework facts that
+depend on the active compiler/runtime version, memory is not evidence.  The
+provider must expose a =runtime-source= namespace that maps the active runtime
+to a versioned source reference and an ASP-owned acquisition plan.
+
+For Gerbil Scheme, the provider derives the runtime tag from the active =gxi=
+system version and returns a structured packet with =runtime=, =sourceRef=, and
+=acquisition=.  The source reference names the upstream repository and exact
+checkout policy.  The acquisition plan says ASP owns clone-or-fetch, checkout,
+and structural index under an ASP-managed state namespace.  It must not expose
+developer-local checkout or cache directories in the public
+packet.
+
+The namespace is a bridge, not the final answer.  After acquisition/indexing,
+the next agent-facing step must search the version-matched source checkout for
+the exact macro, API, or language construct.  A model answer based on training
+memory, an unversioned checkout, or raw unindexed source scanning is a policy
+failure.
+
+#+begin_example
+asp gerbil-scheme search runtime-source macro --view seeds .
+asp cache runtime-source acquire --language-id gerbil-scheme --repository https://git.cons.io/mighty-gerbils/gerbil --checkout v0.18.2 --state-namespace runtime-source/gerbil-scheme --index-owner asp-structural-index
+#+end_example
+
+Runtime-owned printer boundaries also belong here.  For Gerbil Scheme,
+=writeenv= / printer-hook guidance should return versioned source selectors and
+ASP-owned acquisition/index facts before any extension pattern, such as POO
+=:wr= serialization, can be promoted from =partial= to =verified=.
+Agent-facing =next= values must keep CLI order, for example =search
+runtime-source macro sugar module-sugar=, rather than provider-internal phrasing.
+
+The shared packet contract is
+=schemas/semantic-runtime-source-acquisition.v1.schema.json=.  Language
+providers may add provider-owned details under facts, but the language-neutral
+contract keeps the runtime/source/acquisition mapping explicit.
+
+Executable extension patterns use
+=schemas/semantic-extension-pattern-mapping.v1.schema.json=.  Provider
+registries must advertise both =search/pattern= and =search/runtime-source=
+with their output schema ids so downstream agent interfaces can validate POO
+pattern mappings, partial evidence, and runtime-source acquisition packets
+without relying on provider-private text rendering.
+
+** =search lang=
+
+Language rules independent of one project but scoped to the active language and
+runtime family.  This namespace owns syntax, binding, module rules, macro
+systems, phase behavior, type or trait rules, evaluation order, and semantic
+constraints.
+
+The namespace is not a documentation dump.  It must cite parser-owned or
+runtime-owned evidence and should route to =search env= when the rule depends on
+the active compiler or interpreter version.
+
+Gerbil module guidance must cite =module-sugar= runtime source for import and
+export set syntax.  Queries such as =search lang rename-in= or =search lang
+rename-out= should expose =only-in=, =except-in=, =rename-in=, =for-syntax=, and
+=rename-out= selectors, plus failure cases for Racket =require= assumptions,
+unchecked import renames, and confusing import rename with export rename.
+
+Example shapes:
+
+#+begin_src shell
+asp rust search lang macro_rules --view seeds .
+asp rust search lang lifetime-elision --view seeds .
+asp gerbil-scheme search lang macro hygiene --view seeds .
+asp gerbil-scheme search lang syntax-object --view seeds .
+#+end_src
+
+** =search std=
+
+Standard library and language-bundled module facts.  This namespace owns
+standard module exports, built-in procedures, syntax forms, traits, macros, and
+version-gated std behavior.
+
+=search std= must expose machine-usable import and capability facts, not only a
+human prose answer.  For Gerbil Scheme, a query such as =search std json= should
+return the active standard module =:std/text/json=, the =read-json= capability,
+and the minimal import form =(import (only-in :std/text/json read-json))= so an
+agent can validate JSON packets in native Gerbil instead of adding a Python or
+shell parser.
+
+Standard-library macro facts must route back to version-matched source when the
+form is not just an importable procedure.  For Gerbil Scheme, =search std
+sugar= exposes =:std/sugar=, =defrule=, =defsyntax-call=, =syntax-call=, and
+the =for-syntax= import witness from the active runtime source checkout.  The
+next step for writing those forms is =search pattern hygienic-macro=, not a
+memory-derived Scheme macro answer.
+
+Example shapes:
+
+#+begin_src shell
+asp rust search std Iterator::try_fold --view seeds .
+asp gerbil-scheme search std :std/srfi/1 fold --view seeds .
+asp gerbil-scheme search std :std/sugar defsyntax --view seeds .
+#+end_src
+
+** =search pattern=
+
+Executable writing patterns.  This namespace owns recipes that can show a
+minimal correct shape, a failure case, and a witness for the active environment.
+The agent selects a registered pattern; it does not write a backend DSL.
+
+Pattern output must include:
+
+#+begin_src text
+namespace=pattern
+evidenceGrade=fact|unknown
+quality=verified|partial|insufficient
+agentScenario=<why-an-agent-would-ask-this>
+intent=<what-writing-task-this-pattern-authorizes>
+minimalFormMapping=<head,operands,keywords,selector>
+failureCase=<id,risk-kind,corrective-action,selectors>
+selector=<source-or-parser-owned-witness>
+witness=<runtime-or-source-backed-proof>
+missing=<required-gap-list-or-->
+next=<next-search-or-query-command>
+#+end_src
+
+The pattern namespace is specifically responsible for helping an agent that does
+not already know a language, framework, or extension.  The provider should emit
+structured mappings, not opaque inline snippets: form heads, operands, keywords,
+selectors, risk kinds, and corrective actions are separate fields.  A renderer
+may print those mappings as text, but the provider-owned evidence remains
+structured.
+
+For example, a Gerbil agent that does not know POO must receive =defclass=,
+generic/method, and protocol source selectors plus failure cases that prevent
+Racket-style class syntax.  A Gerbil agent that asks for macro syntax must
+receive both macro syntax evidence and the generated-code policy that forbids
+blindly emitting =defsyntax= or =syntax-case= in generated code.
+If the agent asks for =defrule=, =defsyntax-call=, or =syntax-call=, pattern
+evidence must also include =:std/sugar= runtime-source selectors and the
+=for-syntax= phase import witness.
+
+Complex POO guidance must also include semantic regression witnesses from real
+Gerbil projects.  Class hierarchy guidance should route through C3
+method-resolution-order selectors, slot-order checks, and failure cases from
+Gerbil's own =:gerbil/runtime/c3= tests instead of stopping at syntactic
+=defclass= examples.
+
+POO source-gap guidance should stay explicit about quality.  =compose-proto=
+is =verified= only after a runtime instantiation witness exercises
+=instantiate-proto=, =compose-proto=, and =compose-proto*=.  IO/JSON guidance
+should expose =:pr=, =:wr object=, =:json=, =:write-json=, typed-value =TV=
+writer selectors, JSON/pr runtime witnesses, a writeenv method-dispatch witness,
+and any missing writeenv roundtrip witness instead of reducing serialization to
+a single JSON snippet.  Until a runtime owner exposes a stable writeenv
+roundtrip entrypoint, the pattern must warn against direct writeenv construction
+or assuming ordinary =write= output roundtrips through POO =:wr=.  Its =next=
+action must move to =runtime-source= evidence for =writeenv= / printer hooks
+instead of looping back to the same partial pattern query.  Debug
+tracing guidance should expose =trace-poo=, =trace-inherited-slot=,
+=traced-function=, and =$computed-slot-spec= as =verified= only after a runtime
+trace witness proves the wrapped procedure still calls through the computed-slot
+superfun chain.
+
+Agent-quality policy should make those evidence gaps actionable.  For Gerbil
+Scheme, downstream POO code in =src/= that directly calls =writeenv= or defines
+POO IO method overrides must be reported as structural policy findings until
+runtime-source-backed writeenv / printer-hook witness coverage is present.  The
+rule is about parser facts and extension activation, not text heuristics: a
+generated project that imports =:clan/poo/io=, defines =defmethod= for IO, and
+constructs =writeenv= directly should produce machine-readable findings and a
+stable snapshot that route the agent to =search runtime-source writeenv printer
+hook=.
+
+Example shapes:
+
+#+begin_src shell
+asp rust search pattern async-timeout --view seeds .
+asp gerbil-scheme search pattern hygienic-macro --view seeds .
+asp gerbil-scheme search pattern defsyntax-syntax-case --view seeds .
+#+end_src
+
+** =compare=
+
+Version and semantic distinction.  =compare= is not text diff.  It compares
+facts across environments, dependencies, standard library versions, language
+rules, or project baselines.
+
+The shared packet contract for agent-facing comparison output is
+=schemas/semantic-compare-packet.v1.schema.json=.  Provider registries must
+advertise =search/compare= with that output schema id.  The contract is
+language-neutral: provider-owned =authority= values distinguish comparisons
+such as Gerbil active-runtime-versus-documented evidence from Rust
+active-toolchain-versus-requested evidence.
+
+The initial Gerbil Scheme slice is =search compare env active documented=: it
+compares the active runtime fact against documentation or model-memory claims,
+returns resolution status booleans rather than local executable paths, and
+makes the active runtime the authoritative side for version-sensitive guidance.
+
+The initial Rust slice is =search compare env stable nightly=: it compares the
+active toolchain against requested stable/nightly sides.  The output is
+=verified= only when the resolver can prove the active toolchain, =rustc=
+version, and both requested toolchain sides; otherwise it is a successful
+=insufficient= packet with explicit =missing= facts.
+
+Example shapes:
+
+#+begin_src shell
+asp rust search compare env stable nightly .
+asp rust search compare deps tokio-1.37 tokio-1.45 .
+asp gerbil-scheme search compare env active documented .
+asp gerbil-scheme search compare std :std/sugar active documented .
+#+end_src
+
+* Index ownership contract
+
+Language providers and language project harnesses expose structural index feeds;
+they do not own persistent or incremental index state.  A provider feed may
+contain parser-owned owners, symbols, dependency usages, source locators, file
+hashes, package roots, schema ids, and provider metadata.  It must not contain
+raw source text, and it must not require the provider to remember previous
+generations in order to answer the current feed.
+
+ASP owns incremental indexing.  The ASP client/cache layer compares incoming
+file hashes with the latest stored generation, derives =unchanged=, =changed=,
+and =deleted= paths, invalidates stale rows, and decides whether to apply a
+partial merge or fall back to full replacement.  Future language harnesses
+should therefore implement the same feed interface rather than private
+incremental caches.
+
+The incremental path is an ASP orchestration loop: first compute a refresh plan
+from provider file hash evidence, then request parser facts only for changed
+paths, and finally apply a refresh packet that copies unchanged rows from the
+previous generation into the new generation.  A deleted path is represented by
+its absence from the incoming file hash set, not by stale provider-owned index
+state.
+
+The stream interface is the client write-back boundary.  When a provider emits a
+=semantic-structural-index= packet, the client stores that packet as a
+=structural-index/= cache artifact, advertises the generation in the cache
+manifest, and applies the packet through the ASP-owned structural index refresh
+path.  The packet remains a feed: provider processes do not read, merge, or
+persist previous generations.
+
+For Rust this means =rs-harness= can continue to emit
+=semantic-structural-index= facts, but =*-rs= crates must not become the
+incremental index implementation.  For Gerbil Scheme this means the native
+parser can emit owner and extension facts, while ASP still owns the index
+refresh plan and cache state.
+
+Gerbil exposes this as =search structural --json= and advertises it as
+=index/structural= in the provider registry.  The packet is a native parser feed
+with file hashes, owners, symbols, dependency usages, generation id, and
+=rawSourceStored=false=.  It is not a provider cache.  ASP consumes the feed,
+stores the generation artifact, and owns unchanged / changed / deleted refresh
+planning.
+
+* Evidence grades
+
+All namespace output should classify evidence so the agent can reason about
+accuracy instead of treating every line as a fact.
+
+#+begin_src text
+fact      Parser, compiler, runtime, dependency resolver, or std index fact.
+claim     Comment, docstring, README, guide, or external documentation claim.
+witness   Compile, expand, run, test, or snapshot proof for a fact or pattern.
+mismatch  Claim disagrees with parser/runtime/witness evidence.
+unknown   The harness cannot establish the fact under the active environment.
+#+end_src
+
+The agent may use =claim= as intent evidence, but it must not use =claim= as a
+semantic fact when =fact= or =witness= is available or required.
+
+* Quality feedback loop
+
+Search output must report quality gaps instead of hiding them.  A namespace may
+return useful partial facts, but it must explicitly say what is missing before
+the agent can treat the output as sufficient implementation guidance.
+
+#+begin_src text
+quality=complete      Facts and required witnesses are available.
+quality=partial       Some facts are available, but required evidence is missing.
+quality=insufficient  The harness cannot support the requested guidance yet.
+#+end_src
+
+Partial or insufficient output is a harness improvement signal.  It means one of
+the parser, package-resolution, extension-index, runtime-probe, snapshot, or
+witness layers is incomplete.  The next action should route to the missing layer,
+not to an LLM guess.
+
+Example:
+
+#+begin_src text
+[gerbil-search-pattern] query=poo syntax evidenceGrade=fact quality=partial
+|pattern id=poo-object-system sourceRef=package-manager-download:gxpkg:git.cons.io/mighty-gerbils/gerbil-poo:runtime-resolved witness=source-backed-poo-mapping
+|selector role=class-definition symbol=defclass selector=gerbil-poo://object.ss#defclass
+|quality partial missing=runnable-witness,full-source-index-coverage
+next=search extension poo syntax
+#+end_src
+
+In this state the agent may cite the selector facts, but it should not invent a
+complete POO coding recipe.  The correct engineering work is to improve the
+Gerbil extension source index and add a runnable =gxi= witness.
+
+* Gerbil Scheme vertical slice
+
+The first Gerbil slice should be narrow and deep:
+
+#+begin_src shell
+asp gerbil-scheme search extension poo --view seeds .
+asp gerbil-scheme search extension poo syntax --view seeds .
+asp gerbil-scheme search env gxi --view seeds .
+asp gerbil-scheme search lang macro hygiene --view seeds .
+asp gerbil-scheme search lang syntax-object --view seeds .
+asp gerbil-scheme search std :std/sugar defsyntax --view seeds .
+asp gerbil-scheme search pattern hygienic-macro --view seeds .
+asp gerbil-scheme compare env active documented --view seeds .
+#+end_src
+
+Required facts:
+
+- active =gxi= path and version
+- Gerbil home and load path
+- importable std module graph for the slice
+- active POO extension fact with dependency and capability evidence
+- POO API/syntax/pattern query routing without invented facts
+- macro syntax forms used by the slice
+- hygiene facts for syntax objects, lexical context, and =datum->syntax=
+- minimal =defsyntax= or =syntax-case= example
+- failure case that demonstrates accidental capture or broken context
+- expand or compile witness from the active =gxi=
+- snapshot output for the search packets
+
+The implementation must remain native Scheme owned for Gerbil language facts.
+Rust or ASP may own CLI routing, schema validation, and hook delivery, but Gerbil
+syntax, expansion, module, and witness facts belong in the Gerbil harness.
+
+The Gerbil =poo= extension has a separate responsibility from harness-internal
+dependency use.  =src/extensions/poo.ss= describes downstream project guidance:
+activation from =gerbil.pkg=, semantic checks, pattern mappings, selectors, and
+agent-facing evidence for writing good POO code.  If the harness itself uses POO
+to implement an internal feature, that implementation should live under the
+owning source module for that feature and should consume the dependency through
+ordinary Gerbil code.  Do not conflate internal dependency usage with the
+extension evidence surface.
+
+Gerbil also participates in the shared evidence graph surface.  The provider
+owns only the lightweight packet boundary: =evidence graph --json= emits a
+portable =semantic-evidence-graph= with owner, invariant candidate, verification
+receipt slot, review action, and missing-evidence gap; =evidence analyze --json=
+wraps that graph as a =semantic-graph-turbo-request= with
+=profile=evidence-quality=.  The Gerbil provider must not implement the complex
+ranking, topology, or reliability loop internally.  It exposes native Scheme
+owner/witness facts and lets ASP graph-turbo consume the request for
+cross-language evidence-quality ranking.
+
+* Agent workflow
+
+When a task touches language features with high ambiguity, the agent should use
+the namespace that owns the question before editing.
+
+#+begin_src text
+current project structure      -> search code
+author intent or comments      -> search code comments
+dependency API and features    -> search deps
+framework or ecosystem package -> search extension
+active compiler/runtime facts  -> search env
+language binding or syntax     -> search lang
+standard library facts         -> search std
+known executable writing shape -> search pattern
+version distinction            -> compare
+#+end_src
+
+High-risk edits include macros, module systems, type systems, generated code,
+FFI, async runtimes, feature gates, and version-dependent APIs.  Hooks may
+require a namespace receipt for these edits once the namespace output is stable.
+
+* Implementation plan
+
+** P0: RFC and vocabulary
+
+- Add this RFC and keep terminology out of generic =concept= naming.
+- Align search help text with the namespace table.
+- Keep existing =search deps= and =search pattern= semantics intact.
+- Keep =search extension= separate from =search deps= so project dependency
+  resolution is not confused with provider-owned framework guidance.
+
+** P1: Shared search packet fields
+
+- Add optional namespace fields to shared search output:
+  =namespace=, =authority=, =evidenceGrade=, =activeRuntime=, =witness=,
+  =claimSource=, =verdict=, and =next=.
+- Keep language-specific details under provider-owned fields.
+- Add schema tests before provider implementation.
+
+- Add a versioned runtime source acquisition schema before exposing
+  =runtime-source= machine packets.
+
+** P2: Rust harness alignment
+
+- Treat Rust as the contract reference because it already has =search deps= and
+  pattern coverage.
+- Add =search env toolchain= and =search env cfg= before relying on stable or
+  nightly distinctions.
+- Add comment claim output under =search code comments= without treating comments
+  as semantic facts.
+- Map framework guidance such as Tokio into =search extension tokio= only when
+  the provider owns source-derived facts or a documented extension package.
+
+** P3: Gerbil native vertical slice
+
+- Implement =search extension poo= from the existing extension fact model.
+- Implement =search env gxi= in the Gerbil harness with active runtime probing.
+- Implement =search lang macro hygiene= and =search lang syntax-object= from
+  native Gerbil facts.
+- Implement =search std :std/sugar defsyntax= for the minimal std slice.
+
+- Route =search std sugar= through runtime-source-backed =:std/sugar= macro
+  facts and =search pattern hygienic-macro=.
+- Route Gerbil =rename-in=, =only-in=, =except-in=, =for-syntax=, and
+  =rename-out= through =module-sugar= runtime-source evidence.
+- Implement POO-specific routing from =search extension poo syntax/api/pattern=
+  to native Gerbil source-derived facts and =search pattern= examples.
+- Implement =search pattern hygienic-macro= and POO object-system examples with
+  an active =gxi= expand or compile witness.
+- Implement POO C3/MRO semantic regression guidance from real Gerbil tests.
+
+- Split POO pattern guidance into source-derived scenarios for prototype
+  composition, slot cache/computed-slot semantics, IO/JSON/writeenv/typed-value
+  fallbacks, lens composition, sealed type-validation, and trace/debug
+  computed-slot wrappers, with =partial= output when runtime witnesses are still
+  missing.
+- Promote POO slot-cache, lens, and sealed type-validation scenarios to
+  =verified= only when the harness can cite real =gerbil-poo= test witnesses.
+
+- Add snapshot tests for every output shape.
+
+- Implement =search runtime-source= in the Gerbil harness so active =gxi=
+  version evidence maps to source acquisition and index ownership.
+
+- Add schema conformance, registry, guide, and stable snapshots for
+  =search/runtime-source=, =search/pattern=, and the Gerbil language evidence
+  namespaces.
+
+** P4: Hook and agent guidance
+
+- Update installed guide text to prefer namespace receipts over remembered
+  language knowledge.
+- Add soft hook guidance for macro/module/type-system edits without a namespace
+  receipt.
+- Promote to deny only after snapshots and real project evidence show low noise.
+- Add Gerbil POO policy rules for direct =writeenv= construction and POO IO
+  method overrides without runtime-source witness coverage.
+- Add downstream POO scenario coverage and a policy snapshot for agent-written
+  code that combines vague definitions, direct =writeenv=, and POO IO
+  runtime-source witness gaps.
+- Expose soft guide policy lines for namespace receipts and POO IO
+  runtime-source receipts.  These are hook guidance inputs, not deny rules,
+  until real-project noise evidence supports promotion.
+
+** P5: Compare
+
+- Implement =compare env active documented= for Gerbil with schema conformance,
+  registry advertisement, guide output, and stable snapshots.
+- Implement =compare env stable nightly= for Rust with schema conformance,
+  registry advertisement, guide output, and a successful =insufficient= path
+  when the active toolchain resolver cannot prove both requested sides.
+- Report semantic additions, removals, changed witness results, and mismatches;
+  do not report raw textual diffs as the primary answer.
+
+* Provider evidence gate levels
+
+Provider evidence conformance has two gate levels.  The levels must not be
+collapsed into a single environment-dependent "whatever is active" test because
+that hides coverage drift from CI and hides slow providers from local audit.
+
+** Core-fast gate
+
+The core-fast gate is the PR hot path.  It explicitly requires the Rust,
+Python, and TypeScript providers to be active, then checks:
+
+- =evidence graph --json= emits a schema-valid graph with non-empty nodes and
+  edges.
+- =evidence analyze --json= emits a schema-valid graph-turbo request with a
+  valid evidence-quality profile, seeds, graph payload, and non-empty summary
+  counts.
+- =guide= exposes =search prime=, =search pipe=, =query --selector --code=, and
+  evidence graph/analyze commands through the language facade.
+- =search pipe= returns agent-facing quality evidence: =queryQuality=,
+  =actionFrontier=, =recommendedNext=, and =avoid= guidance that keeps the agent
+  away from raw source reads.
+- The run writes a timing receipt so the agent can see which provider and which
+  command consumed time.
+
+The core-fast gate must use an explicit language list rather than only the
+currently active provider set.  If a required provider is not active, the gate
+fails and tells the agent to run the setup target.
+
+** All-providers gate
+
+The all-providers gate is the full conformance and performance audit.  It
+requires every code provider in this RFC slice to be active: Rust, Python,
+TypeScript, Julia, and Gerbil Scheme.  It runs the same evidence, facade, pipe,
+schema-sync, and timing checks as core-fast, but it uses a looser command-time
+threshold because providers such as Julia may still pay runtime startup cost.
+
+The all-providers gate is the right place to catch Julia or Gerbil drift.  CI
+may run it as a scheduled or full provider job; local developers can run it
+before publishing provider changes.  A slow provider must show up in the timing
+receipt rather than being hidden inside an aggregate pytest duration.
+
+For Julia, the all-providers gate is also a compiled-provider freshness gate.
+The installed =asp-julia-harness= must be the compiled app, not a shell wrapper
+that launches =julia --project=.  If Julia source or =juliac= app files are
+newer than the compiled binary, setup must rebuild before installing.  After
+setup warm-up, Julia guide, evidence graph, evidence analyze, and pipe commands
+must each stay under two seconds.
+
+** Timing receipt
+
+The timing receipt is an agent-facing JSON artifact, not a performance
+benchmark.  It records the smoke scope, requested languages, active languages,
+per-command durations, and the maximum command threshold used by the gate.
+Agents should use it to decide whether to optimize provider startup,
+precompute/cache guide output, split a slow provider into the all-providers
+gate, or investigate a regression in graph/analyze.
+
+* Acceptance criteria
+
+- =orgize lint= passes for this RFC.
+- Existing search namespace tests continue to pass.
+- Gerbil =search runtime-source= emits version-matched =runtime=, =sourceRef=,
+  and =acquisition= fields without local checkout paths.
+
+- Gerbil slice has snapshots for =env=, =lang=, =std=, =pattern=, and =compare=.
+
+- Gerbil =search std sugar= and =search pattern hygienic-macro defrule= expose
+  runtime-source selectors without leaking local checkout paths.
+- Gerbil =search lang rename-in= and =search lang rename-out= expose
+  =module-sugar= import/export selectors and failure cases without using Racket
+  =require= memory.
+- Gerbil =search extension poo= reports activated POO capabilities and routes
+  API/syntax/pattern queries without claiming unsupported facts.
+- Partial or insufficient pattern output includes =quality=, =missing=, and a
+  next action that improves parser, extension index, runtime probe, snapshot, or
+  witness coverage.
+- At least one agent scenario proves the model writes a Gerbil hygienic macro
+  only after receiving =env/lang/pattern= evidence.
+- At least one agent scenario proves the model writes Gerbil POO-style code only
+  after receiving =extension/pattern= evidence from the harness.
+- At least one POO scenario routes complex class inheritance through C3/MRO and
+  slot-order witnesses from real Gerbil tests.
+
+- POO scenarios for =compose-proto= and trace/debug computed-slot wrapping expose
+  runtime witnesses and =verified= quality; IO/JSON/writeenv/typed-value
+  fallback exposes JSON/pr witnesses, writeenv method-dispatch evidence,
+  =quality=, =missing=, source selectors, and snapshot fixtures without leaking
+  local package-manager checkout paths.
+
+- POO slot-cache, lens, and sealed type-validation scenarios expose
+  real-project test selectors and =verified= quality once their witness tests are
+  indexed.
+
+- Comment-derived claims are labeled =claim= and can produce =mismatch= when
+  parser or witness evidence disagrees.
+- Core-fast language evidence smoke runs with an explicit
+  Rust/Python/TypeScript language set and emits a timing receipt.
+- All-providers language evidence smoke requires Rust, Python, TypeScript,
+  Julia, and Gerbil Scheme to be active and emits the same timing receipt shape.
+- The Julia all-providers path installs a fresh compiled =asp-julia-harness=,
+  warms =asp julia guide= once, and fails if any Julia smoke command exceeds two
+  seconds after warm-up.
+- The Julia provider gate depends on the all-providers smoke so stale compiled
+  binaries and wrapper regressions cannot pass a full provider validation.
+- Search pipe facade conformance checks quality fields and raw-read avoidance,
+  not just non-empty output.

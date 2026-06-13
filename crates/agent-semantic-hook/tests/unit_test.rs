@@ -9,6 +9,8 @@ mod client_hook_config;
 #[path = "unit/codex_config.rs"]
 mod codex_config;
 
+#[path = "unit/command.rs"]
+mod command;
 #[path = "unit/command_apply_patch.rs"]
 mod command_apply_patch;
 #[path = "unit/command_shell.rs"]

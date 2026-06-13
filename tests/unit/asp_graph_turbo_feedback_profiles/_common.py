@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from unit._asp_graph_turbo_common import (
     _GRAPH_TURBO_SCHEMA,
+    _GRAPH_TURBO_REQUEST_SCHEMA,
     TypedGraph,
     rank_frontier,
     result_to_packet,
@@ -13,6 +14,7 @@ from unit._asp_graph_turbo_common import (
 
 __all__ = [
     "TypedGraph",
+    "_GRAPH_TURBO_REQUEST_SCHEMA",
     "_GRAPH_TURBO_SCHEMA",
     "item_node",
     "matrix",

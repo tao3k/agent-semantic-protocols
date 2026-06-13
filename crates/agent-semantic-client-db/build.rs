@@ -1,6 +1,6 @@
 use rust_lang_project_harness::{
     assert_rust_project_harness_cargo_check_clean_from_env_with_config,
-    assert_rust_project_harness_performance_verification_from_env, default_rust_harness_config,
+    assert_rust_project_harness_verification_from_env_with_config, default_rust_harness_config,
 };
 
 fn main() {
@@ -16,7 +16,11 @@ fn main() {
         .with_latency_sensitive_performance_owner(
             "src/pragmas.rs",
             "sqlite runtime pragmas control cache query latency under repeated agent searches",
+        )
+        .with_availability_stability_owner(
+            "src/db.rs",
+            "sqlite cache schema and transaction boundaries must remain stable under repeated agent writeback and replay",
         );
     assert_rust_project_harness_cargo_check_clean_from_env_with_config(&config);
-    assert_rust_project_harness_performance_verification_from_env(&config, "client db");
+    assert_rust_project_harness_verification_from_env_with_config(&config, "client db");
 }
