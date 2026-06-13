@@ -5,6 +5,7 @@ use agent_semantic_hook::{
 };
 use serde_json::json;
 use std::ffi::OsString;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -123,6 +124,8 @@ fn parent_activation_sync_keeps_requested_project_root() {
     std::fs::create_dir_all(activation_path.parent().expect("activation parent"))
         .expect("create activation parent");
     std::fs::write(&activation_path, "{not json").expect("write stale activation");
+    let provider_path = write_fake_provider_binary(&root, "py-harness");
+    let _path_env = EnvVarGuard::set("PATH", provider_path);
 
     let snapshot = ProviderRegistrySnapshot::load(&child).expect("snapshot");
     assert_eq!(snapshot.activation_path, activation_path);
@@ -141,7 +144,7 @@ fn parent_activation_sync_keeps_requested_project_root() {
     std::fs::remove_dir_all(root).expect("remove temp root");
 }
 
-fn temp_root(name: &str) -> std::path::PathBuf {
+fn temp_root(name: &str) -> PathBuf {
     let unique = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("clock")
@@ -151,12 +154,42 @@ fn temp_root(name: &str) -> std::path::PathBuf {
     root
 }
 
+fn write_fake_provider_binary(root: &Path, binary: &str) -> PathBuf {
+    let bin_dir = root.join(".bin");
+    std::fs::create_dir_all(&bin_dir).expect("create fake provider bin dir");
+    let path = bin_dir.join(binary);
+    std::fs::write(
+        &path,
+        "#!/bin/sh\nif [ \"$1\" = \"guide\" ]; then\n  printf '[py-harness-guide]\\n{}\\n'\nfi\nexit 0\n",
+    )
+    .expect("write fake provider binary");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut permissions = std::fs::metadata(&path)
+            .expect("fake provider metadata")
+            .permissions();
+        permissions.set_mode(0o755);
+        std::fs::set_permissions(&path, permissions).expect("chmod fake provider");
+    }
+    bin_dir
+}
+
 struct EnvVarGuard {
     name: &'static str,
     previous: Option<OsString>,
 }
 
 impl EnvVarGuard {
+    fn set(name: &'static str, value: impl Into<OsString>) -> Self {
+        let previous = std::env::var_os(name);
+        let value = value.into();
+        unsafe {
+            std::env::set_var(name, value);
+        }
+        Self { name, previous }
+    }
+
     fn unset(name: &'static str) -> Self {
         let previous = std::env::var_os(name);
         unsafe {
