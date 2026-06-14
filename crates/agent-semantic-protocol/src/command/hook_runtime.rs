@@ -31,9 +31,7 @@ use agent_semantic_hook::{
 };
 use agent_semantic_runtime::ensure_project_hook_cache_dir;
 use hook_runtime_codex_plugin::{codex_plugin_scope_arg, install_codex_plugin_hooks};
-use hook_runtime_skill::{
-    install_agent_semantic_protocols_plugin_skill, install_agent_semantic_protocols_skill,
-};
+use hook_runtime_skill::install_agent_semantic_protocols_skill;
 use hook_runtime_stdin::read_hook_stdin_bounded;
 use hook_runtime_subagent::{install_claude_asp_explorer_agent, subagent_model_arg};
 use std::collections::BTreeMap;
@@ -692,14 +690,14 @@ fn run_install(args: &[String]) -> Result<(), String> {
     let client_config_path = default_client_config_path(&project_root.to_string_lossy());
     install_default_client_config(&client_config_path, &activation)?;
     timings.mark("client-config");
-    let installed_skill = if client == "codex" {
-        install_agent_semantic_protocols_plugin_skill(
+    let installed_skill = if client == "claude" {
+        Some(install_agent_semantic_protocols_skill(
             &project_root,
             &activation,
             &runtime_profiles,
-        )?
+        )?)
     } else {
-        install_agent_semantic_protocols_skill(&project_root, &activation, &runtime_profiles)?
+        None
     };
     timings.mark("skill");
     let (config_path, extra_config_receipt) = match client {
@@ -709,9 +707,13 @@ fn run_install(args: &[String]) -> Result<(), String> {
     };
     timings.mark("project-hooks");
     let project_skill_receipt = installed_skill
-        .skill_path
         .as_ref()
-        .zip(installed_skill.skill_contract_path.as_ref())
+        .and_then(|installed_skill| {
+            installed_skill
+                .skill_path
+                .as_ref()
+                .zip(installed_skill.skill_contract_path.as_ref())
+        })
         .map(|(skill_path, skill_contract_path)| {
             format!(
                 " skill={} skillContract={}",
@@ -719,11 +721,15 @@ fn run_install(args: &[String]) -> Result<(), String> {
                 display_path(&project_root, skill_contract_path)
             )
         })
-        .unwrap_or_else(|| " skill=removed skillContract=removed".to_string());
+        .unwrap_or_default();
     let plugin_skill_receipt = installed_skill
-        .plugin_skill_path
         .as_ref()
-        .zip(installed_skill.plugin_skill_contract_path.as_ref())
+        .and_then(|installed_skill| {
+            installed_skill
+                .plugin_skill_path
+                .as_ref()
+                .zip(installed_skill.plugin_skill_contract_path.as_ref())
+        })
         .map(|(skill_path, skill_contract_path)| {
             format!(
                 " pluginSkill={} pluginSkillContract={}",

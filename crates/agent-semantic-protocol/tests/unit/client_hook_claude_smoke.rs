@@ -78,18 +78,24 @@ fn codex_install_writes_project_plugin_and_runtime_decision_config() {
     assert!(codex_agent.contains("fork_context=false"));
     assert!(!codex_agent.contains("fork_turns"));
     assert!(
-        root.join("asp-codex-plugin/skills/agent-semantic-protocols/SKILL.org")
-            .is_file()
+        !root
+            .join("asp-codex-plugin/skills/agent-semantic-protocols/SKILL.org")
+            .exists()
     );
     assert!(
-        root.join("asp-codex-plugin/skills/agent-semantic-protocols/SKILL.contract.org")
-            .is_file()
+        !root
+            .join("asp-codex-plugin/skills/agent-semantic-protocols/SKILL.contract.org")
+            .exists()
     );
     assert!(
         !root
             .join(".agents/skills/agent-semantic-protocols/SKILL.org")
             .exists()
     );
+    assert!(!first_install_stdout.contains("skill="));
+    assert!(!first_install_stdout.contains("skillContract="));
+    assert!(!first_install_stdout.contains("pluginSkill="));
+    assert!(!first_install_stdout.contains("pluginSkillContract="));
 
     let second_install_stdout = install_codex_hooks(root.as_path(), &codex_home);
     assert!(

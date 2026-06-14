@@ -10,9 +10,8 @@ use agent_semantic_hook::{
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use hook_runtime_skill::{
-    install_agent_semantic_protocols_plugin_skill, install_agent_semantic_protocols_skill,
-    render_agent_semantic_protocols_skill, replace_generated_block,
-    validate_agent_semantic_protocols_skill,
+    install_agent_semantic_protocols_skill, render_agent_semantic_protocols_skill,
+    replace_generated_block, validate_agent_semantic_protocols_skill,
 };
 
 fn activation_provider(
@@ -159,47 +158,6 @@ fn install_mirrors_generated_skill_into_codex_plugin_when_present() {
         std::fs::read_to_string(&project_skill_contract_path)
             .expect("read installed skill contract"),
         std::fs::read_to_string(&plugin_skill_contract_path).expect("read plugin skill contract")
-    );
-
-    let _ = std::fs::remove_dir_all(root);
-}
-
-#[test]
-fn plugin_skill_install_removes_legacy_project_skill_artifacts() {
-    let root = temp_project_root("skill-plugin-only");
-    write_plugin_manifest(&root);
-    let legacy_skill = root
-        .join(".agents")
-        .join("skills")
-        .join("agent-semantic-protocols")
-        .join("SKILL.org");
-    let legacy_contract = legacy_skill.with_file_name("SKILL.contract.org");
-    std::fs::create_dir_all(legacy_skill.parent().unwrap()).expect("create legacy skill dir");
-    std::fs::write(&legacy_skill, "legacy").expect("write legacy skill");
-    std::fs::write(&legacy_contract, "legacy contract").expect("write legacy contract");
-
-    let installed = install_agent_semantic_protocols_plugin_skill(
-        &root,
-        &test_activation(),
-        &test_runtime_profiles(),
-    )
-    .unwrap();
-
-    assert!(installed.skill_path.is_none());
-    assert!(installed.skill_contract_path.is_none());
-    assert!(!legacy_skill.exists());
-    assert!(!legacy_contract.exists());
-    assert!(
-        installed
-            .plugin_skill_path
-            .as_ref()
-            .is_some_and(|path| path.is_file())
-    );
-    assert!(
-        installed
-            .plugin_skill_contract_path
-            .as_ref()
-            .is_some_and(|path| path.is_file())
     );
 
     let _ = std::fs::remove_dir_all(root);

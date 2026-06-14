@@ -23,94 +23,23 @@ pub(super) fn install_agent_semantic_protocols_skill(
     activation: &HookActivation,
     runtime_profiles: &RuntimeProfiles,
 ) -> Result<InstalledAgentSkillPaths, String> {
-    install_agent_semantic_protocols_skill_with_target(
-        project_root,
-        activation,
-        runtime_profiles,
-        AgentSkillInstallTarget::ProjectAndPluginMirror,
-    )
-}
-
-pub(super) fn install_agent_semantic_protocols_plugin_skill(
-    project_root: &Path,
-    activation: &HookActivation,
-    runtime_profiles: &RuntimeProfiles,
-) -> Result<InstalledAgentSkillPaths, String> {
-    install_agent_semantic_protocols_skill_with_target(
-        project_root,
-        activation,
-        runtime_profiles,
-        AgentSkillInstallTarget::CodexPluginOnly,
-    )
-}
-
-#[derive(Clone, Copy)]
-enum AgentSkillInstallTarget {
-    ProjectAndPluginMirror,
-    CodexPluginOnly,
-}
-
-fn install_agent_semantic_protocols_skill_with_target(
-    project_root: &Path,
-    activation: &HookActivation,
-    runtime_profiles: &RuntimeProfiles,
-    target: AgentSkillInstallTarget,
-) -> Result<InstalledAgentSkillPaths, String> {
     let skill_path = default_agent_skill_path(project_root);
     let skill_contract_path = default_agent_skill_contract_path(project_root);
     let rendered_skill = render_agent_semantic_protocols_skill(activation, runtime_profiles)?;
-    match target {
-        AgentSkillInstallTarget::ProjectAndPluginMirror => {
-            write_agent_skill_pair(&skill_path, &skill_contract_path, &rendered_skill)?;
-        }
-        AgentSkillInstallTarget::CodexPluginOnly => {
-            remove_project_agent_skill_pair(&skill_path, &skill_contract_path)?;
-        }
-    }
-    let plugin_paths = match target {
-        AgentSkillInstallTarget::ProjectAndPluginMirror => {
-            optional_plugin_skill_paths(project_root)
-                .map(|(plugin_skill_path, plugin_skill_contract_path)| {
-                    write_agent_skill_pair(
-                        &plugin_skill_path,
-                        &plugin_skill_contract_path,
-                        &rendered_skill,
-                    )
-                    .map(|()| (plugin_skill_path, plugin_skill_contract_path))
-                })
-                .transpose()?
-        }
-        AgentSkillInstallTarget::CodexPluginOnly => {
-            let (plugin_skill_path, plugin_skill_contract_path) =
-                optional_plugin_skill_paths(project_root).ok_or_else(|| {
-                    format!(
-                        "Codex plugin install requires {}",
-                        project_root
-                            .join("asp-codex-plugin")
-                            .join(".codex-plugin")
-                            .join("plugin.json")
-                            .display()
-                    )
-                })?;
+    write_agent_skill_pair(&skill_path, &skill_contract_path, &rendered_skill)?;
+    let plugin_paths = optional_plugin_skill_paths(project_root)
+        .map(|(plugin_skill_path, plugin_skill_contract_path)| {
             write_agent_skill_pair(
                 &plugin_skill_path,
                 &plugin_skill_contract_path,
                 &rendered_skill,
-            )?;
-            Some((plugin_skill_path, plugin_skill_contract_path))
-        }
-    };
+            )
+            .map(|()| (plugin_skill_path, plugin_skill_contract_path))
+        })
+        .transpose()?;
     Ok(InstalledAgentSkillPaths {
-        skill_path: if matches!(target, AgentSkillInstallTarget::ProjectAndPluginMirror) {
-            Some(skill_path)
-        } else {
-            None
-        },
-        skill_contract_path: if matches!(target, AgentSkillInstallTarget::ProjectAndPluginMirror) {
-            Some(skill_contract_path)
-        } else {
-            None
-        },
+        skill_path: Some(skill_path),
+        skill_contract_path: Some(skill_contract_path),
         plugin_skill_path: plugin_paths
             .as_ref()
             .map(|(plugin_skill_path, _)| plugin_skill_path.clone()),
@@ -177,36 +106,6 @@ fn write_agent_skill_pair(
     .map_err(|error| format!("failed to write {}: {error}", skill_contract_path.display()))?;
     fs::write(skill_path, format!("{}\n", rendered_skill.trim_end()))
         .map_err(|error| format!("failed to write {}: {error}", skill_path.display()))?;
-    Ok(())
-}
-
-fn remove_project_agent_skill_pair(
-    skill_path: &Path,
-    skill_contract_path: &Path,
-) -> Result<(), String> {
-    for path in [skill_path, skill_contract_path] {
-        match fs::remove_file(path) {
-            Ok(()) => {}
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-            Err(error) => return Err(format!("failed to remove {}: {error}", path.display())),
-        }
-    }
-    if let Some(skill_dir) = skill_path.parent() {
-        match fs::remove_dir(skill_dir) {
-            Ok(()) => {}
-            Err(error)
-                if matches!(
-                    error.kind(),
-                    std::io::ErrorKind::NotFound | std::io::ErrorKind::DirectoryNotEmpty
-                ) => {}
-            Err(error) => {
-                return Err(format!(
-                    "failed to remove empty generated skill directory {}: {error}",
-                    skill_dir.display()
-                ));
-            }
-        }
-    }
     Ok(())
 }
 
