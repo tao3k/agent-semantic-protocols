@@ -61,7 +61,7 @@ pub struct ProjectRuntimeLayout {
     pub runtime_home: Option<PathBuf>,
     /// Agent skill/config directory under git toplevel.
     pub agents_dir: Option<PathBuf>,
-    /// Installed ASP skill path under `.agents`.
+    /// Installed ASP Org skill path under `.agents`.
     pub agent_skill_path: Option<PathBuf>,
 }
 
@@ -130,7 +130,7 @@ pub fn project_runtime_layout_with_env(
         .map(|git_toplevel| git_toplevel.join(".agents"));
     let agent_skill_path = agents_dir
         .as_ref()
-        .map(|agents_dir| agents_dir.join("skills/agent-semantic-protocols/SKILL.md"));
+        .map(|agents_dir| agents_dir.join("skills/agent-semantic-protocols/SKILL.org"));
 
     ProjectRuntimeLayout {
         requested_root,

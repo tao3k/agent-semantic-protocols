@@ -1,0 +1,20 @@
+{
+  "interface": {
+    "displayName": "ASP Project"
+  },
+  "name": "asp-project",
+  "plugins": [
+    {
+      "category": "Productivity",
+      "name": "asp-codex-plugin",
+      "policy": {
+        "authentication": "ON_INSTALL",
+        "installation": "AVAILABLE"
+      },
+      "source": {
+        "path": "./asp-codex-plugin",
+        "source": "local"
+      }
+    }
+  ]
+}

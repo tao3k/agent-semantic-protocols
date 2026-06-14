@@ -146,7 +146,7 @@ fn search_pipe_injects_read_loop_memory_into_graph_turbo_request_and_suppresses_
         "{stdout}"
     );
     assert!(
-        stdout.contains("subagentHint=profile=asp-explorer fanout=parallel instances=targetActions branchPrompt=reasoning-tree stateOwner=parent fanin=receipt iterative=true decision=advisory runtimeOwner=agent-client modelClass=cheap readOnly=true noCode=true targetActions=A1.fd-query,A2.rg-query,A3.owner-items,A4.treesitter-query maxCommands=8 maxTurns=1 receipt=asp-search-subagent(role,action,evidence,missing,next,risk) reason=query-selector-low-confidence"),
+        stdout.contains("subagentHint=profile=asp-explorer mode=resident instances=single reuse=send_input spawn=if-missing forkContext=false branchPrompt=reasoning-tree stateOwner=parent fanin=receipt iterative=true decision=advisory runtimeOwner=agent-client modelClass=cheap readOnly=true noCode=true targetActions=A1.fd-query,A2.rg-query,A3.owner-items,A4.treesitter-query maxCommands=8 maxTurns=1 receipt=asp-search-subagent(role,action,evidence,missing,next,risk) reason=query-selector-low-confidence"),
         "{stdout}"
     );
     assert!(

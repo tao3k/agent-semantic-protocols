@@ -4,9 +4,7 @@ use agent_semantic_hook::parse_hook_activation;
 
 use crate::rust_harness_activation::support::write_fake_provider_binary;
 
-use super::support::{
-    assert_installed_hook_state, assert_installed_project_trust, git_project_root, protocol_command,
-};
+use super::support::{git_project_root, protocol_command};
 
 #[test]
 fn cli_install_writes_root_owned_codex_hook_config() {
@@ -18,9 +16,6 @@ fn cli_install_writes_root_owned_codex_hook_config() {
     write_legacy_hook_cache(&root);
     write_incompatible_current_hook_events(&root);
     write_legacy_semantic_agent_protocol_config(&root);
-    let canonical_config =
-        std::fs::canonicalize(root.join(".codex/config.toml")).expect("canonical config path");
-    write_legacy_codex_user_trust_state(&codex_home, &canonical_config);
 
     let output = protocol_command()
         .env("PATH", &path)
@@ -48,55 +43,74 @@ fn cli_install_writes_root_owned_codex_hook_config() {
     assert_no_profile_registry(&root);
     let config =
         std::fs::read_to_string(root.join(".codex/config.toml")).expect("installed config");
-    assert_codex_config(&config);
-    assert_codex_asp_explorer(&root, "gpt-5.3-codex-spark");
+    assert_codex_config(&config, &root);
     assert_client_config(&root);
     let parsed_config =
         toml::from_str::<toml::Value>(&config).expect("installed Codex config is valid TOML");
-    assert_enabled_features(&parsed_config);
-    let user_config =
-        std::fs::read_to_string(codex_home.join("config.toml")).expect("user trust config");
-    assert!(!user_config.contains("semantic-agent-hook trusted hook state"));
-    assert!(!user_config.contains("stale-sandbox"));
-    assert!(user_config.contains("agent-semantic-protocol trusted hook state"));
-    let parsed_user_config =
-        toml::from_str::<toml::Value>(&user_config).expect("user trust config is valid TOML");
-    let canonical_project_root = canonical_config
-        .parent()
-        .and_then(std::path::Path::parent)
-        .expect("canonical project root");
-    assert_installed_project_trust(&parsed_user_config, canonical_project_root);
-    assert_installed_hook_state(&parsed_user_config, &canonical_config);
-    assert_doctor(&root, &path, &codex_home);
+    assert_plugin_entries(&parsed_config);
+    assert!(
+        !codex_home.join("config.toml").exists(),
+        "project-scoped plugin install must not mutate user CODEX_HOME"
+    );
+    assert_codex_asp_explorer(&root, "gpt-5.3-codex-spark");
+    assert_legacy_codex_split_subagents_removed(&root);
     assert_installed_activation(&root);
     let _ = std::fs::remove_dir_all(&root);
 }
 
-fn write_legacy_codex_user_trust_state(
-    codex_home: &std::path::Path,
-    config_path: &std::path::Path,
-) {
-    std::fs::create_dir_all(codex_home).expect("create fake Codex home");
-    let stale_config_path = codex_home.join("stale-sandbox/.codex/config.toml");
-    std::fs::write(
-        codex_home.join("config.toml"),
-        format!(
-            r#"# BEGIN semantic-agent-hook trusted hook state: {config_path}
-[hooks.state."{config_path}:PreToolUse"]
-trusted = true
-ask = false
-# END semantic-agent-hook trusted hook state
+#[test]
+fn cli_install_accepts_existing_project_marketplace_source_when_root_matches() {
+    let root = git_project_root("install-existing-marketplace-source");
+    let codex_home = root.join(".codex-home");
+    let provider_path = write_fake_provider_binary(&root, "rs-harness");
+    let protocol_bin_dir = root.join(".agent-bin");
+    let path = env::join_paths([&protocol_bin_dir, &provider_path]).expect("join PATH");
+    write_project_codex_marketplace_source_dot(&root);
 
-# BEGIN agent-semantic-protocol trusted hook state: {stale_config_path}
-[hooks.state."{stale_config_path}:pre_tool_use:0:0"]
-trusted_hash = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-# END agent-semantic-protocol trusted hook state
+    let output = protocol_command()
+        .env("PATH", &path)
+        .env("SEMANTIC_AGENT_BIN_DIR", &protocol_bin_dir)
+        .env("CODEX_HOME", &codex_home)
+        .args([
+            "hook",
+            "install",
+            "--client",
+            "codex",
+            root.to_str().expect("utf8 temp root"),
+        ])
+        .output()
+        .expect("run agent-semantic-protocol install");
+
+    assert!(
+        output.status.success(),
+        "install stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("install stdout");
+    assert!(stdout.contains("pluginMarketplace=asp-project"));
+    assert!(stdout.contains("subagent=.codex/agents/asp-explorer.toml"));
+    let config =
+        std::fs::read_to_string(root.join(".codex/config.toml")).expect("installed config");
+    assert!(config.contains("source = \".\""));
+    assert_codex_asp_explorer_role_config(&config);
+    assert!(config.contains("[plugins.\"asp-codex-plugin@asp-project\"]"));
+    assert_codex_asp_explorer(&root, "gpt-5.3-codex-spark");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+fn write_project_codex_marketplace_source_dot(root: &std::path::Path) {
+    let config_path = root.join(".codex/config.toml");
+    std::fs::create_dir_all(config_path.parent().expect("project Codex config parent"))
+        .expect("create project Codex dir");
+    std::fs::write(
+        config_path,
+        r#"[marketplaces.asp-project]
+last_updated = "2026-01-01T00:00:00Z"
+source_type = "local"
+source = "."
 "#,
-            config_path = config_path.display(),
-            stale_config_path = stale_config_path.display()
-        ),
     )
-    .expect("write legacy user trust state");
+    .expect("write project Codex marketplace source");
 }
 
 fn write_legacy_hook_cache(root: &std::path::Path) {
@@ -172,8 +186,19 @@ fn assert_install_stdout(stdout: &str) {
     assert!(stdout.contains("clientConfig=.codex/agent-semantic-protocol/hooks/config.toml"));
     assert!(!stdout.contains("profileCache="));
     assert!(!stdout.contains("agent-semantic-protocol/hooks/profiles.json"));
-    assert!(stdout.contains("skill=.agents/skills/agent-semantic-protocols/SKILL.md"));
-    assert!(stdout.contains("trustConfig="));
+    assert!(stdout.contains("skill=removed"));
+    assert!(stdout.contains("skillContract=removed"));
+    assert!(
+        stdout.contains("pluginSkill=asp-codex-plugin/skills/agent-semantic-protocols/SKILL.org")
+    );
+    assert!(stdout.contains(
+        "pluginSkillContract=asp-codex-plugin/skills/agent-semantic-protocols/SKILL.contract.org"
+    ));
+    assert!(stdout.contains("pluginScope=project"));
+    assert!(stdout.contains("pluginMarketplace=asp-project"));
+    assert!(stdout.contains("pluginMarketplaceConfig=.agents/plugins/marketplace.json"));
+    assert!(stdout.contains("legacyHookConfigCleaned=.codex/config.toml"));
+    assert!(!stdout.contains("trustConfig="));
     assert!(stdout.contains("subagent=.codex/agents/asp-explorer.toml"));
     assert!(!stdout.contains("subagents="));
     assert!(stdout.contains("binary=asp"));
@@ -213,10 +238,12 @@ fn cli_install_writes_codex_custom_subagent_with_requested_model() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8(output.stdout).expect("install stdout");
+    assert!(stdout.contains("pluginScope=project"));
     assert!(stdout.contains("subagent=.codex/agents/asp-explorer.toml"));
     assert!(!stdout.contains("subagents="));
     assert!(!stdout.contains(".codex/agents/asp-explorer-selector.toml"));
     assert_codex_asp_explorer(&root, "gpt-5.4-mini");
+    assert_legacy_codex_split_subagents_removed(&root);
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
 }
 
@@ -298,27 +325,42 @@ fn cli_install_writes_claude_custom_subagent_by_default() {
 }
 
 fn assert_installed_skill(root: &std::path::Path) {
-    let skill =
-        std::fs::read_to_string(root.join(".agents/skills/agent-semantic-protocols/SKILL.md"))
-            .expect("installed agent skill");
-    assert!(skill.contains("Generated by `asp hook install`"));
+    assert!(
+        !root
+            .join(".agents/skills/agent-semantic-protocols/SKILL.org")
+            .exists(),
+        "Codex plugin install should remove the legacy project skill copy"
+    );
+    assert!(
+        !root
+            .join(".agents/skills/agent-semantic-protocols/SKILL.contract.org")
+            .exists(),
+        "Codex plugin install should remove the legacy project skill contract copy"
+    );
+    let skill = std::fs::read_to_string(
+        root.join("asp-codex-plugin/skills/agent-semantic-protocols/SKILL.org"),
+    )
+    .expect("installed plugin skill");
+    assert!(skill.contains("Generated by =asp hook install="));
     assert!(skill.contains("Do not edit this installed copy"));
-    assert!(skill.contains("## Active Providers"));
-    assert!(skill.contains("| rust | `asp rust` |"));
+    assert!(skill.contains("* Provider Contracts"));
+    assert!(skill.contains(":LANGUAGE_ID: rust"));
     assert!(!skill.contains("/.bin/rs-harness` |"));
     assert!(!skill.contains(&root.display().to_string()));
-    assert!(skill.contains("Start with `asp <language> guide .`"));
-    assert!(!skill.contains("Start with `asp <language> agent guide .`"));
-    assert!(!skill.contains("`asp typescript`"));
-    assert!(!skill.contains("`asp python`"));
-    assert!(!skill.contains("`asp julia`"));
+    assert!(skill.contains("Start with =asp <language> guide"));
+    assert!(!skill.contains("Start with =asp <language> agent guide"));
+    assert!(!skill.contains("=asp typescript="));
+    assert!(!skill.contains("=asp python="));
+    assert!(!skill.contains("=asp julia="));
     assert!(!skill.contains("Julia participates in language facade parity"));
-    assert!(skill.contains("Do not add `--json` during agent exploration."));
+    assert!(skill.contains("Do not add =--json= during agent exploration."));
     assert!(skill.contains("single-quoted argv literal"));
-    assert!(!skill.contains("--query-set 'Start with `asp <language> guide .`'"));
-    assert!(skill.contains("do not interpolate raw prose into a"));
-    assert!(skill.contains("## Complex Flows"));
-    assert!(skill.contains("### Hook Recovery"));
+    assert!(!skill.contains("--query-set 'Start with =asp <language> guide"));
+    assert!(
+        root.join("asp-codex-plugin/skills/agent-semantic-protocols/SKILL.contract.org")
+            .is_file(),
+        "plugin skill contract should be installed"
+    );
 }
 
 fn assert_no_profile_registry(root: &std::path::Path) {
@@ -379,84 +421,46 @@ fn assert_no_profile_registry(root: &std::path::Path) {
     );
 }
 
-fn assert_codex_config(config: &str) {
-    assert!(config.contains("# BEGIN agent-semantic-protocol agent hooks"));
+fn assert_codex_config(config: &str, root: &std::path::Path) {
+    assert!(!config.contains("# BEGIN agent-semantic-protocol agent hooks"));
     assert!(!config.contains("# BEGIN semantic-agent-protocol agent hooks"));
     assert!(!config.contains("# BEGIN agent-semantic-hook agent hooks"));
     assert!(!config.contains("hook_bin="));
     assert!(!config.contains("exec semantic-agent-protocol"));
     assert!(!config.contains("exec agent-semantic-hook"));
     assert!(!config.contains(".codex/agent-semantic-hook/bin/agent-semantic-hook"));
-    assert!(config.contains("exec asp hook pre-tool --client codex"));
-    assert!(config.contains(
-        "activation=\"$repo_root/.cache/agent-semantic-protocol/hooks/activation.json\""
-    ));
-    assert!(
-        config.contains("config=\"$repo_root/.codex/agent-semantic-protocol/hooks/config.toml\"")
-    );
-    assert!(config.contains("--config \"$config\""));
+    assert!(!config.contains("exec asp hook pre-tool --client codex"));
     assert!(!config.contains("asp hook --client codex"));
-    for event in [
-        "session-start",
-        "user-prompt",
-        "pre-tool",
-        "permission-request",
-        "post-tool",
-        "subagent-start",
-        "subagent-stop",
-        "stop",
-    ] {
-        assert!(
-            config.contains(&format!("exec asp hook {event} --client codex")),
-            "missing protocol hook command for {event}"
-        );
-    }
-    assert!(config.contains("--activation \"$activation\""));
     assert!(config.matches("[hooks.state.").count() == 0);
-    assert!(!config.contains("matcher = \".*\""));
-    assert_eq!(config.matches("functions\\\\.exec_command").count(), 5);
-    assert!(config.contains("Read|read|readFile"));
-    assert!(config.contains("read_file"));
-    assert!(config.contains("functions\\\\.read"));
-    assert!(config.contains("functions\\\\.read_file"));
-    assert!(config.contains("mcp__.*__read_file"));
-    assert!(config.contains("multi_tool_use\\\\.parallel"));
-    assert!(config.contains("Bash|Shell"));
-    assert!(config.contains("fs\\\\.read"));
     assert!(!config.contains("ts-harness agent hook --client codex"));
     assert!(!config.contains("rs-harness agent hook --client codex"));
+    assert!(config.contains("[marketplaces.asp-project]"));
+    assert!(config.contains("source_type = \"local\""));
+    let canonical_root = std::fs::canonicalize(root).expect("canonical project root");
+    assert!(config.contains(&format!("source = \"{}\"", canonical_root.display())));
+    assert_codex_asp_explorer_role_config(config);
+    assert!(config.contains("[plugins.\"asp-codex-plugin@asp-project\"]"));
+    assert!(config.contains("enabled = true"));
 }
 
-fn assert_codex_asp_explorer(root: &std::path::Path, model: &str) {
-    let path = root.join(".codex/agents/asp-explorer.toml");
-    let agent = std::fs::read_to_string(&path).expect("installed Codex ASP explorer agent");
-    let parsed = toml::from_str::<toml::Value>(&agent).expect("Codex ASP explorer is valid TOML");
-    assert_eq!(parsed["name"].as_str(), Some("asp_explorer"));
-    assert!(
-        agent.contains("Parent callers must pass `fork_turns = \"none\"`"),
-        "{agent}"
+fn assert_codex_asp_explorer_role_config(config: &str) {
+    assert!(config.contains("[agents.asp_explorer]"));
+    assert!(config.contains("description = \"Read-only ASP search explorer"));
+    assert!(config.contains("config_file = \"agents/asp-explorer.toml\""));
+    assert!(config.contains(
+        "nickname_candidates = [\"ASP owner\", \"ASP rg\", \"ASP selector\", \"ASP search\"]"
+    ));
+}
+
+fn assert_plugin_entries(config: &toml::Value) {
+    assert_eq!(
+        config["marketplaces"]["asp-project"]["source_type"].as_str(),
+        Some("local")
     );
-    assert_eq!(parsed["model"].as_str(), Some(model));
-    assert_eq!(parsed["model_reasoning_effort"].as_str(), Some("medium"));
-    assert_eq!(parsed["sandbox_mode"].as_str(), Some("read-only"));
-    let instructions = parsed["developer_instructions"]
-        .as_str()
-        .unwrap_or_default();
-    assert!(
-        instructions.contains("fork_turns=\"none\""),
-        "{instructions}"
+    assert_eq!(
+        config["plugins"]["asp-codex-plugin@asp-project"]["enabled"].as_bool(),
+        Some(true)
     );
-    assert_asp_explorer_instructions(instructions);
-    for stale in [
-        "asp-explorer-owner.toml",
-        "asp-explorer-rg.toml",
-        "asp-explorer-selector.toml",
-    ] {
-        assert!(
-            !root.join(".codex/agents").join(stale).exists(),
-            "stale generated Codex subagent was not removed: {stale}"
-        );
-    }
 }
 
 fn assert_claude_asp_explorer(root: &std::path::Path, model: &str) {
@@ -480,6 +484,33 @@ fn assert_claude_asp_explorer(root: &std::path::Path, model: &str) {
     }
 }
 
+fn assert_codex_asp_explorer(root: &std::path::Path, model: &str) {
+    let path = root.join(".codex/agents/asp-explorer.toml");
+    let agent = std::fs::read_to_string(&path).expect("installed Codex ASP explorer agent");
+    let parsed = toml::from_str::<toml::Value>(&agent).expect("Codex ASP explorer is valid TOML");
+    let table = parsed
+        .as_table()
+        .expect("Codex ASP explorer is a TOML table");
+    assert!(
+        !table.contains_key("fork_context"),
+        "fork_context is a spawn_agent call argument, not a custom-agent TOML key"
+    );
+    assert!(
+        !table.contains_key("fork_turns"),
+        "fork_turns is not a supported custom-agent TOML key"
+    );
+    assert!(agent.contains("name = \"asp_explorer\""));
+    assert!(agent.contains("description = \"Read-only ASP"));
+    assert!(agent.contains(&format!("model = \"{model}\"")));
+    assert!(agent.contains("nickname_candidates = ["));
+    assert!(agent.contains("model_reasoning_effort = \"medium\""));
+    assert!(agent.contains("sandbox_mode = \"read-only\""));
+    assert!(agent.contains("developer_instructions = \"\"\""));
+    assert!(agent.contains("fork_context=false"));
+    assert!(!agent.contains("fork_turns"), "{agent}");
+    assert_asp_explorer_instructions(&agent);
+}
+
 fn assert_asp_explorer_instructions(instructions: &str) {
     assert!(instructions.contains("Use ASP provider commands before source reads"));
     assert!(
@@ -488,13 +519,12 @@ fn assert_asp_explorer_instructions(instructions: &str) {
     assert!(instructions.contains("Compress broad prose into 2-4 stable terms before search pipe"));
     assert!(instructions.contains("If search pipe returns nextCommand or an exact query-selector"));
     assert!(instructions.contains("If a hook denies read-before-pipe, repeated-search-pipe"));
-    assert!(
-        instructions.contains("Parallel fan-out and iterative control are owned by the parent")
-    );
-    assert!(instructions.contains("The shared state is the parent agent's reasoning tree"));
-    assert!(instructions.contains("one instance per reasoning-tree branch"));
-    assert!(instructions.contains("fan in receipts, update the reasoning tree"));
-    assert!(instructions.contains("Instances do not share context windows"));
+    assert!(instructions.contains("Resident search-agent control is owned by the parent"));
+    assert!(instructions.contains("Spawn-only controls such as fork_context"));
+    assert!(instructions.contains("keep exactly one ASP search agent thread per main task"));
+    assert!(instructions.contains("reuse that thread with send_input"));
+    assert!(instructions.contains("Only spawn a new ASP search agent when no recorded agent id"));
+    assert!(instructions.contains("Do not assume hidden sibling context"));
     assert!(instructions.contains("action=<action id"));
 }
 
@@ -502,11 +532,25 @@ fn write_stale_codex_subagents(root: &std::path::Path) {
     let dir = root.join(".codex/agents");
     std::fs::create_dir_all(&dir).expect("create stale Codex agents dir");
     for stale in [
+        "asp-explorer.toml",
         "asp-explorer-owner.toml",
         "asp-explorer-rg.toml",
         "asp-explorer-selector.toml",
     ] {
         std::fs::write(dir.join(stale), "name = \"stale\"\n").expect("write stale Codex agent");
+    }
+}
+
+fn assert_legacy_codex_split_subagents_removed(root: &std::path::Path) {
+    for stale in [
+        "asp-explorer-owner.toml",
+        "asp-explorer-rg.toml",
+        "asp-explorer-selector.toml",
+    ] {
+        assert!(
+            !root.join(".codex/agents").join(stale).exists(),
+            "legacy Codex split subagent should be removed during plugin install: {stale}"
+        );
     }
 }
 
@@ -566,58 +610,6 @@ fn assert_client_config(root: &std::path::Path) {
     assert!(client_config.contains("\"**/*.rs\""));
     assert!(client_config.contains("argvSourceExcludeFlagAny = ["));
     toml::from_str::<toml::Value>(&client_config).expect("client hook config is valid TOML");
-}
-
-fn assert_enabled_features(parsed_config: &toml::Value) {
-    assert!(parsed_config.get("unified_exec").is_none());
-    assert!(
-        parsed_config
-            .get("hooks")
-            .and_then(toml::Value::as_bool)
-            .is_none()
-    );
-    assert_eq!(
-        parsed_config
-            .get("features")
-            .and_then(toml::Value::as_table)
-            .and_then(|features| features.get("hooks"))
-            .and_then(toml::Value::as_bool),
-        Some(true)
-    );
-    assert_eq!(
-        parsed_config
-            .get("features")
-            .and_then(toml::Value::as_table)
-            .and_then(|features| features.get("unified_exec"))
-            .and_then(toml::Value::as_bool),
-        Some(true)
-    );
-}
-
-fn assert_doctor(root: &std::path::Path, path: &std::ffi::OsString, codex_home: &std::path::Path) {
-    let doctor = protocol_command()
-        .env("PATH", path)
-        .env("CODEX_HOME", codex_home)
-        .args([
-            "hook",
-            "doctor",
-            "--client",
-            "codex",
-            root.to_str().expect("utf8 temp root"),
-        ])
-        .output()
-        .expect("run agent-semantic-protocol doctor");
-    assert!(
-        doctor.status.success(),
-        "doctor stderr: {}",
-        String::from_utf8_lossy(&doctor.stderr)
-    );
-    let doctor_stdout = String::from_utf8(doctor.stdout).expect("doctor stdout");
-    assert!(doctor_stdout.contains("trust=true"));
-    assert!(doctor_stdout.contains("trustConfig="));
-    assert!(doctor_stdout.contains("binary=true"));
-    assert!(doctor_stdout.contains("binaryPath="));
-    assert!(!doctor_stdout.contains("|trust missing="));
 }
 
 fn assert_installed_activation(root: &std::path::Path) {

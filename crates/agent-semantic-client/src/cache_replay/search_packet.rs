@@ -106,12 +106,34 @@ pub(crate) fn render_search_packet_artifact_stdout(artifact_path: &Path) -> Opti
 }
 
 pub(crate) fn output_with_delegation_hint_lines(output: Bytes, packet_bytes: &[u8]) -> Bytes {
-    if bytes_contains(&output, b"subagentHint=") {
-        return output;
-    }
     let lines = delegation_hint_lines(packet_bytes);
     if lines.is_empty() {
         return output;
+    }
+    if bytes_contains(&output, b"subagentHint=") {
+        let Ok(existing) = std::str::from_utf8(&output) else {
+            return output;
+        };
+        let mut rendered_lines = Vec::new();
+        let mut replaced = false;
+        for line in existing.lines() {
+            if line.starts_with("subagentHint=") {
+                if !replaced {
+                    rendered_lines.extend(lines.iter().cloned());
+                    replaced = true;
+                }
+            } else {
+                rendered_lines.push(line.to_string());
+            }
+        }
+        if !replaced {
+            rendered_lines.extend(lines);
+        }
+        let mut rendered = rendered_lines.join("\n").into_bytes();
+        if existing.ends_with('\n') {
+            rendered.push(b'\n');
+        }
+        return Bytes::from(rendered);
     }
     let mut rendered = Vec::with_capacity(
         output.len() + lines.iter().map(|line| line.len() + 1).sum::<usize>() + 1,
@@ -153,8 +175,13 @@ fn delegation_hint_line(hint: &Value) -> Option<String> {
         return None;
     }
     let profile = safe_token(string_field(hint, "profile")?)?;
-    let fanout = literal_or_default(hint, "fanout", "parallel", &["parallel"])?;
-    let instances = literal_or_default(hint, "instances", "targetActions", &["targetActions"])?;
+    let _mode = literal_or_default(hint, "mode", "resident", &["resident"])?;
+    let _instances = literal_or_default(hint, "instances", "single", &["single", "targetActions"])?;
+    let _reuse = literal_or_default(hint, "reuse", "send_input", &["send_input"])?;
+    let _spawn = literal_or_default(hint, "spawn", "if-missing", &["if-missing"])?;
+    if bool_or_default(hint, "forkContext", false)? {
+        return None;
+    }
     let branch_prompt =
         literal_or_default(hint, "branchPrompt", "reasoning-tree", &["reasoning-tree"])?;
     let state_owner = literal_or_default(hint, "stateOwner", "parent", &["parent"])?;
@@ -168,7 +195,7 @@ fn delegation_hint_line(hint: &Value) -> Option<String> {
     let reason = safe_token(string_field(hint, "reason")?)?;
 
     Some(format!(
-        "subagentHint=profile={profile} fanout={fanout} instances={instances} branchPrompt={branch_prompt} stateOwner={state_owner} fanin={fanin} iterative={iterative} decision=advisory runtimeOwner=agent-client modelClass={model_class} readOnly=true noCode=true targetActions={} maxCommands={max_commands} maxTurns={max_turns} receipt=asp-search-subagent({}) reason={reason}",
+        "subagentHint=profile={profile} mode=resident instances=single reuse=send_input spawn=if-missing forkContext=false branchPrompt={branch_prompt} stateOwner={state_owner} fanin={fanin} iterative={iterative} decision=advisory runtimeOwner=agent-client modelClass={model_class} readOnly=true noCode=true targetActions={} maxCommands={max_commands} maxTurns={max_turns} receipt=asp-search-subagent({}) reason={reason}",
         target_actions.join(","),
         required_fields.join(",")
     ))

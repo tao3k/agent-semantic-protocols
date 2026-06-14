@@ -131,6 +131,18 @@
         "sourceRef": {
           "$ref": "#/$defs/sourceRef"
         },
+        "selectorResolver": {
+          "$ref": "#/$defs/selectorResolver"
+        },
+        "sourceLookup": {
+          "$ref": "#/$defs/sourceLookup"
+        },
+        "agentReadOrder": {
+          "$ref": "#/$defs/agentReadOrder"
+        },
+        "agentAction": {
+          "$ref": "#/$defs/agentAction"
+        },
         "sourceOwners": {
           "type": "array",
           "items": {
@@ -221,7 +233,11 @@
       ],
       "properties": {
         "kind": {
-          "enum": ["package-manager-download", "provider-source"]
+          "enum": [
+            "package-manager-source",
+            "package-manager-download",
+            "provider-source"
+          ]
         },
         "manager": {
           "type": "string",
@@ -243,6 +259,206 @@
           "enum": ["runtime-resolved", "repository-relative"]
         },
         "selectorScheme": {
+          "type": "string",
+          "minLength": 1
+        },
+        "localSource": {
+          "$ref": "#/$defs/localSource"
+        },
+        "repositorySource": {
+          "$ref": "#/$defs/repositorySource"
+        },
+        "indexHint": {
+          "$ref": "#/$defs/indexHint"
+        }
+      }
+    },
+    "localSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "manager", "rootHint", "package", "status", "owner"],
+      "properties": {
+        "kind": {
+          "const": "gerbil-package-source"
+        },
+        "manager": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rootHint": {
+          "type": "string",
+          "minLength": 1
+        },
+        "package": {
+          "type": "string",
+          "minLength": 1
+        },
+      "status": {
+        "type": "string",
+        "minLength": 1
+      },
+      "missingAction": {
+        "const": "install-package-before-repository-fallback"
+      },
+      "installHint": {
+        "type": "string",
+        "minLength": 1
+      },
+      "owner": {
+        "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "repositorySource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "vcs", "repository", "url", "status", "owner"],
+      "properties": {
+        "kind": {
+          "const": "git-repository"
+        },
+        "vcs": {
+          "const": "git"
+        },
+        "repository": {
+          "type": "string",
+          "minLength": 1
+        },
+        "url": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "minLength": 1
+        },
+        "owner": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "indexHint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["owner", "backend", "mode"],
+      "properties": {
+        "owner": {
+          "type": "string",
+          "minLength": 1
+        },
+        "backend": {
+          "type": "string",
+          "minLength": 1
+        },
+      "mode": {
+        "const": "local-source-before-git"
+      },
+      "packageManager": {
+        "type": "string",
+        "minLength": 1
+      },
+      "missingLocalAction": {
+        "const": "install-package-before-repository-fallback"
+      },
+      "fallbackPolicy": {
+        "const": "repository-source-after-install-check"
+      }
+    }
+  },
+    "selectorResolver": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scheme", "status", "querySelector", "sourceRef"],
+      "properties": {
+        "scheme": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "const": "logical-selector"
+        },
+        "querySelector": {
+          "const": "not-direct"
+        },
+        "sourceRef": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "sourceLookup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["order", "localSource", "repositorySource", "indexHint"],
+      "properties": {
+      "order": {
+        "const": "local-source-before-git"
+      },
+      "missingLocalAction": {
+        "const": "install-package-before-repository-fallback"
+      },
+      "fallbackPolicy": {
+        "const": "repository-source-after-install-check"
+      },
+      "localSource": {
+        "$ref": "#/$defs/localSource"
+        },
+        "repositorySource": {
+          "$ref": "#/$defs/repositorySource"
+        },
+        "indexHint": {
+          "$ref": "#/$defs/indexHint"
+        }
+      }
+    },
+    "agentReadOrder": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["first", "second", "third", "fourth", "fifth", "sixth"],
+      "properties": {
+        "first": {
+          "const": "agentScenario"
+        },
+        "second": {
+          "const": "agentSteering"
+        },
+        "third": {
+          "const": "selectorResolver"
+        },
+        "fourth": {
+          "const": "minimalForms"
+        },
+        "fifth": {
+          "const": "failureCases"
+        },
+        "sixth": {
+          "const": "quality"
+        }
+      }
+    },
+    "agentAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action", "selectorUse", "quality", "avoid"],
+      "properties": {
+        "action": {
+          "const": "use-minimalForms-before-editing"
+        },
+      "selectorUse": {
+        "const": "source-anchor"
+      },
+      "missingLocalAction": {
+        "const": "install-package-before-repository-fallback"
+      },
+      "fallback": {
+        "const": "repository-source-after-install-check"
+      },
+        "quality": {
+          "enum": ["verified", "partial", "insufficient"]
+        },
+        "avoid": {
           "type": "string",
           "minLength": 1
         }

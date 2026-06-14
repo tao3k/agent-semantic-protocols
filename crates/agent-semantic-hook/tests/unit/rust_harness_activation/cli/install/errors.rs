@@ -55,7 +55,7 @@ fn cli_install_refuses_to_overwrite_invalid_codex_toml() {
     assert!(!output.status.success());
     assert!(
         String::from_utf8_lossy(&output.stderr)
-            .contains("refusing to write invalid Codex config TOML")
+            .contains("refusing to clean invalid Codex config TOML")
     );
     let config = std::fs::read_to_string(&config_path).expect("preserved config");
     assert_eq!(config, "unified_exec = \"unterminated\n");

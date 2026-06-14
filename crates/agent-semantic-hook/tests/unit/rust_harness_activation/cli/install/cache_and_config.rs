@@ -2,9 +2,7 @@ use std::env;
 
 use crate::rust_harness_activation::support::write_fake_provider_binary;
 
-use super::support::{
-    assert_installed_hook_state, assert_installed_project_trust, git_project_root, protocol_command,
-};
+use super::support::{git_project_root, protocol_command};
 
 #[test]
 fn cli_install_prefers_git_toplevel_cache_over_prj_cache_home() {
@@ -159,7 +157,7 @@ argvSourceGlobAny = [
 }
 
 #[test]
-fn cli_install_migrates_legacy_top_level_unified_exec_to_features() {
+fn cli_install_preserves_legacy_top_level_flags_and_writes_project_plugin_entries() {
     let root = git_project_root("install-unified-exec-feature");
     let codex_home = root.join(".codex-home");
     let provider_path = write_fake_provider_binary(&root, "rs-harness");
@@ -171,13 +169,9 @@ fn cli_install_migrates_legacy_top_level_unified_exec_to_features() {
     )
     .expect("write legacy config");
     std::fs::create_dir_all(&codex_home).expect("create codex home");
-    let canonical_config_path = std::fs::canonicalize(&config_path).expect("canonical config path");
     std::fs::write(
         codex_home.join("config.toml"),
-        format!(
-            "[hooks.state.\"{}:pre_tool_use:0:0\"]\ntrusted_hash = \"sha256:old\"\n",
-            canonical_config_path.display()
-        ),
+        "[hooks.state.\"stale:pre_tool_use:0:0\"]\ntrusted_hash = \"sha256:old\"\n",
     )
     .expect("write legacy user trust state");
 
@@ -202,39 +196,35 @@ fn cli_install_migrates_legacy_top_level_unified_exec_to_features() {
     let config = std::fs::read_to_string(&config_path).expect("installed config");
     let parsed_config =
         toml::from_str::<toml::Value>(&config).expect("installed Codex config is valid TOML");
-    assert!(parsed_config.get("unified_exec").is_none());
-    assert!(
+    assert_eq!(
         parsed_config
-            .get("hooks")
-            .and_then(toml::Value::as_bool)
-            .is_none()
+            .get("unified_exec")
+            .and_then(toml::Value::as_bool),
+        Some(true)
+    );
+    assert_eq!(
+        parsed_config.get("hooks").and_then(toml::Value::as_bool),
+        Some(false)
     );
     let features = parsed_config
         .get("features")
         .and_then(toml::Value::as_table)
         .expect("features table");
     assert_eq!(
-        features.get("hooks").and_then(toml::Value::as_bool),
-        Some(true)
-    );
-    assert_eq!(
-        features.get("unified_exec").and_then(toml::Value::as_bool),
-        Some(true)
-    );
-    assert_eq!(
         features.get("multi_agent").and_then(toml::Value::as_bool),
+        Some(true)
+    );
+    assert_eq!(
+        parsed_config["marketplaces"]["asp-project"]["source_type"].as_str(),
+        Some("local")
+    );
+    assert_eq!(
+        parsed_config["plugins"]["asp-codex-plugin@asp-project"]["enabled"].as_bool(),
         Some(true)
     );
     let user_config =
         std::fs::read_to_string(codex_home.join("config.toml")).expect("user trust config");
-    assert!(!user_config.contains("sha256:old"));
-    let parsed_user_config =
-        toml::from_str::<toml::Value>(&user_config).expect("user trust config is valid TOML");
-    let canonical_project_root = canonical_config_path
-        .parent()
-        .and_then(std::path::Path::parent)
-        .expect("canonical project root");
-    assert_installed_project_trust(&parsed_user_config, canonical_project_root);
-    assert_installed_hook_state(&parsed_user_config, &canonical_config_path);
+    assert!(user_config.contains("sha256:old"));
+    assert!(!user_config.contains("agent-semantic-protocol trusted hook state"));
     let _ = std::fs::remove_dir_all(&root);
 }

@@ -42,12 +42,22 @@ fn platform_response_wraps_denied_decision_for_codex_hooks() {
         reason.starts_with("ASP hook blocked `direct-source-read`"),
         "{reason}"
     );
+    assert!(reason.contains("one resident ASP search agent"), "{reason}");
     assert!(reason.contains("call `send_input`"), "{reason}");
     assert!(reason.contains("call `spawn_agent`"), "{reason}");
-    assert!(reason.contains("`fork_turns=\"none\"`"), "{reason}");
-    assert!(!reason.contains("fork_context"), "{reason}");
+    assert!(reason.contains("`agent_type=\"asp_explorer\"`"), "{reason}");
+    assert!(
+        reason.contains("fall back to `agent_type=\"explorer\"`"),
+        "{reason}"
+    );
+    assert!(reason.contains("`fork_context=false`"), "{reason}");
+    assert!(!reason.contains("fork_turns"), "{reason}");
+    assert!(
+        reason.contains("Record the returned `agent-...` id"),
+        "{reason}"
+    );
     assert!(reason.contains("`asp-search-subagent(role,action,evidence,missing,next,risk)`"));
-    assert!(reason.contains("keep model and reasoning settings in Codex config"));
+    assert!(reason.contains("Keep model and reasoning settings in Codex config"));
     assert!(
         reason.contains("If subagents are unavailable, run the safe route directly."),
         "{reason}"
@@ -346,11 +356,21 @@ enabled = false
         .as_str()
         .expect("permission decision reason");
 
+    assert!(reason.contains("one resident ASP search agent"), "{reason}");
     assert!(reason.contains("call `send_input`"), "{reason}");
     assert!(reason.contains("call `spawn_agent`"), "{reason}");
-    assert!(reason.contains("`fork_turns=\"none\"`"), "{reason}");
-    assert!(!reason.contains("fork_context"), "{reason}");
-    assert!(reason.contains("keep model and reasoning settings in Codex config"));
+    assert!(reason.contains("`agent_type=\"asp_explorer\"`"), "{reason}");
+    assert!(
+        reason.contains("fall back to `agent_type=\"explorer\"`"),
+        "{reason}"
+    );
+    assert!(reason.contains("`fork_context=false`"), "{reason}");
+    assert!(!reason.contains("fork_turns"), "{reason}");
+    assert!(
+        reason.contains("Record the returned `agent-...` id"),
+        "{reason}"
+    );
+    assert!(reason.contains("Keep model and reasoning settings in Codex config"));
     assert!(
         !reason.contains(
             "`ast-patch` is available for structural/mechanical edits after a provider dry-run receipt"

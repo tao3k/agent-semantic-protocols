@@ -1,6 +1,7 @@
 use agent_semantic_hook::{build_default_activation, builtin_provider_manifests};
 use std::fs;
 use std::path::PathBuf;
+use std::process::Command;
 
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
@@ -196,6 +197,41 @@ fn default_activation_records_project_bin_provider_prefix() {
 }
 
 #[test]
+fn default_activation_uses_project_runtime_bin_provider_prefix() {
+    let root = temp_root("runtime-bin-provider");
+    git_init(&root);
+    fs::create_dir_all(root.join(".cache/agent-semantic-protocol/runtime/bin"))
+        .expect("create runtime bin");
+    fs::create_dir_all(root.join("src")).expect("create src");
+    fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"runtime-bin-provider\"\nversion = \"0.1.0\"\n",
+    )
+    .expect("write Cargo.toml");
+    let provider_bin = root.join(".cache/agent-semantic-protocol/runtime/bin/rs-harness");
+    fs::write(&provider_bin, "#!/bin/sh\nexit 0\n").expect("write provider bin");
+    make_executable(&provider_bin);
+
+    let activation = build_default_activation(&root).expect("build activation");
+    let rust = activation
+        .providers
+        .iter()
+        .find(|provider| provider.language_id == "rust")
+        .expect("rust provider activated from project runtime bin");
+
+    assert_eq!(rust.binary, "rs-harness");
+    assert!(
+        rust.provider_command_prefix
+            .first()
+            .is_some_and(|command| command.ends_with("/runtime/bin/rs-harness")),
+        "default project runtime bin provider should be recorded as a stable command prefix: {:?}",
+        rust.provider_command_prefix
+    );
+
+    fs::remove_dir_all(root).expect("remove temp root");
+}
+
+#[test]
 fn default_activation_accepts_languages_bin_provider_override() {
     let root = temp_root("languages-bin-provider-override");
     fs::create_dir_all(root.join("tools")).expect("create tools");
@@ -279,6 +315,15 @@ fn temp_root(name: &str) -> PathBuf {
     ));
     fs::create_dir_all(&root).expect("create temp root");
     root
+}
+
+fn git_init(root: &std::path::Path) {
+    let status = Command::new("git")
+        .args(["init", "-q"])
+        .current_dir(root)
+        .status()
+        .expect("run git init");
+    assert!(status.success(), "git init failed with {status}");
 }
 
 #[cfg(unix)]

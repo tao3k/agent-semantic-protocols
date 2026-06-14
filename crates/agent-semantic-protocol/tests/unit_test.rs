@@ -25,6 +25,8 @@ mod healthcheck;
 mod hook_command;
 #[path = "unit/hook_runtime_skill.rs"]
 mod hook_runtime_skill;
+#[path = "unit/install_provider_cli.rs"]
+mod install_provider_cli;
 #[path = "unit/provider_command/mod.rs"]
 mod provider_command;
 #[path = "unit/rs_harness_attribute.rs"]

@@ -168,6 +168,35 @@ agentAction=follow-next registeredKnowledge=gerbil-poo:// notProjectActivation=t
 next=search pattern gerbil-poo usage
 #+end_src
 
+Registered package knowledge must also expose source acquisition interfaces for
+client-side indexing.  The harness does not clone packages or build Rust SQL
+indexes itself; it reports candidate source locations and repository identity.
+For Gerbil packages, clients should probe the installed package source under the
+active Gerbil package roots, such as =~/.gerbil=, before considering the git
+repository candidate.  When local source is absent, the agent-facing packet must
+treat that as a package-manager miss and tell the client to install the package
+first, then retry local source/index discovery.  Repository cloning is a fallback
+only after the package-manager install/source check remains unavailable, and that
+fallback must stay outside the language harness.
+
+#+begin_src text
+sourceRef.kind=package-manager-source
+sourceRef.localSource.rootHint=~/.gerbil
+sourceRef.localSource.package=git.cons.io/mighty-gerbils/gerbil-poo
+sourceRef.localSource.status=probe-first
+sourceRef.repository.url=https://git.cons.io/mighty-gerbils/gerbil-poo
+sourceRef.repository.vcs=git
+sourceRef.indexHint.owner=asp-client
+sourceRef.indexHint.mode=local-source-before-git
+#+end_src
+
+Agent-facing renderers must also expose the install-first fields in the same
+packet family:
+~sourceRef.localSource.missingAction=install-package-before-repository-fallback~,
+~sourceRef.localSource.installHint~,
+~sourceLookup.missingLocalAction=install-package-before-repository-fallback~,
+and ~sourceLookup.fallbackPolicy=repository-source-after-install-check~.
+
 Pattern output may be direct or inherited.  Direct pattern facts come from the
 activated extension itself.  Inherited pattern facts come from a package in the
 activated extension's dependency closure and must include an origin, a dependency
@@ -410,6 +439,16 @@ anchor for the pattern.  If the selector is logical-only, the same output must
 include a read order and an action line that tells the agent to use the
 =minimalForms= and =failureCases= before editing, instead of trying
 =query --selector= or guessing from generic Scheme/Racket memory.
+
+For package-owned logical selectors, =sourceRef= must carry both source lookup
+interfaces: a local package-source probe and a repository fallback.  The
+language harness owns selector/package identity and acquisition metadata; the
+ASP client or Rust indexing layer owns probing =~/.gerbil=, cloning the git
+repository if needed, and building any SQL search index.  Text output and
+machine packets should make this order visible to agents through
+=sourceLookup=, =selectorResolver=, =agentReadOrder=, and =agentAction= fields
+so they do not mistake =gerbil-poo://...= for a workspace selector or a fake
+activation fact.
 
 For example, a Gerbil agent that does not know POO must receive =defclass=,
 generic/method, and protocol source selectors plus failure cases that prevent

@@ -66,6 +66,20 @@ fn search_packet_first_skips_compare_seed_passthrough() {
 }
 
 #[test]
+fn search_packet_first_skips_language_evidence_extension_seed_passthrough() {
+    let request = ClientRequest::new(ClientMethod::Search, ".").with_forwarded_args(vec![
+        "extension".to_string(),
+        "gerbil-poo".to_string(),
+        "usage".to_string(),
+        "--view".to_string(),
+        "seeds".to_string(),
+        ".".to_string(),
+    ]);
+
+    assert!(!should_try_search_packet_first(&request));
+}
+
+#[test]
 fn failed_check_output_is_persisted_for_failure_frontier_search() {
     let _guard = CACHE_TEST_LOCK.lock().expect("cache test lock");
     let root = temp_project_root("failed-check-output");

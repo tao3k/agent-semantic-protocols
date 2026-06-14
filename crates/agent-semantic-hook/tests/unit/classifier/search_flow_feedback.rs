@@ -1,7 +1,7 @@
 use agent_semantic_hook::{
-    DecisionKind, DecisionSubject, HOOK_DECISION_SCHEMA_ID, HOOK_DECISION_SCHEMA_VERSION,
-    HOOK_PROTOCOL_ID, HOOK_PROTOCOL_VERSION, HookDecision, HookRuntime, ReasonKind,
-    append_hook_event_state, classify_hook, render_platform_response,
+    ActivatedProvider, DecisionKind, DecisionSubject, HOOK_DECISION_SCHEMA_ID,
+    HOOK_DECISION_SCHEMA_VERSION, HOOK_PROTOCOL_ID, HOOK_PROTOCOL_VERSION, HookDecision,
+    HookRuntime, ReasonKind, append_hook_event_state, classify_hook, render_platform_response,
 };
 use serde_json::json;
 use std::{
@@ -10,10 +10,11 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use super::registry;
+use super::{command, provider, provider_routes, registry};
 
 mod after_pipe;
 mod budget;
+mod document;
 mod invalid_facade;
 
 #[test]
@@ -274,6 +275,39 @@ fn runtime_for_project(project_root: &std::path::Path) -> HookRuntime {
         project_root: project_root.display().to_string(),
         providers: registry().providers,
     }
+}
+
+fn document_runtime_for_project(project_root: &std::path::Path) -> HookRuntime {
+    HookRuntime {
+        project_root: project_root.display().to_string(),
+        providers: vec![markdown_provider()],
+    }
+}
+
+fn markdown_provider() -> ActivatedProvider {
+    provider(
+        "md",
+        "orgize",
+        "asp",
+        "agent.semantic-protocols.languages.md.orgize",
+        &[".md", ".markdown"],
+        &[],
+        &["."],
+        &[".git"],
+        provider_routes(
+            "asp",
+            Some(command(&[
+                "asp",
+                "md",
+                "query",
+                "--selector",
+                "{selector}",
+                "--workspace",
+                ".",
+                "--content",
+            ])),
+        ),
+    )
 }
 
 fn temp_project_root(prefix: &str) -> std::path::PathBuf {

@@ -12,9 +12,13 @@ _ROADMAP_PATH = (
     / "30-39-research"
     / "31.18-tree-sitter-query-rfc-roadmap.org"
 )
-_ROOT_SKILL_PATH = _REPO_ROOT / "SKILL.md"
+_ROOT_SKILL_PATH = _REPO_ROOT / "SKILL.org"
 _INSTALLED_SKILL_PATH = (
-    _REPO_ROOT / ".agents" / "skills" / "agent-semantic-protocols" / "SKILL.md"
+    _REPO_ROOT
+    / "asp-codex-plugin"
+    / "skills"
+    / "agent-semantic-protocols"
+    / "SKILL.org"
 )
 _ACTIVE_DOC_PATHS = [
     _README_PATH,
@@ -81,21 +85,26 @@ def test_root_skill_template_and_installed_skill_contract() -> None:
     root_skill = _ROOT_SKILL_PATH.read_text(encoding="utf-8")
     installed_skill = _INSTALLED_SKILL_PATH.read_text(encoding="utf-8")
 
-    assert "<!-- ASP_INSTALLED_SKILL_NOTICE -->" in root_skill
-    assert "<!-- ASP_PROVIDER_SUMMARY -->" in root_skill
+    assert "#+PROPERTY: ASP_CONTRACT_VERSION 1" in root_skill
+    assert ":ASP_SECTION: activation" in root_skill
+    assert ":ASP_SECTION: providers" in root_skill
+    assert "# BEGIN_ASP_GENERATED notice" in root_skill
+    assert "# BEGIN_ASP_GENERATED activation" in root_skill
+    assert "# BEGIN_ASP_GENERATED providers" in root_skill
     assert "Do not edit this installed copy" not in root_skill
 
     assert "Do not edit this installed copy" in installed_skill
-    assert "## Active Providers" in installed_skill
-    assert "Start with `asp <language> guide .`" in installed_skill
+    assert "* Provider Contracts" in installed_skill
+    assert ":LANGUAGE_ID: rust" in installed_skill
+    assert ":FACADE: asp rust" in installed_skill
+    assert ":ENABLED: true" in installed_skill
+    assert "Start with =asp <language> guide .=" in installed_skill
     assert "path-context resolution" in root_skill
     assert "path-context resolution" in installed_skill
     assert "workspace discovery" not in root_skill
-    assert "<!-- ASP_INSTALLED_SKILL_NOTICE -->" not in installed_skill
-    assert "<!-- ASP_PROVIDER_SUMMARY -->" not in installed_skill
     assert "asp <language> agent guide" not in installed_skill
     assert str(_REPO_ROOT) not in installed_skill
-    assert "| `/" not in installed_skill
+    assert "| =/" not in installed_skill
 
 
 def test_rfc_docs_contracts_are_in_local_and_ci_gates() -> None:
@@ -130,7 +139,6 @@ def test_active_docs_do_not_teach_retired_guide_or_hook_routes() -> None:
         "protocol=agent-guide.v1",
         "asp <language> agent guide",
         "search query --from-hook",
-        "SKILL.org",
     ]
 
     violations = []

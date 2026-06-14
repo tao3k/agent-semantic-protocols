@@ -14,34 +14,6 @@ pub(super) fn subagent_model_arg(client: &str, model: Option<&str>) -> Result<St
     Ok(model.to_string())
 }
 
-pub(super) fn install_codex_asp_explorer_agent(
-    project_root: &Path,
-    subagent_model: &str,
-) -> Result<PathBuf, String> {
-    let path = project_root
-        .join(".codex")
-        .join("agents")
-        .join("asp-explorer.toml");
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
-        remove_stale_agent_files(
-            parent,
-            &[
-                "asp-explorer-owner.toml",
-                "asp-explorer-rg.toml",
-                "asp-explorer-selector.toml",
-            ],
-        )?;
-    }
-    let contents = codex_asp_explorer_agent(subagent_model)?;
-    toml::from_str::<toml::Value>(&contents)
-        .map_err(|error| format!("generated invalid Codex custom agent TOML: {error}"))?;
-    fs::write(&path, contents.as_bytes())
-        .map_err(|error| format!("failed to write {}: {error}", path.display()))?;
-    Ok(path)
-}
-
 pub(super) fn install_claude_asp_explorer_agent(
     project_root: &Path,
     subagent_model: &str,
@@ -63,6 +35,32 @@ pub(super) fn install_claude_asp_explorer_agent(
         )?;
     }
     let contents = claude_asp_explorer_agent(subagent_model)?;
+    fs::write(&path, contents.as_bytes())
+        .map_err(|error| format!("failed to write {}: {error}", path.display()))?;
+    Ok(path)
+}
+
+pub(super) fn install_codex_asp_explorer_agent(
+    project_root: &Path,
+    subagent_model: &str,
+) -> Result<PathBuf, String> {
+    let path = project_root
+        .join(".codex")
+        .join("agents")
+        .join("asp-explorer.toml");
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
+        remove_stale_agent_files(
+            parent,
+            &[
+                "asp-explorer-owner.toml",
+                "asp-explorer-rg.toml",
+                "asp-explorer-selector.toml",
+            ],
+        )?;
+    }
+    let contents = codex_asp_explorer_agent(subagent_model)?;
     fs::write(&path, contents.as_bytes())
         .map_err(|error| format!("failed to write {}: {error}", path.display()))?;
     Ok(path)
@@ -94,34 +92,20 @@ fn remove_stale_agent_files(parent: &Path, file_names: &[&str]) -> Result<(), St
 }
 
 fn codex_asp_explorer_agent(subagent_model: &str) -> Result<String, String> {
-    validate_subagent_model(subagent_model)?;
-    let agent = CodexAspExplorerAgent {
-        name: "asp_explorer",
-        description: "Read-only ASP search explorer for codebase mapping, query-pack construction, fan-out axes, and hook-safe evidence collection.",
-        nickname_candidates: ["ASP owner", "ASP rg", "ASP selector", "ASP search"],
-        model: subagent_model,
-        model_reasoning_effort: "medium",
-        sandbox_mode: "read-only",
-        developer_instructions: asp_explorer_instructions(),
-    };
-    let body = toml::to_string_pretty(&agent)
-        .map_err(|error| format!("failed to render Codex custom agent TOML: {error}"))?;
     Ok(format!(
-        "# Spawn policy: `fork_turns` is a `spawn_agent` argument, not a Codex\n\
-         # custom-agent config key. Parent callers must pass `fork_turns = \"none\"`.\n\
-         {body}"
+        r#"name = "asp_explorer"
+description = "Read-only ASP search explorer for codebase mapping, query-pack construction, and hook-safe evidence collection."
+nickname_candidates = ["ASP owner", "ASP rg", "ASP selector", "ASP search"]
+model = {}
+model_reasoning_effort = "medium"
+sandbox_mode = "read-only"
+developer_instructions = """
+{}
+"""
+"#,
+        toml_basic_string(subagent_model)?,
+        asp_explorer_instructions()
     ))
-}
-
-#[derive(serde::Serialize)]
-struct CodexAspExplorerAgent<'a> {
-    name: &'a str,
-    description: &'a str,
-    nickname_candidates: [&'a str; 4],
-    model: &'a str,
-    model_reasoning_effort: &'a str,
-    sandbox_mode: &'a str,
-    developer_instructions: &'a str,
 }
 
 fn claude_asp_explorer_agent(subagent_model: &str) -> Result<String, String> {
@@ -148,7 +132,7 @@ fn asp_explorer_instructions() -> &'static str {
 Do not edit files.
 Do not run broad raw source reads.
 Use ASP provider commands before source reads.
-You are normally spawned with fork_turns="none"; parent/task context must arrive in the branch prompt or later send_input messages.
+You are normally spawned with fork_context=false; parent/task context must arrive in the initial branch prompt or later send_input messages.
 Use at most one search prime and at most one search pipe per task.
 After prime, the immediate next ASP command must be search pipe.
 Compress broad prose into 2-4 stable terms before search pipe; prefer symbols, owners, paths, and error terms over long natural phrases.
@@ -156,12 +140,14 @@ If search pipe returns queryQuality=low or query-selector-low-confidence, do not
 If search pipe returns nextCommand or an exact query-selector, run that query --selector --code before additional owner/search commands.
 If a hook denies read-before-pipe, repeated-search-pipe, or command-budget exhaustion, stop retrying that command and answer from the current frontier plus missing facts.
 
-Parallel fan-out and iterative control are owned by the parent agent or client runtime, not by this custom agent file.
-The shared state is the parent agent's reasoning tree and receipt ledger.
-The parent should spawn one instance per reasoning-tree branch from actionFrontier or targetActions, then fan in receipts, update the reasoning tree, and optionally issue another branch prompt for a later round.
-Each instance receives its own branch prompt with the action id, branch purpose, parent-known evidence, missing facts, risk, and allowed ASP command group.
-Instances do not share context windows. Do not assume sibling context, shared session memory, or hidden coordination.
-Do not spawn child subagents yourself. Fill the assigned reasoning branch with compact evidence and return a receipt to the parent for fan-in synthesis and main-model verification.
+Resident search-agent control is owned by the parent agent or client runtime, not by this custom agent file.
+Spawn-only controls such as fork_context belong on the parent spawn_agent call, not as custom-agent TOML keys.
+The parent should keep exactly one ASP search agent thread per main task and record its agent id in the parent reasoning tree or receipt ledger.
+For later ASP searches in the same main task, the parent should reuse that thread with send_input instead of spawning another search agent.
+Only spawn a new ASP search agent when no recorded agent id exists, the recorded thread is closed, or the user explicitly asks for independent parallel agents.
+The resident search agent receives explicit prompts with the action id, branch purpose, parent-known evidence, missing facts, risk, and allowed ASP command group.
+Do not assume hidden sibling context, shared session memory outside this thread, or automatic parent state transfer.
+Do not spawn child subagents yourself. Fill the assigned reasoning branch with compact evidence and return a receipt to the parent for synthesis and main-model verification.
 
 Prefer:
 - asp <language> search prime --workspace . --view seeds
@@ -190,4 +176,12 @@ fn validate_subagent_model(model: &str) -> Result<(), String> {
 fn yaml_single_quoted(value: &str) -> Result<String, String> {
     validate_subagent_model(value)?;
     Ok(format!("'{}'", value.replace('\'', "''")))
+}
+
+fn toml_basic_string(value: &str) -> Result<String, String> {
+    validate_subagent_model(value)?;
+    Ok(format!(
+        "\"{}\"",
+        value.replace('\\', "\\\\").replace('"', "\\\"")
+    ))
 }

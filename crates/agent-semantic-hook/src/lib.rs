@@ -34,8 +34,8 @@ pub use classifier::{
 pub use codex_config::{
     CodexUserTrustStatus, ROOT_BLOCK_BEGIN, ROOT_BLOCK_END, claude_hook_block, codex_hook_block,
     codex_user_trust_state_status, default_claude_settings_path, install_codex_user_trust_state,
-    merge_claude_settings, merge_codex_config, validate_claude_settings_json,
-    validate_codex_config_toml,
+    merge_claude_settings, merge_codex_asp_explorer_role_config, merge_codex_config,
+    remove_codex_managed_hook_blocks, validate_claude_settings_json, validate_codex_config_toml,
 };
 pub use dev_context::{ActiveContextRecord, record_active_context};
 pub use event_state::{

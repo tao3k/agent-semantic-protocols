@@ -135,3 +135,38 @@ fn md_facade_content_projection_deduplicates_list_children() {
 
     let _ = std::fs::remove_dir_all(root);
 }
+
+#[test]
+fn md_facade_direct_read_accepts_content_projection_for_hook_recovery() {
+    let root = temp_project_root("md-document-direct-read-content");
+    std::fs::write(
+        root.join("guide.md"),
+        "# Guide\n\nHook recovery keeps raw Markdown source.\n",
+    )
+    .expect("write guide markdown");
+
+    let output = asp_command(&root)
+        .args([
+            "md",
+            "query",
+            "--from-hook",
+            "direct-source-read",
+            "--selector",
+            "guide.md:1-3",
+            "--content",
+        ])
+        .output()
+        .expect("run asp md direct-read content query");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let content = String::from_utf8(output.stdout).expect("stdout");
+    assert_eq!(
+        content,
+        "# Guide\n\nHook recovery keeps raw Markdown source.\n"
+    );
+
+    let _ = std::fs::remove_dir_all(root);
+}

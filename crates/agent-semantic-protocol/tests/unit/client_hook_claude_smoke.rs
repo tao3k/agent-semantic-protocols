@@ -6,8 +6,6 @@ use serde_json::{Value, json};
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
-const HOOK_TRIGGER_PROMPT_USER_EXTENSIONS_END: &str =
-    "<!-- ASP-HOOK-TRIGGER-PROMPT:USER-EXTENSIONS-END -->";
 static NEXT_TEMP_ID: AtomicU64 = AtomicU64::new(0);
 
 #[test]
@@ -57,7 +55,7 @@ fn claude_install_writes_project_settings_hooks() {
 }
 
 #[test]
-fn codex_install_writes_hook_trigger_prompt_and_preserves_user_extensions() {
+fn codex_install_writes_project_plugin_and_runtime_decision_config() {
     let root = claude_fixture();
     let codex_home = root.join(".codex-home");
     std::fs::create_dir_all(&codex_home).expect("create codex home");
@@ -69,42 +67,35 @@ fn codex_install_writes_hook_trigger_prompt_and_preserves_user_extensions() {
         "{first_install_stdout}"
     );
 
-    let prompt_path = root
-        .join(".codex")
-        .join("agent-semantic-protocol")
-        .join("hooks")
-        .join("hook_trigger_prompt.md");
-    let prompt = std::fs::read_to_string(&prompt_path).expect("read hook trigger prompt");
-    assert!(prompt.contains("ASP-HOOK-TRIGGER-PROMPT:MANAGED-BEGIN"));
-    assert!(prompt.contains("ASP-HOOK-TRIGGER-PROMPT:USER-EXTENSIONS-BEGIN"));
-    assert!(prompt.contains("spawn_agent"));
-    assert!(!prompt.contains("source_access_recovery"));
-
     let codex_config =
         std::fs::read_to_string(root.join(".codex").join("config.toml")).expect("read config");
+    assert!(codex_config.contains("[marketplaces.asp-project]"));
+    assert!(codex_config.contains("[plugins.\"asp-codex-plugin@asp-project\"]"));
     assert!(codex_config.contains("[agents.asp_explorer]"));
-    assert!(codex_config.contains("config_file = \"agents/asp-explorer.toml\""));
-
-    let extension = "Project local extension: include branch evidence before returning.";
-    std::fs::write(
-        &prompt_path,
-        prompt.replace(
-            HOOK_TRIGGER_PROMPT_USER_EXTENSIONS_END,
-            &format!("{extension}\n{HOOK_TRIGGER_PROMPT_USER_EXTENSIONS_END}"),
-        ),
-    )
-    .expect("write prompt extension");
+    assert!(root.join(".codex/agents/asp-explorer.toml").is_file());
+    let codex_agent =
+        std::fs::read_to_string(root.join(".codex/agents/asp-explorer.toml")).expect("read agent");
+    assert!(codex_agent.contains("fork_context=false"));
+    assert!(!codex_agent.contains("fork_turns"));
+    assert!(
+        root.join("asp-codex-plugin/skills/agent-semantic-protocols/SKILL.org")
+            .is_file()
+    );
+    assert!(
+        root.join("asp-codex-plugin/skills/agent-semantic-protocols/SKILL.contract.org")
+            .is_file()
+    );
+    assert!(
+        !root
+            .join(".agents/skills/agent-semantic-protocols/SKILL.org")
+            .exists()
+    );
 
     let second_install_stdout = install_codex_hooks(root.as_path(), &codex_home);
     assert!(
         second_install_stdout.contains("activationSync=reused"),
         "{second_install_stdout}"
     );
-
-    let updated = std::fs::read_to_string(&prompt_path).expect("read updated hook trigger prompt");
-    assert!(updated.contains(extension), "{updated}");
-    assert!(updated.contains("hook_trigger_prompt.md") || updated.contains("spawn_agent"));
-    assert!(!updated.contains("source_access_recovery"));
 
     let decision = run_codex_pre_tool_decision(
         root.as_path(),
@@ -120,7 +111,6 @@ fn codex_install_writes_hook_trigger_prompt_and_preserves_user_extensions() {
     );
     let message = decision["message"].as_str().expect("decision message");
     assert!(message.contains("spawn_agent"), "{message}");
-    assert!(message.contains(extension), "{message}");
 }
 
 #[test]
@@ -255,7 +245,76 @@ fn claude_fixture() -> PathBuf {
     )
     .expect("write fake provider");
     make_executable(&provider_path);
+    write_test_codex_plugin(&root);
+    write_fake_codex_cli(&bin_dir);
     root
+}
+
+fn write_test_codex_plugin(root: &Path) {
+    let plugin_root = root.join("asp-codex-plugin");
+    let manifest = plugin_root.join(".codex-plugin/plugin.json");
+    std::fs::create_dir_all(manifest.parent().expect("plugin manifest parent"))
+        .expect("create plugin manifest dir");
+    std::fs::write(
+        &manifest,
+        r#"{
+  "name": "asp-codex-plugin",
+  "version": "0.1.0+test",
+  "description": "Test ASP Codex plugin",
+  "author": {"name": "ASP"},
+  "skills": "./skills/",
+  "hooks": "./hooks/hooks.json",
+  "interface": {"displayName": "ASP Test"}
+}
+"#,
+    )
+    .expect("write plugin manifest");
+    let hooks = plugin_root.join("hooks/hooks.json");
+    std::fs::create_dir_all(hooks.parent().expect("plugin hooks parent"))
+        .expect("create plugin hooks dir");
+    std::fs::write(&hooks, r#"{"hooks":{}}"#).expect("write plugin hooks");
+}
+
+fn write_fake_codex_cli(bin_dir: &Path) {
+    let path = bin_dir.join("codex");
+    std::fs::write(
+        &path,
+        r#"#!/bin/sh
+set -eu
+codex_home="${CODEX_HOME:-${HOME:-}/.codex}"
+config="$codex_home/config.toml"
+config_dir="${config%/*}"
+/bin/mkdir -p "$config_dir"
+if [ "${1:-}" = "plugin" ] && [ "${2:-}" = "marketplace" ] && [ "${3:-}" = "add" ]; then
+  root="${4:-.}"
+  if ! /usr/bin/grep -q '^\[marketplaces\.asp-project\]' "$config" 2>/dev/null; then
+    {
+      printf '[marketplaces.asp-project]\n'
+      printf 'last_updated = "2026-01-01T00:00:00Z"\n'
+      printf 'source_type = "local"\n'
+      printf 'source = "%s"\n\n' "$root"
+    } >> "$config"
+  fi
+  printf '{"marketplaceName":"asp-project","installedRoot":"%s","alreadyAdded":false}\n' "$root"
+  exit 0
+fi
+if [ "${1:-}" = "plugin" ] && [ "${2:-}" = "add" ]; then
+  /bin/mkdir -p "$codex_home/plugins/cache/asp-project/asp-codex-plugin/0.1.0+test"
+  if ! /usr/bin/grep -q '^\[plugins\."asp-codex-plugin@asp-project"\]' "$config" 2>/dev/null; then
+    {
+      printf '[plugins."asp-codex-plugin@asp-project"]\n'
+      printf 'enabled = true\n'
+    } >> "$config"
+  fi
+  printf '{"pluginId":"asp-codex-plugin@asp-project","name":"asp-codex-plugin","marketplaceName":"asp-project","version":"0.1.0+test","installedPath":"%s/plugins/cache/asp-project/asp-codex-plugin/0.1.0+test","authPolicy":"ON_INSTALL"}\n' "$codex_home"
+  exit 0
+fi
+printf 'unsupported fake codex command: %s\n' "$*" >&2
+exit 2
+"#,
+    )
+    .expect("write fake Codex CLI");
+    make_executable(&path);
 }
 
 fn install_claude_hooks(root: &Path) {
@@ -287,12 +346,6 @@ fn install_codex_hooks(root: &Path, codex_home: &Path) -> String {
         "install stdout: {}\ninstall stderr: {}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
-    );
-    assert!(
-        String::from_utf8_lossy(&output.stdout)
-            .contains("triggerPrompt=.codex/agent-semantic-protocol/hooks/hook_trigger_prompt.md"),
-        "install stdout: {}",
-        String::from_utf8_lossy(&output.stdout)
     );
     String::from_utf8(output.stdout).expect("install stdout is utf8")
 }

@@ -36,8 +36,9 @@ pub(crate) fn selector_query_route(provider: &ActivatedProvider, path: &str) -> 
                 "query",
                 "--selector",
                 route_context.selector.as_str(),
-                "--content",
+                "--workspace",
                 route_context.project_root.as_str(),
+                "--content",
             ]),
             stdin_mode: None,
         };

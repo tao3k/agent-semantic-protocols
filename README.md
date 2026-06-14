@@ -67,7 +67,7 @@ Enter the project shell first when available:
 direnv exec . <command>
 ```
 
-Install agent-facing tools and the Codex hook config through the current
+Install agent-facing tools and the Codex project plugin through the current
 convenience target:
 
 ```sh
@@ -79,6 +79,57 @@ This installs the core ASP runtime surface: `asp`, `asp-graph-turbo`,
 `rs-harness`, `ts-harness`, and `py-harness`. `asp-graph-turbo` is the only
 supported graph turbo executable and a required local ranking dependency for
 the graph-turbo search/history path, not an optional debugging tool.
+
+Install or refresh the Codex plugin for the current project:
+
+```sh
+asp hook install --client codex .
+```
+
+The Codex installer uses the official plugin marketplace model. It writes or
+refreshes `.agents/plugins/marketplace.json`, installs
+`asp-codex-plugin@asp-project` into the project-scoped `.codex` home, writes the
+generated skill to
+`asp-codex-plugin/skills/agent-semantic-protocols/SKILL.org`, and removes the
+legacy project skill and direct Codex hook/subagent files. After installing,
+restart Codex or start a new thread so the plugin bundle and hooks are loaded.
+
+For a manual install that mirrors the Codex marketplace flow, run:
+
+```sh
+CODEX_HOME="$PWD/.codex" codex plugin marketplace add . --json
+CODEX_HOME="$PWD/.codex" codex plugin add asp-codex-plugin@asp-project --json
+CODEX_HOME="$PWD/.codex" codex plugin list --json
+```
+
+Publishing is only required when the plugin should be distributed beyond this
+repository checkout. For this repo, the maintained publish surface is the repo
+marketplace at `.agents/plugins/marketplace.json`; a public or workspace-shared
+plugin should only come after the manifest, hook behavior, and generated skill
+contract are stable.
+
+Install released provider binaries into the current project's ASP runtime state
+when you want the repo to consume language harness releases instead of binaries
+from `.bin` or the process `PATH`:
+
+```sh
+asp install provider rust --rev v0.1.0 --project .
+asp install provider julia --rev v0.1.0 --target aarch64-apple-darwin --project .
+```
+
+`--rev` is the required install identity and normally matches the language
+provider release tag. `--target` is only the release asset selector; omit it to
+use the host target when ASP can infer one. The install writes the full provider
+package under `.cache/agent-semantic-protocol/runtime/providers/`, writes a
+launcher into `.cache/agent-semantic-protocol/runtime/bin/`, and records a
+`<language>.lock.toml` receipt beside the provider packages.
+
+Each language provider owns its own GitHub release workflow under
+`languages/<provider>/.github/workflows/release.yml`. Release assets must be
+named `<binary>-<target>.tar.gz` with a matching `.sha256`, for example
+`rs-harness-aarch64-apple-darwin.tar.gz`. The currently published target set is
+`x86_64-unknown-linux-gnu` and `aarch64-apple-darwin`; the Rust provider also
+publishes `x86_64-pc-windows-msvc`. `x86_64-apple-darwin` is not supported.
 
 Install the same tools into a user-owned bin directory. The directory must be
 on the PATH that your agent client uses to run hooks:

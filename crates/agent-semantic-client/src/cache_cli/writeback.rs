@@ -1055,6 +1055,11 @@ fn request_search_packet_provider_export_method(
     if is_prime_seed_search(&request.forwarded_args) {
         return None;
     }
+    if !is_search_packet_seed_search(&request.forwarded_args)
+        && !is_dependency_search(&request.forwarded_args)
+    {
+        return None;
+    }
     request_search_packet_writeback_method(request)
 }
 
@@ -1071,6 +1076,12 @@ fn is_dependency_search(args: &[String]) -> bool {
 
 fn is_owner_items_search(args: &[String]) -> bool {
     args.first().is_some_and(|arg| arg == "owner") && args.iter().any(|arg| arg == "items")
+}
+
+fn is_search_packet_seed_search(args: &[String]) -> bool {
+    args.first()
+        .is_some_and(|arg| arg == "fzf" || arg == "pipe")
+        && is_seed_search_without_code(args)
 }
 
 fn insert_json_flag_before_project_root(args: &mut Vec<String>) {

@@ -1,0 +1,137 @@
+#+TITLE: ASP Skill Contract
+
+* ASP skill contract v1
+:PROPERTIES:
+:CONTRACT_ID: asp.skill.v1
+:CONTRACT_SCOPE: document
+:CONTRACT_KIND: org-elements
+:END:
+
+** Contract binding keyword
+:PROPERTIES:
+:ASSERT_ID: asp.skill.contract.binding
+:SEVERITY: error
+:END:
+
+#+BEGIN_SRC org-contract
+assert count keyword where
+  property(:key) = "CONTRACT_ORG"
+>= 1
+#+END_SRC
+
+** Contract metadata section
+:PROPERTIES:
+:ASSERT_ID: asp.skill.section.contract-metadata
+:SEVERITY: error
+:END:
+
+#+BEGIN_SRC org-contract
+assert count headline where
+  property(:raw-value) = "Contract Metadata"
+>= 1
+#+END_SRC
+
+** Runtime activation section
+:PROPERTIES:
+:ASSERT_ID: asp.skill.section.runtime-activation
+:SEVERITY: error
+:END:
+
+#+BEGIN_SRC org-contract
+assert count headline where
+  property(:raw-value) = "Runtime Activation"
+>= 1
+#+END_SRC
+
+** Runtime activation table
+:PROPERTIES:
+:ASSERT_ID: asp.skill.runtime-activation.table
+:SEVERITY: error
+:END:
+
+#+BEGIN_SRC org-contract
+let runtime_activation = headline where property(:raw-value) = "Runtime Activation"
+
+assert count table where
+  descendant_of(runtime_activation)
+>= 1
+#+END_SRC
+
+** Agent operating contract section
+:PROPERTIES:
+:ASSERT_ID: asp.skill.section.agent-operating-contract
+:SEVERITY: error
+:END:
+
+#+BEGIN_SRC org-contract
+assert count headline where
+  property(:raw-value) = "Agent Operating Contract"
+>= 1
+#+END_SRC
+
+** Agent search contract sections
+:PROPERTIES:
+:ASSERT_ID: asp.skill.agent-operating.required-sections
+:SEVERITY: error
+:END:
+
+#+BEGIN_SRC org-contract
+assert count headline where
+  property(:raw-value) = "ASP Explorer Subagent" or property(:raw-value) = "Search Before Source" or property(:raw-value) = "Hook Recovery" or property(:raw-value) = "Command Selection" or property(:raw-value) = "Failure Frontier" or property(:raw-value) = "Document Query" or property(:raw-value) = "General Rules"
+>= 7
+#+END_SRC
+
+** Gerbil POO extension search contract
+:PROPERTIES:
+:ASSERT_ID: asp.skill.agent-operating.gerbil-poo-extension-search
+:SEVERITY: error
+:END:
+
+#+BEGIN_SRC org-contract
+assert count headline where
+  property(:raw-value) = "Gerbil POO Extension Search"
+  and property(:REGISTERED_KNOWLEDGE) = "gerbil-poo://registry"
+  and property(:SELECTOR_SCHEME) = "gerbil-poo-logical-symbol"
+  and property(:NOT_PROJECT_ACTIVATION) = "true"
+  and property(:ACTIVATION_SOURCE) = "gerbil.pkg"
+  and property(:DEPENDENCY_MODE) = "required"
+>= 1
+#+END_SRC
+
+** Provider contracts section
+:PROPERTIES:
+:ASSERT_ID: asp.skill.section.provider-contracts
+:SEVERITY: error
+:END:
+
+#+BEGIN_SRC org-contract
+assert count headline where
+  property(:raw-value) = "Provider Contracts"
+>= 1
+#+END_SRC
+
+** Provider contract entries
+:PROPERTIES:
+:ASSERT_ID: asp.skill.provider-contract.entries
+:SEVERITY: error
+:END:
+
+#+BEGIN_SRC org-contract
+let provider_contracts = headline where property(:raw-value) = "Provider Contracts"
+
+assert count headline where
+  child_of(provider_contracts)
+>= 1
+#+END_SRC
+
+** Client surface section
+:PROPERTIES:
+:ASSERT_ID: asp.skill.section.client-surface
+:SEVERITY: error
+:END:
+
+#+BEGIN_SRC org-contract
+assert count headline where
+  property(:raw-value) = "Client Surface"
+>= 1
+#+END_SRC

@@ -15,6 +15,7 @@ orgize = { path = "../../languages/orgize", features = ["md"] }
 proc-macro2 = { version = "1", features = ["span-locations"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+sha2 = { workspace = true }
 toml = { workspace = true }
 syn = { version = "2", features = ["full"] }
 tokio = { workspace = true }
@@ -23,6 +24,7 @@ tree-sitter-julia = "0.23.1"
 tree-sitter-python = "0.25.0"
 tree-sitter-typescript = "0.23.2"
 ignore = "0.4.26"
+libc = "0.2"
 which = "8.0.3"
 
 [[bin]]

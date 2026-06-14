@@ -5,6 +5,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use agent_semantic_config::project_runtime_layout;
+
 use crate::executable::{is_executable_file, resolve_executable_with_status};
 use crate::protocol::{
     HOOK_ACTIVATION_SCHEMA_ID, HOOK_ACTIVATION_SCHEMA_VERSION, HOOK_PROTOCOL_ID,
@@ -226,6 +228,12 @@ fn default_provider_binary(project_root: &Path, manifest: &ProviderManifest) -> 
     let project_bin = project_root.join(".bin").join(&manifest.binary);
     if is_executable_file(&project_bin) {
         return project_bin.display().to_string();
+    }
+    if let Some(runtime_home) = project_runtime_layout(project_root).runtime_home {
+        let managed_bin = runtime_home.join("bin").join(&manifest.binary);
+        if is_executable_file(&managed_bin) {
+            return managed_bin.display().to_string();
+        }
     }
     manifest.binary.clone()
 }

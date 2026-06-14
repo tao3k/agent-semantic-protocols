@@ -99,7 +99,7 @@ fn prepared_project(name: &str) -> PathBuf {
     std::fs::create_dir_all(root.join(".git")).expect("create git marker");
     let skill_dir = root.join(".agents/skills/agent-semantic-protocols");
     std::fs::create_dir_all(&skill_dir).expect("create skill dir");
-    std::fs::write(skill_dir.join("SKILL.md"), "# test skill\n").expect("write skill");
+    std::fs::write(skill_dir.join("SKILL.org"), "#+TITLE: test skill\n").expect("write skill");
     root
 }
 

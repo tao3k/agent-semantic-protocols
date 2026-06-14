@@ -1,0 +1,475 @@
+#+TITLE: Gerbil POO Source Alignment Report
+#+DATE: 2026-06-14
+#+OPTIONS: toc:2
+
+* Purpose
+
+This report summarizes the source-level semantics of the upstream
+~.data/gerbil-poo~ prototype object system and maps them to concrete work for
+the Gerbil schema project harness.
+
+The goal is not to vendor POO or mirror every implementation detail. The goal is
+to identify the parser-owned and policy-owned facts that make POO-heavy Gerbil
+code understandable to agents, testable in the harness, and reusable as a best
+practice corpus.
+
+* Evidence Scope
+
+The evidence was gathered from ASP-owned source windows and search evidence over
+~.data/gerbil-poo~:
+
+- ~proto.ss:1:80~ for prototype instantiation and composition.
+- ~object.ss:1:560~ for object layout, slot specs, C3 precedence, slot caches,
+  object syntax, mutation, cloning, and slot binding helpers.
+- ~mop.ss:1:560~ for generic dispatch, ~define-type~, ~Class.~, ~Slot~, ~Lens~,
+  type validation, and class construction.
+- ~io.ss:1:240~ for byte IO generics, printer hooks, JSON hooks, marshal,
+  string, and writeenv fallback behavior.
+- ~type.ss:1:560~, ~number.ss:1:260~, and ~fun.ss:1:180~ for reusable typed
+  protocol descriptors built on POO.
+- ~table.ss:1:260~, ~trie.ss:1:140~, ~trie.ss:650:730~, and
+  ~rationaldict.ss:1:260~ for protocol adapters and real data-structure use.
+- ~fq.ss:1:180~ for finite-field code using POO as an arithmetic protocol
+  system.
+- ~brace.ss:1:220~ for brace syntax lowering to ~.o/ctx~.
+- ~t/object-test.ss~, ~t/mop-test.ss~, ~t/rationaldict-test.ss~, and
+  ~t/fq-test.ss~ for stable behavior witnesses.
+
+* Source Map
+
+** Prototype layer
+
+~proto.ss~ is intentionally small:
+
+- ~instantiate-proto~ ties a prototype transformer to a recursive accessor.
+- ~identity-proto~ passes the inherited behavior through.
+- ~compose-proto~ composes two prototype transformers as
+  ~(lambda (a b) (p a (q a b)))~.
+- ~compose-proto*~ folds zero, one, two, and many prototypes.
+- ~proto-bottom~ raises on unresolved access.
+- ~instantiate-protos~ composes and instantiates a prototype list.
+
+Harness implication: prototype facts should remain small and structural. The
+provider should recognize composition and instantiation forms, but should not
+pretend the prototype layer alone explains POO. Most practical semantics live in
+~object.ss~ and ~mop.ss~.
+
+** Object kernel
+
+~object.ss~ is the runtime core. The object struct tracks:
+
+- direct supers
+- slot specs
+- defaults
+- materialized instance cache
+- computed precedence list
+- computed slot function table
+- cached all-slots list
+
+The kernel computes C3 precedence, merges defaults before methods, reverses the
+precedence list for method accumulation, and memoizes slot values through
+~.ref~. Slot behavior is mediated by four slot-spec structs:
+
+- constant slot spec
+- thunk slot spec
+- self slot spec
+- computed slot spec
+
+~apply-slot-spec~ is therefore a critical semantic boundary. It tells the
+provider whether a slot value is immediate, lazy, self-dependent, or inherited
+through a super function.
+
+The object syntax layer is also part of the semantic surface:
+
+- ~.o/ctx~ and ~object/slots~ normalize slot specifications.
+- Keyword forms such as ~a: 1~, computed forms such as ~x: => 1+~, prototype
+  override forms such as ~x: =>.+ {y: 2}~, and default forms such as
+  ~x: ? 2~ all lower into slot specs.
+- ~with-slots~, ~def-slots~, ~with-prefixed-slots~, and
+  ~def-prefixed-slots~ expose slot bindings to lexical code.
+- ~.def~, ~.def!~, ~.get~, ~.@~, ~.call~, ~.putslot!~, ~.putdefault!~,
+  ~.put!~, ~.set!~, and ~.cc~ are agent-facing operations, not incidental
+  helpers.
+
+Harness implication: the harness should model POO as a set of declarative forms,
+slot binding forms, computed slot edges, and cache/reference operations. Merely
+counting callees misses the ownership boundary.
+
+** MOP and type layer
+
+~mop.ss~ turns the object kernel into a meta-object protocol:
+
+- ~.defgeneric~ declares generic functions and options such as ~slot:~,
+  ~from: type~, ~default:~, and ~compute-default:~.
+- Generic calls dispatch through ~.ref~ against either the instance or the type
+  slot, depending on the ~from:~ option.
+- ~define-type~ constructs type/class objects through ~.def/ctx~ or a direct
+  object declaration.
+- ~Type.~, ~Class.~, and ~Slot~ define the base validation and class machinery.
+- ~Class.~ derives effective slots, validates sealed/unsealed object shape,
+  builds class prototypes, and owns sexp, JSON, marshal, bytes, tuple, and
+  string conversions.
+- ~slot-checker~ and ~slot-definer~ are generic functions over slot
+  descriptors, which means slot validation and slot materialization are MOP
+  dispatch points.
+- ~Lens~ and ~slot-lens~ show that POO objects are also used as functional
+  access/update protocols.
+
+Harness implication: ~define-type~ must be parsed as a first-class POO
+definition, not as an opaque macro call. Generic declarations should emit
+structured facts for slot name, dispatch source, default, and computed default.
+Class and slot descriptors should be discoverable by agents before they inspect
+individual call sites.
+
+** IO and printer integration
+
+~io.ss~ connects POO objects to Gerbil runtime integration points:
+
+- Byte IO generics: ~object-read-byte~, ~object-write-byte~,
+  ~read-bytes-into~, ~object-read-bytes~, and ~object-write-bytes~.
+- Printer hook: ~(@method :pr object)~.
+- JSON hooks: ~(@method :write-json object)~ and ~(@method :json object)~.
+- Type-directed conversion helpers: ~json-string<-~ and ~<-json-string~.
+- Marshal and unmarshal generics: ~marshal~ and ~unmarshal~.
+- Bytes/string generics and mixin methods such as ~methods.bytes<-marshal~,
+  ~methods.marshal<-bytes~, and ~methods.string<-json~.
+- Gambit writeenv hook: ~(@method :wr object)~ with fallbacks for type
+  converters, object-local write methods, sexp slots, and raw slot rendering.
+
+Harness implication: IO methods should be classified as protocol adapters and
+runtime hook implementations. They are executable methods, but they are also
+declarative protocol extension points. The policy layer should avoid simplistic
+callee-name rules and prefer source range and top-form ownership when deciding
+whether a call is executable in the FFI/policy sense.
+
+** Protocol adapters and data structures
+
+POO is used as a typeclass-like protocol layer:
+
+- ~type.ss~ defines Tuple, List, Bytes, String, Symbol, Json, Or, Pair,
+  Rational, Maybe, Map, Record, and Sum descriptors.
+- ~number.ss~ defines arithmetic protocols for Number, Real, Integer, UInt,
+  integer ranges, modular arithmetic, fixed-width integers, floats, and exponent
+  mixins.
+- ~fun.ss~ defines Category, Functor, Identity, Wrapper, and Wrap descriptors.
+- ~table.ss~ defines ~methods.table~ with validation, lookup, folds, merge,
+  update, set-like conversions, IO conversions, and lens construction.
+- ~Set<-Table.~ turns a table protocol into a set protocol.
+- ~rationaldict.ss~ adapts ~clan/pure/dict/rationaldict~ through
+  ~RationalDict.~ and ~RationalSet~.
+- ~trie.ss~ implements a Patricia trie as a POO table instance, with nested
+  type descriptors for wrapped trie nodes, zippers, steps, and unsteps.
+
+Harness implication: parser facts should represent POO protocol adapters as
+definition-level facts with their inherited mixins and owned method slots. This
+is especially important for table/trie code, where agent intent is usually
+"which protocol is implemented?" rather than "which function was called?".
+
+** Real project witness: finite fields
+
+~fq.ss~ uses POO as an arithmetic protocol system:
+
+- ~F_q.~ inherits exponentiation mixins and defines field parameters.
+- Slot formulas derive ~.q~, ~.Z/pZ~, ~.x~, element checks, zero/one, add, sub,
+  neg, mul, inv, div, and packed/unpacked representations.
+- ~F_2^n.~ specializes the representation for binary fields.
+- ~F_2^8~, ~F_2^64~, and ~F_2^256~ are concrete field descriptors.
+
+~t/fq-test.ss~ exercises both generic ~F_q.~ behavior and specialized
+~F_2^n.~ behavior. This is a good real-project witness because it uses
+inheritance, computed slots, protocol methods, and domain-specific arithmetic in
+one compact module.
+
+Harness implication: POO facts must be useful for domain code, not only toy
+object examples. The search output should let an agent find the field
+descriptor, inherited protocol mixins, and method slots before reading the whole
+file.
+
+** Debug and tracing
+
+~debug.ss~ exposes two important debugging witnesses:
+
+- ~DDT~ prints typed debug values through POO type descriptors.
+- ~trace-poo~ builds a traced variant of a POO object by wrapping inherited
+  procedure-valued slots with ~trace-inherited-slot~.
+
+Harness implication: debug helpers are evidence that slot ownership and
+inherited slot wrapping matter to human workflows. They should become pattern
+fixtures, not just incidental function references.
+
+** Syntax witness
+
+~brace.ss~ lowers Gerbil brace syntax through ~@method~ to ~.o/ctx~ in
+expression position and to ~.o~ in match position.
+
+Harness implication: parser output should identify brace object literals and
+match patterns as POO object syntax, not only as generic macro usage.
+
+* Behavioral Witnesses
+
+The tests make the intended semantics concrete:
+
+- ~t/object-test.ss~ covers object creation, mutation, ~.def!~, slot lookup,
+  mixins, computed slots, inherited computation, keyword/brace syntax, matching,
+  ~with-slots~, prefixed slot binding, ~.put!~, ~.putslot!~, ~.+~, defaults,
+  single inheritance, extra slots, and multiple inheritance.
+- ~t/mop-test.ss~ covers type membership, ~Class.~ slot descriptors,
+  ~define-type~, sealed classes, generic defaults, validation across class
+  inheritance, and ~slot-lens~.
+- ~t/rationaldict-test.ss~ routes the adapter through shared table tests.
+- ~t/fq-test.ss~ validates generic and specialized finite-field descriptors.
+
+Harness implication: fixtures should be derived from these stable witnesses.
+The object tests are the best source for syntax pattern fixtures. The MOP tests
+are the best source for class/generic parser facts. The rationaldict and fq
+tests are the best source for adapter and real-project search examples.
+
+* Alignment Matrix
+
+** P0: preserve declaration ownership in policy
+
+Current status: the harness now treats calls inside declarative FFI top-forms as
+declarative when the call line range is contained by the declaration top-form
+range.
+
+Gap: the same principle should be applied consistently to POO policy and search
+classification. A callee list is too weak because declarative macros can contain
+normal-looking calls.
+
+Action:
+
+- Keep range ownership as the default policy primitive.
+- Prefer "call range belongs to declarative top-form" over callee-name
+  whitelists.
+- Reuse this pattern when POO declarative forms contain executable-looking slot
+  formulas that should still be reported as definition-owned facts.
+
+Validation:
+
+- FFI declaration regression fixture.
+- POO fixtures where ~define-type~, ~.defgeneric~, and ~.o/ctx~ contain nested
+  calls.
+
+** P0: make ~define-type~ a parser-owned definition fact
+
+Current status: ~define-type~ parsing has started and should remain a
+first-class POO fact.
+
+Gap: extracted facts should distinguish type name, role, supers/mixins, slot
+descriptors, options, and generated protocol methods.
+
+Action:
+
+- Emit a POO definition fact for every ~define-type~.
+- Capture declared role as ~type~.
+- Capture inherited bases from the ~@~ clause and bracketed mixin list.
+- Capture slot descriptors under ~slots:~ and direct method slots such as
+  ~.element?~, ~.json<-~, ~.marshal~, and ~.unmarshal~.
+
+Validation:
+
+- Fixture from ~mop-test.ss~ ~Amount~ and ~LocatedAmount~.
+- Fixture from ~fq.ss~ ~F_q.~ and ~F_2^n.~.
+- Fixture from ~rationaldict.ss~ ~RationalDict.~.
+
+** P1: model object slot syntax as normalized semantic cases
+
+Current status: the extension pattern registry already covers major POO pattern
+families. The parser still needs stronger object-syntax facts.
+
+Gap: object syntax has several distinct meanings that all look like slot forms.
+
+Action:
+
+- Classify slot specs as constant, lexical, self-computed, inherited-computed,
+  mixin override, or default.
+- Preserve normalized slot name and source syntax.
+- Emit edges for inherited slot references when a slot uses ~=>~ or
+  ~(next-method)~.
+- Emit object match-pattern facts for ~.o~ and brace syntax in match position.
+
+Validation:
+
+- ~t/object-test.ss~ slot definition cases.
+- Multiple inheritance case where final ~.alist~ proves C3/default interaction.
+
+** P1: expose MOP generic declarations
+
+Current status: generics are visible as calls but not yet rich enough for agent
+navigation.
+
+Gap: an agent needs to know which slot a generic dispatches through and whether
+the receiver is an instance or type.
+
+Action:
+
+- Parse ~.defgeneric~ options:
+  - ~slot:~
+  - ~from: type~
+  - ~default:~
+  - ~compute-default:~
+- Emit a generic fact with the public generic name, slot name, dispatch source,
+  and default strategy.
+- Link ~defmethod (@method :pr object)~ and similar methods to the protocol hook
+  family.
+
+Validation:
+
+- ~io.ss~ byte IO, marshal, string, JSON, and writeenv generics.
+- ~mop.ss~ ~slot-checker~ and ~slot-definer~.
+- ~mop-test.ss~ ~location~ generic with default.
+
+** P1: surface slot cache and inheritance edges
+
+Current status: pattern evidence includes slot cache and C3 inheritance
+families.
+
+Gap: search output should explain why ~.ref~, ~.ref/cached~, and
+~apply-slot-spec~ are semantic boundaries.
+
+Action:
+
+- Emit facts for cache materialization paths:
+  - ~instantiate-object!~
+  - ~compute-precedence-list!~
+  - ~compute-slot-funs!~
+  - ~apply-slot-spec~
+  - ~.ref~
+  - ~.ref/cached~
+- Mark C3 precedence computation as inheritance graph evidence.
+- Add agent guidance that slot values can be lazy and inherited, not simply
+  literal fields.
+
+Validation:
+
+- ~object.ss~ object kernel fixture.
+- Existing POO slot-cache and C3 snapshots.
+
+** P2: classify IO hooks as protocol adapters
+
+Current status: pattern registry has IO/JSON fallback coverage, but parser facts
+should be sharper.
+
+Gap: hooks such as ~:pr~, ~:wr~, ~:json~, and ~:write-json~ are both runtime
+methods and protocol extension points.
+
+Action:
+
+- Emit protocol adapter facts for Gerbil/Gambit hook methods.
+- Distinguish fallback strategy:
+  - type-local writer
+  - type conversion
+  - object-local writer
+  - sexp slot
+  - raw slot rendering
+- Keep policy classification range-owned.
+
+Validation:
+
+- ~io.ss~ hook methods.
+- Search output that points agents to fallback order before dumping code.
+
+** P2: add protocol adapter facts for table, set, trie, and rationaldict
+
+Current status: POO patterns can mention table and adapter families, but the
+provider should expose them as reusable semantic structures.
+
+Gap: table implementations are best understood as protocol conformance, not as
+long lists of slot calls.
+
+Action:
+
+- Mark ~methods.table~ as a protocol descriptor.
+- Mark ~Set<-Table.~ as protocol derivation.
+- Mark ~RationalDict.~ as adapter from an external package to ~methods.table~.
+- Mark ~Trie.~ as a larger real implementation of the same protocol.
+
+Validation:
+
+- ~rationaldict-test.ss~ through ~table-tests~.
+- Trie fixtures for table methods and zipper-related type descriptors.
+
+** P2: make debug helpers first-class pattern witnesses
+
+Current status: trace/debug patterns exist in the registry.
+
+Gap: debug helpers prove that inherited procedure-valued slots are runtime
+concepts worth exposing.
+
+Action:
+
+- Keep ~trace-poo~ and ~trace-inherited-slot~ as pattern fixtures.
+- Link them to slot inheritance and computed slot facts.
+
+Validation:
+
+- Search pattern snapshot for trace/debug.
+
+* Recommended Implementation Order
+
+1. Stabilize parser facts for ~define-type~ and object slot syntax.
+2. Add focused fixtures from upstream tests:
+   - object slot syntax fixture
+   - MOP generic/class fixture
+   - IO hook fixture
+   - RationalDict adapter fixture
+   - finite-field descriptor fixture
+3. Extend the POO extension registry only after parser facts are available, so
+   pattern output references concrete parser-owned evidence instead of only
+   query text.
+4. Add compact search snapshots for:
+   - POO type definition discovery
+   - slot cache/inheritance discovery
+   - IO fallback discovery
+   - table adapter discovery
+   - finite-field real-project discovery
+5. Re-run the Gerbil harness tests and one real-project search loop against
+   ~.data/gerbil-poo~.
+
+* Engineering Rules From The Source
+
+- Treat POO declarations as structured forms with nested executable-looking
+  expressions, not as ordinary top-level calls.
+- Prefer source-range ownership over callee-name exceptions.
+- Keep prototype facts small; do not collapse object/MOP semantics into
+  ~proto.ss~.
+- Keep parser facts ahead of pattern registry prose.
+- Use upstream tests as witness fixtures because they encode stable behavior.
+- Keep ~.data/gerbil-poo~ as a reference corpus and best-practice fixture
+  source, not as harness runtime dependency.
+
+* Acceptance Checklist
+
+- Agents can ask "where is this POO type defined?" and land on ~define-type~
+  facts without reading the whole file.
+- Agents can ask "what protocol does this object implement?" and see inherited
+  mixins plus owned method slots.
+- Agents can ask "why does this slot have this value?" and see default,
+  computed, inherited, or override classification.
+- Agents can ask "how is this object serialized or printed?" and see the IO
+  fallback order.
+- Policy checks avoid FFI-style false positives by using declaration range
+  ownership.
+- Search output for POO-heavy real code points to object/MOP/protocol facts
+  before raw source windows.
+
+* Open Questions
+
+- Should the shared schema expose a language-neutral "declarative top-form owns
+  nested call range" fact, or should that remain provider-local policy evidence?
+- Should POO slot facts be modeled as generic "macro-expanded field facts" or
+  as Gerbil-specific provider facts under a POO namespace?
+- Should class/type descriptors expose generated serializer facts directly, or
+  only link to the slots that define them?
+- How much of C3 precedence should be emitted as graph evidence versus compact
+  explanatory text?
+
+* Next Alignment Session
+
+Use this report as the checklist for implementation alignment:
+
+1. Confirm the schema shape for POO definition, slot, generic, and protocol
+   adapter facts.
+2. Decide which upstream tests become harness fixtures first.
+3. Convert the P0 and P1 items into parser/test tasks.
+4. Only then expand the pattern registry and search snapshots.

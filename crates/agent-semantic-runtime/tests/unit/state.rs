@@ -2,7 +2,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use super::{
-    ensure_project_client_cache_dir, ensure_project_hook_cache_dir, ensure_project_runtime_home,
+    ensure_project_client_cache_dir, ensure_project_hook_cache_dir,
+    ensure_project_provider_bin_dir, ensure_project_provider_lock_dir, ensure_project_runtime_home,
     project_runtime_state,
 };
 
@@ -32,10 +33,20 @@ fn runtime_state_materializes_config_layout_under_git_toplevel() {
         state.runtime_home,
         root.join(".cache/agent-semantic-protocol/runtime")
     );
+    assert_eq!(
+        state.provider_bin_dir,
+        root.join(".cache/agent-semantic-protocol/runtime/bin")
+    );
+    assert_eq!(
+        state.provider_lock_dir,
+        root.join(".cache/agent-semantic-protocol/runtime/providers")
+    );
     assert!(state.hook_cache_dir.is_dir());
     assert!(state.client_cache_dir.is_dir());
     assert!(state.artifacts_dir.is_dir());
     assert!(state.runtime_home.is_dir());
+    assert!(state.provider_bin_dir.is_dir());
+    assert!(state.provider_lock_dir.is_dir());
     let _ = fs::remove_dir_all(root);
 }
 
@@ -53,9 +64,15 @@ fn ensure_helpers_create_only_the_requested_runtime_dir() {
 
     let client_dir = ensure_project_client_cache_dir(&package_root).expect("client cache dir");
     let runtime_home = ensure_project_runtime_home(&package_root).expect("runtime home");
+    let provider_bin_dir =
+        ensure_project_provider_bin_dir(&package_root).expect("provider bin dir");
+    let provider_lock_dir =
+        ensure_project_provider_lock_dir(&package_root).expect("provider lock dir");
 
     assert!(client_dir.is_dir());
     assert!(runtime_home.is_dir());
+    assert!(provider_bin_dir.is_dir());
+    assert!(provider_lock_dir.is_dir());
     let _ = fs::remove_dir_all(root);
 }
 

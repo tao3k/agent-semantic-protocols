@@ -1,0 +1,106 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "asp hook session-start --client codex",
+            "timeout": 1,
+            "statusMessage": "Loading Agent Semantic Protocol activation"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "asp hook user-prompt --client codex",
+            "timeout": 1,
+            "statusMessage": "Planning Agent Semantic Protocol search flow"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Read|read|readFile|readDirectory|read_file|read_directory|FsReadFile|FsReadDirectory|fs\\.read|fs\\.readFile|fs\\.readDirectory|fs/read|fs/readFile|fs/readDirectory|fs\\\\read|fs\\\\readFile|fs\\\\readDirectory|functions\\.read|functions\\.read_file|functions\\.readFile|mcp__.*__read|mcp__.*__read_file|mcp__.*__readFile|functions\\.exec_command|exec_command|command_execution|multi_tool_use\\.parallel|Bash|Shell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "asp hook pre-tool --client codex",
+            "timeout": 1,
+            "statusMessage": "Checking Agent Semantic Protocol search policy"
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": "Read|read|readFile|readDirectory|read_file|read_directory|FsReadFile|FsReadDirectory|fs\\.read|fs\\.readFile|fs\\.readDirectory|fs/read|fs/readFile|fs/readDirectory|fs\\\\read|fs\\\\readFile|fs\\\\readDirectory|functions\\.read|functions\\.read_file|functions\\.readFile|mcp__.*__read|mcp__.*__read_file|mcp__.*__readFile|functions\\.exec_command|exec_command|command_execution|multi_tool_use\\.parallel|Bash|Shell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "asp hook permission-request --client codex",
+            "timeout": 1,
+            "statusMessage": "Checking Agent Semantic Protocol approval policy"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Read|read|readFile|readDirectory|read_file|read_directory|FsReadFile|FsReadDirectory|fs\\.read|fs\\.readFile|fs\\.readDirectory|fs/read|fs/readFile|fs/readDirectory|fs\\\\read|fs\\\\readFile|fs\\\\readDirectory|functions\\.read|functions\\.read_file|functions\\.readFile|mcp__.*__read|mcp__.*__read_file|mcp__.*__readFile|functions\\.exec_command|exec_command|command_execution|multi_tool_use\\.parallel|Bash|Shell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "asp hook post-tool --client codex",
+            "timeout": 1,
+            "statusMessage": "Updating Agent Semantic Protocol search state"
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "matcher": "Read|read|readFile|readDirectory|read_file|read_directory|FsReadFile|FsReadDirectory|fs\\.read|fs\\.readFile|fs\\.readDirectory|fs/read|fs/readFile|fs/readDirectory|fs\\\\read|fs\\\\readFile|fs\\\\readDirectory|functions\\.read|functions\\.read_file|functions\\.readFile|mcp__.*__read|mcp__.*__read_file|mcp__.*__readFile|functions\\.exec_command|exec_command|command_execution|multi_tool_use\\.parallel|Bash|Shell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "asp hook subagent-start --client codex",
+            "timeout": 1,
+            "statusMessage": "Preparing Agent Semantic Protocol subagent context"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": "Read|read|readFile|readDirectory|read_file|read_directory|FsReadFile|FsReadDirectory|fs\\.read|fs\\.readFile|fs\\.readDirectory|fs/read|fs/readFile|fs/readDirectory|fs\\\\read|fs\\\\readFile|fs\\\\readDirectory|functions\\.read|functions\\.read_file|functions\\.readFile|mcp__.*__read|mcp__.*__read_file|mcp__.*__readFile|functions\\.exec_command|exec_command|command_execution|multi_tool_use\\.parallel|Bash|Shell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "asp hook subagent-stop --client codex",
+            "timeout": 1,
+            "statusMessage": "Checking Agent Semantic Protocol subagent evidence"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "asp hook stop --client codex",
+            "timeout": 1,
+            "statusMessage": "Checking Agent Semantic Protocol changed files"
+          }
+        ]
+      }
+    ]
+  }
+}

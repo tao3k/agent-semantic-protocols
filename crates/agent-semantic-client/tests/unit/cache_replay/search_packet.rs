@@ -40,12 +40,12 @@ fn search_packet_replay_appends_advisory_delegation_hint_line() {
     let rendered = std::str::from_utf8(&rendered).expect("utf8 output");
 
     assert!(rendered.contains(
-        "subagentHint=profile=asp-explorer fanout=parallel instances=targetActions branchPrompt=reasoning-tree stateOwner=parent fanin=receipt iterative=true decision=advisory runtimeOwner=agent-client modelClass=cheap readOnly=true noCode=true targetActions=A1.rg-query,A2.owner-items maxCommands=8 maxTurns=1 receipt=asp-search-subagent(role,action,evidence,missing,next,risk) reason=query-selector-low-confidence"
+        "subagentHint=profile=asp-explorer mode=resident instances=single reuse=send_input spawn=if-missing forkContext=false branchPrompt=reasoning-tree stateOwner=parent fanin=receipt iterative=true decision=advisory runtimeOwner=agent-client modelClass=cheap readOnly=true noCode=true targetActions=A1.rg-query,A2.owner-items maxCommands=8 maxTurns=1 receipt=asp-search-subagent(role,action,evidence,missing,next,risk) reason=query-selector-low-confidence"
     ));
 }
 
 #[test]
-fn search_packet_replay_does_not_duplicate_existing_hint_line() {
+fn search_packet_replay_canonicalizes_existing_hint_line() {
     let output = Bytes::from(format!(
         "{}subagentHint=profile=asp-explorer fanout=parallel instances=targetActions branchPrompt=reasoning-tree stateOwner=parent fanin=receipt iterative=true decision=advisory runtimeOwner=agent-client modelClass=cheap readOnly=true noCode=true targetActions=A1.rg-query maxCommands=8 maxTurns=1 receipt=asp-search-subagent(role,action,evidence,missing,next,risk) reason=query-selector-low-confidence\n",
         std::str::from_utf8(&frontier_output_without_hint()).expect("utf8 output")
@@ -70,7 +70,9 @@ fn search_packet_replay_does_not_duplicate_existing_hint_line() {
     let rendered = std::str::from_utf8(&rendered).expect("utf8 output");
 
     assert_eq!(rendered.matches("subagentHint=").count(), 1);
-    assert!(!rendered.contains("targetActions=A2.owner-items"));
+    assert!(rendered.contains("mode=resident instances=single reuse=send_input"));
+    assert!(rendered.contains("targetActions=A2.owner-items"));
+    assert!(!rendered.contains("fanout=parallel"));
 }
 
 #[test]

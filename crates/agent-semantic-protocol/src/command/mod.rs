@@ -10,6 +10,7 @@ mod hook;
 mod hook_enforcement;
 mod hook_runtime;
 mod hook_runtime_context;
+mod install_provider;
 mod protocol_binary;
 mod protocol_version;
 mod provider;

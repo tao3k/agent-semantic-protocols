@@ -17,6 +17,8 @@ pub struct ProjectRuntimeState {
     pub client_cache_dir: PathBuf,
     pub artifacts_dir: PathBuf,
     pub runtime_home: PathBuf,
+    pub provider_bin_dir: PathBuf,
+    pub provider_lock_dir: PathBuf,
 }
 
 /// Resolve and create the ASP runtime state directories for a project.
@@ -30,6 +32,8 @@ pub fn project_runtime_state(
     let client_cache_dir = ensure_project_client_cache_dir(project_root)?;
     let artifacts_dir = ensure_project_artifacts_dir(project_root)?;
     let runtime_home = ensure_project_runtime_home(project_root)?;
+    let provider_bin_dir = ensure_project_provider_bin_dir(project_root)?;
+    let provider_lock_dir = ensure_project_provider_lock_dir(project_root)?;
 
     Ok(ProjectRuntimeState {
         layout,
@@ -38,6 +42,8 @@ pub fn project_runtime_state(
         client_cache_dir,
         artifacts_dir,
         runtime_home,
+        provider_bin_dir,
+        provider_lock_dir,
     })
 }
 
@@ -71,6 +77,16 @@ pub fn ensure_project_runtime_home(project_root: impl AsRef<Path>) -> Result<Pat
         )
     })?;
     ensure_dir(runtime_home)
+}
+
+/// Resolve and create the managed provider binary directory.
+pub fn ensure_project_provider_bin_dir(project_root: impl AsRef<Path>) -> Result<PathBuf, String> {
+    Ok(ensure_project_runtime_home(project_root)?.join("bin")).and_then(ensure_dir)
+}
+
+/// Resolve and create the managed provider release lock directory.
+pub fn ensure_project_provider_lock_dir(project_root: impl AsRef<Path>) -> Result<PathBuf, String> {
+    Ok(ensure_project_runtime_home(project_root)?.join("providers")).and_then(ensure_dir)
 }
 
 fn ensure_dir(path: PathBuf) -> Result<PathBuf, String> {

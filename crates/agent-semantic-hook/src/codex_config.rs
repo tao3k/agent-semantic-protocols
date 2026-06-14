@@ -91,12 +91,41 @@ pub fn codex_hook_block(project_root: &Path) -> String {
     )
 }
 
-fn codex_asp_explorer_role_block() -> String {
+pub fn codex_asp_explorer_role_block() -> String {
     format!(
         "[agents.{ASP_EXPLORER_ROLE_NAME}]\ndescription = {}\nconfig_file = {}\nnickname_candidates = [\"ASP owner\", \"ASP rg\", \"ASP selector\", \"ASP search\"]",
         toml_basic_string(ASP_EXPLORER_DESCRIPTION),
         toml_basic_string(ASP_EXPLORER_CONFIG_FILE),
     )
+}
+
+/// Merge the Codex ASP Explorer role registration into project config text.
+///
+/// Plugin-based installs keep hook registration in the plugin, but Codex still
+/// needs this role entry to expose the read-only ASP custom agent.
+pub fn merge_codex_asp_explorer_role_config(existing: &str) -> Result<String, String> {
+    validate_codex_config_toml(existing)?;
+    let parsed = toml::from_str::<toml::Value>(existing)
+        .map_err(|error| format!("invalid Codex config TOML: {error}"))?;
+    let has_role = parsed
+        .get("agents")
+        .and_then(toml::Value::as_table)
+        .and_then(|agents| agents.get(ASP_EXPLORER_ROLE_NAME))
+        .is_some();
+    let prefix = existing.trim_end();
+    if has_role {
+        return Ok(if prefix.is_empty() {
+            String::new()
+        } else {
+            format!("{prefix}\n")
+        });
+    }
+    let role_block = codex_asp_explorer_role_block();
+    Ok(if prefix.is_empty() {
+        format!("{role_block}\n")
+    } else {
+        format!("{prefix}\n\n{role_block}\n")
+    })
 }
 
 /// Install user-level Codex trust state for the managed project hook block.
@@ -207,11 +236,7 @@ pub fn validate_codex_config_toml(content: &str) -> Result<(), String> {
 
 /// Merge the managed hook block into existing Codex project config text.
 pub fn merge_codex_config(existing: &str, block: &str) -> String {
-    let mut content = existing.to_string();
-    for (begin, end) in LEGACY_BLOCKS {
-        content = remove_managed_block(&content, begin, end);
-    }
-    content = remove_managed_block(&content, ROOT_BLOCK_BEGIN, ROOT_BLOCK_END);
+    let mut content = remove_codex_managed_hook_blocks(existing);
     content = ensure_codex_required_features(&content);
     let prefix = content.trim();
     if prefix.is_empty() {
@@ -222,6 +247,19 @@ pub fn merge_codex_config(existing: &str, block: &str) -> String {
     } else {
         format!("{}\n\n{}\n", prefix, block.trim_end())
     }
+}
+
+/// Remove ASP-managed Codex hook blocks without adding replacement hooks.
+///
+/// Plugin-based installs use this to clean legacy project hook config before
+/// delegating hook registration to Codex's plugin loader.
+#[must_use]
+pub fn remove_codex_managed_hook_blocks(existing: &str) -> String {
+    let mut content = existing.to_string();
+    for (begin, end) in LEGACY_BLOCKS {
+        content = remove_managed_block(&content, begin, end);
+    }
+    remove_managed_block(&content, ROOT_BLOCK_BEGIN, ROOT_BLOCK_END)
 }
 
 fn codex_hook_events() -> [CodexHookEvent; 8] {

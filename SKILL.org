@@ -37,17 +37,19 @@ contracts. Rust owns the generated sections; humans own the static sections.
 
 When a hook deny message or =search pipe= output points to =asp-explorer=,
 Codex should reuse the ASP search agent thread already opened for the current
-main task. If no such thread exists, call =spawn_agent= with
-=fork_turns="none"= and include a self-contained ASP Explorer branch prompt
-plus the safe ASP command group in the message.
+main task. If no such thread exists, call =spawn_agent= once with
+=fork_context=false=, include a self-contained ASP Explorer branch prompt plus
+the safe ASP command group in the message, and record the returned =agent-...=
+id in the parent reasoning ledger.
 
 Keep model, reasoning, and agent-type defaults in Codex config, not in the
-prompt. Spawn one read-only instance per independent =actionFrontier= or
-=targetActions= branch, and require a compact =[asp-search-subagent]= receipt
-with =role=, =action=, =evidence=, =missing=, =next=, and =risk=.
+prompt. Keep exactly one read-only ASP search agent per main task; feed later
+=actionFrontier= or =targetActions= work to that same thread with =send_input=,
+and require a compact =[asp-search-subagent]= receipt with =role=, =action=,
+=evidence=, =missing=, =next=, and =risk=.
 
-Keep reasoning state in the parent. =asp-explorer= workers receive only the
-explicit branch prompt through =fork_turns="none"=, do not share sibling
+Keep reasoning state in the parent. =asp-explorer= receives only explicit task
+prompts through =spawn_agent= or =send_input=, does not share hidden sibling
 context, must not edit files, and must not spawn child subagents. If the custom
 subagent remains open, reuse it with =send_input= so it keeps its own thread
 history. If the custom subagent is unavailable, run the same ASP routes

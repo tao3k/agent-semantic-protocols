@@ -3,7 +3,8 @@ use rust_lang_project_harness::{
 };
 
 fn main() {
-    println!("cargo:rerun-if-changed=../../SKILL.md");
+    println!("cargo:rerun-if-changed=../../SKILL.org");
+    println!("cargo:rerun-if-changed=../../SKILL.contract.org");
 
     let config = default_rust_harness_config().with_cargo_check_advice_allow_explanation(
         "semantic-agent-protocol keeps advisory findings visible while the build gate blocks warning and error policy drift",

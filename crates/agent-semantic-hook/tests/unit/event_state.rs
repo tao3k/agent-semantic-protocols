@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -96,14 +97,37 @@ fn recorded_subagent_context_tracks_latest_lifecycle_event() {
     fs::remove_dir_all(&project_root).ok();
 }
 
+#[test]
+fn oversized_hook_event_state_is_truncated_before_append() {
+    let project_root = unique_project_root();
+    let state_dir = project_root.join(".cache/agent-semantic-protocol/hooks");
+    fs::create_dir_all(&state_dir).expect("create hook state dir");
+    let state_path = state_dir.join("events.jsonl");
+    fs::write(&state_path, "x".repeat(5 * 1024 * 1024)).expect("write oversized state");
+
+    append_hook_event_state(&project_root, &decision("oversized", 1)).expect("append event");
+
+    let content = fs::read_to_string(&state_path).expect("read state");
+    let lines = content.lines().collect::<Vec<_>>();
+    assert_eq!(lines.len(), 1, "{content}");
+    let event = serde_json::from_str::<Value>(lines[0]).expect("event line should be valid JSON");
+    assert_eq!(event["schemaId"], "agent.semantic-protocols.hook.event");
+    assert_eq!(event["subject"]["paths"][0], "oversized_event_state_1.rs");
+
+    fs::remove_dir_all(&project_root).ok();
+}
+
 fn unique_project_root() -> PathBuf {
+    static NEXT_TEMP_ID: AtomicU64 = AtomicU64::new(0);
+
+    let unique = NEXT_TEMP_ID.fetch_add(1, Ordering::Relaxed);
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("system time should be after epoch")
         .as_nanos();
     let project_root = std::env::temp_dir().join(format!(
-        "asp-hook-event-state-{}-{timestamp}",
-        std::process::id()
+        "asp-hook-event-state-{}-{timestamp}-{unique}",
+        std::process::id(),
     ));
     fs::create_dir_all(&project_root).expect("temp project root should be created");
     fs::create_dir_all(project_root.join(".git")).expect("temp git marker should be created");

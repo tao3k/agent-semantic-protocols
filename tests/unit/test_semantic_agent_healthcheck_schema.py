@@ -41,7 +41,7 @@ class SemanticAgentHealthcheckSchemaTests(unittest.TestCase):
                     "error": None,
                 },
                 "agentsSkill": {
-                    "path": "/tmp/project/.agents/skills/agent-semantic-protocols/SKILL.md",
+                    "path": "/tmp/project/.agents/skills/agent-semantic-protocols/SKILL.org",
                     "status": "ok",
                     "providerCount": None,
                     "error": None,

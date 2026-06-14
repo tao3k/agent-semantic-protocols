@@ -1,7 +1,11 @@
 //! Runtime for the `asp hook` command surface.
 
+#[path = "hook_runtime_codex_plugin.rs"]
+mod hook_runtime_codex_plugin;
 #[path = "hook_runtime_skill.rs"]
 mod hook_runtime_skill;
+#[path = "hook_runtime_stdin.rs"]
+mod hook_runtime_stdin;
 #[path = "hook_runtime_subagent.rs"]
 mod hook_runtime_subagent;
 
@@ -15,27 +19,27 @@ use agent_semantic_hook::{
     HOOK_TRIGGER_PROMPT_FILE_NAME, HookActivation, HookClassificationRequest, HookDecision,
     ROOT_BLOCK_BEGIN, ROOT_BLOCK_END, ReasonKind, RuntimeProviderHealthStatus,
     append_hook_event_state, apply_repeated_deny_replay, classify_hook_with_config,
-    claude_hook_block, codex_hook_block, codex_user_trust_state_status, default_activation_path,
+    claude_hook_block, codex_user_trust_state_status, default_activation_path,
     default_claude_settings_path, default_client_config_path,
     default_client_config_template_for_source_extensions, default_hook_trigger_prompt_message,
-    discover_activation_path, has_recorded_subagent_context, install_codex_user_trust_state,
-    load_activation, load_client_config, load_or_refresh_default_activation,
-    load_or_sync_activation, merge_claude_settings, merge_codex_config,
+    discover_activation_path, has_recorded_subagent_context, load_activation, load_client_config,
+    load_or_refresh_default_activation, load_or_sync_activation, merge_claude_settings,
     merge_hook_trigger_prompt_document, parse_payload, record_active_context,
     remove_incompatible_hook_event_state, remove_legacy_codex_hook_cache_files,
     render_hook_trigger_prompt_document, render_platform_response, runtime_profiles_for_activation,
     runtime_profiles_for_runtime, subagent_deny_message, validate_claude_settings_json,
-    validate_codex_config_toml,
 };
 use agent_semantic_runtime::ensure_project_hook_cache_dir;
-use hook_runtime_skill::install_agent_semantic_protocols_skill;
-use hook_runtime_subagent::{
-    install_claude_asp_explorer_agent, install_codex_asp_explorer_agent, subagent_model_arg,
+use hook_runtime_codex_plugin::{codex_plugin_scope_arg, install_codex_plugin_hooks};
+use hook_runtime_skill::{
+    install_agent_semantic_protocols_plugin_skill, install_agent_semantic_protocols_skill,
 };
+use hook_runtime_stdin::read_hook_stdin_bounded;
+use hook_runtime_subagent::{install_claude_asp_explorer_agent, subagent_model_arg};
 use std::collections::BTreeMap;
 use std::env;
 use std::fs;
-use std::io::{self, Read};
+use std::io;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
@@ -65,16 +69,18 @@ fn run_hook(args: &[String]) -> Result<(), String> {
     let activation_path = flag_value(args, "--activation")
         .map(PathBuf::from)
         .unwrap_or_else(default_or_discovered_activation_path);
-    let mut stdin = String::new();
-    if let Err(error) = io::stdin().read_to_string(&mut stdin) {
-        emit_hook_runtime_failure(
-            client,
-            event,
-            emit,
-            &format!("failed to read hook payload from stdin: {error}"),
-        )?;
-        return Ok(());
-    }
+    let stdin = match read_hook_stdin_bounded() {
+        Ok(stdin) => stdin,
+        Err(error) => {
+            emit_hook_runtime_failure(
+                client,
+                event,
+                emit,
+                &format!("failed to read hook payload from stdin: {error}"),
+            )?;
+            return Ok(());
+        }
+    };
     let mut runtime = match load_activation(&activation_path) {
         Ok(registry) => registry,
         Err(error) => {
@@ -665,6 +671,7 @@ fn run_install(args: &[String]) -> Result<(), String> {
     let mut timings = InstallTimings::new();
     let client = flag_value(args, "--client").unwrap_or("codex");
     ensure_supported_client(client)?;
+    let codex_plugin_scope = codex_plugin_scope_arg(args, client)?;
     let subagent_model =
         subagent_model_arg(client, optional_flag_value(args, "--subagent-model")?)?;
     let project_root = project_root_arg(args)?;
@@ -685,24 +692,55 @@ fn run_install(args: &[String]) -> Result<(), String> {
     let client_config_path = default_client_config_path(&project_root.to_string_lossy());
     install_default_client_config(&client_config_path, &activation)?;
     timings.mark("client-config");
-    let installed_skill =
-        install_agent_semantic_protocols_skill(&project_root, &activation, &runtime_profiles)?;
+    let installed_skill = if client == "codex" {
+        install_agent_semantic_protocols_plugin_skill(
+            &project_root,
+            &activation,
+            &runtime_profiles,
+        )?
+    } else {
+        install_agent_semantic_protocols_skill(&project_root, &activation, &runtime_profiles)?
+    };
     timings.mark("skill");
     let (config_path, extra_config_receipt) = match client {
-        "codex" => install_codex_project_hooks(&project_root, &subagent_model)?,
+        "codex" => install_codex_plugin_hooks(&project_root, codex_plugin_scope, &subagent_model)?,
         "claude" => install_claude_project_hooks(&project_root, &subagent_model)?,
         _ => unreachable!("client support checked before install"),
     };
     timings.mark("project-hooks");
+    let project_skill_receipt = installed_skill
+        .skill_path
+        .as_ref()
+        .zip(installed_skill.skill_contract_path.as_ref())
+        .map(|(skill_path, skill_contract_path)| {
+            format!(
+                " skill={} skillContract={}",
+                display_path(&project_root, skill_path),
+                display_path(&project_root, skill_contract_path)
+            )
+        })
+        .unwrap_or_else(|| " skill=removed skillContract=removed".to_string());
+    let plugin_skill_receipt = installed_skill
+        .plugin_skill_path
+        .as_ref()
+        .zip(installed_skill.plugin_skill_contract_path.as_ref())
+        .map(|(skill_path, skill_contract_path)| {
+            format!(
+                " pluginSkill={} pluginSkillContract={}",
+                display_path(&project_root, skill_path),
+                display_path(&project_root, skill_contract_path)
+            )
+        })
+        .unwrap_or_default();
     println!(
-        "[agent-install] client={client} activation={} activationRuntime=derived activationSync={} clientConfig={} config={}{} skill={} skillContract={} binary=asp binaryPath={} binaryInstall={} mode=updated",
+        "[agent-install] client={client} activation={} activationRuntime=derived activationSync={} clientConfig={} config={}{}{}{} binary=asp binaryPath={} binaryInstall={} mode=updated",
         display_path(&project_root, &activation_path),
         activation_status,
         display_path(&project_root, &client_config_path),
         display_path(&project_root, &config_path),
         extra_config_receipt,
-        display_path(&project_root, &installed_skill.skill_path),
-        display_path(&project_root, &installed_skill.skill_contract_path),
+        project_skill_receipt,
+        plugin_skill_receipt,
         binary_install.path.display(),
         binary_install.status,
     );
@@ -788,38 +826,6 @@ fn activation_relative_project_root(activation_path: &Path, project_root: &str) 
             .join(configured)
     };
     fs::canonicalize(&root).unwrap_or(root)
-}
-
-fn install_codex_project_hooks(
-    project_root: &Path,
-    subagent_model: &str,
-) -> Result<(PathBuf, String), String> {
-    let codex_dir = project_root.join(".codex");
-    fs::create_dir_all(&codex_dir)
-        .map_err(|error| format!("failed to create {}: {error}", codex_dir.display()))?;
-    let config_path = codex_dir.join("config.toml");
-    let existing = fs::read_to_string(&config_path).unwrap_or_default();
-    if config_path.is_file() {
-        validate_codex_config_toml(&existing)
-            .map_err(|error| format!("refusing to write invalid Codex config TOML: {error}"))?;
-    }
-    let merged = merge_codex_config(&existing, &codex_hook_block(project_root));
-    validate_codex_config_toml(&merged)
-        .map_err(|error| format!("refusing to write invalid Codex config TOML: {error}"))?;
-    fs::write(&config_path, merged.as_bytes())
-        .map_err(|error| format!("failed to write {}: {error}", config_path.display()))?;
-    let user_config_path = install_codex_user_trust_state(&config_path)?;
-    let trigger_prompt_path = install_hook_trigger_prompt(project_root, "codex")?;
-    let subagent_path = install_codex_asp_explorer_agent(project_root, subagent_model)?;
-    Ok((
-        config_path,
-        format!(
-            " trustConfig={} triggerPrompt={} subagent={}",
-            user_config_path.display(),
-            display_path(project_root, &trigger_prompt_path),
-            display_path(project_root, &subagent_path)
-        ),
-    ))
 }
 
 fn install_claude_project_hooks(

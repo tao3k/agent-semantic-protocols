@@ -155,8 +155,9 @@ fn document_direct_read_routes_to_selector_content_query() {
             "query",
             "--selector",
             "README.md:1-4",
-            "--content",
-            "."
+            "--workspace",
+            ".",
+            "--content"
         ]
     );
     assert!(

@@ -1,6 +1,7 @@
 use agent_semantic_hook::{
     RuntimeProviderHealthStatus, parse_hook_activation, runtime_profiles_for_runtime,
 };
+use std::env;
 
 use crate::rust_harness_activation::support::{
     write_failing_provider_binary, write_fake_provider_binary, write_fake_provider_file,
@@ -156,8 +157,9 @@ enabled = false
     )
     .expect("write asp.toml");
 
+    let path = env::join_paths([root.join(".bin"), empty_path]).expect("join PATH");
     let output = protocol_command()
-        .env("PATH", &empty_path)
+        .env("PATH", &path)
         .env("CODEX_HOME", root.join(".codex-home"))
         .args([
             "hook",

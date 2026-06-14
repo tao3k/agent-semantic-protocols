@@ -32,7 +32,7 @@ pub(super) struct DelegationHint {
 impl DelegationHint {
     fn render_line(&self) -> String {
         format!(
-            "subagentHint=profile=asp-explorer fanout=parallel instances=targetActions branchPrompt=reasoning-tree stateOwner=parent fanin=receipt iterative=true decision=advisory runtimeOwner=agent-client modelClass=cheap readOnly=true noCode=true targetActions={} maxCommands=8 maxTurns=1 receipt=asp-search-subagent(role,action,evidence,missing,next,risk) reason=query-selector-low-confidence",
+            "subagentHint=profile=asp-explorer mode=resident instances=single reuse=send_input spawn=if-missing forkContext=false branchPrompt=reasoning-tree stateOwner=parent fanin=receipt iterative=true decision=advisory runtimeOwner=agent-client modelClass=cheap readOnly=true noCode=true targetActions={} maxCommands=8 maxTurns=1 receipt=asp-search-subagent(role,action,evidence,missing,next,risk) reason=query-selector-low-confidence",
             self.target_actions.join(",")
         )
     }
@@ -40,8 +40,11 @@ impl DelegationHint {
     pub(super) fn as_json(&self) -> Value {
         json!({
             "profile": "asp-explorer",
-            "fanout": "parallel",
-            "instances": "targetActions",
+            "mode": "resident",
+            "instances": "single",
+            "reuse": "send_input",
+            "spawn": "if-missing",
+            "forkContext": false,
             "branchPrompt": "reasoning-tree",
             "stateOwner": "parent",
             "fanin": "receipt",

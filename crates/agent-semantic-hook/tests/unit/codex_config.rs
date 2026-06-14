@@ -1,4 +1,7 @@
-use agent_semantic_hook::{claude_hook_block, codex_hook_block, merge_claude_settings};
+use agent_semantic_hook::{
+    ROOT_BLOCK_BEGIN, ROOT_BLOCK_END, claude_hook_block, codex_hook_block, merge_claude_settings,
+    merge_codex_asp_explorer_role_config, remove_codex_managed_hook_blocks,
+};
 use std::path::Path;
 
 const PROJECT_ROOT: &str = "/workspace/agent-semantic-protocols";
@@ -19,6 +22,56 @@ fn codex_hook_matcher_omits_apply_patch_surfaces_by_default() {
     assert!(!block.contains("FsWriteFile"));
     assert!(!block.contains("functions\\\\.write"));
     assert!(!block.contains("matcher = \".*\""));
+}
+
+#[test]
+fn codex_plugin_cleanup_removes_managed_hook_blocks_without_dropping_config() {
+    let existing = format!(
+        r#"[features]
+model_context_protocol = true
+
+{ROOT_BLOCK_BEGIN}
+[[hooks.PreToolUse]]
+matcher = "Bash"
+{ROOT_BLOCK_END}
+
+[profiles.default]
+model = "gpt-5"
+"#
+    );
+
+    let cleaned = remove_codex_managed_hook_blocks(&existing);
+
+    assert!(!cleaned.contains(ROOT_BLOCK_BEGIN), "{cleaned}");
+    assert!(!cleaned.contains(ROOT_BLOCK_END), "{cleaned}");
+    assert!(cleaned.contains("model_context_protocol = true"));
+    assert!(cleaned.contains("[profiles.default]"));
+    assert!(cleaned.contains("model = \"gpt-5\""));
+}
+
+#[test]
+fn codex_plugin_role_merge_registers_asp_explorer_without_hook_block() {
+    let existing = r#"[features]
+hooks = true
+unified_exec = true
+
+[marketplaces.asp-project]
+source_type = "local"
+source = "."
+"#;
+
+    let merged = merge_codex_asp_explorer_role_config(existing).expect("merge role config");
+
+    toml::from_str::<toml::Value>(&merged).expect("merged Codex config is valid TOML");
+    assert!(!merged.contains(ROOT_BLOCK_BEGIN), "{merged}");
+    assert!(merged.contains("[agents.asp_explorer]"));
+    assert!(merged.contains("config_file = \"agents/asp-explorer.toml\""));
+    assert!(merged.contains("[marketplaces.asp-project]"));
+    assert!(merged.contains("source = \".\""));
+
+    let merged_again =
+        merge_codex_asp_explorer_role_config(&merged).expect("merge existing role config");
+    assert_eq!(merged_again, merged);
 }
 
 #[test]

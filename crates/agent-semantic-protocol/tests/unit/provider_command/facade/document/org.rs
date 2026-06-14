@@ -93,9 +93,11 @@ fn org_facade_guide_explains_element_query_axes() {
         "{query_stdout}"
     );
     assert!(
-        query_stdout.contains(
-            "|content-rule requires=--selector|--term|--kind|--field forbids=--from-hook"
-        ),
+        query_stdout.contains("|content-rule requires=--selector|--term|--kind|--field"),
+        "{query_stdout}"
+    );
+    assert!(
+        query_stdout.contains("|direct-read-rule requires=--from-hook+--selector+--content"),
         "{query_stdout}"
     );
 
@@ -157,7 +159,7 @@ fn org_facade_query_covers_org_element_kinds() {
         asp_org_query(&root, &["query", "--term", "embedded", "--content", "."]);
     assert_eq!(
         paragraph_content.trim(),
-        "Provider activation carries execution mode.\nDocument providers stay embedded inside ASP."
+        "Provider activation carries execution mode. Document providers stay embedded inside ASP."
     );
 
     let selector = format!("{}:1-5", path.display());
@@ -190,6 +192,38 @@ fn org_facade_content_projection_deduplicates_list_children() {
     assert_eq!(content.matches("plain list item").count(), 1, "{content}");
     assert!(content.contains("- [X] ship element map"), "{content}");
     assert!(content.contains("- plain list item"), "{content}");
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn org_facade_direct_read_accepts_content_projection_for_hook_recovery() {
+    let root = temp_project_root("org-document-direct-read-content");
+    std::fs::write(
+        root.join("plan.org"),
+        "* Guide\n\nHook recovery keeps raw Org source.\n",
+    )
+    .expect("write org fixture");
+
+    let output = asp_command(&root)
+        .args([
+            "org",
+            "query",
+            "--from-hook",
+            "direct-source-read",
+            "--selector",
+            "plan.org:1-3",
+            "--content",
+        ])
+        .output()
+        .expect("run asp org direct-read content query");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let content = String::from_utf8(output.stdout).expect("stdout");
+    assert_eq!(content, "* Guide\n\nHook recovery keeps raw Org source.\n");
 
     let _ = std::fs::remove_dir_all(root);
 }

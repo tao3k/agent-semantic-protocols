@@ -2,23 +2,22 @@
 
 #[path = "../../src/command/hook.rs"]
 mod hook;
-#[path = "../../src/command/hook_enforcement.rs"]
-mod hook_enforcement;
-#[path = "../../src/command/hook_runtime.rs"]
-mod hook_runtime;
 #[path = "../../src/command/hook_runtime_context.rs"]
 mod hook_runtime_context;
 #[path = "../../src/command/protocol_binary.rs"]
 mod protocol_binary;
 
-use hook_enforcement::codex_enforcement_report;
 use hook_runtime_context::payload_indicates_subagent_context;
-use protocol_binary::{
-    ensure_protocol_binary_installed_for_path, install_protocol_binary, protocol_binary_on_path,
-};
+use protocol_binary::install_protocol_binary;
 use serde_json::json;
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
+
+mod hook_runtime {
+    pub(crate) fn run_hook_runtime_args(_args: Vec<String>) -> Result<(), String> {
+        Ok(())
+    }
+}
 
 fn args(values: &[&str]) -> Vec<String> {
     values.iter().map(|value| value.to_string()).collect()
@@ -60,7 +59,7 @@ fn help_requests_do_not_forward_to_hook_runtime() {
 }
 
 #[test]
-fn top_level_install_is_not_a_public_surface() {
+fn top_level_install_help_is_non_mutating_provider_surface() {
     let root = temp_project_root("top-level-install-help");
     let output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .current_dir(&root)
@@ -73,11 +72,7 @@ fn top_level_install_is_not_a_public_surface() {
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("unsupported ASP language facade `install`"),
-        "stderr: {stderr}"
-    );
-    assert!(
-        stderr.contains("asp providers") && stderr.contains("asp fd -query"),
+        stderr.contains("usage: asp install provider <language> --rev <rev>"),
         "stderr: {stderr}"
     );
     assert!(!root.join(".codex/config.toml").exists());

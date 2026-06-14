@@ -3,7 +3,7 @@
 use crate::command::semantic_shell_tokens;
 use fs2::FileExt;
 use std::fs::{self, OpenOptions};
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -16,6 +16,9 @@ pub(crate) const HOOK_EVENT_STATE_FILE: &str = "events.jsonl";
 const HOOK_EVENT_SCHEMA_ID: &str = "agent.semantic-protocols.hook.event";
 const DENY_REPLAY_WINDOW_MS: u128 = 5 * 60 * 1000;
 const SEARCH_PIPE_FEEDBACK_WINDOW_MS: u128 = 10 * 60 * 1000;
+const HOOK_EVENT_STATE_TAIL_BYTES: u64 = 1024 * 1024;
+const HOOK_EVENT_STATE_TAIL_LINE_CAP: usize = 4096;
+const HOOK_EVENT_STATE_MAX_BYTES: u64 = HOOK_EVENT_STATE_TAIL_BYTES * 4;
 
 /// Recent search state for a prompt/session that needs `search pipe`.
 #[derive(Debug, Eq, PartialEq)]
@@ -86,6 +89,7 @@ pub fn append_hook_event_state(
     let mut file = OpenOptions::new()
         .create(true)
         .append(true)
+        .read(true)
         .open(&state_path)
         .map_err(|error| {
             format!(
@@ -99,6 +103,30 @@ pub fn append_hook_event_state(
             state_path.display()
         )
     })?;
+    if file
+        .metadata()
+        .map_err(|error| {
+            format!(
+                "failed to stat hook state {}: {error}",
+                state_path.display()
+            )
+        })?
+        .len()
+        > HOOK_EVENT_STATE_MAX_BYTES
+    {
+        file.set_len(0).map_err(|error| {
+            format!(
+                "failed to truncate hook state {}: {error}",
+                state_path.display()
+            )
+        })?;
+        file.seek(SeekFrom::Start(0)).map_err(|error| {
+            format!(
+                "failed to seek hook state {}: {error}",
+                state_path.display()
+            )
+        })?;
+    }
     let mut line = event.to_string();
     line.push('\n');
     file.write_all(line.as_bytes()).map_err(|error| {
@@ -136,13 +164,8 @@ pub fn has_recorded_subagent_context(
     if !state_path.is_file() {
         return Ok(false);
     }
-    let content = fs::read_to_string(&state_path).map_err(|error| {
-        format!(
-            "failed to read hook state {}: {error}",
-            state_path.display()
-        )
-    })?;
-    for line in content.lines().rev() {
+    let lines = read_hook_event_state_tail(&state_path)?;
+    for line in lines.iter().rev() {
         let Ok(event) = serde_json::from_str::<Value>(line) else {
             continue;
         };
@@ -180,15 +203,10 @@ pub(crate) fn prompt_search_flow_after_prime(
         return Ok(None);
     }
     let now = unix_time_ms();
-    let content = fs::read_to_string(&state_path).map_err(|error| {
-        format!(
-            "failed to read hook state {}: {error}",
-            state_path.display()
-        )
-    })?;
+    let lines = read_hook_event_state_tail(&state_path)?;
     let mut prime_language_id = None;
     let mut saw_pipe = false;
-    for line in content.lines().rev() {
+    for line in lines.iter().rev() {
         let Ok(event) = serde_json::from_str::<Value>(line) else {
             continue;
         };
@@ -235,15 +253,10 @@ pub(crate) fn prompt_asp_command_count(
         return Ok(0);
     }
     let now = unix_time_ms();
-    let content = fs::read_to_string(&state_path).map_err(|error| {
-        format!(
-            "failed to read hook state {}: {error}",
-            state_path.display()
-        )
-    })?;
     let mut count = 0;
-    for event in content
-        .lines()
+    let lines = read_hook_event_state_tail(&state_path)?;
+    for event in lines
+        .iter()
         .rev()
         .filter_map(|line| serde_json::from_str::<Value>(line).ok())
     {
@@ -358,20 +371,69 @@ fn has_recent_matching_deny(project_root: &Path, replay_key: &str) -> Result<boo
         return Ok(false);
     }
     let now = unix_time_ms();
-    let content = fs::read_to_string(&state_path).map_err(|error| {
+    let replay_key_json = serde_json::to_string(replay_key)
+        .map_err(|error| format!("failed to encode hook replay key: {error}"))?;
+    let lines = read_hook_event_state_tail(&state_path)?;
+    for line in lines.iter().rev() {
+        if !line.contains(&replay_key_json) {
+            continue;
+        }
+        let Ok(event) = serde_json::from_str::<Value>(line) else {
+            continue;
+        };
+        if !is_recent_event(&event, now) {
+            break;
+        }
+        if event.get("decision").and_then(Value::as_str) == Some("deny")
+            && event.get("denyReplayKey").and_then(Value::as_str) == Some(replay_key)
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+fn read_hook_event_state_tail(state_path: &Path) -> Result<Vec<String>, String> {
+    let mut file = fs::File::open(state_path).map_err(|error| {
         format!(
             "failed to read hook state {}: {error}",
             state_path.display()
         )
     })?;
-    Ok(content.lines().rev().any(|line| {
-        let Ok(event) = serde_json::from_str::<Value>(line) else {
-            return false;
-        };
-        is_recent_event(&event, now)
-            && event.get("decision").and_then(Value::as_str) == Some("deny")
-            && event.get("denyReplayKey").and_then(Value::as_str) == Some(replay_key)
-    }))
+    let file_len = file
+        .metadata()
+        .map_err(|error| {
+            format!(
+                "failed to stat hook state {}: {error}",
+                state_path.display()
+            )
+        })?
+        .len();
+    let start = file_len.saturating_sub(HOOK_EVENT_STATE_TAIL_BYTES);
+    file.seek(SeekFrom::Start(start)).map_err(|error| {
+        format!(
+            "failed to seek hook state {}: {error}",
+            state_path.display()
+        )
+    })?;
+
+    let mut content = String::new();
+    file.read_to_string(&mut content).map_err(|error| {
+        format!(
+            "failed to read hook state {}: {error}",
+            state_path.display()
+        )
+    })?;
+
+    let mut lines = content.lines().collect::<Vec<_>>();
+    if start > 0 && !lines.is_empty() {
+        lines.remove(0);
+    }
+    let first_line = lines.len().saturating_sub(HOOK_EVENT_STATE_TAIL_LINE_CAP);
+    Ok(lines[first_line..]
+        .iter()
+        .map(|line| (*line).to_string())
+        .collect())
 }
 
 fn is_recent_event(event: &Value, now: u128) -> bool {

@@ -672,6 +672,7 @@ fn search_flow_feedback_decision(
 }
 
 fn search_flow_feedback_message(language_id: &str, feedback_kind: &str, heading: &str) -> String {
+    let projection_flag = query_projection_flag(language_id);
     match feedback_kind {
         "repeat-search-pipe" => [
             heading.to_string(),
@@ -682,14 +683,15 @@ fn search_flow_feedback_message(language_id: &str, feedback_kind: &str, heading:
             "Follow the previous `recommendedNext` / `nextCommand` from the pipe output."
                 .to_string(),
             format!(
-                "Use `asp {language_id} search owner <owner-path> items --query '<symbol-or-a|b|c>' --view seeds .`, `asp fd -query '<owner-or-path-term-a|term-b|term-c>' <scope>`, `asp rg -query '<content-or-error-term-a|term-b|term-c>' <scope>`, or `asp {language_id} query --selector <path:start-end> --workspace <workspace-root> --code`."
+                "Use `asp {language_id} search owner <owner-path> items --query '<symbol-or-a|b|c>' --view seeds .`, `asp fd -query '<owner-or-path-term-a|term-b|term-c>' <scope>`, `asp rg -query '<content-or-error-term-a|term-b|term-c>' <scope>`, or `asp {language_id} query --selector <path:start-end> --workspace <workspace-root> {projection_flag}`."
             ),
             String::new(),
             "## Rules".to_string(),
             "Do not rerun `search pipe` with a narrower natural term in the same prompt."
                 .to_string(),
-            "Move from frontier to locator/action; keep source reads behind exact `query --selector --code`."
-                .to_string(),
+            format!(
+                "Move from frontier to locator/action; keep source reads behind exact `query --selector {projection_flag}`."
+            ),
         ]
         .join("\n"),
         "direct-source-read-after-pipe" => [
@@ -699,13 +701,14 @@ fn search_flow_feedback_message(language_id: &str, feedback_kind: &str, heading:
             String::new(),
             "## Run Next".to_string(),
             format!(
-                "asp {language_id} query --selector <path:start-end> --workspace <workspace-root> --code"
+                "asp {language_id} query --selector <path:start-end> --workspace <workspace-root> {projection_flag}"
             ),
             String::new(),
             "## Rules".to_string(),
             format!("A direct-source-read fallback is allowed only after `search pipe` when the selector is an exact bounded range of {LOW_PRIORITY_DIRECT_SOURCE_READ_MAX_LINES} lines or fewer."),
-            "For file-wide or broad ranges, follow locator/frontier commands and extract code with ordinary `query --selector --code` or a read-plan frontier."
-                .to_string(),
+            format!(
+                "For file-wide or broad ranges, follow locator/frontier commands and extract with ordinary `query --selector {projection_flag}` or a read-plan frontier."
+            ),
         ]
         .join("\n"),
         _ => [
@@ -725,6 +728,14 @@ fn search_flow_feedback_message(language_id: &str, feedback_kind: &str, heading:
                 .to_string(),
         ]
         .join("\n"),
+    }
+}
+
+fn query_projection_flag(language_id: &str) -> &'static str {
+    if matches!(language_id, "md" | "org") {
+        "--content"
+    } else {
+        "--code"
     }
 }
 
