@@ -89,6 +89,15 @@ if [ "${1:-}" = "plugin" ] && [ "${2:-}" = "marketplace" ] && [ "${3:-}" = "list
 fi
 if [ "${1:-}" = "plugin" ] && [ "${2:-}" = "add" ]; then
   /bin/mkdir -p "$codex_home/plugins/cache/asp-project/asp-codex-plugin/0.1.0+test"
+  if /usr/bin/grep -q '^\[marketplaces\.asp-project\]' "$config" 2>/dev/null; then
+    /usr/bin/awk '
+      /^\[marketplaces\.asp-project\]/ { in_marketplace = 1; print; next }
+      /^\[/ { in_marketplace = 0 }
+      in_marketplace == 1 && /^source = / { print "source = \"..\""; next }
+      { print }
+    ' "$config" > "$config.tmp"
+    /bin/mv "$config.tmp" "$config"
+  fi
   if /usr/bin/grep -q '^\[agents\.asp_explorer\]' "$config" 2>/dev/null; then
     /usr/bin/awk '
       /^\[agents\.asp_explorer\]/ { skip = 1; next }
@@ -104,6 +113,14 @@ if [ "${1:-}" = "plugin" ] && [ "${2:-}" = "add" ]; then
     } >> "$config"
   fi
   printf '{"pluginId":"asp-codex-plugin@asp-project","name":"asp-codex-plugin","marketplaceName":"asp-project","version":"0.1.0+test","installedPath":"%s/plugins/cache/asp-project/asp-codex-plugin/0.1.0+test","authPolicy":"ON_INSTALL"}\n' "$codex_home"
+  exit 0
+fi
+if [ "${1:-}" = "plugin" ] && [ "${2:-}" = "list" ]; then
+  if /usr/bin/grep -q '^\[plugins\."asp-codex-plugin@asp-project"\]' "$config" 2>/dev/null; then
+    printf '{"installed":[{"pluginId":"asp-codex-plugin@asp-project","name":"asp-codex-plugin","marketplaceName":"asp-project","version":"0.1.0+test","installed":true,"enabled":true}],"available":[]}\n'
+  else
+    printf '{"installed":[],"available":[]}\n'
+  fi
   exit 0
 fi
 printf 'unsupported fake codex command: %s\n' "$*" >&2

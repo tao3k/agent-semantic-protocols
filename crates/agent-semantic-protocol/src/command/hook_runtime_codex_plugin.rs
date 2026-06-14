@@ -2,8 +2,8 @@
 
 use super::hook_runtime_subagent::install_codex_asp_explorer_agent;
 use agent_semantic_hook::{
-    merge_codex_asp_explorer_role_config, remove_codex_managed_hook_blocks,
-    validate_codex_config_toml,
+    codex_hook_block, install_codex_user_trust_state, merge_codex_asp_explorer_role_config,
+    merge_codex_config, validate_codex_config_toml,
 };
 use std::env;
 use std::fs;
@@ -60,7 +60,8 @@ pub(super) fn install_codex_plugin_hooks(
     }
     let (marketplace_path, marketplace_name) =
         ensure_codex_project_plugin_marketplace(project_root)?;
-    let cleaned_config_path = cleanup_legacy_codex_project_hook_config(project_root)?;
+    let project_hook_config_path = install_codex_project_hook_config(project_root)?;
+    let trust_config_path = install_codex_user_trust_state(&project_hook_config_path)?;
     let subagent_path = install_codex_asp_explorer_agent(project_root, subagent_model)?;
     let codex_home = match scope {
         CodexPluginScope::Project => Some(project_root.join(".codex")),
@@ -69,6 +70,14 @@ pub(super) fn install_codex_plugin_hooks(
     if let Some(codex_home) = codex_home.as_ref() {
         fs::create_dir_all(codex_home)
             .map_err(|error| format!("failed to create {}: {error}", codex_home.display()))?;
+    }
+    if matches!(scope, CodexPluginScope::Project) {
+        normalize_codex_project_marketplace_source(
+            &project_hook_config_path,
+            project_root,
+            &marketplace_name,
+            false,
+        )?;
     }
     ensure_codex_plugin_marketplace_registered(
         project_root,
@@ -85,7 +94,20 @@ pub(super) fn install_codex_plugin_hooks(
         project_root,
         codex_home.as_deref(),
     )?;
-    ensure_codex_asp_explorer_role_config(&cleaned_config_path)?;
+    if matches!(scope, CodexPluginScope::Project) {
+        normalize_codex_project_marketplace_source(
+            &project_hook_config_path,
+            project_root,
+            &marketplace_name,
+            true,
+        )?;
+        verify_codex_project_plugin_loadable(
+            project_root,
+            codex_home.as_deref(),
+            &format!("{ASP_CODEX_PLUGIN_NAME}@{marketplace_name}"),
+        )?;
+    }
+    ensure_codex_asp_explorer_role_config(&project_hook_config_path)?;
     let installed_path = codex_plugin_installed_path(&add_stdout)
         .map(|path| format!(" pluginInstalledPath={path}"))
         .unwrap_or_default();
@@ -96,18 +118,19 @@ pub(super) fn install_codex_plugin_hooks(
     Ok((
         config_path,
         format!(
-            " pluginScope={} pluginMarketplace={} pluginMarketplaceConfig={} legacyHookConfigCleaned={} subagent={}{}",
+            " pluginScope={} pluginMarketplace={} pluginMarketplaceConfig={} projectHookConfig={} trustConfig={} subagent={}{}",
             scope.label(),
             marketplace_name,
             super::display_path(project_root, &marketplace_path),
-            super::display_path(project_root, &cleaned_config_path),
+            super::display_path(project_root, &project_hook_config_path),
+            super::display_path(project_root, &trust_config_path),
             super::display_path(project_root, &subagent_path),
             installed_path,
         ),
     ))
 }
 
-fn cleanup_legacy_codex_project_hook_config(project_root: &Path) -> Result<PathBuf, String> {
+fn install_codex_project_hook_config(project_root: &Path) -> Result<PathBuf, String> {
     let codex_dir = project_root.join(".codex");
     fs::create_dir_all(&codex_dir)
         .map_err(|error| format!("failed to create {}: {error}", codex_dir.display()))?;
@@ -117,20 +140,34 @@ fn cleanup_legacy_codex_project_hook_config(project_root: &Path) -> Result<PathB
         validate_codex_config_toml(&existing)
             .map_err(|error| format!("refusing to clean invalid Codex config TOML: {error}"))?;
     }
-    let cleaned = remove_codex_managed_hook_blocks(&existing);
-    if cleaned != existing.trim() {
-        let contents = if cleaned.trim().is_empty() {
-            String::new()
-        } else {
-            format!("{}\n", cleaned.trim_end())
-        };
-        validate_codex_config_toml(&contents).map_err(|error| {
-            format!("refusing to write invalid cleaned Codex config TOML: {error}")
+    let existing = remove_standalone_codex_asp_explorer_role_config(&existing);
+    let merged = merge_codex_config(&existing, &codex_hook_block(project_root));
+    if merged != existing {
+        validate_codex_config_toml(&merged).map_err(|error| {
+            format!("refusing to write invalid Codex project hook config TOML: {error}")
         })?;
-        fs::write(&config_path, contents.as_bytes())
+        fs::write(&config_path, merged.as_bytes())
             .map_err(|error| format!("failed to write {}: {error}", config_path.display()))?;
     }
     Ok(config_path)
+}
+
+fn remove_standalone_codex_asp_explorer_role_config(existing: &str) -> String {
+    let mut lines = Vec::new();
+    let mut skipping = false;
+    for line in existing.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('[') {
+            skipping = trimmed == "[agents.asp_explorer]" || trimmed == "[agents.\"asp_explorer\"]";
+            if skipping {
+                continue;
+            }
+        }
+        if !skipping {
+            lines.push(line.to_string());
+        }
+    }
+    format!("{}\n", lines.join("\n").trim_end())
 }
 
 fn ensure_codex_asp_explorer_role_config(config_path: &Path) -> Result<(), String> {
@@ -146,6 +183,110 @@ fn ensure_codex_asp_explorer_role_config(config_path: &Path) -> Result<(), Strin
         })?;
         fs::write(config_path, merged.as_bytes())
             .map_err(|error| format!("failed to write {}: {error}", config_path.display()))?;
+    }
+    Ok(())
+}
+
+fn normalize_codex_project_marketplace_source(
+    config_path: &Path,
+    project_root: &Path,
+    marketplace_name: &str,
+    create_if_missing: bool,
+) -> Result<(), String> {
+    let existing = fs::read_to_string(config_path).unwrap_or_default();
+    validate_codex_config_toml(&existing)
+        .map_err(|error| format!("refusing to normalize invalid Codex config TOML: {error}"))?;
+    let project_root = fs::canonicalize(project_root)
+        .map_err(|error| format!("failed to resolve {}: {error}", project_root.display()))?;
+    let source_line = format!(
+        "source = {}",
+        toml_basic_string(&project_root.display().to_string())
+    );
+    let section_plain = format!("[marketplaces.{marketplace_name}]");
+    let section_quoted = format!("[marketplaces.{}]", toml_basic_string(marketplace_name));
+    let mut lines = Vec::new();
+    let mut in_section = false;
+    let mut saw_section = false;
+    let mut replaced_source = false;
+    for line in existing.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('[') {
+            if in_section && !replaced_source {
+                lines.push(source_line.clone());
+                replaced_source = true;
+            }
+            in_section = trimmed == section_plain || trimmed == section_quoted;
+            if in_section {
+                saw_section = true;
+                replaced_source = false;
+            }
+        }
+        if in_section && trimmed.starts_with("source =") {
+            lines.push(source_line.clone());
+            replaced_source = true;
+            continue;
+        }
+        lines.push(line.to_string());
+    }
+    if in_section && !replaced_source {
+        lines.push(source_line);
+    }
+    if !saw_section && !create_if_missing {
+        return Ok(());
+    }
+    if !saw_section {
+        if !lines.is_empty() && lines.last().is_some_and(|line| !line.trim().is_empty()) {
+            lines.push(String::new());
+        }
+        lines.push(section_plain);
+        lines.push("source_type = \"local\"".to_string());
+        lines.push(format!(
+            "source = {}",
+            toml_basic_string(&project_root.display().to_string())
+        ));
+    }
+    let normalized = format!("{}\n", lines.join("\n").trim_end());
+    if normalized != existing {
+        validate_codex_config_toml(&normalized).map_err(|error| {
+            format!("refusing to write invalid normalized Codex config TOML: {error}")
+        })?;
+        fs::write(config_path, normalized.as_bytes())
+            .map_err(|error| format!("failed to write {}: {error}", config_path.display()))?;
+    }
+    Ok(())
+}
+
+fn verify_codex_project_plugin_loadable(
+    project_root: &Path,
+    codex_home: Option<&Path>,
+    plugin_id: &str,
+) -> Result<(), String> {
+    let stdout = run_codex_plugin_command(
+        &[
+            "plugin".to_string(),
+            "list".to_string(),
+            "--json".to_string(),
+        ],
+        project_root,
+        codex_home,
+    )?;
+    let value = serde_json::from_str::<serde_json::Value>(&stdout)
+        .map_err(|error| format!("invalid codex plugin list JSON: {error}"))?;
+    let installed = value
+        .get("installed")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "codex plugin list JSON missing installed plugins".to_string())?;
+    let loaded = installed.iter().any(|plugin| {
+        plugin.get("pluginId").and_then(serde_json::Value::as_str) == Some(plugin_id)
+            && plugin
+                .get("enabled")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false)
+    });
+    if !loaded {
+        return Err(format!(
+            "Codex plugin {plugin_id} was installed but is not loadable from project config"
+        ));
     }
     Ok(())
 }
@@ -324,6 +465,10 @@ fn codex_plugin_installed_path(add_stdout: &str) -> Option<String> {
                 .and_then(serde_json::Value::as_str)
                 .map(ToString::to_string)
         })
+}
+
+fn toml_basic_string(value: &str) -> String {
+    format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
 fn global_codex_config_path() -> Result<PathBuf, String> {

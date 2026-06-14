@@ -48,10 +48,7 @@ fn cli_install_writes_root_owned_codex_hook_config() {
     let parsed_config =
         toml::from_str::<toml::Value>(&config).expect("installed Codex config is valid TOML");
     assert_plugin_entries(&parsed_config);
-    assert!(
-        !codex_home.join("config.toml").exists(),
-        "project-scoped plugin install must not mutate user CODEX_HOME"
-    );
+    assert_codex_user_trust_config(&codex_home, &root);
     assert_codex_asp_explorer(&root, "gpt-5.3-codex-spark");
     assert_legacy_codex_split_subagents_removed(&root);
     assert_installed_activation(&root);
@@ -91,7 +88,8 @@ fn cli_install_accepts_existing_project_marketplace_source_when_root_matches() {
     assert!(stdout.contains("subagent=.codex/agents/asp-explorer.toml"));
     let config =
         std::fs::read_to_string(root.join(".codex/config.toml")).expect("installed config");
-    assert!(config.contains("source = \".\""));
+    let canonical_root = std::fs::canonicalize(&root).expect("canonical project root");
+    assert!(config.contains(&format!("source = \"{}\"", canonical_root.display())));
     assert_codex_asp_explorer_role_config(&config);
     assert!(config.contains("[plugins.\"asp-codex-plugin@asp-project\"]"));
     assert_codex_asp_explorer(&root, "gpt-5.3-codex-spark");
@@ -197,8 +195,8 @@ fn assert_install_stdout(stdout: &str) {
     assert!(stdout.contains("pluginScope=project"));
     assert!(stdout.contains("pluginMarketplace=asp-project"));
     assert!(stdout.contains("pluginMarketplaceConfig=.agents/plugins/marketplace.json"));
-    assert!(stdout.contains("legacyHookConfigCleaned=.codex/config.toml"));
-    assert!(!stdout.contains("trustConfig="));
+    assert!(stdout.contains("projectHookConfig=.codex/config.toml"));
+    assert!(stdout.contains("trustConfig="));
     assert!(stdout.contains("subagent=.codex/agents/asp-explorer.toml"));
     assert!(!stdout.contains("subagents="));
     assert!(stdout.contains("binary=asp"));
@@ -422,14 +420,16 @@ fn assert_no_profile_registry(root: &std::path::Path) {
 }
 
 fn assert_codex_config(config: &str, root: &std::path::Path) {
-    assert!(!config.contains("# BEGIN agent-semantic-protocol agent hooks"));
+    assert!(config.contains("# BEGIN agent-semantic-protocol agent hooks"));
     assert!(!config.contains("# BEGIN semantic-agent-protocol agent hooks"));
     assert!(!config.contains("# BEGIN agent-semantic-hook agent hooks"));
     assert!(!config.contains("hook_bin="));
     assert!(!config.contains("exec semantic-agent-protocol"));
     assert!(!config.contains("exec agent-semantic-hook"));
     assert!(!config.contains(".codex/agent-semantic-hook/bin/agent-semantic-hook"));
-    assert!(!config.contains("exec asp hook pre-tool --client codex"));
+    assert!(config.contains("exec asp hook pre-tool --client codex"));
+    assert!(config.contains("exec asp hook user-prompt --client codex"));
+    assert!(config.contains("exec asp hook stop --client codex"));
     assert!(!config.contains("asp hook --client codex"));
     assert!(config.matches("[hooks.state.").count() == 0);
     assert!(!config.contains("ts-harness agent hook --client codex"));
@@ -441,6 +441,22 @@ fn assert_codex_config(config: &str, root: &std::path::Path) {
     assert_codex_asp_explorer_role_config(config);
     assert!(config.contains("[plugins.\"asp-codex-plugin@asp-project\"]"));
     assert!(config.contains("enabled = true"));
+}
+
+fn assert_codex_user_trust_config(codex_home: &std::path::Path, root: &std::path::Path) {
+    let trust_config =
+        std::fs::read_to_string(codex_home.join("config.toml")).expect("Codex trust config");
+    let project_config = std::fs::canonicalize(root.join(".codex/config.toml"))
+        .expect("canonical project Codex config");
+    assert!(trust_config.contains("[projects."));
+    assert!(trust_config.contains(&format!("{}:pre_tool_use:0:0", project_config.display())));
+    assert!(trust_config.contains(&format!(
+        "{}:user_prompt_submit:0:0",
+        project_config.display()
+    )));
+    assert!(trust_config.contains(&format!("{}:stop:0:0", project_config.display())));
+    assert!(trust_config.contains("trusted_hash = \"sha256:"));
+    toml::from_str::<toml::Value>(&trust_config).expect("Codex trust config is valid TOML");
 }
 
 fn assert_codex_asp_explorer_role_config(config: &str) {
@@ -588,6 +604,10 @@ command = '''
 exec semantic-agent-protocol hook pre-tool --client codex
 '''
 # END semantic-agent-protocol agent hooks
+
+[agents.asp_explorer]
+description = "legacy standalone role"
+config_file = "agents/asp-explorer.toml"
 "#,
     )
     .expect("write legacy semantic-agent-protocol config");

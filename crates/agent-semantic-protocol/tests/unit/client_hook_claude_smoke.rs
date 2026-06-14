@@ -309,6 +309,14 @@ if [ "${1:-}" = "plugin" ] && [ "${2:-}" = "add" ]; then
   printf '{"pluginId":"asp-codex-plugin@asp-project","name":"asp-codex-plugin","marketplaceName":"asp-project","version":"0.1.0+test","installedPath":"%s/plugins/cache/asp-project/asp-codex-plugin/0.1.0+test","authPolicy":"ON_INSTALL"}\n' "$codex_home"
   exit 0
 fi
+if [ "${1:-}" = "plugin" ] && [ "${2:-}" = "list" ]; then
+  if /usr/bin/grep -q '^\[plugins\."asp-codex-plugin@asp-project"\]' "$config" 2>/dev/null; then
+    printf '{"installed":[{"pluginId":"asp-codex-plugin@asp-project","name":"asp-codex-plugin","marketplaceName":"asp-project","version":"0.1.0+test","installed":true,"enabled":true}],"available":[]}\n'
+  else
+    printf '{"installed":[],"available":[]}\n'
+  fi
+  exit 0
+fi
 printf 'unsupported fake codex command: %s\n' "$*" >&2
 exit 2
 "#,
