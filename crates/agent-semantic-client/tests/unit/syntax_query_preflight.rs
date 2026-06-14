@@ -122,6 +122,20 @@ fn accepts_existing_query_owner_path_under_workspace() {
 }
 
 #[test]
+fn accepts_json_positional_project_root_without_owner_path_preflight() {
+    let request = query_request(vec![
+        "--catalog".to_string(),
+        "calls".to_string(),
+        "--selector".to_string(),
+        "src/corpus.rs".to_string(),
+        "--json".to_string(),
+        "/tmp/tree-sitter-corpus-project".to_string(),
+    ]);
+
+    validate_syntax_query_request(&request).expect("json positional project root");
+}
+
+#[test]
 fn rejects_invalid_inline_tree_sitter_query_before_provider_execution() {
     let request = query_request(vec![
         "--treesitter-query".to_string(),

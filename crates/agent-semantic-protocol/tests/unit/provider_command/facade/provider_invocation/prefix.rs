@@ -2,11 +2,13 @@ use std::env;
 
 use crate::provider_command::support::{
     asp_command, make_executable, prepend_path, provider, temp_project_root, write_activation,
+    write_cache_source_fixture,
 };
 
 #[test]
 fn provider_command_prefix_is_used_as_full_invocation_prefix() {
     let root = temp_project_root("provider-prefix-facade");
+    write_cache_source_fixture(&root);
     let bin_dir = root.join(".bin");
     std::fs::create_dir_all(&bin_dir).expect("create bin dir");
     let wrapper_path = bin_dir.join("provider-wrapper");

@@ -123,6 +123,11 @@ Examples:
   safety patterns, and project-specific usage guidance.
 - Gerbil Scheme =poo= extension: object system, metaobject protocol, protocol
   syntax, and POO-specific examples.
+- Gerbil Scheme =poo= inherited pattern: =gerbil-poo= depends on
+  =gerbil-utils=, so provider-owned =search pattern= may expose
+  higher-order-control and typed-combinator-style guidance with
+  =origin=inherited= when the package closure and active load path prove the
+  import.
 - Rust =tokio= extension: async runtime APIs, cancellation, timeout, process
   lifecycle, stream drain, and task ownership patterns.
 
@@ -132,6 +137,7 @@ Example shapes:
 asp typescript search extension effect api --view seeds .
 asp gerbil-scheme search extension poo syntax --view seeds .
 asp gerbil-scheme search extension poo pattern object-system --view seeds .
+asp gerbil-scheme search pattern higher-order-control gerbil-utils inherited --view seeds .
 asp rust search extension tokio cancellation --view seeds .
 #+end_src
 
@@ -146,6 +152,46 @@ evidenceGrade=fact
 capabilities=object-system,metaobject-protocol,protocols
 next=search pattern poo object-system
 #+end_src
+
+When an extension query names a provider-owned package registry entry rather
+than an active project dependency, the output must say so explicitly.  The fact
+may be =registered=, but it must not imply that the current workspace activated
+the extension.  The text renderer should give the agent one clear next action:
+run the pattern query that owns the executable writing guidance.
+
+#+begin_src text
+namespace=extension
+extension=poo
+activation=gerbil-poo://
+dependencyMode=registered
+agentAction=follow-next registeredKnowledge=gerbil-poo:// notProjectActivation=true
+next=search pattern gerbil-poo usage
+#+end_src
+
+Pattern output may be direct or inherited.  Direct pattern facts come from the
+activated extension itself.  Inherited pattern facts come from a package in the
+activated extension's dependency closure and must include an origin, a dependency
+chain, and an import/load-path witness so the agent does not confuse inherited
+APIs with ambient machine state:
+
+#+begin_src text
+namespace=pattern
+extension=poo
+pattern=gerbil-utils-higher-order-control
+origin=inherited
+via=git.cons.io/mighty-gerbils/gerbil-poo->git.cons.io/mighty-gerbils/gerbil-utils
+importWitness.status=verified
+importWitness.module=:clan/base
+next=guide --code --topic typed-combinator-style --intent style
+#+end_src
+
+Providers must distinguish three cases:
+
+- =direct=: the current project declares the package that owns the pattern.
+- =inherited=: a declared dependency proves the owner package through a
+  provider-owned package closure.
+- =ambient=: the active load path can see the module but no package closure
+  proves ownership; this is warning-grade evidence, not a repair target.
 
 ** =search env=
 
@@ -341,6 +387,9 @@ intent=<what-writing-task-this-pattern-authorizes>
 minimalFormMapping=<head,operands,keywords,selector>
 failureCase=<id,risk-kind,corrective-action,selectors>
 selector=<source-or-parser-owned-witness>
+selectorResolver=<scheme,status,query-selector-policy>
+agentReadOrder=<scenario,steering,resolver,forms,failures,quality>
+agentAction=<what-to-do-before-editing>
 witness=<runtime-or-source-backed-proof>
 missing=<required-gap-list-or-->
 next=<next-search-or-query-command>
@@ -352,6 +401,15 @@ structured mappings, not opaque inline snippets: form heads, operands, keywords,
 selectors, risk kinds, and corrective actions are separate fields.  A renderer
 may print those mappings as text, but the provider-owned evidence remains
 structured.
+
+Logical selectors such as =gerbil-poo://object.ss#defclass= are source anchors
+inside a provider-owned package registry, not workspace line selectors.  The
+renderer must therefore emit a resolver line that tells the agent whether the
+selector is directly queryable, package-manager resolved, or only a logical
+anchor for the pattern.  If the selector is logical-only, the same output must
+include a read order and an action line that tells the agent to use the
+=minimalForms= and =failureCases= before editing, instead of trying
+=query --selector= or guessing from generic Scheme/Racket memory.
 
 For example, a Gerbil agent that does not know POO must receive =defclass=,
 generic/method, and protocol source selectors plus failure cases that prevent
@@ -471,12 +529,28 @@ incremental index implementation.  For Gerbil Scheme this means the native
 parser can emit owner and extension facts, while ASP still owns the index
 refresh plan and cache state.
 
-Gerbil exposes this as =search structural --json= and advertises it as
-=index/structural= in the provider registry.  The packet is a native parser feed
-with file hashes, owners, symbols, dependency usages, generation id, and
-=rawSourceStored=false=.  It is not a provider cache.  ASP consumes the feed,
-stores the generation artifact, and owns unchanged / changed / deleted refresh
-planning.
+Gerbil exposes the hot path as =search structural --json= and advertises it as
+=index/structural= in the provider registry.  That packet is a lightweight
+native-parser interface with file hashes, owner handles, workspace-size totals,
+owner-level native fact summaries, generation id, =indexMode=interface=, and
+=rawSourceStored=false=.  It intentionally leaves =symbols=,
+=dependencyUsages=, and =syntaxFacts= empty on the default packet while still
+emitting parser-owned totals such as =symbolTotal=, =dependencyUsageTotal=, and
+=nativeSyntaxFactTotal=.  It is
+not a provider cache and it is not the complete workspace graph.  ASP Rust
+consumes the interface, owns unchanged / changed / deleted refresh planning,
+builds the structural index, and delegates expensive topology or ranking work
+to graph-turbo when needed.
+
+Full native fact projection is owner-bounded.  Providers expose it through the
+same view with =search structural --owner <path> --json= and register it as
+=index/native-syntax-owner-facts=.  This packet uses the shared
+=semantic-native-syntax-fact-index= shape under =facts= and is the fan-out unit
+for ASP-side parallelism, caching, and graph construction.  Whole-workspace
+=syntaxFacts= materialization is reserved for explicit validation artifacts via
+=search structural --json --artifact=.  Full workspace symbol and dependency
+rows follow the same rule: they are validation/debug or ASP-owned index
+material, not part of the default agent-facing hot path or benchmark gate.
 
 Gerbil structural feeds should also expose native syntax facts when the parser
 can prove them without macro expansion side effects.  The first required fact
@@ -487,12 +561,13 @@ for =defsyntax=, =defrules=, =defrule=, and related hygienic macro surfaces,
 =lambda=, =case-lambda=, =map=, =filter=, =fold=, =cut=, and =for/fold= style
 data transforms, =control-flow= facts for named loops, continuation boundaries,
 exception/resource scopes, and branch forms, =dependency-usage= facts for
-manifest-backed imports and extension capabilities, and =call= facts with
-expression-level source ranges where the native reader exposes them.  These
-facts are projected through the shared =semantic-native-syntax-fact-index=
-shape under =syntaxFacts=.  Search renderers and fuzzy candidate rankers may
-rank or summarize them, but they must not invent parser facts by matching
-rendered strings or source literal payloads.
+manifest-backed imports and extension capabilities, =comment= facts for typed
+contract and engineering comment quality, and =call= facts with expression-level
+source ranges where the native reader exposes them.  These facts are projected
+through the shared =semantic-native-syntax-fact-index= owner packet shape.
+Search renderers and fuzzy candidate rankers may rank or summarize them, but
+they must not invent parser facts by matching rendered strings or source literal
+payloads.
 
 Compact text renderers should expose a bounded set of =|syntaxFact= rows for
 agent-facing seed views.  These rows are summaries of native parser facts, not
@@ -503,8 +578,10 @@ Gerbil POO this means a =defclass= row carries supers, slots, and options, and a
 specializers, and dispatch arity.  A =defprotocol= row should surface as an
 =interface= fact with =languageKind=defprotocol= and =role=protocol= so agents
 can choose protocol/generic dispatch instead of hand-rolled alists or hash
-objects.  The JSON packet remains the complete machine interface; compact rows
-exist so an agent can proceed without inventing syntax from memory.
+objects.  Compact rows are emitted from owner-bounded facts or explicit
+artifacts.  The default structural JSON packet remains the lightweight machine
+interface that points ASP to the owner fact commands instead of inlining the
+complete graph payload.
 
 * Evidence grades
 

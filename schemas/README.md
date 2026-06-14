@@ -83,7 +83,12 @@ shape for parser-owned owner, symbol, file-hash, and dependency-usage rows. It
 exists to make warm search replay index-first without storing source code:
 providers emit names, locators, dependency identities, query keys, and freshness
 hashes; the Rust client owns SQLite storage, invalidation, and replay
-eligibility.
+eligibility. Lightweight provider interfaces may leave workspace-wide
+`symbols`, `dependencyUsages`, and `syntaxFacts` empty on the hot path while
+still emitting parser-owned totals such as `symbolTotal`,
+`dependencyUsageTotal`, and `nativeSyntaxFactTotal`. ASP Rust then fans out to
+owner fact commands or explicit artifacts for full row materialization,
+caching, and graph construction.
 `semantic-fact-frontier-receipt.v1.schema.json` records whether a task-session
 frontier was returned, followed, read, tested, or edited. Its top-level fields
 stay present with `null` or empty-array values when a receipt kind does not use
@@ -532,8 +537,8 @@ rules`, `fn format_field`, `struct PacketCollections`, `import {Foo}`, or
 The root schema owns only the portable fact envelope: fact id, kind, source,
 owner path, location, visibility, query keys, relations, and extension fields.
 Portable fact kinds cover owners, modules, public APIs, imports, calls, tests,
-docs, document headings, properties, drawers, tables, blocks, links, code fences,
-includes, fields, bindings, constants, arguments, and macros; provider specific
+docs, comments, document headings, properties, drawers, tables, blocks, links,
+code fences, includes, fields, bindings, constants, arguments, and macros; provider specific
 syntax remains in `languageKind` and `fields`. Rust, TypeScript, Python, Julia,
 Org, Markdown, and future providers own their concrete fact builders and
 provider-local schema refinements. Search and query packets may embed these

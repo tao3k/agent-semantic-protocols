@@ -4,7 +4,7 @@ use std::process::Command;
 
 use crate::provider_command::support::{
     asp_command, make_executable, prepend_path, provider, temp_project_root, write_activation,
-    write_echo_provider, write_pwd_provider,
+    write_cache_source_fixture, write_echo_provider, write_pwd_provider,
 };
 
 #[test]
@@ -195,6 +195,7 @@ fn language_facade_uses_manifest_child_as_provider_project_hint() {
         "[package]\nname = \"nested-rust-lang-project-harness\"\nversion = \"0.1.0\"\n",
     )
     .expect("write child manifest");
+    write_cache_source_fixture(&child_dir);
     write_pwd_provider(&bin_dir, "rs-harness");
     write_activation(&root, &[provider("rust", Vec::new())]);
 

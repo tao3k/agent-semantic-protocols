@@ -92,6 +92,7 @@
         "id",
         "extension",
         "focus",
+        "origin",
         "sourceRef",
         "sourceOwners",
         "agentScenario",
@@ -113,6 +114,19 @@
         },
         "focus": {
           "type": "string"
+        },
+        "origin": {
+          "enum": ["direct", "inherited", "provider", "ambient"]
+        },
+        "via": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "importWitness": {
+          "$ref": "#/$defs/importWitness"
         },
         "sourceRef": {
           "$ref": "#/$defs/sourceRef"
@@ -159,6 +173,37 @@
         "witness": {
           "type": "string",
           "minLength": 1
+        }
+      }
+    },
+    "importWitness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "module", "minimalImport", "evidence"],
+      "properties": {
+        "status": {
+          "enum": ["verified", "partial", "unknown"]
+        },
+        "module": {
+          "type": "string",
+          "minLength": 1
+        },
+        "minimalImport": {
+          "type": "string"
+        },
+        "evidence": {
+          "type": "string",
+          "minLength": 1
+        },
+        "activation": {
+          "type": "string"
+        },
+        "dependencyChain": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
         }
       }
     },

@@ -1,6 +1,6 @@
 use crate::provider_command::support::{
     asp_command, make_executable, prepend_path, provider, temp_project_root, write_activation,
-    write_echo_provider,
+    write_cache_source_fixture, write_echo_provider,
 };
 
 #[test]
@@ -38,6 +38,7 @@ fn asp_toml_provider_bin_overrides_activation_binary() {
 #[test]
 fn language_facade_query_uses_activation_prefix_before_path_lookup() {
     let root = temp_project_root("provider-activation-prefix-facade");
+    write_cache_source_fixture(&root);
     let profile_bin_dir = root.join(".profile-bin");
     let path_bin_dir = root.join(".path-bin");
     write_echo_provider(&profile_bin_dir, "rs-harness", "profile");

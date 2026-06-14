@@ -81,13 +81,18 @@ fn query_owner_path_arg(args: &[String]) -> Option<&str> {
                 index += 2;
                 continue;
             }
-            "--code" | "--json" | "--names-only" => {
+            "--json" => {
+                index += optional_value_flag_width(args.get(index + 1).map(String::as_str));
+                continue;
+            }
+            "--code" | "--names-only" => {
                 index += 1;
                 continue;
             }
             _ if arg.starts_with("--catalog=")
                 || arg.starts_with("--from-hook=")
                 || arg.starts_with("--query=")
+                || arg.starts_with("--json=")
                 || arg.starts_with("--selector=")
                 || arg.starts_with("--term=")
                 || arg.starts_with("--treesitter-query=")
@@ -107,6 +112,14 @@ fn query_owner_path_arg(args: &[String]) -> Option<&str> {
         }
     }
     None
+}
+
+fn optional_value_flag_width(next: Option<&str>) -> usize {
+    if next.is_some_and(|arg| !arg.starts_with('-')) {
+        2
+    } else {
+        1
+    }
 }
 
 fn looks_like_owner_path(value: &str) -> bool {
