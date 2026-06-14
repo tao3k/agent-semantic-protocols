@@ -13,7 +13,7 @@ mod client_hook_config;
 mod client_hook_config_doctor;
 #[path = "unit/client_hook_config_runtime.rs"]
 mod client_hook_config_runtime;
-#[path = "unit/client_hook_desktop_smoke/mod.rs"]
+#[path = "unit/client_hook_desktop_smoke.rs"]
 mod client_hook_desktop_smoke;
 #[path = "unit/document_provider.rs"]
 mod document_provider;

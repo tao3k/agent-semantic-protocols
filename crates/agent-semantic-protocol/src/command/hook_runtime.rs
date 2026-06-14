@@ -685,7 +685,7 @@ fn run_install(args: &[String]) -> Result<(), String> {
     let client_config_path = default_client_config_path(&project_root.to_string_lossy());
     install_default_client_config(&client_config_path, &activation)?;
     timings.mark("client-config");
-    let skill_path =
+    let installed_skill =
         install_agent_semantic_protocols_skill(&project_root, &activation, &runtime_profiles)?;
     timings.mark("skill");
     let (config_path, extra_config_receipt) = match client {
@@ -695,13 +695,14 @@ fn run_install(args: &[String]) -> Result<(), String> {
     };
     timings.mark("project-hooks");
     println!(
-        "[agent-install] client={client} activation={} activationRuntime=derived activationSync={} clientConfig={} config={}{} skill={} binary=asp binaryPath={} binaryInstall={} mode=updated",
+        "[agent-install] client={client} activation={} activationRuntime=derived activationSync={} clientConfig={} config={}{} skill={} skillContract={} binary=asp binaryPath={} binaryInstall={} mode=updated",
         display_path(&project_root, &activation_path),
         activation_status,
         display_path(&project_root, &client_config_path),
         display_path(&project_root, &config_path),
         extra_config_receipt,
-        display_path(&project_root, &skill_path),
+        display_path(&project_root, &installed_skill.skill_path),
+        display_path(&project_root, &installed_skill.skill_contract_path),
         binary_install.path.display(),
         binary_install.status,
     );
