@@ -139,8 +139,12 @@ routes. =query --term <term> --view metadata= returns a bounded document
 metadata frontier. Adding =--content= to an explicit =--selector=, =--term=,
 =--kind=, or =--field= query changes stdout to the pure content of the matched
 document elements; it is still query output and must not become a whole-file
-read. Document text recovery uses =query --selector <path-or-range> --content=
-and stays a filtered element-content projection, not a whole-file read.
+read. The =--content= renderer is a prompt-compact projection: it collapses
+document whitespace inside each projected element to a single ASCII space,
+trims empty projections, prints one non-empty projection per line without blank
+separators, and emits no body lines when the content projection is empty.
+Document text recovery uses =query --selector <path-or-range> --content= and
+stays a filtered element-content projection, not a whole-file read.
 =--code= remains reserved for source-language providers.
 
 =guide= and =query guide= for document languages must expose the parser-owned
@@ -173,13 +177,13 @@ search packet family with =method=search/fzf-toc= and =view=fzf-toc=.  A
 trailing positional =toc= may select the same view for shell-friendly command
 composition, but =--view toc= is the canonical spelling.
 
-Document query no-hit output is still a protocol surface.  A query with
-=hit=0= must not stop at a count-only receipt.  It must state that combined
-terms/kinds/fields are an intersection, then return bounded next actions such
-as =search fzf= for one term, a single-term =query --term= retry, =query guide=,
-and the selector requirement for =query --selector ... --content=.  These rows are
-agent-facing recovery guidance; they must not include raw source snippets or
-pretend that document recovery can run without a selector.
+Document query no-hit metadata/frontier output is still a protocol surface.  A
+query with =hit=0= must not stop at a count-only receipt.  It must state that
+combined terms/kinds/fields are an intersection, then return bounded next
+actions such as =search fzf= for one term, a single-term =query --term= retry,
+=query guide=, and the selector requirement for =query --selector ... --content=.
+These rows are agent-facing recovery guidance; they must not include raw source
+snippets or pretend that document recovery can run without a selector.
 
 Document facts are a navigation element map, not a full document AST dump.
 The shared packet keeps language-neutral element categories in =kind= and

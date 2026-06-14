@@ -71,12 +71,28 @@ fn md_facade_content_projection_deduplicates_list_children() {
     let root = temp_project_root("md-document-content-deduplicates-list");
     std::fs::write(
         root.join("guide.md"),
-        "# Guide\n\n- [x] ship element map\n- plain list item\n\n- repeated item\n- repeated item\n",
+        "# Guide\n\nWrapped content spans\nmultiple markdown lines.\n\n- [x] ship element map\n- plain list item\n\n- repeated item\n- repeated item\n",
     )
     .expect("write markdown list fixture");
 
+    let paragraph_output = asp_command(&root)
+        .args(["md", "query", "--term", "Wrapped", "--content"])
+        .output()
+        .expect("run asp md paragraph content query");
+    assert!(
+        paragraph_output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&paragraph_output.stderr)
+    );
+    let paragraph_content = String::from_utf8(paragraph_output.stdout).expect("stdout");
+    assert_eq!(
+        paragraph_content.trim(),
+        "Wrapped content spans multiple markdown lines.",
+        "{paragraph_content}"
+    );
+
     let output = asp_command(&root)
-        .args(["md", "query", "--selector", "guide.md:3-4", "--content"])
+        .args(["md", "query", "--selector", "guide.md:6-7", "--content"])
         .output()
         .expect("run asp md content query");
     assert!(
@@ -89,7 +105,7 @@ fn md_facade_content_projection_deduplicates_list_children() {
     assert_eq!(content.matches("plain list item").count(), 1, "{content}");
 
     let repeated_output = asp_command(&root)
-        .args(["md", "query", "--selector", "guide.md:6-7", "--content"])
+        .args(["md", "query", "--selector", "guide.md:9-10", "--content"])
         .output()
         .expect("run asp md repeated content query");
     assert!(
@@ -99,6 +115,23 @@ fn md_facade_content_projection_deduplicates_list_children() {
     );
     let repeated = String::from_utf8(repeated_output.stdout).expect("stdout");
     assert_eq!(repeated.matches("repeated item").count(), 2, "{repeated}");
+
+    let missing_output = asp_command(&root)
+        .args([
+            "md",
+            "query",
+            "--term",
+            "__asp_missing_content_probe__",
+            "--content",
+        ])
+        .output()
+        .expect("run asp md missing content query");
+    assert!(
+        missing_output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&missing_output.stderr)
+    );
+    assert_eq!(missing_output.stdout, b"", "{missing_output:?}");
 
     let _ = std::fs::remove_dir_all(root);
 }

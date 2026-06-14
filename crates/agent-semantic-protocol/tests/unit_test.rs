@@ -13,7 +13,7 @@ mod client_hook_config;
 mod client_hook_config_doctor;
 #[path = "unit/client_hook_config_runtime.rs"]
 mod client_hook_config_runtime;
-#[path = "unit/client_hook_desktop_smoke.rs"]
+#[path = "unit/client_hook_desktop_smoke/mod.rs"]
 mod client_hook_desktop_smoke;
 #[path = "unit/document_provider.rs"]
 mod document_provider;
@@ -23,6 +23,8 @@ mod graph_render;
 mod healthcheck;
 #[path = "unit/hook_command.rs"]
 mod hook_command;
+#[path = "unit/hook_runtime_skill.rs"]
+mod hook_runtime_skill;
 #[path = "unit/provider_command/mod.rs"]
 mod provider_command;
 #[path = "unit/rs_harness_attribute.rs"]
