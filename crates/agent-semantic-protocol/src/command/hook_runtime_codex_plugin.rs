@@ -2,8 +2,8 @@
 
 use super::hook_runtime_subagent::install_codex_asp_explorer_agent;
 use agent_semantic_hook::{
-    codex_hook_block, install_codex_user_trust_state, merge_codex_asp_explorer_role_config,
-    merge_codex_config, validate_codex_config_toml,
+    merge_codex_asp_explorer_role_config, remove_codex_managed_hook_blocks,
+    validate_codex_config_toml,
 };
 use std::env;
 use std::fs;
@@ -60,8 +60,7 @@ pub(super) fn install_codex_plugin_hooks(
     }
     let (marketplace_path, marketplace_name) =
         ensure_codex_project_plugin_marketplace(project_root)?;
-    let project_hook_config_path = install_codex_project_hook_config(project_root)?;
-    let trust_config_path = install_codex_user_trust_state(&project_hook_config_path)?;
+    let project_config_path = install_codex_project_plugin_config(project_root)?;
     let subagent_path = install_codex_asp_explorer_agent(project_root, subagent_model)?;
     let codex_home = match scope {
         CodexPluginScope::Project => Some(project_root.join(".codex")),
@@ -73,7 +72,7 @@ pub(super) fn install_codex_plugin_hooks(
     }
     if matches!(scope, CodexPluginScope::Project) {
         normalize_codex_project_marketplace_source(
-            &project_hook_config_path,
+            &project_config_path,
             project_root,
             &marketplace_name,
             false,
@@ -96,7 +95,7 @@ pub(super) fn install_codex_plugin_hooks(
     )?;
     if matches!(scope, CodexPluginScope::Project) {
         normalize_codex_project_marketplace_source(
-            &project_hook_config_path,
+            &project_config_path,
             project_root,
             &marketplace_name,
             true,
@@ -107,7 +106,7 @@ pub(super) fn install_codex_plugin_hooks(
             &format!("{ASP_CODEX_PLUGIN_NAME}@{marketplace_name}"),
         )?;
     }
-    ensure_codex_asp_explorer_role_config(&project_hook_config_path)?;
+    ensure_codex_asp_explorer_role_config(&project_config_path)?;
     let installed_path = codex_plugin_installed_path(&add_stdout)
         .map(|path| format!(" pluginInstalledPath={path}"))
         .unwrap_or_default();
@@ -118,19 +117,18 @@ pub(super) fn install_codex_plugin_hooks(
     Ok((
         config_path,
         format!(
-            " pluginScope={} pluginMarketplace={} pluginMarketplaceConfig={} projectHookConfig={} trustConfig={} subagent={}{}",
+            " pluginScope={} pluginMarketplace={} pluginMarketplaceConfig={} pluginConfig={} subagent={}{}",
             scope.label(),
             marketplace_name,
             super::display_path(project_root, &marketplace_path),
-            super::display_path(project_root, &project_hook_config_path),
-            super::display_path(project_root, &trust_config_path),
+            super::display_path(project_root, &project_config_path),
             super::display_path(project_root, &subagent_path),
             installed_path,
         ),
     ))
 }
 
-fn install_codex_project_hook_config(project_root: &Path) -> Result<PathBuf, String> {
+fn install_codex_project_plugin_config(project_root: &Path) -> Result<PathBuf, String> {
     let codex_dir = project_root.join(".codex");
     fs::create_dir_all(&codex_dir)
         .map_err(|error| format!("failed to create {}: {error}", codex_dir.display()))?;
@@ -141,15 +139,25 @@ fn install_codex_project_hook_config(project_root: &Path) -> Result<PathBuf, Str
             .map_err(|error| format!("refusing to clean invalid Codex config TOML: {error}"))?;
     }
     let existing = remove_standalone_codex_asp_explorer_role_config(&existing);
-    let merged = merge_codex_config(&existing, &codex_hook_block(project_root));
+    let merged =
+        normalize_codex_project_plugin_config(&remove_codex_managed_hook_blocks(&existing));
     if merged != existing {
         validate_codex_config_toml(&merged).map_err(|error| {
-            format!("refusing to write invalid Codex project hook config TOML: {error}")
+            format!("refusing to write invalid Codex project plugin config TOML: {error}")
         })?;
         fs::write(&config_path, merged.as_bytes())
             .map_err(|error| format!("failed to write {}: {error}", config_path.display()))?;
     }
     Ok(config_path)
+}
+
+fn normalize_codex_project_plugin_config(content: &str) -> String {
+    let content = content.trim();
+    if content.is_empty() {
+        String::new()
+    } else {
+        format!("{content}\n")
+    }
 }
 
 fn remove_standalone_codex_asp_explorer_role_config(existing: &str) -> String {
