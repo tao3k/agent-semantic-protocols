@@ -2,7 +2,9 @@ use std::env;
 
 use crate::rust_harness_activation::support::write_fake_provider_binary;
 
-use super::support::{assert_installed_hook_state, git_project_root, protocol_command};
+use super::support::{
+    assert_installed_hook_state, assert_installed_project_trust, git_project_root, protocol_command,
+};
 
 #[test]
 fn cli_install_prefers_git_toplevel_cache_over_prj_cache_home() {
@@ -228,6 +230,11 @@ fn cli_install_migrates_legacy_top_level_unified_exec_to_features() {
     assert!(!user_config.contains("sha256:old"));
     let parsed_user_config =
         toml::from_str::<toml::Value>(&user_config).expect("user trust config is valid TOML");
+    let canonical_project_root = canonical_config_path
+        .parent()
+        .and_then(std::path::Path::parent)
+        .expect("canonical project root");
+    assert_installed_project_trust(&parsed_user_config, canonical_project_root);
     assert_installed_hook_state(&parsed_user_config, &canonical_config_path);
     let _ = std::fs::remove_dir_all(&root);
 }

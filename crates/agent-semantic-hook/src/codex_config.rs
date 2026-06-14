@@ -1,7 +1,8 @@
 //! Client project config install helpers for asp hook.
 
 use crate::codex_trust::{
-    TRUST_BLOCK_END, codex_trust_block_begin, merge_codex_trust_config, toml_basic_string,
+    TRUST_BLOCK_END, codex_project_trusted, codex_trust_block_begin,
+    merge_codex_project_trust_config, merge_codex_trust_config, toml_basic_string,
 };
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
@@ -47,10 +48,16 @@ const ASP_EXPLORER_DESCRIPTION: &str =
 pub struct CodexUserTrustStatus {
     /// User-level Codex config containing hook trust hashes.
     pub trust_config_path: PathBuf,
-    /// Whether all required hook events are trusted.
+    /// Whether Codex can load this project's local config and all hook events are trusted.
     pub trusted: bool,
+    /// Whether the user-level Codex config trusts this project root.
+    pub project_trusted: bool,
+    /// Whether all required hook event hashes match the current project config.
+    pub hook_state_trusted: bool,
     /// Hook event names still missing trusted state.
     pub missing_events: Vec<String>,
+    /// Hook event names with trusted state that no longer matches the current hook block.
+    pub stale_events: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -115,7 +122,8 @@ pub fn install_codex_user_trust_state(project_config_path: &Path) -> Result<Path
         })?;
     }
     let trust_block = codex_trust_state_block(&project_config_path, &project_root);
-    let merged = merge_codex_trust_config(&existing, &project_config_path, &trust_block);
+    let merged = merge_codex_project_trust_config(&existing, &project_root)?;
+    let merged = merge_codex_trust_config(&merged, &project_config_path, &trust_block);
     validate_codex_config_toml(&merged).map_err(|error| {
         format!(
             "refusing to write invalid Codex user trust config {}: {error}",
@@ -150,29 +158,44 @@ pub fn codex_user_trust_state_status(
         .and_then(toml::Value::as_table)
         .and_then(|hooks| hooks.get("state"))
         .and_then(toml::Value::as_table);
-    let missing_events = codex_hook_events()
-        .iter()
-        .filter_map(|event| {
-            let key = format!(
-                "{}:{}:0:0",
-                project_config_path.display(),
-                event.state_label
-            );
-            let expected_hash = codex_hook_trusted_hash(event, &project_root);
-            let trusted = state
-                .and_then(|state| state.get(&key))
-                .and_then(toml::Value::as_table)
-                .and_then(|entry| entry.get("trusted_hash"))
-                .and_then(toml::Value::as_str)
-                .is_some_and(|actual_hash| actual_hash == expected_hash);
-            (!trusted).then(|| event.hook_event.to_string())
-        })
-        .collect::<Vec<_>>();
+    let mut missing_events = Vec::new();
+    let mut stale_events = Vec::new();
+    for event in codex_hook_events() {
+        let expected_hash = codex_hook_trusted_hash(&event, &project_root);
+        match codex_hook_trust_hash(state, &project_config_path, &event) {
+            Some(actual_hash) if actual_hash == expected_hash => {}
+            Some(_) => stale_events.push(event.hook_event.to_string()),
+            None => missing_events.push(event.hook_event.to_string()),
+        }
+    }
+    let project_trusted = codex_project_trusted(&parsed, &project_root);
+    let hook_state_trusted = missing_events.is_empty() && stale_events.is_empty();
     Ok(CodexUserTrustStatus {
         trust_config_path,
-        trusted: missing_events.is_empty(),
+        trusted: project_trusted && hook_state_trusted,
+        project_trusted,
+        hook_state_trusted,
         missing_events,
+        stale_events,
     })
+}
+
+fn codex_hook_trust_hash(
+    state: Option<&toml::map::Map<String, toml::Value>>,
+    project_config_path: &Path,
+    event: &CodexHookEvent,
+) -> Option<String> {
+    let key = format!(
+        "{}:{}:0:0",
+        project_config_path.display(),
+        event.state_label
+    );
+    state
+        .and_then(|state| state.get(&key))
+        .and_then(toml::Value::as_table)
+        .and_then(|entry| entry.get("trusted_hash"))
+        .and_then(toml::Value::as_str)
+        .map(str::to_string)
 }
 
 /// Validate Codex config text as TOML before writing it back to disk.

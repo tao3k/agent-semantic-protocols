@@ -546,12 +546,26 @@ fn run_doctor(args: &[String]) -> Result<(), String> {
         None
     };
     let trust = trust_status.as_ref().is_some_and(|status| status.trusted);
+    let project_trust = trust_status
+        .as_ref()
+        .is_some_and(|status| status.project_trusted);
+    let hook_state_trust = trust_status
+        .as_ref()
+        .is_some_and(|status| status.hook_state_trusted);
+    let trust_missing_count = trust_status
+        .as_ref()
+        .map(|status| status.missing_events.len())
+        .unwrap_or(0);
+    let trust_stale_count = trust_status
+        .as_ref()
+        .map(|status| status.stale_events.len())
+        .unwrap_or(0);
     let trust_config = trust_status
         .as_ref()
         .map(|status| status.trust_config_path.display().to_string())
         .unwrap_or_else(|| "unavailable".to_string());
     println!(
-        "[agent-doctor] status=ok client={client} providers={} activation={} activationRuntime=derived config={} clientConfig={} clientConfigStatus={} hook={} trust={} trustConfig={} binary={} binaryPath={} classifierProbe={} classifierReason={} enforcement={} enforcementProbe={} enforcementReason={} protocol={}",
+        "[agent-doctor] status=ok client={client} providers={} activation={} activationRuntime=derived config={} clientConfig={} clientConfigStatus={} hook={} trust={} projectTrust={} hookStateTrust={} trustMissing={} trustStale={} trustConfig={} binary={} binaryPath={} classifierProbe={} classifierReason={} enforcement={} enforcementProbe={} enforcementReason={} protocol={}",
         runtime.providers.len(),
         display_path(&project_root, &activation_path),
         config_path.is_file(),
@@ -559,6 +573,10 @@ fn run_doctor(args: &[String]) -> Result<(), String> {
         client_config_status,
         root_hook,
         trust,
+        project_trust,
+        hook_state_trust,
+        trust_missing_count,
+        trust_stale_count,
         trust_config,
         hook_binary,
         hook_binary_path,
@@ -592,10 +610,28 @@ fn run_doctor(args: &[String]) -> Result<(), String> {
             detail.saw_hook_event,
         );
     }
+    if client == "codex" && root_hook {
+        println!(
+            "|codex-app projectConfig={} projectTrust={} hookStateTrust={} reloadHint=restart-open-codex-app-thread-after-install",
+            display_path(&project_root, &config_path),
+            project_trust,
+            hook_state_trust,
+        );
+    }
+    if let Some(status) = trust_status.as_ref()
+        && !status.project_trusted
+    {
+        println!("|trust project=untrusted reason=project-not-trusted");
+    }
     if let Some(status) = trust_status.as_ref()
         && !status.missing_events.is_empty()
     {
         println!("|trust missing={}", status.missing_events.join(","));
+    }
+    if let Some(status) = trust_status.as_ref()
+        && !status.stale_events.is_empty()
+    {
+        println!("|trust stale={}", status.stale_events.join(","));
     }
     for provider in &runtime.providers {
         let runtime_profile = runtime_profiles.providers.iter().find(|profile| {

@@ -31,3 +31,15 @@ pub(super) fn assert_installed_hook_state(config: &toml::Value, config_path: &Pa
         .expect("pre tool use trusted hash");
     assert!(pre_tool_hash.starts_with("sha256:"));
 }
+
+pub(super) fn assert_installed_project_trust(config: &toml::Value, project_root: &Path) {
+    let trust_level = config
+        .get("projects")
+        .and_then(toml::Value::as_table)
+        .and_then(|projects| projects.get(&project_root.display().to_string()))
+        .and_then(toml::Value::as_table)
+        .and_then(|project| project.get("trust_level"))
+        .and_then(toml::Value::as_str)
+        .expect("project trust level");
+    assert_eq!(trust_level, "trusted");
+}

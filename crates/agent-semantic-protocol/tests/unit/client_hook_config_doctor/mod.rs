@@ -9,172 +9,9 @@ use serde_json::json;
 
 const PROBE_SENTINEL: &str = "ASP_CODEX_HOOK_ENFORCEMENT_PROBE_SENTINEL_DO_NOT_LEAK";
 
-#[test]
-fn doctor_reports_missing_client_hook_config() {
-    let root = temp_project_root("doctor-missing-config");
-    let activation_path = write_activation(&root);
-
-    let output = run_doctor(&root, &activation_path);
-
-    assert!(output.status.success(), "stderr: {}", stderr(&output));
-    let stdout = stdout(&output);
-    assert!(stdout.contains("clientConfig=.codex/agent-semantic-protocol/hooks/config.toml"));
-    assert!(stdout.contains("clientConfigStatus=missing"));
-    std::fs::remove_dir_all(root).expect("cleanup temp project root");
-}
-
-#[test]
-fn doctor_reports_valid_client_hook_config() {
-    let root = temp_project_root("doctor-valid-config");
-    let activation_path = write_activation(&root);
-    write_client_config(
-        &root,
-        r#"
-[[rules]]
-id = "valid-doctor-rule"
-decision = "deny"
-[rules.match]
-tool = "Bash"
-"#,
-    );
-
-    let output = run_doctor(&root, &activation_path);
-
-    assert!(output.status.success(), "stderr: {}", stderr(&output));
-    let stdout = stdout(&output);
-    assert!(stdout.contains("clientConfigStatus=ok"));
-    assert!(stdout.contains("enforcement=unavailable"));
-    assert!(stdout.contains("enforcementReason=project-hook-missing"));
-    std::fs::remove_dir_all(root).expect("cleanup temp project root");
-}
-
-#[test]
-fn doctor_reports_runtime_profile_health() {
-    let root = temp_project_root("doctor-runtime-profiles");
-    let activation_path = write_activation(&root);
-    let bin_dir = root.join(".doctor-bin");
-    write_executable(&bin_dir, "rs-harness", "#!/bin/sh\nexit 0\n");
-
-    let output = run_doctor_with_env(&root, &activation_path, &[], &[], Some(&bin_dir));
-
-    assert!(output.status.success(), "stderr: {}", stderr(&output));
-    let stdout = stdout(&output);
-    assert!(!stdout.contains("runtimeProfiles="));
-    assert!(stdout.contains("runtimeStatus=available"));
-    assert!(stdout.contains("resolvedBinary="));
-    assert!(stdout.contains("/rs-harness"));
-    std::fs::remove_dir_all(root).expect("cleanup temp project root");
-}
-
-#[test]
-fn doctor_reports_enforced_when_codex_probe_observes_deny() {
-    let root = temp_project_root("doctor-codex-probe-deny");
-    let activation_path = write_activation(&root);
-    write_codex_project_config(&root);
-    write_client_config(
-        &root,
-        r#"
-[[rules]]
-id = "valid-doctor-rule"
-decision = "deny"
-"#,
-    );
-    let bin_dir = root.join(".test-bin");
-    let codex = write_executable(
-        &bin_dir,
-        "codex",
-        "#!/bin/sh\nprintf '%s\\n' '{\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"direct-source-read\"}'\n",
-    );
-    write_executable(&bin_dir, "asp", "#!/bin/sh\nexit 0\n");
-
-    let output = run_doctor_with_env(
-        &root,
-        &activation_path,
-        &[("ASP_CODEX_CLI_ENFORCEMENT_PROBE", "1")],
-        &[("ASP_CODEX_CLI", codex.to_str().expect("utf8 codex path"))],
-        Some(&bin_dir),
-    );
-
-    assert!(output.status.success(), "stderr: {}", stderr(&output));
-    let stdout = stdout(&output);
-    assert!(stdout.contains("enforcement=enforced"));
-    assert!(stdout.contains("enforcementReason=hook-deny-observed"));
-    assert!(stdout.contains("|enforcement status=enforced"));
-    std::fs::remove_dir_all(root).expect("cleanup temp project root");
-}
-
-#[test]
-fn doctor_reports_configured_but_not_enforced_when_codex_probe_leaks_source() {
-    let root = temp_project_root("doctor-codex-probe-leak");
-    let activation_path = write_activation(&root);
-    write_codex_project_config(&root);
-    write_client_config(
-        &root,
-        r#"
-[[rules]]
-id = "valid-doctor-rule"
-decision = "deny"
-"#,
-    );
-    let bin_dir = root.join(".test-bin");
-    let codex = write_executable(
-        &bin_dir,
-        "codex",
-        &format!("#!/bin/sh\nprintf '%s\\n' '{PROBE_SENTINEL}'\n"),
-    );
-    write_executable(&bin_dir, "asp", "#!/bin/sh\nexit 0\n");
-
-    let output = run_doctor_with_env(
-        &root,
-        &activation_path,
-        &[("ASP_CODEX_CLI_ENFORCEMENT_PROBE", "1")],
-        &[("ASP_CODEX_CLI", codex.to_str().expect("utf8 codex path"))],
-        Some(&bin_dir),
-    );
-
-    assert!(output.status.success(), "stderr: {}", stderr(&output));
-    let stdout = stdout(&output);
-    assert!(stdout.contains("enforcement=configured-but-not-enforced"));
-    assert!(stdout.contains("enforcementReason=source-sentinel-leaked"));
-    assert!(stdout.contains("|enforcement status=configured-but-not-enforced"));
-    assert!(stdout.contains("sentinel=true"));
-    std::fs::remove_dir_all(root).expect("cleanup temp project root");
-}
-
-#[test]
-fn doctor_rejects_invalid_client_hook_config() {
-    let root = temp_project_root("doctor-invalid-config");
-    let activation_path = write_activation(&root);
-    write_client_config(&root, "schemaId = 7");
-
-    let output = run_doctor(&root, &activation_path);
-
-    assert!(!output.status.success());
-    assert!(stderr(&output).contains("invalid client hook config"));
-    std::fs::remove_dir_all(root).expect("cleanup temp project root");
-}
-
-#[test]
-fn doctor_rejects_duplicate_client_hook_rule_ids() {
-    let root = temp_project_root("doctor-duplicate-config-rule");
-    let activation_path = write_activation(&root);
-    write_client_config(
-        &root,
-        r#"
-[[rules]]
-id = "duplicate-rule"
-decision = "deny"
-
-[[rules]]
-id = "duplicate-rule"
-decision = "deny"
-"#,
-    );
-    let output = run_doctor(&root, &activation_path);
-    assert!(!output.status.success());
-    assert!(stderr(&output).contains("duplicate client hook rule id"));
-    std::fs::remove_dir_all(root).expect("cleanup temp project root");
-}
+mod basic;
+mod runtime;
+mod trust;
 
 fn write_client_config(root: &std::path::Path, content: &str) {
     let config_path = root.join(".codex/agent-semantic-protocol/hooks/config.toml");
@@ -189,6 +26,43 @@ fn write_codex_project_config(root: &std::path::Path) {
         .expect("create project config dir");
     std::fs::write(config_path, merge_codex_config("", &codex_hook_block(root)))
         .expect("write project Codex config");
+}
+
+fn write_stale_codex_home_config(root: &std::path::Path) {
+    let codex_home = root.join(".codex-home");
+    std::fs::create_dir_all(&codex_home).expect("create isolated Codex home");
+    let config_path =
+        std::fs::canonicalize(root.join(".codex/config.toml")).expect("canonical config path");
+    let project_root = config_path
+        .parent()
+        .and_then(std::path::Path::parent)
+        .expect("canonical project root");
+    std::fs::write(
+        codex_home.join("config.toml"),
+        format!(
+            "[projects.{}]\ntrust_level = \"trusted\"\n\n[hooks.state.\"{}:pre_tool_use:0:0\"]\ntrusted_hash = \"sha256:old\"\n",
+            toml_basic_string(&project_root.display().to_string()),
+            config_path.display()
+        ),
+    )
+    .expect("write stale Codex home config");
+}
+
+fn toml_basic_string(value: &str) -> String {
+    let mut output = String::from("\"");
+    for ch in value.chars() {
+        match ch {
+            '\\' => output.push_str("\\\\"),
+            '"' => output.push_str("\\\""),
+            '\n' => output.push_str("\\n"),
+            '\r' => output.push_str("\\r"),
+            '\t' => output.push_str("\\t"),
+            c if c.is_control() => output.push_str(&format!("\\u{:04X}", c as u32)),
+            c => output.push(c),
+        }
+    }
+    output.push('"');
+    output
 }
 
 fn write_activation(root: &std::path::Path) -> PathBuf {
@@ -218,6 +92,7 @@ fn run_doctor_with_env(
         activation_path.to_str().expect("utf8 activation path"),
         ".",
     ]);
+    command.env("CODEX_HOME", root.join(".codex-home"));
     for (key, value) in envs {
         command.env(key, value);
     }

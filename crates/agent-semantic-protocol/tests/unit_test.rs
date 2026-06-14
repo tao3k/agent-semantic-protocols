@@ -9,7 +9,7 @@ mod client_hook_claude_smoke;
 mod client_hook_codex_cli_e2e;
 #[path = "unit/client_hook_config.rs"]
 mod client_hook_config;
-#[path = "unit/client_hook_config_doctor.rs"]
+#[path = "unit/client_hook_config_doctor/mod.rs"]
 mod client_hook_config_doctor;
 #[path = "unit/client_hook_config_runtime.rs"]
 mod client_hook_config_runtime;

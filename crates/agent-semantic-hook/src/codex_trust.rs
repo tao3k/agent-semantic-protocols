@@ -35,6 +35,147 @@ pub(crate) fn merge_codex_trust_config(
     }
 }
 
+pub(crate) fn codex_project_trusted(config: &toml::Value, project_root: &Path) -> bool {
+    config
+        .get("projects")
+        .and_then(toml::Value::as_table)
+        .and_then(|projects| projects.get(&project_root.display().to_string()))
+        .and_then(toml::Value::as_table)
+        .and_then(|project| project.get("trust_level"))
+        .and_then(toml::Value::as_str)
+        == Some("trusted")
+}
+
+pub(crate) fn merge_codex_project_trust_config(
+    existing: &str,
+    project_root: &Path,
+) -> Result<String, String> {
+    let parsed = parse_codex_config_or_empty(existing)?;
+    if codex_project_trusted(&parsed, project_root) {
+        return Ok(existing.to_string());
+    }
+    let entry_exists = codex_project_entry_exists(&parsed, project_root);
+    if (!entry_exists || codex_project_table_header_exists(existing, project_root))
+        && let Some(merged) = merge_codex_project_trust_config_lines(existing, project_root)
+        && toml::from_str::<toml::Value>(&merged).is_ok()
+    {
+        return Ok(merged);
+    }
+    merge_codex_project_trust_config_structured(parsed, project_root)
+}
+
+fn parse_codex_config_or_empty(existing: &str) -> Result<toml::Value, String> {
+    if existing.trim().is_empty() {
+        return Ok(toml::Value::Table(toml::map::Map::new()));
+    }
+    toml::from_str(existing).map_err(|error| error.to_string())
+}
+
+fn codex_project_entry_exists(config: &toml::Value, project_root: &Path) -> bool {
+    config
+        .get("projects")
+        .and_then(toml::Value::as_table)
+        .is_some_and(|projects| projects.contains_key(&project_root.display().to_string()))
+}
+
+fn merge_codex_project_trust_config_lines(existing: &str, project_root: &Path) -> Option<String> {
+    let header = codex_project_trust_header(project_root);
+    let mut lines = existing.lines().map(str::to_string).collect::<Vec<_>>();
+    let Some(start) = lines.iter().position(|line| {
+        toml_table_header(line.trim())
+            .as_deref()
+            .is_some_and(|candidate| candidate == header)
+    }) else {
+        if !lines.is_empty() && lines.last().is_some_and(|line| !line.trim().is_empty()) {
+            lines.push(String::new());
+        }
+        lines.push(format!("[{header}]"));
+        lines.push("trust_level = \"trusted\"".to_string());
+        return Some(format!("{}\n", lines.join("\n")));
+    };
+    let end = lines
+        .iter()
+        .enumerate()
+        .skip(start + 1)
+        .find_map(|(index, line)| toml_table_header(line.trim()).map(|_| index))
+        .unwrap_or(lines.len());
+    if let Some(index) = lines[start + 1..end]
+        .iter()
+        .position(|line| toml_key(line.trim()) == Some("trust_level"))
+        .map(|offset| start + 1 + offset)
+    {
+        lines[index] = "trust_level = \"trusted\"".to_string();
+    } else {
+        lines.insert(end, "trust_level = \"trusted\"".to_string());
+    }
+    Some(format!("{}\n", lines.join("\n")))
+}
+
+fn merge_codex_project_trust_config_structured(
+    mut parsed: toml::Value,
+    project_root: &Path,
+) -> Result<String, String> {
+    let root = parsed
+        .as_table_mut()
+        .ok_or_else(|| "Codex user config TOML root must be a table".to_string())?;
+    let projects = root
+        .entry("projects".to_string())
+        .or_insert_with(|| toml::Value::Table(toml::map::Map::new()));
+    let projects = projects
+        .as_table_mut()
+        .ok_or_else(|| "Codex user config projects must be a table".to_string())?;
+    let project = projects
+        .entry(project_root.display().to_string())
+        .or_insert_with(|| toml::Value::Table(toml::map::Map::new()));
+    let project = project
+        .as_table_mut()
+        .ok_or_else(|| "Codex user config project trust entry must be a table".to_string())?;
+    project.insert(
+        "trust_level".to_string(),
+        toml::Value::String("trusted".to_string()),
+    );
+    toml::to_string_pretty(&parsed)
+        .map(|content| {
+            if content.ends_with('\n') {
+                content
+            } else {
+                format!("{content}\n")
+            }
+        })
+        .map_err(|error| error.to_string())
+}
+
+fn codex_project_table_header_exists(existing: &str, project_root: &Path) -> bool {
+    let header = codex_project_trust_header(project_root);
+    existing.lines().any(|line| {
+        toml_table_header(line.trim())
+            .as_deref()
+            .is_some_and(|candidate| candidate == header)
+    })
+}
+
+fn codex_project_trust_header(project_root: &Path) -> String {
+    format!(
+        "projects.{}",
+        toml_basic_string(&project_root.display().to_string())
+    )
+}
+
+fn toml_key(trimmed: &str) -> Option<&str> {
+    if trimmed.is_empty() || trimmed.starts_with('#') {
+        return None;
+    }
+    trimmed.split_once('=').map(|(key, _)| key.trim())
+}
+
+fn toml_table_header(trimmed: &str) -> Option<String> {
+    if !trimmed.starts_with('[') || !trimmed.ends_with(']') {
+        return None;
+    }
+    let header = trimmed.trim_matches(['[', ']']).trim();
+    (!header.is_empty()).then(|| header.to_string())
+}
+
 fn remove_stale_codex_trust_state_blocks(existing: &str) -> String {
     let lines = existing.lines().collect::<Vec<_>>();
     let mut kept = Vec::new();

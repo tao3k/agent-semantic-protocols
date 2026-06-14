@@ -371,7 +371,9 @@ Client-side hook customization is a typed config file, not a server process:
   and invalid route binary names;
 - doctor: =asp hook doctor --client codex= reports the
   client config path and =clientConfigStatus= (=missing= or =ok=), and fails
-  when the config is invalid;
+  when the config is invalid.  It also reports Codex project-local activation
+  as separate =projectTrust= and =hookStateTrust= facts so a loaded-but-stale
+  user config is not confused with an in-process classifier failure;
 - failure mode: invalid config emits a block decision so policy cannot silently
   degrade;
 - no watcher, daemon, or background server behavior belongs to the client hook
@@ -386,7 +388,10 @@ as a repository-local TOML snippet:
 - Project config is not a self-trust root.  Codex only runs project hooks after
   the project config layer is loaded and the hook's current hash is trusted from
   user/session/managed hook state.  Writing =hooks.state= only inside the same
-  project =.codex/config.toml= has no enforcement value.
+  project =.codex/config.toml= has no enforcement value.  The installer must
+  write both user-level =[projects."<project-root>"].trust_level = "trusted"=
+  and current =[hooks.state."<project-config>:<event>:0:0"].trusted_hash=
+  entries, and doctor must distinguish missing hook state from stale hash state.
 - Untrusted unmanaged hooks can appear in =hooks/list=, but they are discovery
   metadata; they do not become runnable handlers.
 - =PreToolUse= matcher selection uses the canonical tool name plus compatibility

@@ -4,7 +4,9 @@ use agent_semantic_hook::parse_hook_activation;
 
 use crate::rust_harness_activation::support::write_fake_provider_binary;
 
-use super::support::{assert_installed_hook_state, git_project_root, protocol_command};
+use super::support::{
+    assert_installed_hook_state, assert_installed_project_trust, git_project_root, protocol_command,
+};
 
 #[test]
 fn cli_install_writes_root_owned_codex_hook_config() {
@@ -59,6 +61,11 @@ fn cli_install_writes_root_owned_codex_hook_config() {
     assert!(user_config.contains("agent-semantic-protocol trusted hook state"));
     let parsed_user_config =
         toml::from_str::<toml::Value>(&user_config).expect("user trust config is valid TOML");
+    let canonical_project_root = canonical_config
+        .parent()
+        .and_then(std::path::Path::parent)
+        .expect("canonical project root");
+    assert_installed_project_trust(&parsed_user_config, canonical_project_root);
     assert_installed_hook_state(&parsed_user_config, &canonical_config);
     assert_doctor(&root, &path, &codex_home);
     assert_installed_activation(&root);
