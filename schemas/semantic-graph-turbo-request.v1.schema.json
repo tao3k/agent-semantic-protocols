@@ -133,6 +133,9 @@
       },
       "uniqueItems": true
     },
+    "seedPlan": {
+      "$ref": "#/$defs/seedPlan"
+    },
     "budget": {
       "type": "integer",
       "minimum": 1
@@ -318,6 +321,68 @@
     "nodeId": {
       "type": "string",
       "minLength": 1
+    },
+    "seedPlan": {
+      "description": "First-phase seed selection diagnostics for graph-turbo ranking. This explains why seedIds were selected before traversal and rendering.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "phase",
+        "algorithm",
+        "reason",
+        "queryPresent",
+        "querySeedPresent",
+        "candidateCount",
+        "candidateOwnerCount",
+        "fallbackOwnerSeedCount",
+        "selectedSeedCount",
+        "seedIds"
+      ],
+      "properties": {
+        "phase": {
+          "const": "seed-query"
+        },
+        "algorithm": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reason": {
+          "enum": [
+            "query",
+            "fallback-owner",
+            "empty"
+          ]
+        },
+        "queryPresent": {
+          "type": "boolean"
+        },
+        "querySeedPresent": {
+          "type": "boolean"
+        },
+        "candidateCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "candidateOwnerCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "fallbackOwnerSeedCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "selectedSeedCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "seedIds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nodeId"
+          },
+          "uniqueItems": true
+        }
+      }
     },
     "sourceTraceEntry": {
       "type": "object",

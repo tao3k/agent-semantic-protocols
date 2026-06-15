@@ -13,6 +13,10 @@ from .failure_frontier_eval import (
     compare_failure_frontier_receipt_paths,
     print_failure_frontier_comparison,
 )
+from .agent_session_cli import (
+    add_agent_session_arguments,
+    handle_agent_session_args,
+)
 from .models import ScenarioLoadError, has_warnings
 from .output import emit, emit_json
 from .receipts import validate_receipt_path
@@ -54,6 +58,9 @@ def semantic_sandtable_main(argv: list[str] | None = None) -> int:
 
 
 def _handle_direct_commands(repo_root: Path, args: argparse.Namespace) -> int | None:
+    agent_session_result = handle_agent_session_args(repo_root, args)
+    if agent_session_result is not None:
+        return agent_session_result
     trace_result = handle_trace_receipt_args(repo_root, args)
     if trace_result is not None:
         return trace_result
@@ -81,6 +88,7 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_general_arguments(parser)
     _add_receipt_arguments(parser)
     add_trace_receipt_arguments(parser)
+    add_agent_session_arguments(parser)
     add_trace_record_arguments(parser)
     add_trace_session_arguments(parser)
     add_trace_comparison_arguments(parser)

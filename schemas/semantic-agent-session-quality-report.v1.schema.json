@@ -1,0 +1,550 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-agent-session-quality-report.v1.schema.json",
+  "title": "Semantic Agent Session Quality Report",
+  "description": "Analyzer quality report for a visible agent-session receipt.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "sessionId",
+    "scenarioId",
+    "summary",
+    "answer",
+    "findings",
+    "turnSummary",
+    "turnDetails",
+    "roundSummary",
+    "roundDetails"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.semantic-agent-session-quality-report"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "sessionId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scenarioId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*(\\.[a-z][a-z0-9_-]*)+$"
+    },
+    "summary": {
+      "$ref": "#/$defs/summary"
+    },
+    "answer": {
+      "$ref": "#/$defs/answer"
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/finding"
+      }
+    },
+    "turnSummary": {
+      "$ref": "#/$defs/turnSummary"
+    },
+    "turnDetails": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/turnDetail"
+      }
+    },
+    "roundSummary": {
+      "$ref": "#/$defs/roundSummary"
+    },
+    "roundDetails": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/roundDetail"
+      }
+    }
+  },
+  "$defs": {
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "turns": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "assistantVisibleMessages": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "toolRequests": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "toolResults": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "commandCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "aspCommands": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "searchCommands": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "searchPrimeCommands": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "searchPipeCommands": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "queryCommands": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "querySelectorCommands": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "checkCommands": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "guideCommands": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "directReadCommands": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "deniedCommands": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "repeatedCommands": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "directReadRiskCommands": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "stdoutBytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "stderrBytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "elapsedMs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "tokenCost": {
+          "$ref": "#/$defs/tokenCost"
+        }
+      }
+    },
+    "answer": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "present": {
+          "type": "boolean"
+        },
+        "afterLastToolUse": {
+          "type": "boolean"
+        },
+        "textBytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "textLineCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "messageEventId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "messageIndex": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "evidenceRefs": {
+          "$ref": "#/$defs/stringList"
+        },
+        "groundingStatus": {
+          "enum": ["grounded", "weak", "ungrounded", "unknown"]
+        },
+        "preview": {
+          "type": "string"
+        }
+      }
+    },
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "severity", "message", "recommendedAction"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "severity": {
+          "enum": ["info", "warning", "error"]
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidenceRefs": {
+          "$ref": "#/$defs/stringList"
+        },
+        "recommendedAction": {
+          "type": "string",
+          "minLength": 1
+        },
+        "graphTurboFeedback": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "turnSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["totalTurns", "phaseCounts", "qualitySignalCounts"],
+      "properties": {
+        "totalTurns": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "phaseCounts": {
+          "$ref": "#/$defs/countMap"
+        },
+        "qualitySignalCounts": {
+          "$ref": "#/$defs/countMap"
+        },
+        "findingLinkedTurns": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "turnDetail": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "ordinal", "phase", "qualitySignals"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ordinal": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "phase": {
+          "enum": [
+            "intent",
+            "assistant-message",
+            "tool-request",
+            "tool-result",
+            "command-start",
+            "command-result",
+            "answer",
+            "session"
+          ]
+        },
+        "messageIndex": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "eventIds": {
+          "$ref": "#/$defs/stringList"
+        },
+        "toolUseId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "commandId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "commandKind": {
+          "enum": [
+            "search",
+            "hook-deny",
+            "subagent",
+            "external-ingest",
+            "check",
+            "query",
+            "guide",
+            "other"
+          ]
+        },
+        "argv": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "preview": {
+          "type": "string"
+        },
+        "metrics": {
+          "$ref": "#/$defs/turnMetrics"
+        },
+        "qualitySignals": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "intent-recorded",
+              "assistant-visible",
+                            "tool-requested",
+                            "tool-result-observed",
+                            "command-started",
+                            "command-recorded",
+                            "search-prime",
+              "search-followup",
+              "query-selector",
+              "check-command",
+              "guide-command",
+              "repeated-command",
+              "direct-read-risk",
+              "hook-denied",
+              "answer-grounded",
+              "answer-weak",
+              "answer-missing",
+              "session-complete",
+              "session-partial"
+            ]
+          }
+        },
+        "findingIds": {
+          "$ref": "#/$defs/stringList"
+        }
+      }
+    },
+    "turnMetrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "stdoutBytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "stderrBytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "stdoutLines": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "stderrLines": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "elapsedMs": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "roundSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "totalRounds",
+        "commandKindCounts",
+        "qualitySignalCounts"
+      ],
+      "properties": {
+        "totalRounds": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "commandKindCounts": {
+          "$ref": "#/$defs/countMap"
+        },
+        "qualitySignalCounts": {
+          "$ref": "#/$defs/countMap"
+        },
+        "findingLinkedRounds": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "deniedRounds": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "riskRounds": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "repeatedRounds": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "roundDetail": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "ordinal",
+        "commandId",
+        "commandKind",
+        "qualitySignals",
+        "resultStatus"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ordinal": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "commandId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "commandKind": {
+          "enum": [
+            "search",
+            "hook-deny",
+            "subagent",
+            "external-ingest",
+            "check",
+            "query",
+            "guide",
+            "other"
+          ]
+        },
+        "argv": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "eventIds": {
+          "$ref": "#/$defs/stringList"
+        },
+        "turnOrdinals": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "toolUseId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "metrics": {
+          "$ref": "#/$defs/turnMetrics"
+        },
+        "qualitySignals": {
+          "$ref": "#/$defs/qualitySignalList"
+        },
+        "findingIds": {
+          "$ref": "#/$defs/stringList"
+        },
+        "resultStatus": {
+          "enum": ["complete", "warning", "denied", "unknown"]
+        }
+      }
+    },
+    "tokenCost": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["unit", "totalTokens", "basis"],
+      "properties": {
+        "unit": {
+          "enum": ["token-estimate", "token-count"]
+        },
+        "inputTokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "outputTokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cacheReadInputTokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "totalTokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "costUsd": {
+          "type": "number",
+          "minimum": 0
+        },
+        "basis": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "stringList": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "qualitySignalList": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "intent-recorded",
+          "assistant-visible",
+          "tool-requested",
+          "tool-result-observed",
+          "command-started",
+          "command-recorded",
+          "search-prime",
+          "search-followup",
+          "query-selector",
+          "check-command",
+          "guide-command",
+          "repeated-command",
+          "direct-read-risk",
+          "hook-denied",
+          "answer-grounded",
+          "answer-weak",
+          "answer-missing",
+          "session-complete",
+          "session-partial"
+        ]
+      }
+    },
+    "countMap": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
+    }
+  }
+}

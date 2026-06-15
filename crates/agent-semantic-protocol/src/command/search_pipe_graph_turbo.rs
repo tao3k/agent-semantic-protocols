@@ -71,9 +71,12 @@ fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> Value {
     let mut nodes = Vec::new();
     let mut edges = Vec::new();
     let mut seed_ids = Vec::new();
+    let query_present = query.map(|query| !query.trim().is_empty()).unwrap_or(false);
+    let mut query_seed_present = false;
     if let Some(query) = query.filter(|query| !query.trim().is_empty()) {
         let query_id = stable_node_id("query", query);
         seed_ids.push(query_id.clone());
+        query_seed_present = true;
         nodes.push(json!({
             "id": query_id,
             "kind": "query",
@@ -95,14 +98,24 @@ fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> Value {
     let include_items = include_items(&surfaces);
     let include_tests = include_tests(&surfaces);
     let include_deps = include_deps(&surfaces);
+    let mut fallback_owner_seed_count = 0usize;
     if seed_ids.is_empty() {
-        seed_ids.extend(
-            owners
-                .iter()
-                .take(2)
-                .map(|owner| stable_node_id("owner", owner)),
-        );
+        let fallback_owner_seed_ids = owners
+            .iter()
+            .take(2)
+            .map(|owner| stable_node_id("owner", owner))
+            .collect::<Vec<_>>();
+        fallback_owner_seed_count = fallback_owner_seed_ids.len();
+        seed_ids.extend(fallback_owner_seed_ids);
     }
+    let seed_plan = graph_turbo_seed_plan(
+        query_present,
+        query_seed_present,
+        graph_candidates.len(),
+        owners.len(),
+        fallback_owner_seed_count,
+        &seed_ids,
+    );
     if include_owner_context {
         append_owner_nodes(&mut nodes, &owners);
     }
@@ -142,6 +155,7 @@ fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> Value {
         "candidateSources": candidate_sources,
         "sourceTrace": graph_turbo_source_trace(source_trace),
         "seedIds": seed_ids,
+        "seedPlan": seed_plan,
         "budget": 10,
         "kindBudgets": {"owner": 4, "dependency": 2, "test": 3, "item": 6, "field": 4, "type": 3, "collection": 2, "hot": 3},
         "windowMerge": {"enabled": true, "maxGapLines": 8},
@@ -191,6 +205,35 @@ fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> Value {
         }
     }
     packet
+}
+
+fn graph_turbo_seed_plan(
+    query_present: bool,
+    query_seed_present: bool,
+    candidate_count: usize,
+    candidate_owner_count: usize,
+    fallback_owner_seed_count: usize,
+    seed_ids: &[String],
+) -> Value {
+    let reason = if query_seed_present {
+        "query"
+    } else if fallback_owner_seed_count > 0 {
+        "fallback-owner"
+    } else {
+        "empty"
+    };
+    json!({
+        "phase": "seed-query",
+        "algorithm": "asp-search-pipe-v2",
+        "reason": reason,
+        "queryPresent": query_present,
+        "querySeedPresent": query_seed_present,
+        "candidateCount": candidate_count,
+        "candidateOwnerCount": candidate_owner_count,
+        "fallbackOwnerSeedCount": fallback_owner_seed_count,
+        "selectedSeedCount": seed_ids.len(),
+        "seedIds": seed_ids,
+    })
 }
 
 fn sparse_graph_candidates(candidates: &[Candidate], query: Option<&str>) -> Vec<Candidate> {

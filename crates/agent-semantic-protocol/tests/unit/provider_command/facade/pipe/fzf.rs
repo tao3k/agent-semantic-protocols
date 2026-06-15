@@ -301,6 +301,10 @@ fn fzf_can_emit_graph_turbo_request_for_live_candidate_frontier() {
     assert_graph_turbo_request_contract(&payload);
     assert_eq!(payload["profile"], "owner-query");
     assert_eq!(payload["seedIds"][0], "query:cache_root");
+    assert_eq!(payload["seedPlan"]["reason"], "query");
+    assert_eq!(payload["seedPlan"]["queryPresent"], true);
+    assert_eq!(payload["seedPlan"]["querySeedPresent"], true);
+    assert_eq!(payload["seedPlan"]["fallbackOwnerSeedCount"], 0);
     assert!(
         payload["graph"]["nodes"]
             .as_array()

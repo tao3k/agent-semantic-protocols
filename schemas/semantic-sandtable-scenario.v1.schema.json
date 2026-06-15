@@ -193,7 +193,7 @@
       ],
       "properties": {
         "source": {
-          "enum": ["handwritten", "real-trigger", "recorded-replay"]
+          "enum": ["handwritten", "real-trigger", "recorded-replay", "live-agent"]
         },
         "intent": {
           "type": "string",
@@ -229,6 +229,17 @@
           "type": "string",
           "minLength": 1
         },
+        "agentSessionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "agentSessionReceiptPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "answer": {
+          "$ref": "#/$defs/agentSessionAnswer"
+        },
         "failureFrontierComparison": {
           "$ref": "#/$defs/failureFrontierComparison"
         },
@@ -248,6 +259,12 @@
           "type": "array",
           "items": {
             "$ref": "#/$defs/evidenceFinding"
+          }
+        },
+        "qualityFindings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/agentSessionQualityFinding"
           }
         }
       }
@@ -527,6 +544,77 @@
           "enum": ["info", "warning", "error"]
         },
         "message": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "agentSessionAnswer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["present", "afterLastToolUse", "textBytes", "textLineCount", "groundingStatus"],
+      "properties": {
+        "present": {
+          "type": "boolean"
+        },
+        "afterLastToolUse": {
+          "type": "boolean"
+        },
+        "textBytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "textLineCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "messageEventId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "messageIndex": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "evidenceRefs": {
+          "$ref": "#/$defs/stringList"
+        },
+        "groundingStatus": {
+          "enum": ["grounded", "weak", "ungrounded", "unknown"]
+        },
+        "preview": {
+          "type": "string"
+        }
+      }
+    },
+    "agentSessionQualityFinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "severity", "message"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "severity": {
+          "enum": ["info", "warning", "error"]
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidenceRefs": {
+          "$ref": "#/$defs/stringList"
+        },
+        "recommendedAction": {
+          "type": "string",
+          "minLength": 1
+        },
+        "graphTurboFeedback": {
           "type": "string",
           "minLength": 1
         }

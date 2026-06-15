@@ -56,6 +56,51 @@ def test_build_receipt_from_jsonl_and_text_trace(tmp_path: Path) -> None:
     assert commands[2]["metrics"] == _zero_metrics()
 
 
+def test_sandtable_receipt_accepts_agent_session_link() -> None:
+    receipt = {
+        "schemaId": "agent.semantic-protocols.semantic-sandtable-receipt",
+        "schemaVersion": "1",
+        "scenarioId": "rust.tokio-agent-observability",
+        "language": "rust",
+        "project": {"name": "tokio", "source": "registry"},
+        "intent": "Explain Tokio IO readiness.",
+        "editBoundary": "before-edit",
+        "agentSessionId": "session-1",
+        "agentSessionReceiptPath": "receipts/agent-session-receipt.json",
+        "commands": [
+            {
+                "id": "search-prime",
+                "kind": "search",
+                "argv": ["asp", "rust", "search", "prime", "--view", "seeds", "."],
+                "metrics": {"elapsedMs": 0, "stdoutBytes": 20, "stderrBytes": 0},
+            }
+        ],
+        "summary": {
+            "commandCount": 1,
+            "stdoutBytes": 20,
+            "stderrBytes": 0,
+            "elapsedMs": 0,
+        },
+        "answer": {
+            "present": True,
+            "afterLastToolUse": True,
+            "textBytes": 80,
+            "textLineCount": 1,
+            "groundingStatus": "grounded",
+        },
+        "qualityFindings": [
+            {
+                "id": "answer.weak-grounding",
+                "kind": "answer-grounding",
+                "severity": "warning",
+                "message": "Final answer is weakly grounded.",
+            }
+        ],
+    }
+
+    validate_receipt_consistency(receipt)
+
+
 def _frontier_event() -> dict[str, object]:
     return {
         "id": "failure-frontier",

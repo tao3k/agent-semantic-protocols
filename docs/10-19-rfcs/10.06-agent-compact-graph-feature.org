@@ -251,6 +251,18 @@ display convenience materialized from these typed facts, not a protocol fact
 that production code parses back into an action.  =search pipe --view
 graph-turbo-request= is the typed packet spelling for this migration.
 
+Graph-turbo seed selection is also a schema-owned phase, not an implicit detail
+hidden behind =seedIds=.  A request may carry =seedPlan= with =phase=,
+=algorithm=, =reason=, query/fallback booleans, candidate and owner counts,
+selected seed count, and the selected =seedIds=.  The first phase prefers a
+normalized query seed when the agent supplied query text, then falls back to
+bounded owner seeds only when there is no query seed.  These diagnostics are
+machine-packet facts for sandtable analyzers and replay; normal agent-facing
+search output should expose only decision-level actions such as =recommendedNext=
+and =avoid=, not raw seed counters.  An analyzer can therefore separate
+seed-quality defects from ranker defects before blaming the later graph traversal
+or compact render.
+
 * Dependency topology cache boundary
 
 Graph-turbo may consume dependency topology as schema-owned evidence, but it

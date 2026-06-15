@@ -1,0 +1,144 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-agent-session-event.v1.schema.json",
+  "title": "Semantic Agent Session Event",
+  "description": "One ordered JSONL event from a visible agent session artifact.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "eventId",
+    "sessionId",
+    "ordinal",
+    "timestampUtc",
+    "kind",
+    "source"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.semantic-agent-session-event"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "eventId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sessionId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "ordinal": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "timestampUtc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "kind": {
+      "enum": [
+        "session.start",
+        "user.intent",
+        "assistant.visible-message",
+        "tool.request",
+        "tool.result",
+        "command.start",
+        "command.result",
+        "hook.decision",
+        "provider.dev-command",
+        "search.packet-summary",
+        "answer.final",
+        "session.stop"
+      ]
+    },
+    "source": {
+      "enum": [
+        "claude-sdk",
+        "semantic-sandtable",
+        "asp-hook",
+        "provider",
+        "analyzer",
+        "unknown"
+      ]
+    },
+    "parentEventId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "toolUseId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "commandId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "messageIndex": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "preview": {
+      "type": "string"
+    },
+    "artifactRefs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/artifactRef"
+      }
+    },
+    "fields": {
+      "$ref": "#/$defs/fields"
+    }
+  },
+  "$defs": {
+    "artifactRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "path"],
+      "properties": {
+        "kind": {
+          "enum": ["message", "stdout", "stderr", "command", "provider-log", "receipt", "report"]
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "lines": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "fields": {
+      "type": "object",
+      "additionalProperties": {
+        "oneOf": [
+          {"type": "string"},
+          {"type": "number"},
+          {"type": "boolean"},
+          {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {"type": "string"},
+                {"type": "number"},
+                {"type": "boolean"}
+              ]
+            }
+          }
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,287 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-agent-session-improvement-report.v1.schema.json",
+  "title": "Semantic Agent Session Improvement Report",
+  "description": "Presentation-ready improvement data derived from agent-session quality analysis and graph-turbo feedback.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "sessionId",
+    "scenarioId",
+    "sourceQualityReportPath",
+    "sourceGraphTurboFeedbackPath",
+    "metrics",
+    "improvementPoints"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.semantic-agent-session-improvement-report"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "sessionId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scenarioId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*(\\.[a-z][a-z0-9_-]*)+$"
+    },
+    "sourceQualityReportPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sourceGraphTurboFeedbackPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "metrics": {
+      "$ref": "#/$defs/metrics"
+    },
+    "improvementPoints": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/improvementPoint"
+      }
+    }
+  },
+  "$defs": {
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "commandCount",
+        "totalRounds",
+        "findingCount",
+        "graphTurboCandidateCount",
+        "roundStatusCounts",
+        "qualitySignalCounts",
+        "answer"
+      ],
+      "properties": {
+        "commandCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "aspCommands": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "searchCommands": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "queryCommands": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "directReadRiskCommands": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "repeatedCommands": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "deniedCommands": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "stdoutBytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "stderrBytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "totalRounds": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "findingCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "graphTurboCandidateCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "roundStatusCounts": {
+          "$ref": "#/$defs/countMap"
+        },
+        "commandKindCounts": {
+          "$ref": "#/$defs/countMap"
+        },
+        "qualitySignalCounts": {
+          "$ref": "#/$defs/countMap"
+        },
+        "answer": {
+          "$ref": "#/$defs/answerMetrics"
+        }
+      }
+    },
+    "answerMetrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["present", "groundingStatus", "afterLastToolUse"],
+      "properties": {
+        "present": {
+          "type": "boolean"
+        },
+        "groundingStatus": {
+          "enum": ["grounded", "weak", "ungrounded", "unknown"]
+        },
+        "afterLastToolUse": {
+          "type": "boolean"
+        },
+        "textBytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "textLineCount": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "improvementPoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "category",
+        "severity",
+        "title",
+        "observed",
+        "target",
+        "evidenceRefs",
+        "recommendedAction"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "category": {
+          "enum": [
+            "search-flow",
+            "command-efficiency",
+            "hook-follow",
+            "answer-grounding",
+            "graph-turbo"
+          ]
+        },
+        "severity": {
+          "enum": ["info", "warning", "error"]
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "observed": {
+          "$ref": "#/$defs/metricObservation"
+        },
+        "target": {
+          "$ref": "#/$defs/metricTarget"
+        },
+        "evidenceRefs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "recommendedAction": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expectedImpact": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sourceFindingIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "sourceCandidateIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "metricObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["metric", "value"],
+      "properties": {
+        "metric": {
+          "type": "string",
+          "minLength": 1
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "number",
+              "minimum": 0
+            },
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "boolean"
+            }
+          ]
+        }
+      }
+    },
+    "metricTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["metric", "value"],
+      "properties": {
+        "metric": {
+          "type": "string",
+          "minLength": 1
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "number",
+              "minimum": 0
+            },
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "boolean"
+            }
+          ]
+        }
+      }
+    },
+    "countMap": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
+    }
+  }
+}

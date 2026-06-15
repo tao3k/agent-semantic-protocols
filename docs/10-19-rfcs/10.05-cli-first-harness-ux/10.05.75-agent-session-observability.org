@@ -1,0 +1,132 @@
+* Agent session observability
+
+Live sandtable runs need a durable record of what the agent visibly did from
+the initial intent through the final answer.  The record is split into two
+layers:
+
+- a local raw session artifact with visible messages, tool calls, command
+  output files, hook decisions, provider dev-command logs, and answer events;
+- compact structured receipts and analyzer reports that can be checked into
+  scenarios or compared in tests.
+
+The raw artifact MAY contain full visible Claude SDK message payloads and exact
+stdout/stderr output files.  It MUST stay outside normal scenario JSON.  A
+scenario may reference only the session id, receipt path, answer summary, and
+quality findings required for deterministic replay or audit.
+
+This surface does not record hidden model reasoning.  It records only visible
+assistant text, tool requests, tool results, command I/O, hook responses,
+provider logs, explicit decision summaries, and final answers.
+
+** Session event stream
+
+The canonical local event stream is
+=semantic-agent-session-event.v1.schema.json=.  It records one ordered JSONL
+event per observable action:
+
+#+begin_example
+session.start
+user.intent
+assistant.visible-message
+tool.request
+tool.result
+command.start
+command.result
+hook.decision
+provider.dev-command
+search.packet-summary
+answer.final
+session.stop
+#+end_example
+
+Large payloads are referenced through artifact paths and fingerprints rather
+than embedded in the event.  Command stdout/stderr belongs under the session
+artifact =outputs/= directory.  Claude SDK raw messages belong in
+=messages.jsonl=.  The event stream keeps previews, byte counts, line counts,
+exit status, and artifact references.
+
+** Session receipt
+
+=semantic-agent-session-receipt.v1.schema.json= is the compact join across the
+event stream, Claude SDK messages, command trace records, hook events, provider
+dev-command logs, and final answer.
+
+The receipt owns:
+
+- session/project/intent metadata;
+- token and command counts;
+- ASP search/query/check/guide counts;
+- repeated command and direct-read risk counts;
+- denied command counts and hook-follow findings;
+- final-answer presence and grounding status;
+- analyzer quality findings.
+
+The answer grounding status is =grounded=, =weak=, =ungrounded=, or =unknown=.
+It is computed from visible evidence references such as command ids, selectors,
+packet summaries, failure-frontier entries, or graph-turbo facts.  The analyzer
+must not mark an answer grounded from memory-only prose.
+
+** Analyzer feedback
+
+Agent-session analysis writes
+=semantic-agent-session-quality-report.v1.schema.json= and reports quality
+dimensions that are directly useful for improving search and graph-turbo
+behavior:
+
+- search flow quality: prime-first, pipe-before-read, exact selector use, and
+  repeated command detection;
+- evidence quality: final answer after last tool use and evidence-backed
+  claims;
+- command efficiency: command count, output bytes, duplicate selectors, and
+  direct-read risk;
+- hook-follow quality: whether denied commands are followed by the recommended
+  safe route;
+- graph-turbo improvement candidates: missed facts, under-ranked selectors,
+  repeated query groups, unclear next actions, and profile-specific rank
+  changes.
+
+The quality report also owns a turn-level projection.  Each turn detail is a
+visible phase such as intent, assistant message, tool request, tool result,
+command result, or final answer.  The detail records message index, event ids,
+tool and command ids, command kind, output byte/line counts, denial state, and
+quality signals such as repeated-command, direct-read-risk, hook-denied,
+answer-grounded, or answer-missing.  It MUST NOT include hidden reasoning or
+invent causal explanations that are not present in the event stream.  A compact
+turn summary aggregates counts by phase and quality signal so batch sandtable
+runs can compare quality rounds without reading every event.
+
+The report also owns command round details.  A round groups all visible turns
+for one command id: tool request, command start, tool result, and command
+result.  Round details expose command kind, argv, output metrics, event ids,
+quality signals, finding ids, and a coarse result status.  This is the primary
+surface for comparing whether one search/query/read round was useful,
+repeated, denied, broad, or missing a safe follow-up.
+
+The analyzer writes an explicit feedback packet.  Graph-turbo calibration may
+consume that packet only through a deliberate command.  A single live run must
+not silently mutate default ranking weights.
+
+For reporting, the analyzer also writes
+=semantic-agent-session-improvement-report.v1.schema.json=.  This report is a
+presentation-ready data projection over the quality report and graph-turbo
+feedback packet.  It includes metric snapshots, round-status counts, quality
+signal counts, graph-turbo candidate counts, and concrete improvement points
+with observed values, target values, evidence refs, and recommended actions.
+The report is suitable for explaining why search guidance, graph-turbo rank,
+hook-follow guidance, or answer grounding should change.  It is not an
+execution plan and does not apply any ranking change by itself.
+
+Recording commands may request analyzer output in the same invocation with an
+explicit analysis flag.  The flag writes the quality report and graph-turbo
+feedback packet next to the session receipt.  It does not change the raw
+session artifact, the compact receipt, or graph-turbo ranking weights.
+
+** Scenario linkage
+
+=semantic-sandtable-receipt.v1= remains the command-flow replay receipt.  It may
+link to a session receipt with =agentSessionId= and
+=agentSessionReceiptPath=.  =semantic-sandtable-scenario.v1= may mark evidence
+as =source="live-agent"= and point at the agent-session receipt.
+
+Checked-in scenarios should prefer compact receipts.  Raw session artifacts are
+for local diagnosis, fixture generation, and before/after comparison.

@@ -1,0 +1,262 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-agent-session-receipt.v1.schema.json",
+  "title": "Semantic Agent Session Receipt",
+  "description": "Compact receipt joining a visible agent session artifact into analyzable sandtable evidence.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "sessionId",
+    "scenarioId",
+    "language",
+    "project",
+    "intent",
+    "agent",
+    "startedAtUtc",
+    "finishedAtUtc",
+    "editBoundary",
+    "artifactRoot",
+    "summary",
+    "answer",
+    "commands",
+    "qualityFindings"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.semantic-agent-session-receipt"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "sessionId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scenarioId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*(\\.[a-z][a-z0-9_-]*)+$"
+    },
+    "language": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "project": {
+      "$ref": "#/$defs/project"
+    },
+    "intent": {
+      "type": "string",
+      "minLength": 1
+    },
+    "agent": {
+      "enum": ["claude-sdk", "claude-cli", "codex", "fixture", "unknown"]
+    },
+    "model": {
+      "type": "string",
+      "minLength": 1
+    },
+    "startedAtUtc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "finishedAtUtc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "editBoundary": {
+      "enum": ["before-edit", "after-search", "after-edit", "none", "unknown"]
+    },
+    "artifactRoot": {
+      "type": "string",
+      "minLength": 1
+    },
+    "summary": {
+      "$ref": "#/$defs/summary"
+    },
+    "answer": {
+      "$ref": "#/$defs/answer"
+    },
+    "commands": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/command"
+      }
+    },
+    "qualityFindings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/qualityFinding"
+      }
+    },
+    "artifactRefs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/artifactRef"
+      }
+    }
+  },
+  "$defs": {
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workdir": {
+          "type": "string",
+          "minLength": 1
+        },
+        "package": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source": {
+          "enum": ["checkout", "registry", "fixture", "unknown"]
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["turns", "commandCount", "stdoutBytes", "stderrBytes", "elapsedMs"],
+      "properties": {
+        "turns": {"type": "integer", "minimum": 0},
+        "assistantVisibleMessages": {"type": "integer", "minimum": 0},
+        "toolRequests": {"type": "integer", "minimum": 0},
+        "toolResults": {"type": "integer", "minimum": 0},
+        "commandCount": {"type": "integer", "minimum": 0},
+        "aspCommands": {"type": "integer", "minimum": 0},
+        "searchCommands": {"type": "integer", "minimum": 0},
+        "searchPrimeCommands": {"type": "integer", "minimum": 0},
+        "searchPipeCommands": {"type": "integer", "minimum": 0},
+        "queryCommands": {"type": "integer", "minimum": 0},
+        "querySelectorCommands": {"type": "integer", "minimum": 0},
+        "checkCommands": {"type": "integer", "minimum": 0},
+        "guideCommands": {"type": "integer", "minimum": 0},
+        "directReadCommands": {"type": "integer", "minimum": 0},
+        "deniedCommands": {"type": "integer", "minimum": 0},
+        "repeatedCommands": {"type": "integer", "minimum": 0},
+        "directReadRiskCommands": {"type": "integer", "minimum": 0},
+        "stdoutBytes": {"type": "integer", "minimum": 0},
+        "stderrBytes": {"type": "integer", "minimum": 0},
+        "elapsedMs": {"type": "integer", "minimum": 0},
+        "tokenCost": {
+          "$ref": "#/$defs/tokenCost"
+        }
+      }
+    },
+    "answer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["present", "afterLastToolUse", "textBytes", "textLineCount", "groundingStatus"],
+      "properties": {
+        "present": {"type": "boolean"},
+        "afterLastToolUse": {"type": "boolean"},
+        "textBytes": {"type": "integer", "minimum": 0},
+        "textLineCount": {"type": "integer", "minimum": 0},
+        "messageEventId": {"type": "string", "minLength": 1},
+        "messageIndex": {"type": "integer", "minimum": 0},
+        "evidenceRefs": {"$ref": "#/$defs/stringList"},
+        "groundingStatus": {
+          "enum": ["grounded", "weak", "ungrounded", "unknown"]
+        },
+        "preview": {"type": "string"}
+      }
+    },
+    "command": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "argv", "metrics"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "kind": {
+          "enum": ["search", "hook-deny", "subagent", "external-ingest", "check", "query", "guide", "other"]
+        },
+        "argv": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string"}
+        },
+        "metrics": {
+          "$ref": "#/$defs/metrics"
+        },
+        "outputMode": {
+          "enum": ["compact", "json", "unknown"]
+        },
+        "denied": {"type": "boolean"},
+        "toolUseId": {"type": "string", "minLength": 1},
+        "eventId": {"type": "string", "minLength": 1},
+        "outputArtifacts": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "stdoutPath": {"type": "string", "minLength": 1},
+            "stderrPath": {"type": "string", "minLength": 1}
+          }
+        },
+        "next": {"$ref": "#/$defs/stringList"}
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["elapsedMs", "stdoutBytes", "stderrBytes"],
+      "properties": {
+        "elapsedMs": {"type": "integer", "minimum": 0},
+        "stdoutBytes": {"type": "integer", "minimum": 0},
+        "stderrBytes": {"type": "integer", "minimum": 0},
+        "stdoutLines": {"type": "integer", "minimum": 0},
+        "stderrLines": {"type": "integer", "minimum": 0}
+      }
+    },
+    "qualityFinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "severity", "message"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "kind": {"type": "string", "pattern": "^[a-z][a-z0-9_-]*$"},
+        "severity": {"enum": ["info", "warning", "error"]},
+        "message": {"type": "string", "minLength": 1},
+        "evidenceRefs": {"$ref": "#/$defs/stringList"},
+        "recommendedAction": {"type": "string", "minLength": 1},
+        "graphTurboFeedback": {"type": "string", "minLength": 1}
+      }
+    },
+    "artifactRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "path"],
+      "properties": {
+        "kind": {
+          "enum": ["events", "messages", "command", "stdout", "stderr", "provider-log", "report"]
+        },
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "bytes": {"type": "integer", "minimum": 0}
+      }
+    },
+    "tokenCost": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["unit", "totalTokens", "basis"],
+      "properties": {
+        "unit": {"enum": ["token-estimate", "token-count"]},
+        "inputTokens": {"type": "integer", "minimum": 0},
+        "outputTokens": {"type": "integer", "minimum": 0},
+        "cacheReadInputTokens": {"type": "integer", "minimum": 0},
+        "totalTokens": {"type": "integer", "minimum": 0},
+        "costUsd": {"type": "number", "minimum": 0},
+        "basis": {"type": "string", "minLength": 1}
+      }
+    },
+    "stringList": {
+      "type": "array",
+      "items": {"type": "string"}
+    }
+  }
+}

@@ -1,8 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://schemas.agent-semantic-protocols.local/semantic-graph-turbo-calibration.v1.schema.json",
+  "$id": "https://agent-semantic-protocols.dev/schemas/semantic-graph-turbo-calibration.v1.schema.json",
   "title": "Semantic Graph Turbo Calibration",
-  "description": "Profile-level calibration deltas derived from graph-turbo feedback facts.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -34,106 +33,73 @@
       "const": "graph-turbo-calibration"
     },
     "profile": {
-      "$ref": "#/$defs/profileName"
+      "type": "string",
+      "minLength": 1
     },
     "source": {
-      "enum": [
-        "feedback"
-      ]
+      "type": "string",
+      "minLength": 1
     },
     "kindDeltas": {
       "type": "array",
       "items": {
-        "$ref": "#/$defs/kindDelta"
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "scoreDelta", "receiptCount", "reasons"],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "minLength": 1
+          },
+          "scoreDelta": {
+            "type": "number"
+          },
+          "receiptCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
       }
     },
     "relationDeltas": {
       "type": "array",
       "items": {
-        "$ref": "#/$defs/relationDelta"
-      }
-    },
-    "metrics": {
-      "$ref": "#/$defs/metrics"
-    }
-  },
-  "$defs": {
-    "profileName": {
-      "enum": [
-        "owner-query",
-        "query-deps",
-        "owner-tests",
-        "prime",
-        "read-frontier",
-        "failure-frontier",
-        "field-impact",
-        "type-impact",
-        "collection-impact",
-        "failure-evidence",
-        "test-selection",
-        "affected"
-      ]
-    },
-    "kindDelta": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "kind",
-        "scoreDelta",
-        "receiptCount",
-        "reasons"
-      ],
-      "properties": {
-        "kind": {
-          "type": "string",
-          "pattern": "^[a-z][a-z0-9_-]*$"
-        },
-        "scoreDelta": {
-          "type": "number"
-        },
-        "receiptCount": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "reasons": {
-          "$ref": "#/$defs/reasons"
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "relation",
+          "weightMultiplierDelta",
+          "receiptCount",
+          "reasons"
+        ],
+        "properties": {
+          "relation": {
+            "type": "string",
+            "minLength": 1
+          },
+          "weightMultiplierDelta": {
+            "type": "number"
+          },
+          "receiptCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
         }
       }
-    },
-    "relationDelta": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "relation",
-        "weightMultiplierDelta",
-        "receiptCount",
-        "reasons"
-      ],
-      "properties": {
-        "relation": {
-          "type": "string",
-          "pattern": "^[a-z][a-z0-9_-]*$"
-        },
-        "weightMultiplierDelta": {
-          "type": "number"
-        },
-        "receiptCount": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "reasons": {
-          "$ref": "#/$defs/reasons"
-        }
-      }
-    },
-    "reasons": {
-      "type": "array",
-      "items": {
-        "type": "string",
-        "pattern": "^[a-z][a-z0-9_-]*(?::[a-z][a-z0-9_-]*)*$"
-      },
-      "minItems": 1,
-      "uniqueItems": true
     },
     "metrics": {
       "type": "object",

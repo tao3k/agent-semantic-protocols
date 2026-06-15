@@ -46,15 +46,15 @@ fn assert_graph_turbo_request_contract(payload: &Value) {
         payload["budget"].as_u64().is_some_and(|budget| budget > 0),
         "budget must be a positive integer: {payload}"
     );
+    let seed_ids = payload["seedIds"].as_array().expect("seedIds array");
     assert!(
-        payload["seedIds"]
-            .as_array()
-            .is_some_and(|seed_ids| !seed_ids.is_empty()
-                && seed_ids
-                    .iter()
-                    .all(|seed_id| seed_id.as_str().is_some_and(|seed_id| !seed_id.is_empty()))),
+        !seed_ids.is_empty()
+            && seed_ids
+                .iter()
+                .all(|seed_id| seed_id.as_str().is_some_and(|seed_id| !seed_id.is_empty())),
         "seedIds must be non-empty strings: {payload}"
     );
+    assert_graph_turbo_seed_plan_contract(payload, seed_ids);
 
     let graph = payload["graph"].as_object().expect("graph object");
     assert!(
@@ -130,6 +130,44 @@ fn assert_graph_turbo_request_contract(payload: &Value) {
             );
         }
     }
+}
+
+fn assert_graph_turbo_seed_plan_contract(payload: &Value, seed_ids: &[Value]) {
+    let seed_plan = payload["seedPlan"].as_object().expect("seedPlan object");
+    assert_eq!(payload["seedPlan"]["phase"], "seed-query");
+    assert_eq!(payload["seedPlan"]["algorithm"], "asp-search-pipe-v2");
+    assert!(
+        payload["seedPlan"]["reason"]
+            .as_str()
+            .is_some_and(|reason| matches!(reason, "query" | "fallback-owner" | "empty")),
+        "seedPlan.reason must explain seed selection: {seed_plan:?}"
+    );
+    for field in [
+        "queryPresent",
+        "querySeedPresent",
+        "candidateCount",
+        "candidateOwnerCount",
+        "fallbackOwnerSeedCount",
+        "selectedSeedCount",
+        "seedIds",
+    ] {
+        assert!(
+            seed_plan.contains_key(field),
+            "seedPlan missing required field {field}: {seed_plan:?}"
+        );
+    }
+    assert_eq!(
+        payload["seedPlan"]["selectedSeedCount"].as_u64(),
+        Some(seed_ids.len() as u64),
+        "seedPlan.selectedSeedCount must match seedIds: {payload}"
+    );
+    assert_eq!(
+        payload["seedPlan"]["seedIds"]
+            .as_array()
+            .expect("seedPlan.seedIds array"),
+        seed_ids,
+        "seedPlan.seedIds must mirror request seedIds"
+    );
 }
 
 fn assert_graph_turbo_request_matches_shared_schema(payload: &Value) {
