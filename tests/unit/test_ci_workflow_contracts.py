@@ -81,6 +81,11 @@ def test_language_release_workflows_are_project_owned_and_publish_assets() -> No
         assert ".sha256" in workflow
         assert "x86_64-apple-darwin" not in workflow
 
+        if "x86_64-pc-windows-msvc" in contract["targets"]:
+            build_step = workflow.split("- name: Build release binary", 1)[1]
+            build_step = build_step.split("- name: Package provider binary", 1)[0]
+            assert "shell: bash" in build_step
+
         for target in contract["targets"]:
             assert target in workflow, f"{language_path} missing {target}"
 
