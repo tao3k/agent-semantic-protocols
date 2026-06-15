@@ -534,18 +534,20 @@ fn path_basename_matches(lower_path: &str, term: &str) -> bool {
         .rsplit('/')
         .next()
         .map(|name| {
-            name.trim_end_matches(".tsx")
-                .trim_end_matches(".ts")
-                .trim_end_matches(".jsx")
-                .trim_end_matches(".js")
-                .trim_end_matches(".rs")
-                .trim_end_matches(".py")
-                .trim_end_matches(".jl")
-                .trim_end_matches(".ss")
-                .trim_end_matches(".ssi")
-                .trim_end_matches(".scm")
-                .trim_end_matches(".sld")
-                == term
+            name == term
+                || name
+                    .trim_end_matches(".tsx")
+                    .trim_end_matches(".ts")
+                    .trim_end_matches(".jsx")
+                    .trim_end_matches(".js")
+                    .trim_end_matches(".rs")
+                    .trim_end_matches(".py")
+                    .trim_end_matches(".jl")
+                    .trim_end_matches(".ss")
+                    .trim_end_matches(".ssi")
+                    .trim_end_matches(".scm")
+                    .trim_end_matches(".sld")
+                    == term
         })
         .unwrap_or(false)
 }

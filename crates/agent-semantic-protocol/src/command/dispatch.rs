@@ -7,6 +7,7 @@ use super::graph::run_graph_command;
 use super::healthcheck::run_healthcheck_command;
 use super::hook::run_hook_command;
 use super::install_provider::run_install_command;
+use super::plugin::run_plugin_command;
 use super::protocol_version_line;
 use super::provider::run_language_command;
 use super::root_language_facade::run_root_language_facade;
@@ -35,6 +36,7 @@ pub(crate) fn run_protocol_command(args: Vec<String>) -> Result<(), String> {
                 .to_string(),
         ),
         Some("hook") => run_hook_command(&args[1..]),
+        Some("plugin") => run_plugin_command(&args[1..]),
         Some("install") => run_install_command(&args[1..]),
         Some("healthcheck") => run_healthcheck_command(&args[1..]),
         Some("source-access") => run_source_access_command(&args[1..]),
@@ -47,7 +49,7 @@ pub(crate) fn run_protocol_command(args: Vec<String>) -> Result<(), String> {
 }
 
 fn usage() -> String {
-    "usage: asp [--help|--version] <guide|providers|tools|wrap|cache|cloud|hook|install|healthcheck|source-access|ast-patch|graph|fd|rg|search|query|rust|typescript|python|julia|org|md> ...".to_string()
+    "usage: asp [--help|--version] <guide|providers|tools|wrap|cache|cloud|hook|plugin|install|healthcheck|source-access|ast-patch|graph|fd|rg|search|query|rust|typescript|python|julia|org|md> ...".to_string()
 }
 
 fn run_client_command(args: Vec<String>) -> Result<(), String> {

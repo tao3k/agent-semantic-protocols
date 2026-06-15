@@ -56,7 +56,10 @@
             "repeated-query-group",
             "unclear-next-action",
             "profile-rank-change",
-            "seed-plan-quality"
+            "seed-plan-quality",
+            "path-intent-lost",
+            "finder-path-ignored",
+            "search-flow-drift"
           ]
         },
         "confidence": {
@@ -92,15 +95,37 @@
             "type": "string"
           }
         },
-        "expectedChange": {
-          "type": "string",
-          "minLength": 1
-        },
-        "recommendedAction": {
-          "type": "string",
-          "minLength": 1
-        }
+    "expectedChange": {
+      "type": "string",
+      "minLength": 1
+    },
+    "seedQuality": {
+      "enum": [
+        "good",
+        "review",
+        "fail",
+        "unknown"
+      ]
+    },
+    "riskFactors": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
       }
+    },
+    "recommendedActions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "recommendedAction": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
     }
   }
 }

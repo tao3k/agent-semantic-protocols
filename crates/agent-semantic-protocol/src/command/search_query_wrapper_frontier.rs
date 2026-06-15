@@ -80,6 +80,18 @@ pub(super) fn query_wrapper_action_frontier(
         .collect()
 }
 
+pub(super) fn render_query_wrapper_action_frontier(
+    surface: QueryWrapperSurface,
+    scopes: &[PathBuf],
+    queries: &[String],
+    terms: &[String],
+    candidates: &[Candidate],
+) -> String {
+    render_action_rows(&query_wrapper_action_nodes(
+        surface, scopes, queries, terms, candidates,
+    ))
+}
+
 fn query_wrapper_action_nodes(
     surface: QueryWrapperSurface,
     scopes: &[PathBuf],
@@ -97,30 +109,69 @@ fn query_wrapper_action_nodes(
         .unwrap_or_else(|| "-".to_string());
     match surface {
         QueryWrapperSurface::Rg => {
-            vec![
-                ActionNode {
-                    id: "A1".to_string(),
-                    kind: "fd-query".to_string(),
-                    suffix: "finder-owner".to_string(),
-                    route: ActionRoute::FdQuery {
-                        query: fd_query,
-                        scope: scope_label.clone(),
-                        command_scope: Some(command_scope.clone()),
-                    },
+            let fd_action = ActionNode {
+                id: "A1".to_string(),
+                kind: "fd-query".to_string(),
+                suffix: "finder-owner".to_string(),
+                route: ActionRoute::FdQuery {
+                    query: fd_query,
+                    scope: scope_label.clone(),
+                    command_scope: Some(command_scope.clone()),
                 },
-                ActionNode {
-                    id: "A2".to_string(),
-                    kind: "multi-clause-rg-query".to_string(),
-                    suffix: "query-pack-refine".to_string(),
-                    route: ActionRoute::RgQuerySet {
-                        queries: multi_clause_queries,
-                        scope: scope_label,
-                        command_scope,
-                    },
+            };
+            let rg_action = ActionNode {
+                id: "A2".to_string(),
+                kind: "multi-clause-rg-query".to_string(),
+                suffix: "query-pack-refine".to_string(),
+                route: ActionRoute::RgQuerySet {
+                    queries: multi_clause_queries,
+                    scope: scope_label,
+                    command_scope,
                 },
-            ]
+            };
+            if queries.len() > 1 {
+                vec![
+                    ActionNode {
+                        id: "A1".to_string(),
+                        ..rg_action
+                    },
+                    ActionNode {
+                        id: "A2".to_string(),
+                        ..fd_action
+                    },
+                ]
+            } else {
+                vec![fd_action, rg_action]
+            }
         }
         QueryWrapperSurface::Fd => {
+            if let Some(owner) = exact_owner_candidate(candidates)
+                && let Some(language_id) = language_id_for_owner(&owner)
+            {
+                return vec![
+                    ActionNode {
+                        id: "A1".to_string(),
+                        kind: "owner-items".to_string(),
+                        suffix: "finder-exact-owner".to_string(),
+                        route: ActionRoute::OwnerItems {
+                            language_id: language_id.to_string(),
+                            owner,
+                            query: fd_query,
+                            scope: scope_label,
+                        },
+                    },
+                    ActionNode {
+                        id: "A2".to_string(),
+                        kind: "scoped-rg-query".to_string(),
+                        suffix: "finder-content".to_string(),
+                        route: ActionRoute::RgQuerySet {
+                            queries: multi_clause_queries,
+                            scope: command_scope.clone(),
+                            command_scope,
+                        },
+                    },
+                ];
+            }
             let rg_scope = best_rg_scope(candidates).unwrap_or_else(|| command_scope.clone());
             vec![
                 ActionNode {
@@ -141,6 +192,44 @@ fn query_wrapper_action_nodes(
                 },
             ]
         }
+    }
+}
+
+fn exact_owner_candidate(candidates: &[Candidate]) -> Option<String> {
+    candidates
+        .iter()
+        .find(|candidate| {
+            matches!(candidate.confidence.as_str(), "path-exact" | "path")
+                && language_id_for_owner(&candidate.path).is_some()
+        })
+        .map(|candidate| candidate.path.clone())
+}
+
+fn language_id_for_owner(owner: &str) -> Option<&'static str> {
+    if owner.ends_with(".rs") || owner.ends_with("Cargo.toml") {
+        Some("rust")
+    } else if owner.ends_with(".ts")
+        || owner.ends_with(".tsx")
+        || owner.ends_with(".js")
+        || owner.ends_with(".jsx")
+        || owner.ends_with("package.json")
+        || owner.ends_with("tsconfig.json")
+    {
+        Some("typescript")
+    } else if owner.ends_with(".py") || owner.ends_with("pyproject.toml") {
+        Some("python")
+    } else if owner.ends_with(".jl") || owner.ends_with("Project.toml") {
+        Some("julia")
+    } else if owner.ends_with(".ss")
+        || owner.ends_with(".ssi")
+        || owner.ends_with(".scm")
+        || owner.ends_with(".sld")
+        || owner.ends_with("gerbil.pkg")
+        || owner.ends_with("build.ss")
+    {
+        Some("gerbil-scheme")
+    } else {
+        None
     }
 }
 

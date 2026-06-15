@@ -16,6 +16,7 @@ from .agent_session import (
     write_agent_session_receipt,
 )
 from .agent_session_analyzer import write_agent_session_analysis
+from .agent_session_question_plan import write_aggregated_agent_session_question_plan
 from .output import emit, emit_json
 from .utils import resolve_path
 
@@ -41,6 +42,16 @@ def _add_recording_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--agent-session-root",
         help="Output root for agent-session record commands.",
+    )
+    parser.add_argument(
+        "--aggregate-question-plans",
+        nargs="+",
+        metavar="PLAN",
+        help="Aggregate multiple question-improvement-plan JSON files.",
+    )
+    parser.add_argument(
+        "--question-plan-output",
+        help="Output path for --aggregate-question-plans.",
     )
 
 
@@ -133,6 +144,13 @@ def _add_analysis_arguments(parser: argparse.ArgumentParser) -> None:
         help="Output path for --analyze-agent-session improvement report.",
     )
     parser.add_argument(
+        "--question-improvement-plan",
+        help=(
+            "Output path for question-level final-answer, analyzer, human-review, "
+            "and improvement-plan report."
+        ),
+    )
+    parser.add_argument(
         "--algorithm-graph-feedback",
         help=(
             "Output path for graph-turbo algorithm feedback generated from "
@@ -149,6 +167,9 @@ def _add_analysis_arguments(parser: argparse.ArgumentParser) -> None:
 
 
 def handle_agent_session_args(repo_root: Path, args: Any) -> int | None:
+    aggregate_plans = getattr(args, "aggregate_question_plans", None)
+    if aggregate_plans:
+        return _aggregate_question_plans(repo_root, args, aggregate_plans)
     if getattr(args, "record_agent_session", False):
         return _record_live_session(repo_root, args)
     messages_arg = getattr(args, "record_agent_session_from_messages", None)
@@ -209,6 +230,35 @@ def _record_from_messages(repo_root: Path, args: Any, messages_arg: str) -> int:
     return 0
 
 
+def _aggregate_question_plans(
+    repo_root: Path,
+    args: Any,
+    plan_args: list[str],
+) -> int:
+    plan_paths = [_resolve_existing_path(repo_root, value) for value in plan_args]
+    output_path = _resolve_or_default(
+        repo_root,
+        getattr(args, "question_plan_output", None),
+        repo_root
+        / ".cache"
+        / "agent-semantic-protocol"
+        / "sandtable-sessions"
+        / "question-improvement-plan-aggregate.json",
+    )
+    aggregate = write_aggregated_agent_session_question_plan(plan_paths, output_path)
+    if args.json:
+        emit_json(aggregate)
+    else:
+        emit(
+            "[agent-session-question-plan] "
+            f"questions={aggregate['rollup']['questionCount']} "
+            f"pendingHumanReviews={aggregate['rollup']['pendingHumanReviews']} "
+            f"planItems={aggregate['rollup']['planItemCount']} "
+            f"output={output_path}"
+        )
+    return 0
+
+
 def _build_receipt(repo_root: Path, args: Any, session_root_arg: str) -> int:
     session_root = _resolve_existing_path(repo_root, session_root_arg)
     output_path = _output_path(
@@ -241,6 +291,7 @@ def _analyze_session(repo_root: Path, args: Any, analyze_arg: str) -> int:
         improvement_path,
         algorithm_feedback_path,
         algorithm_calibration_path,
+        question_plan_path,
     ) = _analysis_paths(repo_root, args, receipt_path)
     quality, feedback, improvement = write_agent_session_analysis(
         receipt_path,
@@ -249,6 +300,7 @@ def _analyze_session(repo_root: Path, args: Any, analyze_arg: str) -> int:
         improvement_path,
         algorithm_feedback_path,
         algorithm_calibration_path,
+        question_plan_path=question_plan_path,
     )
     if args.json:
         emit_json(
@@ -258,6 +310,7 @@ def _analyze_session(repo_root: Path, args: Any, analyze_arg: str) -> int:
                 "improvementReport": improvement,
                 "algorithmGraphFeedbackPath": str(algorithm_feedback_path),
                 "algorithmCalibrationPath": str(algorithm_calibration_path),
+                "questionImprovementPlanPath": str(question_plan_path),
             }
         )
     else:
@@ -284,6 +337,7 @@ def _attach_record_analysis(
         improvement_path,
         algorithm_feedback_path,
         algorithm_calibration_path,
+        question_plan_path,
     ) = _analysis_paths(repo_root, args, receipt_path)
     quality, feedback, improvement = write_agent_session_analysis(
         receipt_path,
@@ -292,12 +346,14 @@ def _attach_record_analysis(
         improvement_path,
         algorithm_feedback_path,
         algorithm_calibration_path,
+        question_plan_path=question_plan_path,
     )
     payload["qualityReportPath"] = str(report_path)
     payload["graphTurboFeedbackPath"] = str(feedback_path)
     payload["improvementReportPath"] = str(improvement_path)
     payload["algorithmGraphFeedbackPath"] = str(algorithm_feedback_path)
     payload["algorithmCalibrationPath"] = str(algorithm_calibration_path)
+    payload["questionImprovementPlanPath"] = str(question_plan_path)
     payload["findingCount"] = len(quality["findings"])
     payload["feedbackCandidateCount"] = len(feedback["candidates"])
     payload["improvementPointCount"] = len(improvement["improvementPoints"])
@@ -327,7 +383,7 @@ def _analysis_paths(
     repo_root: Path,
     args: Any,
     receipt_path: Path,
-) -> tuple[Path, Path, Path, Path, Path]:
+) -> tuple[Path, Path, Path, Path, Path, Path]:
     report_path = _resolve_or_default(
         repo_root,
         args.quality_report,
@@ -353,12 +409,18 @@ def _analysis_paths(
         args.algorithm_calibration,
         receipt_path.parent.parent / "reports" / "algorithm-calibration.json",
     )
+    question_plan_path = _resolve_or_default(
+        repo_root,
+        args.question_improvement_plan,
+        receipt_path.parent.parent / "reports" / "question-improvement-plan.json",
+    )
     return (
         report_path,
         feedback_path,
         improvement_path,
         algorithm_feedback_path,
         algorithm_calibration_path,
+        question_plan_path,
     )
 
 

@@ -11,6 +11,7 @@ const ARTIFACT_EVENT_DIRS: &[&str] = &[
     "query",
     "search",
     "search-output",
+    "analysis-metadata",
     "semantic-tree-sitter-query",
 ];
 
@@ -98,6 +99,9 @@ fn artifact_path_events(
         "search" => packet_artifact_event(artifact_dir, path, "search", workspace_root),
         "search-output" => text_artifact_event(artifact_dir, path, "search-output", workspace_root)
             .map(|event| vec![event]),
+        "analysis-metadata" => {
+            packet_artifact_event(artifact_dir, path, "analysis-metadata", workspace_root)
+        }
         "semantic-tree-sitter-query" => {
             packet_artifact_event(artifact_dir, path, "tree-sitter-query", workspace_root)
         }

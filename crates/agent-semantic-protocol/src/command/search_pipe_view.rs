@@ -15,6 +15,8 @@ use super::search_pipe_plan::{
 use super::search_pipe_provider_facts::ProviderGraphFacts;
 use super::search_pipe_quality::analyze_search_pipe_quality;
 use super::search_pipe_render::render_ingest_frontier;
+use super::search_pipe_seed_decision::SeedActionIntent;
+use serde_json::Value;
 
 pub(super) struct SearchPipeViewRequest<'a> {
     pub(super) language_id: &'a str,
@@ -120,6 +122,10 @@ pub(super) fn print_search_pipe_view(request: SearchPipeViewRequest<'_>) -> Resu
                 query,
                 request.as_bytes(),
             )?;
+            let seed_action_intents = seed_action_intents(&request);
+            if include_pipe_plan && let Some(seed_plan_line) = seed_plan_detail_line(&request) {
+                println!("{seed_plan_line}");
+            }
             let mut ranked_compact = None;
             if let Some(output) = render_graph_turbo_packet(request.as_bytes())? {
                 ranked_compact = std::str::from_utf8(output.as_ref())
@@ -152,6 +158,7 @@ pub(super) fn print_search_pipe_view(request: SearchPipeViewRequest<'_>) -> Resu
                         query,
                         candidates,
                         ranked_compact: ranked_compact.as_deref(),
+                        seed_action_intents: &seed_action_intents,
                     })
                 );
             }
@@ -181,6 +188,7 @@ pub(super) fn print_search_pipe_view(request: SearchPipeViewRequest<'_>) -> Resu
                         query,
                         candidates,
                         ranked_compact: None,
+                        seed_action_intents: &[],
                     })
                 );
             }
@@ -246,6 +254,62 @@ fn compact_source_trace(source_trace: &[SearchPipeSourceTrace]) -> String {
         .map(SearchPipeSourceTrace::compact)
         .collect::<Vec<_>>()
         .join(",")
+}
+
+fn seed_plan_detail_line(request: &str) -> Option<String> {
+    let packet: Value = serde_json::from_str(request).ok()?;
+    let seed_plan = packet.get("seedPlan")?;
+    let quality = seed_plan.get("seedQuality").and_then(Value::as_str)?;
+    let query_owner_seed_count = seed_plan
+        .get("queryOwnerSeedCount")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    let selected_seed_count = seed_plan
+        .get("selectedSeedCount")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    let risk_factors = compact_string_array(seed_plan.get("riskFactors"));
+    let recommended_actions = compact_string_array(seed_plan.get("recommendedActions"));
+    Some(format!(
+        "seedPlanDetail=quality={quality} queryOwnerSeedCount={query_owner_seed_count} selectedSeedCount={selected_seed_count} riskFactors={risk_factors} recommendedActions={recommended_actions}"
+    ))
+}
+
+fn seed_action_intents(request: &str) -> Vec<SeedActionIntent> {
+    let Ok(packet) = serde_json::from_str::<Value>(request) else {
+        return Vec::new();
+    };
+    packet
+        .get("seedPlan")
+        .and_then(|seed_plan| seed_plan.get("recommendedActions"))
+        .and_then(Value::as_array)
+        .map(|actions| {
+            actions
+                .iter()
+                .filter_map(Value::as_str)
+                .filter(|action| !action.is_empty())
+                .filter_map(SeedActionIntent::from_seed_plan_action)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default()
+}
+
+fn compact_string_array(value: Option<&Value>) -> String {
+    let values = value
+        .and_then(Value::as_array)
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(Value::as_str)
+                .filter(|value| !value.is_empty())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    if values.is_empty() {
+        "-".to_string()
+    } else {
+        values.join(",")
+    }
 }
 
 fn workspace_label(project_root: &Path, locator_root: &Path) -> Option<String> {

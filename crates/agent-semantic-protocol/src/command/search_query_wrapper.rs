@@ -17,7 +17,7 @@ use super::search_query_wrapper_candidates::{
 };
 use super::search_query_wrapper_frontier::{
     print_query_wrapper_empty_receipt, print_query_wrapper_refinement_frontier, query_clauses_line,
-    query_display, query_wrapper_action_frontier,
+    query_display, query_wrapper_action_frontier, render_query_wrapper_action_frontier,
 };
 use super::search_query_wrapper_model::{
     QueryWrapperClause, QueryWrapperQuality, QueryWrapperSurface, display_terms,
@@ -301,11 +301,17 @@ fn print_query_wrapper_view(request: QueryWrapperViewRequest<'_>) -> Result<(), 
     if !native_args.is_empty() {
         println!("nativeArgs=pass-through count={}", native_args.len());
     }
-    if !quality.allow_query_selector && quality.query_pack_quality == "low" {
+    if !quality.allow_query_selector
+        && (quality.query_pack_quality == "low" || has_exact_owner_candidate(surface, candidates))
+    {
         print_query_wrapper_refinement_frontier(surface, scopes, queries, terms, candidates);
     } else if let Some(output) = render_graph_turbo_packet(request.as_bytes())? {
         if let Ok(compact) = std::str::from_utf8(output.as_ref()) {
             print!("{}", render_primary_frontier_actions_only(compact));
+            print!(
+                "{}",
+                render_query_wrapper_action_frontier(surface, scopes, queries, terms, candidates)
+            );
         } else {
             io::stdout()
                 .write_all(output.as_ref())
@@ -317,4 +323,16 @@ fn print_query_wrapper_view(request: QueryWrapperViewRequest<'_>) -> Result<(), 
     println!("nextClasses={}", surface.next_classes(quality));
     println!("avoid={}", surface.avoid(quality));
     Ok(())
+}
+
+fn has_exact_owner_candidate(surface: QueryWrapperSurface, candidates: &[Candidate]) -> bool {
+    surface == QueryWrapperSurface::Fd
+        && candidates.iter().any(|candidate| {
+            matches!(candidate.confidence.as_str(), "path-exact" | "path")
+                && candidate
+                    .path
+                    .rsplit('/')
+                    .next()
+                    .is_some_and(|name| name.contains('.'))
+        })
 }

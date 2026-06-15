@@ -330,13 +330,17 @@
         "phase",
         "algorithm",
         "reason",
+        "seedQuality",
         "queryPresent",
         "querySeedPresent",
         "candidateCount",
         "candidateOwnerCount",
+        "queryOwnerSeedCount",
         "fallbackOwnerSeedCount",
         "selectedSeedCount",
-        "seedIds"
+        "seedIds",
+        "riskFactors",
+        "recommendedActions"
       ],
       "properties": {
         "phase": {
@@ -353,6 +357,13 @@
             "empty"
           ]
         },
+        "seedQuality": {
+          "enum": [
+            "good",
+            "review",
+            "fail"
+          ]
+        },
         "queryPresent": {
           "type": "boolean"
         },
@@ -364,6 +375,10 @@
           "minimum": 0
         },
         "candidateOwnerCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "queryOwnerSeedCount": {
           "type": "integer",
           "minimum": 0
         },
@@ -381,6 +396,34 @@
             "$ref": "#/$defs/nodeId"
           },
           "uniqueItems": true
+        },
+        "riskFactors": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "empty-seed-frontier",
+              "fallback-owner",
+              "query-seed-missing",
+              "flat-query",
+              "owner-drift"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "recommendedActions": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "inspect-seed-extraction",
+              "replace-fallback-owner-seed",
+              "propagate-query-seed",
+              "split-query-pack",
+              "narrow-owner-scope",
+              "keep-query-seed"
+            ]
+          },
+          "uniqueItems": true,
+          "minItems": 1
         }
       }
     },

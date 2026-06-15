@@ -5,6 +5,7 @@
 mod activation_store;
 mod classifier;
 mod codex_config;
+mod codex_project_trust;
 mod codex_trust;
 mod command;
 mod event_state;
@@ -37,6 +38,7 @@ pub use codex_config::{
     merge_claude_settings, merge_codex_asp_explorer_role_config, merge_codex_config,
     remove_codex_managed_hook_blocks, validate_claude_settings_json, validate_codex_config_toml,
 };
+pub use codex_project_trust::install_codex_user_project_trust;
 pub use dev_context::{ActiveContextRecord, record_active_context};
 pub use event_state::{
     append_hook_event_state, apply_repeated_deny_replay, has_recorded_subagent_context,

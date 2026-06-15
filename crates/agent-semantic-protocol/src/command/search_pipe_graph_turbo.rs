@@ -16,6 +16,7 @@ use super::{
     search_pipe_quality::{
         analyze_search_pipe_quality, compact_fact_value, is_generated_path, query_allows_generated,
     },
+    search_pipe_seed_decision::{SeedPhaseDecision, recommended_action_for_seed_risk},
     search_pipe_surfaces::{
         include_deps, include_items, include_owner_context, include_tests,
         normalized_search_surfaces,
@@ -88,6 +89,7 @@ fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> Value {
 
     let graph_candidates = sparse_graph_candidates(candidates, query);
     let owners = unique_candidate_paths(&graph_candidates);
+    let query_terms = query.map(query_terms).unwrap_or_default();
     let dependency_facts =
         collect_dependency_facts(language_id, dependency_root, query, &graph_candidates);
     if should_auto_include_dependency_surface(query, &surfaces, &dependency_facts) {
@@ -98,6 +100,18 @@ fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> Value {
     let include_items = include_items(&surfaces);
     let include_tests = include_tests(&surfaces);
     let include_deps = include_deps(&surfaces);
+    let seed_decision =
+        SeedPhaseDecision::from_query_shape(query_seed_present, query_terms.len(), owners.len());
+    let mut query_owner_seed_count = 0usize;
+    if query_seed_present {
+        for owner in owners.iter().take(seed_decision.query_owner_anchor_budget) {
+            let owner_seed_id = stable_node_id("owner", owner);
+            if !seed_ids.contains(&owner_seed_id) {
+                seed_ids.push(owner_seed_id);
+                query_owner_seed_count += 1;
+            }
+        }
+    }
     let mut fallback_owner_seed_count = 0usize;
     if seed_ids.is_empty() {
         let fallback_owner_seed_ids = owners
@@ -113,8 +127,10 @@ fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> Value {
         query_seed_present,
         graph_candidates.len(),
         owners.len(),
+        query_owner_seed_count,
         fallback_owner_seed_count,
         &seed_ids,
+        &seed_decision,
     );
     if include_owner_context {
         append_owner_nodes(&mut nodes, &owners);
@@ -147,7 +163,7 @@ fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> Value {
         "protocolVersion": "1",
         "packetKind": "graph-turbo-request",
         "surface": surface,
-        "queryTerms": query.map(query_terms).unwrap_or_default(),
+        "queryTerms": query_terms,
         "profile": profile,
         "algorithm": "typed-ppr-diverse",
         "surfaces": surfaces,
@@ -189,6 +205,7 @@ fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> Value {
             ranked_compact: None,
             selector_actions: &[],
             fd_preview: None,
+            seed_action_intents: &[],
         };
         let action_frontier = action_frontier_for_request(action_request);
         if !action_frontier.is_empty() {
@@ -212,8 +229,10 @@ fn graph_turbo_seed_plan(
     query_seed_present: bool,
     candidate_count: usize,
     candidate_owner_count: usize,
+    query_owner_seed_count: usize,
     fallback_owner_seed_count: usize,
     seed_ids: &[String],
+    seed_decision: &SeedPhaseDecision,
 ) -> Value {
     let reason = if query_seed_present {
         "query"
@@ -222,17 +241,47 @@ fn graph_turbo_seed_plan(
     } else {
         "empty"
     };
+    let mut risk_factors = Vec::new();
+    if seed_ids.is_empty() {
+        risk_factors.push("empty-seed-frontier");
+    }
+    if fallback_owner_seed_count > 0 {
+        risk_factors.push("fallback-owner");
+    }
+    if query_present && !query_seed_present {
+        risk_factors.push("query-seed-missing");
+    }
+    risk_factors.extend(seed_decision.risk_factors.iter().copied());
+    let seed_quality = if seed_ids.is_empty() {
+        "fail"
+    } else if risk_factors.is_empty() {
+        "good"
+    } else {
+        "review"
+    };
+    let recommended_actions = if risk_factors.is_empty() {
+        vec!["keep-query-seed"]
+    } else {
+        risk_factors
+            .iter()
+            .filter_map(|risk| recommended_action_for_seed_risk(risk))
+            .collect::<Vec<_>>()
+    };
     json!({
         "phase": "seed-query",
         "algorithm": "asp-search-pipe-v2",
         "reason": reason,
+        "seedQuality": seed_quality,
         "queryPresent": query_present,
         "querySeedPresent": query_seed_present,
         "candidateCount": candidate_count,
         "candidateOwnerCount": candidate_owner_count,
+        "queryOwnerSeedCount": query_owner_seed_count,
         "fallbackOwnerSeedCount": fallback_owner_seed_count,
         "selectedSeedCount": seed_ids.len(),
         "seedIds": seed_ids,
+        "riskFactors": risk_factors,
+        "recommendedActions": recommended_actions,
     })
 }
 
@@ -667,7 +716,10 @@ fn query_terms(query: &str) -> Vec<String> {
     query
         .split(|character: char| character == ',' || character == '|' || character.is_whitespace())
         .map(str::trim)
-        .filter(|term| !term.is_empty())
+        .filter(|term| {
+            term.chars()
+                .any(|character| character.is_ascii_alphanumeric())
+        })
         .map(ToOwned::to_owned)
         .fold(Vec::new(), |mut terms, term| {
             if !terms.iter().any(|seen| seen == &term) {

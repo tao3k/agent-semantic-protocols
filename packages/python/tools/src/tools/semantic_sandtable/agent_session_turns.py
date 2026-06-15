@@ -586,5 +586,5 @@ def _without_empty(detail: dict[str, Any]) -> dict[str, Any]:
     return {
         key: value
         for key, value in detail.items()
-        if value not in ("", [], {}, None)
+        if key == "qualitySignals" or value not in ("", [], {}, None)
     }

@@ -1,0 +1,422 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-agent-session-question-plan.v1.schema.json",
+  "title": "Semantic Agent Session Question Plan",
+  "description": "Question-level report combining final answer evidence, analyzer judgment, pending human review, and improvement-plan items for deep sandtable questions.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "sessionId",
+    "scenarioId",
+    "sourceReceiptPath",
+    "sourceQualityReportPath",
+    "sourceGraphTurboFeedbackPath",
+    "sourceImprovementReportPath",
+    "questions",
+    "rollup"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.semantic-agent-session-question-plan"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "sessionId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scenarioId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sourceReceiptPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sourceQualityReportPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sourceGraphTurboFeedbackPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sourceImprovementReportPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sourceQuestionPlanPaths": {
+      "$ref": "#/$defs/stringList"
+    },
+    "questions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/question"
+      }
+    },
+    "rollup": {
+      "$ref": "#/$defs/rollup"
+    }
+  },
+  "$defs": {
+    "answer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "present",
+        "groundingStatus",
+        "afterLastToolUse",
+        "textBytes",
+        "textLineCount",
+        "preview",
+        "evidenceRefs"
+      ],
+      "properties": {
+        "present": {
+          "type": "boolean"
+        },
+        "groundingStatus": {
+          "enum": [
+            "grounded",
+            "weak",
+            "ungrounded",
+            "unknown"
+          ]
+        },
+        "afterLastToolUse": {
+          "type": "boolean"
+        },
+        "textBytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "textLineCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "preview": {
+          "type": "string"
+        },
+        "evidenceRefs": {
+          "$ref": "#/$defs/stringList"
+        }
+      }
+    },
+    "analyzerJudgment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "answerGrounding",
+        "findingIds",
+        "graphTurboCandidateKinds",
+        "summary"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "pass",
+            "review",
+            "fail"
+          ]
+        },
+        "answerGrounding": {
+          "enum": [
+            "grounded",
+            "weak",
+            "ungrounded",
+            "unknown"
+          ]
+        },
+        "findingIds": {
+          "$ref": "#/$defs/stringList"
+        },
+        "graphTurboCandidateKinds": {
+          "$ref": "#/$defs/stringList"
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "humanReview": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "required",
+        "instruction"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "pending",
+            "accepted",
+            "rejected",
+            "needs-rerun"
+          ]
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "instruction": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "naturalLanguageSignals": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "assistantVisibleMessageCount",
+        "visibleMessagePreviews",
+        "finalAnswerPreview",
+        "revealedSignals"
+      ],
+      "properties": {
+        "assistantVisibleMessageCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "visibleMessagePreviews": {
+          "$ref": "#/$defs/stringList"
+        },
+        "finalAnswerPreview": {
+          "type": "string"
+        },
+        "revealedSignals": {
+          "$ref": "#/$defs/stringList"
+        }
+      }
+    },
+    "planItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "source",
+        "category",
+        "severity",
+        "title",
+        "evidenceRefs",
+        "recommendedAction",
+        "expectedImpact"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source": {
+          "enum": [
+            "analyzer",
+            "human-review"
+          ]
+        },
+        "category": {
+          "type": "string",
+          "minLength": 1
+        },
+        "severity": {
+          "enum": [
+            "info",
+            "warning",
+            "error"
+          ]
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidenceRefs": {
+          "$ref": "#/$defs/stringList"
+        },
+        "recommendedAction": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expectedImpact": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "project": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "question": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "question",
+        "language",
+        "project",
+        "finalAnswer",
+        "naturalLanguageSignals",
+        "analyzerJudgment",
+        "humanReview",
+        "improvementPlan"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "question": {
+          "type": "string",
+          "minLength": 1
+        },
+        "language": {
+          "type": "string",
+          "minLength": 1
+        },
+        "project": {
+          "$ref": "#/$defs/project"
+        },
+        "finalAnswer": {
+          "$ref": "#/$defs/answer"
+        },
+        "naturalLanguageSignals": {
+          "$ref": "#/$defs/naturalLanguageSignals"
+        },
+        "analyzerJudgment": {
+          "$ref": "#/$defs/analyzerJudgment"
+        },
+        "humanReview": {
+          "$ref": "#/$defs/humanReview"
+        },
+        "improvementPlan": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/planItem"
+          }
+        }
+      }
+    },
+    "rollup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "questionCount",
+        "pendingHumanReviews",
+        "analyzerStatusCounts",
+        "answerGroundingCounts",
+        "languageCounts",
+        "projectCounts",
+        "revealedSignalCounts",
+        "findingCounts",
+        "graphTurboCandidateKindCounts",
+        "planItemCount",
+        "planItemIdCounts",
+        "planItemCategoryCounts",
+        "planItemSeverityCounts",
+        "planItemSourceCounts"
+      ],
+      "properties": {
+        "questionCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pendingHumanReviews": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "analyzerStatusCounts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "answerGroundingCounts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "languageCounts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "projectCounts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "revealedSignalCounts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "findingCounts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "graphTurboCandidateKindCounts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "planItemCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "planItemIdCounts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "planItemCategoryCounts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "planItemSeverityCounts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "planItemSourceCounts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    },
+    "stringList": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

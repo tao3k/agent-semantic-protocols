@@ -11,7 +11,11 @@ from .pagerank import (
     GraphTurboPprResult,
     graph_turbo_typed_personalized_pagerank_result,
 )
-from .query_weights import query_node_match_bonus, query_token_weights
+from .query_weights import (
+    query_node_match_bonus,
+    query_seed_personalization_weights,
+    query_token_weights,
+)
 from .receipt import receipt_score_adjustments
 
 
@@ -45,7 +49,15 @@ def collect_scores(
         graph, profile, fingerprint, enabled=cache_enabled
     )
     best_depth = multi_source_hop_lengths(backend, seed_ids, profile.max_depth)
-    pagerank = graph_turbo_typed_personalized_pagerank_result(backend, seed_ids)
+    pagerank = graph_turbo_typed_personalized_pagerank_result(
+        backend,
+        seed_ids,
+        seed_weights=query_seed_personalization_weights(
+            graph,
+            profile_name=profile.name,
+            seed_ids=seed_ids,
+        ),
+    )
     scores = score_nodes(graph, profile, seed_ids, best_depth, pagerank.scores)
     receipt_adjustments, receipt_facts = receipt_score_adjustments(graph)
     for node_id, score_delta in receipt_adjustments.items():

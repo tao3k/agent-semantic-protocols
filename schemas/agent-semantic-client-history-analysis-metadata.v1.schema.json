@@ -1,0 +1,198 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/agent-semantic-client-history-analysis-metadata.v1.schema.json",
+  "title": "Agent Semantic Client History Analysis Metadata",
+  "description": "Client-captured analyzer-only sidecar metadata for cache history artifacts. This is stored for sandtable analysis and graph-turbo calibration, not rendered in normal agent-facing search stdout.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "protocolId",
+    "protocolVersion",
+    "sourceArtifactId",
+    "sourceArtifactKind",
+    "languageId",
+    "providerId",
+    "projectRoot",
+    "exportMethod",
+    "developerMode",
+    "agentFacingOutput",
+    "request",
+    "artifact",
+    "output",
+    "analysis"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.client-history-analysis-metadata"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "protocolId": {
+      "const": "agent.semantic-protocols.client"
+    },
+    "protocolVersion": {
+      "const": "1"
+    },
+    "sourceArtifactId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sourceArtifactKind": {
+      "enum": [
+        "prompt-output",
+        "search",
+        "query",
+        "tree-sitter-query",
+        "structural-index"
+      ]
+    },
+    "languageId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "providerId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "projectRoot": {
+      "type": "string",
+      "minLength": 1
+    },
+    "method": {
+      "type": "string"
+    },
+    "exportMethod": {
+      "type": "string",
+      "minLength": 1
+    },
+    "query": {
+      "type": "string"
+    },
+    "target": {
+      "type": "string"
+    },
+    "developerMode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "defaultEnabled",
+        "storageOnly"
+      ],
+      "properties": {
+        "defaultEnabled": {
+          "const": true
+        },
+        "storageOnly": {
+          "const": true
+        }
+      }
+    },
+    "agentFacingOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "unchanged",
+        "metadataSurface"
+      ],
+      "properties": {
+        "unchanged": {
+          "const": true
+        },
+        "metadataSurface": {
+          "const": "history-analysis"
+        }
+      }
+    },
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "method",
+        "languageId",
+        "forwardedArgs"
+      ],
+      "properties": {
+        "method": {
+          "type": "string"
+        },
+        "languageId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "forwardedArgs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "bytes",
+        "fnv64"
+      ],
+      "properties": {
+        "bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "fnv64": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{16}$"
+        }
+      }
+    },
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "bytes",
+        "lineCount",
+        "fnv64"
+      ],
+      "properties": {
+        "bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "lineCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "fnv64": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{16}$"
+        }
+      }
+    },
+    "analysis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "recognizedLineCount",
+        "fieldLines"
+      ],
+      "properties": {
+        "recognizedLineCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "fieldLines": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "commands": {
+      "type": "object"
+    }
+  }
+}

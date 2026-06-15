@@ -24,20 +24,18 @@ pub fn load_or_sync_activation(
     activation_path: &Path,
     project_root: &Path,
 ) -> Result<HookRuntime, String> {
-    match load_activation(activation_path) {
-        Ok(runtime) => Ok(runtime),
-        Err(load_error) if is_generated_activation_path(activation_path) => {
-            eprintln!(
-                "[agent-semantic-hook] syncing generated activation {}: {load_error}",
-                activation_path.display()
-            );
-            sync_activation(project_root, activation_path).map_err(|sync_error| {
+    if is_generated_activation_path(activation_path) {
+        return sync_activation(project_root, activation_path).or_else(|sync_error| {
+            load_activation(activation_path).map_err(|load_error| {
                 format!(
                     "{load_error}; failed to sync generated activation {}: {sync_error}",
                     activation_path.display()
                 )
             })
-        }
+        });
+    }
+    match load_activation(activation_path) {
+        Ok(runtime) => Ok(runtime),
         Err(error) => Err(error),
     }
 }
@@ -54,13 +52,6 @@ pub fn load_or_refresh_default_activation(
     activation_path: &Path,
     project_root: &Path,
 ) -> Result<DefaultActivationSync, String> {
-    if let Some(activation) = fresh_generated_activation(activation_path, project_root)? {
-        return Ok(DefaultActivationSync {
-            activation,
-            status: "reused",
-        });
-    }
-
     let current_selections = provider_command_selections(project_root)?;
     if let Some(activation) =
         reusable_activation(activation_path, project_root, &current_selections)?
@@ -78,55 +69,6 @@ pub fn load_or_refresh_default_activation(
         activation,
         status: if existed { "refreshed" } else { "created" },
     })
-}
-
-fn fresh_generated_activation(
-    activation_path: &Path,
-    project_root: &Path,
-) -> Result<Option<HookActivation>, String> {
-    let Ok(metadata) = fs::metadata(activation_path) else {
-        return Ok(None);
-    };
-    let contents = fs::read_to_string(activation_path).map_err(|error| {
-        format!(
-            "failed to read activation {}: {error}",
-            activation_path.display()
-        )
-    })?;
-    let Ok(activation) = serde_json::from_str::<HookActivation>(&contents) else {
-        return Ok(None);
-    };
-    if activation.project_root != project_root.display().to_string()
-        || activation.generated_by.runtime != "asp"
-        || activation.generated_by.version != env!("CARGO_PKG_VERSION")
-        || activation.providers.is_empty()
-    {
-        return Ok(None);
-    }
-    let Ok(generated_at) = metadata.modified() else {
-        return Ok(None);
-    };
-    let current_exe = std::env::current_exe()
-        .map_err(|error| format!("failed to resolve current executable: {error}"))?;
-    if path_is_newer_than(current_exe, generated_at)?
-        || path_is_newer_than(project_root.join("asp.toml"), generated_at)?
-        || path_is_newer_than(project_root.join(".bin"), generated_at)?
-    {
-        return Ok(None);
-    }
-    Ok(Some(activation))
-}
-
-fn path_is_newer_than(path: PathBuf, generated_at: std::time::SystemTime) -> Result<bool, String> {
-    let metadata = match fs::metadata(&path) {
-        Ok(metadata) => metadata,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
-        Err(error) => return Err(format!("failed to inspect {}: {error}", path.display())),
-    };
-    let modified = metadata
-        .modified()
-        .map_err(|error| format!("failed to inspect mtime for {}: {error}", path.display()))?;
-    Ok(modified > generated_at)
 }
 
 fn reusable_activation(

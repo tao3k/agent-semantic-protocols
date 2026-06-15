@@ -95,6 +95,16 @@ typed capability action
 
 Terminology is deliberately narrow:
 
+Analyzer-only observability is deliberately outside ARI. Developer/history
+mode may persist command receipts, prompt-output bytes, replay artifacts, and
+machine-oriented analysis metadata as cache artifacts, but normal =search=
+stdout must continue to expose only the compact graph facts useful for the
+agent's next reasoning step. The sidecar metadata exists for sandtable
+analysis, graph-turbo calibration, repeated-trigger diagnosis, latency/size
+measurement, and report generation. It must not become a required field in the
+agent-facing render surface, and providers must not depend on client-specific
+developer-mode switches to satisfy the shared search contract.
+
 - =frontier= means locator/next-action candidates selected from typed facts.
 - =ARI= means the line-oriented agent render interface: the last-mile stdout
   serialization read by an agent, not the internal data model.
@@ -251,6 +261,15 @@ display convenience materialized from these typed facts, not a protocol fact
 that production code parses back into an action.  =search pipe --view
 graph-turbo-request= is the typed packet spelling for this migration.
 
+For =asp rg -query= query-wrapper output, repeated =-query= clauses mean the
+agent has already accepted a query-pack refinement.  In that case the typed
+=actionFrontier[]= should rank =multi-clause-rg-query= ahead of the broad
+=fd-query= recall fallback.  A single flat =asp rg -query= recall probe may
+still rank =fd-query= first to discover owner scope before content search.
+The packet-level =queryTerms= field is the lexical term set used for seed and
+rank calculation; it must not include display-only query-pack separators such as
+=+=.
+
 Graph-turbo seed selection is also a schema-owned phase, not an implicit detail
 hidden behind =seedIds=.  A request may carry =seedPlan= with =phase=,
 =algorithm=, =reason=, query/fallback booleans, candidate and owner counts,
@@ -262,6 +281,17 @@ search output should expose only decision-level actions such as =recommendedNext
 and =avoid=, not raw seed counters.  An analyzer can therefore separate
 seed-quality defects from ranker defects before blaming the later graph traversal
 or compact render.
+
+When =seedPlan.recommendedActions= contains both =split-query-pack= and
+=narrow-owner-scope=, the action frontier may promote an =rg-query-set= action
+ahead of broad single-query recall.  The promotion is deliberately gated on both
+signals: =split-query-pack= alone is an analyzer hint, and =nextQueryPackHint=
+alone is display guidance.  A concrete owner-local path such as =owner-items=
+must remain the preferred action when seed diagnostics show a single stable owner
+instead of owner drift.  Implementations should derive this from an internal
+typed seed decision or seed-action intent; =recommendedActions= remains a
+report/analyzer projection, not the authority that production action planning
+parses as behavior.
 
 * Dependency topology cache boundary
 
@@ -763,6 +793,33 @@ and an exact-source expansion route when the compact body is not source of
 truth.  Code compaction is parser/language-aware and conservative; document
 compaction may be metadata-heavy, but normative RFC text, proof notes, review
 judgments, and security policy must use conservative criticality settings.
+
+** Owner-query seed prior
+
+The =owner-query= graph turbo profile must not treat every seed as an equal
+personalization source when both query seeds and owner/source seeds are present.
+In real search sessions, the seed set often contains a query node plus owner
+seeds selected by a fast finder or previous frontier. If those owner seeds are
+equal to the query seed, personalized PageRank can amplify an early wrong owner
+and drift toward implementation wrappers or adjacent packages even when the
+query contains more specific algorithm terms.
+
+For =owner-query=, typed PPR personalization is query-aware:
+
+- query seed nodes keep the strongest prior because they represent the current
+  user intent rather than a candidate owner.
+- owner, item, field, hot, type, and collection seeds receive a prior derived
+  from query-token coverage over schema-owned node text.
+- single-token queries keep the previous equal-seed behavior; the weighted prior
+  is a deep-query optimization, not a replacement for read-loop guards.
+- seeds with no query-token coverage keep only a small floor weight so they
+  remain reachable evidence, but they must not dominate graph diffusion.
+
+This is an algorithm rule, not an analyzer/report field. Analyzer sidecars may
+record drift, repeated search loops, and first-action quality, but the fix
+belongs in the graph ranking prior before rank/diversity/frontier projection.
+Diversity repair remains a top-k coverage guard; it is not a substitute for a
+correct personalization vector.
 
 ** Graph turbo packet boundary
 
@@ -1392,3 +1449,19 @@ Completed:
 - Providers produce the same graph meaning across Rust, TypeScript, Python, and
   Julia.  Julia uses the compiled =asp-julia-harness= plus cacheable search
   packets, not a workspace-managed exception.
+* Finder-confirmed path precedence
+
+When an agent or query wrapper supplies an explicit path-like target, or when the
+finder layer returns a file path that matches the requested path intent, the
+search action frontier must prefer a concrete owner-items action for that path
+before generic scoped-rg refinement. This is especially important for paths that
+are outside a language provider's parser index, such as sandboxed `.data`
+fixtures, because parser-ranked owners can otherwise drift to nearby indexed
+packages.
+
+For neutral `asp fd -query` output, the recommended next action SHOULD infer the
+language from the matched owner path when the path extension is language-specific
+and materialize an executable `asp <language> search owner <path> items --query
+...` command. If language inference is ambiguous, the frontier may keep an
+owner-items hint without a materialized command, but it must not rank a
+package-level scoped-rg action ahead of an exact finder-confirmed path.

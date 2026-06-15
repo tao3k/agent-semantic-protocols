@@ -6,6 +6,7 @@ mod probe;
 mod request;
 mod structural_index_import;
 mod writeback;
+mod writeback_analysis_metadata;
 mod writeback_artifact_events;
 
 #[cfg(test)]

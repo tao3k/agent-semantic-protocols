@@ -10,6 +10,9 @@ from .model import Node, TypedGraph
 _TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9_]*")
 _MIN_TOKEN_LENGTH = 2
 _MAX_QUERY_MATCH_BONUS = 0.75
+_QUERY_SEED_WEIGHT = 1.20
+_MATCHED_SEED_FLOOR = 0.35
+_UNMATCHED_SEED_FLOOR = 0.20
 _QUERY_WEIGHT_NODE_KINDS = {"collection", "field", "hot", "item", "owner", "type"}
 
 
@@ -55,6 +58,47 @@ def query_node_match_bonus(
     total_weight = sum(token_weights.values())
     coverage = matched_weight / total_weight if total_weight > 0 else 0.0
     return min(_MAX_QUERY_MATCH_BONUS, 0.15 * matched_weight + 0.55 * coverage)
+
+
+def query_seed_personalization_weights(
+    graph: TypedGraph,
+    *,
+    profile_name: str,
+    seed_ids: Iterable[str],
+) -> Mapping[str, float]:
+    if profile_name != "owner-query":
+        return {}
+    seed_id_tuple = tuple(seed_ids)
+    query_tokens = _query_tokens(graph, seed_id_tuple)
+    if len(query_tokens) < 2:
+        return {}
+    token_weights = query_token_weights(
+        graph,
+        profile_name=profile_name,
+        seed_ids=seed_id_tuple,
+    )
+    if not token_weights:
+        return {}
+    weights: dict[str, float] = {}
+    for seed_id in seed_id_tuple:
+        node = graph.nodes.get(seed_id)
+        if node is None:
+            continue
+        if node.kind == "query":
+            weights[seed_id] = _QUERY_SEED_WEIGHT
+            continue
+        if node.kind not in _QUERY_WEIGHT_NODE_KINDS:
+            weights[seed_id] = _UNMATCHED_SEED_FLOOR
+            continue
+        bonus = query_node_match_bonus(
+            profile_name=profile_name,
+            token_weights=token_weights,
+            node=node,
+        )
+        weights[seed_id] = (
+            _MATCHED_SEED_FLOOR + bonus if bonus > 0.0 else _UNMATCHED_SEED_FLOOR
+        )
+    return weights
 
 
 def _query_tokens(graph: TypedGraph, seed_ids: Iterable[str]) -> tuple[str, ...]:

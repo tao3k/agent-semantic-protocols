@@ -101,8 +101,12 @@ fn hook_install_help_is_non_mutating() {
         String::from_utf8_lossy(&output.stderr)
     );
     assert!(
+        String::from_utf8_lossy(&output.stdout).contains("usage: asp hook install --client claude"),
+        "stdout: {}",
         String::from_utf8_lossy(&output.stdout)
-            .contains("usage: asp hook <install|doctor> --client"),
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stdout).contains("asp plugin install codex"),
         "stdout: {}",
         String::from_utf8_lossy(&output.stdout)
     );

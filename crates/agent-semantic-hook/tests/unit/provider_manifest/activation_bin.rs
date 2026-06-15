@@ -1,169 +1,7 @@
-use agent_semantic_hook::{build_default_activation, builtin_provider_manifests};
+use agent_semantic_hook::build_default_activation;
 use std::fs;
-use std::path::PathBuf;
-use std::process::Command;
 
-#[cfg(unix)]
-use std::os::unix::fs::PermissionsExt;
-
-#[test]
-fn builtin_manifests_include_julia_juliac_provider() {
-    let manifests = builtin_provider_manifests();
-    let julia = manifests
-        .iter()
-        .find(|manifest| manifest.language_id == "julia")
-        .expect("julia manifest");
-
-    assert_eq!(julia.provider_id, "julia-lang-project-harness");
-    assert_eq!(julia.binary, "asp-julia-harness");
-    assert!(julia.source.default_extensions.contains(&".jl".to_string()));
-    assert!(
-        julia
-            .source
-            .default_config_files
-            .contains(&"Project.toml".to_string())
-    );
-    assert_eq!(
-        julia.routes.guide.as_ref().expect("guide route").argv,
-        ["asp-julia-harness", "guide", "{projectRoot}"]
-    );
-    assert_eq!(
-        julia.routes.query.as_ref().expect("query route").argv,
-        [
-            "asp-julia-harness",
-            "search",
-            "query",
-            "--from-hook",
-            "direct-source-read",
-            "--selector",
-            "{selector}",
-            "{termArgs}",
-            "--surface",
-            "owners,tests",
-            "--view",
-            "seeds",
-            "{projectRoot}"
-        ]
-    );
-    assert_eq!(
-        julia.routes.ingest.argv,
-        [
-            "asp-julia-harness",
-            "search",
-            "ingest",
-            "owner",
-            "tests",
-            "--view",
-            "seeds",
-            "{projectRoot}"
-        ]
-    );
-    assert!(
-        julia
-            .source
-            .default_ignored_path_prefixes
-            .contains(&".devenv".to_string())
-    );
-}
-
-#[test]
-fn builtin_manifests_include_document_language_providers() {
-    let manifests = builtin_provider_manifests();
-    let org = manifests
-        .iter()
-        .find(|manifest| manifest.language_id == "org")
-        .expect("org manifest");
-    let md = manifests
-        .iter()
-        .find(|manifest| manifest.language_id == "md")
-        .expect("md manifest");
-
-    assert_eq!(org.provider_id, "orgize");
-    assert_eq!(org.binary, "asp");
-    assert_eq!(org.execution.as_str(), "embedded");
-    assert!(org.source.default_extensions.contains(&".org".to_string()));
-    assert_eq!(
-        org.routes.query.as_ref().expect("org query route").argv,
-        [
-            "asp",
-            "org",
-            "query",
-            "{termArgs}",
-            "--view",
-            "metadata",
-            "{projectRoot}"
-        ]
-    );
-    assert_eq!(
-        org.routes.owner.argv,
-        [
-            "asp",
-            "org",
-            "query",
-            "--selector",
-            "{path}",
-            "--view",
-            "metadata",
-            "{projectRoot}"
-        ]
-    );
-    assert_eq!(
-        org.routes.fzf.argv,
-        [
-            "asp",
-            "org",
-            "query",
-            "--term",
-            "{query}",
-            "--view",
-            "metadata",
-            "{projectRoot}"
-        ]
-    );
-
-    assert_eq!(md.provider_id, "orgize");
-    assert_eq!(md.binary, "asp");
-    assert_eq!(md.execution.as_str(), "embedded");
-    assert!(md.source.default_extensions.contains(&".md".to_string()));
-    assert_eq!(
-        md.routes.query.as_ref().expect("md query route").argv,
-        [
-            "asp",
-            "md",
-            "query",
-            "{termArgs}",
-            "--view",
-            "metadata",
-            "{projectRoot}"
-        ]
-    );
-    assert_eq!(
-        md.routes.owner.argv,
-        [
-            "asp",
-            "md",
-            "query",
-            "--selector",
-            "{path}",
-            "--view",
-            "metadata",
-            "{projectRoot}"
-        ]
-    );
-    assert_eq!(
-        md.routes.fzf.argv,
-        [
-            "asp",
-            "md",
-            "query",
-            "--term",
-            "{query}",
-            "--view",
-            "metadata",
-            "{projectRoot}"
-        ]
-    );
-}
+use super::{git_init, make_executable, temp_root};
 
 #[test]
 fn default_activation_records_project_bin_provider_prefix() {
@@ -192,6 +30,41 @@ fn default_activation_records_project_bin_provider_prefix() {
         julia.provider_command_prefix
     );
     assert!(julia.coverage.package_roots.contains(&".".to_string()));
+
+    fs::remove_dir_all(root).expect("remove temp root");
+}
+
+#[test]
+fn default_activation_uses_parent_workspace_bin_for_nested_gerbil_package() {
+    let root = temp_root("nested-gerbil-parent-bin-provider");
+    let child = root
+        .join("languages")
+        .join("gerbil-scheme-language-project-harness");
+    fs::create_dir_all(root.join(".bin")).expect("create workspace bin");
+    fs::create_dir_all(child.join("src")).expect("create child src");
+    fs::write(root.join("asp.toml"), "[providers]\n").expect("write workspace asp.toml");
+    fs::write(child.join("gerbil.pkg"), "(package: sample/gerbil)\n").expect("write gerbil.pkg");
+    let provider_bin = root.join(".bin/gerbil-scheme-harness");
+    fs::write(&provider_bin, "#!/bin/sh\nexit 0\n").expect("write provider bin");
+    make_executable(&provider_bin);
+
+    let activation = build_default_activation(&child).expect("build activation");
+    let gerbil = activation
+        .providers
+        .iter()
+        .find(|provider| provider.language_id == "gerbil-scheme")
+        .expect("gerbil provider activated from parent workspace .bin");
+
+    assert_eq!(gerbil.binary, "gerbil-scheme-harness");
+    assert!(
+        gerbil
+            .provider_command_prefix
+            .first()
+            .is_some_and(|command| command.ends_with("/.bin/gerbil-scheme-harness")),
+        "nested Gerbil package should reuse the parent workspace provider bin: {:?}",
+        gerbil.provider_command_prefix
+    );
+    assert!(gerbil.coverage.package_roots.contains(&".".to_string()));
 
     fs::remove_dir_all(root).expect("remove temp root");
 }
@@ -303,35 +176,3 @@ fn asp_toml_can_disable_document_language_hook_activation() {
 
     fs::remove_dir_all(root).expect("remove temp root");
 }
-
-fn temp_root(name: &str) -> PathBuf {
-    let root = std::env::temp_dir().join(format!(
-        "asp-{name}-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("time")
-            .as_nanos()
-    ));
-    fs::create_dir_all(&root).expect("create temp root");
-    root
-}
-
-fn git_init(root: &std::path::Path) {
-    let status = Command::new("git")
-        .args(["init", "-q"])
-        .current_dir(root)
-        .status()
-        .expect("run git init");
-    assert!(status.success(), "git init failed with {status}");
-}
-
-#[cfg(unix)]
-fn make_executable(path: &std::path::Path) {
-    let mut permissions = fs::metadata(path).expect("metadata").permissions();
-    permissions.set_mode(0o755);
-    fs::set_permissions(path, permissions).expect("set executable");
-}
-
-#[cfg(not(unix))]
-fn make_executable(_path: &std::path::Path) {}

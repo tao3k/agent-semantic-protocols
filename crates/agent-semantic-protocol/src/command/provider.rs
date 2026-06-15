@@ -8,7 +8,6 @@ use agent_semantic_hook::{
 };
 use std::env;
 use std::fs;
-use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
 use super::client_backend_worker::run_client_backend_on_worker;
@@ -469,26 +468,7 @@ fn frontier_receipt_fact_arg<'a>(
 }
 
 fn load_activation(path: &Path) -> Result<HookRuntime, String> {
-    let text = fs::read_to_string(path).map_err(|error| {
-        if error.kind() == ErrorKind::NotFound {
-            return format!(
-                "[asp-provider] activation=missing path={}\n|reason provider-activation-missing\n|cmd install=asp hook install --client codex .\n|cmd guide=asp guide\n|cmd providers=asp providers",
-                path.display()
-            );
-        }
-        format!(
-            "failed to read provider activation {}: {error}",
-            path.display()
-        )
-    })?;
-    parse_hook_activation(&text).or_else(|error| {
-        load_or_sync_activation(path, &activation_storage_root(path)).map_err(|sync_error| {
-            format!(
-                "failed to parse provider activation {}: {error:?}; failed to sync generated activation: {sync_error}",
-                path.display()
-            )
-        })
-    })
+    load_or_sync_activation(path, &activation_storage_root(path))
 }
 
 fn validate_provider_command(args: &[String]) -> Result<(), String> {

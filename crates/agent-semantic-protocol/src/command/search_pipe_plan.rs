@@ -9,6 +9,7 @@ use super::search_pipe_actions::{
 };
 use super::search_pipe_model::Candidate;
 use super::search_pipe_quality::{SearchPipeQuality, analyze_search_pipe_quality};
+use super::search_pipe_seed_decision::SeedActionIntent;
 use super::search_query_wrapper_candidates::fd_query_preview;
 
 pub(super) struct SearchPipePlanRequest<'a> {
@@ -19,6 +20,7 @@ pub(super) struct SearchPipePlanRequest<'a> {
     pub(super) query: &'a str,
     pub(super) candidates: &'a [Candidate],
     pub(super) ranked_compact: Option<&'a str>,
+    pub(super) seed_action_intents: &'a [SeedActionIntent],
 }
 
 pub(super) fn render_search_pipe_plan(request: SearchPipePlanRequest<'_>) -> String {
@@ -30,6 +32,7 @@ pub(super) fn render_search_pipe_plan(request: SearchPipePlanRequest<'_>) -> Str
         query,
         candidates,
         ranked_compact,
+        seed_action_intents,
     } = request;
     let mut quality = analyze_search_pipe_quality(language_id, query, candidates);
     let projected_selector_actions = rank_projected_selector_actions(
@@ -72,6 +75,7 @@ pub(super) fn render_search_pipe_plan(request: SearchPipePlanRequest<'_>) -> Str
         ranked_compact,
         selector_actions: &actions,
         fd_preview: fd_preview.as_ref(),
+        seed_action_intents,
     });
     format!(
         "seedPlan=seed-query alg=asp-search-pipe-v2 budget=frontier<=3 repeated=0\n\

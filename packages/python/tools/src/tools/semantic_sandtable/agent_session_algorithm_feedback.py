@@ -189,12 +189,27 @@ def _reason_for_point(point: dict[str, Any], candidate: dict[str, Any]) -> str:
 
 def _effect_for_candidate(candidate: dict[str, Any]) -> str:
     kind = require_str(candidate, "kind", "")
-    return "boost" if kind in {"under-ranked-selector", "profile-rank-change"} else "penalty"
+    return (
+        "boost"
+        if kind
+        in {
+            "under-ranked-selector",
+            "profile-rank-change",
+            "path-intent-lost",
+            "finder-path-ignored",
+        }
+        else "penalty"
+    )
 
 
 def _scope_for_candidate(candidate: dict[str, Any]) -> str:
     kind = require_str(candidate, "kind", "")
-    if kind in {"under-ranked-selector", "repeated-query-group"}:
+    if kind in {
+        "under-ranked-selector",
+        "repeated-query-group",
+        "path-intent-lost",
+        "finder-path-ignored",
+    }:
         return "exact-selector"
     return "relation-neighborhood"
 
@@ -208,6 +223,9 @@ def _target_kinds_for_candidate(candidate: dict[str, Any]) -> list[str]:
         "unclear-next-action": ["query", "owner"],
         "profile-rank-change": ["item", "owner", "dependency", "test"],
         "seed-plan-quality": ["query", "owner"],
+        "path-intent-lost": ["owner", "item"],
+        "finder-path-ignored": ["owner", "item", "hot"],
+        "search-flow-drift": ["query", "owner"],
     }.get(kind, ["item", "owner"])
 
 
@@ -218,6 +236,7 @@ def _propagate_relations_for_candidate(candidate: dict[str, Any]) -> list[str]:
         "unclear-next-action": ["matches", "selects"],
         "profile-rank-change": ["contains", "imports", "covers"],
         "seed-plan-quality": ["matches", "contains", "selects"],
+        "search-flow-drift": ["matches", "selects"],
     }.get(kind, ["contains"])
 
 

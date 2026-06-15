@@ -2,8 +2,8 @@
 
 use super::hook_runtime_subagent::install_codex_asp_explorer_agent;
 use agent_semantic_hook::{
-    merge_codex_asp_explorer_role_config, remove_codex_managed_hook_blocks,
-    validate_codex_config_toml,
+    install_codex_user_project_trust, merge_codex_asp_explorer_role_config,
+    remove_codex_managed_hook_blocks, validate_codex_config_toml,
 };
 use std::env;
 use std::fs;
@@ -32,9 +32,11 @@ pub(super) fn codex_plugin_scope_arg(
     args: &[String],
     client: &str,
 ) -> Result<CodexPluginScope, String> {
-    let global_plugin = args.iter().any(|arg| arg == "--global-plugin");
+    let global_plugin = args
+        .iter()
+        .any(|arg| matches!(arg.as_str(), "--global" | "--global-plugin"));
     if global_plugin && client != "codex" {
-        return Err("--global-plugin is only supported with --client codex".to_string());
+        return Err("--global is only supported for Codex plugin installs".to_string());
     }
     Ok(if global_plugin {
         CodexPluginScope::Global
@@ -61,6 +63,7 @@ pub(super) fn install_codex_plugin_hooks(
     let (marketplace_path, marketplace_name) =
         ensure_codex_project_plugin_marketplace(project_root)?;
     let project_config_path = install_codex_project_plugin_config(project_root)?;
+    let trust_config_path = install_codex_user_project_trust(&project_config_path)?;
     let subagent_path = install_codex_asp_explorer_agent(project_root, subagent_model)?;
     let codex_home = match scope {
         CodexPluginScope::Project => Some(project_root.join(".codex")),
@@ -110,11 +113,12 @@ pub(super) fn install_codex_plugin_hooks(
     Ok((
         config_path,
         format!(
-            " pluginScope={} pluginMarketplace={} pluginMarketplaceConfig={} pluginConfig={} subagent={}{}",
+            " pluginScope={} pluginMarketplace={} pluginMarketplaceConfig={} projectConfig={} projectTrustConfig={} subagent={}{}",
             scope.label(),
             marketplace_name,
             super::display_path(project_root, &marketplace_path),
             super::display_path(project_root, &project_config_path),
+            super::display_path(project_root, &trust_config_path),
             super::display_path(project_root, &subagent_path),
             installed_path,
         ),

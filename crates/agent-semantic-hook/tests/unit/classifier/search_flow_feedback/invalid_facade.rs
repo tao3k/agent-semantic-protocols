@@ -145,3 +145,29 @@ fn pre_tool_allows_root_graph_command_without_facade_feedback() {
     assert!(!decision.fields.contains_key("invalidFacade"));
     let _ = fs::remove_dir_all(project_root);
 }
+
+#[test]
+fn pre_tool_allows_root_plugin_install_command_without_facade_feedback() {
+    let project_root = temp_project_root("asp-hook-root-plugin-command");
+    let runtime = runtime_for_project(&project_root);
+
+    let decision = classify_hook(
+        &runtime,
+        "codex",
+        "pre-tool",
+        &json!({
+            "hook_event_name": "PreToolUse",
+            "session_id": "session-plugin",
+            "transcript_path": "transcript-plugin.jsonl",
+            "tool_name": "Bash",
+            "tool_input": {
+                "command": "target/debug/asp plugin install codex ."
+            }
+        }),
+    );
+
+    assert_eq!(decision.decision, DecisionKind::Allow);
+    assert!(!decision.fields.contains_key("hookFeedback"));
+    assert!(!decision.fields.contains_key("invalidFacade"));
+    let _ = fs::remove_dir_all(project_root);
+}

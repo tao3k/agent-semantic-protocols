@@ -292,6 +292,8 @@ fn is_root_asp_command(value: &str) -> bool {
             | "cache"
             | "cloud"
             | "hook"
+            | "plugin"
+            | "install"
             | "healthcheck"
             | "source-access"
             | "ast-patch"

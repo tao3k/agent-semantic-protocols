@@ -666,8 +666,32 @@ fn run_doctor(args: &[String]) -> Result<(), String> {
 }
 
 fn run_install(args: &[String]) -> Result<(), String> {
-    let mut timings = InstallTimings::new();
     let client = flag_value(args, "--client").unwrap_or("codex");
+    if client == "codex" {
+        return Err(
+            "Codex plugin installation uses `asp plugin install codex [PROJECT_ROOT]`; `asp hook install --client codex` is not supported because plugin installs and legacy hook installs are separate command surfaces."
+                .to_string(),
+        );
+    }
+    run_install_for_client(client, args, "agent-install")
+}
+
+pub(super) fn run_codex_plugin_install_args(args: &[String]) -> Result<(), String> {
+    if optional_flag_value(args, "--client")?.is_some() {
+        return Err(
+            "asp plugin install codex does not accept --client; use `asp plugin install codex [PROJECT_ROOT]`"
+                .to_string(),
+        );
+    }
+    run_install_for_client("codex", args, "plugin-install")
+}
+
+fn run_install_for_client(
+    client: &str,
+    args: &[String],
+    receipt_label: &str,
+) -> Result<(), String> {
+    let mut timings = InstallTimings::new();
     ensure_supported_client(client)?;
     let codex_plugin_scope = codex_plugin_scope_arg(args, client)?;
     let subagent_model =
@@ -739,7 +763,7 @@ fn run_install(args: &[String]) -> Result<(), String> {
         })
         .unwrap_or_default();
     println!(
-        "[agent-install] client={client} activation={} activationRuntime=derived activationSync={} clientConfig={} config={}{}{}{} binary=asp binaryPath={} binaryInstall={} mode=updated",
+        "[{receipt_label}] client={client} activation={} activationRuntime=derived activationSync={} clientConfig={} config={}{}{}{} binary=asp binaryPath={} binaryInstall={} mode=updated",
         display_path(&project_root, &activation_path),
         activation_status,
         display_path(&project_root, &client_config_path),

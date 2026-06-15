@@ -195,6 +195,26 @@ parser-owned and visible in search, JSON, and self-apply snapshots.  This gives
 users enough room to program in a non-rigid way while preventing agents from
 turning policy into a cheap bypass.
 
+** Prefer explicit precise imports
+
+Gerbil reference code such as =gerbil-poo/cli.ss= uses =only-in= imports even
+for common standard-library and local dependency surfaces. The harness should
+teach this as an agent-facing default: when code imports a runtime library,
+dependency package, or owner-local helper, the imported surface should be
+explicit instead of relying on a broad module import.
+
+The parser already records =moduleImportFacts= with the module, phase,
+modifier, and imported symbols. Policy should consume those facts directly and
+warn when a runtime source owner imports a governed module with modifier
+=direct=, or with =only-in= but no imported symbols. The finding should tell the
+agent to replace the broad import with =(only-in <module> <symbols...>)= after
+checking actual owner usage. It must not infer missing symbols from raw text.
+
+This rule is guidance for precision and future edits, not a runtime performance
+optimization. =only-in= makes the dependency boundary auditable for agents; hot
+path latency still belongs to CLI/module-loading design and parser-owned
+indexing.
+
 * Policy mapping
 
 | Reference practice | Harness policy |

@@ -214,6 +214,9 @@
         "evidenceRefs": {
           "$ref": "#/$defs/stringList"
         },
+        "matchedSelectors": {
+          "$ref": "#/$defs/stringList"
+        },
         "recommendedAction": {
           "type": "string",
           "minLength": 1

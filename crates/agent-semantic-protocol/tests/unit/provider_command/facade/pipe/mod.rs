@@ -143,13 +143,17 @@ fn assert_graph_turbo_seed_plan_contract(payload: &Value, seed_ids: &[Value]) {
         "seedPlan.reason must explain seed selection: {seed_plan:?}"
     );
     for field in [
+        "seedQuality",
         "queryPresent",
         "querySeedPresent",
         "candidateCount",
         "candidateOwnerCount",
+        "queryOwnerSeedCount",
         "fallbackOwnerSeedCount",
         "selectedSeedCount",
         "seedIds",
+        "riskFactors",
+        "recommendedActions",
     ] {
         assert!(
             seed_plan.contains_key(field),
@@ -167,6 +171,22 @@ fn assert_graph_turbo_seed_plan_contract(payload: &Value, seed_ids: &[Value]) {
             .expect("seedPlan.seedIds array"),
         seed_ids,
         "seedPlan.seedIds must mirror request seedIds"
+    );
+    assert!(
+        payload["seedPlan"]["seedQuality"]
+            .as_str()
+            .is_some_and(|quality| matches!(quality, "good" | "review" | "fail")),
+        "seedPlan.seedQuality must be an analyzer status: {payload}"
+    );
+    assert!(
+        payload["seedPlan"]["riskFactors"].as_array().is_some(),
+        "seedPlan.riskFactors must be an array: {payload}"
+    );
+    assert!(
+        payload["seedPlan"]["recommendedActions"]
+            .as_array()
+            .is_some_and(|actions| !actions.is_empty()),
+        "seedPlan.recommendedActions must name at least one analyzer action: {payload}"
     );
 }
 

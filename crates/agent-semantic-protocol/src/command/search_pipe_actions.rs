@@ -9,6 +9,7 @@ use super::search_pipe_action_frontier::{ActionNode, ActionRoute, render_action_
 use super::search_pipe_action_model::PipeAction;
 use super::search_pipe_model::Candidate;
 use super::search_pipe_quality::SearchPipeQuality;
+use super::search_pipe_seed_decision::SeedActionIntent;
 use super::search_query_wrapper_model::FdQueryPreview;
 
 #[derive(Clone, Copy)]
@@ -22,6 +23,7 @@ pub(super) struct SearchPipeActionRequest<'a> {
     pub(super) ranked_compact: Option<&'a str>,
     pub(super) selector_actions: &'a [PipeAction],
     pub(super) fd_preview: Option<&'a FdQueryPreview>,
+    pub(super) seed_action_intents: &'a [SeedActionIntent],
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -173,7 +175,7 @@ fn delegation_hints(quality: &SearchPipeQuality, actions: &[ActionNode]) -> Vec<
         .filter(|action| {
             matches!(
                 action.kind.as_str(),
-                "fd-query" | "rg-query" | "owner-items" | "treesitter-query"
+                "fd-query" | "rg-query" | "rg-query-set" | "owner-items" | "treesitter-query"
             )
         })
         .map(|action| format!("{}.{}", action.id, action.kind))
@@ -186,6 +188,18 @@ fn delegation_hints(quality: &SearchPipeQuality, actions: &[ActionNode]) -> Vec<
 
 fn action_nodes(request: &SearchPipeActionRequest<'_>, scope_arg: &str) -> Vec<ActionNode> {
     let mut actions = Vec::new();
+    if let Some(queries) = query_pack_queries(request) {
+        actions.push(ActionNode {
+            id: String::new(),
+            kind: "rg-query-set".to_string(),
+            suffix: "query-pack-refine".to_string(),
+            route: ActionRoute::RgQuerySet {
+                queries,
+                scope: scope_arg.to_string(),
+                command_scope: scope_arg.to_string(),
+            },
+        });
+    }
     if request.quality.allow_query_selector
         && let Some(action) = request.selector_actions.first()
     {
@@ -287,6 +301,47 @@ fn action_nodes(request: &SearchPipeActionRequest<'_>, scope_arg: &str) -> Vec<A
             action
         })
         .collect()
+}
+
+fn query_pack_queries(request: &SearchPipeActionRequest<'_>) -> Option<Vec<String>> {
+    let has_split = request
+        .seed_action_intents
+        .iter()
+        .any(|intent| *intent == SeedActionIntent::SplitQueryPack);
+    let has_narrow_owner_scope = request
+        .seed_action_intents
+        .iter()
+        .any(|intent| *intent == SeedActionIntent::NarrowOwnerScope);
+    if !has_split || !has_narrow_owner_scope {
+        return None;
+    }
+    if let Some(queries) = query_pack_hint_queries(request.quality) {
+        return Some(queries);
+    }
+    let mut terms = Vec::new();
+    terms.extend(request.quality.context_terms.iter().cloned());
+    terms.extend(request.quality.owner_seed_terms.iter().cloned());
+    terms.extend(request.quality.concept_terms.iter().cloned());
+    if terms.len() < 4 {
+        return None;
+    }
+    let split_at = terms.len().div_ceil(2);
+    Some(vec![
+        terms[..split_at].join(" "),
+        terms[split_at..].join(" "),
+    ])
+}
+
+fn query_pack_hint_queries(quality: &SearchPipeQuality) -> Option<Vec<String>> {
+    let queries = quality
+        .next_query_pack_hint
+        .as_deref()?
+        .split('|')
+        .map(str::trim)
+        .filter(|query| !query.is_empty())
+        .map(ToOwned::to_owned)
+        .collect::<Vec<_>>();
+    (queries.len() > 1).then_some(queries)
 }
 
 fn query_code_action(request: &SearchPipeActionRequest<'_>, action: &PipeAction) -> ActionNode {

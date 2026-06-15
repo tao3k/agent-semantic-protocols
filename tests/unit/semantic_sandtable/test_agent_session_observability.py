@@ -10,20 +10,20 @@ from jsonschema import Draft202012Validator
 from tools.semantic_sandtable.agent_session import (
     AgentSessionConfig,
     build_agent_session_receipt,
-    write_agent_session_receipt,
     write_agent_session_from_messages,
 )
 from tools.semantic_sandtable.agent_session_analyzer import (
     analyze_agent_session_receipt,
     graph_turbo_feedback_from_analysis,
-    write_agent_session_analysis,
 )
 from tools.semantic_sandtable.agent_session_algorithm_feedback import (
     build_graph_turbo_algorithm_feedback,
-    build_graph_turbo_calibration_proposal,
 )
 from tools.semantic_sandtable.agent_session_improvements import (
     build_agent_session_improvement_report,
+)
+from tools.semantic_sandtable.agent_session_question_plan import (
+    build_agent_session_question_plan,
 )
 from tools.semantic_sandtable.cli import semantic_sandtable_main as main
 
@@ -41,6 +41,7 @@ def test_agent_session_artifact_receipt_and_analysis(tmp_path: Path) -> None:
         config=config,
     )
     receipt = build_agent_session_receipt(session_root, config=config)
+    events = _read_jsonl(session_root / "events.jsonl")
     quality = analyze_agent_session_receipt(receipt)
     feedback = graph_turbo_feedback_from_analysis(
         receipt,
@@ -53,6 +54,17 @@ def test_agent_session_artifact_receipt_and_analysis(tmp_path: Path) -> None:
         source_quality_report_path="reports/quality-report.json",
         source_graph_turbo_feedback_path="reports/graph-turbo-feedback.json",
     )
+    question_plan = build_agent_session_question_plan(
+        receipt,
+        quality,
+        feedback,
+        improvement,
+        events,
+        source_receipt_path="receipts/agent-session-receipt.json",
+        source_quality_report_path="reports/quality-report.json",
+        source_graph_turbo_feedback_path="reports/graph-turbo-feedback.json",
+        source_improvement_report_path="reports/improvement-report.json",
+    )
 
     _validate_schema("semantic-agent-session-receipt.v1.schema.json", receipt)
     _validate_schema("semantic-agent-session-quality-report.v1.schema.json", quality)
@@ -64,6 +76,7 @@ def test_agent_session_artifact_receipt_and_analysis(tmp_path: Path) -> None:
         "semantic-agent-session-graph-turbo-feedback.v1.schema.json",
         feedback,
     )
+    _validate_schema("semantic-agent-session-question-plan.v1.schema.json", question_plan)
     assert manifest["eventCount"] >= 6
     assert (session_root / "events.jsonl").is_file()
     assert (session_root / "messages.jsonl").is_file()
@@ -87,6 +100,13 @@ def test_agent_session_artifact_receipt_and_analysis(tmp_path: Path) -> None:
     assert feedback["candidates"] == []
     assert improvement["metrics"]["totalRounds"] == 1
     assert improvement["improvementPoints"] == []
+    assert question_plan["questions"][0]["question"] == "Explain Tokio IO readiness."
+    assert question_plan["questions"][0]["finalAnswer"]["present"] is True
+    assert question_plan["questions"][0]["analyzerJudgment"]["status"] == "pass"
+    assert question_plan["questions"][0]["humanReview"]["status"] == "pending"
+    assert question_plan["rollup"]["pendingHumanReviews"] == 1
+    assert question_plan["rollup"]["languageCounts"] == {"rust": 1}
+    assert question_plan["rollup"]["projectCounts"] == {"tokio": 1}
 
 
 def test_agent_session_analyzer_reports_repeated_search_feedback(
@@ -130,12 +150,12 @@ def test_agent_session_analyzer_reports_repeated_search_feedback(
     } == {"warning"}
 
 
-def test_agent_session_analyzer_reports_graph_turbo_seed_plan_feedback(
+def test_agent_session_analyzer_reports_search_flow_path_drift(
     tmp_path: Path,
 ) -> None:
     session_root = tmp_path / "session"
     write_agent_session_from_messages(
-        _graph_turbo_seed_plan_messages(),
+        _gerbil_path_drift_messages(),
         session_root,
         config=_config(session_root),
     )
@@ -155,89 +175,40 @@ def test_agent_session_analyzer_reports_graph_turbo_seed_plan_feedback(
         source_quality_report_path="reports/quality-report.json",
         source_graph_turbo_feedback_path="reports/graph-turbo-feedback.json",
     )
-
-    _validate_schema(
-        "semantic-agent-session-graph-turbo-feedback.v1.schema.json",
-        feedback,
-    )
-    candidate = next(
-        candidate
-        for candidate in feedback["candidates"]
-        if candidate["kind"] == "seed-plan-quality"
-    )
-    assert candidate["packetNodeIds"] == ["owner:src/lib.rs"]
-    assert candidate["expectedChange"] == "query-seed-present"
-    assert "fallbackOwnerSeedCount=1" in candidate["reason"]
-    assert any(
-        point.get("sourceCandidateIds") == [candidate["id"]]
-        for point in improvement["improvementPoints"]
-    )
     algorithm_feedback = build_graph_turbo_algorithm_feedback(
         improvement,
         feedback,
         source_path="reports/improvement-report.json",
     )
-    _validate_schema("semantic-graph-turbo-feedback.v1.schema.json", algorithm_feedback)
-    assert algorithm_feedback["metrics"]["penaltyCount"] >= 1
-    assert any(
-        node["fields"]["reason"] == "seed-plan-quality"
-        for node in algorithm_feedback["graph"]["nodes"]
-    )
-    calibration = build_graph_turbo_calibration_proposal(
-        algorithm_feedback,
-        request_packet=json.loads(_graph_turbo_seed_plan_output()),
-        profile="owner-query",
-    )
-    _validate_schema("semantic-graph-turbo-calibration.v1.schema.json", calibration)
-    assert calibration["packetKind"] == "graph-turbo-calibration"
-    assert calibration["metrics"]["kindDeltaCount"] >= 1
-    assert calibration["metrics"]["relationDeltaCount"] >= 1
 
-    receipt_path = session_root / "receipts" / "agent-session-receipt.json"
-    write_agent_session_receipt(session_root, receipt_path, config=_config(session_root))
-    write_agent_session_analysis(
-        receipt_path,
-        session_root / "reports" / "quality-report.json",
-        session_root / "reports" / "graph-turbo-feedback.json",
-        session_root / "reports" / "improvement-report.json",
-        session_root / "reports" / "algorithm-graph-feedback.json",
-        session_root / "reports" / "algorithm-calibration.json",
+    _validate_schema("semantic-agent-session-quality-report.v1.schema.json", quality)
+    _validate_schema(
+        "semantic-agent-session-graph-turbo-feedback.v1.schema.json",
+        feedback,
     )
-    written_calibration = json.loads(
-        (session_root / "reports" / "algorithm-calibration.json").read_text(
-            encoding="utf-8"
-        )
-    )
-    assert written_calibration["metrics"]["kindDeltaCount"] >= 1
-
-
-def test_agent_session_analyzer_reports_seed_plan_risk_feedback(
-    tmp_path: Path,
-) -> None:
-    session_root = tmp_path / "session"
-    write_agent_session_from_messages(
-        _graph_turbo_seed_plan_risk_messages(),
-        session_root,
-        config=_config(session_root),
-    )
-    receipt = build_agent_session_receipt(session_root)
-    events = _read_jsonl(session_root / "events.jsonl")
-
-    quality = analyze_agent_session_receipt(receipt, events=events)
-    feedback = graph_turbo_feedback_from_analysis(
-        receipt,
-        quality,
-        source_receipt_path="receipts/agent-session-receipt.json",
-        events=events,
-    )
-
-    candidate = next(
+    finding_ids = {finding["id"] for finding in quality["findings"]}
+    candidate_kinds = {candidate["kind"] for candidate in feedback["candidates"]}
+    assert {
+        "search.package-drift",
+        "search.path-intent-lost",
+        "search.finder-path-ignored",
+    } <= finding_ids
+    assert {
+        "search-flow-drift",
+        "path-intent-lost",
+        "finder-path-ignored",
+    } <= candidate_kinds
+    path_candidate = next(
         candidate
         for candidate in feedback["candidates"]
-        if candidate["kind"] == "seed-plan-quality"
+        if candidate["kind"] == "finder-path-ignored"
     )
-    assert candidate["expectedChange"] == "split-query-pack"
-    assert "risk=flat-query,owner-drift" in candidate["reason"]
+    assert path_candidate["matchedSelectors"] == [".data/gerbil-poo/cli.ss"]
+    assert any(
+        node["fields"]["effect"] == "boost"
+        and node["fields"]["selector"] == ".data/gerbil-poo/cli.ss"
+        for node in algorithm_feedback["graph"]["nodes"]
+    )
 
 
 def test_agent_session_turn_details_report_denied_direct_read_and_missing_answer(
@@ -332,6 +303,13 @@ def test_cli_records_and_analyzes_agent_session_from_messages(
     assert (session_root / "reports" / "graph-turbo-feedback.json").is_file()
     assert (session_root / "reports" / "algorithm-graph-feedback.json").is_file()
     assert (session_root / "reports" / "algorithm-calibration.json").is_file()
+    question_plan = json.loads(
+        (session_root / "reports" / "question-improvement-plan.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert question_plan["questions"][0]["question"] == "Explain Tokio IO readiness."
+    assert question_plan["questions"][0]["humanReview"]["required"] is True
 
 
 def _config(session_root: Path) -> AgentSessionConfig:
@@ -410,19 +388,47 @@ def _repeat_search_messages() -> list[dict[str, object]]:
     ]
 
 
-def _graph_turbo_seed_plan_messages() -> list[dict[str, object]]:
+def _gerbil_path_drift_messages() -> list[dict[str, object]]:
     return [
         {
             "type": "AssistantMessage",
             "content": [
                 {
-                    "id": "call_seed",
+                    "text": (
+                        "目标是看 .data/gerbil-poo/cli.ss 的真实 CLI 组织方式。"
+                    )
+                },
+                {
+                    "id": "call_pipe",
                     "name": "Bash",
                     "input": {
                         "command": (
-                            "asp rust search pipe 'tokio readiness' "
-                            "--view graph-turbo-request ."
+                            "asp gerbil-scheme search pipe "
+                            "'gerbil-poo cli.ss command import main' "
+                            "--workspace . --view seeds"
                         ),
+                    },
+                },
+            ],
+        },
+        {
+            "type": "UserMessage",
+            "content": [
+                {
+                    "tool_use_id": "call_pipe",
+                    "content": _gerbil_path_drift_pipe_output(),
+                    "is_error": False,
+                }
+            ],
+        },
+        {
+            "type": "AssistantMessage",
+            "content": [
+                {
+                    "id": "call_fd",
+                    "name": "Bash",
+                    "input": {
+                        "command": "asp fd -query 'cli.ss gerbil-poo' .data --view seeds",
                     },
                 }
             ],
@@ -431,51 +437,15 @@ def _graph_turbo_seed_plan_messages() -> list[dict[str, object]]:
             "type": "UserMessage",
             "content": [
                 {
-                    "tool_use_id": "call_seed",
-                    "content": _graph_turbo_seed_plan_output(),
+                    "tool_use_id": "call_fd",
+                    "content": _gerbil_path_drift_fd_output(),
                     "is_error": False,
                 }
             ],
         },
         {
             "type": "ResultMessage",
-            "result": "Tokio readiness search reached a graph-turbo seed request.",
-            "usage": {"input_tokens": 10, "output_tokens": 5},
-            "total_cost_usd": 0.01,
-        },
-    ]
-
-
-def _graph_turbo_seed_plan_risk_messages() -> list[dict[str, object]]:
-    return [
-        {
-            "type": "AssistantMessage",
-            "content": [
-                {
-                    "id": "call_seed_risk",
-                    "name": "Bash",
-                    "input": {
-                        "command": (
-                            "asp rust search pipe 'cache runtime graph package parser' "
-                            "--view graph-turbo-request ."
-                        ),
-                    },
-                }
-            ],
-        },
-        {
-            "type": "UserMessage",
-            "content": [
-                {
-                    "tool_use_id": "call_seed_risk",
-                    "content": _graph_turbo_seed_plan_risk_output(),
-                    "is_error": False,
-                }
-            ],
-        },
-        {
-            "type": "ResultMessage",
-            "result": "Graph-turbo seed request exposed flat-query risk.",
+            "result": "The search flow found the path drift problem.",
             "usage": {"input_tokens": 10, "output_tokens": 5},
             "total_cost_usd": 0.01,
         },
@@ -518,66 +488,36 @@ def _search_output() -> str:
     )
 
 
-def _graph_turbo_seed_plan_output() -> str:
-    return json.dumps(
-        {
-            "schemaId": "agent.semantic-protocols.semantic-graph-turbo-request",
-            "queryTerms": [],
-            "seedIds": ["owner:src/lib.rs"],
-            "graph": {
-                "nodes": [
-                    {
-                        "id": "owner:src/lib.rs",
-                        "kind": "owner",
-                        "role": "path",
-                        "value": "src/lib.rs",
-                        "locator": "owner:src/lib.rs",
-                    }
-                ],
-                "edges": [],
-            },
-            "seedPlan": {
-                "phase": "seed-query",
-                "algorithm": "asp-search-pipe-v2",
-                "reason": "fallback-owner",
-                "queryPresent": False,
-                "querySeedPresent": False,
-                "candidateCount": 3,
-                "candidateOwnerCount": 1,
-                "fallbackOwnerSeedCount": 1,
-                "selectedSeedCount": 1,
-                "seedIds": ["owner:src/lib.rs"],
-            },
-        }
+def _gerbil_path_drift_pipe_output() -> str:
+    return "\n".join(
+        [
+            "[search-pipe] lang=gerbil-scheme view=seeds",
+            "queryQuality=low reason=package-drift",
+            "risk=package-drift",
+            (
+                "ownerCoverage=bestOwner="
+                "languages/gerbil-scheme-language-project-harness/src/cli.ss "
+                "matched=gerbil,cli,ss missing=poo,data"
+            ),
+            "pathCoverage=matched=- missing=-",
+            "recommendedNext=A1.rg-query",
+            "nextCommand=asp rg -query 'gerbil|poo|cli|ss' .",
+        ]
     )
 
 
-def _graph_turbo_seed_plan_risk_output() -> str:
-    return json.dumps(
-        {
-            "schemaId": "agent.semantic-protocols.semantic-graph-turbo-request",
-            "queryTerms": [
-                "cache",
-                "runtime",
-                "graph",
-                "package",
-                "parser",
-                "owner",
-            ],
-            "seedIds": ["query:cache_runtime_graph_package_parser"],
-            "seedPlan": {
-                "phase": "seed-query",
-                "algorithm": "asp-search-pipe-v2",
-                "reason": "query",
-                "queryPresent": True,
-                "querySeedPresent": True,
-                "candidateCount": 12,
-                "candidateOwnerCount": 5,
-                "fallbackOwnerSeedCount": 0,
-                "selectedSeedCount": 1,
-                "seedIds": ["query:cache_runtime_graph_package_parser"],
-            },
-        }
+def _gerbil_path_drift_fd_output() -> str:
+    return "\n".join(
+        [
+            "[search-fd] view=seeds querySet=2",
+            "queryQuality=medium reason=path-candidate",
+            "ownerCandidates=.data/gerbil-poo/cli.ss",
+            (
+                "nextCommand=asp gerbil-scheme search owner "
+                "languages/gerbil-scheme-language-project-harness/src/parser/brace.ss "
+                "items --query 'main|command' --view seeds ."
+            ),
+        ]
     )
 
 

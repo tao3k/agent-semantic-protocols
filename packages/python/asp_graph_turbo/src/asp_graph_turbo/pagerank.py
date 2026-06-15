@@ -27,6 +27,7 @@ def graph_turbo_typed_personalized_pagerank(
     backend: SparseGraphBackend,
     seed_ids: Iterable[str],
     *,
+    seed_weights: Mapping[str, float] | None = None,
     alpha: float = DEFAULT_PAGERANK_ALPHA,
     max_iter: int = 100,
     tolerance: float = 1e-9,
@@ -35,6 +36,7 @@ def graph_turbo_typed_personalized_pagerank(
         graph_turbo_typed_personalized_pagerank_result(
             backend,
             seed_ids,
+            seed_weights=seed_weights,
             alpha=alpha,
             max_iter=max_iter,
             tolerance=tolerance,
@@ -46,6 +48,7 @@ def graph_turbo_typed_personalized_pagerank_result(
     backend: SparseGraphBackend,
     seed_ids: Iterable[str],
     *,
+    seed_weights: Mapping[str, float] | None = None,
     alpha: float = DEFAULT_PAGERANK_ALPHA,
     max_iter: int = 100,
     tolerance: float = 1e-9,
@@ -53,7 +56,11 @@ def graph_turbo_typed_personalized_pagerank_result(
     node_count = len(backend.node_ids)
     if node_count == 0:
         return GraphTurboPprResult({}, 0, 0.0, 0.0, 0.0)
-    personalization = _personalization_vector(backend, seed_ids)
+    personalization = _personalization_vector(
+        backend,
+        seed_ids,
+        seed_weights=seed_weights,
+    )
     if node_count == 1:
         return GraphTurboPprResult({backend.node_ids[0]: 1.0}, 0, 0.0, 0.0, 1.0)
     dangling = np.asarray(backend.adjacency.sum(axis=1)).ravel() == 0.0
@@ -85,24 +92,46 @@ def graph_turbo_typed_personalized_pagerank_result(
 
 def _seed_indexes(
     backend: SparseGraphBackend, seed_ids: Iterable[str]
-) -> tuple[int, ...]:
+) -> tuple[tuple[str, int], ...]:
     return tuple(
-        backend.index_by_id[node_id]
+        (node_id, backend.index_by_id[node_id])
         for node_id in seed_ids
         if node_id in backend.index_by_id
     )
 
 
 def _personalization_vector(
-    backend: SparseGraphBackend, seed_ids: Iterable[str]
+    backend: SparseGraphBackend,
+    seed_ids: Iterable[str],
+    *,
+    seed_weights: Mapping[str, float] | None = None,
 ) -> np.ndarray:
     node_count = len(backend.node_ids)
     vector = np.zeros(node_count, dtype=float)
-    seed_indexes = _seed_indexes(backend, seed_ids)
-    if seed_indexes:
-        seed_weight = 1.0 / len(seed_indexes)
-        for index in seed_indexes:
-            vector[index] = seed_weight
+    seed_entries = _seed_indexes(backend, seed_ids)
+    if seed_entries:
+        weighted_entries = tuple(
+            (index, _seed_weight(node_id, seed_weights))
+            for node_id, index in seed_entries
+        )
+        total_weight = sum(weight for _, weight in weighted_entries)
+        if total_weight <= 0.0:
+            seed_weight = 1.0 / len(weighted_entries)
+            for index, _ in weighted_entries:
+                vector[index] = seed_weight
+        else:
+            for index, weight in weighted_entries:
+                vector[index] = weight / total_weight
     else:
         vector.fill(1.0 / node_count)
     return vector
+
+
+def _seed_weight(
+    node_id: str,
+    seed_weights: Mapping[str, float] | None,
+) -> float:
+    if seed_weights is None:
+        return 1.0
+    weight = seed_weights.get(node_id, 1.0)
+    return weight if weight > 0.0 else 0.0

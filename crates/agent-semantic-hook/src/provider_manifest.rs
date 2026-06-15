@@ -229,6 +229,10 @@ fn default_provider_binary(project_root: &Path, manifest: &ProviderManifest) -> 
     if is_executable_file(&project_bin) {
         return project_bin.display().to_string();
     }
+    if let Some(workspace_bin) = ancestor_workspace_provider_binary(project_root, &manifest.binary)
+    {
+        return workspace_bin.display().to_string();
+    }
     if let Some(runtime_home) = project_runtime_layout(project_root).runtime_home {
         let managed_bin = runtime_home.join("bin").join(&manifest.binary);
         if is_executable_file(&managed_bin) {
@@ -236,6 +240,13 @@ fn default_provider_binary(project_root: &Path, manifest: &ProviderManifest) -> 
         }
     }
     manifest.binary.clone()
+}
+
+fn ancestor_workspace_provider_binary(project_root: &Path, binary: &str) -> Option<PathBuf> {
+    project_root.ancestors().skip(1).find_map(|ancestor| {
+        let candidate = ancestor.join(".bin").join(binary);
+        (ancestor.join("asp.toml").is_file() && is_executable_file(&candidate)).then_some(candidate)
+    })
 }
 
 fn project_root_relative_binary(project_root: &Path, binary: &str) -> String {

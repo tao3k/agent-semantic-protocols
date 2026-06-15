@@ -24,6 +24,8 @@ pub(super) struct ArtifactEventWriteback<'a> {
     pub(super) artifact_bytes: u64,
     pub(super) command_artifact_id: Option<&'a str>,
     pub(super) command_artifact_bytes: Option<u64>,
+    pub(super) analysis_metadata_artifact_id: Option<&'a str>,
+    pub(super) analysis_metadata_artifact_bytes: Option<u64>,
     pub(super) provider: &'a ResolvedProvider,
     pub(super) project_root: &'a Path,
     pub(super) export_method: &'a CacheExportMethod,
@@ -73,7 +75,11 @@ fn text_artifact_event(
         query: String::new(),
         project_root: normalized_path(input.project_root),
         project_root_arg: ".".to_string(),
-        bytes: 0,
+        bytes: if Some(artifact_id) == input.analysis_metadata_artifact_id {
+            input.analysis_metadata_artifact_bytes.unwrap_or(0)
+        } else {
+            0
+        },
     }
 }
 
@@ -115,6 +121,8 @@ fn packet_or_prompt_artifact_event(
 fn text_artifact_event_kind(artifact_id: &str) -> &'static str {
     if artifact_id.starts_with("search-output/") {
         "search-output"
+    } else if artifact_id.starts_with("analysis-metadata/") {
+        "analysis-metadata"
     } else {
         "prompt-output"
     }
