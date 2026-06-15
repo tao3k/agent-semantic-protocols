@@ -103,6 +103,10 @@ def test_language_release_workflows_are_project_owned_and_publish_assets() -> No
             "            target: aarch64-apple-darwin"
         ) in workflow
 
+        if language_path == "languages/gerbil-scheme-language-project-harness":
+            assert "Build Gerbil" not in workflow
+            assert "gxpkg deps --install" not in workflow
+
 
 def test_asp_rust_ci_checks_out_provider_catalog_submodules() -> None:
     workflow = CI_WORKFLOW.read_text(encoding="utf-8")
