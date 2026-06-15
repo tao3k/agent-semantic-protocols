@@ -8,6 +8,7 @@ JUSTFILE = REPO_ROOT / "Justfile"
 LANGUAGE_RELEASE_WORKFLOWS = {
     "languages/rust-lang-project-harness": {
         "binary": "rs-harness",
+        "darwin_os": "macos-14",
         "targets": {
             "x86_64-unknown-linux-gnu",
             "aarch64-apple-darwin",
@@ -16,6 +17,7 @@ LANGUAGE_RELEASE_WORKFLOWS = {
     },
     "languages/typescript-lang-project-harness": {
         "binary": "ts-harness",
+        "darwin_os": "ubuntu-latest",
         "targets": {
             "x86_64-unknown-linux-gnu",
             "aarch64-apple-darwin",
@@ -23,6 +25,7 @@ LANGUAGE_RELEASE_WORKFLOWS = {
     },
     "languages/python-lang-project-harness": {
         "binary": "py-harness",
+        "darwin_os": "ubuntu-latest",
         "targets": {
             "x86_64-unknown-linux-gnu",
             "aarch64-apple-darwin",
@@ -30,6 +33,7 @@ LANGUAGE_RELEASE_WORKFLOWS = {
     },
     "languages/JuliaLangProjectHarness.jl": {
         "binary": "asp-julia-harness",
+        "darwin_os": "macos-14",
         "targets": {
             "x86_64-unknown-linux-gnu",
             "aarch64-apple-darwin",
@@ -37,6 +41,7 @@ LANGUAGE_RELEASE_WORKFLOWS = {
     },
     "languages/gerbil-scheme-language-project-harness": {
         "binary": "gerbil-scheme-harness",
+        "darwin_os": "ubuntu-latest",
         "targets": {
             "x86_64-unknown-linux-gnu",
             "aarch64-apple-darwin",
@@ -44,6 +49,7 @@ LANGUAGE_RELEASE_WORKFLOWS = {
     },
     "languages/orgize": {
         "binary": "orgize",
+        "darwin_os": "macos-14",
         "targets": {
             "x86_64-unknown-linux-gnu",
             "aarch64-apple-darwin",
@@ -91,6 +97,11 @@ def test_language_release_workflows_are_project_owned_and_publish_assets() -> No
 
         for target in contract["targets"]:
             assert target in workflow, f"{language_path} missing {target}"
+
+        assert (
+            f"- os: {contract['darwin_os']}\n"
+            "            target: aarch64-apple-darwin"
+        ) in workflow
 
 
 def test_asp_rust_ci_checks_out_provider_catalog_submodules() -> None:
