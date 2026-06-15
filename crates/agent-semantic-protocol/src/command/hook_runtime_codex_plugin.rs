@@ -233,7 +233,7 @@ fn remove_toml_sections(existing: &str, sections: &[&str]) -> String {
     for line in existing.lines() {
         let trimmed = line.trim();
         if trimmed.starts_with('[') {
-            skipping = sections.iter().any(|section| trimmed == *section);
+            skipping = sections.contains(&trimmed);
             if skipping {
                 continue;
             }
