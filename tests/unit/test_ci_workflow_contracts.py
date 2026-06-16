@@ -142,7 +142,12 @@ def test_language_evidence_ci_hot_path_stays_core_fast() -> None:
     assert "language-evidence-smoke-core-fast.json" in step
     assert "asp plugin install codex ." in step
     assert "asp hook install --client codex" not in step
+    assert "asp.toml.ci-full-provider" in step
+    assert "[providers.gerbil-scheme]" in step
+    assert "[providers.julia]" in step
+    assert "enabled = false" in step
     assert "asp-julia-harness" not in step
+    assert ".bin/gerbil-scheme-harness" not in step
     assert "agent-tools-install-julia" not in step
 
 

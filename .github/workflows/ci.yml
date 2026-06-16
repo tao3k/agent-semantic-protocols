@@ -266,6 +266,18 @@ jobs:
           chmod 755 .bin/ts-harness
           printf '#!/usr/bin/env bash\nexec uv run --project "%s/languages/python-lang-project-harness" --frozen py-harness "$@"\n' "$PWD" > .bin/py-harness
           chmod 755 .bin/py-harness
+          cp asp.toml asp.toml.ci-full-provider
+          restore_asp_toml() {
+            mv asp.toml.ci-full-provider asp.toml
+          }
+          trap restore_asp_toml EXIT
+          cat > asp.toml <<'EOF'
+          [providers.gerbil-scheme]
+          enabled = false
+
+          [providers.julia]
+          enabled = false
+          EOF
           PATH="$PWD/.bin:$PATH" .bin/asp plugin install codex .
           PATH="$PWD/.bin:$PATH" \
             ASP_LANGUAGE_EVIDENCE_SMOKE_SCOPE=core-fast \
