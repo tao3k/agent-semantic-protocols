@@ -4,7 +4,9 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use agent_semantic_client::{SourceIndexLookupResult, SourceIndexLookupState, lookup_source_index};
+use agent_semantic_client::{
+    SourceIndexLookupResult, SourceIndexLookupState, lookup_source_index_for_language,
+};
 use orgize::document::{
     DocumentElement, DocumentLanguage, DocumentWalkConfig, filter_elements,
     index_project_with_config,
@@ -296,7 +298,8 @@ fn auto_candidates(
     scopes: &[PathBuf],
     config: &AspConfig,
 ) -> Result<CandidateAcquisition, String> {
-    let source_index_acquisition = source_index_candidates(project_root, intent, scopes);
+    let source_index_acquisition =
+        source_index_candidates(language_id, project_root, intent, scopes);
     if let Some(acquisition) = source_index_acquisition
         .as_ref()
         .filter(|acquisition| !acquisition.candidates.is_empty())
@@ -338,6 +341,7 @@ fn auto_candidates(
 }
 
 fn source_index_candidates(
+    language_id: &str,
     project_root: &Path,
     intent: &str,
     scopes: &[PathBuf],
@@ -346,7 +350,12 @@ fn source_index_candidates(
         return None;
     }
     let started_at = Instant::now();
-    match lookup_source_index(project_root, intent, DOCUMENT_PIPE_CANDIDATE_LIMIT as u32) {
+    match lookup_source_index_for_language(
+        project_root,
+        Some(language_id),
+        intent,
+        DOCUMENT_PIPE_CANDIDATE_LIMIT as u32,
+    ) {
         Ok(result) => {
             let candidates = result
                 .candidates

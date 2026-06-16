@@ -33,6 +33,9 @@
     "projectRoot": {
       "$ref": "semantic-source-location.v1.schema.json#/$defs/projectPath"
     },
+    "projectScope": {
+      "$ref": "#/$defs/projectScope"
+    },
     "state": {
       "$ref": "#/$defs/indexState"
     },
@@ -92,6 +95,36 @@
     },
     "projectPath": {
       "$ref": "semantic-source-location.v1.schema.json#/$defs/projectPath"
+    },
+    "projectScope": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "anchorFiles": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/projectPath"
+          }
+        },
+        "projectRoots": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/projectPath"
+          }
+        },
+        "excludedRoots": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/projectPath"
+          }
+        },
+        "externalSourceRequested": {
+          "type": "boolean"
+        }
+      }
     },
     "location": {
       "$ref": "semantic-source-location.v1.schema.json#/$defs/location"

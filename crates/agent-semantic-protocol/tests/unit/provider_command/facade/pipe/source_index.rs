@@ -9,6 +9,11 @@ fn search_pipe_auto_uses_rust_sql_source_index_before_finder() {
     let marker = root.join("provider-called");
     std::fs::create_dir_all(root.join("src")).expect("create src");
     std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"search-pipe-source-index\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+    )
+    .expect("write rust package anchor");
+    std::fs::write(
         root.join("src/lib.rs"),
         "pub fn source_index_fixture() {}\npub fn unrelated() {}\n",
     )

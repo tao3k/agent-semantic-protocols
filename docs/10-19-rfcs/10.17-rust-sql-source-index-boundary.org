@@ -52,6 +52,14 @@ Broad search resolves candidate owners through the Rust SQL source index first.
 Only after Rust chooses an owner set may the CLI invoke language providers for
 bounded semantic fact extraction or owner-local validation.
 
+* Project Scope
+
+The Rust source index covers language project scopes derived from package-management anchor files. Examples include =Cargo.toml= for Rust packages and workspaces, =pyproject.toml= for Python projects, =Project.toml= for Julia packages, =package.json= for TypeScript/JavaScript projects, and =gerbil.pkg= for Gerbil packages.
+
+The cover set is the source and configuration surface owned by those anchored projects. Hidden cache roots such as =.data=, =.codex=, =.devenv=, =.direnv=, =.cache=, VCS metadata, package dependency directories, and build outputs are excluded while discovering anchors and while walking anchored package source directories.
+
+This boundary is part of search quality, not just performance. Agent-facing broad search must not rank vendored Codex source, plugin cache files, or runtime-source mirrors ahead of the active language project unless a future command explicitly requests an external-source scope.
+
 * Missing Index Behavior
 
 A provider command that cannot answer from bounded facts must return an

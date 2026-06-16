@@ -77,6 +77,61 @@ fn source_index_lookup_uses_latest_project_generation() {
     let _ = std::fs::remove_dir_all(root);
 }
 
+#[test]
+fn source_index_lookup_filters_language_scope() {
+    let root = temp_root("source-index-language-scope");
+    let db_path = root.join("client.sqlite3");
+    let mut db = ClientDb::open_or_create(&db_path).expect("open db");
+    let mut source_index = source_index(&root, "source-main-1", "src/lib.ss");
+    source_index.file_hashes.push(ClientCacheFileHash {
+        path: "src/lib.py".to_string(),
+        sha256: "1".repeat(64),
+    });
+    source_index.owners.push(ClientDbSourceIndexOwner {
+        owner_path: ClientDbSourceIndexPath::from("src/lib.py"),
+        language_id: Some(LanguageId::from("python")),
+        provider_id: Some(ProviderId::from("rust-sql")),
+        source_kind: ClientDbSourceIndexSource::from("python-source"),
+        line_count: Some(12),
+        query_keys: vec![ClientDbSourceIndexQueryKey::from("gerbil-poo")],
+    });
+    source_index.selectors.push(ClientDbSourceIndexSelector {
+        owner_path: ClientDbSourceIndexPath::from("src/lib.py"),
+        selector_id: "src/lib.py:1:12".to_string(),
+        symbol: Some("gerbil_poo".to_string()),
+        kind: Some("function".to_string()),
+        start_line: 1,
+        end_line: 12,
+        source: ClientDbSourceIndexSource::from("rust-sql"),
+        query_keys: vec![ClientDbSourceIndexQueryKey::from("gerbil-poo")],
+    });
+
+    db.replace_source_index(&source_index)
+        .expect("replace source index");
+    let gerbil_owners = db
+        .lookup_source_index_owners(&ClientDbSourceIndexLookup {
+            project_root: root.clone(),
+            language_id: Some(LanguageId::from("gerbil-scheme")),
+            query: ClientDbSourceIndexQueryKey::from("gerbil-poo"),
+            limit: 8,
+        })
+        .expect("lookup gerbil owners");
+    let python_owners = db
+        .lookup_source_index_owners(&ClientDbSourceIndexLookup {
+            project_root: root.clone(),
+            language_id: Some(LanguageId::from("python")),
+            query: ClientDbSourceIndexQueryKey::from("gerbil-poo"),
+            limit: 8,
+        })
+        .expect("lookup python owners");
+
+    assert_eq!(gerbil_owners.len(), 1);
+    assert_eq!(gerbil_owners[0].owner_path.as_str(), "src/lib.ss");
+    assert_eq!(python_owners.len(), 1);
+    assert_eq!(python_owners[0].owner_path.as_str(), "src/lib.py");
+    let _ = std::fs::remove_dir_all(root);
+}
+
 fn source_index(
     root: &std::path::Path,
     generation_id: &str,
@@ -118,6 +173,7 @@ fn source_index(
 fn lookup(root: &std::path::Path, query: &str) -> ClientDbSourceIndexLookup {
     ClientDbSourceIndexLookup {
         project_root: root.to_path_buf(),
+        language_id: None,
         query: ClientDbSourceIndexQueryKey::from(query),
         limit: 8,
     }

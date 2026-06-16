@@ -21,7 +21,18 @@ const SOURCE_INDEX_PROVIDER_ID: &str = "rust-sql-source-index";
 const SOURCE_INDEX_QUERY_KEY_LIMIT: usize = 128;
 const SOURCE_INDEX_FILE_LIMIT: usize = 4096;
 const SOURCE_INDEX_FILE_BYTES_LIMIT: u64 = 1_048_576;
+const SOURCE_INDEX_PROJECT_ANCHOR_FILENAMES: &[&str] = &[
+    "Cargo.toml",
+    "pyproject.toml",
+    "package.json",
+    "Project.toml",
+    "gerbil.pkg",
+];
 const SOURCE_INDEX_SKIP_DIRS: &[&str] = &[
+    ".codex",
+    ".data",
+    ".devenv",
+    ".direnv",
     ".git",
     ".cache",
     ".gerbil",
@@ -45,6 +56,22 @@ const SOURCE_INDEX_CONFIG_FILENAMES: &[&str] = &[
     "gerbil.pkg",
     "build.ss",
 ];
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+enum SourceIndexProjectKind {
+    Gerbil,
+    Julia,
+    Python,
+    Rust,
+    TypeScript,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct SourceIndexProjectAnchor {
+    root: PathBuf,
+    manifest_path: PathBuf,
+    kind: SourceIndexProjectKind,
+}
 
 /// Result of refreshing the Rust SQL source index.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -120,6 +147,16 @@ pub fn lookup_source_index(
     query: &str,
     limit: u32,
 ) -> Result<SourceIndexLookupResult, String> {
+    lookup_source_index_for_language(project_root, None, query, limit)
+}
+
+/// Lookup source-index owners from the Rust SQL cache for one language scope.
+pub fn lookup_source_index_for_language(
+    project_root: &Path,
+    language_id: Option<&str>,
+    query: &str,
+    limit: u32,
+) -> Result<SourceIndexLookupResult, String> {
     let cache_root = project_client_cache_dir(project_root)?;
     let db_path = ClientDb::default_path(&cache_root);
     let Some(db) = ClientDb::open_read_only_existing(&db_path)? else {
@@ -146,6 +183,7 @@ pub fn lookup_source_index(
         let remaining = limit.saturating_sub(candidates.len() as u32);
         let owners = db.lookup_source_index_owners(&ClientDbSourceIndexLookup {
             project_root: project_root.to_path_buf(),
+            language_id: language_id.map(LanguageId::from),
             query: ClientDbSourceIndexQueryKey::from(term),
             limit: remaining,
         })?;
@@ -171,17 +209,171 @@ pub fn lookup_source_index(
 }
 
 fn collect_source_index_files(project_root: &Path) -> Result<Vec<PathBuf>, String> {
-    let mut files = Vec::new();
-    collect_source_index_files_in(project_root, project_root, &mut files)?;
-    files.sort();
+    let anchors = discover_source_index_project_anchors(project_root)?;
+    let mut files = BTreeSet::new();
+    for anchor in anchors {
+        if files.len() >= SOURCE_INDEX_FILE_LIMIT {
+            break;
+        }
+        collect_source_index_project_files(project_root, &anchor, &mut files)?;
+    }
+    let mut files: Vec<_> = files.into_iter().collect();
     files.truncate(SOURCE_INDEX_FILE_LIMIT);
     Ok(files)
+}
+
+fn discover_source_index_project_anchors(
+    project_root: &Path,
+) -> Result<Vec<SourceIndexProjectAnchor>, String> {
+    let mut anchors = Vec::new();
+    collect_source_index_project_anchors_in(project_root, project_root, &mut anchors)?;
+    anchors.sort_by(|left, right| {
+        left.root
+            .cmp(&right.root)
+            .then_with(|| left.kind.cmp(&right.kind))
+            .then_with(|| left.manifest_path.cmp(&right.manifest_path))
+    });
+    anchors.dedup_by(|left, right| {
+        left.root == right.root
+            && left.kind == right.kind
+            && left.manifest_path == right.manifest_path
+    });
+    Ok(anchors)
+}
+
+fn collect_source_index_project_anchors_in(
+    project_root: &Path,
+    dir: &Path,
+    anchors: &mut Vec<SourceIndexProjectAnchor>,
+) -> Result<(), String> {
+    if should_skip_source_index_dir(project_root, dir) {
+        return Ok(());
+    }
+    let mut entries = fs::read_dir(dir)
+        .map_err(|error| {
+            format!(
+                "failed to read source index anchor dir {}: {error}",
+                dir.display()
+            )
+        })?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| {
+            format!(
+                "failed to read source index anchor entry under {}: {error}",
+                dir.display()
+            )
+        })?;
+    entries.sort_by_key(|entry| entry.path());
+    for entry in entries {
+        let path = entry.path();
+        let file_type = entry.file_type().map_err(|error| {
+            format!(
+                "failed to inspect source index anchor path {}: {error}",
+                path.display()
+            )
+        })?;
+        if file_type.is_dir() {
+            collect_source_index_project_anchors_in(project_root, &path, anchors)?;
+        } else if file_type.is_file()
+            && let Some(kind) = source_index_project_kind(&path)
+        {
+            anchors.push(SourceIndexProjectAnchor {
+                root: path.parent().unwrap_or(project_root).to_path_buf(),
+                manifest_path: path,
+                kind,
+            });
+        }
+    }
+    Ok(())
+}
+
+fn source_index_project_kind(path: &Path) -> Option<SourceIndexProjectKind> {
+    match path.file_name().and_then(|name| name.to_str()) {
+        Some("Cargo.toml") => Some(SourceIndexProjectKind::Rust),
+        Some("pyproject.toml") => Some(SourceIndexProjectKind::Python),
+        Some("package.json") => Some(SourceIndexProjectKind::TypeScript),
+        Some("Project.toml") => Some(SourceIndexProjectKind::Julia),
+        Some("gerbil.pkg") => Some(SourceIndexProjectKind::Gerbil),
+        _ => None,
+    }
+}
+
+fn collect_source_index_project_files(
+    project_root: &Path,
+    anchor: &SourceIndexProjectAnchor,
+    files: &mut BTreeSet<PathBuf>,
+) -> Result<(), String> {
+    collect_source_index_package_root_files(&anchor.root, files)?;
+    if anchor.kind == SourceIndexProjectKind::Gerbil {
+        collect_source_index_files_in(project_root, &anchor.root, files)?;
+        return Ok(());
+    }
+    for source_dir in source_index_project_source_dirs(anchor.kind) {
+        if files.len() >= SOURCE_INDEX_FILE_LIMIT {
+            break;
+        }
+        let path = anchor.root.join(source_dir);
+        if path.is_dir() {
+            collect_source_index_files_in(project_root, &path, files)?;
+        }
+    }
+    Ok(())
+}
+
+fn collect_source_index_package_root_files(
+    package_root: &Path,
+    files: &mut BTreeSet<PathBuf>,
+) -> Result<(), String> {
+    if files.len() >= SOURCE_INDEX_FILE_LIMIT {
+        return Ok(());
+    }
+    let mut entries = fs::read_dir(package_root)
+        .map_err(|error| {
+            format!(
+                "failed to read source index package root {}: {error}",
+                package_root.display()
+            )
+        })?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| {
+            format!(
+                "failed to read source index package entry under {}: {error}",
+                package_root.display()
+            )
+        })?;
+    entries.sort_by_key(|entry| entry.path());
+    for entry in entries {
+        if files.len() >= SOURCE_INDEX_FILE_LIMIT {
+            break;
+        }
+        let path = entry.path();
+        let file_type = entry.file_type().map_err(|error| {
+            format!(
+                "failed to inspect source index package path {}: {error}",
+                path.display()
+            )
+        })?;
+        if file_type.is_file() && supported_source_index_file(&path) {
+            files.insert(path);
+        }
+    }
+    Ok(())
+}
+
+fn source_index_project_source_dirs(kind: SourceIndexProjectKind) -> &'static [&'static str] {
+    match kind {
+        SourceIndexProjectKind::Rust => &["src", "tests", "benches", "examples"],
+        SourceIndexProjectKind::Python => &["src", "tests", "test", "scripts"],
+        SourceIndexProjectKind::TypeScript => &["src", "tests", "test", "scripts"],
+        SourceIndexProjectKind::Julia => &["src", "test", "docs", "examples"],
+        SourceIndexProjectKind::Gerbil => &[],
+    }
 }
 
 fn collect_source_index_files_in(
     project_root: &Path,
     dir: &Path,
-    files: &mut Vec<PathBuf>,
+    files: &mut BTreeSet<PathBuf>,
 ) -> Result<(), String> {
     if files.len() >= SOURCE_INDEX_FILE_LIMIT || should_skip_source_index_dir(project_root, dir) {
         return Ok(());
@@ -210,7 +402,7 @@ fn collect_source_index_files_in(
         if file_type.is_dir() {
             collect_source_index_files_in(project_root, &path, files)?;
         } else if file_type.is_file() && supported_source_index_file(&path) {
-            files.push(path);
+            files.insert(path);
         }
     }
     Ok(())
@@ -232,7 +424,10 @@ fn supported_source_index_file(path: &Path) -> bool {
         || path
             .file_name()
             .and_then(|name| name.to_str())
-            .is_some_and(|name| SOURCE_INDEX_CONFIG_FILENAMES.contains(&name))
+            .is_some_and(|name| {
+                SOURCE_INDEX_PROJECT_ANCHOR_FILENAMES.contains(&name)
+                    || SOURCE_INDEX_CONFIG_FILENAMES.contains(&name)
+            })
 }
 
 fn source_index_import(

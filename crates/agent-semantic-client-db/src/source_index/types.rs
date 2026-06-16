@@ -102,6 +102,7 @@ pub struct ClientDbSourceIndexStats {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ClientDbSourceIndexLookup {
     pub project_root: PathBuf,
+    pub language_id: Option<LanguageId>,
     pub query: ClientDbSourceIndexQueryKey,
     pub limit: u32,
 }

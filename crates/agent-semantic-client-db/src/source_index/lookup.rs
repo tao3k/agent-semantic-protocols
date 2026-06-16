@@ -39,6 +39,46 @@ pub(super) fn lookup_source_index_owners(
     }
     let project_root = normalized_project_root(&lookup.project_root);
     let like_query = source_index_like_query(lookup.query.as_str());
+    if let Some(language_id) = &lookup.language_id {
+        let mut statement = db
+            .conn
+            .prepare_cached(
+                "SELECT
+                o.owner_path,
+                o.language_id,
+                o.provider_id,
+                o.source_kind,
+                o.line_count,
+                o.query_keys_json
+            FROM source_index_owner o
+            JOIN source_index_generation g ON g.generation_id = o.generation_id
+            WHERE g.project_root = ?1
+              AND g.generation_id = (
+                SELECT latest.generation_id
+                FROM source_index_generation latest
+                WHERE latest.project_root = ?1
+                ORDER BY latest.updated_at DESC, latest.generation_id DESC
+                LIMIT 1
+              )
+              AND o.search_text LIKE ?2 ESCAPE '\\'
+              AND o.language_id = ?3
+            ORDER BY g.updated_at DESC, o.owner_ordinal
+            LIMIT ?4",
+            )
+            .map_err(|error| format!("failed to prepare source owner lookup: {error}"))?;
+        let rows = statement
+            .query_map(
+                params![
+                    project_root,
+                    like_query,
+                    language_id.as_str(),
+                    u32_to_i64(lookup.limit)
+                ],
+                source_owner_from_row,
+            )
+            .map_err(|error| format!("failed to read source owners: {error}"))?;
+        return collect_rows(rows, "source owner");
+    }
     let mut statement = db
         .conn
         .prepare_cached(
