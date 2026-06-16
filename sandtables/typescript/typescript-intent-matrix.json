@@ -57,6 +57,78 @@
         ]
       }
     ],
+    "deepQuestionCases": [
+      {
+        "id": "typescript-program-public-owner-strict",
+        "question": "In the TypeScript compiler, can an agent locate createProgram public owners and the next selector in three ASP commands without running a full-project prime?",
+        "stepIds": [
+          "prime-compiler",
+          "intent-query-set"
+        ],
+        "queryTerms": [
+          "createProgram",
+          "public",
+          "owner"
+        ],
+        "audit": {
+          "maxAspCommands": 3,
+          "maxSearchCommands": 2,
+          "maxQueryCommands": 1,
+          "maxRepeatedCommands": 0,
+          "requiresGraphSignals": true,
+          "requiresQuerySet": true,
+          "requiresHookEvents": true,
+          "requiresTokenCost": true
+        },
+        "expectedAspFlow": {
+          "requiredStages": [
+            "search-prime",
+            "search-pipe",
+            "query-selector"
+          ],
+          "forbiddenStages": [
+            "repeated-prime",
+            "repeated-commands",
+            "read-loop-risk"
+          ]
+        }
+      },
+      {
+        "id": "typescript-module-resolution-deep-owner-flow",
+        "question": "In the TypeScript compiler, how should an agent trace module resolution from project references through resolveModuleName owners and tests before proposing a behavior change?",
+        "stepIds": [
+          "prime-compiler",
+          "intent-query-set"
+        ],
+        "queryTerms": [
+          "projectReferences",
+          "resolveModuleName",
+          "tests"
+        ],
+        "audit": {
+          "maxAspCommands": 8,
+          "maxSearchCommands": 4,
+          "maxQueryCommands": 4,
+          "maxRepeatedCommands": 0,
+          "requiresGraphSignals": true,
+          "requiresQuerySet": true,
+          "requiresHookEvents": true,
+          "requiresComplexPipeFlow": true
+        },
+        "expectedAspFlow": {
+          "requiredStages": [
+            "search-prime",
+            "search-pipe",
+            "query-selector"
+          ],
+          "forbiddenStages": [
+            "repeated-prime",
+            "repeated-commands",
+            "direct-read"
+          ]
+        }
+      }
+    ],
     "findings": [
       {
         "kind": "scoped-prime-required",

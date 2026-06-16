@@ -60,7 +60,10 @@ def _render_text(report: Mapping[str, object]) -> str:
             f"scoreDeltaL1={comparison.get('scoreDeltaL1')},"
             f"readMemoryDelta={comparison.get('readMemorySuppressedDelta')},"
             f"receiptBoostDelta={comparison.get('receiptBoostDelta')},"
-            f"transitionNnzDelta={comparison.get('transitionNonZeroDelta')}"
+            f"transitionNnzDelta={comparison.get('transitionNonZeroDelta')},"
+            f"querySeedDelta={comparison.get('querySeedPriorCountDelta')},"
+            f"queryPackageDelta={comparison.get('queryPackageCohesionCountDelta')},"
+            f"queryClauseDelta={comparison.get('queryClauseCoverageCountDelta')}"
         )
     return output
 

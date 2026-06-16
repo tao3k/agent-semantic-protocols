@@ -177,6 +177,21 @@ search packet family with =method=search/fzf-toc= and =view=fzf-toc=.  A
 trailing positional =toc= may select the same view for shell-friendly command
 composition, but =--view toc= is the canonical spelling.
 
+Document facades also support the ASP-owned =search pipe= chain.  =asp org
+search pipe <question> --view seeds= and =asp md search pipe <question> --view
+seeds= must not be forwarded to the document-native search view parser as
+=view=pipe=.  The pipe chain uses parser-owned document elements as its first
+candidate source, then projects those element hits into the shared
+graph/frontier surface.  Candidate rows may come from headings, paragraphs,
+properties, blocks, lists, tasks, links, images, or Markdown structural nodes,
+and the next read action for document text is always =asp org|md query
+--selector <path:line-end> --content=.  =--view graph-turbo-request= emits the
+same graph request boundary used by source-language pipe, with action frontier
+typed facts carrying =capabilityId=query= and =projection=content= rather than
+materialized shell =command=/=argv= fields.  Document-native
+=search toc= and =search fzf ... --view toc= remain separate outline surfaces
+and must not be swallowed by the pipe chain.
+
 Document query no-hit metadata/frontier output is still a protocol surface.  A
 query with =hit=0= must not stop at a count-only receipt.  It must state that
 combined terms/kinds/fields are an intersection, then return bounded next
@@ -1911,3 +1926,30 @@ the concrete provider method space, =languageId= identifies the source
 language, =providerId= identifies the implementation, and =binary= names the
 executable.  Agent clients should route by registry identity and method, not by
 hard-coded platform-specific argument structs.
+** Search pipe first-stage action ordering
+=search pipe <question> --view seeds= is the source-language agent frontier for deep natural-language questions. Its =recommendedNext= must be selected from query quality and owner/package evidence, not only from graph rank. When package cohesion is low, a finder preview that already names package-local owners should promote =owner-items= before a global =rg-query-set= refinement. Exact =fd-query= remains first when it contains a strong API or owner symbol and there is no reliable owner preview. Best-owner tie breaks must be deterministic so the header, graph request, and materialized next command agree.
+When =search owner <owner> items --query <terms> --view seeds= cannot produce parser item matches, it must still emit a typed recovery frontier. The no-hit output should keep =reason=no-owner-item-match= and add =recommendedNext=scoped-rg-query= plus a materialized =asp rg -query <terms> <owner>= command scoped to that owner. A no-hit owner query is a narrowing failure, not a terminal failure or permission to repeat broad workspace search.
+
+Low-cohesion =fdPreview= is allowed to promote =owner-items= ahead of query-pack
+refinement only when the preview is backed by strong owner-seed evidence from the
+current query result. A preview produced by a single project/package-level symbol
+is treated as weak owner evidence; in that case the first-stage action compiler
+must let best-owner coverage or split query-pack evidence participate before it
+materializes an owner-items command. This rule is evidence-derived: it uses
+query-pack quality, package cohesion, owner-seed count, and strong coverage. It
+must not inspect or special-case library names.
+** Evidence-derived term classification
+ASP clients and shared search surfaces must not maintain fixed vocabularies of "generic", "important", or "ecosystem" symbols such as API, SDK, CLI, UI, HTTP, Tokio, Playwright, Vite, Effect, or package-specific API names to suppress or promote query terms. These labels are searchable project facts, not protocol constants.
+
+Term classification must be derived from the current command's evidence:
+
+- query parsing decides whether a token is a symbol, concept, context term, path term, or package axis
+- parser/provider facts decide whether a token has declaration, owner, type-surface, semantic-handle, or dependency evidence
+- finder facts decide whether a token has path, owner-preview, or scoped-content evidence
+- analyzer/history facts may explain repeated failure patterns, but they must not change agent-facing ranking through hidden vocabulary shortcuts
+
+A fixed term list may exist only as test input or documentation example. It must not be a runtime rule used by =search pipe=, graph-turbo seed selection, =fd-query= construction, owner selection, or no-hit recovery. When a domain label appears useful, the correct optimization path is to make the provider expose it as a parser-owned handle, package fact, dependency fact, type surface, or finder candidate, then let graph-turbo rank that evidence.
+
+Owner selection may use structural path-role evidence, but only when the evidence is language-neutral and query-conditioned. For example, owners under structural test, unittest, spec, fixture, baseline, case, template, example, sample, demo, or benchmark paths may be ranked below source owners when the query does not strongly ask for those artifact roles. A mixed implementation query that merely mentions tests should still prefer source owners for the primary =owner-items= action; explicit multi-token artifact intent such as =tests cases= or =template example= keeps those owners eligible. This is not an ecosystem symbol rule: it does not name Tokio, Playwright, TypeScript, Vite, package APIs, or project-specific symbols, and it must be visible in shared search behavior rather than hidden in a provider-private shortcut.
+
+Low-cohesion fallback owner-items should also be query-axis aware. When the chosen fallback owner covers fewer than half of the query terms that would be sent to =owner-items=, the first action should stay with query-pack refinement instead of producing a likely partial selector. Strong artifact-role queries keep their artifact owner exception; otherwise this gate prefers a slower but clearer refinement step over a misleading executable selector.

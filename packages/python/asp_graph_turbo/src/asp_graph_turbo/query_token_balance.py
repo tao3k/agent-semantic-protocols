@@ -8,9 +8,14 @@ from collections.abc import Mapping
 from typing import Any
 
 from .model import Node, TypedGraph
+from .query_token_priority import (
+    QUERY_TOKEN_UNCOVERED_BONUS,
+    exact_query_tokens_for_node,
+    query_token_balance_weights,
+)
 from .selector import graph_turbo_selector_for_node as selector_for_node
 
-QUERY_TOKEN_UNCOVERED_BONUS = 0.22
+QUERY_TOKEN_COMPOUND_MATCH_RATIO = 0.25
 _TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9_]*")
 
 
@@ -36,12 +41,26 @@ def query_token_balance_bonus(
     node: Node,
     query_tokens: tuple[str, ...],
     covered_query_tokens: set[str],
+    *,
+    token_weights: Mapping[str, float] | None = None,
 ) -> float:
     if not query_tokens or node.kind == "query":
         return 0.0
-    matched = query_tokens_for_node(node, query_tokens)
-    uncovered_count = sum(1 for token in matched if token not in covered_query_tokens)
-    return uncovered_count * QUERY_TOKEN_UNCOVERED_BONUS
+    weights = token_weights or query_token_balance_weights(query_tokens)
+    exact_matched = exact_query_tokens_for_node(node, query_tokens)
+    broad_matched = query_tokens_for_node(node, query_tokens)
+    bonus = sum(
+        weights.get(token, QUERY_TOKEN_UNCOVERED_BONUS)
+        for token in exact_matched
+        if token not in covered_query_tokens
+    )
+    bonus += sum(
+        weights.get(token, QUERY_TOKEN_UNCOVERED_BONUS)
+        * QUERY_TOKEN_COMPOUND_MATCH_RATIO
+        for token in broad_matched
+        if token not in exact_matched and token not in covered_query_tokens
+    )
+    return bonus
 
 
 def query_tokens_for_node(
@@ -62,6 +81,8 @@ def repair_query_token_coverage(
     scores: Mapping[str, float],
     query_tokens: tuple[str, ...],
     coverage_limit: int,
+    *,
+    token_weights: Mapping[str, float] | None = None,
 ) -> list[Node]:
     if not query_tokens or not ranked or coverage_limit <= 0:
         return ranked
@@ -79,6 +100,7 @@ def repair_query_token_coverage(
             token,
             selected_ids,
             selected_selectors,
+            token_weights=token_weights,
         )
         if candidate is None:
             continue
@@ -98,7 +120,7 @@ def _missing_query_tokens(
     covered = set()
     for node in nodes:
         covered.update(
-            query_tokens_for_node(node, query_tokens, include_query_node=False)
+            exact_query_tokens_for_node(node, query_tokens, include_query_node=False)
         )
     return tuple(token for token in query_tokens if token not in covered)
 
@@ -109,23 +131,40 @@ def _best_remaining_token_candidate(
     token: str,
     selected_ids: set[str],
     selected_selectors: set[str],
+    *,
+    token_weights: Mapping[str, float] | None = None,
 ) -> Node | None:
     candidates = [
         node
         for node in remaining
         if node.id not in selected_ids
         and node.kind != "query"
-        and token in query_tokens_for_node(node, (token,))
+        and token in exact_query_tokens_for_node(node, (token,))
         and (
             selector_for_node(node) is None
             or selector_for_node(node) not in selected_selectors
         )
     ]
     if not candidates:
+        candidates = [
+            node
+            for node in remaining
+            if node.id not in selected_ids
+            and node.kind != "query"
+            and token in query_tokens_for_node(node, (token,))
+            and (
+                selector_for_node(node) is None
+                or selector_for_node(node) not in selected_selectors
+            )
+        ]
+    if not candidates:
         return None
+    weights = token_weights or query_token_balance_weights((token,))
     return max(
         candidates,
         key=lambda node: (
+            weights.get(token, QUERY_TOKEN_UNCOVERED_BONUS),
+            token in exact_query_tokens_for_node(node, (token,)),
             scores.get(node.id, 0.0),
             _source_preferred_node(node),
             node.kind,
@@ -145,14 +184,14 @@ def _query_token_replacement_index(
     coverage_counts: Counter[str] = Counter()
     for node in ranked[:upper]:
         coverage_counts.update(
-            query_tokens_for_node(node, query_tokens, include_query_node=False)
+            exact_query_tokens_for_node(node, query_tokens, include_query_node=False)
         )
     protected_prefix = 1
     for index in range(upper - 1, protected_prefix - 1, -1):
         node = ranked[index]
         if node.kind == "query":
             continue
-        node_tokens = query_tokens_for_node(
+        node_tokens = exact_query_tokens_for_node(
             node,
             query_tokens,
             include_query_node=False,

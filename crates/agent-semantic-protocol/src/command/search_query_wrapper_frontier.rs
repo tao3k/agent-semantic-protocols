@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 use super::search_pipe_action_frontier::{ActionNode, ActionRoute, render_action_rows};
 use super::search_pipe_model::Candidate;
+use super::search_pipe_owner_roles::{has_strong_secondary_owner_intent, secondary_like_owner};
 use super::search_query_wrapper_candidates::{owner_candidates, rg_scope_next};
 use super::search_query_wrapper_model::{QueryWrapperSurface, display_terms, shell_arg};
 
@@ -31,7 +32,7 @@ pub(super) fn print_query_wrapper_refinement_frontier(
     terms: &[String],
     candidates: &[Candidate],
 ) {
-    let fd_query = terms.join("|");
+    let fd_query = fd_query_for_surface(surface, queries, terms);
     let multi_clause_queries = multi_clause_queries(queries, terms);
     let evidence = evidence_preview(candidates);
     let owner = owner_candidates(candidates)
@@ -99,7 +100,7 @@ fn query_wrapper_action_nodes(
     terms: &[String],
     candidates: &[Candidate],
 ) -> Vec<ActionNode> {
-    let fd_query = terms.join("|");
+    let fd_query = fd_query_for_surface(surface, queries, terms);
     let multi_clause_queries = multi_clause_queries(queries, terms);
     let scope_label = scope_label(scopes);
     let command_scope = scope_args_for_command(scopes);
@@ -129,23 +130,10 @@ fn query_wrapper_action_nodes(
                     command_scope,
                 },
             };
-            if queries.len() > 1 {
-                vec![
-                    ActionNode {
-                        id: "A1".to_string(),
-                        ..rg_action
-                    },
-                    ActionNode {
-                        id: "A2".to_string(),
-                        ..fd_action
-                    },
-                ]
-            } else {
-                vec![fd_action, rg_action]
-            }
+            vec![fd_action, rg_action]
         }
         QueryWrapperSurface::Fd => {
-            if let Some(owner) = exact_owner_candidate(candidates)
+            if let Some(owner) = owner_items_candidate(candidates, terms)
                 && let Some(language_id) = language_id_for_owner(&owner)
             {
                 return vec![
@@ -195,14 +183,24 @@ fn query_wrapper_action_nodes(
     }
 }
 
-fn exact_owner_candidate(candidates: &[Candidate]) -> Option<String> {
+fn owner_items_candidate(candidates: &[Candidate], terms: &[String]) -> Option<String> {
     candidates
         .iter()
-        .find(|candidate| {
-            matches!(candidate.confidence.as_str(), "path-exact" | "path")
-                && language_id_for_owner(&candidate.path).is_some()
-        })
+        .find(|candidate| owner_items_candidate_is_strong(candidate, terms))
         .map(|candidate| candidate.path.clone())
+}
+
+fn owner_items_candidate_is_strong(candidate: &Candidate, terms: &[String]) -> bool {
+    if language_id_for_owner(&candidate.path).is_none() {
+        return false;
+    }
+    if matches!(candidate.confidence.as_str(), "path-exact" | "path") {
+        return true;
+    }
+    candidate.source == "fd-query"
+        && candidate.confidence == "likely"
+        && (!secondary_like_owner(&candidate.path)
+            || has_strong_secondary_owner_intent(terms.iter().map(String::as_str)))
 }
 
 fn language_id_for_owner(owner: &str) -> Option<&'static str> {
@@ -247,13 +245,48 @@ fn query_wrapper_empty_next_command(
             command_scope
         ),
         QueryWrapperSurface::Rg => {
-            format!(
-                "asp fd -query {} {}",
-                shell_arg(&terms.join("|")),
-                command_scope
-            )
+            let fd_query = fd_query_for_surface(surface, queries, terms);
+            format!("asp fd -query {} {}", shell_arg(&fd_query), command_scope)
         }
     }
+}
+
+fn fd_query_for_surface(
+    surface: QueryWrapperSurface,
+    queries: &[String],
+    terms: &[String],
+) -> String {
+    match surface {
+        QueryWrapperSurface::Rg => {
+            let raw_terms = raw_query_terms(queries);
+            if raw_terms.is_empty() {
+                terms.join("|")
+            } else {
+                raw_terms.join("|")
+            }
+        }
+        QueryWrapperSurface::Fd => terms.join("|"),
+    }
+}
+
+fn raw_query_terms(queries: &[String]) -> Vec<String> {
+    let mut raw_terms = Vec::new();
+    for query in queries {
+        for term in query.split(|character: char| {
+            character == '|' || character == ',' || character.is_whitespace()
+        }) {
+            let term = term.trim();
+            if term.is_empty()
+                || raw_terms
+                    .iter()
+                    .any(|seen: &String| seen.eq_ignore_ascii_case(term))
+            {
+                continue;
+            }
+            raw_terms.push(term.to_string());
+        }
+    }
+    raw_terms
 }
 
 fn multi_clause_queries(queries: &[String], terms: &[String]) -> Vec<String> {

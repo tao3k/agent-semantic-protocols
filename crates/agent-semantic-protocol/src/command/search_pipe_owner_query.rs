@@ -1,5 +1,6 @@
 //! Owner-local query-set frontier rendering.
 
+use std::cmp::Reverse;
 use std::fmt::Write;
 use std::fs;
 use std::path::Path;
@@ -77,6 +78,13 @@ aliases: graph:{G=search,Q=query,T=test,O=owner,I=item}\n",
         frontier.join(",")
     );
     if item_matches.is_empty() {
+        let _ = writeln!(rendered, "recommendedNext=scoped-rg-query");
+        let _ = writeln!(
+            rendered,
+            "nextCommand=asp rg -query {} {}",
+            shell_arg(query),
+            shell_arg(&display_owner),
+        );
         rendered.push_str("reason=no-owner-item-match\n");
     } else if let Some(item_match) = item_matches.first() {
         let selector = format!("{display_owner}:{}:{}", item_match.start, item_match.end);
@@ -89,6 +97,24 @@ aliases: graph:{G=search,Q=query,T=test,O=owner,I=item}\n",
     }
     rendered.push_str("entries=owner-query(O,Q=>items+tests+dependency-usage)\n");
     rendered
+}
+
+fn shell_arg(value: &str) -> String {
+    if value
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '/' | '.' | '_' | '-' | ':'))
+    {
+        value.to_string()
+    } else {
+        shell_quote(value)
+    }
+}
+
+fn shell_quote(value: &str) -> String {
+    if value.is_empty() {
+        return "''".to_string();
+    }
+    format!("'{}'", value.replace('\'', "'\\''"))
 }
 
 fn owner_query_tree_sitter_pattern(language_id: &str, kind: &str, query: &str) -> Option<String> {
@@ -164,6 +190,7 @@ struct OwnerQueryMatch {
     kind: &'static str,
     term: String,
     match_rank: u8,
+    axis_coverage: usize,
 }
 
 fn find_owner_query_matches(language_id: &str, path: &Path, query: &str) -> Vec<OwnerQueryMatch> {
@@ -204,16 +231,24 @@ fn find_owner_query_matches(language_id: &str, path: &Path, query: &str) -> Vec<
                 continue;
             }
             let start = index + 1;
+            let end = rust_block_end(path, &lines, index)
+                .or_else(|| python_block_end(path, &lines, index))
+                .or_else(|| typescript_block_end(path, &lines, index))
+                .or_else(|| scheme_block_end(path, &lines, index))
+                .unwrap_or(start + 1);
             matches.push(OwnerQueryMatch {
                 start,
-                end: rust_block_end(path, &lines, index)
-                    .or_else(|| python_block_end(path, &lines, index))
-                    .or_else(|| typescript_block_end(path, &lines, index))
-                    .or_else(|| scheme_block_end(path, &lines, index))
-                    .unwrap_or(start + 1),
+                end,
                 kind,
                 term: term_display.clone(),
                 match_rank,
+                axis_coverage: selector_axis_coverage(
+                    &lines,
+                    start,
+                    end,
+                    &terms,
+                    symbol.as_deref(),
+                ),
             });
             if matches.len() >= 8 {
                 sort_owner_query_matches(&mut matches);
@@ -233,12 +268,37 @@ fn find_owner_query_matches(language_id: &str, path: &Path, query: &str) -> Vec<
 fn sort_owner_query_matches(matches: &mut [OwnerQueryMatch]) {
     matches.sort_by_key(|item| {
         (
+            Reverse(item.axis_coverage),
             item.match_rank,
-            item.end.saturating_sub(item.start),
             item_kind_priority(item.kind),
+            item.end.saturating_sub(item.start),
             item.start,
         )
     });
+}
+
+fn selector_axis_coverage(
+    lines: &[&[u8]],
+    start: usize,
+    end: usize,
+    terms: &[QueryTerm],
+    symbol: Option<&str>,
+) -> usize {
+    let mut evidence = String::new();
+    if let Some(symbol) = symbol {
+        evidence.push_str(&symbol.to_lowercase());
+        evidence.push('\n');
+    }
+    let start_index = start.saturating_sub(1);
+    let end_index = end.min(lines.len());
+    for line in &lines[start_index..end_index] {
+        evidence.push_str(&byte_text::lowercase_lossy_string(line));
+        evidence.push('\n');
+    }
+    terms
+        .iter()
+        .filter(|term| evidence.contains(&term.lower))
+        .count()
 }
 
 fn item_kind_priority(kind: &str) -> u8 {
@@ -274,6 +334,7 @@ fn config_owner_query_match(
             kind: "config",
             term: filename.to_string(),
             match_rank: 0,
+            axis_coverage: selector_axis_coverage(lines, 1, 1, terms, Some(filename)),
         });
     }
     for (index, line) in lines.iter().enumerate() {
@@ -285,6 +346,7 @@ fn config_owner_query_match(
                 kind: "config",
                 term: term.display.clone(),
                 match_rank: 1,
+                axis_coverage: selector_axis_coverage(lines, index + 1, index + 1, terms, None),
             });
         }
     }
@@ -307,6 +369,7 @@ fn item_kind_for_line(path: &Path, line: &[u8]) -> Option<&'static str> {
 fn item_symbol_for_line(path: &Path, line: &[u8]) -> Option<String> {
     match path.extension().and_then(|extension| extension.to_str()) {
         Some("ss" | "ssi" | "scm" | "sld") => scheme_item_symbol_for_line(line),
+        Some("rs" | "ts" | "tsx" | "js" | "jsx" | "mts" | "cts" | "mjs" | "cjs") => None,
         _ => None,
     }
 }

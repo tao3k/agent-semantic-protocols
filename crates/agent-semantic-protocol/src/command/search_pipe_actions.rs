@@ -8,6 +8,9 @@ use serde_json::{Value, json};
 use super::search_pipe_action_frontier::{ActionNode, ActionRoute, render_action_rows};
 use super::search_pipe_action_model::PipeAction;
 use super::search_pipe_model::Candidate;
+use super::search_pipe_owner_roles::{
+    suppress_low_cohesion_secondary_owner, suppress_low_cohesion_weak_axis_owner,
+};
 use super::search_pipe_quality::SearchPipeQuality;
 use super::search_pipe_seed_decision::SeedActionIntent;
 use super::search_query_wrapper_model::FdQueryPreview;
@@ -188,6 +191,21 @@ fn delegation_hints(quality: &SearchPipeQuality, actions: &[ActionNode]) -> Vec<
 
 fn action_nodes(request: &SearchPipeActionRequest<'_>, scope_arg: &str) -> Vec<ActionNode> {
     let mut actions = Vec::new();
+    let prefer_owner_scope_first = request.quality.package_cohesion == "low"
+        && (request.quality.fd_query.is_none() || request.fd_preview.is_some());
+    let mut pushed_preferred_owner_items = false;
+    if prefer_owner_scope_first
+        && let Some(handle) = preferred_owner_items_handle(request)
+        && let Some((owner, query)) = handle.split_once(':')
+    {
+        actions.push(owner_items_action(
+            request.language_id,
+            scope_arg,
+            owner,
+            query,
+        ));
+        pushed_preferred_owner_items = true;
+    }
     if let Some(queries) = query_pack_queries(request) {
         actions.push(ActionNode {
             id: String::new(),
@@ -207,18 +225,14 @@ fn action_nodes(request: &SearchPipeActionRequest<'_>, scope_arg: &str) -> Vec<A
     }
     if let Some(handle) = preview_owner_items_handle(request.quality, request.fd_preview)
         && let Some((owner, query)) = handle.split_once(':')
+        && !pushed_preferred_owner_items
     {
-        actions.push(ActionNode {
-            id: String::new(),
-            kind: "owner-items".to_string(),
-            suffix: "owner-items".to_string(),
-            route: ActionRoute::OwnerItems {
-                language_id: request.language_id.to_string(),
-                owner: owner.to_string(),
-                query: query.to_string(),
-                scope: scope_arg.to_string(),
-            },
-        });
+        actions.push(owner_items_action(
+            request.language_id,
+            scope_arg,
+            owner,
+            query,
+        ));
     }
     if request.fd_preview.is_none()
         && let Some(fd_query) = &request.quality.fd_query
@@ -249,18 +263,14 @@ fn action_nodes(request: &SearchPipeActionRequest<'_>, scope_arg: &str) -> Vec<A
     if request.fd_preview.is_none()
         && let Some(handle) = owner_items_handle(request.quality, request.candidates)
         && let Some((owner, query)) = handle.split_once(':')
+        && !pushed_preferred_owner_items
     {
-        actions.push(ActionNode {
-            id: String::new(),
-            kind: "owner-items".to_string(),
-            suffix: "owner-items".to_string(),
-            route: ActionRoute::OwnerItems {
-                language_id: request.language_id.to_string(),
-                owner: owner.to_string(),
-                query: query.to_string(),
-                scope: scope_arg.to_string(),
-            },
-        });
+        actions.push(owner_items_action(
+            request.language_id,
+            scope_arg,
+            owner,
+            query,
+        ));
     }
     if let Some(handle) = tree_sitter_action_handle(request.quality, request.ranked_compact) {
         let recipe = handle_field(&handle, "recipe").map(str::to_string);
@@ -303,15 +313,35 @@ fn action_nodes(request: &SearchPipeActionRequest<'_>, scope_arg: &str) -> Vec<A
         .collect()
 }
 
+fn preferred_owner_items_handle(request: &SearchPipeActionRequest<'_>) -> Option<String> {
+    preview_owner_items_handle(request.quality, request.fd_preview).or_else(|| {
+        (!suppress_low_cohesion_secondary_owner(request.quality, request.fd_preview))
+            .then(|| owner_items_handle(request.quality, request.candidates))
+            .flatten()
+    })
+}
+
+fn owner_items_action(language_id: &str, scope_arg: &str, owner: &str, query: &str) -> ActionNode {
+    ActionNode {
+        id: String::new(),
+        kind: "owner-items".to_string(),
+        suffix: "owner-items".to_string(),
+        route: ActionRoute::OwnerItems {
+            language_id: language_id.to_string(),
+            owner: owner.to_string(),
+            query: query.to_string(),
+            scope: scope_arg.to_string(),
+        },
+    }
+}
+
 fn query_pack_queries(request: &SearchPipeActionRequest<'_>) -> Option<Vec<String>> {
     let has_split = request
         .seed_action_intents
-        .iter()
-        .any(|intent| *intent == SeedActionIntent::SplitQueryPack);
+        .contains(&SeedActionIntent::SplitQueryPack);
     let has_narrow_owner_scope = request
         .seed_action_intents
-        .iter()
-        .any(|intent| *intent == SeedActionIntent::NarrowOwnerScope);
+        .contains(&SeedActionIntent::NarrowOwnerScope);
     if !has_split || !has_narrow_owner_scope {
         return None;
     }
@@ -402,7 +432,11 @@ fn owner_items_handle(quality: &SearchPipeQuality, candidates: &[Candidate]) -> 
             .filter(|candidate| candidate.path == owner)
             .map(|candidate| candidate.symbol.clone()),
     );
-    let query = unique_terms_without_weak_natural(query_terms, 6)?.join("|");
+    let query_terms = unique_terms_without_weak_natural(query_terms, 6)?;
+    if suppress_low_cohesion_weak_axis_owner(quality, &query_terms) {
+        return None;
+    }
+    let query = query_terms.join("|");
     Some(format!("{owner}:{query}"))
 }
 
@@ -410,12 +444,39 @@ fn preview_owner_items_handle(
     quality: &SearchPipeQuality,
     preview: Option<&FdQueryPreview>,
 ) -> Option<String> {
-    let owner = preview?.owner_candidates.first()?;
+    let preview = preview?;
+    if quality.package_cohesion == "low" && strong_owner_seed_count(quality) < 2 {
+        return None;
+    }
+    let owner = quality
+        .best_owner
+        .as_ref()
+        .map(|coverage| coverage.owner.as_str())
+        .filter(|owner| {
+            preview
+                .owner_candidates
+                .iter()
+                .any(|candidate| candidate == owner)
+        })
+        .or_else(|| preview.owner_candidates.first().map(String::as_str))?;
     let mut query_terms = Vec::new();
     query_terms.extend(quality.concept_terms.iter().cloned());
     query_terms.extend(quality.owner_seed_terms.iter().cloned());
     let query = unique_terms_without_weak_natural(query_terms, 6)?.join("|");
     Some(format!("{owner}:{query}"))
+}
+
+fn strong_owner_seed_count(quality: &SearchPipeQuality) -> usize {
+    quality
+        .owner_seed_terms
+        .iter()
+        .filter(|term| {
+            quality
+                .strong_matched
+                .iter()
+                .any(|matched| matched == *term)
+        })
+        .count()
 }
 
 fn tree_sitter_action_handle(quality: &SearchPipeQuality, compact: Option<&str>) -> Option<String> {

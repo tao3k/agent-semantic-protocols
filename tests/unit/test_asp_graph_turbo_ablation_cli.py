@@ -37,6 +37,9 @@ def test_graph_turbo_ablation_cli_generates_packet_variants(tmp_path) -> None:
     assert payload["packetKind"] == "graph-turbo-ablation-set"
     assert set(variants) == {
         "full",
+        "no-package-cohesion",
+        "no-query-clause-coverage",
+        "no-query-seed-prior",
         "no-provider-facts",
         "no-quality-fields",
         "no-read-memory",
@@ -55,6 +58,15 @@ def test_graph_turbo_ablation_cli_generates_packet_variants(tmp_path) -> None:
     flat_match = variants["relation-weight-flat"]["graph"]["edges"][0]
     assert flat_match["relation"] == "matches"
     assert flat_match["weight"] == 1.0 / 1.5
+    assert variants["no-query-seed-prior"]["queryAdjustmentPolicy"] == {
+        "seedPrior": False
+    }
+    assert variants["no-package-cohesion"]["queryAdjustmentPolicy"] == {
+        "packageCohesion": False
+    }
+    assert variants["no-query-clause-coverage"]["queryAdjustmentPolicy"] == {
+        "queryClauseCoverage": False
+    }
 
 
 def test_graph_turbo_ablation_cli_can_emit_one_variant_as_text(tmp_path) -> None:

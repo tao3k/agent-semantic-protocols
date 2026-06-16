@@ -1,0 +1,254 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-sandtable-large-library-report-chain.v1.schema.json",
+  "title": "Semantic Sandtable Large Library Report Chain",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "packetKind",
+    "languages",
+    "rollup",
+    "optimizationBatch",
+    "optimizationMatrix",
+    "findings",
+    "optimizationGate"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.semantic-sandtable-large-library-report-chain"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "packetKind": {
+      "const": "large-library-report-chain"
+    },
+    "languages": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/languageEntry"
+      }
+    },
+    "rollup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "languageCount",
+        "scenarioCount",
+        "libraryCount",
+        "deepQuestionCount",
+        "readyLanguageCount",
+        "optimizationRunCount",
+        "optimizationVariantRunCount",
+        "findingCount"
+      ],
+      "properties": {
+        "languageCount": {"type": "integer", "minimum": 0},
+        "scenarioCount": {"type": "integer", "minimum": 0},
+        "libraryCount": {"type": "integer", "minimum": 0},
+        "deepQuestionCount": {"type": "integer", "minimum": 0},
+        "readyLanguageCount": {"type": "integer", "minimum": 0},
+        "optimizationRunCount": {"type": "integer", "minimum": 0},
+        "optimizationVariantRunCount": {"type": "integer", "minimum": 0},
+        "findingCount": {"type": "integer", "minimum": 0}
+      }
+    },
+    "optimizationBatch": {
+      "$ref": "#/$defs/optimizationBatch"
+    },
+    "optimizationMatrix": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/optimizationRun"
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/finding"
+      }
+    },
+    "optimizationGate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "reason", "blockingFindingCount"],
+      "properties": {
+        "status": {"enum": ["pass", "review"]},
+        "reason": {"type": "string", "minLength": 1},
+        "blockingFindingCount": {"type": "integer", "minimum": 0}
+      }
+    }
+  },
+  "$defs": {
+    "languageEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "language",
+        "scenarioCount",
+        "libraryCount",
+        "libraries",
+        "deepQuestionCount",
+        "liveDeepQuestionCount",
+        "depthBucketCounts",
+        "requiredSignalCounts",
+        "findings",
+        "reportChainReady"
+      ],
+      "properties": {
+        "language": {"type": "string", "minLength": 1},
+        "scenarioCount": {"type": "integer", "minimum": 0},
+        "libraryCount": {"type": "integer", "minimum": 0},
+        "libraries": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1}
+        },
+        "deepQuestionCount": {"type": "integer", "minimum": 0},
+        "liveDeepQuestionCount": {"type": "integer", "minimum": 0},
+        "depthBucketCounts": {
+          "type": "object",
+          "additionalProperties": {"type": "integer", "minimum": 0}
+        },
+        "requiredSignalCounts": {
+          "type": "object",
+          "additionalProperties": {"type": "integer", "minimum": 0}
+        },
+        "findings": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/finding"}
+        },
+        "reportChainReady": {"type": "boolean"}
+      }
+    },
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["language", "kind", "severity", "message"],
+      "properties": {
+        "language": {"type": "string", "minLength": 1},
+        "kind": {"type": "string", "minLength": 1},
+        "severity": {"enum": ["info", "warning", "error"]},
+        "message": {"type": "string", "minLength": 1}
+      }
+    },
+    "optimizationBatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "targetGraphPhase",
+        "nextStage",
+        "readyToCollectReceipts",
+        "runCount",
+        "ablationVariantCount",
+        "variantRunCount",
+        "ablationVariants",
+        "aggregationAxes",
+        "requiredReceiptMetrics",
+        "requiredAnswerMetrics"
+      ],
+      "properties": {
+        "targetGraphPhase": {"const": "query-first-stage"},
+        "nextStage": {"const": "collect-receipts"},
+        "readyToCollectReceipts": {"type": "boolean"},
+        "runCount": {"type": "integer", "minimum": 0},
+        "ablationVariantCount": {"type": "integer", "minimum": 0},
+        "variantRunCount": {"type": "integer", "minimum": 0},
+        "ablationVariants": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "no-query-seed-prior",
+              "no-package-cohesion",
+              "no-query-clause-coverage"
+            ]
+          }
+        },
+        "aggregationAxes": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "language",
+              "package",
+              "depthBucket",
+              "ablationVariant"
+            ]
+          }
+        },
+        "requiredReceiptMetrics": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1}
+        },
+        "requiredAnswerMetrics": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "optimizationRun": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runId",
+        "language",
+        "scenarioId",
+        "scenarioPath",
+        "package",
+        "repository",
+        "questionId",
+        "depthBucket",
+        "fixtureTier",
+        "live",
+        "promptOnly",
+        "maxAspCommands",
+        "requiredSignals",
+        "requiredStages",
+        "targetGraphPhase",
+        "ablationVariants"
+      ],
+      "properties": {
+        "runId": {"type": "string", "minLength": 1},
+        "language": {"type": "string", "minLength": 1},
+        "scenarioId": {"type": "string", "minLength": 1},
+        "scenarioPath": {"type": "string", "minLength": 1},
+        "package": {"type": "string", "minLength": 1},
+        "repository": {"type": "string", "minLength": 1},
+        "questionId": {"type": "string", "minLength": 1},
+        "depthBucket": {"enum": ["strict", "medium", "deep"]},
+        "fixtureTier": {"type": "string", "minLength": 1},
+        "live": {"type": "boolean"},
+        "promptOnly": {"type": "boolean"},
+        "maxAspCommands": {"type": "integer", "minimum": 1},
+        "requiredSignals": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "requiresQuerySet",
+              "requiresGraphSignals",
+              "requiresHookEvents",
+              "requiresComplexPipeFlow",
+              "requiresTokenCost"
+            ]
+          }
+        },
+        "requiredStages": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1}
+        },
+        "targetGraphPhase": {"const": "query-first-stage"},
+        "ablationVariants": {
+          "type": "array",
+          "minItems": 3,
+          "items": {
+            "enum": [
+              "no-query-seed-prior",
+              "no-package-cohesion",
+              "no-query-clause-coverage"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

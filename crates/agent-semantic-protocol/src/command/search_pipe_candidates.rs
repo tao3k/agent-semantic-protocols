@@ -137,6 +137,7 @@ fn parse_ingest_candidate_line(
         symbol: symbol_from_text(&display),
         path: display,
         line: 1,
+        end_line: 1,
         text: String::new(),
         source: "ingest".to_string(),
         confidence: "likely".to_string(),
@@ -168,6 +169,7 @@ fn parse_line_candidate(
     Some(Candidate {
         path: display_path(locator_root, &absolute),
         line: line_number,
+        end_line: line_number,
         symbol: symbol_from_bytes(text),
         text: byte_text::lossy_string(text),
         source: "ingest".to_string(),
@@ -262,6 +264,7 @@ impl CandidateCollector<'_> {
         let candidate = Candidate {
             path: display.clone(),
             line: 1,
+            end_line: 1,
             symbol: self.terms[term_index].clone(),
             text: display,
             source: "finder-path".to_string(),
@@ -301,6 +304,7 @@ impl CandidateCollector<'_> {
             Candidate {
                 path: display_path(self.locator_root, path),
                 line: line_number,
+                end_line: line_number,
                 symbol: self.terms[term_index].clone(),
                 text: byte_text::lossy_string(line),
                 source: "finder".to_string(),

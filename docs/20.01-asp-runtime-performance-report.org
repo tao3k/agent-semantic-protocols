@@ -1,0 +1,118 @@
+#+TITLE: ASP Runtime Performance Report
+#+DATE: 2026-06-15
+
+* Goal
+
+ASP agent-facing search and query commands must stay in runtime-scale latency:
+
+- Rust, TypeScript, and Python facade hot paths: under 1 second after one warmup.
+- Julia native search/query paths: under 3 seconds, with a target of 2 seconds.
+- Millisecond-level hot paths should avoid unnecessary process startup, runtime setup,
+  cache probing, manifest parsing, and filesystem walks.
+
+* Current Evidence
+
+The new focused performance gate is:
+
+#+begin_src sh
+direnv exec . cargo test -p agent-semantic-protocol \
+  language_facade_regular_commands_finish_inside_performance_gate -- --nocapture
+#+end_src
+
+It uses a fixed fake-provider fixture and measures warmed facade dispatch for
+Rust, TypeScript, and Python. Each measured command must complete under 1 second.
+
+Observed during development:
+
+- Rust/TypeScript/Python fake-provider facade hot paths pass the 1 second gate.
+- Julia =search prime= and owner-style =query= currently bypass fake provider and
+  use ASP-owned native discovery. On a tiny fixture these paths were observed at
+  roughly 6-14 seconds, so Julia needs a separate native-path optimization lane.
+- Full =cargo test -p agent-semantic-protocol= is not a reliable performance gate:
+  many tests run concurrently, and existing 250ms hook performance smoke tests
+  can fail from unrelated suite load.
+
+* Rust And Dependency Opportunities
+
+** Lazy process-local state
+
+Rust's standard library provides =OnceLock= and =LazyLock= for process-local lazy
+initialization:
+
+- =OnceLock= is useful when initialization needs runtime inputs.
+- =LazyLock= is useful for static lazy values that do not require external inputs.
+
+Official references:
+
+- https://doc.rust-lang.org/std/sync/struct.OnceLock.html
+- https://doc.rust-lang.org/std/sync/struct.LazyLock.html
+
+ASP should use these for immutable provider manifests, search language specs,
+compiled static regex-like catalogs, and command-surface tables that are now
+rebuilt per invocation or per request.
+
+** Tokio runtime configuration
+
+Tokio's runtime builder supports scheduler tuning such as =global_queue_interval=
+and, on current Tokio, =disable_lifo_slot=. These are useful only for resident or
+long-lived async runtimes. For short-lived CLI commands, the larger win is to avoid
+starting Tokio when the command only needs synchronous process execution.
+
+Official references:
+
+- https://docs.rs/tokio/latest/tokio/runtime/struct.Builder.html
+- https://docs.rs/tokio/latest/tokio/process/struct.Command.html
+
+Tokio process handles also continue running after drop unless explicitly killed
+or configured with =kill_on_drop=. ASP provider execution should keep process
+timeouts and cancellation explicit at the transport boundary, not hidden in
+callers.
+
+** Finder and filesystem walking
+
+ASP uses =ignore= in protocol search surfaces. For millisecond runtime:
+
+- Reuse path ignore configuration across one command.
+- Avoid walking source trees for command shapes that already have an exact owner,
+  selector, or provider prefix.
+- Keep =fd=/=rg= wrapper output compact on no-hit paths.
+
+* Optimization Plan
+
+** Immediate
+
+1. Keep the new focused facade performance gate and run it as a dedicated CI step,
+   not only inside the full parallel protocol suite.
+2. Add a Julia-specific performance gate with a 3 second ceiling and isolate the
+   slow native path.
+3. Replace repeated immutable construction with =OnceLock=/=LazyLock= where the
+   owner boundary is already static.
+
+** Near-term hot path work
+
+1. Profile Julia =search prime= and =query owner-items= in tiny fixtures.
+2. Short-circuit Julia tiny-project prime without graph-turbo/finder expansion when
+   only =Project.toml= is present.
+3. Reuse activation/provider manifest resolution for repeated facade dispatch in a
+   single command.
+4. Keep provider transport synchronous for short fake-provider and native provider
+   calls unless async cancellation is required.
+
+** CI policy
+
+Performance tests should be deterministic and scoped:
+
+- Run focused gates by exact test name or a dedicated CI job.
+- Do not judge sub-second gates from full parallel suites.
+- Record command, language, fixture size, warmup count, measured elapsed, and limit.
+
+* First Implemented Gate
+
+Implemented in:
+
+- =crates/agent-semantic-protocol/tests/unit/provider_command/facade/performance.rs=
+- mounted from =crates/agent-semantic-protocol/tests/unit/provider_command/facade/mod.rs=
+
+The gate currently covers Rust, TypeScript, and Python fake-provider facade
+dispatch. Julia is intentionally excluded until its native ASP-owned path is
+optimized below the agreed 3 second ceiling.

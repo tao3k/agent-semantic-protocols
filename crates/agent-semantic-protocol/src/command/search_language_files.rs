@@ -53,6 +53,14 @@ pub(super) fn language_file_spec(language_id: &str) -> LanguageFileSpec {
             extensions: &["ss", "ssi", "scm", "sld"],
             config_filenames: &["gerbil.pkg", "build.ss"],
         },
+        "org" => LanguageFileSpec {
+            extensions: &["org", "org_archive"],
+            config_filenames: &[],
+        },
+        "md" => LanguageFileSpec {
+            extensions: &["md", "markdown"],
+            config_filenames: &[],
+        },
         _ => LanguageFileSpec {
             extensions: &[],
             config_filenames: &[],

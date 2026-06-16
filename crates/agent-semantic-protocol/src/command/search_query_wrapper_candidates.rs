@@ -1,5 +1,6 @@
 //! Candidate collection and finder previews for query wrappers.
 
+use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -9,6 +10,7 @@ use serde_json::Value;
 use super::search_config::AspConfig;
 use super::search_pipe_model::Candidate;
 use super::search_pipe_native_finder::{NativeFinderSurface, collect_native_finder_candidates};
+use super::search_pipe_owner_roles::{has_strong_secondary_owner_intent, secondary_like_owner};
 use super::search_query_wrapper_model::{FdQueryPreview, QueryWrapperClause, QueryWrapperSurface};
 
 const QUERY_CANDIDATE_LIMIT: usize = 256;
@@ -125,6 +127,7 @@ pub(super) fn collect_query_candidate_collection(
         QueryWrapperSurface::Fd => NativeFinderSurface::Path,
         QueryWrapperSurface::Rg => NativeFinderSurface::Content,
     };
+    let axis_terms = query_axis_terms(clauses);
     if let Some(mut collection) = collect_native_finder_candidates(
         native_surface,
         infer_language_id(project_root),
@@ -138,9 +141,19 @@ pub(super) fn collect_query_candidate_collection(
     {
         collection
             .candidates
-            .sort_by_key(|candidate| query_candidate_priority(&candidate.path, terms));
-        let candidates = cohesive_query_candidates(collection.candidates, clauses);
-        let trace_fields = collection.provenance.trace_fields(candidates.len());
+            .sort_by_key(|candidate| query_candidate_priority(&candidate.path, terms, &axis_terms));
+        let mut candidates = cohesive_query_candidates(collection.candidates, clauses);
+        let package_path_augmented_count =
+            augment_package_path_candidates(&display_root, &roots, terms, config, &mut candidates)?;
+        candidates
+            .sort_by_key(|candidate| query_candidate_priority(&candidate.path, terms, &axis_terms));
+        let mut trace_fields = collection.provenance.trace_fields(candidates.len());
+        if package_path_augmented_count > 0 {
+            trace_fields.insert(
+                "packagePathAugmented".to_string(),
+                Value::from(package_path_augmented_count),
+            );
+        }
         return Ok(QueryCandidateCollection {
             candidates,
             trace_fields,
@@ -148,36 +161,63 @@ pub(super) fn collect_query_candidate_collection(
     }
     let mut candidates = Vec::new();
     let mut seen = HashSet::new();
-    for root in roots {
+    for root in &roots {
         if candidates.len() >= QUERY_CANDIDATE_LIMIT {
             break;
         }
-        append_query_candidates(
+        append_query_candidates(QueryCandidateAppend {
             surface,
-            &display_root,
-            &root,
+            locator_root: &display_root,
+            path: root,
             terms,
+            axis_terms: &axis_terms,
             config,
-            &mut seen,
-            &mut candidates,
-        )?;
+            seen: &mut seen,
+            candidates: &mut candidates,
+        })?;
     }
-    candidates.sort_by_key(|candidate| query_candidate_priority(&candidate.path, terms));
+    candidates
+        .sort_by_key(|candidate| query_candidate_priority(&candidate.path, terms, &axis_terms));
+    let mut candidates = cohesive_query_candidates(candidates, clauses);
+    let package_path_augmented_count =
+        augment_package_path_candidates(&display_root, &roots, terms, config, &mut candidates)?;
+    candidates
+        .sort_by_key(|candidate| query_candidate_priority(&candidate.path, terms, &axis_terms));
+    let mut trace_fields = BTreeMap::new();
+    if package_path_augmented_count > 0 {
+        trace_fields.insert(
+            "packagePathAugmented".to_string(),
+            Value::from(package_path_augmented_count),
+        );
+    }
     Ok(QueryCandidateCollection {
-        candidates: cohesive_query_candidates(candidates, clauses),
-        trace_fields: BTreeMap::new(),
+        candidates,
+        trace_fields,
     })
 }
 
-fn append_query_candidates(
+struct QueryCandidateAppend<'a> {
     surface: QueryWrapperSurface,
-    locator_root: &Path,
-    path: &Path,
-    terms: &[String],
-    config: &AspConfig,
-    seen: &mut HashSet<String>,
-    candidates: &mut Vec<Candidate>,
-) -> Result<(), String> {
+    locator_root: &'a Path,
+    path: &'a Path,
+    terms: &'a [String],
+    axis_terms: &'a [String],
+    config: &'a AspConfig,
+    seen: &'a mut HashSet<String>,
+    candidates: &'a mut Vec<Candidate>,
+}
+
+fn append_query_candidates(input: QueryCandidateAppend<'_>) -> Result<(), String> {
+    let QueryCandidateAppend {
+        surface,
+        locator_root,
+        path,
+        terms,
+        axis_terms,
+        config,
+        seen,
+        candidates,
+    } = input;
     if candidates.len() >= QUERY_CANDIDATE_LIMIT || !path.exists() {
         return Ok(());
     }
@@ -205,7 +245,7 @@ fn append_query_candidates(
                 path.display()
             )
         })?;
-    entries.sort_by_key(|entry| path_priority(&entry.path(), terms));
+    entries.sort_by_key(|entry| path_priority(&entry.path(), terms, axis_terms));
     for entry in entries {
         if candidates.len() >= QUERY_CANDIDATE_LIMIT {
             break;
@@ -221,20 +261,68 @@ fn append_query_candidates(
             if should_skip_dir(&path, config) {
                 continue;
             }
-            append_query_candidates(
+            append_query_candidates(QueryCandidateAppend {
                 surface,
                 locator_root,
-                &path,
+                path: &path,
                 terms,
+                axis_terms,
                 config,
                 seen,
                 candidates,
-            )?;
+            })?;
         } else if file_type.is_file() {
             append_file_query_candidates(surface, locator_root, &path, terms, seen, candidates);
         }
     }
     Ok(())
+}
+
+fn augment_package_path_candidates(
+    locator_root: &Path,
+    roots: &[PathBuf],
+    terms: &[String],
+    config: &AspConfig,
+    candidates: &mut Vec<Candidate>,
+) -> Result<usize, String> {
+    let package_terms = terms
+        .iter()
+        .filter(|term| term.contains('_'))
+        .cloned()
+        .collect::<Vec<_>>();
+    if package_terms.is_empty() {
+        return Ok(0);
+    }
+    let mut package_candidates = Vec::new();
+    let mut seen = HashSet::new();
+    for root in roots {
+        append_query_candidates(QueryCandidateAppend {
+            surface: QueryWrapperSurface::Fd,
+            locator_root,
+            path: root,
+            terms: &package_terms,
+            axis_terms: &package_terms,
+            config,
+            seen: &mut seen,
+            candidates: &mut package_candidates,
+        })?;
+    }
+    let mut existing = candidates
+        .iter()
+        .map(|candidate| (candidate.path.clone(), candidate.symbol.clone()))
+        .collect::<HashSet<_>>();
+    let mut added = 0usize;
+    for candidate in package_candidates {
+        if existing.insert((candidate.path.clone(), candidate.symbol.clone())) {
+            candidates.push(Candidate {
+                source: "package-path-query".to_string(),
+                confidence: "package-path".to_string(),
+                ..candidate
+            });
+            added += 1;
+        }
+    }
+    Ok(added)
 }
 
 fn append_file_query_candidates(
@@ -287,6 +375,7 @@ fn append_path_candidate(
     candidates.push(Candidate {
         path: display.clone(),
         line: 1,
+        end_line: 1,
         symbol: term.clone(),
         text: display,
         source: "fd-query".to_string(),
@@ -324,6 +413,7 @@ fn append_content_candidates(
         candidates.push(Candidate {
             path: display,
             line: line_number,
+            end_line: line_number,
             symbol: term.clone(),
             text: line.to_string(),
             source: "rg-query".to_string(),
@@ -342,6 +432,7 @@ pub(super) fn query_clauses(queries: &[String]) -> Vec<QueryWrapperClause> {
                 id: index + 1,
                 raw: raw.clone(),
                 terms,
+                axis_terms: query_axis_terms_for_raw(raw),
             })
         })
         .collect()
@@ -441,6 +532,71 @@ fn query_terms(query: &str) -> Vec<String> {
         .collect()
 }
 
+fn query_axis_terms(clauses: &[QueryWrapperClause]) -> Vec<String> {
+    let mut seen = BTreeSet::new();
+    clauses
+        .iter()
+        .flat_map(|clause| clause.axis_terms.iter().cloned())
+        .filter(|term| seen.insert(term.clone()))
+        .collect()
+}
+
+fn query_axis_terms_for_raw(raw: &str) -> Vec<String> {
+    let mut seen = BTreeSet::new();
+    raw.split(|character: char| character == '|' || character == ',' || character.is_whitespace())
+        .map(str::trim)
+        .filter(|term| !term.is_empty())
+        .flat_map(expanded_query_terms)
+        .filter(|term| seen.insert(term.clone()))
+        .collect()
+}
+
+fn expanded_query_terms(raw: &str) -> Vec<String> {
+    let normalized = raw.to_ascii_lowercase();
+    let normalized_filter = normalized.clone();
+    std::iter::once(normalized)
+        .chain(
+            identifier_components(raw)
+                .into_iter()
+                .filter(move |component| component.len() >= 2 && component != &normalized_filter),
+        )
+        .collect()
+}
+
+fn identifier_components(raw: &str) -> Vec<String> {
+    let chars = raw.chars().collect::<Vec<_>>();
+    let mut components = Vec::new();
+    let mut current = String::new();
+    for (index, character) in chars.iter().enumerate() {
+        if !character.is_alphanumeric() {
+            push_component(&mut components, &mut current);
+            continue;
+        }
+        let previous = index
+            .checked_sub(1)
+            .and_then(|previous| chars.get(previous));
+        let next = chars.get(index + 1);
+        let uppercase_boundary = character.is_uppercase()
+            && previous.is_some_and(|previous| {
+                previous.is_lowercase()
+                    || previous.is_ascii_digit()
+                    || (previous.is_uppercase() && next.is_some_and(|next| next.is_lowercase()))
+            });
+        if uppercase_boundary {
+            push_component(&mut components, &mut current);
+        }
+        current.push(character.to_ascii_lowercase());
+    }
+    push_component(&mut components, &mut current);
+    components
+}
+
+fn push_component(components: &mut Vec<String>, current: &mut String) {
+    if !current.is_empty() {
+        components.push(std::mem::take(current));
+    }
+}
+
 pub(super) fn owner_candidates(candidates: &[Candidate]) -> Vec<String> {
     unique_take(candidates.iter().map(|candidate| candidate.path.clone()), 8)
 }
@@ -509,9 +665,15 @@ pub(super) fn absolute_scope(root: &Path, scope: &Path) -> PathBuf {
     }
 }
 
-fn path_priority(path: &Path, terms: &[String]) -> (u8, u8, String) {
+fn path_priority(
+    path: &Path,
+    terms: &[String],
+    axis_terms: &[String],
+) -> (u8, Reverse<usize>, u8, u8, String) {
     let display = path.to_string_lossy().replace('\\', "/");
     let lower = display.to_ascii_lowercase();
+    let secondary_priority = secondary_owner_priority(&lower, terms);
+    let axis_coverage = query_axis_coverage(&lower, axis_terms);
     let query_priority = if terms.iter().any(|term| path_basename_matches(&lower, term)) {
         0
     } else if terms.iter().any(|term| lower.contains(term)) {
@@ -526,7 +688,13 @@ fn path_priority(path: &Path, terms: &[String]) -> (u8, u8, String) {
     } else {
         1
     };
-    (query_priority, layout_priority, display)
+    (
+        secondary_priority,
+        Reverse(axis_coverage),
+        query_priority,
+        layout_priority,
+        display,
+    )
 }
 
 fn path_basename_matches(lower_path: &str, term: &str) -> bool {
@@ -552,8 +720,14 @@ fn path_basename_matches(lower_path: &str, term: &str) -> bool {
         .unwrap_or(false)
 }
 
-fn query_candidate_priority(path: &str, terms: &[String]) -> (u8, u8, String) {
+fn query_candidate_priority(
+    path: &str,
+    terms: &[String],
+    axis_terms: &[String],
+) -> (u8, Reverse<usize>, u8, u8, u8, String) {
     let lower = path.to_ascii_lowercase();
+    let secondary_priority = secondary_owner_priority(&lower, terms);
+    let axis_coverage = query_axis_coverage(&lower, axis_terms);
     let query_priority = if terms.iter().any(|term| path_basename_matches(&lower, term)) {
         0
     } else if terms.iter().any(|term| lower.contains(term)) {
@@ -562,7 +736,39 @@ fn query_candidate_priority(path: &str, terms: &[String]) -> (u8, u8, String) {
         2
     };
     let owner_priority = if lower.contains("/internal/") { 1 } else { 0 };
-    (query_priority, owner_priority, lower)
+    let runtime_priority = if lower.contains("/src/") || lower.starts_with("src/") {
+        0
+    } else if lower.contains("/tests/")
+        || lower.starts_with("tests/")
+        || lower.contains("/test/")
+        || lower.contains("/examples/")
+    {
+        2
+    } else {
+        1
+    };
+    (
+        secondary_priority,
+        Reverse(axis_coverage),
+        query_priority,
+        runtime_priority,
+        owner_priority,
+        lower,
+    )
+}
+
+fn query_axis_coverage(lower_path: &str, terms: &[String]) -> usize {
+    terms
+        .iter()
+        .filter(|term| lower_path.contains(term.as_str()))
+        .count()
+}
+
+fn secondary_owner_priority(lower_path: &str, terms: &[String]) -> u8 {
+    if has_strong_secondary_owner_intent(terms.iter().map(String::as_str)) {
+        return 0;
+    }
+    u8::from(secondary_like_owner(lower_path))
 }
 
 fn should_skip_dir(path: &Path, config: &AspConfig) -> bool {

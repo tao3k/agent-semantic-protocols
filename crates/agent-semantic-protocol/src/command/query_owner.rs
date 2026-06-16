@@ -31,12 +31,14 @@ pub(super) fn run_asp_fast_owner_query_command(
         .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
     let items = if language_id == "rust" {
         if path.extension().and_then(|extension| extension.to_str()) != Some("rs") {
-            return Ok(false);
+            render_non_source_owner_query(&request, &path, project_root, locator_root, &source)?;
+            return Ok(true);
         }
         collect_syn_rust_owner_items(&source, &path)?
     } else {
         let Some(items) = collect_tree_sitter_owner_items(language_id, &source, &path)? else {
-            return Ok(false);
+            render_non_source_owner_query(&request, &path, project_root, locator_root, &source)?;
+            return Ok(true);
         };
         items
     };
@@ -649,6 +651,27 @@ fn render_locator_matches(
     io::stdout()
         .write_all(rendered.as_bytes())
         .map_err(|error| format!("failed to write owner query stdout: {error}"))
+}
+
+fn render_non_source_owner_query(
+    request: &OwnerQueryRequest,
+    path: &Path,
+    project_root: &Path,
+    locator_root: &Path,
+    source: &str,
+) -> Result<(), String> {
+    if request.code {
+        render_code_matches(source, &[])
+    } else {
+        render_locator_matches(
+            request,
+            path,
+            project_root,
+            locator_root,
+            source.lines().count(),
+            &[],
+        )
+    }
 }
 
 fn select_line_range(source: &str, start: usize, end: usize) -> String {

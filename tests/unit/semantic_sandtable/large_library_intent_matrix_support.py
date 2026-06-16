@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import unittest
 from pathlib import Path
 from typing import Any
 
@@ -118,9 +119,16 @@ def _assert_prime_steps_include_entries_and_status(
             raise AssertionError(
                 f"{path}: {step_id} prime --view seeds step must enable lineProtocol compact graph validation"
             )
-        if not any(item.startswith("entries=") for item in stdout_contains):
+        has_entries = any(item.startswith("entries=") for item in stdout_contains)
+        has_budgeted_prime_frontier = (
+            "alg=budgeted-prime-frontier-v1" in stdout_contains
+            and "|decision purpose=decision-primer" in stdout_contains
+            and "omit=items,blocks,code,full-test-list" in stdout_contains
+            and "avoid=raw-read" in stdout_contains
+        )
+        if not has_entries and not has_budgeted_prime_frontier:
             raise AssertionError(
-                f"{path}: {step_id} prime --view seeds step must assert compact graph entries"
+                f"{path}: {step_id} prime --view seeds step must assert compact graph entries or budgeted prime frontier controls"
             )
         known_profile_names = {
             "owner-query",

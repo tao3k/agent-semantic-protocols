@@ -1,0 +1,301 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-graph-turbo-adaptive-simulation-report.v1.schema.json",
+  "title": "Semantic Graph Turbo Adaptive Simulation Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "protocolId",
+    "protocolVersion",
+    "packetKind",
+    "targetGraphPhase",
+    "summary",
+    "variantSummaries",
+    "algorithmImprovementPlan",
+    "ownerItemsRecoveryCases",
+    "selectorQualityCases",
+    "questionPlanAggregatePath",
+    "validationReportPath",
+    "runReports"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.semantic-graph-turbo-adaptive-simulation-report"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "protocolId": {
+      "const": "agent.semantic-protocols.semantic-language"
+    },
+    "protocolVersion": {
+      "const": "1"
+    },
+    "packetKind": {
+      "const": "graph-turbo-adaptive-simulation-report"
+    },
+    "targetGraphPhase": {
+      "const": "query-first-stage"
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "runCount",
+        "statusCounts",
+        "languageCounts",
+        "variantCounts",
+        "queryQualityCounts",
+        "packageCohesionCounts",
+      "recommendedNextCounts",
+      "thirdStepActionCounts",
+      "ownerItemsRecoveryCounts",
+      "ownerItemsTransitionCounts",
+      "selectorQualityCounts",
+      "finalStepActionCounts",
+      "finalRecommendedNextCounts",
+      "finalOwnerItemsRecoveryCounts",
+      "finalOwnerItemsTransitionCounts",
+      "finalSelectorQualityCounts",
+      "recoveryProbeActionCounts",
+      "recoveryProbeOwnerItemsRecoveryCounts",
+      "recoveryProbeOwnerItemsTransitionCounts",
+      "recoveryProbeSelectorQualityCounts",
+      "totalCommandCount",
+      "totalElapsedMs",
+        "totalStdoutBytes"
+      ]
+    },
+    "variantSummaries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    },
+    "algorithmImprovementPlan": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "targetGraphPhase",
+          "evidenceRunCount",
+          "recommendedAction"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "targetGraphPhase": {
+            "const": "query-first-stage"
+          },
+          "evidenceRunCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "recommendedAction": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "ownerItemsRecoveryCases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "runId",
+          "scenarioId",
+          "questionId",
+          "language",
+          "ablationVariant",
+          "projectName",
+          "recovery",
+          "owner",
+          "query",
+          "reason",
+          "nextCommand"
+        ],
+        "properties": {
+          "runId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "scenarioId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "questionId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "language": {
+            "type": "string",
+            "minLength": 1
+          },
+          "ablationVariant": {
+            "type": "string",
+            "minLength": 1
+          },
+          "projectName": {
+            "type": "string",
+            "minLength": 1
+          },
+          "recovery": {
+            "enum": [
+              "selector-ready",
+              "scoped-rg-query",
+              "no-hit-unscoped",
+              "owner-items-unknown"
+            ]
+          },
+          "owner": {
+            "type": "string",
+            "minLength": 1
+          },
+          "query": {
+            "type": "string",
+            "minLength": 1
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          },
+          "nextCommand": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "selectorQualityCases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "runId",
+          "scenarioId",
+          "questionId",
+          "language",
+          "ablationVariant",
+          "projectName",
+          "selectorQuality",
+          "owner",
+          "query",
+          "selector",
+          "matchedQueryTerms",
+          "missingQueryTerms",
+          "reason",
+          "nextCommand"
+        ],
+        "properties": {
+          "runId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "scenarioId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "questionId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "language": {
+            "type": "string",
+            "minLength": 1
+          },
+          "ablationVariant": {
+            "type": "string",
+            "minLength": 1
+          },
+          "projectName": {
+            "type": "string",
+            "minLength": 1
+          },
+          "selectorQuality": {
+            "enum": [
+              "source-selector",
+              "secondary-artifact-selector",
+              "partial-query-axis-selector",
+              "weak-query-axis-selector"
+            ]
+          },
+          "owner": {
+            "type": "string",
+            "minLength": 1
+          },
+          "query": {
+            "type": "string",
+            "minLength": 1
+          },
+          "selector": {
+            "type": "string",
+            "minLength": 1
+          },
+          "matchedQueryTerms": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "missingQueryTerms": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          },
+          "nextCommand": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "questionPlanAggregatePath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "validationReportPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "runReports": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "runId",
+          "scenarioId",
+          "questionId",
+          "ablationVariant",
+          "language",
+          "status",
+          "commandCount",
+          "elapsedMs",
+        "stdoutBytes",
+      "pipeSignals",
+      "thirdStepSignals",
+      "finalStepSignals",
+      "recoveryProbeSignals",
+      "commands"
+    ]
+  }
+    }
+  }
+}

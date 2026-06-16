@@ -118,6 +118,13 @@ class AlgorithmMetrics:
     read_loop_duplicate_selector_suppressed_count: int = 0
     read_loop_adjacent_range_merged_count: int = 0
     read_loop_same_owner_suppressed_count: int = 0
+    query_seed_prior_count: int = 0
+    query_seed_prior_mass: float = 0.0
+    query_package_cohesion_count: int = 0
+    query_package_drift_penalty_count: int = 0
+    query_package_cohesion_delta: float = 0.0
+    query_clause_coverage_count: int = 0
+    query_clause_coverage_delta: float = 0.0
 
 
 @dataclass(frozen=True)

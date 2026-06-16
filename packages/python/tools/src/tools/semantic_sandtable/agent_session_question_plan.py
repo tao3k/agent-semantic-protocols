@@ -27,6 +27,10 @@ def build_agent_session_question_plan(
         graph_turbo_feedback,
         improvement_report,
         events,
+        source_receipt_path=source_receipt_path,
+        source_quality_report_path=source_quality_report_path,
+        source_graph_turbo_feedback_path=source_graph_turbo_feedback_path,
+        source_improvement_report_path=source_improvement_report_path,
     )
     return {
         "schemaId": "agent.semantic-protocols.semantic-agent-session-question-plan",
@@ -132,6 +136,11 @@ def _question_case(
     graph_turbo_feedback: dict[str, Any],
     improvement_report: dict[str, Any],
     events: list[dict[str, Any]],
+    *,
+    source_receipt_path: str,
+    source_quality_report_path: str,
+    source_graph_turbo_feedback_path: str,
+    source_improvement_report_path: str,
 ) -> dict[str, Any]:
     question_id = _question_id(receipt)
     answer = dict_value(receipt.get("answer"))
@@ -139,9 +148,20 @@ def _question_case(
     plan_items = _plan_items(improvement_report, analyzer)
     return {
         "id": question_id,
+        "sourceSession": {
+            "sessionId": require_str(receipt, "sessionId", "unknown"),
+            "scenarioId": require_str(receipt, "scenarioId", "recorded.agent-session"),
+        },
+        "sourceArtifacts": {
+            "receiptPath": source_receipt_path,
+            "qualityReportPath": source_quality_report_path,
+            "graphTurboFeedbackPath": source_graph_turbo_feedback_path,
+            "improvementReportPath": source_improvement_report_path,
+        },
         "question": require_str(receipt, "intent", "Recorded deep question."),
         "language": require_str(receipt, "language", "unknown"),
         "project": dict_value(receipt.get("project")),
+        "analysisMetrics": _analysis_metrics(quality_report),
         "finalAnswer": _final_answer(answer),
         "naturalLanguageSignals": _natural_language_signals(events, answer),
         "analyzerJudgment": analyzer,
@@ -171,6 +191,21 @@ def _final_answer(answer: dict[str, Any]) -> dict[str, Any]:
         "textLineCount": optional_int(answer.get("textLineCount")) or 0,
         "preview": str(answer.get("preview", "")),
         "evidenceRefs": [str(item) for item in list_value(answer.get("evidenceRefs"))],
+    }
+
+
+def _analysis_metrics(quality_report: dict[str, Any]) -> dict[str, int]:
+    turn_summary = dict_value(quality_report.get("turnSummary"))
+    round_summary = dict_value(quality_report.get("roundSummary"))
+    return {
+        "totalTurns": optional_int(turn_summary.get("totalTurns")) or 0,
+        "totalRounds": optional_int(round_summary.get("totalRounds")) or 0,
+        "findingLinkedTurns": optional_int(turn_summary.get("findingLinkedTurns")) or 0,
+        "findingLinkedRounds": optional_int(round_summary.get("findingLinkedRounds"))
+        or 0,
+        "deniedRounds": optional_int(round_summary.get("deniedRounds")) or 0,
+        "riskRounds": optional_int(round_summary.get("riskRounds")) or 0,
+        "repeatedRounds": optional_int(round_summary.get("repeatedRounds")) or 0,
     }
 
 

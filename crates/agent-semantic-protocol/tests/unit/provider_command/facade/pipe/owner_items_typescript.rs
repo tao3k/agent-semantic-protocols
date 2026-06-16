@@ -82,3 +82,60 @@ fn typescript_owner_items_query_set_renders_item_selectors_without_provider() {
     );
     let _ = std::fs::remove_dir_all(root);
 }
+
+#[test]
+fn typescript_owner_items_prefers_selector_with_more_query_axis_coverage() {
+    let root = temp_project_root("search-owner-typescript-axis-coverage");
+    let bin_dir = root.join(".bin");
+    let marker = root.join("provider-called");
+    std::fs::create_dir_all(root.join("packages/vite/src/node/server")).expect("create source");
+    std::fs::write(
+        root.join("packages/vite/src/node/server/pluginContainer.ts"),
+        "export const plugin = true\n\nexport function createPluginContainer() {\n  const config = resolveConfig()\n  const resolution = config.resolve\n  const ordering = sortPlugins(plugin, container)\n  return { config, resolution, ordering }\n}\n",
+    )
+    .expect("write source");
+    write_marker_provider(&bin_dir, "ts-harness", &marker);
+    write_activation(&root, &[provider("typescript", Vec::new())]);
+
+    let output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args([
+            "typescript",
+            "search",
+            "owner",
+            "packages/vite/src/node/server/pluginContainer.ts",
+            "items",
+            "--query",
+            "plugin|container|config|resolution|ordering",
+            "--view",
+            "seeds",
+            ".",
+        ])
+        .output()
+        .expect("run asp typescript search owner items");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    assert!(
+        stdout.contains("syntax I selector=packages/vite/src/node/server/pluginContainer.ts:3:8"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("nextCommand=asp typescript query --selector packages/vite/src/node/server/pluginContainer.ts:3:8 --workspace . --code"),
+        "{stdout}"
+    );
+    assert!(
+        !stdout.contains("nextCommand=asp typescript query --selector packages/vite/src/node/server/pluginContainer.ts:1:"),
+        "{stdout}"
+    );
+    assert!(
+        !marker.exists(),
+        "TypeScript owner-items fast path should not spawn provider"
+    );
+    let _ = std::fs::remove_dir_all(root);
+}

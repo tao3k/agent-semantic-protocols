@@ -89,6 +89,7 @@ pub(super) struct QueryWrapperClause {
     pub(super) id: usize,
     pub(super) raw: String,
     pub(super) terms: Vec<String>,
+    pub(super) axis_terms: Vec<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

@@ -1,0 +1,150 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-graph-turbo-adaptive-validation-report.v1.schema.json",
+  "title": "Semantic Graph Turbo Adaptive Validation Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "protocolId",
+    "protocolVersion",
+    "packetKind",
+    "targetGraphPhase",
+    "status",
+    "sourcePolicy",
+    "sourceQuestionPlan",
+    "summary",
+    "variantSummaries",
+    "runResults",
+    "missingRuns",
+    "promotionReadiness"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.semantic-graph-turbo-adaptive-validation-report"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "protocolId": {
+      "const": "agent.semantic-protocols.semantic-language"
+    },
+    "protocolVersion": {
+      "const": "1"
+    },
+    "packetKind": {
+      "const": "graph-turbo-adaptive-validation-report"
+    },
+    "targetGraphPhase": {
+      "const": "query-first-stage"
+    },
+    "status": {
+      "enum": [
+        "empty",
+        "missing",
+        "partial",
+        "complete"
+      ]
+    },
+    "sourcePolicy": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "sourceQuestionPlan": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "plannedRunCount",
+        "observedRunCount",
+        "missingRunCount",
+        "coverageRatio",
+        "plannedVariantCounts",
+        "observedVariantCounts",
+        "missingVariantCounts",
+        "analyzerStatusCounts",
+        "answerGroundingCounts",
+        "humanReviewStatusCounts",
+        "roundTotals"
+      ]
+    },
+    "variantSummaries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "ablationVariant",
+          "plannedRunCount",
+          "observedRunCount",
+          "missingRunCount",
+          "averageRounds",
+          "analyzerStatusCounts",
+          "roundTotals"
+        ]
+      }
+    },
+    "runResults": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "coverage",
+          "plannedRun",
+          "matchingStrategy"
+        ],
+        "properties": {
+          "coverage": {
+            "enum": [
+              "missing",
+              "observed"
+            ]
+          }
+        }
+      }
+    },
+    "missingRuns": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    },
+    "promotionReadiness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "blockingReasons",
+        "nextActions"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "blocked",
+            "eligible"
+          ]
+        },
+        "blockingReasons": {
+          "$ref": "#/$defs/stringList"
+        },
+        "nextActions": {
+          "$ref": "#/$defs/stringList"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "stringList": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

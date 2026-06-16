@@ -160,6 +160,9 @@
                         },
                         "providerFacts": {
                             "type": "boolean"
+                        },
+                        "queryFirstStage": {
+                            "type": "boolean"
                         }
                     }
                 },
@@ -211,7 +214,10 @@
                             "no-read-memory",
                             "no-quality-fields",
                             "no-provider-facts",
-                            "relation-weight-flat"
+                            "relation-weight-flat",
+                            "no-query-seed-prior",
+                            "no-package-cohesion",
+                            "no-query-clause-coverage"
                         ]
                     },
                     "changes": {
@@ -278,7 +284,11 @@
                             "receiptBoostDelta",
                             "receiptPenaltyDelta",
                             "transitionNonZeroDelta",
-                            "transitionWeightMassDelta"
+                            "transitionWeightMassDelta",
+                            "querySeedPriorCountDelta",
+                            "queryPackageCohesionCountDelta",
+                            "queryPackageDriftPenaltyCountDelta",
+                            "queryClauseCoverageCountDelta"
                         ],
                         "properties": {
                             "rankChanged": {
@@ -364,6 +374,34 @@
                                 ]
                             },
                             "transitionWeightMassDelta": {
+                                "type": [
+                                    "integer",
+                                    "number",
+                                    "null"
+                                ]
+                            },
+                            "querySeedPriorCountDelta": {
+                                "type": [
+                                    "integer",
+                                    "number",
+                                    "null"
+                                ]
+                            },
+                            "queryPackageCohesionCountDelta": {
+                                "type": [
+                                    "integer",
+                                    "number",
+                                    "null"
+                                ]
+                            },
+                            "queryPackageDriftPenaltyCountDelta": {
+                                "type": [
+                                    "integer",
+                                    "number",
+                                    "null"
+                                ]
+                            },
+                            "queryClauseCoverageCountDelta": {
                                 "type": [
                                     "integer",
                                     "number",

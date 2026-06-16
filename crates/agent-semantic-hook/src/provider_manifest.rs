@@ -4,6 +4,7 @@ use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 use agent_semantic_config::project_runtime_layout;
 
@@ -24,7 +25,10 @@ pub fn builtin_provider_manifests() -> Vec<ProviderManifest> {
 }
 
 pub(crate) fn provider_manifests() -> Vec<ProviderManifest> {
-    schema_registry_provider_manifests()
+    static PROVIDER_MANIFESTS: OnceLock<Vec<ProviderManifest>> = OnceLock::new();
+    PROVIDER_MANIFESTS
+        .get_or_init(schema_registry_provider_manifests)
+        .clone()
 }
 
 /// Build the default project activation from configured project providers.

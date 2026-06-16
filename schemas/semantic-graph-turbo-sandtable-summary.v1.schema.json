@@ -311,10 +311,10 @@
                 }
             }
         },
-        "benchmarkReport": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": [
+    "benchmarkReport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
                 "reportId",
                 "scenarioId",
                 "captureKind",
@@ -335,10 +335,83 @@
                 },
                 "readyForWeightCalibration": {
                     "type": "boolean"
-                }
-            }
+        }
+      }
+    },
+    "largeLibraryReportChain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaId",
+        "packetKind",
+        "languageCount",
+        "libraryCount",
+        "scenarioCount",
+        "deepQuestionCount",
+        "readyLanguageCount",
+        "optimizationRunCount",
+        "optimizationVariantRunCount",
+        "findingCount",
+        "status",
+        "reason",
+        "blockingFindingCount"
+      ],
+      "properties": {
+        "schemaId": {
+          "const": "agent.semantic-protocols.semantic-sandtable-large-library-report-chain"
         },
-        "context": {
+        "packetKind": {
+          "const": "large-library-report-chain"
+        },
+        "languageCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "libraryCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "scenarioCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "deepQuestionCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "readyLanguageCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "optimizationRunCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "optimizationVariantRunCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "findingCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "status": {
+          "enum": [
+            "pass",
+            "review"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "blockingFindingCount": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "context": {
             "type": "object",
             "additionalProperties": false,
             "required": [

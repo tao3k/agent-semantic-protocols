@@ -132,12 +132,16 @@ fn search_pipe_graph_turbo_request_adds_owner_anchor_seeds_for_broad_query() {
         stdout.contains("recommendedActions=split-query-pack,narrow-owner-scope"),
         "{stdout}"
     );
-    assert!(stdout.contains("A1=rg-query-set("), "{stdout}");
+    assert!(stdout.contains("A1=owner-items("), "{stdout}");
+    assert!(stdout.contains("A2=rg-query-set("), "{stdout}");
     assert!(
-        stdout.contains("recommendedNext=A1.rg-query-set"),
+        stdout.contains("recommendedNext=A1.owner-items"),
         "{stdout}"
     );
-    assert!(stdout.contains("nextCommand=asp rg -query"), "{stdout}");
+    assert!(
+        stdout.contains("nextCommand=asp rust search owner"),
+        "{stdout}"
+    );
     assert!(!marker.exists(), "search pipe should not spawn provider");
     let _ = std::fs::remove_dir_all(root);
 }

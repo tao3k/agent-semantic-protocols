@@ -215,6 +215,14 @@ fn gerbil_owner_items_query_set_rejects_other_language_config_owner() {
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(stdout.contains("reason=no-owner-item-match"), "{stdout}");
     assert!(
+        stdout.contains("recommendedNext=scoped-rg-query"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("nextCommand=asp rg -query Cargo.toml Cargo.toml"),
+        "{stdout}"
+    );
+    assert!(
         !stdout.contains("I=item:symbol(Cargo.toml)@Cargo.toml:1:1!syntax"),
         "{stdout}"
     );

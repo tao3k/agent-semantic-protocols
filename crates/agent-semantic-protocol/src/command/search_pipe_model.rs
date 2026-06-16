@@ -8,6 +8,7 @@ use serde_json::Value;
 pub(super) struct Candidate {
     pub(super) path: String,
     pub(super) line: usize,
+    pub(super) end_line: usize,
     pub(super) symbol: String,
     pub(super) text: String,
     pub(super) source: String,

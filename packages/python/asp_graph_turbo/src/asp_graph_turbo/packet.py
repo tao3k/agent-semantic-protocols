@@ -153,6 +153,23 @@ def result_to_packet(result: GraphResult) -> dict[str, object]:
             "readLoopSameOwnerSuppressedCount": (
                 result.algorithm_metrics.read_loop_same_owner_suppressed_count
             ),
+            "querySeedPriorCount": result.algorithm_metrics.query_seed_prior_count,
+            "querySeedPriorMass": result.algorithm_metrics.query_seed_prior_mass,
+            "queryPackageCohesionCount": (
+                result.algorithm_metrics.query_package_cohesion_count
+            ),
+            "queryPackageDriftPenaltyCount": (
+                result.algorithm_metrics.query_package_drift_penalty_count
+            ),
+            "queryPackageCohesionDelta": (
+                result.algorithm_metrics.query_package_cohesion_delta
+            ),
+            "queryClauseCoverageCount": (
+                result.algorithm_metrics.query_clause_coverage_count
+            ),
+            "queryClauseCoverageDelta": (
+                result.algorithm_metrics.query_clause_coverage_delta
+            ),
         },
         "omit": list(result.omit),
         "avoid": list(result.avoid),

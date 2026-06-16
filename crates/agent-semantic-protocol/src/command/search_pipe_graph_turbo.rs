@@ -1,6 +1,9 @@
 //! Graph-turbo request packets for ASP-owned fast search candidates.
 
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    env,
+};
 
 use serde_json::{Value, json};
 
@@ -11,28 +14,35 @@ use super::{
     search_pipe_dependency_facts::{
         DependencyFact, collect_dependency_facts, dependency_matches_query,
     },
+    search_pipe_graph_nodes::{
+        append_candidate_nodes, append_hot_nodes, append_project_topology_nodes, candidate_node_id,
+        hot_node_id, stable_node_id,
+    },
     search_pipe_model::{Candidate, SearchPipeSourceTrace},
+    search_pipe_plan::concrete_pipe_actions_from_candidates,
     search_pipe_provider_facts::ProviderGraphFacts,
     search_pipe_quality::{
-        analyze_search_pipe_quality, compact_fact_value, is_generated_path, query_allows_generated,
+        SearchPipeQuality, analyze_search_pipe_quality, compact_fact_value, is_generated_path,
+        query_allows_generated,
     },
+    search_pipe_query_evidence::{is_high_value_term, strong_match},
+    search_pipe_query_pack::{query_clauses, unique_query_terms},
     search_pipe_seed_decision::{SeedPhaseDecision, recommended_action_for_seed_risk},
     search_pipe_surfaces::{
-        include_deps, include_items, include_owner_context, include_tests,
+        include_deps, include_items, include_owner_context, include_tests, include_topology,
         normalized_search_surfaces,
     },
 };
 
 const GRAPH_TURBO_REQUEST_SCHEMA_ID: &str = "agent.semantic-protocols.semantic-graph-turbo-request";
 const GRAPH_TURBO_CANDIDATE_NODE_LIMIT: usize = 64;
-const HOT_CONTEXT_BEFORE_LINES: usize = 8;
-const HOT_CONTEXT_AFTER_LINES: usize = 12;
 
 pub(super) struct GraphTurboSearchPipeRequest<'a> {
     pub(super) surface: &'a str,
     pub(super) language_id: &'a str,
     pub(super) dependency_root: &'a std::path::Path,
     pub(super) query: Option<&'a str>,
+    pub(super) query_clauses: &'a [String],
     pub(super) candidates: &'a [Candidate],
     pub(super) pipes: &'a [String],
     pub(super) source: &'a str,
@@ -60,6 +70,7 @@ fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> Value {
     let dependency_root = request.dependency_root;
     let surface = request.surface;
     let query = request.query;
+    let query_clauses = request.query_clauses;
     let candidates = request.candidates;
     let pipes = request.pipes;
     let source = request.source;
@@ -87,7 +98,18 @@ fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> Value {
         }));
     }
 
-    let graph_candidates = sparse_graph_candidates(candidates, query);
+    let quality_for_query = query
+        .filter(|query| !query.trim().is_empty())
+        .map(|query| analyze_search_pipe_quality(language_id, query, candidates));
+    let augmented_candidates = if quality_for_query
+        .as_ref()
+        .is_some_and(allow_query_anchor_candidates)
+    {
+        query_anchor_candidates(language_id, query, candidates)
+    } else {
+        candidates.to_vec()
+    };
+    let graph_candidates = sparse_graph_candidates(&augmented_candidates, query);
     let owners = unique_candidate_paths(&graph_candidates);
     let query_terms = query.map(query_terms).unwrap_or_default();
     let dependency_facts =
@@ -100,12 +122,18 @@ fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> Value {
     let include_items = include_items(&surfaces);
     let include_tests = include_tests(&surfaces);
     let include_deps = include_deps(&surfaces);
+    let include_topology = include_topology(&surfaces);
     let seed_decision =
         SeedPhaseDecision::from_query_shape(query_seed_present, query_terms.len(), owners.len());
+    let query_owner_anchor_budget = if has_package_path_candidate(&graph_candidates) {
+        seed_decision.query_owner_anchor_budget.max(1)
+    } else {
+        seed_decision.query_owner_anchor_budget
+    };
     let mut query_owner_seed_count = 0usize;
     if query_seed_present {
-        for owner in owners.iter().take(seed_decision.query_owner_anchor_budget) {
-            let owner_seed_id = stable_node_id("owner", owner);
+        for owner in query_owner_seed_paths(&graph_candidates, &owners, query_owner_anchor_budget) {
+            let owner_seed_id = stable_node_id("owner", &owner);
             if !seed_ids.contains(&owner_seed_id) {
                 seed_ids.push(owner_seed_id);
                 query_owner_seed_count += 1;
@@ -122,22 +150,35 @@ fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> Value {
         fallback_owner_seed_count = fallback_owner_seed_ids.len();
         seed_ids.extend(fallback_owner_seed_ids);
     }
-    let seed_plan = graph_turbo_seed_plan(
+    let seed_plan = graph_turbo_seed_plan(GraphTurboSeedPlanInput {
         query_present,
         query_seed_present,
-        graph_candidates.len(),
-        owners.len(),
+        candidate_count: graph_candidates.len(),
+        candidate_owner_count: owners.len(),
         query_owner_seed_count,
         fallback_owner_seed_count,
-        &seed_ids,
-        &seed_decision,
-    );
+        seed_ids: &seed_ids,
+        seed_decision: &seed_decision,
+    });
     if include_owner_context {
         append_owner_nodes(&mut nodes, &owners);
     }
+    if include_topology {
+        append_project_topology_nodes(&mut nodes, &mut edges, language_id, dependency_root);
+    }
     if include_items {
-        append_candidate_nodes(&mut nodes, language_id, &graph_candidates);
-        append_hot_nodes(&mut nodes, &graph_candidates);
+        append_candidate_nodes(
+            &mut nodes,
+            language_id,
+            &graph_candidates,
+            GRAPH_TURBO_CANDIDATE_NODE_LIMIT,
+        );
+        append_hot_nodes(
+            &mut nodes,
+            language_id,
+            &graph_candidates,
+            GRAPH_TURBO_CANDIDATE_NODE_LIMIT,
+        );
         append_provider_fact_nodes(&mut nodes, provider_facts);
     }
     if include_deps {
@@ -173,7 +214,7 @@ fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> Value {
         "seedIds": seed_ids,
         "seedPlan": seed_plan,
         "budget": 10,
-        "kindBudgets": {"owner": 4, "dependency": 2, "test": 3, "item": 6, "field": 4, "type": 3, "collection": 2, "hot": 3},
+        "kindBudgets": {"owner": 4, "workspace": 1, "provider-root": 2, "submodule": 4, "dependency": 2, "test": 3, "item": 6, "field": 4, "type": 3, "collection": 2, "hot": 3},
         "windowMerge": {"enabled": true, "maxGapLines": 8},
         "pathBudget": 5,
         "pathMaxHops": 4,
@@ -183,10 +224,16 @@ fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> Value {
             "edges": edges,
         },
     });
+    if !query_clauses.is_empty() {
+        packet["queryClauses"] = json!(query_clauses);
+    }
     if !read_memory_selectors.is_empty() {
         packet["readMemory"] = json!({
             "seenSelectors": read_memory_selectors,
         });
+    }
+    if let Some(policy) = query_adjustment_policy_from_env() {
+        packet["queryAdjustmentPolicy"] = policy;
     }
     if !external_action_frontier.is_empty() {
         packet["actionFrontier"] = Value::Array(external_action_frontier.to_vec());
@@ -194,7 +241,9 @@ fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> Value {
     if surface == "search-pipe"
         && let Some(query) = query.filter(|query| !query.trim().is_empty())
     {
-        let quality = analyze_search_pipe_quality(language_id, query, candidates);
+        let quality = quality_for_query
+            .unwrap_or_else(|| analyze_search_pipe_quality(language_id, query, candidates));
+        let selector_actions = concrete_pipe_actions_from_candidates(language_id, candidates);
         let action_request = SearchPipeActionRequest {
             language_id,
             project_root: dependency_root,
@@ -203,7 +252,7 @@ fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> Value {
             quality: &quality,
             candidates,
             ranked_compact: None,
-            selector_actions: &[],
+            selector_actions: &selector_actions,
             fd_preview: None,
             seed_action_intents: &[],
         };
@@ -224,35 +273,107 @@ fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> Value {
     packet
 }
 
-fn graph_turbo_seed_plan(
+fn allow_query_anchor_candidates(quality: &SearchPipeQuality) -> bool {
+    quality.query_pack_quality != "low"
+        && quality.package_cohesion != "low"
+        && quality.weak_terms.is_empty()
+}
+
+fn query_anchor_candidates(
+    language_id: &str,
+    query: Option<&str>,
+    candidates: &[Candidate],
+) -> Vec<Candidate> {
+    let Some(query) = query.filter(|query| !query.trim().is_empty()) else {
+        return candidates.to_vec();
+    };
+    let terms = unique_query_terms(&query_clauses(language_id, query));
+    let mut augmented = candidates.to_vec();
+    let mut seen = augmented
+        .iter()
+        .map(|candidate| {
+            (
+                candidate.path.clone(),
+                candidate.line,
+                candidate.symbol.to_ascii_lowercase(),
+            )
+        })
+        .collect::<HashSet<_>>();
+    for term in terms.iter().filter(|term| is_high_value_term(term)) {
+        if augmented
+            .iter()
+            .any(|candidate| candidate.symbol == term.raw || candidate.symbol == term.lower)
+        {
+            continue;
+        }
+        let Some(source_candidate) = candidates
+            .iter()
+            .find(|candidate| strong_match(language_id, candidate, term))
+        else {
+            continue;
+        };
+        let key = (
+            source_candidate.path.clone(),
+            source_candidate.line,
+            term.lower.clone(),
+        );
+        if !seen.insert(key) {
+            continue;
+        }
+        augmented.push(Candidate {
+            path: source_candidate.path.clone(),
+            line: source_candidate.line,
+            end_line: source_candidate.end_line,
+            symbol: term.raw.clone(),
+            text: source_candidate.text.clone(),
+            source: "query-anchor".to_string(),
+            confidence: "query-anchor".to_string(),
+        });
+    }
+    augmented
+}
+
+fn query_adjustment_policy_from_env() -> Option<Value> {
+    let variant = env::var("ASP_GRAPH_TURBO_ABLATION_VARIANT").ok()?;
+    match variant.trim() {
+        "no-query-seed-prior" => Some(json!({"seedPrior": false})),
+        "no-package-cohesion" => Some(json!({"packageCohesion": false})),
+        "no-query-clause-coverage" => Some(json!({"queryClauseCoverage": false})),
+        _ => None,
+    }
+}
+
+struct GraphTurboSeedPlanInput<'a> {
     query_present: bool,
     query_seed_present: bool,
     candidate_count: usize,
     candidate_owner_count: usize,
     query_owner_seed_count: usize,
     fallback_owner_seed_count: usize,
-    seed_ids: &[String],
-    seed_decision: &SeedPhaseDecision,
-) -> Value {
-    let reason = if query_seed_present {
+    seed_ids: &'a [String],
+    seed_decision: &'a SeedPhaseDecision,
+}
+
+fn graph_turbo_seed_plan(input: GraphTurboSeedPlanInput<'_>) -> Value {
+    let reason = if input.query_seed_present {
         "query"
-    } else if fallback_owner_seed_count > 0 {
+    } else if input.fallback_owner_seed_count > 0 {
         "fallback-owner"
     } else {
         "empty"
     };
     let mut risk_factors = Vec::new();
-    if seed_ids.is_empty() {
+    if input.seed_ids.is_empty() {
         risk_factors.push("empty-seed-frontier");
     }
-    if fallback_owner_seed_count > 0 {
+    if input.fallback_owner_seed_count > 0 {
         risk_factors.push("fallback-owner");
     }
-    if query_present && !query_seed_present {
+    if input.query_present && !input.query_seed_present {
         risk_factors.push("query-seed-missing");
     }
-    risk_factors.extend(seed_decision.risk_factors.iter().copied());
-    let seed_quality = if seed_ids.is_empty() {
+    risk_factors.extend(input.seed_decision.risk_factors.iter().copied());
+    let seed_quality = if input.seed_ids.is_empty() {
         "fail"
     } else if risk_factors.is_empty() {
         "good"
@@ -272,14 +393,14 @@ fn graph_turbo_seed_plan(
         "algorithm": "asp-search-pipe-v2",
         "reason": reason,
         "seedQuality": seed_quality,
-        "queryPresent": query_present,
-        "querySeedPresent": query_seed_present,
-        "candidateCount": candidate_count,
-        "candidateOwnerCount": candidate_owner_count,
-        "queryOwnerSeedCount": query_owner_seed_count,
-        "fallbackOwnerSeedCount": fallback_owner_seed_count,
-        "selectedSeedCount": seed_ids.len(),
-        "seedIds": seed_ids,
+        "queryPresent": input.query_present,
+        "querySeedPresent": input.query_seed_present,
+        "candidateCount": input.candidate_count,
+        "candidateOwnerCount": input.candidate_owner_count,
+        "queryOwnerSeedCount": input.query_owner_seed_count,
+        "fallbackOwnerSeedCount": input.fallback_owner_seed_count,
+        "selectedSeedCount": input.seed_ids.len(),
+        "seedIds": input.seed_ids,
         "riskFactors": risk_factors,
         "recommendedActions": recommended_actions,
     })
@@ -344,51 +465,6 @@ fn append_owner_nodes(nodes: &mut Vec<Value>, owners: &[String]) {
     }
 }
 
-fn append_candidate_nodes(nodes: &mut Vec<Value>, language_id: &str, candidates: &[Candidate]) {
-    for candidate in candidates.iter().take(GRAPH_TURBO_CANDIDATE_NODE_LIMIT) {
-        nodes.push(json!({
-            "id": candidate_node_id(candidate),
-            "kind": "item",
-            "role": "symbol",
-            "value": candidate.symbol,
-            "action": "syntax",
-            "path": candidate.path,
-            "ownerPath": candidate.path,
-            "symbol": candidate.symbol,
-            "startLine": candidate.line,
-            "endLine": candidate.line,
-            "locator": format!("{}:{}:{}", candidate.path, candidate.line, candidate.line),
-            "matchText": candidate.text,
-            "syntaxQuery": candidate_tree_sitter_pattern(language_id, &candidate.symbol),
-            "source": candidate.source,
-            "confidence": candidate.confidence,
-        }));
-    }
-}
-
-fn append_hot_nodes(nodes: &mut Vec<Value>, candidates: &[Candidate]) {
-    for candidate in candidates.iter().take(GRAPH_TURBO_CANDIDATE_NODE_LIMIT) {
-        let (start_line, end_line) = hot_context_range(candidate.line);
-        let locator = format!("{}:{}:{}", candidate.path, start_line, end_line);
-        nodes.push(json!({
-            "id": hot_node_id(candidate),
-            "kind": "hot",
-            "role": "range",
-            "value": candidate.symbol,
-            "action": "code",
-            "path": candidate.path,
-            "ownerPath": candidate.path,
-            "symbol": candidate.symbol,
-            "startLine": start_line,
-            "endLine": end_line,
-            "locator": locator,
-            "matchText": candidate.text,
-            "source": candidate.source,
-            "confidence": candidate.confidence,
-        }));
-    }
-}
-
 fn graph_turbo_source_trace(source_trace: &[SearchPipeSourceTrace]) -> Value {
     Value::Array(
         source_trace
@@ -430,13 +506,6 @@ fn compact_provider_fact_node(mut node: Value) -> Value {
     node
 }
 
-fn hot_context_range(line: usize) -> (usize, usize) {
-    (
-        line.saturating_sub(HOT_CONTEXT_BEFORE_LINES).max(1),
-        line + HOT_CONTEXT_AFTER_LINES,
-    )
-}
-
 fn append_dependency_nodes(nodes: &mut Vec<Value>, dependency_facts: &[DependencyFact]) {
     let mut seen = HashSet::new();
     let mut seen_versions = HashSet::new();
@@ -473,19 +542,6 @@ fn dependency_confidence(fact: &DependencyFact) -> &'static str {
         "exact"
     } else {
         "likely"
-    }
-}
-
-fn candidate_tree_sitter_pattern(language_id: &str, symbol: &str) -> Option<String> {
-    let escaped_symbol = symbol.replace('\\', "\\\\").replace('"', "\\\"");
-    match language_id {
-        "rust" => Some(format!(
-            "((function_item name: (_) @function.name) (#eq? @function.name \"{escaped_symbol}\"))"
-        )),
-        "python" => Some(format!(
-            "((function_definition name: (identifier) @function.name) (#eq? @function.name \"{escaped_symbol}\"))"
-        )),
-        _ => None,
     }
 }
 
@@ -652,6 +708,39 @@ fn unique_candidate_paths(candidates: &[Candidate]) -> Vec<String> {
         .collect()
 }
 
+fn has_package_path_candidate(candidates: &[Candidate]) -> bool {
+    candidates.iter().any(|candidate| {
+        candidate.source == "package-path-query" || candidate.confidence == "package-path"
+    })
+}
+
+fn query_owner_seed_paths(
+    candidates: &[Candidate],
+    owners: &[String],
+    budget: usize,
+) -> Vec<String> {
+    if budget == 0 {
+        return Vec::new();
+    }
+    let mut seen = HashSet::new();
+    let mut package_path_owners = candidates
+        .iter()
+        .filter(|candidate| {
+            candidate.source == "package-path-query" || candidate.confidence == "package-path"
+        })
+        .filter_map(|candidate| {
+            let path = candidate.path.clone();
+            seen.insert(path.clone()).then_some(path)
+        })
+        .take(budget)
+        .collect::<Vec<_>>();
+    if !package_path_owners.is_empty() {
+        return package_path_owners;
+    }
+    package_path_owners.extend(owners.iter().take(budget).cloned());
+    package_path_owners
+}
+
 fn should_auto_include_dependency_surface(
     query: Option<&str>,
     surfaces: &[String],
@@ -674,42 +763,6 @@ fn profile_for_surfaces(surfaces: &[String]) -> &'static str {
     } else {
         "owner-query"
     }
-}
-
-fn candidate_node_id(candidate: &Candidate) -> String {
-    stable_node_id(
-        "item",
-        &format!("{}:{}:{}", candidate.path, candidate.symbol, candidate.line),
-    )
-}
-
-fn hot_node_id(candidate: &Candidate) -> String {
-    stable_node_id(
-        "hot",
-        &format!("{}:{}:{}", candidate.path, candidate.symbol, candidate.line),
-    )
-}
-
-fn stable_node_id(kind: &str, value: &str) -> String {
-    let mut rendered = String::with_capacity(kind.len() + value.len() + 1);
-    rendered.push_str(kind);
-    rendered.push(':');
-    for character in value.chars() {
-        if character == '_' || character == '-' || character == '/' || character == '.' {
-            rendered.push(character);
-        } else if character.is_ascii_alphanumeric() {
-            rendered.push(character.to_ascii_lowercase());
-        } else {
-            rendered.push('-');
-        }
-    }
-    while rendered.ends_with('-') {
-        rendered.pop();
-    }
-    if rendered.len() == kind.len() + 1 {
-        rendered.push_str("node");
-    }
-    rendered
 }
 
 fn query_terms(query: &str) -> Vec<String> {

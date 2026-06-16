@@ -56,6 +56,75 @@
           "pluginContainer"
         ]
       }
+    ],
+    "deepQuestionCases": [
+      {
+        "id": "vite-plugin-container-hmr-owner-flow",
+        "question": "In Vite, which plugin container, handleHotUpdate, and module graph owners should an agent inspect before changing HMR invalidation behavior?",
+        "stepIds": [
+          "prime",
+          "intent-query-set"
+        ],
+        "queryTerms": [
+          "pluginContainer",
+          "handleHotUpdate",
+          "moduleGraph"
+        ],
+        "audit": {
+          "maxAspCommands": 7,
+          "maxSearchCommands": 4,
+          "maxQueryCommands": 3,
+          "maxRepeatedCommands": 0,
+          "requiresGraphSignals": true,
+          "requiresQuerySet": true,
+          "requiresHookEvents": true
+        },
+        "expectedAspFlow": {
+          "requiredStages": [
+            "search-prime",
+            "search-pipe",
+            "query-selector"
+          ],
+          "forbiddenStages": [
+            "repeated-prime",
+            "repeated-commands"
+          ]
+        }
+      },
+      {
+        "id": "vite-config-resolve-plugin-deep",
+        "question": "In Vite, how should an agent connect config resolution, plugin container ordering, and dev server owners before changing plugin hook execution?",
+        "stepIds": [
+          "prime",
+          "intent-query-set"
+        ],
+        "queryTerms": [
+          "resolveConfig",
+          "pluginContainer",
+          "createServer"
+        ],
+        "audit": {
+          "maxAspCommands": 7,
+          "maxSearchCommands": 4,
+          "maxQueryCommands": 3,
+          "maxRepeatedCommands": 0,
+          "requiresGraphSignals": true,
+          "requiresQuerySet": true,
+          "requiresHookEvents": true
+        },
+        "expectedAspFlow": {
+          "requiredStages": [
+            "search-prime",
+            "search-pipe",
+            "query-selector"
+          ],
+          "forbiddenStages": [
+            "repeated-prime",
+            "repeated-commands",
+            "direct-read"
+          ]
+        }
+      }
     ]
   },
   "workdir": {

@@ -150,7 +150,11 @@ fn explicit_positional_project_root(
 ) -> Result<Option<(PathBuf, Vec<String>)>, String> {
     let mut selected = None;
     let check_command = args.first().is_some_and(|command| command == "check");
+    let query_owner_arg_index = first_query_owner_arg_index(args);
     for (index, value) in args.iter().enumerate().rev() {
+        if Some(index) == query_owner_arg_index {
+            continue;
+        }
         if value.starts_with('-') || arg_is_option_value(args, index) {
             continue;
         }
@@ -178,6 +182,30 @@ fn explicit_positional_project_root(
     let mut normalized_args = args.to_vec();
     normalized_args.remove(index);
     Ok(Some((selected_root, normalized_args)))
+}
+
+fn first_query_owner_arg_index(args: &[String]) -> Option<usize> {
+    if args.first().map(String::as_str) != Some("query") {
+        return None;
+    }
+    let mut index = 1;
+    while index < args.len() {
+        let arg = &args[index];
+        if arg.starts_with("--") {
+            index += if arg_contains_value(arg) || !option_takes_value(arg) {
+                1
+            } else {
+                2
+            };
+            continue;
+        }
+        if arg.starts_with('-') || arg == "." {
+            index += 1;
+            continue;
+        }
+        return Some(index);
+    }
+    None
 }
 
 fn positional_project_root(language_id: &str, path: &Path, check_command: bool) -> Option<PathBuf> {
@@ -230,6 +258,17 @@ fn arg_is_option_value(args: &[String], index: usize) -> bool {
     }
     !matches!(
         previous.as_str(),
+        "--changed" | "--code" | "--full" | "--json" | "--names-only" | "--receipt-json"
+    )
+}
+
+fn arg_contains_value(arg: &str) -> bool {
+    arg.contains('=')
+}
+
+fn option_takes_value(arg: &str) -> bool {
+    !matches!(
+        arg,
         "--changed" | "--code" | "--full" | "--json" | "--names-only" | "--receipt-json"
     )
 }

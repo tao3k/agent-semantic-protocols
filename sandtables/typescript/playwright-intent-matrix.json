@@ -56,6 +56,77 @@
           "BrowserContext"
         ]
       }
+    ],
+    "deepQuestionCases": [
+      {
+        "id": "playwright-fixture-lifecycle-owner-frontier",
+        "question": "In Playwright, how should an agent locate the fixture lifecycle and worker/test scope owners before changing setup or teardown behavior?",
+        "stepIds": [
+          "prime",
+          "intent-query-set"
+        ],
+        "queryTerms": [
+          "fixture",
+          "testInfo",
+          "worker",
+          "scope"
+        ],
+        "audit": {
+          "maxAspCommands": 6,
+          "maxSearchCommands": 3,
+          "maxQueryCommands": 3,
+          "maxRepeatedCommands": 0,
+          "requiresGraphSignals": true,
+          "requiresQuerySet": true,
+          "requiresHookEvents": true
+        },
+        "expectedAspFlow": {
+          "requiredStages": [
+            "search-prime",
+            "search-pipe",
+            "query-selector"
+          ],
+          "forbiddenStages": [
+            "repeated-prime",
+            "repeated-commands"
+          ]
+        }
+      },
+      {
+        "id": "playwright-trace-viewer-owner-deep",
+        "question": "In Playwright, how should an agent connect trace collection, trace viewer rendering, and BrowserContext ownership before changing trace output semantics?",
+        "stepIds": [
+          "prime",
+          "intent-query-set"
+        ],
+        "queryTerms": [
+          "trace",
+          "trace viewer",
+          "BrowserContext"
+        ],
+        "audit": {
+          "maxAspCommands": 8,
+          "maxSearchCommands": 4,
+          "maxQueryCommands": 4,
+          "maxRepeatedCommands": 0,
+          "requiresGraphSignals": true,
+          "requiresQuerySet": true,
+          "requiresHookEvents": true,
+          "requiresComplexPipeFlow": true
+        },
+        "expectedAspFlow": {
+          "requiredStages": [
+            "search-prime",
+            "search-pipe",
+            "query-selector"
+          ],
+          "forbiddenStages": [
+            "repeated-prime",
+            "repeated-commands",
+            "direct-read"
+          ]
+        }
+      }
     ]
   },
   "workdir": {

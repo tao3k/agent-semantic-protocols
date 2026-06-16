@@ -14,6 +14,7 @@ use super::search_pipe_plan::{
 };
 use super::search_pipe_provider_facts::ProviderGraphFacts;
 use super::search_pipe_quality::analyze_search_pipe_quality;
+use super::search_pipe_query_pack::query_clause_texts;
 use super::search_pipe_render::render_ingest_frontier;
 use super::search_pipe_seed_decision::SeedActionIntent;
 use serde_json::Value;
@@ -62,6 +63,9 @@ pub(super) fn print_search_pipe_view(request: SearchPipeViewRequest<'_>) -> Resu
         candidates.to_vec()
     };
     let candidates = display_candidates.as_slice();
+    let graph_query_clauses = query
+        .map(|query| query_clause_texts(language_id, query))
+        .unwrap_or_default();
     match view {
         "graph-turbo-request" => {
             let request = render_graph_turbo_request(GraphTurboSearchPipeRequest {
@@ -69,6 +73,7 @@ pub(super) fn print_search_pipe_view(request: SearchPipeViewRequest<'_>) -> Resu
                 language_id,
                 dependency_root: locator_root,
                 query,
+                query_clauses: &graph_query_clauses,
                 candidates,
                 pipes,
                 source,
@@ -107,6 +112,7 @@ pub(super) fn print_search_pipe_view(request: SearchPipeViewRequest<'_>) -> Resu
                 language_id,
                 dependency_root: locator_root,
                 query,
+                query_clauses: &graph_query_clauses,
                 candidates,
                 pipes,
                 source,

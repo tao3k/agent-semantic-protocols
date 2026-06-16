@@ -10,6 +10,7 @@ from typing import Any
 from .calibration_apply import apply_profile_calibrations as apply_profile_calibrations
 from .feedback import merge_feedback_into_packet
 from .model import Node, TypedGraph
+from .query_adjustments import query_adjustment_guardrails
 from .selector import graph_turbo_selector_for_node
 
 CALIBRATION_SCHEMA_ID = "agent.semantic-protocols.semantic-graph-turbo-calibration"
@@ -75,6 +76,9 @@ def profile_calibration_from_feedback(
             for relation, delta in sorted(relation_deltas.items())
             if delta
         ],
+        "guardrails": {
+            "queryFirstStage": query_adjustment_guardrails(),
+        },
         "metrics": {
             "feedbackPacketCount": len(feedback_tuple),
             "receiptCount": receipt_count,

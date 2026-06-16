@@ -1,0 +1,292 @@
+"""Large-library report chain readiness for graph-turbo optimization."""
+
+from __future__ import annotations
+
+from collections import Counter, defaultdict
+from pathlib import Path
+from typing import Any
+
+from .large_library_optimization_matrix import (
+    optimization_batch,
+    optimization_matrix,
+)
+from .scenario_io import discover_scenarios, load_scenario
+from .utils import dict_value, list_value, require_str, string_list
+
+DEFAULT_LANGUAGES = ("rust", "typescript")
+REQUIRED_DEPTH_BUCKETS = ("strict", "medium", "deep")
+
+
+def build_large_library_report_chain(
+    repo_root: Path,
+    scenario_paths: list[Path] | None = None,
+    *,
+    languages: tuple[str, ...] = DEFAULT_LANGUAGES,
+) -> dict[str, Any]:
+    selected_languages = tuple(sorted(languages))
+    paths = scenario_paths or discover_scenarios(repo_root, [])
+    scenarios = [
+        _scenario_entry(repo_root, path)
+        for path in paths
+        if _scenario_language(repo_root, path) in selected_languages
+    ]
+    scenarios = [scenario for scenario in scenarios if scenario is not None]
+    language_entries = [
+        _language_entry(language, scenarios) for language in selected_languages
+    ]
+    findings = _findings(language_entries)
+    language_entries = _with_language_findings(language_entries, findings)
+    matrix = optimization_matrix(scenarios)
+    batch = optimization_batch(matrix)
+    return {
+        "schemaId": "agent.semantic-protocols.semantic-sandtable-large-library-report-chain",
+        "schemaVersion": "1",
+        "packetKind": "large-library-report-chain",
+        "languages": language_entries,
+        "rollup": _rollup(language_entries, findings, matrix, batch),
+        "optimizationBatch": batch,
+        "optimizationMatrix": matrix,
+        "findings": findings,
+        "optimizationGate": _optimization_gate(findings),
+    }
+
+
+def _scenario_language(repo_root: Path, path: Path) -> str | None:
+    try:
+        scenario = load_scenario(path, repo_root)
+    except Exception:
+        return None
+    language = scenario.get("language")
+    return language if isinstance(language, str) else None
+
+
+def _scenario_entry(repo_root: Path, path: Path) -> dict[str, Any] | None:
+    try:
+        scenario = load_scenario(path, repo_root)
+    except Exception:
+        return None
+    evidence = dict_value(scenario.get("evidence"))
+    if "large-library" not in string_list(scenario.get("coverage", [])):
+        return None
+    target = dict_value(evidence.get("targetLibrary"))
+    deep_questions = [
+        _deep_question_entry(question)
+        for question in list_value(evidence.get("deepQuestionCases"))
+        if isinstance(question, dict)
+    ]
+    return {
+        "scenarioId": require_str(scenario, "id", path.stem),
+        "language": require_str(scenario, "language", "unknown"),
+        "path": _display_path(repo_root, path),
+        "package": _target_package(target),
+        "repository": require_str(target, "repository", "unknown"),
+        "fixtureTier": evidence.get("fixtureTier") or "live",
+        "intentKinds": sorted(_intent_kinds(evidence)),
+        "deepQuestions": deep_questions,
+        "live": "liveAgent" in scenario,
+        "promptOnly": "prompt-only" in string_list(scenario.get("tags", [])),
+    }
+
+
+def _deep_question_entry(question: dict[str, Any]) -> dict[str, Any]:
+    audit = dict_value(question.get("audit"))
+    expected_flow = dict_value(question.get("expectedAspFlow"))
+    max_asp_commands = _int_value(audit.get("maxAspCommands"))
+    return {
+        "id": require_str(question, "id", "unknown"),
+        "depthBucket": _depth_bucket(max_asp_commands),
+        "maxAspCommands": max_asp_commands,
+        "maxSearchCommands": _int_value(audit.get("maxSearchCommands")),
+        "maxQueryCommands": _int_value(audit.get("maxQueryCommands")),
+        "requiresQuerySet": audit.get("requiresQuerySet") is True,
+        "requiresGraphSignals": audit.get("requiresGraphSignals") is True,
+        "requiresHookEvents": audit.get("requiresHookEvents") is True,
+        "requiresComplexPipeFlow": audit.get("requiresComplexPipeFlow") is True,
+        "requiresTokenCost": audit.get("requiresTokenCost") is True,
+        "requiredStages": string_list(expected_flow.get("requiredStages")),
+        "forbiddenStages": string_list(expected_flow.get("forbiddenStages")),
+    }
+
+
+def _language_entry(language: str, scenarios: list[dict[str, Any]]) -> dict[str, Any]:
+    owned = [scenario for scenario in scenarios if scenario["language"] == language]
+    packages = sorted({scenario["package"] for scenario in owned})
+    deep_questions = [
+        question for scenario in owned for question in scenario["deepQuestions"]
+    ]
+    depth_counts = Counter(question["depthBucket"] for question in deep_questions)
+    signal_counts = Counter()
+    for question in deep_questions:
+        for signal in (
+            "requiresQuerySet",
+            "requiresGraphSignals",
+            "requiresHookEvents",
+            "requiresComplexPipeFlow",
+            "requiresTokenCost",
+        ):
+            if question.get(signal) is True:
+                signal_counts[signal] += 1
+    return {
+        "language": language,
+        "scenarioCount": len(owned),
+        "libraryCount": len(packages),
+        "libraries": packages,
+        "deepQuestionCount": len(deep_questions),
+        "liveDeepQuestionCount": sum(
+            len(scenario["deepQuestions"]) for scenario in owned if scenario["live"]
+        ),
+        "depthBucketCounts": dict(sorted(depth_counts.items())),
+        "requiredSignalCounts": dict(sorted(signal_counts.items())),
+        "reportChainReady": _report_chain_ready(depth_counts, deep_questions),
+    }
+
+
+def _report_chain_ready(
+    depth_counts: Counter[str], deep_questions: list[dict[str, Any]]
+) -> bool:
+    return (
+        all(depth_counts.get(bucket, 0) > 0 for bucket in REQUIRED_DEPTH_BUCKETS)
+        and any(question["requiresTokenCost"] for question in deep_questions)
+        and any(question["requiresComplexPipeFlow"] for question in deep_questions)
+    )
+
+
+def _findings(language_entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    findings: list[dict[str, Any]] = []
+    for entry in language_entries:
+        language = str(entry["language"])
+        if int(entry["deepQuestionCount"]) < 3:
+            findings.append(
+                _finding(
+                    language,
+                    "insufficient-deep-questions",
+                    "warning",
+                    "add at least three deep questions before tuning graph turbo",
+                )
+            )
+        missing_depths = [
+            bucket
+            for bucket in REQUIRED_DEPTH_BUCKETS
+            if dict_value(entry.get("depthBucketCounts")).get(bucket, 0) == 0
+        ]
+        if missing_depths:
+            findings.append(
+                _finding(
+                    language,
+                    "missing-depth-buckets",
+                    "warning",
+                    f"missing question depth buckets: {','.join(missing_depths)}",
+                )
+            )
+        if entry.get("reportChainReady") is not True:
+            findings.append(
+                _finding(
+                    language,
+                    "report-chain-not-ready",
+                    "warning",
+                    "collect TS/Rust multi-depth evidence before algorithm tuning",
+                )
+            )
+    return findings
+
+
+def _with_language_findings(
+    language_entries: list[dict[str, Any]], findings: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    by_language: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for finding in findings:
+        by_language[str(finding["language"])].append(finding)
+    entries: list[dict[str, Any]] = []
+    for entry in language_entries:
+        enriched = dict(entry)
+        enriched["findings"] = list(by_language.get(str(entry["language"]), []))
+        entries.append(enriched)
+    return entries
+
+
+def _finding(language: str, kind: str, severity: str, message: str) -> dict[str, Any]:
+    return {
+        "language": language,
+        "kind": kind,
+        "severity": severity,
+        "message": message,
+    }
+
+
+def _rollup(
+    language_entries: list[dict[str, Any]],
+    findings: list[dict[str, Any]],
+    optimization_matrix: list[dict[str, Any]],
+    optimization_batch: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "languageCount": len(language_entries),
+        "scenarioCount": sum(int(entry["scenarioCount"]) for entry in language_entries),
+        "libraryCount": sum(int(entry["libraryCount"]) for entry in language_entries),
+        "deepQuestionCount": sum(
+            int(entry["deepQuestionCount"]) for entry in language_entries
+        ),
+        "readyLanguageCount": sum(
+            1 for entry in language_entries if entry["reportChainReady"] is True
+        ),
+        "optimizationRunCount": len(optimization_matrix),
+        "optimizationVariantRunCount": int(
+            optimization_batch["variantRunCount"]
+        ),
+        "findingCount": len(findings),
+    }
+
+
+def _optimization_gate(findings: list[dict[str, Any]]) -> dict[str, Any]:
+    blocking = [
+        finding
+        for finding in findings
+        if finding["kind"] in {"report-chain-not-ready", "missing-depth-buckets"}
+    ]
+    return {
+        "status": "pass" if not blocking else "review",
+        "reason": (
+            "report chain has multi-depth TS/Rust evidence"
+            if not blocking
+            else "collect multi-depth TS/Rust report-chain evidence before tuning"
+        ),
+        "blockingFindingCount": len(blocking),
+    }
+
+
+def _intent_kinds(evidence: dict[str, Any]) -> set[str]:
+    kinds = set()
+    for case in list_value(evidence.get("intentCases")):
+        intent_kind = dict_value(case).get("intentKind")
+        if isinstance(intent_kind, str):
+            kinds.add(intent_kind)
+    return kinds
+
+
+def _target_package(target: dict[str, Any]) -> str:
+    package = target.get("package")
+    if isinstance(package, str) and package:
+        return package
+    name = target.get("name")
+    if isinstance(name, str) and name:
+        return name
+    return "unknown"
+
+
+def _depth_bucket(max_asp_commands: int) -> str:
+    if max_asp_commands <= 3:
+        return "strict"
+    if max_asp_commands <= 6:
+        return "medium"
+    return "deep"
+
+
+def _int_value(value: object) -> int:
+    return value if isinstance(value, int) and not isinstance(value, bool) else 0
+
+
+def _display_path(repo_root: Path, path: Path) -> str:
+    try:
+        return str(path.relative_to(repo_root))
+    except ValueError:
+        return str(path)

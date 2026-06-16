@@ -167,13 +167,14 @@ impl NativeFinderCollector<'_> {
     }
 
     fn search_requests(&self) -> Vec<NativeFinderRequest> {
+        let Some(pattern) = native_search_pattern(self.terms) else {
+            return Vec::new();
+        };
         self.roots
             .iter()
-            .flat_map(|root| {
-                self.terms.iter().map(move |term| NativeFinderRequest {
-                    root: root.clone(),
-                    term: term.clone(),
-                })
+            .map(|root| NativeFinderRequest {
+                root: root.clone(),
+                pattern: pattern.clone(),
             })
             .collect()
     }
@@ -188,7 +189,7 @@ impl NativeFinderCollector<'_> {
     }
 
     fn append_fd_request(&mut self, request: NativeFinderRequest) -> Result<bool, String> {
-        let Some(stdout) = self.run_fd(&request.term, &request.root)? else {
+        let Some(stdout) = self.run_fd(&request.pattern, &request.root)? else {
             return Ok(false);
         };
         self.provenance.backend = Some("fd");
@@ -203,7 +204,7 @@ impl NativeFinderCollector<'_> {
                 continue;
             }
             self.provenance.input_candidates += 1;
-            if let Some(candidate) = self.path_candidate(line, &request.term) {
+            if let Some(candidate) = self.path_candidate(line) {
                 self.push(candidate);
             }
         }
@@ -239,7 +240,7 @@ impl NativeFinderCollector<'_> {
     }
 
     fn append_rg_request(&mut self, request: NativeFinderRequest) -> Result<bool, String> {
-        let Some(stdout) = self.run_rg(&request.term, &request.root)? else {
+        let Some(stdout) = self.run_rg(&request.pattern, &request.root)? else {
             return Ok(false);
         };
         self.provenance.backend = Some("rg");
@@ -253,14 +254,14 @@ impl NativeFinderCollector<'_> {
                 continue;
             }
             self.provenance.input_candidates += 1;
-            if let Some(candidate) = self.rg_candidate(line, &request.term) {
+            if let Some(candidate) = self.rg_candidate(line) {
                 self.push(candidate);
             }
         }
         Ok(true)
     }
 
-    fn run_fd(&self, term: &str, root: &Path) -> Result<Option<Vec<u8>>, String> {
+    fn run_fd(&self, pattern: &str, root: &Path) -> Result<Option<Vec<u8>>, String> {
         let Some(mut command) = native_command("fd") else {
             return Ok(None);
         };
@@ -269,7 +270,8 @@ impl NativeFinderCollector<'_> {
             .arg("f")
             .arg("--color")
             .arg("never")
-            .arg(term)
+            .arg("--ignore-case")
+            .arg(pattern)
             .arg(root);
         if self.file_spec.config_filenames().is_empty() {
             for extension in self.file_spec.extensions() {
@@ -293,7 +295,7 @@ impl NativeFinderCollector<'_> {
         native_stdout(command, "exa")
     }
 
-    fn run_rg(&self, term: &str, root: &Path) -> Result<Option<Vec<u8>>, String> {
+    fn run_rg(&self, pattern: &str, root: &Path) -> Result<Option<Vec<u8>>, String> {
         let Some(mut command) = native_command("rg") else {
             return Ok(None);
         };
@@ -304,9 +306,8 @@ impl NativeFinderCollector<'_> {
             .arg("never")
             .arg("--max-count")
             .arg(NATIVE_PER_TERM_LIMIT.to_string())
-            .arg("--fixed-strings")
             .arg("--ignore-case")
-            .arg(term);
+            .arg(pattern);
         for extension in self.file_spec.extensions() {
             command.arg("--glob").arg(format!("*.{extension}"));
         }
@@ -320,9 +321,10 @@ impl NativeFinderCollector<'_> {
         native_stdout(command, "rg")
     }
 
-    fn path_candidate(&self, line: &[u8], term: &str) -> Option<Candidate> {
+    fn path_candidate(&self, line: &[u8]) -> Option<Candidate> {
         let raw = byte_text::lossy_string(line);
-        self.path_candidate_from_raw(&raw, term)
+        let term_index = self.matching_path_term_index(&raw)?;
+        self.path_candidate_from_raw(&raw, &self.terms[term_index])
     }
 
     fn path_candidate_from_raw(&self, raw: &str, term: &str) -> Option<Candidate> {
@@ -337,6 +339,7 @@ impl NativeFinderCollector<'_> {
         Some(Candidate {
             path: display.clone(),
             line: 1,
+            end_line: 1,
             symbol: term.to_string(),
             text: display,
             source: self.path_source().to_string(),
@@ -351,7 +354,7 @@ impl NativeFinderCollector<'_> {
             .position(|term| !term.is_empty() && normalized_path.contains(term))
     }
 
-    fn rg_candidate(&self, line: &[u8], term: &str) -> Option<Candidate> {
+    fn rg_candidate(&self, line: &[u8]) -> Option<Candidate> {
         let (path, line_number, text) = parse_rg_line(line)?;
         let path = resolve_native_path(self.project_root, &path);
         if !path.is_file()
@@ -360,14 +363,26 @@ impl NativeFinderCollector<'_> {
         {
             return None;
         }
+        let term = self
+            .matching_content_term_index(&text)
+            .and_then(|index| self.terms.get(index))
+            .or_else(|| self.terms.first())?;
         Some(Candidate {
             path: display_path(self.locator_root, &path),
             line: line_number,
+            end_line: line_number,
             symbol: term.to_string(),
             text,
             source: self.content_source().to_string(),
             confidence: "heuristic".to_string(),
         })
+    }
+
+    fn matching_content_term_index(&self, text: &str) -> Option<usize> {
+        let normalized_text = text.to_ascii_lowercase();
+        self.normalized_terms
+            .iter()
+            .position(|term| !term.is_empty() && normalized_text.contains(term))
     }
 
     fn push(&mut self, candidate: Candidate) {
@@ -415,7 +430,34 @@ fn native_command_path(label: &str) -> Option<PathBuf> {
 
 struct NativeFinderRequest {
     root: PathBuf,
-    term: String,
+    pattern: String,
+}
+
+fn native_search_pattern(terms: &[String]) -> Option<String> {
+    let mut seen = HashSet::new();
+    let escaped = terms
+        .iter()
+        .filter_map(|term| {
+            let term = term.trim();
+            (!term.is_empty() && seen.insert(term.to_ascii_lowercase()))
+                .then(|| escape_native_regex(term))
+        })
+        .collect::<Vec<_>>();
+    (!escaped.is_empty()).then(|| escaped.join("|"))
+}
+
+fn escape_native_regex(term: &str) -> String {
+    let mut escaped = String::with_capacity(term.len());
+    for character in term.chars() {
+        if matches!(
+            character,
+            '\\' | '.' | '+' | '*' | '?' | '(' | ')' | '|' | '[' | ']' | '{' | '}' | '^' | '$'
+        ) {
+            escaped.push('\\');
+        }
+        escaped.push(character);
+    }
+    escaped
 }
 
 fn native_stdout(mut command: Command, label: &str) -> Result<Option<Vec<u8>>, String> {

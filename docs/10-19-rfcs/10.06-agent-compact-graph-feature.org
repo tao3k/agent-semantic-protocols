@@ -93,6 +93,57 @@ typed capability action
   -> executable argv
 #+end_src
 
+Natural-language context terms filtered out of automatic =search pipe=
+=queryClauses= are analyzer/history facts, not ARI seed facts. They may be
+stored with receipts for calibration, but compact graph seed nodes,
+materialized =rg-query-set= actions, and best-owner/package-cohesion evidence
+must be built from code-facing path, package, symbol, and domain-concept axes.
+
+For the graph-turbo first stage, query-derived anchor candidates are only allowed after the query-pack quality gate and package-cohesion gate pass. Low-quality or low-cohesion packets must not manufacture extra =query-anchor= item nodes from weak natural-language coverage, because that inflates apparent graph certainty without proving an owner. In those cases the first-stage frontier should prefer exact fd anchors when they contain strong symbols, or package-local =owner-items= transitions when a finder preview has already produced owner candidates. Broad =rg-query-set= remains a refinement action, not the default first action when owner/package evidence is weak. Term promotion and suppression must be evidence-derived; ASP must not encode fixed ecosystem-symbol lists such as API, SDK, CLI, UI, HTTP, Tokio, Playwright, Vite, Effect, or library-specific API names as graph-turbo seed rules. Those labels are searchable project facts, not protocol constants. If such a label improves search, the provider must expose it through parser-owned declarations, semantic handles, package/dependency facts, type surfaces, or finder evidence, and graph-turbo must rank that evidence rather than recognizing the string directly.
+Low-cohesion finder previews must also pass an owner-seed strength gate before they become the first action. A preview owner produced by only one strong owner seed is still useful evidence, but not enough to outrank split query-pack refinement or best-owner coverage. This prevents project-name-level fd hits from selecting entrypoint or aggregate owners ahead of parser/finder-local evidence, while keeping exact multi-symbol owners eligible for first-stage =owner-items=.
+Best-owner scoring must be deterministic across header rendering, graph request construction, and action materialization. Ties should prefer owners with more matched symbol terms, then configuration/package-owner paths, before falling back to stable path order. Recomputing quality in separate render phases must not let map iteration reorder the recommended action.
+Query-conditioned structural owner roles may participate in best-owner scoring:
+when a query has no strong test/spec/fixture/case/template/example intent,
+secondary artifact owners should rank below source owners. A mixed
+implementation query that only mentions a single artifact role should not let a
+test corpus, unit-test corpus, fixture, baseline, template, example, sample,
+demo, or benchmark owner become the primary =owner-items= action under low
+package cohesion unless that owner is also a strong finder-preview owner. When
+the query explicitly asks for those artifact roles with multi-token intent, they
+remain eligible. This is structural graph evidence, not an ecosystem symbol
+shortcut.
+
+Low-cohesion fallback =owner-items= actions must also pass a query-axis coverage
+gate. If the selected fallback owner covers fewer than half of the terms in the
+materialized owner-items query, graph-turbo should prefer query-pack refinement
+over an executable but partial selector. This keeps selector-ready from becoming
+a false precision signal while preserving explicit artifact-role queries and
+strong finder-preview owners.
+
+Query-wrapper refinement must also be replay-aware. When an explicit
+=rg-query-set= or repeated =-query= command has already materialized the current
+multi-clause probe, its next frontier must not recommend the same
+=multi-clause-rg-query= as the first action again. The first follow-up should
+move to a different evidence axis, such as =fd-query= owner discovery or
+package-local owner expansion, while keeping =multi-clause-rg-query= as a lower
+ranked retry only when the user or analyzer needs another lexical refinement.
+This prevents deep searches from spending an extra turn repeating the same
+query wrapper instead of converging on an owner.
+
+Query-wrapper path ranking should prefer owners with stronger normalized query
+axis coverage before basename exactness. Normalization may split language-neutral
+identifier shapes such as camelCase, PascalCase, snake_case, kebab-case, and path
+segments into additional searchable axes, but it must not promote fixed
+ecosystem/library labels. A path that covers =resolve=, =module=, =name=, and
+=compiler= is stronger than a path that only basename-matches =module=, even if
+both are executable source files.
+
+The =rg-query-set= to =fd-query= handoff must preserve raw query tokens in the
+materialized =fd= command. Compact coverage fields may still render normalized
+lowercase terms, but the executable handoff should keep identifier boundaries
+such as =resolveModuleName= so the next path-ranking stage can derive
+language-neutral identifier axes.
+
 Terminology is deliberately narrow:
 
 Analyzer-only observability is deliberately outside ARI. Developer/history
@@ -225,6 +276,26 @@ Provider-private maps must not determine prompt-visible rank, relation labels,
 or next actions.  If a relation or action changes the agent's decision, it must
 be representable in the JSON packet before it is rendered in compact graph
 output.
+
+Project topology is a shared graph fact layer, not a Rust-specific dependency
+shortcut.  The root ASP adapter may emit only language-neutral topology facts it
+can prove without parsing a provider manifest: the invocation workspace root,
+the current provider root, and VCS-registered submodules such as =.gitmodules=
+entries.  Language-specific package, target, module, import, and test topology
+belongs to the active provider and must be projected through provider-owned
+graph facts.  In a multi-language repository with nested submodules, the shared
+graph starts with =workspace=, =provider-root=, and =submodule= nodes, then lets
+Rust, TypeScript, Python, Julia, Gerbil, Org, or future providers add their own
+package/module facts under those roots.  This keeps topology useful for search
+ranking while preventing the ASP binary from hard-coding Cargo, tsconfig,
+pyproject, Project.toml, gerbil.pkg, or other language layouts.
+
+Topology must participate in the graph request, not only in debug output.  A
+=graph-turbo-request= may include the =topology= surface, shared topology node
+kinds such as =workspace=, =provider-root=, and =submodule=, and shared
+relations such as =has_provider_root= and =has_submodule=.  If topology changes the
+seed frontier, owner ranking, or next action order, that influence must be
+explainable from those packet facts or provider-owned topology facts.
 
 ARI keeps the useful line interface and removes the unsafe part: untyped,
 injectable inline strings that production code later splits to recover
@@ -812,6 +883,25 @@ For =owner-query=, typed PPR personalization is query-aware:
   from query-token coverage over schema-owned node text.
 - single-token queries keep the previous equal-seed behavior; the weighted prior
   is a deep-query optimization, not a replacement for read-loop guards.
+- package-like query tokens, such as =asp_graph_turbo=, also contribute a
+  package/path cohesion adjustment: nodes whose path or owner path contains the
+  package token are preferred, while same-token matches outside the matching path
+  are treated as weaker evidence.
+- when a query-wrapper packet had to augment candidates from package path search,
+  the first seed phase may add a bounded runtime owner anchor in addition to the
+  query seed.  This is still a ranking input, not prompt-visible analyzer noise:
+  agent-facing search output should show the next action, while sandtable
+  packets keep the owner seed and =seedPlan= evidence for replay.
+- request packets may carry =queryClauses= as the normalized query-pack clauses
+  that produced =queryTerms=. The Python graph-turbo rank objective uses those
+  clauses as independent coverage units: nodes covering more than one clause get
+  a sparse-score bonus, and a clause containing a package-like token is covered
+  only by package/path evidence for that token.
+- request packets may carry an optional =queryAdjustmentPolicy= for analyzer and
+  ablation runs.  The default production policy enables seed prior, package
+  cohesion, and query clause coverage.  Ablation packets may disable one channel
+  at a time to measure quality contribution; normal search renderers should not
+  print these internal switches.
 - seeds with no query-token coverage keep only a small floor weight so they
   remain reachable evidence, but they must not dominate graph diffusion.
 
@@ -1042,7 +1132,19 @@ Python MVP 11 P3 adds auditability around the algorithm run:
 the sparse backend cache status, =algorithmTrace= lists the stable algorithm
 steps, =rankExplanations= explains each ranked node, and =algorithmMetrics=
 records sandtable-friendly counts such as path count, ranked count, merged
-window count, and cache status.
+window count, and cache status.  Owner-query query adjustments must also be
+visible here for analyzer mode: trace and metrics record how many nodes received
+seed-prior, package-cohesion, and query-clause coverage effects, and rank
+explanations name the non-zero query adjustments for ranked nodes.
+
+Python MVP 11 P4 uses ablation and calibration packets to turn those metrics into
+an improvement plan.  Ablation variants include one-channel removals for
+=no-query-seed-prior=, =no-package-cohesion=, and =no-query-clause-coverage=, and
+the report exposes a =queryFirstStage= signal when those variants change rank,
+score, or query-adjustment metrics.  Calibration packets may include
+=guardrails.queryFirstStage= with the active constants and allowed ranges; this
+records the tuning boundary for reports without silently changing production
+weights.
 
 Python MVP 12 makes the ranking policy explicit rather than allowing the
 algorithm to consume unweighted or all-graph edges.  Graph turbo must normalize

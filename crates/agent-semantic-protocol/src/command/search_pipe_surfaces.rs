@@ -6,6 +6,7 @@ enum SearchSurface {
     Items,
     Tests,
     Deps,
+    Topology,
 }
 
 impl SearchSurface {
@@ -15,6 +16,7 @@ impl SearchSurface {
             Self::Items => "items",
             Self::Tests => "tests",
             Self::Deps => "deps",
+            Self::Topology => "topology",
         }
     }
 }
@@ -24,6 +26,7 @@ pub(super) fn default_search_surfaces() -> Vec<String> {
         SearchSurface::Owner,
         SearchSurface::Items,
         SearchSurface::Tests,
+        SearchSurface::Topology,
     ]
     .into_iter()
     .map(SearchSurface::as_str)
@@ -77,6 +80,10 @@ pub(super) fn include_deps(surfaces: &[String]) -> bool {
     surfaces.iter().any(|surface| surface == "deps")
 }
 
+pub(super) fn include_topology(surfaces: &[String]) -> bool {
+    surfaces.iter().any(|surface| surface == "topology")
+}
+
 fn include_owner(surfaces: &[String]) -> bool {
     surfaces.iter().any(|surface| surface == "owner")
 }
@@ -87,8 +94,9 @@ fn parse_search_surface(surface: &str) -> Result<SearchSurface, String> {
         "item" | "items" => Ok(SearchSurface::Items),
         "test" | "tests" => Ok(SearchSurface::Tests),
         "dep" | "deps" | "dependency" | "dependencies" => Ok(SearchSurface::Deps),
+        "topology" | "topo" | "project-topology" => Ok(SearchSurface::Topology),
         _ => Err(format!(
-            "unknown search surface: {surface} (expected owner,items,tests,deps)"
+            "unknown search surface: {surface} (expected owner,items,tests,deps,topology)"
         )),
     }
 }

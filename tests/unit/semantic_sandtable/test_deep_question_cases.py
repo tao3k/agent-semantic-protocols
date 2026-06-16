@@ -40,7 +40,7 @@ class DeepQuestionCaseTests(unittest.TestCase):
         errors = [error.message for error in self.validator.iter_errors(scenario)]
         self.assertEqual([], errors)
 
-    def test_rust_large_library_matrices_define_ten_deep_questions(self) -> None:
+    def test_rust_large_library_matrices_define_eleven_deep_questions(self) -> None:
         total_questions = 0
         for path in RUST_MATRIX_PATHS:
             scenario = _load_json(path)
@@ -64,7 +64,7 @@ class DeepQuestionCaseTests(unittest.TestCase):
                 self.assertTrue(audit["requiresGraphSignals"])
                 self.assertTrue(audit["requiresQuerySet"])
 
-        self.assertEqual(10, total_questions)
+        self.assertEqual(12, total_questions)
 
     def test_live_tokio_claude_deep_question_is_env_gated(self) -> None:
         scenario = _load_json(LIVE_TOKIO_PATH)

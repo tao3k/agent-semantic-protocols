@@ -50,6 +50,8 @@ def _rank_packet(packet: Mapping[str, object], args: argparse.Namespace) -> Grap
     path_max_hops = _positive_int_packet_field(packet, "pathMaxHops", 4)
     cache_enabled = _cache_enabled_packet_field(packet)
     seen_selectors = _read_memory_seen_selectors(packet)
+    query_clauses = _string_list_packet_field(packet, "queryClauses")
+    query_adjustment_policy = _query_adjustment_policy_packet_field(packet)
     graph = TypedGraph.from_packet(packet)
     return rank_frontier(
         graph,
@@ -63,6 +65,8 @@ def _rank_packet(packet: Mapping[str, object], args: argparse.Namespace) -> Grap
         path_max_hops=path_max_hops,
         cache_enabled=cache_enabled,
         seen_selectors=seen_selectors,
+        query_clauses=query_clauses,
+        query_adjustment_policy=query_adjustment_policy,
     )
 
 
@@ -138,6 +142,19 @@ def _load_calibration_packet(path: str) -> Mapping[str, object]:
     ):
         raise SystemExit(f"unsupported graph turbo calibration packet: {path}")
     return packet
+
+
+def _query_adjustment_policy_packet_field(
+    packet: Mapping[str, object],
+) -> Mapping[str, bool]:
+    policy = packet.get("queryAdjustmentPolicy")
+    if not isinstance(policy, Mapping):
+        return {}
+    return {
+        key: value
+        for key, value in policy.items()
+        if isinstance(key, str) and isinstance(value, bool)
+    }
 
 
 def _validate_algorithm(packet: Mapping[str, object]) -> None:

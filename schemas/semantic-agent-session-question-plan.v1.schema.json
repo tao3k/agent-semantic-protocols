@@ -256,9 +256,12 @@
       "additionalProperties": false,
       "required": [
         "id",
+        "sourceSession",
+        "sourceArtifacts",
         "question",
         "language",
         "project",
+        "analysisMetrics",
         "finalAnswer",
         "naturalLanguageSignals",
         "analyzerJudgment",
@@ -270,6 +273,52 @@
           "type": "string",
           "minLength": 1
         },
+        "sourceSession": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "sessionId",
+            "scenarioId"
+          ],
+          "properties": {
+            "sessionId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "scenarioId": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "sourceArtifacts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "receiptPath",
+            "qualityReportPath",
+            "graphTurboFeedbackPath",
+            "improvementReportPath"
+          ],
+          "properties": {
+            "receiptPath": {
+              "type": "string",
+              "minLength": 1
+            },
+            "qualityReportPath": {
+              "type": "string",
+              "minLength": 1
+            },
+            "graphTurboFeedbackPath": {
+              "type": "string",
+              "minLength": 1
+            },
+            "improvementReportPath": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
         "question": {
           "type": "string",
           "minLength": 1
@@ -280,6 +329,49 @@
         },
         "project": {
           "$ref": "#/$defs/project"
+        },
+        "analysisMetrics": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "totalTurns",
+            "totalRounds",
+            "findingLinkedTurns",
+            "findingLinkedRounds",
+            "deniedRounds",
+            "riskRounds",
+            "repeatedRounds"
+          ],
+          "properties": {
+            "totalTurns": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "totalRounds": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "findingLinkedTurns": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "findingLinkedRounds": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "deniedRounds": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "riskRounds": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "repeatedRounds": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
         },
         "finalAnswer": {
           "$ref": "#/$defs/answer"

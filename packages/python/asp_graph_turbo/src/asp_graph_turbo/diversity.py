@@ -11,9 +11,12 @@ from .policy import (
     SAME_OWNER_PENALTY,
     SAME_SYMBOL_NAME_PENALTY,
 )
+from .query_token_priority import (
+    exact_query_tokens_for_node,
+    query_token_balance_weights,
+)
 from .query_token_balance import (
     query_token_balance_bonus,
-    query_tokens_for_node,
     repair_query_token_coverage,
 )
 from .semantic_fact_coverage import repair_semantic_fact_coverage
@@ -43,6 +46,7 @@ def rank_nodes(
     kind_budgets: Mapping[str, int],
     seen_selectors: frozenset[str] = frozenset(),
     query_tokens: tuple[str, ...] = (),
+    query_token_weights: Mapping[str, float] | None = None,
     coverage_limit: int | None = None,
 ) -> tuple[Node, ...]:
     remaining = [
@@ -53,6 +57,7 @@ def rank_nodes(
     ranked: list[Node] = []
     selected_kind_counts: dict[str, int] = {}
     covered_query_tokens: set[str] = set()
+    token_weights = query_token_weights or query_token_balance_weights(query_tokens)
     while remaining and len(ranked) < limit:
         remaining.sort(
             key=lambda node: (
@@ -63,6 +68,7 @@ def rank_nodes(
                     selected_kind_counts,
                     query_tokens,
                     covered_query_tokens,
+                    token_weights,
                 ),
                 best_depth.get(node.id, 99),
                 node.kind,
@@ -74,7 +80,7 @@ def rank_nodes(
             break
         ranked.append(node)
         covered_query_tokens.update(
-            query_tokens_for_node(node, query_tokens, include_query_node=False)
+            exact_query_tokens_for_node(node, query_tokens, include_query_node=False)
         )
         selected_kind_counts[node.kind] = selected_kind_counts.get(node.kind, 0) + 1
     repaired = repair_query_token_coverage(
@@ -83,6 +89,7 @@ def rank_nodes(
         scores,
         query_tokens,
         coverage_limit or limit,
+        token_weights=token_weights,
     )
     repaired = repair_semantic_fact_coverage(
         graph,
@@ -114,6 +121,7 @@ def _adjusted_score(
     selected_kind_counts: Mapping[str, int],
     query_tokens: tuple[str, ...] = (),
     covered_query_tokens: set[str] | None = None,
+    query_token_weights: Mapping[str, float] | None = None,
 ) -> float:
     adjusted = score
     if _has_same_owner_penalty(node, selected):
@@ -128,6 +136,7 @@ def _adjusted_score(
         node,
         query_tokens,
         covered_query_tokens or set(),
+        token_weights=query_token_weights,
     )
     return adjusted
 

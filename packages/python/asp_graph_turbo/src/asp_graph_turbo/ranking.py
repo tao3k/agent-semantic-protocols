@@ -11,7 +11,14 @@ from .diversity import (
 )
 from .model import GraphProfile, GraphResult, TypedGraph
 from .profiles import resolve_profile
-from .query_token_balance import query_tokens_for_seed_nodes
+from .query_adjustments import normalize_query_adjustment_policy
+from .query_token_priority import (
+    prioritized_query_tokens,
+    query_token_balance_weights,
+)
+from .query_token_balance import (
+    query_tokens_for_seed_nodes,
+)
 from .ranking_build import build_graph_result, rank_fingerprint
 from .ranking_score import collect_scores, seed_ids as resolve_seed_ids
 from .read_loop_second_pass import graph_turbo_apply_read_loop_second_pass
@@ -35,14 +42,22 @@ def rank_frontier(
     path_max_hops: int = 4,
     cache_enabled: bool = True,
     seen_selectors: Iterable[str] = (),
+    query_clauses: Iterable[str] = (),
+    query_adjustment_policy: Mapping[str, object] | None = None,
 ) -> GraphResult:
     selected_profile = resolve_profile(profile)
     seed_ids = resolve_seed_ids(graph, seeds)
+    normalized_query_clauses = _normalized_query_clauses(query_clauses)
+    normalized_query_adjustment_policy = normalize_query_adjustment_policy(
+        query_adjustment_policy
+    )
     normalized_kind_budgets = normalize_kind_budgets(kind_budgets)
     fingerprint = rank_fingerprint(
         graph,
         selected_profile,
         seed_ids,
+        normalized_query_clauses,
+        normalized_query_adjustment_policy,
         limit,
         normalized_kind_budgets,
         path_budget,
@@ -57,12 +72,15 @@ def rank_frontier(
         graph_cache,
         receipt_adjustments,
         pagerank,
+        query_adjustments,
     ) = collect_scores(
         graph,
         selected_profile,
         seed_ids,
         fingerprint=fingerprint,
         cache_enabled=cache_enabled,
+        query_clauses=normalized_query_clauses,
+        query_adjustment_policy=normalized_query_adjustment_policy,
     )
     read_memory_selectors = frozenset(
         selector
@@ -75,6 +93,10 @@ def rank_frontier(
         read_memory_selectors,
         max_gap_lines=window_merge_max_gap_lines,
     )
+    query_tokens = prioritized_query_tokens(
+        query_tokens_for_seed_nodes(graph, seed_ids),
+        normalized_query_clauses,
+    )
     ranked_candidates = rank_nodes(
         graph,
         scores,
@@ -82,7 +104,11 @@ def rank_frontier(
         _candidate_limit(limit),
         normalized_kind_budgets,
         suppressed_selectors,
-        query_tokens_for_seed_nodes(graph, seed_ids),
+        query_tokens,
+        query_token_weights=query_token_balance_weights(
+            query_tokens,
+            normalized_query_clauses,
+        ),
         coverage_limit=limit,
     )
     ranked, read_loop_second_pass = graph_turbo_apply_read_loop_second_pass(
@@ -108,6 +134,8 @@ def rank_frontier(
         graph_cache,
         receipt_adjustments,
         pagerank,
+        query_adjustments,
+        normalized_query_adjustment_policy,
         ranked,
         len(suppressed_selectors),
         read_loop_second_pass,
@@ -116,6 +144,17 @@ def rank_frontier(
 
 def _candidate_limit(limit: int) -> int:
     return max(limit, limit + min(max(limit, 3), 8))
+
+
+def _normalized_query_clauses(query_clauses: Iterable[str]) -> tuple[str, ...]:
+    clauses: list[str] = []
+    for clause in query_clauses:
+        if not isinstance(clause, str):
+            continue
+        normalized = " ".join(clause.split())
+        if normalized:
+            clauses.append(normalized)
+    return tuple(clauses)
 
 
 def _read_memory_suppressed_selectors(

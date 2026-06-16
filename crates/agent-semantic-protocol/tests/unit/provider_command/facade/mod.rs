@@ -47,6 +47,7 @@ mod language {
 mod client_commands;
 mod document;
 mod guide;
+mod performance;
 mod pipe;
 mod provider_invocation;
 mod rewrite;

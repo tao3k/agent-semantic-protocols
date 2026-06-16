@@ -26,6 +26,9 @@ def quality_gate(
     failures: list[dict[str, object]] = []
     _check_benchmark_gate(failures, _mapping(packet.get("benchmark")), config)
     _check_receipt_gate(failures, _mapping(packet.get("receipt")), config)
+    _check_report_chain_gate(
+        failures, _mapping(packet.get("largeLibraryReportChain"))
+    )
     return {
         "status": "pass" if not failures else "fail",
         "failures": failures,
@@ -111,6 +114,26 @@ def _check_receipt_gate(
             receipt.get("commandsToFirstUsefulLocator"),
             max_first_locator,
         )
+
+
+def _check_report_chain_gate(
+    failures: list[dict[str, object]],
+    report_chain: Mapping[str, object],
+) -> None:
+    if not report_chain:
+        return
+    _expect_equal(
+        failures,
+        "largeLibraryReportChain.status",
+        report_chain.get("status"),
+        "pass",
+    )
+    _expect_equal(
+        failures,
+        "largeLibraryReportChain.blockingFindingCount",
+        report_chain.get("blockingFindingCount"),
+        0,
+    )
 
 
 def _expect_between(

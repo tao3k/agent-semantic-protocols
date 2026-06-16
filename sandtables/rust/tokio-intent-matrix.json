@@ -146,6 +146,65 @@
           "requiresQuerySet": true,
           "requiresHookEvents": true
         }
+      },
+      {
+        "id": "tokio-runtime-handle-enter-owner-frontier",
+        "question": "Tokio runtime Handle::enter 的上下文进入和 guard 生命周期应该从哪些 owner frontier 开始定位？",
+        "stepIds": [
+          "prime",
+          "intent-query-set"
+        ],
+        "queryTerms": [
+          "Handle",
+          "enter",
+          "guard",
+          "runtime"
+        ],
+        "audit": {
+          "maxAspCommands": 6,
+          "maxSearchCommands": 3,
+          "maxQueryCommands": 3,
+          "maxRepeatedCommands": 0,
+          "requiresGraphSignals": true,
+          "requiresQuerySet": true,
+          "requiresHookEvents": true
+        }
+      },
+      {
+        "id": "tokio-async-read-public-owner-strict",
+        "question": "Tokio AsyncRead 的 public owner frontier 能否在三条 ASP 命令内定位，并说明下一步不应直接读完整 io 模块？",
+        "stepIds": [
+          "prime",
+          "intent-query-set"
+        ],
+        "queryTerms": [
+          "AsyncRead",
+          "public",
+          "owner"
+        ],
+        "audit": {
+          "maxAspCommands": 3,
+          "maxSearchCommands": 2,
+          "maxQueryCommands": 1,
+          "maxRepeatedCommands": 0,
+          "requiresGraphSignals": true,
+          "requiresQuerySet": true,
+          "requiresHookEvents": true,
+          "requiresComplexPipeFlow": true,
+          "requiresTokenCost": true
+        },
+        "expectedAspFlow": {
+          "requiredStages": [
+            "search-prime",
+            "search-pipe",
+            "query-selector"
+          ],
+          "forbiddenStages": [
+            "repeated-prime",
+            "repeated-commands",
+            "direct-read"
+          ]
+        }
       }
     ]
   },
@@ -177,15 +236,16 @@
       "expect": {
         "lineProtocol": true,
         "stdoutContains": [
-          "[search-prime]",
-          "analysis=structure",
-          "nativeSyntaxFacts=skipped",
-          "policyFindings=skipped",
-          "entries=",
-          "legend: ID=kind:role(value)!next; entries profile(selectors=>returns); frontier ID.next",
-          "G>{",
-          "rank=",
-          "frontier="
+            "[search-prime]",
+            "alg=budgeted-prime-frontier-v1",
+            "|decision purpose=decision-primer",
+            "capabilities=pipe,fzf,fd-query,rg-query,owner-items,selector-code,treesitter-query",
+            "legend: ID=kind:role(value)!next; entries profile(selectors=>returns); frontier ID.next",
+            "G>{",
+            "rank=",
+            "frontier=",
+            "omit=items,blocks,code,full-test-list",
+            "avoid=raw-read"
         ],
         "maxStdoutLinesWarn": 10,
         "maxElapsedMsWarn": 15000,

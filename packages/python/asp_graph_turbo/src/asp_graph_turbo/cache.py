@@ -24,6 +24,8 @@ def packet_fingerprint(
     profile: GraphProfile,
     *,
     seed_ids: tuple[str, ...],
+    query_clauses: tuple[str, ...] = (),
+    query_adjustment_policy: Mapping[str, bool] | None = None,
     budget: int,
     kind_budgets: Mapping[str, int],
     path_budget: int,
@@ -44,6 +46,8 @@ def packet_fingerprint(
                 sorted(profile.relation_weight_multiplier.items())
             ),
         },
+        "queryClauses": list(query_clauses),
+        "queryAdjustmentPolicy": dict(sorted((query_adjustment_policy or {}).items())),
         "seedIds": list(seed_ids),
         "windowMerge": {
             "enabled": window_merge_enabled,

@@ -192,6 +192,15 @@ second-stage seed base rather than a raw path dump.  =--source finder= is a
 recovery or advanced source override for =search pipe= when seeds show provider
 coverage is weak.
 
+Natural-language context terms are analyzer/history facts, not first-stage
+search axes. Terms such as =through=, =smoke=, =dev=, =dependency=, =in=,
+=how=, =owner=, and =frontier= may be retained in developer-mode receipts or
+sidecar analysis, but they must not become automatic =queryClauses=,
+materialized =rg-query-set= clauses, best-owner evidence, or graph-turbo seed
+anchors in normal agent-facing =search pipe= output. If multiple package-like
+axes are present, one best owner must cover all of those package axes before
+=packageCohesion= may rise above =low=.
+
 ** Search fast path boundary
 
 The cheap search surface is ASP-owned across all language facades.  This is not

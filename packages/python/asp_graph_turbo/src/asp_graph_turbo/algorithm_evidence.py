@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from .model import (
     AlgorithmMetrics,
     AlgorithmTraceStep,
@@ -34,6 +36,8 @@ def algorithm_trace(
     ppr_residual: float = 0.0,
     ppr_dangling_mass_last: float = 0.0,
     ppr_mass_sum: float = 0.0,
+    query_adjustment_policy: Mapping[str, bool] | None = None,
+    query_adjustment_metrics: Mapping[str, int | float] | None = None,
     read_loop_second_pass: GraphTurboReadLoopSecondPass = GraphTurboReadLoopSecondPass(),
 ) -> tuple[AlgorithmTraceStep, ...]:
     steps = [
@@ -74,6 +78,8 @@ def algorithm_trace(
         read_loop_second_pass,
         receipt_boost_count,
         receipt_penalty_count,
+        query_adjustment_policy,
+        query_adjustment_metrics,
     )
     return tuple(steps)
 
@@ -141,6 +147,8 @@ def _append_optional_trace_steps(
     read_loop_second_pass: GraphTurboReadLoopSecondPass,
     receipt_boost_count: int,
     receipt_penalty_count: int,
+    query_adjustment_policy: Mapping[str, bool] | None,
+    query_adjustment_metrics: Mapping[str, int | float] | None,
 ) -> None:
     if read_loop_guard is not None:
         steps.append(_read_loop_guard_step(read_loop_guard))
@@ -162,6 +170,27 @@ def _append_optional_trace_steps(
                 {
                     "boostCount": receipt_boost_count,
                     "penaltyCount": receipt_penalty_count,
+                },
+            )
+        )
+    if _has_query_adjustment_metrics(query_adjustment_metrics):
+        steps.append(
+            AlgorithmTraceStep(
+                "query-adjustments",
+                "python",
+                {
+                    **dict(query_adjustment_metrics or {}),
+                    "seedPriorEnabled": bool(
+                        (query_adjustment_policy or {}).get("seedPrior", True)
+                    ),
+                    "packageCohesionEnabled": bool(
+                        (query_adjustment_policy or {}).get("packageCohesion", True)
+                    ),
+                    "queryClauseCoverageEnabled": bool(
+                        (query_adjustment_policy or {}).get(
+                            "queryClauseCoverage", True
+                        )
+                    ),
                 },
             )
         )
@@ -228,8 +257,10 @@ def algorithm_metrics(
     read_loop_duplicate_selector_suppressed_count: int = 0,
     read_loop_adjacent_range_merged_count: int = 0,
     read_loop_same_owner_suppressed_count: int = 0,
+    query_adjustment_metrics: Mapping[str, int | float] | None = None,
 ) -> AlgorithmMetrics:
     guard = read_loop_guard or ReadLoopGuard(0, 0, 0, 0, ())
+    query_metrics = query_adjustment_metrics or {}
     return AlgorithmMetrics(
         node_count=len(graph.nodes),
         edge_count=len(graph.edges),
@@ -261,4 +292,46 @@ def algorithm_metrics(
         ),
         read_loop_adjacent_range_merged_count=read_loop_adjacent_range_merged_count,
         read_loop_same_owner_suppressed_count=read_loop_same_owner_suppressed_count,
+        query_seed_prior_count=_int_metric(query_metrics, "querySeedPriorCount"),
+        query_seed_prior_mass=_float_metric(query_metrics, "querySeedPriorMass"),
+        query_package_cohesion_count=_int_metric(
+            query_metrics, "queryPackageCohesionCount"
+        ),
+        query_package_drift_penalty_count=_int_metric(
+            query_metrics, "queryPackageDriftPenaltyCount"
+        ),
+        query_package_cohesion_delta=_float_metric(
+            query_metrics, "queryPackageCohesionDelta"
+        ),
+        query_clause_coverage_count=_int_metric(
+            query_metrics, "queryClauseCoverageCount"
+        ),
+        query_clause_coverage_delta=_float_metric(
+            query_metrics, "queryClauseCoverageDelta"
+        ),
     )
+
+
+def _has_query_adjustment_metrics(
+    metrics: Mapping[str, int | float] | None,
+) -> bool:
+    if not metrics:
+        return False
+    return any(
+        isinstance(value, int | float) and not isinstance(value, bool) and value != 0
+        for value in metrics.values()
+    )
+
+
+def _int_metric(metrics: Mapping[str, int | float], name: str) -> int:
+    value = metrics.get(name)
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    return 0
+
+
+def _float_metric(metrics: Mapping[str, int | float], name: str) -> float:
+    value = metrics.get(name)
+    return float(value) if isinstance(value, int | float) else 0.0

@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-sandtable-large-library-optimization-variant-result.v1.schema.json",
+  "title": "Semantic Sandtable Large Library Optimization Variant Result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "packetKind",
+    "variantRunId",
+    "runId",
+    "language",
+    "scenarioId",
+    "scenarioPath",
+    "package",
+    "questionId",
+    "depthBucket",
+    "ablationVariant",
+    "targetGraphPhase",
+    "receiptMetrics",
+    "answerMetrics"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.semantic-sandtable-large-library-optimization-variant-result"
+    },
+    "schemaVersion": {"const": "1"},
+    "packetKind": {"const": "large-library-optimization-variant-result"},
+    "variantRunId": {"type": "string", "minLength": 1},
+    "runId": {"type": "string", "minLength": 1},
+    "language": {"type": "string", "minLength": 1},
+    "scenarioId": {"type": "string", "minLength": 1},
+    "scenarioPath": {"type": "string", "minLength": 1},
+    "package": {"type": "string", "minLength": 1},
+    "questionId": {"type": "string", "minLength": 1},
+    "depthBucket": {"type": "string", "minLength": 1},
+    "ablationVariant": {"type": "string", "minLength": 1},
+    "targetGraphPhase": {"const": "query-first-stage"},
+    "receiptMetrics": {
+      "type": "object",
+      "additionalProperties": {
+        "type": ["integer", "number", "string", "boolean"]
+      }
+    },
+    "answerMetrics": {
+      "type": "object",
+      "additionalProperties": {
+        "type": ["integer", "number", "string", "boolean"]
+      }
+    },
+    "sourceReceiptPath": {"type": "string", "minLength": 1}
+  }
+}

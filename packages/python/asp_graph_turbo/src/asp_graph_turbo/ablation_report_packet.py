@@ -176,6 +176,18 @@ def _comparison(
         "transitionWeightMassDelta": _metric_delta(
             baseline, variant, "profileMatrix", "transitionWeightMass"
         ),
+        "querySeedPriorCountDelta": _metric_delta(
+            baseline, variant, "algorithmMetrics", "querySeedPriorCount"
+        ),
+        "queryPackageCohesionCountDelta": _metric_delta(
+            baseline, variant, "algorithmMetrics", "queryPackageCohesionCount"
+        ),
+        "queryPackageDriftPenaltyCountDelta": _metric_delta(
+            baseline, variant, "algorithmMetrics", "queryPackageDriftPenaltyCount"
+        ),
+        "queryClauseCoverageCountDelta": _metric_delta(
+            baseline, variant, "algorithmMetrics", "queryClauseCoverageCount"
+        ),
     }
 
 
@@ -271,6 +283,7 @@ def _channel_signals(entries: Sequence[Mapping[str, object]]) -> dict[str, bool]
         "providerFacts": _provider_facts_signal(
             by_variant.get("no-provider-facts", {})
         ),
+        "queryFirstStage": _query_first_stage_signal(by_variant),
     }
 
 
@@ -295,6 +308,30 @@ def _provider_facts_signal(comparison: Mapping[str, object]) -> bool:
         comparison.get("rankChanged") is True
         or _score_delta_positive(comparison)
         or _delta_nonzero(comparison, "transitionNonZeroDelta")
+    )
+
+
+def _query_first_stage_signal(
+    by_variant: Mapping[str, Mapping[str, object]],
+) -> bool:
+    return any(
+        _query_variant_signal(by_variant.get(variant, {}))
+        for variant in (
+            "no-query-seed-prior",
+            "no-package-cohesion",
+            "no-query-clause-coverage",
+        )
+    )
+
+
+def _query_variant_signal(comparison: Mapping[str, object]) -> bool:
+    return (
+        comparison.get("rankChanged") is True
+        or _score_delta_positive(comparison)
+        or _delta_nonzero(comparison, "querySeedPriorCountDelta")
+        or _delta_nonzero(comparison, "queryPackageCohesionCountDelta")
+        or _delta_nonzero(comparison, "queryPackageDriftPenaltyCountDelta")
+        or _delta_nonzero(comparison, "queryClauseCoverageCountDelta")
     )
 
 

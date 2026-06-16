@@ -1,0 +1,173 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-graph-turbo-adaptive-validation-manifest.v1.schema.json",
+  "title": "Semantic Graph Turbo Adaptive Validation Manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "protocolId",
+    "protocolVersion",
+    "packetKind",
+    "targetGraphPhase",
+    "sourcePolicy",
+    "summary",
+    "runs"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.semantic-graph-turbo-adaptive-validation-manifest"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "protocolId": {
+      "const": "agent.semantic-protocols.semantic-language"
+    },
+    "protocolVersion": {
+      "const": "1"
+    },
+    "packetKind": {
+      "const": "graph-turbo-adaptive-validation-manifest"
+    },
+    "targetGraphPhase": {
+      "const": "query-first-stage"
+    },
+    "sourcePolicy": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "runCount",
+        "promptResolvedCount",
+        "missingPromptCount",
+        "variantCounts",
+        "languageCounts",
+        "projectCounts"
+      ]
+    },
+    "runs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/run"
+      }
+    }
+  },
+  "$defs": {
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runId",
+        "scenarioId",
+        "scenarioPath",
+        "questionId",
+        "promptResolved",
+        "prompt",
+        "language",
+        "project",
+        "ablationVariant",
+        "env",
+        "sessionRoot",
+        "commandArgs",
+        "expectedArtifacts"
+      ],
+      "properties": {
+        "runId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scenarioId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scenarioPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "questionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "promptResolved": {
+          "type": "boolean"
+        },
+        "prompt": {
+          "type": "string"
+        },
+        "language": {
+          "type": "string",
+          "minLength": 1
+        },
+        "project": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "ablationVariant": {
+          "enum": [
+            "no-package-cohesion",
+            "no-query-clause-coverage",
+            "no-query-seed-prior",
+            "unknown"
+          ]
+        },
+        "env": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "sessionRoot": {
+          "type": "string",
+          "minLength": 1
+        },
+        "commandArgs": {
+          "$ref": "#/$defs/stringList"
+        },
+        "expectedArtifacts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "receiptPath",
+            "qualityReportPath",
+            "graphTurboFeedbackPath",
+            "improvementReportPath",
+            "questionImprovementPlanPath"
+          ],
+          "properties": {
+            "receiptPath": {
+              "type": "string",
+              "minLength": 1
+            },
+            "qualityReportPath": {
+              "type": "string",
+              "minLength": 1
+            },
+            "graphTurboFeedbackPath": {
+              "type": "string",
+              "minLength": 1
+            },
+            "improvementReportPath": {
+              "type": "string",
+              "minLength": 1
+            },
+            "questionImprovementPlanPath": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    },
+    "stringList": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

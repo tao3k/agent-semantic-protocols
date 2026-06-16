@@ -7,10 +7,10 @@ use super::search_pipe_action_model::PipeAction;
 use super::search_pipe_actions::{
     SearchPipeActionRequest, render_action_frontier, sanitize_evidence_line,
 };
-use super::search_pipe_model::Candidate;
 use super::search_pipe_quality::{SearchPipeQuality, analyze_search_pipe_quality};
 use super::search_pipe_seed_decision::SeedActionIntent;
 use super::search_query_wrapper_candidates::fd_query_preview;
+use super::{search_pipe_model::Candidate, search_pipe_projection::candidate_selector};
 
 pub(super) struct SearchPipePlanRequest<'a> {
     pub(super) language_id: &'a str,
@@ -53,7 +53,7 @@ pub(super) fn render_search_pipe_plan(request: SearchPipePlanRequest<'_>) -> Str
     let actions = if !projected_selector_actions.is_empty() {
         projected_selector_actions
     } else if quality.allow_query_selector {
-        concrete_pipe_actions(candidates, ranked_compact)
+        concrete_pipe_actions(language_id, candidates, ranked_compact)
     } else {
         Vec::new()
     };
@@ -181,6 +181,7 @@ fn package_prefix(path: &str) -> Option<String> {
 }
 
 fn concrete_pipe_actions(
+    language_id: &str,
     candidates: &[Candidate],
     ranked_compact: Option<&str>,
 ) -> Vec<PipeAction> {
@@ -190,14 +191,17 @@ fn concrete_pipe_actions(
             return actions;
         }
     }
-    concrete_pipe_actions_from_candidates(candidates)
+    concrete_pipe_actions_from_candidates(language_id, candidates)
 }
 
-fn concrete_pipe_actions_from_candidates(candidates: &[Candidate]) -> Vec<PipeAction> {
+pub(super) fn concrete_pipe_actions_from_candidates(
+    language_id: &str,
+    candidates: &[Candidate],
+) -> Vec<PipeAction> {
     let mut actions = Vec::new();
     let mut selectors = HashSet::new();
     for candidate in candidates.iter().take(12) {
-        let selector = format!("{}:{}:{}", candidate.path, candidate.line, candidate.line);
+        let selector = candidate_selector(language_id, candidate);
         if !selectors.insert(selector.clone()) {
             continue;
         }

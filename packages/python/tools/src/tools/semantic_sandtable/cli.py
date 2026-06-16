@@ -8,6 +8,35 @@ from pathlib import Path
 
 from .constants import COVERAGE_POLICY_PATH
 from .coverage import coverage_report
+from .large_library_report_chain import build_large_library_report_chain
+from .large_library_optimization_analysis_cli import (
+    add_large_library_optimization_analysis_arguments,
+    handle_large_library_optimization_analysis_args,
+)
+from .large_library_adaptive_policy_cli import (
+    add_large_library_adaptive_policy_arguments,
+    handle_large_library_adaptive_policy_args,
+)
+from .large_library_adaptive_validation_cli import (
+    add_large_library_adaptive_validation_arguments,
+    handle_large_library_adaptive_validation_args,
+)
+from .large_library_adaptive_validation_manifest_cli import (
+    add_large_library_adaptive_validation_manifest_arguments,
+    handle_large_library_adaptive_validation_manifest_args,
+)
+from .large_library_adaptive_simulation_cli import (
+    add_large_library_adaptive_simulation_arguments,
+    handle_large_library_adaptive_simulation_args,
+)
+from .large_library_variant_result_cli import (
+    add_large_library_variant_result_arguments,
+    handle_large_library_variant_result_args,
+)
+from .large_library_variant_batch_cli import (
+    add_large_library_variant_batch_arguments,
+    handle_large_library_variant_batch_args,
+)
 from .failure_frontier_eval import (
     FailureFrontierThresholds,
     compare_failure_frontier_receipt_paths,
@@ -52,6 +81,8 @@ def semantic_sandtable_main(argv: list[str] | None = None) -> int:
     scenario_paths = discover_scenarios(repo_root, args.scenarios)
     if args.list:
         return _list_scenarios(repo_root, scenario_paths)
+    if args.large_library_report_chain:
+        return _large_library_report_chain(repo_root, scenario_paths, args)
     if args.coverage:
         return _coverage(repo_root, scenario_paths, args)
     return _run_scenarios(repo_root, scenario_paths, args)
@@ -73,6 +104,37 @@ def _handle_direct_commands(repo_root: Path, args: argparse.Namespace) -> int | 
     trace_compare_result = handle_trace_comparison_args(repo_root, args)
     if trace_compare_result is not None:
         return trace_compare_result
+    optimization_analysis_result = handle_large_library_optimization_analysis_args(
+        repo_root, args
+    )
+    if optimization_analysis_result is not None:
+        return optimization_analysis_result
+    adaptive_policy_result = handle_large_library_adaptive_policy_args(repo_root, args)
+    if adaptive_policy_result is not None:
+        return adaptive_policy_result
+    adaptive_validation_result = handle_large_library_adaptive_validation_args(
+        repo_root,
+        args,
+    )
+    if adaptive_validation_result is not None:
+        return adaptive_validation_result
+    adaptive_validation_manifest_result = (
+        handle_large_library_adaptive_validation_manifest_args(repo_root, args)
+    )
+    if adaptive_validation_manifest_result is not None:
+        return adaptive_validation_manifest_result
+    adaptive_simulation_result = handle_large_library_adaptive_simulation_args(
+        repo_root,
+        args,
+    )
+    if adaptive_simulation_result is not None:
+        return adaptive_simulation_result
+    variant_result = handle_large_library_variant_result_args(repo_root, args)
+    if variant_result is not None:
+        return variant_result
+    variant_batch = handle_large_library_variant_batch_args(repo_root, args)
+    if variant_batch is not None:
+        return variant_batch
     if args.compare_receipts:
         return _compare_receipts(repo_root, args)
     if args.receipt:
@@ -92,6 +154,13 @@ def _build_parser() -> argparse.ArgumentParser:
     add_trace_record_arguments(parser)
     add_trace_session_arguments(parser)
     add_trace_comparison_arguments(parser)
+    add_large_library_optimization_analysis_arguments(parser)
+    add_large_library_adaptive_policy_arguments(parser)
+    add_large_library_adaptive_validation_arguments(parser)
+    add_large_library_adaptive_validation_manifest_arguments(parser)
+    add_large_library_adaptive_simulation_arguments(parser)
+    add_large_library_variant_result_arguments(parser)
+    add_large_library_variant_batch_arguments(parser)
     _add_failure_frontier_arguments(parser)
     _add_coverage_arguments(parser)
     return parser
@@ -118,6 +187,11 @@ def _add_general_arguments(parser: argparse.ArgumentParser) -> None:
         "--coverage",
         action="store_true",
         help="Audit declared scenario coverage without executing commands.",
+    )
+    parser.add_argument(
+        "--large-library-report-chain",
+        action="store_true",
+        help="Report TS/Rust large-library multi-depth readiness before graph tuning.",
     )
 
 
@@ -260,6 +334,69 @@ def _coverage(
     if coverage.errors or (args.fail_on_missing and missing):
         return 1
     return 0
+
+
+def _large_library_report_chain(
+    repo_root: Path,
+    scenario_paths: list[Path],
+    args: argparse.Namespace,
+) -> int:
+    report = build_large_library_report_chain(repo_root, scenario_paths)
+    if args.json:
+        emit_json(report)
+    else:
+        _print_large_library_report_chain(report)
+    if args.fail_on_missing and report["optimizationGate"]["status"] != "pass":
+        return 1
+    return 0
+
+
+def _print_large_library_report_chain(report: dict[str, object]) -> None:
+    rollup = report["rollup"]
+    gate = report["optimizationGate"]
+    if not isinstance(rollup, dict) or not isinstance(gate, dict):
+        emit("[large-library-report-chain] invalid")
+        return
+    emit(
+        "[large-library-report-chain] "
+        f"languages={rollup.get('languageCount')} "
+        f"libraries={rollup.get('libraryCount')} "
+        f"questions={rollup.get('deepQuestionCount')} "
+        f"runs={rollup.get('optimizationRunCount')} "
+        f"variantRuns={rollup.get('optimizationVariantRunCount')} "
+        f"ready={rollup.get('readyLanguageCount')} "
+        f"gate={gate.get('status')}"
+    )
+    for entry in report.get("languages", []):
+        if not isinstance(entry, dict):
+            continue
+        depths = entry.get("depthBucketCounts")
+        emit(
+            "|language "
+            f"{entry.get('language')} "
+            f"libraries={entry.get('libraryCount')} "
+            f"questions={entry.get('deepQuestionCount')} "
+            f"depths={_compact_counts(depths)} "
+            f"ready={entry.get('reportChainReady')}"
+        )
+    for finding in report.get("findings", []):
+        if not isinstance(finding, dict):
+            continue
+        emit(
+            "|finding "
+            f"language={finding.get('language')} "
+            f"kind={finding.get('kind')} "
+            f"severity={finding.get('severity')} "
+            f"message={finding.get('message')}"
+        )
+
+
+def _compact_counts(value: object) -> str:
+    if not isinstance(value, dict):
+        return "-"
+    return ",".join(
+        f"{key}:{value[key]}" for key in sorted(value) if isinstance(key, str)
+    )
 
 
 def _run_scenarios(

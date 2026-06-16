@@ -14,45 +14,53 @@ use crate::cache_replay::replay_artifact_path;
 const CLIENT_HISTORY_ANALYSIS_METADATA_SCHEMA_ID: &str =
     "agent.semantic-protocols.client-history-analysis-metadata";
 
+pub(super) struct AnalysisMetadataArtifactWriteback<'a> {
+    pub(super) cache_root: &'a Path,
+    pub(super) generation: &'a mut ClientCacheGeneration,
+    pub(super) source_artifact_id: &'a CacheArtifactId,
+    pub(super) source_artifact_kind: ArtifactKind,
+    pub(super) provider: &'a ResolvedProvider,
+    pub(super) project_root: &'a Path,
+    pub(super) request: &'a ClientRequest,
+    pub(super) export_method: &'a CacheExportMethod,
+    pub(super) artifact_bytes: &'a [u8],
+    pub(super) rendered_stdout: &'a [u8],
+    pub(super) provider_commands: &'a [ProviderCommandReceipt],
+    pub(super) writeback_provider_commands: &'a [ProviderCommandReceipt],
+}
+
 pub(super) fn maybe_write_analysis_metadata_artifact(
-    cache_root: &Path,
-    generation: &mut ClientCacheGeneration,
-    source_artifact_id: &CacheArtifactId,
-    source_artifact_kind: ArtifactKind,
-    provider: &ResolvedProvider,
-    project_root: &Path,
-    request: &ClientRequest,
-    export_method: &CacheExportMethod,
-    artifact_bytes: &[u8],
-    rendered_stdout: &[u8],
-    provider_commands: &[ProviderCommandReceipt],
-    writeback_provider_commands: &[ProviderCommandReceipt],
+    writeback: AnalysisMetadataArtifactWriteback<'_>,
 ) -> Option<(CacheArtifactId, u64)> {
     let artifact_id = CacheArtifactId::from(format!(
         "analysis-metadata/{}.json",
-        generation.generation_id.as_str()
+        writeback.generation.generation_id.as_str()
     ));
-    let artifact_path =
-        replay_artifact_path(cache_root, &artifact_id, "analysis-metadata/", ".json")?;
-    let request_method = serde_json::to_value(&request.method).ok()?;
-    let request_language_id = request.language_id.as_ref().map_or_else(
-        || provider.language_id.as_str(),
+    let artifact_path = replay_artifact_path(
+        writeback.cache_root,
+        &artifact_id,
+        "analysis-metadata/",
+        ".json",
+    )?;
+    let request_method = serde_json::to_value(&writeback.request.method).ok()?;
+    let request_language_id = writeback.request.language_id.as_ref().map_or_else(
+        || writeback.provider.language_id.as_str(),
         |language_id| language_id.as_str(),
     );
-    let query = analysis_metadata_query(&request.forwarded_args);
-    let target = analysis_metadata_target(&request.forwarded_args);
+    let query = analysis_metadata_query(&writeback.request.forwarded_args);
+    let target = analysis_metadata_target(&writeback.request.forwarded_args);
     let metadata = serde_json::json!({
         "schemaId": CLIENT_HISTORY_ANALYSIS_METADATA_SCHEMA_ID,
         "schemaVersion": "1",
         "protocolId": "agent.semantic-protocols.client",
         "protocolVersion": "1",
-        "sourceArtifactId": source_artifact_id.as_str(),
-        "sourceArtifactKind": analysis_metadata_source_kind(source_artifact_kind),
-        "languageId": provider.language_id.as_str(),
-        "providerId": provider.provider_id.as_str(),
-        "projectRoot": normalized_path(project_root),
-        "method": export_method.as_str(),
-        "exportMethod": export_method.as_str(),
+        "sourceArtifactId": writeback.source_artifact_id.as_str(),
+        "sourceArtifactKind": analysis_metadata_source_kind(writeback.source_artifact_kind),
+        "languageId": writeback.provider.language_id.as_str(),
+        "providerId": writeback.provider.provider_id.as_str(),
+        "projectRoot": normalized_path(writeback.project_root),
+        "method": writeback.export_method.as_str(),
+        "exportMethod": writeback.export_method.as_str(),
         "query": query,
         "target": target,
         "developerMode": {
@@ -66,36 +74,38 @@ pub(super) fn maybe_write_analysis_metadata_artifact(
         "request": {
             "method": request_method,
             "languageId": request_language_id,
-            "forwardedArgs": request.forwarded_args.clone(),
+            "forwardedArgs": writeback.request.forwarded_args.clone(),
         },
         "artifact": {
-            "bytes": saturating_len(artifact_bytes),
-            "fnv64": stable_hash_bytes(artifact_bytes),
+            "bytes": saturating_len(writeback.artifact_bytes),
+            "fnv64": stable_hash_bytes(writeback.artifact_bytes),
         },
         "output": {
-            "bytes": saturating_len(rendered_stdout),
-            "lineCount": analysis_metadata_line_count(rendered_stdout),
-            "fnv64": stable_hash_bytes(rendered_stdout),
+            "bytes": saturating_len(writeback.rendered_stdout),
+            "lineCount": analysis_metadata_line_count(writeback.rendered_stdout),
+            "fnv64": stable_hash_bytes(writeback.rendered_stdout),
         },
-        "analysis": analysis_metadata_from_output(rendered_stdout),
+        "analysis": analysis_metadata_from_output(writeback.rendered_stdout),
         "commands": {
-            "captured": provider_commands,
-            "writeback": writeback_provider_commands,
+            "captured": writeback.provider_commands,
+            "writeback": writeback.writeback_provider_commands,
         },
     });
     let bytes = serde_json::to_vec_pretty(&metadata).ok()?;
     fs::create_dir_all(artifact_path.parent()?).ok()?;
     fs::write(&artifact_path, &bytes).ok()?;
-    generation
+    writeback
+        .generation
         .artifact_ids
         .get_or_insert_with(Vec::new)
         .push(artifact_id.clone());
-    if !generation
+    if !writeback
+        .generation
         .schema_ids
         .iter()
         .any(|schema_id| schema_id.as_str() == CLIENT_HISTORY_ANALYSIS_METADATA_SCHEMA_ID)
     {
-        generation.schema_ids.push(SemanticSchemaId::from(
+        writeback.generation.schema_ids.push(SemanticSchemaId::from(
             CLIENT_HISTORY_ANALYSIS_METADATA_SCHEMA_ID,
         ));
     }

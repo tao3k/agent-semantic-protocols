@@ -2,18 +2,23 @@
 
 from __future__ import annotations
 
-import re
 from collections.abc import Iterable, Mapping
 
 from .model import Node, TypedGraph
+from .query_token_priority import (
+    QUERY_TOKEN_UNCOVERED_BONUS,
+    query_token_balance_weights,
+)
+from .query_tokens import GENERIC_PATH_TOKENS, query_tokens_from_text
 
-_TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9_]*")
-_MIN_TOKEN_LENGTH = 2
 _MAX_QUERY_MATCH_BONUS = 0.75
 _QUERY_SEED_WEIGHT = 1.20
 _MATCHED_SEED_FLOOR = 0.35
 _UNMATCHED_SEED_FLOOR = 0.20
+_PACKAGE_COHESION_BONUS = 0.45
+_PACKAGE_DRIFT_PENALTY = 0.35
 _QUERY_WEIGHT_NODE_KINDS = {"collection", "field", "hot", "item", "owner", "type"}
+_QUERY_MATCH_COMPOUND_RATIO = 0.25
 
 
 def query_token_weights(
@@ -21,12 +26,17 @@ def query_token_weights(
     *,
     profile_name: str,
     seed_ids: Iterable[str],
+    query_clauses: Iterable[str] = (),
 ) -> Mapping[str, float]:
     if profile_name != "owner-query":
         return {}
     query_tokens = _query_tokens(graph, seed_ids)
     if not query_tokens:
         return {}
+    clause_weight = query_token_balance_weights(
+        query_tokens,
+        tuple(query_clauses),
+    )
     candidate_texts = [
         _node_text(node)
         for node in graph.nodes.values()
@@ -36,7 +46,9 @@ def query_token_weights(
     for token in query_tokens:
         frequency = sum(1 for text in candidate_texts if token in text)
         if frequency > 0:
-            token_weights[token] = 1.0 / frequency
+            multiplier = clause_weight.get(token, QUERY_TOKEN_UNCOVERED_BONUS)
+            multiplier /= QUERY_TOKEN_UNCOVERED_BONUS
+            token_weights[token] = multiplier / frequency
     return token_weights
 
 
@@ -51,10 +63,18 @@ def query_node_match_bonus(
     node_text = _node_text(node)
     if not node_text or not token_weights:
         return 0.0
-    matched_tokens = {token for token in token_weights if token in node_text}
+    exact_node_text = _node_exact_semantic_text(node)
+    exact_tokens = {token for token in token_weights if token in exact_node_text}
+    broad_tokens = {
+        token for token in token_weights if token in node_text and token not in exact_tokens
+    }
+    matched_tokens = exact_tokens | broad_tokens
     if not matched_tokens:
         return 0.0
-    matched_weight = sum(token_weights[token] for token in matched_tokens)
+    matched_weight = sum(token_weights[token] for token in exact_tokens)
+    matched_weight += sum(
+        token_weights[token] * _QUERY_MATCH_COMPOUND_RATIO for token in broad_tokens
+    )
     total_weight = sum(token_weights.values())
     coverage = matched_weight / total_weight if total_weight > 0 else 0.0
     return min(_MAX_QUERY_MATCH_BONUS, 0.15 * matched_weight + 0.55 * coverage)
@@ -101,6 +121,27 @@ def query_seed_personalization_weights(
     return weights
 
 
+def query_package_cohesion_adjustment(
+    graph: TypedGraph,
+    *,
+    profile_name: str,
+    seed_ids: Iterable[str],
+    node: Node,
+) -> float:
+    if profile_name != "owner-query" or node.kind == "query":
+        return 0.0
+    package_tokens = _query_package_tokens(graph, seed_ids)
+    if not package_tokens:
+        return 0.0
+    path_text = _node_path_text(node)
+    if any(token in path_text for token in package_tokens):
+        return _PACKAGE_COHESION_BONUS
+    node_text = _node_text(node)
+    if any(token in node_text for token in package_tokens):
+        return -_PACKAGE_DRIFT_PENALTY
+    return 0.0
+
+
 def _query_tokens(graph: TypedGraph, seed_ids: Iterable[str]) -> tuple[str, ...]:
     tokens: list[str] = []
     seen: set[str] = set()
@@ -116,19 +157,61 @@ def _query_tokens(graph: TypedGraph, seed_ids: Iterable[str]) -> tuple[str, ...]
     return tuple(tokens)
 
 
+def _query_package_tokens(
+    graph: TypedGraph,
+    seed_ids: Iterable[str],
+) -> tuple[str, ...]:
+    path_tokens = _path_tokens(graph)
+    return tuple(
+        token
+        for token in _query_tokens(graph, seed_ids)
+        if "_" in token or (token in path_tokens and token not in GENERIC_PATH_TOKENS)
+    )
+
+
 def _node_text(node: Node) -> str:
+    parts = [
+        _node_semantic_text(node),
+        str(node.fields.get("path") or ""),
+        str(node.fields.get("ownerPath") or ""),
+    ]
+    return " ".join(parts).lower()
+
+
+def _node_semantic_text(node: Node) -> str:
     parts = [
         node.value,
         node.role,
         node.kind,
         str(node.fields.get("symbol") or ""),
         str(node.fields.get("name") or ""),
-        str(node.fields.get("path") or ""),
-        str(node.fields.get("ownerPath") or ""),
         str(node.fields.get("matchText") or ""),
         _node_fields_text(node),
         _semantic_alias_text(node),
     ]
+    return " ".join(parts).lower()
+
+
+def _node_exact_semantic_text(node: Node) -> str:
+    parts = [
+        node.value,
+        node.role,
+        node.kind,
+        str(node.fields.get("symbol") or ""),
+        str(node.fields.get("name") or ""),
+        _node_fields_text(node),
+        _semantic_alias_text(node),
+    ]
+    return " ".join(parts).lower()
+
+
+def _node_path_text(node: Node) -> str:
+    parts = [
+        str(node.fields.get("path") or ""),
+        str(node.fields.get("ownerPath") or ""),
+    ]
+    if node.kind in {"owner", "test"}:
+        parts.append(node.value)
     return " ".join(parts).lower()
 
 
@@ -149,8 +232,11 @@ def _semantic_alias_text(node: Node) -> str:
 
 
 def _tokens(value: str) -> tuple[str, ...]:
-    return tuple(
-        token.lower()
-        for token in _TOKEN_RE.findall(value)
-        if len(token) >= _MIN_TOKEN_LENGTH
-    )
+    return query_tokens_from_text(value)
+
+
+def _path_tokens(graph: TypedGraph) -> set[str]:
+    tokens: set[str] = set()
+    for node in graph.nodes.values():
+        tokens.update(_tokens(_node_path_text(node)))
+    return tokens

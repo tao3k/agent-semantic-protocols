@@ -34,10 +34,7 @@ pub fn load_or_sync_activation(
             })
         });
     }
-    match load_activation(activation_path) {
-        Ok(runtime) => Ok(runtime),
-        Err(error) => Err(error),
-    }
+    load_activation(activation_path)
 }
 
 /// Result of syncing the generated default activation during install.

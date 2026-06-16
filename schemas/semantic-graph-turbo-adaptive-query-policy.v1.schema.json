@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-graph-turbo-adaptive-query-policy.v1.schema.json",
+  "title": "Semantic Graph Turbo Adaptive Query Policy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "protocolId",
+    "protocolVersion",
+    "packetKind",
+    "targetGraphPhase",
+    "status",
+    "policyMode",
+    "rankingMetric",
+    "sourceAnalysis",
+    "defaultPolicy",
+    "bucketPolicies",
+    "validationPlan",
+    "runtimeBridge",
+    "guardrails"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.semantic-graph-turbo-adaptive-query-policy"
+    },
+    "schemaVersion": {"const": "1"},
+    "protocolId": {"const": "agent.semantic-protocols.semantic-language"},
+    "protocolVersion": {"const": "1"},
+    "packetKind": {"const": "graph-turbo-adaptive-query-policy"},
+    "targetGraphPhase": {"const": "query-first-stage"},
+    "status": {"enum": ["collecting", "ready"]},
+    "policyMode": {"const": "adaptive-by-language-package-depth"},
+    "rankingMetric": {"const": "answerQualityThenElapsedMs"},
+    "sourceAnalysis": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "defaultPolicy": {
+      "type": ["object", "null"],
+      "additionalProperties": true
+    },
+    "bucketPolicies": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/policyEntry"}
+    },
+    "validationPlan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["targetGranularity", "runCount", "runs"],
+      "properties": {
+        "targetGranularity": {"const": "per-question-live-agent-receipt"},
+        "runCount": {"type": "integer", "minimum": 0},
+        "runs": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/validationRun"}
+        }
+      }
+    },
+    "runtimeBridge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["envVar", "supportedVariants"],
+      "properties": {
+        "envVar": {"const": "ASP_GRAPH_TURBO_ABLATION_VARIANT"},
+        "supportedVariants": {
+          "type": "array",
+          "items": {"enum": [
+            "no-package-cohesion",
+            "no-query-clause-coverage",
+            "no-query-seed-prior"
+          ]}
+        }
+      }
+    },
+    "guardrails": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "$defs": {
+    "policyEntry": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "ablationVariant",
+        "queryAdjustmentPolicy"
+      ],
+      "properties": {
+        "ablationVariant": {
+          "enum": [
+            "no-package-cohesion",
+            "no-query-clause-coverage",
+            "no-query-seed-prior"
+          ]
+        },
+        "queryAdjustmentPolicy": {
+          "type": "object",
+          "additionalProperties": {"type": "boolean"}
+        }
+      }
+    },
+    "validationRun": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runId",
+        "scenarioId",
+        "scenarioPath",
+        "questionId",
+        "ablationVariant",
+        "env",
+        "expectedReceiptGranularity"
+      ],
+      "properties": {
+        "runId": {"type": "string", "minLength": 1},
+        "scenarioId": {"type": "string", "minLength": 1},
+        "scenarioPath": {"type": "string", "minLength": 1},
+        "questionId": {"type": "string", "minLength": 1},
+        "ablationVariant": {
+          "enum": [
+            "no-package-cohesion",
+            "no-query-clause-coverage",
+            "no-query-seed-prior"
+          ]
+        },
+        "env": {
+          "type": "object",
+          "additionalProperties": {"type": "string"},
+          "required": ["ASP_GRAPH_TURBO_ABLATION_VARIANT"]
+        },
+        "expectedReceiptGranularity": {"const": "per-question-live-agent"}
+      }
+    }
+  }
+}

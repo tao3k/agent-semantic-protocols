@@ -44,6 +44,8 @@ def build_trace_projection(
     receipt_boost_count: int,
     receipt_penalty_count: int,
     pagerank: GraphTurboPprResult,
+    query_adjustment_policy: Mapping[str, bool],
+    query_adjustment_metrics: Mapping[str, int | float],
     read_loop_second_pass: GraphTurboReadLoopSecondPass,
 ) -> TraceProjection:
     return TraceProjection(
@@ -63,6 +65,8 @@ def build_trace_projection(
             receipt_boost_count,
             receipt_penalty_count,
             pagerank,
+            query_adjustment_policy,
+            query_adjustment_metrics,
             read_loop_second_pass,
         ),
         metrics=_algorithm_metrics(
@@ -81,6 +85,7 @@ def build_trace_projection(
             receipt_boost_count,
             receipt_penalty_count,
             pagerank,
+            query_adjustment_metrics,
             read_loop_second_pass,
         ),
     )
@@ -123,6 +128,8 @@ def _algorithm_trace(
     receipt_boost_count: int,
     receipt_penalty_count: int,
     pagerank: GraphTurboPprResult,
+    query_adjustment_policy: Mapping[str, bool],
+    query_adjustment_metrics: Mapping[str, int | float],
     read_loop_second_pass: GraphTurboReadLoopSecondPass,
 ) -> tuple[AlgorithmTraceStep, ...]:
     relation_channel_count = _selected_relation_channel_count(
@@ -149,6 +156,8 @@ def _algorithm_trace(
         ppr_residual=pagerank.residual,
         ppr_dangling_mass_last=pagerank.dangling_mass_last,
         ppr_mass_sum=pagerank.mass_sum,
+        query_adjustment_policy=query_adjustment_policy,
+        query_adjustment_metrics=query_adjustment_metrics,
         read_loop_second_pass=read_loop_second_pass,
     )
 
@@ -169,6 +178,7 @@ def _algorithm_metrics(
     receipt_boost_count: int,
     receipt_penalty_count: int,
     pagerank: GraphTurboPprResult,
+    query_adjustment_metrics: Mapping[str, int | float],
     read_loop_second_pass: GraphTurboReadLoopSecondPass,
 ) -> AlgorithmMetrics:
     relation_channel_count = _selected_relation_channel_count(
@@ -205,6 +215,7 @@ def _algorithm_metrics(
         read_loop_same_owner_suppressed_count=(
             read_loop_second_pass.same_owner_suppressed_count
         ),
+        query_adjustment_metrics=query_adjustment_metrics,
     )
 
 

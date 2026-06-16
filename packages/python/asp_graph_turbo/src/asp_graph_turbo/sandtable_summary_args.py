@@ -46,6 +46,7 @@ def _add_report_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--receipt-fixture-id")
     parser.add_argument("--benchmark-report")
     parser.add_argument("--report-scenario")
+    parser.add_argument("--large-library-report-chain")
     parser.add_argument("--scenario")
     parser.add_argument("--format", choices=["json", "text"], default="json")
 

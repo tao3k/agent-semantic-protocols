@@ -43,6 +43,9 @@ def _append_quality_and_context(
     context = _mapping(packet.get("context"))
     if context:
         output += "\ncontext=" + _context_text(context)
+    report_chain = _mapping(packet.get("largeLibraryReportChain"))
+    if report_chain:
+        output += "\nlargeLibraryReportChain=" + _report_chain_text(report_chain)
     return output
 
 
@@ -58,6 +61,18 @@ def _context_text(context: Mapping[str, object]) -> str:
         f"{rank_text}{action_rank_text},"
         f"exactCode={context.get('exactCodeSuccess')},"
         f"testPrecision={_format_ratio(context.get('testSelectionPrecision'))}"
+    )
+
+
+def _report_chain_text(report_chain: Mapping[str, object]) -> str:
+    return (
+        f"status={report_chain.get('status')},"
+        f"languages={report_chain.get('languageCount')},"
+        f"ready={report_chain.get('readyLanguageCount')},"
+        f"questions={report_chain.get('deepQuestionCount')},"
+        f"runs={report_chain.get('optimizationRunCount')},"
+        f"variantRuns={report_chain.get('optimizationVariantRunCount')},"
+        f"findings={report_chain.get('findingCount')}"
     )
 
 

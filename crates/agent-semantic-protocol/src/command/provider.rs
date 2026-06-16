@@ -246,6 +246,21 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
         if !config.language_enabled(language_id) {
             return Err(format!("language `{language_id}` is disabled by asp.toml"));
         }
+        if is_search_pipe_command(&command_args) {
+            let cache_home = client_backend_cache_home(&activation_root, &activation_root)?;
+            return run_asp_fast_search_command(
+                &command_args,
+                FastSearchContext {
+                    language_id,
+                    project_root: &activation_root,
+                    locator_root: &invocation_root,
+                    cache_home: &cache_home,
+                    config: &config,
+                    provider_context: None,
+                    frontier_receipt: frontier_receipt.as_ref(),
+                },
+            );
+        }
         return document_provider::run_language_command_with_config(
             language_id,
             &command_args,
@@ -514,6 +529,11 @@ fn is_version(args: &[String]) -> bool {
         args.first().map(String::as_str),
         Some("version" | "--version" | "-V")
     )
+}
+
+fn is_search_pipe_command(args: &[String]) -> bool {
+    matches!(args.first().map(String::as_str), Some("search"))
+        && matches!(args.get(1).map(String::as_str), Some("pipe"))
 }
 
 fn is_guide_help(args: &[String]) -> bool {

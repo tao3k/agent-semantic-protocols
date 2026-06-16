@@ -18,6 +18,7 @@ from .model import (
 )
 from .pagerank import GraphTurboPprResult
 from .profiles import DEFAULT_PROFILES
+from .query_adjustments import query_adjustment_summary
 from .ranking_projection import (
     build_path_projection,
     build_ranked_projection,
@@ -32,6 +33,8 @@ def rank_fingerprint(
     graph: TypedGraph,
     profile: GraphProfile,
     seed_ids: tuple[str, ...],
+    query_clauses: tuple[str, ...],
+    query_adjustment_policy: Mapping[str, bool],
     budget: int,
     kind_budgets: Mapping[str, int],
     path_budget: int,
@@ -43,6 +46,8 @@ def rank_fingerprint(
         graph,
         profile,
         seed_ids=seed_ids,
+        query_clauses=query_clauses,
+        query_adjustment_policy=query_adjustment_policy,
         budget=budget,
         kind_budgets=kind_budgets,
         path_budget=path_budget,
@@ -69,6 +74,8 @@ def build_graph_result(
     graph_cache: GraphCache,
     receipt_adjustments: tuple[ReceiptAdjustment, ...],
     pagerank: GraphTurboPprResult,
+    query_adjustments: Mapping[str, Mapping[str, float]],
+    query_adjustment_policy: Mapping[str, bool],
     ranked: tuple[Node, ...],
     read_memory_suppressed_count: int = 0,
     read_loop_second_pass: GraphTurboReadLoopSecondPass = GraphTurboReadLoopSecondPass(),
@@ -102,7 +109,9 @@ def build_graph_result(
         normalized_kind_budgets,
         receipt_reasons_by_node(receipt_adjustments),
         graph_turbo_relation_reasons_by_node(selected_edges.values(), ranked),
+        query_adjustments,
     )
+    query_adjustment_metrics = query_adjustment_summary(query_adjustments)
     trace_projection = build_trace_projection(
         graph,
         selected_profile,
@@ -119,6 +128,8 @@ def build_graph_result(
         receipt_boost_count=receipt_counts[0],
         receipt_penalty_count=receipt_counts[1],
         pagerank=pagerank,
+        query_adjustment_policy=query_adjustment_policy,
+        query_adjustment_metrics=query_adjustment_metrics,
         read_loop_second_pass=read_loop_second_pass,
     )
     return GraphResult(

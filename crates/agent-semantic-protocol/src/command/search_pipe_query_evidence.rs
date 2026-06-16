@@ -19,6 +19,7 @@ pub(super) fn strong_match(language_id: &str, candidate: &Candidate, term: &Quer
     !matches!(term.role, TermRole::Context)
         && (path_exact_match(candidate, term)
             || declaration_header_match(language_id, candidate, term)
+            || rust_path_compound_match(language_id, candidate, term)
             || owner_local_symbol_exact_match(candidate, term))
 }
 
@@ -170,6 +171,42 @@ fn owner_local_symbol_exact_match(candidate: &Candidate, term: &QueryTerm) -> bo
         candidate.source.as_str(),
         "finder" | "finder-path" | "fd-query" | "rg-query" | "ingest"
     ) && candidate.symbol == term.raw
+}
+
+fn rust_path_compound_match(language_id: &str, candidate: &Candidate, term: &QueryTerm) -> bool {
+    if language_id != "rust" || !term.raw.contains("::") {
+        return false;
+    }
+    let parts = term.raw.split("::").collect::<Vec<_>>();
+    if parts.len() < 2 || parts.iter().any(|part| part.is_empty()) {
+        return false;
+    }
+    let Some(member) = parts.last() else {
+        return false;
+    };
+    let owner_parts = &parts[..parts.len() - 1];
+    if !owner_parts
+        .iter()
+        .any(|part| owner_fragment_matches(candidate, part))
+    {
+        return false;
+    }
+    let member_term = QueryTerm {
+        raw: (*member).to_string(),
+        lower: member.to_ascii_lowercase(),
+        role: TermRole::Concept,
+    };
+    declaration_header_match(language_id, candidate, &member_term)
+}
+
+fn owner_fragment_matches(candidate: &Candidate, fragment: &str) -> bool {
+    let lower = fragment.to_ascii_lowercase();
+    path_stem_tokens(&candidate.path)
+        .iter()
+        .any(|token| token == &lower)
+        || identifier_tokens(&candidate.text)
+            .iter()
+            .any(|token| token == fragment)
 }
 
 fn identifier_tokens(value: &str) -> Vec<String> {

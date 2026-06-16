@@ -64,7 +64,7 @@ fn search_pipe_source_option_controls_graph_request_source() {
     );
     assert_eq!(
         payload["surfaces"],
-        serde_json::json!(["owner", "items", "tests"])
+        serde_json::json!(["owner", "items", "tests", "topology"])
     );
     assert_eq!(payload["profile"], "owner-query");
     let nodes = payload["graph"]["nodes"].as_array().expect("nodes");

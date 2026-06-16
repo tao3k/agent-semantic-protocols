@@ -90,7 +90,7 @@ fn asp_rg_query_empty_seeds_prints_compact_no_output_receipt() {
         "{stdout}"
     );
     assert!(
-        stdout.contains("nextCommand=asp fd -query 'missingowner|missinghelper' '.'"),
+        stdout.contains("nextCommand=asp fd -query 'MissingOwner|MissingHelper' '.'"),
         "{stdout}"
     );
     assert!(

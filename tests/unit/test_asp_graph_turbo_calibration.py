@@ -46,6 +46,9 @@ def test_calibration_boosts_profile_kind_bonus_from_success_feedback() -> None:
     assert field_delta["scoreDelta"] == 0.3
     assert field_delta["receiptCount"] == 1
     assert field_delta["reasons"] == ["frontier-success"]
+    assert calibration["guardrails"]["queryFirstStage"]["seedPrior"]["metric"] == (
+        "querySeedPriorCount"
+    )
     assert (
         list(
             schema_validator_for(_GRAPH_TURBO_CALIBRATION_SCHEMA).iter_errors(

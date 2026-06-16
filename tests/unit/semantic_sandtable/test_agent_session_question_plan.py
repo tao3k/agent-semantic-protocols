@@ -94,6 +94,15 @@ def test_agent_session_question_plan_aggregate_rolls_up_multiple_questions(
         "human-review": 2,
     }
     assert len(aggregate["questions"]) == 2
+    first_question = aggregate["questions"][0]
+    assert first_question["sourceSession"] == {
+        "sessionId": "rust-question",
+        "scenarioId": "rust.tokio-question",
+    }
+    assert first_question["sourceArtifacts"]["receiptPath"] == (
+        "receipts/agent-session-receipt.json"
+    )
+    assert first_question["analysisMetrics"]["totalRounds"] >= 1
 
 
 def test_cli_aggregates_question_plans(

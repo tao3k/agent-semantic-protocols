@@ -3,6 +3,7 @@
 use std::collections::{BTreeSet, HashMap};
 
 use super::search_pipe_model::Candidate;
+use super::search_pipe_owner_roles::{has_strong_secondary_owner_intent, secondary_like_owner};
 use super::search_pipe_query_evidence::{
     declaration_header_match, finder_handles, handle_paths, high_value_matches, high_value_missing,
     is_high_value_term, parser_handles, path_exact_match, strong_match, weak_match, weak_reason,
@@ -85,8 +86,9 @@ pub(super) fn analyze_search_pipe_quality(
         clauses.len(),
     );
     let query_pack_quality = query_pack_quality(&terms, &global_missing, &weak_terms, &risks);
-    let allow_query_selector = query_pack_quality != "low" && package_cohesion != "low";
-    let fd_query = fd_query_terms(&terms, &weak_terms);
+    let allow_query_selector =
+        query_pack_quality != "low" && package_cohesion != "low" && weak_terms.is_empty();
+    let fd_query = fd_query_terms(&terms, &weak_terms, &strong_matched);
     let context_terms = role_terms(&terms, TermRole::Context);
     let owner_seed_terms = role_terms(&terms, TermRole::Symbol);
     let concept_terms = role_terms(&terms, TermRole::Concept);
@@ -318,9 +320,11 @@ fn best_owner_coverage(terms: &[QueryTerm], candidates: &[Candidate]) -> Option<
             .or_default()
             .extend(matched);
     }
-    let (owner, matched) = per_owner
-        .into_iter()
-        .max_by_key(|(_, matched)| matched.len())?;
+    let (owner, matched) = per_owner.into_iter().max_by(|left, right| {
+        owner_coverage_score(&left.0, &left.1, terms)
+            .cmp(&owner_coverage_score(&right.0, &right.1, terms))
+            .then_with(|| right.0.cmp(&left.0))
+    })?;
     let matched = matched.into_iter().collect::<Vec<_>>();
     let missing = terms
         .iter()
@@ -333,6 +337,47 @@ fn best_owner_coverage(terms: &[QueryTerm], candidates: &[Candidate]) -> Option<
         matched,
         missing,
     })
+}
+
+fn owner_coverage_score(
+    owner: &str,
+    matched: &BTreeSet<String>,
+    terms: &[QueryTerm],
+) -> (usize, usize, usize, usize) {
+    let symbol_hits = terms
+        .iter()
+        .filter(|term| matches!(term.role, TermRole::Symbol))
+        .filter(|term| matched.iter().any(|matched| matched == &term.lower))
+        .count();
+    let config_owner_bonus = usize::from(config_like_owner(owner));
+    (
+        owner_role_score(owner, terms),
+        matched.len(),
+        symbol_hits,
+        config_owner_bonus,
+    )
+}
+
+fn owner_role_score(owner: &str, terms: &[QueryTerm]) -> usize {
+    if query_has_secondary_owner_intent(terms) || !secondary_like_owner(owner) {
+        1
+    } else {
+        0
+    }
+}
+
+fn query_has_secondary_owner_intent(terms: &[QueryTerm]) -> bool {
+    has_strong_secondary_owner_intent(terms.iter().map(|term| term.lower.as_str()))
+}
+
+fn config_like_owner(owner: &str) -> bool {
+    owner.ends_with(".pkg")
+        || owner.ends_with(".toml")
+        || owner.ends_with(".json")
+        || owner.ends_with(".yaml")
+        || owner.ends_with(".yml")
+        || owner.ends_with("package.json")
+        || owner.ends_with("Cargo.toml")
 }
 
 fn candidate_packages(candidates: &[Candidate]) -> Vec<String> {
@@ -364,18 +409,49 @@ fn package_cohesion(
     best_owner: &Option<OwnerCoverage>,
     terms: &[QueryTerm],
 ) -> String {
-    let term_count = terms.len().max(1);
-    let best_owner_hits = best_owner
+    let high_value_terms = terms
+        .iter()
+        .filter(|term| is_high_value_term(term))
+        .collect::<Vec<_>>();
+    let high_value_count = high_value_terms.len().max(1);
+    let best_owner_high_value_hits = best_owner
         .as_ref()
-        .map(|owner| owner.matched.len())
+        .map(|owner| {
+            high_value_terms
+                .iter()
+                .filter(|term| owner.matched.iter().any(|matched| matched == &term.lower))
+                .count()
+        })
         .unwrap_or_default();
-    if packages.len() > 3 || best_owner_hits * 2 < term_count {
+    let package_axis_terms = high_value_terms
+        .iter()
+        .filter(|term| is_package_axis_term(&term.raw))
+        .collect::<Vec<_>>();
+    let best_owner_package_axis_hits = best_owner
+        .as_ref()
+        .map(|owner| {
+            package_axis_terms
+                .iter()
+                .filter(|term| owner.matched.iter().any(|matched| matched == &term.lower))
+                .count()
+        })
+        .unwrap_or_default();
+    let has_strong_owner_anchor =
+        high_value_terms.len() >= 2 && best_owner_high_value_hits >= high_value_terms.len();
+    if (package_axis_terms.len() > 1 && best_owner_package_axis_hits < package_axis_terms.len())
+        || (packages.len() > 3 && !has_strong_owner_anchor)
+        || best_owner_high_value_hits * 2 < high_value_count
+    {
         "low".to_string()
     } else if packages.len() > 1 {
         "medium".to_string()
     } else {
         "high".to_string()
     }
+}
+
+fn is_package_axis_term(raw: &str) -> bool {
+    raw.matches('-').count() >= 2 && !matches!(raw, "long-field-signatures")
 }
 
 fn risks(
@@ -445,11 +521,19 @@ fn query_pack_quality(
     .to_string()
 }
 
-fn fd_query_terms(terms: &[QueryTerm], weak_terms: &[String]) -> Option<String> {
+fn fd_query_terms(
+    terms: &[QueryTerm],
+    weak_terms: &[String],
+    strong_matched: &[String],
+) -> Option<String> {
     let selected = terms
         .iter()
         .filter(|term| matches!(term.role, TermRole::Symbol))
-        .filter(|term| weak_terms.is_empty() || weak_terms.iter().any(|weak| weak == &term.raw))
+        .filter(|term| {
+            weak_terms.is_empty()
+                || weak_terms.iter().any(|weak| weak == &term.raw)
+                || strong_matched.iter().any(|matched| matched == &term.raw)
+        })
         .map(|term| term.raw.clone())
         .collect::<Vec<_>>();
     (!selected.is_empty()).then(|| selected.join("|"))

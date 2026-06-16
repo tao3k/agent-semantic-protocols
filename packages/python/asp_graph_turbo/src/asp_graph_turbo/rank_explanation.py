@@ -16,9 +16,11 @@ def rank_explanations(
     kind_budgets: Mapping[str, int],
     receipt_reasons: Mapping[str, tuple[str, ...]] | None = None,
     relation_reasons: Mapping[str, tuple[str, ...]] | None = None,
+    query_adjustments: Mapping[str, Mapping[str, float]] | None = None,
 ) -> tuple[RankExplanation, ...]:
     receipt_reasons = receipt_reasons or {}
     relation_reasons = relation_reasons or {}
+    query_adjustments = query_adjustments or {}
     explanations: list[RankExplanation] = []
     for node in ranked:
         reasons = [
@@ -34,6 +36,7 @@ def rank_explanations(
         if node.kind in kind_budgets:
             reasons.append(f"kind-budget:{kind_budgets[node.kind]}")
         reasons.extend(relation_reasons.get(node.id, ()))
+        reasons.extend(_query_adjustment_reasons(query_adjustments.get(node.id, {})))
         reasons.extend(receipt_reasons.get(node.id, ()))
         explanations.append(
             RankExplanation(
@@ -44,3 +47,18 @@ def rank_explanations(
             )
         )
     return tuple(explanations)
+
+
+def _query_adjustment_reasons(adjustments: Mapping[str, float]) -> tuple[str, ...]:
+    reasons: list[str] = []
+    for name in ("seedPrior", "packageCohesion", "queryClauseCoverage"):
+        value = adjustments.get(name)
+        if not isinstance(value, int | float) or value == 0:
+            continue
+        reason_name = {
+            "seedPrior": "query-seed-prior",
+            "packageCohesion": "query-package-cohesion",
+            "queryClauseCoverage": "query-clause-coverage",
+        }[name]
+        reasons.append(f"{reason_name}:{value:+.2f}")
+    return tuple(reasons)

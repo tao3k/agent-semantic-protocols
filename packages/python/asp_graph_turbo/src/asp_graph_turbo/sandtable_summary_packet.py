@@ -12,6 +12,7 @@ def summary_packet(
     receipt: Mapping[str, object],
     scenario: str | None,
     report_scenario: Mapping[str, object] | None = None,
+    report_chain: Mapping[str, object] | None = None,
     gate_config: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     packet = {
@@ -26,6 +27,7 @@ def summary_packet(
         "receipt": _receipt_section(receipt),
     }
     _attach_report_context(packet, report_scenario)
+    _attach_report_chain(packet, report_chain)
     packet["qualityGate"] = quality_gate(packet, gate_config or {})
     return packet
 
@@ -128,6 +130,31 @@ def _attach_report_context(
         "readyForWeightCalibration": readiness.get("readyForWeightCalibration"),
     }
     packet["context"] = dict(_mapping(report_scenario.get("contextMetrics")))
+
+
+def _attach_report_chain(
+    packet: dict[str, object],
+    report_chain: Mapping[str, object] | None,
+) -> None:
+    if report_chain is None:
+        return
+    rollup = _mapping(report_chain.get("rollup"))
+    gate = _mapping(report_chain.get("optimizationGate"))
+    packet["largeLibraryReportChain"] = {
+        "schemaId": report_chain.get("schemaId"),
+        "packetKind": report_chain.get("packetKind"),
+        "languageCount": rollup.get("languageCount"),
+        "libraryCount": rollup.get("libraryCount"),
+        "scenarioCount": rollup.get("scenarioCount"),
+        "deepQuestionCount": rollup.get("deepQuestionCount"),
+        "readyLanguageCount": rollup.get("readyLanguageCount"),
+        "optimizationRunCount": rollup.get("optimizationRunCount"),
+        "optimizationVariantRunCount": rollup.get("optimizationVariantRunCount"),
+        "findingCount": rollup.get("findingCount"),
+        "status": gate.get("status"),
+        "reason": gate.get("reason"),
+        "blockingFindingCount": gate.get("blockingFindingCount"),
+    }
 
 
 def _mapping(value: object) -> Mapping[str, object]:

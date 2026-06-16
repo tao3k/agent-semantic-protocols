@@ -1,4 +1,6 @@
 mod graph_request;
+mod native_batching;
+mod path_ranking;
 
 use crate::provider_command::support::{asp_command, make_executable, temp_project_root};
 
@@ -118,7 +120,7 @@ fn asp_rg_query_marks_single_broad_or_as_recall_probe() {
     );
     assert!(stdout.contains("recommendedNext=A1.fd-query"), "{stdout}");
     assert!(
-        stdout.contains("nextCommand=asp fd -query 'fiber|queue|runtime' '.'"),
+        stdout.contains("nextCommand=asp fd -query 'Fiber|Queue|Runtime' '.'"),
         "{stdout}"
     );
     assert!(
@@ -204,13 +206,10 @@ fn asp_rg_query_keeps_repeated_query_clauses_separate() {
     );
     assert!(stdout.contains("[graph-frontier]"), "{stdout}");
     assert!(
-        stdout.contains("actionFrontier=A1.multi-clause-rg-query,A2.fd-query"),
+        stdout.contains("actionFrontier=A1.fd-query,A2.multi-clause-rg-query"),
         "{stdout}"
     );
-    assert!(
-        stdout.contains("recommendedNext=A1.multi-clause-rg-query"),
-        "{stdout}"
-    );
+    assert!(stdout.contains("recommendedNext=A1.fd-query"), "{stdout}");
     assert!(
         stdout.contains("nextClasses=owner-items,query-selector,fd-query"),
         "{stdout}"

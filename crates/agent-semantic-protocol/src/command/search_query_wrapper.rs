@@ -202,6 +202,10 @@ fn print_query_wrapper_view(request: QueryWrapperViewRequest<'_>) -> Result<(), 
     let language_id = infer_language_id(project_root);
     let pipes = default_search_surfaces();
     let query = query_display(queries);
+    let query_clause_texts = clauses
+        .iter()
+        .map(|clause| clause.raw.clone())
+        .collect::<Vec<_>>();
     let source_trace = vec![
         SearchPipeSourceTrace::new(
             surface.source_name(),
@@ -223,6 +227,7 @@ fn print_query_wrapper_view(request: QueryWrapperViewRequest<'_>) -> Result<(), 
         language_id,
         dependency_root: project_root,
         query: Some(&query),
+        query_clauses: &query_clause_texts,
         candidates,
         pipes: &pipes,
         source: "finder",

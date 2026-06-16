@@ -291,6 +291,114 @@ fn search_pipe_reports_multi_clause_query_pack_coverage() {
 }
 
 #[test]
+fn search_pipe_splits_api_compounds_before_seed_quality_analysis() {
+    let root = temp_project_root("search-pipe-api-compound-query");
+    let bin_dir = root.join(".bin");
+    let marker = root.join("provider-called");
+    std::fs::create_dir_all(root.join("src/buf")).expect("create rust src");
+    std::fs::write(
+        root.join("src/buf/buf_mut.rs"),
+        "pub trait BufMut {\n    unsafe fn advance_mut(&mut self, cnt: usize);\n}\n",
+    )
+    .expect("write buf mut source");
+    write_marker_provider(&bin_dir, "rs-harness", &marker);
+    write_activation(&root, &[provider("rust", Vec::new())]);
+
+    let output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args([
+            "rust",
+            "search",
+            "pipe",
+            "BufMut 的 advance_mut/unsafe 写入边界如何被组织？先找 trait 和实现 owner。",
+            "--view",
+            "seeds",
+            ".",
+        ])
+        .output()
+        .expect("run asp rust search pipe api compound");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    assert!(
+        stdout.contains(
+            "queryTerms=BufMut:symbol,advance_mut:symbol,unsafe:concept,trait:concept,owner:context"
+        ),
+        "{stdout}"
+    );
+    assert!(!stdout.contains("advance_mut/unsafe:symbol"), "{stdout}");
+    assert!(!stdout.contains("owner。:concept"), "{stdout}");
+    assert!(
+        stdout.contains("strongCoverage=matched=BufMut weak=-"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("packageCohesion=high packages=src/buf"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("queryQuality=medium reason=ok"), "{stdout}");
+    assert!(stdout.contains("fdQuery=BufMut|advance_mut"), "{stdout}");
+    assert!(stdout.contains("recommendedNext=A1.query-code"), "{stdout}");
+    assert!(!marker.exists(), "search pipe should not spawn provider");
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn search_pipe_preserves_rust_path_compounds_as_precise_symbol_terms() {
+    let root = temp_project_root("search-pipe-rust-path-compound-query");
+    let bin_dir = root.join(".bin");
+    let marker = root.join("provider-called");
+    std::fs::create_dir_all(root.join("src/runtime")).expect("create rust src");
+    std::fs::write(
+        root.join("src/runtime/handle.rs"),
+        "pub struct Handle;\nimpl Handle {\n    pub fn enter(&self) -> EnterGuard { EnterGuard }\n}\npub struct EnterGuard;\n",
+    )
+    .expect("write handle source");
+    write_marker_provider(&bin_dir, "rs-harness", &marker);
+    write_activation(&root, &[provider("rust", Vec::new())]);
+
+    let output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args([
+            "rust",
+            "search",
+            "pipe",
+            "Tokio runtime Handle::enter 的上下文进入和 guard 生命周期应该从哪些 owner frontier 开始定位？",
+            "--view",
+            "seeds",
+            ".",
+        ])
+        .output()
+        .expect("run asp rust search pipe rust path compound");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    assert!(stdout.contains("Handle::enter:symbol"), "{stdout}");
+    assert!(
+        stdout.contains("strongCoverage=matched=Handle::enter weak=-"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("fdQuery=Handle::enter|Tokio"), "{stdout}");
+    assert!(stdout.contains("A1=fd-query("), "{stdout}");
+    assert!(
+        stdout.contains("nextCommand=asp fd -query 'Handle::enter|Tokio' ."),
+        "{stdout}"
+    );
+    assert!(!marker.exists(), "search pipe should not spawn provider");
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn search_pipe_keeps_gerbil_package_terms_on_gerbil_candidates() {
     let root = temp_project_root("search-pipe-gerbil-package-candidates");
     let bin_dir = root.join(".bin");
@@ -429,21 +537,23 @@ fn search_pipe_auto_clauses_suppress_cross_package_selector_drift() {
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(
-        stdout.contains("queryPack=clauses=4 quality=low"),
+        stdout.contains("queryPack=clauses=3 quality=low"),
         "{stdout}"
     );
     assert!(stdout.contains("real_gxi.rs:symbol"), "{stdout}");
     assert!(stdout.contains("marlin-gerbil-scheme:symbol"), "{stdout}");
     assert!(stdout.contains("long-field-signatures:concept"), "{stdout}");
-    assert!(
-        stdout.contains("through:context,smoke:context,dev:context,dependency:context"),
-        "{stdout}"
-    );
+    assert!(!stdout.contains("through:context"), "{stdout}");
+    assert!(!stdout.contains("smoke:context"), "{stdout}");
     assert!(stdout.contains("rgQuery=real_gxi.rs"), "{stdout}");
     assert!(stdout.contains("risk=package-drift"), "{stdout}");
     assert!(!stdout.contains("A1=query-code"), "{stdout}");
     assert!(
         !stdout.contains("recommendedNext=A1.query-code"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("recommendedNext=A1.owner-items"),
         "{stdout}"
     );
     assert!(

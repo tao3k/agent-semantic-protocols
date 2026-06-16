@@ -2,6 +2,8 @@
 
 use serde_json::{Value, json};
 
+use super::search_pipe_projection::{query_projection_flag, query_projection_kind};
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct ActionNode {
     pub(super) id: String,
@@ -87,10 +89,13 @@ impl ActionNode {
                 selector,
                 workspace,
                 ..
-            } => Some(format!(
-                "asp {language_id} query --selector {} --workspace {workspace} --code",
-                shell_arg(selector)
-            )),
+            } => {
+                let projection_flag = query_projection_flag(language_id);
+                Some(format!(
+                    "asp {language_id} query --selector {} --workspace {workspace} {projection_flag}",
+                    shell_arg(selector)
+                ))
+            }
             ActionRoute::FdQuery {
                 query,
                 scope,
@@ -159,6 +164,10 @@ impl ActionNode {
                 fields.insert("ownerPath".to_string(), json!(owner));
                 fields.insert("symbol".to_string(), json!(symbol));
                 fields.insert("workspace".to_string(), json!(workspace));
+                fields.insert(
+                    "projection".to_string(),
+                    json!(query_projection_kind(language_id)),
+                );
                 ("query", selector.as_str(), "selector")
             }
             ActionRoute::FdQuery { query, scope, .. } => {

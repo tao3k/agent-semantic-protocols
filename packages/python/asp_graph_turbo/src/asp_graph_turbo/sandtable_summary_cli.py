@@ -20,6 +20,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     benchmark = _load_benchmark(args)
     report_scenario = _load_report_scenario(args.benchmark_report, args.report_scenario)
+    report_chain = _load_report_chain(args.large_library_report_chain)
     if report_scenario is None:
         if args.receipt is None:
             raise SystemExit(
@@ -33,6 +34,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         receipt,
         args.scenario,
         report_scenario,
+        report_chain,
         gate_config(args),
     )
     if args.format == "json":
@@ -129,6 +131,12 @@ def _load_report_scenario(
     scenario_packet = dict(scenario)
     scenario_packet["reportId"] = report.get("reportId")
     return scenario_packet
+
+
+def _load_report_chain(path: str | None) -> Mapping[str, object] | None:
+    if path is None:
+        return None
+    return _load_json(path)
 
 
 def _receipt_from_report_scenario(

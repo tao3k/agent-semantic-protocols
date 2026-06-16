@@ -4,6 +4,12 @@ use super::search_pipe_model::Candidate;
 use super::search_pipe_query_evidence::weak_match;
 use super::search_pipe_query_model::{ClauseCoverage, QueryClause, QueryTerm, TermRole};
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct QueryTokenFragment {
+    raw: String,
+    force_symbol: bool,
+}
+
 pub(super) fn query_clauses(language_id: &str, query: &str) -> Vec<QueryClause> {
     let explicit = query
         .split('|')
@@ -18,6 +24,21 @@ pub(super) fn query_clauses(language_id: &str, query: &str) -> Vec<QueryClause> 
         return explicit;
     }
     auto_query_clauses(explicit)
+}
+
+pub(super) fn query_clause_texts(language_id: &str, query: &str) -> Vec<String> {
+    query_clauses(language_id, query)
+        .into_iter()
+        .map(|clause| {
+            clause
+                .terms
+                .into_iter()
+                .map(|term| term.raw)
+                .collect::<Vec<_>>()
+                .join(" ")
+        })
+        .filter(|clause| !clause.is_empty())
+        .collect()
 }
 
 pub(super) fn unique_query_terms(clauses: &[QueryClause]) -> Vec<QueryTerm> {
@@ -134,12 +155,15 @@ fn term_role(language_id: &str, raw: &str) -> TermRole {
 fn query_terms(language_id: &str, raw_clause: &str) -> Vec<QueryTerm> {
     raw_clause
         .split(|character: char| character == ',' || character.is_whitespace())
-        .map(str::trim)
-        .filter(|term| !term.is_empty())
-        .map(|raw| QueryTerm {
-            raw: raw.to_string(),
-            lower: raw.to_ascii_lowercase(),
-            role: term_role(language_id, raw),
+        .flat_map(query_token_fragments)
+        .map(|fragment| QueryTerm {
+            raw: fragment.raw.clone(),
+            lower: fragment.raw.to_ascii_lowercase(),
+            role: if fragment.force_symbol {
+                TermRole::Symbol
+            } else {
+                term_role(language_id, &fragment.raw)
+            },
         })
         .fold(Vec::new(), |mut terms, term| {
             if !terms.iter().any(|seen: &QueryTerm| seen.raw == term.raw) {
@@ -147,6 +171,67 @@ fn query_terms(language_id: &str, raw_clause: &str) -> Vec<QueryTerm> {
             }
             terms
         })
+}
+
+fn query_token_fragments(raw: &str) -> Vec<QueryTokenFragment> {
+    let trimmed = trim_query_token(raw);
+    if trimmed.is_empty() || !has_ascii_query_signal(trimmed) {
+        return Vec::new();
+    }
+    if should_split_slash_compound(trimmed) {
+        return trimmed
+            .split('/')
+            .flat_map(query_token_fragments)
+            .collect::<Vec<_>>();
+    }
+    vec![QueryTokenFragment {
+        raw: trimmed.to_string(),
+        force_symbol: false,
+    }]
+}
+
+fn trim_query_token(raw: &str) -> &str {
+    raw.trim_matches(|character: char| !is_query_token_character(character))
+}
+
+fn is_query_token_character(character: char) -> bool {
+    character.is_ascii_alphanumeric() || matches!(character, '_' | '-' | '/' | ':' | '.' | '@')
+}
+
+fn has_ascii_query_signal(raw: &str) -> bool {
+    raw.chars()
+        .any(|character| character == '_' || character.is_ascii_alphanumeric())
+}
+
+fn should_split_slash_compound(raw: &str) -> bool {
+    if raw.contains('.') || raw.contains("::") {
+        return false;
+    }
+    let parts = raw.split('/').collect::<Vec<_>>();
+    if parts.len() != 2 || parts.iter().any(|part| part.is_empty()) {
+        return false;
+    }
+    if matches!(
+        parts[0],
+        "src"
+            | "test"
+            | "tests"
+            | "crates"
+            | "packages"
+            | "apps"
+            | "lib"
+            | "libs"
+            | "docs"
+            | "examples"
+            | "benches"
+    ) {
+        return false;
+    }
+    parts.iter().all(|part| {
+        part.chars().all(|character| {
+            character == '_' || character == '-' || character.is_ascii_alphanumeric()
+        })
+    })
 }
 
 fn auto_query_clauses(explicit: Vec<QueryClause>) -> Vec<QueryClause> {
@@ -176,17 +261,16 @@ fn auto_query_clauses(explicit: Vec<QueryClause>) -> Vec<QueryClause> {
         }
     }
 
-    let clauses = [
-        path_terms,
-        package_terms,
-        symbol_terms,
-        concept_terms,
-        context_terms,
-    ]
-    .into_iter()
-    .filter(|terms| !terms.is_empty())
-    .map(|terms| QueryClause { terms })
-    .collect::<Vec<_>>();
+    let mut clauses = [path_terms, package_terms, symbol_terms, concept_terms]
+        .into_iter()
+        .filter(|terms| !terms.is_empty())
+        .map(|terms| QueryClause { terms })
+        .collect::<Vec<_>>();
+    if clauses.is_empty() && !context_terms.is_empty() {
+        clauses.push(QueryClause {
+            terms: context_terms,
+        });
+    }
     if clauses.len() > 1 { clauses } else { explicit }
 }
 
@@ -210,6 +294,33 @@ fn is_weak_natural_term(raw: &str) -> bool {
             | "dev"
             | "dependency"
             | "dependencies"
+            | "in"
+            | "how"
+            | "should"
+            | "an"
+            | "a"
+            | "the"
+            | "and"
+            | "or"
+            | "before"
+            | "after"
+            | "changing"
+            | "change"
+            | "locate"
+            | "start"
+            | "starts"
+            | "from"
+            | "which"
+            | "what"
+            | "where"
+            | "when"
+            | "why"
+            | "owner"
+            | "owners"
+            | "frontier"
+            | "frontiers"
+            | "agent"
+            | "behavior"
             | "weak"
             | "natural"
             | "term"

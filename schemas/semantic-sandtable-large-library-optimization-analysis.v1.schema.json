@@ -1,0 +1,304 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-sandtable-large-library-optimization-analysis.v1.schema.json",
+  "title": "Semantic Sandtable Large Library Optimization Analysis",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "packetKind",
+    "sourceReportChain",
+    "summary",
+    "collectionManifest",
+    "aggregations",
+    "variantRecommendations",
+    "improvementPlan",
+    "findings"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.semantic-sandtable-large-library-optimization-analysis"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "packetKind": {
+      "const": "large-library-optimization-analysis"
+    },
+    "sourceReportChain": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "optimizationRunCount",
+        "optimizationVariantRunCount",
+        "targetGraphPhase",
+        "nextStage"
+      ],
+      "properties": {
+        "optimizationRunCount": {"type": "integer", "minimum": 0},
+        "optimizationVariantRunCount": {"type": "integer", "minimum": 0},
+        "targetGraphPhase": {"const": "query-first-stage"},
+        "nextStage": {"const": "collect-receipts"}
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "expectedVariantRunCount",
+        "observedVariantRunCount",
+        "missingVariantRunCount",
+        "findingCount"
+      ],
+      "properties": {
+        "status": {"enum": ["collecting", "analyzed"]},
+        "expectedVariantRunCount": {"type": "integer", "minimum": 0},
+        "observedVariantRunCount": {"type": "integer", "minimum": 0},
+        "missingVariantRunCount": {"type": "integer", "minimum": 0},
+        "findingCount": {"type": "integer", "minimum": 0}
+      }
+    },
+    "aggregations": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/aggregation"}
+    },
+    "variantRecommendations": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "status",
+        "rankingMetric",
+        "overallWinner",
+        "overallRank",
+        "bucketWinners",
+        "adaptivePolicy"
+      ],
+      "properties": {
+        "status": {"enum": ["collecting", "ready"]},
+        "rankingMetric": {"const": "answerQualityThenElapsedMs"},
+        "overallWinner": {
+          "type": ["object", "null"]
+        },
+        "overallRank": {
+          "type": "array",
+          "items": {"type": "object"}
+        },
+        "bucketWinners": {
+          "type": "array",
+          "items": {"type": "object"}
+        },
+        "adaptivePolicy": {
+          "type": "array",
+          "items": {"type": "object"}
+        }
+      }
+    },
+    "collectionManifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "resultPacketKind",
+        "targetGraphPhase",
+        "expectedVariantRuns",
+        "missingVariantRuns",
+        "collectionRuns",
+        "runsNeedingVariantReceipt",
+        "collectionStatus",
+        "metricSourceCounts",
+        "observedVariantRunIds",
+        "requiredReceiptMetrics",
+        "requiredAnswerMetrics"
+      ],
+      "properties": {
+        "resultPacketKind": {
+          "const": "large-library-optimization-variant-result"
+        },
+        "targetGraphPhase": {"const": "query-first-stage"},
+        "expectedVariantRuns": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/variantRun"}
+        },
+        "missingVariantRuns": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/collectionRun"}
+        },
+        "collectionRuns": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/collectionRun"}
+        },
+        "runsNeedingVariantReceipt": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/collectionRun"}
+        },
+        "collectionStatus": {
+          "enum": ["collecting", "collected"]
+        },
+        "metricSourceCounts": {
+          "type": "object",
+          "additionalProperties": {"type": "integer", "minimum": 0}
+        },
+        "observedVariantRunIds": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1}
+        },
+        "requiredReceiptMetrics": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1}
+        },
+        "requiredAnswerMetrics": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "improvementPlan": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/improvement"}
+    },
+    "findings": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/finding"}
+    }
+  },
+  "$defs": {
+    "variantRun": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "variantRunId",
+        "runId",
+        "language",
+        "scenarioId",
+        "scenarioPath",
+        "package",
+        "questionId",
+        "depthBucket",
+        "ablationVariant",
+        "targetGraphPhase"
+      ],
+      "properties": {
+        "variantRunId": {"type": "string", "minLength": 1},
+        "runId": {"type": "string", "minLength": 1},
+        "language": {"type": "string", "minLength": 1},
+        "scenarioId": {"type": "string", "minLength": 1},
+        "scenarioPath": {"type": "string", "minLength": 1},
+        "package": {"type": "string", "minLength": 1},
+        "questionId": {"type": "string", "minLength": 1},
+        "depthBucket": {"type": "string", "minLength": 1},
+        "ablationVariant": {"type": "string", "minLength": 1},
+        "targetGraphPhase": {"const": "query-first-stage"}
+      }
+    },
+    "collectionRun": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "variantRunId",
+        "runId",
+        "language",
+        "scenarioId",
+        "scenarioPath",
+        "package",
+        "questionId",
+        "depthBucket",
+        "ablationVariant",
+        "targetGraphPhase",
+        "collectionStatus",
+        "metricSource",
+        "needsVariantReceipt"
+      ],
+      "properties": {
+        "variantRunId": {"type": "string", "minLength": 1},
+        "runId": {"type": "string", "minLength": 1},
+        "language": {"type": "string", "minLength": 1},
+        "scenarioId": {"type": "string", "minLength": 1},
+        "scenarioPath": {"type": "string", "minLength": 1},
+        "package": {"type": "string", "minLength": 1},
+        "questionId": {"type": "string", "minLength": 1},
+        "depthBucket": {"type": "string", "minLength": 1},
+        "ablationVariant": {"type": "string", "minLength": 1},
+        "targetGraphPhase": {"const": "query-first-stage"},
+        "collectionStatus": {
+          "enum": [
+            "collected",
+            "missing-result",
+            "baseline-derived",
+            "source-equivalent",
+            "fallback-derived",
+            "unknown-source"
+          ]
+        },
+        "metricSource": {"type": "string", "minLength": 1},
+        "needsVariantReceipt": {"type": "boolean"},
+        "answerStatus": {"type": "string", "minLength": 1},
+        "sourceReceiptPath": {"type": "string", "minLength": 1}
+      }
+    },
+    "aggregation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "language",
+        "package",
+        "depthBucket",
+        "ablationVariant",
+        "resultCount",
+        "averageReceiptMetrics",
+        "answerStatusCounts",
+        "averageAnswerQuality",
+        "evidence"
+      ],
+      "properties": {
+        "language": {"type": "string", "minLength": 1},
+        "package": {"type": "string", "minLength": 1},
+        "depthBucket": {"type": "string", "minLength": 1},
+        "ablationVariant": {"type": "string", "minLength": 1},
+        "resultCount": {"type": "integer", "minimum": 0},
+        "averageReceiptMetrics": {
+          "type": "object",
+          "additionalProperties": {"type": "number"}
+        },
+        "answerStatusCounts": {
+          "type": "object",
+          "additionalProperties": {"type": "integer", "minimum": 0}
+        },
+        "averageAnswerQuality": {
+          "type": ["number", "null"],
+          "minimum": 0
+        },
+        "evidence": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["granularity"],
+          "properties": {
+            "granularity": {"const": "scenario-receipt"}
+          }
+        }
+      }
+    },
+    "improvement": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["id", "priority", "action", "targetMetric"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "priority": {"type": "string", "minLength": 1},
+        "action": {"type": "string", "minLength": 1},
+        "targetMetric": {"type": "string", "minLength": 1}
+      }
+    },
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "severity", "message", "metrics"],
+      "properties": {
+        "kind": {"type": "string", "minLength": 1},
+        "severity": {"enum": ["info", "warning", "error"]},
+        "message": {"type": "string", "minLength": 1},
+        "metrics": {"type": "object"}
+      }
+    }
+  }
+}

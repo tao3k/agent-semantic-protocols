@@ -17,6 +17,9 @@ ABLATION_VARIANTS = (
     "no-quality-fields",
     "no-provider-facts",
     "relation-weight-flat",
+    "no-query-seed-prior",
+    "no-package-cohesion",
+    "no-query-clause-coverage",
 )
 
 _QUALITY_FIELDS = frozenset({"confidence", "freshness", "provenance"})
@@ -79,6 +82,12 @@ def _variant_packet(packet: Mapping[str, object], variant: str) -> dict[str, obj
     if variant == "relation-weight-flat":
         _flatten_relation_weights(mutable)
         return mutable
+    if variant == "no-query-seed-prior":
+        return _with_query_adjustment_policy(mutable, "seedPrior", False)
+    if variant == "no-package-cohesion":
+        return _with_query_adjustment_policy(mutable, "packageCohesion", False)
+    if variant == "no-query-clause-coverage":
+        return _with_query_adjustment_policy(mutable, "queryClauseCoverage", False)
     raise ValueError(f"unknown graph-turbo ablation variant: {variant}")
 
 
@@ -126,6 +135,17 @@ def _flatten_relation_weights(packet: dict[str, object]) -> None:
         edge["weight"] = 1.0 / base_weight if base_weight > 0.0 else 1.0
 
 
+def _with_query_adjustment_policy(
+    packet: dict[str, object], key: str, enabled: bool
+) -> dict[str, object]:
+    policy = packet.get("queryAdjustmentPolicy")
+    if not isinstance(policy, dict):
+        policy = {}
+        packet["queryAdjustmentPolicy"] = policy
+    policy[key] = enabled
+    return packet
+
+
 def _graph(packet: dict[str, object]) -> dict[str, object]:
     graph = packet.get("graph")
     if not isinstance(graph, dict):
@@ -159,6 +179,15 @@ def _variant_changes(variant: str) -> dict[str, object]:
         "relation-weight-flat": {
             "removedEdgeFields": sorted(_QUALITY_FIELDS),
             "explicitEdgeWeight": "inverse relation base weight",
+        },
+        "no-query-seed-prior": {
+            "queryAdjustmentPolicy": {"seedPrior": False},
+        },
+        "no-package-cohesion": {
+            "queryAdjustmentPolicy": {"packageCohesion": False},
+        },
+        "no-query-clause-coverage": {
+            "queryAdjustmentPolicy": {"queryClauseCoverage": False},
         },
     }[variant]
 
