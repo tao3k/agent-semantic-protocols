@@ -42,6 +42,7 @@ fn language_facade_query_uses_activation_prefix_before_path_lookup() {
     let profile_bin_dir = root.join(".profile-bin");
     let path_bin_dir = root.join(".path-bin");
     write_echo_provider(&profile_bin_dir, "rs-harness", "profile");
+    write_rust_provider_bin_override(&root, &profile_bin_dir.join("rs-harness"));
     std::fs::create_dir_all(&path_bin_dir).expect("create path bin dir");
     let path_provider = path_bin_dir.join("rs-harness");
     std::fs::write(
@@ -84,6 +85,7 @@ fn language_facade_query_guide_routes_to_activation_prefix() {
     let profile_bin_dir = root.join(".profile-bin");
     let path_bin_dir = root.join(".path-bin");
     write_echo_provider(&profile_bin_dir, "rs-harness", "profile");
+    write_rust_provider_bin_override(&root, &profile_bin_dir.join("rs-harness"));
     std::fs::create_dir_all(&path_bin_dir).expect("create path bin dir");
     let path_provider = path_bin_dir.join("rs-harness");
     std::fs::write(
@@ -126,6 +128,7 @@ fn language_facade_search_guide_routes_to_activation_prefix() {
     let profile_bin_dir = root.join(".profile-bin");
     let path_bin_dir = root.join(".path-bin");
     write_echo_provider(&profile_bin_dir, "rs-harness", "profile");
+    write_rust_provider_bin_override(&root, &profile_bin_dir.join("rs-harness"));
     std::fs::create_dir_all(&path_bin_dir).expect("create path bin dir");
     let path_provider = path_bin_dir.join("rs-harness");
     std::fs::write(
@@ -160,4 +163,12 @@ fn language_facade_search_guide_routes_to_activation_prefix() {
         "profile args=[search][guide]\n"
     );
     let _ = std::fs::remove_dir_all(root);
+}
+
+fn write_rust_provider_bin_override(root: &std::path::Path, provider_bin: &std::path::Path) {
+    std::fs::write(
+        root.join("asp.toml"),
+        format!("[languages.rust]\nbin = \"{}\"\n", provider_bin.display()),
+    )
+    .expect("write asp.toml provider override");
 }

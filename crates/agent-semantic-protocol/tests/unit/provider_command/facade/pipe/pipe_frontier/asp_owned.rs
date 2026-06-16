@@ -80,11 +80,11 @@ fn search_pipe_is_asp_owned_and_renders_generated_candidates_without_provider_sp
     assert!(stdout.contains("[graph-frontier]"), "{stdout}");
     assert!(!stdout.contains("Q=query:term"), "{stdout}");
     assert!(
-        stdout.contains("I=item:symbol(clientreceipt)@src/lib.rs:2:2!syntax"),
+        stdout.contains("I=item:symbol(hookdecision)@src/lib.rs:1:1!syntax"),
         "{stdout}"
     );
     assert!(
-        stdout.contains("I2=item:symbol(hookdecision)@src/lib.rs:1:1!syntax"),
+        stdout.contains("I2=item:symbol(clientreceipt)@src/lib.rs:2:2!syntax"),
         "{stdout}"
     );
     let frontier_line = stdout
@@ -122,7 +122,7 @@ fn search_pipe_is_asp_owned_and_renders_generated_candidates_without_provider_sp
     assert!(!stdout.contains("pipeCommands="), "{stdout}");
     assert!(!stdout.contains("conditionalActions="), "{stdout}");
     assert!(
-        stdout.contains("commandHandles=fdQuery=HookDecision|ClientReceipt;rgQuery=HookDecision|ClientReceipt|clientreceipt|hookdecision;ownerItems=src/lib.rs:HookDecision|ClientReceipt|hookdecision|clientreceipt"),
+        stdout.contains("commandHandles=fdQuery=HookDecision|ClientReceipt;rgQuery=HookDecision|ClientReceipt|hookdecision|clientreceipt;ownerItems=src/lib.rs:HookDecision|ClientReceipt|hookdecision|clientreceipt"),
         "{stdout}"
     );
     assert!(
@@ -206,13 +206,12 @@ fn gerbil_search_pipe_recalls_source_and_config_files_without_provider_spawn() {
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(stdout.contains("lang=gerbil-scheme"), "{stdout}");
+    assert!(stdout.contains("ownerItems=gerbil.pkg:"), "{stdout}");
+    assert!(stdout.contains("src/main.ss"), "{stdout}");
     assert!(
-        stdout.contains("pageIndexHandles=gerbil.pkg,build.ss")
-            || stdout.contains("pageIndexHandles=build.ss,gerbil.pkg"),
+        stdout.contains("rgQuery=local|alias|gerbil.pkg|build.ss"),
         "{stdout}"
     );
-    assert!(stdout.contains("src/main.ss"), "{stdout}");
-    assert!(stdout.contains("fdQuery=gerbil.pkg|build.ss"), "{stdout}");
     assert!(
         stdout.contains("recommendedNext=A1.owner-items")
             || stdout.contains("recommendedNext=A2.owner-items"),

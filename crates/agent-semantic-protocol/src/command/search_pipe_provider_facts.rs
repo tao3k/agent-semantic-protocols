@@ -131,7 +131,7 @@ fn candidate_path_for_provider(project_root: &Path, path: &str) -> String {
     PathBuf::from(path).to_string_lossy().to_string()
 }
 
-fn query_requests_semantic_facts(query: &str) -> bool {
+pub(super) fn query_requests_semantic_facts(query: &str) -> bool {
     query_terms(query).into_iter().any(|term| {
         matches!(
             term.as_str(),

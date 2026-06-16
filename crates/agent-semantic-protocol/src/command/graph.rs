@@ -1,6 +1,6 @@
 //! `asp graph` command adapter.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
@@ -185,6 +185,196 @@ pub(super) fn render_graph_turbo_packet(packet_bytes: &[u8]) -> Result<Option<Ve
         return Ok(None);
     }
     Ok(Some(output.stdout.to_vec()))
+}
+
+pub(super) fn render_graph_turbo_packet_rust_compact(
+    packet_bytes: &[u8],
+) -> Result<Vec<u8>, String> {
+    let packet: Value = serde_json::from_slice(packet_bytes)
+        .map_err(|error| format!("invalid graph turbo request JSON: {error}"))?;
+    let nodes = packet
+        .pointer("/graph/nodes")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let edges = packet
+        .pointer("/graph/edges")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let alias_map = compact_node_aliases(&nodes);
+    let mut output = String::new();
+    output.push_str(&format!(
+        "[graph-frontier] profile={} alg={} seed={} budget={}\n",
+        compact_json_str(packet.get("profile")).unwrap_or("owner-query"),
+        compact_json_str(packet.get("algorithm")).unwrap_or("typed-ppr-diverse"),
+        compact_seed_aliases(packet.get("seedIds"), &alias_map),
+        packet.get("budget").and_then(Value::as_u64).unwrap_or(10),
+    ));
+    let ranked = compact_ranked_aliases(&nodes, &alias_map);
+    output.push_str("rank=");
+    output.push_str(&ranked.join(","));
+    output.push('\n');
+    output.push_str("frontier=");
+    output.push_str(
+        &ranked
+            .iter()
+            .filter_map(|alias| {
+                let node = compact_node_for_alias(alias, &nodes, &alias_map)?;
+                Some(format!(
+                    "{alias}.{}",
+                    compact_json_str(node.get("action")).unwrap_or("evidence")
+                ))
+            })
+            .collect::<Vec<_>>()
+            .join(","),
+    );
+    output.push('\n');
+    for alias in ranked {
+        if let Some(node) = compact_node_for_alias(&alias, &nodes, &alias_map) {
+            output.push_str(&compact_node_line(&alias, node));
+            output.push('\n');
+        }
+    }
+    for line in compact_edge_lines(&edges, &alias_map) {
+        output.push_str(&line);
+        output.push('\n');
+    }
+    Ok(output.into_bytes())
+}
+
+fn compact_node_aliases(nodes: &[Value]) -> HashMap<String, String> {
+    let mut aliases = HashMap::new();
+    let mut counts: HashMap<&'static str, usize> = HashMap::new();
+    for node in nodes {
+        let Some(id) = compact_json_str(node.get("id")) else {
+            continue;
+        };
+        let base = compact_alias_base(compact_json_str(node.get("kind")).unwrap_or("node"));
+        let count = counts.entry(base).or_insert(0);
+        *count += 1;
+        let alias = if *count == 1 {
+            base.to_string()
+        } else {
+            format!("{base}{count}")
+        };
+        aliases.insert(id.to_string(), alias);
+    }
+    aliases
+}
+
+fn compact_alias_base(kind: &str) -> &'static str {
+    match kind {
+        "query" => "Q",
+        "owner" => "O",
+        "item" => "I",
+        "hot" => "H",
+        "test" => "T",
+        "dependency" => "D",
+        "dependency-version" => "V",
+        "workspace" => "W",
+        "provider-root" => "P",
+        "submodule" => "S",
+        _ => "N",
+    }
+}
+
+fn compact_seed_aliases(seed_ids: Option<&Value>, aliases: &HashMap<String, String>) -> String {
+    let seeds = seed_ids
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .filter_map(|id| aliases.get(id))
+        .cloned()
+        .collect::<Vec<_>>();
+    if seeds.is_empty() {
+        "-".to_string()
+    } else {
+        seeds.join(",")
+    }
+}
+
+fn compact_ranked_aliases(nodes: &[Value], aliases: &HashMap<String, String>) -> Vec<String> {
+    nodes
+        .iter()
+        .filter(|node| compact_json_str(node.get("kind")) != Some("query"))
+        .filter_map(|node| compact_json_str(node.get("id")).and_then(|id| aliases.get(id)))
+        .take(10)
+        .cloned()
+        .collect()
+}
+
+fn compact_node_for_alias<'a>(
+    alias: &str,
+    nodes: &'a [Value],
+    aliases: &HashMap<String, String>,
+) -> Option<&'a Value> {
+    nodes.iter().find(|node| {
+        compact_json_str(node.get("id"))
+            .and_then(|id| aliases.get(id))
+            .is_some_and(|node_alias| node_alias == alias)
+    })
+}
+
+fn compact_node_line(alias: &str, node: &Value) -> String {
+    let kind = compact_json_str(node.get("kind")).unwrap_or("node");
+    let role = compact_json_str(node.get("role")).unwrap_or("value");
+    let value = compact_json_str(node.get("value"))
+        .or_else(|| compact_json_str(node.get("symbol")))
+        .or_else(|| compact_json_str(node.get("path")))
+        .unwrap_or("-");
+    let action = compact_json_str(node.get("action")).unwrap_or("evidence");
+    let locator = compact_json_str(node.get("locator"))
+        .or_else(|| compact_json_str(node.get("path")))
+        .map(|locator| format!("@{locator}"))
+        .unwrap_or_default();
+    format!(
+        "{alias}={kind}:{role}({}){locator}!{action}",
+        compact_token(value)
+    )
+}
+
+fn compact_edge_lines(edges: &[Value], aliases: &HashMap<String, String>) -> Vec<String> {
+    let mut grouped: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for edge in edges {
+        let Some(source) = compact_json_str(edge.get("source")).and_then(|id| aliases.get(id))
+        else {
+            continue;
+        };
+        let Some(target) = compact_json_str(edge.get("target")).and_then(|id| aliases.get(id))
+        else {
+            continue;
+        };
+        let relation = compact_json_str(edge.get("relation")).unwrap_or("rel");
+        grouped
+            .entry(source.clone())
+            .or_default()
+            .push(format!("{target}:{relation}"));
+    }
+    grouped
+        .into_iter()
+        .map(|(source, targets)| format!("{source}>{{{}}}", targets.join(",")))
+        .collect()
+}
+
+fn compact_json_str(value: Option<&Value>) -> Option<&str> {
+    value.and_then(Value::as_str)
+}
+
+fn compact_token(value: &str) -> String {
+    value
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric()
+                || matches!(character, '_' | '-' | '.' | '/' | ':' | '@')
+            {
+                character
+            } else {
+                '-'
+            }
+        })
+        .collect()
 }
 
 pub(super) struct GraphTurboReceiptCapture<'a> {

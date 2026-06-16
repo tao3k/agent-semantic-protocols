@@ -5,32 +5,41 @@ use super::support::{
 #[test]
 fn missing_activation_is_reported_before_provider_spawn() {
     let root = temp_project_root("missing-activation");
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"missing-activation\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+    )
+    .expect("write Cargo.toml");
+    std::fs::create_dir_all(root.join("src")).expect("create src dir");
+    std::fs::write(root.join("src/lib.rs"), "").expect("write lib.rs");
 
     let output = asp_command(&root)
+        .env_remove("PATH")
         .args(["rust", "search", "prime", "."])
         .output()
         .expect("run asp rust search");
 
-    assert!(!output.status.success());
-    let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("[asp-provider] activation=missing"),
-        "{stderr}"
+        !output.status.success(),
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
     );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("failed to read activation"), "{stderr}");
     assert!(
         stderr.contains(".cache/agent-semantic-protocol/hooks/activation.json"),
         "{stderr}"
     );
     assert!(
-        stderr.contains("|reason provider-activation-missing"),
+        stderr.contains("failed to sync generated activation"),
         "{stderr}"
     );
     assert!(
-        stderr.contains("|cmd install=asp hook install --client codex ."),
+        stderr
+            .contains("expected PATH to contain at least one executable semantic provider binary"),
         "{stderr}"
     );
-    assert!(stderr.contains("|cmd guide=asp guide"), "{stderr}");
-    assert!(stderr.contains("|cmd providers=asp providers"), "{stderr}");
     let _ = std::fs::remove_dir_all(root);
 }
 

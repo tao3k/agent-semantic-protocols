@@ -44,15 +44,15 @@ fn search_pipe_plan_uses_scope_root_for_provider_local_selectors() {
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(
-        stdout.contains("F=field:struct-field(scalars)@src/lib.rs:1:4!evidence"),
+        stdout.contains("field:struct-field(scalars)@src/lib.rs:1:4!evidence"),
         "{stdout}"
     );
     assert!(
-        stdout.contains("type:field-type(Vec<Scalar>)@src/lib.rs:3:3!evidence"),
+        stdout.contains("type:field-type(Vec-Scalar-)@src/lib.rs:3:3!evidence"),
         "{stdout}"
     );
     assert!(
-        stdout.contains("C=collection:family(Vec)!evidence"),
+        stdout.contains("collection:family(Vec)!evidence"),
         "{stdout}"
     );
     assert!(stdout.contains("has_type"), "{stdout}");
@@ -72,7 +72,7 @@ fn search_pipe_plan_uses_scope_root_for_provider_local_selectors() {
     );
     assert!(
         stdout.contains(
-            "nextCommand=asp rust query --selector src/lib.rs:1:4 --workspace languages/rust-harness --code"
+            "nextCommand=asp rust query --selector src/lib.rs:1:15 --workspace languages/rust-harness --code"
         ),
         "{stdout}"
     );

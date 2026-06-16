@@ -8,9 +8,6 @@ use std::{
 use serde_json::{Value, json};
 
 use super::{
-    search_pipe_actions::{
-        SearchPipeActionRequest, action_frontier_for_request, delegation_hints_for_request,
-    },
     search_pipe_dependency_facts::{
         DependencyFact, collect_dependency_facts, dependency_matches_query,
     },
@@ -19,7 +16,6 @@ use super::{
         hot_node_id, stable_node_id,
     },
     search_pipe_model::{Candidate, SearchPipeSourceTrace},
-    search_pipe_plan::concrete_pipe_actions_from_candidates,
     search_pipe_provider_facts::ProviderGraphFacts,
     search_pipe_quality::{
         SearchPipeQuality, analyze_search_pipe_quality, compact_fact_value, is_generated_path,
@@ -57,7 +53,7 @@ pub(super) fn render_graph_turbo_request(
     request: GraphTurboSearchPipeRequest<'_>,
 ) -> Result<String, String> {
     let packet = graph_turbo_request(&request);
-    serde_json::to_string_pretty(&packet)
+    serde_json::to_string(&packet)
         .map(|mut text| {
             text.push('\n');
             text
@@ -237,38 +233,6 @@ fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> Value {
     }
     if !external_action_frontier.is_empty() {
         packet["actionFrontier"] = Value::Array(external_action_frontier.to_vec());
-    }
-    if surface == "search-pipe"
-        && let Some(query) = query.filter(|query| !query.trim().is_empty())
-    {
-        let quality = quality_for_query
-            .unwrap_or_else(|| analyze_search_pipe_quality(language_id, query, candidates));
-        let selector_actions = concrete_pipe_actions_from_candidates(language_id, candidates);
-        let action_request = SearchPipeActionRequest {
-            language_id,
-            project_root: dependency_root,
-            locator_root: dependency_root,
-            scopes: &[],
-            quality: &quality,
-            candidates,
-            ranked_compact: None,
-            selector_actions: &selector_actions,
-            fd_preview: None,
-            seed_action_intents: &[],
-        };
-        let action_frontier = action_frontier_for_request(action_request);
-        if !action_frontier.is_empty() {
-            packet["actionFrontier"] = Value::Array(action_frontier);
-        }
-        let delegation_hints = delegation_hints_for_request(action_request);
-        if !delegation_hints.is_empty() {
-            packet["delegationHints"] = Value::Array(
-                delegation_hints
-                    .into_iter()
-                    .map(|hint| hint.as_json())
-                    .collect(),
-            );
-        }
     }
     packet
 }

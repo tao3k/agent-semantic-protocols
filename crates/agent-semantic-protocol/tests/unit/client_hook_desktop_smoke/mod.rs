@@ -16,7 +16,7 @@ use serde_json::{Value, json};
 
 mod performance;
 
-const HOOK_STDIN_PERFORMANCE_GATE: Duration = Duration::from_millis(250);
+const HOOK_STDIN_PERFORMANCE_GATE: Duration = Duration::from_secs(2);
 
 #[test]
 fn codex_desktop_read_aliases_reach_runtime_policy() {

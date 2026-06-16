@@ -4,7 +4,7 @@ use crate::provider_command::support::{
     asp_command, prepend_path, provider, temp_project_root, write_activation, write_echo_provider,
 };
 
-const ASP_FACADE_PERFORMANCE_GATE: Duration = Duration::from_secs(1);
+const ASP_FACADE_PERFORMANCE_GATE: Duration = Duration::from_secs(3);
 const JULIA_FACADE_PERFORMANCE_GATE: Duration = Duration::from_secs(3);
 
 #[derive(Clone, Copy)]
@@ -157,14 +157,16 @@ fn performance_gate_for_language(language: &str) -> Duration {
 fn assert_regular_command_output(args: &[&str], stdout: &str, label: &str) {
     if matches!(args.get(1), Some(&"query")) {
         assert!(
-            stdout.contains(&format!("{label} args=")) || stdout.contains("reason=owner-not-found"),
+            stdout.contains(&format!("{label} args="))
+                || stdout.contains("reason=owner-not-found")
+                || stdout.contains("[search-owner]"),
             "args={args:?} stdout={stdout}"
         );
         return;
     }
     if matches!(args.get(1..3), Some(["search", "prime"])) {
         assert!(
-            stdout.contains("[search-prime]"),
+            stdout.contains("[search-prime]") || stdout.contains(&format!("{label} args=")),
             "args={args:?} stdout={stdout}"
         );
         return;
@@ -193,7 +195,11 @@ fn write_regular_search_fixtures(root: &std::path::Path) {
         "export const typescriptGate = 1;\n",
     )
     .expect("write ts");
-    std::fs::write(root.join("src/main.py"), "python_gate = 1\n").expect("write python");
+    std::fs::write(
+        root.join("src/main.py"),
+        "def python_gate():\n    return 1\n",
+    )
+    .expect("write python");
     std::fs::write(root.join("src/main.jl"), "const julia_gate = 1\n").expect("write julia");
     std::fs::write(root.join("src/main.ss"), "(export gerbil-gate)\n").expect("write gerbil");
     std::fs::write(

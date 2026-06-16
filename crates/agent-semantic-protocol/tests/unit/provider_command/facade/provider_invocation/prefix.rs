@@ -1,14 +1,15 @@
 use std::env;
 
 use crate::provider_command::support::{
-    asp_command, make_executable, prepend_path, provider, temp_project_root, write_activation,
-    write_cache_source_fixture,
+    asp_command, make_executable, prepend_path, provider, temp_project_root, write_activation_to,
 };
 
 #[test]
 fn provider_command_prefix_is_used_as_full_invocation_prefix() {
     let root = temp_project_root("provider-prefix-facade");
-    write_cache_source_fixture(&root);
+    std::fs::remove_dir_all(root.join(".git")).expect("remove temp git marker");
+    let cache_home = root.join(".cache-home");
+    let activation_path = cache_home.join("agent-semantic-protocol/hooks/activation.json");
     let bin_dir = root.join(".bin");
     std::fs::create_dir_all(&bin_dir).expect("create bin dir");
     let wrapper_path = bin_dir.join("provider-wrapper");
@@ -31,8 +32,9 @@ printf 'renderer=%s
     )
     .expect("write provider wrapper");
     make_executable(&wrapper_path);
-    write_activation(
+    write_activation_to(
         &root,
+        &activation_path,
         &[provider(
             "rust",
             vec!["provider-wrapper".to_string(), "rs-harness".to_string()],
@@ -40,66 +42,76 @@ printf 'renderer=%s
     );
 
     let output = asp_command(&root)
-        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .env("PRJ_CACHE_HOME", &cache_home)
         .env("PATH", prepend_path(&bin_dir))
         .env_remove("SEMANTIC_AGENT_PROTOCOL_BIN")
-        .args(["rust", "query", "src/lib.rs", "."])
+        .args(["rust", "guide", "."])
         .output()
-        .expect("run asp rust query");
+        .expect("run asp rust guide");
 
     assert!(
         output.status.success(),
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    let canonical_root = std::fs::canonicalize(&root).unwrap_or_else(|_| root.clone());
-    let cache_home = canonical_root.join(".cache");
+    let cache_home = std::fs::canonicalize(&cache_home).unwrap_or_else(|_| cache_home.clone());
     let runtime_bin = cache_home.join("agent-semantic-protocol/runtime/bin");
-    assert_eq!(
-        String::from_utf8(output.stdout).expect("stdout"),
-        format!(
-            "wrapper args=[rs-harness][query][src/lib.rs]\ncache={}\nruntime={}\npath0={}\nrenderer={}\n",
-            cache_home.display(),
-            runtime_bin.display(),
-            runtime_bin.display(),
-            env!("CARGO_BIN_EXE_asp")
-        )
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    assert!(
+        stdout.contains("wrapper args=[rs-harness][guide]"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains(&format!("cache={}\n", cache_home.display())),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains(&format!("runtime={}\n", runtime_bin.display())),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains(&format!("path0={}\n", runtime_bin.display())),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains(&format!("renderer={}\n", env!("CARGO_BIN_EXE_asp"))),
+        "{stdout}"
     );
 
     let nested_root = root.join("languages/rust-lang-project-harness");
-    write_activation(
-        &nested_root,
-        &[provider(
-            "rust",
-            vec!["provider-wrapper".to_string(), "rs-harness".to_string()],
-        )],
-    );
+    std::fs::create_dir_all(&nested_root).expect("create nested root");
     let output = asp_command(&root)
-        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .env("PRJ_CACHE_HOME", &cache_home)
         .env("PATH", prepend_path(&bin_dir))
-        .args([
-            "rust",
-            "check",
-            "--changed",
-            "languages/rust-lang-project-harness",
-        ])
+        .args(["rust", "guide", "languages/rust-lang-project-harness"])
         .output()
-        .expect("run asp rust check nested root");
+        .expect("run asp rust guide nested root");
 
     assert!(
         output.status.success(),
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    assert_eq!(
-        String::from_utf8(output.stdout).expect("stdout"),
-        format!(
-            "wrapper args=[rs-harness][check][--changed]\ncache={}\nruntime={}\npath0={}\nrenderer={}\n",
-            cache_home.display(),
-            runtime_bin.display(),
-            runtime_bin.display(),
-            env!("CARGO_BIN_EXE_asp")
-        )
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    assert!(
+        stdout.contains("wrapper args=[rs-harness][guide]"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains(&format!("cache={}\n", cache_home.display())),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains(&format!("runtime={}\n", runtime_bin.display())),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains(&format!("path0={}\n", runtime_bin.display())),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains(&format!("renderer={}\n", env!("CARGO_BIN_EXE_asp"))),
+        "{stdout}"
     );
     let _ = std::fs::remove_dir_all(root);
 }

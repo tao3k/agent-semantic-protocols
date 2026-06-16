@@ -9,6 +9,7 @@ fn language_facade_guide_routes_to_activation_prefix() {
     let profile_bin_dir = root.join(".profile-bin");
     let path_bin_dir = root.join(".path-bin");
     write_echo_provider(&profile_bin_dir, "rs-harness", "profile");
+    write_provider_bin_override(&root, "rust", &profile_bin_dir.join("rs-harness"));
     std::fs::create_dir_all(&path_bin_dir).expect("create path bin dir");
     let path_provider = path_bin_dir.join("rs-harness");
     std::fs::write(
@@ -59,6 +60,7 @@ fn language_facade_guide_code_preserves_pure_provider_stdout() {
     )
     .expect("write code provider");
     make_executable(&provider_bin);
+    write_provider_bin_override(&root, "rust", &provider_bin);
 
     write_activation(
         &root,
@@ -87,6 +89,7 @@ fn typescript_language_facade_guide_routes_to_legacy_agent_guide() {
     let root = temp_project_root("provider-typescript-guide-facade");
     let profile_bin_dir = root.join(".profile-bin");
     write_echo_provider(&profile_bin_dir, "ts-harness", "profile");
+    write_provider_bin_override(&root, "typescript", &profile_bin_dir.join("ts-harness"));
 
     write_activation(
         &root,
@@ -121,6 +124,7 @@ fn python_language_facade_guide_routes_to_legacy_agent_guide() {
     let root = temp_project_root("provider-python-guide-facade");
     let profile_bin_dir = root.join(".profile-bin");
     write_echo_provider(&profile_bin_dir, "py-harness", "profile");
+    write_provider_bin_override(&root, "python", &profile_bin_dir.join("py-harness"));
 
     write_activation(
         &root,
@@ -148,4 +152,19 @@ fn python_language_facade_guide_routes_to_legacy_agent_guide() {
         "{stdout}"
     );
     let _ = std::fs::remove_dir_all(root);
+}
+
+fn write_provider_bin_override(
+    root: &std::path::Path,
+    language_id: &str,
+    provider_bin: &std::path::Path,
+) {
+    std::fs::write(
+        root.join("asp.toml"),
+        format!(
+            "[languages.{language_id}]\nbin = \"{}\"\n",
+            provider_bin.display()
+        ),
+    )
+    .expect("write asp.toml provider override");
 }

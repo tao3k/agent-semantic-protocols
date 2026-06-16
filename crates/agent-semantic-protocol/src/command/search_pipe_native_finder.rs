@@ -100,8 +100,14 @@ pub(super) fn collect_native_finder_candidates(
         NativeFinderSurface::Path => collector.append_fd_candidates()?,
         NativeFinderSurface::Content => collector.append_rg_candidates()?,
         NativeFinderSurface::Both => {
-            let fd_ran = collector.append_fd_candidates()?;
             let rg_ran = collector.append_rg_candidates()?;
+            if !collector.candidates.is_empty() || collector.is_done() {
+                return Ok(Some(NativeFinderCandidates {
+                    candidates: collector.candidates,
+                    provenance: collector.provenance,
+                }));
+            }
+            let fd_ran = collector.append_fd_candidates()?;
             fd_ran || rg_ran
         }
     };

@@ -3,8 +3,6 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
-use serde_json::{Value, json};
-
 use super::search_pipe_action_frontier::{ActionNode, ActionRoute, render_action_rows};
 use super::search_pipe_action_model::PipeAction;
 use super::search_pipe_model::Candidate;
@@ -27,6 +25,7 @@ pub(super) struct SearchPipeActionRequest<'a> {
     pub(super) selector_actions: &'a [PipeAction],
     pub(super) fd_preview: Option<&'a FdQueryPreview>,
     pub(super) seed_action_intents: &'a [SeedActionIntent],
+    pub(super) read_memory_selectors: &'a [String],
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -40,34 +39,6 @@ impl DelegationHint {
             "subagentHint=profile=asp-explorer mode=resident instances=single reuse=send_input spawn=if-missing forkContext=false branchPrompt=reasoning-tree stateOwner=parent fanin=receipt iterative=true decision=advisory runtimeOwner=agent-client modelClass=cheap readOnly=true noCode=true targetActions={} maxCommands=8 maxTurns=1 receipt=asp-search-subagent(role,action,evidence,missing,next,risk) reason=query-selector-low-confidence",
             self.target_actions.join(",")
         )
-    }
-
-    pub(super) fn as_json(&self) -> Value {
-        json!({
-            "profile": "asp-explorer",
-            "mode": "resident",
-            "instances": "single",
-            "reuse": "send_input",
-            "spawn": "if-missing",
-            "forkContext": false,
-            "branchPrompt": "reasoning-tree",
-            "stateOwner": "parent",
-            "fanin": "receipt",
-            "iterative": true,
-            "decision": "advisory",
-            "runtimeOwner": "agent-client",
-            "modelClass": "cheap",
-            "readOnly": true,
-            "noCode": true,
-            "targetActions": self.target_actions.clone(),
-            "maxCommands": 8,
-            "maxTurns": 1,
-            "reason": "query-selector-low-confidence",
-            "receipt": {
-                "kind": "asp-search-subagent",
-                "requiredFields": ["role", "action", "evidence", "missing", "next", "risk"]
-            }
-        })
     }
 }
 
@@ -98,22 +69,6 @@ pub(super) fn render_action_frontier(request: SearchPipeActionRequest<'_>) -> St
         );
     }
     rendered
-}
-
-pub(super) fn delegation_hints_for_request(
-    request: SearchPipeActionRequest<'_>,
-) -> Vec<DelegationHint> {
-    let scope_arg = display_scope_args(request.project_root, request.locator_root, request.scopes);
-    let actions = action_nodes(&request, &scope_arg);
-    delegation_hints(request.quality, &actions)
-}
-
-pub(super) fn action_frontier_for_request(request: SearchPipeActionRequest<'_>) -> Vec<Value> {
-    let scope_arg = display_scope_args(request.project_root, request.locator_root, request.scopes);
-    action_nodes(&request, &scope_arg)
-        .into_iter()
-        .map(|action| action.as_json())
-        .collect()
 }
 
 pub(super) fn sanitize_evidence_line(line: &str) -> String {
@@ -219,7 +174,10 @@ fn action_nodes(request: &SearchPipeActionRequest<'_>, scope_arg: &str) -> Vec<A
         });
     }
     if request.quality.allow_query_selector
-        && let Some(action) = request.selector_actions.first()
+        && let Some(action) = request
+            .selector_actions
+            .iter()
+            .find(|action| !selector_seen_in_read_memory(request, action))
     {
         actions.push(query_code_action(request, action));
     }
@@ -406,6 +364,30 @@ fn query_code_selector(action: &PipeAction) -> String {
         return format!("{path}:{context_start}:{context_end}");
     }
     action.selector.clone()
+}
+
+fn selector_seen_in_read_memory(
+    request: &SearchPipeActionRequest<'_>,
+    action: &PipeAction,
+) -> bool {
+    let query_selector = query_code_selector(action);
+    request.read_memory_selectors.iter().any(|selector| {
+        selector_matches_seen(selector, &action.selector)
+            || selector_matches_seen(selector, &query_selector)
+    })
+}
+
+fn selector_matches_seen(seen: &str, candidate: &str) -> bool {
+    if seen == candidate {
+        return true;
+    }
+    let Some((seen_path, seen_start, seen_end)) = selector_parts(seen) else {
+        return false;
+    };
+    let Some((candidate_path, candidate_start, candidate_end)) = selector_parts(candidate) else {
+        return false;
+    };
+    seen_path == candidate_path && seen_start <= candidate_start && candidate_end <= seen_end
 }
 
 fn rg_query(quality: &SearchPipeQuality, compact: Option<&str>) -> Option<String> {

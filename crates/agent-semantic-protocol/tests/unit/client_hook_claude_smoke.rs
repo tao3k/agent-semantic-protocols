@@ -348,7 +348,7 @@ fn install_claude_hooks(root: &Path) {
 
 fn install_codex_hooks(root: &Path, codex_home: &Path) -> String {
     let output = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .args(["hook", "install", "--client", "codex"])
+        .args(["plugin", "install", "codex"])
         .arg(root)
         .env("PATH", prepend_path(&root.join(".bin")))
         .env("CODEX_HOME", codex_home)

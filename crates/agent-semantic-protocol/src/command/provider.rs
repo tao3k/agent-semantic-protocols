@@ -26,7 +26,7 @@ use super::query_owner::run_asp_fast_owner_query_command;
 use super::search_config::AspConfig;
 use super::search_pipe::{FastSearchContext, is_asp_fast_search, run_asp_fast_search_command};
 use super::search_pipe_meta::run_asp_fast_search_meta_command;
-use super::search_pipe_provider_facts::ProviderGraphFactsContext;
+use super::search_pipe_provider_facts::{ProviderGraphFactsContext, query_requests_semantic_facts};
 
 const SUPPORTED_LANGUAGES: &[&str] = &[
     "rust",
@@ -321,12 +321,26 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
         .find(|provider| provider.language_id == language_id)
         .ok_or_else(|| format!("no activated provider for language {language_id}"))?;
     if is_asp_fast_search(&provider_args) {
-        let runtime_profiles = runtime_profiles_for_runtime(&project_root, &runtime);
-        let provider_context = ProviderGraphFactsContext {
-            provider,
-            profiles: &runtime_profiles,
-            cache_home: &cache_home,
-        };
+        if fast_search_needs_provider_context(&provider_args) {
+            let runtime_profiles = runtime_profiles_for_runtime(&project_root, &runtime);
+            let provider_context = ProviderGraphFactsContext {
+                provider,
+                profiles: &runtime_profiles,
+                cache_home: &cache_home,
+            };
+            return run_asp_fast_search_command(
+                &provider_args,
+                FastSearchContext {
+                    language_id,
+                    project_root: &project_root,
+                    locator_root: &invocation_root,
+                    cache_home: &cache_home,
+                    config: &config,
+                    provider_context: Some(&provider_context),
+                    frontier_receipt: frontier_receipt.as_ref(),
+                },
+            );
+        }
         return run_asp_fast_search_command(
             &provider_args,
             FastSearchContext {
@@ -335,7 +349,7 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
                 locator_root: &invocation_root,
                 cache_home: &cache_home,
                 config: &config,
-                provider_context: Some(&provider_context),
+                provider_context: None,
                 frontier_receipt: frontier_receipt.as_ref(),
             },
         );
@@ -570,6 +584,25 @@ fn is_version(args: &[String]) -> bool {
 fn is_search_pipe_command(args: &[String]) -> bool {
     matches!(args.first().map(String::as_str), Some("search"))
         && matches!(args.get(1).map(String::as_str), Some("pipe"))
+}
+
+fn fast_search_needs_provider_context(args: &[String]) -> bool {
+    if matches!(args.get(1).map(String::as_str), Some("pipe" | "fzf")) {
+        return args
+            .get(2)
+            .is_some_and(|query| query_requests_semantic_facts(query));
+    }
+    if matches!(args.get(1).map(String::as_str), Some("ingest")) {
+        return provider_flag_value(args, "--query").is_some_and(query_requests_semantic_facts);
+    }
+    false
+}
+
+fn provider_flag_value<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
+    args.windows(2)
+        .find(|window| window.first().is_some_and(|value| value == flag))
+        .and_then(|window| window.get(1))
+        .map(String::as_str)
 }
 
 fn is_guide_help(args: &[String]) -> bool {

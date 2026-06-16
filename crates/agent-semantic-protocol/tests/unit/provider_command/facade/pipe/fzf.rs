@@ -1,6 +1,5 @@
 use crate::provider_command::support::{
-    asp_command, make_executable, prepend_path, provider, temp_project_root, write_activation,
-    write_marker_provider,
+    asp_command, prepend_path, provider, temp_project_root, write_activation, write_marker_provider,
 };
 use serde_json::Value;
 
@@ -11,8 +10,6 @@ fn fzf_seeds_is_asp_owned_for_cheap_discovery() {
     let root = temp_project_root("search-fzf-fast-facade");
     let bin_dir = root.join(".bin");
     let marker = root.join("provider-called");
-    let args_path = root.join("graph-turbo-args");
-    let stdin_path = root.join("graph-turbo-stdin.json");
     std::fs::create_dir_all(root.join("src")).expect("create src");
     std::fs::write(
         root.join("src/lib.rs"),
@@ -20,14 +17,11 @@ fn fzf_seeds_is_asp_owned_for_cheap_discovery() {
     )
     .expect("write source");
     write_marker_provider(&bin_dir, "rs-harness", &marker);
-    write_graph_turbo_ranker(&bin_dir);
     write_activation(&root, &[provider("rust", Vec::new())]);
 
     let output = asp_command(&root)
         .env("PATH", prepend_path(&bin_dir))
         .env("PRJ_CACHE_HOME", root.join(".cache"))
-        .env("ASP_GRAPH_TURBO_ARGS_OUT", &args_path)
-        .env("ASP_GRAPH_TURBO_STDIN_OUT", &stdin_path)
         .args([
             "rust",
             "search",
@@ -48,25 +42,8 @@ fn fzf_seeds_is_asp_owned_for_cheap_discovery() {
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    assert_eq!(
-        String::from_utf8(output.stdout).expect("stdout"),
-        "[graph-frontier] external=fzf\n"
-    );
-    assert_eq!(
-        std::fs::read_to_string(&args_path).expect("read args"),
-        "rank\n-\n--format\ncompact\n"
-    );
-    let payload: Value = serde_json::from_slice(&std::fs::read(&stdin_path).expect("read stdin"))
-        .expect("graph turbo stdin JSON");
-    assert_graph_turbo_request_contract(&payload);
-    assert_eq!(payload["seedIds"][0], "query:cache_root");
-    assert!(
-        payload["graph"]["nodes"]
-            .as_array()
-            .expect("nodes")
-            .iter()
-            .any(|node| node["kind"] == "item" && node["value"] == "cache_root")
-    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    assert_builtin_graph_frontier(&stdout, "cache_root");
     assert!(
         !marker.exists(),
         "search fzf seeds should not spawn provider"
@@ -79,24 +56,15 @@ fn fzf_frontier_receipt_out_is_asp_owned_runtime_capture() {
     let root = temp_project_root("search-fzf-frontier-receipt-out");
     let bin_dir = root.join(".bin");
     let marker = root.join("provider-called");
-    let args_path = root.join("graph-turbo-args");
-    let stdin_path = root.join("graph-turbo-stdin.json");
     let receipt_path = root.join("frontier-receipt.json");
-    let receipt_args_path = root.join("graph-turbo-receipt-args");
-    let receipt_stdin_path = root.join("graph-turbo-receipt-stdin.json");
     std::fs::create_dir_all(root.join("src")).expect("create src");
     std::fs::write(root.join("src/lib.rs"), "pub fn cache_root() {}\n").expect("write source");
     write_marker_provider(&bin_dir, "rs-harness", &marker);
-    write_graph_turbo_ranker(&bin_dir);
     write_activation(&root, &[provider("rust", Vec::new())]);
 
     let output = asp_command(&root)
         .env("PATH", prepend_path(&bin_dir))
         .env("PRJ_CACHE_HOME", root.join(".cache"))
-        .env("ASP_GRAPH_TURBO_ARGS_OUT", &args_path)
-        .env("ASP_GRAPH_TURBO_STDIN_OUT", &stdin_path)
-        .env("ASP_GRAPH_TURBO_RECEIPT_ARGS_OUT", &receipt_args_path)
-        .env("ASP_GRAPH_TURBO_RECEIPT_STDIN_OUT", &receipt_stdin_path)
         .args([
             "rust",
             "search",
@@ -137,28 +105,8 @@ fn fzf_frontier_receipt_out_is_asp_owned_runtime_capture() {
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    assert_eq!(
-        String::from_utf8(output.stdout).expect("stdout"),
-        "[graph-frontier] external=fzf\n"
-    );
-    assert_eq!(
-        std::fs::read_to_string(&args_path).expect("read rank args"),
-        "rank\n-\n--format\ncompact\n"
-    );
-    let receipt_args = std::fs::read_to_string(&receipt_args_path).expect("read receipt args");
-    assert!(
-        receipt_args.starts_with("receipt\n-\n--receipt-id\nasp.search-frontier.rust-cache-root\n")
-    );
-    assert!(receipt_args.contains("\n--follow-node\nquery:cache_root\n"));
-    assert!(receipt_args.contains("\n--read-selector\nsrc/lib.rs:1:1\n"));
-    assert!(receipt_args.contains("\n--read-kind\ndirect-source-read\n"));
-    assert!(receipt_args.contains("\n--test-argv-json\n[\"cargo\",\"test\"]\n"));
-    assert!(receipt_args.contains("\n--test-status\npassed\n"));
-    assert!(receipt_args.contains("\n--test-summary\n1 passed\n"));
-    assert!(receipt_args.contains("\n--test-exit-code\n0\n"));
-    assert!(receipt_args.contains("\n--commands-to-first-useful-locator\n1\n"));
-    assert!(receipt_args.contains("\n--commands-to-validation\n2\n"));
-    assert!(receipt_args.contains("\n--field\ncaptureSource=asp fast search\n"));
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    assert_builtin_graph_frontier(&stdout, "cache_root");
     let receipt: Value =
         serde_json::from_slice(&std::fs::read(&receipt_path).expect("read receipt"))
             .expect("receipt JSON");
@@ -166,13 +114,6 @@ fn fzf_frontier_receipt_out_is_asp_owned_runtime_capture() {
         receipt["schemaId"],
         "agent.semantic-protocols.semantic-fact-frontier-receipt"
     );
-    let rank_payload: Value =
-        serde_json::from_slice(&std::fs::read(&stdin_path).expect("read rank stdin"))
-            .expect("rank graph turbo stdin JSON");
-    let receipt_payload: Value =
-        serde_json::from_slice(&std::fs::read(&receipt_stdin_path).expect("read receipt stdin"))
-            .expect("receipt graph turbo stdin JSON");
-    assert_eq!(rank_payload, receipt_payload);
     assert!(
         !marker.exists(),
         "--frontier-receipt-out should not reach provider"
@@ -185,8 +126,6 @@ fn fzf_scoped_root_outputs_workspace_relative_replayable_locators() {
     let root = temp_project_root("search-fzf-scoped-root-locators");
     let bin_dir = root.join(".bin");
     let marker = root.join("provider-called");
-    let args_path = root.join("graph-turbo-args");
-    let stdin_path = root.join("graph-turbo-stdin.json");
     std::fs::create_dir_all(root.join("crates/demo/src")).expect("create scoped src");
     std::fs::write(
         root.join("Cargo.toml"),
@@ -204,14 +143,11 @@ fn fzf_scoped_root_outputs_workspace_relative_replayable_locators() {
     )
     .expect("write scoped source");
     write_marker_provider(&bin_dir, "rs-harness", &marker);
-    write_graph_turbo_ranker(&bin_dir);
     write_activation(&root, &[provider("rust", Vec::new())]);
 
     let output = asp_command(&root)
         .env("PATH", prepend_path(&bin_dir))
         .env("PRJ_CACHE_HOME", root.join(".cache"))
-        .env("ASP_GRAPH_TURBO_ARGS_OUT", &args_path)
-        .env("ASP_GRAPH_TURBO_STDIN_OUT", &stdin_path)
         .args([
             "rust",
             "search",
@@ -232,25 +168,14 @@ fn fzf_scoped_root_outputs_workspace_relative_replayable_locators() {
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    assert_eq!(
-        String::from_utf8(output.stdout).expect("stdout"),
-        "[graph-frontier] external=fzf\n"
-    );
-    let payload: Value = serde_json::from_slice(&std::fs::read(&stdin_path).expect("read stdin"))
-        .expect("graph turbo stdin JSON");
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(
-        payload["graph"]["nodes"]
-            .as_array()
-            .expect("nodes")
-            .iter()
-            .any(|node| node["kind"] == "owner" && node["value"] == "crates/demo/src/lib.rs")
+        stdout.contains("O=owner:path(crates/demo/src/lib.rs)"),
+        "{stdout}"
     );
     assert!(
-        payload["graph"]["nodes"]
-            .as_array()
-            .expect("nodes")
-            .iter()
-            .any(|node| node["kind"] == "item" && node["locator"] == "crates/demo/src/lib.rs:1:1")
+        stdout.contains("I=item:symbol(cache_root)@crates/demo/src/lib.rs:1:1"),
+        "{stdout}"
     );
 
     assert!(
@@ -373,8 +298,6 @@ fn fzf_default_view_uses_builtin_ranker_for_live_candidate_frontier() {
     let root = temp_project_root("search-fzf-default-graph-turbo");
     let bin_dir = root.join(".bin");
     let marker = root.join("provider-called");
-    let args_path = root.join("graph-turbo-args");
-    let stdin_path = root.join("graph-turbo-stdin.json");
     std::fs::create_dir_all(root.join("src")).expect("create src");
     std::fs::write(
         root.join("src/lib.rs"),
@@ -382,14 +305,11 @@ fn fzf_default_view_uses_builtin_ranker_for_live_candidate_frontier() {
     )
     .expect("write source");
     write_marker_provider(&bin_dir, "rs-harness", &marker);
-    write_graph_turbo_ranker(&bin_dir);
     write_activation(&root, &[provider("rust", Vec::new())]);
 
     let output = asp_command(&root)
         .env("PATH", prepend_path(&bin_dir))
         .env("PRJ_CACHE_HOME", root.join(".cache"))
-        .env("ASP_GRAPH_TURBO_ARGS_OUT", &args_path)
-        .env("ASP_GRAPH_TURBO_STDIN_OUT", &stdin_path)
         .args([
             "rust",
             "search",
@@ -408,20 +328,8 @@ fn fzf_default_view_uses_builtin_ranker_for_live_candidate_frontier() {
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    assert_eq!(
-        String::from_utf8(output.stdout).expect("stdout"),
-        "[graph-frontier] external=fzf\n"
-    );
-    assert_eq!(
-        std::fs::read_to_string(&args_path).expect("read args"),
-        "rank\n-\n--format\ncompact\n"
-    );
-    let payload: Value = serde_json::from_slice(&std::fs::read(&stdin_path).expect("read stdin"))
-        .expect("graph turbo stdin JSON");
-    assert_graph_turbo_request_contract(&payload);
-    assert_eq!(payload["profile"], "owner-query");
-    assert_eq!(payload["seedIds"][0], "query:cache_root");
-    assert_graph_has_hot_code_path(&payload, "cache_root");
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    assert_builtin_graph_frontier(&stdout, "cache_root");
     assert!(
         !marker.exists(),
         "search fzf default view should not spawn provider"
@@ -434,8 +342,6 @@ fn typescript_fzf_default_view_uses_shared_graph_turbo_ranker() {
     let root = temp_project_root("typescript-search-fzf-default-graph-turbo");
     let bin_dir = root.join(".bin");
     let marker = root.join("provider-called");
-    let args_path = root.join("graph-turbo-args");
-    let stdin_path = root.join("graph-turbo-stdin.json");
     std::fs::create_dir_all(root.join("src")).expect("create src");
     std::fs::write(
         root.join("src/index.ts"),
@@ -443,14 +349,11 @@ fn typescript_fzf_default_view_uses_shared_graph_turbo_ranker() {
     )
     .expect("write source");
     write_marker_provider(&bin_dir, "ts-harness", &marker);
-    write_graph_turbo_ranker(&bin_dir);
     write_activation(&root, &[provider("typescript", Vec::new())]);
 
     let output = asp_command(&root)
         .env("PATH", prepend_path(&bin_dir))
         .env("PRJ_CACHE_HOME", root.join(".cache"))
-        .env("ASP_GRAPH_TURBO_ARGS_OUT", &args_path)
-        .env("ASP_GRAPH_TURBO_STDIN_OUT", &stdin_path)
         .args([
             "typescript",
             "search",
@@ -469,25 +372,10 @@ fn typescript_fzf_default_view_uses_shared_graph_turbo_ranker() {
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    assert_eq!(
-        String::from_utf8(output.stdout).expect("stdout"),
-        "[graph-frontier] external=fzf\n"
-    );
-    assert_eq!(
-        std::fs::read_to_string(&args_path).expect("read args"),
-        "rank\n-\n--format\ncompact\n"
-    );
-    let payload: Value = serde_json::from_slice(&std::fs::read(&stdin_path).expect("read stdin"))
-        .expect("graph turbo stdin JSON");
-    assert_graph_turbo_request_contract(&payload);
-    assert_eq!(payload["seedIds"][0], "query:cacheroot");
-    assert_graph_has_hot_code_path(&payload, "cacheroot");
     assert!(
-        payload["graph"]["nodes"]
-            .as_array()
-            .expect("nodes")
-            .iter()
-            .any(|node| node["kind"] == "item" && node["value"] == "cacheroot")
+        String::from_utf8(output.stdout)
+            .expect("stdout")
+            .contains("I=item:symbol(cacheroot)")
     );
     assert!(
         !marker.exists(),
@@ -496,27 +384,19 @@ fn typescript_fzf_default_view_uses_shared_graph_turbo_ranker() {
     let _ = std::fs::remove_dir_all(root);
 }
 
-fn write_graph_turbo_ranker(bin_dir: &std::path::Path) {
-    std::fs::create_dir_all(bin_dir).expect("create fake graph turbo bin dir");
-    let graph_turbo = bin_dir.join("asp-graph-turbo");
-    std::fs::write(
-        &graph_turbo,
-        "#!/bin/sh\n\
-         case \"$1\" in\n\
-           receipt)\n\
-             printf '%s\n' \"$@\" > \"$ASP_GRAPH_TURBO_RECEIPT_ARGS_OUT\"\n\
-             cat > \"$ASP_GRAPH_TURBO_RECEIPT_STDIN_OUT\"\n\
-             printf '{\"schemaId\":\"agent.semantic-protocols.semantic-fact-frontier-receipt\"}\\n'\n\
-             ;;\n\
-           *)\n\
-             printf '%s\n' \"$@\" > \"$ASP_GRAPH_TURBO_ARGS_OUT\"\n\
-             cat > \"$ASP_GRAPH_TURBO_STDIN_OUT\"\n\
-             printf '[graph-frontier] external=fzf\\n'\n\
-             ;;\n\
-         esac\n",
-    )
-    .expect("write fake asp-graph-turbo");
-    make_executable(&graph_turbo);
+fn assert_builtin_graph_frontier(stdout: &str, symbol: &str) {
+    assert!(
+        stdout.starts_with("[graph-frontier] profile=owner-query"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains(&format!("I=item:symbol({symbol})")),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains(&format!("H=hot:range({symbol})")),
+        "{stdout}"
+    );
 }
 
 fn assert_graph_has_hot_code_path(payload: &Value, symbol: &str) {

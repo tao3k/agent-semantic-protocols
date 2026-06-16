@@ -4,7 +4,7 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 use super::graph::{
-    GraphTurboReceiptCapture, GraphTurboReceiptRequest, render_graph_turbo_packet,
+    GraphTurboReceiptCapture, GraphTurboReceiptRequest, render_graph_turbo_packet_rust_compact,
     write_graph_turbo_receipt,
 };
 use super::search_pipe_graph_turbo::{GraphTurboSearchPipeRequest, render_graph_turbo_request};
@@ -132,26 +132,22 @@ pub(super) fn print_search_pipe_view(request: SearchPipeViewRequest<'_>) -> Resu
             if include_pipe_plan && let Some(seed_plan_line) = seed_plan_detail_line(&request) {
                 println!("{seed_plan_line}");
             }
-            let mut ranked_compact = None;
-            if let Some(output) = render_graph_turbo_packet(request.as_bytes())? {
-                ranked_compact = std::str::from_utf8(output.as_ref())
-                    .ok()
-                    .map(str::to_string);
-                if include_pipe_plan {
-                    if let Some(compact) = ranked_compact.as_deref() {
-                        print!("{}", render_search_pipe_decision_projection(compact));
-                    } else {
-                        io::stdout().write_all(output.as_ref()).map_err(|error| {
-                            format!("failed to write asp-graph-turbo stdout: {error}")
-                        })?;
-                    }
+            let output = render_graph_turbo_packet_rust_compact(request.as_bytes())?;
+            let ranked_compact = std::str::from_utf8(output.as_ref())
+                .ok()
+                .map(str::to_string);
+            if include_pipe_plan {
+                if let Some(compact) = ranked_compact.as_deref() {
+                    print!("{}", render_search_pipe_decision_projection(compact));
                 } else {
                     io::stdout().write_all(output.as_ref()).map_err(|error| {
-                        format!("failed to write asp-graph-turbo stdout: {error}")
+                        format!("failed to write graph compact stdout: {error}")
                     })?;
                 }
             } else {
-                print!("{}", render_ingest_frontier(candidates, pipes));
+                io::stdout()
+                    .write_all(output.as_ref())
+                    .map_err(|error| format!("failed to write graph compact stdout: {error}"))?;
             }
             if include_pipe_plan && let Some(query) = query {
                 print!(
@@ -165,6 +161,7 @@ pub(super) fn print_search_pipe_view(request: SearchPipeViewRequest<'_>) -> Resu
                         candidates,
                         ranked_compact: ranked_compact.as_deref(),
                         seed_action_intents: &seed_action_intents,
+                        read_memory_selectors,
                     })
                 );
             }
@@ -195,6 +192,7 @@ pub(super) fn print_search_pipe_view(request: SearchPipeViewRequest<'_>) -> Resu
                         candidates,
                         ranked_compact: None,
                         seed_action_intents: &[],
+                        read_memory_selectors,
                     })
                 );
             }

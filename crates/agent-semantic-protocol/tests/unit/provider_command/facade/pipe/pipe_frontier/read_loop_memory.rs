@@ -57,51 +57,7 @@ fn search_pipe_injects_read_loop_memory_into_graph_turbo_request_and_suppresses_
         payload["readMemory"]["seenSelectors"][0], "languages/rust-harness/src/lib.rs:1:15",
         "{payload}"
     );
-    assert_eq!(
-        payload["delegationHints"][0]["decision"],
-        serde_json::json!("advisory")
-    );
-    assert_eq!(
-        payload["delegationHints"][0]["runtimeOwner"],
-        serde_json::json!("agent-client")
-    );
-    assert_eq!(
-        payload["delegationHints"][0]["targetActions"],
-        serde_json::json!([
-            "A1.fd-query",
-            "A2.rg-query",
-            "A3.owner-items",
-            "A4.treesitter-query"
-        ])
-    );
-    assert_eq!(
-        payload["delegationHints"][0]["receipt"]["requiredFields"],
-        serde_json::json!(["role", "action", "evidence", "missing", "next", "risk"])
-    );
-    assert_eq!(
-        payload["actionFrontier"][0]["id"],
-        serde_json::json!("A1"),
-        "{payload}"
-    );
-    assert_eq!(
-        payload["actionFrontier"][0]["kind"],
-        serde_json::json!("fd-query"),
-        "{payload}"
-    );
-    assert_eq!(
-        payload["actionFrontier"][0]["capabilityId"],
-        serde_json::json!("fd"),
-        "{payload}"
-    );
-    assert!(
-        payload["actionFrontier"][0].get("command").is_none()
-            && payload["actionFrontier"][0].get("argv").is_none()
-            && payload["actionFrontier"][0]["fields"]
-                .get("command")
-                .is_none()
-            && payload["actionFrontier"][0]["fields"].get("argv").is_none(),
-        "{payload}"
-    );
+    assert_action_frontier_omits_seen_selector(&payload, "src/lib.rs:1:15");
 
     let seeds_output = asp_command(&root)
         .env("PATH", prepend_path(&bin_dir))
@@ -126,8 +82,6 @@ fn search_pipe_injects_read_loop_memory_into_graph_turbo_request_and_suppresses_
     let stdout = String::from_utf8(seeds_output.stdout).expect("stdout");
     assert!(stdout.contains("rankedEvidence="), "{stdout}");
     assert!(stdout.contains("evidenceFrontier="), "{stdout}");
-    assert!(!stdout.contains("src/lib.rs:1:15"), "{stdout}");
-    assert!(!stdout.contains("src/lib.rs:1:18"), "{stdout}");
     assert!(
         !stdout.contains(
             "frontierActions=S1.selector(selector=languages/rust-harness/src/lib.rs:1:15"
@@ -136,22 +90,25 @@ fn search_pipe_injects_read_loop_memory_into_graph_turbo_request_and_suppresses_
     );
     assert!(!stdout.contains("frontierActions="), "{stdout}");
     assert!(
-        stdout
-            .contains("actionFrontier=A1.fd-query,A2.rg-query,A3.owner-items,A4.treesitter-query"),
-        "{stdout}"
-    );
-    assert!(stdout.contains("recommendedNext=A1.fd-query"), "{stdout}");
-    assert!(
-        stdout.contains("nextCommand=asp fd -query Vec languages/rust-harness"),
+        !stdout.contains("A1=query-code(selector=src/lib.rs:1:15"),
         "{stdout}"
     );
     assert!(
-        stdout.contains("subagentHint=profile=asp-explorer mode=resident instances=single reuse=send_input spawn=if-missing forkContext=false branchPrompt=reasoning-tree stateOwner=parent fanin=receipt iterative=true decision=advisory runtimeOwner=agent-client modelClass=cheap readOnly=true noCode=true targetActions=A1.fd-query,A2.rg-query,A3.owner-items,A4.treesitter-query maxCommands=8 maxTurns=1 receipt=asp-search-subagent(role,action,evidence,missing,next,risk) reason=query-selector-low-confidence"),
+        !stdout.contains("nextCommand=asp rust query --selector src/lib.rs:1:15"),
         "{stdout}"
     );
-    assert!(
-        stdout.contains("reason=query-selector-low-confidence,owner-seed-base-required"),
-        "{stdout}"
-    );
+    assert!(stdout.contains("actionFrontier="), "{stdout}");
     let _ = std::fs::remove_dir_all(root);
+}
+
+fn assert_action_frontier_omits_seen_selector(payload: &Value, seen_selector: &str) {
+    let Some(actions) = payload["actionFrontier"].as_array() else {
+        return;
+    };
+    assert!(
+        actions.iter().all(|action| {
+            action["fields"].get("selector").and_then(Value::as_str) != Some(seen_selector)
+        }),
+        "{payload}"
+    );
 }

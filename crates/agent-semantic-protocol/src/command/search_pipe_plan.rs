@@ -21,6 +21,7 @@ pub(super) struct SearchPipePlanRequest<'a> {
     pub(super) candidates: &'a [Candidate],
     pub(super) ranked_compact: Option<&'a str>,
     pub(super) seed_action_intents: &'a [SeedActionIntent],
+    pub(super) read_memory_selectors: &'a [String],
 }
 
 pub(super) fn render_search_pipe_plan(request: SearchPipePlanRequest<'_>) -> String {
@@ -33,6 +34,7 @@ pub(super) fn render_search_pipe_plan(request: SearchPipePlanRequest<'_>) -> Str
         candidates,
         ranked_compact,
         seed_action_intents,
+        read_memory_selectors,
     } = request;
     let mut quality = analyze_search_pipe_quality(language_id, query, candidates);
     let projected_selector_actions = rank_projected_selector_actions(
@@ -76,6 +78,7 @@ pub(super) fn render_search_pipe_plan(request: SearchPipePlanRequest<'_>) -> Str
         selector_actions: &actions,
         fd_preview: fd_preview.as_ref(),
         seed_action_intents,
+        read_memory_selectors,
     });
     format!(
         "seedPlan=seed-query alg=asp-search-pipe-v2 budget=frontier<=3 repeated=0\n\

@@ -6,8 +6,7 @@ use serde_json::Value;
 use super::assert_graph_turbo_request_contract;
 
 use crate::provider_command::support::{
-    asp_command, make_executable, prepend_path, provider, temp_project_root, write_activation,
-    write_marker_provider,
+    asp_command, prepend_path, provider, temp_project_root, write_activation, write_marker_provider,
 };
 
 #[test]
@@ -81,17 +80,12 @@ fn search_ingest_stdin_is_asp_owned_and_does_not_spawn_provider() {
     let root = temp_project_root("provider-stdin-facade");
     let bin_dir = root.join(".bin");
     let marker = root.join("provider-called");
-    let args_path = root.join("graph-turbo-args");
-    let stdin_path = root.join("graph-turbo-stdin.json");
     write_marker_provider(&bin_dir, "rs-harness", &marker);
-    write_graph_turbo_ranker(&bin_dir);
     write_activation(&root, &[provider("rust", Vec::new())]);
 
     let mut child = asp_command(&root)
         .env("PATH", prepend_path(&bin_dir))
         .env("PRJ_CACHE_HOME", root.join(".cache"))
-        .env("ASP_GRAPH_TURBO_ARGS_OUT", &args_path)
-        .env("ASP_GRAPH_TURBO_STDIN_OUT", &stdin_path)
         .args(["rust", "search", "ingest", "--view", "seeds", "."])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -111,32 +105,15 @@ fn search_ingest_stdin_is_asp_owned_and_does_not_spawn_provider() {
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    assert_eq!(
-        String::from_utf8(output.stdout).expect("stdout"),
-        "[graph-frontier] external=ingest\n"
-    );
-    assert_eq!(
-        std::fs::read_to_string(&args_path).expect("read args"),
-        "rank\n-\n--format\ncompact\n"
-    );
-    let payload: Value = serde_json::from_slice(&std::fs::read(&stdin_path).expect("read stdin"))
-        .expect("graph turbo stdin JSON");
-    assert_graph_turbo_request_contract(&payload);
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(
-        payload["graph"]["nodes"]
-            .as_array()
-            .expect("nodes")
-            .iter()
-            .any(|node| node["kind"] == "owner" && node["value"] == "src/lib.rs")
+        stdout.starts_with("[graph-frontier] profile=owner-query"),
+        "{stdout}"
     );
+    assert!(stdout.contains("O=owner:path(src/lib.rs)"), "{stdout}");
     assert!(
-        payload["graph"]["nodes"]
-            .as_array()
-            .expect("nodes")
-            .iter()
-            .any(|node| node["kind"] == "item"
-                && node["value"] == "hookdecision"
-                && node["locator"] == "src/lib.rs:10:10")
+        stdout.contains("I=item:symbol(hookdecision)@src/lib.rs:10:10"),
+        "{stdout}"
     );
     assert!(!marker.exists(), "search ingest should not spawn provider");
     let _ = std::fs::remove_dir_all(root);
@@ -206,18 +183,4 @@ fn search_ingest_can_emit_graph_turbo_request_without_spawning_provider() {
     );
     assert!(!marker.exists(), "search ingest should not spawn provider");
     let _ = std::fs::remove_dir_all(root);
-}
-
-fn write_graph_turbo_ranker(bin_dir: &std::path::Path) {
-    std::fs::create_dir_all(bin_dir).expect("create fake graph turbo bin dir");
-    let graph_turbo = bin_dir.join("asp-graph-turbo");
-    std::fs::write(
-        &graph_turbo,
-        "#!/bin/sh\n\
-         printf '%s\n' \"$@\" > \"$ASP_GRAPH_TURBO_ARGS_OUT\"\n\
-         cat > \"$ASP_GRAPH_TURBO_STDIN_OUT\"\n\
-         printf '[graph-frontier] external=ingest\\n'\n",
-    )
-    .expect("write fake asp-graph-turbo");
-    make_executable(&graph_turbo);
 }

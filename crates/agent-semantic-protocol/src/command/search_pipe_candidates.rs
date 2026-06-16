@@ -85,6 +85,22 @@ pub(super) fn collect_candidates(
         .iter()
         .map(|root| sorted_search_root_files(root, config, file_spec, &terms))
         .collect::<Result<Vec<_>, _>>()?;
+    collect_candidates_from_search_roots(
+        locator_root,
+        file_spec,
+        &terms,
+        &term_matcher,
+        &search_roots,
+    )
+}
+
+fn collect_candidates_from_search_roots(
+    locator_root: &Path,
+    file_spec: LanguageFileSpec,
+    terms: &[String],
+    term_matcher: &CandidateTermMatcher,
+    search_roots: &[Vec<PathBuf>],
+) -> Result<Vec<Candidate>, String> {
     let mut candidates = Vec::new();
     let mut remaining = PIPE_CANDIDATE_LINE_LIMIT;
     let per_term_limit = per_term_candidate_limit(terms.len());
@@ -93,21 +109,21 @@ pub(super) fn collect_candidates(
     let mut collector = CandidateCollector {
         locator_root,
         file_spec,
-        terms: &terms,
-        term_matcher: &term_matcher,
+        terms,
+        term_matcher,
         per_term_limit,
         term_counts: &mut term_counts,
         candidates: &mut candidates,
         remaining: &mut remaining,
         seen: &mut seen,
     };
-    for paths in &search_roots {
+    for paths in search_roots {
         if collector.is_done() {
             break;
         }
         collector.append_path_candidates(paths);
     }
-    for paths in &search_roots {
+    for paths in search_roots {
         if collector.is_done() {
             break;
         }

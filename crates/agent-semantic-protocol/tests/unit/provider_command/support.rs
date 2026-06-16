@@ -24,8 +24,13 @@ pub(super) fn provider(language_id: &'static str, command_prefix: Vec<String>) -
 }
 
 pub(super) fn write_activation(root: &Path, providers: &[ProviderSpec]) {
-    let activation_dir = root.join(".cache/agent-semantic-protocol/hooks");
-    std::fs::create_dir_all(&activation_dir).expect("create activation dir");
+    let activation_path = root.join(".cache/agent-semantic-protocol/hooks/activation.json");
+    write_activation_to(root, &activation_path, providers);
+}
+
+pub(super) fn write_activation_to(root: &Path, activation_path: &Path, providers: &[ProviderSpec]) {
+    let activation_dir = activation_path.parent().expect("activation parent");
+    std::fs::create_dir_all(activation_dir).expect("create activation dir");
     let providers: Vec<_> = providers
         .iter()
         .map(|spec| {
@@ -57,12 +62,12 @@ pub(super) fn write_activation(root: &Path, providers: &[ProviderSpec]) {
         "schemaVersion": agent_semantic_hook::HOOK_ACTIVATION_SCHEMA_VERSION,
         "protocolId": agent_semantic_hook::HOOK_PROTOCOL_ID,
         "protocolVersion": agent_semantic_hook::HOOK_PROTOCOL_VERSION,
-        "projectRoot": ".",
+        "projectRoot": root.display().to_string(),
         "generatedBy": { "runtime": "asp", "version": "test" },
         "providers": providers
     });
     std::fs::write(
-        activation_dir.join("activation.json"),
+        activation_path,
         serde_json::to_string_pretty(&activation).expect("serialize activation"),
     )
     .expect("write activation");

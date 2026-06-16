@@ -23,7 +23,7 @@ tree-sitter = { workspace = true }
 tree-sitter-julia = "0.23.1"
 tree-sitter-python = "0.25.0"
 tree-sitter-typescript = "0.23.2"
-ignore = "0.4.26"
+ignore = { version = "0.4.26", features = ["simd-accel"] }
 libc = "0.2"
 which = "8.0.3"
 

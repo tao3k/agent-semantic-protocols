@@ -85,20 +85,24 @@ fn assert_document_pipe_packet(packet: &serde_json::Value, language_id: &str, ma
         }),
         "{packet:#}"
     );
-    let actions = packet["actionFrontier"]
-        .as_array()
-        .expect("action frontier");
     assert!(
-        actions.iter().any(|action| {
-            action["capabilityId"] == "query"
-                && action["fields"]["languageId"] == language_id
-                && action["fields"]["projection"] == "content"
-                && action.get("command").is_none()
-                && action.get("argv").is_none()
-                && action["fields"]["selector"]
-                    .as_str()
-                    .is_some_and(|selector| selector.contains('-'))
+        packet
+            .get("actionFrontier")
+            .is_none_or(serde_json::Value::is_null),
+        "{packet:#}"
+    );
+    assert!(
+        nodes.iter().any(|node| {
+            node["kind"] == "provider-root"
+                && node["fields"]["languageId"] == language_id
+                && node["path"].as_str().is_some()
         }),
+        "{packet:#}"
+    );
+    assert!(
+        nodes
+            .iter()
+            .any(|node| { node["kind"] == "owner" && node["path"].as_str().is_some() }),
         "{packet:#}"
     );
 }

@@ -337,5 +337,5 @@ async fn join_readers_after_timeout(
 }
 
 #[cfg(test)]
-#[path = "../tests/unit/transport.rs"]
+#[path = "../tests/unit/transport/mod.rs"]
 mod transport_tests;
