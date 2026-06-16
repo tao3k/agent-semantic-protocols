@@ -24,6 +24,13 @@ from tools.tree_sitter.contract_support import ContractFailure, ROOT, run
 
 Gate = Callable[[dict[str, str], str], None]
 
+_CORE_FAST_ASP_TOML = """[providers.gerbil-scheme]
+enabled = false
+
+[providers.julia]
+enabled = false
+"""
+
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
@@ -142,31 +149,64 @@ class _runtime_env:
     def __init__(self, asp_bin: Path) -> None:
         self.asp_bin = asp_bin
         self._tmp: tempfile.TemporaryDirectory[str] | None = None
+        self._asp_toml_backup: Path | None = None
+        self._hook_config_backup: Path | None = None
 
     def __enter__(self) -> dict[str, str]:
         self._tmp = tempfile.TemporaryDirectory()
         shim_dir = Path(self._tmp.name)
-        _write_shim(
-            shim_dir / "rs-harness",
-            f'exec "{ROOT}/languages/rust-lang-project-harness/target/debug/rs-harness" "$@"\n',
-        )
-        _write_shim(
-            shim_dir / "ts-harness",
-            f'exec node "{ROOT}/languages/typescript-lang-project-harness/dist/src/cli/main.js" "$@"\n',
-        )
-        _write_shim(
-            shim_dir / "py-harness",
-            f'exec uv run --project "{ROOT}/languages/python-lang-project-harness" --frozen py-harness "$@"\n',
-        )
-        env = os.environ.copy()
-        env["PATH"] = f"{shim_dir}{os.pathsep}{env.get('PATH', '')}"
-        env["SEMANTIC_AGENT_PROTOCOL_BIN"] = str(self.asp_bin)
-        run([str(self.asp_bin), "hook", "install", "--client", "codex", "."], env=env)
-        return env
+        try:
+            self._asp_toml_backup = _backup_runtime_file(shim_dir, ROOT / "asp.toml")
+            self._hook_config_backup = _backup_runtime_file(
+                shim_dir,
+                ROOT / ".codex/agent-semantic-protocol/hooks/config.toml",
+            )
+            (ROOT / "asp.toml").write_text(_CORE_FAST_ASP_TOML, encoding="utf-8")
+            _write_shim(
+                shim_dir / "rs-harness",
+                f'exec "{ROOT}/languages/rust-lang-project-harness/target/debug/rs-harness" "$@"\n',
+            )
+            _write_shim(
+                shim_dir / "ts-harness",
+                f'exec node "{ROOT}/languages/typescript-lang-project-harness/dist/src/cli/main.js" "$@"\n',
+            )
+            _write_shim(
+                shim_dir / "py-harness",
+                f'exec uv run --project "{ROOT}/languages/python-lang-project-harness" --frozen py-harness "$@"\n',
+            )
+            env = os.environ.copy()
+            env["PATH"] = f"{shim_dir}{os.pathsep}{env.get('PATH', '')}"
+            env["SEMANTIC_AGENT_PROTOCOL_BIN"] = str(self.asp_bin)
+            run([str(self.asp_bin), "plugin", "install", "codex", "."], env=env)
+            return env
+        except Exception:
+            self.__exit__(None, None, None)
+            raise
 
     def __exit__(self, *_exc: object) -> None:
+        _restore_runtime_file(ROOT / "asp.toml", self._asp_toml_backup)
+        _restore_runtime_file(
+            ROOT / ".codex/agent-semantic-protocol/hooks/config.toml",
+            self._hook_config_backup,
+        )
         if self._tmp is not None:
             self._tmp.cleanup()
+
+
+def _backup_runtime_file(shim_dir: Path, path: Path) -> Path | None:
+    if not path.exists():
+        return None
+    backup = shim_dir / f"{path.name}.backup"
+    shutil.copy2(path, backup)
+    return backup
+
+
+def _restore_runtime_file(path: Path, backup: Path | None) -> None:
+    if backup is None:
+        path.unlink(missing_ok=True)
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(backup, path)
 
 
 def _write_shim(path: Path, body: str) -> None:
