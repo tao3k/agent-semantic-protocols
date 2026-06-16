@@ -241,6 +241,68 @@ fn cache_source_index_refresh_builds_rust_sql_rows() {
     let _ = std::fs::remove_dir_all(root);
 }
 
+#[test]
+fn cache_source_index_refresh_respects_cargo_workspace_exclude() {
+    let _guard = crate::test_support::CACHE_TEST_LOCK
+        .lock()
+        .expect("cache test lock");
+    let root = temp_root("source-index-workspace-exclude");
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[workspace]\nmembers = [\"crates/app\", \"vendor/tool\"]\nexclude = [\"vendor/tool\"]\nresolver = \"2\"\n",
+    )
+    .expect("write workspace manifest");
+    std::fs::create_dir_all(root.join("crates/app/src")).expect("create app source dir");
+    std::fs::write(
+        root.join("crates/app/Cargo.toml"),
+        "[package]\nname = \"app\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+    )
+    .expect("write app manifest");
+    std::fs::write(
+        root.join("crates/app/src/lib.rs"),
+        "pub fn workspace_scope_symbol() {}\n",
+    )
+    .expect("write app source");
+    std::fs::create_dir_all(root.join("vendor/tool/src")).expect("create excluded source dir");
+    std::fs::write(
+        root.join("vendor/tool/Cargo.toml"),
+        "[package]\nname = \"tool\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+    )
+    .expect("write excluded manifest");
+    std::fs::write(
+        root.join("vendor/tool/src/lib.rs"),
+        "pub fn workspace_scope_symbol() {}\n",
+    )
+    .expect("write excluded source");
+
+    run_cache(
+        &root,
+        &["source-index".to_string(), "refresh".to_string()],
+        false,
+    )
+    .expect("refresh source index");
+
+    let cache_root = ClientCacheManifest::inspect_project(&root)
+        .cache_root
+        .expect("cache root");
+    let db_path = ClientDb::default_path(&cache_root);
+    let db = ClientDb::open_read_only_existing(&db_path)
+        .expect("open db")
+        .expect("db exists");
+    let owners = db
+        .lookup_source_index_owners(&ClientDbSourceIndexLookup {
+            project_root: root.clone(),
+            language_id: Some(LanguageId::from("rust")),
+            query: ClientDbSourceIndexQueryKey::from("workspace_scope_symbol"),
+            limit: 8,
+        })
+        .expect("lookup source owners");
+
+    assert_eq!(owners.len(), 1);
+    assert_eq!(owners[0].owner_path.as_str(), "crates/app/src/lib.rs");
+    let _ = std::fs::remove_dir_all(root);
+}
+
 fn structural_index_packet(root: &std::path::Path) -> Value {
     json!({
         "schemaId": "agent.semantic-protocols.semantic-structural-index",

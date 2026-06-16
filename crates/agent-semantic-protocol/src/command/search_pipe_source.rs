@@ -350,9 +350,10 @@ fn source_index_candidates(
         return None;
     }
     let started_at = Instant::now();
+    let language_scope = agent_semantic_client::LanguageId::from(language_id);
     match lookup_source_index_for_language(
         project_root,
-        Some(language_id),
+        Some(&language_scope),
         intent,
         DOCUMENT_PIPE_CANDIDATE_LIMIT as u32,
     ) {
@@ -476,7 +477,11 @@ fn source_index_candidate_text(candidate: &agent_semantic_client::SourceIndexCan
         .join("|");
     format!(
         "source-index path={} language={} provider={} kind={} queryKeys={}",
-        candidate.path, language, provider, candidate.source_kind, keys
+        candidate.path,
+        language,
+        provider,
+        candidate.source_kind.as_str(),
+        keys
     )
 }
 

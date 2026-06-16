@@ -6,6 +6,17 @@ use crate::provider_method::{
 use crate::test_support::CACHE_TEST_LOCK;
 
 #[test]
+fn search_packet_first_handles_prime_seed_discovery() {
+    let request = ClientRequest::new(ClientMethod::Search, ".").with_forwarded_args(vec![
+        "prime".to_string(),
+        "--view".to_string(),
+        "seeds".to_string(),
+    ]);
+
+    assert!(should_try_search_packet_first(&request));
+}
+
+#[test]
 fn search_packet_first_skips_workspace_seed_discovery() {
     let request = ClientRequest::new(ClientMethod::Search, ".").with_forwarded_args(vec![
         "workspace".to_string(),

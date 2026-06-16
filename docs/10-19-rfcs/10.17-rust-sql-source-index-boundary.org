@@ -58,6 +58,8 @@ The Rust source index covers language project scopes derived from package-manage
 
 The cover set is the source and configuration surface owned by those anchored projects. Hidden cache roots such as =.data=, =.codex=, =.devenv=, =.direnv=, =.cache=, VCS metadata, package dependency directories, and build outputs are excluded while discovering anchors and while walking anchored package source directories.
 
+For Cargo workspaces, =workspace.exclude= is part of the project-scope contract. Excluded package roots and nested VCS roots are not indexed as part of the parent workspace by default. Agents that need those sources must activate or index that package root explicitly.
+
 This boundary is part of search quality, not just performance. Agent-facing broad search must not rank vendored Codex source, plugin cache files, or runtime-source mirrors ahead of the active language project unless a future command explicitly requests an external-source scope.
 
 * Missing Index Behavior

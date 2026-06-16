@@ -364,14 +364,14 @@ fn render_last_check_failure_frontier(
 
 pub(crate) fn should_try_search_packet_first(request: &ClientRequest) -> bool {
     request.method == ClientMethod::Search
-        && !is_prime_seed_search(&request.forwarded_args)
         && !is_workspace_seed_search(&request.forwarded_args)
         && !is_compare_search(&request.forwarded_args)
         && !request
             .forwarded_args
             .iter()
             .any(|arg| arg == "items" || arg == "ingest" || arg == "--code" || arg == "--json")
-        && (is_search_packet_seed_search(&request.forwarded_args)
+        && (is_prime_seed_search(&request.forwarded_args)
+            || is_search_packet_seed_search(&request.forwarded_args)
             || is_dependency_search(&request.forwarded_args))
 }
 
