@@ -2,7 +2,7 @@ use std::env;
 
 use crate::rust_harness_activation::support::write_fake_provider_binary;
 
-use super::support::{git_project_root, protocol_command};
+use super::support::{codex_plugin_install_args, git_project_root, protocol_command};
 
 #[test]
 fn cli_install_prefers_git_toplevel_cache_over_prj_cache_home() {
@@ -17,13 +17,7 @@ fn cli_install_prefers_git_toplevel_cache_over_prj_cache_home() {
         .env("SEMANTIC_AGENT_BIN_DIR", &protocol_bin_dir)
         .env("PRJ_CACHE_HOME", &prj_cache_home)
         .env("CODEX_HOME", &codex_home)
-        .args([
-            "hook",
-            "install",
-            "--client",
-            "codex",
-            root.to_str().expect("utf8 temp root"),
-        ])
+        .args(codex_plugin_install_args(&root))
         .output()
         .expect("run agent-semantic-protocol install");
     assert!(
@@ -75,13 +69,7 @@ decision = "deny"
         .env("PATH", &path)
         .env("SEMANTIC_AGENT_BIN_DIR", &protocol_bin_dir)
         .env("CODEX_HOME", &codex_home)
-        .args([
-            "hook",
-            "install",
-            "--client",
-            "codex",
-            root.to_str().expect("utf8 temp root"),
-        ])
+        .args(codex_plugin_install_args(&root))
         .output()
         .expect("run agent-semantic-protocol install");
     assert!(
@@ -133,13 +121,7 @@ argvSourceGlobAny = [
         .env("PATH", &path)
         .env("SEMANTIC_AGENT_BIN_DIR", &protocol_bin_dir)
         .env("CODEX_HOME", &codex_home)
-        .args([
-            "hook",
-            "install",
-            "--client",
-            "codex",
-            root.to_str().expect("utf8 temp root"),
-        ])
+        .args(codex_plugin_install_args(&root))
         .output()
         .expect("run agent-semantic-protocol install");
     assert!(
@@ -178,13 +160,7 @@ fn cli_install_preserves_legacy_top_level_flags_and_writes_project_plugin_entrie
     let output = protocol_command()
         .env("PATH", &provider_path)
         .env("CODEX_HOME", &codex_home)
-        .args([
-            "hook",
-            "install",
-            "--client",
-            "codex",
-            root.to_str().expect("utf8 temp root"),
-        ])
+        .args(codex_plugin_install_args(&root))
         .output()
         .expect("run agent-semantic-protocol install");
 

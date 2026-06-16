@@ -16,6 +16,29 @@ pub(super) fn protocol_command() -> Command {
     command
 }
 
+pub(super) fn codex_plugin_install_args(root: &Path) -> [String; 4] {
+    [
+        "plugin".to_string(),
+        "install".to_string(),
+        "codex".to_string(),
+        root.to_str().expect("utf8 temp root").to_string(),
+    ]
+}
+
+pub(super) fn codex_plugin_install_args_with_subagent_model(
+    root: &Path,
+    model: &str,
+) -> [String; 6] {
+    [
+        "plugin".to_string(),
+        "install".to_string(),
+        "codex".to_string(),
+        "--subagent-model".to_string(),
+        model.to_string(),
+        root.to_str().expect("utf8 temp root").to_string(),
+    ]
+}
+
 fn write_test_codex_plugin(root: &Path) {
     let plugin_root = root.join("asp-codex-plugin");
     let manifest = plugin_root.join(".codex-plugin/plugin.json");

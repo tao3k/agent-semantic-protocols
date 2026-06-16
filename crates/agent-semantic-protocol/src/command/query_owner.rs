@@ -25,6 +25,10 @@ pub(super) fn run_asp_fast_owner_query_command(
         return Ok(false);
     };
     let Some(path) = resolve_owner_path(project_root, locator_root, &request.owner_path) else {
+        if owner_path_is_file_like(&request.owner_path) {
+            render_unresolved_owner_query(&request)?;
+            return Ok(true);
+        }
         return Ok(false);
     };
     let source = fs::read_to_string(&path)
@@ -672,6 +676,29 @@ fn render_non_source_owner_query(
             &[],
         )
     }
+}
+
+fn render_unresolved_owner_query(request: &OwnerQueryRequest) -> Result<(), String> {
+    if request.code {
+        return Ok(());
+    }
+    let output = if request.names_only {
+        "names"
+    } else {
+        "locator"
+    };
+    let display_path = request.owner_path.to_string_lossy().replace('\\', "/");
+    let rendered = format!(
+        "[search-owner] q={display_path} pkg=. own=0 item=0 itemQuery={} output={output}\n|query itemQuery={} status=miss match=none item=0 reason=owner-not-found output={output} next=search-owner\n",
+        request.term, request.term
+    );
+    io::stdout()
+        .write_all(rendered.as_bytes())
+        .map_err(|error| format!("failed to write owner query stdout: {error}"))
+}
+
+fn owner_path_is_file_like(path: &Path) -> bool {
+    path.extension().is_some() || path.components().count() > 1
 }
 
 fn select_line_range(source: &str, start: usize, end: usize) -> String {

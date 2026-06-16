@@ -157,7 +157,12 @@ impl NativeFinderCollector<'_> {
 
     fn append_rg_candidates(&mut self) -> Result<bool, String> {
         let mut ran_any = false;
-        for request in self.search_requests() {
+        let requests = if self.surface == NativeFinderSurface::Content {
+            self.search_requests()
+        } else {
+            self.content_search_requests()
+        };
+        for request in requests {
             if self.is_done() {
                 return Ok(ran_any);
             }
@@ -175,6 +180,18 @@ impl NativeFinderCollector<'_> {
             .map(|root| NativeFinderRequest {
                 root: root.clone(),
                 pattern: pattern.clone(),
+            })
+            .collect()
+    }
+
+    fn content_search_requests(&self) -> Vec<NativeFinderRequest> {
+        native_search_patterns(self.terms)
+            .into_iter()
+            .flat_map(|pattern| {
+                self.roots.iter().map(move |root| NativeFinderRequest {
+                    root: root.clone(),
+                    pattern: pattern.clone(),
+                })
             })
             .collect()
     }
@@ -434,16 +451,20 @@ struct NativeFinderRequest {
 }
 
 fn native_search_pattern(terms: &[String]) -> Option<String> {
+    let escaped = native_search_patterns(terms);
+    (!escaped.is_empty()).then(|| escaped.join("|"))
+}
+
+fn native_search_patterns(terms: &[String]) -> Vec<String> {
     let mut seen = HashSet::new();
-    let escaped = terms
+    terms
         .iter()
         .filter_map(|term| {
             let term = term.trim();
             (!term.is_empty() && seen.insert(term.to_ascii_lowercase()))
                 .then(|| escape_native_regex(term))
         })
-        .collect::<Vec<_>>();
-    (!escaped.is_empty()).then(|| escaped.join("|"))
+        .collect()
 }
 
 fn escape_native_regex(term: &str) -> String {

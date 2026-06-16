@@ -136,7 +136,8 @@ fn rust_tree_sitter_pattern(kind: &str, escaped_query: &str) -> Option<String> {
         "mod" => ("mod_item", "module.name"),
         "const" => ("const_item", "constant.name"),
         "static" => ("static_item", "constant.name"),
-        _ => ("function_item", "function.name"),
+        "fn" => ("function_item", "function.name"),
+        _ => return None,
     };
     Some(format!(
         "(({node} name: (_) @{capture}) (#eq? @{capture} \"{escaped_query}\"))"
@@ -146,7 +147,8 @@ fn rust_tree_sitter_pattern(kind: &str, escaped_query: &str) -> Option<String> {
 fn python_tree_sitter_pattern(kind: &str, escaped_query: &str) -> Option<String> {
     let (node, capture) = match kind {
         "class" => ("class_definition", "class.name"),
-        _ => ("function_definition", "function.name"),
+        "function" => ("function_definition", "function.name"),
+        _ => return None,
     };
     Some(format!(
         "(({node} name: (identifier) @{capture}) (#eq? @{capture} \"{escaped_query}\"))"
@@ -175,11 +177,12 @@ fn typescript_tree_sitter_pattern(kind: &str, escaped_query: &str) -> Option<Str
                 "((lexical_declaration (variable_declarator name: (identifier) @constant.name)) (#eq? @constant.name \"{escaped_query}\"))"
             )
         }
-        _ => {
+        "function" => {
             format!(
                 "((function_declaration name: (identifier) @function.name) (#eq? @function.name \"{escaped_query}\"))"
             )
         }
+        _ => return None,
     };
     Some(pattern)
 }
@@ -200,7 +203,7 @@ fn find_owner_query_matches(language_id: &str, path: &Path, query: &str) -> Vec<
     let terms = query_terms(query);
     let lines = byte_text::line_slices(&bytes);
     let mut matches = Vec::new();
-    for (index, line) in lines.iter().enumerate() {
+    'line_scan: for (index, line) in lines.iter().enumerate() {
         let Some(kind) = item_kind_for_line(path, line) else {
             continue;
         };
@@ -250,13 +253,30 @@ fn find_owner_query_matches(language_id: &str, path: &Path, query: &str) -> Vec<
                     symbol.as_deref(),
                 ),
             });
-            if matches.len() >= 8 {
-                sort_owner_query_matches(&mut matches);
-                return matches;
+            if matches.len() >= 16 {
+                break 'line_scan;
             }
         }
     }
+    let best_declaration_coverage = matches
+        .iter()
+        .map(|item| item.axis_coverage)
+        .max()
+        .unwrap_or(0);
+    matches.extend(query_axis_window_matches(
+        path,
+        &terms,
+        &lines,
+        best_declaration_coverage,
+    ));
     sort_owner_query_matches(&mut matches);
+    deduplicate_owner_query_matches(&mut matches);
+    matches.truncate(8);
+    if matches.is_empty()
+        && let Some(barrel_match) = typescript_barrel_owner_query_match(path, &terms, &lines)
+    {
+        matches.push(barrel_match);
+    }
     if matches.is_empty()
         && let Some(config_match) = config_owner_query_match(language_id, path, &terms, &lines)
     {
@@ -275,6 +295,121 @@ fn sort_owner_query_matches(matches: &mut [OwnerQueryMatch]) {
             item.start,
         )
     });
+}
+
+fn deduplicate_owner_query_matches(matches: &mut Vec<OwnerQueryMatch>) {
+    let mut unique = Vec::with_capacity(matches.len());
+    for item in matches.drain(..) {
+        if unique.iter().any(|existing: &OwnerQueryMatch| {
+            existing.start == item.start && existing.end == item.end
+        }) {
+            continue;
+        }
+        unique.push(item);
+    }
+    *matches = unique;
+}
+
+fn query_axis_window_matches(
+    path: &Path,
+    terms: &[QueryTerm],
+    lines: &[&[u8]],
+    best_declaration_coverage: usize,
+) -> Vec<OwnerQueryMatch> {
+    if terms.len() < 2 || lines.is_empty() {
+        return Vec::new();
+    }
+    let required_coverage = query_axis_window_required_coverage(terms.len());
+    let mut matches = Vec::new();
+    for (index, line) in lines.iter().enumerate() {
+        if !line_matches_any_query_axis(line, terms) {
+            continue;
+        }
+        let (start, end) = query_axis_window_range(path, lines, index);
+        let axis_coverage = selector_axis_coverage(lines, start, end, terms, None);
+        if axis_coverage < required_coverage || axis_coverage <= best_declaration_coverage {
+            continue;
+        }
+        matches.push(OwnerQueryMatch {
+            start,
+            end,
+            kind: "context",
+            term: query_axis_window_label(lines, start, end, terms),
+            match_rank: 3,
+            axis_coverage,
+        });
+    }
+    sort_owner_query_matches(&mut matches);
+    deduplicate_owner_query_matches(&mut matches);
+    matches.truncate(4);
+    matches
+}
+
+fn query_axis_window_required_coverage(term_count: usize) -> usize {
+    match term_count {
+        0 | 1 => term_count,
+        2 | 3 => 2,
+        _ => (term_count * 2).div_ceil(3),
+    }
+}
+
+fn line_matches_any_query_axis(line: &[u8], terms: &[QueryTerm]) -> bool {
+    let lower = byte_text::lowercase_lossy_string(line);
+    terms.iter().any(|term| lower.contains(&term.lower))
+}
+
+fn query_axis_window_range(path: &Path, lines: &[&[u8]], index: usize) -> (usize, usize) {
+    if let Some(range) = enclosing_item_range(path, lines, index) {
+        return range;
+    }
+    let start = index.saturating_sub(3) + 1;
+    let end = (index + 4).min(lines.len());
+    (start, end.max(start))
+}
+
+fn enclosing_item_range(path: &Path, lines: &[&[u8]], index: usize) -> Option<(usize, usize)> {
+    let lower_bound = index.saturating_sub(200);
+    for start_index in (lower_bound..=index).rev() {
+        if item_kind_for_line(path, lines[start_index]).is_none() {
+            continue;
+        }
+        let start = start_index + 1;
+        let end = rust_block_end(path, lines, start_index)
+            .or_else(|| python_block_end(path, lines, start_index))
+            .or_else(|| typescript_block_end(path, lines, start_index))
+            .or_else(|| scheme_block_end(path, lines, start_index))
+            .unwrap_or(start);
+        if end > index {
+            return Some((start, end));
+        }
+    }
+    None
+}
+
+fn query_axis_window_label(
+    lines: &[&[u8]],
+    start: usize,
+    end: usize,
+    terms: &[QueryTerm],
+) -> String {
+    let mut evidence = String::new();
+    let start_index = start.saturating_sub(1);
+    let end_index = end.min(lines.len());
+    for line in &lines[start_index..end_index] {
+        evidence.push_str(&byte_text::lowercase_lossy_string(line));
+        evidence.push('\n');
+    }
+    let matched = terms
+        .iter()
+        .filter(|term| evidence.contains(&term.lower))
+        .take(3)
+        .map(|term| term.display.as_str())
+        .collect::<Vec<_>>();
+    if matched.is_empty() {
+        "query-axis".to_string()
+    } else {
+        format!("query-axis:{}", matched.join("+"))
+    }
 }
 
 fn selector_axis_coverage(
@@ -408,12 +543,17 @@ fn python_item_kind_for_line(line: &str) -> Option<&'static str> {
 
 fn typescript_item_kind_for_line(line: &str) -> Option<&'static str> {
     let line = line.trim_start();
+    if line.starts_with("export * ") || line.starts_with("export {") {
+        return Some("export");
+    }
     let declaration = line
         .strip_prefix("export ")
         .or_else(|| line.strip_prefix("declare "))
         .unwrap_or(line)
         .trim_start();
-    if declaration.starts_with("interface ") {
+    if declaration.starts_with("default ") {
+        Some("default-export")
+    } else if declaration.starts_with("interface ") {
         Some("interface")
     } else if declaration.starts_with("class ") || declaration.starts_with("abstract class ") {
         Some("class")
@@ -426,6 +566,44 @@ fn typescript_item_kind_for_line(line: &str) -> Option<&'static str> {
     } else {
         None
     }
+}
+
+fn typescript_barrel_owner_query_match(
+    path: &Path,
+    terms: &[QueryTerm],
+    lines: &[&[u8]],
+) -> Option<OwnerQueryMatch> {
+    if !matches!(
+        path.extension().and_then(|extension| extension.to_str()),
+        Some("ts" | "tsx" | "js" | "jsx" | "mts" | "cts" | "mjs" | "cjs")
+    ) {
+        return None;
+    }
+    let path_lower = path.to_string_lossy().to_lowercase();
+    let term = terms.iter().find(|term| path_lower.contains(&term.lower))?;
+    for (index, line) in lines.iter().enumerate() {
+        let lower = byte_text::lowercase_lossy_string(line);
+        if lower.trim_start().starts_with("export * ") || lower.trim_start().starts_with("export {")
+        {
+            let start = index + 1;
+            let end = typescript_block_end(path, lines, index).unwrap_or(start);
+            return Some(OwnerQueryMatch {
+                start,
+                end,
+                kind: "export",
+                term: term.display.clone(),
+                match_rank: 2,
+                axis_coverage: selector_axis_coverage(
+                    lines,
+                    start,
+                    end,
+                    terms,
+                    path.file_name().and_then(|name| name.to_str()),
+                ),
+            });
+        }
+    }
+    None
 }
 
 fn scheme_item_kind_for_line(line: &str) -> Option<&'static str> {

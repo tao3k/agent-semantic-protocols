@@ -13,12 +13,13 @@ use super::search_pipe_args::{
 use super::search_pipe_candidates::{
     collect_candidates, parse_ingest_candidates, read_piped_stdin,
 };
+use super::search_pipe_dependency_facts::{collect_dependency_facts, dependency_matches_query};
 use super::search_pipe_model::SearchPipeSourceTrace;
 use super::search_pipe_owner_query::render_owner_query_frontier;
 use super::search_pipe_provider_facts::{ProviderGraphFactsContext, collect_provider_graph_facts};
 use super::search_pipe_read_memory::read_loop_memory_selectors;
 use super::search_pipe_render::{render_empty_ingest_diagnostic, render_owner_tests_frontier};
-use super::search_pipe_source::collect_search_pipe_candidates;
+use super::search_pipe_source::{CandidateAcquisition, SourceSpec, collect_search_pipe_candidates};
 use super::search_pipe_surfaces::default_search_surfaces;
 use super::search_pipe_view::{
     SearchPipeViewRequest, print_search_pipe_view, reject_non_graph_turbo_receipt,
@@ -218,15 +219,25 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
         context.locator_root,
         pipe_args.workspace.as_deref(),
     );
-    let acquisition = collect_search_pipe_candidates(
+    let acquisition = dependency_manifest_fast_acquisition(
         context.language_id,
         &project_root,
-        context.locator_root,
         &pipe_args.seed_query,
-        &pipe_args.scopes,
         pipe_args.source,
-        context.config,
-    )?;
+        &pipe_args.view,
+    )
+    .map(Ok)
+    .unwrap_or_else(|| {
+        collect_search_pipe_candidates(
+            context.language_id,
+            &project_root,
+            context.locator_root,
+            &pipe_args.seed_query,
+            &pipe_args.scopes,
+            pipe_args.source,
+            context.config,
+        )
+    })?;
     let provider_facts = collect_provider_graph_facts(
         context.language_id,
         &project_root,
@@ -260,6 +271,52 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
         frontier_receipt: context.frontier_receipt,
     })?;
     Ok(())
+}
+
+fn dependency_manifest_fast_acquisition(
+    language_id: &str,
+    project_root: &Path,
+    query: &str,
+    source: SourceSpec,
+    view: &str,
+) -> Option<CandidateAcquisition> {
+    if source != SourceSpec::Auto
+        || view != "graph-turbo-request"
+        || !is_single_dependency_query(query)
+    {
+        return None;
+    }
+    let facts = collect_dependency_facts(language_id, project_root, Some(query), &[]);
+    let matched_manifest_facts = facts
+        .iter()
+        .filter(|fact| fact.source == "manifest")
+        .filter(|fact| dependency_matches_query(&fact.dependency, query))
+        .count();
+    if matched_manifest_facts == 0 {
+        return None;
+    }
+    Some(CandidateAcquisition {
+        candidates: Vec::new(),
+        candidate_sources: vec!["manifest".to_string(), "finder".to_string()],
+        source_trace: vec![
+            SearchPipeSourceTrace::new(
+                "manifest",
+                "used",
+                matched_manifest_facts,
+                0,
+                matched_manifest_facts,
+            ),
+            SearchPipeSourceTrace::new("finder", "skipped", 0, 0, 0),
+        ],
+    })
+}
+
+fn is_single_dependency_query(query: &str) -> bool {
+    query
+        .split(|character: char| character == ',' || character == '|' || character.is_whitespace())
+        .filter(|term| !term.trim().is_empty())
+        .count()
+        == 1
 }
 
 fn search_workspace_root(

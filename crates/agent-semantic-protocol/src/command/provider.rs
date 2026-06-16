@@ -275,6 +275,11 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
     if run_asp_fast_search_meta_command(language_id, &command_args) {
         return Ok(());
     }
+    if let Some(result) =
+        run_pre_activation_fast_owner_query(language_id, &command_args, &invocation_root)?
+    {
+        return result;
+    }
 
     let activation_path =
         discovered_activation_path.unwrap_or_else(|| default_activation_path(&invocation_root));
@@ -383,6 +388,37 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
         )?;
     }
     Ok(())
+}
+
+fn run_pre_activation_fast_owner_query(
+    language_id: &str,
+    command_args: &[String],
+    invocation_root: &Path,
+) -> Result<Option<Result<(), String>>, String> {
+    if command_args.first().map(String::as_str) != Some("query") {
+        return Ok(None);
+    }
+    let (project_root, provider_args) = effective_project_root_and_args(
+        language_id,
+        command_args,
+        invocation_root,
+        invocation_root,
+    )?;
+    let config = AspConfig::load(invocation_root, &project_root);
+    if !config.language_enabled(language_id) {
+        return Ok(Some(Err(format!(
+            "language `{language_id}` is disabled by asp.toml"
+        ))));
+    }
+    if run_asp_fast_owner_query_command(
+        language_id,
+        &provider_args,
+        &project_root,
+        invocation_root,
+    )? {
+        return Ok(Some(Ok(())));
+    }
+    Ok(None)
 }
 
 const FRONTIER_RECEIPT_FACT_FLAGS: &[(&str, &str)] = &[

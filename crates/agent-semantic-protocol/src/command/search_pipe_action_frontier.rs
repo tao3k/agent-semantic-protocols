@@ -128,7 +128,7 @@ impl ActionNode {
                 query,
                 scope,
             } => Some(format!(
-                "asp {language_id} search owner {} items --query {} --view seeds {scope}",
+                "asp {language_id} search owner {} items --query {} --view seeds --workspace {scope}",
                 shell_arg(owner),
                 shell_arg(query),
             )),

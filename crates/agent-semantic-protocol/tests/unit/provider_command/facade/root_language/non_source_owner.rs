@@ -35,3 +35,46 @@ fn julia_project_toml_owner_query_misses_without_provider_fallback() {
     assert!(!stdout.contains("julia-provider args="), "{stdout}");
     let _ = std::fs::remove_dir_all(root);
 }
+
+#[test]
+fn julia_project_toml_owner_query_misses_without_activation() {
+    let root = temp_project_root("julia-project-toml-owner-query-no-activation");
+    std::fs::write(root.join("Project.toml"), "name = \"Demo\"\n").expect("write Project.toml");
+
+    let output = asp_command(&root)
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args(["julia", "query", "Project.toml", "--query", "demo", "."])
+        .output()
+        .expect("run asp julia Project.toml query");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    assert!(stdout.contains("[search-owner] q=Project.toml"), "{stdout}");
+    assert!(stdout.contains("status=miss"), "{stdout}");
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn julia_missing_project_toml_owner_query_misses_without_activation() {
+    let root = temp_project_root("julia-missing-project-toml-owner-query-no-activation");
+
+    let output = asp_command(&root)
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args(["julia", "query", "Project.toml", "--query", "demo", "."])
+        .output()
+        .expect("run asp julia missing Project.toml query");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    assert!(stdout.contains("[search-owner] q=Project.toml"), "{stdout}");
+    assert!(stdout.contains("reason=owner-not-found"), "{stdout}");
+    let _ = std::fs::remove_dir_all(root);
+}

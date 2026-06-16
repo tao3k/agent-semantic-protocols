@@ -153,7 +153,7 @@ fn asp_fd_query_prefers_exact_gerbil_path_owner_items() {
     );
     assert!(
         stdout.contains(
-            "nextCommand=asp gerbil-scheme search owner gerbil-poo/cli.ss items --query 'cli.ss|gerbil-poo' --view seeds .data"
+            "nextCommand=asp gerbil-scheme search owner gerbil-poo/cli.ss items --query 'cli.ss|gerbil-poo' --view seeds --workspace .data"
         ),
         "{stdout}"
     );

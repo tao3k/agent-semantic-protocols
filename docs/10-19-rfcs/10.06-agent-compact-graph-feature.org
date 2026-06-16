@@ -144,6 +144,8 @@ lowercase terms, but the executable handoff should keep identifier boundaries
 such as =resolveModuleName= so the next path-ranking stage can derive
 language-neutral identifier axes.
 
+Owner-local selector ranking may create query-axis window candidates when declaration-name matches are too weak. The candidate must be derived from the current owner file, the materialized query terms, and parser-owned item/block boundaries or a bounded local context window; it must clear a high query-axis coverage gate before competing with declaration candidates through deterministic query-axis coverage. This is an algorithmic graph-turbo selector-quality rule, not a fixed ecosystem-symbol shortcut: providers must not hard-code library, framework, or package-specific labels to manufacture selector confidence.
+
 Terminology is deliberately narrow:
 
 Analyzer-only observability is deliberately outside ARI. Developer/history

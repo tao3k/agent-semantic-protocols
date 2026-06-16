@@ -7,7 +7,7 @@ use crate::rust_harness_activation::support::{
     write_failing_provider_binary, write_fake_provider_binary, write_fake_provider_file,
 };
 
-use super::support::{git_project_root, protocol_command};
+use super::support::{codex_plugin_install_args, git_project_root, protocol_command};
 
 #[test]
 fn cli_install_uses_static_provider_manifest_without_running_guide() {
@@ -16,13 +16,7 @@ fn cli_install_uses_static_provider_manifest_without_running_guide() {
     let output = protocol_command()
         .env("PATH", &provider_path)
         .env("CODEX_HOME", root.join(".codex-home"))
-        .args([
-            "hook",
-            "install",
-            "--client",
-            "codex",
-            root.to_str().expect("utf8 temp root"),
-        ])
+        .args(codex_plugin_install_args(&root))
         .output()
         .expect("run agent-semantic-protocol install");
     assert!(
@@ -87,13 +81,7 @@ fn cli_install_runtime_profile_prefers_project_bin_provider() {
     let output = protocol_command()
         .env("PATH", path)
         .env("CODEX_HOME", root.join(".codex-home"))
-        .args([
-            "hook",
-            "install",
-            "--client",
-            "codex",
-            root.to_str().expect("utf8 temp root"),
-        ])
+        .args(codex_plugin_install_args(&root))
         .output()
         .expect("run agent-semantic-protocol install");
     assert!(
@@ -161,13 +149,7 @@ enabled = false
     let output = protocol_command()
         .env("PATH", &path)
         .env("CODEX_HOME", root.join(".codex-home"))
-        .args([
-            "hook",
-            "install",
-            "--client",
-            "codex",
-            root.to_str().expect("utf8 temp root"),
-        ])
+        .args(codex_plugin_install_args(&root))
         .output()
         .expect("run agent-semantic-protocol install");
     assert!(
@@ -226,13 +208,7 @@ fn cli_install_writes_executable_python_ingest_route() {
     let output = protocol_command()
         .env("PATH", &provider_path)
         .env("CODEX_HOME", root.join(".codex-home"))
-        .args([
-            "hook",
-            "install",
-            "--client",
-            "codex",
-            root.to_str().expect("utf8 temp root"),
-        ])
+        .args(codex_plugin_install_args(&root))
         .output()
         .expect("run agent-semantic-protocol install");
 

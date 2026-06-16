@@ -4,7 +4,10 @@ use agent_semantic_hook::parse_hook_activation;
 
 use crate::rust_harness_activation::support::write_fake_provider_binary;
 
-use super::support::{git_project_root, protocol_command};
+use super::support::{
+    codex_plugin_install_args, codex_plugin_install_args_with_subagent_model, git_project_root,
+    protocol_command,
+};
 
 #[test]
 fn cli_install_writes_root_owned_codex_hook_config() {
@@ -21,13 +24,7 @@ fn cli_install_writes_root_owned_codex_hook_config() {
         .env("PATH", &path)
         .env("SEMANTIC_AGENT_BIN_DIR", &protocol_bin_dir)
         .env("CODEX_HOME", &codex_home)
-        .args([
-            "hook",
-            "install",
-            "--client",
-            "codex",
-            root.to_str().expect("utf8 temp root"),
-        ])
+        .args(codex_plugin_install_args(&root))
         .output()
         .expect("run agent-semantic-protocol install");
 
@@ -68,13 +65,7 @@ fn cli_install_accepts_existing_project_marketplace_source_when_root_matches() {
         .env("PATH", &path)
         .env("SEMANTIC_AGENT_BIN_DIR", &protocol_bin_dir)
         .env("CODEX_HOME", &codex_home)
-        .args([
-            "hook",
-            "install",
-            "--client",
-            "codex",
-            root.to_str().expect("utf8 temp root"),
-        ])
+        .args(codex_plugin_install_args(&root))
         .output()
         .expect("run agent-semantic-protocol install");
 
@@ -180,7 +171,7 @@ fn write_incompatible_current_hook_events(root: &std::path::Path) {
 }
 
 fn assert_install_stdout(stdout: &str) {
-    assert!(stdout.contains("[agent-install] client=codex"));
+    assert!(stdout.contains("[plugin-install] client=codex"));
     assert!(stdout.contains("activation="));
     assert!(stdout.contains("agent-semantic-protocol/hooks/activation.json"));
     assert!(stdout.contains("clientConfig=.codex/agent-semantic-protocol/hooks/config.toml"));
@@ -193,7 +184,8 @@ fn assert_install_stdout(stdout: &str) {
     assert!(stdout.contains("pluginScope=project"));
     assert!(stdout.contains("pluginMarketplace=asp-project"));
     assert!(stdout.contains("pluginMarketplaceConfig=.agents/plugins/marketplace.json"));
-    assert!(stdout.contains("pluginConfig=.codex/config.toml"));
+    assert!(stdout.contains("config=.codex/config.toml"));
+    assert!(stdout.contains("projectConfig=.codex/config.toml"));
     assert!(!stdout.contains("projectHookConfig="));
     assert!(!stdout.contains("trustConfig="));
     assert!(stdout.contains("subagent=.codex/agents/asp-explorer.toml"));
@@ -217,15 +209,10 @@ fn cli_install_writes_codex_custom_subagent_with_requested_model() {
         .env("PATH", &path)
         .env("SEMANTIC_AGENT_BIN_DIR", &protocol_bin_dir)
         .env("CODEX_HOME", &codex_home)
-        .args([
-            "hook",
-            "install",
-            "--client",
-            "codex",
-            "--subagent-model",
+        .args(codex_plugin_install_args_with_subagent_model(
+            &root,
             "gpt-5.4-mini",
-            root.to_str().expect("utf8 temp root"),
-        ])
+        ))
         .output()
         .expect("run agent-semantic-protocol install");
 
@@ -250,9 +237,8 @@ fn cli_install_rejects_empty_subagent_model_override() {
 
     let output = protocol_command()
         .args([
-            "hook",
+            "plugin",
             "install",
-            "--client",
             "codex",
             "--subagent-model=",
             root.to_str().expect("utf8 temp root"),
@@ -272,7 +258,7 @@ fn cli_install_rejects_empty_subagent_model_override() {
 #[test]
 fn cli_install_rejects_missing_subagent_model_value() {
     let output = protocol_command()
-        .args(["hook", "install", "--client", "codex", "--subagent-model"])
+        .args(["plugin", "install", "codex", "--subagent-model"])
         .output()
         .expect("run agent-semantic-protocol install");
 
@@ -434,10 +420,16 @@ fn assert_codex_config(config: &str, root: &std::path::Path) {
 }
 
 fn assert_no_codex_user_trust_config(codex_home: &std::path::Path) {
+    let config_path = codex_home.join("config.toml");
+    if !config_path.exists() {
+        return;
+    }
+    let config = std::fs::read_to_string(config_path).expect("read Codex user config");
     assert!(
-        !codex_home.join("config.toml").exists(),
+        !config.contains("[hooks.state."),
         "Codex plugin install should not write legacy hook trust state"
     );
+    assert!(!config.contains("agent-semantic-protocol trusted hook state"));
 }
 
 fn assert_codex_asp_explorer_role_config(config: &str) {

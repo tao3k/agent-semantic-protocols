@@ -1,6 +1,6 @@
 use crate::rust_harness_activation::support::write_fake_provider_binary;
 
-use super::support::{git_project_root, protocol_command};
+use super::support::{codex_plugin_install_args, git_project_root, protocol_command};
 
 #[test]
 fn cli_install_refuses_protocol_bin_dir_outside_path() {
@@ -12,13 +12,7 @@ fn cli_install_refuses_protocol_bin_dir_outside_path() {
         .env("PATH", &provider_path)
         .env("SEMANTIC_AGENT_BIN_DIR", &protocol_bin_dir)
         .env("CODEX_HOME", &codex_home)
-        .args([
-            "hook",
-            "install",
-            "--client",
-            "codex",
-            root.to_str().expect("utf8 temp root"),
-        ])
+        .args(codex_plugin_install_args(&root))
         .output()
         .expect("run agent-semantic-protocol install");
 
@@ -42,13 +36,7 @@ fn cli_install_refuses_to_overwrite_invalid_codex_toml() {
     let output = protocol_command()
         .env("PATH", &provider_path)
         .env("CODEX_HOME", root.join(".codex-home"))
-        .args([
-            "hook",
-            "install",
-            "--client",
-            "codex",
-            root.to_str().expect("utf8 temp root"),
-        ])
+        .args(codex_plugin_install_args(&root))
         .output()
         .expect("run agent-semantic-protocol install");
 
