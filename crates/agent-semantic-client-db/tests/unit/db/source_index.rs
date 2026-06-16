@@ -1,0 +1,165 @@
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use agent_semantic_client_core::{CacheGenerationId, ClientCacheFileHash, LanguageId, ProviderId};
+use agent_semantic_client_db::{
+    ClientDb, ClientDbSourceIndexImport, ClientDbSourceIndexLookup, ClientDbSourceIndexOwner,
+    ClientDbSourceIndexPath, ClientDbSourceIndexQueryKey, ClientDbSourceIndexSelector,
+    ClientDbSourceIndexSource,
+};
+
+#[test]
+fn source_index_replaces_and_reads_rust_owned_rows() {
+    let root = temp_root("source-index");
+    let db_path = root.join("client.sqlite3");
+    let mut db = ClientDb::open_or_create(&db_path).expect("open db");
+
+    let stats = db
+        .replace_source_index(&source_index(&root, "source-main-1", "src/lib.ss"))
+        .expect("replace source index");
+    let summary = db.summary().expect("db summary");
+    let report = ClientDb::inspect(&db_path);
+    let owners = db
+        .lookup_source_index_owners(&lookup(&root, "gerbil-poo"))
+        .expect("lookup source owners");
+
+    assert_eq!(stats.owner_count, 1);
+    assert_eq!(stats.selector_count, 1);
+    assert_eq!(summary.source_index_generation_count, 1);
+    assert_eq!(summary.source_index_owner_count, 1);
+    assert_eq!(summary.source_index_selector_count, 1);
+    assert_eq!(report.source_index_generation_count, 1);
+    assert_eq!(report.source_index_owner_count, 1);
+    assert_eq!(report.source_index_selector_count, 1);
+    assert_eq!(owners.len(), 1);
+    assert_eq!(owners[0].owner_path.as_str(), "src/lib.ss");
+    assert_eq!(
+        owners[0].language_id.as_ref().map(LanguageId::as_str),
+        Some("gerbil-scheme")
+    );
+    assert_eq!(
+        owners[0].provider_id.as_ref().map(ProviderId::as_str),
+        Some("rust-sql")
+    );
+    assert_eq!(owners[0].source_kind.as_str(), "scheme-source");
+    assert_eq!(owners[0].line_count, Some(80));
+    assert_eq!(
+        owners[0]
+            .query_keys
+            .iter()
+            .map(ClientDbSourceIndexQueryKey::as_str)
+            .collect::<Vec<_>>(),
+        ["gerbil-poo", "poo usage"]
+    );
+    assert!(raw_source_like_columns(&db_path).is_empty());
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn source_index_lookup_uses_latest_project_generation() {
+    let root = temp_root("source-index-latest");
+    let db_path = root.join("client.sqlite3");
+    let mut db = ClientDb::open_or_create(&db_path).expect("open db");
+
+    db.replace_source_index(&source_index(&root, "source-main-1", "src/old.ss"))
+        .expect("write old generation");
+    db.replace_source_index(&source_index(&root, "source-main-2", "src/new.ss"))
+        .expect("write latest generation");
+    let owners = db
+        .lookup_source_index_owners(&lookup(&root, "gerbil-poo"))
+        .expect("lookup source owners");
+    let summary = db.summary().expect("db summary");
+
+    assert_eq!(owners.len(), 1);
+    assert_eq!(owners[0].owner_path.as_str(), "src/new.ss");
+    assert_eq!(summary.source_index_generation_count, 2);
+    assert_eq!(summary.source_index_owner_count, 2);
+    assert_eq!(summary.source_index_selector_count, 2);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+fn source_index(
+    root: &std::path::Path,
+    generation_id: &str,
+    owner_path: &str,
+) -> ClientDbSourceIndexImport {
+    ClientDbSourceIndexImport {
+        generation_id: CacheGenerationId::from(generation_id),
+        project_root: root.to_path_buf(),
+        schema_id: "agent.semantic-protocols.semantic-source-index".into(),
+        schema_version: "1".into(),
+        file_hashes: vec![ClientCacheFileHash {
+            path: owner_path.to_string(),
+            sha256: "0".repeat(64),
+        }],
+        owners: vec![ClientDbSourceIndexOwner {
+            owner_path: ClientDbSourceIndexPath::from(owner_path),
+            language_id: Some(LanguageId::from("gerbil-scheme")),
+            provider_id: Some(ProviderId::from("rust-sql")),
+            source_kind: ClientDbSourceIndexSource::from("scheme-source"),
+            line_count: Some(80),
+            query_keys: vec![
+                ClientDbSourceIndexQueryKey::from("gerbil-poo"),
+                ClientDbSourceIndexQueryKey::from("poo usage"),
+            ],
+        }],
+        selectors: vec![ClientDbSourceIndexSelector {
+            owner_path: ClientDbSourceIndexPath::from(owner_path),
+            selector_id: format!("{owner_path}:12:20"),
+            symbol: Some("poo-read".to_string()),
+            kind: Some("function".to_string()),
+            start_line: 12,
+            end_line: 20,
+            source: ClientDbSourceIndexSource::from("rust-sql"),
+            query_keys: vec![ClientDbSourceIndexQueryKey::from("gerbil-poo://usage")],
+        }],
+    }
+}
+
+fn lookup(root: &std::path::Path, query: &str) -> ClientDbSourceIndexLookup {
+    ClientDbSourceIndexLookup {
+        project_root: root.to_path_buf(),
+        query: ClientDbSourceIndexQueryKey::from(query),
+        limit: 8,
+    }
+}
+
+fn raw_source_like_columns(db_path: &std::path::Path) -> Vec<String> {
+    let conn = rusqlite::Connection::open(db_path).expect("open sqlite");
+    let mut statement = conn
+        .prepare(
+            "SELECT m.name, p.name
+             FROM sqlite_master m
+             JOIN pragma_table_info(m.name) p
+             WHERE m.type = 'table'
+               AND m.name LIKE 'source_index_%'
+               AND (
+                    p.name LIKE '%source_text%'
+                    OR p.name LIKE '%code%'
+                    OR p.name LIKE '%snippet%'
+                    OR p.name LIKE '%window%'
+               )
+             ORDER BY m.name, p.name",
+        )
+        .expect("prepare table info");
+    statement
+        .query_map([], |row| {
+            Ok(format!(
+                "{}.{}",
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?
+            ))
+        })
+        .expect("query table info")
+        .map(|row| row.expect("table info row"))
+        .collect()
+}
+
+fn temp_root(name: &str) -> std::path::PathBuf {
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock")
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!("agent-semantic-client-db-{name}-{unique}"));
+    std::fs::create_dir_all(&root).expect("create temp root");
+    root
+}

@@ -1,11 +1,15 @@
 //! Candidate source selection for ASP-owned search pipe.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
+use agent_semantic_client::{SourceIndexLookupResult, SourceIndexLookupState, lookup_source_index};
 use orgize::document::{
     DocumentElement, DocumentLanguage, DocumentWalkConfig, filter_elements,
     index_project_with_config,
 };
+use serde_json::Value;
 
 use super::search_config::AspConfig;
 use super::search_pipe_candidates::{
@@ -292,6 +296,18 @@ fn auto_candidates(
     scopes: &[PathBuf],
     config: &AspConfig,
 ) -> Result<CandidateAcquisition, String> {
+    let source_index_acquisition = source_index_candidates(project_root, intent, scopes);
+    if let Some(acquisition) = source_index_acquisition
+        .as_ref()
+        .filter(|acquisition| !acquisition.candidates.is_empty())
+    {
+        return Ok(CandidateAcquisition {
+            candidates: acquisition.candidates.clone(),
+            candidate_sources: vec!["source-index".to_string(), "finder".to_string()],
+            source_trace: acquisition.source_trace.clone(),
+        });
+    }
+    let started_at = Instant::now();
     let candidates = collect_candidates(
         language_id,
         project_root,
@@ -302,18 +318,170 @@ fn auto_candidates(
     )?;
     Ok(CandidateAcquisition {
         candidate_sources: vec!["provider".to_string(), "finder".to_string()],
-        source_trace: vec![
-            SearchPipeSourceTrace::new(
-                "provider",
-                "partial",
-                0,
-                usize::from(!candidates.is_empty()),
-                0,
-            ),
-            candidate_trace("finder", &candidates),
-        ],
+        source_trace: source_index_trace_prefix(source_index_acquisition)
+            .into_iter()
+            .chain([
+                SearchPipeSourceTrace::new(
+                    "provider",
+                    "partial",
+                    0,
+                    usize::from(!candidates.is_empty()),
+                    0,
+                )
+                .with_fields(elapsed_fields(started_at.elapsed())),
+                candidate_trace("finder", &candidates)
+                    .with_fields(elapsed_fields(started_at.elapsed())),
+            ])
+            .collect(),
         candidates,
     })
+}
+
+fn source_index_candidates(
+    project_root: &Path,
+    intent: &str,
+    scopes: &[PathBuf],
+) -> Option<CandidateAcquisition> {
+    if !scopes.is_empty() {
+        return None;
+    }
+    let started_at = Instant::now();
+    match lookup_source_index(project_root, intent, DOCUMENT_PIPE_CANDIDATE_LIMIT as u32) {
+        Ok(result) => {
+            let candidates = result
+                .candidates
+                .iter()
+                .map(source_index_candidate)
+                .collect::<Vec<_>>();
+            let mut source_trace = vec![source_index_trace(&result, candidates.len(), started_at)];
+            if !candidates.is_empty() {
+                source_trace.push(SearchPipeSourceTrace::new("finder", "skipped", 0, 0, 0));
+            }
+            Some(CandidateAcquisition {
+                candidate_sources: vec!["source-index".to_string()],
+                source_trace,
+                candidates,
+            })
+        }
+        Err(error) => {
+            let mut fields = elapsed_fields(started_at.elapsed());
+            fields.insert("state".to_string(), Value::from("error"));
+            fields.insert("detail".to_string(), Value::from(compact_detail(&error)));
+            fields.insert(
+                "nextCommand".to_string(),
+                Value::from("asp cache source-index refresh"),
+            );
+            Some(CandidateAcquisition {
+                candidates: Vec::new(),
+                candidate_sources: vec!["source-index".to_string()],
+                source_trace: vec![
+                    SearchPipeSourceTrace::new("sourceIndex", "error", 0, 1, 0).with_fields(fields),
+                ],
+            })
+        }
+    }
+}
+
+fn source_index_trace_prefix(
+    acquisition: Option<CandidateAcquisition>,
+) -> Vec<SearchPipeSourceTrace> {
+    acquisition
+        .map(|acquisition| acquisition.source_trace)
+        .unwrap_or_default()
+}
+
+fn source_index_trace(
+    result: &SourceIndexLookupResult,
+    candidate_count: usize,
+    started_at: Instant,
+) -> SearchPipeSourceTrace {
+    let mut fields = elapsed_fields(started_at.elapsed());
+    fields.insert("state".to_string(), Value::from(result.state.as_str()));
+    fields.insert(
+        "dbPath".to_string(),
+        Value::from(result.db_path.display().to_string()),
+    );
+    if result.state != SourceIndexLookupState::Hit {
+        fields.insert(
+            "nextCommand".to_string(),
+            Value::from("asp cache source-index refresh"),
+        );
+    }
+    SearchPipeSourceTrace::new(
+        "sourceIndex",
+        source_index_trace_status(&result.state),
+        candidate_count,
+        usize::from(candidate_count == 0),
+        candidate_count,
+    )
+    .with_fields(fields)
+}
+
+fn source_index_trace_status(state: &SourceIndexLookupState) -> &'static str {
+    match state {
+        SourceIndexLookupState::Hit => "used",
+        SourceIndexLookupState::MissingDb => "missing-db",
+        SourceIndexLookupState::EmptyIndex => "empty-index",
+        SourceIndexLookupState::Miss => "miss",
+    }
+}
+
+fn source_index_candidate(candidate: &agent_semantic_client::SourceIndexCandidate) -> Candidate {
+    let line_count = candidate.line_count.unwrap_or(1).max(1) as usize;
+    Candidate {
+        path: candidate.path.clone(),
+        line: 1,
+        end_line: line_count,
+        symbol: source_index_symbol(candidate),
+        text: source_index_candidate_text(candidate),
+        source: "source-index".to_string(),
+        confidence: "rust-sql".to_string(),
+    }
+}
+
+fn source_index_symbol(candidate: &agent_semantic_client::SourceIndexCandidate) -> String {
+    candidate
+        .query_keys
+        .first()
+        .cloned()
+        .unwrap_or_else(|| symbol_from_path(&candidate.path))
+}
+
+fn source_index_candidate_text(candidate: &agent_semantic_client::SourceIndexCandidate) -> String {
+    let language = candidate
+        .language_id
+        .as_ref()
+        .map(|value| value.as_str())
+        .unwrap_or("unknown");
+    let provider = candidate
+        .provider_id
+        .as_ref()
+        .map(|value| value.as_str())
+        .unwrap_or("unknown");
+    let keys = candidate
+        .query_keys
+        .iter()
+        .take(8)
+        .cloned()
+        .collect::<Vec<_>>()
+        .join("|");
+    format!(
+        "source-index path={} language={} provider={} kind={} queryKeys={}",
+        candidate.path, language, provider, candidate.source_kind, keys
+    )
+}
+
+fn symbol_from_path(path: &str) -> String {
+    Path::new(path)
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .filter(|stem| !stem.is_empty())
+        .unwrap_or("source")
+        .to_string()
+}
+
+fn compact_detail(detail: &str) -> String {
+    detail.split_whitespace().collect::<Vec<_>>().join("_")
 }
 
 fn finder_candidates(
@@ -324,6 +492,7 @@ fn finder_candidates(
     scopes: &[PathBuf],
     config: &AspConfig,
 ) -> Result<CandidateAcquisition, String> {
+    let started_at = Instant::now();
     let candidates = collect_candidates(
         language_id,
         project_root,
@@ -334,7 +503,10 @@ fn finder_candidates(
     )?;
     Ok(CandidateAcquisition {
         candidate_sources: vec!["finder".to_string()],
-        source_trace: vec![candidate_trace("finder", &candidates)],
+        source_trace: vec![
+            candidate_trace("finder", &candidates)
+                .with_fields(elapsed_fields(started_at.elapsed())),
+        ],
         candidates,
     })
 }
@@ -375,4 +547,17 @@ fn candidate_trace(source: &str, candidates: &[Candidate]) -> SearchPipeSourceTr
         usize::from(candidates.is_empty()),
         candidates.len(),
     )
+}
+
+fn elapsed_fields(duration: Duration) -> BTreeMap<String, Value> {
+    let mut fields = BTreeMap::new();
+    fields.insert(
+        "elapsedMs".to_string(),
+        Value::from(elapsed_millis(duration)),
+    );
+    fields
+}
+
+fn elapsed_millis(duration: Duration) -> u64 {
+    duration.as_millis().try_into().unwrap_or(u64::MAX)
 }

@@ -61,7 +61,7 @@ pub(super) fn render_graph_turbo_request(
         .map_err(|error| format!("failed to serialize graph turbo request: {error}"))
 }
 
-fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> Value {
+pub(super) fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> Value {
     let language_id = request.language_id;
     let dependency_root = request.dependency_root;
     let surface = request.surface;

@@ -187,11 +187,7 @@ pub(super) fn render_graph_turbo_packet(packet_bytes: &[u8]) -> Result<Option<Ve
     Ok(Some(output.stdout.to_vec()))
 }
 
-pub(super) fn render_graph_turbo_packet_rust_compact(
-    packet_bytes: &[u8],
-) -> Result<Vec<u8>, String> {
-    let packet: Value = serde_json::from_slice(packet_bytes)
-        .map_err(|error| format!("invalid graph turbo request JSON: {error}"))?;
+pub(super) fn render_graph_turbo_value_rust_compact(packet: &Value) -> Result<Vec<u8>, String> {
     let nodes = packet
         .pointer("/graph/nodes")
         .and_then(Value::as_array)

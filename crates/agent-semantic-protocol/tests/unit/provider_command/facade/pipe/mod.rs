@@ -14,6 +14,7 @@ mod query_wrapper;
 mod query_wrapper_empty;
 mod query_wrapper_gerbil;
 mod reasoning;
+mod source_index;
 mod suggest;
 mod surface;
 

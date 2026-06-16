@@ -1,0 +1,107 @@
+#+title: RFC 10.17: Rust SQL Source Index Boundary
+#+status: draft
+#+date: 2026-06-16
+
+* One-sentence summary
+
+ASP source indexing is Rust-owned SQL infrastructure: language providers emit
+bounded semantic facts, while Rust owns workspace source discovery, owner
+identity, selector ranges, cache invalidation, query acceleration, and optional
+=gtags= seed import.
+
+* Problem
+
+The early Gerbil Scheme harness proved useful search packet shapes, but it also
+let Scheme collect project files, assemble broad workspace search packets, and
+recreate source-index behavior. That makes broad search slow, duplicates ranking
+and owner discovery in a provider runtime, and produces behavior that other
+language providers cannot reproduce.
+
+Provider-local source indexing also creates unclear agent output. When a query
+times out or returns a fallback packet, the agent cannot tell whether the
+failure came from missing package installation, missing Rust index state, stale
+provider facts, or a provider-local recursive scan.
+
+* Contract
+
+Rust owns the workspace source index.
+
+The Rust source index is SQL-backed and owns:
+
+- workspace source discovery
+- file identity
+- owner identity
+- selector ranges
+- query acceleration
+- cache invalidation
+- graph topology inputs
+- rank inputs
+- optional external index import
+
+Language providers may emit language-native owner facts and semantic facts, but
+they must not rebuild a workspace source index in Scheme, Python, Julia,
+TypeScript, or any other provider runtime.
+
+For Gerbil Scheme, bounded provider facts include imports, definitions, package
+metadata, POO forms, structural owner facts, and policy findings. They do not
+include walking the whole workspace for every broad search, maintaining
+provider-local source caches, ranking owners, or implementing provider-local
+owner discovery.
+
+Broad search resolves candidate owners through the Rust SQL source index first.
+Only after Rust chooses an owner set may the CLI invoke language providers for
+bounded semantic fact extraction or owner-local validation.
+
+* Missing Index Behavior
+
+A provider command that cannot answer from bounded facts must return an
+explicit missing-index or missing-capability response. That response must
+include the Rust index command to run next. It must not silently fall back to a
+slow recursive source scan.
+
+This is an agent-facing requirement. The agent must be able to tell whether the
+next step is:
+
+- build or refresh the Rust SQL source index
+- install package dependencies
+- ask a provider for bounded owner facts
+- narrow the query
+- inspect a concrete selector
+
+* gtags Integration
+
+GNU Global/gtags can participate only as an optional Rust-side source-index
+seed.
+
+When available, Rust may import =GTAGS=, =GRTAGS=, and =GPATH= facts into the
+SQL index as candidate definitions, references, and path ownership hints.
+=gtags= is not a required provider dependency and is not an alternative owner
+for ASP search semantics.
+
+If =gtags= is absent, stale, or incomplete, Rust still owns the SQL source index
+and builds it from filesystem manifests, parser packets, and bounded language
+fact extractors.
+
+* Implementation Sequence
+
+1. Define the shared SQL source-index packet and registry descriptor in
+   =schemas/=.
+2. Implement the Rust SQL source-index owner and cache invalidation path.
+3. Add optional =gtags= import behind capability detection.
+4. Change language providers so broad search asks Rust for owner sets before
+   provider-local semantic extraction.
+5. Remove or downgrade provider-local workspace indexing to bounded owner fact
+   extraction.
+6. Add CI and real-project evidence that broad search does not call provider
+   workspace scans and that missing index state yields explicit next commands.
+
+* Non-goals
+
+This RFC does not require =gtags= in developer environments or CI.
+
+This RFC does not make Rust parse every language's semantic forms. Rust owns
+source indexing and graph/rank infrastructure; language providers still own
+language-specific semantic facts.
+
+This RFC does not make provider binaries resident services. Provider calls stay
+bounded and explicit.

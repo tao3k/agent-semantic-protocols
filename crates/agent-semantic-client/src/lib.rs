@@ -10,6 +10,7 @@ mod cli_args;
 mod compact_mode;
 mod provider_method;
 mod search_history;
+mod source_index;
 mod syntax_query_preflight;
 mod syntax_receipt;
 #[cfg(test)]
@@ -19,6 +20,10 @@ mod tools_cli;
 
 pub use agent_semantic_client_core::LanguageId;
 pub use cli::{run_cli_args, run_cli_from_env};
+pub use source_index::{
+    SourceIndexCandidate, SourceIndexLookupResult, SourceIndexLookupState,
+    SourceIndexRefreshReport, lookup_source_index, refresh_source_index,
+};
 
 #[cfg(test)]
 #[path = "../tests/unit/activation_cache.rs"]

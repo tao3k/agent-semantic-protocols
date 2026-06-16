@@ -128,6 +128,22 @@ pub struct ClientReceipt {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub client_db_syntax_row_capture_count: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_db_structural_index_generation_count: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_db_structural_index_owner_count: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_db_structural_index_symbol_count: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_db_structural_index_dependency_usage_count: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_db_source_index_generation_count: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_db_source_index_owner_count: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_db_source_index_selector_count: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_db_artifact_event_count: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub client_db_raw_source_stored: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub client_db_journal_mode: Option<ClientDbJournalMode>,
@@ -189,6 +205,14 @@ impl ClientReceipt {
             client_db_syntax_row_generation_count: None,
             client_db_syntax_row_match_count: None,
             client_db_syntax_row_capture_count: None,
+            client_db_structural_index_generation_count: None,
+            client_db_structural_index_owner_count: None,
+            client_db_structural_index_symbol_count: None,
+            client_db_structural_index_dependency_usage_count: None,
+            client_db_source_index_generation_count: None,
+            client_db_source_index_owner_count: None,
+            client_db_source_index_selector_count: None,
+            client_db_artifact_event_count: None,
             client_db_raw_source_stored: None,
             client_db_journal_mode: None,
             client_db_synchronous: None,
@@ -256,6 +280,14 @@ impl ClientReceipt {
             client_db_syntax_row_generation_count: None,
             client_db_syntax_row_match_count: None,
             client_db_syntax_row_capture_count: None,
+            client_db_structural_index_generation_count: None,
+            client_db_structural_index_owner_count: None,
+            client_db_structural_index_symbol_count: None,
+            client_db_structural_index_dependency_usage_count: None,
+            client_db_source_index_generation_count: None,
+            client_db_source_index_owner_count: None,
+            client_db_source_index_selector_count: None,
+            client_db_artifact_event_count: None,
             client_db_raw_source_stored: None,
             client_db_journal_mode: None,
             client_db_synchronous: None,

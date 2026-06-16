@@ -8,7 +8,8 @@ use agent_semantic_client_core::{
     ProviderId,
 };
 use agent_semantic_client_db::{
-    ClientDb, ClientDbStructuralIndexLookup, ClientDbStructuralQueryKey,
+    ClientDb, ClientDbSourceIndexLookup, ClientDbSourceIndexQueryKey,
+    ClientDbStructuralIndexLookup, ClientDbStructuralQueryKey,
 };
 use serde_json::{Value, json};
 use std::{
@@ -176,6 +177,52 @@ fn cache_import_replays_structural_index_artifact_into_db() {
     assert_eq!(summary.structural_index_symbol_count, 1);
     assert_eq!(symbols.len(), 1);
     assert_eq!(symbols[0].owner_path.as_str(), "src/lib.rs");
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn cache_source_index_refresh_builds_rust_sql_rows() {
+    let _guard = crate::test_support::CACHE_TEST_LOCK
+        .lock()
+        .expect("cache test lock");
+    let root = temp_root("source-index-refresh");
+    let source_dir = root.join("src");
+    std::fs::create_dir_all(&source_dir).expect("create source dir");
+    std::fs::write(
+        source_dir.join("usage.ss"),
+        "(def (poo-read input)\n  ;; gerbil-poo://usage\n  input)\n",
+    )
+    .expect("write gerbil source");
+
+    run_cache(
+        &root,
+        &["source-index".to_string(), "refresh".to_string()],
+        false,
+    )
+    .expect("refresh source index");
+
+    let cache_root = ClientCacheManifest::inspect_project(&root)
+        .cache_root
+        .expect("cache root");
+    let db_path = ClientDb::default_path(&cache_root);
+    let db = ClientDb::open_read_only_existing(&db_path)
+        .expect("open db")
+        .expect("db exists");
+    let summary = db.summary().expect("summary");
+    let owners = db
+        .lookup_source_index_owners(&ClientDbSourceIndexLookup {
+            project_root: root.clone(),
+            query: ClientDbSourceIndexQueryKey::from("gerbil-poo"),
+            limit: 8,
+        })
+        .expect("lookup source owners");
+
+    assert_eq!(summary.source_index_generation_count, 1);
+    assert_eq!(summary.source_index_owner_count, 1);
+    assert_eq!(summary.source_index_selector_count, 1);
+    assert_eq!(owners.len(), 1);
+    assert_eq!(owners[0].owner_path.as_str(), "src/usage.ss");
+    assert_eq!(owners[0].line_count, Some(3));
     let _ = std::fs::remove_dir_all(root);
 }
 

@@ -1,7 +1,11 @@
 //! ASP-owned search pipeline wrapper.
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
+use std::time::{Duration, Instant};
+
+use serde_json::Value;
 
 use super::graph::GraphTurboReceiptRequest;
 use super::search_config::AspConfig;
@@ -238,6 +242,7 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
             context.config,
         )
     })?;
+    let provider_facts_started_at = Instant::now();
     let provider_facts = collect_provider_graph_facts(
         context.language_id,
         &project_root,
@@ -246,6 +251,12 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
         context.config,
         context.provider_context,
     )?;
+    let source_trace = source_trace_with_provider_facts(
+        &acquisition.source_trace,
+        provider_facts_started_at.elapsed(),
+        provider_facts.nodes.len(),
+        provider_facts.edges.len(),
+    );
     let surfaces = default_search_surfaces();
     print_search_pipe_view(SearchPipeViewRequest {
         language_id: context.language_id,
@@ -257,7 +268,7 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
         pipes: &surfaces,
         source: pipe_args.source.as_str(),
         candidate_sources: &acquisition.candidate_sources,
-        source_trace: &acquisition.source_trace,
+        source_trace: &source_trace,
         scopes: &pipe_args.scopes,
         view: &pipe_args.view,
         include_pipe_plan: true,
@@ -271,6 +282,31 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
         frontier_receipt: context.frontier_receipt,
     })?;
     Ok(())
+}
+
+fn source_trace_with_provider_facts(
+    source_trace: &[SearchPipeSourceTrace],
+    elapsed: Duration,
+    node_count: usize,
+    edge_count: usize,
+) -> Vec<SearchPipeSourceTrace> {
+    let mut trace = source_trace.to_vec();
+    let mut fields = BTreeMap::new();
+    fields.insert(
+        "elapsedMs".to_string(),
+        Value::from(elapsed_millis(elapsed)),
+    );
+    fields.insert("nodes".to_string(), Value::from(node_count));
+    fields.insert("edges".to_string(), Value::from(edge_count));
+    trace.push(
+        SearchPipeSourceTrace::new("providerFacts", "used", node_count, 0, node_count)
+            .with_fields(fields),
+    );
+    trace
+}
+
+fn elapsed_millis(duration: Duration) -> u64 {
+    duration.as_millis().try_into().unwrap_or(u64::MAX)
 }
 
 fn dependency_manifest_fast_acquisition(

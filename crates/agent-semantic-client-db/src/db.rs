@@ -45,6 +45,9 @@ pub struct ClientDbReport {
     pub structural_index_owner_count: u32,
     pub structural_index_symbol_count: u32,
     pub structural_index_dependency_usage_count: u32,
+    pub source_index_generation_count: u32,
+    pub source_index_owner_count: u32,
+    pub source_index_selector_count: u32,
     pub artifact_event_count: u32,
     pub raw_source_stored: bool,
     pub runtime_pragmas: Option<ClientDbRuntimePragmas>,
@@ -235,6 +238,9 @@ impl ClientDb {
                 structural_index_owner_count: 0,
                 structural_index_symbol_count: 0,
                 structural_index_dependency_usage_count: 0,
+                source_index_generation_count: 0,
+                source_index_owner_count: 0,
+                source_index_selector_count: 0,
                 artifact_event_count: 0,
                 raw_source_stored: false,
                 runtime_pragmas: None,
@@ -255,6 +261,9 @@ impl ClientDb {
                 structural_index_owner_count: 0,
                 structural_index_symbol_count: 0,
                 structural_index_dependency_usage_count: 0,
+                source_index_generation_count: 0,
+                source_index_owner_count: 0,
+                source_index_selector_count: 0,
                 artifact_event_count: 0,
                 raw_source_stored: false,
                 runtime_pragmas: None,
@@ -291,6 +300,9 @@ impl ClientDb {
             structural_index_symbol_count: summary.structural_index_symbol_count,
             structural_index_dependency_usage_count: summary
                 .structural_index_dependency_usage_count,
+            source_index_generation_count: summary.source_index_generation_count,
+            source_index_owner_count: summary.source_index_owner_count,
+            source_index_selector_count: summary.source_index_selector_count,
             artifact_event_count: summary.artifact_event_count,
             raw_source_stored: summary.raw_source_stored,
             runtime_pragmas: Some(runtime_pragmas),
@@ -802,6 +814,9 @@ impl ClientDb {
             structural_index_symbol_count: table_counts.structural_index_symbol_count,
             structural_index_dependency_usage_count: table_counts
                 .structural_index_dependency_usage_count,
+            source_index_generation_count: table_counts.source_index_generation_count,
+            source_index_owner_count: table_counts.source_index_owner_count,
+            source_index_selector_count: table_counts.source_index_selector_count,
             artifact_event_count: table_counts.artifact_event_count,
             raw_source_stored: raw_source_stored != 0,
         })
@@ -821,6 +836,9 @@ impl ClientDb {
             "structural_index_owner",
             "structural_index_symbol",
             "structural_index_dependency_usage",
+            "source_index_generation",
+            "source_index_owner",
+            "source_index_selector",
             "artifact_event",
         ];
 
@@ -1367,6 +1385,51 @@ impl ClientDb {
             );
             CREATE INDEX IF NOT EXISTS structural_index_dependency_pkg_idx
               ON structural_index_dependency_usage(package_name, api_name);
+            CREATE TABLE IF NOT EXISTS source_index_generation (
+                generation_id TEXT PRIMARY KEY,
+                project_root TEXT NOT NULL,
+                schema_id TEXT NOT NULL,
+                schema_version TEXT NOT NULL,
+                file_hashes_json TEXT NOT NULL DEFAULT '[]',
+                raw_source_stored INTEGER NOT NULL DEFAULT 0 CHECK(raw_source_stored IN (0, 1)),
+                updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+            );
+            CREATE INDEX IF NOT EXISTS source_index_generation_project_idx
+              ON source_index_generation(project_root, updated_at);
+            CREATE TABLE IF NOT EXISTS source_index_owner (
+                generation_id TEXT NOT NULL
+                    REFERENCES source_index_generation(generation_id) ON DELETE CASCADE,
+                owner_ordinal INTEGER NOT NULL,
+                owner_path TEXT NOT NULL,
+                language_id TEXT,
+                provider_id TEXT,
+                source_kind TEXT NOT NULL,
+                line_count INTEGER,
+                query_keys_json TEXT NOT NULL DEFAULT '[]',
+                search_text TEXT NOT NULL,
+                PRIMARY KEY (generation_id, owner_ordinal)
+            );
+            CREATE INDEX IF NOT EXISTS source_index_owner_path_idx
+              ON source_index_owner(owner_path);
+            CREATE INDEX IF NOT EXISTS source_index_owner_language_idx
+              ON source_index_owner(language_id, provider_id);
+            CREATE TABLE IF NOT EXISTS source_index_selector (
+                generation_id TEXT NOT NULL
+                    REFERENCES source_index_generation(generation_id) ON DELETE CASCADE,
+                selector_ordinal INTEGER NOT NULL,
+                owner_path TEXT NOT NULL,
+                selector_id TEXT NOT NULL,
+                symbol TEXT,
+                kind TEXT,
+                start_line INTEGER NOT NULL,
+                end_line INTEGER NOT NULL,
+                source TEXT NOT NULL,
+                query_keys_json TEXT NOT NULL DEFAULT '[]',
+                search_text TEXT NOT NULL,
+                PRIMARY KEY (generation_id, selector_ordinal)
+            );
+            CREATE INDEX IF NOT EXISTS source_index_selector_owner_idx
+              ON source_index_selector(owner_path, selector_id);
             CREATE TABLE IF NOT EXISTS artifact_event (
                 artifact_path TEXT NOT NULL,
                 event_ordinal INTEGER NOT NULL,
@@ -1635,6 +1698,9 @@ pub struct ClientDbSummary {
     pub structural_index_owner_count: u32,
     pub structural_index_symbol_count: u32,
     pub structural_index_dependency_usage_count: u32,
+    pub source_index_generation_count: u32,
+    pub source_index_owner_count: u32,
+    pub source_index_selector_count: u32,
     pub artifact_event_count: u32,
     pub raw_source_stored: bool,
 }
@@ -1648,6 +1714,9 @@ struct ClientDbTableCounts {
     structural_index_owner_count: u32,
     structural_index_symbol_count: u32,
     structural_index_dependency_usage_count: u32,
+    source_index_generation_count: u32,
+    source_index_owner_count: u32,
+    source_index_selector_count: u32,
     artifact_event_count: u32,
 }
 
@@ -1664,6 +1733,9 @@ impl ClientDbTableCounts {
             "structural_index_dependency_usage" => {
                 self.structural_index_dependency_usage_count = count;
             }
+            "source_index_generation" => self.source_index_generation_count = count,
+            "source_index_owner" => self.source_index_owner_count = count,
+            "source_index_selector" => self.source_index_selector_count = count,
             "artifact_event" => self.artifact_event_count = count,
             _ => {}
         }

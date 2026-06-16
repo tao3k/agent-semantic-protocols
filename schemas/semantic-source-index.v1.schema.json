@@ -1,0 +1,344 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-source-index.v1.schema.json",
+  "title": "Semantic Source Index",
+  "description": "Rust-owned SQL source index packet for workspace source discovery, owner identity, selector ranges, query acceleration, cache state, and optional gtags seed import.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "protocolId",
+    "protocolVersion",
+    "indexOwner",
+    "projectRoot",
+    "state"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.semantic-source-index"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "protocolId": {
+      "const": "agent.semantic-protocols.source-index"
+    },
+    "protocolVersion": {
+      "const": "1"
+    },
+    "indexOwner": {
+      "const": "rust-sql"
+    },
+    "projectRoot": {
+      "$ref": "semantic-source-location.v1.schema.json#/$defs/projectPath"
+    },
+    "state": {
+      "$ref": "#/$defs/indexState"
+    },
+    "database": {
+      "$ref": "#/$defs/databaseDescriptor"
+    },
+    "sources": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/sourceRecord"
+      }
+    },
+    "owners": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ownerRecord"
+      }
+    },
+    "selectors": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/selectorRecord"
+      }
+    },
+    "externalSeeds": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/externalSeed"
+      }
+    },
+    "capabilities": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/capability"
+      }
+    },
+    "missing": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/missingFact"
+      }
+    },
+    "nextCommand": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "$defs": {
+    "indexState": {
+      "enum": [
+        "ready",
+        "missing",
+        "stale",
+        "partial",
+        "unsupported"
+      ]
+    },
+    "projectPath": {
+      "$ref": "semantic-source-location.v1.schema.json#/$defs/projectPath"
+    },
+    "location": {
+      "$ref": "semantic-source-location.v1.schema.json#/$defs/location"
+    },
+    "databaseDescriptor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "engine",
+        "schemaVersion"
+      ],
+      "properties": {
+        "engine": {
+          "const": "sqlite"
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "schemaVersion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "contentFingerprint": {
+          "type": "string",
+          "minLength": 1
+        },
+        "builtAt": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "sourceRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "sourceKind"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/projectPath"
+        },
+        "languageId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "providerId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "sourceKind": {
+          "enum": [
+            "source",
+            "test",
+            "fixture",
+            "config",
+            "generated",
+            "documentation",
+            "external",
+            "unknown"
+          ]
+        },
+        "contentFingerprint": {
+          "type": "string",
+          "minLength": 1
+        },
+        "lineCount": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "ownerRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ownerId",
+        "path"
+      ],
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "path": {
+          "$ref": "#/$defs/projectPath"
+        },
+        "languageId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "providerId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "roles": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]*$"
+          }
+        },
+        "queryKeys": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "rankInputs": {
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "number",
+              "string",
+              "boolean"
+            ]
+          }
+        }
+      }
+    },
+    "selectorRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "selectorId",
+        "ownerId",
+        "location"
+      ],
+      "properties": {
+        "selectorId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ownerId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "symbol": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "location": {
+          "$ref": "#/$defs/location"
+        },
+        "source": {
+          "enum": [
+            "rust-sql",
+            "provider-fact",
+            "gtags",
+            "tree-sitter",
+            "manifest"
+          ]
+        }
+      }
+    },
+    "externalSeed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "state"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "gtags",
+            "tree-sitter",
+            "provider-packet",
+            "manifest"
+          ]
+        },
+        "state": {
+          "enum": [
+            "available",
+            "missing",
+            "stale",
+            "ignored"
+          ]
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    },
+    "capability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "state"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "state": {
+          "enum": [
+            "enabled",
+            "disabled",
+            "missing",
+            "unsupported"
+          ]
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    },
+    "missingFact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "message"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "index",
+            "capability",
+            "provider-facts",
+            "external-seed"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        },
+        "nextCommand": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

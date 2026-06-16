@@ -1,13 +1,17 @@
 //! Graph-turbo view rendering for ASP-owned search pipelines.
 
+use std::collections::BTreeMap;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 use super::graph::{
-    GraphTurboReceiptCapture, GraphTurboReceiptRequest, render_graph_turbo_packet_rust_compact,
+    GraphTurboReceiptCapture, GraphTurboReceiptRequest, render_graph_turbo_value_rust_compact,
     write_graph_turbo_receipt,
 };
-use super::search_pipe_graph_turbo::{GraphTurboSearchPipeRequest, render_graph_turbo_request};
+use super::search_pipe_graph_turbo::{
+    GraphTurboSearchPipeRequest, graph_turbo_request, render_graph_turbo_request,
+};
 use super::search_pipe_model::{Candidate, SearchPipeSourceTrace};
 use super::search_pipe_plan::{
     SearchPipePlanRequest, render_search_pipe_decision_projection, render_search_pipe_plan,
@@ -91,81 +95,24 @@ pub(super) fn print_search_pipe_view(request: SearchPipeViewRequest<'_>) -> Resu
             )?;
             print!("{request}");
         }
-        "seeds" => {
-            let quality =
-                query.map(|query| analyze_search_pipe_quality(language_id, query, candidates));
-            if include_pipe_plan && let Some(query) = query {
-                let quality = quality.as_ref().expect("quality is computed with query");
-                print_search_pipe_header(SearchPipeHeader {
-                    language_id,
-                    project_root,
-                    locator_root,
-                    view: "seeds",
-                    source,
-                    query,
-                    quality,
-                    source_trace,
-                });
-            }
-            let request = render_graph_turbo_request(GraphTurboSearchPipeRequest {
-                surface,
-                language_id,
-                dependency_root: locator_root,
-                query,
-                query_clauses: &graph_query_clauses,
-                candidates,
-                pipes,
-                source,
-                candidate_sources,
-                source_trace,
-                provider_facts,
-                read_memory_selectors,
-                action_frontier: &[],
-            })?;
-            write_fast_search_frontier_receipt(
-                frontier_receipt,
-                language_id,
-                query,
-                request.as_bytes(),
-            )?;
-            let seed_action_intents = seed_action_intents(&request);
-            if include_pipe_plan && let Some(seed_plan_line) = seed_plan_detail_line(&request) {
-                println!("{seed_plan_line}");
-            }
-            let output = render_graph_turbo_packet_rust_compact(request.as_bytes())?;
-            let ranked_compact = std::str::from_utf8(output.as_ref())
-                .ok()
-                .map(str::to_string);
-            if include_pipe_plan {
-                if let Some(compact) = ranked_compact.as_deref() {
-                    print!("{}", render_search_pipe_decision_projection(compact));
-                } else {
-                    io::stdout().write_all(output.as_ref()).map_err(|error| {
-                        format!("failed to write graph compact stdout: {error}")
-                    })?;
-                }
-            } else {
-                io::stdout()
-                    .write_all(output.as_ref())
-                    .map_err(|error| format!("failed to write graph compact stdout: {error}"))?;
-            }
-            if include_pipe_plan && let Some(query) = query {
-                print!(
-                    "{}",
-                    render_search_pipe_plan(SearchPipePlanRequest {
-                        language_id,
-                        project_root,
-                        locator_root,
-                        scopes,
-                        query,
-                        candidates,
-                        ranked_compact: ranked_compact.as_deref(),
-                        seed_action_intents: &seed_action_intents,
-                        read_memory_selectors,
-                    })
-                );
-            }
-        }
+        "seeds" => render_search_pipe_seeds_view(SearchPipeSeedsViewRequest {
+            language_id,
+            project_root,
+            locator_root,
+            surface,
+            query,
+            candidates,
+            pipes,
+            source,
+            candidate_sources,
+            source_trace,
+            scopes,
+            include_pipe_plan,
+            provider_facts,
+            read_memory_selectors,
+            frontier_receipt,
+            graph_query_clauses: &graph_query_clauses,
+        })?,
         _ => {
             reject_non_graph_turbo_receipt(frontier_receipt)?;
             print!("{}", render_ingest_frontier(candidates, pipes));
@@ -199,6 +146,222 @@ pub(super) fn print_search_pipe_view(request: SearchPipeViewRequest<'_>) -> Resu
         }
     }
     Ok(())
+}
+
+struct SearchPipeSeedsViewRequest<'a> {
+    language_id: &'a str,
+    project_root: &'a Path,
+    locator_root: &'a Path,
+    surface: &'a str,
+    query: Option<&'a str>,
+    candidates: &'a [Candidate],
+    pipes: &'a [String],
+    source: &'a str,
+    candidate_sources: &'a [String],
+    source_trace: &'a [SearchPipeSourceTrace],
+    scopes: &'a [PathBuf],
+    include_pipe_plan: bool,
+    provider_facts: &'a ProviderGraphFacts,
+    read_memory_selectors: &'a [String],
+    frontier_receipt: Option<&'a GraphTurboReceiptRequest>,
+    graph_query_clauses: &'a [String],
+}
+
+fn render_search_pipe_seeds_view(request: SearchPipeSeedsViewRequest<'_>) -> Result<(), String> {
+    let render_started_at = Instant::now();
+    let SearchPipeSeedsViewRequest {
+        language_id,
+        project_root,
+        locator_root,
+        surface,
+        query,
+        candidates,
+        pipes,
+        source,
+        candidate_sources,
+        source_trace,
+        scopes,
+        include_pipe_plan,
+        provider_facts,
+        read_memory_selectors,
+        frontier_receipt,
+        graph_query_clauses,
+    } = request;
+    let quality_started_at = Instant::now();
+    let quality = query.map(|query| analyze_search_pipe_quality(language_id, query, candidates));
+    let quality_elapsed = quality_started_at.elapsed();
+    let graph_started_at = Instant::now();
+    let request_packet = graph_turbo_request(&GraphTurboSearchPipeRequest {
+        surface,
+        language_id,
+        dependency_root: locator_root,
+        query,
+        query_clauses: graph_query_clauses,
+        candidates,
+        pipes,
+        source,
+        candidate_sources,
+        source_trace,
+        provider_facts,
+        read_memory_selectors,
+        action_frontier: &[],
+    });
+    let graph_elapsed = graph_started_at.elapsed();
+    let receipt_started_at = Instant::now();
+    if frontier_receipt.is_some() {
+        let request_bytes = serde_json::to_vec(&request_packet)
+            .map_err(|error| format!("failed to serialize graph turbo request: {error}"))?;
+        write_fast_search_frontier_receipt(
+            frontier_receipt,
+            language_id,
+            query,
+            request_bytes.as_slice(),
+        )?;
+    }
+    let receipt_elapsed = receipt_started_at.elapsed();
+    let seed_started_at = Instant::now();
+    let seed_action_intents = seed_action_intents(&request_packet);
+    let seed_plan_line = include_pipe_plan
+        .then(|| seed_plan_detail_line(&request_packet))
+        .flatten();
+    let seed_elapsed = seed_started_at.elapsed();
+    let compact_started_at = Instant::now();
+    let output = render_graph_turbo_value_rust_compact(&request_packet)?;
+    let compact_elapsed = compact_started_at.elapsed();
+    let ranked_compact = std::str::from_utf8(output.as_ref())
+        .ok()
+        .map(str::to_string);
+    let projection_started_at = Instant::now();
+    let decision_projection = if include_pipe_plan {
+        ranked_compact
+            .as_deref()
+            .map(render_search_pipe_decision_projection)
+    } else {
+        None
+    };
+    let projection_elapsed = projection_started_at.elapsed();
+    let plan_started_at = Instant::now();
+    let plan_output = if include_pipe_plan {
+        query.map(|query| {
+            render_search_pipe_plan(SearchPipePlanRequest {
+                language_id,
+                project_root,
+                locator_root,
+                scopes,
+                query,
+                candidates,
+                ranked_compact: ranked_compact.as_deref(),
+                seed_action_intents: &seed_action_intents,
+                read_memory_selectors,
+            })
+        })
+    } else {
+        None
+    };
+    let plan_elapsed = plan_started_at.elapsed();
+    if include_pipe_plan && let Some(query) = query {
+        let quality = quality.as_ref().expect("quality is computed with query");
+        let render_trace = render_phase_source_trace(
+            source_trace,
+            RenderPhaseTimings {
+                total: render_started_at.elapsed(),
+                quality: quality_elapsed,
+                graph: graph_elapsed,
+                receipt: receipt_elapsed,
+                seed: seed_elapsed,
+                compact: compact_elapsed,
+                projection: projection_elapsed,
+                plan: plan_elapsed,
+            },
+        );
+        print_search_pipe_header(SearchPipeHeader {
+            language_id,
+            project_root,
+            locator_root,
+            view: "seeds",
+            source,
+            query,
+            quality,
+            source_trace: &render_trace,
+        });
+    }
+    if let Some(seed_plan_line) = seed_plan_line {
+        println!("{seed_plan_line}");
+    }
+    if include_pipe_plan {
+        if let Some(decision_projection) = decision_projection {
+            print!("{decision_projection}");
+        } else {
+            io::stdout()
+                .write_all(output.as_ref())
+                .map_err(|error| format!("failed to write graph compact stdout: {error}"))?;
+        }
+    } else {
+        io::stdout()
+            .write_all(output.as_ref())
+            .map_err(|error| format!("failed to write graph compact stdout: {error}"))?;
+    }
+    if let Some(plan_output) = plan_output {
+        print!("{plan_output}");
+    }
+    Ok(())
+}
+
+struct RenderPhaseTimings {
+    total: Duration,
+    quality: Duration,
+    graph: Duration,
+    receipt: Duration,
+    seed: Duration,
+    compact: Duration,
+    projection: Duration,
+    plan: Duration,
+}
+
+fn render_phase_source_trace(
+    source_trace: &[SearchPipeSourceTrace],
+    timings: RenderPhaseTimings,
+) -> Vec<SearchPipeSourceTrace> {
+    let mut trace = source_trace.to_vec();
+    let mut fields = BTreeMap::new();
+    fields.insert(
+        "totalMs".to_string(),
+        Value::from(elapsed_millis(timings.total)),
+    );
+    fields.insert(
+        "qualityMs".to_string(),
+        Value::from(elapsed_millis(timings.quality)),
+    );
+    fields.insert(
+        "graphMs".to_string(),
+        Value::from(elapsed_millis(timings.graph)),
+    );
+    fields.insert(
+        "receiptMs".to_string(),
+        Value::from(elapsed_millis(timings.receipt)),
+    );
+    fields.insert(
+        "seedMs".to_string(),
+        Value::from(elapsed_millis(timings.seed)),
+    );
+    fields.insert(
+        "compactMs".to_string(),
+        Value::from(elapsed_millis(timings.compact)),
+    );
+    fields.insert(
+        "projectionMs".to_string(),
+        Value::from(elapsed_millis(timings.projection)),
+    );
+    fields.insert(
+        "planMs".to_string(),
+        Value::from(elapsed_millis(timings.plan)),
+    );
+    trace.push(SearchPipeSourceTrace::new("render", "used", 0, 0, 0).with_fields(fields));
+    trace
+}
+
+fn elapsed_millis(duration: Duration) -> u64 {
+    duration.as_millis().try_into().unwrap_or(u64::MAX)
 }
 
 struct SearchPipeHeader<'a> {
@@ -260,8 +423,7 @@ fn compact_source_trace(source_trace: &[SearchPipeSourceTrace]) -> String {
         .join(",")
 }
 
-fn seed_plan_detail_line(request: &str) -> Option<String> {
-    let packet: Value = serde_json::from_str(request).ok()?;
+fn seed_plan_detail_line(packet: &Value) -> Option<String> {
     let seed_plan = packet.get("seedPlan")?;
     let quality = seed_plan.get("seedQuality").and_then(Value::as_str)?;
     let query_owner_seed_count = seed_plan
@@ -279,10 +441,7 @@ fn seed_plan_detail_line(request: &str) -> Option<String> {
     ))
 }
 
-fn seed_action_intents(request: &str) -> Vec<SeedActionIntent> {
-    let Ok(packet) = serde_json::from_str::<Value>(request) else {
-        return Vec::new();
-    };
+fn seed_action_intents(packet: &Value) -> Vec<SeedActionIntent> {
     packet
         .get("seedPlan")
         .and_then(|seed_plan| seed_plan.get("recommendedActions"))

@@ -5,6 +5,7 @@ use crate::provider_command::support::{
 };
 
 const ASP_FACADE_PERFORMANCE_GATE: Duration = Duration::from_secs(3);
+const ASP_SEARCH_PHASE_PERFORMANCE_GATE_MS: u64 = 1_000;
 const JULIA_FACADE_PERFORMANCE_GATE: Duration = Duration::from_secs(3);
 
 #[derive(Clone, Copy)]
@@ -179,11 +180,41 @@ fn assert_regular_command_output(args: &[&str], stdout: &str, label: &str) {
             Some("graph-turbo-request"),
             "{payload}"
         );
+        assert_trace_elapsed_under_gate(args, stdout);
         return;
     }
     assert!(
         stdout.contains("[search-pipe]"),
         "args={args:?} stdout={stdout}"
+    );
+    if matches!(args.get(1..3), Some(["search", "pipe"])) {
+        assert!(
+            stdout.contains("providerFacts:used[")
+                && stdout.contains("elapsedMs=")
+                && stdout.contains("render:used[")
+                && stdout.contains("totalMs="),
+            "args={args:?} stdout={stdout}"
+        );
+        assert_trace_elapsed_under_gate(args, stdout);
+    }
+}
+
+fn assert_trace_elapsed_under_gate(args: &[&str], stdout: &str) {
+    let max_elapsed_ms = stdout
+        .match_indices("elapsedMs=")
+        .filter_map(|(index, _)| {
+            let value_start = index + "elapsedMs=".len();
+            let digits = stdout[value_start..]
+                .chars()
+                .take_while(|character| character.is_ascii_digit())
+                .collect::<String>();
+            digits.parse::<u64>().ok()
+        })
+        .max()
+        .unwrap_or(0);
+    assert!(
+        max_elapsed_ms < ASP_SEARCH_PHASE_PERFORMANCE_GATE_MS,
+        "args={args:?} exceeded search phase gate {ASP_SEARCH_PHASE_PERFORMANCE_GATE_MS}ms; maxElapsedMs={max_elapsed_ms}; stdout={stdout}"
     );
 }
 

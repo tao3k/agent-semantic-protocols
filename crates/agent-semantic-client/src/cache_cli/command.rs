@@ -15,6 +15,7 @@ use agent_semantic_runtime::{RuntimeSourceSpec, ensure_runtime_source_checkout};
 use serde_json::json;
 
 use super::structural_index_import::import_structural_index_artifacts;
+use crate::source_index::refresh_source_index;
 
 pub(crate) fn run_cache(
     project_root: &Path,
@@ -172,6 +173,37 @@ pub(crate) fn run_cache(
             }
             Ok(())
         }
+        [subcommand, action] if subcommand == "source-index" && action == "refresh" => {
+            let report = refresh_source_index(project_root)?;
+            println!(
+                "[asp-cache-source-index] status=refreshed route=local-cache db={} generation={} files={} owners={} selectors={} rawSourceStored=false indexOwner=rust-sql",
+                report.db_path.display(),
+                report.generation_id,
+                report.file_count,
+                report.owner_count,
+                report.selector_count
+            );
+            println!(
+                "|reason phase=source-index-rust-sql action=refresh providerCommands=0"
+            );
+            if receipt_json {
+                let receipt = json!({
+                    "schemaId": "agent.semantic-protocols.semantic-source-index.refresh-receipt",
+                    "schemaVersion": "1",
+                    "status": "refreshed",
+                    "route": "local-cache",
+                    "dbPath": report.db_path,
+                    "generationId": report.generation_id,
+                    "fileCount": report.file_count,
+                    "ownerCount": report.owner_count,
+                    "selectorCount": report.selector_count,
+                    "rawSourceStored": false,
+                    "indexOwner": "rust-sql"
+                });
+                eprintln!("{receipt}");
+            }
+            Ok(())
+        }
         [subcommand, scope] if subcommand == "flush" && scope == "syntax-rows" => {
             let snapshot = ProviderRegistrySnapshot::load(project_root);
             let provenance = snapshot
@@ -285,7 +317,7 @@ pub(crate) fn run_cache(
             Ok(())
         }
         _ => Err(
-            "usage: asp cache <status|import|invalidate|flush [syntax-rows]|runtime-source acquire --language-id <id> --repository <url> --checkout <ref> --state-namespace <namespace> --index-owner <owner>> [--root <path>]"
+            "usage: asp cache <status|import|source-index refresh|invalidate|flush [syntax-rows]|runtime-source acquire --language-id <id> --repository <url> --checkout <ref> --state-namespace <namespace> --index-owner <owner>> [--root <path>]"
                 .to_string(),
         ),
     }
@@ -446,13 +478,20 @@ fn print_db_status(db_report: Option<&ClientDbReport>) {
             })
             .unwrap_or_default();
         println!(
-            "|db path={} status={} generations={} syntaxRows={}/{}/{} artifactEvents={} rawSourceStored={}{}",
+            "|db path={} status={} generations={} syntaxRows={}/{}/{} structuralIndex={}/{}/{}/{} sourceIndex={}/{}/{} artifactEvents={} rawSourceStored={}{}",
             db_report.db_path.display(),
             db_report.status.as_str(),
             db_report.generation_count,
             db_report.syntax_row_generation_count,
             db_report.syntax_row_match_count,
             db_report.syntax_row_capture_count,
+            db_report.structural_index_generation_count,
+            db_report.structural_index_owner_count,
+            db_report.structural_index_symbol_count,
+            db_report.structural_index_dependency_usage_count,
+            db_report.source_index_generation_count,
+            db_report.source_index_owner_count,
+            db_report.source_index_selector_count,
             db_report.artifact_event_count,
             db_report.raw_source_stored,
             runtime_pragmas
@@ -466,7 +505,7 @@ fn print_db_status(db_report: Option<&ClientDbReport>) {
         }
     } else {
         println!(
-            "|db path=unavailable status=unavailable generations=0 syntaxRows=0/0/0 artifactEvents=0 rawSourceStored=false journalMode=unknown synchronous=unknown busyTimeoutMs=unknown foreignKeys=false"
+            "|db path=unavailable status=unavailable generations=0 syntaxRows=0/0/0 structuralIndex=0/0/0/0 sourceIndex=0/0/0 artifactEvents=0 rawSourceStored=false journalMode=unknown synchronous=unknown busyTimeoutMs=unknown foreignKeys=false"
         );
     }
 }
@@ -478,6 +517,16 @@ fn apply_db_report_to_receipt(receipt: &mut ClientReceipt, db_report: &ClientDbR
     receipt.client_db_syntax_row_generation_count = Some(db_report.syntax_row_generation_count);
     receipt.client_db_syntax_row_match_count = Some(db_report.syntax_row_match_count);
     receipt.client_db_syntax_row_capture_count = Some(db_report.syntax_row_capture_count);
+    receipt.client_db_structural_index_generation_count =
+        Some(db_report.structural_index_generation_count);
+    receipt.client_db_structural_index_owner_count = Some(db_report.structural_index_owner_count);
+    receipt.client_db_structural_index_symbol_count = Some(db_report.structural_index_symbol_count);
+    receipt.client_db_structural_index_dependency_usage_count =
+        Some(db_report.structural_index_dependency_usage_count);
+    receipt.client_db_source_index_generation_count = Some(db_report.source_index_generation_count);
+    receipt.client_db_source_index_owner_count = Some(db_report.source_index_owner_count);
+    receipt.client_db_source_index_selector_count = Some(db_report.source_index_selector_count);
+    receipt.client_db_artifact_event_count = Some(db_report.artifact_event_count);
     receipt.client_db_raw_source_stored = Some(db_report.raw_source_stored);
     if let Some(pragmas) = &db_report.runtime_pragmas {
         receipt.client_db_journal_mode = Some(pragmas.journal_mode.as_str().into());
