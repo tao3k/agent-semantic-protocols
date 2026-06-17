@@ -140,6 +140,59 @@ fn asp_org_exposes_ast_query_facts_and_capture_plan() {
 }
 
 #[test]
+fn asp_org_capture_initializes_state_resources_and_flow_dirs() {
+    let root = temp_project_root("org-document-command-capture-init");
+
+    let output = asp_command(&root)
+        .args(["org", "capture", "init"])
+        .output()
+        .expect("run asp org capture init");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("capture init stdout");
+    assert!(stdout.contains("[ASP_ORG_CAPTURE] initialized"), "{stdout}");
+    assert!(
+        stdout
+            .contains("agents-md-include: @.cache/agent-semantic-protocol/org/skills/ASP_ORG.org"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("flow/sdd"), "{stdout}");
+    assert!(stdout.contains("flow/BDR"), "{stdout}");
+    assert!(stdout.contains("flow/plans"), "{stdout}");
+
+    let state_root = root
+        .join(".cache")
+        .join("agent-semantic-protocol")
+        .join("org");
+    assert!(
+        state_root.join("skills").join("ASP_ORG.org").is_file(),
+        "ASP_ORG.org should be materialized"
+    );
+    assert!(
+        state_root
+            .join("templates")
+            .join("agent.plan.v1.org")
+            .is_file(),
+        "plan template should be materialized"
+    );
+    assert!(
+        state_root
+            .join("templates")
+            .join("agent.execplan.v1.org")
+            .is_file(),
+        "execplan template should be materialized"
+    );
+    assert!(state_root.join("flow").join("sdd").is_dir());
+    assert!(state_root.join("flow").join("BDR").is_dir());
+    assert!(state_root.join("flow").join("plans").is_dir());
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn asp_org_guide_exposes_generic_ast_recipes_only() {
     let root = temp_project_root("org-document-command-guide-generic");
 
