@@ -109,8 +109,8 @@ fn parse_file_hashes(packet: &Value) -> Result<Vec<ClientCacheFileHash>, String>
             Ok(ClientCacheFileHash {
                 path: string_field(value, "path")?.to_string(),
                 sha256: string_field(value, "sha256")?.to_string(),
-                byte_len: value.get("byteLen").and_then(Value::as_u64),
-                mtime_ms: value.get("mtimeMs").and_then(Value::as_u64),
+                byte_len: value.get("byteLen").and_then(Value::as_u64).unwrap_or(0),
+                mtime_ms: value.get("mtimeMs").and_then(Value::as_u64).unwrap_or(0),
             })
         })
         .collect()

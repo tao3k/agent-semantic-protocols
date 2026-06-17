@@ -274,6 +274,8 @@ impl ClientCacheGeneration {
 pub struct ClientCacheFileHash {
     pub path: String,
     pub sha256: String,
+    pub byte_len: u64,
+    pub mtime_ms: u64,
 }
 
 /// Return the agent semantic client cache directory for an activated project.

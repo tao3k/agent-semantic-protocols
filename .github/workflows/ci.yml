@@ -278,7 +278,7 @@ jobs:
           [providers.julia]
           enabled = false
           EOF
-          PATH="$PWD/.bin:$PATH" .bin/asp plugin install codex .
+          PATH="$PWD/.bin:$PATH" .bin/asp install plugin --codex .
           PATH="$PWD/.bin:$PATH" \
             ASP_LANGUAGE_EVIDENCE_SMOKE_SCOPE=core-fast \
             ASP_LANGUAGE_EVIDENCE_LANGUAGES=rust,python,typescript \

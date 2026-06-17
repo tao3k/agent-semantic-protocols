@@ -104,10 +104,10 @@ fn duration_ms_value(duration: Duration) -> serde_json::Value {
 fn query_wrapper_usage(surface: QueryWrapperSurface) -> String {
     match surface {
         QueryWrapperSurface::Fd => {
-            "usage: asp fd -query <owner-or-path-term-a|term-b|term-c> [-query <second-clause>] [scope...] [-- native-fd-argv...]\n\nFinds owner/path/module candidates from repeatable LLM-generated query clauses.".to_string()
+            "usage: asp fd -query <owner-or-path-term-a|term-b|term-c> [-query <second-clause>] [--workspace <root>] [scope...] [-- native-fd-argv...]\n\nFinds owner/path/module candidates from repeatable LLM-generated query clauses.".to_string()
         }
         QueryWrapperSurface::Rg => {
-            "usage: asp rg -query <content-or-error-term-a|term-b|term-c> [-query <second-clause>] [scope...] [-- native-rg-argv...]\n\nFinds content/hot-block candidates from repeatable LLM-generated query clauses.".to_string()
+            "usage: asp rg -query <content-or-error-term-a|term-b|term-c> [-query <second-clause>] [--workspace <root>] [scope...] [-- native-rg-argv...]\n\nFinds content/hot-block candidates from repeatable LLM-generated query clauses.".to_string()
         }
     }
 }
@@ -148,12 +148,30 @@ fn parse_query_wrapper_args(
                     .clone();
                 index += 2;
             }
+            "--workspace" => {
+                let value = args
+                    .get(index + 1)
+                    .ok_or_else(|| "--workspace requires a project root".to_string())?;
+                if value.starts_with('-') {
+                    return Err("--workspace requires a project root".to_string());
+                }
+                scopes.push(PathBuf::from(value));
+                index += 2;
+            }
             value if value.starts_with("-query=") => {
                 queries.push(value.trim_start_matches("-query=").to_string());
                 index += 1;
             }
             value if value.starts_with("--query=") => {
                 queries.push(value.trim_start_matches("--query=").to_string());
+                index += 1;
+            }
+            value if value.starts_with("--workspace=") => {
+                let value = value.trim_start_matches("--workspace=");
+                if value.is_empty() {
+                    return Err("--workspace requires a project root".to_string());
+                }
+                scopes.push(PathBuf::from(value));
                 index += 1;
             }
             value if value.starts_with('-') => {

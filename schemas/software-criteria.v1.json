@@ -4,7 +4,7 @@
   "protocolId": "agent.semantic-protocols.software-criterion",
   "protocolVersion": "1",
   "criterionSetId": "software-criterion.v1.control-flow",
-  "description": "Legacy-named software criterion canon for cross-language control-flow and native-idiom navigation vocabulary; ecosystem doctrine is provider-owned criterion extension policy.",
+  "description": "Current software criterion canon for cross-language control-flow and native-idiom navigation vocabulary; ecosystem doctrine is provider-owned criterion extension policy.",
   "sourceVersion": "docs/10-19-rfcs/10.13-software-criterion-policy.org#013",
   "criteria": [
     {
