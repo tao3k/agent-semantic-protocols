@@ -25,6 +25,8 @@ mod graph_render;
 mod healthcheck;
 #[path = "unit/hook_command.rs"]
 mod hook_command;
+#[path = "unit/hook_paths.rs"]
+mod hook_paths;
 #[path = "unit/hook_runtime_skill.rs"]
 mod hook_runtime_skill;
 #[path = "unit/install_provider_cli.rs"]

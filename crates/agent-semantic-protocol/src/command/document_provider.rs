@@ -28,21 +28,27 @@ pub(crate) fn run_language_command_with_config(
     if command == "contract" && language_id == "org" {
         return agent::run_org_contract_command(args[1..].to_vec());
     }
-    if !matches!(command, "guide" | "search" | "query" | "elements-query") {
+    if is_document_command(command) {
+        return agent::run_document_command_with_walk_config(
+            document_language(language_id)?,
+            args.to_vec(),
+            DocumentWalkConfig::new(
+                config.search.ignore_dirs.clone(),
+                config.search.include_hidden_dirs.clone(),
+            ),
+        );
+    }
+    if language_id == "org" && is_embedded_org_command(command) {
+        return agent::run_org_cli_command(args.to_vec());
+    }
+    if !is_document_command(command) {
         return Err(format!(
             "asp {language_id}: unsupported document command `{command}`; supported commands are {}",
             supported_commands(language_id)
         ));
     }
 
-    agent::run_document_command_with_walk_config(
-        document_language(language_id)?,
-        args.to_vec(),
-        DocumentWalkConfig::new(
-            config.search.ignore_dirs.clone(),
-            config.search.include_hidden_dirs.clone(),
-        ),
-    )
+    unreachable!("document commands are returned above")
 }
 
 fn is_help(args: &[String]) -> bool {
@@ -67,7 +73,20 @@ fn usage(language_id: &str) -> String {
 
 fn supported_commands(language_id: &str) -> &'static str {
     match language_id {
-        "org" => "guide|search|query|elements-query|contract",
+        "org" => {
+            "guide|search|query|elements-query|contract|eval|export|fmt|lint|sdd|agent-planning|sparse-tree|task-list"
+        }
         _ => "guide|search|query|elements-query",
     }
+}
+
+fn is_document_command(command: &str) -> bool {
+    matches!(command, "guide" | "search" | "query" | "elements-query")
+}
+
+fn is_embedded_org_command(command: &str) -> bool {
+    matches!(
+        command,
+        "eval" | "export" | "fmt" | "lint" | "sdd" | "agent-planning" | "sparse-tree" | "task-list"
+    )
 }
