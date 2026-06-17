@@ -434,7 +434,13 @@ ASP.  The durable migration path is: expose the underlying Org facts through
 =search= and =query= axes first, publish named guide recipes that compose
 those axes, then add thin compatibility subcommands only when they replay the
 same recipe and emit the underlying =asp org query/search= commands as next
-actions.  Destructive actions such as task archive apply must route through an
+actions.  The canonical migration recipe names are semantic, not legacy client
+labels: =sdd-kind-properties= maps to =kind=property= plus =key=SDD_KIND=,
+=org-id-properties= maps to =kind=property= plus =key=ID=, =tagged-tasks=
+maps to =kind=task= plus term/tag fields, and =done-tasks= maps to
+=kind=task= plus =todo=DONE=.  Legacy labels such as =sdd-property=,
+=wendao-task-*=, =wendao-orgid-*=, =agent-plan-*=, and =plan-record= must
+not become provider-owned commands or recipes.  Destructive actions such as task archive apply must route through an
 AST-patch or edit-plan contract; they must not be introduced as hidden side
 effects of a search/query adapter.  Safe deletion of the Wendao client surface
 requires parity evidence for the recipe packet, the compatibility shell, and
@@ -445,7 +451,10 @@ reviewable Org entry and application preconditions, but the implementation is
 semantic-AST owned and non-mutating.  The CLI facade only forwards arguments
 and prints the rendered plan; date parsing, target resolution intent, property
 normalization, and Org entry rendering belong to the Org semantic layer rather
-than to the command-line adapter.
+than to the command-line adapter.  Plan contracts are caller-supplied Org
+properties and body content on ordinary capture kinds such as =task=; the Org
+provider must not hard-code =agent-plan= as a capture kind or render a
+provider-owned agent planning template.
 
 Task and checklist facts must remain distinct at the document query layer.
 Org TODO headlines are =kind=task= facts backed by =sourceKind=Headline=.

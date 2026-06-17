@@ -82,7 +82,7 @@ Wendao client `orgize` can be deleted only after these gates pass:
 ## Implementation Order
 
 1. Extend document query packet fields for task/property/checklist/archive facts.
-2. Add `asp org query guide` recipes for the Wendao read-model use cases.
+2. Add `asp org guide` recipes for the semantic AST read-model use cases.
 3. Add non-destructive recipe parity tests against Wendao fixtures.
 4. Add compatibility wrappers that call the same query/search implementation and print replay commands.
 5. Add archive plan as a query-derived edit plan.
@@ -91,23 +91,25 @@ Wendao client `orgize` can be deleted only after these gates pass:
 
 ## Current Landing Slice
 
-The first correction slice lands only guide-level recipes:
+The first correction slice lands only guide-level recipes with semantic names:
 
-- `wendao-task-probe`
-- `wendao-orgid-locate`
-- `wendao-orgid-content`
-- `wendao-task-sdd`
-- `wendao-task-archive-plan`
-- `plan-record` through `asp org capture-plan`
+- `sdd-kind-properties` uses `asp org query --kind property --field key=SDD_KIND`
+- `org-id-properties` uses `asp org query --kind property --field key=ID --field value=<ID>`
+- `tagged-tasks` uses `asp org query --kind task --term <TEXT> --field tag=<TAG>`
+- `done-tasks` uses `asp org query --kind task --field todo=DONE`
+- `capture-task` uses `asp org capture-plan --kind task` plus caller-supplied properties
 
-The Wendao lookup recipes intentionally render `asp org query` commands. They
-are not new `orgize task-*` subcommands, and tests assert that the guide does
-not teach `orgize task-probe` as a hard-coded command path.
+The Wendao lookup adapter should call these recipes and print the underlying
+`asp org query/search` commands. It should not reintroduce legacy recipe labels
+such as `wendao-task-*`, `wendao-orgid-*`, `sdd-property`, `agent-plan-*`, or
+`plan-record` as provider-owned guide output.
 
 `capture-plan` is the exception for recording a new plan because it is
 non-mutating and renders a reviewable native Org entry plus application
 preconditions. Its implementation lives in the Org semantic AST layer; the CLI
-facade only forwards arguments and prints the rendered plan.
+facade only forwards arguments and prints the rendered plan. Agent plan
+contracts are ordinary caller-supplied Org properties and body content on a
+generic capture kind such as `task`, not an `agent-plan` capture kind.
 
 ASP document-provider command exposure is intentionally narrower than the
 standalone `orgize` debug CLI. `sdd`, `agent-planning`, `sparse-tree`, and

@@ -703,6 +703,16 @@ Required facts:
 The implementation must remain native Scheme owned for Gerbil language facts.
 Rust or ASP may own CLI routing, schema validation, and hook delivery, but Gerbil
 syntax, expansion, module, and witness facts belong in the Gerbil harness.
+Source-scope discovery is also provider-owned: the Gerbil harness resolves the
+active project/package scope from Gerbil package anchors such as =gerbil.pkg=,
+installed package metadata, load paths, and package-manager source roots.  It
+reports those roots and logical selectors as facts.  Heavy source indexing,
+cross-package lookup tables, and replayable source-index persistence belong to
+ASP's Rust SQL source-index layer; Scheme code must not rebuild a parallel
+database or scan implementation to compensate for a missing Rust index.  If a
+package such as =gerbil-poo= is not installed, the provider should report the
+missing package-manager fact and the install/source-root next action before any
+Git fallback is considered.
 
 The Gerbil =poo= extension has a separate responsibility from harness-internal
 dependency use.  =src/extensions/poo.ss= describes downstream project guidance:
