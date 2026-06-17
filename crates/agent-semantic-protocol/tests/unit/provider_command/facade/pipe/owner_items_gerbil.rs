@@ -1,6 +1,7 @@
 use crate::provider_command::support::{
     asp_command, prepend_path, provider, temp_project_root, write_activation,
-    write_marker_provider, write_stdout_stderr_exit_provider, write_stdout_stderr_provider,
+    write_activation_env_guard_provider, write_marker_provider, write_stdout_stderr_exit_provider,
+    write_stdout_stderr_provider,
 };
 
 #[test]
@@ -71,6 +72,61 @@ reason=owner-item-selector-ready\n",
             .expect("stderr")
             .contains("provider-owned-owner-items"),
         "Gerbil owner-items should come from the language provider"
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn gerbil_owner_items_query_set_bypasses_client_backend_worker() {
+    let root = temp_project_root("search-owner-gerbil-direct-provider");
+    let bin_dir = root.join(".bin");
+    std::fs::create_dir_all(root.join("src/checker")).expect("create source");
+    std::fs::write(
+        root.join("src/checker/types.ss"),
+        "(def (type-compatible? actual expected)\n  (equal? actual expected))\n",
+    )
+    .expect("write source");
+    write_activation_env_guard_provider(
+        &bin_dir,
+        "gerbil-scheme-harness",
+        "I=item:symbol(type-compatible?)@src/checker/types.ss:1:2!syntax\n\
+reason=owner-item-selector-ready\n",
+    );
+    write_activation(&root, &[provider("gerbil-scheme", Vec::new())]);
+
+    let output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args([
+            "gerbil-scheme",
+            "search",
+            "owner",
+            "src/checker/types.ss",
+            "items",
+            "--query",
+            "type-compatible",
+            "--workspace",
+            ".",
+            "--view",
+            "seeds",
+        ])
+        .output()
+        .expect("run asp gerbil search owner items");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    assert!(
+        stdout.contains("item:symbol(type-compatible?)@src/checker/types.ss:1:2!syntax"),
+        "{stdout}"
+    );
+    assert!(
+        !String::from_utf8(output.stderr)
+            .expect("stderr")
+            .contains("unexpected client backend activation env")
     );
     let _ = std::fs::remove_dir_all(root);
 }

@@ -74,6 +74,13 @@ Provider-owned flags such as =--topic=, =--intent=, =--role=, =--rule=,
 =--finding=, =--more=, =--level=, and =--limit= are selection controls for the
 same guide surface, not new subcommands.
 
+Non-code guide rendering is also a lightweight performance surface.  =asp
+<language> guide= and =asp <language> search guide= should route to static or
+section-backed guide rows without constructing a project index or importing the
+full search dispatcher.  =guide --code= remains the source-backed guide path and
+may load parser, policy, exemplar, and selector machinery because its output is
+selected source text, not the compact command menu.
+
 Policy and finding driven repair should route through =guide --code= only after
 the non-code guide has exposed the source-backed exemplar selector.  A
 =--rule= or =--finding= value may map a known policy id to a focused topic, for
@@ -123,6 +130,13 @@ exported-declaration names, or =query --selector= next commands. Compact output
 should expose a selector guard such as =missingPathTerms= so agents treat the
 term as a missing path receipt instead of inventing a file like
 =t/unit-tests.ss= from naming convention.
+Owner item materialization is a compact search surface, not a full structural
+fact dump. =search owner <path> items= must apply a default result budget and
+may expose =--limit <n>= for explicit expansion. Providers should stop
+matching once the displayed budget is full and keep the next action focused on
+the shown selectors; agents that need exhaustive facts should ask for a larger
+limit deliberately instead of letting a real project emit hundreds of item rows
+by default.
 
 Document languages are a separate facade class.  =asp org= and =asp md= expose
 parser-owned document structure, not code harness policy.  The executable

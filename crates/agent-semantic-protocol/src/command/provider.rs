@@ -14,7 +14,8 @@ use std::path::{Path, PathBuf};
 use super::client_backend_worker::run_client_backend_on_worker;
 use super::protocol_version_line;
 use super::provider_process::{
-    provider_invocation_with_profile, provider_invocations, run_guide_command, run_provider_command,
+    provider_invocation_with_profile, provider_invocations, run_guide_command,
+    run_owner_items_provider_command, run_provider_command,
 };
 use super::provider_roots::{
     activation_project_root, activation_storage_root, client_backend_cache_home,
@@ -364,6 +365,29 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
             },
         );
     }
+    if frontier_receipt.is_none()
+        && language_id == "gerbil-scheme"
+        && let Some(owner_path) = search_owner_items_owner_path(&provider_args)
+    {
+        let runtime_profiles = runtime_profiles_for_runtime(&project_root, &runtime);
+        for invocation in provider_invocations(
+            provider,
+            &provider_args,
+            &project_root,
+            &runtime_profiles,
+            &config,
+        )? {
+            run_owner_items_provider_command(
+                language_id,
+                provider,
+                &invocation,
+                &project_root,
+                &cache_home,
+                owner_path,
+            )?;
+        }
+        return Ok(());
+    }
     if frontier_receipt
         .as_ref()
         .is_some_and(GraphTurboReceiptRequest::has_extra_args)
@@ -412,6 +436,17 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
         )?;
     }
     Ok(())
+}
+
+fn search_owner_items_owner_path(args: &[String]) -> Option<&str> {
+    if args.first().map(String::as_str) != Some("search")
+        || args.get(1).map(String::as_str) != Some("owner")
+        || args.get(3).map(String::as_str) != Some("items")
+        || args.iter().any(|arg| arg == "--json")
+    {
+        return None;
+    }
+    args.get(2).map(String::as_str)
 }
 
 fn run_pre_activation_fast_owner_query(

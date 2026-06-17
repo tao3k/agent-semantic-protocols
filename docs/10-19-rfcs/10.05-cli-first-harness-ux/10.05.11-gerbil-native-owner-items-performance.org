@@ -1,0 +1,6 @@
+* Gerbil native owner-items performance gate
+Gerbil/Scheme owner item materialization is a native-builder guarded performance surface.
+
+=gxi build.ss native= must generate the provider dispatcher and the owner-items native artifact. The provider dispatcher handles =search owner <path> items= by calling the owner-items native entry in-process. It must not fall back to a script path when the native route is missing.
+
+Missing native guide or extension artifacts should fail visibly with a repair hint to rerun =gxi build.ss native=. The regression gate is structural as well as timing-oriented: tests assert that the generated dispatcher calls the native owner-items entry directly and contains no owner-items script fallback.

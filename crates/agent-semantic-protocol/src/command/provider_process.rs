@@ -39,6 +39,41 @@ pub(super) fn run_provider_command(
     Ok(())
 }
 
+pub(super) fn run_owner_items_provider_command(
+    language_id: &str,
+    provider: &ActivatedProvider,
+    invocation: &[String],
+    project_root: &Path,
+    cache_home: &Path,
+    owner_path: &str,
+) -> Result<(), String> {
+    let (program, forwarded) = invocation
+        .split_first()
+        .ok_or_else(|| format!("language `{language_id}` has an empty provider command"))?;
+    let output = run_provider_process(
+        language_id,
+        provider,
+        program,
+        forwarded,
+        project_root,
+        cache_home,
+    )?;
+    write_facade_stream(language_id, provider, output.stderr.as_ref(), io::stderr())?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!(
+            "provider-owned owner-items failed for {owner_path}: {}",
+            stderr.trim()
+        ));
+    }
+    if output.stdout.iter().all(|byte| byte.is_ascii_whitespace()) {
+        return Err(format!(
+            "provider-owned owner-items produced empty output for {owner_path}"
+        ));
+    }
+    write_facade_stream(language_id, provider, output.stdout.as_ref(), io::stdout())
+}
+
 pub(super) fn run_provider_command_with_stdin(
     language_id: &str,
     provider: &ActivatedProvider,
