@@ -1,14 +1,13 @@
 //! Action-frontier compiler for ASP-owned search pipe output.
 
-use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use super::search_pipe_action_frontier::{ActionNode, ActionRoute, render_action_rows};
 use super::search_pipe_action_model::PipeAction;
 use super::search_pipe_model::Candidate;
-use super::search_pipe_owner_items_query::owner_items_query_terms;
-use super::search_pipe_owner_roles::{
-    suppress_low_cohesion_secondary_owner, suppress_low_cohesion_weak_axis_owner,
+use super::search_pipe_owner_action::{
+    owner_items_handle, preferred_owner_items_handle, preview_owner_items_handle,
+    unique_terms_without_weak_natural, usable_query_term, weak_natural_action_term,
 };
 use super::search_pipe_quality::SearchPipeQuality;
 use super::search_pipe_seed_decision::SeedActionIntent;
@@ -155,7 +154,8 @@ fn action_nodes(request: &SearchPipeActionRequest<'_>, scope_arg: &str) -> Vec<A
     let mut pushed_preferred_owner_items = false;
     let mut pushed_fd_query = false;
     if prefer_owner_scope_first
-        && let Some(handle) = preferred_owner_items_handle(request)
+        && let Some(handle) =
+            preferred_owner_items_handle(request.quality, request.candidates, request.fd_preview)
         && let Some((owner, query)) = handle.split_once(':')
     {
         actions.push(owner_items_action(
@@ -293,14 +293,6 @@ fn fd_query_action(fd_query: &str, scope_arg: &str) -> ActionNode {
     }
 }
 
-fn preferred_owner_items_handle(request: &SearchPipeActionRequest<'_>) -> Option<String> {
-    preview_owner_items_handle(request.quality, request.fd_preview).or_else(|| {
-        (!suppress_low_cohesion_secondary_owner(request.quality, request.fd_preview))
-            .then(|| owner_items_handle(request.quality, request.candidates))
-            .flatten()
-    })
-}
-
 fn owner_items_action(language_id: &str, scope_arg: &str, owner: &str, query: &str) -> ActionNode {
     ActionNode {
         id: String::new(),
@@ -425,55 +417,6 @@ fn rg_query(quality: &SearchPipeQuality, compact: Option<&str>) -> Option<String
     unique_terms_without_weak_natural(terms, 8).map(|terms| terms.join("|"))
 }
 
-fn owner_items_handle(quality: &SearchPipeQuality, candidates: &[Candidate]) -> Option<String> {
-    let owner = quality.best_owner.as_ref()?.owner.as_str();
-    let query_terms = owner_items_query_terms(quality, candidates, owner)?;
-    if suppress_low_cohesion_weak_axis_owner(quality, &query_terms) {
-        return None;
-    }
-    let query = query_terms.join("|");
-    Some(format!("{owner}:{query}"))
-}
-
-fn preview_owner_items_handle(
-    quality: &SearchPipeQuality,
-    preview: Option<&FdQueryPreview>,
-) -> Option<String> {
-    let preview = preview?;
-    if quality.package_cohesion == "low" && strong_owner_seed_count(quality) < 2 {
-        return None;
-    }
-    let owner = quality
-        .best_owner
-        .as_ref()
-        .map(|coverage| coverage.owner.as_str())
-        .filter(|owner| {
-            preview
-                .owner_candidates
-                .iter()
-                .any(|candidate| candidate == owner)
-        })
-        .or_else(|| preview.owner_candidates.first().map(String::as_str))?;
-    let mut query_terms = Vec::new();
-    query_terms.extend(quality.concept_terms.iter().cloned());
-    query_terms.extend(quality.owner_seed_terms.iter().cloned());
-    let query = unique_terms_without_weak_natural(query_terms, 6)?.join("|");
-    Some(format!("{owner}:{query}"))
-}
-
-fn strong_owner_seed_count(quality: &SearchPipeQuality) -> usize {
-    quality
-        .owner_seed_terms
-        .iter()
-        .filter(|term| {
-            quality
-                .strong_matched
-                .iter()
-                .any(|matched| matched == *term)
-        })
-        .count()
-}
-
 fn tree_sitter_action_handle(quality: &SearchPipeQuality, compact: Option<&str>) -> Option<String> {
     let fields = compact_symbols(compact, "field")
         .into_iter()
@@ -518,50 +461,6 @@ fn node_symbol(segment: &str) -> Option<String> {
     let end = segment[start..].find(')')? + start;
     let symbol = segment[start..end].trim();
     (!symbol.is_empty()).then(|| symbol.to_string())
-}
-
-fn usable_query_term(term: &str) -> bool {
-    !term.starts_with('_')
-        && !term.starts_with('[')
-        && term
-            .chars()
-            .all(|ch| ch == '.' || ch == '_' || ch.is_ascii_alphanumeric())
-}
-
-fn unique_terms(terms: Vec<String>, limit: usize) -> Option<Vec<String>> {
-    let mut seen = BTreeSet::new();
-    let result = terms
-        .into_iter()
-        .filter(|term| usable_query_term(term))
-        .filter(|term| seen.insert(term.clone()))
-        .take(limit)
-        .collect::<Vec<_>>();
-    (!result.is_empty()).then_some(result)
-}
-
-fn unique_terms_without_weak_natural(terms: Vec<String>, limit: usize) -> Option<Vec<String>> {
-    unique_terms(
-        terms
-            .into_iter()
-            .filter(|term| !weak_natural_action_term(term))
-            .collect(),
-        limit,
-    )
-}
-
-fn weak_natural_action_term(term: &str) -> bool {
-    matches!(
-        term.to_ascii_lowercase().as_str(),
-        "through"
-            | "smoke"
-            | "dev"
-            | "dependency"
-            | "dependencies"
-            | "weak"
-            | "natural"
-            | "term"
-            | "terms"
-    )
 }
 
 fn display_scope_args(project_root: &Path, locator_root: &Path, scopes: &[PathBuf]) -> String {

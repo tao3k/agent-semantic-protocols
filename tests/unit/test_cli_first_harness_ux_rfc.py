@@ -99,7 +99,7 @@ def test_cli_first_rfc_requires_shell_safe_query_literals() -> None:
         "Agents must also quote literal query text",
         "Backticks are command substitution",
         "single-quoted argv literal",
-        "--query-set 'Start with `asp <language> guide .`'",
+        "--query-set 'Start with `asp <language> guide --workspace .`'",
         "provider-documented file/stdin input",
         "surface rather than interpolating raw prose into a shell command",
         "must not ask agents",
@@ -136,7 +136,7 @@ def test_cli_first_rfc_defines_agent_facing_guide_acceptance() -> None:
 
     required_terms = [
         "Agent-facing guide acceptance:",
-        'guide-main        command="asp <language> guide ."',
+        'guide-main        command="asp <language> guide --workspace ."',
         'guide-help        command="asp <language> guide --help ."',
         "lowFrequency=true",
         "inlineSubguides=false",

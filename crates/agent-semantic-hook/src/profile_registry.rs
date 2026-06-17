@@ -1,32 +1,32 @@
-//! Legacy provider profile cache cleanup for `agent-semantic-protocol` hooks.
+//! Retired provider profile cache cleanup for `agent-semantic-protocol` hooks.
 
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// Remove legacy hook cache files from previous `semantic-agent` layouts.
-pub fn remove_legacy_codex_hook_cache_files(project_root: &Path) -> Result<(), String> {
+/// Remove retired hook cache files from previous `semantic-agent` layouts.
+pub fn remove_retired_codex_hook_cache_files(project_root: &Path) -> Result<(), String> {
     remove_profile_cache_files(
         &project_root
             .join(".cache")
             .join("agent-semantic-protocol")
             .join("hooks"),
     )?;
-    let legacy_codex_dir = project_root.join(".codex").join("agent-semantic-hook");
-    remove_legacy_hook_dir(&legacy_codex_dir)?;
-    let legacy_default_cache_dir = project_root.join(".cache").join("agent-semantic-hook");
-    remove_legacy_hook_dir(&legacy_default_cache_dir)?;
-    let legacy_semantic_protocol_cache_dir =
+    let retired_codex_dir = project_root.join(".codex").join("agent-semantic-hook");
+    remove_retired_hook_dir(&retired_codex_dir)?;
+    let retired_default_cache_dir = project_root.join(".cache").join("agent-semantic-hook");
+    remove_retired_hook_dir(&retired_default_cache_dir)?;
+    let retired_semantic_protocol_cache_dir =
         project_root.join(".cache").join("semantic-agent-protocol");
-    remove_legacy_hook_dir(&legacy_semantic_protocol_cache_dir.join("hooks"))?;
-    remove_empty_dir(&legacy_semantic_protocol_cache_dir)?;
+    remove_retired_hook_dir(&retired_semantic_protocol_cache_dir.join("hooks"))?;
+    remove_empty_dir(&retired_semantic_protocol_cache_dir)?;
     if let Some(cache_root) = env::var_os("PRJ_CACHE_HOME").filter(|value| !value.is_empty()) {
         let cache_root = PathBuf::from(cache_root);
         remove_profile_cache_files(&cache_root.join("agent-semantic-protocol").join("hooks"))?;
-        remove_legacy_hook_dir(&cache_root.join("agent-semantic-hook"))?;
-        let legacy_semantic_protocol_cache_dir = cache_root.join("semantic-agent-protocol");
-        remove_legacy_hook_dir(&legacy_semantic_protocol_cache_dir.join("hooks"))?;
-        remove_empty_dir(&legacy_semantic_protocol_cache_dir)?;
+        remove_retired_hook_dir(&cache_root.join("agent-semantic-hook"))?;
+        let retired_semantic_protocol_cache_dir = cache_root.join("semantic-agent-protocol");
+        remove_retired_hook_dir(&retired_semantic_protocol_cache_dir.join("hooks"))?;
+        remove_empty_dir(&retired_semantic_protocol_cache_dir)?;
     }
     Ok(())
 }
@@ -37,15 +37,15 @@ fn remove_profile_cache_files(profiles_dir: &Path) -> Result<(), String> {
         fs::remove_file(&path)
             .map_err(|error| format!("failed to remove {}: {error}", path.display()))?;
     }
-    remove_legacy_profile_shards(profiles_dir)
+    remove_retired_profile_shards(profiles_dir)
 }
 
-fn remove_legacy_hook_dir(legacy_dir: &Path) -> Result<(), String> {
-    if !legacy_dir.is_dir() {
+fn remove_retired_hook_dir(retired_dir: &Path) -> Result<(), String> {
+    if !retired_dir.is_dir() {
         return Ok(());
     }
-    fs::remove_dir_all(legacy_dir)
-        .map_err(|error| format!("failed to remove {}: {error}", legacy_dir.display()))
+    fs::remove_dir_all(retired_dir)
+        .map_err(|error| format!("failed to remove {}: {error}", retired_dir.display()))
 }
 
 fn remove_empty_dir(path: &Path) -> Result<(), String> {
@@ -57,7 +57,7 @@ fn remove_empty_dir(path: &Path) -> Result<(), String> {
     }
 }
 
-fn remove_legacy_profile_shards(profiles_dir: &Path) -> Result<(), String> {
+fn remove_retired_profile_shards(profiles_dir: &Path) -> Result<(), String> {
     if !profiles_dir.is_dir() {
         return Ok(());
     }
