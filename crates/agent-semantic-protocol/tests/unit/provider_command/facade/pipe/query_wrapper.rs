@@ -1,5 +1,7 @@
 mod graph_request;
+mod low_cohesion;
 mod native_batching;
+mod org_scope;
 mod path_ranking;
 
 use crate::provider_command::support::{asp_command, make_executable, temp_project_root};
@@ -418,12 +420,13 @@ fn asp_rg_query_prefers_runtime_bin_wrapper() {
         String::from_utf8_lossy(&seeds_output.stderr)
     );
     let stdout = String::from_utf8(seeds_output.stdout).expect("stdout");
-    assert!(
-        stdout.contains(
-            "sourceTrace=finder:used[backend=rg;candidateBasis=source-lines;inputCandidates=1;selectedCandidates=1;sourceSearchPasses=1]"
-        ),
-        "{stdout}"
-    );
+    assert!(stdout.contains("sourceTrace=finder:used["), "{stdout}");
+    assert!(stdout.contains("backend=rg"), "{stdout}");
+    assert!(stdout.contains("candidateBasis=source-lines"), "{stdout}");
+    assert!(stdout.contains("inputCandidates=1"), "{stdout}");
+    assert!(stdout.contains("selectedCandidates=1"), "{stdout}");
+    assert!(stdout.contains("sourceSearchPasses=1"), "{stdout}");
+    assert!(stdout.contains("elapsedMs="), "{stdout}");
     let _ = std::fs::remove_dir_all(root);
 }
 

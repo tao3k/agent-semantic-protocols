@@ -26,12 +26,14 @@ pub(super) fn suppress_low_cohesion_secondary_owner(
     else {
         return false;
     };
-    if preview.is_some_and(|preview| {
-        preview
-            .owner_candidates
-            .iter()
-            .any(|candidate| candidate == owner)
-    }) {
+    if strong_owner_seed_count(quality) >= 2
+        && preview.is_some_and(|preview| {
+            preview
+                .owner_candidates
+                .iter()
+                .any(|candidate| candidate == owner)
+        })
+    {
         return false;
     }
     secondary_like_owner(owner)
@@ -67,6 +69,19 @@ pub(super) fn suppress_low_cohesion_weak_axis_owner(
         .filter(|term| evidence.contains(&term.to_ascii_lowercase()))
         .count();
     covered * 2 < query_terms.len()
+}
+
+fn strong_owner_seed_count(quality: &SearchPipeQuality) -> usize {
+    quality
+        .owner_seed_terms
+        .iter()
+        .filter(|term| {
+            quality
+                .strong_matched
+                .iter()
+                .any(|matched| matched == *term)
+        })
+        .count()
 }
 
 pub(super) fn secondary_like_owner(owner: &str) -> bool {

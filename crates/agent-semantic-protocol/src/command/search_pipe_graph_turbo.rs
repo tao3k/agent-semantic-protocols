@@ -15,6 +15,7 @@ use super::{
         append_candidate_nodes, append_hot_nodes, append_project_topology_nodes, candidate_node_id,
         hot_node_id, stable_node_id,
     },
+    search_pipe_graph_turbo_owner_rank::ranked_candidate_paths,
     search_pipe_model::{Candidate, SearchPipeSourceTrace},
     search_pipe_provider_facts::ProviderGraphFacts,
     search_pipe_quality::{
@@ -105,9 +106,9 @@ pub(super) fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> 
     } else {
         candidates.to_vec()
     };
-    let graph_candidates = sparse_graph_candidates(&augmented_candidates, query);
-    let owners = unique_candidate_paths(&graph_candidates);
     let query_terms = query.map(query_terms).unwrap_or_default();
+    let graph_candidates = sparse_graph_candidates(&augmented_candidates, query);
+    let owners = ranked_candidate_paths(&graph_candidates, &query_terms);
     let dependency_facts =
         collect_dependency_facts(language_id, dependency_root, query, &graph_candidates);
     if should_auto_include_dependency_surface(query, &surfaces, &dependency_facts) {
@@ -661,17 +662,6 @@ fn edge(source: &str, target: &str, relation: &str) -> Value {
     })
 }
 
-fn unique_candidate_paths(candidates: &[Candidate]) -> Vec<String> {
-    let mut seen = HashSet::new();
-    candidates
-        .iter()
-        .filter_map(|candidate| {
-            let path = candidate.path.clone();
-            seen.insert(path.clone()).then_some(path)
-        })
-        .collect()
-}
-
 fn has_package_path_candidate(candidates: &[Candidate]) -> bool {
     candidates.iter().any(|candidate| {
         candidate.source == "package-path-query" || candidate.confidence == "package-path"
@@ -686,23 +676,23 @@ fn query_owner_seed_paths(
     if budget == 0 {
         return Vec::new();
     }
-    let mut seen = HashSet::new();
-    let mut package_path_owners = candidates
+    let package_path_owners = candidates
         .iter()
         .filter(|candidate| {
             candidate.source == "package-path-query" || candidate.confidence == "package-path"
         })
-        .filter_map(|candidate| {
-            let path = candidate.path.clone();
-            seen.insert(path.clone()).then_some(path)
-        })
+        .map(|candidate| candidate.path.clone())
+        .collect::<HashSet<_>>();
+    let package_path_owners = owners
+        .iter()
+        .filter(|owner| package_path_owners.contains(*owner))
         .take(budget)
+        .cloned()
         .collect::<Vec<_>>();
     if !package_path_owners.is_empty() {
         return package_path_owners;
     }
-    package_path_owners.extend(owners.iter().take(budget).cloned());
-    package_path_owners
+    owners.iter().take(budget).cloned().collect()
 }
 
 fn should_auto_include_dependency_surface(

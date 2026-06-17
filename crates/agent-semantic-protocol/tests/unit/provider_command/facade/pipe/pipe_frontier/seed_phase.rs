@@ -132,15 +132,95 @@ fn search_pipe_graph_turbo_request_adds_owner_anchor_seeds_for_broad_query() {
         stdout.contains("recommendedActions=split-query-pack,narrow-owner-scope"),
         "{stdout}"
     );
-    assert!(stdout.contains("A1=owner-items("), "{stdout}");
+    assert!(stdout.contains("A1=fd-query("), "{stdout}");
     assert!(stdout.contains("A2=rg-query-set("), "{stdout}");
+    assert!(stdout.contains("recommendedNext=A1.fd-query"), "{stdout}");
+    assert!(stdout.contains("nextCommand=asp fd -query"), "{stdout}");
+    assert!(!marker.exists(), "search pipe should not spawn provider");
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn search_pipe_graph_turbo_request_ranks_dense_owner_seed_before_weak_local_item() {
+    let root = temp_project_root("search-pipe-graph-owner-ranking");
+    let bin_dir = root.join(".bin");
+    let marker = root.join("provider-called");
+    std::fs::create_dir_all(root.join("src/project_runtime")).expect("create source dirs");
+    std::fs::write(root.join("src/aaa_graph.rs"), "pub fn graph_marker() {}\n")
+        .expect("write weak source file");
+    std::fs::write(
+        root.join("src/bbb_project.rs"),
+        "pub fn project_marker() {}\n",
+    )
+    .expect("write weak source file");
+    std::fs::write(
+        root.join("src/ccc_runtime.rs"),
+        "pub fn runtime_marker() {}\n",
+    )
+    .expect("write weak source file");
+    std::fs::write(
+        root.join("src/project_runtime/session_content.rs"),
+        [
+            "pub struct ProjectRuntimeSessionContentSourceAnchor;\n",
+            "impl ProjectRuntimeSessionContentSourceAnchor {\n",
+            "    pub fn project_runtime_session_content_source_anchor(&self) {}\n",
+            "}\n",
+            "pub fn runtime_session_content_source() {}\n",
+            "pub fn session_content_anchor_source() {}\n",
+        ]
+        .join(""),
+    )
+    .expect("write dense source file");
+    write_marker_provider(&bin_dir, "rs-harness", &marker);
+    write_activation(&root, &[provider("rust", Vec::new())]);
+
+    let output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args([
+            "rust",
+            "search",
+            "pipe",
+            "graph project runtime session content source anchor",
+            "--workspace",
+            ".",
+            "--view",
+            "graph-turbo-request",
+            ".",
+        ])
+        .output()
+        .expect("run asp rust search pipe graph request");
+
     assert!(
-        stdout.contains("recommendedNext=A1.owner-items"),
-        "{stdout}"
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let payload: Value = serde_json::from_slice(&output.stdout).expect("graph request json");
+    super::assert_graph_turbo_request_contract(&payload);
+    let owner_seed_ids = payload["seedIds"]
+        .as_array()
+        .expect("seedIds")
+        .iter()
+        .filter_map(Value::as_str)
+        .filter(|seed_id| seed_id.starts_with("owner:"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        payload["seedPlan"]["queryOwnerSeedCount"].as_u64(),
+        Some(2),
+        "{payload}"
     );
     assert!(
-        stdout.contains("nextCommand=asp rust search owner"),
-        "{stdout}"
+        owner_seed_ids
+            .first()
+            .is_some_and(|seed_id| seed_id.contains("src/project_runtime/session_content.rs")),
+        "dense owner should outrank weak first-seen owner: {payload}"
+    );
+    assert!(
+        owner_seed_ids
+            .iter()
+            .any(|seed_id| seed_id.contains("src/aaa_graph.rs")),
+        "test must include the weak first-seen owner as a competing seed: {payload}"
     );
     assert!(!marker.exists(), "search pipe should not spawn provider");
     let _ = std::fs::remove_dir_all(root);

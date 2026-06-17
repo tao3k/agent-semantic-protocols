@@ -203,3 +203,17 @@ If a search is a plain one-tool pipeline, agents should write the shell
 pipeline directly and pipe into =search ingest=.  If a search needs history,
 budgets, fan-in, ranking, and artifact provenance, use =search suggest= first,
 then run the selected =search pipe= command after the command plan is clear.
+* Wrapper latency receipts
+ASP-owned =fd= and =rg= query wrappers are thin orchestration surfaces around
+the external tools. They must not obscure where time is spent. Compact wrapper
+output should include a =sourceTrace= row with phase timings such as
+=collectMs=, =qualityMs=, and =elapsedMs= whenever the wrapper executes the
+finder/ranker path.
+
+The interactive search gate applies to ordinary wrapper commands across the
+language facade. For normal repositories, representative =asp fd= and =asp rg=
+query commands should finish under one second on the installed release binary.
+The gate measures the complete wrapper command, while =elapsedMs= measures the
+internal collection/ranking phase. Both values matter: a slow wall clock with a
+small =elapsedMs= points to process startup or wrapper dispatch, while a slow
+=elapsedMs= points to finder/ranker work.

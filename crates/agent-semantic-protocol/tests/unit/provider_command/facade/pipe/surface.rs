@@ -50,17 +50,18 @@ fn search_pipe_source_option_controls_graph_request_source() {
     );
     assert_eq!(payload["source"], "finder");
     assert_eq!(payload["candidateSources"], serde_json::json!(["finder"]));
-    assert_eq!(
-        payload["sourceTrace"],
-        serde_json::json!([
-            {
-                "source": "finder",
-                "status": "used",
-                "matched": 2,
-                "missing": 0,
-                "normalized": 2
-            }
-        ])
+    let source_trace = payload["sourceTrace"].as_array().expect("sourceTrace");
+    assert_eq!(source_trace[0]["source"], "finder");
+    assert_eq!(source_trace[0]["status"], "used");
+    assert_eq!(source_trace[0]["matched"], 2);
+    assert_eq!(source_trace[0]["missing"], 0);
+    assert_eq!(source_trace[0]["normalized"], 2);
+    assert!(source_trace[0]["fields"]["elapsedMs"].is_number());
+    assert!(
+        source_trace
+            .iter()
+            .any(|trace| trace["source"].as_str() == Some("providerFacts")),
+        "{payload}"
     );
     assert_eq!(
         payload["surfaces"],

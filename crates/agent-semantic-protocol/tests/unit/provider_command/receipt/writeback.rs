@@ -433,8 +433,12 @@ esac
         search_provider_args.contains("search prime --view seeds"),
         "{search_provider_args}"
     );
+    assert!(
+        search_provider_args.contains("search prime --view seeds --json"),
+        "{search_provider_args}"
+    );
     let search_provider_arg_count = search_provider_args.lines().count();
-    assert_eq!(search_provider_arg_count, 1);
+    assert_eq!(search_provider_arg_count, 2);
     let search_manifest_text =
         std::fs::read_to_string(cache_root(&search_root).join("cache-manifest.json"))
             .expect("read search writeback manifest");

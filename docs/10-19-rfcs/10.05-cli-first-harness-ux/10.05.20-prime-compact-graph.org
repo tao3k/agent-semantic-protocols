@@ -687,3 +687,22 @@ execution.  RFC 008 extends this boundary to the cross-language =asp= client:
 local native provider CLI, Cloud Flight, and hybrid route selection are client
 configuration and diagnostics state, not search/query flags agents must pick
 during normal exploration.
+* Native fast-prime latency contract
+The public =search prime --view seeds= contract is still the decision-primer
+packet defined above. A provider-local or ASP-client fast path may render that
+packet without invoking the full language provider only when it preserves the
+same decision-primer row, next-command shape, owner frontier vocabulary, and
+explicit algorithm label.
+
+The fast path is a latency optimization, not a semantic downgrade. It may use
+external Rust search tools such as =fd= to enumerate bounded owner candidates,
+but it must not output source lines, full files, or stale cached source text.
+It should identify itself with an =alg= value, for example
+=native-fd-prime-frontier-v1=, so tests and agent receipts can distinguish the
+optimized structural frontier from a full provider semantic packet.
+
+For normal repositories, =search prime --view seeds= is part of the interactive
+search gate and should complete under one second on the installed release
+binary. Julia provider startup and language-runtime cold paths may use a looser
+gate, but the ASP Rust client should still keep filesystem discovery, wrapper
+dispatch, and compact rendering in the millisecond-to-subsecond range.

@@ -15,27 +15,37 @@ pub(super) fn import_structural_index_artifacts(
     db: &mut ClientDb,
     manifest: &ClientCacheManifest,
 ) -> Result<u64, String> {
-    let mut imported_count = 0;
-    for generation in &manifest.generations {
-        let Some(artifact_path) = structural_index_artifact_path(cache_root, generation)? else {
-            continue;
-        };
-        let packet_bytes = fs::read(&artifact_path).map_err(|error| {
+    manifest
+        .generations
+        .iter()
+        .try_fold(0, |count, generation| {
+            import_structural_index_generation(cache_root, db, generation)
+                .map(|imported| if imported { count + 1 } else { count })
+        })
+}
+
+fn import_structural_index_generation(
+    cache_root: &Path,
+    db: &mut ClientDb,
+    generation: &ClientCacheGeneration,
+) -> Result<bool, String> {
+    let Some(artifact_path) = structural_index_artifact_path(cache_root, generation)? else {
+        return Ok(false);
+    };
+    let packet_bytes = fs::read(&artifact_path).map_err(|error| {
+        format!(
+            "failed to read structural index artifact at {}: {error}",
+            artifact_path.display()
+        )
+    })?;
+    db.import_semantic_structural_index_refresh_packet(generation, &packet_bytes)
+        .map_err(|error| {
             format!(
-                "failed to read structural index artifact at {}: {error}",
-                artifact_path.display()
+                "failed to import structural index artifact for generation {}: {error}",
+                generation.generation_id
             )
         })?;
-        db.import_semantic_structural_index_refresh_packet(generation, &packet_bytes)
-            .map_err(|error| {
-                format!(
-                    "failed to import structural index artifact for generation {}: {error}",
-                    generation.generation_id
-                )
-            })?;
-        imported_count += 1;
-    }
-    Ok(imported_count)
+    Ok(true)
 }
 
 fn structural_index_artifact_path(

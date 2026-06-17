@@ -8,6 +8,7 @@ mod cache_replay;
 pub mod cli;
 mod cli_args;
 mod compact_mode;
+mod native_prime;
 mod provider_method;
 mod search_history;
 mod source_index;
@@ -35,6 +36,9 @@ mod cache_cli_command_tests;
 #[cfg(test)]
 #[path = "../tests/unit/cache_cli/probe.rs"]
 mod cache_cli_probe_tests;
+#[cfg(test)]
+#[path = "../tests/unit/cache_cli/source_index.rs"]
+mod cache_cli_source_index_tests;
 
 #[cfg(test)]
 #[path = "../tests/unit/cache_replay/row_replay.rs"]
@@ -52,6 +56,9 @@ mod cli_args_tests;
 #[cfg(test)]
 #[path = "../tests/unit/compact_mode.rs"]
 mod compact_mode_tests;
+#[cfg(test)]
+#[path = "../tests/unit/native_prime.rs"]
+mod native_prime_tests;
 #[cfg(test)]
 #[path = "../tests/unit/provider_method.rs"]
 mod provider_method_tests;

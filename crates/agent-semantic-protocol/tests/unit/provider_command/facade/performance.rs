@@ -1,7 +1,8 @@
 use std::time::{Duration, Instant};
 
 use crate::provider_command::support::{
-    asp_command, prepend_path, provider, temp_project_root, write_activation, write_echo_provider,
+    asp_command, make_executable, prepend_path, provider, temp_project_root, write_activation,
+    write_echo_provider,
 };
 
 const ASP_FACADE_PERFORMANCE_GATE: Duration = Duration::from_secs(3);
@@ -91,6 +92,15 @@ fn language_facade_regular_commands_finish_inside_performance_gate() {
             vec![
                 provider.language,
                 "search",
+                "prime",
+                "--workspace",
+                ".",
+                "--view",
+                "seeds",
+            ],
+            vec![
+                provider.language,
+                "search",
                 "pipe",
                 provider.query,
                 "--view",
@@ -147,6 +157,116 @@ fn language_facade_regular_commands_finish_inside_performance_gate() {
     let _ = std::fs::remove_dir_all(root);
 }
 
+#[test]
+fn query_wrapper_commands_finish_inside_search_phase_gate() {
+    let root = temp_project_root("query-wrapper-performance-gate");
+    write_regular_search_fixtures(&root);
+
+    let command_suite = [
+        [
+            "fd",
+            "-query",
+            "RustGate|typescriptGate|python_gate|julia_gate|gerbil-gate",
+            ".",
+        ],
+        [
+            "rg",
+            "-query",
+            "RustGate typescriptGate python_gate julia_gate gerbil-gate",
+            ".",
+        ],
+    ];
+    for args in command_suite {
+        let started_at = Instant::now();
+        let output = asp_command(&root)
+            .args(args)
+            .output()
+            .unwrap_or_else(|error| panic!("run asp {args:?}: {error}"));
+        let elapsed = started_at.elapsed();
+        assert!(
+            output.status.success(),
+            "args={args:?} stderr={}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let stdout = String::from_utf8(output.stdout).expect("stdout");
+        assert!(
+            elapsed < ASP_FACADE_PERFORMANCE_GATE,
+            "asp {args:?} exceeded wall gate {ASP_FACADE_PERFORMANCE_GATE:?}; elapsed={elapsed:?}; stdout={stdout}; stderr={}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(
+            stdout.contains("sourceTrace=") && stdout.contains("elapsedMs="),
+            "args={args:?} stdout={stdout}"
+        );
+        assert_trace_elapsed_under_gate(&args, &stdout);
+    }
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn provider_facts_receive_bounded_candidate_input() {
+    let root = temp_project_root("provider-facts-candidate-budget-gate");
+    let bin_dir = root.join(".bin");
+    let cache_home = root.join(".cache");
+    std::fs::create_dir_all(root.join("src")).expect("create src");
+    std::fs::create_dir_all(&bin_dir).expect("create bin dir");
+    for index in 0..80 {
+        std::fs::write(
+            root.join(format!("src/scope_candidate_{index}.rs")),
+            format!("pub fn scope_candidate_{index}() {{}}\n"),
+        )
+        .expect("write candidate");
+    }
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"provider-facts-budget\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .expect("write Cargo.toml");
+    let line_count_file = root.join("semantic-facts-lines.txt");
+    let provider_path = bin_dir.join("rs-harness");
+    std::fs::write(
+        &provider_path,
+        format!(
+            "#!/bin/sh\nif [ \"$1\" = search ] && [ \"$2\" = semantic-facts ]; then wc -l > '{}'; printf '{{\"nodes\":[],\"edges\":[]}}\\n'; exit 0; fi\nprintf 'rs args='; for arg in \"$@\"; do printf '[%s]' \"$arg\"; done; printf '\\n'\n",
+            line_count_file.display()
+        ),
+    )
+    .expect("write provider");
+    make_executable(&provider_path);
+    write_activation(
+        &root,
+        &[provider("rust", vec![provider_path.display().to_string()])],
+    );
+
+    let output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .env("PRJ_CACHE_HOME", &cache_home)
+        .args(["rust", "search", "pipe", "scope", "--view", "seeds", "."])
+        .output()
+        .expect("run asp search pipe");
+
+    assert!(
+        output.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    assert!(
+        stdout.contains("providerFacts:used[")
+            && stdout.contains("factCandidates=48")
+            && stdout.contains("truncatedCandidates="),
+        "{stdout}"
+    );
+    let line_count = std::fs::read_to_string(&line_count_file)
+        .expect("read semantic facts line count")
+        .trim()
+        .parse::<usize>()
+        .expect("parse semantic facts line count");
+    assert_eq!(line_count, 48, "{stdout}");
+    assert_trace_elapsed_under_gate(&["rust", "search", "pipe"], &stdout);
+    let _ = std::fs::remove_dir_all(root);
+}
+
 fn performance_gate_for_language(language: &str) -> Duration {
     if language == "julia" {
         JULIA_FACADE_PERFORMANCE_GATE
@@ -167,7 +287,7 @@ fn assert_regular_command_output(args: &[&str], stdout: &str, label: &str) {
     }
     if matches!(args.get(1..3), Some(["search", "prime"])) {
         assert!(
-            stdout.contains("[search-prime]") || stdout.contains(&format!("{label} args=")),
+            stdout.contains("[search-prime]") && stdout.contains("native-fd-prime-frontier-v1"),
             "args={args:?} stdout={stdout}"
         );
         return;

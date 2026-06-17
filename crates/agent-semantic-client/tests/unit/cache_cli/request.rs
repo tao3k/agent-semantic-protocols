@@ -76,6 +76,10 @@ fn tree_sitter_request_fingerprint_changes_when_compiled_abi_plan_changes() {
         runtime_command_argv: None,
         runtime_profile_status: None,
         package_roots: vec![".".to_string()],
+        source_roots: vec!["src".to_string()],
+        config_files: vec!["Cargo.toml".to_string()],
+        source_extensions: vec!["rs".to_string()],
+        ignored_path_prefixes: Vec::new(),
     };
     let export_method = CacheExportMethod::from("query/tree-sitter");
     let function_fingerprint = exact_request_fingerprint(
@@ -277,5 +281,9 @@ fn rust_provider() -> ResolvedProvider {
         runtime_command_argv: None,
         runtime_profile_status: None,
         package_roots: vec![".".to_string()],
+        source_roots: vec!["src".to_string()],
+        config_files: vec!["Cargo.toml".to_string()],
+        source_extensions: vec!["rs".to_string()],
+        ignored_path_prefixes: Vec::new(),
     }
 }

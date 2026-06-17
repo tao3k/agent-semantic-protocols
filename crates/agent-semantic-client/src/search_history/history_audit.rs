@@ -3,7 +3,7 @@
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 
-use agent_semantic_client_core::ClientCacheManifest;
+use agent_semantic_client_core::ProjectContext;
 use agent_semantic_client_db::{ClientDb, ClientDbArtifactEvent};
 use agent_semantic_provider_transport::{
     OutputMode, ProviderProcessLimits, ProviderProcessOutput, ProviderProcessSpec, StdinMode,
@@ -38,8 +38,9 @@ fn parse_history_audit_args<'a>(
 }
 
 fn print_history_audit(audit_root: &Path, forwarded_args: &[String]) -> Result<(), String> {
-    let artifact_dir = artifact_dir(audit_root);
-    let events_packet = artifact_events_packet(audit_root, &artifact_dir)?;
+    let project_context = ProjectContext::resolve(audit_root)?;
+    let artifact_dir = project_context.state_layout().artifacts_dir().to_path_buf();
+    let events_packet = artifact_events_packet(&project_context, &artifact_dir)?;
     let output = run_graph_turbo_timeline(&artifact_dir, forwarded_args, events_packet)?;
     if !output.status.success() {
         return Err(format!(
@@ -87,19 +88,11 @@ fn run_graph_turbo_timeline(
     })
 }
 
-fn artifact_dir(root: &Path) -> PathBuf {
-    root.join(".cache/agent-semantic-protocol/artifacts")
-}
-
-fn artifact_events_packet(audit_root: &Path, artifact_dir: &Path) -> Result<Option<Bytes>, String> {
-    let cache_report = ClientCacheManifest::inspect_project(audit_root);
-    let Some(cache_root) = cache_report
-        .cache_root
-        .or_else(|| artifact_dir.parent().map(Path::to_path_buf))
-    else {
-        return Ok(None);
-    };
-    let db_path = ClientDb::default_path(cache_root);
+fn artifact_events_packet(
+    project_context: &ProjectContext,
+    artifact_dir: &Path,
+) -> Result<Option<Bytes>, String> {
+    let db_path = ClientDb::default_path(project_context.state_layout().client_cache_dir());
     let artifact_file_count = artifact_file_count(artifact_dir)?;
     let mut events = ClientDb::lookup_artifact_events(&db_path, None, 1_000_000)?;
     let indexed_count = indexed_artifact_count(&events);

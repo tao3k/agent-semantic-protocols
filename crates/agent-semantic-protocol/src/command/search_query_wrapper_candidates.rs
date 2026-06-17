@@ -15,7 +15,21 @@ use super::search_query_wrapper_model::{FdQueryPreview, QueryWrapperClause, Quer
 
 const QUERY_CANDIDATE_LIMIT: usize = 256;
 const SUPPORTED_EXTENSIONS: &[&str] = &[
-    "rs", "ts", "tsx", "js", "jsx", "py", "jl", "ss", "ssi", "scm", "sld",
+    "rs",
+    "ts",
+    "tsx",
+    "js",
+    "jsx",
+    "py",
+    "jl",
+    "ss",
+    "ssi",
+    "scm",
+    "sld",
+    "org",
+    "org_archive",
+    "md",
+    "markdown",
 ];
 const SUPPORTED_CONFIG_FILENAMES: &[&str] = &[
     "Cargo.toml",
@@ -116,10 +130,15 @@ pub(super) fn collect_query_candidate_collection(
             .collect()
     };
     let display_root = if scopes.len() == 1 {
-        roots
+        let root = roots
             .first()
             .cloned()
-            .unwrap_or_else(|| locator_root.to_path_buf())
+            .unwrap_or_else(|| locator_root.to_path_buf());
+        if root.is_file() {
+            locator_root.to_path_buf()
+        } else {
+            root
+        }
     } else {
         locator_root.to_path_buf()
     };

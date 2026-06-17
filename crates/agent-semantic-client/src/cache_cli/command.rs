@@ -8,7 +8,7 @@ use agent_semantic_client_core::{
     AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_SCHEMA_ID,
     AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_SCHEMA_VERSION, CacheManifestReport, CacheManifestStatus,
     ClientCacheManifest, ClientCachePath, ClientDbStatus, ClientMethod, ClientReceipt,
-    ProviderRegistrySnapshot,
+    ProjectContext, ProviderRegistrySnapshot, StateLayout,
 };
 use agent_semantic_client_db::{ClientDb, ClientDbReport};
 use agent_semantic_runtime::{RuntimeSourceSpec, ensure_runtime_source_checkout};
@@ -121,21 +121,14 @@ pub(crate) fn run_cache(
             Ok(())
         }
         [subcommand] if subcommand == "import" => {
+            let state_layout = cache_state_layout(project_root)?;
             let snapshot = ProviderRegistrySnapshot::load(project_root);
             let provenance = snapshot
                 .as_ref()
                 .map_or_else(|_| Vec::new(), ProviderRegistrySnapshot::native_provenance);
             let cache_report = ClientCacheManifest::inspect_project(project_root);
-            let manifest = ClientCacheManifest::load_from_path(
-                cache_report
-                    .manifest_path
-                    .as_ref()
-                    .ok_or_else(|| "cache manifest path unavailable".to_string())?,
-            )?;
-            let cache_root = cache_report
-                .cache_root
-                .as_ref()
-                .ok_or_else(|| "cache root unavailable".to_string())?;
+            let manifest = ClientCacheManifest::load_from_path(state_layout.cache_manifest_path())?;
+            let cache_root = state_layout.client_cache_dir();
             let db_path = ClientDb::default_path(cache_root);
             let mut db = ClientDb::open_or_create(db_path.clone())?;
             db.import_manifest(&manifest)?;
@@ -205,15 +198,12 @@ pub(crate) fn run_cache(
             Ok(())
         }
         [subcommand, scope] if subcommand == "flush" && scope == "syntax-rows" => {
+            let state_layout = cache_state_layout(project_root)?;
             let snapshot = ProviderRegistrySnapshot::load(project_root);
             let provenance = snapshot
                 .as_ref()
                 .map_or_else(|_| Vec::new(), ProviderRegistrySnapshot::native_provenance);
-            let cache_report = ClientCacheManifest::inspect_project(project_root);
-            let cache_root = cache_report
-                .cache_root
-                .as_ref()
-                .ok_or_else(|| "cache root unavailable".to_string())?;
+            let cache_root = state_layout.client_cache_dir();
             let db_path = ClientDb::default_path(cache_root);
             let flushed_syntax_rows = ClientDb::flush_syntax_query_rows(&db_path)?;
             let updated_cache_report = ClientCacheManifest::inspect_project(project_root);
@@ -252,6 +242,7 @@ pub(crate) fn run_cache(
             Ok(())
         }
         [subcommand] if subcommand == "invalidate" || subcommand == "flush" => {
+            let state_layout = cache_state_layout(project_root)?;
             let is_flush = subcommand == "flush";
             let action = if is_flush { "flush" } else { "invalidate" };
             let status = if is_flush { "flushed" } else { "invalidated" };
@@ -265,15 +256,12 @@ pub(crate) fn run_cache(
                 .as_ref()
                 .map_or_else(|_| Vec::new(), ProviderRegistrySnapshot::native_provenance);
             let cache_report = ClientCacheManifest::inspect_project(project_root);
-            let cache_root = cache_report
-                .cache_root
-                .as_ref()
-                .ok_or_else(|| "cache root unavailable".to_string())?;
+            let cache_root = state_layout.client_cache_dir();
             let db_path = ClientDb::default_path(cache_root);
             let db_invalidated_generation_count =
                 ClientDb::invalidate_generations_for_project(&db_path, project_root)?;
             let manifest_invalidated_generation_count =
-                clear_manifest_generations(&cache_report, project_root)?;
+                clear_manifest_generations(&cache_report, &state_layout, project_root)?;
             let invalidated_generation_count =
                 db_invalidated_generation_count.max(manifest_invalidated_generation_count);
             let updated_cache_report = ClientCacheManifest::inspect_project(project_root);
@@ -372,18 +360,15 @@ fn next_flag_value<'a>(
 
 fn clear_manifest_generations(
     cache_report: &CacheManifestReport,
+    state_layout: &StateLayout,
     project_root: &Path,
 ) -> Result<u32, String> {
-    let manifest_path = cache_report
-        .manifest_path
-        .as_ref()
-        .ok_or_else(|| "cache manifest path unavailable".to_string())?;
+    let manifest_path = state_layout.cache_manifest_path();
     if cache_report.status == CacheManifestStatus::Invalid {
-        let cache_root = cache_report
-            .cache_root
-            .as_ref()
-            .ok_or_else(|| "cache root unavailable".to_string())?;
-        write_cache_manifest(manifest_path, &empty_cache_manifest(cache_root))?;
+        write_cache_manifest(
+            manifest_path,
+            &empty_cache_manifest(state_layout.client_cache_dir()),
+        )?;
         return Ok(0);
     }
     if cache_report.status != CacheManifestStatus::Present {
@@ -440,6 +425,12 @@ fn write_cache_manifest(
         .map_err(|error| format!("failed to serialize cache manifest: {error}"))?;
     fs::write(manifest_path, text)
         .map_err(|error| format!("failed to write cache manifest: {error}"))
+}
+
+fn cache_state_layout(project_root: &Path) -> Result<StateLayout, String> {
+    Ok(ProjectContext::resolve(project_root)?
+        .state_layout()
+        .clone())
 }
 
 fn cache_status_line(

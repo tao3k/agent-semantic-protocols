@@ -2,6 +2,7 @@
 
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 use super::graph::render_graph_turbo_packet;
 use super::search_config::AspConfig;
@@ -57,6 +58,8 @@ pub(crate) fn run_query_wrapper_command(command: &str, args: &[String]) -> Resul
     let config = AspConfig::load(&invocation_root, &project_root);
     let clauses = query_clauses(&wrapper_args.queries);
     let terms = unique_clause_terms(&clauses);
+    let started_at = Instant::now();
+    let collect_started_at = Instant::now();
     let candidate_collection = collect_query_candidate_collection(
         surface,
         &project_root,
@@ -66,9 +69,19 @@ pub(crate) fn run_query_wrapper_command(command: &str, args: &[String]) -> Resul
         &terms,
         &config,
     )?;
+    let collect_elapsed = collect_started_at.elapsed();
     let candidates = candidate_collection.candidates;
+    let quality_started_at = Instant::now();
     let quality =
         analyze_query_wrapper_quality(&wrapper_args.scopes, &clauses, &terms, &candidates);
+    let quality_elapsed = quality_started_at.elapsed();
+    let mut trace_fields = candidate_collection.trace_fields;
+    trace_fields.insert("collectMs".to_string(), duration_ms_value(collect_elapsed));
+    trace_fields.insert("qualityMs".to_string(), duration_ms_value(quality_elapsed));
+    trace_fields.insert(
+        "elapsedMs".to_string(),
+        duration_ms_value(started_at.elapsed()),
+    );
     print_query_wrapper_view(QueryWrapperViewRequest {
         surface,
         project_root: &project_root,
@@ -80,8 +93,12 @@ pub(crate) fn run_query_wrapper_command(command: &str, args: &[String]) -> Resul
         quality: &quality,
         view: &wrapper_args.view,
         native_args: &wrapper_args.native_args,
-        trace_fields: candidate_collection.trace_fields,
+        trace_fields,
     })
+}
+
+fn duration_ms_value(duration: Duration) -> serde_json::Value {
+    serde_json::Value::from(duration.as_millis().min(u128::from(u64::MAX)) as u64)
 }
 
 fn query_wrapper_usage(surface: QueryWrapperSurface) -> String {
@@ -221,7 +238,7 @@ fn print_query_wrapper_view(request: QueryWrapperViewRequest<'_>) -> Result<(), 
         .with_fields(trace_fields),
     ];
     let action_frontier =
-        query_wrapper_action_frontier(surface, scopes, queries, terms, candidates);
+        query_wrapper_action_frontier(surface, scopes, queries, terms, candidates, quality);
     let request = render_graph_turbo_request(GraphTurboSearchPipeRequest {
         surface: surface.graph_surface(),
         language_id,
@@ -309,13 +326,17 @@ fn print_query_wrapper_view(request: QueryWrapperViewRequest<'_>) -> Result<(), 
     if !quality.allow_query_selector
         && (quality.query_pack_quality == "low" || has_exact_owner_candidate(surface, candidates))
     {
-        print_query_wrapper_refinement_frontier(surface, scopes, queries, terms, candidates);
+        print_query_wrapper_refinement_frontier(
+            surface, scopes, queries, terms, candidates, quality,
+        );
     } else if let Some(output) = render_graph_turbo_packet(request.as_bytes())? {
         if let Ok(compact) = std::str::from_utf8(output.as_ref()) {
             print!("{}", render_primary_frontier_actions_only(compact));
             print!(
                 "{}",
-                render_query_wrapper_action_frontier(surface, scopes, queries, terms, candidates)
+                render_query_wrapper_action_frontier(
+                    surface, scopes, queries, terms, candidates, quality
+                )
             );
         } else {
             io::stdout()

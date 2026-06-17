@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use super::search_pipe_action_frontier::{ActionNode, ActionRoute, render_action_rows};
 use super::search_pipe_action_model::PipeAction;
 use super::search_pipe_model::Candidate;
+use super::search_pipe_owner_items_query::owner_items_query_terms;
 use super::search_pipe_owner_roles::{
     suppress_low_cohesion_secondary_owner, suppress_low_cohesion_weak_axis_owner,
 };
@@ -146,9 +147,13 @@ fn delegation_hints(quality: &SearchPipeQuality, actions: &[ActionNode]) -> Vec<
 
 fn action_nodes(request: &SearchPipeActionRequest<'_>, scope_arg: &str) -> Vec<ActionNode> {
     let mut actions = Vec::new();
+    let low_cohesion_fd_owner_discovery = request.quality.package_cohesion == "low"
+        && request.quality.owner_seed_terms.is_empty()
+        && request.quality.fd_query.is_some();
     let prefer_owner_scope_first = request.quality.package_cohesion == "low"
         && (request.quality.fd_query.is_none() || request.fd_preview.is_some());
     let mut pushed_preferred_owner_items = false;
+    let mut pushed_fd_query = false;
     if prefer_owner_scope_first
         && let Some(handle) = preferred_owner_items_handle(request)
         && let Some((owner, query)) = handle.split_once(':')
@@ -160,6 +165,13 @@ fn action_nodes(request: &SearchPipeActionRequest<'_>, scope_arg: &str) -> Vec<A
             query,
         ));
         pushed_preferred_owner_items = true;
+    }
+    if low_cohesion_fd_owner_discovery
+        && !pushed_preferred_owner_items
+        && let Some(fd_query) = &request.quality.fd_query
+    {
+        actions.push(fd_query_action(fd_query, scope_arg));
+        pushed_fd_query = true;
     }
     if let Some(queries) = query_pack_queries(request) {
         actions.push(ActionNode {
@@ -181,7 +193,8 @@ fn action_nodes(request: &SearchPipeActionRequest<'_>, scope_arg: &str) -> Vec<A
     {
         actions.push(query_code_action(request, action));
     }
-    if let Some(handle) = preview_owner_items_handle(request.quality, request.fd_preview)
+    let pushed_preview_owner_items = if let Some(handle) =
+        preview_owner_items_handle(request.quality, request.fd_preview)
         && let Some((owner, query)) = handle.split_once(':')
         && !pushed_preferred_owner_items
     {
@@ -191,20 +204,16 @@ fn action_nodes(request: &SearchPipeActionRequest<'_>, scope_arg: &str) -> Vec<A
             owner,
             query,
         ));
-    }
-    if request.fd_preview.is_none()
+        true
+    } else {
+        false
+    };
+    if !pushed_preview_owner_items
+        && !pushed_fd_query
+        && (request.fd_preview.is_none() || !request.quality.allow_query_selector)
         && let Some(fd_query) = &request.quality.fd_query
     {
-        actions.push(ActionNode {
-            id: String::new(),
-            kind: "fd-query".to_string(),
-            suffix: "finder-owner".to_string(),
-            route: ActionRoute::FdQuery {
-                query: fd_query.to_string(),
-                scope: scope_arg.to_string(),
-                command_scope: None,
-            },
-        });
+        actions.push(fd_query_action(fd_query, scope_arg));
     }
     if let Some(query) = rg_query(request.quality, request.ranked_compact) {
         actions.push(ActionNode {
@@ -269,6 +278,19 @@ fn action_nodes(request: &SearchPipeActionRequest<'_>, scope_arg: &str) -> Vec<A
             action
         })
         .collect()
+}
+
+fn fd_query_action(fd_query: &str, scope_arg: &str) -> ActionNode {
+    ActionNode {
+        id: String::new(),
+        kind: "fd-query".to_string(),
+        suffix: "finder-owner".to_string(),
+        route: ActionRoute::FdQuery {
+            query: fd_query.to_string(),
+            scope: scope_arg.to_string(),
+            command_scope: None,
+        },
+    }
 }
 
 fn preferred_owner_items_handle(request: &SearchPipeActionRequest<'_>) -> Option<String> {
@@ -405,16 +427,7 @@ fn rg_query(quality: &SearchPipeQuality, compact: Option<&str>) -> Option<String
 
 fn owner_items_handle(quality: &SearchPipeQuality, candidates: &[Candidate]) -> Option<String> {
     let owner = quality.best_owner.as_ref()?.owner.as_str();
-    let mut query_terms = Vec::new();
-    query_terms.extend(quality.concept_terms.iter().cloned());
-    query_terms.extend(quality.owner_seed_terms.iter().cloned());
-    query_terms.extend(
-        candidates
-            .iter()
-            .filter(|candidate| candidate.path == owner)
-            .map(|candidate| candidate.symbol.clone()),
-    );
-    let query_terms = unique_terms_without_weak_natural(query_terms, 6)?;
+    let query_terms = owner_items_query_terms(quality, candidates, owner)?;
     if suppress_low_cohesion_weak_axis_owner(quality, &query_terms) {
         return None;
     }

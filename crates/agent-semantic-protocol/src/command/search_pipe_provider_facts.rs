@@ -10,10 +10,15 @@ use super::provider_process::{provider_invocation_with_profile, run_provider_com
 use super::search_config::AspConfig;
 use super::search_pipe_model::Candidate;
 
+const PROVIDER_GRAPH_FACT_CANDIDATE_LIMIT: usize = 48;
+
 #[derive(Debug, Default)]
 pub(super) struct ProviderGraphFacts {
     pub(super) nodes: Vec<Value>,
     pub(super) edges: Vec<Value>,
+    pub(super) input_candidates: usize,
+    pub(super) fact_candidates: usize,
+    pub(super) truncated_candidates: usize,
 }
 
 pub(super) struct ProviderGraphFactsContext<'a> {
@@ -39,6 +44,7 @@ pub(super) fn collect_provider_graph_facts(
     if candidates.is_empty() {
         return Ok(ProviderGraphFacts::default());
     }
+    let fact_candidates = provider_fact_candidates(candidates);
     let args = vec![
         "search".to_string(),
         "semantic-facts".to_string(),
@@ -53,12 +59,26 @@ pub(super) fn collect_provider_graph_facts(
         &invocation,
         project_root,
         context.cache_home,
-        candidate_stdin(project_root, candidates),
+        candidate_stdin(project_root, &fact_candidates),
     )?;
     if !output.status.success() {
         return Ok(ProviderGraphFacts::default());
     }
-    provider_graph_facts_from_stdout(output.stdout.as_ref())
+    let mut facts = provider_graph_facts_from_stdout(output.stdout.as_ref())?;
+    facts.input_candidates = candidates.len();
+    facts.fact_candidates = fact_candidates.len();
+    facts.truncated_candidates = candidates.len().saturating_sub(fact_candidates.len());
+    Ok(facts)
+}
+
+fn provider_fact_candidates(candidates: &[Candidate]) -> Vec<Candidate> {
+    let mut seen = std::collections::BTreeSet::new();
+    candidates
+        .iter()
+        .filter(|candidate| seen.insert(candidate.path.clone()))
+        .take(PROVIDER_GRAPH_FACT_CANDIDATE_LIMIT)
+        .cloned()
+        .collect()
 }
 
 fn provider_graph_facts_from_stdout(stdout: &[u8]) -> Result<ProviderGraphFacts, String> {
@@ -91,7 +111,11 @@ fn provider_graph_facts_from_value(value: Value) -> ProviderGraphFacts {
         .and_then(Value::as_array)
         .cloned()
         .unwrap_or_default();
-    ProviderGraphFacts { nodes, edges }
+    ProviderGraphFacts {
+        nodes,
+        edges,
+        ..ProviderGraphFacts::default()
+    }
 }
 
 fn candidate_stdin(project_root: &Path, candidates: &[Candidate]) -> Vec<u8> {

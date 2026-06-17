@@ -14,8 +14,8 @@ pub use hook_client_config::{
     load_hook_client_config_file,
 };
 pub use layout::{
-    PRJ_CACHE_HOME_ENV, ProjectCacheSource, ProjectRuntimeEnv, ProjectRuntimeLayout,
-    project_artifacts_dir, project_cache_root, project_cache_root_with_env,
+    PRJ_CACHE_HOME_ENV, ProjectCacheSource, ProjectEnvStatus, ProjectRuntimeEnv,
+    ProjectRuntimeLayout, project_artifacts_dir, project_cache_root, project_cache_root_with_env,
     project_client_cache_dir, project_hook_cache_dir, project_hook_state_dir,
     project_runtime_layout, project_runtime_layout_with_env,
 };

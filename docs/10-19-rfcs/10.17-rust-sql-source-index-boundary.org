@@ -105,6 +105,11 @@ fact extractors.
 6. Add CI and real-project evidence that broad search does not call provider
    workspace scans and that missing index state yields explicit next commands.
 
+* State layout materialization
+State paths must be derived from the shared state layout, not rebuilt in each
+cache, activation, source-index, or history module. Runtime materialization
+must resolve the config-owned layout once and create directories from that
+layout instance instead of repeating git/config discovery per directory.
 * Non-goals
 
 This RFC does not require =gtags= in developer environments or CI.
@@ -115,3 +120,80 @@ language-specific semantic facts.
 
 This RFC does not make provider binaries resident services. Provider calls stay
 bounded and explicit.
+* Source-content cache removal
+The Rust SQL source index must not store full source text as a cache product.
+Source contents change too quickly under agent edits, and replaying cached source
+text creates stale-code risk. The durable cache surface is structural:
+- project/workspace scope
+- provider identity
+- language id
+- file identity
+- owner identity
+- selector ranges
+- symbol and item names
+- graph/rank inputs
+
+Broad search can use this structural index to find owners quickly, then read or
+query the current workspace file through the provider-owned selector route when
+code content is needed. This keeps cache invalidation cheap and makes the agent
+output clear: cached structure may accelerate discovery, but current code still
+comes from the active workspace.
+* Provider activation boundaries
+Source discovery is driven by the active provider registry snapshot, not by
+hard-coded language heuristics inside the SQL indexer. A provider descriptor may
+declare source roots, config files, source extensions, and ignored path prefixes.
+The Rust indexer uses those fields to collect candidate files and to reject
+provider-ignored paths before inserting rows.
+
+Manual activation snapshots supplied by tests or downstream projects are
+authoritative inputs. Loading such a snapshot must not silently resync it from
+the current workspace and erase the downstream provider boundary. This makes the
+same source-index code usable for fixture calibration, local projects, and
+larger dependency trees.
+* Project context and state layout
+Rust-owned indexing and cache mutation commands must resolve project identity
+through a single project context before opening state. The context owns:
+- current working directory
+- git toplevel
+- project home
+- project environment status
+- client state layout
+
+The config crate owns the underlying runtime layout. Client, runtime,
+activation, history, and source-index code may wrap that layout for local API
+ergonomics, but they must not reimplement git toplevel discovery, project home
+selection, =.envrc= detection, or protocol state paths independently.
+
+The git toplevel is the workspace boundary for source-index refresh and other
+workspace-owned mutation paths. Paths outside that boundary are invalid unless a
+future command explicitly activates another workspace root.
+
+Project environment variables such as =PRJHOME= and related =PRJ*= values are
+only trustworthy when the git toplevel contains =.envrc=. A nested =.envrc=
+inside a package directory is not enough to make the workspace project
+environment available. This keeps package-local development shells from
+silently changing ASP state ownership.
+
+State paths must be derived from the shared state layout, not rebuilt in each
+cache, activation, source-index, or history module. The layout owns the state
+root, client cache directory, cache manifest path, artifact directory, and
+SQLite database parent. The state root is the protocol directory, normally
+=<git-toplevel>/.cache/agent-semantic-protocol=. The client cache directory is
+=<state-root>/client= and the artifact directory is =<state-root>/artifacts=.
+Mutation and audit paths should consume the layout before opening, rewriting,
+or backfilling state.
+* State layout materialization
+State paths must be derived from the shared state layout, not rebuilt in each
+cache, activation, source-index, or history module. The layout owns the state
+root, client cache directory, cache manifest path, artifact directory, and
+SQLite database parent.
+
+The state root is the protocol directory, normally
+=<git-toplevel>/.cache/agent-semantic-protocol=. The client cache directory is
+=<state-root>/client= and the artifact directory is =<state-root>/artifacts=.
+Mutation and audit paths should consume the layout before opening, rewriting,
+or backfilling state.
+
+Runtime materialization should resolve the config-owned layout once and create
+directories from that layout instance. It should not call per-directory helpers
+that each repeat git/config discovery.

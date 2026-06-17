@@ -66,6 +66,16 @@ pub(crate) fn run_provider_method(
         }
         request = request.with_stdin(stdin);
     }
+    if let Some(stdout) = crate::native_prime::render_native_prime_seed_stdout(
+        &parsed.project_root,
+        &request,
+        parsed.receipt_json,
+    )? {
+        io::stdout()
+            .write_all(stdout.as_ref())
+            .map_err(|error| format!("failed to write native prime stdout: {error}"))?;
+        return Ok(());
+    }
     debug_client_stage("provider-method:cache-probe");
     let request_started_at = std::time::Instant::now();
     let cache_probe = if request.stdin.is_some() {

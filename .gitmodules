@@ -22,3 +22,6 @@
 [submodule "languages/gerbil-scheme-language-project-harness"]
 	path = languages/gerbil-scheme-language-project-harness
 	url = https://github.com/tao3k/gerbil-scheme-language-project-harness
+[submodule "languages/org"]
+	path = languages/org
+	url = https://github.com/tao3k/org.git

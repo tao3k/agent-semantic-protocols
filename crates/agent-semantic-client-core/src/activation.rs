@@ -30,6 +30,10 @@ pub struct ResolvedProvider {
     pub runtime_command_argv: Option<Vec<String>>,
     pub runtime_profile_status: Option<RuntimeProfileStatus>,
     pub package_roots: Vec<String>,
+    pub source_roots: Vec<String>,
+    pub config_files: Vec<String>,
+    pub source_extensions: Vec<String>,
+    pub ignored_path_prefixes: Vec<String>,
 }
 
 /// Health status copied from the provider runtime profile.
@@ -107,6 +111,10 @@ impl From<&ActivatedProvider> for ResolvedProvider {
             runtime_command_argv: None,
             runtime_profile_status: None,
             package_roots: provider.package_roots.clone(),
+            source_roots: provider.source_roots.clone(),
+            config_files: provider.config_files.clone(),
+            source_extensions: provider.source_extensions.clone(),
+            ignored_path_prefixes: provider.ignored_path_prefixes.clone(),
         }
     }
 }
@@ -123,7 +131,7 @@ impl ProviderRegistrySnapshot {
         if let Some(activation_path) = env::var_os(ASP_PROVIDER_ACTIVATION_PATH_ENV) {
             let activation_path = PathBuf::from(activation_path);
             if activation_path.is_file() {
-                return Self::load_from_path_for_project(&activation_path, project_root);
+                return Self::load_from_path(&activation_path);
             }
         }
         let direct_activation_path = match project_hook_state_dir(project_root) {

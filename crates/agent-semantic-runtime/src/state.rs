@@ -27,13 +27,14 @@ pub fn project_runtime_state(
 ) -> Result<ProjectRuntimeState, String> {
     let project_root = project_root.as_ref();
     let layout = project_runtime_layout(project_root);
-    let hook_cache_dir = ensure_project_hook_cache_dir(project_root)?;
-    let hook_state_dir = ensure_project_hook_state_dir(project_root)?;
-    let client_cache_dir = ensure_project_client_cache_dir(project_root)?;
-    let artifacts_dir = ensure_project_artifacts_dir(project_root)?;
-    let runtime_home = ensure_project_runtime_home(project_root)?;
-    let provider_bin_dir = ensure_project_provider_bin_dir(project_root)?;
-    let provider_lock_dir = ensure_project_provider_lock_dir(project_root)?;
+    let hook_cache_dir = ensure_layout_dir(&layout, "hook cache", layout.hook_cache_dir.as_ref())?;
+    let hook_state_dir = ensure_layout_dir(&layout, "hook state", layout.hook_cache_dir.as_ref())?;
+    let client_cache_dir =
+        ensure_layout_dir(&layout, "client cache", layout.client_cache_dir.as_ref())?;
+    let artifacts_dir = ensure_layout_dir(&layout, "artifacts", layout.artifacts_dir.as_ref())?;
+    let runtime_home = ensure_layout_dir(&layout, "runtime home", layout.runtime_home.as_ref())?;
+    let provider_bin_dir = ensure_dir(runtime_home.join("bin"))?;
+    let provider_lock_dir = ensure_dir(runtime_home.join("providers"))?;
 
     Ok(ProjectRuntimeState {
         layout,
@@ -45,6 +46,20 @@ pub fn project_runtime_state(
         provider_bin_dir,
         provider_lock_dir,
     })
+}
+
+fn ensure_layout_dir(
+    layout: &ProjectRuntimeLayout,
+    label: &str,
+    path: Option<&PathBuf>,
+) -> Result<PathBuf, String> {
+    let path = path.ok_or_else(|| {
+        format!(
+            "failed to locate ASP {label} for {}",
+            layout.requested_root.display()
+        )
+    })?;
+    ensure_dir(path.clone())
 }
 
 /// Resolve and create the managed hook activation directory.

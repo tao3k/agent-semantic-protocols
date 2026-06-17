@@ -81,18 +81,9 @@ pub struct SourceIndexLookupResult {
     pub candidates: Vec<SourceIndexCandidate>,
 }
 
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub(super) enum SourceIndexProjectKind {
-    Gerbil,
-    Julia,
-    Python,
-    Rust,
-    TypeScript,
-}
-
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) struct SourceIndexProjectAnchor {
-    pub(super) root: PathBuf,
-    pub(super) manifest_path: PathBuf,
-    pub(super) kind: SourceIndexProjectKind,
+pub(super) struct SourceIndexScopeFile {
+    pub(super) path: PathBuf,
+    pub(super) language_id: LanguageId,
+    pub(super) provider_id: ProviderId,
 }

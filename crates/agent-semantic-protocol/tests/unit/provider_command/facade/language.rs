@@ -8,7 +8,7 @@ use crate::provider_command::support::{
 };
 
 #[test]
-fn rust_search_facade_execs_activated_provider() {
+fn search_prime_facade_uses_native_frontier_without_provider_spawn() {
     let root = temp_project_root("language-search-facade-cache");
     let bin_dir = root.join(".bin");
     let cache_home = root.join(".cache");
@@ -41,7 +41,6 @@ fn rust_search_facade_execs_activated_provider() {
     );
     for (language, _, label) in providers.iter().copied() {
         let call_count_path = root.join(format!("{label}-provider-count"));
-        let expected_stdout = format!("{label} search prime --view seeds\n");
         let first_output = Command::new(env!("CARGO_BIN_EXE_asp"))
             .current_dir(&root)
             .env("PATH", &bin_dir)
@@ -54,14 +53,14 @@ fn rust_search_facade_execs_activated_provider() {
             "stderr: {}",
             String::from_utf8_lossy(&first_output.stderr)
         );
-        assert_eq!(
-            String::from_utf8(first_output.stdout).expect("stdout"),
-            expected_stdout
+        let first_stdout = String::from_utf8(first_output.stdout).expect("stdout");
+        let first_header = first_stdout.lines().next().unwrap_or_default();
+        assert!(first_header.starts_with("[search-prime] root="), "{first_stdout}");
+        assert!(
+            first_header.contains("alg=native-fd-prime-frontier-v1"),
+            "{first_stdout}"
         );
-        assert_eq!(
-            std::fs::read_to_string(&call_count_path).expect("read count"),
-            "1"
-        );
+        assert!(!call_count_path.exists(), "{first_stdout}");
         let second_output = Command::new(env!("CARGO_BIN_EXE_asp"))
             .current_dir(&root)
             .env("PATH", &bin_dir)
@@ -74,14 +73,17 @@ fn rust_search_facade_execs_activated_provider() {
             "stderr: {}",
             String::from_utf8_lossy(&second_output.stderr)
         );
-        assert_eq!(
-            String::from_utf8(second_output.stdout).expect("stdout"),
-            expected_stdout
+        let second_stdout = String::from_utf8(second_output.stdout).expect("stdout");
+        let second_header = second_stdout.lines().next().unwrap_or_default();
+        assert!(
+            second_header.starts_with("[search-prime] root="),
+            "{second_stdout}"
         );
-        assert_eq!(
-            std::fs::read_to_string(&call_count_path).expect("read count"),
-            "1"
+        assert!(
+            second_header.contains("alg=native-fd-prime-frontier-v1"),
+            "{second_stdout}"
         );
+        assert!(!call_count_path.exists(), "{second_stdout}");
     }
     let _ = std::fs::remove_dir_all(root);
 }

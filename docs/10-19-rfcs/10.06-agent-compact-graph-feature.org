@@ -144,6 +144,12 @@ lowercase terms, but the executable handoff should keep identifier boundaries
 such as =resolveModuleName= so the next path-ranking stage can derive
 language-neutral identifier axes.
 
+When a first-stage pipe packet is low quality because the query is broad or package-drifting, graph-turbo should still materialize a bounded =fd-query= owner-discovery action from owner/path-axis terms even when no symbol term is present. This prevents a wide content =rg= turn from becoming the only route to owner recovery. The selected fd terms must exclude ASP protocol/action words such as query, fd, rg, owner, graph, turbo, command, and frontier; it must not exclude or promote ecosystem/library labels through fixed word lists.
+
+Graph-turbo owner candidate ranking must prefer evidence-dense local owners before first-seen candidate order. A weak early owner with only one local item hit must rank below an owner that covers more query axes, has denser parser/finder-local hits, exposes more distinct local symbols, or has stronger path/fd/package-path evidence. First-seen order is only a deterministic tie-breaker after those language-neutral evidence signals. This ranking rule is algorithmic and parser/finder-owned; it must not hard-code ecosystem labels, library names, or project-specific symbols as shortcut boosts.
+
+When =fd-query= recovers an owner and materializes =owner-items=, the handoff query must not forward the flat fd query unchanged. It should remove protocol/action words such as query, search, fd, rg, owner, frontier, action, and command; prefer declaration-friendly semantic terms and language-neutral morphology variants before path-only owner axes; and keep path-covered terms only as backoff evidence. This prevents a correct owner recovery step from immediately selecting a file-header or path-window selector instead of the owner-local implementation item.
+
 Owner-local selector ranking may create query-axis window candidates when declaration-name matches are too weak. The candidate must be derived from the current owner file, the materialized query terms, and parser-owned item/block boundaries or a bounded local context window; it must clear a high query-axis coverage gate before competing with declaration candidates through deterministic query-axis coverage. This is an algorithmic graph-turbo selector-quality rule, not a fixed ecosystem-symbol shortcut: providers must not hard-code library, framework, or package-specific labels to manufacture selector confidence.
 
 Terminology is deliberately narrow:

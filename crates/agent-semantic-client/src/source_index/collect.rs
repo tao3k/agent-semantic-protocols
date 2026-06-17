@@ -1,223 +1,285 @@
-//! Project-scope discovery for Rust SQL source-index refresh.
+//! Provider-scope collection for Rust SQL source-index refresh.
 
-use std::collections::BTreeSet;
+use std::collections::BTreeMap;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
-use super::cargo_workspace::source_index_cargo_workspace;
-use super::config::{
-    SOURCE_INDEX_CONFIG_FILENAMES, SOURCE_INDEX_EXTENSIONS, SOURCE_INDEX_FILE_LIMIT,
-    SOURCE_INDEX_PROJECT_ANCHOR_FILENAMES, SOURCE_INDEX_SKIP_DIRS,
+use agent_semantic_client_core::{
+    ClientMethod, ClientRequest, LanguageId, ProviderId, ProviderRegistrySnapshot, ResolvedProvider,
 };
-use super::model::{SourceIndexProjectAnchor, SourceIndexProjectKind};
+use agent_semantic_client_local_cli::LocalNativeCliBackend;
+use serde::Deserialize;
 
-pub(super) fn collect_source_index_files(project_root: &Path) -> Result<Vec<PathBuf>, String> {
-    let excluded_roots = source_index_excluded_project_roots(project_root);
-    let anchors = discover_source_index_project_anchors(project_root, &excluded_roots)?;
-    let mut files = BTreeSet::new();
-    for anchor in anchors {
+use super::config::SOURCE_INDEX_FILE_LIMIT;
+use super::model::SourceIndexScopeFile;
+
+pub(super) fn collect_source_index_files(
+    project_root: &Path,
+    snapshot: &ProviderRegistrySnapshot,
+) -> Result<Vec<SourceIndexScopeFile>, String> {
+    if snapshot.providers.is_empty() {
+        return Err(missing_provider_scope_message(project_root));
+    }
+    let files = collect_source_index_file_map(project_root, snapshot)?;
+    if files.is_empty() {
+        return Err(format!(
+            "missing provider source-scope facts: activated providers exposed no source/config files for {}; run `asp hook install --client codex .` or refresh the language provider workspace facts",
+            project_root.display()
+        ));
+    }
+    Ok(files.into_values().take(SOURCE_INDEX_FILE_LIMIT).collect())
+}
+
+fn collect_source_index_file_map(
+    project_root: &Path,
+    snapshot: &ProviderRegistrySnapshot,
+) -> Result<BTreeMap<PathBuf, SourceIndexScopeFile>, String> {
+    let mut files = BTreeMap::new();
+    for provider in &snapshot.providers {
+        collect_provider_source_index_files(project_root, provider, &mut files)?;
         if files.len() >= SOURCE_INDEX_FILE_LIMIT {
             break;
         }
-        collect_source_index_project_files(project_root, &anchor, &excluded_roots, &mut files)?;
     }
-    let mut files: Vec<_> = files.into_iter().collect();
-    files.truncate(SOURCE_INDEX_FILE_LIMIT);
     Ok(files)
 }
 
-fn discover_source_index_project_anchors(
+fn collect_provider_source_index_files(
     project_root: &Path,
-    excluded_roots: &BTreeSet<PathBuf>,
-) -> Result<Vec<SourceIndexProjectAnchor>, String> {
-    let mut anchors = Vec::new();
-    collect_source_index_project_anchor_at_root(project_root, project_root, &mut anchors);
-    if let Some(member_roots) =
-        source_index_cargo_workspace_member_roots(project_root, excluded_roots)
-    {
-        for member_root in member_roots {
-            collect_source_index_project_anchor_at_root(project_root, &member_root, &mut anchors);
+    provider: &ResolvedProvider,
+    files: &mut BTreeMap<PathBuf, SourceIndexScopeFile>,
+) -> Result<(), String> {
+    match collect_provider_workspace_scope_files(project_root, provider)? {
+        WorkspaceScopeCollection::Supported(provider_files) => {
+            insert_source_index_scope_files(files, provider_files);
         }
-    } else {
-        collect_source_index_project_anchors_in(
-            project_root,
-            project_root,
-            excluded_roots,
-            &mut anchors,
-        )?;
+        WorkspaceScopeCollection::Unsupported => {
+            collect_provider_scope_files(project_root, provider, files)?;
+        }
     }
-    anchors.sort_by(|left, right| {
-        left.root
-            .cmp(&right.root)
-            .then_with(|| left.kind.cmp(&right.kind))
-            .then_with(|| left.manifest_path.cmp(&right.manifest_path))
-    });
-    anchors.dedup_by(|left, right| {
-        left.root == right.root
-            && left.kind == right.kind
-            && left.manifest_path == right.manifest_path
-    });
-    Ok(anchors)
+    Ok(())
 }
 
-fn collect_source_index_project_anchor_at_root(
-    project_root: &Path,
-    root: &Path,
-    anchors: &mut Vec<SourceIndexProjectAnchor>,
+fn insert_source_index_scope_files(
+    files: &mut BTreeMap<PathBuf, SourceIndexScopeFile>,
+    provider_files: Vec<SourceIndexScopeFile>,
 ) {
-    for filename in SOURCE_INDEX_PROJECT_ANCHOR_FILENAMES {
-        let path = root.join(filename);
-        if path.is_file()
-            && let Some(kind) = source_index_project_kind(&path)
-        {
-            anchors.push(SourceIndexProjectAnchor {
-                root: path.parent().unwrap_or(project_root).to_path_buf(),
-                manifest_path: path,
-                kind,
-            });
-        }
-    }
-}
-
-fn collect_source_index_project_anchors_in(
-    project_root: &Path,
-    dir: &Path,
-    excluded_roots: &BTreeSet<PathBuf>,
-    anchors: &mut Vec<SourceIndexProjectAnchor>,
-) -> Result<(), String> {
-    if should_skip_source_index_dir(project_root, dir, excluded_roots) {
-        return Ok(());
-    }
-    let mut entries = fs::read_dir(dir)
-        .map_err(|error| {
-            format!(
-                "failed to read source index anchor dir {}: {error}",
-                dir.display()
-            )
-        })?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|error| {
-            format!(
-                "failed to read source index anchor entry under {}: {error}",
-                dir.display()
-            )
-        })?;
-    entries.sort_by_key(|entry| entry.path());
-    for entry in entries {
-        let path = entry.path();
-        let file_type = entry.file_type().map_err(|error| {
-            format!(
-                "failed to inspect source index anchor path {}: {error}",
-                path.display()
-            )
-        })?;
-        if file_type.is_dir() {
-            collect_source_index_project_anchors_in(project_root, &path, excluded_roots, anchors)?;
-        } else if file_type.is_file()
-            && let Some(kind) = source_index_project_kind(&path)
-        {
-            anchors.push(SourceIndexProjectAnchor {
-                root: path.parent().unwrap_or(project_root).to_path_buf(),
-                manifest_path: path,
-                kind,
-            });
-        }
-    }
-    Ok(())
-}
-
-fn source_index_project_kind(path: &Path) -> Option<SourceIndexProjectKind> {
-    match path.file_name().and_then(|name| name.to_str()) {
-        Some("Cargo.toml") => Some(SourceIndexProjectKind::Rust),
-        Some("pyproject.toml") => Some(SourceIndexProjectKind::Python),
-        Some("package.json") => Some(SourceIndexProjectKind::TypeScript),
-        Some("Project.toml") => Some(SourceIndexProjectKind::Julia),
-        Some("gerbil.pkg") => Some(SourceIndexProjectKind::Gerbil),
-        _ => None,
-    }
-}
-
-fn collect_source_index_project_files(
-    project_root: &Path,
-    anchor: &SourceIndexProjectAnchor,
-    excluded_roots: &BTreeSet<PathBuf>,
-    files: &mut BTreeSet<PathBuf>,
-) -> Result<(), String> {
-    collect_source_index_package_root_files(&anchor.root, files)?;
-    if anchor.kind == SourceIndexProjectKind::Gerbil {
-        collect_source_index_files_in(project_root, &anchor.root, excluded_roots, files)?;
-        return Ok(());
-    }
-    for source_dir in source_index_project_source_dirs(anchor.kind) {
+    for file in provider_files {
+        files.entry(file.path.clone()).or_insert(file);
         if files.len() >= SOURCE_INDEX_FILE_LIMIT {
             break;
         }
-        let path = anchor.root.join(source_dir);
-        if path.is_dir() {
-            collect_source_index_files_in(project_root, &path, excluded_roots, files)?;
+    }
+}
+
+enum WorkspaceScopeCollection {
+    Supported(Vec<SourceIndexScopeFile>),
+    Unsupported,
+}
+
+fn collect_provider_workspace_scope_files(
+    project_root: &Path,
+    provider: &ResolvedProvider,
+) -> Result<WorkspaceScopeCollection, String> {
+    let package_roots = if provider.package_roots.is_empty() {
+        vec![".".to_string()]
+    } else {
+        provider.package_roots.clone()
+    };
+    let mut files = BTreeMap::new();
+    let mut supported = false;
+    for package_root in package_roots {
+        if files.len() >= SOURCE_INDEX_FILE_LIMIT {
+            break;
+        }
+        let Some(package_root_path) = project_child_path(project_root, &package_root) else {
+            continue;
+        };
+        let Some(scope_files) = provider_workspace_scope_files(
+            project_root,
+            provider,
+            &package_root,
+            &package_root_path,
+        )?
+        else {
+            continue;
+        };
+        supported = true;
+        for file in scope_files {
+            files.entry(file.path.clone()).or_insert(file);
+            if files.len() >= SOURCE_INDEX_FILE_LIMIT {
+                break;
+            }
+        }
+    }
+    if supported {
+        Ok(WorkspaceScopeCollection::Supported(
+            files.into_values().take(SOURCE_INDEX_FILE_LIMIT).collect(),
+        ))
+    } else {
+        Ok(WorkspaceScopeCollection::Unsupported)
+    }
+}
+
+fn provider_workspace_scope_files(
+    project_root: &Path,
+    provider: &ResolvedProvider,
+    package_root: &str,
+    package_root_path: &Path,
+) -> Result<Option<Vec<SourceIndexScopeFile>>, String> {
+    let request = ClientRequest::new(ClientMethod::Search, project_root.to_path_buf())
+        .with_language(provider.language_id.clone())
+        .with_forwarded_args(vec![
+            "workspace-scope".to_string(),
+            "--json".to_string(),
+            package_root.to_string(),
+        ]);
+    let snapshot = ProviderRegistrySnapshot {
+        activation_path: PathBuf::new(),
+        providers: vec![provider.clone()],
+    };
+    let output = LocalNativeCliBackend::new(snapshot).execute(&request)?;
+    if output.status_code != 0 {
+        return Ok(None);
+    }
+    let stdout = String::from_utf8_lossy(output.stdout.as_ref());
+    let Some(packet) = stdout
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .find_map(parse_workspace_scope_packet)
+    else {
+        return Ok(None);
+    };
+    if packet
+        .schema_id
+        .as_deref()
+        .is_some_and(|schema_id| schema_id != "agent.semantic-protocols.semantic-workspace-scope")
+    {
+        return Ok(None);
+    }
+    if packet.status.as_deref() == Some("missing-anchor") {
+        return Ok(Some(Vec::new()));
+    }
+    if packet.status.is_none() && packet.files.is_empty() {
+        return Ok(None);
+    }
+    let language_id = packet
+        .language_id
+        .unwrap_or_else(|| provider.language_id.clone());
+    let provider_id = packet
+        .provider_id
+        .unwrap_or_else(|| provider.provider_id.clone());
+    let mut files = Vec::new();
+    for file in packet.files {
+        let Some(path) = scoped_child_path(package_root_path, &file.path) else {
+            continue;
+        };
+        if path.is_file() && !provider_ignores_path(project_root, provider, &path) {
+            files.push(SourceIndexScopeFile {
+                path,
+                language_id: file
+                    .language_id
+                    .clone()
+                    .unwrap_or_else(|| language_id.clone()),
+                provider_id: file
+                    .provider_id
+                    .clone()
+                    .unwrap_or_else(|| provider_id.clone()),
+            });
+        }
+    }
+    Ok(Some(files))
+}
+
+fn parse_workspace_scope_packet(line: &str) -> Option<ProviderWorkspaceScopePacket> {
+    serde_json::from_str::<ProviderWorkspaceScopePacket>(line).ok()
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ProviderWorkspaceScopePacket {
+    #[serde(default)]
+    schema_id: Option<String>,
+    #[serde(default)]
+    status: Option<String>,
+    #[serde(default)]
+    language_id: Option<LanguageId>,
+    #[serde(default)]
+    provider_id: Option<ProviderId>,
+    #[serde(default)]
+    files: Vec<ProviderWorkspaceScopeFile>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ProviderWorkspaceScopeFile {
+    path: String,
+    #[serde(default)]
+    language_id: Option<LanguageId>,
+    #[serde(default)]
+    provider_id: Option<ProviderId>,
+}
+
+fn collect_provider_scope_files(
+    project_root: &Path,
+    provider: &ResolvedProvider,
+    files: &mut BTreeMap<PathBuf, SourceIndexScopeFile>,
+) -> Result<(), String> {
+    let package_roots = if provider.package_roots.is_empty() {
+        vec![".".to_string()]
+    } else {
+        provider.package_roots.clone()
+    };
+    for package_root in package_roots {
+        let Some(package_root_path) = project_child_path(project_root, &package_root) else {
+            continue;
+        };
+        collect_provider_config_files(project_root, provider, &package_root_path, files);
+        for source_root in &provider.source_roots {
+            if files.len() >= SOURCE_INDEX_FILE_LIMIT {
+                break;
+            }
+            let Some(source_root_path) = scoped_child_path(&package_root_path, source_root) else {
+                continue;
+            };
+            collect_provider_source_files(project_root, provider, &source_root_path, files)?;
+        }
+        if files.len() >= SOURCE_INDEX_FILE_LIMIT {
+            break;
         }
     }
     Ok(())
 }
 
-fn collect_source_index_package_root_files(
+fn collect_provider_config_files(
+    project_root: &Path,
+    provider: &ResolvedProvider,
     package_root: &Path,
-    files: &mut BTreeSet<PathBuf>,
-) -> Result<(), String> {
-    if files.len() >= SOURCE_INDEX_FILE_LIMIT {
-        return Ok(());
-    }
-    let mut entries = fs::read_dir(package_root)
-        .map_err(|error| {
-            format!(
-                "failed to read source index package root {}: {error}",
-                package_root.display()
-            )
-        })?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|error| {
-            format!(
-                "failed to read source index package entry under {}: {error}",
-                package_root.display()
-            )
-        })?;
-    entries.sort_by_key(|entry| entry.path());
-    for entry in entries {
+    files: &mut BTreeMap<PathBuf, SourceIndexScopeFile>,
+) {
+    for config_file in &provider.config_files {
         if files.len() >= SOURCE_INDEX_FILE_LIMIT {
-            break;
+            return;
         }
-        let path = entry.path();
-        let file_type = entry.file_type().map_err(|error| {
-            format!(
-                "failed to inspect source index package path {}: {error}",
-                path.display()
-            )
-        })?;
-        if file_type.is_file() && supported_source_index_file(&path) {
-            files.insert(path);
+        let Some(path) = scoped_child_path(package_root, config_file) else {
+            continue;
+        };
+        if path.is_file() && !provider_ignores_path(project_root, provider, &path) {
+            insert_provider_file(files, provider, path);
         }
-    }
-    Ok(())
-}
-
-fn source_index_project_source_dirs(kind: SourceIndexProjectKind) -> &'static [&'static str] {
-    match kind {
-        SourceIndexProjectKind::Rust => &["src", "tests", "benches", "examples"],
-        SourceIndexProjectKind::Python => &["src", "tests", "test", "scripts"],
-        SourceIndexProjectKind::TypeScript => &["src", "tests", "test", "scripts"],
-        SourceIndexProjectKind::Julia => &["src", "test", "docs", "examples"],
-        SourceIndexProjectKind::Gerbil => &[],
     }
 }
 
-fn collect_source_index_files_in(
+fn collect_provider_source_files(
     project_root: &Path,
+    provider: &ResolvedProvider,
     dir: &Path,
-    excluded_roots: &BTreeSet<PathBuf>,
-    files: &mut BTreeSet<PathBuf>,
+    files: &mut BTreeMap<PathBuf, SourceIndexScopeFile>,
 ) -> Result<(), String> {
     if files.len() >= SOURCE_INDEX_FILE_LIMIT
-        || should_skip_source_index_dir(project_root, dir, excluded_roots)
+        || !dir.is_dir()
+        || provider_ignores_path(project_root, provider, dir)
     {
         return Ok(());
     }
@@ -236,6 +298,9 @@ fn collect_source_index_files_in(
             break;
         }
         let path = entry.path();
+        if provider_ignores_path(project_root, provider, &path) {
+            continue;
+        }
         let file_type = entry.file_type().map_err(|error| {
             format!(
                 "failed to inspect source index path {}: {error}",
@@ -243,95 +308,82 @@ fn collect_source_index_files_in(
             )
         })?;
         if file_type.is_dir() {
-            collect_source_index_files_in(project_root, &path, excluded_roots, files)?;
-        } else if file_type.is_file() && supported_source_index_file(&path) {
-            files.insert(path);
+            collect_provider_source_files(project_root, provider, &path, files)?;
+        } else if file_type.is_file() && provider_supports_source_file(provider, &path) {
+            insert_provider_file(files, provider, path);
         }
     }
     Ok(())
 }
 
-fn should_skip_source_index_dir(
-    project_root: &Path,
-    dir: &Path,
-    excluded_roots: &BTreeSet<PathBuf>,
-) -> bool {
-    let project_key = source_index_compare_path(project_root);
-    let dir_key = source_index_compare_path(dir);
-    if dir_key == project_key {
+fn insert_provider_file(
+    files: &mut BTreeMap<PathBuf, SourceIndexScopeFile>,
+    provider: &ResolvedProvider,
+    path: PathBuf,
+) {
+    files
+        .entry(path.clone())
+        .or_insert_with(|| SourceIndexScopeFile {
+            path,
+            language_id: provider.language_id.clone(),
+            provider_id: provider.provider_id.clone(),
+        });
+}
+
+fn provider_supports_source_file(provider: &ResolvedProvider, path: &Path) -> bool {
+    let Some(extension) = path.extension().and_then(|extension| extension.to_str()) else {
         return false;
+    };
+    provider.source_extensions.iter().any(|candidate| {
+        candidate
+            .trim_start_matches('.')
+            .eq_ignore_ascii_case(extension)
+    })
+}
+
+fn provider_ignores_path(project_root: &Path, provider: &ResolvedProvider, path: &Path) -> bool {
+    let relative = relative_project_path(project_root, path);
+    provider.ignored_path_prefixes.iter().any(|prefix| {
+        let prefix = normalize_project_path(prefix);
+        relative == prefix || relative.starts_with(&format!("{prefix}/"))
+    })
+}
+
+fn project_child_path(project_root: &Path, path: &str) -> Option<PathBuf> {
+    if path == "." || path.is_empty() {
+        return Some(project_root.to_path_buf());
     }
-    if excluded_roots.contains(&dir_key) || is_nested_vcs_root(&project_key, &dir_key, dir) {
-        return true;
-    }
-    dir.file_name()
-        .and_then(|name| name.to_str())
-        .is_some_and(|name| SOURCE_INDEX_SKIP_DIRS.contains(&name))
+    scoped_child_path(project_root, path)
 }
 
-fn source_index_excluded_project_roots(project_root: &Path) -> BTreeSet<PathBuf> {
-    let mut roots = BTreeSet::new();
-    if let Some(workspace) = source_index_cargo_workspace(project_root) {
-        for exclude in workspace.excludes {
-            roots.insert(source_index_compare_path(&project_root.join(exclude)));
-        }
-    }
-    roots
-}
-
-fn source_index_cargo_workspace_member_roots(
-    project_root: &Path,
-    excluded_roots: &BTreeSet<PathBuf>,
-) -> Option<BTreeSet<PathBuf>> {
-    let workspace = source_index_cargo_workspace(project_root)?;
-    let members = workspace.members;
-    let excluded_members = workspace.excludes;
-    let mut roots = BTreeSet::new();
-    for member in members {
-        if excluded_members.contains(&member) {
-            continue;
-        }
-        for root in expand_source_index_cargo_member(project_root, &member) {
-            let key = source_index_compare_path(&root);
-            if !excluded_roots.contains(&key) {
-                roots.insert(root);
-            }
-        }
-    }
-    Some(roots)
-}
-
-fn expand_source_index_cargo_member(project_root: &Path, member: &str) -> Vec<PathBuf> {
-    if let Some(prefix) = member.strip_suffix("/*") {
-        let base = project_root.join(prefix);
-        return fs::read_dir(base)
-            .ok()
-            .into_iter()
-            .flat_map(|entries| entries.filter_map(Result::ok))
-            .map(|entry| entry.path())
-            .filter(|path| path.is_dir())
-            .collect();
-    }
-    vec![project_root.join(member)]
-}
-
-fn source_index_compare_path(path: &Path) -> PathBuf {
-    fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
-}
-
-fn is_nested_vcs_root(project_key: &Path, dir_key: &Path, dir: &Path) -> bool {
-    dir_key != project_key && dir.join(".git").exists()
-}
-
-fn supported_source_index_file(path: &Path) -> bool {
-    path.extension()
-        .and_then(|extension| extension.to_str())
-        .is_some_and(|extension| SOURCE_INDEX_EXTENSIONS.contains(&extension))
+fn scoped_child_path(root: &Path, path: &str) -> Option<PathBuf> {
+    let path = Path::new(path);
+    if path.is_absolute()
         || path
-            .file_name()
-            .and_then(|name| name.to_str())
-            .is_some_and(|name| {
-                SOURCE_INDEX_PROJECT_ANCHOR_FILENAMES.contains(&name)
-                    || SOURCE_INDEX_CONFIG_FILENAMES.contains(&name)
-            })
+            .components()
+            .any(|part| matches!(part, Component::ParentDir))
+    {
+        return None;
+    }
+    Some(root.join(path))
+}
+
+fn relative_project_path(project_root: &Path, path: &Path) -> String {
+    path.strip_prefix(project_root)
+        .unwrap_or(path)
+        .to_string_lossy()
+        .replace('\\', "/")
+        .trim_start_matches("./")
+        .to_string()
+}
+
+fn normalize_project_path(path: &str) -> String {
+    path.replace('\\', "/").trim_start_matches("./").to_string()
+}
+
+fn missing_provider_scope_message(project_root: &Path) -> String {
+    format!(
+        "missing provider source-scope facts: no activated language providers for {}; run `asp hook install --client codex .` so language harnesses can expose workspace coverage to the Rust SQL source index",
+        project_root.display()
+    )
 }

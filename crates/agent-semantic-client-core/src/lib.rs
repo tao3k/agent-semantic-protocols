@@ -5,6 +5,7 @@
 pub mod activation;
 pub mod cache_manifest;
 pub mod config;
+pub mod project_context;
 pub mod receipt;
 pub mod request;
 pub mod types;
@@ -13,6 +14,7 @@ pub use activation::{
     ASP_PROVIDER_ACTIVATION_PATH_ENV, ProviderRegistrySnapshot, ResolvedProvider,
     RuntimeProfileStatus,
 };
+pub use agent_semantic_config::ProjectEnvStatus;
 pub use agent_semantic_hook::ProviderExecution;
 pub use cache_manifest::{
     AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_FILE, AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_PROTOCOL_ID,
@@ -23,6 +25,7 @@ pub use cache_manifest::{
     project_client_cache_manifest_path,
 };
 pub use config::{BackendMode, ClientConfig, PrivacyMode};
+pub use project_context::{ProjectContext, StateLayout};
 pub use receipt::{
     AGENT_SEMANTIC_CLIENT_RECEIPT_PROTOCOL_ID, AGENT_SEMANTIC_CLIENT_RECEIPT_SCHEMA_ID,
     ClientReceipt, ExecutionRoute, NativeProvenance, ProviderCommandReceipt,
@@ -56,6 +59,9 @@ mod activation_tests;
 #[cfg(test)]
 #[path = "../tests/unit/cache_manifest.rs"]
 mod cache_manifest_tests;
+#[cfg(test)]
+#[path = "../tests/unit/project_context.rs"]
+mod project_context_tests;
 #[cfg(test)]
 #[path = "../tests/unit/request.rs"]
 mod request_tests;

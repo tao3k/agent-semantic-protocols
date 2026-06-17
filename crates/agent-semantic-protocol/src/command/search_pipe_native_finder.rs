@@ -296,7 +296,7 @@ impl NativeFinderCollector<'_> {
             .arg("--ignore-case")
             .arg(pattern)
             .arg(root);
-        if self.file_spec.config_filenames().is_empty() {
+        if !root.is_file() && self.file_spec.config_filenames().is_empty() {
             for extension in self.file_spec.extensions() {
                 command.arg("--extension").arg(extension);
             }
@@ -325,17 +325,20 @@ impl NativeFinderCollector<'_> {
         command
             .arg("--line-number")
             .arg("--no-heading")
+            .arg("--with-filename")
             .arg("--color")
             .arg("never")
             .arg("--max-count")
             .arg(NATIVE_PER_TERM_LIMIT.to_string())
             .arg("--ignore-case")
             .arg(pattern);
-        for extension in self.file_spec.extensions() {
-            command.arg("--glob").arg(format!("*.{extension}"));
-        }
-        for config_file in self.file_spec.config_filenames() {
-            command.arg("--glob").arg(format!("**/{config_file}"));
+        if !root.is_file() {
+            for extension in self.file_spec.extensions() {
+                command.arg("--glob").arg(format!("*.{extension}"));
+            }
+            for config_file in self.file_spec.config_filenames() {
+                command.arg("--glob").arg(format!("**/{config_file}"));
+            }
         }
         for dir in &self.config.search.ignore_dirs {
             command.arg("--glob").arg(format!("!{dir}/**"));
@@ -352,10 +355,7 @@ impl NativeFinderCollector<'_> {
 
     fn path_candidate_from_raw(&self, raw: &str, term: &str) -> Option<Candidate> {
         let path = resolve_native_path(self.project_root, raw);
-        if !path.is_file()
-            || !self.file_spec.matches(&path)
-            || ignored_by_config(&path, self.project_root, self.config)
-        {
+        if !self.accepts_candidate_path(&path) {
             return None;
         }
         let display = display_path(self.locator_root, &path);
@@ -380,10 +380,7 @@ impl NativeFinderCollector<'_> {
     fn rg_candidate(&self, line: &[u8]) -> Option<Candidate> {
         let (path, line_number, text) = parse_rg_line(line)?;
         let path = resolve_native_path(self.project_root, &path);
-        if !path.is_file()
-            || !self.file_spec.matches(&path)
-            || ignored_by_config(&path, self.project_root, self.config)
-        {
+        if !self.accepts_candidate_path(&path) {
             return None;
         }
         let term = self
@@ -406,6 +403,18 @@ impl NativeFinderCollector<'_> {
         self.normalized_terms
             .iter()
             .position(|term| !term.is_empty() && normalized_text.contains(term))
+    }
+
+    fn accepts_candidate_path(&self, path: &Path) -> bool {
+        path.is_file()
+            && (self.file_spec.matches(path) || self.is_explicit_file_scope(path))
+            && !ignored_by_config(path, self.project_root, self.config)
+    }
+
+    fn is_explicit_file_scope(&self, path: &Path) -> bool {
+        self.roots.iter().any(|root| {
+            root.is_file() && (root == path || paths_resolve_to_same_file(root.as_path(), path))
+        })
     }
 
     fn push(&mut self, candidate: Candidate) {
@@ -437,6 +446,16 @@ impl NativeFinderCollector<'_> {
             NativeFinderSurface::Both => "finder",
         }
     }
+}
+
+fn paths_resolve_to_same_file(left: &Path, right: &Path) -> bool {
+    let Ok(left) = left.canonicalize() else {
+        return false;
+    };
+    let Ok(right) = right.canonicalize() else {
+        return false;
+    };
+    left == right
 }
 
 fn native_command(label: &str) -> Option<Command> {

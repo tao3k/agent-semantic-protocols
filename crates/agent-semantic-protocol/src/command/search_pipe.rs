@@ -254,8 +254,7 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
     let source_trace = source_trace_with_provider_facts(
         &acquisition.source_trace,
         provider_facts_started_at.elapsed(),
-        provider_facts.nodes.len(),
-        provider_facts.edges.len(),
+        &provider_facts,
     );
     let surfaces = default_search_surfaces();
     print_search_pipe_view(SearchPipeViewRequest {
@@ -287,17 +286,29 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
 fn source_trace_with_provider_facts(
     source_trace: &[SearchPipeSourceTrace],
     elapsed: Duration,
-    node_count: usize,
-    edge_count: usize,
+    provider_facts: &super::search_pipe_provider_facts::ProviderGraphFacts,
 ) -> Vec<SearchPipeSourceTrace> {
     let mut trace = source_trace.to_vec();
+    let node_count = provider_facts.nodes.len();
     let mut fields = BTreeMap::new();
     fields.insert(
         "elapsedMs".to_string(),
         Value::from(elapsed_millis(elapsed)),
     );
     fields.insert("nodes".to_string(), Value::from(node_count));
-    fields.insert("edges".to_string(), Value::from(edge_count));
+    fields.insert("edges".to_string(), Value::from(provider_facts.edges.len()));
+    fields.insert(
+        "inputCandidates".to_string(),
+        Value::from(provider_facts.input_candidates),
+    );
+    fields.insert(
+        "factCandidates".to_string(),
+        Value::from(provider_facts.fact_candidates),
+    );
+    fields.insert(
+        "truncatedCandidates".to_string(),
+        Value::from(provider_facts.truncated_candidates),
+    );
     trace.push(
         SearchPipeSourceTrace::new("providerFacts", "used", node_count, 0, node_count)
             .with_fields(fields),

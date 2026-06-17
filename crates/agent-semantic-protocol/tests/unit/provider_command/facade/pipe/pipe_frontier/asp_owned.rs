@@ -60,10 +60,8 @@ fn search_pipe_is_asp_owned_and_renders_generated_candidates_without_provider_sp
         "{stdout}"
     );
     assert!(stdout.contains("queryQuality=high reason=ok"), "{stdout}");
-    assert!(
-        stdout.contains("sourceTrace=provider:partial,finder:used"),
-        "{stdout}"
-    );
+    assert!(stdout.contains("provider:partial"), "{stdout}");
+    assert!(stdout.contains("finder:used"), "{stdout}");
     assert!(
         stdout.contains("handles=inputTerms=HookDecision,ClientReceipt contextTerms=- ownerSeedTerms=HookDecision,ClientReceipt conceptTerms=-"),
         "{stdout}"

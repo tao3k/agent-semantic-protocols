@@ -88,7 +88,7 @@ pub(super) fn analyze_search_pipe_quality(
     let query_pack_quality = query_pack_quality(&terms, &global_missing, &weak_terms, &risks);
     let allow_query_selector =
         query_pack_quality != "low" && package_cohesion != "low" && weak_terms.is_empty();
-    let fd_query = fd_query_terms(&terms, &weak_terms, &strong_matched);
+    let fd_query = fd_query_terms(&terms, &weak_terms, &strong_matched, &risks);
     let context_terms = role_terms(&terms, TermRole::Context);
     let owner_seed_terms = role_terms(&terms, TermRole::Symbol);
     let concept_terms = role_terms(&terms, TermRole::Concept);
@@ -525,8 +525,9 @@ fn fd_query_terms(
     terms: &[QueryTerm],
     weak_terms: &[String],
     strong_matched: &[String],
+    risks: &[String],
 ) -> Option<String> {
-    let selected = terms
+    let symbol_terms = terms
         .iter()
         .filter(|term| matches!(term.role, TermRole::Symbol))
         .filter(|term| {
@@ -536,7 +537,58 @@ fn fd_query_terms(
         })
         .map(|term| term.raw.clone())
         .collect::<Vec<_>>();
-    (!selected.is_empty()).then(|| selected.join("|"))
+    if !symbol_terms.is_empty() {
+        return Some(symbol_terms.join("|"));
+    }
+    if !risks
+        .iter()
+        .any(|risk| matches!(risk.as_str(), "single-broad-clause" | "package-drift"))
+    {
+        return None;
+    }
+    let owner_axis_terms = terms
+        .iter()
+        .filter(|term| !matches!(term.role, TermRole::Symbol))
+        .filter(|term| fd_owner_axis_term(&term.raw))
+        .map(|term| term.raw.clone())
+        .take(8)
+        .collect::<Vec<_>>();
+    (!owner_axis_terms.is_empty()).then(|| owner_axis_terms.join("|"))
+}
+
+fn fd_owner_axis_term(term: &str) -> bool {
+    let lower = term.to_ascii_lowercase();
+    if lower.len() < 4 {
+        return false;
+    }
+    if matches!(
+        lower.as_str(),
+        "query"
+            | "search"
+            | "pipe"
+            | "fd"
+            | "rg"
+            | "owner"
+            | "owners"
+            | "graph"
+            | "turbo"
+            | "command"
+            | "commands"
+            | "frontier"
+            | "frontiers"
+            | "action"
+            | "actions"
+            | "result"
+            | "results"
+            | "quality"
+            | "wide"
+            | "drift"
+            | "handoff"
+    ) {
+        return false;
+    }
+    term.chars()
+        .all(|ch| ch == '.' || ch == '_' || ch == '-' || ch.is_ascii_alphanumeric())
 }
 
 fn owner_coverage_line(best_owner: &Option<OwnerCoverage>) -> String {

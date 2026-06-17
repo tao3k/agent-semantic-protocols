@@ -51,6 +51,10 @@ fn rust_provider() -> ResolvedProvider {
         runtime_command_argv: None,
         runtime_profile_status: None,
         package_roots: vec![".".to_string()],
+        source_roots: vec!["src".to_string()],
+        config_files: vec!["Cargo.toml".to_string()],
+        source_extensions: vec!["rs".to_string()],
+        ignored_path_prefixes: Vec::new(),
     }
 }
 
@@ -64,6 +68,10 @@ fn python_provider() -> ResolvedProvider {
         runtime_command_argv: None,
         runtime_profile_status: None,
         package_roots: vec![".".to_string()],
+        source_roots: vec!["src".to_string()],
+        config_files: vec!["pyproject.toml".to_string()],
+        source_extensions: vec!["py".to_string()],
+        ignored_path_prefixes: Vec::new(),
     }
 }
 
@@ -77,5 +85,9 @@ fn gerbil_scheme_provider() -> ResolvedProvider {
         runtime_command_argv: None,
         runtime_profile_status: None,
         package_roots: vec![".".to_string()],
+        source_roots: vec!["src".to_string()],
+        config_files: vec!["gerbil.pkg".to_string()],
+        source_extensions: vec!["ss".to_string()],
+        ignored_path_prefixes: Vec::new(),
     }
 }

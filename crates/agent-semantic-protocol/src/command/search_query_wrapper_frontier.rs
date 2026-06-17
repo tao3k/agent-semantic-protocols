@@ -6,7 +6,9 @@ use super::search_pipe_action_frontier::{ActionNode, ActionRoute, render_action_
 use super::search_pipe_model::Candidate;
 use super::search_pipe_owner_roles::{has_strong_secondary_owner_intent, secondary_like_owner};
 use super::search_query_wrapper_candidates::{owner_candidates, rg_scope_next};
-use super::search_query_wrapper_model::{QueryWrapperSurface, display_terms, shell_arg};
+use super::search_query_wrapper_model::{
+    QueryWrapperQuality, QueryWrapperSurface, display_terms, shell_arg,
+};
 
 pub(super) fn query_display(queries: &[String]) -> String {
     queries.join(" + ")
@@ -31,6 +33,7 @@ pub(super) fn print_query_wrapper_refinement_frontier(
     queries: &[String],
     terms: &[String],
     candidates: &[Candidate],
+    quality: &QueryWrapperQuality,
 ) {
     let fd_query = fd_query_for_surface(surface, queries, terms);
     let multi_clause_queries = multi_clause_queries(queries, terms);
@@ -47,7 +50,7 @@ pub(super) fn print_query_wrapper_refinement_frontier(
         repeated_query_args(&multi_clause_queries),
         owner
     );
-    let actions = query_wrapper_action_nodes(surface, scopes, queries, terms, candidates);
+    let actions = query_wrapper_action_nodes(surface, scopes, queries, terms, candidates, quality);
     print!("{}", render_action_rows(&actions));
     println!("reason=query-selector-low-confidence,clause-cohesion-required");
 }
@@ -74,8 +77,9 @@ pub(super) fn query_wrapper_action_frontier(
     queries: &[String],
     terms: &[String],
     candidates: &[Candidate],
+    quality: &QueryWrapperQuality,
 ) -> Vec<serde_json::Value> {
-    query_wrapper_action_nodes(surface, scopes, queries, terms, candidates)
+    query_wrapper_action_nodes(surface, scopes, queries, terms, candidates, quality)
         .into_iter()
         .map(|action| action.as_json())
         .collect()
@@ -87,9 +91,10 @@ pub(super) fn render_query_wrapper_action_frontier(
     queries: &[String],
     terms: &[String],
     candidates: &[Candidate],
+    quality: &QueryWrapperQuality,
 ) -> String {
     render_action_rows(&query_wrapper_action_nodes(
-        surface, scopes, queries, terms, candidates,
+        surface, scopes, queries, terms, candidates, quality,
     ))
 }
 
@@ -99,6 +104,7 @@ fn query_wrapper_action_nodes(
     queries: &[String],
     terms: &[String],
     candidates: &[Candidate],
+    quality: &QueryWrapperQuality,
 ) -> Vec<ActionNode> {
     let fd_query = fd_query_for_surface(surface, queries, terms);
     let multi_clause_queries = multi_clause_queries(queries, terms);
@@ -133,9 +139,12 @@ fn query_wrapper_action_nodes(
             vec![fd_action, rg_action]
         }
         QueryWrapperSurface::Fd => {
-            if let Some(owner) = owner_items_candidate(candidates, terms)
+            if allow_strong_owner_items(quality)
+                && let Some(owner) = owner_items_candidate(candidates, terms)
                 && let Some(language_id) = language_id_for_owner(&owner)
             {
+                let owner_query = owner_items_query_for_owner(candidates, &owner, terms)
+                    .unwrap_or_else(|| fd_query.clone());
                 return vec![
                     ActionNode {
                         id: "A1".to_string(),
@@ -144,7 +153,7 @@ fn query_wrapper_action_nodes(
                         route: ActionRoute::OwnerItems {
                             language_id: language_id.to_string(),
                             owner,
-                            query: fd_query,
+                            query: owner_query,
                             scope: scope_label,
                         },
                     },
@@ -183,11 +192,135 @@ fn query_wrapper_action_nodes(
     }
 }
 
+fn allow_strong_owner_items(quality: &QueryWrapperQuality) -> bool {
+    quality.package_cohesion != "low"
+}
+
 fn owner_items_candidate(candidates: &[Candidate], terms: &[String]) -> Option<String> {
     candidates
         .iter()
         .find(|candidate| owner_items_candidate_is_strong(candidate, terms))
         .map(|candidate| candidate.path.clone())
+}
+
+fn owner_items_query_for_owner(
+    candidates: &[Candidate],
+    owner: &str,
+    terms: &[String],
+) -> Option<String> {
+    let evidence = candidates
+        .iter()
+        .filter(|candidate| candidate.path == owner)
+        .map(owner_candidate_evidence)
+        .collect::<Vec<_>>()
+        .join(" ");
+    if evidence.is_empty() {
+        return None;
+    }
+    let path_terms = terms
+        .iter()
+        .filter(|term| !owner_items_protocol_term(term))
+        .filter(|term| owner_items_term_matches_evidence(term, &evidence))
+        .collect::<Vec<_>>();
+    let semantic_terms = terms
+        .iter()
+        .filter(|term| !owner_items_protocol_term(term))
+        .filter(|term| !owner_items_term_matches_evidence(term, &evidence))
+        .collect::<Vec<_>>();
+    let mut selected_terms = Vec::new();
+    for term in &semantic_terms {
+        for variant in owner_items_term_variants(term) {
+            push_owner_items_query_term(&mut selected_terms, variant);
+        }
+    }
+    for term in &semantic_terms {
+        push_owner_items_query_term(&mut selected_terms, (*term).clone());
+    }
+    for term in path_terms {
+        push_owner_items_query_term(&mut selected_terms, term.clone());
+    }
+    let selected_terms = selected_terms.into_iter().take(6).collect::<Vec<_>>();
+    (!selected_terms.is_empty()).then(|| selected_terms.join("|"))
+}
+
+fn owner_candidate_evidence(candidate: &Candidate) -> String {
+    format!("{} {} {}", candidate.path, candidate.symbol, candidate.text).to_ascii_lowercase()
+}
+
+fn owner_items_term_matches_evidence(term: &str, evidence: &str) -> bool {
+    if evidence.contains(term) {
+        return true;
+    }
+    owner_items_term_axes(term)
+        .into_iter()
+        .any(|axis| axis.len() >= 3 && evidence.contains(axis.as_str()))
+}
+
+fn owner_items_term_axes(term: &str) -> Vec<String> {
+    let mut axes = Vec::new();
+    let mut current = String::new();
+    let mut previous: Option<char> = None;
+    for character in term.chars() {
+        if !character.is_ascii_alphanumeric() {
+            push_owner_items_axis(&mut axes, &mut current);
+            previous = None;
+            continue;
+        }
+        if character.is_ascii_uppercase()
+            && previous
+                .is_some_and(|previous| previous.is_ascii_lowercase() || previous.is_ascii_digit())
+        {
+            push_owner_items_axis(&mut axes, &mut current);
+        }
+        current.push(character.to_ascii_lowercase());
+        previous = Some(character);
+    }
+    push_owner_items_axis(&mut axes, &mut current);
+    axes
+}
+
+fn owner_items_term_variants(term: &str) -> Vec<String> {
+    let lower = term.to_ascii_lowercase();
+    let mut variants = Vec::new();
+    if let Some(stem) = lower.strip_suffix("ing")
+        && stem.len() >= 4
+    {
+        variants.push(format!("{stem}ed"));
+    }
+    variants
+}
+
+fn push_owner_items_query_term(terms: &mut Vec<String>, term: String) {
+    if term.len() >= 3 && !terms.iter().any(|seen| seen == &term) {
+        terms.push(term);
+    }
+}
+
+fn push_owner_items_axis(axes: &mut Vec<String>, current: &mut String) {
+    if current.len() >= 3 && !axes.iter().any(|axis| axis.as_str() == current.as_str()) {
+        axes.push(current.clone());
+    }
+    current.clear();
+}
+
+fn owner_items_protocol_term(term: &str) -> bool {
+    matches!(
+        term.to_ascii_lowercase().as_str(),
+        "query"
+            | "search"
+            | "fd"
+            | "rg"
+            | "owner"
+            | "owners"
+            | "owneritems"
+            | "frontier"
+            | "action"
+            | "actions"
+            | "command"
+            | "commands"
+            | "result"
+            | "results"
+    )
 }
 
 fn owner_items_candidate_is_strong(candidate: &Candidate, terms: &[String]) -> bool {
@@ -335,11 +468,14 @@ fn best_rg_scope(candidates: &[Candidate]) -> Option<String> {
 }
 
 fn evidence_preview(candidates: &[Candidate]) -> String {
+    let mut seen = std::collections::BTreeSet::new();
     let handles = candidates
         .iter()
+        .filter(|candidate| seen.insert(candidate.path.clone()))
+        .map(|candidate| candidate.path.clone())
         .take(8)
         .enumerate()
-        .map(|(index, candidate)| format!("H{}:{}", index + 1, candidate.path))
+        .map(|(index, path)| format!("H{}:{path}", index + 1))
         .collect::<Vec<_>>();
     display_terms(&handles)
 }

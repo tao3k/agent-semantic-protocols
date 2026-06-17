@@ -34,6 +34,13 @@ impl ProjectCacheSource {
     }
 }
 
+/// Whether PRJ* style project environment variables are meaningful for a root.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ProjectEnvStatus {
+    DirenvAtGitToplevel { envrc_path: PathBuf },
+    Unavailable,
+}
+
 /// Read-only project runtime layout derived from git and ASP cache conventions.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProjectRuntimeLayout {
@@ -41,6 +48,10 @@ pub struct ProjectRuntimeLayout {
     pub requested_root: PathBuf,
     /// Git toplevel for this project identity.
     pub git_toplevel: Option<PathBuf>,
+    /// Project home used for PRJ* style project variables.
+    pub project_home: Option<PathBuf>,
+    /// Whether project env variables are trustworthy for this project.
+    pub project_env: ProjectEnvStatus,
     /// Cache home used for state storage.
     pub cache_home: Option<PathBuf>,
     /// Source that selected `cache_home`.
@@ -94,6 +105,8 @@ pub fn project_runtime_layout_with_env(
     let git_toplevel = local_git_toplevel(project_root)
         .or_else(|| command_git_toplevel(project_root))
         .map(canonicalize_if_possible);
+    let project_home = git_toplevel.clone();
+    let project_env = project_env_status(git_toplevel.as_deref());
     let prj_cache_home = runtime_env.prj_cache_home;
 
     let (cache_home, cache_source) = if let Some(git_toplevel) = git_toplevel.as_ref() {
@@ -135,6 +148,8 @@ pub fn project_runtime_layout_with_env(
     ProjectRuntimeLayout {
         requested_root,
         git_toplevel,
+        project_home,
+        project_env,
         cache_home,
         cache_source,
         prj_cache_home,
@@ -146,6 +161,18 @@ pub fn project_runtime_layout_with_env(
         runtime_home,
         agents_dir,
         agent_skill_path,
+    }
+}
+
+fn project_env_status(git_toplevel: Option<&Path>) -> ProjectEnvStatus {
+    let Some(git_toplevel) = git_toplevel else {
+        return ProjectEnvStatus::Unavailable;
+    };
+    let envrc_path = git_toplevel.join(".envrc");
+    if envrc_path.is_file() {
+        ProjectEnvStatus::DirenvAtGitToplevel { envrc_path }
+    } else {
+        ProjectEnvStatus::Unavailable
     }
 }
 

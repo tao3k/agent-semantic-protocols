@@ -1,9 +1,10 @@
 //! Import packet assembly for Rust SQL source-index rows.
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-use agent_semantic_client_core::{CacheGenerationId, ClientCacheFileHash, LanguageId, ProviderId};
+use agent_semantic_client_core::CacheGenerationId;
+use agent_semantic_client_core::ClientCacheFileHash;
 use agent_semantic_client_db::{
     ClientDbSourceIndexImport, ClientDbSourceIndexOwner, ClientDbSourceIndexPath,
     ClientDbSourceIndexQueryKey, ClientDbSourceIndexSelector, ClientDbSourceIndexSource,
@@ -14,24 +15,25 @@ use super::config::{
     SOURCE_INDEX_FILE_BYTES_LIMIT, SOURCE_INDEX_PROVIDER_ID, SOURCE_INDEX_SCHEMA_ID,
     SOURCE_INDEX_SCHEMA_VERSION,
 };
-use super::text::{source_language_id, source_line_count, source_query_keys};
+use super::model::SourceIndexScopeFile;
+use super::text::{source_line_count, source_query_keys};
 
 pub(super) fn source_index_import(
     project_root: &Path,
     generation_id: CacheGenerationId,
-    files: &[PathBuf],
+    files: &[SourceIndexScopeFile],
 ) -> Result<ClientDbSourceIndexImport, String> {
     let mut file_hashes = Vec::with_capacity(files.len());
     let mut owners = Vec::with_capacity(files.len());
     let mut selectors = Vec::with_capacity(files.len());
-    for path in files {
-        let bytes = fs::read(path).map_err(|error| {
+    for file in files {
+        let bytes = fs::read(&file.path).map_err(|error| {
             format!(
                 "failed to read source index file {}: {error}",
-                path.display()
+                file.path.display()
             )
         })?;
-        let relative_path = relative_project_path(project_root, path);
+        let relative_path = relative_project_path(project_root, &file.path);
         let sha256 = format!("{:x}", Sha256::digest(&bytes));
         file_hashes.push(ClientCacheFileHash {
             path: relative_path.clone(),
@@ -47,8 +49,8 @@ pub(super) fn source_index_import(
         let owner_path = ClientDbSourceIndexPath::from(relative_path.clone());
         owners.push(ClientDbSourceIndexOwner {
             owner_path: owner_path.clone(),
-            language_id: source_language_id(path).map(LanguageId::from),
-            provider_id: Some(ProviderId::from(SOURCE_INDEX_PROVIDER_ID)),
+            language_id: Some(file.language_id.clone()),
+            provider_id: Some(file.provider_id.clone()),
             source_kind: ClientDbSourceIndexSource::from("file"),
             line_count: Some(line_count),
             query_keys: query_keys
@@ -60,7 +62,8 @@ pub(super) fn source_index_import(
         selectors.push(ClientDbSourceIndexSelector {
             owner_path,
             selector_id: format!("{relative_path}:1:{}", line_count.max(1)),
-            symbol: path
+            symbol: file
+                .path
                 .file_stem()
                 .and_then(|stem| stem.to_str())
                 .map(str::to_string),

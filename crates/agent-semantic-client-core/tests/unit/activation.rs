@@ -50,6 +50,10 @@ fn activation_provider_prefix_takes_precedence_over_runtime_profile_argv() {
         runtime_command_argv: Some(vec!["/opt/homebrew/bin/rs-harness".to_string()]),
         runtime_profile_status: Some(RuntimeProfileStatus::Available),
         package_roots: vec![".".to_string()],
+        source_roots: vec!["src".to_string()],
+        config_files: vec!["Cargo.toml".to_string()],
+        source_extensions: vec!["rs".to_string()],
+        ignored_path_prefixes: Vec::new(),
     };
 
     assert_eq!(

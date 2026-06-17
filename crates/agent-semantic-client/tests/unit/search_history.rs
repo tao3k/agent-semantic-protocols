@@ -121,7 +121,7 @@ fn search_history_backfills_artifacts_and_passes_rust_sqlite_events() {
 
     let previous_path = std::env::var_os("PATH");
     let previous_prj_cache_home = std::env::var_os("PRJ_CACHE_HOME");
-    let cache_root = root.join(".cache/agent-semantic-protocol");
+    let cache_root = root.join(".cache");
     unsafe {
         std::env::set_var("PATH", prepend_path(&bin_dir));
         std::env::set_var("ASP_GRAPH_TURBO_STDIN_OUT", &stdin_path);

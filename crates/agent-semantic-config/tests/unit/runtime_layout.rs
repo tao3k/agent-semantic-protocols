@@ -2,7 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use super::{
-    ProjectCacheSource, ProjectRuntimeEnv, project_cache_root_with_env,
+    ProjectCacheSource, ProjectEnvStatus, ProjectRuntimeEnv, project_cache_root_with_env,
     project_runtime_layout_with_env,
 };
 
@@ -22,6 +22,8 @@ fn git_toplevel_is_first_project_identity_for_workspace_packages() {
     let expected_cache_home = root.join(".cache");
 
     assert_eq!(layout.git_toplevel.as_deref(), Some(root.as_path()));
+    assert_eq!(layout.project_home.as_deref(), Some(root.as_path()));
+    assert_eq!(layout.project_env, ProjectEnvStatus::Unavailable);
     assert_eq!(
         layout.cache_home.as_deref(),
         Some(expected_cache_home.as_path())
@@ -39,6 +41,41 @@ fn git_toplevel_is_first_project_identity_for_workspace_packages() {
         layout.runtime_home,
         Some(root.join(".cache/agent-semantic-protocol/runtime"))
     );
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn project_env_requires_envrc_at_git_toplevel() {
+    let root = temp_root("runtime-layout-root-envrc");
+    let package_root = root.join("packages/example");
+    fs::create_dir_all(&package_root).expect("create package root");
+    fs::create_dir_all(root.join(".git")).expect("create git marker");
+    fs::write(root.join(".envrc"), "export PRJHOME=$PWD\n").expect("write root envrc");
+
+    let layout = project_runtime_layout_with_env(&package_root, ProjectRuntimeEnv::default());
+
+    assert_eq!(layout.project_home.as_deref(), Some(root.as_path()));
+    assert_eq!(
+        layout.project_env,
+        ProjectEnvStatus::DirenvAtGitToplevel {
+            envrc_path: root.join(".envrc")
+        }
+    );
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn nested_envrc_does_not_enable_project_env() {
+    let root = temp_root("runtime-layout-nested-envrc");
+    let package_root = root.join("packages/example");
+    fs::create_dir_all(&package_root).expect("create package root");
+    fs::create_dir_all(root.join(".git")).expect("create git marker");
+    fs::write(package_root.join(".envrc"), "export PRJHOME=$PWD\n").expect("write nested envrc");
+
+    let layout = project_runtime_layout_with_env(&package_root, ProjectRuntimeEnv::default());
+
+    assert_eq!(layout.project_home.as_deref(), Some(root.as_path()));
+    assert_eq!(layout.project_env, ProjectEnvStatus::Unavailable);
     let _ = fs::remove_dir_all(root);
 }
 

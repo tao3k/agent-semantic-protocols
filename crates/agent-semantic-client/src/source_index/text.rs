@@ -1,9 +1,7 @@
 //! Tokenization and language inference helpers for source-index rows.
 
-use std::collections::BTreeSet;
-use std::path::Path;
-
 use super::config::SOURCE_INDEX_QUERY_KEY_LIMIT;
+use std::collections::BTreeSet;
 
 pub(super) fn source_line_count(text: &str) -> u32 {
     text.lines().count().max(1).min(u32::MAX as usize) as u32
@@ -36,19 +34,6 @@ fn push_source_token(token: &mut String, keys: &mut BTreeSet<String>) {
         keys.insert(value.to_string());
     }
     token.clear();
-}
-
-pub(super) fn source_language_id(path: &Path) -> Option<&'static str> {
-    match path.extension().and_then(|extension| extension.to_str()) {
-        Some("rs") => Some("rust"),
-        Some("ts" | "tsx" | "js" | "jsx") => Some("typescript"),
-        Some("py") => Some("python"),
-        Some("jl") => Some("julia"),
-        Some("ss" | "ssi" | "scm" | "sld") => Some("gerbil-scheme"),
-        Some("org") => Some("org"),
-        Some("md") => Some("md"),
-        _ => None,
-    }
 }
 
 pub(super) fn lookup_terms(query: &str) -> Vec<String> {

@@ -1,7 +1,6 @@
 //! Rust-owned source index refresh and lookup facade.
 
 mod api;
-mod cargo_workspace;
 mod collect;
 mod config;
 mod import;

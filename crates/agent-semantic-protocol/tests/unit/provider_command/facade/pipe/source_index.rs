@@ -21,6 +21,7 @@ fn search_pipe_auto_uses_rust_sql_source_index_before_finder() {
     write_marker_provider(&bin_dir, "rs-harness", &marker);
     write_activation(&root, &[provider("rust", Vec::new())]);
     agent_semantic_client::refresh_source_index(&root).expect("refresh source index");
+    let _ = std::fs::remove_file(&marker);
 
     let output = asp_command(&root)
         .env("PATH", prepend_path(&bin_dir))

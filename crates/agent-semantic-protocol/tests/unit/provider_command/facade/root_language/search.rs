@@ -30,9 +30,11 @@ fn root_search_facade_routes_explicit_language_to_provider() {
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    assert_eq!(
-        String::from_utf8(output.stdout).expect("stdout"),
-        "rs args=[search][prime][--view][seeds]\n"
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    assert!(stdout.starts_with("[search-prime] root="), "{stdout}");
+    assert!(
+        stdout.contains("alg=native-fd-prime-frontier-v1"),
+        "{stdout}"
     );
     let _ = std::fs::remove_dir_all(root);
 }
@@ -99,9 +101,11 @@ fn root_search_facade_infers_language_from_single_project_marker() {
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    assert_eq!(
-        String::from_utf8(output.stdout).expect("stdout"),
-        "rs args=[search][prime][--view][seeds]\n"
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    assert!(stdout.starts_with("[search-prime] root="), "{stdout}");
+    assert!(
+        stdout.contains("alg=native-fd-prime-frontier-v1"),
+        "{stdout}"
     );
     let _ = std::fs::remove_dir_all(root);
 }
