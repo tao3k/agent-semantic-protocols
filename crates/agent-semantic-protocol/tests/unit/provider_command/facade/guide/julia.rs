@@ -10,7 +10,7 @@ fn julia_language_facade_rewrites_compiled_provider_guide_commands() {
     let provider_path = profile_bin_dir.join("asp-julia-harness");
     std::fs::write(
         &provider_path,
-        "#!/bin/sh\nprintf '[julia-harness-guide]\\n'\nprintf '|cmd asp-julia-harness guide .\\n'\nprintf '|cmd prime=asp-julia-harness search prime --view seeds .\\n'\nprintf '|pipe <candidate-lines> | asp-julia-harness search ingest owner tests --view seeds .\\n'\nprintf '|cmd doctor=asp-julia-harness agent doctor --json .\\n'\n",
+        "#!/bin/sh\nprintf '[julia-harness-guide]\\n'\nprintf '|cmd asp-julia-harness guide --workspace .\\n'\nprintf '|cmd prime=asp-julia-harness search prime --workspace . --view seeds\\n'\nprintf '|pipe <candidate-lines> | asp-julia-harness search ingest owner tests --workspace . --view seeds\\n'\nprintf '|cmd doctor=asp-julia-harness agent doctor --workspace . --json\\n'\n",
     )
     .expect("write julia guide provider");
     make_executable(&provider_path);
@@ -27,7 +27,7 @@ fn julia_language_facade_rewrites_compiled_provider_guide_commands() {
 
     let output = asp_command(&root)
         .env("PRJ_CACHE_HOME", root.join(".cache"))
-        .args(["julia", "guide", "."])
+        .args(["julia", "guide", "--workspace", "."])
         .output()
         .expect("run asp julia guide");
 
@@ -44,18 +44,21 @@ fn julia_language_facade_rewrites_compiled_provider_guide_commands() {
         "{stdout}"
     );
     assert!(
-        stdout.contains("|cmd prime=asp julia search prime --view seeds ."),
+        stdout.contains("|cmd prime=asp julia search prime --workspace . --view seeds"),
         "{stdout}"
     );
-    assert!(stdout.contains("|cmd asp julia guide ."), "{stdout}");
+    assert!(
+        stdout.contains("|cmd asp julia guide --workspace ."),
+        "{stdout}"
+    );
     assert!(
         stdout.contains(
-            "|pipe <candidate-lines> | asp julia search ingest owner tests --view seeds ."
+            "|pipe <candidate-lines> | asp julia search ingest owner tests --workspace . --view seeds"
         ),
         "{stdout}"
     );
     assert!(
-        stdout.contains("|cmd doctor=asp julia agent doctor --json ."),
+        stdout.contains("|cmd doctor=asp julia agent doctor --workspace . --json"),
         "{stdout}"
     );
     assert!(!stdout.contains("asp-julia-harness"), "{stdout}");

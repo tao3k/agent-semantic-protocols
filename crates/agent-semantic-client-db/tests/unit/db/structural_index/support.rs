@@ -36,6 +36,8 @@ pub(super) fn structural_index_with_generation(
         file_hashes: vec![ClientCacheFileHash {
             path: "src/lib.rs".to_string(),
             sha256: "0".repeat(64),
+            byte_len: 0,
+            mtime_ms: 0,
         }],
         owners: vec![ClientDbStructuralOwner {
             owner_path: ClientDbStructuralPath::from("src/lib.rs"),
@@ -83,6 +85,8 @@ pub(super) fn add_cached_helper_file(import: &mut ClientDbStructuralIndexImport)
     import.file_hashes.push(ClientCacheFileHash {
         path: "src/unchanged.rs".to_string(),
         sha256: "1".repeat(64),
+        byte_len: 0,
+        mtime_ms: 0,
     });
     import.owners.push(ClientDbStructuralOwner {
         owner_path: ClientDbStructuralPath::from("src/unchanged.rs"),
@@ -145,6 +149,8 @@ pub(super) fn structural_index_packet_with_generation(
             {
                 "path": "src/lib.rs",
                 "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+                "byteLen": 0,
+                "mtimeMs": 0,
                 "source": "provider"
             }
         ],
@@ -219,7 +225,7 @@ pub(super) fn manifest_with_generations(
                 "cacheStatus": "miss",
                 "rawSourceStored": false,
                 "requestFingerprint": format!("fnv64:{generation_ordinal:016x}"),
-                "fileHashes": [{"path": "src/lib.rs", "sha256": "0000000000000000000000000000000000000000000000000000000000000000"}],
+                "fileHashes": [{"path": "src/lib.rs", "sha256": "0000000000000000000000000000000000000000000000000000000000000000", "byteLen": 0, "mtimeMs": 0}],
                 "artifactIds": [format!("structural-index/{generation_id}.json")]
             })
         })

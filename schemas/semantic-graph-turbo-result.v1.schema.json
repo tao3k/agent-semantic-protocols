@@ -241,6 +241,9 @@
         ]
       },
       "uniqueItems": true
+    },
+    "readMemory": {
+      "$ref": "#/$defs/readMemory"
     }
   },
   "$defs": {
@@ -1184,6 +1187,32 @@
         },
         "queryClauseCoverageDelta": {
           "type": "number"
+        }
+      }
+    },
+    "readMemory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "seenSelectors",
+        "suppressedSelectors"
+      ],
+      "properties": {
+        "seenSelectors": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "suppressedSelectors": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
         }
       }
     }

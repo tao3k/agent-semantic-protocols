@@ -278,7 +278,7 @@ fn is_owner_seed_token(raw: &str) -> bool {
     is_path_like_token(raw) || is_package_like_token(raw)
 }
 
-fn is_path_like_token(raw: &str) -> bool {
+pub(super) fn is_path_like_token(raw: &str) -> bool {
     raw.contains('/') || raw.contains("::") || raw.contains('.') || raw.contains('_')
 }
 

@@ -5,7 +5,7 @@
       {
         "id": "call_failure_1",
         "input": {
-          "command": "asp rust search failure --from-last-check --view seeds ."
+          "command": "asp rust search failure --from-last-check --workspace . --view seeds"
         },
         "name": "Bash"
       }

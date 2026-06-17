@@ -6,6 +6,7 @@ requires-python = ">=3.12"
 dependencies = [
     "agent-semantic-protocols-tools",
     "asp-graph-turbo",
+    "asp-memory-engine",
 ]
 
 [dependency-groups]
@@ -21,9 +22,11 @@ package = false
 agent-semantic-protocols-tools = { workspace = true }
 asp-graph-turbo = { workspace = true }
 python-lang-project-harness = { path = "../../languages/python-lang-project-harness", editable = true }
+asp-memory-engine = { workspace = true }
 
 [tool.uv.workspace]
 members = [
     "asp_graph_turbo",
     "tools",
+    "asp_memory_engine",
 ]

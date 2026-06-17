@@ -153,7 +153,7 @@ def _messages() -> list[dict[str, object]]:
                 {
                     "id": "call_1",
                     "name": "Bash",
-                    "input": {"command": "asp rust search prime --view seeds ."},
+                    "input": {"command": "asp rust search prime --workspace . --view seeds"},
                 }
             ],
         },
@@ -164,7 +164,7 @@ def _messages() -> list[dict[str, object]]:
                     "tool_use_id": "call_1",
                     "content": (
                         "[search-prime] language=rust project=tokio\n"
-                        "nextCommand=asp rust search pipe 'readiness' --view seeds ."
+                        "nextCommand=asp rust search pipe 'readiness' --workspace . --view seeds"
                     ),
                     "is_error": False,
                 }

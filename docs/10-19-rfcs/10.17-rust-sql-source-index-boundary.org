@@ -62,6 +62,46 @@ For Cargo workspaces, =workspace.exclude= is part of the project-scope contract.
 
 This boundary is part of search quality, not just performance. Agent-facing broad search must not rank vendored Codex source, plugin cache files, or runtime-source mirrors ahead of the active language project unless a future command explicitly requests an external-source scope.
 
+* Runtime-source checkout indexing
+Runtime-source checkouts are explicit external-source scopes. They remain
+outside the active project source-index scope, because broad project search must
+not rank versioned runtime mirrors ahead of the workspace being edited.
+
+=asp cache runtime-source acquire= is the materialization boundary for those
+mirrors. After clone/fetch/checkout succeeds, the command must build Rust SQL
+source-index rows for the checkout root in the project client DB with
+=rawSourceStored=false=. The source-index generation project root is the
+checkout directory, not the active workspace root. Rows use the acquired
+language id and the supplied =--index-owner= as the owner/provider identity,
+retain file hashes with byte length and mtime, skip VCS metadata directories,
+and index only source-like files for the acquired language.
+
+The acquisition receipt must report =sourceIndex=refreshed=, the SQLite DB path,
+generation id, checkout project root, file count, owner count, selector count,
+and =rawSourceStored=false=. This does not replace provider structural
+artifacts: =asp cache import= remains the next command for replaying
+provider-emitted structural-index artifacts into the same client DB.
+
+Refresh is incremental. If the latest matching project-root/schema generation
+has identical file hash evidence, refresh must reuse that generation and skip
+rewriting owner and selector rows. Warm refresh should reuse unchanged file
+hashes from the prior generation when path, byte length, and mtime are
+unchanged, so unchanged files do not need to be read again just to recompute
+SHA-256. It should also retain scope evidence for the provider registry,
+provider-declared package roots, source roots, config parents, and indexed
+source directories. When that evidence is unchanged, refresh may rebuild
+the candidate file list from the latest owner rows and skip provider
+=workspace-scope= calls and recursive source-root discovery entirely. Agent-
+facing receipts must expose whether the source-index generation was reused.
+=asp cache source-index lookup= is the read-side debug and agent-routing
+surface for this index. It must read from the active project client DB while
+accepting an explicit =--index-root= for external/runtime scopes. The root
+command is unfiltered; language-scoped lookup must use the existing facade form
+=asp <language> cache source-index lookup= rather than an inner
+=--language-id= cache flag. A hit prints
+compact candidate rows with path, language, provider, source kind, line count,
+and query keys. A miss prints a compact =noOutput= line with the miss state,
+query, and index root instead of emitting explanatory prose.
 * Missing Index Behavior
 
 A provider command that cannot answer from bounded facts must return an
@@ -77,6 +117,49 @@ next step is:
 - ask a provider for bounded owner facts
 - narrow the query
 - inspect a concrete selector
+
+* Dependency Incremental Index
+
+Dependency search is not a prompt-output cache and not a raw source cache. It is
+a Rust-owned incremental SQL index derived from durable project facts.
+
+The dependency index input keys are:
+
+- package manifest hashes such as =Cargo.toml=, =package.json=,
+  =pyproject.toml=, =Project.toml=, and =gerbil.pkg=
+- lockfile or resolver hashes such as =Cargo.lock=, =package-lock.json=,
+  =pnpm-lock.yaml=, =uv.lock=, =Manifest.toml=, and provider-specific
+  resolved-version packets
+- provider registry coverage hashes, including package roots, source roots,
+  config files, source extensions, and ignored path prefixes
+- provider-emitted import and dependency-usage fact hashes
+- optional public API or docs-use fact hashes when a provider can emit them
+  without fetching or storing dependency source text
+
+The dependency index output is a compact frontier:
+
+- dependency package nodes with current/external/unknown version scope
+- manifest and lockfile evidence rows
+- import/API usage owner rows
+- related test owner rows
+- next actions for owner, tests, import, docs-use, crate-source, or
+  language-equivalent dependency evidence
+
+The index must store structural facts, query keys, hashes, and locators only. It
+must not store raw source text from the active workspace or dependencies.
+
+Incremental refresh must be file-hash driven. A change to a normal source file
+may invalidate only import/API usage facts for that file. A change to a
+manifest, lockfile, provider registry descriptor, or package root boundary
+invalidates the affected dependency package rows and version-scope rows.
+Unchanged dependency rows must remain reusable across agent edits.
+
+This is the performance boundary for dependency search. A warm =asp <language>
+search dependency <package> --workspace . --view seeds= command should answer
+from the Rust dependency index and replay/render path without invoking a full
+language provider scan. Cold refresh may invoke bounded provider extractors, but
+it must report provider command count, changed input hashes, row counts, and
+elapsed time.
 
 * gtags Integration
 
@@ -98,11 +181,13 @@ fact extractors.
    =schemas/=.
 2. Implement the Rust SQL source-index owner and cache invalidation path.
 3. Add optional =gtags= import behind capability detection.
-4. Change language providers so broad search asks Rust for owner sets before
+4. Add the Rust dependency incremental index schema, DB tables, refresh command,
+   and warm dependency-search replay path.
+5. Change language providers so broad search asks Rust for owner sets before
    provider-local semantic extraction.
-5. Remove or downgrade provider-local workspace indexing to bounded owner fact
+6. Remove or downgrade provider-local workspace indexing to bounded owner fact
    extraction.
-6. Add CI and real-project evidence that broad search does not call provider
+7. Add CI and real-project evidence that broad search does not call provider
    workspace scans and that missing index state yields explicit next commands.
 
 * State layout materialization

@@ -29,9 +29,10 @@ fn structured_direct_read_source_glob_routes_to_provider_query() {
             "*.ts",
             "--surface",
             "owners,tests",
+            "--workspace",
+            ".",
             "--view",
-            "seeds",
-            "."
+            "seeds"
         ]
     );
     assert!(
@@ -42,7 +43,7 @@ fn structured_direct_read_source_glob_routes_to_provider_query() {
     assert!(decision.message.contains("spawn_agent"));
     assert!(decision.message.contains("asp-search-subagent"));
     assert!(decision.message.contains(
-        "asp typescript query --selector '*.ts' --surface 'owners,tests' --view seeds ."
+        "asp typescript query --selector '*.ts' --surface 'owners,tests' --workspace . --view seeds"
     ));
     assert!(!decision.message.contains("|run-next"));
 }
@@ -80,9 +81,10 @@ fn structured_direct_read_language_globs_route_to_provider_query() {
                 selector,
                 "--surface",
                 "owners,tests",
+                "--workspace",
+                ".",
                 "--view",
-                "seeds",
-                "."
+                "seeds"
             ],
             "{selector}"
         );

@@ -12,7 +12,7 @@ from tools.semantic_sandtable.scenario_runner import run_scenario
 
 
 class RealTriggerGraphOutputGuideTests(unittest.TestCase):
-    def test_guide_quality_accepts_graph_entries_and_rejects_legacy_output(
+    def test_guide_quality_accepts_graph_entries_and_rejects_retired_output(
         self,
     ) -> None:
         entries = (
@@ -22,8 +22,8 @@ class RealTriggerGraphOutputGuideTests(unittest.TestCase):
             "finding-frontier(F,O=>affected-owners+tests+verification-actions),"
             "feature-cfg(F2=>cfg-gates+owners+verification-surfaces)"
         )
-        legacy_profiles = "profiles" + "="
-        legacy_handles = "".join(["compatible", "Handles"])
+        retired_profiles = "profiles" + "="
+        retired_handles = "".join(["compatible", "Handles"])
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)
             scenario_path = repo_root / "scenario.json"
@@ -63,8 +63,8 @@ class RealTriggerGraphOutputGuideTests(unittest.TestCase):
                                         "routeKind": "query",
                                         "outputContains": [entries],
                                         "outputNotContains": [
-                                            legacy_profiles,
-                                            legacy_handles,
+                                            retired_profiles,
+                                            retired_handles,
                                         ],
                                         "primeOutput": {
                                             "requiresStructureStatus": True,
@@ -199,8 +199,8 @@ class RealTriggerGraphOutputGuideTests(unittest.TestCase):
             result.steps[0].errors,
         )
 
-    def test_guide_quality_rejects_legacy_graph_profile_output(self) -> None:
-        legacy_profiles = "profiles" + "="
+    def test_guide_quality_rejects_retired_graph_profile_output(self) -> None:
+        retired_profiles = "profiles" + "="
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)
             scenario_path = repo_root / "scenario.json"
@@ -218,7 +218,7 @@ class RealTriggerGraphOutputGuideTests(unittest.TestCase):
                                     "-c",
                                     (
                                         "import json; "
-                                        f"bad_output = {legacy_profiles!r}; "
+                                        f"bad_output = {retired_profiles!r}; "
                                         "decision = {"
                                         "'reasonKind': 'raw-broad-search',"
                                         "'languageIds': ['typescript'],"
@@ -233,7 +233,7 @@ class RealTriggerGraphOutputGuideTests(unittest.TestCase):
                                         "reasonKind": "raw-broad-search",
                                         "languageId": "typescript",
                                         "routeKind": "query",
-                                        "outputNotContains": [legacy_profiles],
+                                        "outputNotContains": [retired_profiles],
                                     }
                                 },
                             }
@@ -247,7 +247,7 @@ class RealTriggerGraphOutputGuideTests(unittest.TestCase):
 
         self.assertEqual("fail", result.status)
         self.assertIn(
-            f"guide output contains stale text {legacy_profiles!r}",
+            f"guide output contains stale text {retired_profiles!r}",
             result.steps[0].errors,
         )
 

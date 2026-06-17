@@ -48,7 +48,10 @@ fn document_facade_help_does_not_spawn_orgize() {
     let root = temp_project_root("document-facade-help");
 
     for (language, commands) in [
-        ("org", "guide|search|query|elements-query|contract"),
+        (
+            "org",
+            "guide|search|query|elements-query|contract|capture-plan|export|fmt|lint",
+        ),
         ("md", "guide|search|query|elements-query"),
     ] {
         let output = asp_command(&root)

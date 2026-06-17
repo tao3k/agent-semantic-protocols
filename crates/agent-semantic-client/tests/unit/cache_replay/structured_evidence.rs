@@ -64,7 +64,7 @@ fn structured_evidence_artifacts_prevent_prompt_stdout_replay() {
     );
     assert!(
         load_replay_artifact(&cache_root, &prompt_only, &request).is_some(),
-        "control generation should replay legacy prompt stdout"
+        "control generation should replay prompt stdout fallback"
     );
 
     let structured_evidence = generation_hit(
@@ -125,11 +125,20 @@ fn write_prompt_output_artifact(root: &Path, stdout: &str) {
 }
 
 fn client_file_hash(root: &Path, path: &str) -> Option<ClientCacheFileHash> {
-    let bytes = std::fs::read(root.join(path)).ok()?;
+    let source_path = root.join(path);
+    let metadata = std::fs::metadata(&source_path).ok()?;
+    let mtime_ms = metadata
+        .modified()
+        .ok()
+        .and_then(|modified| modified.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|duration| duration.as_millis().min(u128::from(u64::MAX)) as u64)?;
+    let bytes = std::fs::read(source_path).ok()?;
     let digest = Sha256::digest(&bytes);
     Some(ClientCacheFileHash {
         path: path.to_string(),
         sha256: format!("{digest:x}"),
+        byte_len: metadata.len(),
+        mtime_ms,
     })
 }
 

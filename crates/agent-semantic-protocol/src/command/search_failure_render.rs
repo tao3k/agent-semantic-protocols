@@ -458,7 +458,7 @@ fn rust_block_end(path: &Path, lines: &[&[u8]], start_index: usize) -> Option<us
     }
     let mut saw_open = false;
     let mut brace_depth = 0isize;
-    for (offset, line) in lines.iter().enumerate().skip(start_index) {
+    for (line_index, line) in lines.iter().enumerate().skip(start_index) {
         for byte in *line {
             match byte {
                 b'{' => {
@@ -472,7 +472,7 @@ fn rust_block_end(path: &Path, lines: &[&[u8]], start_index: usize) -> Option<us
             }
         }
         if saw_open && brace_depth <= 0 {
-            let end = offset + 1;
+            let end = line_index + 1;
             return Some(if end == start_index + 1 { end + 1 } else { end });
         }
     }
@@ -484,13 +484,13 @@ fn python_block_end(path: &Path, lines: &[&[u8]], start_index: usize) -> Option<
         return None;
     }
     let base_indent = leading_spaces(lines.get(start_index)?);
-    for (offset, line) in lines.iter().enumerate().skip(start_index + 1) {
+    for (line_index, line) in lines.iter().enumerate().skip(start_index + 1) {
         if line.iter().all(|byte| byte.is_ascii_whitespace()) {
             continue;
         }
         let indent = leading_spaces(line);
         if indent <= base_indent {
-            return Some(offset);
+            return Some(line_index);
         }
     }
     Some(lines.len())

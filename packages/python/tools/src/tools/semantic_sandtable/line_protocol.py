@@ -60,7 +60,7 @@ def _validate_compact_graph_contract(result: StepResult, lines: list[str]) -> No
         _validate_compact_graph_entries_contract(result, lines, alias_lines[0])
     if any(line.startswith("|seed") or line.startswith("|synthesis") for line in lines):
         result.errors.append(
-            "compact graph output must not include legacy seed/synthesis rows"
+            "compact graph output must not include retired seed/synthesis rows"
         )
 
 

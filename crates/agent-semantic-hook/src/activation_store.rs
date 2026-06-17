@@ -5,7 +5,10 @@ use crate::provider_manifest::{
     ProviderCommandSelection, build_default_activation, provider_command_selections,
     provider_manifests,
 };
-use agent_semantic_runtime::ensure_project_hook_cache_dir;
+use agent_semantic_runtime::{
+    discover_project_activation_path, is_project_activation_path, project_activation_path,
+    project_local_activation_path,
+};
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -92,7 +95,9 @@ fn reusable_activation(
     if activation.project_root != project_root.display().to_string() {
         return Ok(None);
     }
-    if activation_matches_provider_command_selections(&activation, current_selections) {
+    if activation_matches_provider_command_selections(&activation, current_selections)
+        && activation_matches_current_manifest_coverage(&activation)
+    {
         Ok(Some(activation))
     } else {
         Ok(None)
@@ -117,6 +122,22 @@ fn activation_matches_provider_command_selections(
                     && provider.execution == selection.execution
                     && provider.provider_command_prefix == selection.provider_command_prefix
             })
+}
+
+fn activation_matches_current_manifest_coverage(activation: &HookActivation) -> bool {
+    let manifests = provider_manifests();
+    activation.providers.iter().all(|provider| {
+        manifests
+            .iter()
+            .find(|manifest| manifest.manifest_id == provider.manifest_id)
+            .is_some_and(|manifest| {
+                provider.coverage.source_roots == manifest.source.default_source_roots
+                    && provider.coverage.config_files == manifest.source.default_config_files
+                    && provider.coverage.source_extensions == manifest.source.default_extensions
+                    && provider.coverage.ignored_path_prefixes
+                        == manifest.source.default_ignored_path_prefixes
+            })
+    })
 }
 
 fn sync_activation(project_root: &Path, activation_path: &Path) -> Result<HookRuntime, String> {
@@ -144,27 +165,17 @@ pub fn write_activation(path: &Path, activation: &HookActivation) -> Result<(), 
 
 /// Return the managed cache path for a project's hook activation.
 pub fn default_activation_path(project_root: &Path) -> PathBuf {
-    ensure_project_hook_cache_dir(project_root)
-        .unwrap_or_else(|_| {
-            project_root
-                .join(".cache")
-                .join("agent-semantic-protocol")
-                .join("hooks")
-        })
-        .join("activation.json")
+    project_activation_path(project_root)
+        .unwrap_or_else(|_| project_local_activation_path(project_root))
 }
 
 /// Search ancestors for a managed hook activation cache file.
 pub fn discover_activation_path(start: &Path) -> Option<PathBuf> {
-    start
-        .ancestors()
-        .map(default_activation_path)
-        .find(|path| path.is_file())
+    discover_project_activation_path(start)
 }
 
 pub(crate) fn is_generated_activation_path(path: &Path) -> bool {
-    let normalized = path.to_string_lossy().replace('\\', "/");
-    normalized.ends_with(".cache/agent-semantic-protocol/hooks/activation.json")
+    is_project_activation_path(path)
 }
 /// Parses a project hook activation using the built-in provider manifests.
 pub fn parse_hook_activation(input: &str) -> Result<HookRuntime, crate::protocol::AgentHookError> {

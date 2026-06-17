@@ -1,4 +1,4 @@
-"""Validate hook install writes the single ASP custom subagent profile."""
+"""Validate install hook writes the single ASP custom subagent profile."""
 
 from __future__ import annotations
 
@@ -87,8 +87,14 @@ def sandtable_env(root: pathlib.Path) -> dict[str, str]:
 
 
 def run_install(asp: pathlib.Path, root: pathlib.Path, env: dict[str, str], *args: str) -> str:
+    if args[:2] == ("--client", "codex"):
+        command = [str(asp), "install", "plugin", "--codex", *args[2:], str(root)]
+    elif args[:2] == ("--client", "claude"):
+        command = [str(asp), "install", "hook", "--client", "claude", *args[2:], str(root)]
+    else:
+        raise ValueError(f"unsupported install args: {args!r}")
     result = subprocess.run(
-        [str(asp), "hook", "install", *args, str(root)],
+        command,
         check=True,
         env=env,
         text=True,

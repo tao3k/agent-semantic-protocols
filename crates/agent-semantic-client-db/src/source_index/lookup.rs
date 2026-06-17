@@ -1,4 +1,5 @@
 use agent_semantic_client_core::CacheGenerationId;
+use agent_semantic_client_core::{SemanticSchemaId, SemanticSchemaVersion};
 use rusqlite::params;
 
 use crate::db::{ClientDb, normalized_project_root};
@@ -111,6 +112,49 @@ pub(super) fn lookup_source_index_owners(
         )
         .map_err(|error| format!("failed to read source owners: {error}"))?;
     collect_rows(rows, "source owner")
+}
+
+pub(super) fn latest_source_index_generation_owners(
+    db: &ClientDb,
+    project_root: &std::path::Path,
+    schema_id: &SemanticSchemaId,
+    schema_version: &SemanticSchemaVersion,
+) -> Result<Vec<ClientDbSourceIndexOwner>, String> {
+    let project_root = normalized_project_root(project_root);
+    let mut statement = db
+        .conn
+        .prepare_cached(
+            "SELECT
+                o.owner_path,
+                o.language_id,
+                o.provider_id,
+                o.source_kind,
+                o.line_count,
+                o.query_keys_json
+            FROM source_index_owner o
+            JOIN source_index_generation g ON g.generation_id = o.generation_id
+            WHERE g.project_root = ?1
+              AND g.schema_id = ?2
+              AND g.schema_version = ?3
+              AND g.generation_id = (
+                SELECT latest.generation_id
+                FROM source_index_generation latest
+                WHERE latest.project_root = ?1
+                  AND latest.schema_id = ?2
+                  AND latest.schema_version = ?3
+                ORDER BY latest.updated_at DESC, latest.generation_id DESC
+                LIMIT 1
+              )
+            ORDER BY o.owner_ordinal",
+        )
+        .map_err(|error| format!("failed to prepare latest source owner lookup: {error}"))?;
+    let rows = statement
+        .query_map(
+            params![project_root, schema_id.as_str(), schema_version.as_str()],
+            source_owner_from_row,
+        )
+        .map_err(|error| format!("failed to read latest source owners: {error}"))?;
+    collect_rows(rows, "latest source owner")
 }
 
 fn count_generation_rows(

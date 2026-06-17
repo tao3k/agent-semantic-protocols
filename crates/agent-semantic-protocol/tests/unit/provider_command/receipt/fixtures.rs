@@ -103,10 +103,21 @@ pub(super) fn valid_query_manifest_with_artifact(
 
 fn fresh_file_hashes(root: &std::path::Path) -> Value {
     write_cache_source_fixture(root);
+    let source_path = root.join(CACHE_SOURCE_PATH);
+    let metadata = std::fs::metadata(&source_path).expect("cache fixture metadata");
+    let mtime_ms = metadata
+        .modified()
+        .expect("cache fixture mtime")
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("cache fixture mtime after epoch")
+        .as_millis()
+        .min(u128::from(u64::MAX)) as u64;
     json!([
         {
             "path": CACHE_SOURCE_PATH,
-            "sha256": CACHE_SOURCE_SHA256
+            "sha256": CACHE_SOURCE_SHA256,
+            "byteLen": metadata.len(),
+            "mtimeMs": mtime_ms
         }
     ])
 }

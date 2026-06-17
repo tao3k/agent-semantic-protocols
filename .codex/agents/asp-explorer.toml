@@ -32,7 +32,7 @@ Prefer:
 - asp <language> search pipe '<question-or-feature-term>' --workspace . --view seeds
 - asp fd -query '<owner-or-path terms>' .
 - asp rg -query '<content-or-error terms>' .
-- asp <language> search owner <owner-path> items --query '<symbol-or-a|b|c>' --view seeds .
+- asp <language> search owner <owner-path> items --query '<symbol-or-a|b|c>' --workspace . --view seeds
 - asp <language> query --selector <exact-selector> --workspace . --code
 
 Return one compact receipt line:

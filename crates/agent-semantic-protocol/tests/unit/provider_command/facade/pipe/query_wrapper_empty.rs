@@ -13,7 +13,13 @@ fn asp_fd_query_empty_seeds_prints_compact_no_output_receipt() {
         .expect("write source");
 
     let output = asp_command(&root)
-        .args(["fd", "-query", "MissingOwner|MissingHelper", "."])
+        .args([
+            "fd",
+            "-query",
+            "MissingOwner|MissingHelper",
+            "--workspace",
+            ".",
+        ])
         .output()
         .expect("run asp fd -query with no candidates");
 
@@ -34,7 +40,9 @@ fn asp_fd_query_empty_seeds_prints_compact_no_output_receipt() {
         "{stdout}"
     );
     assert!(
-        stdout.contains("nextCommand=asp rg -query 'missingowner' -query 'missinghelper' '.'"),
+        stdout.contains(
+            "nextCommand=asp rg -query 'missingowner' -query 'missinghelper' --workspace ."
+        ),
         "{stdout}"
     );
     assert!(
@@ -68,6 +76,7 @@ fn asp_rg_query_empty_seeds_prints_compact_no_output_receipt() {
             "MissingOwner",
             "-query",
             "MissingHelper",
+            "--workspace",
             ".",
         ])
         .output()
@@ -90,7 +99,7 @@ fn asp_rg_query_empty_seeds_prints_compact_no_output_receipt() {
         "{stdout}"
     );
     assert!(
-        stdout.contains("nextCommand=asp fd -query 'MissingOwner|MissingHelper' '.'"),
+        stdout.contains("nextCommand=asp fd -query 'MissingOwner|MissingHelper' --workspace ."),
         "{stdout}"
     );
     assert!(
@@ -125,6 +134,7 @@ fn asp_fd_query_prefers_exact_gerbil_path_owner_items() {
             "fd",
             "-query",
             "cli.ss gerbil-poo",
+            "--workspace",
             ".data",
             "--view",
             "seeds",
@@ -153,7 +163,7 @@ fn asp_fd_query_prefers_exact_gerbil_path_owner_items() {
     );
     assert!(
         stdout.contains(
-            "nextCommand=asp gerbil-scheme search owner gerbil-poo/cli.ss items --query 'cli.ss|gerbil-poo' --view seeds --workspace .data"
+            "nextCommand=asp gerbil-scheme search owner gerbil-poo/cli.ss items --query 'cli.ss|gerbil-poo' --workspace .data --view seeds"
         ),
         "{stdout}"
     );

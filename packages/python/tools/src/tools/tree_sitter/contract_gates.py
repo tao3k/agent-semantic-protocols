@@ -177,7 +177,7 @@ class _runtime_env:
             env = os.environ.copy()
             env["PATH"] = f"{shim_dir}{os.pathsep}{env.get('PATH', '')}"
             env["SEMANTIC_AGENT_PROTOCOL_BIN"] = str(self.asp_bin)
-            run([str(self.asp_bin), "plugin", "install", "codex", "."], env=env)
+            run([str(self.asp_bin), "install", "plugin", "--codex", "."], env=env)
             return env
         except Exception:
             self.__exit__(None, None, None)

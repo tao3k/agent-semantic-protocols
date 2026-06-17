@@ -154,7 +154,7 @@ def _prompt_with_target_context(
     return (
         f"Sandtable target directory: {process_cwd}\n"
         "Use that directory for language-provider commands, for example "
-        f"`cd {process_cwd} && asp <language> guide .`.\n\n"
+        f"`cd {process_cwd} && asp <language> guide --workspace .`.\n\n"
         f"{prompt}"
     )
 

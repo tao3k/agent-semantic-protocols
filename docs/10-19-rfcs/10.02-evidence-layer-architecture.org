@@ -345,7 +345,7 @@ vocabulary.
 ** P5 Review Packet
 
 P5 introduces a shared =ReviewPacket= as the reviewer-first artifact over the
-new evidence APIs. It should not read legacy lifecycle task or waiver objects.
+new evidence APIs. It should not read retired lifecycle task or waiver objects.
 Instead, providers build it from:
 
 - =InvariantCandidate=

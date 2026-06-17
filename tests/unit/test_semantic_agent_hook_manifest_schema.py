@@ -47,9 +47,10 @@ def minimal_provider_manifest() -> dict[str, object]:
                     "search",
                     "owner",
                     "{path}",
+                    "--workspace",
+                    ".",
                     "--view",
                     "seeds",
-                    ".",
                 ]
             },
             "fzf": {
@@ -60,9 +61,10 @@ def minimal_provider_manifest() -> dict[str, object]:
                     "{query}",
                     "owner",
                     "tests",
+                    "--workspace",
+                    ".",
                     "--view",
                     "seeds",
-                    ".",
                 ]
             },
             "ingest": {
@@ -72,9 +74,10 @@ def minimal_provider_manifest() -> dict[str, object]:
                     "ingest",
                     "owner",
                     "tests",
+                    "--workspace",
+                    ".",
                     "--view",
                     "seeds",
-                    ".",
                 ],
                 "stdinMode": "pipe-candidates",
             },
@@ -184,7 +187,7 @@ class SemanticAgentHookManifestSchemaTests(unittest.TestCase):
             any("'ingest' is a required property" in message for message in self.manifest_errors(manifest))
         )
 
-    def test_provider_manifest_rejects_legacy_text_route(self) -> None:
+    def test_provider_manifest_rejects_retired_text_route(self) -> None:
         manifest = minimal_provider_manifest()
         routes = copy.deepcopy(manifest["routes"])
         routes["text"] = routes["fzf"]
@@ -200,7 +203,7 @@ class SemanticAgentHookManifestSchemaTests(unittest.TestCase):
     def test_provider_manifest_routes_require_argv_not_text(self) -> None:
         manifest = minimal_provider_manifest()
         routes = copy.deepcopy(manifest["routes"])
-        routes["prime"] = {"text": "ts-harness search prime --view seeds ."}
+        routes["prime"] = {"text": "ts-harness search prime --workspace . --view seeds"}
         manifest["routes"] = routes
 
         errors = self.manifest_errors(manifest)

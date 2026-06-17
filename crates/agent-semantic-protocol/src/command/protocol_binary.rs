@@ -22,7 +22,7 @@ pub(crate) fn ensure_protocol_binary_installed_for_path() -> Result<ProtocolBina
         .unwrap_or_default();
     if current_name.trim_end_matches(".exe") != SEMANTIC_AGENT_PROTOCOL_BIN {
         return Err(format!(
-            "semantic hook install must run through `{SEMANTIC_AGENT_PROTOCOL_BIN}` so generated hooks can resolve the same binary on PATH"
+            "semantic hook setup must run through `{SEMANTIC_AGENT_PROTOCOL_BIN}` so generated hooks can resolve the same binary on PATH"
         ));
     }
 

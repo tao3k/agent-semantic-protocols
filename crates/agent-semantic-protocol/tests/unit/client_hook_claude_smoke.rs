@@ -333,12 +333,12 @@ exit 2
 
 fn install_claude_hooks(root: &Path) {
     let output = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .args(["hook", "install", "--client", "claude"])
+        .args(["install", "hook", "--client", "claude"])
         .arg(root)
         .env("PATH", prepend_path(&root.join(".bin")))
         .env_remove("PRJ_CACHE_HOME")
         .output()
-        .expect("run asp hook install");
+        .expect("run asp install hook");
     assert!(
         output.status.success(),
         "install stderr: {}",
@@ -348,13 +348,13 @@ fn install_claude_hooks(root: &Path) {
 
 fn install_codex_hooks(root: &Path, codex_home: &Path) -> String {
     let output = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .args(["plugin", "install", "codex"])
+        .args(["install", "plugin", "--codex"])
         .arg(root)
         .env("PATH", prepend_path(&root.join(".bin")))
         .env("CODEX_HOME", codex_home)
         .env_remove("PRJ_CACHE_HOME")
         .output()
-        .expect("run asp hook install");
+        .expect("run asp install plugin");
     assert!(
         output.status.success(),
         "install stdout: {}\ninstall stderr: {}",

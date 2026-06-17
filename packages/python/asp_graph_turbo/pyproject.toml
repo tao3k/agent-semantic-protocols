@@ -5,6 +5,7 @@ description = "Typed graph frontier ranking engine for ASP client packets."
 requires-python = ">=3.11"
 dependencies = [
     "scipy>=1.14",
+    "asp-memory-engine",
 ]
 
 [project.scripts]
@@ -14,6 +15,9 @@ asp-graph-turbo = "asp_graph_turbo.graph_turbo_cli:main"
 dev = [
   "pytest>=9,<10",
 ]
+
+[tool.uv.sources]
+asp-memory-engine = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]

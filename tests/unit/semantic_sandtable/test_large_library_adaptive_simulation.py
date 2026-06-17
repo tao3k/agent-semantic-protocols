@@ -248,7 +248,7 @@ def _fake_runner(
                     "packageCohesion=low packages=demo,other",
                     "risk=package-drift",
                     "recommendedNext=A1.rg-query-set",
-                    "nextCommand=asp rust search owner src/lib.rs items --query 'demo|owner' --view seeds .",
+                    "nextCommand=asp rust search owner src/lib.rs items --query 'demo|owner' --workspace . --view seeds",
                 ]
             ),
             "stderr": "",
@@ -296,7 +296,7 @@ def _fake_selector_runner(
                     "packageCohesion=low packages=demo,tests",
                     "risk=package-drift",
                     "recommendedNext=A1.owner-items",
-                    "nextCommand=asp rust search owner tests/cases/demo.ts items --query 'module|resolution' --view seeds .",
+                    "nextCommand=asp rust search owner tests/cases/demo.ts items --query 'module|resolution' --workspace . --view seeds",
                 ]
             ),
             "stderr": "",
@@ -357,7 +357,7 @@ def _fake_rg_followup_runner(
                 [
                     "[search-fd] view=seeds",
                     "recommendedNext=A1.owner-items",
-                    "nextCommand=asp rust search owner src/lib.rs items --query 'demo|owner' --view seeds .",
+                    "nextCommand=asp rust search owner src/lib.rs items --query 'demo|owner' --workspace . --view seeds",
                 ]
             ),
             "stderr": "",

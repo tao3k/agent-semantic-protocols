@@ -172,7 +172,7 @@ MUST say that explicitly with a compact decision row carrying at least:
 =purpose=decision-primer=, =answer=false=, =code=false=, the available search
 capabilities, the first-hop ladder, history fields owned by ASP artifacts, risk
 guidance, and the canonical next command shape
-=search pipe '<question-or-feature-term>' --view seeds .=.  The shared ASP graph
+=search pipe '<question-or-feature-term>' --workspace . --view seeds=.  The shared ASP graph
 renderer and any provider-local fast-prime renderer MUST emit the same
 decision-primer contract before owner/dependency/test graph facts.
 Provider-local prime may expose owner/dependency/test graph facts, but
@@ -421,7 +421,7 @@ and remove only the output-mode error.  For example:
 
 #+begin_src text
 denied: asp typescript search fzf location.path owner tests --json .
-guide:  asp typescript search fzf location.path owner tests --view seeds .
+guide:  asp typescript search fzf location.path owner tests --workspace . --view seeds
 #+end_src
 
 If the rejected JSON-output command already carries a concrete owner path, the
@@ -435,12 +435,12 @@ asp <language> search owner <path> items --query <derived-query> .
 
 For =search fzf=, the first required query positional is owned by the query,
 even when the literal text begins with a dash.  For example,
-=ts-harness search fzf --json --view seeds .= searches for the literal
+=ts-harness search fzf --json --workspace . --view seeds= searches for the literal
 =--json= token.  A structured output request must put the output flag after the
 query, e.g. =ts-harness search fzf OrderStatus --json .=.  This prevents a
 flag-like source token from silently becoming a prompt-facing JSON packet.
 The same literal ownership applies to explicit query flags:
-=search fzf --query --language owner tests --view seeds .= searches for the
+=search fzf --query --language owner tests --workspace . --view seeds= searches for the
 literal =--language= token, while =owner= and =tests= remain search surfaces.
 Providers must not route =search fzf --query <term>= into owner item-query
 state; it is the fzf query surface.

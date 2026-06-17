@@ -10,6 +10,7 @@ use agent_semantic_client_db::ClientDbSourceIndexSource;
 pub struct SourceIndexRefreshReport {
     pub db_path: PathBuf,
     pub generation_id: CacheGenerationId,
+    pub reused_generation: bool,
     pub file_count: u32,
     pub owner_count: u32,
     pub selector_count: u32,

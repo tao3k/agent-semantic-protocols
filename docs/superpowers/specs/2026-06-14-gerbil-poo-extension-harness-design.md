@@ -301,8 +301,8 @@ Gerbil package-local schema copies.
 Search validation should include compact agent-facing commands:
 
 ```sh
-asp gerbil-scheme search extension poo --view seeds .
-asp gerbil-scheme search pattern poo prototype --view seeds .
+asp gerbil-scheme search extension poo --workspace . --view seeds
+asp gerbil-scheme search pattern poo prototype --workspace . --view seeds
 asp gerbil-scheme search pipe 'gerbil poo prototype composition' --workspace . --view seeds
 ```
 

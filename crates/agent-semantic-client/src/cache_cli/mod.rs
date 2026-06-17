@@ -8,6 +8,13 @@ mod structural_index_import;
 mod writeback;
 mod writeback_analysis_metadata;
 mod writeback_artifact_events;
+mod writeback_common;
+mod writeback_db_reset;
+mod writeback_generation;
+mod writeback_manifest;
+mod writeback_packet;
+mod writeback_provider_export;
+mod writeback_request;
 
 #[cfg(test)]
 #[path = "../../tests/unit/cache_cli/locator_artifact.rs"]

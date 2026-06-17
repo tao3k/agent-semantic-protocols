@@ -103,7 +103,7 @@ class SemanticSandtableScenarioSchemaTests(unittest.TestCase):
                     "agentCli": {
                         "client": "claude",
                         "binary": "claude",
-                        "prompt": "Explain ASP hook install",
+                        "prompt": "Explain ASP install hook",
                         "outputFormat": "stream-json",
                         "inputFormat": "text",
                         "includePartialMessages": True,
@@ -136,7 +136,7 @@ class SemanticSandtableScenarioSchemaTests(unittest.TestCase):
                     "kind": "agent-sdk",
                     "agentSdk": {
                         "client": "claude",
-                        "prompt": "Explain ASP hook install",
+                        "prompt": "Explain ASP install hook",
                         "outputFormat": "stream-json",
                         "includePartialMessages": True,
                         "includeHookEvents": True,
@@ -169,7 +169,7 @@ class SemanticSandtableScenarioSchemaTests(unittest.TestCase):
                     "agentCli": {
                         "client": "claude",
                         "binary": "claude",
-                        "prompt": "Explain ASP hook install",
+                        "prompt": "Explain ASP install hook",
                         "outputFormat": "text",
                     },
                 }
@@ -192,7 +192,7 @@ class SemanticSandtableScenarioSchemaTests(unittest.TestCase):
                     "agentCli": {
                         "client": "claude",
                         "binary": "claude",
-                        "prompt": "Explain ASP hook install",
+                        "prompt": "Explain ASP install hook",
                         "outputFormat": "text",
                     },
                 }
@@ -217,12 +217,12 @@ class SemanticSandtableScenarioSchemaTests(unittest.TestCase):
                     "agentCli": {
                         "client": "claude",
                         "binary": "claude",
-                        "prompt": "Explain ASP hook install",
+                        "prompt": "Explain ASP install hook",
                         "outputFormat": "text",
                     },
                     "agentSdk": {
                         "client": "claude",
-                        "prompt": "Explain ASP hook install",
+                        "prompt": "Explain ASP install hook",
                         "outputFormat": "text",
                     },
                 }

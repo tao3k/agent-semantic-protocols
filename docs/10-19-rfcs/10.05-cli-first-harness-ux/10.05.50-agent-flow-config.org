@@ -179,7 +179,7 @@ orgize binary.
 
 * Agent integration bundle structure (future)
 
-For Codex clients, =asp hook install --client codex= installs the
+For Codex clients, =asp install plugin --codex= installs the
 repo-maintained language-bin skill into
 =.agents/skills/agent-semantic-protocols/SKILL.md=.  The skill is concise and
 agent-facing: it describes =rs-harness=, =ts-harness=, and =py-harness= command
@@ -188,7 +188,7 @@ flows, and tells agents not to use =--json= for exploratory searches.
 The public binary is =agent-semantic-protocol=.  It exposes:
 
 #+begin_src shell
-asp hook install --client codex .
+asp install plugin --codex .
 asp hook pre-tool ...
 asp hook stop ...
 asp ast-patch dry-run --packet <ast-patch.json> .
@@ -198,7 +198,7 @@ asp ast-patch dry-run --packet <ast-patch.json> .
 subcommands inside =agent-semantic-protocol=.  The migration is a command-surface
 consolidation, not a deletion of the hook runtime crate.
 
-=asp hook install= also writes the project runtime profile:
+=asp install hook= also writes the project runtime profile:
 
 #+begin_src text
 .cache/agent-semantic-protocol/runtime/profiles.json

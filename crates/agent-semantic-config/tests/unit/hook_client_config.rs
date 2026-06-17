@@ -143,7 +143,7 @@ decision = "deny"
 
 [[rules.routes]]
 providerId = "rs-harness"
-kind = "legacy-alias"
+kind = "route-text"
 argv = ["asp", "rust"]
 "#,
     )
@@ -151,7 +151,7 @@ argv = ["asp", "rust"]
 
     let error = load_hook_client_config_file(&config_path).expect_err("invalid route kind");
 
-    assert!(error.contains("legacy-alias"), "{error}");
+    assert!(error.contains("route-text"), "{error}");
     let _ = fs::remove_dir_all(root);
 }
 

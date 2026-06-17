@@ -31,15 +31,18 @@ pub(crate) fn search_json_route<'a>(
             .cloned()
             .collect::<Vec<_>>();
         argv[0] = provider.binary.clone();
+        if !argv.iter().any(|arg| arg == "--workspace") {
+            if let Some(root_index) = argv.iter().rposition(|arg| arg == ".") {
+                argv.splice(
+                    root_index..=root_index,
+                    ["--workspace".to_string(), ".".to_string()],
+                );
+            } else {
+                argv.extend(["--workspace".to_string(), ".".to_string()]);
+            }
+        }
         if !argv.iter().any(|arg| arg == "--view") {
-            let insert_at = argv
-                .iter()
-                .rposition(|arg| arg == ".")
-                .unwrap_or(argv.len());
-            argv.splice(
-                insert_at..insert_at,
-                ["--view".to_string(), "seeds".to_string()],
-            );
+            argv.extend(["--view".to_string(), "seeds".to_string()]);
         }
         return Some((provider, argv));
     }

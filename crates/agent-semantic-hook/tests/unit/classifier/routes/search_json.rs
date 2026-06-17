@@ -28,14 +28,15 @@ fn search_json_routes_to_compact_search() {
             "projectRoot",
             "owner",
             "tests",
+            "--workspace",
+            ".",
             "--view",
-            "seeds",
-            "."
+            "seeds"
         ]
     );
     assert_eq!(
         decision.message,
-        "agent-search-json denied; route: asp typescript search fzf projectRoot owner tests --view seeds ."
+        "agent-search-json denied; route: asp typescript search fzf projectRoot owner tests --workspace . --view seeds"
     );
 }
 
@@ -70,7 +71,7 @@ fn search_json_owner_routes_to_provider_owner_query() {
     );
     assert_eq!(
         decision.message,
-        "agent-search-json denied; route: asp typescript search owner src/cli/agent-hooks.ts items --query 'agent-hooks|AgentHooks|agentHooks' ."
+        "agent-search-json denied; route: asp typescript search owner src/cli/agent-hooks.ts items --query 'agent-hooks|AgentHooks|agentHooks' --workspace ."
     );
 }
 

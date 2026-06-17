@@ -199,8 +199,8 @@ fn insert_analysis_field(
 }
 
 fn analysis_line_token<'a>(line: &'a str, token: &str) -> Option<&'a str> {
-    let offset = line.find(token)?;
-    let value = &line[offset + token.len()..];
+    let token_start = line.find(token)?;
+    let value = &line[token_start + token.len()..];
     if let Some(rest) = value.strip_prefix('"') {
         let end = rest.find('"')?;
         return Some(&rest[..end]);

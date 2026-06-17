@@ -111,7 +111,7 @@ and missed or recovered gold context. Its report summary may also carry
 until a new calibration-ready runtime receipt shows a frontier miss or missing
 gold selector action.
 
-`semantic-compact-graph-render.v1.schema.json` is the legacy shared stdout
+`semantic-compact-graph-render.v1.schema.json` is the retired shared stdout
 render template for compact graph search output. It describes the view-native
 header contract, micro-legend grammar, role-typed alias line grammar, dense
 alias separator, combined `rank=... frontier=...` line, legend-declared search
@@ -120,7 +120,7 @@ vocabulary used by Rust, TypeScript, Python, and future providers. It is not
 the trusted machine protocol for graph/frontier/rank/action evidence; providers
 derive facts from `semantic-search-packet.v1.schema.json`,
 `semantic-graph-turbo-result.v1.schema.json`, or an explicit JSON projection.
-Language providers under `languages/` may call `asp graph render` for legacy
+Language providers under `languages/` may call `asp graph render` for retired
 stdout compatibility instead of adding renderer library dependencies. Input
 packets use one canonical field vocabulary: query-set count comes from
 root-level `querySet`, and graph frontier source locators use
@@ -246,7 +246,7 @@ directory-skip list, and `discovery.includeHiddenDirNames` is the only
 schema-owned way to opt hidden directories into provider project walks. The
 ASP facade applies activation-root config first and invocation-root config
 second; list assignments are normalized replacements, not prompt-time merges.
-The legacy `[search] ignoreDirs/includeHiddenDirs` names remain runtime input
+The retired `[search] ignoreDirs/includeHiddenDirs` names remain runtime input
 compatibility only. Source-language providers, embedded document providers
 (`org`/`md`), fd/rg prefilters, and hook activation should consume the same
 normalized config before selecting provider facts or binaries. Built-in
@@ -339,7 +339,7 @@ receipts, behavior snapshots, determinism readiness packets, proof pilots, and
 explicit review-packet waiver evidence. P5 uses it to summarize changed
 invariants, changed behavior, missing receipts, stale waivers, determinism
 observations, proof claims, and prioritized reviewer actions without depending
-on legacy lifecycle waiver/task objects.
+on retired lifecycle waiver/task objects.
 
 `semantic-evidence-graph.v1.schema.json` is the shared portable graph artifact
 over reviewer evidence. P6.1 uses it to link review packets, invariant
@@ -1041,7 +1041,7 @@ follow-up search planning; provider-specific compiler details still belong in
 `fields`.
 
 For `search fzf`, a flag-like first query positional remains literal. For
-example, `ts-harness search fzf --json --view seeds .` searches for the token
+example, `ts-harness search fzf --json --workspace . --view seeds` searches for the token
 `--json`; request JSON output by placing `--json` after the query.
 
 This repository's `schemas/` directory is the protocol source of truth.
@@ -1101,7 +1101,7 @@ rg -n "OrderStatus" src tests | ts-harness search ingest --json .
 
 Those JSON examples are contract checks, not an agent exploration recipe. A
 prompt-facing agent should use compact line protocol, for example
-`ts-harness search fzf OrderStatus --view seeds .`, and reserve `--json` for
+`ts-harness search fzf OrderStatus --workspace . --view seeds`, and reserve `--json` for
 tests, receipts, validators, IDE/Flowhub, or other machine consumers.
 
 For TypeScript, `search owner` resolves reasoning owners first, then

@@ -139,7 +139,7 @@ argvSourceGlobAny = [
 }
 
 #[test]
-fn cli_install_preserves_legacy_top_level_flags_and_writes_project_plugin_entries() {
+fn cli_install_preserves_top_level_flags_and_writes_project_plugin_entries() {
     let root = git_project_root("install-unified-exec-feature");
     let codex_home = root.join(".codex-home");
     let provider_path = write_fake_provider_binary(&root, "rs-harness");
@@ -149,13 +149,13 @@ fn cli_install_preserves_legacy_top_level_flags_and_writes_project_plugin_entrie
         &config_path,
         "hooks = false\nunified_exec = true\n\n[features]\nmulti_agent = true\n",
     )
-    .expect("write legacy config");
+    .expect("write transitional config");
     std::fs::create_dir_all(&codex_home).expect("create codex home");
     std::fs::write(
         codex_home.join("config.toml"),
         "[hooks.state.\"stale:pre_tool_use:0:0\"]\ntrusted_hash = \"sha256:old\"\n",
     )
-    .expect("write legacy user trust state");
+    .expect("write stale user trust state");
 
     let output = protocol_command()
         .env("PATH", &provider_path)

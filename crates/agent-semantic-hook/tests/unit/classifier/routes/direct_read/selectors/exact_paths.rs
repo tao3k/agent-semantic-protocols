@@ -97,9 +97,10 @@ fn structured_direct_read_paths_array_ignores_non_source_and_routes_source() {
             "*.py",
             "--surface",
             "owners,tests",
+            "--workspace",
+            ".",
             "--view",
-            "seeds",
-            "."
+            "seeds"
         ]
     );
 }

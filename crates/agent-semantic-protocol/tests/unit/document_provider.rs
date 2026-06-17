@@ -21,9 +21,10 @@ fn markdown_query_no_hit_returns_recovery_actions() {
             "direct-source-read",
             "--term",
             "python adapter",
+            "--workspace",
+            ".",
             "--view",
             "metadata",
-            ".",
         ])
         .output()
         .expect("run asp md query");
@@ -43,18 +44,20 @@ fn markdown_query_no_hit_returns_recovery_actions() {
         "{stdout}"
     );
     assert!(
-        stdout.contains("|next search-fzf=\"asp md search fzf py-harness --view seeds .\""),
-        "{stdout}"
-    );
-    assert!(
         stdout.contains(
-            "|next query-single-term=\"asp md query --term py-harness --view metadata .\""
+            "|next search-fzf=\"asp md search fzf py-harness --workspace . --view seeds\""
         ),
         "{stdout}"
     );
     assert!(
         stdout.contains(
-            "|next direct-read-requires=\"asp md query --from-hook direct-source-read --selector <path:start-end> .\""
+            "|next query-single-term=\"asp md query --term py-harness --workspace . --view metadata\""
+        ),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains(
+            "|next direct-read-requires=\"asp md query --from-hook direct-source-read --selector <path:start-end> --workspace .\""
         ),
         "{stdout}"
     );
@@ -82,9 +85,10 @@ fn markdown_query_skips_hidden_directories_by_default() {
             "query",
             "--term",
             "cached-secret-token",
+            "--workspace",
+            ".",
             "--view",
             "metadata",
-            ".",
         ])
         .output()
         .expect("run asp md query");
@@ -129,9 +133,10 @@ fn markdown_query_can_include_configured_hidden_directories() {
             "query",
             "--term",
             "cached-secret-token",
+            "--workspace",
+            ".",
             "--view",
             "metadata",
-            ".",
         ])
         .output()
         .expect("run asp md query");
@@ -161,7 +166,15 @@ fn markdown_provider_can_be_disabled_from_project_config() {
 
     let output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .current_dir(&root)
-        .args(["md", "search", "prime", "--view", "seeds", "."])
+        .args([
+            "md",
+            "search",
+            "prime",
+            "--workspace",
+            ".",
+            "--view",
+            "seeds",
+        ])
         .output()
         .expect("run asp md search");
 

@@ -9,7 +9,9 @@ use agent_semantic_hook::{
     DecisionKind, DecisionRoute, DecisionRouteKind, DecisionSubject, HOOK_DECISION_SCHEMA_ID,
     HOOK_DECISION_SCHEMA_VERSION, HOOK_PROTOCOL_ID, HOOK_PROTOCOL_VERSION, HookDecision,
     ReasonKind, StdinMode, append_hook_event_state, has_recorded_subagent_context,
+    remove_incompatible_hook_event_state,
 };
+use agent_semantic_runtime::ensure_project_hook_state_dir;
 use serde_json::Value;
 
 #[test]
@@ -100,8 +102,7 @@ fn recorded_subagent_context_tracks_latest_lifecycle_event() {
 #[test]
 fn oversized_hook_event_state_is_truncated_before_append() {
     let project_root = unique_project_root();
-    let state_dir = project_root.join(".cache/agent-semantic-protocol/hooks");
-    fs::create_dir_all(&state_dir).expect("create hook state dir");
+    let state_dir = ensure_project_hook_state_dir(&project_root).expect("hook state dir");
     let state_path = state_dir.join("events.jsonl");
     fs::write(&state_path, "x".repeat(5 * 1024 * 1024)).expect("write oversized state");
 
@@ -114,6 +115,31 @@ fn oversized_hook_event_state_is_truncated_before_append() {
     assert_eq!(event["schemaId"], "agent.semantic-protocols.hook.event");
     assert_eq!(event["subject"]["paths"][0], "oversized_event_state_1.rs");
 
+    fs::remove_dir_all(&project_root).ok();
+}
+
+#[test]
+fn cleanup_removes_previous_hook_cache_event_state_location() {
+    let project_root = unique_project_root();
+    let previous_state_dir = project_root.join(".cache/agent-semantic-protocol/hooks");
+    fs::create_dir_all(&previous_state_dir).expect("create previous hook state dir");
+    let previous_state_path = previous_state_dir.join("events.jsonl");
+    fs::write(
+        &previous_state_path,
+        r#"{"schemaId":"agent.semantic-protocols.agent-semantic-hook-event","protocolId":"agent.semantic-protocols.agent-hooks"}"#,
+    )
+    .expect("write previous hook event state");
+
+    let removed = remove_incompatible_hook_event_state(&project_root).expect("cleanup event state");
+
+    assert_eq!(
+        removed
+            .as_deref()
+            .and_then(|path| path.file_name())
+            .and_then(|name| name.to_str()),
+        Some("events.jsonl")
+    );
+    assert!(!previous_state_path.exists());
     fs::remove_dir_all(&project_root).ok();
 }
 

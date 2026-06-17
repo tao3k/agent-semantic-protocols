@@ -355,7 +355,14 @@ fn write_syntax_replay_sources(root: &std::path::Path) {
 fn syntax_replay_file_hashes(root: &std::path::Path) -> Vec<Value> {
     syntax_replay_client_file_hashes(root)
         .into_iter()
-        .map(|file_hash| json!({"path": file_hash.path, "sha256": file_hash.sha256}))
+        .map(|file_hash| {
+            json!({
+                "path": file_hash.path,
+                "sha256": file_hash.sha256,
+                "byteLen": file_hash.byte_len,
+                "mtimeMs": file_hash.mtime_ms
+            })
+        })
         .collect()
 }
 
@@ -367,11 +374,20 @@ fn syntax_replay_client_file_hashes(root: &std::path::Path) -> Vec<ClientCacheFi
 }
 
 fn client_file_hash(root: &std::path::Path, path: &str) -> Option<ClientCacheFileHash> {
-    let bytes = std::fs::read(root.join(path)).ok()?;
+    let source_path = root.join(path);
+    let metadata = std::fs::metadata(&source_path).ok()?;
+    let mtime_ms = metadata
+        .modified()
+        .ok()
+        .and_then(|modified| modified.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|duration| duration.as_millis().min(u128::from(u64::MAX)) as u64)?;
+    let bytes = std::fs::read(source_path).ok()?;
     let digest = Sha256::digest(&bytes);
     Some(ClientCacheFileHash {
         path: path.to_string(),
         sha256: format!("{digest:x}"),
+        byte_len: metadata.len(),
+        mtime_ms,
     })
 }
 

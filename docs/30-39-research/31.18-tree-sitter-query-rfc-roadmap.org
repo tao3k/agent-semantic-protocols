@@ -185,7 +185,7 @@ contracts.  Tree-sitter provenance converges through
    - run schema/RFC tests;
    - run hook/protocol Rust tests;
    - rebuild release =asp=, reinstall hooks, and trigger a real hook denial;
-   - capture =Run Next=, =Detected Binaries=, =asp <language> guide .=, and
+   - capture =Run Next=, =Detected Binaries=, =asp <language> guide --workspace .=, and
      ast-patch disabled guidance as the smoke evidence;
    - record one Rust and one TypeScript real-project syntax flow with
      =search-prime=, =syntax-frontier=, =exact-selector-code=, and

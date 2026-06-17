@@ -86,14 +86,14 @@ class LineProtocolCompactGraphTests(unittest.TestCase):
 
             self.assertEqual("pass", result.status)
 
-    def test_line_protocol_rejects_legacy_compact_graph_aliases_line(self) -> None:
+    def test_line_protocol_rejects_retired_compact_graph_aliases_line(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)
             scenario_path = repo_root / "scenario.json"
             scenario_path.write_text(
                 json.dumps(
                     {
-                        "id": "python.compact-graph-legacy-aliases-line",
+                        "id": "python.compact-graph-retired-aliases-line",
                         "language": "python",
                         "workdir": ".",
                         "steps": [

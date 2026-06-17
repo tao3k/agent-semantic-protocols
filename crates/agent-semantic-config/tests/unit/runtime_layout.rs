@@ -34,12 +34,32 @@ fn git_toplevel_is_first_project_identity_for_workspace_packages() {
         Some(root.join(".cache/agent-semantic-protocol/client"))
     );
     assert_eq!(
+        layout.hook_cache_dir,
+        Some(root.join(".cache/agent-semantic-protocol/hooks"))
+    );
+    assert_eq!(
+        layout.hook_state_dir,
+        Some(root.join(".cache/agent-semantic-protocol/hooks/state"))
+    );
+    assert_eq!(
+        layout.activation_path,
+        Some(root.join(".cache/agent-semantic-protocol/hooks/activation.json"))
+    );
+    assert_eq!(
         layout.artifacts_dir,
         Some(root.join(".cache/agent-semantic-protocol/artifacts"))
     );
     assert_eq!(
         layout.runtime_home,
         Some(root.join(".cache/agent-semantic-protocol/runtime"))
+    );
+    assert_eq!(
+        layout.runtime_bin_dir,
+        Some(root.join(".cache/agent-semantic-protocol/runtime/bin"))
+    );
+    assert_eq!(
+        layout.provider_lock_dir,
+        Some(root.join(".cache/agent-semantic-protocol/runtime/providers"))
     );
     let _ = fs::remove_dir_all(root);
 }
@@ -126,6 +146,10 @@ fn prj_cache_home_is_fallback_outside_git_worktree() {
     assert_eq!(
         layout.activation_path,
         Some(state_root.join("agent-semantic-protocol/hooks/activation.json"))
+    );
+    assert_eq!(
+        layout.hook_state_dir,
+        Some(state_root.join("agent-semantic-protocol/hooks/state"))
     );
     let _ = fs::remove_dir_all(root);
 }

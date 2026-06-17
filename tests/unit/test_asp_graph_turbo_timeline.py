@@ -110,7 +110,7 @@ def _assert_promotion_action(report: dict[str, object]) -> None:
     assert action["query"] == "semantic type"
     assert action["profile"] == "owner-query"
     assert action["preferredCommand"] == (
-        "asp python search fzf 'semantic type' owner tests --view seeds ."
+        "asp python search fzf 'semantic type' owner tests --workspace . --view seeds"
     )
 
 
@@ -125,7 +125,7 @@ def _assert_owner_action(report: dict[str, object]) -> None:
     assert action["preferredCommand"] == (
         "asp rust search owner "
         "crates/agent-semantic-protocol/src/command/provider.rs "
-        "items --view seeds ."
+        "items --workspace . --view seeds"
     )
 
 

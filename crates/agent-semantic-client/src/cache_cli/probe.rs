@@ -11,7 +11,6 @@ use agent_semantic_client_core::{
 use agent_semantic_client_db::{
     ClientDb, ClientDbGenerationHit, ClientDbGenerationLookup, ClientDbReport,
 };
-use sha2::{Digest, Sha256};
 
 use crate::cache_cli::request::{
     request_export_method, request_lookup_fingerprint, selected_provider_for_request,
@@ -293,11 +292,19 @@ fn file_hash_matches(project_root: &Path, file_hash: &ClientCacheFileHash) -> bo
     if !metadata.is_file() {
         return false;
     }
-    let Ok(bytes) = fs::read(path) else {
+    file_hash_metadata_matches(&metadata, file_hash)
+}
+
+fn file_hash_metadata_matches(metadata: &fs::Metadata, file_hash: &ClientCacheFileHash) -> bool {
+    if metadata.len() != file_hash.byte_len {
         return false;
-    };
-    let digest = Sha256::digest(&bytes);
-    format!("{digest:x}").eq_ignore_ascii_case(&file_hash.sha256)
+    }
+    metadata
+        .modified()
+        .ok()
+        .and_then(|modified| modified.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|duration| duration.as_millis().min(u128::from(u64::MAX)) as u64 == file_hash.mtime_ms)
+        .unwrap_or(false)
 }
 
 fn safe_project_file_path(project_root: &Path, path: &str) -> Option<std::path::PathBuf> {

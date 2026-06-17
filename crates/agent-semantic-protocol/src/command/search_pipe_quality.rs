@@ -10,7 +10,8 @@ use super::search_pipe_query_evidence::{
 };
 use super::search_pipe_query_model::{ClauseCoverage, QueryTerm, TermRole};
 use super::search_pipe_query_pack::{
-    clause_coverages, next_query_pack_hint, query_clauses, role_terms, unique_query_terms,
+    clause_coverages, is_path_like_token, next_query_pack_hint, query_clauses, role_terms,
+    unique_query_terms,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -21,6 +22,7 @@ pub(super) struct SearchPipeQuality {
     pub(super) global_missing: Vec<String>,
     pub(super) path_matched: Vec<String>,
     pub(super) path_missing: Vec<String>,
+    pub(super) missing_path_terms: Vec<String>,
     pub(super) declaration_matched: Vec<String>,
     pub(super) declaration_missing: Vec<String>,
     pub(super) strong_matched: Vec<String>,
@@ -60,6 +62,7 @@ pub(super) fn analyze_search_pipe_quality(
     let global_missing = missing_terms(&terms, &global_matched);
     let path_matched = high_value_matches(&terms, candidates, path_exact_match);
     let path_missing = high_value_missing(&terms, &path_matched);
+    let missing_path_terms = missing_path_terms(&terms, &global_matched);
     let declaration_matched = high_value_matches(&terms, candidates, |candidate, term| {
         declaration_header_match(language_id, candidate, term)
     });
@@ -90,7 +93,7 @@ pub(super) fn analyze_search_pipe_quality(
         query_pack_quality != "low" && package_cohesion != "low" && weak_terms.is_empty();
     let fd_query = fd_query_terms(&terms, &weak_terms, &strong_matched, &risks);
     let context_terms = role_terms(&terms, TermRole::Context);
-    let owner_seed_terms = role_terms(&terms, TermRole::Symbol);
+    let owner_seed_terms = owner_seed_terms(&terms, &missing_path_terms);
     let concept_terms = role_terms(&terms, TermRole::Concept);
     let page_index_handles = handle_paths(candidates, |candidate| {
         candidate.source == "finder-path"
@@ -109,6 +112,7 @@ pub(super) fn analyze_search_pipe_quality(
         global_missing,
         path_matched,
         path_missing,
+        missing_path_terms,
         declaration_matched,
         declaration_missing,
         strong_matched,
@@ -211,6 +215,12 @@ impl SearchPipeQuality {
                 display_terms(&self.weak_reasons)
             ),
         ];
+        if !self.missing_path_terms.is_empty() {
+            lines.push(format!(
+                "selectorGuard=missingPathTerms={} usableAsSelector=false usableAsOwner=false next=fd-query",
+                display_terms(&self.missing_path_terms)
+            ));
+        }
         lines.extend(self.clause_coverages.iter().map(|coverage| {
             format!(
                 "clauseCoverage=C{} matched={} missing={}",
@@ -554,6 +564,23 @@ fn fd_query_terms(
         .take(8)
         .collect::<Vec<_>>();
     (!owner_axis_terms.is_empty()).then(|| owner_axis_terms.join("|"))
+}
+
+fn missing_path_terms(terms: &[QueryTerm], global_matched: &[String]) -> Vec<String> {
+    terms
+        .iter()
+        .filter(|term| is_path_like_token(&term.raw))
+        .filter(|term| !global_matched.iter().any(|matched| matched == &term.raw))
+        .map(|term| term.raw.clone())
+        .collect()
+}
+
+fn owner_seed_terms(terms: &[QueryTerm], missing_path_terms: &[String]) -> Vec<String> {
+    role_terms(terms, TermRole::Symbol)
+        .into_iter()
+        .filter(|term| !is_path_like_token(term))
+        .filter(|term| !missing_path_terms.iter().any(|missing| missing == term))
+        .collect()
 }
 
 fn fd_owner_axis_term(term: &str) -> bool {

@@ -80,7 +80,12 @@ fn manifest_with_generation(
                 "cacheStatus": "hit",
                 "rawSourceStored": false,
                 "requestFingerprint": format!("fnv64:{generation_id}"),
-                "fileHashes": [{"path": "src/lib.rs", "sha256": "0000000000000000000000000000000000000000000000000000000000000000"}],
+                "fileHashes": [{
+                    "path": "src/lib.rs",
+                    "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+                    "byteLen": 1,
+                    "mtimeMs": 1
+                }],
                 "artifactIds": [artifact_id]
             }
         ]

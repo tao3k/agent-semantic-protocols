@@ -4,13 +4,13 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use agent_semantic_config::project_hook_state_dir;
 use agent_semantic_hook::{
     ActivatedProvider, HookRuntime, ProviderExecution, RuntimeProviderHealthStatus,
     builtin_provider_manifests, load_or_sync_activation, parse_activation,
     runtime_profile_command_argv, runtime_profiles_for_runtime,
     runtime_project_root_for_activation,
 };
+use agent_semantic_runtime::{discover_project_activation_path, project_activation_path};
 
 use crate::receipt::NativeProvenance;
 use crate::types::{LanguageId, ProviderId};
@@ -134,17 +134,11 @@ impl ProviderRegistrySnapshot {
                 return Self::load_from_path(&activation_path);
             }
         }
-        let direct_activation_path = match project_hook_state_dir(project_root) {
-            Ok(hook_state_dir) => Some(hook_state_dir.join("activation.json")),
+        let direct_activation_path = match project_activation_path(project_root) {
+            Ok(activation_path) => Some(activation_path),
             Err(error) => {
-                let mut current = Some(project_root);
-                while let Some(candidate_root) = current {
-                    let candidate =
-                        candidate_root.join(".cache/agent-semantic-protocol/hooks/activation.json");
-                    if candidate.is_file() {
-                        return Self::load_from_path_for_project(&candidate, project_root);
-                    }
-                    current = candidate_root.parent();
+                if let Some(candidate) = discover_project_activation_path(project_root) {
+                    return Self::load_from_path_for_project(&candidate, project_root);
                 }
                 return Err(error.to_string());
             }
@@ -157,14 +151,8 @@ impl ProviderRegistrySnapshot {
             if project_root_has_provider_identity(project_root) {
                 return Self::load_from_path_for_project(&activation_path, project_root);
             }
-            let mut current = project_root.parent();
-            while let Some(candidate_root) = current {
-                let candidate =
-                    candidate_root.join(".cache/agent-semantic-protocol/hooks/activation.json");
-                if candidate.is_file() {
-                    return Self::load_from_path_for_project(&candidate, project_root);
-                }
-                current = candidate_root.parent();
+            if let Some(candidate) = discover_project_activation_path(project_root) {
+                return Self::load_from_path_for_project(&candidate, project_root);
             }
             return Self::load_from_path_for_project(&activation_path, project_root);
         }

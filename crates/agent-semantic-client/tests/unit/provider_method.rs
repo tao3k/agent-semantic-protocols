@@ -1,7 +1,8 @@
 use agent_semantic_client_core::{ClientMethod, ClientRequest};
 
 use crate::provider_method::{
-    last_check_output_path, persist_last_check_output, should_try_search_packet_first,
+    last_check_output_path, persist_last_check_output, search_packet_first_forwarded_args,
+    should_try_search_packet_first,
 };
 use crate::test_support::CACHE_TEST_LOCK;
 
@@ -48,6 +49,39 @@ fn search_packet_first_handles_dependency_search_without_seed_view() {
     ]);
 
     assert!(should_try_search_packet_first(&request));
+}
+
+#[test]
+fn search_packet_first_handles_dependency_alias_without_seed_view() {
+    let request = ClientRequest::new(ClientMethod::Search, ".").with_forwarded_args(vec![
+        "dependency".to_string(),
+        "serde".to_string(),
+        ".".to_string(),
+    ]);
+
+    assert!(should_try_search_packet_first(&request));
+}
+
+#[test]
+fn search_packet_first_canonicalizes_dependency_alias_for_provider_packet() {
+    let args = vec![
+        "dependency".to_string(),
+        "serde".to_string(),
+        "--view".to_string(),
+        "seeds".to_string(),
+        ".".to_string(),
+    ];
+
+    assert_eq!(
+        search_packet_first_forwarded_args(&args),
+        vec![
+            "deps".to_string(),
+            "serde".to_string(),
+            "--view".to_string(),
+            "seeds".to_string(),
+            ".".to_string(),
+        ]
+    );
 }
 
 #[test]

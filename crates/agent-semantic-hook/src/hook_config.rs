@@ -11,7 +11,7 @@ use aho_corasick::{AhoCorasick, AhoCorasickBuilder, MatchKind};
 use globset::{GlobBuilder, GlobSet, GlobSetBuilder};
 use std::path::{Path, PathBuf};
 
-use crate::command::path_like_tokens;
+use crate::command::path_like_token_matches;
 use crate::protocol::{
     DecisionKind, DecisionRoute, DecisionRouteKind, HOOK_DECISION_SCHEMA_ID,
     HOOK_DECISION_SCHEMA_VERSION, HOOK_PROTOCOL_ID, HOOK_PROTOCOL_VERSION, HookDecision,
@@ -281,17 +281,53 @@ impl RuleMatch {
         let Some(tokens) = command_tokens else {
             return false;
         };
-        let source_tokens = argv_source_tokens(tokens, &self.argv_source_exclude_flag_any);
-        let exact_match = !self.argv_source_any.is_empty()
-            && source_tokens.iter().any(|path| {
-                self.argv_source_any
+
+        let mut skip_next = false;
+        let mut positional_only = false;
+        for token in tokens {
+            if skip_next {
+                skip_next = false;
+                continue;
+            }
+            if token == "--" {
+                positional_only = true;
+                continue;
+            }
+            if !positional_only
+                && self
+                    .argv_source_exclude_flag_any
                     .iter()
-                    .any(|expected| path == expected || path.ends_with(expected))
-            });
+                    .any(|flag| token.as_str() == flag.as_str())
+            {
+                skip_next = true;
+                continue;
+            }
+            if !positional_only
+                && self.argv_source_exclude_flag_any.iter().any(|flag| {
+                    token
+                        .strip_prefix(flag.as_str())
+                        .is_some_and(|suffix| suffix.starts_with('='))
+                })
+            {
+                continue;
+            }
+            if path_like_token_matches(token, |path| self.matches_argv_source_path(path)) {
+                return true;
+            }
+        }
+        false
+    }
+
+    fn matches_argv_source_path(&self, path: &str) -> bool {
+        let exact_match = !self.argv_source_any.is_empty()
+            && self
+                .argv_source_any
+                .iter()
+                .any(|expected| path == expected || path.ends_with(expected));
         let glob_match = self
             .argv_source_glob_any
             .as_ref()
-            .is_some_and(|globset| source_tokens.iter().any(|path| globset.is_match(path)));
+            .is_some_and(|globset| globset.is_match(path));
         exact_match || glob_match
     }
 }
@@ -507,48 +543,4 @@ fn command_token_basename(token: &str) -> &str {
 
 fn is_shell_stage_separator(token: &str) -> bool {
     matches!(token, "|" | ";" | "&&" | "||" | "&")
-}
-
-fn argv_source_tokens<'a>(tokens: &'a [String], excluded_value_flags: &[String]) -> Vec<&'a str> {
-    let mut source_tokens = Vec::new();
-    let mut skip_next = false;
-    let mut positional_only = false;
-
-    for token in tokens {
-        if skip_next {
-            skip_next = false;
-            continue;
-        }
-        if token == "--" {
-            positional_only = true;
-            continue;
-        }
-        if !positional_only
-            && excluded_value_flags
-                .iter()
-                .any(|flag| token.as_str() == flag.as_str())
-        {
-            skip_next = true;
-            continue;
-        }
-        if !positional_only
-            && excluded_value_flags.iter().any(|flag| {
-                token
-                    .strip_prefix(flag.as_str())
-                    .is_some_and(|suffix| suffix.starts_with('='))
-            })
-        {
-            continue;
-        }
-        for source_token in path_like_tokens(std::slice::from_ref(token)) {
-            if !source_tokens
-                .iter()
-                .any(|existing| existing == &source_token)
-            {
-                source_tokens.push(source_token);
-            }
-        }
-    }
-
-    source_tokens
 }

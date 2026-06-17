@@ -47,9 +47,10 @@ fn structured_direct_read_globs_are_matched_by_suffix_not_project_shape() {
                 selector,
                 "--surface",
                 "owners,tests",
+                "--workspace",
+                ".",
                 "--view",
-                "seeds",
-                "."
+                "seeds"
             ],
             "{selector}"
         );
@@ -87,9 +88,10 @@ fn structured_direct_read_brace_glob_routes_to_all_matching_providers() {
             "*.{rs,py}",
             "--surface",
             "owners,tests",
+            "--workspace",
+            ".",
             "--view",
-            "seeds",
-            "."
+            "seeds"
         ]
     );
     assert_eq!(
@@ -102,9 +104,10 @@ fn structured_direct_read_brace_glob_routes_to_all_matching_providers() {
             "*.{rs,py}",
             "--surface",
             "owners,tests",
+            "--workspace",
+            ".",
             "--view",
-            "seeds",
-            "."
+            "seeds"
         ]
     );
     assert!(
@@ -114,13 +117,11 @@ fn structured_direct_read_brace_glob_routes_to_all_matching_providers() {
     );
     assert!(decision.message.contains("spawn_agent"));
     assert!(decision.message.contains("asp-search-subagent"));
-    assert!(
-        decision.message.contains(
-            "asp rust query --selector '*.{rs,py}' --surface 'owners,tests' --view seeds ."
-        )
-    );
     assert!(decision.message.contains(
-        "asp python query --selector '*.{rs,py}' --surface 'owners,tests' --view seeds ."
+        "asp rust query --selector '*.{rs,py}' --surface 'owners,tests' --workspace . --view seeds"
+    ));
+    assert!(decision.message.contains(
+        "asp python query --selector '*.{rs,py}' --surface 'owners,tests' --workspace . --view seeds"
     ));
     assert!(!decision.message.contains("|run-next"));
 }

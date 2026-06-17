@@ -1,5 +1,6 @@
 use agent_semantic_hook::{
-    build_default_activation, default_activation_path, load_or_sync_activation, write_activation,
+    HookActivation, build_default_activation, default_activation_path, load_or_sync_activation,
+    write_activation,
 };
 use std::fs;
 
@@ -48,6 +49,69 @@ fn generated_activation_sync_refreshes_newly_available_parent_workspace_provider
     );
     let refreshed_activation = fs::read_to_string(&activation_path).expect("read refreshed");
     assert!(refreshed_activation.contains("\"languageId\": \"gerbil-scheme\""));
+
+    fs::remove_dir_all(root).expect("remove temp root");
+}
+
+#[test]
+fn generated_activation_sync_refreshes_stale_manifest_coverage_defaults() {
+    let root = temp_root("stale-coverage-defaults");
+    fs::create_dir_all(root.join(".bin")).expect("create bin dir");
+    fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"sample\"\nversion = \"0.1.0\"\n",
+    )
+    .expect("write cargo manifest");
+    let rs_harness = root.join(".bin/rs-harness");
+    fs::write(&rs_harness, "#!/bin/sh\nexit 0\n").expect("write rust provider bin");
+    make_executable(&rs_harness);
+
+    let activation_path = default_activation_path(&root);
+    let mut activation = build_default_activation(&root).expect("build activation");
+    let rust_provider = activation
+        .providers
+        .iter_mut()
+        .find(|provider| provider.language_id == "rust")
+        .expect("rust provider");
+    rust_provider.coverage.ignored_path_prefixes = vec!["target".to_string()];
+    write_activation(&activation_path, &activation).expect("write stale activation");
+
+    let runtime = load_or_sync_activation(&activation_path, &root).expect("sync activation");
+    let runtime_rust_provider = runtime
+        .providers
+        .iter()
+        .find(|provider| provider.language_id == "rust")
+        .expect("runtime rust provider");
+    assert!(
+        runtime_rust_provider
+            .ignored_path_prefixes
+            .iter()
+            .any(|prefix| prefix == ".data"),
+        "runtime should refresh common ignored prefixes"
+    );
+
+    let refreshed_text = fs::read_to_string(&activation_path).expect("read activation");
+    let refreshed: HookActivation =
+        serde_json::from_str(&refreshed_text).expect("parse activation");
+    let refreshed_rust_provider = refreshed
+        .providers
+        .iter()
+        .find(|provider| provider.language_id == "rust")
+        .expect("refreshed rust provider");
+    assert!(
+        refreshed_rust_provider
+            .coverage
+            .ignored_path_prefixes
+            .iter()
+            .any(|prefix| prefix == ".cache")
+    );
+    assert!(
+        refreshed_rust_provider
+            .coverage
+            .ignored_path_prefixes
+            .iter()
+            .any(|prefix| prefix == ".data")
+    );
 
     fs::remove_dir_all(root).expect("remove temp root");
 }

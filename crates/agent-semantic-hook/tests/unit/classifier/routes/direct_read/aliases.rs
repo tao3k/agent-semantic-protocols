@@ -32,9 +32,10 @@ fn camelcase_namespaced_direct_read_glob_routes_to_provider_query() {
             "src/**/*.tsx",
             "--surface",
             "owners,tests",
+            "--workspace",
+            ".",
             "--view",
-            "seeds",
-            "."
+            "seeds"
         ]
     );
 }
@@ -87,9 +88,10 @@ fn mcp_direct_read_glob_routes_to_provider_query() {
             "packages/*/src/**/*.py",
             "--surface",
             "owners,tests",
+            "--workspace",
+            ".",
             "--view",
-            "seeds",
-            "."
+            "seeds"
         ]
     );
 }
@@ -122,9 +124,10 @@ fn command_direct_read_source_glob_routes_to_provider_query() {
             "*.rs",
             "--surface",
             "owners,tests",
+            "--workspace",
+            ".",
             "--view",
-            "seeds",
-            "."
+            "seeds"
         ]
     );
 }

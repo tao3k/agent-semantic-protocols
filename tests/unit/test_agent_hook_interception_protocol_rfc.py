@@ -40,7 +40,7 @@ def test_hook_rfc_defines_markdown_recovery_prompt_and_runtime_binaries() -> Non
         "## Run Next",
         "## Detected Binaries",
         "command=<runtime-profile argv>",
-        "Start from asp <language> guide .",
+        "Start from asp <language> guide --workspace .",
         "runtime profile's resolved =argv=",
         "The public route in",
         "=routes[].argv= still uses the =asp <language>= facade",
@@ -67,7 +67,7 @@ def test_hook_rfc_closure_gates_cover_recovery_prompt_and_retired_routes() -> No
         "Generated skills and hook prompts must not reintroduce",
         "agent-prefixed guide spelling",
         "old search-wrapper hook query",
-        "accepted guide entrypoint is =asp <language> guide .=",
+        "accepted guide entrypoint is =asp <language> guide --workspace .=",
         "help surface is =asp <language> guide --help .=",
     ]
 

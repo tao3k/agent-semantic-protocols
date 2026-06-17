@@ -59,8 +59,8 @@ def _action_row(group: Mapping[str, Any]) -> dict[str, object]:
         "profile": "owner-query",
         "preferredCommand": preferred_command,
         "avoidCommand": (
-            f"asp {language} search fzf <same-query> owner tests --view seeds "
-            f"{project_root_arg}"
+            f"asp {language} search fzf <same-query> owner tests "
+            f"--workspace {project_root_arg} --view seeds"
         ),
         "nextAction": (
             "promote recurring fuzzy hits into owner, item, and test frontier facts"
@@ -78,9 +78,10 @@ def _preferred_command(language: str, query: str, project_root_arg: str) -> str:
                 "owner",
                 query,
                 "items",
+                "--workspace",
+                project_root_arg,
                 "--view",
                 "seeds",
-                project_root_arg,
             )
         )
     return shell_command(
@@ -92,8 +93,9 @@ def _preferred_command(language: str, query: str, project_root_arg: str) -> str:
             query,
             "owner",
             "tests",
+            "--workspace",
+            project_root_arg,
             "--view",
             "seeds",
-            project_root_arg,
         )
     )

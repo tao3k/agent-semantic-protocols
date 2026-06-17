@@ -115,6 +115,15 @@ path arguments may remain as compatibility input or as a provider-owned narrow
 search scope, but the prompt-facing command contract must make the workspace
 boundary explicit so agents can replay commands without path-context drift.
 
+Path-like query terms that do not resolve to parser or finder path evidence are
+negative evidence, not candidate selectors. Search output may keep such terms
+in =fd-query= finder commands so the agent can prove or disprove the path, but
+it must not promote them to =ownerItems=, =treeSitterHandles=
+exported-declaration names, or =query --selector= next commands. Compact output
+should expose a selector guard such as =missingPathTerms= so agents treat the
+term as a missing path receipt instead of inventing a file like
+=t/unit-tests.ss= from naming convention.
+
 Document languages are a separate facade class.  =asp org= and =asp md= expose
 parser-owned document structure, not code harness policy.  The executable
 runtime is =asp= with a native =orgize= dependency.  The =orgize= binary remains

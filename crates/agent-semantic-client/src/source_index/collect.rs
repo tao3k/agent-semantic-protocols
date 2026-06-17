@@ -23,7 +23,7 @@ pub(super) fn collect_source_index_files(
     let files = collect_source_index_file_map(project_root, snapshot)?;
     if files.is_empty() {
         return Err(format!(
-            "missing provider source-scope facts: activated providers exposed no source/config files for {}; run `asp hook install --client codex .` or refresh the language provider workspace facts",
+            "missing provider source-scope facts: activated providers exposed no source/config files for {}; run `asp install plugin --codex .` or refresh the language provider workspace facts",
             project_root.display()
         ));
     }
@@ -383,7 +383,7 @@ fn normalize_project_path(path: &str) -> String {
 
 fn missing_provider_scope_message(project_root: &Path) -> String {
     format!(
-        "missing provider source-scope facts: no activated language providers for {}; run `asp hook install --client codex .` so language harnesses can expose workspace coverage to the Rust SQL source index",
+        "missing provider source-scope facts: no activated language providers for {}; run `asp install plugin --codex .` so language harnesses can expose workspace coverage to the Rust SQL source index",
         project_root.display()
     )
 }

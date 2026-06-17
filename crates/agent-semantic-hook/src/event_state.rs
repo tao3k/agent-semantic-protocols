@@ -7,7 +7,7 @@ use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use agent_semantic_runtime::ensure_project_hook_state_dir;
+use agent_semantic_runtime::{ensure_project_hook_cache_dir, ensure_project_hook_state_dir};
 use serde_json::{Value, json};
 
 use crate::protocol::{DecisionKind, HOOK_PROTOCOL_ID, HookDecision};
@@ -287,10 +287,26 @@ pub fn remove_incompatible_hook_event_state(
     project_root: &Path,
 ) -> Result<Option<PathBuf>, String> {
     let state_path = ensure_project_hook_state_dir(project_root)?.join(HOOK_EVENT_STATE_FILE);
+    let mut removed_path = remove_incompatible_hook_event_state_path(&state_path)?;
+    let previous_cache_state_path =
+        ensure_project_hook_cache_dir(project_root)?.join(HOOK_EVENT_STATE_FILE);
+    if previous_cache_state_path != state_path && previous_cache_state_path.is_file() {
+        fs::remove_file(&previous_cache_state_path).map_err(|error| {
+            format!(
+                "failed to remove previous hook state {}: {error}",
+                previous_cache_state_path.display()
+            )
+        })?;
+        removed_path.get_or_insert(previous_cache_state_path);
+    }
+    Ok(removed_path)
+}
+
+fn remove_incompatible_hook_event_state_path(state_path: &Path) -> Result<Option<PathBuf>, String> {
     if !state_path.is_file() {
         return Ok(None);
     }
-    let file = fs::File::open(&state_path).map_err(|error| {
+    let file = fs::File::open(state_path).map_err(|error| {
         format!(
             "failed to read hook state {}: {error}",
             state_path.display()
@@ -317,13 +333,13 @@ pub fn remove_incompatible_hook_event_state(
         }
         break;
     }
-    fs::remove_file(&state_path).map_err(|error| {
+    fs::remove_file(state_path).map_err(|error| {
         format!(
             "failed to remove hook state {}: {error}",
             state_path.display()
         )
     })?;
-    Ok(Some(state_path))
+    Ok(Some(state_path.to_path_buf()))
 }
 
 fn is_current_hook_event_state_line(line: &str) -> bool {

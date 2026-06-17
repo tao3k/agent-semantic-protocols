@@ -412,9 +412,10 @@ fn provider_for_language(
                 "{termArgs}",
                 "--surface",
                 "owners,tests",
+                "--workspace",
+                ".",
                 "--view",
                 "seeds",
-                ".",
             ])),
         ),
     )

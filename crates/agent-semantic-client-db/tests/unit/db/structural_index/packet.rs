@@ -57,11 +57,15 @@ fn semantic_structural_index_refresh_packet_uses_asp_incremental_apply() {
         {
             "path": "src/lib.rs",
             "sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+            "byteLen": 0,
+            "mtimeMs": 0,
             "source": "provider"
         },
         {
             "path": "src/unchanged.rs",
             "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+            "byteLen": 0,
+            "mtimeMs": 0,
             "source": "provider"
         }
     ]);

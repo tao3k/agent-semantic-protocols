@@ -42,6 +42,7 @@ pub fn run_cli_args(
         Some("doctor") => run_doctor(parsed),
         Some("cache") => crate::cache_cli::run_cache(
             &parsed.project_root,
+            language_id.as_ref(),
             &parsed.forwarded_args,
             parsed.receipt_json,
         ),
@@ -116,7 +117,7 @@ fn run_providers(parsed: ParsedArgs) -> Result<(), String> {
         Err(error) => {
             println!("[asp-providers] activation=missing providers=0");
             println!("|reason provider-activation-unavailable");
-            println!("|cmd install=asp hook install --client codex .");
+            println!("|cmd install=asp install plugin --codex .");
             println!("|cmd guide=asp guide");
             eprintln!("[asp-providers] activation unavailable: {error}");
         }
@@ -136,7 +137,7 @@ fn run_doctor(parsed: ParsedArgs) -> Result<(), String> {
                 "[asp-doctor] status=degraded backend=local activation=missing providers=0 server=not-required"
             );
             println!("|reason provider-activation-unavailable");
-            println!("|cmd install=asp hook install --client codex .");
+            println!("|cmd install=asp install plugin --codex .");
             println!("|cmd guide=asp guide");
             eprintln!("[asp-doctor] activation unavailable: {error}");
         }
@@ -169,9 +170,9 @@ fn print_guide() {
     println!("|cmd graph-turbo=asp wrap asp-graph-turbo -- help");
     println!("|cmd graph-turbo-search=asp <language> search fzf <term> owner tests .");
     println!("|cmd search-history=asp search history audit .");
-    println!("|cmd guide=asp <language> guide .");
-    println!("|cmd search-guide=asp <language> search guide .");
-    println!("|ref query-guide=asp <language> query guide .");
+    println!("|cmd guide=asp <language> guide --workspace .");
+    println!("|cmd search-guide=asp <language> search guide --workspace .");
+    println!("|ref query-guide=asp <language> query guide --workspace .");
     println!("|ref treesitter-query-guide=asp <language> query guide treesitter .");
     println!("|cmd search=asp <language> search <provider-search-args>");
     println!("|cmd query=asp <language> query <provider-query-args>");
@@ -184,7 +185,7 @@ fn print_guide() {
         "|facades active=run asp providers known=rust|typescript|python|julia|gerbil-scheme|org|md"
     );
     println!(
-        "|rule provider-guide-contract=run asp <language> guide . before provider-specific search axes"
+        "|rule provider-guide-contract=run asp <language> guide --workspace . before provider-specific search axes"
     );
     println!(
         "|rule provider-knowledge-axes=asp <language> search env|runtime-source|lang|std|capability|extension|pattern|compare ..."

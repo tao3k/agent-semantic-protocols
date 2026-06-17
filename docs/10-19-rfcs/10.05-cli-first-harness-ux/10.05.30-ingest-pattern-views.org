@@ -32,7 +32,7 @@ operator DSL, not a second =ingest= command family, and not a public
 =graph_turbo= command.  Simple external shell search stays explicit:
 
 #+begin_src shell
-rg -n "contentBlocks" tests | asp python search ingest items tests --view seeds .
+rg -n "contentBlocks" tests | asp python search ingest items tests --workspace . --view seeds
 #+end_src
 
 When the query spans multiple roots, repeated command history shows slow fzf
@@ -83,7 +83,7 @@ search pipe <question-or-feature-term> [--source auto|provider|finder|ingest] [-
   =commandHandles=, =treeSitterHandles=, =actionRank=, =actionFrontier=,
   optional bounded =fdPreview=, =recommendedNext=, =nextCommand=, =omit=, and
   =avoid=.  It must not inline source, raw finder output, full candidate lists,
-  any operator expression, or legacy =frontierActions= rows.  The default graph
+  any operator expression, or retired =frontierActions= rows.  The default graph
   portion is a decision projection: keep =rankedEvidence=, =evidenceFrontier=,
   compact =evidenceNodes=, and compact =evidenceEdges= rather than full graph
   debug rows.  Omitted =--view= defaults to this same compact frontier.
@@ -162,8 +162,8 @@ The intended large-repo loop is two-stage when the first seed frontier is not
 enough:
 
 #+begin_src shell
-asp typescript search pipe "Effect concurrency Fiber Queue Stream Scope" --view seeds .
-asp typescript search fzf "Fiber Queue Stream Scope" owner tests --view seeds .
+asp typescript search pipe "Effect concurrency Fiber Queue Stream Scope" --workspace . --view seeds
+asp typescript search fzf "Fiber Queue Stream Scope" owner tests --workspace . --view seeds
 asp fd -query "Fiber|Queue|Stream|Scope|Runtime|internal" .
 asp rg -query "Fiber|Queue|Stream|Scope|fork|interrupt|runFork|Runtime" .
 asp typescript query --selector <path:start-end> --workspace . --code
@@ -228,7 +228,7 @@ language provider's full project report, policy/check result, verification
 reasoning tree, package graph, or native parser fact index as a prerequisite.
 All emitted locators are relative to the agent invocation workspace, not to a
 scoped search root.  A locator printed from =asp rust search fzf ... crates/foo=
-must therefore replay as =asp rust query --selector crates/foo/... --code .=
+must therefore replay as =asp rust query --selector crates/foo/... --workspace . --code=
 without requiring the agent to remember the original scoped root.
 
 Provider binaries remain the authority for native facts.  They are invoked for:

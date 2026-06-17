@@ -56,17 +56,18 @@
         "codeql",
         "owner",
         "tests",
+        "--workspace",
+        ".",
         "--view",
-        "seeds",
-        "."
+        "seeds"
       ],
       "timeoutSeconds": 90,
       "expect": {
         "stdoutContains": [
           "[graph-frontier]",
           "profile=owner-query",
-          "Q=query:term(codeql)!fzf",
-          "symbol(codeql)",
+          "Q>{",
+          "registry_codeql.rs",
           "frontier="
         ],
         "stdoutNotContains": [

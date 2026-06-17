@@ -105,7 +105,7 @@ class TypeScriptEffectQueryQualityFlowTests(unittest.TestCase):
         )
         self.assertIn("recommendedNext=A1.owner-items", stdout_contains)
         self.assertIn(
-            "nextCommand=asp typescript search owner packages/effect/src/Fiber.ts items --query 'concurrency|Fiber|Queue|Stream|Scope' --view seeds .",
+            "nextCommand=asp typescript search owner packages/effect/src/Fiber.ts items --query 'concurrency|Fiber|Queue|Stream|Scope' --workspace . --view seeds",
             stdout_contains,
         )
         self.assertIn(

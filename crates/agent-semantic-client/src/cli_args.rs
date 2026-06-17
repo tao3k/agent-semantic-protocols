@@ -2,6 +2,10 @@
 
 use std::path::{Path, PathBuf};
 
+use agent_semantic_runtime::{
+    project_local_activation_path, project_local_client_cache_manifest_path,
+};
+
 #[derive(Debug)]
 pub(crate) struct ParsedArgs {
     pub(crate) command: Option<String>,
@@ -147,12 +151,8 @@ fn positional_project_root(
     if value == "." {
         return Some(canonical_or_existing(absolute));
     }
-    if absolute
-        .join(".cache/agent-semantic-protocol/hooks/activation.json")
-        .is_file()
-        || absolute
-            .join(".cache/agent-semantic-protocol/client/cache-manifest.json")
-            .is_file()
+    if project_local_activation_path(&absolute).is_file()
+        || project_local_client_cache_manifest_path(&absolute).is_file()
     {
         return Some(canonical_or_existing(absolute));
     }

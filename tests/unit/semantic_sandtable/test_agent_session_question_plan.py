@@ -212,7 +212,7 @@ def _messages() -> list[dict[str, object]]:
                     "id": "call_1",
                     "name": "Bash",
                     "input": {
-                        "command": "asp rust search prime --view seeds .",
+                        "command": "asp rust search prime --workspace . --view seeds",
                     },
                 }
             ],
@@ -248,7 +248,7 @@ def _repeat_search_messages() -> list[dict[str, object]]:
                     "id": "call_2",
                     "name": "Bash",
                     "input": {
-                        "command": "asp rust search prime --view seeds .",
+                        "command": "asp rust search prime --workspace . --view seeds",
                     },
                 }
             ],
@@ -275,7 +275,7 @@ def _search_output() -> str:
     return "\n".join(
         [
             "[search-prime] language=rust project=tokio",
-            "nextCommand=asp rust search pipe 'AsyncRead readiness' --view seeds .",
+            "nextCommand=asp rust search pipe 'AsyncRead readiness' --workspace . --view seeds",
         ]
     )
 

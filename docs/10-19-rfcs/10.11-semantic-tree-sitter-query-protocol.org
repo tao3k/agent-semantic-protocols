@@ -736,7 +736,7 @@ The explicit maintenance command =asp cache flush syntax-rows= performs the same
 scoped row-family reset without deleting manifest generations or artifacts.
 Rows are replayable only when they carry the ASP query AST/ABI fingerprint and
 the AST/ABI-derived capture and item node types.  The row path does not guess or
-fallback from legacy rendered text or incomplete packet fields.
+fallback from retired rendered text or incomplete packet fields.
 
 ** Agent-facing render contract
 
@@ -1184,7 +1184,7 @@ rules before richer v2 projection layers move into default guide output.
 1. =asp <language> query --treesitter-query <pattern> .= prints locator/frontier
    output by default.
    Prompt-noise ban: without source windows, cache ids, SQLite paths, receipt JSON, or artifact ids.
-2. =asp <language> query --selector <exact> --treesitter-query <pattern> --code .=
+2. =asp <language> query --selector <exact> --treesitter-query <pattern> --workspace . --code=
    prints pure source code and rejects broad multi-match code extraction unless
    the provider can prove a unique match.
 3. Search and read-plan outputs may attach =syn= anchors, but they must not

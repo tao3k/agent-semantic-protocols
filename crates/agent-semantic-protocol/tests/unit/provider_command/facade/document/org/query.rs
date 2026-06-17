@@ -17,7 +17,7 @@ fn org_facade_query_covers_org_element_kinds() {
         ("paragraph", "|paragraph", "sourceKind=\"Paragraph\""),
         ("block", "|block", "sourceKind=\"SourceBlock\""),
         ("list", "|list", "sourceKind=\"SyntaxList\""),
-        ("task", "|task", "sourceKind=\"SyntaxListItem\""),
+        ("task", "|task", "sourceKind=\"Headline\""),
         ("listItem", "|listItem", "sourceKind=\"SyntaxListItem\""),
         ("link", "|link", "sourceKind=\"SyntaxLink\""),
         ("image", "|image", "sourceKind=\"SyntaxLink\""),

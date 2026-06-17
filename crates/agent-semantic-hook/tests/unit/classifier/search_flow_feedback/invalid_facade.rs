@@ -20,7 +20,7 @@ fn pre_tool_denies_package_name_as_asp_facade() {
             "transcript_path": "transcript-effect.jsonl",
             "tool_name": "Bash",
             "tool_input": {
-                "command": "asp effect prime --view seeds ."
+                "command": "asp effect prime --workspace . --view seeds"
             }
         }),
     );
@@ -147,7 +147,7 @@ fn pre_tool_allows_root_graph_command_without_facade_feedback() {
 }
 
 #[test]
-fn pre_tool_allows_root_plugin_install_command_without_facade_feedback() {
+fn pre_tool_allows_install_plugin_codex_command_without_facade_feedback() {
     let project_root = temp_project_root("asp-hook-root-plugin-command");
     let runtime = runtime_for_project(&project_root);
 
@@ -161,7 +161,7 @@ fn pre_tool_allows_root_plugin_install_command_without_facade_feedback() {
             "transcript_path": "transcript-plugin.jsonl",
             "tool_name": "Bash",
             "tool_input": {
-                "command": "target/debug/asp plugin install codex ."
+                "command": "target/debug/asp install plugin --codex ."
             }
         }),
     );

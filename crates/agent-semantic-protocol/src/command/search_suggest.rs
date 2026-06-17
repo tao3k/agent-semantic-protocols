@@ -88,8 +88,8 @@ fn render_search_suggest(language_id: &str, args: &SearchSuggestArgs) -> String 
 |contract executes=false provider=false planner=false output=commands\n\
 |history audit=\"asp search history audit .\"\n\
 |prefer pipe=\"asp {language_id} search pipe {query} --workspace . --view seeds\"\n\
-|prefer fzf=\"asp {language_id} search fzf {query} owner tests --view seeds .\"\n\
-|reasoning owner-query=\"asp {language_id} search reasoning owner-query --owner <path> --query {query} --view seeds .\"\n\
+|prefer fzf=\"asp {language_id} search fzf {query} owner tests --workspace . --view seeds\"\n\
+|reasoning owner-query=\"asp {language_id} search reasoning owner-query --owner <path> --query {query} --workspace . --view seeds\"\n\
 |avoid provider-spawn,source-scan,manual-ingest,shell-pipe,natural-language-planning\n"
     )
 }

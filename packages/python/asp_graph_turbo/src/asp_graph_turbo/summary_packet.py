@@ -19,7 +19,7 @@ def result_to_summary_packet(result: GraphResult) -> dict[str, object]:
     """Return a schema-shaped summary that preserves next-action facts."""
 
     full = result_to_packet(result)
-    return {
+    packet = {
         "schemaId": "agent.semantic-protocols.semantic-graph-turbo-summary",
         "schemaVersion": "1",
         "protocolId": full["protocolId"],
@@ -85,6 +85,9 @@ def result_to_summary_packet(result: GraphResult) -> dict[str, object]:
             ],
         },
     }
+    if "readMemory" in full:
+        packet["readMemory"] = full["readMemory"]
+    return packet
 
 
 def _node_summary(

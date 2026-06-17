@@ -24,7 +24,7 @@ pub(super) fn selected_provider_for_request<'a>(
 pub(super) fn request_export_method(request: &ClientRequest) -> Option<CacheExportMethod> {
     match &request.method {
         ClientMethod::Search => Some(CacheExportMethod::from(search_export_method(
-            &request.forwarded_args,
+            search_cache_forwarded_args(&request.forwarded_args).as_ref(),
         ))),
         ClientMethod::Query => Some(CacheExportMethod::from(query_export_method(request))),
         ClientMethod::Check => Some(CacheExportMethod::from(check_export_method(
@@ -38,6 +38,16 @@ fn search_export_method(args: &[String]) -> String {
     args.first()
         .filter(|arg| !arg.starts_with('-') && arg.as_str() != ".")
         .map_or_else(|| "search".to_string(), |arg| format!("search/{arg}"))
+}
+
+fn search_cache_forwarded_args(args: &[String]) -> std::borrow::Cow<'_, [String]> {
+    if args.first().is_some_and(|arg| arg == "dependency") {
+        let mut normalized = args.to_vec();
+        normalized[0] = "deps".to_string();
+        std::borrow::Cow::Owned(normalized)
+    } else {
+        std::borrow::Cow::Borrowed(args)
+    }
 }
 
 fn query_export_method(request: &ClientRequest) -> String {
@@ -92,7 +102,8 @@ pub(super) fn exact_request_fingerprint(
     export_method: &CacheExportMethod,
     forwarded_args: &[String],
 ) -> String {
-    let syntax_query_provenance = syntax_query_cache_provenance(provider, forwarded_args)
+    let forwarded_args = search_cache_forwarded_args(forwarded_args);
+    let syntax_query_provenance = syntax_query_cache_provenance(provider, forwarded_args.as_ref())
         .unwrap_or_else(|| "syntax-query-ast-abi:none".to_string());
     let prompt_output_provenance = prompt_output_render_abi_provenance(export_method);
     let seed = format!(
@@ -203,3 +214,7 @@ fn stable_hash_hex(value: &str) -> String {
 #[cfg(test)]
 #[path = "../../tests/unit/cache_cli/request.rs"]
 mod request_tests;
+
+#[cfg(test)]
+#[path = "../../tests/unit/cache_cli/request_alias.rs"]
+mod request_alias_tests;

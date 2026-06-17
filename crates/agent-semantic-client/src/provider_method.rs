@@ -442,7 +442,8 @@ fn has_seed_view(args: &[String]) -> bool {
 }
 
 fn is_dependency_search(args: &[String]) -> bool {
-    args.first().is_some_and(|arg| arg == "deps")
+    args.first()
+        .is_some_and(|arg| arg == "dependency" || arg == "deps")
 }
 
 fn run_search_packet_first_miss(
@@ -455,7 +456,7 @@ fn run_search_packet_first_miss(
     let Some(language_id) = request.language_id.clone() else {
         return Ok(None);
     };
-    let mut packet_args = request.forwarded_args.clone();
+    let mut packet_args = search_packet_first_forwarded_args(&request.forwarded_args);
     insert_json_flag_before_project_root(&mut packet_args);
     let packet_request = ClientRequest::new(ClientMethod::Search, project_root.to_path_buf())
         .with_forwarded_args(packet_args)
@@ -557,6 +558,14 @@ fn search_frontier_receipt_request(
 fn short_sha256(bytes: &[u8]) -> String {
     let digest = Sha256::digest(bytes);
     format!("{digest:x}").chars().take(16).collect()
+}
+
+pub(crate) fn search_packet_first_forwarded_args(args: &[String]) -> Vec<String> {
+    let mut normalized = args.to_vec();
+    if normalized.first().is_some_and(|arg| arg == "dependency") {
+        normalized[0] = "deps".to_string();
+    }
+    normalized
 }
 
 fn insert_json_flag_before_project_root(args: &mut Vec<String>) {

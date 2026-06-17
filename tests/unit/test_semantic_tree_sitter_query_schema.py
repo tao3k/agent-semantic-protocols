@@ -191,7 +191,7 @@ def test_catalog_embedded_is_a_scalar_field_not_a_new_packet_surface() -> None:
     assert tree_sitter_query_validation_errors(packet) == []
 
 
-def test_rejects_legacy_string_predicate_field() -> None:
+def test_rejects_retired_string_predicate_field() -> None:
     packet = copy.deepcopy(semantic_tree_sitter_query_packet())
     packet["query"]["fields"]["predicates"] = ["eq:function.name=parse_query"]
 

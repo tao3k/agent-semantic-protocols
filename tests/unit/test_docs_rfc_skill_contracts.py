@@ -98,7 +98,7 @@ def test_root_skill_template_and_installed_skill_contract() -> None:
     assert ":LANGUAGE_ID: rust" in installed_skill
     assert ":FACADE: asp rust" in installed_skill
     assert ":ENABLED: true" in installed_skill
-    assert "Start with =asp <language> guide .=" in installed_skill
+    assert "Start with =asp <language> guide --workspace .=" in installed_skill
     assert "path-context resolution" in root_skill
     assert "path-context resolution" in installed_skill
     assert "workspace discovery" not in root_skill

@@ -1,4 +1,4 @@
-//! Rev-first provider binary installer for language harness releases.
+//! Install command routing and rev-first language provider installer.
 
 use agent_semantic_runtime::{
     ensure_project_provider_bin_dir, ensure_project_provider_lock_dir, project_runtime_state,
@@ -9,6 +9,8 @@ use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+
+use super::hook_runtime::{run_codex_plugin_install_args, run_hook_runtime_args};
 
 #[derive(Clone, Copy)]
 struct ProviderReleaseSpec {
@@ -72,14 +74,50 @@ struct InstallArgs {
 
 pub(crate) fn run_install_command(args: &[String]) -> Result<(), String> {
     match args.first().map(String::as_str) {
-        Some("provider") => run_install_provider(&args[1..]),
-        Some("providers") => Err(
-            "asp install providers is not implemented yet; install one language with `asp install provider <language> --rev <rev>`"
-                .to_string(),
-        ),
+        Some("hook") => run_install_hook(&args[1..]),
+        Some("plugin") => run_install_plugin(&args[1..]),
+        Some("language") => run_install_provider(&args[1..]),
         Some("help" | "--help" | "-h") | None => Err(usage()),
         Some(_) => Err(usage()),
     }
+}
+
+fn run_install_hook(args: &[String]) -> Result<(), String> {
+    if args.is_empty() || has_help_flag(args) {
+        println!("{}", install_hook_usage());
+        return Ok(());
+    }
+
+    if args.iter().any(|arg| arg == "--codex") {
+        return Err(
+            "Codex plugin installation uses `asp install plugin --codex [PROJECT_ROOT]`"
+                .to_string(),
+        );
+    }
+
+    let mut forwarded = vec!["install".to_string()];
+    forwarded.extend(args.iter().cloned());
+    run_hook_runtime_args(forwarded)
+}
+
+fn run_install_plugin(args: &[String]) -> Result<(), String> {
+    if args.is_empty() || has_help_flag(args) {
+        println!("{}", install_plugin_usage());
+        return Ok(());
+    }
+
+    match args.first().map(String::as_str) {
+        Some("--codex") => run_codex_plugin_install_args(&args[1..]),
+        Some(target) => Err(format!(
+            "unsupported plugin target: {target}; expected --codex"
+        )),
+        None => unreachable!("empty plugin installation args handled before dispatch"),
+    }
+}
+
+fn has_help_flag(args: &[String]) -> bool {
+    args.iter()
+        .any(|arg| matches!(arg.as_str(), "help" | "--help" | "-h"))
 }
 
 fn run_install_provider(args: &[String]) -> Result<(), String> {
@@ -92,7 +130,7 @@ fn run_install_provider(args: &[String]) -> Result<(), String> {
     let rev = install_args
         .rev
         .as_deref()
-        .ok_or_else(|| "asp install provider requires --rev <git-tag-or-rev>".to_string())?;
+        .ok_or_else(|| "asp install language requires --rev <git-tag-or-rev>".to_string())?;
     let target = match install_args.target {
         Some(target) => target,
         None => host_target_triple().ok_or_else(|| {
@@ -155,7 +193,7 @@ fn run_install_provider(args: &[String]) -> Result<(), String> {
         spec.binary,
         installed.display(),
         lock_path.display(),
-        state.provider_bin_dir.display(),
+        state.runtime_bin_dir.display(),
     );
     Ok(())
 }
@@ -583,7 +621,15 @@ fn toml_escape(value: &str) -> String {
 }
 
 fn usage() -> String {
-    "usage: asp install provider <language> --rev <rev> [--target <target>] [--project <root>] [--repo <owner/repo>] [--archive <path>]".to_string()
+    "usage: asp install hook --client claude [PROJECT_ROOT] [--subagent-model MODEL]\n       asp install plugin --codex [PROJECT_ROOT] [--global|--global-plugin] [--subagent-model MODEL]\n       asp install language <language> --rev <rev> [--target <target>] [--project <root>] [--repo <owner/repo>] [--archive <path>]".to_string()
+}
+
+fn install_hook_usage() -> String {
+    "usage: asp install hook --client claude [PROJECT_ROOT] [--subagent-model MODEL]".to_string()
+}
+
+fn install_plugin_usage() -> String {
+    "usage: asp install plugin --codex [PROJECT_ROOT] [--global|--global-plugin] [--subagent-model MODEL]".to_string()
 }
 
 #[cfg(test)]

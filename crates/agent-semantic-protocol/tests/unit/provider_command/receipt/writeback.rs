@@ -37,9 +37,10 @@ fn client_search_miss_writes_prompt_output_cache_for_next_hit() {
             "rust",
             "search",
             "prime",
+            "--workspace",
+            ".",
             "--view",
             "seeds",
-            ".",
             "--receipt-json",
         ])
         .output()
@@ -143,9 +144,10 @@ fn client_search_miss_writes_prompt_output_cache_for_next_hit() {
             "rust",
             "search",
             "prime",
+            "--workspace",
+            ".",
             "--view",
             "seeds",
-            ".",
             "--receipt-json",
         ])
         .output()
@@ -201,9 +203,10 @@ fn client_search_miss_writes_prompt_output_cache_for_next_hit() {
             "rust",
             "search",
             "prime",
+            "--workspace",
+            ".",
             "--view",
             "seeds",
-            ".",
             "--receipt-json",
         ])
         .output()
@@ -232,9 +235,10 @@ fn client_search_miss_writes_prompt_output_cache_for_next_hit() {
             "rust",
             "search",
             "prime",
+            "--workspace",
+            ".",
             "--view",
             "seeds",
-            ".",
             "--receipt-json",
         ])
         .output()
@@ -326,9 +330,10 @@ fn client_search_receipt_reports_warm_provider_when_matching_generation_exists()
             "rust",
             "search",
             "prime",
+            "--workspace",
+            ".",
             "--view",
             "seeds",
-            ".",
             "--receipt-json",
         ])
         .output()
@@ -400,9 +405,10 @@ esac
             "rust",
             "search",
             "prime",
+            "--workspace",
+            ".",
             "--view",
             "seeds",
-            ".",
             "--receipt-json",
         ])
         .output()
@@ -430,15 +436,11 @@ esac
     let search_provider_args =
         std::fs::read_to_string(&search_provider_args_log).expect("read search provider args");
     assert!(
-        search_provider_args.contains("search prime --view seeds"),
-        "{search_provider_args}"
-    );
-    assert!(
         search_provider_args.contains("search prime --view seeds --json"),
         "{search_provider_args}"
     );
     let search_provider_arg_count = search_provider_args.lines().count();
-    assert_eq!(search_provider_arg_count, 2);
+    assert_eq!(search_provider_arg_count, 1);
     let search_manifest_text =
         std::fs::read_to_string(cache_root(&search_root).join("cache-manifest.json"))
             .expect("read search writeback manifest");
@@ -447,7 +449,11 @@ esac
         "{search_manifest_text}"
     );
     assert!(
-        search_manifest_text.contains("prompt-output/"),
+        search_manifest_text.contains("search-output/"),
+        "{search_manifest_text}"
+    );
+    assert!(
+        search_manifest_text.contains("analysis-metadata/"),
         "{search_manifest_text}"
     );
     let second_search = Command::new(env!("CARGO_BIN_EXE_asp"))
@@ -458,9 +464,10 @@ esac
             "rust",
             "search",
             "prime",
+            "--workspace",
+            ".",
             "--view",
             "seeds",
-            ".",
             "--receipt-json",
         ])
         .output()

@@ -137,9 +137,10 @@
         "search",
         "tests",
         "packages/runtime-core/src/scheduler.ts",
+        "--workspace",
+        ".",
         "--view",
-        "seeds",
-        "."
+        "seeds"
       ],
       "stdinShape": "none",
       "outputMode": "compact",

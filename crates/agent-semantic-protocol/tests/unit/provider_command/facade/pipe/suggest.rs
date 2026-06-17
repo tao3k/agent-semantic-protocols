@@ -116,9 +116,10 @@ fn search_suggest_rejects_non_commands_view_without_provider_spawn() {
             "search",
             "suggest",
             "HookDecision ClientReceipt",
+            "--workspace",
+            ".",
             "--view",
             "seeds",
-            ".",
         ])
         .output()
         .expect("run asp rust search suggest invalid view");
@@ -152,9 +153,10 @@ fn unsupported_pipeline_command_points_to_search_pipe_without_provider_spawn() {
             "HookDecision|ClientReceipt",
             "--owners",
             "src",
+            "--workspace",
+            ".",
             "--view",
             "seeds",
-            ".",
         ])
         .output()
         .expect("run unsupported search pipeline command");

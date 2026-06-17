@@ -120,9 +120,10 @@ fn cli_doctor_syncs_generated_activation_drift() {
             "rs-harness",
             "search",
             "prime",
+            "--workspace",
+            "{projectRoot}",
             "--view",
-            "seeds",
-            "{projectRoot}"
+            "seeds"
         ]
     );
     assert!(!synced.contains("\"stdinMode\": null"));
@@ -161,9 +162,9 @@ fn write_invalid_generated_activation(root: &std::path::Path) -> std::path::Path
                 }
             }]
         }))
-        .expect("serialize legacy activation"),
+        .expect("serialize retired activation"),
     )
-    .expect("write legacy activation");
+    .expect("write retired activation");
     activation_path
 }
 

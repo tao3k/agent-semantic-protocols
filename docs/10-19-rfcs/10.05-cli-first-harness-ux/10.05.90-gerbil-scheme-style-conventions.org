@@ -77,7 +77,7 @@ owner has a parser-backed reason for it.
 The Gerbil Scheme harness stores its tests under =t/= and keeps unit helpers
 under =t/unit/=.  The load path for local verification is therefore =src:t=.
 
-Top-level =test/= is a legacy layout for this harness.  The policy layer should
+Top-level =test/= is a retired layout for this harness.  The policy layer should
 warn when a Gerbil source file is discovered under =test/= and should recommend
 =t/= while preserving explicit unit tests.
 

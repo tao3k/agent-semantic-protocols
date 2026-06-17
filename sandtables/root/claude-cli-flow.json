@@ -20,7 +20,7 @@
       "agentCli": {
         "client": "claude",
         "binary": "sandtables/fixtures/agent-clis/fake-claude",
-        "prompt": "Explain ASP hook install",
+        "prompt": "Explain ASP install hook",
         "outputFormat": "stream-json",
         "inputFormat": "text",
         "includePartialMessages": true,
@@ -38,7 +38,7 @@
         "exitCode": 0,
         "stdoutContains": [
           "\"agent\": \"fake-claude-code\"",
-          "\"prompt\": \"Explain ASP hook install\"",
+          "\"prompt\": \"Explain ASP install hook\"",
           "\"outputFormat\": \"stream-json\"",
           "\"inputFormat\": \"text\"",
           "\"includePartialMessages\": true",

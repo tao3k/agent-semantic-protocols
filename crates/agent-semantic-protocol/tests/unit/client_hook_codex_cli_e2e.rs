@@ -33,12 +33,12 @@ fn codex_cli_hook_enforcement_probe_reports_real_status_when_enabled() {
         .current_dir(&root)
         .env("PATH", &test_path)
         .env("CODEX_HOME", &codex_home)
-        .args(["hook", "install", "--client", "codex", "."])
+        .args(["install", "plugin", "--codex", "."])
         .output()
-        .expect("run asp hook install");
+        .expect("run asp install plugin");
     assert!(
         install.status.success(),
-        "asp hook install failed: stdout={} stderr={}",
+        "asp install plugin failed: stdout={} stderr={}",
         String::from_utf8_lossy(&install.stdout),
         String::from_utf8_lossy(&install.stderr)
     );

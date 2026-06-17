@@ -21,10 +21,10 @@ bounded read windows for a concrete change.
 The agent started with owner and query-set searches around hook CLI dispatch:
 
 #+begin_src shell
-rs-harness search owner crates/semantic-agent-hook/src/cli.rs items --view seeds .
-rs-harness search fzf --query-set "install" --query-set "hook" --query-set "pre-tool" --view seeds .
-rs-harness search owner crates/semantic-agent-hook/src/lib.rs items --view seeds .
-rs-harness search owner crates/semantic-agent-hook/src/protocol.rs items --view seeds .
+rs-harness search owner crates/semantic-agent-hook/src/cli.rs items --workspace . --view seeds
+rs-harness search fzf --query-set "install" --query-set "hook" --query-set "pre-tool" --workspace . --view seeds
+rs-harness search owner crates/semantic-agent-hook/src/lib.rs items --workspace . --view seeds
+rs-harness search owner crates/semantic-agent-hook/src/protocol.rs items --workspace . --view seeds
 #+end_src
 
 It then described the intended edit boundary:
@@ -49,9 +49,9 @@ Read unit test entry
 Then it continued with more owner/text probes:
 
 #+begin_src shell
-rs-harness search owner crates/semantic-agent-hook/src/classifier.rs items --view seeds .
-rs-harness search owner crates/semantic-agent-hook/src/command/intent.rs items --view seeds .
-rs-harness search fzf --query-set "direct-source-read" --query-set "owner" --query-set "routes" --view seeds .
+rs-harness search owner crates/semantic-agent-hook/src/classifier.rs items --workspace . --view seeds
+rs-harness search owner crates/semantic-agent-hook/src/command/intent.rs items --workspace . --view seeds
+rs-harness search fzf --query-set "direct-source-read" --query-set "owner" --query-set "routes" --workspace . --view seeds
 #+end_src
 
 * Observed Problems
@@ -75,7 +75,7 @@ The current packet leaves the agent to discover those axes one path at a time.
 ** Query-set text search is still term-first
 
 =install=, =hook=, and =pre-tool= are not three independent questions. In this
-trace they are one task axis: Codex hook install and pre-tool dispatch.
+trace they are one task axis: Codex plugin installation and pre-tool dispatch.
 
 The query-set command compressed the terminal calls, but it did not synthesize a
 feature bundle. The agent still had to infer the module groups and test groups
@@ -162,7 +162,7 @@ into the shared schema as first-class =editFrontier=, =testFrontier=, or
 
 ** 31.02-B Couple owner packets with related tests
 
-=search owner <path> items --view seeds .= should not only return owner items.
+=search owner <path> items --workspace . --view seeds= should not only return owner items.
 For implementation owners, it should also emit bounded related-test facts when
 the provider can derive them from module/import/test associations.
 

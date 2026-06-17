@@ -1,24 +1,30 @@
 //! `asp cache` maintenance command implementation.
 
-use std::{fs, path::Path};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 use agent_semantic_client_core::{
     AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_PROTOCOL_ID,
     AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_PROTOCOL_VERSION,
     AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_SCHEMA_ID,
     AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_SCHEMA_VERSION, CacheManifestReport, CacheManifestStatus,
-    ClientCacheManifest, ClientCachePath, ClientDbStatus, ClientMethod, ClientReceipt,
-    ProjectContext, ProviderRegistrySnapshot, StateLayout,
+    ClientCacheManifest, ClientCachePath, ClientDbStatus, ClientMethod, ClientReceipt, LanguageId,
+    ProjectContext, ProviderId, ProviderRegistrySnapshot, StateLayout,
 };
 use agent_semantic_client_db::{ClientDb, ClientDbReport};
 use agent_semantic_runtime::{RuntimeSourceSpec, ensure_runtime_source_checkout};
 use serde_json::json;
 
 use super::structural_index_import::import_structural_index_artifacts;
-use crate::source_index::refresh_source_index;
+use crate::source_index::{
+    lookup_source_index_in_cache, refresh_runtime_source_index, refresh_source_index,
+};
 
 pub(crate) fn run_cache(
     project_root: &Path,
+    facade_language_id: Option<&LanguageId>,
     forwarded_args: &[String],
     receipt_json: bool,
 ) -> Result<(), String> {
@@ -28,12 +34,23 @@ pub(crate) fn run_cache(
         {
             let spec = parse_runtime_source_acquire_args(rest)?;
             let checkout = ensure_runtime_source_checkout(project_root, &spec)?;
+            let source_index_report = refresh_runtime_source_index(
+                project_root,
+                &checkout.checkout_dir,
+                &LanguageId::from(checkout.language_id.as_str()),
+                &ProviderId::from(checkout.index_owner.as_str()),
+            )?;
             println!(
-                "[asp-cache-runtime-source] status=ready language={} stateNamespace={} checkout={} statePathPolicy=asp-state-managed indexOwner={}",
+                "[asp-cache-runtime-source] status=ready language={} stateNamespace={} checkout={} statePathPolicy=asp-state-managed indexOwner={} sourceIndex=refreshed indexGeneration={} reused={} files={} owners={} selectors={} rawSourceStored=false",
                 checkout.language_id,
                 checkout.state_namespace,
                 checkout.checkout,
-                checkout.index_owner
+                checkout.index_owner,
+                source_index_report.generation_id,
+                source_index_report.reused_generation,
+                source_index_report.file_count,
+                source_index_report.owner_count,
+                source_index_report.selector_count
             );
             println!(
                 "|sourceRef manager=git repository={} checkout={}",
@@ -43,6 +60,13 @@ pub(crate) fn run_cache(
                 "|acquisition owner=asp operation=clone-or-fetch-checkout-index checkoutDir={} indexOwner={}",
                 checkout.checkout_dir.display(),
                 checkout.index_owner
+            );
+            println!(
+                "|sourceIndex db={} generation={} reused={} projectRoot={} rawSourceStored=false",
+                source_index_report.db_path.display(),
+                source_index_report.generation_id,
+                source_index_report.reused_generation,
+                checkout.checkout_dir.display()
             );
             println!("next=asp cache import");
             if receipt_json {
@@ -56,7 +80,18 @@ pub(crate) fn run_cache(
                     "stateNamespace": checkout.state_namespace,
                     "statePathPolicy": "asp-state-managed",
                     "indexOwner": checkout.index_owner,
-                    "checkoutDir": checkout.checkout_dir,
+                    "checkoutDir": checkout.checkout_dir.display().to_string(),
+                    "sourceIndex": {
+                        "status": "refreshed",
+                        "dbPath": source_index_report.db_path.display().to_string(),
+                        "generationId": source_index_report.generation_id.to_string(),
+                        "reused": source_index_report.reused_generation,
+                        "fileCount": source_index_report.file_count,
+                        "ownerCount": source_index_report.owner_count,
+                        "selectorCount": source_index_report.selector_count,
+                        "rawSourceStored": false,
+                        "projectRoot": checkout.checkout_dir.display().to_string()
+                    },
                     "next": "asp cache import"
                 });
                 eprintln!("{receipt}");
@@ -110,7 +145,7 @@ pub(crate) fn run_cache(
             print_cache_reason(&cache_report);
             println!("|reason phase=phase-1-client-db-sql arrow=false providerCommands=0");
             if snapshot.is_err() {
-                println!("|cmd install=asp hook install --client codex .");
+                println!("|cmd install=asp install plugin --codex .");
                 println!("|cmd guide=asp guide");
             }
             if receipt_json {
@@ -169,9 +204,10 @@ pub(crate) fn run_cache(
         [subcommand, action] if subcommand == "source-index" && action == "refresh" => {
             let report = refresh_source_index(project_root)?;
             println!(
-                "[asp-cache-source-index] status=refreshed route=local-cache db={} generation={} files={} owners={} selectors={} rawSourceStored=false indexOwner=rust-sql",
+                "[asp-cache-source-index] status=refreshed route=local-cache db={} generation={} reused={} files={} owners={} selectors={} rawSourceStored=false indexOwner=rust-sql",
                 report.db_path.display(),
                 report.generation_id,
+                report.reused_generation,
                 report.file_count,
                 report.owner_count,
                 report.selector_count
@@ -187,11 +223,84 @@ pub(crate) fn run_cache(
                     "route": "local-cache",
                     "dbPath": report.db_path,
                     "generationId": report.generation_id,
+                    "reused": report.reused_generation,
                     "fileCount": report.file_count,
                     "ownerCount": report.owner_count,
                     "selectorCount": report.selector_count,
                     "rawSourceStored": false,
                     "indexOwner": "rust-sql"
+                });
+                eprintln!("{receipt}");
+            }
+            Ok(())
+        }
+        [subcommand, action, rest @ ..] if subcommand == "source-index" && action == "lookup" => {
+            let spec = parse_source_index_lookup_args(project_root, rest)?;
+            let result = lookup_source_index_in_cache(
+                project_root,
+                &spec.index_root,
+                facade_language_id,
+                &spec.query,
+                spec.limit,
+            )?;
+            if result.candidates.is_empty() {
+                println!(
+                    "noOutput reason=source-index-{} query={} indexRoot={}",
+                    result.state.as_str(),
+                    spec.query,
+                    spec.index_root.display()
+                );
+            } else {
+                println!(
+                    "[asp-cache-source-index] status={} route=local-cache db={} indexRoot={} query={} candidates={} rawSourceStored=false",
+                    result.state.as_str(),
+                    result.db_path.display(),
+                    spec.index_root.display(),
+                    spec.query,
+                    result.candidates.len()
+                );
+                for candidate in &result.candidates {
+                    println!(
+                        "|candidate path={} language={} provider={} kind={} lines={} queryKeys={}",
+                        candidate.path,
+                        candidate
+                            .language_id
+                            .as_ref()
+                            .map_or("-", LanguageId::as_str),
+                        candidate
+                            .provider_id
+                            .as_ref()
+                            .map_or("-", ProviderId::as_str),
+                        candidate.source_kind.as_str(),
+                        candidate
+                            .line_count
+                            .map(|count| count.to_string())
+                            .unwrap_or_else(|| "-".to_string()),
+                        candidate.query_keys.join(",")
+                    );
+                }
+            }
+            if receipt_json {
+                let receipt = json!({
+                    "schemaId": "agent.semantic-protocols.semantic-source-index.lookup-receipt",
+                    "schemaVersion": "1",
+                    "status": result.state.as_str(),
+                    "route": "local-cache",
+                    "dbPath": result.db_path.display().to_string(),
+                    "indexRoot": spec.index_root.display().to_string(),
+                    "query": spec.query,
+                    "limit": spec.limit,
+                    "rawSourceStored": false,
+                    "candidates": result.candidates.iter().map(|candidate| {
+                        json!({
+                            "path": candidate.path,
+                            "languageId": candidate.language_id.as_ref().map(LanguageId::as_str),
+                            "providerId": candidate.provider_id.as_ref().map(ProviderId::as_str),
+                            "sourceKind": candidate.source_kind.as_str(),
+                            "lineCount": candidate.line_count,
+                            "queryKeys": candidate.query_keys
+                        })
+                    }).collect::<Vec<_>>()
                 });
                 eprintln!("{receipt}");
             }
@@ -305,10 +414,56 @@ pub(crate) fn run_cache(
             Ok(())
         }
         _ => Err(
-            "usage: asp cache <status|import|source-index refresh|invalidate|flush [syntax-rows]|runtime-source acquire --language-id <id> --repository <url> --checkout <ref> --state-namespace <namespace> --index-owner <owner>> [--root <path>]"
+            "usage: asp cache <status|import|source-index refresh|source-index lookup --query <term> [--index-root <path>] [--limit <n>]|invalidate|flush [syntax-rows]|runtime-source acquire --language-id <id> --repository <url> --checkout <ref> --state-namespace <namespace> --index-owner <owner>> [--root <path>]; use asp <language> cache source-index lookup ... for language-scoped lookup"
                 .to_string(),
         ),
     }
+}
+
+struct SourceIndexLookupSpec {
+    query: String,
+    index_root: PathBuf,
+    limit: u32,
+}
+
+fn parse_source_index_lookup_args(
+    project_root: &Path,
+    args: &[String],
+) -> Result<SourceIndexLookupSpec, String> {
+    let mut query = None;
+    let mut index_root = None;
+    let mut limit = None;
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--query" => query = Some(next_flag_value("--query", &mut iter)?),
+            "--index-root" => index_root = Some(next_flag_value("--index-root", &mut iter)?),
+            "--limit" => {
+                let value = next_flag_value("--limit", &mut iter)?;
+                limit = Some(
+                    value
+                        .parse::<u32>()
+                        .map_err(|error| format!("invalid --limit `{value}`: {error}"))?,
+                );
+            }
+            other => return Err(format!("unexpected source-index lookup argument: {other}")),
+        }
+    }
+    let index_root = index_root
+        .map(PathBuf::from)
+        .map(|path| {
+            if path.is_absolute() {
+                path
+            } else {
+                project_root.join(path)
+            }
+        })
+        .unwrap_or_else(|| project_root.to_path_buf());
+    Ok(SourceIndexLookupSpec {
+        query: query.ok_or_else(|| "--query is required".to_string())?,
+        index_root,
+        limit: limit.unwrap_or(8),
+    })
 }
 
 fn parse_runtime_source_acquire_args(args: &[String]) -> Result<RuntimeSourceSpec, String> {

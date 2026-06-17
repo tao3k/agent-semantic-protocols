@@ -16,9 +16,9 @@ fn cli_install_writes_root_owned_codex_hook_config() {
     let provider_path = write_fake_provider_binary(&root, "rs-harness");
     let protocol_bin_dir = root.join(".agent-bin");
     let path = env::join_paths([&protocol_bin_dir, &provider_path]).expect("join PATH");
-    write_legacy_hook_cache(&root);
+    write_retired_hook_cache(&root);
     write_incompatible_current_hook_events(&root);
-    write_legacy_semantic_agent_protocol_config(&root);
+    write_retired_semantic_agent_protocol_config(&root);
 
     let output = protocol_command()
         .env("PATH", &path)
@@ -36,7 +36,7 @@ fn cli_install_writes_root_owned_codex_hook_config() {
     let stdout = String::from_utf8(output.stdout).expect("install stdout");
     assert_install_stdout(&stdout);
     assert!(protocol_bin_dir.join("asp").is_file());
-    assert_no_installed_legacy_skill(&root);
+    assert_no_installed_project_skill_copy(&root);
     assert_no_profile_registry(&root);
     let config =
         std::fs::read_to_string(root.join(".codex/config.toml")).expect("installed config");
@@ -47,7 +47,7 @@ fn cli_install_writes_root_owned_codex_hook_config() {
     assert_plugin_entries(&parsed_config);
     assert_no_codex_user_trust_config(&codex_home);
     assert_codex_asp_explorer(&root, "gpt-5.3-codex-spark");
-    assert_legacy_codex_split_subagents_removed(&root);
+    assert_retired_codex_split_subagents_removed(&root);
     assert_installed_activation(&root);
     let _ = std::fs::remove_dir_all(&root);
 }
@@ -104,7 +104,7 @@ source = "."
     .expect("write project Codex marketplace source");
 }
 
-fn write_legacy_hook_cache(root: &std::path::Path) {
+fn write_retired_hook_cache(root: &std::path::Path) {
     let current_cache_dir = root.join(".cache/agent-semantic-protocol/hooks");
     std::fs::create_dir_all(&current_cache_dir).expect("create current hook cache dir");
     std::fs::write(current_cache_dir.join("profiles.json"), r#"{"stale":true}"#)
@@ -114,47 +114,48 @@ fn write_legacy_hook_cache(root: &std::path::Path) {
         r#"{"stale":true}"#,
     )
     .expect("write stale current provider profile shard");
-    let legacy_profiles_dir = root.join(".codex/agent-semantic-hook");
-    std::fs::create_dir_all(&legacy_profiles_dir).expect("create legacy profiles dir");
+    let retired_profiles_dir = root.join(".codex/agent-semantic-hook");
+    std::fs::create_dir_all(&retired_profiles_dir).expect("create retired profiles dir");
     std::fs::write(
-        legacy_profiles_dir.join("profiles.ts-harness.json"),
+        retired_profiles_dir.join("profiles.ts-harness.json"),
         r#"{"stale":true}"#,
     )
     .expect("write stale provider profile shard");
     std::fs::write(
-        legacy_profiles_dir.join("profiles.json"),
+        retired_profiles_dir.join("profiles.json"),
         r#"{"stale":true}"#,
     )
     .expect("write stale provider profile registry");
-    std::fs::write(legacy_profiles_dir.join("events.jsonl"), "{}\n")
+    std::fs::write(retired_profiles_dir.join("events.jsonl"), "{}\n")
         .expect("write stale hook event cache");
     std::fs::write(
-        legacy_profiles_dir.join("activation.json"),
+        retired_profiles_dir.join("activation.json"),
         r#"{"stale":true}"#,
     )
     .expect("write stale activation");
-    let legacy_cache_dir = root.join(".cache/agent-semantic-hook");
-    std::fs::create_dir_all(&legacy_cache_dir).expect("create legacy cache dir");
-    std::fs::write(legacy_cache_dir.join("profiles.json"), r#"{"stale":true}"#)
+    let retired_cache_dir = root.join(".cache/agent-semantic-hook");
+    std::fs::create_dir_all(&retired_cache_dir).expect("create retired cache dir");
+    std::fs::write(retired_cache_dir.join("profiles.json"), r#"{"stale":true}"#)
         .expect("write stale cache profile registry");
-    std::fs::write(legacy_cache_dir.join("events.jsonl"), "{}\n")
+    std::fs::write(retired_cache_dir.join("events.jsonl"), "{}\n")
         .expect("write stale cache events");
     std::fs::write(
-        legacy_cache_dir.join("activation.json"),
+        retired_cache_dir.join("activation.json"),
         r#"{"stale":true}"#,
     )
     .expect("write stale cache activation");
-    let legacy_protocol_cache_dir = root.join(".cache/semantic-agent-protocol/hooks");
-    std::fs::create_dir_all(&legacy_protocol_cache_dir).expect("create legacy protocol cache dir");
+    let retired_protocol_cache_dir = root.join(".cache/semantic-agent-protocol/hooks");
+    std::fs::create_dir_all(&retired_protocol_cache_dir)
+        .expect("create retired protocol cache dir");
     std::fs::write(
-        legacy_protocol_cache_dir.join("profiles.json"),
+        retired_protocol_cache_dir.join("profiles.json"),
         r#"{"stale":true}"#,
     )
     .expect("write stale semantic protocol profile registry");
-    std::fs::write(legacy_protocol_cache_dir.join("events.jsonl"), "{}\n")
+    std::fs::write(retired_protocol_cache_dir.join("events.jsonl"), "{}\n")
         .expect("write stale semantic protocol events");
     std::fs::write(
-        legacy_protocol_cache_dir.join("activation.json"),
+        retired_protocol_cache_dir.join("activation.json"),
         r#"{"stale":true}"#,
     )
     .expect("write stale semantic protocol activation");
@@ -227,7 +228,7 @@ fn cli_install_writes_codex_custom_subagent_with_requested_model() {
     assert!(!stdout.contains("subagents="));
     assert!(!stdout.contains(".codex/agents/asp-explorer-selector.toml"));
     assert_codex_asp_explorer(&root, "gpt-5.4-mini");
-    assert_legacy_codex_split_subagents_removed(&root);
+    assert_retired_codex_split_subagents_removed(&root);
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
 }
 
@@ -237,9 +238,9 @@ fn cli_install_rejects_empty_subagent_model_override() {
 
     let output = protocol_command()
         .args([
-            "plugin",
             "install",
-            "codex",
+            "plugin",
+            "--codex",
             "--subagent-model=",
             root.to_str().expect("utf8 temp root"),
         ])
@@ -258,7 +259,7 @@ fn cli_install_rejects_empty_subagent_model_override() {
 #[test]
 fn cli_install_rejects_missing_subagent_model_value() {
     let output = protocol_command()
-        .args(["plugin", "install", "codex", "--subagent-model"])
+        .args(["install", "plugin", "--codex", "--subagent-model"])
         .output()
         .expect("run agent-semantic-protocol install");
 
@@ -284,8 +285,8 @@ fn cli_install_writes_claude_custom_subagent_by_default() {
         .env("SEMANTIC_AGENT_BIN_DIR", &protocol_bin_dir)
         .env("CODEX_HOME", &codex_home)
         .args([
-            "hook",
             "install",
+            "hook",
             "--client",
             "claude",
             root.to_str().expect("utf8 temp root"),
@@ -307,30 +308,30 @@ fn cli_install_writes_claude_custom_subagent_by_default() {
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
 }
 
-fn assert_no_installed_legacy_skill(root: &std::path::Path) {
+fn assert_no_installed_project_skill_copy(root: &std::path::Path) {
     assert!(
         !root
             .join(".agents/skills/agent-semantic-protocols/SKILL.org")
             .exists(),
-        "Codex plugin install should remove the legacy project skill copy"
+        "Codex plugin installation should remove the retired project skill copy"
     );
     assert!(
         !root
             .join(".agents/skills/agent-semantic-protocols/SKILL.contract.org")
             .exists(),
-        "Codex plugin install should remove the legacy project skill contract copy"
+        "Codex plugin installation should remove the retired project skill contract copy"
     );
     assert!(
         !root
             .join("asp-codex-plugin/skills/agent-semantic-protocols/SKILL.org")
             .exists(),
-        "Codex hook install should not generate plugin skill files"
+        "Codex plugin installation should not generate plugin skill files"
     );
     assert!(
         !root
             .join("asp-codex-plugin/skills/agent-semantic-protocols/SKILL.contract.org")
             .exists(),
-        "Codex hook install should not generate plugin skill contracts"
+        "Codex plugin installation should not generate plugin skill contracts"
     );
 }
 
@@ -427,7 +428,7 @@ fn assert_no_codex_user_trust_config(codex_home: &std::path::Path) {
     let config = std::fs::read_to_string(config_path).expect("read Codex user config");
     assert!(
         !config.contains("[hooks.state."),
-        "Codex plugin install should not write legacy hook trust state"
+        "Codex plugin installation should not write retired hook trust state"
     );
     assert!(!config.contains("agent-semantic-protocol trusted hook state"));
 }
@@ -534,7 +535,7 @@ fn write_stale_codex_subagents(root: &std::path::Path) {
     }
 }
 
-fn assert_legacy_codex_split_subagents_removed(root: &std::path::Path) {
+fn assert_retired_codex_split_subagents_removed(root: &std::path::Path) {
     for stale in [
         "asp-explorer-owner.toml",
         "asp-explorer-rg.toml",
@@ -542,7 +543,7 @@ fn assert_legacy_codex_split_subagents_removed(root: &std::path::Path) {
     ] {
         assert!(
             !root.join(".codex/agents").join(stale).exists(),
-            "legacy Codex split subagent should be removed during plugin install: {stale}"
+            "retired Codex split subagent should be removed during plugin installation: {stale}"
         );
     }
 }
@@ -560,9 +561,9 @@ fn write_stale_claude_subagents(root: &std::path::Path) {
     }
 }
 
-fn write_legacy_semantic_agent_protocol_config(root: &std::path::Path) {
+fn write_retired_semantic_agent_protocol_config(root: &std::path::Path) {
     let codex_dir = root.join(".codex");
-    std::fs::create_dir_all(&codex_dir).expect("create legacy codex config dir");
+    std::fs::create_dir_all(&codex_dir).expect("create retired codex config dir");
     std::fs::write(
         codex_dir.join("config.toml"),
         r#"[features]
@@ -583,11 +584,11 @@ exec semantic-agent-protocol hook pre-tool --client codex
 # END semantic-agent-protocol agent hooks
 
 [agents.asp_explorer]
-description = "legacy standalone role"
+description = "retired standalone role"
 config_file = "agents/asp-explorer.toml"
 "#,
     )
-    .expect("write legacy semantic-agent-protocol config");
+    .expect("write retired semantic-agent-protocol config");
 }
 
 fn assert_client_config(root: &std::path::Path) {
@@ -633,9 +634,10 @@ fn assert_installed_activation(root: &std::path::Path) {
             "{query}",
             "owner",
             "tests",
+            "--workspace",
+            "{projectRoot}",
             "--view",
-            "seeds",
-            "{projectRoot}"
+            "seeds"
         ]
     );
 }

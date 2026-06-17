@@ -24,9 +24,10 @@ fn receipt_json_suppresses_provider_stderr_from_receipt_stream() {
             "rust",
             "search",
             "prime",
+            "--workspace",
+            ".",
             "--view",
             "seeds",
-            ".",
             "--receipt-json",
         ])
         .output()
@@ -73,9 +74,10 @@ fn receipt_json_is_emitted_for_nonzero_provider_exit() {
             "rust",
             "search",
             "prime",
+            "--workspace",
+            ".",
             "--view",
             "seeds",
-            ".",
             "--receipt-json",
         ])
         .output()

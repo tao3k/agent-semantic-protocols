@@ -75,7 +75,7 @@ asp hook pre-tool --client codex --activation .cache/agent-semantic-protocol/hoo
 asp hook pre-tool --client claude --activation .cache/agent-semantic-protocol/hooks/activation.json
 asp hook pre-tool --client codex --activation .cache/agent-semantic-protocol/hooks/activation.json --emit decision
 asp hook doctor --client codex --activation .cache/agent-semantic-protocol/hooks/activation.json .
-asp hook install --client codex .
+asp install plugin --codex .
 #+end_src
 
 The runtime is intentionally language-neutral:
@@ -117,8 +117,8 @@ Codex has a Claude-style hook configuration surface, but its current coverage
 is not yet equivalent across every built-in tool.  A local audit of
 =openai/codex= found that =PreToolUse= serializes a canonical =tool_name= and
 keeps matcher aliases as client-side compatibility inputs.  For example,
-=apply_patch= may match legacy =Write=/=Edit= aliases, and =spawn_agent= may
-match legacy =Agent= aliases, while dynamic/deferred tools can be introduced
+=apply_patch= may match retired =Write=/=Edit= aliases, and =spawn_agent= may
+match retired =Agent= aliases, while dynamic/deferred tools can be introduced
 through =tool_search=.  The durable boundary is therefore not a long
 tool-name regex in =config.toml=; the config should dispatch broadly and let
 =agent-semantic-hook= classify the normalized payload against project activation
@@ -130,7 +130,7 @@ through =PATH=.  Copying a per-repository binary into
 the activation file and config block are repository-owned, but the classifier
 binary is a global toolchain component.
 
-=asp hook install= also owns the project-scoped custom subagent bootstrap for
+=asp install hook= also owns the project-scoped custom subagent bootstrap for
 clients that support native subagents.  For Codex, install creates a small
 read-only =asp-explorer= custom-agent profile under =.codex/agents/= by
 default, using the official standalone custom-agent TOML shape with =name=, =description=,
@@ -343,7 +343,7 @@ The classifier must operate primarily at the action layer:
 Client-side hook customization is a typed config file, not a server process:
 
 - default Codex path: =.codex/agent-semantic-protocol/hooks/config.toml=;
-- install behavior: =asp hook install --client codex=
+- install behavior: =asp install plugin --codex=
   creates this file when missing, with schema metadata plus commented examples,
   and preserves an existing valid project config;
 - schema: =schemas/semantic-agent-hook-client-config.v1.schema.json=;
@@ -362,7 +362,7 @@ Client-side hook customization is a typed config file, not a server process:
 - experimental switches: generated Codex client configs include
   =[experimental.semanticAstPatch] enabled = false=.  The built-in source
   =apply_patch= to semantic AST patch route is experimental; hook runtimes may
-  preserve legacy behavior when the switch is absent, but generated
+  preserve retired behavior when the switch is absent, but generated
   =.codex/agent-semantic-protocol/hooks/config.toml= must keep it disabled
   until the provider-native AST patch path is stable;
 - runtime schema mirror: the loader rejects schema-shape errors before
@@ -596,9 +596,9 @@ file lock or an equivalent process-safe append protocol.  A JSONL write is not
 valid unless the reader can parse every line independently; interleaved partial
 writes are a protocol violation, not only a logging defect.
 
-=asp hook install= and =asp hook doctor= must treat incompatible or corrupted
+=asp install hook= and =asp hook doctor= must treat incompatible or corrupted
 event logs as migratable cache, not durable policy.  If an existing
-=events.jsonl= contains a non-empty line with a legacy =schemaId=, legacy
+=events.jsonl= contains a non-empty line with a retired =schemaId=, retired
 =protocolId=, or invalid JSON, install may remove that generated file and
 start a new current-protocol log.  The versioned project policy remains
 =.codex/agent-semantic-protocol/hooks/config.toml=.
@@ -791,8 +791,8 @@ activated suffixes and shell-tokenized search terms.  Otherwise, it should wrap
 the provider-owned guide command in a compact form such as:
 
 #+begin_example
-direct-source-read denied; provider guide: rust => asp rust guide .; python => asp python guide .
-raw-broad-search denied; provider guide: typescript => asp typescript guide .
+direct-source-read denied; provider guide: rust => asp rust guide --workspace .; python => asp python guide --workspace .
+raw-broad-search denied; provider guide: typescript => asp typescript guide --workspace .
 #+end_example
 
 For Codex and Claude prompt surfaces, the rendered reason text is Markdown, not
@@ -814,7 +814,7 @@ asp <language> query --from-hook direct-source-read ...
 - language=<language> provider=<providerId> command=<runtime-profile argv> facade=asp <language>
 
 ## Agent Flow
-1. Start from asp <language> guide . when the tool map is needed.
+1. Start from asp <language> guide --workspace . when the tool map is needed.
 2. Use search prime for project mapping.
 3. Use query guide treesitter only for syntax pattern work.
 4. Use query --code only after exact selector or unique match.
@@ -919,7 +919,7 @@ Output-mode denial example:
       "argv": ["asp", "typescript", "search", "fzf", "location.path", "owner", "tests", "--view", "seeds", "."]
     }
   ],
-  "message": "agent-search-json denied; route: asp typescript search fzf location.path owner tests --view seeds ."
+  "message": "agent-search-json denied; route: asp typescript search fzf location.path owner tests --workspace . --view seeds"
 }
 #+end_src
 
@@ -942,7 +942,7 @@ when the following implementation gates pass:
    =stop=.
 3. Generated config, skill text, docs, schemas, and fixtures do not instruct
    users to run retired =agent-semantic-hook= command forms.  Automated scans
-   should keep exact legacy executable strings out of human-facing artifacts.
+   should keep exact retired executable strings out of human-facing artifacts.
 4. Missing client config preserves the built-in classifier behavior; invalid
    config fails closed with a structured block decision; doctor reports
    =clientConfig= and =clientConfigStatus= and rejects invalid config.
@@ -985,7 +985,7 @@ when the following implementation gates pass:
     it may mention provider =ast-patch= only after dry-run receipt validation.
 14. Generated skills and hook prompts must not reintroduce retired
     agent-prefixed guide spelling or the old search-wrapper hook query
-    spelling.  The accepted guide entrypoint is =asp <language> guide .=, its
+    spelling.  The accepted guide entrypoint is =asp <language> guide --workspace .=, its
     help surface is =asp <language> guide --help .=, and the accepted hook
     recovery route is top-level =query --selector <path-or-range> --workspace <workspace-root> --code=.
 

@@ -247,6 +247,10 @@ fn provider(language_id: &str, binary: &str) -> ResolvedProvider {
         runtime_command_argv: None,
         runtime_profile_status: None,
         package_roots: vec![".".to_string()],
+        source_roots: vec![".".to_string()],
+        config_files: Vec::new(),
+        source_extensions: Vec::new(),
+        ignored_path_prefixes: Vec::new(),
     }
 }
 

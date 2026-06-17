@@ -1,4 +1,4 @@
-//! Codex plugin install path for `asp hook install`.
+//! Codex plugin installation path for `asp install plugin --codex`.
 
 use super::hook_runtime_subagent::install_codex_asp_explorer_agent;
 use agent_semantic_hook::{
@@ -36,7 +36,7 @@ pub(super) fn codex_plugin_scope_arg(
         .iter()
         .any(|arg| matches!(arg.as_str(), "--global" | "--global-plugin"));
     if global_plugin && client != "codex" {
-        return Err("--global is only supported for Codex plugin installs".to_string());
+        return Err("--global is only supported for Codex plugin installations".to_string());
     }
     Ok(if global_plugin {
         CodexPluginScope::Global
@@ -56,7 +56,7 @@ pub(super) fn install_codex_plugin_hooks(
         .join("plugin.json");
     if !plugin_manifest.is_file() {
         return Err(format!(
-            "Codex plugin install requires {}",
+            "Codex plugin installation requires {}",
             super::display_path(project_root, &plugin_manifest)
         ));
     }

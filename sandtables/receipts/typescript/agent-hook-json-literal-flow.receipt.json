@@ -48,9 +48,10 @@
         "runCodexAgentHook",
         "owner",
         "tests",
+        "--workspace",
+        ".",
         "--view",
-        "seeds",
-        "."
+        "seeds"
       ],
       "stdinShape": "none",
       "outputMode": "compact",
@@ -81,9 +82,10 @@
         "search",
         "owner",
         "src/cli/agent-hooks.ts",
+        "--workspace",
+        ".",
         "--view",
-        "seeds",
-        "."
+        "seeds"
       ],
       "stdinShape": "none",
       "outputMode": "compact",
@@ -111,9 +113,10 @@
         "search",
         "tests",
         "src/cli/agent-hooks.ts",
+        "--workspace",
+        ".",
         "--view",
-        "seeds",
-        "."
+        "seeds"
       ],
       "stdinShape": "none",
       "outputMode": "compact",
@@ -141,9 +144,10 @@
         "search",
         "text",
         "--json",
+        "--workspace",
+        ".",
         "--view",
-        "seeds",
-        "."
+        "seeds"
       ],
       "stdinShape": "none",
       "outputMode": "compact",
@@ -206,9 +210,10 @@
         "runCodexAgentHook",
         "owner",
         "tests",
+        "--workspace",
+        ".",
         "--view",
-        "seeds",
-        "."
+        "seeds"
       ],
       "reason": "same hook bridge text axis would otherwise repeat probes"
     }

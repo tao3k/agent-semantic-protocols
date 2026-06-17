@@ -98,7 +98,7 @@ def _action_row(
         "suppressedAt": _timestamp(suppressed),
         "keptPath": kept.path,
         "suppressedPath": suppressed.path,
-        "avoidCommand": f"asp {language} search prime --view seeds .",
+        "avoidCommand": f"asp {language} search prime --workspace . --view seeds",
         "nextAction": "reuse kept prime frontier before running owner/query/read actions",
     }
 

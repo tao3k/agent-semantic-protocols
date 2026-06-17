@@ -13,6 +13,7 @@ use agent_semantic_hook::{
     HookRuntime, ProviderCommandSelection, build_default_activation, discover_activation_path,
     load_or_sync_activation, provider_command_selections, write_activation,
 };
+use agent_semantic_runtime::is_project_activation_path;
 use sha2::{Digest, Sha256};
 
 const PROVIDER_COMMAND_SELECTION_FINGERPRINT_VERSION: &str = "provider-command-selection.v1";
@@ -88,8 +89,7 @@ fn active_generated_activation_path(project_root: &Path) -> Option<PathBuf> {
 }
 
 fn is_generated_activation_path(path: &Path) -> bool {
-    let normalized = path.to_string_lossy().replace('\\', "/");
-    normalized.ends_with(".cache/agent-semantic-protocol/hooks/activation.json")
+    is_project_activation_path(path)
 }
 
 fn sync_activation_from_current_selection(

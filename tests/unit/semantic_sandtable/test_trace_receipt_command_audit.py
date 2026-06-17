@@ -13,10 +13,10 @@ def test_trace_receipt_summary_counts_semantic_search_query_commands(tmp_path) -
     trace_path.write_text(
         "\n".join(
             [
-                "$ asp rust search prime --view seeds .",
+                "$ asp rust search prime --workspace . --view seeds",
                 "$ asp rust query --term Vec .",
                 "$ asp rust query --from-hook direct-source-read --selector src/lib.rs:1-2 .",
-                "$ asp rust search prime --view seeds .",
+                "$ asp rust search prime --workspace . --view seeds",
                 "$ python helper.py",
             ]
         )

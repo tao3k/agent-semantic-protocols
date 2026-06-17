@@ -1,9 +1,17 @@
-use agent_semantic_client_core::CacheGenerationId;
+use std::path::Path;
 
 use crate::db::ClientDb;
+use agent_semantic_client_core::{
+    CacheGenerationId, ClientCacheFileHash, SemanticSchemaId, SemanticSchemaVersion,
+};
 
-use super::lookup::{lookup_source_index_owners, source_index_stats};
-use super::storage::replace_source_index_rows;
+use super::lookup::{
+    latest_source_index_generation_owners, lookup_source_index_owners, source_index_stats,
+};
+use super::storage::{
+    latest_source_index_file_hashes, replace_source_index_rows,
+    reusable_source_index_generation_stats,
+};
 use super::types::{
     ClientDbSourceIndexImport, ClientDbSourceIndexLookup, ClientDbSourceIndexOwner,
     ClientDbSourceIndexStats,
@@ -24,6 +32,43 @@ impl ClientDb {
         generation_id: &CacheGenerationId,
     ) -> Result<ClientDbSourceIndexStats, String> {
         source_index_stats(self, generation_id)
+    }
+
+    /// Return reusable row counts when the latest source index evidence is unchanged.
+    pub fn reusable_source_index_generation(
+        &self,
+        project_root: &Path,
+        schema_id: &SemanticSchemaId,
+        schema_version: &SemanticSchemaVersion,
+        file_hashes: &[ClientCacheFileHash],
+    ) -> Result<Option<ClientDbSourceIndexStats>, String> {
+        reusable_source_index_generation_stats(
+            self,
+            project_root,
+            schema_id,
+            schema_version,
+            file_hashes,
+        )
+    }
+
+    /// Return file hash evidence from the latest matching source index generation.
+    pub fn latest_source_index_file_hashes(
+        &self,
+        project_root: &Path,
+        schema_id: &SemanticSchemaId,
+        schema_version: &SemanticSchemaVersion,
+    ) -> Result<Option<Vec<ClientCacheFileHash>>, String> {
+        latest_source_index_file_hashes(self, project_root, schema_id, schema_version)
+    }
+
+    /// Return source owners from the latest matching project generation.
+    pub fn latest_source_index_generation_owners(
+        &self,
+        project_root: &Path,
+        schema_id: &SemanticSchemaId,
+        schema_version: &SemanticSchemaVersion,
+    ) -> Result<Vec<ClientDbSourceIndexOwner>, String> {
+        latest_source_index_generation_owners(self, project_root, schema_id, schema_version)
     }
 
     /// Return Rust-owned source owners matching a broad query from the freshest

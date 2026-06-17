@@ -38,7 +38,7 @@ fn seed_plan_actions_are_typed_intents() {
 }
 
 #[test]
-fn seed_risks_project_to_legacy_report_actions() {
+fn seed_risks_project_to_report_actions() {
     assert_eq!(
         recommended_action_for_seed_risk("flat-query"),
         Some("split-query-pack")

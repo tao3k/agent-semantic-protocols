@@ -29,9 +29,10 @@ fn cli_hook_replay_blocks_functions_exec_command_raw_search_to_fzf_frontier() {
             "WorkflowExecution",
             "owner",
             "tests",
+            "--workspace",
+            ".",
             "--view",
-            "seeds",
-            "."
+            "seeds"
         ])
     );
 

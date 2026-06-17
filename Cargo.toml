@@ -36,13 +36,56 @@ tree-sitter = "0.26"
 tree-sitter-bash = "0.25"
 
 [profile.release]
-opt-level = 3
 lto = "thin"
-strip = true
+opt-level = 3
+codegen-units = 4
 panic = "abort"
+strip = true
 
 [profile.dev]
-debug = "line-tables-only"
-split-debuginfo = "unpacked"
-strip = "debuginfo"
 incremental = true
+debug = 1
+split-debuginfo = "unpacked"
+
+[profile.dev.package."*"]
+debug = false
+
+[profile.dev.build-override]
+opt-level = 1
+debug = false
+
+[profile.dev.package.tree-sitter]
+opt-level = 2
+
+[profile.dev.package.sha2]
+opt-level = 2
+
+[profile.dev.package.regex]
+opt-level = 2
+
+[profile.dev.package.regex-automata]
+opt-level = 2
+
+[profile.dev.package.memchr]
+opt-level = 2
+
+[profile.dev.package.rayon]
+opt-level = 2
+
+[profile.dev.package.rayon-core]
+opt-level = 2
+
+[profile.dev.package.ignore]
+opt-level = 2
+
+[profile.dev.package.globset]
+opt-level = 2
+
+[profile.dev.package.aho-corasick]
+opt-level = 2
+
+[profile.dev-build]
+inherits = "dev"
+opt-level = 1
+debug = false
+strip = true

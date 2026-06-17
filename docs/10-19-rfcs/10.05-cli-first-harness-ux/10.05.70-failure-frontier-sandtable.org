@@ -42,10 +42,10 @@ ASP may also project the same compact frontier from a recent failure transcript
 without asking the provider to emit a new command shape:
 
 #+begin_src shell
-asp <language> check changed --view seeds .
-asp <language> check --changed --view seeds .
-asp <language> search failure --message '<failure text>' --view seeds .
-asp <language> search failure --from-last-check --view seeds .
+asp <language> check changed --workspace . --view seeds
+asp <language> check --changed --workspace . --view seeds
+asp <language> search failure --message '<failure text>' --workspace . --view seeds
+asp <language> search failure --from-last-check --workspace . --view seeds
 asp <language> search failure --message '<failure text>' --view graph-turbo-request .
 #+end_src
 
@@ -53,7 +53,7 @@ This is a post-check search surface, not a code read.  Its output starts with
 =[search-failure]= and must include failure facts, candidate owners, hot block
 selectors, query profiles, frontier actions, and avoid guidance.  Hot block
 selectors are the only follow-up code-read targets; agents should replay them
-with =asp <language> query --selector <path:start-end> --code .= instead of
+with =asp <language> query --selector <path:start-end> --workspace . --code= instead of
 reading repeated 100-line windows.  The =check ... --view seeds= form strips
 the ASP projection flags before provider execution, persists the failed check
 transcript, and renders the same =failure-frontier= graph-turbo result.  The

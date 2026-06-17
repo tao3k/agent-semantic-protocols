@@ -59,9 +59,10 @@ class SemanticAgentHookClientConfigSchemaTests(unittest.TestCase):
                                 "ingest",
                                 "items",
                                 "tests",
+                                "--workspace",
+                                ".",
                                 "--view",
                                 "seeds",
-                                ".",
                             ],
                             "stdinMode": "pipe-candidates",
                         }

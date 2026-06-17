@@ -27,9 +27,9 @@ cacheClaim=warm-provider
 The measured flow used:
 
 #+begin_example
-asp rust search prime --view seeds .
+asp rust search prime --workspace . --view seeds
 asp rust query --selector crates/agent-semantic-tree-sitter/src/query_syntax.rs --treesitter-query '(function_item name: (identifier) @function.name)' .
-asp rust query --selector crates/agent-semantic-tree-sitter/src/query_syntax.rs:91:95 --treesitter-query '(function_item name: (identifier) @function.name)' --code .
+asp rust query --selector crates/agent-semantic-tree-sitter/src/query_syntax.rs:91:95 --treesitter-query '(function_item name: (identifier) @function.name)' --workspace . --code
 asp rust query --from-hook direct-source-read --selector crates/agent-semantic-tree-sitter/src/query_syntax.rs:91:95 --code .
 #+end_example
 

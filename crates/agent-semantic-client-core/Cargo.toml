@@ -8,6 +8,7 @@ license = "MIT"
 [dependencies]
 agent-semantic-hook = { path = "../agent-semantic-hook" }
 agent-semantic-config = { path = "../agent-semantic-config" }
+agent-semantic-runtime = { path = "../agent-semantic-runtime" }
 agent-semantic-tree-sitter = { version = "0.1.0", path = "../agent-semantic-tree-sitter" }
 bytes = { workspace = true }
 serde = { workspace = true }

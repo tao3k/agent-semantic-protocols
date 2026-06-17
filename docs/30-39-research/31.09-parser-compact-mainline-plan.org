@@ -304,7 +304,7 @@ navigation and hot-block expansion.  The semantic query JSON renderer now
 prefers =nodes= to build =projection.nodes[]=, derives =parentId= from depth,
 and emits hot-block =expandActions[]= for parser roles such as
 =control-flow=, =mutation=, =effect=, and =terminal=.  Compact text
-classification remains only as a legacy fallback.
+classification remains only as a retired fallback.
 
 ** 2026-06-02 follow-up: root snapshot and token-cost contract
 

@@ -1,6 +1,6 @@
 use agent_semantic_hook::{
     ActivatedProvider, CommandTemplate, HookPolicy, HookRoutes, HookRuntime, ProviderExecution,
-    StdinMode,
+    ProviderSearchCapabilities, StdinMode,
 };
 
 mod activation_contract;
@@ -51,9 +51,10 @@ pub(super) fn typescript_provider() -> ActivatedProvider {
                 "{termArgs}",
                 "--surface",
                 "owners,tests",
+                "--workspace",
+                ".",
                 "--view",
                 "seeds",
-                ".",
             ])),
         ),
     )
@@ -97,6 +98,7 @@ pub(super) fn provider(
             .iter()
             .map(|prefix| (*prefix).to_string())
             .collect(),
+        search_capabilities: ProviderSearchCapabilities::default(),
         policy: HookPolicy::default(),
         routes,
     }

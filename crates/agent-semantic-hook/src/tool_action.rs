@@ -6,7 +6,7 @@ use std::borrow::Cow;
 
 use serde_json::Value;
 
-use crate::command::{apply_patch_source_paths, path_like_tokens, semantic_shell_tokens};
+use crate::command::{apply_patch_source_paths, path_like_token_matches, semantic_shell_tokens};
 use crate::protocol::DecisionSubject;
 
 const PATH_SCALAR_KEYS: &[&str] = &[
@@ -687,19 +687,26 @@ fn command_source_paths(command: &str, tokens: &[String]) -> Vec<String> {
         return range_paths;
     }
     let mut paths = Vec::new();
-    for token in path_like_tokens(tokens) {
-        let embedded = embedded_source_path_candidates(token);
-        if embedded.is_empty() {
-            if !looks_like_code_call_token(token) {
-                push_unique_path(&mut paths, token.to_string());
-            }
-        } else {
-            for path in embedded {
-                push_unique_path(&mut paths, path);
-            }
-        }
+    for token in tokens {
+        path_like_token_matches(token, |token| {
+            push_command_source_path(&mut paths, token);
+            false
+        });
     }
     paths
+}
+
+fn push_command_source_path(paths: &mut Vec<String>, token: &str) {
+    let embedded = embedded_source_path_candidates(token);
+    if embedded.is_empty() {
+        if !looks_like_code_call_token(token) {
+            push_unique_path(paths, token.to_string());
+        }
+    } else {
+        for path in embedded {
+            push_unique_path(paths, path);
+        }
+    }
 }
 
 fn looks_like_code_call_token(token: &str) -> bool {

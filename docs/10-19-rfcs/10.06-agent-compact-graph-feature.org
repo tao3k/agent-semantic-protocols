@@ -741,7 +741,7 @@ Sandtable observations also project command-output memory:
   fingerprints, output bytes, result fingerprints, read counts, and avoid
   reasons such as =duplicate-read=, =manual-window-scan=, and =repeat-owner=.
 - =failureLoopMemory= records executable failure-frontier actions selected from
-  =asp <lang> search failure --from-last-check --view seeds .= output.
+  =asp <lang> search failure --from-last-check --workspace . --view seeds= output.
 - =failureFrontierOutputPrecision= records whether the failure frontier kept
   failure facts, assertions, hot blocks, query profiles, omission facts, avoid
   facts, and executable frontier actions.
@@ -860,7 +860,7 @@ rendering  = stdout serialization
 Graph/frontier/rank/action evidence stays in protocol packets and JSON
 projections.  Compact graph text is not a protocol, and production code must
 not parse compact graph text back into actions.  The historical
-=semantic-compact-graph-render.v1= template may describe legacy/debug stdout
+=semantic-compact-graph-render.v1= template may describe retired/debug stdout
 grammar, but it does not supersede =semantic-search-packet.v1=,
 =semantic-graph-turbo-result.v1=, or =semantic-graph-turbo-summary.v1= as the
 trusted machine surface.
@@ -976,7 +976,7 @@ and test node transitions; the compact =[search-failure]= text is only a
 projection of that profile result.
 Failure-frontier follow-up reads are =query-code= actions in the result packet.
 Compact output may render them as =C1.query-code(...)!query-code= rows for
-prompt readability, but it must not render or require legacy
+prompt readability, but it must not render or require retired
 =H.code=>asp ... query --selector ...= command strings as the machine contract.
 The default =[search-failure]= projection is an agent prompt surface, so it
 must keep failure facts, candidate owners, hot blocks, query profiles,
@@ -987,7 +987,7 @@ removing them from seeds is valid only when the selected hot-block frontier and
 failure facts are unchanged.
 
 The check projection route follows the same boundary.  =asp <language> check
-changed --view seeds .= and =asp <language> check --changed --view seeds .=
+changed --workspace . --view seeds= and =asp <language> check --changed --workspace . --view seeds=
 execute the provider check without forwarding the ASP =--view seeds= flag,
 persist the failing transcript as the last-check artifact, and then render
 =search failure --from-last-check --view seeds= through the graph-turbo
@@ -1191,7 +1191,7 @@ windows.
 2. Audit =semantic-graph.v1= and =semantic-search-packet.v1= for alias,
    action, rank, frontier seed, synthesis, omission, and avoid coverage.
 3. Keep graph/frontier/action authority in JSON packets and JSON projections;
-   treat =semantic-compact-graph-render.v1= as ARI/legacy/debug stdout grammar
+   treat =semantic-compact-graph-render.v1= as ARI/retired/debug stdout grammar
    rather than a trusted graph/frontier/action protocol surface.
 4. Introduce or preserve a typed render IR and safe ARI encoder boundary before
    renderer string templates; keep any ARI parser restricted to tests, replay,
@@ -1229,7 +1229,7 @@ Completed:
 - [X] =semantic-content-compaction.v1= separates content payload compaction
   from graph/frontier/action protocol output.
 - [X] Rust =search fzf --query-set ... --view seeds= renders graph-frontier
-  output instead of legacy =|seed= / =|synthesis= rows.
+  output instead of retired =|seed= / =|synthesis= rows.
 - [X] Rust =--view seeds= renders compact graph output from the search packet
   instead of post-processing =|seed= rows as an independent prompt protocol.
 - [X] Rust =--json --view seeds= preserves the search packet as the
@@ -1237,20 +1237,20 @@ Completed:
 - [X] Focused Rust tests cover policy, query, fzf scoped search, dependency
   flow, and public large-library prime/dependency graph seed flows.
 - [X] Rust prompt-facing seed views for prime, owner, policy, query, ingest,
-  fzf, and fzf query-set assert graph output instead of legacy =|seed= /
+  fzf, and fzf query-set assert graph output instead of retired =|seed= /
   =|synthesis= rows.
 - [X] TypeScript and Python =--view seeds= render the schema-owned
   =aliases=...= legend, =G>{...}= root edges, aliases, and
   =rank= / =frontier= without a standalone =G=search:result!query= line.
 - [X] TypeScript and Python sandtable scenarios assert graph output and reject
-  legacy =|seed= / =|synthesis= rows plus the obsolete standalone root alias
+  retired =|seed= / =|synthesis= rows plus the obsolete standalone root alias
   line.
 - [X] Shared JSON schemas accept graph-derived =searchSynthesis.windowSet=
   kinds and semantic targets such as =features=, =deps=, =import=, and
   =feature:cli= without forcing providers to disguise graph frontier facts as
   project paths.
 - [X] Rust sandtable graph scenarios reject the obsolete standalone root alias
-  line, and graph alias capture replaces legacy =|seed owner:= capture for
+  line, and graph alias capture replaces retired =|seed owner:= capture for
   owner follow-up steps.
 - [X] Rust, TypeScript, and Python adapters can carry =reasoningProfiles= in
   the search packet so the compact graph renderer can project them into a
@@ -1396,7 +1396,7 @@ Completed:
   guidance into a real provider-spawn suppression path without changing
   provider =search prime= semantics.
 - [X] Real CLI validation proves the runtime suppression boundary.  Running
-  =cargo run -p agent-semantic-protocol -- rust search --receipt-json prime --view seeds .=
+  =cargo run -p agent-semantic-protocol -- rust search --receipt-json prime --workspace . --view seeds=
   first refreshed stale prime state through =route=local-native= with
   =providerProcessesSpawned=1=.  Running the equivalent
   =--view=seeds= form immediately after changed the exact request fingerprint
@@ -1416,7 +1416,7 @@ Completed:
   =languages/python-lang-project-harness/src/python_lang_parser/_ast_names.py=
   with 5 calls / 4 repeats.
 - [X] The local client cache probe now performs safe fresh-fzf reuse for
-  repeated =search fzf <query> --view seeds .= requests.  Exact
+  repeated =search fzf <query> --workspace . --view seeds= requests.  Exact
   request-fingerprint replay still wins; when that misses, the probe scans the
   recent same provider/project =search/fzf= generations newest-first and only
   reuses one if source file hashes are fresh and the cached =search/*.json=
@@ -1424,10 +1424,10 @@ Completed:
   accidentally replaying a different fuzzy query while still suppressing
   repeated provider spawns for equivalent fuzzy searches.
 - [X] Real CLI validation covers the fresh-fzf latest-unrelated case.  First,
-  =search fzf "cache replay proof 20260606 fresh fzf" owner tests --view seeds .=
+  =search fzf "cache replay proof 20260606 fresh fzf" owner tests --workspace . --view seeds=
   wrote a native miss with =providerProcessesSpawned=1=, =elapsedMs=6577=,
   and 1226-byte stdout.  Then an unrelated newer
-  =search fzf "unrelated proof 20260606 fresh fzf" owner tests --view seeds .=
+  =search fzf "unrelated proof 20260606 fresh fzf" owner tests --workspace . --view seeds=
   generation wrote another native miss with =providerProcessesSpawned=1=.
   Finally, running the original query with =tests owner= changed the exact
   request fingerprint, skipped the unrelated latest generation through packet
@@ -1550,7 +1550,7 @@ Completed:
 - The compact graph output can be parsed by an agent through the schema-owned
   micro-legend plus =aliases=...= legend and does not require prose to
   explain aliases.
-- The output has fewer repeated paths and field names than legacy line protocol.
+- The output has fewer repeated paths and field names than retired line protocol.
 - Target roles, relation labels, rank order, frontier seed actions, node-local
   next actions, exact locators, and omission facts remain visible.
 - The JSON packet remains the source of truth for graph data.

@@ -247,6 +247,8 @@ fn gerbil_structural_index_packet(root: &std::path::Path) -> Value {
             {
                 "path": "src/commands/search.ss",
                 "sha256": "3".repeat(64),
+                "byteLen": 0,
+                "mtimeMs": 0,
                 "source": "native-parser-fingerprint"
             }
         ],

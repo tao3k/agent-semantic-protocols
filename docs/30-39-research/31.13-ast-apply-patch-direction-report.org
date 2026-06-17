@@ -114,7 +114,7 @@ right shape:
 3. Match context or old lines against current file content.
 4. Compute replacements before applying them.
 5. Apply replacements in reverse order so earlier edits do not shift later
-   offsets.
+   ranges.
 6. Return parse/apply failures and affected-path deltas.
 
 The part to copy is the transaction model, not the text hunk model.  In this
@@ -170,7 +170,7 @@ Codex apply_patch
 The hook layer should also move under the same public binary:
 
 #+begin_src shell
-asp hook install --client codex .
+asp install plugin --codex .
 asp hook pre-tool ...
 asp hook stop ...
 #+end_src
@@ -227,7 +227,7 @@ hunk.  Examples:
 
 The first implementation should prove three cases:
 
-1. =asp hook install --client codex .= delegates to
+1. =asp install plugin --codex .= delegates to
    =agent-semantic-hook= and preserves current hook behavior.
 2. =semantic-agent-protocol= passes Rust language-project policy checks instead
    of embedding local policy shortcuts.

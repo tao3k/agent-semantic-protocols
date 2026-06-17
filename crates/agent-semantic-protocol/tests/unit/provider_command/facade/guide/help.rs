@@ -18,7 +18,7 @@ fn language_facade_guide_help_is_handled_by_asp_without_provider_spawn() {
     write_activation(&root, &[provider("rust", Vec::new())]);
 
     let output = asp_command(&root)
-        .args(["rust", "guide", "--help", "."])
+        .args(["rust", "guide", "--help", "--workspace", "."])
         .output()
         .expect("run asp rust guide --help");
 
@@ -30,7 +30,7 @@ fn language_facade_guide_help_is_handled_by_asp_without_provider_spawn() {
     assert_eq!(String::from_utf8_lossy(&output.stderr), "");
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(
-        stdout.contains("usage: asp rust guide [--help] [PROJECT_ROOT]"),
+        stdout.contains("usage: asp rust guide [--help] [--workspace <root>]"),
         "{stdout}"
     );
     assert!(stdout.contains("query guide treesitter"), "{stdout}");

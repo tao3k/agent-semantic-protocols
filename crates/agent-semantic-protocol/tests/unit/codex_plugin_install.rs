@@ -5,8 +5,8 @@ mod unix {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
-    fn cleans_legacy_project_hook_config() {
-        let root = temp_project_root("codex-plugin-cleans-legacy-hooks");
+    fn cleans_retired_project_hook_config() {
+        let root = temp_project_root("codex-plugin-cleans-retired-hooks");
         let codex_home = root.join(".codex-home");
         std::fs::create_dir_all(&codex_home).expect("create codex home");
         let plugin_manifest = root
@@ -31,7 +31,7 @@ mod unix {
                 agent_semantic_hook::codex_hook_block(&root)
             ),
         )
-        .expect("write legacy project hook config");
+        .expect("write retired project hook config");
 
         let fake_bin = write_fake_codex_cli(&root);
         let output = Command::new(env!("CARGO_BIN_EXE_asp"))
@@ -39,9 +39,9 @@ mod unix {
             .env("CODEX_HOME", &codex_home)
             .env("PATH", prepend_path(&fake_bin))
             .env("PRJ_CACHE_HOME", root.join(".cache"))
-            .args(["plugin", "install", "codex", "."])
+            .args(["install", "plugin", "--codex", "."])
             .output()
-            .expect("run asp plugin install codex");
+            .expect("run asp install plugin --codex");
         assert!(
             output.status.success(),
             "stdout={} stderr={}",
@@ -71,6 +71,47 @@ mod unix {
             std::fs::read_to_string(codex_home.join("config.toml")).expect("read user config");
         assert!(user_config.contains("[projects."), "{user_config}");
         assert!(!user_config.contains("[hooks.state."), "{user_config}");
+
+        std::fs::remove_dir_all(root).expect("cleanup temp project root");
+    }
+
+    #[test]
+    fn install_plugin_codex_runs_project_installer() {
+        let root = temp_project_root("codex-plugin-unified-install");
+        let codex_home = root.join(".codex-home");
+        std::fs::create_dir_all(&codex_home).expect("create codex home");
+        let plugin_manifest = root
+            .join("asp-codex-plugin")
+            .join(".codex-plugin")
+            .join("plugin.json");
+        std::fs::create_dir_all(plugin_manifest.parent().expect("plugin manifest parent"))
+            .expect("create plugin manifest parent");
+        std::fs::write(
+            &plugin_manifest,
+            r#"{"name":"asp-codex-plugin","version":"0.0.0"}"#,
+        )
+        .expect("write plugin manifest");
+
+        let fake_bin = write_fake_codex_cli(&root);
+        let output = Command::new(env!("CARGO_BIN_EXE_asp"))
+            .current_dir(&root)
+            .env("CODEX_HOME", &codex_home)
+            .env("PATH", prepend_path(&fake_bin))
+            .env("PRJ_CACHE_HOME", root.join(".cache"))
+            .args(["install", "plugin", "--codex", "."])
+            .output()
+            .expect("run asp install plugin --codex");
+        assert!(
+            output.status.success(),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(
+            String::from_utf8_lossy(&output.stdout).contains("[plugin-install]"),
+            "stdout={}",
+            String::from_utf8_lossy(&output.stdout)
+        );
 
         std::fs::remove_dir_all(root).expect("cleanup temp project root");
     }

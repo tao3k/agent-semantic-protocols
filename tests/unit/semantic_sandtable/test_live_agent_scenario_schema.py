@@ -79,7 +79,7 @@ class LiveAgentScenarioSchemaTests(unittest.TestCase):
     def test_live_agent_rejects_scripted_prompt_field(self) -> None:
         scenario = _live_agent_scenario()
         scenario["liveAgent"]["prompt"] = (
-            "Run asp typescript search prime --view seeds ."
+            "Run asp typescript search prime --workspace . --view seeds"
         )
 
         errors = self.validation_errors(scenario)

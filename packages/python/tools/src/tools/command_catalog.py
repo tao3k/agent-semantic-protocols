@@ -108,7 +108,7 @@ COMMANDS: tuple[CommandSpec, ...] = (
         ("tree-sitter", "contract"),
         "tools.tree_sitter.contract",
         "main",
-        "legacy_argv",
+        "retired_argv",
         "Validate a grammar-profile contract fingerprint.",
     ),
     CommandSpec(

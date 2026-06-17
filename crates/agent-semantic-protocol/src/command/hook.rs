@@ -28,13 +28,13 @@ pub(super) fn is_help_request(args: &[String]) -> bool {
 }
 
 pub(super) fn is_lifecycle_help_request(args: &[String]) -> bool {
-    matches!(args.first().map(String::as_str), Some("install" | "doctor"))
+    matches!(args.first().map(String::as_str), Some("doctor" | "paths"))
         && is_help_request(&args[1..])
 }
 
 fn forwarded_hook_lifecycle_args(command: &str, args: &[String]) -> Result<Vec<String>, String> {
     match command {
-        "install" | "doctor" => {
+        "doctor" | "paths" => {
             let mut forwarded = vec![command.to_string()];
             forwarded.extend(args.iter().cloned());
             Ok(forwarded)
@@ -50,7 +50,7 @@ pub(super) fn forwarded_hook_args(args: &[String]) -> Result<Vec<String>, String
 
     match command {
         "help" | "--help" | "-h" => Err(usage()),
-        lifecycle @ ("install" | "doctor") => forwarded_hook_lifecycle_args(lifecycle, &args[1..]),
+        lifecycle @ ("doctor" | "paths") => forwarded_hook_lifecycle_args(lifecycle, &args[1..]),
         "event" => {
             let Some(event) = args.get(1) else {
                 return Err("usage: asp hook event <event> ...".to_string());
@@ -77,5 +77,5 @@ fn forwarded_event_args(event: &str, rest: &[String]) -> Result<Vec<String>, Str
 }
 
 fn usage() -> String {
-    "usage: asp hook install --client claude [--subagent-model MODEL] ...\n       asp hook doctor --client <codex|claude> ...\n       asp hook --client <codex|claude> --event <event> ...\n       asp hook <pre-tool|post-tool|stop|event> ...\n       asp plugin install codex [PROJECT_ROOT]".to_string()
+    "usage: asp install hook --client claude [PROJECT_ROOT] [--subagent-model MODEL]\n       asp hook doctor --client <codex|claude> ...\n       asp hook paths [PROJECT_ROOT]\n       asp hook --client <codex|claude> --event <event> ...\n       asp hook <pre-tool|post-tool|stop|event> ...\n       asp install plugin --codex [PROJECT_ROOT]".to_string()
 }

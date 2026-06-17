@@ -62,9 +62,9 @@ invent a provider-private fact kind outside the shared enum.
 Example shapes:
 
 #+begin_src shell
-asp rust search code symbol OrderStatus --view seeds .
-asp rust search code comments --near enqueue --view seeds .
-asp gerbil-scheme search code comments --near defsyntax --view seeds .
+asp rust search code symbol OrderStatus --workspace . --view seeds
+asp rust search code comments --near enqueue --workspace . --view seeds
+asp gerbil-scheme search code comments --near defsyntax --workspace . --view seeds
 #+end_src
 
 Comment claim output should distinguish the claim, the code evidence, and the
@@ -99,9 +99,9 @@ research outside the current workspace resolution.
 Example shapes:
 
 #+begin_src shell
-asp rust search deps tokio --view seeds .
-asp rust search deps tokio::timeout --view seeds .
-asp gerbil-scheme search deps :std/sugar --view seeds .
+asp rust search deps tokio --workspace . --view seeds
+asp rust search deps tokio::timeout --workspace . --view seeds
+asp gerbil-scheme search deps :std/sugar --workspace . --view seeds
 #+end_src
 
 ** =search extension=
@@ -134,11 +134,11 @@ Examples:
 Example shapes:
 
 #+begin_src shell
-asp typescript search extension effect api --view seeds .
-asp gerbil-scheme search extension poo syntax --view seeds .
-asp gerbil-scheme search extension poo pattern object-system --view seeds .
-asp gerbil-scheme search pattern higher-order-control gerbil-utils inherited --view seeds .
-asp rust search extension tokio cancellation --view seeds .
+asp typescript search extension effect api --workspace . --view seeds
+asp gerbil-scheme search extension poo syntax --workspace . --view seeds
+asp gerbil-scheme search extension poo pattern object-system --workspace . --view seeds
+asp gerbil-scheme search pattern higher-order-control gerbil-utils inherited --workspace . --view seeds
+asp rust search extension tokio cancellation --workspace . --view seeds
 #+end_src
 
 Extension output should expose the activated extension fact first, then route to
@@ -240,10 +240,10 @@ discover that active runtime instead of assuming a version from documentation.
 Example shapes:
 
 #+begin_src shell
-asp rust search env toolchain --view seeds .
-asp rust search env cfg --view seeds .
-asp gerbil-scheme search env gxi --view seeds .
-asp gerbil-scheme search env load-path --view seeds .
+asp rust search env toolchain --workspace . --view seeds
+asp rust search env cfg --workspace . --view seeds
+asp gerbil-scheme search env gxi --workspace . --view seeds
+asp gerbil-scheme search env load-path --workspace . --view seeds
 #+end_src
 
 ** =search runtime-source=
@@ -268,7 +268,7 @@ memory, an unversioned checkout, or raw unindexed source scanning is a policy
 failure.
 
 #+begin_example
-asp gerbil-scheme search runtime-source macro --view seeds .
+asp gerbil-scheme search runtime-source macro --workspace . --view seeds
 asp cache runtime-source acquire --language-id gerbil-scheme --repository https://git.cons.io/mighty-gerbils/gerbil --checkout v0.18.2 --state-namespace runtime-source/gerbil-scheme --index-owner asp-structural-index
 #+end_example
 
@@ -333,10 +333,10 @@ unchecked import renames, and confusing import rename with export rename.
 Example shapes:
 
 #+begin_src shell
-asp rust search lang macro_rules --view seeds .
-asp rust search lang lifetime-elision --view seeds .
-asp gerbil-scheme search lang macro hygiene --view seeds .
-asp gerbil-scheme search lang syntax-object --view seeds .
+asp rust search lang macro_rules --workspace . --view seeds
+asp rust search lang lifetime-elision --workspace . --view seeds
+asp gerbil-scheme search lang macro hygiene --workspace . --view seeds
+asp gerbil-scheme search lang syntax-object --workspace . --view seeds
 #+end_src
 
 ** =search std=
@@ -362,9 +362,9 @@ memory-derived Scheme macro answer.
 Example shapes:
 
 #+begin_src shell
-asp rust search std Iterator::try_fold --view seeds .
-asp gerbil-scheme search std :std/srfi/1 fold --view seeds .
-asp gerbil-scheme search std :std/sugar defsyntax --view seeds .
+asp rust search std Iterator::try_fold --workspace . --view seeds
+asp gerbil-scheme search std :std/srfi/1 fold --workspace . --view seeds
+asp gerbil-scheme search std :std/sugar defsyntax --workspace . --view seeds
 #+end_src
 
 ** =search capability=
@@ -395,7 +395,7 @@ redeclare built-in defaults just to consume the harness.
 Example shapes:
 
 #+begin_src shell
-gerbil-scheme-harness search capability posture --view seeds .
+gerbil-scheme-harness search capability posture --workspace . --view seeds
 gerbil-scheme-harness search capability poo --json .
 #+end_src
 
@@ -494,9 +494,9 @@ hook=.
 Example shapes:
 
 #+begin_src shell
-asp rust search pattern async-timeout --view seeds .
-asp gerbil-scheme search pattern hygienic-macro --view seeds .
-asp gerbil-scheme search pattern defsyntax-syntax-case --view seeds .
+asp rust search pattern async-timeout --workspace . --view seeds
+asp gerbil-scheme search pattern hygienic-macro --workspace . --view seeds
+asp gerbil-scheme search pattern defsyntax-syntax-case --workspace . --view seeds
 #+end_src
 
 ** =compare=
@@ -674,14 +674,14 @@ Gerbil extension source index and add a runnable =gxi= witness.
 The first Gerbil slice should be narrow and deep:
 
 #+begin_src shell
-asp gerbil-scheme search extension poo --view seeds .
-asp gerbil-scheme search extension poo syntax --view seeds .
-asp gerbil-scheme search env gxi --view seeds .
-asp gerbil-scheme search lang macro hygiene --view seeds .
-asp gerbil-scheme search lang syntax-object --view seeds .
-asp gerbil-scheme search std :std/sugar defsyntax --view seeds .
-asp gerbil-scheme search pattern hygienic-macro --view seeds .
-asp gerbil-scheme compare env active documented --view seeds .
+asp gerbil-scheme search extension poo --workspace . --view seeds
+asp gerbil-scheme search extension poo syntax --workspace . --view seeds
+asp gerbil-scheme search env gxi --workspace . --view seeds
+asp gerbil-scheme search lang macro hygiene --workspace . --view seeds
+asp gerbil-scheme search lang syntax-object --workspace . --view seeds
+asp gerbil-scheme search std :std/sugar defsyntax --workspace . --view seeds
+asp gerbil-scheme search pattern hygienic-macro --workspace . --view seeds
+asp gerbil-scheme compare env active documented --workspace . --view seeds
 #+end_src
 
 Required facts:

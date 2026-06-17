@@ -31,9 +31,10 @@ fn source_owner_beats_test_corpus_when_query_has_no_test_intent() {
             "search",
             "pipe",
             "compiler trace module resolution project references",
+            "--workspace",
+            ".",
             "--view",
             "seeds",
-            ".",
         ])
         .output()
         .expect("run asp typescript search pipe");
@@ -84,9 +85,10 @@ fn source_owner_beats_unittests_corpus_when_query_has_no_test_intent() {
             "search",
             "pipe",
             "compiler trace module resolution project references",
+            "--workspace",
+            ".",
             "--view",
             "seeds",
-            ".",
         ])
         .output()
         .expect("run asp typescript search pipe");
@@ -137,9 +139,10 @@ fn test_intent_keeps_test_corpus_owner_eligible() {
             "search",
             "pipe",
             "compiler trace module resolution project references tests cases",
+            "--workspace",
+            ".",
             "--view",
             "seeds",
-            ".",
         ])
         .output()
         .expect("run asp typescript search pipe");
@@ -165,7 +168,7 @@ fn low_cohesion_secondary_artifact_does_not_fallback_to_owner_items_first() {
     for path in [
         "packages/create-vite/template-react-ts",
         "packages/create-vite/template-vue",
-        "packages/plugin-legacy/template",
+        "packages/plugin-retired/template",
         "packages/vite/templates/server",
     ] {
         std::fs::create_dir_all(root.join(path)).expect("create package dir");
@@ -181,7 +184,7 @@ fn low_cohesion_secondary_artifact_does_not_fallback_to_owner_items_first() {
     )
     .expect("write second template owner");
     std::fs::write(
-        root.join("packages/plugin-legacy/template/index.ts"),
+        root.join("packages/plugin-retired/template/index.ts"),
         "export const plugin = true\n",
     )
     .expect("write plugin owner");
@@ -201,9 +204,10 @@ fn low_cohesion_secondary_artifact_does_not_fallback_to_owner_items_first() {
             "search",
             "pipe",
             "connect config resolution plugin container ordering",
+            "--workspace",
+            ".",
             "--view",
             "seeds",
-            ".",
         ])
         .output()
         .expect("run asp typescript search pipe");
@@ -237,7 +241,7 @@ fn low_cohesion_source_owner_with_weak_axis_coverage_does_not_fallback_first() {
     for path in [
         "packages/vite/src/node/server",
         "packages/create-vite/src",
-        "packages/plugin-legacy/src",
+        "packages/plugin-retired/src",
         "packages/dashboard/src",
     ] {
         std::fs::create_dir_all(root.join(path)).expect("create package dir");
@@ -253,7 +257,7 @@ fn low_cohesion_source_owner_with_weak_axis_coverage_does_not_fallback_first() {
     )
     .expect("write drift owner");
     std::fs::write(
-        root.join("packages/plugin-legacy/src/index.ts"),
+        root.join("packages/plugin-retired/src/index.ts"),
         "export const plugin = true\n",
     )
     .expect("write plugin owner");
@@ -273,9 +277,10 @@ fn low_cohesion_source_owner_with_weak_axis_coverage_does_not_fallback_first() {
             "search",
             "pipe",
             "connect config resolution plugin container ordering",
+            "--workspace",
+            ".",
             "--view",
             "seeds",
-            ".",
         ])
         .output()
         .expect("run asp typescript search pipe");

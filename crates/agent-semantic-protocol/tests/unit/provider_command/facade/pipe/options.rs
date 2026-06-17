@@ -154,9 +154,10 @@ fn search_pipe_rejects_unknown_surface_without_provider_spawn() {
             "HookDecision",
             "--surface",
             "owner,commands",
+            "--workspace",
+            ".",
             "--view",
             "seeds",
-            ".",
         ])
         .output()
         .expect("run asp rust search pipe with unknown surface");

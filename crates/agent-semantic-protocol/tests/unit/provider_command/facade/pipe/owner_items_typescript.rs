@@ -27,9 +27,10 @@ fn typescript_owner_items_query_set_renders_item_selectors_without_provider() {
             "items",
             "--query",
             "Fiber|Queue|Stream",
+            "--workspace",
+            ".",
             "--view",
             "seeds",
-            ".",
         ])
         .output()
         .expect("run asp typescript search owner items");
@@ -108,9 +109,10 @@ fn typescript_owner_items_prefers_selector_with_more_query_axis_coverage() {
             "items",
             "--query",
             "plugin|container|config|resolution|ordering",
+            "--workspace",
+            ".",
             "--view",
             "seeds",
-            ".",
         ])
         .output()
         .expect("run asp typescript search owner items");
@@ -165,9 +167,10 @@ fn typescript_owner_items_uses_query_axis_window_when_declaration_name_is_weak()
             "items",
             "--query",
             "plugin|container|config|resolution|order",
+            "--workspace",
+            ".",
             "--view",
             "seeds",
-            ".",
         ])
         .output()
         .expect("run asp typescript search owner items");
@@ -222,9 +225,10 @@ fn typescript_owner_items_uses_barrel_export_when_owner_path_matches_query_axis(
             "items",
             "--query",
             "TypeScript|compiler|module|resolution",
+            "--workspace",
+            ".",
             "--view",
             "seeds",
-            ".",
         ])
         .output()
         .expect("run asp typescript search owner items");
@@ -283,9 +287,10 @@ fn typescript_owner_items_uses_default_export_block_for_config_like_owner() {
             "items",
             "--query",
             "vite|connect|config|plugin|server|hook|execution",
+            "--workspace",
+            ".",
             "--view",
             "seeds",
-            ".",
         ])
         .output()
         .expect("run asp typescript search owner items");

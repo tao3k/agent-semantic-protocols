@@ -13,6 +13,7 @@ from .model import (
     GraphResult,
     Node,
     OrientedEdge,
+    ReadMemoryProjection,
     ReceiptAdjustment,
     TypedGraph,
 )
@@ -77,7 +78,8 @@ def build_graph_result(
     query_adjustments: Mapping[str, Mapping[str, float]],
     query_adjustment_policy: Mapping[str, bool],
     ranked: tuple[Node, ...],
-    read_memory_suppressed_count: int = 0,
+    read_memory_seen_selectors: tuple[str, ...] = (),
+    read_memory_suppressed_selectors: tuple[str, ...] = (),
     read_loop_second_pass: GraphTurboReadLoopSecondPass = GraphTurboReadLoopSecondPass(),
 ) -> GraphResult:
     ranked_projection = build_ranked_projection(
@@ -124,13 +126,17 @@ def build_graph_result(
         path_fallback_count=path_projection.fallback_count,
         path_pair_count=path_projection.pair_count,
         path_candidate_count=path_projection.candidate_count,
-        read_memory_suppressed_count=read_memory_suppressed_count,
+        read_memory_suppressed_count=len(read_memory_suppressed_selectors),
         receipt_boost_count=receipt_counts[0],
         receipt_penalty_count=receipt_counts[1],
         pagerank=pagerank,
         query_adjustment_policy=query_adjustment_policy,
         query_adjustment_metrics=query_adjustment_metrics,
         read_loop_second_pass=read_loop_second_pass,
+    )
+    read_memory_projection = ReadMemoryProjection(
+        seen_selectors=read_memory_seen_selectors,
+        suppressed_selectors=read_memory_suppressed_selectors,
     )
     return GraphResult(
         selected_profile,
@@ -152,13 +158,14 @@ def build_graph_result(
         trace_projection.trace,
         explanations,
         receipt_adjustments,
+        read_memory_projection,
         trace_projection.metrics,
         tuple(DEFAULT_PROFILES),
         compact_omissions_for_profile(selected_profile.name),
         compact_avoid_actions(
             selected_profile,
             ranked_projection.read_loop_guard,
-            read_memory_suppressed_count=read_memory_suppressed_count,
+            read_memory_suppressed_count=len(read_memory_suppressed_selectors),
             receipt_penalty_count=receipt_counts[1],
         ),
     )

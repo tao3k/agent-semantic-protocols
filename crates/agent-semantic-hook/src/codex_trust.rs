@@ -4,11 +4,11 @@ use std::path::Path;
 
 const TRUST_BLOCK_BEGIN_PREFIX: &str = "# BEGIN agent-semantic-protocol trusted hook state: ";
 pub(crate) const TRUST_BLOCK_END: &str = "# END agent-semantic-protocol trusted hook state";
-const LEGACY_TRUST_BLOCK_BEGIN_PREFIX: &str = "# BEGIN semantic-agent-hook trusted hook state: ";
-const LEGACY_TRUST_BLOCK_END: &str = "# END semantic-agent-hook trusted hook state";
-const LEGACY_TYPO_TRUST_BLOCK_BEGIN_PREFIX: &str =
+const RETIRED_TRUST_BLOCK_BEGIN_PREFIX: &str = "# BEGIN semantic-agent-hook trusted hook state: ";
+const RETIRED_TRUST_BLOCK_END: &str = "# END semantic-agent-hook trusted hook state";
+const RETIRED_TYPO_TRUST_BLOCK_BEGIN_PREFIX: &str =
     "# BEGIN semantic-agent-protocol trusted hook state: ";
-const LEGACY_TYPO_TRUST_BLOCK_END: &str = "# END semantic-agent-protocol trusted hook state";
+const RETIRED_TYPO_TRUST_BLOCK_END: &str = "# END semantic-agent-protocol trusted hook state";
 
 pub(crate) fn codex_trust_block_begin(config_source_path: &Path) -> String {
     format!("{TRUST_BLOCK_BEGIN_PREFIX}{}", config_source_path.display())
@@ -20,7 +20,7 @@ pub(crate) fn merge_codex_trust_config(
     block: &str,
 ) -> String {
     let content = remove_stale_codex_trust_state_blocks(existing);
-    let content = remove_legacy_codex_trust_state(&content, config_source_path);
+    let content = remove_retired_codex_trust_state(&content, config_source_path);
     let content = remove_managed_block(
         &content,
         &codex_trust_block_begin(config_source_path),
@@ -102,7 +102,7 @@ fn merge_codex_project_trust_config_lines(existing: &str, project_root: &Path) -
     if let Some(index) = lines[start + 1..end]
         .iter()
         .position(|line| toml_key(line.trim()) == Some("trust_level"))
-        .map(|offset| start + 1 + offset)
+        .map(|relative_index| start + 1 + relative_index)
     {
         lines[index] = "trust_level = \"trusted\"".to_string();
     } else {
@@ -185,11 +185,11 @@ fn remove_stale_codex_trust_state_blocks(existing: &str) -> String {
         if let Some(path) = codex_trust_block_path(line)
             && !Path::new(path).is_file()
         {
-            if let Some(relative_end) = lines[index + 1..]
+            if let Some(end_marker_index) = lines[index + 1..]
                 .iter()
                 .position(|candidate| is_codex_trust_block_end(candidate))
             {
-                index += relative_end + 2;
+                index += end_marker_index + 2;
             } else {
                 index += 1;
             }
@@ -205,8 +205,8 @@ fn codex_trust_block_path(line: &str) -> Option<&str> {
     let trimmed = line.trim();
     [
         TRUST_BLOCK_BEGIN_PREFIX,
-        LEGACY_TRUST_BLOCK_BEGIN_PREFIX,
-        LEGACY_TYPO_TRUST_BLOCK_BEGIN_PREFIX,
+        RETIRED_TRUST_BLOCK_BEGIN_PREFIX,
+        RETIRED_TYPO_TRUST_BLOCK_BEGIN_PREFIX,
     ]
     .iter()
     .find_map(|prefix| trimmed.strip_prefix(prefix).map(str::trim))
@@ -215,23 +215,23 @@ fn codex_trust_block_path(line: &str) -> Option<&str> {
 fn is_codex_trust_block_end(line: &str) -> bool {
     matches!(
         line.trim(),
-        TRUST_BLOCK_END | LEGACY_TRUST_BLOCK_END | LEGACY_TYPO_TRUST_BLOCK_END
+        TRUST_BLOCK_END | RETIRED_TRUST_BLOCK_END | RETIRED_TYPO_TRUST_BLOCK_END
     )
 }
 
-fn remove_legacy_codex_trust_state(existing: &str, config_source_path: &Path) -> String {
-    let legacy_begin = legacy_codex_trust_block_begin(config_source_path);
-    let content = remove_managed_block(existing, &legacy_begin, LEGACY_TRUST_BLOCK_END);
+fn remove_retired_codex_trust_state(existing: &str, config_source_path: &Path) -> String {
+    let retired_begin = retired_codex_trust_block_begin(config_source_path);
+    let content = remove_managed_block(existing, &retired_begin, RETIRED_TRUST_BLOCK_END);
     content
         .lines()
-        .filter(|line| line.trim() != legacy_begin)
+        .filter(|line| line.trim() != retired_begin)
         .collect::<Vec<_>>()
         .join("\n")
 }
 
-fn legacy_codex_trust_block_begin(config_source_path: &Path) -> String {
+fn retired_codex_trust_block_begin(config_source_path: &Path) -> String {
     format!(
-        "{LEGACY_TRUST_BLOCK_BEGIN_PREFIX}{}",
+        "{RETIRED_TRUST_BLOCK_BEGIN_PREFIX}{}",
         config_source_path.display()
     )
 }
@@ -265,10 +265,10 @@ fn remove_hook_state_entries_for_config(existing: &str, config_source_path: &Pat
 fn remove_managed_block(existing: &str, begin: &str, end: &str) -> String {
     let mut content = existing.to_string();
     while let Some(start) = content.find(begin) {
-        let Some(relative_end) = content[start..].find(end) else {
+        let Some(end_marker_start) = content[start..].find(end) else {
             break;
         };
-        let end_index = start + relative_end + end.len();
+        let end_index = start + end_marker_start + end.len();
         content.replace_range(start..end_index, "");
     }
     content.trim().to_string()

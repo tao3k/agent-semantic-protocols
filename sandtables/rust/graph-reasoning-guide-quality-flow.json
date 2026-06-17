@@ -125,9 +125,10 @@
         "rust",
         "search",
         "prime",
+        "--workspace",
+        ".",
         "--view",
-        "seeds",
-        "."
+        "seeds"
       ],
       "expect": {
         "stdoutContains": [

@@ -29,9 +29,10 @@
         "search",
         "pipe",
         "package-drift long-field-signatures marlin-gerbil-scheme marlin-org-workflow marlin-gerbil-ir through smoke dev dependency real_gxi.rs ownerCoverage weak natural terms path test fn weight suppress cross-package drift",
+        "--workspace",
+        ".",
         "--view",
-        "seeds",
-        "."
+        "seeds"
       ],
       "expect": {
         "stdoutContains": [

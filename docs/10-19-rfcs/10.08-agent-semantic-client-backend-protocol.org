@@ -496,7 +496,7 @@ wrapper bugs, not language-parser cache misses.
 The first implementation checkpoint is a protocol-owned transparent facade:
 
 #+begin_src shell
-asp rust search prime --view seeds .
+asp rust search prime --workspace . --view seeds
 asp typescript query --from-hook direct-source-read --selector src/cli.ts .
 asp python check --changed .
 asp rust ast-patch dry-run --packet semantic-ast-patch.json .

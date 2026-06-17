@@ -66,7 +66,12 @@ fn manifest(root: &std::path::Path) -> ClientCacheManifest {
                 "cacheStatus": "miss",
                 "rawSourceStored": false,
                 "requestFingerprint": "fnv64:0123456789abcdef",
-                "fileHashes": [{"path": "src/lib.rs", "sha256": "0000000000000000000000000000000000000000000000000000000000000000"}],
+                "fileHashes": [{
+                    "path": "src/lib.rs",
+                    "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+                    "byteLen": 1,
+                    "mtimeMs": 1
+                }],
                 "artifactIds": ["search/rust-main-1.json"]
             }
         ]

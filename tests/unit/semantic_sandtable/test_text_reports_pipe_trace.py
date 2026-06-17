@@ -38,10 +38,10 @@ def test_text_report_prints_pipe_commands_and_output_records(capsys) -> None:
                         "complexPipeFlow": True,
                         "missingComplexPipeStages": [],
                         "commands": [
-                            "asp typescript search prime --view seeds .",
+                            "asp typescript search prime --workspace . --view seeds",
                             (
                                 "asp typescript search pipe 'Effect concurrency Fiber' "
-                                "--view seeds ."
+                                "--workspace . --view seeds"
                             ),
                             (
                                 "asp typescript query --selector "
@@ -53,7 +53,7 @@ def test_text_report_prints_pipe_commands_and_output_records(capsys) -> None:
                             {
                                 "command": (
                                     "asp typescript search pipe "
-                                    "'Effect concurrency Fiber' --view seeds ."
+                                    "'Effect concurrency Fiber' --workspace . --view seeds"
                                 ),
                                 "outputBytes": 514,
                                 "outputLines": 9,

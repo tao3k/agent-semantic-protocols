@@ -13,6 +13,44 @@ to identify the parser-owned and policy-owned facts that make POO-heavy Gerbil
 code understandable to agents, testable in the harness, and reusable as a best
 practice corpus.
 
+* Milestone Execution Model
+The harness-local 11.08 report is the execution ledger. This root report keeps
+the cross-source alignment model:
+- M0: preserve the bounded upstream source evidence.
+- M1: expose POO facts through parser/search fixtures and guide surfaces.
+- M2: carry real POO dependency and =gerbil-poo://= source metadata into policy
+  detection through prototype overlays.
+- M3: use policy warnings to repair actual Scheme source quality, with grouped
+  repair output and focused tests.
+- M4: connect upstream materialization selectors to fixture-level
+  cache/inheritance facts as explicit source graph edges.
+- M5: close the cycle with parser/search/policy/build/Org verification before
+  starting another source-research round.
+
+This turns the prior audit into a milestone backlog. New implementation work
+should name its active milestone and should not pull isolated tasks from the
+research notes without a milestone exit condition.
+
+Current M3 receipt, 2026-06-17: the harness-local 11.08 ledger now records a
+real policy-warning repair loop. Adding the milestone guide surface triggered
+=GERBIL-SCHEME-MOD-R002= and =GERBIL-SCHEME-AGENT-R015= in
+=src/commands/guide.ss=; the repair followed =agentRepair.nextCommand=,
+collapsed M3 routing onto the existing source-backed typed-combinator exemplar
+branch, added the missing engineering boundary comment, and returned
+=asp gerbil-scheme check --full .= to =findings=0=.
+
+Current M4 receipt, 2026-06-17: structural call facts for =.ref=,
+=.ref/cached=, and =apply-slot-spec= now carry =sourceSelector= fields and
+=sourceSelector:gerbil-poo://object.ss#...= query keys. The slot-cache
+fixture therefore links local call facts back to the upstream object
+materialization selectors through owner-bounded structural JSON instead of
+through a policy warning or string-only guide note.
+
+Current M5 receipt, 2026-06-17: the slice closed with parser, search, policy,
+build, and Org gates before starting another source-research round:
+=asp gerbil-scheme check --full .=, =search-test=, =parser-test=,
+=agent-basic-policy-test=, =agent-repair-policy-test=, =gxi build.ss compile=,
+and Org lint for both the harness-local 11.08 ledger and this root report.
 * Evidence Scope
 
 The evidence was gathered from ASP-owned source windows and search evidence over
@@ -29,6 +67,11 @@ The evidence was gathered from ASP-owned source windows and search evidence over
   protocol descriptors built on POO.
 - ~table.ss:1:260~, ~trie.ss:1:140~, ~trie.ss:650:730~, and
   ~rationaldict.ss:1:260~ for protocol adapters and real data-structure use.
+- Follow-up bounded selectors:
+  ~object.ss:28:36~, ~mop.ss:112:117~, ~table.ss:1:140~,
+  ~table.ss:140:280~, ~trie.ss:24:44~, ~type.ss:60:77~, and
+  ~rationaldict.ss:42:48~ for cross-source quality dimensions synchronized
+  with the harness-local 11.08 report.
 - ~fq.ss:1:180~ for finite-field code using POO as an arithmetic protocol
   system.
 - ~brace.ss:1:220~ for brace syntax lowering to ~.o/ctx~.
@@ -224,6 +267,27 @@ The object tests are the best source for syntax pattern fixtures. The MOP tests
 are the best source for class/generic parser facts. The rationaldict and fq
 tests are the best source for adapter and real-project search examples.
 
+* Quality Dimensions
+
+This report and the harness-local
+~languages/gerbil-scheme-language-project-harness/docs/10-19-research/11.08-gerbil-poo-io-quality-consolidation.org~
+must stay synchronized on the quality bar.  The bar is not just "short code" or
+"few warnings"; it is a set of parser-visible design dimensions.
+
+| Dimension | Source evidence | Harness quality target |
+|-----------+-----------------+------------------------|
+| Object kernel state | ~object.ss~ keeps supers, slots, defaults, instance cache, precedence list, slot functions, and all-slot order as explicit struct fields with adjacent typed comments. | Parser facts should expose slot ownership, cache materialization, and inheritance boundaries as data. |
+| Protocol dispatch and fallback | ~mop.ss~ method fallback chooses type-owned conversion, object-local slots, then identity behavior. | Method facts should preserve dispatch source and fallback order instead of reducing the method to a callee list. |
+| Required-slot protocol adapters | ~table.ss~ defines ~methods.table~ once, then derives validation, option refs, folds, merge, conversions, lenses, marshal, and equality. | Fixtures should reward adapter composition from a compact required protocol surface. |
+| Role translation adapters | ~Set<-Table.~ maps key/value table callbacks into set element callbacks; ~RationalSet~ derives a set from ~RationalDict.~. | Parser/search output should show both imported dependency ownership and derived POO capability ownership. |
+| Representation invariants | ~trie.ss~ documents branch height, skip height, costep key reconstruction, and unstep callback contracts next to the structs. | Dense data-structure fixtures are acceptable when invariants are local, typed, and test-backed. |
+| Type descriptor composition | ~type.ss~ =Tuple= and =List.= validate nested descriptors and derive sexp/json/bytes/marshal behavior from element protocols. | Type facts should distinguish protocol-composition descriptors from ordinary helper functions. |
+| Parser-owned classification tables | The harness parser now keeps POO define-type options, generic option families, and slot operator kinds as explicit constants. | New syntax support should extend parser-owned tables with fixtures instead of scattering isolated branch tests. |
+| Guide and policy readiness | The sources show protocol boundaries before policy warnings. | New style warnings must wait for parser facts, fixtures, and guide text; warnings should be composite-gated by multiple parser-owned signals. |
+
+These dimensions are the shared report quality contract.  Any future docs update
+that changes one side should update the other side in the same pass.
+
 * Alignment Matrix
 
 ** P0: preserve declaration ownership in policy
@@ -295,11 +359,18 @@ Validation:
 
 ** P1: expose MOP generic declarations
 
-Current status: generics are visible as calls but not yet rich enough for agent
-navigation.
+Current status: generic declarations and runtime hook methods are parser-owned
+POO facts.  The current harness preserves raw ~.defgeneric~ option tokens and
+also emits semantic option tokens for ~slotName:~, ~dispatchSource:~, and
+~defaultStrategy:~.  Hook methods for ~:pr~, ~:wr~, ~:json~, and
+~:write-json~ now expose ~hookFamily:poo-io~ plus concrete ~runtimeHook:~
+tokens.
 
-Gap: an agent needs to know which slot a generic dispatches through and whether
-the receiver is an instance or type.
+Gap: fallback-order extraction is still softer than hook family classification.
+An agent can now see which slot a generic dispatches through, whether the
+receiver source is instance or type, and which IO/runtime hook family a method
+belongs to.  The remaining deeper parser work is to model the fallback order
+inside hook bodies.
 
 Action:
 
@@ -308,10 +379,11 @@ Action:
   - ~from: type~
   - ~default:~
   - ~compute-default:~
-- Emit a generic fact with the public generic name, slot name, dispatch source,
-  and default strategy.
+- Preserve the public generic name plus parser-owned option tokens for slot
+  name, dispatch source, and default strategy.
 - Link ~defmethod (@method :pr object)~ and similar methods to the protocol hook
-  family.
+  family.  Status: landed as parser option tokens and structural query keys for
+  the current IO hook set.
 
 Validation:
 
@@ -322,10 +394,58 @@ Validation:
 ** P1: surface slot cache and inheritance edges
 
 Current status: pattern evidence includes slot cache and C3 inheritance
-families.
+families, and the harness now has an owner-bounded
+~poo-slot-cache-inheritance.ss~ fixture.  Its structural facts expose
+multi-super ownership and slot operator tokens for default, inherited-computed,
+and mixin-override slots.  Structural call facts now also classify ~.ref~,
+~.ref/cached~, and ~apply-slot-spec~ as slot-cache boundary calls with
+~cacheOperation:~ query keys.  The rich slot-cache pattern now also exposes
+~instantiate-object!~, ~compute-precedence-list!~, and ~compute-slot-funs!~ as
+source-owned materialization selectors with dedicated quality signals.
+External ~asp gerbil-scheme search pattern poo slot cache computed --view
+seeds~ now reaches the full ~:commands/search~ resolver through the search
+compatibility entrypoint, so pattern focus selection remains a CLI/search
+responsibility rather than a build-wrapper responsibility.  This boundary is
+now guarded by ~GERBIL-SCHEME-AGENT-R019~, which checks package-root
+~build.ss~ beside ~gerbil.pkg~ for parser-owned CLI/search routing string
+evidence plus wrapper/script writer definition evidence.  Routing semantics
+belong in ~src/cli~ or ~src/commands~; generated provider wrapper
+materialization belongs in ~build-support/provider-cli.ss~, where the current
+script owner uses Gerbil std/library script idioms: runtime wrappers are normal
+Gerbil script sources with ~main~ entrypoints and ~:std/misc/process~ list
+commands, while the build-support materializer only installs launchers and
+configuration data.  Native timeout/link/diagnose behavior also lives in a
+Gerbil runtime source, using ~open-process~, ~process-pid~, ~process-status~,
+and quiet ~kill~ process calls instead of checked-in shell templates.
 
-Gap: search output should explain why ~.ref~, ~.ref/cached~, and
-~apply-slot-spec~ are semantic boundaries.
+The same boundary is now reinforced by ~GERBIL-SCHEME-AGENT-R020~, a composite
+build/runtime quality policy. R020 requires at least two parser-owned evidence
+groups before warning, such as shell helper definitions plus shell-control
+literals in ~build-support/*.ss~, or ~sh -c~ dispatch plus pipeline literals in
+package build code. The live harness also removed the remaining
+~find | xargs~ shell pipeline from ~build.ss~ static artifact refresh; source
+enumeration now happens in Gerbil and ~gxc~ is invoked with list arguments.
+The grouped repair payload has also been tightened: agent repair JSON now
+exposes ~multiPolicy~, ~repairStrategy~, and ordered ~repairPhases~ per finding
+group, so typed-combinator plus comment-quality warnings become one
+structural-first repair boundary instead of independent warning spam.
+The multiple-detection mechanism is now a POO prototype descriptor layer in
+~src/policy/detection.ss~. Parser-owned extractors produce evidence groups;
+=clan/poo/proto= composition extends and overrides descriptor slots for
+extractors, thresholds, required groups, descriptions, and source-backed POO
+pattern metadata.  =GERBIL-SCHEME-AGENT-R020= now carries the
+~poo-prototype-composition~ source owners, quality signals, and witness from
+~src/extensions/poo-patterns.ss~ into the finding details through
+~src/policy/poo-source.ss~, the policy-facing bridge owner. This keeps the
+harness close to the POO design style: extension and override happen by
+composing small evidence/protocol pieces rather than by freezing one large
+policy rule or one fixed threshold.
+Gap: search output now has fixture-level evidence that slot values can be lazy
+and inherited, body-level structural call facts for the core slot-cache
+boundary calls, and rich pattern selectors for the upstream materialization
+entry points.  The remaining gap is graph evidence that connects those upstream
+materialization selectors to fixture-level inheritance/cache facts as explicit
+source-specific edges.
 
 Action:
 
@@ -336,7 +456,12 @@ Action:
   - ~apply-slot-spec~
   - ~.ref~
   - ~.ref/cached~
-- Mark C3 precedence computation as inheritance graph evidence.
+- Status: landed for body-level structural call facts on ~.ref~,
+  ~.ref/cached~, and ~apply-slot-spec~, plus rich pattern materialization
+  selectors for ~instantiate-object!~, ~compute-precedence-list!~, and
+  ~compute-slot-funs!~.
+- Mark C3 precedence computation as inheritance graph evidence.  Status:
+  partially landed through the multi-super fixture and structural query keys.
 - Add agent guidance that slot values can be lazy and inherited, not simply
   literal fields.
 
@@ -344,18 +469,25 @@ Validation:
 
 - ~object.ss~ object kernel fixture.
 - Existing POO slot-cache and C3 snapshots.
+- ~poo-slot-cache-inheritance.ss~ structural owner facts.
+- ~poo-slot-cache-pattern.ss~ selector snapshot and search output assertions.
+- External ~asp gerbil-scheme search pattern poo slot cache computed --view
+  seeds~ facade output.
+- ~GERBIL-SCHEME-AGENT-R019~ package build responsibility policy.
 
 ** P2: classify IO hooks as protocol adapters
 
-Current status: pattern registry has IO/JSON fallback coverage, but parser facts
-should be sharper.
+Current status: parser facts classify IO hooks as protocol/runtime hook family
+members through ~hookFamily:poo-io~ and ~runtimeHook:*~ option tokens.
 
-Gap: hooks such as ~:pr~, ~:wr~, ~:json~, and ~:write-json~ are both runtime
-methods and protocol extension points.
+Gap: hooks such as ~:pr~, ~:wr~, ~:json~, and ~:write-json~ are now classified
+as runtime methods and protocol extension points, but fallback strategy inside
+their bodies is still not represented as structured parser evidence.
 
 Action:
 
 - Emit protocol adapter facts for Gerbil/Gambit hook methods.
+  Status: landed for hook family classification.
 - Distinguish fallback strategy:
   - type-local writer
   - type conversion
@@ -407,24 +539,46 @@ Validation:
 
 * Recommended Implementation Order
 
-1. Stabilize parser facts for ~define-type~ and object slot syntax.
-2. Add focused fixtures from upstream tests:
+Current status: the local harness has completed the report's implementation
+slice that must land before the next source-research round.  Future work should
+start a new research pass only after these receipts stay green.
+
+1. Stabilize parser facts for ~define-type~ and object slot syntax.  Status:
+   landed for the current syntax set.  Option and slot classification now live
+   in parser-owned tables.
+   ~.defgeneric~ option facts also expose semantic ~slotName:~,
+   ~dispatchSource:~, and ~defaultStrategy:~ tokens.  IO hook methods expose
+   ~hookFamily:poo-io~ and concrete ~runtimeHook:~ tokens.
+   Slot-cache inheritance fixtures expose inherited-computed, mixin-override,
+   and default slot operators as structural query keys.  Slot-cache body calls
+   expose ~slot-cache-boundary~ and ~cacheOperation:~ structural query keys.
+2. Add focused fixtures from upstream tests.  Status: landed for the current
+   report scope:
    - object slot syntax fixture
    - MOP generic/class fixture
    - IO hook fixture
+   - slot-cache inheritance fixture
    - RationalDict adapter fixture
    - finite-field descriptor fixture
+   - protocol-conversion fixture
+   - trie representation-invariant fixture
+   - type descriptor-composition fixture
 3. Extend the POO extension registry only after parser facts are available, so
    pattern output references concrete parser-owned evidence instead of only
-   query text.
+   query text.  Status: landed for table/trie/type/rationaldict quality
+   dimensions.
 4. Add compact search snapshots for:
    - POO type definition discovery
    - slot cache/inheritance discovery
    - IO fallback discovery
    - table adapter discovery
    - finite-field real-project discovery
+   Status: structural owner facts and guide exemplars now expose these axes;
+   dedicated snapshot broadening should happen only if a future behavior change
+   needs a new public packet fixture.
 5. Re-run the Gerbil harness tests and one real-project search loop against
-   ~.data/gerbil-poo~.
+   ~.data/gerbil-poo~.  Status: harness gates are the closure gate for this
+   slice; the next research loop should begin after they remain green.
 
 * Engineering Rules From The Source
 

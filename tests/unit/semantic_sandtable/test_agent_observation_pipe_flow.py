@@ -8,7 +8,7 @@ from tools.semantic_sandtable.agent_observations import summarize_agent_messages
 
 def test_asp_probe_is_not_counted_as_asp_command() -> None:
     assert not command_contains_asp('which asp 2>/dev/null || echo "asp not found"')
-    assert command_contains_asp("cd /repo && asp typescript search prime --view seeds .")
+    assert command_contains_asp("cd /repo && asp typescript search prime --workspace . --view seeds")
 
 
 def test_excludes_hook_denied_commands_from_executed_pipe_flow() -> None:
@@ -22,7 +22,7 @@ def test_excludes_hook_denied_commands_from_executed_pipe_flow() -> None:
                         "id": "toolu_prime",
                         "name": "Bash",
                         "input": {
-                            "command": "asp typescript search prime --view seeds ."
+                            "command": "asp typescript search prime --workspace . --view seeds"
                         },
                     }
                 ],
@@ -45,7 +45,7 @@ def test_excludes_hook_denied_commands_from_executed_pipe_flow() -> None:
                         "id": "toolu_repeat_prime",
                         "name": "Bash",
                         "input": {
-                            "command": "asp typescript search prime --view seeds ."
+                            "command": "asp typescript search prime --workspace . --view seeds"
                         },
                     }
                 ],
@@ -74,7 +74,7 @@ def test_excludes_hook_denied_commands_from_executed_pipe_flow() -> None:
                         "input": {
                             "command": (
                                 "asp typescript search pipe 'Effect concurrency Fiber' "
-                                "--view seeds ."
+                                "--workspace . --view seeds"
                             )
                         },
                     }
@@ -106,7 +106,7 @@ def test_excludes_hook_denied_commands_from_executed_pipe_flow() -> None:
     assert pipe_flow["deniedAspCommands"] == 1
     assert pipe_flow["deniedHookFeedback"] == ["repeat-prime-before-pipe"]
     assert pipe_flow["deniedCommands"] == [
-        "asp typescript search prime --view seeds ."
+        "asp typescript search prime --workspace . --view seeds"
     ]
 
 
@@ -121,7 +121,7 @@ def test_counts_non_hook_bash_errors_as_executed_asp_commands() -> None:
                         "id": "toolu_prime_error",
                         "name": "Bash",
                         "input": {
-                            "command": "asp typescript search prime --view seeds ."
+                            "command": "asp typescript search prime --workspace . --view seeds"
                         },
                     }
                 ],
@@ -160,7 +160,7 @@ def test_output_preview_omits_code_emitting_query_records() -> None:
                         "input": {
                             "command": (
                                 "asp typescript search pipe 'Effect concurrency' "
-                                "--view seeds ."
+                                "--workspace . --view seeds"
                             )
                         },
                     },

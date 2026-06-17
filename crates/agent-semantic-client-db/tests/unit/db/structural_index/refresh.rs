@@ -24,6 +24,8 @@ fn structural_index_refresh_plan_is_asp_owned_from_file_hashes() {
     initial_import.file_hashes.push(ClientCacheFileHash {
         path: "src/old.rs".to_string(),
         sha256: "1".repeat(64),
+        byte_len: 0,
+        mtime_ms: 0,
     });
     db.replace_structural_index(&initial_import)
         .expect("replace structural index");
@@ -73,6 +75,8 @@ fn structural_index_refresh_apply_reuses_unchanged_rows_inside_asp() {
     refresh_import.file_hashes.push(ClientCacheFileHash {
         path: "src/unchanged.rs".to_string(),
         sha256: "1".repeat(64),
+        byte_len: 0,
+        mtime_ms: 0,
     });
     let stats = db
         .apply_structural_index_refresh(&refresh_import)

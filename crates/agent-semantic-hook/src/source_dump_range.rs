@@ -1,6 +1,9 @@
 use super::command::semantic_shell_tokens;
 
 pub(crate) fn line_range_source_paths(command: &str) -> Vec<String> {
+    if !could_contain_line_range_source_command(command) {
+        return Vec::new();
+    }
     for paths in [
         piped_sed_line_range_source_paths(command),
         sed_line_range_source_paths(command),
@@ -14,6 +17,13 @@ pub(crate) fn line_range_source_paths(command: &str) -> Vec<String> {
         }
     }
     Vec::new()
+}
+
+fn could_contain_line_range_source_command(command: &str) -> bool {
+    command.contains("sed")
+        || command.contains("awk")
+        || command.contains("head")
+        || command.contains("tail")
 }
 
 fn sed_line_range_source_paths(command: &str) -> Vec<String> {

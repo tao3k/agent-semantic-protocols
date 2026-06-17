@@ -1,6 +1,9 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use agent_semantic_client_core::{CacheGenerationId, ClientCacheFileHash, LanguageId, ProviderId};
+use agent_semantic_client_core::{
+    CacheGenerationId, ClientCacheFileHash, LanguageId, ProviderId, SemanticSchemaId,
+    SemanticSchemaVersion,
+};
 use agent_semantic_client_db::{
     ClientDb, ClientDbSourceIndexImport, ClientDbSourceIndexLookup, ClientDbSourceIndexOwner,
     ClientDbSourceIndexPath, ClientDbSourceIndexQueryKey, ClientDbSourceIndexSelector,
@@ -21,6 +24,13 @@ fn source_index_replaces_and_reads_rust_owned_rows() {
     let owners = db
         .lookup_source_index_owners(&lookup(&root, "gerbil-poo"))
         .expect("lookup source owners");
+    let latest_owners = db
+        .latest_source_index_generation_owners(
+            &root,
+            &SemanticSchemaId::from("agent.semantic-protocols.semantic-source-index"),
+            &SemanticSchemaVersion::from("1"),
+        )
+        .expect("latest source owners");
 
     assert_eq!(stats.owner_count, 1);
     assert_eq!(stats.selector_count, 1);
@@ -31,7 +41,9 @@ fn source_index_replaces_and_reads_rust_owned_rows() {
     assert_eq!(report.source_index_owner_count, 1);
     assert_eq!(report.source_index_selector_count, 1);
     assert_eq!(owners.len(), 1);
+    assert_eq!(latest_owners.len(), 1);
     assert_eq!(owners[0].owner_path.as_str(), "src/lib.ss");
+    assert_eq!(latest_owners[0].owner_path.as_str(), "src/lib.ss");
     assert_eq!(
         owners[0].language_id.as_ref().map(LanguageId::as_str),
         Some("gerbil-scheme")
@@ -51,6 +63,44 @@ fn source_index_replaces_and_reads_rust_owned_rows() {
         ["gerbil-poo", "poo usage"]
     );
     assert!(raw_source_like_columns(&db_path).is_empty());
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn source_index_reuses_generation_when_file_hashes_are_unchanged() {
+    let root = temp_root("source-index-reuse");
+    let db_path = root.join("client.sqlite3");
+    let mut db = ClientDb::open_or_create(&db_path).expect("open db");
+
+    let mut first_import = source_index(&root, "source-main-1", "src/lib.ss");
+    first_import.file_hashes.push(ClientCacheFileHash {
+        path: "@scope/dir/src".to_string(),
+        sha256: "0".repeat(64),
+        byte_len: 1,
+        mtime_ms: 2,
+    });
+    let mut second_import = source_index(&root, "source-main-2", "src/lib.ss");
+    second_import.file_hashes.push(ClientCacheFileHash {
+        path: "@scope/dir/src".to_string(),
+        sha256: "0".repeat(64),
+        byte_len: 1,
+        mtime_ms: 2,
+    });
+    second_import.file_hashes.reverse();
+
+    let first = db
+        .replace_source_index(&first_import)
+        .expect("write first generation");
+    let second = db
+        .replace_source_index(&second_import)
+        .expect("reuse first generation");
+    let summary = db.summary().expect("db summary");
+
+    assert_eq!(first, second);
+    assert_eq!(second.generation_id.as_str(), "source-main-1");
+    assert_eq!(summary.source_index_generation_count, 1);
+    assert_eq!(summary.source_index_owner_count, 1);
+    assert_eq!(summary.source_index_selector_count, 1);
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -86,6 +136,8 @@ fn source_index_lookup_filters_language_scope() {
     source_index.file_hashes.push(ClientCacheFileHash {
         path: "src/lib.py".to_string(),
         sha256: "1".repeat(64),
+        byte_len: 0,
+        mtime_ms: 0,
     });
     source_index.owners.push(ClientDbSourceIndexOwner {
         owner_path: ClientDbSourceIndexPath::from("src/lib.py"),
@@ -145,6 +197,8 @@ fn source_index(
         file_hashes: vec![ClientCacheFileHash {
             path: owner_path.to_string(),
             sha256: "0".repeat(64),
+            byte_len: 0,
+            mtime_ms: 0,
         }],
         owners: vec![ClientDbSourceIndexOwner {
             owner_path: ClientDbSourceIndexPath::from(owner_path),

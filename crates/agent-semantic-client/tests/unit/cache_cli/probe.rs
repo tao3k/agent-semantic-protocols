@@ -15,7 +15,7 @@ fn generation_file_hashes_detect_changed_source() {
     let source_path = root.join("src/lib.rs");
     std::fs::create_dir_all(source_path.parent().expect("source parent")).expect("mkdir");
     std::fs::write(&source_path, b"fn cached() {}\n").expect("write source");
-    let hit = generation_hit(&root, vec![file_hash("src/lib.rs", b"fn cached() {}\n")]);
+    let hit = generation_hit(&root, vec![hash_project_file(&root, "src/lib.rs")]);
 
     assert!(generation_file_hashes_match(&root, &hit));
 
@@ -26,12 +26,47 @@ fn generation_file_hashes_detect_changed_source() {
 }
 
 #[test]
+fn generation_file_hashes_accept_matching_metadata_without_hash_read() {
+    let root = temp_root("matching-metadata");
+    let source_path = root.join("src/lib.rs");
+    std::fs::create_dir_all(source_path.parent().expect("source parent")).expect("mkdir");
+    std::fs::write(&source_path, b"fn cached() {}\n").expect("write source");
+    let metadata = std::fs::metadata(&source_path).expect("source metadata");
+    let mtime_ms = metadata
+        .modified()
+        .expect("source mtime")
+        .duration_since(UNIX_EPOCH)
+        .expect("mtime after epoch")
+        .as_millis()
+        .min(u128::from(u64::MAX)) as u64;
+    let hit = generation_hit(
+        &root,
+        vec![ClientCacheFileHash {
+            path: "src/lib.rs".to_string(),
+            sha256: "0".repeat(64),
+            byte_len: metadata.len(),
+            mtime_ms,
+        }],
+    );
+
+    assert!(generation_file_hashes_match(&root, &hit));
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn generation_without_file_hash_evidence_is_stale() {
     let root = temp_root("missing-evidence");
     let hit = generation_hit(&root, Vec::new());
 
     assert!(!generation_file_hashes_match(&root, &hit));
     let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn retired_file_hashes_without_metadata_fail_to_parse() {
+    let json = r#"[{"path":"src/lib.rs","sha256":"abc123"}]"#;
+
+    assert!(serde_json::from_str::<Vec<ClientCacheFileHash>>(json).is_err());
 }
 
 #[test]
@@ -305,14 +340,6 @@ fn generation_hit(
     }
 }
 
-fn file_hash(path: &str, bytes: &[u8]) -> ClientCacheFileHash {
-    let digest = Sha256::digest(bytes);
-    ClientCacheFileHash {
-        path: path.to_string(),
-        sha256: format!("{digest:x}"),
-    }
-}
-
 fn temp_root(label: &str) -> std::path::PathBuf {
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -410,8 +437,23 @@ fn manifest_from_generation(
 }
 
 fn hash_project_file(root: &std::path::Path, path: &str) -> ClientCacheFileHash {
-    let bytes = std::fs::read(root.join(path)).expect("read source for hash");
-    file_hash(path, &bytes)
+    let source_path = root.join(path);
+    let metadata = std::fs::metadata(&source_path).expect("source metadata");
+    let mtime_ms = metadata
+        .modified()
+        .expect("source mtime")
+        .duration_since(UNIX_EPOCH)
+        .expect("mtime after epoch")
+        .as_millis()
+        .min(u128::from(u64::MAX)) as u64;
+    let bytes = std::fs::read(source_path).expect("read source for hash");
+    let digest = Sha256::digest(&bytes);
+    ClientCacheFileHash {
+        path: path.to_string(),
+        sha256: format!("{digest:x}"),
+        byte_len: metadata.len(),
+        mtime_ms,
+    }
 }
 
 fn write_search_output_artifact(cache_root: &std::path::Path, file_name: &str, stdout: &str) {

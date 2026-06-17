@@ -8,7 +8,8 @@ use agent_semantic_client_core::{
     ProviderId,
 };
 use agent_semantic_client_db::{
-    ClientDb, ClientDbStructuralIndexLookup, ClientDbStructuralQueryKey,
+    ClientDb, ClientDbSourceIndexLookup, ClientDbSourceIndexQueryKey,
+    ClientDbStructuralIndexLookup, ClientDbStructuralQueryKey,
 };
 use serde_json::{Value, json};
 use std::{
@@ -20,9 +21,9 @@ use std::{
 #[test]
 fn cache_usage_lists_flush() {
     let root = temp_root("usage");
-    let error = run_cache(&root, &["unknown".to_string()], false).expect_err("usage");
+    let error = run_cache(&root, None, &["unknown".to_string()], false).expect_err("usage");
 
-    assert!(error.contains("status|import|source-index refresh|invalidate|flush [syntax-rows]"));
+    assert!(error.contains("status|import|source-index refresh|source-index lookup"));
     assert!(error.contains("runtime-source acquire --language-id <id>"));
 }
 
@@ -34,6 +35,7 @@ fn cache_runtime_source_acquire_clones_versioned_source() {
 
     run_cache(
         &root,
+        None,
         &[
             "runtime-source".to_string(),
             "acquire".to_string(),
@@ -58,6 +60,59 @@ fn cache_runtime_source_acquire_clones_versioned_source() {
         std::fs::read_to_string(checkout_dir.join("runtime.ss")).expect("runtime source file"),
         ";; runtime source fixture\n"
     );
+    let cache_root = ClientCacheManifest::inspect_project(&root)
+        .cache_root
+        .expect("cache root");
+    let db = ClientDb::open_read_only_existing(ClientDb::default_path(&cache_root))
+        .expect("open db")
+        .expect("db exists");
+    let owners = db
+        .lookup_source_index_owners(&ClientDbSourceIndexLookup {
+            project_root: checkout_dir.clone(),
+            language_id: Some(LanguageId::from("gerbil-scheme")),
+            query: ClientDbSourceIndexQueryKey::from("runtime"),
+            limit: 8,
+        })
+        .expect("lookup runtime source index");
+    assert_eq!(owners.len(), 1);
+    assert_eq!(owners[0].owner_path.as_str(), "runtime.ss");
+    assert_eq!(
+        owners[0]
+            .provider_id
+            .as_ref()
+            .expect("runtime source index owner")
+            .as_str(),
+        "asp-structural-index"
+    );
+    let gerbil_language = LanguageId::from("gerbil-scheme");
+    run_cache(
+        &root,
+        Some(&gerbil_language),
+        &[
+            "source-index".to_string(),
+            "lookup".to_string(),
+            "--query".to_string(),
+            "runtime".to_string(),
+            "--index-root".to_string(),
+            checkout_dir.display().to_string(),
+        ],
+        false,
+    )
+    .expect("source index lookup hit");
+    run_cache(
+        &root,
+        Some(&gerbil_language),
+        &[
+            "source-index".to_string(),
+            "lookup".to_string(),
+            "--query".to_string(),
+            "definitely-missing-runtime-symbol".to_string(),
+            "--index-root".to_string(),
+            checkout_dir.display().to_string(),
+        ],
+        false,
+    )
+    .expect("source index lookup miss");
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -66,6 +121,7 @@ fn cache_runtime_source_acquire_requires_checkout() {
     let root = temp_root("runtime-source-missing-checkout");
     let error = run_cache(
         &root,
+        None,
         &[
             "runtime-source".to_string(),
             "acquire".to_string(),
@@ -98,7 +154,7 @@ fn cache_flush_repairs_invalid_manifest() {
         .expect("create cache dir");
     std::fs::write(&manifest_path, "{}\n{}\n").expect("write invalid manifest");
 
-    run_cache(&root, &["flush".to_string()], false).expect("flush invalid manifest");
+    run_cache(&root, None, &["flush".to_string()], false).expect("flush invalid manifest");
 
     let manifest = ClientCacheManifest::load_from_path(&manifest_path).expect("repaired manifest");
     assert!(manifest.generations.is_empty());
@@ -129,6 +185,8 @@ fn cache_import_replays_structural_index_artifact_into_db() {
         file_hashes: Some(vec![ClientCacheFileHash {
             path: "src/lib.rs".to_string(),
             sha256: "2".repeat(64),
+            byte_len: 0,
+            mtime_ms: 0,
         }]),
         artifact_ids: Some(vec![CacheArtifactId::from(
             "structural-index/rust-index-import.json",
@@ -156,7 +214,7 @@ fn cache_import_replays_structural_index_artifact_into_db() {
         serde_json::to_vec(&structural_index_packet(&root)).expect("structural packet");
     std::fs::write(&artifact_path, packet_bytes).expect("write structural artifact");
 
-    run_cache(&root, &["import".to_string()], false).expect("cache import");
+    run_cache(&root, None, &["import".to_string()], false).expect("cache import");
 
     let db_path = ClientDb::default_path(&cache_root);
     let db = ClientDb::open_read_only_existing(&db_path)
@@ -200,6 +258,8 @@ fn structural_index_packet(root: &std::path::Path) -> Value {
             {
                 "path": "src/lib.rs",
                 "sha256": "2".repeat(64),
+                "byteLen": 0,
+                "mtimeMs": 0,
                 "source": "provider"
             }
         ],

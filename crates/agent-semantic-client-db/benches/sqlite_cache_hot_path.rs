@@ -211,7 +211,14 @@ fn structural_generation(project_root: &std::path::Path) -> ClientCacheGeneratio
         "cacheStatus": "hit",
         "rawSourceStored": false,
         "requestFingerprint": "fnv64:structural-bench",
-        "fileHashes": [{"path": "src/lib.rs", "sha256": "0000000000000000000000000000000000000000000000000000000000000000"}],
+        "fileHashes": [
+            {
+                "path": "src/lib.rs",
+                "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+                "byteLen": 0,
+                "mtimeMs": 0
+            }
+        ],
         "artifactIds": ["structural-index/structural-bench.json"]
     }))
     .expect("structural generation")
@@ -321,11 +328,15 @@ fn structural_index_packet(
             {
                 "path": "src/lib.rs",
                 "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+                "byteLen": 0,
+                "mtimeMs": 0,
                 "source": "provider"
             },
             {
                 "path": "Cargo.toml",
                 "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+                "byteLen": 0,
+                "mtimeMs": 0,
                 "source": "manifest"
             }
         ],

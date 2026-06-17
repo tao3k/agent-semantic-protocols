@@ -11,7 +11,7 @@ from tools.semantic_sandtable.agent_observation_read_loop import (
 def test_read_loop_counts_language_query_selector_code_duplicates() -> None:
     stats = read_loop_stats(
         [
-            "asp rust query --selector tokio/src/io/blocking.rs:15:35 --code .",
+            "asp rust query --selector tokio/src/io/blocking.rs:15:35 --workspace . --code",
             "asp rust query --selector tokio/src/io/blocking.rs:15:35 --code --context 30 .",
         ]
     )
@@ -35,12 +35,12 @@ def test_read_loop_ignores_metadata_selector_queries() -> None:
 
 
 def test_read_loop_memory_records_selector_fingerprints_and_suppression() -> None:
-    command = "asp rust query --selector src/lib.rs:10:20 --code ."
+    command = "asp rust query --selector src/lib.rs:10:20 --workspace . --code"
     memory = read_loop_memory(
         [
             command,
             "asp rust query --selector src/lib.rs:10:20 --code --context 30 .",
-            "asp rust query --selector src/lib.rs:21:28 --code .",
+            "asp rust query --selector src/lib.rs:21:28 --workspace . --code",
         ],
         [
             {

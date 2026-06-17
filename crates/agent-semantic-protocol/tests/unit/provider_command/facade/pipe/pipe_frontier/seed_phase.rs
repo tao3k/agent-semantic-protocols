@@ -31,7 +31,6 @@ fn search_pipe_graph_turbo_request_adds_owner_anchor_seeds_for_broad_query() {
             ".",
             "--view",
             "graph-turbo-request",
-            ".",
         ])
         .output()
         .expect("run asp rust search pipe graph request");
@@ -110,7 +109,6 @@ fn search_pipe_graph_turbo_request_adds_owner_anchor_seeds_for_broad_query() {
             ".",
             "--view",
             "seeds",
-            ".",
         ])
         .output()
         .expect("run asp rust search pipe seeds view");
@@ -135,7 +133,10 @@ fn search_pipe_graph_turbo_request_adds_owner_anchor_seeds_for_broad_query() {
     assert!(stdout.contains("A1=fd-query("), "{stdout}");
     assert!(stdout.contains("A2=rg-query-set("), "{stdout}");
     assert!(stdout.contains("recommendedNext=A1.fd-query"), "{stdout}");
-    assert!(stdout.contains("nextCommand=asp fd -query"), "{stdout}");
+    assert!(
+        stdout.contains("nextCommand=asp fd -query") && stdout.contains(" --workspace ."),
+        "{stdout}"
+    );
     assert!(!marker.exists(), "search pipe should not spawn provider");
     let _ = std::fs::remove_dir_all(root);
 }

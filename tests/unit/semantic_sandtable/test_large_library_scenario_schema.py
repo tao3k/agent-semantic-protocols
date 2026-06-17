@@ -95,9 +95,10 @@ def _large_library_scenario() -> dict[str, object]:
                     "Api",
                     "--query-set",
                     "Principle",
+                    "--workspace",
+                    ".",
                     "--view",
                     "seeds",
-                    ".",
                 ],
             }
         ],

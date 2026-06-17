@@ -140,8 +140,7 @@ def test_language_evidence_ci_hot_path_stays_core_fast() -> None:
     assert "ASP_LANGUAGE_EVIDENCE_SMOKE_SCOPE=core-fast" in step
     assert "ASP_LANGUAGE_EVIDENCE_LANGUAGES=rust,python,typescript" in step
     assert "language-evidence-smoke-core-fast.json" in step
-    assert "asp plugin install codex ." in step
-    assert "asp hook install --client codex" not in step
+    assert "asp install plugin --codex ." in step
     assert "asp.toml.ci-full-provider" in step
     assert "[providers.gerbil-scheme]" in step
     assert "[providers.julia]" in step

@@ -34,9 +34,10 @@ fn builtin_manifests_include_julia_juliac_provider() {
             "{termArgs}",
             "--surface",
             "owners,tests",
+            "--workspace",
+            "{projectRoot}",
             "--view",
-            "seeds",
-            "{projectRoot}"
+            "seeds"
         ]
     );
     assert_eq!(
@@ -47,9 +48,10 @@ fn builtin_manifests_include_julia_juliac_provider() {
             "ingest",
             "owner",
             "tests",
+            "--workspace",
+            "{projectRoot}",
             "--view",
-            "seeds",
-            "{projectRoot}"
+            "seeds"
         ]
     );
     assert!(

@@ -1,7 +1,8 @@
 use std::path::{Path, PathBuf};
 
 use crate::protocol_activation::{
-    ActivatedProvider, HookActivation, HookRuntime, provider_manifest_digest,
+    ActivatedProvider, HookActivation, HookRuntime, ProviderSearchCapabilities,
+    provider_manifest_digest,
 };
 use crate::provider_manifest::provider_manifests;
 
@@ -140,6 +141,7 @@ fn activated_rust_provider(provider_command_prefix: Vec<String>) -> ActivatedPro
         config_files: manifest.source.default_config_files,
         source_roots: manifest.source.default_source_roots,
         ignored_path_prefixes: manifest.source.default_ignored_path_prefixes,
+        search_capabilities: ProviderSearchCapabilities::default(),
         policy: manifest.policy,
         routes: manifest.routes,
     }

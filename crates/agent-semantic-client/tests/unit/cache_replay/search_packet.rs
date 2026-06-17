@@ -164,6 +164,24 @@ fn search_packet_replay_appends_delegation_hint_after_graph_render() {
     assert!(rendered.contains("maxCommands=4"));
 }
 
+#[test]
+fn search_packet_replay_accepts_colon_alias_graph_lines() {
+    let _guard = GRAPH_RENDER_ENV_LOCK.lock().expect("graph render env lock");
+    let root = temp_root("graph-render-colon-alias");
+    let renderer = write_fake_colon_alias_graph_renderer(&root);
+    let _env = GraphRendererEnvGuard::set(&renderer);
+
+    let packet = json!({"view": "dependency"});
+
+    let rendered =
+        render_search_packet_bytes(Bytes::from(packet.to_string())).expect("rendered packet");
+    let _ = std::fs::remove_dir_all(root);
+    let rendered = std::str::from_utf8(&rendered).expect("utf8 output");
+
+    assert!(rendered.starts_with("[search-dependency]"));
+    assert!(rendered.contains("aliases: graph:{G=search,D=dependency}"));
+}
+
 fn frontier_output_without_hint() -> Bytes {
     Bytes::from_static(
         b"[search-pipe] q=delegation view=seeds alg=seed-frontier\n\
@@ -183,6 +201,17 @@ fn temp_root(name: &str) -> PathBuf {
     let root = std::env::temp_dir().join(format!("agent-semantic-client-{name}-{unique}"));
     std::fs::create_dir_all(&root).expect("create temp root");
     root
+}
+
+fn write_fake_colon_alias_graph_renderer(root: &Path) -> PathBuf {
+    let renderer = root.join("fake-colon-alias-graph-renderer.sh");
+    std::fs::write(
+        &renderer,
+        "#!/bin/sh\ncat >/dev/null\nprintf '%s\\n' '[search-dependency] q=tokio alg=seed-frontier'\nprintf '%s\\n' 'legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next'\nprintf '%s\\n' 'aliases: graph:{G=search,D=dependency}'\nprintf '%s\\n' 'D=dependency:pkg(tokio)!dependency'\nprintf '%s\\n' 'G>{D:uses}'\nprintf '%s\\n' 'rank=D frontier=D.dependency'\n",
+    )
+    .expect("write fake graph renderer");
+    make_executable(&renderer);
+    renderer
 }
 
 fn write_fake_graph_renderer(root: &Path) -> PathBuf {

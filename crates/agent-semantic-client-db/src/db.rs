@@ -7,7 +7,7 @@ use agent_semantic_client_core::{
     CacheArtifactId, CacheExportMethod, CacheGenerationId, ClientCacheFileHash,
     ClientCacheGeneration, ClientCacheManifest, ClientDbStatus, LanguageId, ProviderId,
 };
-use rusqlite::{Connection, OpenFlags, OptionalExtension, params};
+use rusqlite::{Connection, OpenFlags, OptionalExtension, params, params_from_iter};
 
 use crate::pragmas::{
     ClientDbRuntimePragmas, configure_readable_connection, configure_writable_connection,
@@ -410,6 +410,52 @@ impl ClientDb {
         }
         tx.commit()
             .map_err(|error| format!("failed to commit cache generation import: {error}"))?;
+        Ok(())
+    }
+
+    /// Clear replayable cache generations before importing a rebuilt manifest universe.
+    pub fn clear_cache_generations(&mut self) -> Result<(), String> {
+        let tx = self.conn.transaction().map_err(|error| {
+            format!(
+                "failed to start agent semantic client db reset transaction at {}: {error}",
+                self.db_path.display()
+            )
+        })?;
+        for table in [
+            "artifact_event",
+            "syntax_query_generation",
+            "structural_index_generation",
+            "cache_generations",
+        ] {
+            tx.execute(&format!("DELETE FROM {table}"), [])
+                .map_err(|error| format!("failed to clear client db table {table}: {error}"))?;
+        }
+        tx.commit()
+            .map_err(|error| format!("failed to commit client db cache reset: {error}"))?;
+        Ok(())
+    }
+
+    /// Delete DB-only cache generations that are not present in the current manifest.
+    pub fn prune_cache_generations_to_manifest(
+        &mut self,
+        manifest: &ClientCacheManifest,
+    ) -> Result<(), String> {
+        if manifest.generations.is_empty() {
+            return self.clear_cache_generations();
+        }
+        let generation_ids = manifest
+            .generations
+            .iter()
+            .map(|generation| generation.generation_id.as_str())
+            .collect::<Vec<_>>();
+        let placeholders = std::iter::repeat_n("?", generation_ids.len())
+            .collect::<Vec<_>>()
+            .join(", ");
+        let sql =
+            format!("DELETE FROM cache_generations WHERE generation_id NOT IN ({placeholders})");
+        self.conn
+            .execute(&sql, params_from_iter(generation_ids))
+            .map_err(|error| format!("failed to prune db-only cache generations: {error}"))?;
         Ok(())
     }
 

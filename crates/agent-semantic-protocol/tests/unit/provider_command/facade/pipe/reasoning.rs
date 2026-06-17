@@ -29,9 +29,10 @@ fn reasoning_owner_query_is_asp_owned_and_does_not_spawn_provider() {
             "src/lib.rs",
             "--query",
             "render_fast_prime_search",
+            "--workspace",
+            ".",
             "--view",
             "seeds",
-            ".",
         ])
         .output()
         .expect("run asp rust search reasoning owner-query");
@@ -183,9 +184,10 @@ fn owner_tests_and_owner_items_query_are_asp_owned() {
             "owner-tests",
             "--owner",
             "src/lib.rs",
+            "--workspace",
+            ".",
             "--view",
             "seeds",
-            ".",
         ])
         .output()
         .expect("run asp rust search reasoning owner-tests");
@@ -211,9 +213,10 @@ fn owner_tests_and_owner_items_query_are_asp_owned() {
             "items",
             "--query",
             "render_fast_prime_search",
+            "--workspace",
+            ".",
             "--view",
             "seeds",
-            ".",
         ])
         .output()
         .expect("run asp rust search owner items");
@@ -266,9 +269,10 @@ fn search_failure_frontier_is_asp_owned_and_points_to_hot_blocks() {
             "failure",
             "--message",
             "cache_cli::writeback::prompt_output_replay expected hit actual miss request_fingerprint file_hash write_prompt_output_artifact load_prompt_output_artifact",
+            "--workspace",
+            ".",
             "--view",
             "seeds",
-            ".",
         ])
         .output()
         .expect("run asp rust search failure");
@@ -355,9 +359,10 @@ fn search_failure_from_last_check_reads_cache_artifact() {
             "search",
             "failure",
             "--from-last-check",
+            "--workspace",
+            ".",
             "--view",
             "seeds",
-            ".",
         ])
         .output()
         .expect("run asp rust search failure --from-last-check");

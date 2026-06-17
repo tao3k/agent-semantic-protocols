@@ -25,11 +25,11 @@ use agent_semantic_hook::{
     discover_activation_path, has_recorded_subagent_context, load_activation, load_client_config,
     load_or_refresh_default_activation, load_or_sync_activation, merge_claude_settings,
     merge_hook_trigger_prompt_document, parse_payload, record_active_context,
-    remove_incompatible_hook_event_state, remove_legacy_codex_hook_cache_files,
+    remove_incompatible_hook_event_state, remove_retired_codex_hook_cache_files,
     render_hook_trigger_prompt_document, render_platform_response, runtime_profiles_for_activation,
     runtime_profiles_for_runtime, subagent_deny_message, validate_claude_settings_json,
 };
-use agent_semantic_runtime::ensure_project_hook_cache_dir;
+use agent_semantic_runtime::{project_activation_path, project_state_paths};
 use hook_runtime_codex_plugin::{codex_plugin_scope_arg, install_codex_plugin_hooks};
 use hook_runtime_skill::install_agent_semantic_protocols_skill;
 use hook_runtime_stdin::read_hook_stdin_bounded;
@@ -54,8 +54,27 @@ fn run(args: Vec<String>) -> Result<(), String> {
         Some("hook") => run_hook(&args[1..]),
         Some("doctor") => run_doctor(&args[1..]),
         Some("install") => run_install(&args[1..]),
-        _ => Err("usage: asp hook <install|doctor|hook> --client codex [PROJECT_ROOT]".to_string()),
+        Some("paths") => run_paths(&args[1..]),
+        _ => Err(
+            "usage: asp hook <install|doctor|paths|hook> --client codex [PROJECT_ROOT]".to_string(),
+        ),
     }
+}
+
+fn run_paths(args: &[String]) -> Result<(), String> {
+    let project_root = project_root_arg(args)?;
+    let paths = project_state_paths(&project_root)?;
+    println!("projectRoot={}", project_root.display());
+    println!("protocolHome={}", paths.protocol_home.display());
+    println!("hookCacheDir={}", paths.hook_cache_dir.display());
+    println!("hookStateDir={}", paths.hook_state_dir.display());
+    println!("activation={}", paths.activation_path.display());
+    println!("clientCacheDir={}", paths.client_cache_dir.display());
+    println!("artifactsDir={}", paths.artifacts_dir.display());
+    println!("runtimeHome={}", paths.runtime_home.display());
+    println!("runtimeBinDir={}", paths.runtime_bin_dir.display());
+    println!("providerLockDir={}", paths.provider_lock_dir.display());
+    Ok(())
 }
 
 fn run_hook(args: &[String]) -> Result<(), String> {
@@ -669,7 +688,7 @@ fn run_install(args: &[String]) -> Result<(), String> {
     let client = flag_value(args, "--client").unwrap_or("codex");
     if client == "codex" {
         return Err(
-            "Codex plugin installation uses `asp plugin install codex [PROJECT_ROOT]`; `asp hook install --client codex` is not supported because plugin installs and legacy hook installs are separate command surfaces."
+            "Codex plugin installation uses `asp install plugin --codex [PROJECT_ROOT]`; direct hook configuration is not a Codex surface."
                 .to_string(),
         );
     }
@@ -679,7 +698,7 @@ fn run_install(args: &[String]) -> Result<(), String> {
 pub(super) fn run_codex_plugin_install_args(args: &[String]) -> Result<(), String> {
     if optional_flag_value(args, "--client")?.is_some() {
         return Err(
-            "asp plugin install codex does not accept --client; use `asp plugin install codex [PROJECT_ROOT]`"
+            "asp install plugin --codex does not accept --client; use `asp install plugin --codex [PROJECT_ROOT]`"
                 .to_string(),
         );
     }
@@ -700,9 +719,9 @@ fn run_install_for_client(
     timings.mark("args");
     let binary_install = ensure_protocol_binary_installed_for_path()?;
     timings.mark("binary");
-    remove_legacy_codex_hook_cache_files(&project_root)?;
-    timings.mark("legacy-cleanup");
-    let activation_path = ensure_project_hook_cache_dir(&project_root)?.join("activation.json");
+    remove_retired_codex_hook_cache_files(&project_root)?;
+    timings.mark("retired-cleanup");
+    let activation_path = project_activation_path(&project_root)?;
     let activation_sync = load_or_refresh_default_activation(&activation_path, &project_root)?;
     let activation_status = activation_sync.status;
     let activation = activation_sync.activation;

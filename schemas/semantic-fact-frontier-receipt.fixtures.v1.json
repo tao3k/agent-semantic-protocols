@@ -241,7 +241,7 @@
           "cacheStatus": "hit",
           "graphTurboBackend": "scipy-csr",
           "graphTurboCacheKey": "sha256:20fb015516e5",
-          "searchCommand": "asp python search fzf 'semantic-fact-frontier-receipt relationChannels PPR' owner tests --view seeds .",
+          "searchCommand": "asp python search fzf 'semantic-fact-frontier-receipt relationChannels PPR' owner tests --workspace . --view seeds",
           "readCommand": "asp python query --from-hook direct-source-read --selector tests/unit/test_semantic_fact_frontier_receipt_schema.py:9-29 --code ."
         }
       }

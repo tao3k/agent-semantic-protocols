@@ -24,14 +24,14 @@ fn args(values: &[&str]) -> Vec<String> {
 }
 
 #[test]
-fn install_and_doctor_delegate_to_hook_runtime() {
-    assert_eq!(
-        hook::forwarded_hook_args(&args(&["install", "--client", "codex", "."])).unwrap(),
-        args(&["install", "--client", "codex", "."])
-    );
+fn doctor_and_paths_delegate_to_hook_runtime() {
     assert_eq!(
         hook::forwarded_hook_args(&args(&["doctor", "--client", "codex", "."])).unwrap(),
         args(&["doctor", "--client", "codex", "."])
+    );
+    assert_eq!(
+        hook::forwarded_hook_args(&args(&["paths", "."])).unwrap(),
+        args(&["paths", "."])
     );
 }
 
@@ -41,15 +41,18 @@ fn help_requests_do_not_forward_to_hook_runtime() {
         assert!(hook::is_help_request(&args(values)), "{values:?}");
     }
     for values in [
-        &["install", "--help"][..],
         &["doctor", "-h"][..],
+        &["paths", "--help"][..],
         &["event", "--help"][..],
     ] {
         assert!(!hook::is_help_request(&args(values)), "{values:?}");
     }
-    for values in [&["install", "--help"][..], &["doctor", "-h"][..]] {
+    for values in [&["doctor", "-h"][..], &["paths", "--help"][..]] {
         assert!(hook::is_lifecycle_help_request(&args(values)), "{values:?}");
     }
+    assert!(!hook::is_lifecycle_help_request(&args(&[
+        "install", "--help"
+    ])));
     assert!(!hook::is_lifecycle_help_request(&args(&[
         "event", "--help"
     ])));
@@ -59,7 +62,7 @@ fn help_requests_do_not_forward_to_hook_runtime() {
 }
 
 #[test]
-fn top_level_install_help_is_non_mutating_provider_surface() {
+fn top_level_install_help_is_non_mutating_unified_surface() {
     let root = temp_project_root("top-level-install-help");
     let output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .current_dir(&root)
@@ -72,7 +75,11 @@ fn top_level_install_help_is_non_mutating_provider_surface() {
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("usage: asp install provider <language> --rev <rev>"),
+        stderr.contains("usage: asp install hook --client claude"),
+        "stderr: {stderr}"
+    );
+    assert!(
+        stderr.contains("asp install language <language> --rev <rev>"),
         "stderr: {stderr}"
     );
     assert!(!root.join(".codex/config.toml").exists());
@@ -85,15 +92,15 @@ fn top_level_install_help_is_non_mutating_provider_surface() {
 }
 
 #[test]
-fn hook_install_help_is_non_mutating() {
-    let root = temp_project_root("hook-install-help");
+fn install_hook_help_is_non_mutating() {
+    let root = temp_project_root("install-hook-help");
     let output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .current_dir(&root)
         .env("PATH", "")
         .env("PRJ_CACHE_HOME", root.join(".cache"))
-        .args(["hook", "install", "--help"])
+        .args(["install", "hook", "--help"])
         .output()
-        .expect("run asp hook install --help");
+        .expect("run asp install hook --help");
 
     assert!(
         output.status.success(),
@@ -101,12 +108,37 @@ fn hook_install_help_is_non_mutating() {
         String::from_utf8_lossy(&output.stderr)
     );
     assert!(
-        String::from_utf8_lossy(&output.stdout).contains("usage: asp hook install --client claude"),
+        String::from_utf8_lossy(&output.stdout).contains("usage: asp install hook --client claude"),
         "stdout: {}",
         String::from_utf8_lossy(&output.stdout)
     );
+    assert!(!root.join(".codex/config.toml").exists());
     assert!(
-        String::from_utf8_lossy(&output.stdout).contains("asp plugin install codex"),
+        !root
+            .join(".cache/agent-semantic-protocol/hooks/activation.json")
+            .exists()
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn install_plugin_codex_help_is_non_mutating() {
+    let root = temp_project_root("install-plugin-codex-help");
+    let output = Command::new(env!("CARGO_BIN_EXE_asp"))
+        .current_dir(&root)
+        .env("PATH", "")
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args(["install", "plugin", "--codex", "--help"])
+        .output()
+        .expect("run asp install plugin --codex --help");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stdout).contains("usage: asp install plugin --codex"),
         "stdout: {}",
         String::from_utf8_lossy(&output.stdout)
     );

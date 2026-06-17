@@ -152,7 +152,7 @@ fn selector_code_query_uses_code_export_method_not_direct_source_read() {
 }
 
 #[test]
-fn legacy_from_hook_direct_source_read_keeps_audit_method() {
+fn split_from_hook_direct_source_read_keeps_audit_method() {
     let request = ClientRequest::new(ClientMethod::Query, ".").with_forwarded_args(vec![
         "--from-hook".to_string(),
         "direct-source-read".to_string(),

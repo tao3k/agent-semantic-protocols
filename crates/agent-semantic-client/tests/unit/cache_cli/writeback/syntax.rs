@@ -12,6 +12,8 @@ fn syntax_query_generation_identity_uses_ast_abi_not_packet_bytes_or_argv() {
     let file_hashes = vec![ClientCacheFileHash {
         path: "src/lib.rs".to_string(),
         sha256: "abc123".to_string(),
+        byte_len: 0,
+        mtime_ms: 0,
     }];
     let compact_packet = syntax_packet("(function_item name: (identifier) @function.name)", 1);
     let pretty_packet = syntax_packet("(function_item\n  name: (identifier) @function.name)", 99);
@@ -50,10 +52,14 @@ fn syntax_query_generation_identity_changes_when_source_hash_changes() {
     let first_hashes = vec![ClientCacheFileHash {
         path: "src/lib.rs".to_string(),
         sha256: "abc123".to_string(),
+        byte_len: 0,
+        mtime_ms: 0,
     }];
     let changed_hashes = vec![ClientCacheFileHash {
         path: "src/lib.rs".to_string(),
         sha256: "def456".to_string(),
+        byte_len: 0,
+        mtime_ms: 0,
     }];
 
     let first_identity = syntax_query_generation_identity(

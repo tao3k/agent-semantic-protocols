@@ -234,9 +234,10 @@ fn cli_install_writes_executable_python_ingest_route() {
             "ingest",
             "items",
             "tests",
+            "--workspace",
+            "{projectRoot}",
             "--view",
-            "seeds",
-            "{projectRoot}"
+            "seeds"
         ]
     );
     let _ = std::fs::remove_dir_all(&root);

@@ -287,10 +287,10 @@ source reads.
 The prompt-facing surface stays CLI-first:
 
 #+begin_src text
-asp <language> search prime --view seeds .
+asp <language> search prime --workspace . --view seeds
 asp <language> search owner <owner> items --query <term> .
 asp <language> query <owner-or-selector> --term <term> .
-asp <language> query --selector <exact> --code .
+asp <language> query --selector <exact> --workspace . --code
 #+end_src
 
 Future relation/flow commands may be added only after the schema and provider
@@ -443,7 +443,7 @@ A provider may consume CodeQL extension evidence only after:
 - M5 starts in the client runtime artifact gate: =relation-plan/*.json=,
   =flow-lite/*.json=, and =codeql-evidence/*.json= are recognized as structured
   evidence/provenance families, while =prompt-output/*.txt= remains only a
-  legacy direct-stdout replay surface and is not used when structured evidence
+  retired direct-stdout replay surface and is not used when structured evidence
   is present.
 - M6 starts with the cold path only: shared schema fixtures validate both a
   metadata-only CodeQL evidence artifact with normalized rows and a

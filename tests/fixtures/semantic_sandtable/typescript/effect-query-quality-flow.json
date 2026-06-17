@@ -91,8 +91,8 @@
         },
         "expectedAspFlow": {
           "canonicalCommands": [
-            "asp typescript search prime --view seeds .",
-            "asp typescript search pipe 'Effect concurrency Fiber Queue Stream Scope' --view seeds ."
+            "asp typescript search prime --workspace . --view seeds",
+            "asp typescript search pipe 'Effect concurrency Fiber Queue Stream Scope' --workspace . --view seeds"
           ],
           "requiredStages": [
             "search-prime",
@@ -151,9 +151,10 @@
         "typescript",
         "search",
         "prime",
+        "--workspace",
+        ".",
         "--view",
-        "seeds",
-        "."
+        "seeds"
       ],
       "timeoutSeconds": 20,
       "expect": {
@@ -181,9 +182,10 @@
         "search",
         "pipe",
         "Effect concurrency Fiber Queue Stream Scope",
+        "--workspace",
+        ".",
         "--view",
-        "seeds",
-        "."
+        "seeds"
       ],
       "timeoutSeconds": 20,
       "expect": {
@@ -222,7 +224,7 @@
           "A1=owner-items(owner=packages/effect/src/Fiber.ts,query=concurrency|Fiber|Queue|Stream|Scope)!owner-items",
           "actionFrontier=A1.owner-items,A2.rg-query,A3.treesitter-query",
           "recommendedNext=A1.owner-items",
-          "nextCommand=asp typescript search owner packages/effect/src/Fiber.ts items --query 'concurrency|Fiber|Queue|Stream|Scope' --view seeds .",
+          "nextCommand=asp typescript search owner packages/effect/src/Fiber.ts items --query 'concurrency|Fiber|Queue|Stream|Scope' --workspace . --view seeds",
           "subagentHint=profile=asp-explorer decision=advisory runtimeOwner=agent-client modelClass=cheap readOnly=true noCode=true targetActions=A1.owner-items,A2.rg-query,A3.treesitter-query maxCommands=8 maxTurns=1 receipt=search-subagent(role,evidence,missing,next,risk) reason=query-selector-low-confidence",
           "llmHint=after-fd-query-combine-owner-candidates-with-declaration-names-before-rg-query",
           "omit=source,full-candidate-list,raw-finder-output,generated-files,long-field-signatures",

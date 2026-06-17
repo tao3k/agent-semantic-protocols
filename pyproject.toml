@@ -74,6 +74,7 @@ addopts = [
 ]
 pythonpath = [
   "packages/python/asp_graph_turbo/src",
+  "packages/python/asp_memory_engine/src",
   "packages/python/tools/src",
   "packages/python/src",
   "tests",

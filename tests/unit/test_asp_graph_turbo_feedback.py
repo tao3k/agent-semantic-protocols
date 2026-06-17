@@ -432,9 +432,9 @@ def _sandtable_report() -> dict[str, object]:
                             },
                             "pipeFlow": {
                                 "commands": [
-                                    "asp python search pipe feature --view seeds .",
-                                    "asp python query --selector src/good.py:10:20 --code .",
-                                    "asp python query --selector src/bad.py:10:20 --code .",
+                                    "asp python search pipe feature --workspace . --view seeds",
+                                    "asp python query --selector src/good.py:10:20 --workspace . --code",
+                                    "asp python query --selector src/bad.py:10:20 --workspace . --code",
                                 ]
                             },
                         },

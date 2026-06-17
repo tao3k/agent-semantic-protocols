@@ -685,7 +685,7 @@ fn search_flow_feedback_message(language_id: &str, feedback_kind: &str, heading:
             "Follow the previous `recommendedNext` / `nextCommand` from the pipe output."
                 .to_string(),
             format!(
-                "Use `asp {language_id} search owner <owner-path> items --query '<symbol-or-a|b|c>' --view seeds .`, `asp fd -query '<owner-or-path-term-a|term-b|term-c>' <scope>`, `asp rg -query '<content-or-error-term-a|term-b|term-c>' <scope>`, or `asp {language_id} query --selector <path:start-end> --workspace <workspace-root> {projection_flag}`."
+                "Use `asp {language_id} search owner <owner-path> items --query '<symbol-or-a|b|c>' --workspace . --view seeds`, `asp fd -query '<owner-or-path-term-a|term-b|term-c>' <scope>`, `asp rg -query '<content-or-error-term-a|term-b|term-c>' <scope>`, or `asp {language_id} query --selector <path:start-end> --workspace <workspace-root> {projection_flag}`."
             ),
             String::new(),
             "## Rules".to_string(),

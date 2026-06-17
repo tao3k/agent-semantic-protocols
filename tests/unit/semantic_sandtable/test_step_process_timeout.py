@@ -16,7 +16,7 @@ def test_timeout_keeps_partial_stdout_observations() -> None:
         "content": [
             {
                 "name": "Bash",
-                "input": {"command": "asp rust search prime --view seeds ."},
+                "input": {"command": "asp rust search prime --workspace . --view seeds"},
             }
         ],
     }

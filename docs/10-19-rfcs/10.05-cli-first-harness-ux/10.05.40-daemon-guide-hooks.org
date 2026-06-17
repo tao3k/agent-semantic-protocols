@@ -583,8 +583,8 @@ same =recommendedNext= or =nextCommand= sequentially.
 
 ASP may install one client-native custom subagent profile so the client has a
 stable, low-cost read-only search worker available when it chooses to delegate.
-This is a runtime adapter, not a provider scheduler: =asp hook install --client
-codex= SHOULD create =.codex/agents/asp-explorer.toml=, and =asp hook install
+This is a runtime adapter, not a provider scheduler: =asp install hook --client
+codex= SHOULD create =.codex/agents/asp-explorer.toml=, and =asp install hook
 --client claude= SHOULD create =.claude/agents/asp-explorer.md=.  The installer
 SHOULD remove stale generated role-specific profiles from earlier revisions,
 such as =asp-explorer-owner=, =asp-explorer-rg=, and

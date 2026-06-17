@@ -69,7 +69,7 @@ fn diagnostic_commands_do_not_require_activation() {
                 if stdout.contains("status=degraded") {
                     assert!(stdout.contains("activation=missing"), "{stdout}");
                     assert!(
-                        stdout.contains("|cmd install=asp hook install --client codex ."),
+                        stdout.contains("|cmd install=asp install plugin --codex ."),
                         "{stdout}"
                     );
                 } else {
@@ -140,9 +140,10 @@ fn provider_language_facades_forward_language_like_provider_args() {
             "--language",
             "owner",
             "tests",
+            "--workspace",
+            ".",
             "--view",
             "seeds",
-            ".",
         ])
         .output()
         .expect("run asp rust search");

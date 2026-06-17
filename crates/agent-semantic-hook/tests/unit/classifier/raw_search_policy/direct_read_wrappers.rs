@@ -201,9 +201,10 @@ fn rtk_read_source_globs_route_to_provider_query_not_owner() {
             "packages/*/src/**/*.py",
             "--surface",
             "owners,tests",
+            "--workspace",
+            ".",
             "--view",
-            "seeds",
-            "."
+            "seeds"
         ]
     );
 }

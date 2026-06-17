@@ -1,7 +1,10 @@
-use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+
+use agent_semantic_runtime::{
+    project_cache_home_for_roots, project_local_activation_path,
+    project_local_client_cache_manifest_path, project_root_for_activation_path,
+};
 
 pub(super) fn activation_project_root(activation_path: &Path, project_root: &str) -> PathBuf {
     let configured = PathBuf::from(project_root);
@@ -17,20 +20,7 @@ pub(super) fn client_backend_cache_home(
     activation_root: &Path,
     project_root: &Path,
 ) -> Result<PathBuf, String> {
-    if let Some(cache_home) =
-        git_toplevel_cache_home(project_root).or_else(|| git_toplevel_cache_home(activation_root))
-    {
-        return Ok(cache_home);
-    }
-    env::var_os("PRJ_CACHE_HOME")
-        .map(PathBuf::from)
-        .map(canonical_or_existing)
-        .ok_or_else(|| {
-            format!(
-                "no git toplevel was found for {}; set PRJ_CACHE_HOME only when running outside a git worktree",
-                project_root.display()
-            )
-        })
+    project_cache_home_for_roots(activation_root, project_root)
 }
 
 pub(super) fn effective_project_root_and_args(
@@ -133,13 +123,12 @@ fn workspace_bounded_root(root: PathBuf, activation_root: &Path) -> Result<PathB
 }
 
 pub(super) fn activation_storage_root(activation_path: &Path) -> PathBuf {
-    activation_path
-        .parent()
-        .and_then(Path::parent)
-        .and_then(Path::parent)
-        .and_then(Path::parent)
-        .map(Path::to_path_buf)
-        .unwrap_or_else(|| PathBuf::from("."))
+    project_root_for_activation_path(activation_path).unwrap_or_else(|| {
+        activation_path
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .to_path_buf()
+    })
 }
 
 fn explicit_positional_project_root(
@@ -209,13 +198,8 @@ fn first_query_owner_arg_index(args: &[String]) -> Option<usize> {
 }
 
 fn positional_project_root(language_id: &str, path: &Path, check_command: bool) -> Option<PathBuf> {
-    if path
-        .join(".cache/agent-semantic-protocol/hooks/activation.json")
-        .is_file()
-        || path
-            .join(".cache/agent-semantic-protocol/client/cache-manifest.json")
-            .is_file()
-    {
+    let activation_path = project_local_activation_path(path);
+    if activation_path.is_file() || project_local_client_cache_manifest_path(path).is_file() {
         return Some(canonical_or_existing(path.to_path_buf()));
     }
     if check_command && path.is_dir() {
@@ -274,40 +258,8 @@ fn option_takes_value(arg: &str) -> bool {
 }
 
 fn invocation_root_is_provider_project(language_id: &str, invocation_root: &Path) -> bool {
-    invocation_root
-        .join(".cache/agent-semantic-protocol/hooks/activation.json")
-        .is_file()
+    project_local_activation_path(invocation_root).is_file()
         || language_project_marker_root(language_id, invocation_root).is_some()
-}
-
-fn git_toplevel_cache_home(project_root: &Path) -> Option<PathBuf> {
-    git_toplevel(project_root).map(|root| canonical_or_existing(root.join(".cache")))
-}
-
-fn git_toplevel(project_root: &Path) -> Option<PathBuf> {
-    if let Some(root) = project_root
-        .ancestors()
-        .find(|ancestor| ancestor.join(".git").exists())
-    {
-        return Some(canonical_or_existing(root.to_path_buf()));
-    }
-    let output = Command::new("git")
-        .arg("-C")
-        .arg(project_root)
-        .arg("rev-parse")
-        .arg("--show-toplevel")
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let path = String::from_utf8(output.stdout).ok()?;
-    let path = path.trim();
-    if path.is_empty() {
-        None
-    } else {
-        Some(canonical_or_existing(PathBuf::from(path)))
-    }
 }
 
 fn canonical_or_existing(path: PathBuf) -> PathBuf {

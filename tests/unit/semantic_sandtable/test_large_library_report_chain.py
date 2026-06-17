@@ -152,9 +152,10 @@ def _scenario(language: str) -> dict[str, object]:
                     "fzf",
                     "--query-set",
                     "feature",
+                    "--workspace",
+                    ".",
                     "--view",
                     "seeds",
-                    ".",
                 ],
             }
         ],

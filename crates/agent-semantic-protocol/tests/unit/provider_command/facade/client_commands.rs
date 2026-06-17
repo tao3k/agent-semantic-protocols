@@ -20,7 +20,7 @@ fn top_level_guide_lists_active_language_contract_and_provider_axes() {
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(
-        stdout.contains("|cmd guide=asp <language> guide ."),
+        stdout.contains("|cmd guide=asp <language> guide --workspace ."),
         "{stdout}"
     );
     assert!(
@@ -28,7 +28,7 @@ fn top_level_guide_lists_active_language_contract_and_provider_axes() {
         "{stdout}"
     );
     assert!(
-        stdout.contains("provider-guide-contract=run asp <language> guide ."),
+        stdout.contains("provider-guide-contract=run asp <language> guide --workspace ."),
         "{stdout}"
     );
     assert!(

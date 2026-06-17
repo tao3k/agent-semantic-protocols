@@ -48,9 +48,10 @@ def _action_row(group: Mapping[str, Any]) -> dict[str, object]:
             "owner",
             owner,
             "items",
+            "--workspace",
+            project_root_arg,
             "--view",
             "seeds",
-            project_root_arg,
         )
     )
     return {
@@ -71,7 +72,7 @@ def _action_row(group: Mapping[str, Any]) -> dict[str, object]:
         "profile": "owner-query",
         "preferredCommand": preferred_command,
         "avoidCommand": (
-            f"asp {language} search owner {owner} <same-scope> {project_root_arg}"
+            f"asp {language} search owner {owner} <same-scope> --workspace {project_root_arg}"
         ),
         "nextAction": (
             "return owner-local hot items and covering tests with the first owner frontier"

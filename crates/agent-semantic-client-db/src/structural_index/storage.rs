@@ -284,7 +284,7 @@ fn write_owners_from(
     tx: &Transaction<'_>,
     import: &ClientDbStructuralIndexImport,
     included_paths: Option<&BTreeSet<String>>,
-    ordinal_offset: usize,
+    ordinal_start: usize,
 ) -> Result<usize, String> {
     let mut insert_owner = tx
         .prepare(
@@ -315,7 +315,7 @@ fn write_owners_from(
         insert_owner
             .execute(params![
                 import.generation_id.as_str(),
-                usize_to_i64(ordinal_offset + owner_ordinal),
+                usize_to_i64(ordinal_start + owner_ordinal),
                 owner.owner_path.as_str(),
                 owner.owner_kind.as_str(),
                 owner.source_authority.as_str(),
@@ -341,7 +341,7 @@ fn write_symbols_from(
     tx: &Transaction<'_>,
     import: &ClientDbStructuralIndexImport,
     included_paths: Option<&BTreeSet<String>>,
-    ordinal_offset: usize,
+    ordinal_start: usize,
 ) -> Result<usize, String> {
     let mut insert_symbol = tx
         .prepare(
@@ -376,7 +376,7 @@ fn write_symbols_from(
         insert_symbol
             .execute(params![
                 import.generation_id.as_str(),
-                usize_to_i64(ordinal_offset + symbol_ordinal),
+                usize_to_i64(ordinal_start + symbol_ordinal),
                 symbol.owner_path.as_str(),
                 symbol.name.as_str(),
                 symbol.kind.as_str(),
@@ -408,7 +408,7 @@ fn write_dependencies_from(
     tx: &Transaction<'_>,
     import: &ClientDbStructuralIndexImport,
     included_paths: Option<&BTreeSet<String>>,
-    ordinal_offset: usize,
+    ordinal_start: usize,
 ) -> Result<usize, String> {
     let mut insert_dependency = tx
         .prepare(
@@ -461,7 +461,7 @@ fn write_dependencies_from(
         insert_dependency
             .execute(params![
                 import.generation_id.as_str(),
-                usize_to_i64(ordinal_offset + usage_ordinal),
+                usize_to_i64(ordinal_start + usage_ordinal),
                 usage.owner_path.as_str(),
                 usage.package_name.as_str(),
                 usage
@@ -529,13 +529,18 @@ fn copy_unchanged_rows(
     tx: &Transaction<'_>,
     import: &ClientDbStructuralIndexImport,
     previous_generation_id: &str,
-    owner_offset: usize,
-    symbol_offset: usize,
-    dependency_usage_offset: usize,
+    owner_ordinal_start: usize,
+    symbol_ordinal_start: usize,
+    dependency_usage_ordinal_start: usize,
 ) -> Result<(), String> {
-    copy_unchanged_owners(tx, import, previous_generation_id, owner_offset)?;
-    copy_unchanged_symbols(tx, import, previous_generation_id, symbol_offset)?;
-    copy_unchanged_dependencies(tx, import, previous_generation_id, dependency_usage_offset)?;
+    copy_unchanged_owners(tx, import, previous_generation_id, owner_ordinal_start)?;
+    copy_unchanged_symbols(tx, import, previous_generation_id, symbol_ordinal_start)?;
+    copy_unchanged_dependencies(
+        tx,
+        import,
+        previous_generation_id,
+        dependency_usage_ordinal_start,
+    )?;
     tx.execute("DELETE FROM structural_index_refresh_path", [])
         .map_err(|error| format!("failed to clear structural index refresh path table: {error}"))?;
     Ok(())
@@ -545,7 +550,7 @@ fn copy_unchanged_owners(
     tx: &Transaction<'_>,
     import: &ClientDbStructuralIndexImport,
     previous_generation_id: &str,
-    ordinal_offset: usize,
+    ordinal_start: usize,
 ) -> Result<(), String> {
     tx.execute(
         "INSERT INTO structural_index_owner (
@@ -575,7 +580,7 @@ fn copy_unchanged_owners(
         ORDER BY owner_ordinal",
         params![
             import.generation_id.as_str(),
-            usize_to_i64(ordinal_offset),
+            usize_to_i64(ordinal_start),
             previous_generation_id,
         ],
     )
@@ -587,7 +592,7 @@ fn copy_unchanged_symbols(
     tx: &Transaction<'_>,
     import: &ClientDbStructuralIndexImport,
     previous_generation_id: &str,
-    ordinal_offset: usize,
+    ordinal_start: usize,
 ) -> Result<(), String> {
     tx.execute(
         "INSERT INTO structural_index_symbol (
@@ -617,7 +622,7 @@ fn copy_unchanged_symbols(
         ORDER BY symbol_ordinal",
         params![
             import.generation_id.as_str(),
-            usize_to_i64(ordinal_offset),
+            usize_to_i64(ordinal_start),
             previous_generation_id,
         ],
     )
@@ -629,7 +634,7 @@ fn copy_unchanged_dependencies(
     tx: &Transaction<'_>,
     import: &ClientDbStructuralIndexImport,
     previous_generation_id: &str,
-    ordinal_offset: usize,
+    ordinal_start: usize,
 ) -> Result<(), String> {
     tx.execute(
         "INSERT INTO structural_index_dependency_usage (
@@ -667,7 +672,7 @@ fn copy_unchanged_dependencies(
         ORDER BY usage_ordinal",
         params![
             import.generation_id.as_str(),
-            usize_to_i64(ordinal_offset),
+            usize_to_i64(ordinal_start),
             previous_generation_id,
         ],
     )

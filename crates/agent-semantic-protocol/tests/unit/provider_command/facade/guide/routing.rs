@@ -42,7 +42,7 @@ fn language_facade_guide_routes_to_activation_prefix() {
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(stdout.contains("profile args=[guide]\n"), "{stdout}");
     assert!(
-        stdout.contains("|cmd agent-doctor=asp rust agent doctor --json ."),
+        stdout.contains("|cmd agent-doctor=asp rust agent doctor --workspace . --json"),
         "{stdout}"
     );
     let _ = std::fs::remove_dir_all(root);
@@ -85,7 +85,57 @@ fn language_facade_guide_code_preserves_pure_provider_stdout() {
 }
 
 #[test]
-fn typescript_language_facade_guide_routes_to_legacy_agent_guide() {
+fn language_facade_cache_source_index_lookup_routes_to_client_backend() {
+    let root = temp_project_root("provider-cache-source-index-facade");
+    let profile_bin_dir = root.join(".profile-bin");
+    std::fs::create_dir_all(&profile_bin_dir).expect("create profile bin dir");
+    let provider_bin = profile_bin_dir.join("gerbil-scheme-harness");
+    std::fs::write(
+        &provider_bin,
+        "#!/bin/sh\nprintf 'provider should not run\\n' >&2\nexit 42\n",
+    )
+    .expect("write provider");
+    make_executable(&provider_bin);
+    write_activation(
+        &root,
+        &[provider(
+            "gerbil-scheme",
+            vec![provider_bin.display().to_string()],
+        )],
+    );
+
+    let output = asp_command(&root)
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args([
+            "gerbil-scheme",
+            "cache",
+            "source-index",
+            "lookup",
+            "--query",
+            "runtime",
+            "--index-root",
+            ".",
+        ])
+        .output()
+        .expect("run asp gerbil-scheme cache source-index lookup");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    let stderr = String::from_utf8(output.stderr).expect("stderr");
+    assert!(
+        stdout.contains("noOutput reason=source-index-missing-db"),
+        "{stdout}"
+    );
+    assert!(!stderr.contains("provider should not run"), "{stderr}");
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn typescript_language_facade_guide_routes_to_agent_guide() {
     let root = temp_project_root("provider-typescript-guide-facade");
     let profile_bin_dir = root.join(".profile-bin");
     write_echo_provider(&profile_bin_dir, "ts-harness", "profile");
@@ -113,14 +163,14 @@ fn typescript_language_facade_guide_routes_to_legacy_agent_guide() {
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(stdout.contains("profile args=[agent][guide]\n"), "{stdout}");
     assert!(
-        stdout.contains("|cmd agent-doctor=asp typescript agent doctor --json ."),
+        stdout.contains("|cmd agent-doctor=asp typescript agent doctor --workspace . --json"),
         "{stdout}"
     );
     let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
-fn python_language_facade_guide_routes_to_legacy_agent_guide() {
+fn python_language_facade_guide_routes_to_agent_guide() {
     let root = temp_project_root("provider-python-guide-facade");
     let profile_bin_dir = root.join(".profile-bin");
     write_echo_provider(&profile_bin_dir, "py-harness", "profile");
@@ -148,7 +198,7 @@ fn python_language_facade_guide_routes_to_legacy_agent_guide() {
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(stdout.contains("profile args=[agent][guide]\n"), "{stdout}");
     assert!(
-        stdout.contains("|cmd agent-doctor=asp python agent doctor --json ."),
+        stdout.contains("|cmd agent-doctor=asp python agent doctor --workspace . --json"),
         "{stdout}"
     );
     let _ = std::fs::remove_dir_all(root);

@@ -216,11 +216,11 @@ rank=O frontier=O.owner\n";
 }
 
 #[test]
-fn legacy_prime_seed_prompt_output_without_decision_primer_does_not_replay() {
+fn prime_seed_prompt_output_without_decision_primer_does_not_replay() {
     let _guard = crate::test_support::CACHE_TEST_LOCK
         .lock()
         .expect("cache test lock");
-    let root = temp_root("legacy-prime-seed-prompt-output");
+    let root = temp_root("prime-seed-prompt-output-no-decision-primer");
     std::fs::create_dir_all(root.join(".git")).expect("create git marker");
     std::fs::create_dir_all(root.join("src")).expect("create source dir");
     std::fs::write(root.join("src/lib.rs"), "pub fn cached_prime() {}\n").expect("write source");

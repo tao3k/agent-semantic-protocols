@@ -80,10 +80,11 @@ This installs the core ASP runtime surface: `asp`, `asp-graph-turbo`,
 supported graph turbo executable and a required local ranking dependency for
 the graph-turbo search/history path, not an optional debugging tool.
 
-Install or refresh the Codex plugin for the current project:
+Install or refresh the Codex plugin for the current project through the
+unified install command:
 
 ```sh
-asp hook install --client codex .
+asp install plugin --codex .
 ```
 
 The Codex installer uses the official plugin marketplace model. It writes or
@@ -91,7 +92,7 @@ refreshes `.agents/plugins/marketplace.json`, installs
 `asp-codex-plugin@asp-project` into the project-scoped `.codex` home, writes the
 generated skill to
 `asp-codex-plugin/skills/agent-semantic-protocols/SKILL.org`, and removes the
-legacy project skill and direct Codex hook/subagent files. After installing,
+retired project skill and direct Codex hook/subagent files. After installing,
 restart Codex or start a new thread so the plugin bundle and hooks are loaded.
 
 For a manual install that mirrors the Codex marketplace flow, run:
@@ -113,8 +114,8 @@ when you want the repo to consume language harness releases instead of binaries
 from `.bin` or the process `PATH`:
 
 ```sh
-asp install provider rust --rev v0.1.0 --project .
-asp install provider julia --rev v0.1.0 --target aarch64-apple-darwin --project .
+asp install language rust --rev v0.1.0 --project .
+asp install language julia --rev v0.1.0 --target aarch64-apple-darwin --project .
 ```
 
 `--rev` is the required install identity and normally matches the language
@@ -164,12 +165,12 @@ asp tools wrap asp-graph-turbo -- help
 Graph-turbo request packets use the ranking engine through schema-owned JSON:
 `semantic-graph-turbo-request.v1` enters `asp-graph-turbo`, and
 `semantic-graph-turbo-result.v1` or its JSON projection leaves that boundary.
-The legacy compact graph renderer is a prompt/debug projection only; it is not a
+The retired compact graph renderer is a prompt/debug projection only; it is not a
 trusted graph, frontier, rank, or action protocol.
 
 Agent-facing fast search uses graph-turbo ranking by default.
-`asp rust search fzf <term> owner tests .` and the explicit seeds form
-`asp rust search fzf <term> owner tests --view seeds .` avoid printing the
+`asp rust search fzf <term> owner tests --workspace .` and the explicit seeds
+form `asp rust search fzf <term> owner tests --workspace . --view seeds` avoid printing the
 request packet, but the trusted structure remains the schema packet and any
 schema-owned JSON projection. Rank, profile, paths, scores, cache, trace,
 explanations, metrics, and frontier actions must be packet-visible before any
@@ -204,9 +205,9 @@ asp guide
 asp doctor
 asp providers
 asp cache status
-asp search --language rust prime --view seeds .
+asp search --language rust prime --workspace . --view seeds
 asp query --language rust --treesitter-query '<pattern>' .
-asp rust search prime --view seeds .
+asp rust search prime --workspace . --view seeds
 ```
 
 `asp search` and `asp query` are thin routers over the language facades. Use
@@ -214,6 +215,14 @@ asp rust search prime --view seeds .
 an owner/selector path or project root that matches one active provider's
 activation coverage so `asp` can route to the same
 `asp <language> search|query` boundary without parsing package layout.
+
+Dependency search is provider-owned and manifest-first. Start with
+`asp <language> search guide --workspace .` to confirm the current dependency
+profile, then use the advertised dependency/manifest surface, such as
+`asp rust search dependency serde --workspace . --view seeds` or
+`search reasoning query-deps`, before falling back to source reads, docs.rs, or
+web search. The first frontier should expose manifest versions, import owners,
+docs-use/public API lines, crate-source/runtime-source hints, and tests.
 
 Calibrate the local Julia cache hot path after client/cache changes:
 
@@ -225,9 +234,9 @@ Refresh a client hook config after the binaries already exist:
 
 ```sh
 just install
-asp hook install --client codex .
+asp install plugin --codex .
 asp hook doctor --client codex .
-asp hook install --client claude .
+asp install hook --client claude .
 asp hook doctor --client claude .
 ```
 
@@ -237,16 +246,18 @@ asp hook doctor --client claude .
 Codex hook config. Pass a directory argument, such as
 `just install /tmp/asp-bin`, to override the install root.
 
-`asp hook install --client <codex|claude>` writes the root client hook
-configuration, cache activation, versioned hook policy config, and provider
-manifests for this repository. It does not build or install `asp-graph-turbo`,
-`rs-harness`, `ts-harness`, `py-harness`, or `asp-julia-harness`; use
-`just install` for the full local setup or the `just agent-tools-install-*`
-commands for one binary family.
+`asp install plugin --codex` writes the Codex project plugin config.
+`asp install hook --client claude` writes the direct Claude hook
+configuration. Both install surfaces refresh cache activation, versioned hook
+policy config, and provider manifests for this repository. They do not build or
+install `asp-graph-turbo`, `rs-harness`, `ts-harness`, `py-harness`, or
+`asp-julia-harness`; use `just install` for the full local setup or the
+`just agent-tools-install-*` commands for one binary family.
 
 Agent clients invoke the runtime hook entrypoint as `asp hook --client
 <codex|claude> --event <event>`. Lifecycle commands stay under the hook
-surface: `asp hook install ...` and `asp hook doctor ...`.
+surface: `asp install plugin --codex`, `asp install hook ...`, and
+`asp hook doctor ...`.
 
 Verify a compact AST patch intent without enabling mutation:
 

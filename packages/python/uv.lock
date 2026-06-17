@@ -7,6 +7,7 @@ members = [
     "agent-semantic-protocols-python-workspace",
     "agent-semantic-protocols-tools",
     "asp-graph-turbo",
+    "asp-memory-engine",
 ]
 
 [[package]]
@@ -16,6 +17,7 @@ source = { virtual = "." }
 dependencies = [
     { name = "agent-semantic-protocols-tools" },
     { name = "asp-graph-turbo" },
+    { name = "asp-memory-engine" },
 ]
 
 [package.dev-dependencies]
@@ -28,6 +30,7 @@ dev = [
 requires-dist = [
     { name = "agent-semantic-protocols-tools", editable = "tools" },
     { name = "asp-graph-turbo", editable = "asp_graph_turbo" },
+    { name = "asp-memory-engine", editable = "asp_memory_engine" },
 ]
 
 [package.metadata.requires-dev]
@@ -90,6 +93,7 @@ name = "asp-graph-turbo"
 version = "0.1.0"
 source = { editable = "asp_graph_turbo" }
 dependencies = [
+    { name = "asp-memory-engine" },
     { name = "scipy" },
 ]
 
@@ -99,7 +103,25 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "scipy", specifier = ">=1.14" }]
+requires-dist = [
+    { name = "asp-memory-engine", editable = "asp_memory_engine" },
+    { name = "scipy", specifier = ">=1.14" },
+]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pytest", specifier = ">=9,<10" }]
+
+[[package]]
+name = "asp-memory-engine"
+version = "0.1.0"
+source = { editable = "asp_memory_engine" }
+
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+]
+
+[package.metadata]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest", specifier = ">=9,<10" }]

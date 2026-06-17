@@ -5,6 +5,7 @@ use agent_semantic_provider_transport::{
     OutputMode, ProviderProcessLimits, ProviderProcessOutput, ProviderProcessSpec, StdinMode,
     run_provider_process as run_transport_process,
 };
+use agent_semantic_runtime::{project_state_paths, runtime_bin_dir_for_cache_home};
 use std::collections::BTreeMap;
 use std::env;
 use std::io::{self, Write};
@@ -124,7 +125,9 @@ fn run_provider_process_with_stdin(
     cache_home: &Path,
     stdin: StdinMode,
 ) -> Result<ProviderProcessOutput, String> {
-    let runtime_bin = cache_home.join("agent-semantic-protocol/runtime/bin");
+    let runtime_bin = project_state_paths(project_root)
+        .map(|paths| paths.runtime_bin_dir)
+        .unwrap_or_else(|_| runtime_bin_dir_for_cache_home(cache_home));
     let mut envs = BTreeMap::new();
     envs.insert(
         "PRJ_CACHE_HOME".to_string(),
@@ -340,8 +343,8 @@ fn render_facade_guide(
                     "[guide] lang={language_id} provider={} protocol=guide.v1 root=.",
                     provider.provider_id
                 )
-            } else if line == "|rule hook install/runtime is owned by rs-harness" {
-                "|rule hook install/runtime is owned by semantic-agent-hook".to_string()
+            } else if line == "|rule hook setup/runtime is owned by rs-harness" {
+                "|rule hook setup/runtime is owned by semantic-agent-hook".to_string()
             } else {
                 rewrite_provider_command_mentions(language_id, provider, line)
             }
@@ -351,7 +354,8 @@ fn render_facade_guide(
     let v1_guide_contract = lines
         .first()
         .is_some_and(|line| line.contains("protocol=guide.v1"));
-    let doctor_line = format!("|cmd agent-doctor=asp {language_id} agent doctor --json .");
+    let doctor_line =
+        format!("|cmd agent-doctor=asp {language_id} agent doctor --workspace . --json");
     if !v1_guide_contract
         && !lines
             .iter()

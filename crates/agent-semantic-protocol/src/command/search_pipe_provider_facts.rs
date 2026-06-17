@@ -191,8 +191,6 @@ pub(super) fn query_requests_semantic_facts(query: &str) -> bool {
                 | "queues"
                 | "stream"
                 | "streams"
-                | "scope"
-                | "scopes"
                 | "fiber"
                 | "fibers"
         )

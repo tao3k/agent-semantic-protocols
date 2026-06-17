@@ -33,9 +33,10 @@ fn asp_toml_search_ignore_dirs_apply_to_fast_discovery() {
             "cache_root",
             "owner",
             "tests",
+            "--workspace",
+            ".",
             "--view",
             "seeds",
-            ".",
         ])
         .output()
         .expect("run asp rust search fzf with asp.toml");
@@ -77,9 +78,10 @@ fn asp_toml_language_disabled_blocks_fast_discovery() {
             "cache_root",
             "owner",
             "tests",
+            "--workspace",
+            ".",
             "--view",
             "seeds",
-            ".",
         ])
         .output()
         .expect("run disabled asp rust search fzf");

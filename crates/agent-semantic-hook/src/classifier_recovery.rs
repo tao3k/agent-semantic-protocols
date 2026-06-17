@@ -110,10 +110,41 @@ fn routes_markdown(routes: &[DecisionRoute]) -> String {
 }
 
 pub(crate) fn command_line(argv: &[String]) -> String {
+    let argv = display_argv(argv);
     argv.iter()
         .map(|arg| shell_quote_arg(arg))
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+fn display_argv(argv: &[String]) -> Vec<String> {
+    if !uses_agent_facade_workspace_positional(argv) {
+        return argv.to_vec();
+    }
+
+    let workspace = argv[argv.len() - 1].clone();
+    let mut rendered = argv[..argv.len() - 1].to_vec();
+    let insert_at = rendered
+        .iter()
+        .position(|arg| arg == "--view")
+        .unwrap_or(rendered.len());
+    rendered.insert(insert_at, "--workspace".to_string());
+    rendered.insert(insert_at + 1, workspace);
+    rendered
+}
+
+fn uses_agent_facade_workspace_positional(argv: &[String]) -> bool {
+    if argv.len() < 4 || argv.iter().any(|arg| arg == "--workspace") {
+        return false;
+    }
+    if !matches!(argv.first().map(String::as_str), Some("asp")) {
+        return false;
+    }
+    if !matches!(argv.get(2).map(String::as_str), Some("query" | "search")) {
+        return false;
+    }
+    argv.last()
+        .is_some_and(|arg| !arg.is_empty() && !arg.starts_with('-'))
 }
 
 fn shell_quote_arg(arg: &str) -> String {

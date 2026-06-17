@@ -34,5 +34,5 @@ def test_timeline_reports_same_session_prime_suppression(tmp_path) -> None:
     assert suppression["actions"][0]["replacement"] == "reuse-prime-frontier"
     assert suppression["actions"][0]["ageSeconds"] == 10
     assert suppression["actions"][0]["avoidCommand"] == (
-        "asp rust search prime --view seeds ."
+        "asp rust search prime --workspace . --view seeds"
     )

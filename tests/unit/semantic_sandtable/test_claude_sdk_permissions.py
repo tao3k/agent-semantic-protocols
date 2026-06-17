@@ -13,12 +13,12 @@ def test_asp_bash_permission_enforces_command_budget() -> None:
     permission = asp_bash_permission_for_budget(1)
 
     first = asyncio.run(
-        permission("Bash", {"command": "asp rust search prime --view seeds ."}, None)
+        permission("Bash", {"command": "asp rust search prime --workspace . --view seeds"}, None)
     )
     second = asyncio.run(
         permission(
             "Bash",
-            {"command": "asp rust search pipe 'Vec' --view seeds ."},
+            {"command": "asp rust search pipe 'Vec' --workspace . --view seeds"},
             None,
         )
     )

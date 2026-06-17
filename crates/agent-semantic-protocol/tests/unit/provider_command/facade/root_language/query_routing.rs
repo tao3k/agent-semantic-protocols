@@ -89,9 +89,10 @@ fn root_query_facade_strips_seed_view_before_provider_dispatch() {
             "rust",
             "--treesitter-query",
             "(function_item name: (identifier) @function.name)",
+            "--workspace",
+            ".",
             "--view",
             "seeds",
-            ".",
         ])
         .output()
         .expect("run asp query view seeds");

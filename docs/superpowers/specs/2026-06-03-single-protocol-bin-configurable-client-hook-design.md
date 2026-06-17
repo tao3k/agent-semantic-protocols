@@ -5,7 +5,7 @@
 The workspace currently has two Rust crates:
 
 - `agent-semantic-hook`: owns hook runtime library behavior: activation loading, event parsing, classification, provider routes, platform response rendering, config loading, and cache helpers.
-- `agent-semantic-protocol`: owns the public `asp` CLI, `hook install`/`hook doctor` lifecycle commands, and the `hook` command runtime for client event dispatch.
+- `agent-semantic-protocol`: owns the public `asp` CLI, `install hook`/`hook doctor` lifecycle commands, and the `hook` command runtime for client event dispatch.
 
 The desired user-facing shape is one installed binary: `asp`.
 `agent-semantic-hook` should remain a library crate for hook runtime implementation, with no standalone binary or crate-local CLI facade in the normal install surface.
@@ -33,7 +33,7 @@ The client hook runtime must not grow a watcher or server loop. Hook invocations
 `asp` becomes the command users install and invoke:
 
 ```sh
-asp hook install --client codex .
+asp install plugin --codex .
 asp hook doctor --client codex .
 asp hook pre-tool --client codex
 asp ast-patch dry-run --packet semantic-ast-patch.json .
@@ -152,8 +152,8 @@ fail with a client-config error instead of silently accepting degraded policy.
 
 Single-bin tests:
 
-- `asp hook install --client codex .` writes Codex config that invokes `asp`.
-- `asp hook install --client codex .` installs or verifies a PATH-visible `asp` binary before writing bare hook commands.
+- `asp install plugin --codex .` writes Codex config that invokes `asp`.
+- `asp install plugin --codex .` installs or verifies a PATH-visible `asp` binary before writing bare hook commands.
 - every generated Codex hook event invokes `asp hook <event> --client codex`, never the retired hook binary.
 - `asp hook doctor --client codex .` reports protocol binary usage.
 - No test fixture or generated instruction requires `agent-semantic-hook` as a public binary.
@@ -189,7 +189,7 @@ This is a breaking command-surface cleanup. Do not preserve a public `agent-sema
 Existing installed hooks must be refreshed with:
 
 ```sh
-asp hook install --client codex .
+asp install plugin --codex .
 ```
 
 after the protocol binary is installed into the PATH used by the client.

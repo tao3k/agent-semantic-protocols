@@ -21,9 +21,10 @@ fn client_search_receipt_records_local_native_provider_command() {
             "rust",
             "search",
             "prime",
+            "--workspace",
+            ".",
             "--view",
             "seeds",
-            ".",
             "--receipt-json",
         ])
         .output()

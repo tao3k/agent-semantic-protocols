@@ -9,7 +9,7 @@ use super::search_pipe_actions::{
 };
 use super::search_pipe_quality::{SearchPipeQuality, analyze_search_pipe_quality};
 use super::search_pipe_seed_decision::SeedActionIntent;
-use super::search_query_wrapper_candidates::fd_query_preview;
+use super::search_query_wrapper_preview::{fd_query_preview, fd_query_preview_from_candidates};
 use super::{search_pipe_model::Candidate, search_pipe_projection::candidate_selector};
 
 pub(super) struct SearchPipePlanRequest<'a> {
@@ -19,6 +19,7 @@ pub(super) struct SearchPipePlanRequest<'a> {
     pub(super) scopes: &'a [PathBuf],
     pub(super) query: &'a str,
     pub(super) candidates: &'a [Candidate],
+    pub(super) precomputed_quality: Option<SearchPipeQuality>,
     pub(super) ranked_compact: Option<&'a str>,
     pub(super) seed_action_intents: &'a [SeedActionIntent],
     pub(super) read_memory_selectors: &'a [String],
@@ -32,11 +33,13 @@ pub(super) fn render_search_pipe_plan(request: SearchPipePlanRequest<'_>) -> Str
         scopes,
         query,
         candidates,
+        precomputed_quality,
         ranked_compact,
         seed_action_intents,
         read_memory_selectors,
     } = request;
-    let mut quality = analyze_search_pipe_quality(language_id, query, candidates);
+    let mut quality = precomputed_quality
+        .unwrap_or_else(|| analyze_search_pipe_quality(language_id, query, candidates));
     let projected_selector_actions = rank_projected_selector_actions(
         query,
         &quality,
@@ -60,10 +63,12 @@ pub(super) fn render_search_pipe_plan(request: SearchPipePlanRequest<'_>) -> Str
         Vec::new()
     };
     let fd_preview = if !quality.allow_query_selector {
-        quality
-            .fd_query
-            .as_deref()
-            .and_then(|query| fd_query_preview(project_root, locator_root, scopes, query))
+        fd_query_preview_from_candidates(candidates).or_else(|| {
+            quality
+                .fd_query
+                .as_deref()
+                .and_then(|query| fd_query_preview(project_root, locator_root, scopes, query))
+        })
     } else {
         None
     };

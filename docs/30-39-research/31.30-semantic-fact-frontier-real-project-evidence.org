@@ -102,7 +102,7 @@ The measured commands were:
 #+begin_example
 asp python search fzf \
   'semantic-fact-frontier-receipt relationChannels PPR' \
-  owner tests --view seeds .
+  owner tests --workspace . --view seeds
 # exit 0
 # stdout bytes: 5017
 # stdout sha256: 4b91c14c768ea48778b1c695306f5f0b3382fb0c271c38e0356bb9621e4a5be5
@@ -395,7 +395,7 @@ The same metric surface was also exercised against a synthetic large
 - ASP search now has an explicit =--frontier-receipt-out= runtime capture
   trigger for graph-turbo frontier search commands.  The protocol facade
   strips this flag before provider execution and rejects non graph-turbo
-  renderer paths instead of preserving legacy =[search-*]= replay behavior.
+  renderer paths instead of preserving retired =[search-*]= replay behavior.
 - Graph-turbo now has an explicit =benchmark= command.  The command emits
   schema-owned latency and typed-path width metrics so future sandtables can
   compare path backend, pair count, candidate count, and fallback count without

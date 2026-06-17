@@ -8,5 +8,5 @@ If subagents are unavailable, run the safe route directly.
 <!-- ASP-HOOK-TRIGGER-PROMPT:MANAGED-END -->
 
 <!-- ASP-HOOK-TRIGGER-PROMPT:USER-EXTENSIONS-BEGIN -->
-<!-- Add project-local hook trigger guidance below. `asp hook install` preserves this block. -->
+<!-- Add project-local hook trigger guidance below. `asp install hook` preserves this block. -->
 <!-- ASP-HOOK-TRIGGER-PROMPT:USER-EXTENSIONS-END -->

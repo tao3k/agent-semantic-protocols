@@ -11,9 +11,12 @@ pub const PRJ_CACHE_HOME_ENV: &str = "PRJ_CACHE_HOME";
 
 const SEMANTIC_AGENT_PROTOCOL_DIR: &str = "agent-semantic-protocol";
 const SEMANTIC_AGENT_PROTOCOL_HOOK_DIR: &str = "agent-semantic-protocol/hooks";
+const SEMANTIC_AGENT_PROTOCOL_HOOK_STATE_DIR: &str = "agent-semantic-protocol/hooks/state";
 const SEMANTIC_AGENT_PROTOCOL_CLIENT_DIR: &str = "agent-semantic-protocol/client";
 const SEMANTIC_AGENT_PROTOCOL_ARTIFACTS_DIR: &str = "agent-semantic-protocol/artifacts";
 const SEMANTIC_AGENT_PROTOCOL_RUNTIME_DIR: &str = "agent-semantic-protocol/runtime";
+const SEMANTIC_AGENT_PROTOCOL_RUNTIME_BIN_DIR: &str = "agent-semantic-protocol/runtime/bin";
+const SEMANTIC_AGENT_PROTOCOL_PROVIDER_LOCK_DIR: &str = "agent-semantic-protocol/runtime/providers";
 
 /// Source used to resolve the project-local cache home.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -62,6 +65,8 @@ pub struct ProjectRuntimeLayout {
     pub protocol_home: Option<PathBuf>,
     /// Hook activation and event-state directory.
     pub hook_cache_dir: Option<PathBuf>,
+    /// Hook append-only event-state directory.
+    pub hook_state_dir: Option<PathBuf>,
     /// Hook activation path.
     pub activation_path: Option<PathBuf>,
     /// Client manifest and SQLite directory.
@@ -70,6 +75,10 @@ pub struct ProjectRuntimeLayout {
     pub artifacts_dir: Option<PathBuf>,
     /// Runtime command-shim directory.
     pub runtime_home: Option<PathBuf>,
+    /// Runtime command-shim binary directory.
+    pub runtime_bin_dir: Option<PathBuf>,
+    /// Runtime provider release lock directory.
+    pub provider_lock_dir: Option<PathBuf>,
     /// Agent skill/config directory under git toplevel.
     pub agents_dir: Option<PathBuf>,
     /// Installed ASP Org skill path under `.agents`.
@@ -126,6 +135,9 @@ pub fn project_runtime_layout_with_env(
     let hook_cache_dir = cache_home
         .as_ref()
         .map(|cache_home| cache_home.join(SEMANTIC_AGENT_PROTOCOL_HOOK_DIR));
+    let hook_state_dir = cache_home
+        .as_ref()
+        .map(|cache_home| cache_home.join(SEMANTIC_AGENT_PROTOCOL_HOOK_STATE_DIR));
     let activation_path = hook_cache_dir
         .as_ref()
         .map(|hook_cache_dir| hook_cache_dir.join("activation.json"));
@@ -138,6 +150,12 @@ pub fn project_runtime_layout_with_env(
     let runtime_home = cache_home
         .as_ref()
         .map(|cache_home| cache_home.join(SEMANTIC_AGENT_PROTOCOL_RUNTIME_DIR));
+    let runtime_bin_dir = cache_home
+        .as_ref()
+        .map(|cache_home| cache_home.join(SEMANTIC_AGENT_PROTOCOL_RUNTIME_BIN_DIR));
+    let provider_lock_dir = cache_home
+        .as_ref()
+        .map(|cache_home| cache_home.join(SEMANTIC_AGENT_PROTOCOL_PROVIDER_LOCK_DIR));
     let agents_dir = git_toplevel
         .as_ref()
         .map(|git_toplevel| git_toplevel.join(".agents"));
@@ -155,10 +173,13 @@ pub fn project_runtime_layout_with_env(
         prj_cache_home,
         protocol_home,
         hook_cache_dir,
+        hook_state_dir,
         activation_path,
         client_cache_dir,
         artifacts_dir,
         runtime_home,
+        runtime_bin_dir,
+        provider_lock_dir,
         agents_dir,
         agent_skill_path,
     }
@@ -183,7 +204,17 @@ pub fn project_hook_cache_dir(project_root: impl AsRef<Path>) -> Result<PathBuf,
 
 /// Resolve the project cache directory used for hook event state.
 pub fn project_hook_state_dir(project_root: impl AsRef<Path>) -> Result<PathBuf, String> {
-    project_hook_cache_dir(project_root)
+    Ok(project_cache_root(project_root)?.join(SEMANTIC_AGENT_PROTOCOL_HOOK_STATE_DIR))
+}
+
+/// Resolve the project-local ASP protocol home under the cache root.
+pub fn project_protocol_home(project_root: impl AsRef<Path>) -> Result<PathBuf, String> {
+    Ok(project_cache_root(project_root)?.join(SEMANTIC_AGENT_PROTOCOL_DIR))
+}
+
+/// Resolve the managed hook activation file path.
+pub fn project_activation_path(project_root: impl AsRef<Path>) -> Result<PathBuf, String> {
+    Ok(project_hook_cache_dir(project_root)?.join("activation.json"))
 }
 
 /// Return the agent semantic client cache directory for an activated project.
@@ -194,6 +225,16 @@ pub fn project_client_cache_dir(project_root: impl AsRef<Path>) -> Result<PathBu
 /// Return the agent semantic artifacts directory for an activated project.
 pub fn project_artifacts_dir(project_root: impl AsRef<Path>) -> Result<PathBuf, String> {
     Ok(project_cache_root(project_root)?.join(SEMANTIC_AGENT_PROTOCOL_ARTIFACTS_DIR))
+}
+
+/// Return the runtime command-shim directory for provider execution.
+pub fn project_runtime_bin_dir(project_root: impl AsRef<Path>) -> Result<PathBuf, String> {
+    Ok(project_cache_root(project_root)?.join(SEMANTIC_AGENT_PROTOCOL_RUNTIME_BIN_DIR))
+}
+
+/// Return the runtime provider release lock directory.
+pub fn project_provider_lock_dir(project_root: impl AsRef<Path>) -> Result<PathBuf, String> {
+    Ok(project_cache_root(project_root)?.join(SEMANTIC_AGENT_PROTOCOL_PROVIDER_LOCK_DIR))
 }
 
 /// Return the state cache root, using git toplevel before `PRJ_CACHE_HOME`.

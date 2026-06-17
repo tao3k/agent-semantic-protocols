@@ -44,8 +44,8 @@ def minimal_render_template() -> dict[str, object]:
             "headerPrefix": "[search-<view>]",
             "headerIsGraphPacket": True,
             "graphBlockRequired": True,
-            "legacySeedRowsAllowed": False,
-            "legacySynthesisRowsAllowed": False,
+            "retiredSeedRowsAllowed": False,
+            "retiredSynthesisRowsAllowed": False,
         },
         "lineGrammar": {
             "header": "[search-<view>] (q=<query>|root=<root>) [pkg=<package>] [selector=<selector>] [querySet=<n>|terms=<n>] [scope=<scope>] [view=<view>] alg=<algorithm>",
@@ -175,7 +175,7 @@ class SemanticCompactGraphRenderSchemaTests(unittest.TestCase):
             template["lineGrammar"]["avoid"],
         )
 
-    def test_view_header_is_legacy_compact_graph_stdout(self) -> None:
+    def test_view_header_is_retired_compact_graph_stdout(self) -> None:
         template = minimal_render_template()
 
         self.assertEqual(
@@ -183,8 +183,8 @@ class SemanticCompactGraphRenderSchemaTests(unittest.TestCase):
         )
         self.assertTrue(template["viewHeaderContract"]["headerIsGraphPacket"])
         self.assertTrue(template["viewHeaderContract"]["graphBlockRequired"])
-        self.assertFalse(template["viewHeaderContract"]["legacySeedRowsAllowed"])
-        self.assertFalse(template["viewHeaderContract"]["legacySynthesisRowsAllowed"])
+        self.assertFalse(template["viewHeaderContract"]["retiredSeedRowsAllowed"])
+        self.assertFalse(template["viewHeaderContract"]["retiredSynthesisRowsAllowed"])
 
     def test_view_header_contract_rejects_optional_graph_blocks(self) -> None:
         template = minimal_render_template()

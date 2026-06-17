@@ -110,7 +110,7 @@ class StepRunnerProtocolCommandTests(unittest.TestCase):
             [str(part) for part in command],
         )
 
-    def test_legacy_hook_command_is_not_rewritten(self) -> None:
+    def test_retired_hook_command_is_not_rewritten(self) -> None:
         command = ["agent-semantic-hook", "hook", "--client", "codex", "pre-tool"]
 
         self.assertEqual(command, _workspace_dev_command(Path("/workspace"), command))

@@ -68,7 +68,7 @@ fn filters_provider_command_output(registry: &HookRuntime, tokens: &[String]) ->
         let end = tokens[start..]
             .iter()
             .position(|token| is_separator(token))
-            .map(|offset| start + offset)
+            .map(|relative_index| start + relative_index)
             .unwrap_or(tokens.len());
         let stage = &tokens[start..end];
         if separator_before_stage == Some("|")
@@ -150,7 +150,7 @@ pub(super) fn raw_search_stage(tokens: &[String]) -> Option<(&[String], RawSearc
         let end = tokens[start..]
             .iter()
             .position(|token| is_separator(token))
-            .map(|offset| start + offset)
+            .map(|relative_index| start + relative_index)
             .unwrap_or(tokens.len());
         let mut stage = &tokens[start..end];
         while stage

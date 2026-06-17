@@ -27,6 +27,7 @@ version = "0.1.0"
 dependencies = [
  "agent-semantic-config",
  "agent-semantic-hook",
+ "agent-semantic-runtime",
  "agent-semantic-tree-sitter",
  "bytes",
  "rust-lang-project-harness 0.1.2",

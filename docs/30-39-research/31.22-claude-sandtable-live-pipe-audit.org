@@ -233,10 +233,10 @@ totalTokens=334897 costUsd=0.399453 stdoutBytes=59831
 The observed ASP sequence was:
 
 #+begin_example
-asp rust search prime --view seeds .
-asp rust search pipe 'Vec scalar collection fields' --view seeds .
-asp rust query --selector stress-test/examples/simple_echo_tcp.rs:39:39 --code .
-asp rust search reasoning owner-query --owner stress-test/examples/simple_echo_tcp.rs --query 'Vec scalar collection fields' --view seeds .
+asp rust search prime --workspace . --view seeds
+asp rust search pipe 'Vec scalar collection fields' --workspace . --view seeds
+asp rust query --selector stress-test/examples/simple_echo_tcp.rs:39:39 --workspace . --code
+asp rust search reasoning owner-query --owner stress-test/examples/simple_echo_tcp.rs --query 'Vec scalar collection fields' --workspace . --view seeds
 #+end_example
 
 This validates the ordering fix: the agent crossed into the exact selector
@@ -271,14 +271,14 @@ sandtable runner observations and by the scenario fixture.
 The same Tokio 1.52.3 checkout was then exercised through the canonical ASP
 flow without Claude:
 
-- =asp rust search prime --view seeds .= completed, but reported =root=benches=,
+- =asp rust search prime --workspace . --view seeds= completed, but reported =root=benches=,
   which is a project-root precision issue to keep auditing.
 
-- =asp rust search pipe 'Vec scalar collection fields' --view seeds .= emitted
+- =asp rust search pipe 'Vec scalar collection fields' --workspace . --view seeds= emitted
   =recommendedNext=S1.query-selector= and a concrete primary selector.
 
 - The old generated command form
-  =asp rust query --selector <selector> --code .= failed because Rust query no
+  =asp rust query --selector <selector> --workspace . --code= failed because Rust query no
   longer accepts a trailing project root.
 
 - The pipe command contract was fixed to emit
@@ -391,7 +391,7 @@ seeds=, the first live rerun was invalid for optimization comparison because
 Claude used the stale repository =.bin/asp=.  Refreshing the hook with:
 
 #+begin_example
-./target/debug/asp hook install --client claude .
+./target/debug/asp install hook --client claude .
 #+end_example
 
 updated =.bin/asp= so the live agent saw:
@@ -399,8 +399,8 @@ updated =.bin/asp= so the live agent saw:
 #+begin_example
 pipeStages=search-prime,search-pipe,query-selector,search-reasoning
 recommendedNext=S1.query-selector
-nextCommand=asp rust query --selector <exact-selector> --code .
-pipeCommands=context=>asp rust search prime --view seeds .,pipe=>asp rust search pipe ...,S1=>asp rust query --selector <exact-selector> --code .,R1=>asp rust search reasoning ...
+nextCommand=asp rust query --selector <exact-selector> --workspace . --code
+pipeCommands=context=>asp rust search prime --workspace . --view seeds,pipe=>asp rust search pipe ...,S1=>asp rust query --selector <exact-selector> --workspace . --code,R1=>asp rust search reasoning ...
 #+end_example
 
 The optimization-after report is:
@@ -570,7 +570,7 @@ pipeExpr=prime |> search(term='Vec scalar collection fields') |> rank(profile=ow
 pipeProjections=graph-frontier,frontierActions,pipeCommands
 frontierActions=R1.reasoning(owner=tokio-util/src/codec/length_delimited.rs,querySource=search-pipe)!search-reasoning
 frontierActions=S1.selector(selector=tokio-util/src/codec/length_delimited.rs:<range>,owner=tokio-util/src/codec/length_delimited.rs,symbol=<symbol>)!query-selector
-pipeCommands=R1=>asp rust search reasoning owner-query --owner tokio-util/src/codec/length_delimited.rs --query 'Vec scalar collection fields' --view seeds .,S1=>asp rust query --selector tokio-util/src/codec/length_delimited.rs:<range> --code .
+pipeCommands=R1=>asp rust search reasoning owner-query --owner tokio-util/src/codec/length_delimited.rs --query 'Vec scalar collection fields' --workspace . --view seeds,S1=>asp rust query --selector tokio-util/src/codec/length_delimited.rs:<range> --workspace . --code
 #+end_example
 
 Until those concrete actions exist, live testing should stay at one prompt.
@@ -617,7 +617,7 @@ attempts.
 The agent needs a single compact surface for deep code questions:
 
 #+begin_example
-asp rust search pipe '<question>' --view seeds .
+asp rust search pipe '<question>' --workspace . --view seeds
 #+end_example
 
 or an equivalent reasoning profile.  The output should contain:
@@ -773,7 +773,7 @@ Claude and the inherited SDK environment are enough.  With the cached Tokio
 checkout and the current prompt, the first live run failed the expected flow:
 the agent executed five ASP commands, including one =search prime=, one
 =search pipe=, and two =search reasoning= commands, but never executed the
-projected =query --selector ... --code .= command.  The SDK summary reported
+projected =query --selector ... --workspace . --code= command.  The SDK summary reported
 =inputTokens=49570=, =cacheReadInputTokens=349312=, =outputTokens=2757=, and
 =costUsd=0.491431=.  This confirms the next optimization target is not live
 environment setup; it is making the pipe projection and prompt contract harder
@@ -782,7 +782,7 @@ to ignore when selector commands are already available.
 After provider-owned field facts, nested graph weighting, and =contextLocator=
 projection, the next live run reached the intended selector-first shape with
 only three ASP commands: =search prime=, =search pipe 'Vec scalar collection
-fields'=, and =query --selector tokio/src/io/blocking.rs:15:35 --code .=.  The
+fields'=, and =query --selector tokio/src/io/blocking.rs:15:35 --workspace . --code=.  The
 run had =searchReasoningCommands=0=, =searchFzfCommands=0=,
 =repeatedCommands=0=, =directReadCommands=0=, =elapsedMs=72742=,
 =totalTokens=158851=, and =costUsd=0.346455=.  It was marked failed only
@@ -823,7 +823,7 @@ the agent executed four ASP commands, with =searchPrimeCommands=1=,
 =searchPipeCommands=1=, =querySelectorCommands=1=, =searchReasoningCommands=0=,
 =searchFzfCommands=0=, =repeatedCommands=0=, and =directReadCommands=0=.  The
 only selector read was =tokio/src/io/blocking.rs:15:35=.  The remaining waste
-is a post-selector =asp rust guide . | head -80= command, not search fanout.
+is a post-selector =asp rust guide --workspace . | head -80= command, not search fanout.
 The next contract change therefore tracks =guideCommands= explicitly and sets
 =maxGuideCommands=0= for this live scenario, with prompt and pipe output both
 marking guide-after-selector as an avoid action.
@@ -831,9 +831,9 @@ marking guide-after-selector as an avoid action.
 The guide-gated live rerun reached the current target shape.  It passed with
 exactly three ASP commands:
 
-1. =asp rust search prime --view seeds .=
-2. =asp rust search pipe 'Vec scalar collection fields' --view seeds .=
-3. =asp rust query --selector tokio/src/io/blocking.rs:15:35 --code .=
+1. =asp rust search prime --workspace . --view seeds=
+2. =asp rust search pipe 'Vec scalar collection fields' --workspace . --view seeds=
+3. =asp rust query --selector tokio/src/io/blocking.rs:15:35 --workspace . --code=
 
 The observed counters were =aspCommands=3=, =searchCommands=2=,
 =queryCommands=1=, =querySelectorCommands=1=, =guideCommands=0=,
@@ -863,11 +863,11 @@ secondary exact selectors from prompt-visible branch metadata.  The scenario now
 requires =maxAspCommands=3= and =maxQueryCommands=1=, and the live agent
 executed exactly:
 
-1. =asp rust search prime --view seeds .=
+1. =asp rust search prime --workspace . --view seeds=
 
-2. =asp rust search pipe 'Vec scalar collection fields' --view seeds .=
+2. =asp rust search pipe 'Vec scalar collection fields' --workspace . --view seeds=
 
-3. =asp rust query --selector tokio/src/io/blocking.rs:15:35 --code .=
+3. =asp rust query --selector tokio/src/io/blocking.rs:15:35 --workspace . --code=
 
 The observed counters were =aspCommands=3=, =searchCommands=2=,
 =queryCommands=1=, =querySelectorCommands=1=, =guideCommands=0=,
@@ -938,7 +938,7 @@ memory-backed control:
   =seen-selector=.
 - P1 failure-loop memory: agent observation now extracts
   =failureFrontierOutputPrecision= and =failureLoopMemory= from
-  =asp <lang> search failure --from-last-check --view seeds .= tool output.
+  =asp <lang> search failure --from-last-check --workspace . --view seeds= tool output.
   The precision gate checks failure facts, assertions, hot blocks,
   =frontierActions=, =queryProfiles=, =omit=, =avoid=, and debug-row absence.
 - P1 recorded replay closure: =failure-loop-memory-replay.json= replays
@@ -1078,11 +1078,11 @@ failure-frontier seeds omit debug rows such as =scores=, =paths=, =cache=,
 =trace=, =explain=, and =metrics=, while preserving failure facts, owners, hot
 blocks, profiles, frontier actions, =omit=, and =avoid=.  The focused
 graph-turbo test asserts those debug rows stay absent and the real
-=asp rust search failure --from-last-check --view seeds .= smoke confirms the
+=asp rust search failure --from-last-check --workspace . --view seeds= smoke confirms the
 current installed ASP surface prints only the agent-facing frontier rows.
 The final RFC closure gap was the check projection route.  The facade test
 =check_changed_view_seeds_renders_failure_frontier_after_provider_failure=
-now runs =asp rust check changed --view seeds .= against a failing fake provider,
+now runs =asp rust check changed --workspace . --view seeds= against a failing fake provider,
 proves the provider receives =check --changed= without ASP =--view= flags,
 persists the failure transcript, and verifies stdout is the same compact
 =failure-frontier= projection with executable hot-block =frontierActions= and
@@ -1164,8 +1164,8 @@ Observed command flow:
 The agent followed the intended pipe shape:
 
 #+begin_src text
-asp typescript search prime --view seeds .
-asp typescript search pipe 'Effect concurrency Fiber Queue Stream Scope' --view seeds .
+asp typescript search prime --workspace . --view seeds
+asp typescript search pipe 'Effect concurrency Fiber Queue Stream Scope' --workspace . --view seeds
 asp typescript query --selector packages/ai/ai/src/Chat.ts:845:865 --workspace . --code
 #+end_src
 
@@ -1247,8 +1247,8 @@ The next hard-limit live run confirmed that prompt contract:
 The command flow was exactly the intended live benchmark shape:
 
 #+begin_src text
-asp typescript search prime --view seeds .
-asp typescript search pipe 'Effect concurrency Fiber Queue Stream Scope' --view seeds .
+asp typescript search prime --workspace . --view seeds
+asp typescript search pipe 'Effect concurrency Fiber Queue Stream Scope' --workspace . --view seeds
 asp typescript query --selector packages/ai/ai/src/Chat.ts:845:865 --workspace . --code
 #+end_src
 
@@ -1358,7 +1358,7 @@ The no-token smoke with the rebuilt ASP binary now produces semantic facts for
 the unchanged real query:
 
 #+begin_src sh
-target/debug/asp typescript search pipe 'Effect concurrency Fiber Queue Stream Scope' --view seeds .
+target/debug/asp typescript search pipe 'Effect concurrency Fiber Queue Stream Scope' --workspace . --view seeds
 #+end_src
 
 Key output:
@@ -1465,7 +1465,7 @@ failure=pipeFlow searchPrimeCommands=3 exceeds maxSearchPrimeCommands=1
 #+end_example
 
 The observed waste pattern was concrete: Claude ran an invalid
-=asp typescript search prime --view seeds . once= command, then =--help=, then
+=asp typescript search prime --workspace . --view seeds once= command, then =--help=, then
 prime and pipe variants without =--view seeds=.  The scenario prompt now lists
 the first two shell commands as standalone command blocks, explicitly says not
 to type the word =once=, and forbids =--help=/guide/reasoning/fzf/variant

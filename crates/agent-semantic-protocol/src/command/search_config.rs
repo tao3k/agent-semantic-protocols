@@ -26,11 +26,23 @@ impl Default for SearchConfig {
     fn default() -> Self {
         Self {
             ignore_dirs: vec![
+                ".cache".to_string(),
+                ".codex".to_string(),
+                ".data".to_string(),
+                ".devenv".to_string(),
+                ".direnv".to_string(),
+                ".git".to_string(),
+                ".idea".to_string(),
+                ".jj".to_string(),
+                ".run".to_string(),
+                ".vscode".to_string(),
                 "target".to_string(),
                 "node_modules".to_string(),
                 "dist".to_string(),
                 "build".to_string(),
+                ".build".to_string(),
                 "__pycache__".to_string(),
+                ".venv".to_string(),
                 "venv".to_string(),
                 "vendor".to_string(),
             ],

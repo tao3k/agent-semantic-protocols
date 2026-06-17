@@ -4,6 +4,7 @@ use crate::executable::{ExecutableStatus, is_executable_file, resolve_executable
 use crate::parse_activation;
 use crate::protocol_activation::{ActivatedProvider, HookActivation, HookRuntime};
 use crate::provider_manifest::provider_manifests;
+use agent_semantic_runtime::{is_project_activation_path, project_root_for_activation_path};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
@@ -105,8 +106,10 @@ pub fn runtime_project_root_for_activation(
     if project_root.is_absolute() {
         return project_root;
     }
-    if is_generated_activation_path(activation_path) {
-        return activation_storage_root(activation_path).join(project_root);
+    if is_project_activation_path(activation_path)
+        && let Some(root) = project_root_for_activation_path(activation_path)
+    {
+        return root.join(project_root);
     }
     activation_path
         .parent()
@@ -284,21 +287,6 @@ fn runtime_provider_profile<'a>(
             && profile.provider_id == provider.provider_id
             && profile.binary == provider.binary
     })
-}
-
-fn is_generated_activation_path(path: &Path) -> bool {
-    let normalized = path.to_string_lossy().replace('\\', "/");
-    normalized.ends_with(".cache/agent-semantic-protocol/hooks/activation.json")
-}
-
-fn activation_storage_root(activation_path: &Path) -> PathBuf {
-    activation_path
-        .parent()
-        .and_then(Path::parent)
-        .and_then(Path::parent)
-        .and_then(Path::parent)
-        .map(Path::to_path_buf)
-        .unwrap_or_else(|| PathBuf::from("."))
 }
 
 #[cfg(test)]

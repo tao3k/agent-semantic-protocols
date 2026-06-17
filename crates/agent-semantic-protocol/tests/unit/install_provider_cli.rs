@@ -6,7 +6,11 @@ static NEXT_TEMP_ID: AtomicU64 = AtomicU64::new(0);
 
 #[test]
 #[cfg(unix)]
-fn install_provider_archive_writes_runtime_bin_package_and_lock() {
+fn install_language_archive_writes_runtime_bin_package_and_lock() {
+    assert_install_archive_writes_runtime_bin_package_and_lock();
+}
+
+fn assert_install_archive_writes_runtime_bin_package_and_lock() {
     let root = temp_project_root();
     let archive = root.join("release/rs-harness");
     std::fs::create_dir_all(archive.parent().expect("archive parent")).expect("create release dir");
@@ -20,7 +24,7 @@ fn install_provider_archive_writes_runtime_bin_package_and_lock() {
     let output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .args([
             "install",
-            "provider",
+            "language",
             "rust",
             "--rev",
             "refs/tags/vtest",
@@ -33,7 +37,7 @@ fn install_provider_archive_writes_runtime_bin_package_and_lock() {
         .arg(&root)
         .env_remove("PRJ_CACHE_HOME")
         .output()
-        .expect("run asp install provider");
+        .expect("run asp install language");
 
     assert!(
         output.status.success(),

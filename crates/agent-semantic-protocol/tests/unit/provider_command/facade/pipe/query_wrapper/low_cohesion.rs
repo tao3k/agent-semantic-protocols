@@ -14,7 +14,13 @@ fn asp_fd_query_avoids_owner_items_when_package_cohesion_is_low() {
     }
 
     let output = asp_command(&root)
-        .args(["fd", "-query", "scope|gate|query|wrapper|cache|index", "."])
+        .args([
+            "fd",
+            "-query",
+            "scope|gate|query|wrapper|cache|index",
+            "--workspace",
+            ".",
+        ])
         .output()
         .expect("run asp fd -query");
 

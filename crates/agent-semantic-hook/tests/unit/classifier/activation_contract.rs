@@ -30,7 +30,7 @@ fn provider_manifest_protocol_identity_is_validated() {
 }
 
 #[test]
-fn provider_manifest_rejects_legacy_command_text() {
+fn provider_manifest_rejects_route_command_text() {
     let mut manifest = provider_manifest_value();
     manifest["routes"]["prime"]["text"] = json!("ts-harness search prime .");
 

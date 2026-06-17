@@ -1,4 +1,7 @@
 use agent_semantic_hook::{builtin_provider_manifests, provider_manifest_digest};
+use agent_semantic_runtime::{
+    project_activation_path, project_local_activation_path, project_state_paths,
+};
 use serde_json::json;
 use std::env;
 use std::ffi::OsString;
@@ -24,7 +27,8 @@ pub(super) fn provider(language_id: &'static str, command_prefix: Vec<String>) -
 }
 
 pub(super) fn write_activation(root: &Path, providers: &[ProviderSpec]) {
-    let activation_path = root.join(".cache/agent-semantic-protocol/hooks/activation.json");
+    let activation_path =
+        project_activation_path(root).unwrap_or_else(|_| project_local_activation_path(root));
     write_activation_to(root, &activation_path, providers);
 }
 
@@ -86,7 +90,9 @@ pub(super) fn write_cache_manifest(root: &Path, manifest: serde_json::Value) -> 
 }
 
 pub(super) fn cache_root(root: &Path) -> PathBuf {
-    root.join(".cache/agent-semantic-protocol/client")
+    project_state_paths(root)
+        .expect("project state paths")
+        .client_cache_dir
 }
 
 pub(super) fn cache_manifest_path(root: &Path) -> PathBuf {
@@ -147,7 +153,7 @@ pub(super) fn write_guide_provider(bin_dir: &Path, binary: &str) {
     write_provider_script(
         bin_dir,
         binary,
-        "#!/bin/sh\nprintf '[agent-guide] language=rust provider=rs-harness\\n'\nprintf '|cmd prime=rs-harness search prime .\\n'\nprintf \"|cmd ingest=rg -n '<query>' src tests | rs-harness search ingest .\\n\"\nprintf '|cmd ast-patch=rs-harness ast-patch dry-run --packet <semantic-ast-patch.json|-> .\\n'\nprintf '|cmd evidence=rs-harness evidence graph --review-packet-json <path> --json .\\n'\nprintf '|rule hook install/runtime is owned by agent-semantic-hook\\n'\n",
+        "#!/bin/sh\nprintf '[agent-guide] language=rust provider=rs-harness\\n'\nprintf '|cmd prime=rs-harness search prime .\\n'\nprintf \"|cmd ingest=rg -n '<query>' src tests | rs-harness search ingest .\\n\"\nprintf '|cmd ast-patch=rs-harness ast-patch dry-run --packet <semantic-ast-patch.json|-> .\\n'\nprintf '|cmd evidence=rs-harness evidence graph --review-packet-json <path> --json .\\n'\nprintf '|rule hook setup/runtime is owned by agent-semantic-hook\\n'\n",
     );
 }
 

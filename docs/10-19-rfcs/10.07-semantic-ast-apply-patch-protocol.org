@@ -171,7 +171,7 @@ not deleted or folded away.  The shared binary should route hook commands to
 the existing hook implementation:
 
 #+begin_src shell
-asp hook install --client codex .
+asp install plugin --codex .
 asp hook pre-tool ...
 asp hook stop ...
 #+end_src
@@ -272,7 +272,7 @@ query result; match scope overrides it for a concrete parser item.
 - =parserVersion=
 - non-empty =allowedOperations=
 
-They must not include legacy =startLine= or =endLine= fields.  When compact
+They must not include retired =startLine= or =endLine= fields.  When compact
 projection is lossy, the provider should emit =navigation-safe= or =read-safe=
 with a =reason= and =nextAction= instead of letting an agent infer braces,
 commas, or statement anchors from outline text.
@@ -613,7 +613,7 @@ patch dry-run and trusted AST patch apply.
 
 * Acceptance gates
 
-1. =asp hook install --client codex .= delegates to the
+1. =asp install plugin --codex .= delegates to the
    existing =agent-semantic-hook= implementation.
 2. =rs-harness check --changed crates/agent-semantic-protocol= passes after the
    new crate is introduced.

@@ -80,7 +80,7 @@ def test_source_language_registry_advertises_software_criterion_catalog_schema()
         assert "agent.semantic-protocols.software-criterion-catalog" in schema_ids
 
 
-def test_software_criterion_catalog_rejects_legacy_naming_lane() -> None:
+def test_software_criterion_catalog_rejects_retired_naming_lane() -> None:
     combined_contract = "\n".join(
         path.read_text(encoding="utf-8")
         for path in (_SCHEMA_PATH, _CATALOG_PATH, _REGISTRY_PATH)

@@ -130,16 +130,7 @@ pub(super) fn run_asp_fast_search_command(
         );
     }
     if is_search_owner_items_query(args) {
-        return run_search_owner_items_query_command(
-            context.language_id,
-            args,
-            context.project_root,
-            context.locator_root,
-            context.cache_home,
-            context.config,
-            context.provider_context,
-            context.frontier_receipt,
-        );
+        return run_search_owner_items_query_command(args, &context);
     }
     Err("unsupported ASP fast search command".to_string())
 }
@@ -458,37 +449,31 @@ fn run_reasoning_owner_tests_command(
 }
 
 fn run_search_owner_items_query_command(
-    language_id: &str,
     args: &[String],
-    project_root: &Path,
-    locator_root: &Path,
-    cache_home: &Path,
-    config: &AspConfig,
-    provider_context: Option<&ProviderGraphFactsContext<'_>>,
-    frontier_receipt: Option<&GraphTurboReceiptRequest>,
+    context: &FastSearchContext<'_>,
 ) -> Result<(), String> {
-    reject_non_graph_turbo_receipt(frontier_receipt)?;
+    reject_non_graph_turbo_receipt(context.frontier_receipt)?;
     let owner_query_args = parse_search_owner_items_query_args(args)?;
     if owner_query_args.view != "seeds" {
         return Err("search owner items fast path supports --view seeds".to_string());
     }
     if run_provider_owner_items_query(
-        language_id,
+        context.language_id,
         args,
         &owner_query_args.owner,
-        project_root,
-        cache_home,
-        config,
-        provider_context,
+        context.project_root,
+        context.cache_home,
+        context.config,
+        context.provider_context,
     )? {
         return Ok(());
     }
     print!(
         "{}",
         render_owner_query_frontier(
-            language_id,
-            project_root,
-            locator_root,
+            context.language_id,
+            context.project_root,
+            context.locator_root,
             &owner_query_args.owner,
             &owner_query_args.query
         )

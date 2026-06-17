@@ -40,9 +40,10 @@ def minimal_decision(reason_kind: str) -> dict[str, object]:
                     "location.path",
                     "owner",
                     "tests",
+                    "--workspace",
+                    ".",
                     "--view",
                     "seeds",
-                    ".",
                 ],
             }
         ],

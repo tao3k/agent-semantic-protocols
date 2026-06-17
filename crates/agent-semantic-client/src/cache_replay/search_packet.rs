@@ -29,12 +29,15 @@ pub(crate) fn search_output_artifact_replay_safe(stdout: &[u8]) -> bool {
     if header.starts_with("[search-deps]") {
         return deps_search_output_replay_safe(stdout);
     }
-    let has_frontier_header = header.contains("[graph-frontier]") || header.starts_with("[search-");
+    let has_frontier_header = header.contains("[graph-frontier]")
+        || header.contains("alg=seed-frontier")
+        || (header.starts_with("[search-prime]")
+            && stdout.contains("|decision purpose=decision-primer"));
     if header.starts_with("[search-prime]") && !stdout.contains("|decision purpose=decision-primer")
     {
         return false;
     }
-    let has_alias_graph = stdout.contains("aliases=");
+    let has_alias_graph = stdout.contains("aliases=") || stdout.contains("aliases:");
     has_frontier_header
         && has_alias_graph
         && stdout.contains("legend: ID=kind:role(value)!next;")

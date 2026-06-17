@@ -94,13 +94,14 @@ class SemanticSourceAccessDecisionSchemaTests(unittest.TestCase):
                             "ingest",
                             "items",
                             "tests",
+                            "--workspace",
+                            ".",
                             "--view",
                             "seeds",
-                            ".",
                         ],
                     }
                 ],
-                "message": "source-directory-enumeration denied; route: asp rust search ingest items tests --view seeds .",
+                "message": "source-directory-enumeration denied; route: asp rust search ingest items tests --workspace . --view seeds",
             }
         )
 

@@ -11,7 +11,7 @@ from typing import Literal
 from .console import emit
 
 
-ArgvMode = Literal["argv", "legacy_argv", "sys_argv", "no_args"]
+ArgvMode = Literal["argv", "retired_argv", "sys_argv", "no_args"]
 
 
 @dataclass(frozen=True)
@@ -35,7 +35,7 @@ class CommandSpec:
         match self.argv_mode:
             case "argv":
                 result = function(list(argv))
-            case "legacy_argv":
+            case "retired_argv":
                 result = function([self.program, *argv])
             case "sys_argv":
                 result = _run_with_sys_argv(function, self.program, argv)

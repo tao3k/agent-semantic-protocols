@@ -59,9 +59,10 @@ fn client_search_receipt_reports_cache_hit_when_prompt_output_artifact_exists() 
             "rust",
             "search",
             "prime",
+            "--workspace",
+            ".",
             "--view",
             "seeds",
-            ".",
             "--receipt-json",
         ])
         .output()
@@ -137,9 +138,10 @@ fn client_search_receipt_reports_cache_hit_when_search_packet_artifact_exists() 
             "rust",
             "search",
             "prime",
+            "--workspace",
+            ".",
             "--view",
             "seeds",
-            ".",
             "--receipt-json",
         ])
         .output()

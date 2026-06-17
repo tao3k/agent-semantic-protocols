@@ -59,8 +59,9 @@ agent-hooks-doctor-root bin_dir="":
 
 # Replay the root classifier directly without launching Codex.
 agent-hooks-smoke-hook:
-    @printf '%s' '{"tool_name":"functions.exec_command","tool_input":{"cmd":"sed -n '\''1,8p'\'' languages/typescript-lang-project-harness/tests/unit/cli.test.ts"}}' \
-      | cargo run -q -p agent-semantic-protocol --bin asp -- hook pre-tool --client codex --activation .cache/agent-semantic-protocol/hooks/activation.json --config .codex/agent-semantic-protocol/hooks/config.toml --emit decision \
+    @activation="$(cargo run -q -p agent-semantic-protocol --bin asp -- hook paths . | awk -F= '$1=="activation"{print substr($0, 12)}')"; \
+      printf '%s' '{"tool_name":"functions.exec_command","tool_input":{"cmd":"sed -n '\''1,8p'\'' languages/typescript-lang-project-harness/tests/unit/cli.test.ts"}}' \
+      | cargo run -q -p agent-semantic-protocol --bin asp -- hook pre-tool --client codex --activation "$activation" --config .codex/agent-semantic-protocol/hooks/config.toml --emit decision \
       | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["decision"]=="deny", d; assert d["reasonKind"] in {"bulk-source-dump","direct-source-read"}, d; print("[agent-hooks-smoke-hook] blocked", d["reasonKind"])'
 
 # Launch Codex CLI and verify the real PreToolUse runtime blocks a TS source dump.
@@ -226,12 +227,14 @@ check-language-evidence-smoke-setup:
     PATH="$PWD/.bin:$PATH" .bin/asp hook install --client codex .
 
 check-language-evidence-smoke-core: check-language-evidence-smoke-setup
-    PATH="$PWD/.bin:$PATH" \
+    protocol_home="$(PATH="$PWD/.bin:$PATH" .bin/asp hook paths . | awk -F= '$1=="protocolHome"{print substr($0, 14)}')" && \
+      PATH="$PWD/.bin:$PATH" \
       ASP_LANGUAGE_EVIDENCE_SMOKE_SCOPE=core-fast \
       ASP_LANGUAGE_EVIDENCE_LANGUAGES=rust,python,typescript \
-      ASP_LANGUAGE_EVIDENCE_TIMING_JSON=.cache/agent-semantic-protocol/language-evidence-smoke-core-fast.json \
+      ASP_LANGUAGE_EVIDENCE_TIMING_JSON="$protocol_home/language-evidence-smoke-core-fast.json" \
       uv run --project packages/python/asp_graph_turbo --frozen pytest tests/unit/test_language_evidence_smoke.py -q
-    cat .cache/agent-semantic-protocol/language-evidence-smoke-core-fast.json
+    protocol_home="$(PATH="$PWD/.bin:$PATH" .bin/asp hook paths . | awk -F= '$1=="protocolHome"{print substr($0, 14)}')" && \
+      cat "$protocol_home/language-evidence-smoke-core-fast.json"
 
 check-language-evidence-smoke: check-language-evidence-smoke-core
     @true
@@ -245,12 +248,14 @@ check-language-evidence-smoke-all-setup: check-language-evidence-smoke-setup
     PATH="$PWD/.bin:$PATH" .bin/asp julia guide {{julia_harness_project}} >/dev/null
 
 check-language-evidence-smoke-all: check-language-evidence-smoke-all-setup
-    PATH="$PWD/.bin:$PATH" \
+    protocol_home="$(PATH="$PWD/.bin:$PATH" .bin/asp hook paths . | awk -F= '$1=="protocolHome"{print substr($0, 14)}')" && \
+      PATH="$PWD/.bin:$PATH" \
       ASP_LANGUAGE_EVIDENCE_SMOKE_SCOPE=all-providers \
       ASP_LANGUAGE_EVIDENCE_MAX_COMMAND_SECONDS_JULIA=2 \
-      ASP_LANGUAGE_EVIDENCE_TIMING_JSON=.cache/agent-semantic-protocol/language-evidence-smoke-all-providers.json \
+      ASP_LANGUAGE_EVIDENCE_TIMING_JSON="$protocol_home/language-evidence-smoke-all-providers.json" \
       uv run --project packages/python/asp_graph_turbo --frozen pytest tests/unit/test_language_evidence_smoke.py -q
-    cat .cache/agent-semantic-protocol/language-evidence-smoke-all-providers.json
+    protocol_home="$(PATH="$PWD/.bin:$PATH" .bin/asp hook paths . | awk -F= '$1=="protocolHome"{print substr($0, 14)}')" && \
+      cat "$protocol_home/language-evidence-smoke-all-providers.json"
 
 provider-gate: check-rust-warnings check-schema-profiles check-rfc-docs check-tree-sitter-query-contracts check-language-workspace-search-contracts check-graph-turbo-focused provider-gate-root provider-gate-rust provider-gate-typescript provider-gate-python provider-gate-julia
 
@@ -306,8 +311,8 @@ provider-gate-typescript:
       {{typescript_harness_project}}/dist/tests/unit/semantic_search_schema.test.js
 
 provider-gate-python:
-    uv run --project {{python_harness_project}} --frozen py-harness search policy PY-PROJ-R001 owner tests --view seeds --workspace {{python_harness_project}}
-    uv run --project {{python_harness_project}} --frozen py-harness search policy PY-AGENT-R008 owner tests --view seeds --workspace {{python_harness_project}}
+    uv run --project {{python_harness_project}} --frozen py-harness search policy PY-PROJ-R001 owner tests --workspace {{python_harness_project}} --view seeds
+    uv run --project {{python_harness_project}} --frozen py-harness search policy PY-AGENT-R008 owner tests --workspace {{python_harness_project}} --view seeds
     uv run --project {{python_harness_project}} --frozen py-harness query src/python_lang_project_harness/_semantic_language.py --term semantic_language_registry_document --names-only --workspace {{python_harness_project}}
     uv run --project {{python_harness_project}} --frozen python -m pytest \
       {{python_harness_project}}/tests/unit/harness/test_semantic_cli_query_set.py \

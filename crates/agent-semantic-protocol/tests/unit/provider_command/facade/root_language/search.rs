@@ -18,9 +18,10 @@ fn root_search_facade_routes_explicit_language_to_provider() {
             "--language",
             "rust",
             "prime",
+            "--workspace",
+            ".",
             "--view",
             "seeds",
-            ".",
         ])
         .output()
         .expect("run asp search explicit language");
@@ -154,9 +155,10 @@ fn root_search_facade_rejects_unsupported_explicit_language_with_finder_recovery
             "--language",
             "scheme",
             "prime",
+            "--workspace",
+            ".",
             "--view",
             "seeds",
-            ".",
         ])
         .output()
         .expect("run asp search unsupported language");

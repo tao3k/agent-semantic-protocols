@@ -14,14 +14,14 @@ def test_agent_summary_extracts_token_cost_and_complex_pipe_flow() -> None:
                     {
                         "name": "Bash",
                         "input": {
-                            "command": "asp rust search prime --view seeds .",
+                            "command": "asp rust search prime --workspace . --view seeds",
                         },
                     },
                     {
                         "name": "Bash",
                         "input": {
                             "command": (
-                                "asp rust search pipe 'Vec scalar' --view seeds ."
+                                "asp rust search pipe 'Vec scalar' --workspace . --view seeds"
                             ),
                         },
                     },
@@ -30,7 +30,7 @@ def test_agent_summary_extracts_token_cost_and_complex_pipe_flow() -> None:
                         "input": {
                             "command": (
                                 "asp rust search reasoning owner-query "
-                                "--owner src/lib.rs --query 'Vec scalar' --view seeds ."
+                                "--owner src/lib.rs --query 'Vec scalar' --workspace . --view seeds"
                             ),
                         },
                     },
@@ -46,7 +46,7 @@ def test_agent_summary_extracts_token_cost_and_complex_pipe_flow() -> None:
                     {
                         "name": "Bash",
                         "input": {
-                            "command": "asp rust guide .",
+                            "command": "asp rust guide --workspace .",
                         },
                     },
                 ],
@@ -88,7 +88,7 @@ def test_agent_summary_extracts_final_answer_after_last_tool_use() -> None:
                 "content": [
                     {
                         "name": "Bash",
-                        "input": {"command": "asp rust search prime --view seeds ."},
+                        "input": {"command": "asp rust search prime --workspace . --view seeds"},
                     }
                 ],
             },
@@ -121,7 +121,7 @@ def test_agent_summary_extracts_result_message_as_final_answer() -> None:
                 "content": [
                     {
                         "name": "Bash",
-                        "input": {"command": "asp rust search prime --view seeds ."},
+                        "input": {"command": "asp rust search prime --workspace . --view seeds"},
                     }
                 ],
             },

@@ -232,7 +232,7 @@ fn pre_tool_allows_valid_root_language_search_form() {
             "transcript_path": "transcript-effect.jsonl",
             "tool_name": "Bash",
             "tool_input": {
-                "command": "asp search --language typescript prime --view seeds ."
+                "command": "asp search --language typescript prime --workspace . --view seeds"
             }
         }),
     );

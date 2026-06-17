@@ -334,7 +334,7 @@ def _messages() -> list[dict[str, object]]:
                     "id": "call_1",
                     "name": "Bash",
                     "input": {
-                        "command": "asp rust search prime --view seeds .",
+                        "command": "asp rust search prime --workspace . --view seeds",
                     },
                 }
             ],
@@ -370,7 +370,7 @@ def _repeat_search_messages() -> list[dict[str, object]]:
                     "id": "call_2",
                     "name": "Bash",
                     "input": {
-                        "command": "asp rust search prime --view seeds .",
+                        "command": "asp rust search prime --workspace . --view seeds",
                     },
                 }
             ],
@@ -483,7 +483,7 @@ def _search_output() -> str:
     return "\n".join(
         [
             "[search-prime] language=rust project=tokio",
-            "nextCommand=asp rust search pipe 'AsyncRead readiness' --view seeds .",
+            "nextCommand=asp rust search pipe 'AsyncRead readiness' --workspace . --view seeds",
         ]
     )
 
@@ -515,7 +515,7 @@ def _gerbil_path_drift_fd_output() -> str:
             (
                 "nextCommand=asp gerbil-scheme search owner "
                 "languages/gerbil-scheme-language-project-harness/src/parser/brace.ss "
-                "items --query 'main|command' --view seeds ."
+                "items --query 'main|command' --workspace . --view seeds"
             ),
         ]
     )

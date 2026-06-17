@@ -136,7 +136,7 @@ The root hook should not classify rule ids or schema fixture names itself.  It
 should route to provider-declared commands:
 
 #+begin_src shell
-<bin> search policy <rule-id-or-alias> owner tests --view seeds .
+<bin> search policy <rule-id-or-alias> owner tests --workspace . --view seeds
 <bin> search owner <catalog-or-test-owner> handles --query <term> .
 <bin> query <owner> --term <term> --names-only .
 #+end_src
@@ -147,7 +147,7 @@ name.
 
 When the target is code-shaped rather than a stable non-code handle, guidance
 must use =search query <code-shaped-query>=.  =search fzf= should not silently
-execute the native syntax API, because that preserves the legacy habit of
+execute the native syntax API, because that preserves the retired habit of
 asking broad text questions for syntax-owned facts.  It may return a compact
 =next=search-query= action so the agent can retry through the explicit API.
 The provider owns the syntax intent parser and the native fact index.
@@ -188,7 +188,7 @@ The Julia command is intentionally written in full.  Do not shorten this to a
 bare =julia-project-harness= binary in docs, tests, or profile descriptors.
 
 The important runtime finding was not a missing Python implementation.  A stale
-=py-harness= on =PATH= can still be discovered by =semantic-agent-protocol hook install=
+=py-harness= on =PATH= can still be discovered by =semantic-agent-protocol install hook=
 if the installer only checks executability.  The root cause is therefore
 provider discovery based on binary presence instead of provider capability.
 
@@ -202,7 +202,7 @@ Validated commands:
 
 #+begin_src shell
 cargo test -p semantic-agent-hook
-target/debug/semantic-agent-protocol hook install --client codex .
+target/debug/semantic-agent-protocol install plugin --codex .
 target/debug/semantic-agent-protocol hook doctor --client codex .
 #+end_src
 

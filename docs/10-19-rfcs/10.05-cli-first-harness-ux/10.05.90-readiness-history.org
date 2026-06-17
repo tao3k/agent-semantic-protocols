@@ -238,7 +238,7 @@ ABI instead of separate compatibility hints.
   =finding-frontier=, and =feature-cfg=.
 - =rs-harness search guide= prints concrete selector-bearing commands for each
   reasoning profile, including =search reasoning owner-query --owner
-  <owner-path> --query <term> --view seeds .=, so agents do not infer
+  <owner-path> --query <term> --workspace . --view seeds=, so agents do not infer
   positional selector arguments from =entries= rows.
 - Live sandtable prompts do not carry scenario-specific command tutoring for
   reasoning profiles. The root =SKILL.md= template and its installed hook skill
@@ -261,15 +261,15 @@ ABI instead of separate compatibility hints.
 Python now has executable typed reasoning entries instead of guide-only
 profile names.
 
-- =py-harness search reasoning owner-tests --owner <owner-path> --view seeds .=
+- =py-harness search reasoning owner-tests --owner <owner-path> --workspace . --view seeds=
   returns the =owner-tests(O=>covering-tests+test-entrypoints+fixtures)= entry
   and preserves the owner selector even when no covering tests are found.
 - =py-harness search reasoning owner-query --owner <owner-path> --query
-  <symbol> --view seeds .= returns
+  <symbol> --workspace . --view seeds= returns
   =owner-query(O,Q=>items+tests+dependency-usage)= over parser-owned owner item
   facts.
 - =py-harness search reasoning query-deps --query <symbol> --dependency <pkg>
-  --view seeds .= returns =query-deps(Q,D=>owners+imports+usage-tests)=.
+  --workspace . --view seeds= returns =query-deps(Q,D=>owners+imports+usage-tests)=.
 - =py-harness guide= now prints the three concrete reasoning commands, and
   =agent doctor --json= advertises =search/reasoning= in the provider
   registry.
@@ -281,14 +281,14 @@ profile names.
 TypeScript now has the same executable typed reasoning entry surface as Python,
 and the root ASP fast path returns a single selected profile entry.
 
-- =ts-harness search reasoning owner-tests --owner <owner-path> --view seeds .=
+- =ts-harness search reasoning owner-tests --owner <owner-path> --workspace . --view seeds=
   returns =owner-tests(O=>covering-tests+test-entrypoints+fixtures)=.
 - =ts-harness search reasoning owner-query --owner <owner-path> --query
-  <symbol> --view seeds .= returns only
+  <symbol> --workspace . --view seeds= returns only
   =owner-query(O,Q=>items+tests+dependency-usage)=.  The root facade fast path
   no longer appends =owner-tests= merely because an =O= alias is present.
 - =ts-harness search reasoning query-deps --query <symbol> --dependency <pkg>
-  --view seeds .= returns =query-deps(Q,D=>owners+imports+usage-tests)=.
+  --workspace . --view seeds= returns =query-deps(Q,D=>owners+imports+usage-tests)=.
 - =ts-harness guide= prints the three concrete reasoning commands, and
   =agent doctor --json= advertises =search/reasoning= in the TypeScript
   provider registry.

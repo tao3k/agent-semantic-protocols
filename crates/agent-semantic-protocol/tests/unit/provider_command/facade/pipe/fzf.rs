@@ -30,9 +30,10 @@ fn fzf_seeds_is_asp_owned_for_cheap_discovery() {
             "owner",
             "items",
             "tests",
+            "--workspace",
+            ".",
             "--view",
             "seeds",
-            ".",
         ])
         .output()
         .expect("run asp rust search fzf");

@@ -135,7 +135,14 @@ def test_read_memory_suppresses_seen_selector_from_frontier() -> None:
     packet = result_to_packet(result)
 
     assert "item:collect" not in packet["rank"]
-    assert "src/cli.py:10:20" not in compact
+    assert (
+        "readMemory=seen=src/cli.py:10:20 "
+        "suppressed=src/cli.py:10:20,src/cli.py:24:28"
+    ) in compact
+    assert packet["readMemory"] == {
+        "seenSelectors": ["src/cli.py:10:20"],
+        "suppressedSelectors": ["src/cli.py:10:20", "src/cli.py:24:28"],
+    }
     assert packet["algorithmMetrics"]["readMemorySuppressedCount"] == 2
     assert "seen-selector" in packet["avoid"]
     assert "\navoid=" in compact and "seen-selector" in compact
@@ -208,8 +215,14 @@ def test_read_memory_suppresses_adjacent_seen_range_from_frontier() -> None:
     assert "item:seen" not in packet["rank"]
     assert "item:adjacent" not in packet["rank"]
     assert "item:far" in packet["rank"]
-    assert "src/cli.py:10:20" not in compact
-    assert "src/cli.py:18:26" not in compact
+    assert (
+        "readMemory=seen=src/cli.py:10:20 "
+        "suppressed=src/cli.py:10:20,src/cli.py:18:26"
+    ) in compact
+    assert packet["readMemory"] == {
+        "seenSelectors": ["src/cli.py:10:20"],
+        "suppressedSelectors": ["src/cli.py:10:20", "src/cli.py:18:26"],
+    }
     assert packet["algorithmMetrics"]["readMemorySuppressedCount"] == 2
     assert "seen-selector" in packet["avoid"]
     assert list(schema_validator_for(_GRAPH_TURBO_SCHEMA).iter_errors(packet)) == []

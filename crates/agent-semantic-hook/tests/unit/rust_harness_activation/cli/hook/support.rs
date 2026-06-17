@@ -2,6 +2,7 @@ use std::io::Write;
 use std::path::Path;
 use std::process::Stdio;
 
+use agent_semantic_runtime::ensure_project_hook_state_dir;
 use serde_json::Value;
 
 use crate::rust_harness_activation::support::{asp_command, root_owned_rust_activation_json};
@@ -43,9 +44,8 @@ pub(super) fn run_hook_decision(root: &Path, event: &str, payload: Value) -> Val
 }
 
 pub(super) fn last_hook_event(root: &Path) -> Value {
-    let events =
-        std::fs::read_to_string(root.join(".cache/agent-semantic-protocol/hooks/events.jsonl"))
-            .expect("hook event state");
+    let state_dir = ensure_project_hook_state_dir(root).expect("hook state dir");
+    let events = std::fs::read_to_string(state_dir.join("events.jsonl")).expect("hook event state");
     let line = events
         .lines()
         .last()

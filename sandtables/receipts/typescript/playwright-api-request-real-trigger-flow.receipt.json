@@ -71,9 +71,10 @@
         "fetch",
         "owner",
         "tests",
+        "--workspace",
+        ".",
         "--view",
-        "seeds",
-        "."
+        "seeds"
       ],
       "stdinShape": "none",
       "outputMode": "compact",
@@ -101,9 +102,10 @@
         "owner",
         "packages/playwright-core/src/server/fetch.ts",
         "items",
+        "--workspace",
+        ".",
         "--view",
-        "seeds",
-        "."
+        "seeds"
       ],
       "stdinShape": "none",
       "outputMode": "compact",
@@ -130,9 +132,10 @@
         "search",
         "tests",
         "packages/playwright-core/src/server/fetch.ts",
+        "--workspace",
+        ".",
         "--view",
-        "seeds",
-        "."
+        "seeds"
       ],
       "stdinShape": "none",
       "outputMode": "compact",
@@ -212,9 +215,10 @@
         "fetch",
         "owner",
         "tests",
+        "--workspace",
+        ".",
         "--view",
-        "seeds",
-        "."
+        "seeds"
       ],
       "reason": "same request-context axis would otherwise repeat text probes"
     }

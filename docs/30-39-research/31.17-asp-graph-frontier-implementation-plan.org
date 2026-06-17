@@ -76,7 +76,7 @@ Tasks:
    in a fresh checkout without provider activation.
 3. Make missing activation a recoverable diagnostic with copyable install or
    provider-route guidance, not a hard session-ending failure.
-4. Make =asp hook install --client codex .= refresh activation safely and fast.
+4. Make =asp install plugin --codex .= refresh activation safely and fast.
 5. Add a regression test where activation is absent and provider route lookup
    returns a compact diagnostic instead of an OS file error.
 
@@ -128,7 +128,7 @@ Tasks:
 Acceptance:
 
 #+begin_src shell
-asp rust search guide .
+asp rust search guide --workspace .
 asp rust query --from-hook direct-source-read --selector src/search/guide.rs:1:80 .
 #+end_src
 
@@ -321,7 +321,7 @@ intent fields, or emit raw source/code snippets.
 | Python provider | focused AST read-frontier/schema tests |
 | compact snapshots | =parser-compact-snapshots --check-provider= |
 | sandtable | real-trigger command-count and token-cost regression |
-| installed path | =asp guide=, =asp doctor=, =asp rust search guide .= |
+| installed path | =asp guide=, =asp doctor=, =asp rust search guide --workspace .= |
 
 * Success Criteria
 
@@ -365,12 +365,12 @@ Fresh-directory smoke shape:
 asp doctor
   -> rc=0
   -> [asp-doctor] status=degraded ... activation=missing providers=0
-  -> |cmd install=asp hook install --client codex .
+  -> |cmd install=asp install plugin --codex .
 
 asp rust search prime .
   -> rc=2
   -> [asp-provider] activation=missing ...
-  -> |cmd install=asp hook install --client codex .
+  -> |cmd install=asp install plugin --codex .
   -> |cmd guide=asp guide
   -> |cmd providers=asp providers
 #+end_example
@@ -386,7 +386,7 @@ surface:
 - TypeScript and Python =agent guide= output now advertises =asp typescript=
   and =asp python= commands instead of =ts-harness= or =py-harness= prompt
   routes.
-- TypeScript and Python legacy =agent install= / =agent hook= errors now point
+- TypeScript and Python retired =agent install= / =agent hook= errors now point
   to replayable =asp hook ...= commands instead of the retired root hook binary
   name.
 - Root hook raw-search policy tests assert that denied command routes are
@@ -408,7 +408,7 @@ printf '%s' '{"tool_name":"functions.exec_command","tool_input":{"cmd":"rg -n cl
 
 The hook runtime smoke returns a deny route with =argv=["asp","rust","query",
 ...]= and =providerId="rs-harness"=.  The current Codex Desktop thread may
-cache hook installation state, so manual runtime replay remains the reliable
+cache install hookation state, so manual runtime replay remains the reliable
 acceptance check until a fresh session reloads project hooks.
 
 Next implementation work should move to Slice 2 Rust read-frontier JSON/schema

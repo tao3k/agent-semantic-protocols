@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://agent-semantic-protocols.local/schemas/semantic-compact-graph-render.v1.schema.json",
   "title": "Semantic Compact Graph Render Template",
-  "description": "Legacy shared compact graph stdout render template for search --view seeds output. This schema describes line grammar, renderer ownership, and action alias vocabulary implemented by agent-semantic-protocol over provider-owned packets; it is not the trusted graph/frontier/rank/action protocol.",
+  "description": "Retired shared compact graph stdout render template for search --view seeds output. This schema describes line grammar, renderer ownership, and action alias vocabulary implemented by agent-semantic-protocol over provider-owned packets; it is not the trusted graph/frontier/rank/action protocol.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -93,8 +93,8 @@
         "headerPrefix",
         "headerIsGraphPacket",
         "graphBlockRequired",
-        "legacySeedRowsAllowed",
-        "legacySynthesisRowsAllowed"
+        "retiredSeedRowsAllowed",
+        "retiredSynthesisRowsAllowed"
       ],
       "properties": {
         "appliesWhen": {
@@ -109,10 +109,10 @@
         "graphBlockRequired": {
           "const": true
         },
-        "legacySeedRowsAllowed": {
+        "retiredSeedRowsAllowed": {
           "const": false
         },
-        "legacySynthesisRowsAllowed": {
+        "retiredSynthesisRowsAllowed": {
           "const": false
         }
       }

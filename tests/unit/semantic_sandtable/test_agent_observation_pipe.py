@@ -16,7 +16,7 @@ def test_pipe_flow_records_asp_tool_result_output_bytes() -> None:
                         "id": "toolu_1",
                         "name": "Bash",
                         "input": {
-                            "command": "asp rust search pipe 'Vec scalar collection fields' --view seeds ."
+                            "command": "asp rust search pipe 'Vec scalar collection fields' --workspace . --view seeds"
                         },
                     }
                 ]
@@ -44,7 +44,7 @@ def test_pipe_flow_records_asp_tool_result_output_bytes() -> None:
     assert stats["searchPipeCommands"] == 1
     assert stats["aspCommandOutputBytes"] == len("frontier\nnextCommand\n".encode())
     assert stats["aspCommandOutputRecords"][0]["command"] == (
-        "asp rust search pipe 'Vec scalar collection fields' --view seeds ."
+        "asp rust search pipe 'Vec scalar collection fields' --workspace . --view seeds"
     )
     assert stats["aspCommandOutputRecords"][0]["outputBytes"] == len(
         "frontier\nnextCommand\n".encode()
@@ -63,7 +63,7 @@ def test_pipe_flow_records_claude_sdk_dataclass_block_shape() -> None:
                 {
                     "id": "call_1",
                     "input": {
-                        "command": "asp rust search prime --view seeds .",
+                        "command": "asp rust search prime --workspace . --view seeds",
                         "description": "Run prime",
                     },
                     "name": "Bash",
@@ -89,7 +89,7 @@ def test_pipe_flow_records_claude_sdk_dataclass_block_shape() -> None:
     assert stats["aspCommandOutputBytes"] == len("[search-prime]\nrank=O\n".encode())
     assert stats["aspCommandOutputRecords"] == [
         {
-            "command": "asp rust search prime --view seeds .",
+            "command": "asp rust search prime --workspace . --view seeds",
             "outputBytes": len("[search-prime]\nrank=O\n".encode()),
             "outputLines": 2,
             "outputFingerprint": (
@@ -112,7 +112,7 @@ def test_pipe_flow_records_search_pipe_precision_facts() -> None:
             "F>{Y:has_type,C:collection_of}",
             "queryCoverage=matched=vec,collection,fields missing=- source=ranked-frontier",
             "frontierActions=S1.selector(selector=src/lib.rs:1:3,owner=src/lib.rs,symbol=buf,source=F)!query-selector",
-            "nextCommand=asp rust query --selector src/lib.rs:1:3 --code .",
+            "nextCommand=asp rust query --selector src/lib.rs:1:3 --workspace . --code",
         ]
     )
     messages = [
@@ -122,7 +122,7 @@ def test_pipe_flow_records_search_pipe_precision_facts() -> None:
                 {
                     "id": "call_1",
                     "input": {
-                        "command": "asp rust search pipe 'Vec collection fields' --view seeds ."
+                        "command": "asp rust search pipe 'Vec collection fields' --workspace . --view seeds"
                     },
                     "name": "Bash",
                 }
@@ -175,7 +175,7 @@ def test_pipe_flow_records_structured_query_coverage_with_missing_terms() -> Non
                 {
                     "id": "call_1",
                     "input": {
-                        "command": "asp typescript search pipe 'Effect concurrency Fiber Queue Stream Scope' --view seeds ."
+                        "command": "asp typescript search pipe 'Effect concurrency Fiber Queue Stream Scope' --workspace . --view seeds"
                     },
                     "name": "Bash",
                 }
@@ -204,7 +204,7 @@ def test_pipe_flow_records_frontier_follow_and_context_utilization() -> None:
         [
             "frontierActions=S1.selector(selector=src/lib.rs:1:3,owner=src/lib.rs,symbol=buf,source=F)!query-selector",
             "frontierActions=S2.selector(selector=src/lib.rs:9:12,owner=src/lib.rs,symbol=other,source=F2)!query-selector",
-            "nextCommand=asp rust query --selector src/lib.rs:1:3 --code .",
+            "nextCommand=asp rust query --selector src/lib.rs:1:3 --workspace . --code",
         ]
     )
     messages = [
@@ -214,7 +214,7 @@ def test_pipe_flow_records_frontier_follow_and_context_utilization() -> None:
                 {
                     "id": "call_1",
                     "input": {
-                        "command": "asp rust search pipe 'Vec collection fields' --view seeds ."
+                        "command": "asp rust search pipe 'Vec collection fields' --workspace . --view seeds"
                     },
                     "name": "Bash",
                 }
@@ -236,14 +236,14 @@ def test_pipe_flow_records_frontier_follow_and_context_utilization() -> None:
                 {
                     "id": "call_2",
                     "input": {
-                        "command": "asp rust query --selector src/lib.rs:1:3 --code ."
+                        "command": "asp rust query --selector src/lib.rs:1:3 --workspace . --code"
                     },
                     "name": "Bash",
                 },
                 {
                     "id": "call_3",
                     "input": {
-                        "command": "asp rust query --selector src/lib.rs:40:50 --code ."
+                        "command": "asp rust query --selector src/lib.rs:40:50 --workspace . --code"
                     },
                     "name": "Bash",
                 },
@@ -293,7 +293,7 @@ def test_pipe_flow_records_failure_frontier_precision_and_memory() -> None:
                 {
                     "id": "call_1",
                     "input": {
-                        "command": "asp rust search failure --from-last-check --view seeds ."
+                        "command": "asp rust search failure --from-last-check --workspace . --view seeds"
                     },
                     "name": "Bash",
                 }

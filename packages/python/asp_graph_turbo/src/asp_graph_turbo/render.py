@@ -38,6 +38,7 @@ def render_compact(result: GraphResult) -> str:
         f"rank={rank_line}",
         f"frontier={frontier_line}",
         *_render_profile_projection_lines(result, aliases),
+        *_render_read_memory_lines(result),
         *_render_evidence_reliability_lines(result, aliases),
         *_render_debug_projection_lines(result, aliases, score_line),
         f"profiles={','.join(result.profiles)}",
@@ -149,6 +150,17 @@ def _render_profile_projection_lines(
         ]
     )
     return lines
+
+
+def _render_read_memory_lines(result: GraphResult) -> list[str]:
+    projection = result.read_memory
+    if not projection.seen_selectors and not projection.suppressed_selectors:
+        return []
+    return [
+        "readMemory="
+        f"seen={_comma_or_dash(projection.seen_selectors)} "
+        f"suppressed={_comma_or_dash(projection.suppressed_selectors)}"
+    ]
 
 
 def _render_owner_query_projection_lines(

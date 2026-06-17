@@ -159,6 +159,62 @@ fn search_pipe_is_asp_owned_and_renders_generated_candidates_without_provider_sp
 }
 
 #[test]
+fn search_pipe_marks_missing_path_terms_as_non_selectors() {
+    let root = temp_project_root("search-pipe-missing-path-term");
+    let bin_dir = root.join(".bin");
+    let marker = root.join("provider-called");
+    std::fs::create_dir_all(root.join("src")).expect("create src");
+    std::fs::write(root.join("src/lib.rs"), "pub struct HookDecision;\n").expect("write source");
+    write_marker_provider(&bin_dir, "rs-harness", &marker);
+    write_activation(&root, &[provider("rust", Vec::new())]);
+
+    let output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args([
+            "rust",
+            "search",
+            "pipe",
+            "t/unit-tests.ss HookDecision",
+            "--workspace",
+            ".",
+            "--view",
+            "seeds",
+        ])
+        .output()
+        .expect("run asp rust search pipe");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    assert!(
+        stdout.contains("selectorGuard=missingPathTerms=t/unit-tests.ss usableAsSelector=false usableAsOwner=false next=fd-query"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("ownerSeedTerms=HookDecision"), "{stdout}");
+    assert!(
+        stdout.contains("treeSitterHandles=exported-declarations:HookDecision"),
+        "{stdout}"
+    );
+    assert!(
+        !stdout.contains("ownerSeedTerms=t/unit-tests.ss"),
+        "{stdout}"
+    );
+    assert!(
+        !stdout.contains("treeSitterHandles=exported-declarations:t/unit-tests.ss"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("commandHandles=fdQuery=t/unit-tests.ss|HookDecision;"),
+        "{stdout}"
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn gerbil_search_pipe_recalls_source_and_config_files_without_provider_spawn() {
     let root = temp_project_root("gerbil-search-pipe-config-recall");
     let bin_dir = root.join(".bin");
@@ -190,9 +246,10 @@ fn gerbil_search_pipe_recalls_source_and_config_files_without_provider_spawn() {
             "search",
             "pipe",
             "gerbil.pkg build.ss local alias",
+            "--workspace",
+            ".",
             "--view",
             "seeds",
-            ".",
         ])
         .output()
         .expect("run asp gerbil-scheme search pipe");
@@ -206,13 +263,15 @@ fn gerbil_search_pipe_recalls_source_and_config_files_without_provider_spawn() {
     assert!(stdout.contains("lang=gerbil-scheme"), "{stdout}");
     assert!(stdout.contains("ownerItems=gerbil.pkg:"), "{stdout}");
     assert!(stdout.contains("src/main.ss"), "{stdout}");
-    assert!(
-        stdout.contains("rgQuery=local|alias|gerbil.pkg|build.ss"),
-        "{stdout}"
-    );
+    assert!(stdout.contains("fdQuery=gerbil.pkg"), "{stdout}");
+    assert!(stdout.contains("rgQuery=local|alias"), "{stdout}");
     assert!(
         stdout.contains("recommendedNext=A1.owner-items")
             || stdout.contains("recommendedNext=A2.owner-items"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("reason=query-selector-low-confidence,owner-seed-base-required"),
         "{stdout}"
     );
     assert!(!stdout.contains("A1=query-code"), "{stdout}");
@@ -245,9 +304,10 @@ fn search_pipe_reports_multi_clause_query_pack_coverage() {
             "search",
             "pipe",
             "Fiber Queue|Scope lifecycle",
+            "--workspace",
+            ".",
             "--view",
             "seeds",
-            ".",
         ])
         .output()
         .expect("run asp rust search pipe multi-clause");
@@ -309,9 +369,10 @@ fn search_pipe_splits_api_compounds_before_seed_quality_analysis() {
             "search",
             "pipe",
             "BufMut 的 advance_mut/unsafe 写入边界如何被组织？先找 trait 和实现 owner。",
+            "--workspace",
+            ".",
             "--view",
             "seeds",
-            ".",
         ])
         .output()
         .expect("run asp rust search pipe api compound");
@@ -367,9 +428,10 @@ fn search_pipe_preserves_rust_path_compounds_as_precise_symbol_terms() {
             "search",
             "pipe",
             "Tokio runtime Handle::enter 的上下文进入和 guard 生命周期应该从哪些 owner frontier 开始定位？",
+            "--workspace",
+            ".",
             "--view",
             "seeds",
-            ".",
         ])
         .output()
         .expect("run asp rust search pipe rust path compound");
@@ -386,9 +448,12 @@ fn search_pipe_preserves_rust_path_compounds_as_precise_symbol_terms() {
         "{stdout}"
     );
     assert!(stdout.contains("fdQuery=Handle::enter|Tokio"), "{stdout}");
-    assert!(stdout.contains("A1=fd-query("), "{stdout}");
     assert!(
-        stdout.contains("nextCommand=asp fd -query 'Handle::enter|Tokio' ."),
+        stdout.contains("fd-query(query=Handle::enter|Tokio"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("nextCommand=") && stdout.contains(" --workspace ."),
         "{stdout}"
     );
     assert!(!marker.exists(), "search pipe should not spawn provider");
@@ -429,9 +494,10 @@ fn search_pipe_keeps_gerbil_package_terms_on_gerbil_candidates() {
             "search",
             "pipe",
             "GitHub Actions matrix gxpkg deps install gerbil.pkg Poo cache",
+            "--workspace",
+            ".",
             "--view",
             "seeds",
-            ".",
         ])
         .output()
         .expect("run asp gerbil-scheme search pipe");
@@ -520,9 +586,10 @@ fn search_pipe_auto_clauses_suppress_cross_package_selector_drift() {
             "search",
             "pipe",
             "marlin-gerbil-scheme marlin-org-workflow marlin-gerbil-ir real_gxi.rs through smoke dev dependency long-field-signatures",
+            "--workspace",
+            ".",
             "--view",
             "seeds",
-            ".",
         ])
         .output()
         .expect("run asp rust search pipe package drift");
@@ -542,15 +609,20 @@ fn search_pipe_auto_clauses_suppress_cross_package_selector_drift() {
     assert!(stdout.contains("long-field-signatures:concept"), "{stdout}");
     assert!(!stdout.contains("through:context"), "{stdout}");
     assert!(!stdout.contains("smoke:context"), "{stdout}");
-    assert!(stdout.contains("rgQuery=real_gxi.rs"), "{stdout}");
+    assert!(
+        stdout.contains("fdQuery=real_gxi.rs|marlin-gerbil-scheme|marlin-org-workflow"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("rgQuery=-;ownerItems=-"), "{stdout}");
     assert!(stdout.contains("risk=package-drift"), "{stdout}");
     assert!(!stdout.contains("A1=query-code"), "{stdout}");
     assert!(
         !stdout.contains("recommendedNext=A1.query-code"),
         "{stdout}"
     );
+    assert!(stdout.contains("recommendedNext=A1.fd-query"), "{stdout}");
     assert!(
-        stdout.contains("recommendedNext=A1.owner-items"),
+        stdout.contains("reason=query-selector-low-confidence,owner-seed-base-required"),
         "{stdout}"
     );
     assert!(

@@ -144,7 +144,7 @@ direnv exec . rs-harness query --from-hook direct-source-read \
   --selector '**/*.rs' \
   --term read-plan \
   --surface owner,tests \
-  --view seeds .
+  --workspace . --view seeds
 #+end_src
 
 #+begin_example
@@ -160,7 +160,7 @@ direnv exec . rs-harness query --from-hook direct-source-read \
   --term direct-source-read \
   --term windowSet \
   --surface owners,tests \
-  --view seeds .
+  --workspace . --view seeds
 #+end_src
 
 #+begin_example
@@ -214,7 +214,7 @@ and hook command protocol surfaces
 The executed commands do not carry a stable receipt that says:
 
 - these ranges are all the same =direct-source-read= recovery attempt;
-- these owner-local queries all concern the same hook install/rename axis;
+- these owner-local queries all concern the same install hook/rename axis;
 - this names-only packet supersedes these line-window reads;
 - this route failed because the guide command shape was stale.
 
@@ -297,7 +297,7 @@ Likely RFC/schema follow-ups:
 
 * Success Metrics
 
-A repeat of this hook install/rename context should have a bounded flow:
+A repeat of this install hook/rename context should have a bounded flow:
 
 #+begin_src shell
 rs-harness query --from-hook direct-source-read \
@@ -315,7 +315,7 @@ rs-harness query --from-hook direct-source-read \
   --term semantic-agent-hook \
   --term codex \
   --surface owners,tests \
-  --view seeds .
+  --workspace . --view seeds
 #+end_src
 
 Target outcome:

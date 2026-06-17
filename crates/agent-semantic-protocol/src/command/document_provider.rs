@@ -73,9 +73,7 @@ fn usage(language_id: &str) -> String {
 
 fn supported_commands(language_id: &str) -> &'static str {
     match language_id {
-        "org" => {
-            "guide|search|query|elements-query|contract|eval|export|fmt|lint|sdd|agent-planning|sparse-tree|task-list"
-        }
+        "org" => "guide|search|query|elements-query|contract|capture-plan|export|fmt|lint",
         _ => "guide|search|query|elements-query",
     }
 }
@@ -85,8 +83,5 @@ fn is_document_command(command: &str) -> bool {
 }
 
 fn is_embedded_org_command(command: &str) -> bool {
-    matches!(
-        command,
-        "eval" | "export" | "fmt" | "lint" | "sdd" | "agent-planning" | "sparse-tree" | "task-list"
-    )
+    matches!(command, "capture-plan" | "export" | "fmt" | "lint")
 }

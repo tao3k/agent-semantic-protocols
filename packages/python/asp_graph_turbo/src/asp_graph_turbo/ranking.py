@@ -22,11 +22,7 @@ from .query_token_balance import (
 from .ranking_build import build_graph_result, rank_fingerprint
 from .ranking_score import collect_scores, seed_ids as resolve_seed_ids
 from .read_loop_second_pass import graph_turbo_apply_read_loop_second_pass
-from .selector import (
-    graph_turbo_node_range,
-    graph_turbo_parse_selector,
-    graph_turbo_ranges_adjacent,
-)
+from asp_memory_engine.graph_turbo_memory import read_memory_projection
 
 
 def rank_frontier(
@@ -82,15 +78,9 @@ def rank_frontier(
         query_clauses=normalized_query_clauses,
         query_adjustment_policy=normalized_query_adjustment_policy,
     )
-    read_memory_selectors = frozenset(
-        selector
-        for selector in seen_selectors
-        if isinstance(selector, str) and selector
-    )
-    suppressed_selectors = _read_memory_suppressed_selectors(
-        graph,
-        scores,
-        read_memory_selectors,
+    read_memory = read_memory_projection(
+        [selector_for_node(graph.nodes[node_id]) for node_id in scores],
+        tuple(seen_selectors),
         max_gap_lines=window_merge_max_gap_lines,
     )
     query_tokens = prioritized_query_tokens(
@@ -103,7 +93,7 @@ def rank_frontier(
         best_depth,
         _candidate_limit(limit),
         normalized_kind_budgets,
-        suppressed_selectors,
+        frozenset(read_memory.suppressed_selectors),
         query_tokens,
         query_token_weights=query_token_balance_weights(
             query_tokens,
@@ -137,7 +127,8 @@ def rank_frontier(
         query_adjustments,
         normalized_query_adjustment_policy,
         ranked,
-        len(suppressed_selectors),
+        read_memory.seen_selectors,
+        read_memory.suppressed_selectors,
         read_loop_second_pass,
     )
 
@@ -155,39 +146,3 @@ def _normalized_query_clauses(query_clauses: Iterable[str]) -> tuple[str, ...]:
         if normalized:
             clauses.append(normalized)
     return tuple(clauses)
-
-
-def _read_memory_suppressed_selectors(
-    graph: TypedGraph,
-    node_ids: Iterable[str],
-    read_memory_selectors: frozenset[str],
-    *,
-    max_gap_lines: int,
-) -> frozenset[str]:
-    if not read_memory_selectors:
-        return frozenset()
-    read_memory_ranges = tuple(
-        parsed
-        for selector in read_memory_selectors
-        if (parsed := graph_turbo_parse_selector(selector)) is not None
-    )
-    suppressed: set[str] = set()
-    for node_id in node_ids:
-        node = graph.nodes[node_id]
-        selector = selector_for_node(node)
-        if selector is None:
-            continue
-        if selector in read_memory_selectors:
-            suppressed.add(selector)
-            continue
-        node_range = graph_turbo_node_range(node)
-        if node_range is None:
-            continue
-        if any(
-            graph_turbo_ranges_adjacent(
-                node_range, memory_range, max_gap_lines=max_gap_lines
-            )
-            for memory_range in read_memory_ranges
-        ):
-            suppressed.add(selector)
-    return frozenset(suppressed)

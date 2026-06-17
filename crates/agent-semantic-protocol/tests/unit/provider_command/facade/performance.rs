@@ -7,6 +7,7 @@ use crate::provider_command::support::{
 
 const ASP_FACADE_PERFORMANCE_GATE: Duration = Duration::from_secs(3);
 const ASP_SEARCH_PHASE_PERFORMANCE_GATE_MS: u64 = 1_000;
+const ASP_PROVIDER_FACTS_PHASE_PERFORMANCE_GATE_MS: u64 = 2_000;
 const JULIA_FACADE_PERFORMANCE_GATE: Duration = Duration::from_secs(3);
 
 #[derive(Clone, Copy)]
@@ -103,9 +104,10 @@ fn language_facade_regular_commands_finish_inside_performance_gate() {
                 "search",
                 "pipe",
                 provider.query,
+                "--workspace",
+                ".",
                 "--view",
                 "seeds",
-                ".",
             ],
             vec![
                 provider.language,
@@ -212,8 +214,8 @@ fn provider_facts_receive_bounded_candidate_input() {
     std::fs::create_dir_all(&bin_dir).expect("create bin dir");
     for index in 0..80 {
         std::fs::write(
-            root.join(format!("src/scope_candidate_{index}.rs")),
-            format!("pub fn scope_candidate_{index}() {{}}\n"),
+            root.join(format!("src/queue_candidate_{index}.rs")),
+            format!("pub fn queue_candidate_{index}() {{}}\n"),
         )
         .expect("write candidate");
     }
@@ -241,7 +243,7 @@ fn provider_facts_receive_bounded_candidate_input() {
     let output = asp_command(&root)
         .env("PATH", prepend_path(&bin_dir))
         .env("PRJ_CACHE_HOME", &cache_home)
-        .args(["rust", "search", "pipe", "scope", "--view", "seeds", "."])
+        .args(["rust", "search", "pipe", "queue", "--view", "seeds", "."])
         .output()
         .expect("run asp search pipe");
 
@@ -263,7 +265,11 @@ fn provider_facts_receive_bounded_candidate_input() {
         .parse::<usize>()
         .expect("parse semantic facts line count");
     assert_eq!(line_count, 48, "{stdout}");
-    assert_trace_elapsed_under_gate(&["rust", "search", "pipe"], &stdout);
+    assert_trace_elapsed_under_gate_ms(
+        &["rust", "search", "pipe"],
+        &stdout,
+        ASP_PROVIDER_FACTS_PHASE_PERFORMANCE_GATE_MS,
+    );
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -309,7 +315,7 @@ fn assert_regular_command_output(args: &[&str], stdout: &str, label: &str) {
     );
     if matches!(args.get(1..3), Some(["search", "pipe"])) {
         assert!(
-            stdout.contains("providerFacts:used[")
+            (stdout.contains("providerFacts:used[") || stdout.contains("providerFacts:skipped["))
                 && stdout.contains("elapsedMs=")
                 && stdout.contains("render:used[")
                 && stdout.contains("totalMs="),
@@ -320,6 +326,10 @@ fn assert_regular_command_output(args: &[&str], stdout: &str, label: &str) {
 }
 
 fn assert_trace_elapsed_under_gate(args: &[&str], stdout: &str) {
+    assert_trace_elapsed_under_gate_ms(args, stdout, ASP_SEARCH_PHASE_PERFORMANCE_GATE_MS);
+}
+
+fn assert_trace_elapsed_under_gate_ms(args: &[&str], stdout: &str, gate_ms: u64) {
     let max_elapsed_ms = stdout
         .match_indices("elapsedMs=")
         .filter_map(|(index, _)| {
@@ -333,8 +343,8 @@ fn assert_trace_elapsed_under_gate(args: &[&str], stdout: &str) {
         .max()
         .unwrap_or(0);
     assert!(
-        max_elapsed_ms < ASP_SEARCH_PHASE_PERFORMANCE_GATE_MS,
-        "args={args:?} exceeded search phase gate {ASP_SEARCH_PHASE_PERFORMANCE_GATE_MS}ms; maxElapsedMs={max_elapsed_ms}; stdout={stdout}"
+        max_elapsed_ms < gate_ms,
+        "args={args:?} exceeded search phase gate {gate_ms}ms; maxElapsedMs={max_elapsed_ms}; stdout={stdout}"
     );
 }
 

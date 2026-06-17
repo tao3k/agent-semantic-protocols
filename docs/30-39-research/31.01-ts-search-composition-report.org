@@ -20,7 +20,7 @@ shared protocol too early.
 The trace began with a composed command:
 
 #+begin_src shell
-ts-harness search owner src/cli/semantic-search/types.ts items --view seeds .
+ts-harness search owner src/cli/semantic-search/types.ts items --workspace . --view seeds
 #+end_src
 
 The command failed:
@@ -175,7 +175,7 @@ The following should update the root protocol schema before provider adoption:
 Make this command valid:
 
 #+begin_src shell
-ts-harness search owner src/cli/semantic-search/types.ts items --view seeds .
+ts-harness search owner src/cli/semantic-search/types.ts items --workspace . --view seeds
 #+end_src
 
 Expected behavior:
@@ -234,7 +234,7 @@ JSON should carry the richer form:
   "target": "SemanticSearchPacket",
   "ownerPath": "src/cli/semantic-search/types.ts",
   "fields": {
-    "command": "ts-harness search fzf --query-set SemanticSearchPacket --query-set SemanticSearchPacketPayload --query-set SemanticSearchOwner --owner src/cli/semantic-search/types.ts owner --view seeds .",
+    "command": "ts-harness search fzf --query-set SemanticSearchPacket --query-set SemanticSearchPacketPayload --query-set SemanticSearchOwner --owner src/cli/semantic-search/types.ts owner --workspace . --view seeds",
     "composition": "query-set",
     "reason": "co-located-owner-items"
   }
@@ -278,7 +278,7 @@ Secondary metrics:
 
 Add or update tests for:
 
-- =search owner <path> items --view seeds .= exits 0
+- =search owner <path> items --workspace . --view seeds= exits 0
 - =items= is not treated as =PROJECT_ROOT=
 - owner packet JSON contains =items=
 - compact render includes =|item= lines or equivalent seed evidence
@@ -322,7 +322,7 @@ node --test dist/tests/unit/cli.test.js dist/tests/unit/semantic_search_schema.t
 Replay result:
 
 #+begin_src shell
-ts-harness search owner src/cli/semantic-search/types.ts items --view seeds .
+ts-harness search owner src/cli/semantic-search/types.ts items --workspace . --view seeds
 #+end_src
 
 The command now exits successfully and surfaces =SemanticSearchPacket=,

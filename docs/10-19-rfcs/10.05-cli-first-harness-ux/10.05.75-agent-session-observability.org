@@ -66,6 +66,50 @@ It is computed from visible evidence references such as command ids, selectors,
 packet summaries, failure-frontier entries, or graph-turbo facts.  The analyzer
 must not mark an answer grounded from memory-only prose.
 
+** Org-native agent plans
+Agent execution plans are ordinary Org subtrees, not a separate =asp plan=
+state store. The durable source of truth is a reviewable Org entry generated
+through:
+#+begin_src shell
+asp org capture-plan --kind agent-plan --title <TITLE> --target-file PLANS.org --outline Plans/Active --tag plan --property PLAN_ID=<ID> --body <OBJECTIVE>
+#+end_src
+The generated subtree records plan identity and memory visibility through
+standard property drawers:
+- =PLAN_PROJECT= identifies the repository/project memory boundary;
+- =PLAN_SESSION= identifies the active agent session;
+- =PLAN_ID= identifies one concrete plan within a session;
+- =PLAN_BRANCH= identifies a branch/worktree line of work;
+- =PLAN_SHARING= declares visibility: =isolated=, =plan=, =session=,
+=branch=, =project=, or =global=;
+- =MEMORY_SCOPE= records the computed memory recall scope key;
+- =MEMORY_RECALL_K1= and =MEMORY_RECALL_K2= define first-pass and rerank
+recall widths;
+- =MEMORY_RECALL_LAMBDA= records the q-value/relevance blend;
+- =MEMORY_MIN_SCORE= records the minimum accepted recall score;
+- =MEMORY_MAX_CONTEXT_CHARS= records the memory context budget;
+- =MEMORY_FEEDBACK_BIAS= records the feedback signal applied to recall
+tuning.
+Agents inspect plan state through parser-owned Org queries rather than through
+ad hoc file reads:
+#+begin_src shell
+asp org query --kind property --field key=PLAN_ID --field value=<ID> --workspace . --view metadata
+asp org query --kind property --field key=PLAN_SESSION --field value=<SESSION_ID> --workspace . --view metadata
+asp org query --kind property --field key=PLAN_BRANCH --field value=<BRANCH_ID> --workspace . --view metadata
+asp org query --kind property --field key=PLAN_SHARING --field value=project --workspace . --view metadata
+asp org query --kind property --field key=MEMORY_SCOPE --workspace . --view metadata
+asp org query --kind property --field key=MEMORY_FEEDBACK_BIAS --workspace . --view metadata
+asp org query --kind property --field key=MEMORY_RECALL_K1 --workspace . --view metadata
+asp org query --kind property --field key=STEP_STATUS --field value=pending --workspace . --view metadata
+asp org query --kind property --field key=RECEIPT_STATUS --field value=pending --workspace . --view metadata
+#+end_src
+Python =asp-memory-engine= consumes the same plan identity, visibility, and
+memory computation properties as recall metadata. It does not write plan state
+and does not replace Org. It indexes episodes by =project/session/plan/branch/sharing=
+so isolated plans stay private while session, branch, project, or global
+memories are visible to the appropriate future agent sessions. Recall behavior
+is computed from =MEMORY_SCOPE=, =MEMORY_RECALL_K1=, =MEMORY_RECALL_K2=,
+=MEMORY_RECALL_LAMBDA=, =MEMORY_MIN_SCORE=, =MEMORY_MAX_CONTEXT_CHARS=, and
+=MEMORY_FEEDBACK_BIAS= rather than from a static engine label.
 ** Analyzer feedback
 
 Agent-session analysis writes

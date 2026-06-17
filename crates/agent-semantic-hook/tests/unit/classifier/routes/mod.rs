@@ -58,9 +58,10 @@ fn rust_provider() -> ActivatedProvider {
             "{termArgs}",
             "--surface",
             "owners,tests",
+            "--workspace",
+            ".",
             "--view",
             "seeds",
-            ".",
         ])),
     );
     routes.owner = command(&[
@@ -97,9 +98,10 @@ fn python_provider() -> ActivatedProvider {
             "{termArgs}",
             "--surface",
             "owners,tests",
+            "--workspace",
+            ".",
             "--view",
             "seeds",
-            ".",
         ])),
     );
     routes.owner = command(&["py-harness", "search", "owner", "{path}", "."]);

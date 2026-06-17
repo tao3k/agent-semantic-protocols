@@ -6,21 +6,31 @@ use super::shell::is_separator;
 pub(crate) fn path_like_tokens(tokens: &[String]) -> Vec<&str> {
     let mut paths = Vec::new();
     for token in tokens {
-        let normalized = normalize_source_route_selector(token);
-        if is_path_like_token(normalized) {
-            push_unique_path(&mut paths, normalized);
-            if normalized != token {
-                continue;
-            }
-        }
-        for segment in embedded_path_like_segments(token) {
-            let normalized = normalize_source_route_selector(segment);
-            if is_embedded_path_like_segment(normalized) {
-                push_unique_path(&mut paths, normalized);
-            }
-        }
+        path_like_token_matches(token, |path| {
+            push_unique_path(&mut paths, path);
+            false
+        });
     }
     paths
+}
+
+pub(crate) fn path_like_token_matches<'a, F>(token: &'a str, mut predicate: F) -> bool
+where
+    F: FnMut(&'a str) -> bool,
+{
+    let normalized = normalize_source_route_selector(token);
+    if is_path_like_token(normalized) {
+        if predicate(normalized) {
+            return true;
+        }
+        if normalized != token {
+            return false;
+        }
+    }
+    embedded_path_like_segment_matches(token, |segment| {
+        let normalized = normalize_source_route_selector(segment);
+        is_embedded_path_like_segment(normalized) && predicate(normalized)
+    })
 }
 
 fn is_path_like_token(token: &str) -> bool {
@@ -29,8 +39,10 @@ fn is_path_like_token(token: &str) -> bool {
         && (token.contains('/') || token.contains('.') || token.contains('*'))
 }
 
-fn embedded_path_like_segments(token: &str) -> Vec<&str> {
-    let mut segments = Vec::new();
+fn embedded_path_like_segment_matches<'a, F>(token: &'a str, mut predicate: F) -> bool
+where
+    F: FnMut(&'a str) -> bool,
+{
     let mut start = None;
     for (index, character) in token.char_indices() {
         if is_path_fragment_character(character) {
@@ -39,16 +51,18 @@ fn embedded_path_like_segments(token: &str) -> Vec<&str> {
         }
         if let Some(start_index) = start.take()
             && start_index < index
+            && predicate(&token[start_index..index])
         {
-            segments.push(&token[start_index..index]);
+            return true;
         }
     }
     if let Some(start_index) = start
         && start_index < token.len()
+        && predicate(&token[start_index..])
     {
-        segments.push(&token[start_index..]);
+        return true;
     }
-    segments
+    false
 }
 
 fn is_path_fragment_character(character: char) -> bool {

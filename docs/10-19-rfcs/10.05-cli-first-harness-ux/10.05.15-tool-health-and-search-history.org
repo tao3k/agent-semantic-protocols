@@ -6,8 +6,8 @@ Those tools are allowed in ordinary shell pipelines, and simple pipelines
 should stay explicit:
 
 #+begin_src shell
-rg -n contentBlocks tests | asp python search ingest items tests --view seeds .
-fd -e rs provider crates | asp rust search ingest items tests --view seeds .
+rg -n contentBlocks tests | asp python search ingest items tests --workspace . --view seeds
+fd -e rs provider crates | asp rust search ingest items tests --workspace . --view seeds
 #+end_src
 
 The protocol responsibility is narrower and stricter:
@@ -80,7 +80,7 @@ The boundary is intentionally explicit:
 - =graph-turbo= must be installed on =PATH=;
 - =asp search history audit [PROJECT_ROOT]= calls exactly
   =graph-turbo timeline <PROJECT_ROOT>/.cache/agent-semantic-protocol/artifacts=;
-- no Python source-path probing, =python -m= fallback, or legacy statistical
+- no Python source-path probing, =python -m= fallback, or retired statistical
   audit implementation is allowed;
 - agents can call =graph-turbo timeline <ARTIFACT_DIR>= directly when they want
   artifact-level control.
@@ -106,7 +106,7 @@ model, not the product output.  Example rows:
 [graph-turbo-fzf-promotion] policy=repeat-fzf-to-typed-frontier promotable=12 groups=6 actions=5 replacement=promote-to-owner-item-test-frontier
 [graph-turbo-owner-collapse] policy=repeat-owner-to-item-test-frontier collapsible=18 groups=7 actions=5 replacement=promote-to-owner-query-item-test-frontier
 [graph-turbo-fanout-planning] policy=mixed-fanout-to-single-profile-frontier routable=7 avoidableBranches=19 actions=5 replacement=route-to-typed-frontier-before-parallel-fanout
-[graph-turbo-next] source=ownerCollapse category=repeat-owner score=18 decision=collapse subject=crates/agent-semantic-client/src/search_history.rs replacement=promote-to-owner-query-item-test-frontier profile=owner-query route=owner-items-tests preferredCommand=asp rust search owner crates/agent-semantic-client/src/search_history.rs items --view seeds .
+[graph-turbo-next] source=ownerCollapse category=repeat-owner score=18 decision=collapse subject=crates/agent-semantic-client/src/search_history.rs replacement=promote-to-owner-query-item-test-frontier profile=owner-query route=owner-items-tests preferredCommand=asp rust search owner crates/agent-semantic-client/src/search_history.rs items --workspace . --view seeds
 #+end_src
 
 The intent is to improve agent command quality and reduce command rounds.  A
@@ -147,11 +147,11 @@ The compact output contract is line-oriented:
 [search-suggest] lang=<language> view=commands source=advisory history=<optional|requested>
 |contract executes=false provider=false planner=false output=commands
 |history audit="asp search history audit ."
-|prefer pipe="asp <language> search pipe <query> --view seeds ."
+|prefer pipe="asp <language> search pipe <query> --workspace . --view seeds"
 |prefer graph="asp <language> search pipe <query> --view graph-turbo-request ."
-|prefer fzf="asp <language> search fzf <query> owner tests --view seeds ."
-|manual ingest="rg -n <query> <owners> | asp <language> search ingest items tests --view seeds ."
-|reasoning owner-query="asp <language> search reasoning owner-query --owner <path> --query <query> --view seeds ."
+|prefer fzf="asp <language> search fzf <query> owner tests --workspace . --view seeds"
+|manual ingest="rg -n <query> <owners> | asp <language> search ingest items tests --workspace . --view seeds"
+|reasoning owner-query="asp <language> search reasoning owner-query --owner <path> --query <query> --workspace . --view seeds"
 |avoid provider-spawn,source-scan,natural-language-planning
 #+end_src
 
@@ -196,7 +196,7 @@ pipeline does not provide:
 asp rust search pipe 'cacheRoot|ClientReceipt|cacheManifestPath' \
   --owners crates/agent-semantic-client/src crates/agent-semantic-protocol/src \
   --pipe items,tests \
-  --view seeds .
+  --workspace . --view seeds
 #+end_src
 
 If a search is a plain one-tool pipeline, agents should write the shell

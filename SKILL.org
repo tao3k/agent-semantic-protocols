@@ -108,8 +108,9 @@ file, glob, package root, or broad line range, ask the provider for owner items,
 tree-sitter locator output, or a read-plan frontier instead of printing code.
 
 ** Command Selection
+Dependency search is a first-class provider surface. For dependency questions, start with =asp <language> search guide --workspace .= to confirm the current command shape, then use the advertised dependency/manifest profile such as =asp rust search dependency <crate-or-package> --workspace . --view seeds= or the shared =search reasoning query-deps= profile before reading source or searching the web. Treat manifest facts, import owners, docs-use/public-api lines, crate-source/runtime-source hints, and tests as the first frontier; use docs.rs or web search only after the provider reports a missing dependency frontier.
 
-Start with =asp <language> guide .= when a task needs the provider-owned tool
+Start with =asp <language> guide --workspace .= when a task needs the provider-owned tool
 map. Use =asp providers= or =asp doctor= when the active language or provider
 binary is unclear. The root =asp search= and =asp query= forms are thin
 routers: use =--language <id>= when the project root is ambiguous, or pass an
@@ -119,7 +120,7 @@ activation coverage so the root facade can route to the same
 
 Provider =guide= output is the interface contract for language-specific
 knowledge axes. Do not assume that an axis supported by one provider is
-available in another provider; run =asp <language> guide .= and follow only the
+available in another provider; run =asp <language> guide --workspace .= and follow only the
 =|cmd= rows it advertises.
 
 Treat =evidenceGrade=unknown=, =|missing=, or =witness pending= as a real
@@ -128,7 +129,7 @@ query, route to runtime-source/pattern evidence, or record the provider gap.
 
 ** Failure Frontier
 
-Use =asp <language> search guide .= as the source of truth for current reasoning
+Use =asp <language> search guide --workspace .= as the source of truth for current reasoning
 profiles. Its =command== rows are executable shapes. Do not reconstruct
 reasoning commands from =entries== text as positional arguments.
 
@@ -151,8 +152,8 @@ should print the matched element content instead of metadata.
 Start from the document guide when you need the element and field vocabulary:
 
 #+begin_src sh
-asp org guide .
-asp md guide .
+asp org guide --workspace .
+asp md guide --workspace .
 #+end_src
 
 Document search and query return parser-owned element facts: headings,

@@ -97,7 +97,7 @@ fn raw_search_piped_to_ingest_is_allowed() {
         "pre-tool",
         &json!({
             "tool_name": "functions.exec_command",
-            "tool_input": {"cmd": "rg -n WorkflowExecution src | asp typescript search ingest owner tests --view seeds ."}
+            "tool_input": {"cmd": "rg -n WorkflowExecution src | asp typescript search ingest owner tests --workspace . --view seeds"}
         }),
     );
 

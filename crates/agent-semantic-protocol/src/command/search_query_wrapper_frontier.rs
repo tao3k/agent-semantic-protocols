@@ -373,13 +373,17 @@ fn query_wrapper_empty_next_command(
     let command_scope = scope_args_for_command(scopes);
     match surface {
         QueryWrapperSurface::Fd => format!(
-            "asp rg {} {}",
+            "asp rg {} --workspace {}",
             repeated_query_args(&multi_clause_queries(queries, terms)),
             command_scope
         ),
         QueryWrapperSurface::Rg => {
             let fd_query = fd_query_for_surface(surface, queries, terms);
-            format!("asp fd -query {} {}", shell_arg(&fd_query), command_scope)
+            format!(
+                "asp fd -query {} --workspace {}",
+                shell_arg(&fd_query),
+                command_scope
+            )
         }
     }
 }
@@ -458,13 +462,24 @@ fn scope_args_for_command(scopes: &[PathBuf]) -> String {
     }
     scopes
         .iter()
-        .map(|scope| shell_arg(&scope.to_string_lossy().replace('\\', "/")))
+        .map(|scope| shell_arg_if_needed(&scope.to_string_lossy().replace('\\', "/")))
         .collect::<Vec<_>>()
         .join(" ")
 }
 
 fn best_rg_scope(candidates: &[Candidate]) -> Option<String> {
     rg_scope_next(candidates).into_iter().next()
+}
+
+fn shell_arg_if_needed(value: &str) -> String {
+    if value
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '/' | '.' | '_' | '-' | ':'))
+    {
+        value.to_string()
+    } else {
+        shell_arg(value)
+    }
 }
 
 fn evidence_preview(candidates: &[Candidate]) -> String {

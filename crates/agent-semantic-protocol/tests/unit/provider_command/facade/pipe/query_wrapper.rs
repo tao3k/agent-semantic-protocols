@@ -24,7 +24,7 @@ fn asp_fd_and_rg_query_help_are_public_query_set_surfaces() {
     let fd_stdout = String::from_utf8(fd_output.stdout).expect("fd stdout");
     assert!(
         fd_stdout.contains(
-            "usage: asp fd -query <owner-or-path-term-a|term-b|term-c> [-query <second-clause>] [scope...]"
+            "usage: asp fd -query <owner-or-path-term-a|term-b|term-c> [-query <second-clause>] [--workspace <root>] [scope...]"
         ),
         "{fd_stdout}"
     );
@@ -45,7 +45,7 @@ fn asp_fd_and_rg_query_help_are_public_query_set_surfaces() {
     let rg_stdout = String::from_utf8(rg_output.stdout).expect("rg stdout");
     assert!(
         rg_stdout.contains(
-            "usage: asp rg -query <content-or-error-term-a|term-b|term-c> [-query <second-clause>] [scope...]"
+            "usage: asp rg -query <content-or-error-term-a|term-b|term-c> [-query <second-clause>] [--workspace <root>] [scope...]"
         ),
         "{rg_stdout}"
     );
@@ -79,6 +79,7 @@ fn asp_rg_query_marks_single_broad_or_as_recall_probe() {
             "rg",
             "-query",
             "Fiber|Queue|Runtime",
+            "--workspace",
             ".",
             "--",
             "--glob",
@@ -122,7 +123,7 @@ fn asp_rg_query_marks_single_broad_or_as_recall_probe() {
     );
     assert!(stdout.contains("recommendedNext=A1.fd-query"), "{stdout}");
     assert!(
-        stdout.contains("nextCommand=asp fd -query 'Fiber|Queue|Runtime' '.'"),
+        stdout.contains("nextCommand=asp fd -query 'Fiber|Queue|Runtime' --workspace ."),
         "{stdout}"
     );
     assert!(
@@ -168,6 +169,7 @@ fn asp_rg_query_keeps_repeated_query_clauses_separate() {
             "Fiber|Queue",
             "-query",
             "stale|refresh|sqlite|cache",
+            "--workspace",
             "src",
         ])
         .output()
@@ -242,6 +244,7 @@ fn asp_fd_query_graph_request_carries_surface_and_query_terms() {
             "Fiber|Runtime|internal",
             "--view",
             "graph-turbo-request",
+            "--workspace",
             ".",
         ])
         .output()

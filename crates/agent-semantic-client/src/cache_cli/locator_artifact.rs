@@ -7,6 +7,7 @@ use std::path::{Component, Path, PathBuf};
 use agent_semantic_client_core::{
     CacheArtifactId, ClientCacheFileHash, ClientCacheGeneration, ClientRequest, ResolvedProvider,
 };
+use agent_semantic_runtime::project_local_activation_path;
 use sha2::{Digest, Sha256};
 
 use crate::cache_replay::{
@@ -118,27 +119,55 @@ pub(super) fn search_packet_file_hashes_from_packet(
             if request
                 .forwarded_args
                 .first()
-                .is_none_or(|arg| arg != "prime")
+                .is_none_or(|arg| !matches!(arg.as_str(), "prime" | "deps" | "dependency"))
             {
                 return None;
             }
-            let file_hashes = [
-                ".cache/agent-semantic-protocol/hooks/activation.json",
-                "Cargo.toml",
-                "package.json",
-                "tsconfig.json",
-                "pyproject.toml",
-                "Project.toml",
-            ]
-            .into_iter()
-            .filter_map(|path| hash_project_file(project_root, path))
-            .collect::<Vec<_>>();
-            if file_hashes.is_empty() {
-                None
-            } else {
-                Some(file_hashes)
-            }
+            manifest_file_hashes(project_root, &provider.package_roots)
         })
+}
+
+fn manifest_file_hashes(
+    project_root: &Path,
+    package_roots: &[String],
+) -> Option<Vec<ClientCacheFileHash>> {
+    let activation_hash = project_local_activation_path(project_root)
+        .strip_prefix(project_root)
+        .ok()
+        .and_then(Path::to_str)
+        .and_then(|path| hash_project_file(project_root, path));
+    let manifests = [
+        "Cargo.toml",
+        "package.json",
+        "tsconfig.json",
+        "pyproject.toml",
+        "Project.toml",
+    ];
+    let file_hashes = activation_hash
+        .into_iter()
+        .chain(package_roots.iter().flat_map(|package_root| {
+            manifests.into_iter().filter_map(move |manifest| {
+                let path = if package_root == "." || package_root.is_empty() {
+                    manifest.to_string()
+                } else {
+                    format!("{}/{}", package_root.trim_end_matches('/'), manifest)
+                };
+                hash_project_file(project_root, &path)
+            })
+        }))
+        .fold(BTreeMap::new(), |mut file_hashes, file_hash| {
+            file_hashes
+                .entry(file_hash.path.clone())
+                .or_insert(file_hash);
+            file_hashes
+        })
+        .into_values()
+        .collect::<Vec<_>>();
+    if file_hashes.is_empty() {
+        None
+    } else {
+        Some(file_hashes)
+    }
 }
 
 pub(super) fn locator_file_hashes_from_packet(
@@ -194,6 +223,8 @@ fn packet_file_hashes_from_packet(packet_bytes: &[u8]) -> Option<Vec<ClientCache
         file_hashes.push(ClientCacheFileHash {
             path: hash.get("path")?.as_str()?.to_string(),
             sha256: hash.get("sha256")?.as_str()?.to_string(),
+            byte_len: hash.get("byteLen")?.as_u64()?,
+            mtime_ms: hash.get("mtimeMs")?.as_u64()?,
         });
     }
     if file_hashes.is_empty() {
@@ -351,11 +382,24 @@ fn looks_like_source_path(value: &str) -> bool {
 
 fn hash_project_file(project_root: &Path, path: &str) -> Option<ClientCacheFileHash> {
     let file_path = safe_project_file_path(project_root, path)?;
+    let metadata = fs::metadata(&file_path).ok()?;
+    if !metadata.is_file() {
+        return None;
+    }
+    let byte_len = metadata.len();
+    let mtime_ms = metadata
+        .modified()
+        .ok()
+        .and_then(|modified| modified.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|duration| duration.as_millis().min(u128::from(u64::MAX)) as u64);
+    let mtime_ms = mtime_ms?;
     let bytes = fs::read(file_path).ok()?;
     let digest = Sha256::digest(&bytes);
     Some(ClientCacheFileHash {
         path: path.to_string(),
         sha256: format!("{digest:x}"),
+        byte_len,
+        mtime_ms,
     })
 }
 

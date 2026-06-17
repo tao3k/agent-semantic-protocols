@@ -73,11 +73,11 @@ fn guide_rewrites_command_lines_to_language_facade() {
         "{stdout}"
     );
     assert!(
-        stdout.contains("|cmd agent-doctor=asp rust agent doctor --json ."),
+        stdout.contains("|cmd agent-doctor=asp rust agent doctor --workspace . --json"),
         "{stdout}"
     );
     assert!(
-        stdout.contains("|rule hook install/runtime is owned by agent-semantic-hook"),
+        stdout.contains("|rule hook setup/runtime is owned by agent-semantic-hook"),
         "{stdout}"
     );
     assert!(!stdout.contains("rs-harness search"));

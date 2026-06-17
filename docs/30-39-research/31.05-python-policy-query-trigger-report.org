@@ -210,8 +210,8 @@ need first-class query surfaces.
 Add a provider-owned policy lookup view for Python:
 
 #+begin_src shell
-py-harness search policy PY-PROJ-R001 owner tests --view seeds .
-py-harness search policy PY-AGENT-R008 owner tests --view seeds .
+py-harness search policy PY-PROJ-R001 owner tests --workspace . --view seeds
+py-harness search policy PY-AGENT-R008 owner tests --workspace . --view seeds
 #+end_src
 
 Compact output should include:

@@ -90,7 +90,7 @@ prime -> focused search -> owner/items -> tests -> ingest -> hook deny guide
 
 The first Rust/Tokio replay should cover:
 
-- `rs-harness search prime --view seeds .`
+- `rs-harness search prime --workspace . --view seeds`
 - one or more focused text/owner/dependency searches selected from prime;
 - an owner/items follow-up for a large or public owner;
 - a tests follow-up for the selected owner;

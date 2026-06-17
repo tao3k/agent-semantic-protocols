@@ -1,7 +1,9 @@
 use agent_semantic_client_core::{
-    CacheArtifactId, CacheGenerationId, CacheStatus, ClientCacheGeneration, ClientMethod,
-    ClientRequest, LanguageId, ProviderId, ProviderRegistrySnapshot, SemanticSchemaId,
+    CacheArtifactId, CacheGenerationId, CacheStatus, ClientCacheGeneration, ClientCacheManifest,
+    ClientMethod, ClientRequest, LanguageId, ProviderId, ProviderRegistrySnapshot,
+    SemanticSchemaId, project_client_cache_manifest_path,
 };
+use agent_semantic_client_db::ClientDb;
 use serde_json::json;
 use sha2::{Digest, Sha256};
 
@@ -155,10 +157,265 @@ rank=O frontier=O.owner\n";
 
 #[test]
 fn dependency_search_packet_writeback_replays_rendered_stdout_artifact() {
+    dependency_search_packet_writeback_replays_rendered_stdout_artifact_for("deps");
+    dependency_search_packet_writeback_replays_rendered_stdout_artifact_for("dependency");
+}
+
+#[test]
+fn dependency_search_packet_without_locators_uses_manifest_hashes_for_replay() {
     let _guard = crate::test_support::CACHE_TEST_LOCK
         .lock()
         .expect("cache test lock");
-    let root = temp_root("dependency-search-packet-writeback");
+    let root = temp_root("dependency-search-packet-manifest-hashes");
+    std::fs::create_dir_all(root.join(".git")).expect("create git marker");
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"fixture\"\nversion = \"0.1.0\"\n",
+    )
+    .expect("write manifest");
+    let snapshot = ProviderRegistrySnapshot {
+        activation_path: root.join("activation.json"),
+        providers: vec![rust_provider()],
+    };
+    let request = ClientRequest::new(ClientMethod::Search, &root)
+        .with_language(LanguageId::from("rust"))
+        .with_forwarded_args(vec![
+            "deps".to_string(),
+            "serde".to_string(),
+            "--view".to_string(),
+            "seeds".to_string(),
+            ".".to_string(),
+        ]);
+    let packet = serde_json::to_vec(&json!({
+        "schemaId": "agent.semantic-protocols.semantic-search-packet",
+        "schemaVersion": "1",
+        "languageId": "rust",
+        "providerId": "rs-harness",
+        "renderMode": "deps",
+        "query": "serde",
+        "nodes": [{"id": "D", "kind": "dependency", "role": "pkg", "label": "serde"}],
+        "edges": [],
+        "searchSynthesis": {"algorithm": "dependency-frontier", "seeds": []}
+    }))
+    .expect("packet json");
+    let rendered_stdout = "[search-dependency] q=serde view=hits alg=seed-frontier\n\
+legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next\n\
+aliases: graph:{G=search,D=dependency}\n\
+D=dependency:pkg(serde)!dependency\n\
+G>{D:uses}\n\
+rank=D frontier=D.dependency\n";
+
+    let probe = write_search_packet_cache_after_provider_success(
+        &root,
+        &snapshot,
+        &request,
+        &packet,
+        rendered_stdout.as_bytes(),
+    )
+    .expect("writeback probe");
+    let replay = probe.replay.expect("dependency search output replay");
+
+    assert_eq!(replay.stdout, rendered_stdout.as_bytes());
+    assert_eq!(probe.sqlite_write_count, 2);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn invalid_retired_manifest_is_discarded_and_rebuilt_on_writeback() {
+    let _guard = crate::test_support::CACHE_TEST_LOCK
+        .lock()
+        .expect("cache test lock");
+    let root = temp_root("invalid-retired-manifest-rebuild");
+    std::fs::create_dir_all(root.join(".git")).expect("create git marker");
+    std::fs::create_dir_all(root.join("src")).expect("create src");
+    let source = b"use serde::Serialize;\n";
+    std::fs::write(root.join("src/lib.rs"), source).expect("write source");
+    let digest = Sha256::digest(source);
+    let manifest_path = project_client_cache_manifest_path(&root).expect("manifest path");
+    std::fs::create_dir_all(manifest_path.parent().expect("manifest parent"))
+        .expect("create manifest parent");
+    std::fs::write(
+        &manifest_path,
+        serde_json::to_vec_pretty(&json!({
+            "schemaId": "agent.semantic-protocols.client-cache-manifest",
+            "schemaVersion": "1",
+            "protocolId": "agent.semantic-protocols.client",
+            "protocolVersion": "1",
+            "cacheRoot": manifest_path.parent().expect("manifest parent").display().to_string(),
+            "generations": [{
+                "generationId": "rust-search-deps-retired",
+                "languageId": "rust",
+                "providerId": "rs-harness",
+                "exportMethod": "search/deps",
+                "projectRoot": root.display().to_string(),
+                "packageRoot": ".",
+                "schemaIds": ["agent.semantic-protocols.semantic-search-packet"],
+                "cacheStatus": "hit",
+                "rawSourceStored": false,
+                "requestFingerprint": "retired",
+                "fileHashes": [{"path": "src/lib.rs", "sha256": format!("{digest:x}")}],
+                "artifactIds": ["search/rust-search-deps-retired.json"]
+            }]
+        }))
+        .expect("retired manifest json"),
+    )
+    .expect("write retired manifest");
+    assert!(
+        ClientCacheManifest::load_from_path(&manifest_path).is_err(),
+        "retired manifest without metadata must be invalid"
+    );
+    let snapshot = ProviderRegistrySnapshot {
+        activation_path: root.join("activation.json"),
+        providers: vec![rust_provider()],
+    };
+    let stale_request = ClientRequest::new(ClientMethod::Search, &root)
+        .with_language(LanguageId::from("rust"))
+        .with_forwarded_args(vec![
+            "deps".to_string(),
+            "regex".to_string(),
+            "--view".to_string(),
+            "seeds".to_string(),
+            ".".to_string(),
+        ]);
+    let stale_packet = serde_json::to_vec(&json!({
+        "schemaId": "agent.semantic-protocols.semantic-search-packet",
+        "schemaVersion": "1",
+        "languageId": "rust",
+        "providerId": "rs-harness",
+        "renderMode": "deps",
+        "query": "regex",
+        "owners": [{"path": "src/lib.rs"}],
+        "hits": [],
+        "searchSynthesis": {"algorithm": "dependency-frontier", "seeds": []},
+        "cache": {
+            "fileHashes": [{
+                "path": "src/lib.rs",
+                "sha256": format!("{digest:x}"),
+                "byteLen": source.len(),
+                "mtimeMs": std::fs::metadata(root.join("src/lib.rs"))
+                    .expect("source metadata")
+                    .modified()
+                    .expect("source modified")
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .expect("source mtime epoch")
+                    .as_millis()
+            }]
+        }
+    }))
+    .expect("stale packet json");
+    write_search_packet_cache_after_provider_success(
+        &root,
+        &snapshot,
+        &stale_request,
+        &stale_packet,
+        b"[search-deps] q=regex\n",
+    )
+    .expect("stale writeback probe");
+    std::fs::write(
+        &manifest_path,
+        serde_json::to_vec_pretty(&json!({
+            "schemaId": "agent.semantic-protocols.client-cache-manifest",
+            "schemaVersion": "1",
+            "protocolId": "agent.semantic-protocols.client",
+            "protocolVersion": "1",
+            "cacheRoot": manifest_path.parent().expect("manifest parent").display().to_string(),
+            "generations": [{
+                "generationId": "rust-search-deps-retired",
+                "languageId": "rust",
+                "providerId": "rs-harness",
+                "exportMethod": "search/deps",
+                "projectRoot": root.display().to_string(),
+                "packageRoot": ".",
+                "schemaIds": ["agent.semantic-protocols.semantic-search-packet"],
+                "cacheStatus": "hit",
+                "rawSourceStored": false,
+                "requestFingerprint": "retired",
+                "fileHashes": [{"path": "src/lib.rs", "sha256": format!("{digest:x}")}],
+                "artifactIds": ["search/rust-search-deps-retired.json"]
+            }]
+        }))
+        .expect("retired manifest json"),
+    )
+    .expect("rewrite retired manifest");
+    assert!(
+        ClientCacheManifest::load_from_path(&manifest_path).is_err(),
+        "retired manifest without metadata must remain invalid after stale db setup"
+    );
+    let request = ClientRequest::new(ClientMethod::Search, &root)
+        .with_language(LanguageId::from("rust"))
+        .with_forwarded_args(vec![
+            "deps".to_string(),
+            "serde".to_string(),
+            "--view".to_string(),
+            "seeds".to_string(),
+            ".".to_string(),
+        ]);
+    let packet = serde_json::to_vec(&json!({
+        "schemaId": "agent.semantic-protocols.semantic-search-packet",
+        "schemaVersion": "1",
+        "languageId": "rust",
+        "providerId": "rs-harness",
+        "renderMode": "deps",
+        "query": "serde",
+        "owners": [{"path": "src/lib.rs"}],
+        "hits": [],
+        "searchSynthesis": {"algorithm": "dependency-frontier", "seeds": []},
+        "cache": {
+            "fileHashes": [{
+                "path": "src/lib.rs",
+                "sha256": format!("{digest:x}"),
+                "byteLen": source.len(),
+                "mtimeMs": std::fs::metadata(root.join("src/lib.rs"))
+                    .expect("source metadata")
+                    .modified()
+                    .expect("source modified")
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .expect("source mtime epoch")
+                    .as_millis()
+            }]
+        }
+    }))
+    .expect("packet json");
+    let rendered_stdout = "[search-deps] q=serde pkg=. dep=1 own=1 api=0\n\
+|owner src/lib.rs hit_kind=dependency-api locations=1:1 next=owner:src/lib.rs\n";
+
+    let probe = write_search_packet_cache_after_provider_success(
+        &root,
+        &snapshot,
+        &request,
+        &packet,
+        rendered_stdout.as_bytes(),
+    )
+    .expect("writeback probe");
+    let replay = probe.replay.expect("dependency search output replay");
+    let manifest = ClientCacheManifest::load_from_path(&manifest_path).expect("rebuilt manifest");
+    let db_report = ClientDb::inspect(ClientDb::default_path(
+        manifest_path.parent().expect("manifest parent"),
+    ));
+
+    assert_eq!(replay.stdout, rendered_stdout.as_bytes());
+    assert_eq!(manifest.generations.len(), 1);
+    assert_eq!(db_report.generation_count, 1);
+    assert_ne!(
+        manifest.generations[0].generation_id.as_str(),
+        "rust-search-deps-retired"
+    );
+    assert!(
+        manifest.generations[0]
+            .file_hashes
+            .as_ref()
+            .expect("file hashes")
+            .iter()
+            .all(|hash| hash.byte_len > 0 && hash.mtime_ms > 0)
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+fn dependency_search_packet_writeback_replays_rendered_stdout_artifact_for(view: &str) {
+    let _guard = crate::test_support::CACHE_TEST_LOCK
+        .lock()
+        .expect("cache test lock");
+    let root = temp_root(&format!("dependency-search-packet-writeback-{view}"));
     std::fs::create_dir_all(root.join(".git")).expect("create git marker");
     std::fs::create_dir_all(root.join("src")).expect("create src");
     let source = b"use serde::Serialize;\n#[derive(Serialize)]\npub struct Thing;\n";
@@ -171,7 +428,7 @@ fn dependency_search_packet_writeback_replays_rendered_stdout_artifact() {
     let request = ClientRequest::new(ClientMethod::Search, &root)
         .with_language(LanguageId::from("rust"))
         .with_forwarded_args(vec![
-            "deps".to_string(),
+            view.to_string(),
             "serde@1::Serialize".to_string(),
             ".".to_string(),
         ]);

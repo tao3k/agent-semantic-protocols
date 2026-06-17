@@ -101,7 +101,7 @@ impl ActionNode {
                 scope,
                 command_scope,
             } => Some(format!(
-                "asp fd -query {} {}",
+                "asp fd -query {} --workspace {}",
                 shell_arg(query),
                 command_scope.as_deref().unwrap_or(scope)
             )),
@@ -110,7 +110,7 @@ impl ActionNode {
                 scope,
                 command_scope,
             } => Some(format!(
-                "asp rg -query {} {}",
+                "asp rg -query {} --workspace {}",
                 shell_arg(query),
                 command_scope.as_deref().unwrap_or(scope)
             )),
@@ -119,7 +119,7 @@ impl ActionNode {
                 command_scope,
                 ..
             } => Some(format!(
-                "asp rg {} {command_scope}",
+                "asp rg {} --workspace {command_scope}",
                 repeated_query_args(queries)
             )),
             ActionRoute::OwnerItems {
@@ -128,7 +128,7 @@ impl ActionNode {
                 query,
                 scope,
             } => Some(format!(
-                "asp {language_id} search owner {} items --query {} --view seeds --workspace {scope}",
+                "asp {language_id} search owner {} items --query {} --workspace {scope} --view seeds",
                 shell_arg(owner),
                 shell_arg(query),
             )),
@@ -142,7 +142,7 @@ impl ActionNode {
                 let borrowed_names = names.iter().map(String::as_str).collect::<Vec<_>>();
                 let query = tree_sitter_query_pattern(language_id, recipe, &borrowed_names)?;
                 Some(format!(
-                    "asp {language_id} query --treesitter-query {} {scope}",
+                    "asp {language_id} query --treesitter-query {} --workspace {scope}",
                     shell_arg(&query)
                 ))
             }

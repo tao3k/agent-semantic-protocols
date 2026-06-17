@@ -80,6 +80,12 @@ class ReceiptAdjustment:
 
 
 @dataclass(frozen=True)
+class ReadMemoryProjection:
+    seen_selectors: tuple[str, ...]
+    suppressed_selectors: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class ReadLoopGuard:
     direct_code_action_count: int
     duplicate_selector_count: int
@@ -148,6 +154,7 @@ class GraphResult:
     algorithm_trace: tuple[AlgorithmTraceStep, ...]
     rank_explanations: tuple[RankExplanation, ...]
     receipt_adjustments: tuple[ReceiptAdjustment, ...]
+    read_memory: ReadMemoryProjection
     algorithm_metrics: AlgorithmMetrics
     profiles: tuple[str, ...]
     omit: tuple[str, ...]

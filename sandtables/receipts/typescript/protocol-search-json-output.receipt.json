@@ -161,9 +161,10 @@
         "readonly pipes",
         "owner",
         "tests",
+        "--workspace",
+        ".",
         "--view",
-        "seeds",
-        "."
+        "seeds"
       ],
       "reason": "same text axis repeated with JSON output during interactive exploration"
     }

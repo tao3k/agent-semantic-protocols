@@ -27,7 +27,19 @@ pub fn lookup_source_index_for_language(
     query: &str,
     limit: u32,
 ) -> Result<SourceIndexLookupResult, String> {
-    let cache_root = project_client_cache_dir(project_root)?;
+    lookup_source_index_in_cache(project_root, project_root, language_id, query, limit)
+}
+
+/// Lookup source-index owners from one project's Rust SQL cache for an explicit
+/// indexed project root.
+pub fn lookup_source_index_in_cache(
+    cache_project_root: &Path,
+    indexed_project_root: &Path,
+    language_id: Option<&LanguageId>,
+    query: &str,
+    limit: u32,
+) -> Result<SourceIndexLookupResult, String> {
+    let cache_root = project_client_cache_dir(cache_project_root)?;
     let db_path = ClientDb::default_path(&cache_root);
     let Some(db) = ClientDb::open_read_only_existing(&db_path)? else {
         return Ok(source_index_lookup_result(
@@ -43,7 +55,8 @@ pub fn lookup_source_index_for_language(
             Vec::new(),
         ));
     }
-    let candidates = lookup_source_index_candidates(&db, project_root, language_id, query, limit)?;
+    let candidates =
+        lookup_source_index_candidates(&db, indexed_project_root, language_id, query, limit)?;
     let state = if candidates.is_empty() {
         SourceIndexLookupState::Miss
     } else {

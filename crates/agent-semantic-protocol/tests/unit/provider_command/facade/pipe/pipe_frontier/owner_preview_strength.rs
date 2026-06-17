@@ -52,9 +52,10 @@ fn low_cohesion_fd_preview_needs_strong_owner_seed_before_owner_items() {
             "search",
             "pipe",
             "Project fixture lifecycle worker scope setup",
+            "--workspace",
+            ".",
             "--view",
             "seeds",
-            ".",
         ])
         .output()
         .expect("run asp typescript search pipe");

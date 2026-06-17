@@ -1,5 +1,9 @@
-use agent_semantic_client_core::CacheGenerationId;
-use rusqlite::{Transaction, params};
+use std::path::Path;
+
+use agent_semantic_client_core::{
+    CacheGenerationId, ClientCacheFileHash, SemanticSchemaId, SemanticSchemaVersion,
+};
+use rusqlite::{OptionalExtension, Transaction, params};
 
 use crate::db::{ClientDb, normalized_project_root};
 
@@ -13,13 +17,23 @@ pub(super) fn replace_source_index_rows(
     if import.file_hashes.is_empty() {
         return Err("source index import requires file hash evidence".to_string());
     }
+    let file_hashes_json = source_index_file_hashes_json(&import.file_hashes)?;
+    if let Some(stats) = reusable_generation_stats_for_json(
+        db,
+        &import.project_root,
+        &import.schema_id,
+        &import.schema_version,
+        &file_hashes_json,
+    )? {
+        return Ok(stats);
+    }
     let tx = db.conn.transaction().map_err(|error| {
         format!(
             "failed to start source index transaction at {}: {error}",
             db.db_path.display()
         )
     })?;
-    write_generation(&tx, import)?;
+    write_generation(&tx, import, &file_hashes_json)?;
     clear_rows(&tx, &import.generation_id)?;
     write_owners(&tx, import)?;
     write_selectors(&tx, import)?;
@@ -28,13 +42,114 @@ pub(super) fn replace_source_index_rows(
     db.source_index_stats(&import.generation_id)
 }
 
+pub(super) fn reusable_source_index_generation_stats(
+    db: &ClientDb,
+    project_root: &Path,
+    schema_id: &SemanticSchemaId,
+    schema_version: &SemanticSchemaVersion,
+    file_hashes: &[ClientCacheFileHash],
+) -> Result<Option<ClientDbSourceIndexStats>, String> {
+    if file_hashes.is_empty() {
+        return Err("source index reuse requires file hash evidence".to_string());
+    }
+    let file_hashes_json = source_index_file_hashes_json(file_hashes)?;
+    reusable_generation_stats_for_json(
+        db,
+        project_root,
+        schema_id,
+        schema_version,
+        &file_hashes_json,
+    )
+}
+
+pub(super) fn latest_source_index_file_hashes(
+    db: &ClientDb,
+    project_root: &Path,
+    schema_id: &SemanticSchemaId,
+    schema_version: &SemanticSchemaVersion,
+) -> Result<Option<Vec<ClientCacheFileHash>>, String> {
+    let project_root = normalized_project_root(project_root);
+    let file_hashes_json = db
+        .conn
+        .query_row(
+            "SELECT file_hashes_json
+            FROM source_index_generation
+            WHERE project_root = ?1
+              AND schema_id = ?2
+              AND schema_version = ?3
+            ORDER BY updated_at DESC, generation_id DESC
+            LIMIT 1",
+            params![
+                project_root.as_str(),
+                schema_id.as_str(),
+                schema_version.as_str(),
+            ],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(|error| format!("failed to read latest source index file hashes: {error}"))?;
+    file_hashes_json
+        .map(|value| {
+            serde_json::from_str::<Vec<ClientCacheFileHash>>(&value).map_err(|error| {
+                format!("failed to parse latest source index file hashes: {error}")
+            })
+        })
+        .transpose()
+}
+
+fn reusable_generation_stats_for_json(
+    db: &ClientDb,
+    project_root: &Path,
+    schema_id: &SemanticSchemaId,
+    schema_version: &SemanticSchemaVersion,
+    file_hashes_json: &str,
+) -> Result<Option<ClientDbSourceIndexStats>, String> {
+    let project_root = normalized_project_root(project_root);
+    let generation_id = db
+        .conn
+        .query_row(
+            "SELECT generation_id
+            FROM source_index_generation
+            WHERE project_root = ?1
+              AND schema_id = ?2
+              AND schema_version = ?3
+              AND file_hashes_json = ?4
+            ORDER BY updated_at DESC, generation_id DESC
+            LIMIT 1",
+            params![
+                project_root.as_str(),
+                schema_id.as_str(),
+                schema_version.as_str(),
+                file_hashes_json,
+            ],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(|error| format!("failed to read reusable source index generation: {error}"))?;
+    generation_id
+        .map(|generation_id| db.source_index_stats(&CacheGenerationId::from(generation_id)))
+        .transpose()
+}
+
+fn source_index_file_hashes_json(file_hashes: &[ClientCacheFileHash]) -> Result<String, String> {
+    let mut canonical = file_hashes.to_vec();
+    canonical.sort_by(|left, right| {
+        left.path
+            .cmp(&right.path)
+            .then_with(|| left.byte_len.cmp(&right.byte_len))
+            .then_with(|| left.mtime_ms.cmp(&right.mtime_ms))
+            .then_with(|| left.sha256.cmp(&right.sha256))
+    });
+    serde_json::to_string(&canonical)
+        .map_err(|error| format!("failed to serialize source index file hashes: {error}"))
+}
+
 fn write_generation(
     tx: &Transaction<'_>,
     import: &ClientDbSourceIndexImport,
+    file_hashes_json: &str,
 ) -> Result<(), String> {
     let project_root = normalized_project_root(&import.project_root);
-    let file_hashes_json = serde_json::to_string(&import.file_hashes)
-        .map_err(|error| format!("failed to serialize source index file hashes: {error}"))?;
     tx.execute(
         "INSERT INTO source_index_generation (
             generation_id,

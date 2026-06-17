@@ -32,9 +32,10 @@ fn fzf_fallback_collector_matches_multiple_terms_without_native_finder() {
             "owner",
             "items",
             "tests",
+            "--workspace",
+            ".",
             "--view",
             "seeds",
-            ".",
         ])
         .output()
         .expect("run asp rust search fzf without native finder");

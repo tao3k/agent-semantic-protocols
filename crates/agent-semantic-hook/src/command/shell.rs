@@ -29,13 +29,13 @@ shell_kind_matcher!(
 );
 
 fn shell_tokens(command: &str) -> Vec<String> {
-    if can_use_legacy_shell_tokens(command) {
-        return legacy_shell_tokens(command);
+    if can_use_fallback_shell_tokens(command) {
+        return fallback_shell_tokens(command);
     }
-    bash_ast_tokens(command).unwrap_or_else(|| legacy_shell_tokens(command))
+    bash_ast_tokens(command).unwrap_or_else(|| fallback_shell_tokens(command))
 }
 
-fn can_use_legacy_shell_tokens(command: &str) -> bool {
+fn can_use_fallback_shell_tokens(command: &str) -> bool {
     !command.contains(['$', '`', '<', '>', '\n', '\\', '(', ')']) && !command.contains("||")
 }
 
@@ -136,7 +136,7 @@ fn normalize_shell_word_text(text: String) -> String {
         .replace("\\\\", "\\")
 }
 
-fn legacy_shell_tokens(command: &str) -> Vec<String> {
+fn fallback_shell_tokens(command: &str) -> Vec<String> {
     let mut tokens = Vec::new();
     let mut current = String::new();
     let mut quote: Option<char> = None;
@@ -323,7 +323,7 @@ fn unwrap_rtk_stage(tokens: &[String]) -> Vec<String> {
             if let Some(script) = tokens[command_index + 1..]
                 .iter()
                 .position(|token| matches!(token.as_str(), "-c" | "-lc"))
-                .and_then(|offset| tokens.get(command_index + 1 + offset + 1))
+                .and_then(|relative_index| tokens.get(command_index + 1 + relative_index + 1))
             {
                 return semantic_shell_tokens(script);
             }

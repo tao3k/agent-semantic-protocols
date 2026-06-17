@@ -18,9 +18,10 @@ fn search_pipe_commands_view_points_to_search_suggest() {
             "search",
             "pipe",
             "HookDecision",
+            "--workspace",
+            ".",
             "--view",
             "commands",
-            ".",
         ])
         .output()
         .expect("run asp rust search pipe commands");
