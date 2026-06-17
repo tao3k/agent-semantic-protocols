@@ -385,6 +385,16 @@ contract for JSON output through the language facade:
 asp julia query src/CliExample.jl --term run --json languages/JuliaLangProjectHarness.jl
 #+end_src
 
+Document-language domain surfaces must be expressed through the normal element
+and field query axes before adding named recipes.  For Org, SDD is a
+property/tag convention, not a separate query primitive: =SDD_KIND=,
+=SDD_STATUS=, =SDD_PARENT=, and =:sdd:= headings must be discoverable with
+=query --kind property --field key=<KEY>=, =query --field value=<VALUE>=, and
+tag/heading queries.  A command such as =asp org sdd status= may remain as a
+compatibility recipe, but it must not be the only agent-facing path to SDD
+evidence and must not hide property facts behind hard-coded SDD search
+behavior.
+
 For an exact =direct-source-read= selector with =--code=, the provider should
 return a bounded source-preserved local window for that path/range, not owner
 metadata and not compact projection text.  The selector already carries the
