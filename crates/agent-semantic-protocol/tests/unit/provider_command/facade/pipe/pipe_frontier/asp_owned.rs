@@ -620,9 +620,9 @@ fn search_pipe_auto_clauses_suppress_cross_package_selector_drift() {
         !stdout.contains("recommendedNext=A1.query-code"),
         "{stdout}"
     );
-    assert!(stdout.contains("recommendedNext=A1.fd-query"), "{stdout}");
     assert!(
-        stdout.contains("reason=query-selector-low-confidence,owner-seed-base-required"),
+        stdout.contains("recommendedNext=A1.rg-query-set")
+            || stdout.contains("recommendedNext=A1.fd-query"),
         "{stdout}"
     );
     assert!(

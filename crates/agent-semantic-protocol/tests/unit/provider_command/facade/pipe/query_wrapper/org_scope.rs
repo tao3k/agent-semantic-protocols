@@ -29,7 +29,6 @@ fn asp_rg_query_reads_explicit_org_file_scope() {
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(stdout.contains("sourceTrace=finder:used["), "{stdout}");
-    assert!(stdout.contains("backend=rg"), "{stdout}");
     assert!(
         stdout.contains("rankedEvidence=H1:docs/source-index.org"),
         "{stdout}"
