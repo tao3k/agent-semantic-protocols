@@ -2,12 +2,14 @@
 
 use std::collections::BTreeMap;
 use std::fs;
+use std::io::{self, Write};
 use std::path::{Component, Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use serde_json::Value;
 
 use super::graph::GraphTurboReceiptRequest;
+use super::provider_process::{provider_invocation_with_profile, run_provider_command_with_stdin};
 use super::search_config::AspConfig;
 use super::search_failure_render::{render_failure_frontier, render_failure_graph_turbo_request};
 use super::search_pipe_args::{
@@ -133,6 +135,9 @@ pub(super) fn run_asp_fast_search_command(
             args,
             context.project_root,
             context.locator_root,
+            context.cache_home,
+            context.config,
+            context.provider_context,
             context.frontier_receipt,
         );
     }
@@ -309,9 +314,21 @@ fn source_trace_with_provider_facts(
         "truncatedCandidates".to_string(),
         Value::from(provider_facts.truncated_candidates),
     );
+    let skipped = node_count == 0
+        && provider_facts.edges.is_empty()
+        && provider_facts.input_candidates == 0
+        && provider_facts.fact_candidates == 0
+        && provider_facts.truncated_candidates == 0;
+    let state = if skipped { "skipped" } else { "used" };
     trace.push(
-        SearchPipeSourceTrace::new("providerFacts", "used", node_count, 0, node_count)
-            .with_fields(fields),
+        SearchPipeSourceTrace::new(
+            "providerFacts",
+            state,
+            node_count,
+            usize::from(skipped),
+            node_count,
+        )
+        .with_fields(fields),
     );
     trace
 }
@@ -445,12 +462,26 @@ fn run_search_owner_items_query_command(
     args: &[String],
     project_root: &Path,
     locator_root: &Path,
+    cache_home: &Path,
+    config: &AspConfig,
+    provider_context: Option<&ProviderGraphFactsContext<'_>>,
     frontier_receipt: Option<&GraphTurboReceiptRequest>,
 ) -> Result<(), String> {
     reject_non_graph_turbo_receipt(frontier_receipt)?;
     let owner_query_args = parse_search_owner_items_query_args(args)?;
     if owner_query_args.view != "seeds" {
         return Err("search owner items fast path supports --view seeds".to_string());
+    }
+    if run_provider_owner_items_query(
+        language_id,
+        args,
+        &owner_query_args.owner,
+        project_root,
+        cache_home,
+        config,
+        provider_context,
+    )? {
+        return Ok(());
     }
     print!(
         "{}",
@@ -463,6 +494,84 @@ fn run_search_owner_items_query_command(
         )
     );
     Ok(())
+}
+
+fn run_provider_owner_items_query(
+    language_id: &str,
+    args: &[String],
+    owner: &Path,
+    project_root: &Path,
+    cache_home: &Path,
+    config: &AspConfig,
+    provider_context: Option<&ProviderGraphFactsContext<'_>>,
+) -> Result<bool, String> {
+    let Some(context) = provider_context else {
+        return Ok(false);
+    };
+    if !context.provider.search_capabilities.owner_items {
+        return Ok(false);
+    }
+    let existing_owner_path = owner_path_exists(project_root, owner);
+    let invocation =
+        provider_invocation_with_profile(context.profiles, context.provider, args, config)?;
+    let output = run_provider_command_with_stdin(
+        language_id,
+        context.provider,
+        &invocation,
+        project_root,
+        cache_home,
+        Vec::new(),
+    )?;
+    if !output.status.success() {
+        if existing_owner_path {
+            return Err(provider_owner_items_failure(
+                "provider-owned owner-items failed",
+                owner,
+                output.stderr.as_ref(),
+            ));
+        }
+        return Ok(false);
+    }
+    if output
+        .stdout
+        .iter()
+        .all(|byte| byte.is_ascii_whitespace() || *byte == 0)
+    {
+        if existing_owner_path {
+            return Err(provider_owner_items_failure(
+                "provider-owned owner-items produced empty output",
+                owner,
+                output.stderr.as_ref(),
+            ));
+        }
+        return Ok(false);
+    }
+    io::stderr()
+        .write_all(output.stderr.as_ref())
+        .map_err(|error| format!("failed to write provider stderr: {error}"))?;
+    io::stdout()
+        .write_all(output.stdout.as_ref())
+        .map_err(|error| format!("failed to write provider stdout: {error}"))?;
+    Ok(true)
+}
+
+fn owner_path_exists(project_root: &Path, owner: &Path) -> bool {
+    let path = if owner.is_absolute() {
+        owner.to_path_buf()
+    } else {
+        project_root.join(owner)
+    };
+    fs::metadata(path).is_ok()
+}
+
+fn provider_owner_items_failure(message: &str, owner: &Path, stderr: &[u8]) -> String {
+    let mut failure = format!("{message} for existing owner path `{}`", owner.display());
+    let provider_stderr = String::from_utf8_lossy(stderr).trim().to_string();
+    if !provider_stderr.is_empty() {
+        failure.push_str(": ");
+        failure.push_str(&provider_stderr);
+    }
+    failure
 }
 
 fn run_search_ingest_command(

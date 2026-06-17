@@ -6,10 +6,28 @@ use crate::protocol::{
     CommandTemplate, HOOK_PROTOCOL_ID, HOOK_PROTOCOL_VERSION, HookPolicy, HookRoutes,
     PROVIDER_MANIFEST_SCHEMA_ID, PROVIDER_MANIFEST_SCHEMA_VERSION, StdinMode,
 };
-use crate::protocol_activation::{ManifestSourceDefaults, ProviderExecution, ProviderManifest};
+use crate::protocol_activation::{
+    ManifestSourceDefaults, ProviderExecution, ProviderManifest, ProviderSearchCapabilities,
+};
 
 const SCHEMA_REGISTRY_JSON: &str =
     include_str!("../../../schemas/semantic-language-registry.providers.v1.json");
+
+const COMMON_IGNORED_PATH_PREFIXES: &[&str] = &[
+    ".cache",
+    ".codex/harness-state",
+    ".codex/rs-harness",
+    ".data",
+    ".devenv",
+    ".direnv",
+    ".git",
+    ".idea",
+    ".jj",
+    ".run",
+    ".vscode",
+    "node_modules",
+    "target",
+];
 
 pub(crate) fn schema_registry_provider_manifests() -> Vec<ProviderManifest> {
     schema_registry()
@@ -67,6 +85,7 @@ impl LanguageRegistration {
             binary: self.binary.clone(),
             execution: self.execution,
             source: overlay.source.into_defaults(),
+            search_capabilities: overlay.search_capabilities,
             policy: HookPolicy::default(),
             routes: overlay
                 .route_profile
@@ -78,6 +97,7 @@ impl LanguageRegistration {
 struct HookProviderOverlay {
     source: SourceRegistration,
     route_profile: RouteProfile,
+    search_capabilities: ProviderSearchCapabilities,
 }
 
 fn hook_overlay_for(language_id: &str) -> Option<HookProviderOverlay> {
@@ -90,6 +110,7 @@ fn hook_overlay_for(language_id: &str) -> Option<HookProviderOverlay> {
                 &["target"],
             ),
             route_profile: RouteProfile::Provider,
+            search_capabilities: ProviderSearchCapabilities::default(),
         },
         "typescript" => HookProviderOverlay {
             source: SourceRegistration::new(
@@ -99,6 +120,7 @@ fn hook_overlay_for(language_id: &str) -> Option<HookProviderOverlay> {
                 &["node_modules", "dist", "build", ".next"],
             ),
             route_profile: RouteProfile::Provider,
+            search_capabilities: ProviderSearchCapabilities::default(),
         },
         "python" => HookProviderOverlay {
             source: SourceRegistration::new(
@@ -108,6 +130,7 @@ fn hook_overlay_for(language_id: &str) -> Option<HookProviderOverlay> {
                 &[".venv", "venv", "__pycache__", ".mypy_cache"],
             ),
             route_profile: RouteProfile::Provider,
+            search_capabilities: ProviderSearchCapabilities::default(),
         },
         "julia" => HookProviderOverlay {
             source: SourceRegistration::new(
@@ -117,6 +140,7 @@ fn hook_overlay_for(language_id: &str) -> Option<HookProviderOverlay> {
                 &[".devenv", ".git", "build", "Manifest.toml"],
             ),
             route_profile: RouteProfile::Julia,
+            search_capabilities: ProviderSearchCapabilities::default(),
         },
         "gerbil-scheme" => HookProviderOverlay {
             source: SourceRegistration::new(
@@ -137,14 +161,17 @@ fn hook_overlay_for(language_id: &str) -> Option<HookProviderOverlay> {
                 ],
             ),
             route_profile: RouteProfile::Provider,
+            search_capabilities: ProviderSearchCapabilities { owner_items: true },
         },
         "org" => HookProviderOverlay {
             source: SourceRegistration::new(&[".org", ".org_archive"], &[], &["docs"], &["target"]),
             route_profile: RouteProfile::Document,
+            search_capabilities: ProviderSearchCapabilities::default(),
         },
         "md" => HookProviderOverlay {
             source: SourceRegistration::new(&[".md", ".markdown"], &[], &["docs"], &["target"]),
             route_profile: RouteProfile::Document,
+            search_capabilities: ProviderSearchCapabilities::default(),
         },
         _ => return None,
     };
@@ -174,11 +201,17 @@ impl SourceRegistration {
     }
 
     fn into_defaults(self) -> ManifestSourceDefaults {
+        let mut ignored_path_prefixes = strings(COMMON_IGNORED_PATH_PREFIXES);
+        for prefix in self.ignored_path_prefixes {
+            if !ignored_path_prefixes.iter().any(|seen| seen == prefix) {
+                ignored_path_prefixes.push(prefix.to_string());
+            }
+        }
         ManifestSourceDefaults {
             default_extensions: strings(self.extensions),
             default_config_files: strings(self.config_files),
             default_source_roots: strings(self.source_roots),
-            default_ignored_path_prefixes: strings(self.ignored_path_prefixes),
+            default_ignored_path_prefixes: ignored_path_prefixes,
         }
     }
 }
@@ -205,18 +238,20 @@ fn provider_routes(binary: &str) -> HookRoutes {
             binary,
             "search",
             "prime",
+            "--workspace",
+            "{projectRoot}",
             "--view",
             "seeds",
-            "{projectRoot}",
         ]),
         owner: command_template(&[
             binary,
             "search",
             "owner",
             "{path}",
+            "--workspace",
+            "{projectRoot}",
             "--view",
             "seeds",
-            "{projectRoot}",
         ]),
         fzf: command_template(&[
             binary,
@@ -225,9 +260,10 @@ fn provider_routes(binary: &str) -> HookRoutes {
             "{query}",
             "owner",
             "tests",
+            "--workspace",
+            "{projectRoot}",
             "--view",
             "seeds",
-            "{projectRoot}",
         ]),
         query: Some(command_template(&[
             binary,
@@ -239,9 +275,10 @@ fn provider_routes(binary: &str) -> HookRoutes {
             "{termArgs}",
             "--surface",
             "owners,tests",
+            "--workspace",
+            "{projectRoot}",
             "--view",
             "seeds",
-            "{projectRoot}",
         ])),
         ingest: command_template_with_stdin(
             &[
@@ -250,9 +287,10 @@ fn provider_routes(binary: &str) -> HookRoutes {
                 "ingest",
                 "items",
                 "tests",
+                "--workspace",
+                "{projectRoot}",
                 "--view",
                 "seeds",
-                "{projectRoot}",
             ],
             StdinMode::PipeCandidates,
         ),
@@ -274,9 +312,10 @@ fn julia_routes(binary: &str) -> HookRoutes {
             "{termArgs}",
             "--surface",
             "owners,tests",
+            "--workspace",
+            "{projectRoot}",
             "--view",
             "seeds",
-            "{projectRoot}",
         ])),
         ingest: command_template_with_stdin(
             &[
@@ -285,9 +324,10 @@ fn julia_routes(binary: &str) -> HookRoutes {
                 "ingest",
                 "owner",
                 "tests",
+                "--workspace",
+                "{projectRoot}",
                 "--view",
                 "seeds",
-                "{projectRoot}",
             ],
             StdinMode::PipeCandidates,
         ),
@@ -303,9 +343,10 @@ fn document_routes(language_id: &str) -> HookRoutes {
             facade[1],
             "search",
             "prime",
+            "--workspace",
+            "{projectRoot}",
             "--view",
             "seeds",
-            "{projectRoot}",
         ]),
         owner: command_template(&[
             facade[0],
@@ -342,9 +383,10 @@ fn document_routes(language_id: &str) -> HookRoutes {
                 facade[1],
                 "search",
                 "prime",
+                "--workspace",
+                "{projectRoot}",
                 "--view",
                 "seeds",
-                "{projectRoot}",
             ],
             StdinMode::PipeCandidates,
         ),
@@ -353,9 +395,10 @@ fn document_routes(language_id: &str) -> HookRoutes {
             facade[1],
             "search",
             "prime",
+            "--workspace",
+            "{projectRoot}",
             "--view",
             "seeds",
-            "{projectRoot}",
         ]),
         guide: Some(command_template(&[
             facade[0],

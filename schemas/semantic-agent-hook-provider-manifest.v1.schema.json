@@ -57,6 +57,9 @@
     "source": {
       "$ref": "#/$defs/sourceDefaults"
     },
+    "searchCapabilities": {
+      "$ref": "#/$defs/searchCapabilities"
+    },
     "policy": {
       "$ref": "#/$defs/policy"
     },
@@ -132,6 +135,16 @@
           "items": {
             "$ref": "#/$defs/pathPattern"
           }
+        }
+      }
+    },
+    "searchCapabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ownerItems": {
+          "type": "boolean",
+          "default": false
         }
       }
     },

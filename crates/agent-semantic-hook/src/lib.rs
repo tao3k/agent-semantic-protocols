@@ -48,7 +48,7 @@ pub use hook_config::{
     ClientHookConfig, default_client_config_path, default_client_config_template,
     default_client_config_template_for_source_extensions, load_client_config,
 };
-pub use profile_registry::remove_legacy_codex_hook_cache_files;
+pub use profile_registry::remove_retired_codex_hook_cache_files;
 pub use protocol::{
     ActionPolicy, AgentHookError, CommandTemplate, DecisionKind, DecisionRoute, DecisionRouteKind,
     DecisionSubject, HOOK_ACTIVATION_SCHEMA_ID, HOOK_ACTIVATION_SCHEMA_VERSION,
@@ -61,7 +61,7 @@ pub(crate) use protocol_activation::SourceSelectorKind;
 pub use protocol_activation::{
     ActivatedProvider, ActivatedProviderConfig, ActivationCoverage, ActivationGeneratedBy,
     HookActivation, HookRuntime, ManifestSourceDefaults, ProviderExecution, ProviderManifest,
-    parse_activation, provider_manifest_digest,
+    ProviderSearchCapabilities, parse_activation, provider_manifest_digest,
 };
 pub use provider_manifest::{
     ProviderCommandSelection, build_default_activation, builtin_provider_manifests,

@@ -14,11 +14,11 @@ The agent sees the language facade commands, with =guide= as the interactive
 entrypoint and =agent doctor --json= as the machine/registry diagnostic surface:
 
 #+begin_src shell
-asp <language> guide ...                 # provider-owned agent command menu
+asp <language> guide --workspace ...                 # provider-owned agent command menu
 asp <language> search <view> ...         # all exploration / location / evidence
 asp <language> query ...                 # parser-owned compact code/query reroutes
 asp <language> check ...                 # policy / style / changed / full
-asp <language> agent doctor --json ...   # registry/diagnostic packet
+asp <language> agent doctor --workspace . --json..   # registry/diagnostic packet
 #+end_src
 
 The root =asp search= and =asp query= surfaces are thin language-facade
@@ -53,9 +53,9 @@ target-language question into an unrelated TypeScript/Rust/Python search merely
 because that is the only active facade.
 
 #+begin_src shell
-asp search --language rust prime --view seeds .
-asp query --language typescript --treesitter-query '<pattern>' .
-asp query crates/agent-semantic-protocol/src/lib.rs --query run --code .
+asp search --language rust prime --workspace . --view seeds
+asp query --language typescript --treesitter-query '<pattern>' --workspace .
+asp query crates/agent-semantic-protocol/src/lib.rs --query run --workspace . --code
 #+end_src
 
 The root facade is intentionally additive.  Existing provider-owned guide text,
@@ -106,6 +106,15 @@ relative workspace token again and resolve it a second time.  This keeps
 equivalent to running the Rust provider once in
 =languages/rust-lang-project-harness= with =search prime --view seeds=.
 
+Agent-facing materialized commands, including =nextCommand= rows,
+=actionFrontier= shell commands, guide recipes, hook recovery routes, and
+=asp fd=/=asp rg= finder helper suggestions, must spell project-root selection
+as =--workspace <workspace-root>=.  They must not use a trailing positional
+=.= or generic trailing =<PATH>= as the canonical workspace token.  Positional
+path arguments may remain as compatibility input or as a provider-owned narrow
+search scope, but the prompt-facing command contract must make the workspace
+boundary explicit so agents can replay commands without path-context drift.
+
 Document languages are a separate facade class.  =asp org= and =asp md= expose
 parser-owned document structure, not code harness policy.  The executable
 runtime is =asp= with a native =orgize= dependency.  The =orgize= binary remains
@@ -115,15 +124,15 @@ owned by the =orgize= parser and Markdown facts are owned by =comrak= through
 the native =orgize= document provider.
 
 #+begin_src shell
-asp org guide .                 # native orgize document provider through asp
-asp org search prime --view seeds .
-asp org query --term CUSTOM_ID --view metadata .
-asp org query --selector docs/a.org:10-20 --content .
+asp org guide --workspace .                 # native orgize document provider through asp
+asp org search prime --workspace . --view seeds
+asp org query --term CUSTOM_ID --workspace . --view metadata
+asp org query --selector docs/a.org:10-20 --workspace . --content
 
-asp md guide .                  # native orgize/comrak document provider through asp
-asp md search prime --view seeds .
-asp md query --term Project --view metadata .
-asp md query --selector README.md:1-20 --content .
+asp md guide --workspace .                  # native orgize/comrak document provider through asp
+asp md search prime --workspace . --view seeds
+asp md query --term Project --workspace . --view metadata
+asp md query --selector README.md:1-20 --workspace . --content
 #+end_src
 
 =org/md= support only =guide=, =search=, and =query=.  =check=,
@@ -178,14 +187,16 @@ trailing positional =toc= may select the same view for shell-friendly command
 composition, but =--view toc= is the canonical spelling.
 
 Document facades also support the ASP-owned =search pipe= chain.  =asp org
-search pipe <question> --view seeds= and =asp md search pipe <question> --view
-seeds= must not be forwarded to the document-native search view parser as
+search pipe <question> --workspace . --view seeds= and =asp md search pipe
+<question> --workspace . --view seeds= must not be forwarded to the
+document-native search view parser as
 =view=pipe=.  The pipe chain uses parser-owned document elements as its first
 candidate source, then projects those element hits into the shared
 graph/frontier surface.  Candidate rows may come from headings, paragraphs,
 properties, blocks, lists, tasks, links, images, or Markdown structural nodes,
 and the next read action for document text is always =asp org|md query
---selector <path:line-end> --content=.  =--view graph-turbo-request= emits the
+--selector <path:line-end> --workspace . --content=.  =--view
+graph-turbo-request= emits the
 same graph request boundary used by source-language pipe, with action frontier
 typed facts carrying =capabilityId=query= and =projection=content= rather than
 materialized shell =command=/=argv= fields.  Document-native
@@ -378,6 +389,17 @@ agents and hooks must use =search fzf <term> owner tests --view seeds=, adding
 desired root.  Providers should reject
 =query --term <term> --names-only= without an owner selector and print the
 explicit =search fzf= route instead of silently rerouting it.
+
+Owner-local item discovery is also provider-owned when a manifest declares
+=searchCapabilities.ownerItems=true=. The ASP facade may delegate
+=search owner <path> items --query ...= to that provider, but it must not
+silently fall back to Rust item guessing when the requested owner path exists
+under the selected workspace and the provider exits non-zero or emits an empty
+frontier. Existing owner paths are parser facts, not typo recovery. The provider
+must either resolve the indexed owner, parse an explicit existing Gerbil source
+path outside normal scan roots, or fail with a visible diagnostic. Generic
+facade fallback remains only a recovery aid for missing paths or providers that
+do not claim owner-item capability.
 Julia owner-local item query uses this same shared =semantic-query-packet=
 contract for JSON output through the language facade:
 
@@ -390,10 +412,38 @@ and field query axes before adding named recipes.  For Org, SDD is a
 property/tag convention, not a separate query primitive: =SDD_KIND=,
 =SDD_STATUS=, =SDD_PARENT=, and =:sdd:= headings must be discoverable with
 =query --kind property --field key=<KEY>=, =query --field value=<VALUE>=, and
-tag/heading queries.  A command such as =asp org sdd status= may remain as a
-compatibility recipe, but it must not be the only agent-facing path to SDD
-evidence and must not hide property facts behind hard-coded SDD search
-behavior.
+tag/task queries.  =asp org= must not expose SDD, planning, sparse-tree, or
+task-list as top-level document-provider commands; those are recipes over
+AST facts or orgize-local/debug CLI surfaces.  Agents should query
+=SDD_*= properties and task/checklist syntax directly.
+
+Wendao =orgize= migration follows the same adapter-first rule.  Existing
+Wendao client subcommands such as =task-probe=, =task-recover=,
+=task-report=, =orgid-show=, =task-sdd=, =task-archive=, =eval plan=, and
+=eval patch= are not permission to encode a second Org task language inside
+ASP.  The durable migration path is: expose the underlying Org facts through
+=search= and =query= axes first, publish named guide recipes that compose
+those axes, then add thin compatibility subcommands only when they replay the
+same recipe and emit the underlying =asp org query/search= commands as next
+actions.  Destructive actions such as task archive apply must route through an
+AST-patch or edit-plan contract; they must not be introduced as hidden side
+effects of a search/query adapter.  Safe deletion of the Wendao client surface
+requires parity evidence for the recipe packet, the compatibility shell, and
+the no-hidden-domain-index invariant.
+
+Plan recording follows this boundary: =asp org capture-plan= may render a
+reviewable Org entry and application preconditions, but the implementation is
+semantic-AST owned and non-mutating.  The CLI facade only forwards arguments
+and prints the rendered plan; date parsing, target resolution intent, property
+normalization, and Org entry rendering belong to the Org semantic layer rather
+than to the command-line adapter.
+
+Task and checklist facts must remain distinct at the document query layer.
+Org TODO headlines are =kind=task= facts backed by =sourceKind=Headline=.
+Checkbox list items are =kind=checklistItem= facts backed by
+=sourceKind=SyntaxListItem=.  Markdown task-list items follow the same
+=checklistItem= spelling because they are checklist syntax, not task
+headlines.
 
 For an exact =direct-source-read= selector with =--code=, the provider should
 return a bounded source-preserved local window for that path/range, not owner
@@ -537,7 +587,7 @@ Line-protocol =|code= rows may include a parser-owned =nodes= field before
 =text=.  The field is a comma-separated compact node list:
 =id:kind:role:depth:start:end=.  The JSON query renderer must prefer this
 parser-owned node list for =projection.nodes[]= and =expandActions[]=, using
-compact =text= classification only as a fallback when a legacy provider does
+compact =text= classification only as a fallback when a retired provider does
 not emit =nodes=.  This keeps visible line protocol compact while preventing
 JSON projections from being reconstructed by renderer heuristics.
 Formatter-structural compact may use =role=delimiter= rows for parser-owned
@@ -869,11 +919,11 @@ pipeline unless the whole expression is quoted.
 
 Agents must also quote literal query text that contains shell metacharacters.
 Backticks are command substitution in common shells, so a copied documentation
-string such as =Start with `asp <language> guide .`= must be passed as a
+string such as =Start with `asp <language> guide --workspace .`= must be passed as a
 single-quoted argv literal:
 
 #+begin_src shell
-asp rust search fzf --query-set 'Start with `asp <language> guide .`' owner tests --view seeds .
+asp rust search fzf --query-set 'Start with `asp <language> guide --workspace .`' owner tests --workspace . --view seeds
 #+end_src
 
 If the query text itself contains single quotes, the agent should narrow the
@@ -1180,7 +1230,7 @@ recovery route.  If
 =semantic-read-packet= is useful, it is emitted by the language provider as an
 optional =query/*= output schema after that route has been followed.  The
 read-plan frontier shape is part of the active provider-owned read-packet
-contract; providers must not advertise a separate legacy recovery route.
+contract; providers must not advertise a separate retired recovery route.
 
 Direct source reads and exact wrapper reads should be denied and rerouted to a
 compact code window:
@@ -1213,7 +1263,7 @@ asp <language> query --from-hook direct-source-read \
   --term parseSearchArgs \
   --term querySets \
   --surface owners,tests \
-  --view seeds .
+  --workspace . --view seeds
 #+end_src
 
 It is a compact route into the provider's parser-owned query layer.  It should
@@ -1540,13 +1590,13 @@ asp <language> query --from-hook direct-source-read ...
 ## Agent Flow
 Follow this flow after the hook recovery command gives you a frontier or exact locator.
 
-1. Start from the language guide when you need the agent tool map: `asp <language> guide .`.
-2. Map the project with `asp <language> search prime --view seeds .`.
+1. Start from the language guide when you need the agent tool map: `asp <language> guide --workspace .`.
+2. Map the project with `asp <language> search prime --workspace . --view seeds`.
 3. Choose an owner, query, dependency, test, or syntax profile from the user intent and seed frontier.
 4. When syntax location is needed, read `asp <language> query guide treesitter .`.
 5. Execute `asp <language> query --treesitter-query '<pattern>' .` for a capture/frontier result.
 6. Select one exact locator from the frontier.
-7. Extract pure code with `asp <language> query --selector <path-or-range> --treesitter-query '<narrow-pattern>' --code .`.
+7. Extract pure code with `asp <language> query --selector <path-or-range> --treesitter-query '<narrow-pattern>' --workspace . --code`.
 8. Treat stdout from `query --code` as pure source code only.
 9. Patch with `apply_patch` by default, or use provider `ast-patch` only when hook config enables semantic AST patching and a provider dry-run receipt validates the structural/mechanical edit.
 
@@ -1656,7 +1706,7 @@ built.
 Agent-facing guide acceptance:
 
 #+begin_src text
-guide-main        command="asp <language> guide ." lowFrequency=true inlineSubguides=false
+guide-main        command="asp <language> guide --workspace ." lowFrequency=true inlineSubguides=false
 guide-help        command="asp <language> guide --help ." output=help code=false json=false
 search-prime      output=handles/profiles/frontier code=false json=false
 syntax-locate     command="query --treesitter-query <pattern>" output=locator/frontier code=false
@@ -1897,7 +1947,7 @@ remain language-native; the shared protocol only makes the handle observable.
 Policy-rule lookup is the motivating example:
 
 #+begin_src shell
-<lang-harness> search policy <rule-id-or-alias> owner tests --view seeds .
+<lang-harness> search policy <rule-id-or-alias> owner tests --workspace . --view seeds
 #+end_src
 
 Expected compact facts:
@@ -1939,6 +1989,16 @@ hard-coded platform-specific argument structs.
 ** Search pipe first-stage action ordering
 =search pipe <question> --view seeds= is the source-language agent frontier for deep natural-language questions. Its =recommendedNext= must be selected from query quality and owner/package evidence, not only from graph rank. When package cohesion is low, a finder preview that already names package-local owners should promote =owner-items= before a global =rg-query-set= refinement. Exact =fd-query= remains first when it contains a strong API or owner symbol and there is no reliable owner preview. Best-owner tie breaks must be deterministic so the header, graph request, and materialized next command agree.
 When =search owner <owner> items --query <terms> --view seeds= cannot produce parser item matches, it must still emit a typed recovery frontier. The no-hit output should keep =reason=no-owner-item-match= and add =recommendedNext=scoped-rg-query= plus a materialized =asp rg -query <terms> <owner>= command scoped to that owner. A no-hit owner query is a narrowing failure, not a terminal failure or permission to repeat broad workspace search.
+
+Owner item granularity is not limited to top-level declarations. The owner-items
+contract is owner-scoped parser evidence: if a language parser or its shared
+fast-owner source reader can prove a language-native intra-owner syntax item, the
+item is eligible for =owner-items= output. For Gerbil Scheme this includes POO
+syntax/operator forms such as =.o=, =.@=, =.mix=, =.def=, =defgeneric=,
+=defmethod=, and =defclass= when they occur in the queried owner. Pipe-style
+queries such as =.o|.@|.mix= must be split into alternatives before matching, so
+agents can ask for a cluster of related syntax items without falling back to raw
+text search.
 
 Low-cohesion =fdPreview= is allowed to promote =owner-items= ahead of query-pack
 refinement only when the preview is backed by strong owner-seed evidence from the

@@ -6,6 +6,7 @@ use agent_semantic_hook::{
     HookRuntime, default_activation_path, discover_activation_path, load_or_sync_activation,
     parse_hook_activation, runtime_profiles_for_runtime,
 };
+use agent_semantic_runtime::project_state_paths;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -37,7 +38,15 @@ const SUPPORTED_LANGUAGES: &[&str] = &[
     "org",
     "md",
 ];
-const SUPPORTED_COMMANDS: &[&str] = &["search", "query", "guide", "check", "ast-patch", "evidence"];
+const SUPPORTED_COMMANDS: &[&str] = &[
+    "search",
+    "query",
+    "guide",
+    "check",
+    "cache",
+    "ast-patch",
+    "evidence",
+];
 
 macro_rules! restore_env_var {
     ($name:expr, $previous:expr) => {
@@ -138,6 +147,7 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
         (args.first().is_some_and(|command| command == "search")
             && args.get(1).is_none_or(|subcommand| subcommand != "guide"))
             || matches!(args.first().map(String::as_str), Some("check"))
+            || matches!(args.first().map(String::as_str), Some("cache"))
             || (args.first().is_some_and(|command| command == "query")
                 && args.get(1).is_none_or(|subcommand| subcommand != "guide"))
     }
@@ -171,7 +181,7 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
         let previous_path = env::var_os("PATH");
         let protocol_bin = env::current_exe()
             .map_err(|error| format!("failed to resolve current protocol binary: {error}"))?;
-        let runtime_bin = cache_home.join("agent-semantic-protocol/runtime/bin");
+        let runtime_bin = project_state_paths(project_root)?.runtime_bin_dir;
         let mut path_entries = vec![runtime_bin.clone()];
         if let Some(path) = previous_path.as_deref() {
             path_entries.extend(env::split_paths(path));
@@ -321,7 +331,7 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
         .find(|provider| provider.language_id == language_id)
         .ok_or_else(|| format!("no activated provider for language {language_id}"))?;
     if is_asp_fast_search(&provider_args) {
-        if fast_search_needs_provider_context(&provider_args) {
+        if fast_search_needs_provider_context(&provider_args, provider) {
             let runtime_profiles = runtime_profiles_for_runtime(&project_root, &runtime);
             let provider_context = ProviderGraphFactsContext {
                 provider,
@@ -586,11 +596,20 @@ fn is_search_pipe_command(args: &[String]) -> bool {
         && matches!(args.get(1).map(String::as_str), Some("pipe"))
 }
 
-fn fast_search_needs_provider_context(args: &[String]) -> bool {
+fn fast_search_needs_provider_context(
+    args: &[String],
+    provider: &agent_semantic_hook::ActivatedProvider,
+) -> bool {
     if matches!(args.get(1).map(String::as_str), Some("pipe" | "fzf")) {
         return args
             .get(2)
             .is_some_and(|query| query_requests_semantic_facts(query));
+    }
+    if matches!(args.first().map(String::as_str), Some("search"))
+        && matches!(args.get(1).map(String::as_str), Some("owner"))
+        && matches!(args.get(3).map(String::as_str), Some("items"))
+    {
+        return provider.search_capabilities.owner_items;
     }
     if matches!(args.get(1).map(String::as_str), Some("ingest")) {
         return provider_flag_value(args, "--query").is_some_and(query_requests_semantic_facts);
@@ -622,6 +641,6 @@ fn provider_usage() -> String {
 
 fn guide_usage(language_id: &str) -> String {
     format!(
-        "usage: asp {language_id} guide [--help] [PROJECT_ROOT]\n\nPrints the low-frequency provider-owned agent tool map.\nUse `asp {language_id} search guide .`, `asp {language_id} query guide .`, or `asp {language_id} query guide treesitter .` for focused reference guides."
+        "usage: asp {language_id} guide [--help] [--workspace <root>]\n\nPrints the low-frequency provider-owned agent tool map.\nUse `asp {language_id} search guide --workspace .`, `asp {language_id} query guide --workspace .`, or `asp {language_id} query guide treesitter --workspace .` for focused reference guides."
     )
 }

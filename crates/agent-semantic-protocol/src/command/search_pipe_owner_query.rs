@@ -610,10 +610,9 @@ fn scheme_item_kind_for_line(line: &str) -> Option<&'static str> {
     let line = line.trim_start();
     if line.starts_with("(defstruct ") {
         Some("struct")
-    } else if line.starts_with("(def ")
-        || line.starts_with("(def* ")
-        || line.starts_with("(defmethod ")
-    {
+    } else if line.starts_with("(define-type ") {
+        Some("type")
+    } else if line.starts_with("(def ") || line.starts_with("(def* ") {
         Some("function")
     } else {
         None
@@ -625,7 +624,7 @@ fn scheme_item_symbol_for_line(line: &[u8]) -> Option<String> {
     let line = line.trim_start();
     let rest = line
         .strip_prefix("(defstruct ")
-        .or_else(|| line.strip_prefix("(defmethod "))
+        .or_else(|| line.strip_prefix("(define-type "))
         .or_else(|| line.strip_prefix("(def* "))
         .or_else(|| line.strip_prefix("(def "))?
         .trim_start();
@@ -647,7 +646,7 @@ fn rust_block_end(path: &Path, lines: &[&[u8]], start_index: usize) -> Option<us
     }
     let mut saw_open = false;
     let mut brace_depth = 0isize;
-    for (offset, line) in lines.iter().enumerate().skip(start_index) {
+    for (line_index, line) in lines.iter().enumerate().skip(start_index) {
         for byte in *line {
             match byte {
                 b'{' => {
@@ -661,7 +660,7 @@ fn rust_block_end(path: &Path, lines: &[&[u8]], start_index: usize) -> Option<us
             }
         }
         if saw_open && brace_depth <= 0 {
-            let end = offset + 1;
+            let end = line_index + 1;
             return Some(if end == start_index + 1 { end + 1 } else { end });
         }
     }
@@ -673,13 +672,13 @@ fn python_block_end(path: &Path, lines: &[&[u8]], start_index: usize) -> Option<
         return None;
     }
     let base_indent = leading_spaces(lines.get(start_index)?);
-    for (offset, line) in lines.iter().enumerate().skip(start_index + 1) {
+    for (line_index, line) in lines.iter().enumerate().skip(start_index + 1) {
         if line.iter().all(|byte| byte.is_ascii_whitespace()) {
             continue;
         }
         let indent = leading_spaces(line);
         if indent <= base_indent {
-            return Some(offset);
+            return Some(line_index);
         }
     }
     Some(lines.len())
@@ -694,7 +693,7 @@ fn typescript_block_end(path: &Path, lines: &[&[u8]], start_index: usize) -> Opt
     }
     let mut saw_open = false;
     let mut brace_depth = 0isize;
-    for (offset, line) in lines.iter().enumerate().skip(start_index) {
+    for (line_index, line) in lines.iter().enumerate().skip(start_index) {
         for byte in *line {
             match byte {
                 b'{' => {
@@ -704,12 +703,12 @@ fn typescript_block_end(path: &Path, lines: &[&[u8]], start_index: usize) -> Opt
                 b'}' if saw_open => {
                     brace_depth -= 1;
                 }
-                b';' if !saw_open => return Some(offset + 1),
+                b';' if !saw_open => return Some(line_index + 1),
                 _ => {}
             }
         }
         if saw_open && brace_depth <= 0 {
-            let end = offset + 1;
+            let end = line_index + 1;
             return Some(if end == start_index + 1 { end + 1 } else { end });
         }
     }
@@ -725,7 +724,7 @@ fn scheme_block_end(path: &Path, lines: &[&[u8]], start_index: usize) -> Option<
     }
     let mut depth = 0isize;
     let mut saw_open = false;
-    for (offset, line) in lines.iter().enumerate().skip(start_index) {
+    for (line_index, line) in lines.iter().enumerate().skip(start_index) {
         for byte in *line {
             match byte {
                 b'(' => {
@@ -739,7 +738,7 @@ fn scheme_block_end(path: &Path, lines: &[&[u8]], start_index: usize) -> Option<
             }
         }
         if saw_open && depth <= 0 {
-            return Some(offset + 1);
+            return Some(line_index + 1);
         }
     }
     Some(lines.len())
