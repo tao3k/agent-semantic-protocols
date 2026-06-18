@@ -18,10 +18,16 @@ pub(super) fn temp_dir(name: &str) -> PathBuf {
 
 pub(super) fn script(dir: &Path, name: &str, body: &str) -> PathBuf {
     let path = dir.join(name);
-    fs::write(&path, body).expect("write script");
-    let mut permissions = fs::metadata(&path).expect("metadata").permissions();
+    let tmp_path = dir.join(format!("{name}.tmp"));
+    {
+        let mut file = fs::File::create(&tmp_path).expect("create script");
+        std::io::Write::write_all(&mut file, body.as_bytes()).expect("write script");
+        file.sync_all().expect("sync script");
+    }
+    let mut permissions = fs::metadata(&tmp_path).expect("metadata").permissions();
     permissions.set_mode(0o755);
-    fs::set_permissions(&path, permissions).expect("chmod");
+    fs::set_permissions(&tmp_path, permissions).expect("chmod");
+    fs::rename(&tmp_path, &path).expect("publish script");
     path
 }
 
