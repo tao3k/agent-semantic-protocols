@@ -38,6 +38,7 @@ pub(super) fn fd_query_preview(
         &clauses,
         &terms,
         &config,
+        &[],
     )
     .ok()?;
     fd_query_preview_from_candidates(&candidates)

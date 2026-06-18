@@ -118,6 +118,8 @@ pub struct ProviderManifest {
 pub struct ProviderSearchCapabilities {
     #[serde(default)]
     pub owner_items: bool,
+    #[serde(default)]
+    pub semantic_facts: bool,
 }
 
 /// Source matching defaults declared by a provider manifest.

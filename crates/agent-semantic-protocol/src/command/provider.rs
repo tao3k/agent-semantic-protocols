@@ -636,9 +636,10 @@ fn fast_search_needs_provider_context(
     provider: &agent_semantic_hook::ActivatedProvider,
 ) -> bool {
     if matches!(args.get(1).map(String::as_str), Some("pipe" | "fzf")) {
-        return args
-            .get(2)
-            .is_some_and(|query| query_requests_semantic_facts(query));
+        return provider.search_capabilities.semantic_facts
+            && args
+                .get(2)
+                .is_some_and(|query| query_requests_semantic_facts(query));
     }
     if matches!(args.first().map(String::as_str), Some("search"))
         && matches!(args.get(1).map(String::as_str), Some("owner"))
@@ -647,7 +648,8 @@ fn fast_search_needs_provider_context(
         return provider.search_capabilities.owner_items;
     }
     if matches!(args.get(1).map(String::as_str), Some("ingest")) {
-        return provider_flag_value(args, "--query").is_some_and(query_requests_semantic_facts);
+        return provider.search_capabilities.semantic_facts
+            && provider_flag_value(args, "--query").is_some_and(query_requests_semantic_facts);
     }
     false
 }

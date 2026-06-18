@@ -57,7 +57,7 @@ fn markdown_query_no_hit_returns_recovery_actions() {
     );
     assert!(
         stdout.contains(
-            "|next direct-read-requires=\"asp md query --from-hook direct-source-read --selector <path:start-end> --workspace .\""
+            "|next selector-source=\"rerun metadata query and use an emitted structuralSelector\""
         ),
         "{stdout}"
     );

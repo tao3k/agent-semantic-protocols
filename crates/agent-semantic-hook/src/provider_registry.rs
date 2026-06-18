@@ -110,7 +110,10 @@ fn hook_overlay_for(language_id: &str) -> Option<HookProviderOverlay> {
                 &["target"],
             ),
             route_profile: RouteProfile::Provider,
-            search_capabilities: ProviderSearchCapabilities::default(),
+            search_capabilities: ProviderSearchCapabilities {
+                semantic_facts: true,
+                ..ProviderSearchCapabilities::default()
+            },
         },
         "typescript" => HookProviderOverlay {
             source: SourceRegistration::new(
@@ -120,7 +123,10 @@ fn hook_overlay_for(language_id: &str) -> Option<HookProviderOverlay> {
                 &["node_modules", "dist", "build", ".next"],
             ),
             route_profile: RouteProfile::Provider,
-            search_capabilities: ProviderSearchCapabilities::default(),
+            search_capabilities: ProviderSearchCapabilities {
+                semantic_facts: true,
+                ..ProviderSearchCapabilities::default()
+            },
         },
         "python" => HookProviderOverlay {
             source: SourceRegistration::new(
@@ -130,7 +136,10 @@ fn hook_overlay_for(language_id: &str) -> Option<HookProviderOverlay> {
                 &[".venv", "venv", "__pycache__", ".mypy_cache"],
             ),
             route_profile: RouteProfile::Provider,
-            search_capabilities: ProviderSearchCapabilities::default(),
+            search_capabilities: ProviderSearchCapabilities {
+                semantic_facts: true,
+                ..ProviderSearchCapabilities::default()
+            },
         },
         "julia" => HookProviderOverlay {
             source: SourceRegistration::new(
@@ -161,7 +170,10 @@ fn hook_overlay_for(language_id: &str) -> Option<HookProviderOverlay> {
                 ],
             ),
             route_profile: RouteProfile::Provider,
-            search_capabilities: ProviderSearchCapabilities { owner_items: true },
+            search_capabilities: ProviderSearchCapabilities {
+                owner_items: true,
+                ..ProviderSearchCapabilities::default()
+            },
         },
         "org" => HookProviderOverlay {
             source: SourceRegistration::new(&[".org", ".org_archive"], &[], &["docs"], &["target"]),

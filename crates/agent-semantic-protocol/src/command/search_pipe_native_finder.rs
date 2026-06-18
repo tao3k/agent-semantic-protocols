@@ -2,8 +2,9 @@
 
 use std::collections::{BTreeMap, HashSet};
 use std::env;
+use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 use agent_semantic_provider_transport::byte_text;
 use serde_json::{Value, json};
@@ -75,6 +76,7 @@ pub(super) fn collect_native_finder_candidates(
     roots: &[PathBuf],
     terms: &[String],
     config: &AspConfig,
+    native_args: &[String],
 ) -> Result<Option<NativeFinderCandidates>, String> {
     if terms.is_empty() {
         return Ok(Some(NativeFinderCandidates {
@@ -92,6 +94,7 @@ pub(super) fn collect_native_finder_candidates(
         normalized_terms: terms.iter().map(|term| term.to_ascii_lowercase()).collect(),
         file_spec,
         config,
+        native_args,
         seen: HashSet::new(),
         candidates: Vec::new(),
         provenance: NativeFinderProvenance::default(),
@@ -130,6 +133,7 @@ struct NativeFinderCollector<'a> {
     normalized_terms: Vec<String>,
     file_spec: LanguageFileSpec,
     config: &'a AspConfig,
+    native_args: &'a [String],
     seen: HashSet<String>,
     candidates: Vec<Candidate>,
     provenance: NativeFinderProvenance,
@@ -263,13 +267,33 @@ impl NativeFinderCollector<'_> {
     }
 
     fn append_rg_request(&mut self, request: NativeFinderRequest) -> Result<bool, String> {
-        let Some(stdout) = self.run_rg(&request.pattern, &request.root)? else {
+        let Some(mut command) = self.rg_command(&request.pattern, &request.root) else {
             return Ok(false);
         };
+        command.stdout(Stdio::piped()).stderr(Stdio::null());
+        let mut child = match command.spawn() {
+            Ok(child) => child,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+            Err(error) => return Err(format!("failed to run native rg: {error}")),
+        };
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| "failed to capture native rg stdout".to_string())?;
         self.provenance.backend = Some("rg");
         self.provenance.candidate_basis = Some("source-lines");
         self.provenance.source_search_passes += 1;
-        for line in byte_text::split_lf_lines(stdout.as_slice()) {
+        let mut reader = BufReader::new(stdout);
+        let mut line = Vec::new();
+        while !self.is_done() {
+            line.clear();
+            let read = reader
+                .read_until(b'\n', &mut line)
+                .map_err(|error| format!("failed to read native rg stdout: {error}"))?;
+            if read == 0 {
+                break;
+            }
+            trim_line_end(&mut line);
             if self.is_done() {
                 break;
             }
@@ -277,9 +301,20 @@ impl NativeFinderCollector<'_> {
                 continue;
             }
             self.provenance.input_candidates += 1;
-            if let Some(candidate) = self.rg_candidate(line) {
+            if let Some(candidate) = self.rg_candidate(&line) {
                 self.push(candidate);
             }
+        }
+        if self.is_done() {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Ok(true);
+        }
+        let status = child
+            .wait()
+            .map_err(|error| format!("failed to wait for native rg: {error}"))?;
+        if !(status.success() || status.code() == Some(1)) {
+            return Ok(false);
         }
         Ok(true)
     }
@@ -294,6 +329,7 @@ impl NativeFinderCollector<'_> {
             .arg("--color")
             .arg("never")
             .arg("--ignore-case")
+            .args(self.native_args)
             .arg(pattern)
             .arg(root);
         if !root.is_file() && self.file_spec.config_filenames().is_empty() {
@@ -318,9 +354,9 @@ impl NativeFinderCollector<'_> {
         native_stdout(command, "exa")
     }
 
-    fn run_rg(&self, pattern: &str, root: &Path) -> Result<Option<Vec<u8>>, String> {
+    fn rg_command(&self, pattern: &str, root: &Path) -> Option<Command> {
         let Some(mut command) = native_command("rg") else {
-            return Ok(None);
+            return None;
         };
         command
             .arg("--line-number")
@@ -331,6 +367,7 @@ impl NativeFinderCollector<'_> {
             .arg("--max-count")
             .arg(NATIVE_PER_TERM_LIMIT.to_string())
             .arg("--ignore-case")
+            .args(self.native_args)
             .arg(pattern);
         if !root.is_file() {
             for extension in self.file_spec.extensions() {
@@ -344,7 +381,7 @@ impl NativeFinderCollector<'_> {
             command.arg("--glob").arg(format!("!{dir}/**"));
         }
         command.arg(root);
-        native_stdout(command, "rg")
+        Some(command)
     }
 
     fn path_candidate(&self, line: &[u8]) -> Option<Candidate> {
@@ -524,6 +561,15 @@ fn append_fd_ignores(command: &mut Command, config: &AspConfig) {
     }
     if !config.search.include_hidden_dirs.is_empty() {
         command.arg("--hidden");
+    }
+}
+
+fn trim_line_end(line: &mut Vec<u8>) {
+    if line.last() == Some(&b'\n') {
+        line.pop();
+    }
+    if line.last() == Some(&b'\r') {
+        line.pop();
     }
 }
 

@@ -5,8 +5,14 @@ use crate::provider_command::support::{
     write_echo_provider,
 };
 
-const ASP_FACADE_PERFORMANCE_GATE: Duration = Duration::from_secs(3);
-const ASP_SEARCH_PHASE_PERFORMANCE_GATE_MS: u64 = 1_000;
+const ASP_FACADE_PERFORMANCE_GATE: Duration = Duration::from_millis(750);
+// Process wall time includes binary startup and test-host scheduling. Search SLA is enforced by
+// sourceTrace elapsedMs below; this wall gate only catches hangs.
+const ASP_QUERY_WRAPPER_WALL_SANITY_GATE: Duration = Duration::from_secs(3);
+// SourceTrace includes provider process startup under cargo-test parallelism; keep these gates
+// tight enough to catch hangs while functional tests assert candidate/input bounds separately.
+const ASP_SEARCH_PHASE_PERFORMANCE_GATE_MS: u64 = 250;
+const ASP_BLOCKED_QUERY_PHASE_PERFORMANCE_GATE_MS: u64 = 10;
 const ASP_PROVIDER_FACTS_PHASE_PERFORMANCE_GATE_MS: u64 = 2_000;
 const JULIA_FACADE_PERFORMANCE_GATE: Duration = Duration::from_secs(3);
 
@@ -192,8 +198,8 @@ fn query_wrapper_commands_finish_inside_search_phase_gate() {
         );
         let stdout = String::from_utf8(output.stdout).expect("stdout");
         assert!(
-            elapsed < ASP_FACADE_PERFORMANCE_GATE,
-            "asp {args:?} exceeded wall gate {ASP_FACADE_PERFORMANCE_GATE:?}; elapsed={elapsed:?}; stdout={stdout}; stderr={}",
+            elapsed < ASP_QUERY_WRAPPER_WALL_SANITY_GATE,
+            "asp {args:?} exceeded wrapper wall sanity gate {ASP_QUERY_WRAPPER_WALL_SANITY_GATE:?}; elapsed={elapsed:?}; stdout={stdout}; stderr={}",
             String::from_utf8_lossy(&output.stderr)
         );
         assert!(
@@ -202,6 +208,93 @@ fn query_wrapper_commands_finish_inside_search_phase_gate() {
         );
         assert_trace_elapsed_under_gate(&args, &stdout);
     }
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn broad_rg_query_requires_native_filter_or_narrow_scope() {
+    let root = temp_project_root("broad-rg-query-performance-gate");
+    std::fs::create_dir_all(root.join("src")).expect("create src");
+    for file_index in 0..160 {
+        let mut text = String::new();
+        text.push_str(&format!(
+            ";; typed-combinator-style source quality file {file_index}\n"
+        ));
+        for line_index in 0..120 {
+            text.push_str(&format!(
+                ";; line {line_index} routes source comments to engineering quality helpers\n"
+            ));
+        }
+        std::fs::write(root.join(format!("src/broad_{file_index}.ss")), text)
+            .expect("write broad fixture");
+    }
+    std::fs::write(root.join("gerbil.pkg"), "(package: broad-rg-gate)\n")
+        .expect("write gerbil.pkg");
+
+    let broad_output = asp_command(&root)
+        .args([
+            "rg",
+            "-query",
+            "typed-combinator-style R013 self apply old comment style migrate source helpers to",
+            ".",
+        ])
+        .output()
+        .expect("run broad asp rg without filter");
+
+    assert!(
+        broad_output.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&broad_output.stderr)
+    );
+    let stdout = String::from_utf8(broad_output.stdout).expect("stdout");
+    assert!(
+        stdout.contains("noOutput reason=query-too-broad") && stdout.contains("refineHint="),
+        "broad query should be blocked before native rg without filters; stdout={stdout}"
+    );
+    assert_trace_elapsed_under_gate_ms(
+        &["rg", "-query", "broad"],
+        &stdout,
+        ASP_BLOCKED_QUERY_PHASE_PERFORMANCE_GATE_MS,
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn broad_fd_query_requires_path_or_symbol_terms() {
+    let root = temp_project_root("broad-fd-query-budget-gate");
+    std::fs::create_dir_all(root.join("src")).expect("create src");
+    std::fs::write(
+        root.join("src/search_query_budget.rs"),
+        "pub struct BudgetGate;\n",
+    )
+    .expect("write fixture");
+
+    let output = asp_command(&root)
+        .args([
+            "fd",
+            "-query",
+            "wrapper backend interface budget gate broad generic input",
+            ".",
+        ])
+        .output()
+        .expect("run broad asp fd");
+
+    assert!(
+        output.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    assert!(
+        stdout.contains("noOutput reason=query-too-broad")
+            && stdout.contains("nextCommand=asp fd -query 'path-or-symbol|error-code'"),
+        "broad fd query should be blocked with a granular query example; stdout={stdout}"
+    );
+    assert_trace_elapsed_under_gate_ms(
+        &["fd", "-query", "broad"],
+        &stdout,
+        ASP_BLOCKED_QUERY_PHASE_PERFORMANCE_GATE_MS,
+    );
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -255,7 +348,7 @@ fn provider_facts_receive_bounded_candidate_input() {
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(
         stdout.contains("providerFacts:used[")
-            && stdout.contains("factCandidates=48")
+            && stdout.contains("factCandidates=24")
             && stdout.contains("truncatedCandidates="),
         "{stdout}"
     );
@@ -264,11 +357,196 @@ fn provider_facts_receive_bounded_candidate_input() {
         .trim()
         .parse::<usize>()
         .expect("parse semantic facts line count");
-    assert_eq!(line_count, 48, "{stdout}");
+    assert_eq!(line_count, 24, "{stdout}");
     assert_trace_elapsed_under_gate_ms(
         &["rust", "search", "pipe"],
         &stdout,
         ASP_PROVIDER_FACTS_PHASE_PERFORMANCE_GATE_MS,
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn search_pipe_does_not_call_provider_facts_without_capability() {
+    let root = temp_project_root("provider-facts-capability-gate");
+    let bin_dir = root.join(".bin");
+    let cache_home = root.join(".cache");
+    let marker = root.join("semantic-facts-called");
+    std::fs::create_dir_all(&bin_dir).expect("create bin dir");
+    write_regular_search_fixtures(&root);
+    let provider_path = bin_dir.join("gerbil-scheme-harness");
+    std::fs::write(
+        &provider_path,
+        format!(
+            "#!/bin/sh\nprintf called > '{}'\nsleep 4\nprintf '{{\"nodes\":[],\"edges\":[]}}\\n'\n",
+            marker.display()
+        ),
+    )
+    .expect("write provider");
+    make_executable(&provider_path);
+    write_activation(
+        &root,
+        &[provider(
+            "gerbil-scheme",
+            vec![provider_path.display().to_string()],
+        )],
+    );
+
+    let output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .env("PRJ_CACHE_HOME", &cache_home)
+        .args([
+            "gerbil-scheme",
+            "search",
+            "pipe",
+            "list.ss",
+            "--workspace",
+            ".",
+            "--view",
+            "seeds",
+        ])
+        .output()
+        .expect("run asp search pipe");
+
+    assert!(
+        output.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        !marker.exists(),
+        "provider semantic-facts command should not run without semanticFacts capability"
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    assert!(stdout.contains("providerFacts:skipped["), "stdout={stdout}");
+    assert_trace_elapsed_under_gate(&["gerbil-scheme", "search", "pipe", "list.ss"], &stdout);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn search_pipe_broad_query_blocks_before_backend_collection() {
+    let root = temp_project_root("search-pipe-broad-query-budget-gate");
+    let bin_dir = root.join(".bin");
+    let cache_home = root.join(".cache");
+    let marker = root.join("provider-called");
+    std::fs::create_dir_all(&bin_dir).expect("create bin dir");
+    write_regular_search_fixtures(&root);
+    let provider_path = bin_dir.join("gerbil-scheme-harness");
+    std::fs::write(
+        &provider_path,
+        format!(
+            "#!/bin/sh\nprintf called > '{}'\nsleep 4\nprintf 'unexpected provider call\\n'\n",
+            marker.display()
+        ),
+    )
+    .expect("write provider");
+    make_executable(&provider_path);
+    write_activation(
+        &root,
+        &[provider(
+            "gerbil-scheme",
+            vec![provider_path.display().to_string()],
+        )],
+    );
+
+    let output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .env("PRJ_CACHE_HOME", &cache_home)
+        .args([
+            "gerbil-scheme",
+            "search",
+            "pipe",
+            "self apply old comment style migrate source helpers to gerbil-utils list.ss typed-combinator-style doc examples R013 engineering comment quality",
+            "--workspace",
+            ".",
+            "--view",
+            "seeds",
+        ])
+        .output()
+        .expect("run broad search pipe");
+
+    assert!(
+        output.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(!marker.exists(), "broad query should not reach provider");
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    assert!(
+        stdout.contains("queryBudget:blocked[") && stdout.contains("reason=query-too-broad"),
+        "stdout={stdout}"
+    );
+    assert!(
+        stdout.contains(
+            "nextCommand=asp fd -query 'gerbil-utils|list.ss|typed-combinator-style|r013'"
+        ),
+        "stdout={stdout}"
+    );
+    assert_trace_elapsed_under_gate_ms(
+        &["gerbil-scheme", "search", "pipe", "broad-query"],
+        &stdout,
+        ASP_BLOCKED_QUERY_PHASE_PERFORMANCE_GATE_MS,
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn search_fzf_broad_query_blocks_before_backend_collection() {
+    let root = temp_project_root("search-fzf-broad-query-budget-gate");
+    let bin_dir = root.join(".bin");
+    let marker = root.join("provider-called");
+    std::fs::create_dir_all(&bin_dir).expect("create bin dir");
+    write_regular_search_fixtures(&root);
+    let provider_path = bin_dir.join("gerbil-scheme-harness");
+    std::fs::write(
+        &provider_path,
+        format!(
+            "#!/bin/sh\nprintf called > '{}'\nsleep 4\nprintf 'unexpected provider call\\n'\n",
+            marker.display()
+        ),
+    )
+    .expect("write provider");
+    make_executable(&provider_path);
+    write_activation(
+        &root,
+        &[provider(
+            "gerbil-scheme",
+            vec![provider_path.display().to_string()],
+        )],
+    );
+
+    let output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .args([
+            "gerbil-scheme",
+            "search",
+            "fzf",
+            "self apply old comment style migrate source helpers to gerbil-utils list.ss typed-combinator-style doc examples R013 engineering comment quality",
+            "--view",
+            "seeds",
+        ])
+        .output()
+        .expect("run broad search fzf");
+
+    assert!(
+        output.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(!marker.exists(), "broad query should not reach provider");
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    assert!(
+        stdout.contains("[search-fzf]")
+            && stdout.contains("noOutput reason=query-too-broad")
+            && stdout.contains(
+                "nextCommand=asp fd -query 'gerbil-utils|list.ss|typed-combinator-style|r013'"
+            ),
+        "stdout={stdout}"
+    );
+    assert_trace_elapsed_under_gate_ms(
+        &["gerbil-scheme", "search", "fzf", "broad-query"],
+        &stdout,
+        ASP_BLOCKED_QUERY_PHASE_PERFORMANCE_GATE_MS,
     );
     let _ = std::fs::remove_dir_all(root);
 }

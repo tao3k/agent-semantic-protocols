@@ -57,7 +57,7 @@ fn assert_asp_binary_fresh(binary: &Path) {
         .unwrap_or(SystemTime::UNIX_EPOCH);
     assert!(
         binary_mtime >= newest_source,
-        "asp binary {} is older than hook doctor/probe sources; rebuild with `cargo build -p agent-semantic-protocol --bin asp`",
+        "asp binary {} is older than hook/install sources; rebuild with `cargo build -p agent-semantic-protocol --bin asp`",
         binary.display()
     );
 }
@@ -77,6 +77,8 @@ fn newest_asp_hook_surface_source_mtime() -> Option<SystemTime> {
         "crates/agent-semantic-protocol/src/command/install_provider.rs",
         "crates/agent-semantic-protocol/src/command/hook_enforcement.rs",
         "crates/agent-semantic-config/src/hook_client_config.rs",
+        "SKILL.org",
+        "SKILL.contract.org",
     ]
     .into_iter()
     .filter_map(|relative| root.join(relative).metadata().ok()?.modified().ok())

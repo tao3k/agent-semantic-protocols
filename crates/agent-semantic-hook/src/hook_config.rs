@@ -26,7 +26,6 @@ use crate::tool_action::{ToolAction, subject_for_action};
 pub struct ClientHookConfig {
     rules: Vec<CompiledHookRule>,
     semantic_ast_patch_disabled: bool,
-    needs_command_tokens: bool,
 }
 
 #[derive(Debug)]
@@ -119,13 +118,21 @@ impl ClientHookConfig {
         event: &str,
         action: &ToolAction,
     ) -> Option<HookDecision> {
-        let command_tokens = self.needs_command_tokens.then(|| action.command_tokens());
-        let command_token_slice = command_tokens
-            .as_ref()
-            .and_then(|tokens| tokens.as_ref().map(|tokens| tokens.as_ref()));
+        let mut command_tokens = None;
         self.rules
             .iter()
-            .find(|rule| rule.matches(runtime, platform, event, action, command_token_slice))
+            .find(|rule| {
+                let command_token_slice = if rule.match_config.needs_command_tokens() {
+                    command_tokens
+                        .get_or_insert_with(|| {
+                            action.command_tokens().map(|tokens| tokens.into_owned())
+                        })
+                        .as_deref()
+                } else {
+                    None
+                };
+                rule.matches(runtime, platform, event, action, command_token_slice)
+            })
             .map(|rule| rule.decision(runtime, platform, event, action))
     }
 }
@@ -372,13 +379,9 @@ fn compile_config(config: HookClientConfigFile) -> Result<ClientHookConfig, Stri
         .collect::<Result<Vec<_>, _>>()?;
     // `sort_by_key` is stable, so equal-priority rules keep config file order.
     rules.sort_by_key(|rule| std::cmp::Reverse(rule.priority));
-    let needs_command_tokens = rules
-        .iter()
-        .any(|rule| rule.match_config.needs_command_tokens());
     Ok(ClientHookConfig {
         rules,
         semantic_ast_patch_disabled: !semantic_ast_patch_enabled,
-        needs_command_tokens,
     })
 }
 

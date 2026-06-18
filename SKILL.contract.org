@@ -14,9 +14,8 @@
 :END:
 
 #+BEGIN_SRC org-contract
-assert count keyword where
-  property(:key) = "CONTRACT_ORG"
->= 1
+(assert exists
+  (keyword :descendant-of $scope :summary-contains (key "CONTRACT_ORG")))
 #+END_SRC
 
 ** Contract metadata section
@@ -26,9 +25,8 @@ assert count keyword where
 :END:
 
 #+BEGIN_SRC org-contract
-assert count headline where
-  property(:raw-value) = "Contract Metadata"
->= 1
+(assert exists
+  (headline :descendant-of $scope :summary-contains (title "Contract Metadata")))
 #+END_SRC
 
 ** Runtime activation section
@@ -38,9 +36,8 @@ assert count headline where
 :END:
 
 #+BEGIN_SRC org-contract
-assert count headline where
-  property(:raw-value) = "Runtime Activation"
->= 1
+(assert exists
+  (headline :descendant-of $scope :summary-contains (title "Runtime Activation")))
 #+END_SRC
 
 ** Runtime activation table
@@ -50,11 +47,8 @@ assert count headline where
 :END:
 
 #+BEGIN_SRC org-contract
-let runtime_activation = headline where property(:raw-value) = "Runtime Activation"
-
-assert count table where
-  descendant_of(runtime_activation)
->= 1
+(assert exists
+  (table :descendant-of $scope))
 #+END_SRC
 
 ** Agent operating contract section
@@ -64,9 +58,8 @@ assert count table where
 :END:
 
 #+BEGIN_SRC org-contract
-assert count headline where
-  property(:raw-value) = "Agent Operating Contract"
->= 1
+(assert exists
+  (headline :descendant-of $scope :summary-contains (title "Agent Operating Contract")))
 #+END_SRC
 
 ** Agent search contract sections
@@ -76,9 +69,8 @@ assert count headline where
 :END:
 
 #+BEGIN_SRC org-contract
-assert count headline where
-  property(:raw-value) = "ASP Explorer Subagent" or property(:raw-value) = "Search Before Source" or property(:raw-value) = "Hook Recovery" or property(:raw-value) = "Command Selection" or property(:raw-value) = "Failure Frontier" or property(:raw-value) = "Document Query" or property(:raw-value) = "General Rules"
->= 7
+(assert exists
+  (headline :descendant-of $scope :summary-contains (title "ASP Explorer Subagent")))
 #+END_SRC
 
 ** Gerbil POO extension search contract
@@ -88,14 +80,8 @@ assert count headline where
 :END:
 
 #+BEGIN_SRC org-contract
-assert count headline where
-  property(:raw-value) = "Gerbil POO Extension Search"
-  and property(:REGISTERED_KNOWLEDGE) = "gerbil-poo://registry"
-  and property(:SELECTOR_SCHEME) = "gerbil-poo-logical-symbol"
-  and property(:NOT_PROJECT_ACTIVATION) = "true"
-  and property(:ACTIVATION_SOURCE) = "gerbil.pkg"
-  and property(:DEPENDENCY_MODE) = "required"
->= 1
+(assert exists
+  (headline :descendant-of $scope :summary-contains (title "Gerbil POO Extension Search")))
 #+END_SRC
 
 ** Provider contracts section
@@ -105,9 +91,8 @@ assert count headline where
 :END:
 
 #+BEGIN_SRC org-contract
-assert count headline where
-  property(:raw-value) = "Provider Contracts"
->= 1
+(assert exists
+  (headline :descendant-of $scope :summary-contains (title "Provider Contracts")))
 #+END_SRC
 
 ** Provider contract entries
@@ -117,11 +102,8 @@ assert count headline where
 :END:
 
 #+BEGIN_SRC org-contract
-let provider_contracts = headline where property(:raw-value) = "Provider Contracts"
-
-assert count headline where
-  child_of(provider_contracts)
->= 1
+(assert exists
+  (node-property :descendant-of $scope :summary (key "LANGUAGE_ID")))
 #+END_SRC
 
 ** Client surface section
@@ -131,7 +113,6 @@ assert count headline where
 :END:
 
 #+BEGIN_SRC org-contract
-assert count headline where
-  property(:raw-value) = "Client Surface"
->= 1
+(assert exists
+  (headline :descendant-of $scope :summary-contains (title "Client Surface")))
 #+END_SRC

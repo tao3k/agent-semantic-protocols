@@ -103,7 +103,9 @@ fn org_facade_guide_explains_element_query_axes() {
         "{query_stdout}"
     );
     assert!(
-        query_stdout.contains("|direct-read-rule requires=--from-hook+--selector+--content"),
+        query_stdout.contains(
+            "|mode selector command=\"query --selector <structural-selector> --workspace . --view metadata\""
+        ),
         "{query_stdout}"
     );
 

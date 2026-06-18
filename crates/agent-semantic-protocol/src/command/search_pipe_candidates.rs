@@ -67,13 +67,14 @@ pub(super) fn collect_candidates(
             .collect()
     };
     if let Some(collection) = collect_native_finder_candidates(
-        NativeFinderSurface::Both,
+        native_surface_for_pipe_terms(&terms),
         language_id,
         project_root,
         locator_root,
         &roots,
         &terms,
         config,
+        &[],
     )?
     .filter(|collection| !collection.candidates.is_empty())
     {
@@ -92,6 +93,21 @@ pub(super) fn collect_candidates(
         &term_matcher,
         &search_roots,
     )
+}
+
+fn native_surface_for_pipe_terms(terms: &[String]) -> NativeFinderSurface {
+    if matches!(terms, [term] if search_term_looks_like_path(term)) {
+        NativeFinderSurface::Path
+    } else {
+        NativeFinderSurface::Both
+    }
+}
+
+fn search_term_looks_like_path(term: &str) -> bool {
+    term.contains('/')
+        || term.contains('\\')
+        || term.contains('.')
+        || path_basename_matches(term, term)
 }
 
 fn collect_candidates_from_search_roots(

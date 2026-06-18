@@ -34,7 +34,7 @@ fn org_facade_search_toc_returns_heading_outline() {
     );
     assert!(stdout.contains("level=3 title=\"Docs\""), "{stdout}");
     assert!(
-        stdout.contains("next=\"asp org query --selector ./plan.org:"),
+        stdout.contains("next=\"asp org query --selector org://./plan.org#"),
         "{stdout}"
     );
 

@@ -30,6 +30,9 @@ use super::search_pipe_surfaces::default_search_surfaces;
 use super::search_pipe_view::{
     SearchPipeViewRequest, print_search_pipe_view, reject_non_graph_turbo_receipt,
 };
+use super::search_query_budget::{
+    SearchQueryBudgetBlock, search_query_budget_block, specific_search_term,
+};
 use super::search_suggest::{
     is_search_suggest, is_unsupported_search_pipeline_command,
     reject_unsupported_search_pipeline_command, run_search_suggest_command,
@@ -219,6 +222,18 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
         context.locator_root,
         pipe_args.workspace.as_deref(),
     );
+    let budget_scopes = search_pipe_budget_scopes(&pipe_args);
+    if let Some(block) = search_query_budget_block(&pipe_args.seed_query, &budget_scopes, false) {
+        print_search_query_budget_block(
+            "search-pipe",
+            context.language_id,
+            &pipe_args.seed_query,
+            pipe_args.workspace.as_deref(),
+            &pipe_args.scopes,
+            &block,
+        );
+        return Ok(());
+    }
     let acquisition = dependency_manifest_fast_acquisition(
         context.language_id,
         &project_root,
@@ -277,6 +292,85 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
         frontier_receipt: context.frontier_receipt,
     })?;
     Ok(())
+}
+
+fn search_pipe_budget_scopes(pipe_args: &super::search_pipe_args::SearchPipeArgs) -> Vec<PathBuf> {
+    if !pipe_args.scopes.is_empty() {
+        return pipe_args.scopes.clone();
+    }
+    pipe_args.workspace.clone().into_iter().collect::<Vec<_>>()
+}
+
+fn print_search_query_budget_block(
+    surface: &str,
+    language_id: &str,
+    query: &str,
+    workspace: Option<&Path>,
+    scopes: &[PathBuf],
+    block: &SearchQueryBudgetBlock,
+) {
+    println!("[{surface}] lang={language_id} view=seeds source=blocked ranker=query-budget");
+    println!("query={query}");
+    if let Some(workspace) = workspace {
+        println!("workspace={}", workspace.display());
+    }
+    if !scopes.is_empty() {
+        println!(
+            "scopes={}",
+            scopes
+                .iter()
+                .map(|scope| scope.display().to_string())
+                .collect::<Vec<_>>()
+                .join(",")
+        );
+    }
+    println!(
+        "noOutput reason={} sourceTrace=queryBudget:blocked[blocked=true;genericTerms={};termCount={}]",
+        block.reason,
+        block.generic_terms.join("|"),
+        block.term_count
+    );
+    println!(
+        "nextCommand={}",
+        search_budget_next_command(query, workspace, scopes)
+    );
+    println!(
+        "refineHint=use path-or-symbol terms first; example: asp fd -query 'path-or-symbol|error-code' --workspace <scope>"
+    );
+    println!("avoid=repeat-search-pipe,broad-fzf,raw-rg,workspace-wide-rg");
+}
+
+fn search_budget_next_command(query: &str, workspace: Option<&Path>, scopes: &[PathBuf]) -> String {
+    let terms = super::search_query_budget::search_query_terms(query)
+        .into_iter()
+        .filter(|term| specific_search_term(term))
+        .take(4)
+        .collect::<Vec<_>>();
+    let query = if terms.is_empty() {
+        "path-or-symbol|error-code".to_string()
+    } else {
+        terms.join("|")
+    };
+    let scope = scopes
+        .first()
+        .map(|scope| scope.display().to_string())
+        .or_else(|| workspace.map(|workspace| workspace.display().to_string()))
+        .unwrap_or_else(|| "<scope>".to_string());
+    format!(
+        "asp fd -query '{}' --workspace {}",
+        query,
+        shell_arg(&scope)
+    )
+}
+
+fn shell_arg(value: &str) -> String {
+    if value.chars().all(|character| {
+        character.is_ascii_alphanumeric() || matches!(character, '.' | '/' | '-' | '_')
+    }) {
+        value.to_string()
+    } else {
+        format!("'{}'", value.replace('\'', "'\\''"))
+    }
 }
 
 fn source_trace_with_provider_facts(
@@ -634,6 +728,17 @@ fn run_search_fzf_command(
             "search fzf fast path supports --view seeds or --view graph-turbo-request".to_string(),
         );
     }
+    if let Some(block) = search_query_budget_block(&pipe_args.query, &pipe_args.owners, false) {
+        print_search_query_budget_block(
+            "search-fzf",
+            language_id,
+            &pipe_args.query,
+            None,
+            &pipe_args.owners,
+            &block,
+        );
+        return Ok(());
+    }
     let candidates = collect_candidates(
         language_id,
         project_root,
@@ -642,25 +747,9 @@ fn run_search_fzf_command(
         &pipe_args.owners,
         config,
     )?;
-    let provider_facts = collect_provider_graph_facts(
-        language_id,
-        project_root,
-        Some(&pipe_args.query),
-        &candidates,
-        config,
-        provider_context,
-    )?;
-    print_search_pipe_view(SearchPipeViewRequest {
-        language_id,
-        project_root,
-        locator_root,
-        surface: "search-fzf",
-        query: Some(&pipe_args.query),
-        candidates: &candidates,
-        pipes: &pipe_args.pipes,
-        source: "finder",
-        candidate_sources: &["finder".to_string()],
-        source_trace: &[SearchPipeSourceTrace::new(
+    let acquisition = CandidateAcquisition {
+        candidate_sources: vec!["finder".to_string()],
+        source_trace: vec![SearchPipeSourceTrace::new(
             "finder",
             if candidates.is_empty() {
                 "empty"
@@ -671,6 +760,27 @@ fn run_search_fzf_command(
             usize::from(candidates.is_empty()),
             candidates.len(),
         )],
+        candidates,
+    };
+    let provider_facts = collect_provider_graph_facts(
+        language_id,
+        project_root,
+        Some(&pipe_args.query),
+        &acquisition.candidates,
+        config,
+        provider_context,
+    )?;
+    print_search_pipe_view(SearchPipeViewRequest {
+        language_id,
+        project_root,
+        locator_root,
+        surface: "search-fzf",
+        query: Some(&pipe_args.query),
+        candidates: &acquisition.candidates,
+        pipes: &pipe_args.pipes,
+        source: "finder",
+        candidate_sources: &acquisition.candidate_sources,
+        source_trace: &acquisition.source_trace,
         scopes: &pipe_args.owners,
         view: &pipe_args.view,
         include_pipe_plan: false,

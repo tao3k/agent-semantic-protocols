@@ -12,9 +12,11 @@ use super::search_pipe_plan::render_primary_frontier_actions_only;
 use super::search_pipe_provider_facts::ProviderGraphFacts;
 use super::search_pipe_render::render_ingest_frontier;
 use super::search_pipe_surfaces::default_search_surfaces;
+use super::search_query_budget::{SearchQueryBudgetBlock, search_terms_budget_block};
 use super::search_query_wrapper_candidates::{
-    absolute_scope, collect_query_candidate_collection, infer_language_id, owner_candidates,
-    package_clusters, query_clauses, rg_scope_next, unique_clause_terms,
+    QueryCandidateCollection, absolute_scope, collect_query_candidate_collection,
+    infer_language_id, owner_candidates, package_clusters, query_clauses, rg_scope_next,
+    unique_clause_terms,
 };
 use super::search_query_wrapper_frontier::{
     print_query_wrapper_empty_receipt, print_query_wrapper_refinement_frontier, query_clauses_line,
@@ -60,15 +62,21 @@ pub(crate) fn run_query_wrapper_command(command: &str, args: &[String]) -> Resul
     let terms = unique_clause_terms(&clauses);
     let started_at = Instant::now();
     let collect_started_at = Instant::now();
-    let candidate_collection = collect_query_candidate_collection(
-        surface,
-        &project_root,
-        &invocation_root,
-        &wrapper_args.scopes,
-        &clauses,
-        &terms,
-        &config,
-    )?;
+    let broad_gate = query_wrapper_budget_gate(&wrapper_args, &terms);
+    let candidate_collection = if let Some(gate) = broad_gate.as_ref() {
+        QueryCandidateCollection::blocked(gate)
+    } else {
+        collect_query_candidate_collection(
+            surface,
+            &project_root,
+            &invocation_root,
+            &wrapper_args.scopes,
+            &clauses,
+            &terms,
+            &config,
+            &wrapper_args.native_args,
+        )?
+    };
     let collect_elapsed = collect_started_at.elapsed();
     let candidates = candidate_collection.candidates;
     let quality_started_at = Instant::now();
@@ -94,7 +102,18 @@ pub(crate) fn run_query_wrapper_command(command: &str, args: &[String]) -> Resul
         view: &wrapper_args.view,
         native_args: &wrapper_args.native_args,
         trace_fields,
+        empty_reason: broad_gate
+            .as_ref()
+            .map(|gate| gate.reason)
+            .unwrap_or("no-candidates"),
     })
+}
+
+fn query_wrapper_budget_gate(
+    args: &QueryWrapperArgs,
+    terms: &[String],
+) -> Option<SearchQueryBudgetBlock> {
+    search_terms_budget_block(terms, &args.scopes, !args.native_args.is_empty())
 }
 
 fn duration_ms_value(duration: Duration) -> serde_json::Value {
@@ -218,6 +237,7 @@ struct QueryWrapperViewRequest<'a> {
     view: &'a str,
     native_args: &'a [String],
     trace_fields: std::collections::BTreeMap<String, serde_json::Value>,
+    empty_reason: &'a str,
 }
 
 fn print_query_wrapper_view(request: QueryWrapperViewRequest<'_>) -> Result<(), String> {
@@ -233,6 +253,7 @@ fn print_query_wrapper_view(request: QueryWrapperViewRequest<'_>) -> Result<(), 
         view,
         native_args,
         trace_fields,
+        empty_reason,
     } = request;
     let language_id = infer_language_id(project_root);
     let pipes = default_search_surfaces();
@@ -290,6 +311,7 @@ fn print_query_wrapper_view(request: QueryWrapperViewRequest<'_>) -> Result<(), 
             terms,
             &source_trace[0].compact(),
             surface.avoid(quality),
+            empty_reason,
         );
         return Ok(());
     }

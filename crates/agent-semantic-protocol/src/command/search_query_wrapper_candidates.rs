@@ -19,6 +19,23 @@ pub(super) struct QueryCandidateCollection {
     pub(super) trace_fields: BTreeMap<String, Value>,
 }
 
+impl QueryCandidateCollection {
+    pub(super) fn blocked(gate: &super::search_query_budget::SearchQueryBudgetBlock) -> Self {
+        let mut trace_fields = BTreeMap::new();
+        trace_fields.insert("blocked".to_string(), Value::from(true));
+        trace_fields.insert("reason".to_string(), Value::from(gate.reason));
+        trace_fields.insert("termCount".to_string(), Value::from(gate.term_count));
+        trace_fields.insert(
+            "genericTerms".to_string(),
+            Value::from(gate.generic_terms.join("|")),
+        );
+        Self {
+            candidates: Vec::new(),
+            trace_fields,
+        }
+    }
+}
+
 pub(super) fn collect_query_candidates(
     surface: QueryWrapperSurface,
     project_root: &Path,
@@ -27,6 +44,7 @@ pub(super) fn collect_query_candidates(
     clauses: &[QueryWrapperClause],
     terms: &[String],
     config: &AspConfig,
+    native_args: &[String],
 ) -> Result<Vec<Candidate>, String> {
     collect_query_candidate_collection(
         surface,
@@ -36,6 +54,7 @@ pub(super) fn collect_query_candidates(
         clauses,
         terms,
         config,
+        native_args,
     )
     .map(|collection| collection.candidates)
 }
@@ -48,6 +67,7 @@ pub(super) fn collect_query_candidate_collection(
     clauses: &[QueryWrapperClause],
     terms: &[String],
     config: &AspConfig,
+    native_args: &[String],
 ) -> Result<QueryCandidateCollection, String> {
     if terms.is_empty() {
         return Err(format!(
@@ -89,6 +109,7 @@ pub(super) fn collect_query_candidate_collection(
         &roots,
         terms,
         config,
+        native_args,
     )?
     .filter(|collection| !collection.candidates.is_empty())
     {

@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use super::search_pipe_action_frontier::{ActionNode, ActionRoute, render_action_rows};
 use super::search_pipe_model::Candidate;
 use super::search_pipe_owner_roles::{has_strong_secondary_owner_intent, secondary_like_owner};
+use super::search_query_budget::specific_search_term;
 use super::search_query_wrapper_candidates::{owner_candidates, rg_scope_next};
 use super::search_query_wrapper_model::{
     QueryWrapperQuality, QueryWrapperSurface, display_terms, shell_arg,
@@ -62,12 +63,18 @@ pub(super) fn print_query_wrapper_empty_receipt(
     terms: &[String],
     source_trace: &str,
     avoid: &str,
+    reason: &str,
 ) {
-    println!("noOutput reason=no-candidates sourceTrace={source_trace}");
+    println!("noOutput reason={reason} sourceTrace={source_trace}");
     println!(
         "nextCommand={}",
-        query_wrapper_empty_next_command(surface, scopes, queries, terms)
+        query_wrapper_empty_next_command(surface, scopes, queries, terms, reason)
     );
+    if reason == "query-too-broad" {
+        println!(
+            "refineHint=use path-or-symbol terms first; example: asp fd -query 'path-or-symbol|error-code' --workspace <scope>"
+        );
+    }
     println!("avoid={avoid}");
 }
 
@@ -369,8 +376,17 @@ fn query_wrapper_empty_next_command(
     scopes: &[PathBuf],
     queries: &[String],
     terms: &[String],
+    reason: &str,
 ) -> String {
     let command_scope = scope_args_for_command(scopes);
+    if reason == "query-too-broad" {
+        let query = specific_budget_terms(queries, terms);
+        return format!(
+            "asp fd -query {} --workspace {}",
+            shell_arg(&query),
+            command_scope
+        );
+    }
     match surface {
         QueryWrapperSurface::Fd => format!(
             "asp rg {} --workspace {}",
@@ -385,6 +401,23 @@ fn query_wrapper_empty_next_command(
                 command_scope
             )
         }
+    }
+}
+
+fn specific_budget_terms(queries: &[String], terms: &[String]) -> String {
+    let raw_terms = raw_query_terms(queries);
+    let selected = raw_terms
+        .iter()
+        .map(String::as_str)
+        .chain(terms.iter().map(String::as_str))
+        .filter(|term| specific_search_term(&term.to_ascii_lowercase()))
+        .take(4)
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+    if selected.is_empty() {
+        "path-or-symbol|error-code".to_string()
+    } else {
+        selected.join("|")
     }
 }
 

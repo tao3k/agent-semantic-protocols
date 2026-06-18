@@ -1286,11 +1286,12 @@
         "avoidNextActions"
       ],
       "properties": {
-        "reason": {
-          "enum": [
-            "no-candidates"
-          ]
-        },
+      "reason": {
+        "enum": [
+          "no-candidates",
+          "query-too-broad"
+        ]
+      },
         "sourceTrace": {
           "type": "array",
           "items": {
@@ -1304,16 +1305,60 @@
             "$ref": "#/$defs/nextAction"
           }
         },
-        "avoidNextActions": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/avoidNextAction"
-          }
+      "avoidNextActions": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/avoidNextAction"
         }
+      },
+      "queryBudget": {
+        "$ref": "#/$defs/queryBudget"
       }
-    },
-    "runtimeCost": {
-      "type": "object",
+    }
+  },
+  "queryBudget": {
+    "type": "object",
+    "description": "Shared wrapper admission receipt for queries rejected before backend execution.",
+    "additionalProperties": false,
+    "required": [
+      "blocked",
+      "reason",
+      "termCount",
+      "genericTerms",
+      "refineHint"
+    ],
+    "properties": {
+      "blocked": {
+        "type": "boolean",
+        "const": true
+      },
+      "reason": {
+        "enum": [
+          "query-too-broad"
+        ]
+      },
+      "termCount": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "genericTerms": {
+        "$ref": "#/$defs/stringList"
+      },
+      "specificTerms": {
+        "$ref": "#/$defs/stringList"
+      },
+      "refineHint": {
+        "type": "string",
+        "minLength": 1
+      },
+      "exampleCommand": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  },
+  "runtimeCost": {
+    "type": "object",
       "additionalProperties": false,
       "required": [
         "cacheStatus"

@@ -11,6 +11,9 @@ pub(super) fn request_prompt_output_writeback_method(
         ClientMethod::Search if is_replayable_search_prompt_output(&request.forwarded_args) => {
             request_export_method(request)
         }
+        ClientMethod::Query if is_replayable_query_prompt_output(&request.forwarded_args) => {
+            request_export_method(request)
+        }
         _ => None,
     }
 }
@@ -53,6 +56,7 @@ pub(super) fn request_query_packet_writeback_method(
             .forwarded_args
             .iter()
             .any(|arg| arg == "--json" || arg == "--code")
+        || has_selector_query(&request.forwarded_args)
     {
         return None;
     }
@@ -100,6 +104,17 @@ fn is_replayable_search_prompt_output(args: &[String]) -> bool {
     is_seed_search_without_code(args) || is_owner_items_search(args) || is_dependency_search(args)
 }
 
+fn is_replayable_query_prompt_output(args: &[String]) -> bool {
+    !args.iter().any(|arg| arg == "--json")
+        && has_selector_query(args)
+        && !has_tree_sitter_query(args)
+}
+
+fn has_selector_query(args: &[String]) -> bool {
+    args.iter().any(|arg| arg == "--selector")
+        || args.iter().any(|arg| arg.starts_with("--selector="))
+}
+
 fn is_dependency_search(args: &[String]) -> bool {
     args.first()
         .is_some_and(|arg| arg == "dependency" || arg == "deps")
@@ -130,3 +145,7 @@ fn is_seed_search_without_code(args: &[String]) -> bool {
 fn is_prime_seed_search(args: &[String]) -> bool {
     args.first().is_some_and(|arg| arg == "prime") && is_seed_search_without_code(args)
 }
+
+#[cfg(test)]
+#[path = "../../tests/unit/cache_cli/writeback_request.rs"]
+mod writeback_request_tests;

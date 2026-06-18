@@ -53,6 +53,7 @@ mod search_pipe_seed_decision;
 mod search_pipe_source;
 mod search_pipe_surfaces;
 mod search_pipe_view;
+mod search_query_budget;
 mod search_query_wrapper;
 mod search_query_wrapper_candidate_scan;
 mod search_query_wrapper_candidates;

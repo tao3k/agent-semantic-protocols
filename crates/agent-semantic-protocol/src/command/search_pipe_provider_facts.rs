@@ -10,7 +10,7 @@ use super::provider_process::{provider_invocation_with_profile, run_provider_com
 use super::search_config::AspConfig;
 use super::search_pipe_model::Candidate;
 
-const PROVIDER_GRAPH_FACT_CANDIDATE_LIMIT: usize = 48;
+const PROVIDER_GRAPH_FACT_CANDIDATE_LIMIT: usize = 24;
 
 #[derive(Debug, Default)]
 pub(super) struct ProviderGraphFacts {
@@ -41,6 +41,9 @@ pub(super) fn collect_provider_graph_facts(
     let Some(context) = context else {
         return Ok(ProviderGraphFacts::default());
     };
+    if !context.provider.search_capabilities.semantic_facts {
+        return Ok(ProviderGraphFacts::default());
+    }
     if candidates.is_empty() {
         return Ok(ProviderGraphFacts::default());
     }

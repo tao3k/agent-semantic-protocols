@@ -127,11 +127,9 @@ fn contract_source() -> &'static str {
 :END:
 
 #+BEGIN_SRC org-contract
-let evidence = headline where child_of($scope) and property(:raw-value) = "Evidence"
-
-assert count link where
-  descendant_of(evidence)
->= 1
+(let (($evidence (headline :child-of $scope :summary (title "Evidence"))))
+  (assert count >= 1
+    (link :descendant-of $evidence)))
 #+END_SRC
 "#
 }

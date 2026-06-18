@@ -307,6 +307,27 @@ a provider-invented =text= abstraction.  The provider still owns the pipeline:
 equivalent scorer ranks them headlessly, then the provider groups by owner,
 deduplicates, caps, and renders compact seeds.
 
+Search wrapper grammar owns query-shape admission before any finder backend is
+invoked.  The shared =asp fd=, =asp rg=, =search pipe=, and =search fzf=
+surfaces must reject workspace-wide or package-wide generic phrases when the
+query has no path, selector, symbol, error-code, or other specific axis and no
+explicit native/backend filter.  This is a protocol boundary, not an =rg=
+optimization: broad natural-language intent belongs to the agent's planning
+step, while the backend receives bounded path/symbol/error-code/dependency/owner
+axes.  A blocked command must stop before native finder execution, provider fact
+collection, graph rendering, or query-set expansion, and it must emit a compact
+=noOutput reason=query-too-broad= receipt with exactly one granular follow-up
+example, for example:
+
+#+begin_src shell
+asp fd -query 'path-or-symbol|error-code' --workspace <scope>
+#+end_src
+
+If the agent needs a content backend anyway, it must first narrow the scope or
+provide backend-native filters after the wrapper boundary, such as =--
+<rg/fd option...>=.  Accepted native options are still budgeted backend inputs;
+they are not permission to emit unbounded stdout.
+
 Do not expose the old text-named compatibility view.  Exact lexical matching,
 fixed-string matching, and fuzzy matching are modes of =search fzf= or provider
 finder pipelines, not separate public views.  =search fzf= is not a language

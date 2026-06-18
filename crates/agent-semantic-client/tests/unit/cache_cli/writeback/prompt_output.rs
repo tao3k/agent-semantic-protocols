@@ -2,7 +2,7 @@ use agent_semantic_client_core::{
     ClientCacheManifest, ClientMethod, ClientRequest, LanguageId, ProviderRegistrySnapshot,
 };
 
-use super::{python_provider, rust_provider, temp_root};
+use super::{gerbil_scheme_provider, python_provider, rust_provider, temp_root};
 use crate::cache_cli::writeback::write_prompt_output_cache_after_provider_success;
 
 #[test]
@@ -130,6 +130,43 @@ fn query_selector_code_output_is_not_written_to_prompt_cache() {
 
     assert!(probe.is_none());
     assert!(!root.join("artifacts/prompt-output").exists());
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn query_selector_content_writeback_does_not_export_provider_packet() {
+    let _guard = crate::test_support::CACHE_TEST_LOCK
+        .lock()
+        .expect("cache test lock");
+    let root = temp_root("query-selector-content-writeback");
+    std::fs::create_dir_all(root.join(".git")).expect("create git marker");
+    std::fs::create_dir_all(root.join("src/support")).expect("create source dir");
+    std::fs::write(root.join("src/support/io.ss"), ";; selector output\n").expect("write source");
+    let snapshot = ProviderRegistrySnapshot {
+        activation_path: root.join("activation.json"),
+        providers: vec![gerbil_scheme_provider()],
+    };
+    let request = ClientRequest::new(ClientMethod::Query, &root)
+        .with_language(LanguageId::from("gerbil-scheme"))
+        .with_forwarded_args(vec![
+            "--selector".to_string(),
+            "src/support/io.ss:1-1".to_string(),
+            "--content".to_string(),
+        ]);
+    let stdout = ";; selector output\n";
+
+    let probe = write_prompt_output_cache_after_provider_success(
+        &root,
+        &snapshot,
+        &request,
+        stdout.as_bytes(),
+        &[],
+    )
+    .expect("selector prompt-output writeback");
+    let replay = probe.replay.expect("selector output replay");
+
+    assert_eq!(replay.stdout, stdout.as_bytes());
+    assert!(probe.provider_commands.is_empty());
     let _ = std::fs::remove_dir_all(root);
 }
 

@@ -22,6 +22,21 @@ Acceptance criteria for every snapshot:
 - every owner line has role / pub / test / find / next
 #+end_src
 
+Performance and admission gates are part of the search contract, not optional
+implementation tuning.  Tests must cover the shared wrapper surfaces before
+provider execution:
+
+#+begin_src text
+- broad =asp fd -query ...= rejects with =noOutput reason=query-too-broad=
+- broad =asp rg -query ...= rejects unless native filters or narrow scopes are present
+- broad =search pipe= rejects before finder/provider fact collection
+- broad =search fzf= rejects before finder/provider fact collection
+- providers without =searchCapabilities.semanticFacts= are not invoked for semantic-facts
+- provider fact collection receives a bounded candidate list
+- blocked receipts include one granular =asp fd -query 'path-or-symbol|error-code' --workspace <scope>= example
+- phase traces keep wrapper admission and blocked receipts inside the search-phase latency gate
+#+end_src
+
 Three MVP regression tests (must pass before public release):
 
 *** Test A: dependency rename
