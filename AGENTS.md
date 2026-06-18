@@ -1,6 +1,19 @@
 @.agents/skills/agent-semantic-protocols/SKILL.md
+@.cache/agent-semantic-protocol/org/skills/ASP_ORG.org
 
 # Project Workflow
+
+## ASP Org Agent Flow
+
+The root agent flow consumes the materialized ASP Org skill above. When a task
+needs durable planning, execution plans, specifications, adversarial review, or
+agent state, ensure the state tree exists with `asp org capture init`, then use
+the included `ASP_ORG.org` workflow and write Org state under
+`.cache/agent-semantic-protocol/org/flow/{sdd,BDR,plans}`.
+
+Keep reusable ASP Org theory, templates, contracts, and skill guidance in
+`languages/org`; `AGENTS.md` should only reference the materialized state skill
+and route agent workflow into it.
 
 ## Search Protocol Changes
 
