@@ -9,5 +9,5 @@ mod types;
 pub use types::{
     ClientDbSourceIndexImport, ClientDbSourceIndexLookup, ClientDbSourceIndexOwner,
     ClientDbSourceIndexPath, ClientDbSourceIndexQueryKey, ClientDbSourceIndexSelector,
-    ClientDbSourceIndexSource, ClientDbSourceIndexStats,
+    ClientDbSourceIndexSelectorLookup, ClientDbSourceIndexSource, ClientDbSourceIndexStats,
 };

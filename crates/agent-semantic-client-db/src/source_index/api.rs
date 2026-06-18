@@ -6,7 +6,8 @@ use agent_semantic_client_core::{
 };
 
 use super::lookup::{
-    latest_source_index_generation_owners, lookup_source_index_owners, source_index_stats,
+    latest_source_index_generation_owners, lookup_source_index_owners,
+    lookup_source_index_selectors, source_index_stats,
 };
 use super::storage::{
     latest_source_index_file_hashes, replace_source_index_rows,
@@ -14,7 +15,7 @@ use super::storage::{
 };
 use super::types::{
     ClientDbSourceIndexImport, ClientDbSourceIndexLookup, ClientDbSourceIndexOwner,
-    ClientDbSourceIndexStats,
+    ClientDbSourceIndexSelector, ClientDbSourceIndexSelectorLookup, ClientDbSourceIndexStats,
 };
 
 impl ClientDb {
@@ -78,5 +79,14 @@ impl ClientDb {
         lookup: &ClientDbSourceIndexLookup,
     ) -> Result<Vec<ClientDbSourceIndexOwner>, String> {
         lookup_source_index_owners(self, lookup)
+    }
+
+    /// Return Rust-owned source selectors matching a structured lookup from
+    /// the freshest matching source index generation.
+    pub fn lookup_source_index_selectors(
+        &self,
+        lookup: &ClientDbSourceIndexSelectorLookup,
+    ) -> Result<Vec<ClientDbSourceIndexSelector>, String> {
+        lookup_source_index_selectors(self, lookup)
     }
 }

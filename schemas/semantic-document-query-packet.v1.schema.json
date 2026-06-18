@@ -121,9 +121,10 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "kind",
-        "documentPath",
-        "location",
+      "kind",
+      "documentPath",
+      "structuralSelector",
+      "location",
         "parserAuthority",
         "content"
       ],
@@ -134,12 +135,15 @@
             "element"
           ]
         },
-        "documentPath": {
-          "$ref": "semantic-source-location.v1.schema.json#/$defs/projectPath"
-        },
-        "location": {
-          "$ref": "semantic-source-location.v1.schema.json#/$defs/location"
-        },
+    "documentPath": {
+      "$ref": "semantic-source-location.v1.schema.json#/$defs/projectPath"
+    },
+    "structuralSelector": {
+      "$ref": "semantic-source-location.v1.schema.json#/$defs/structuralSelector"
+    },
+    "location": {
+      "$ref": "semantic-source-location.v1.schema.json#/$defs/location"
+    },
         "parserAuthority": {
           "$ref": "semantic-document-search-packet.v1.schema.json#/$defs/parserAuthority"
         },

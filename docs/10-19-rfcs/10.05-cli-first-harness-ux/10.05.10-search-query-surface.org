@@ -150,7 +150,7 @@ the native =orgize= document provider.
 asp org guide --workspace .                 # native orgize document provider through asp
 asp org search prime --workspace . --view seeds
 asp org query --term CUSTOM_ID --workspace . --view metadata
-asp org query --selector docs/a.org:10-20 --workspace . --content
+asp org query --selector org://docs/a.org#headline/section[1] --workspace . --content
 
 asp md guide --workspace .                  # native orgize/comrak document provider through asp
 asp md search prime --workspace . --view seeds
@@ -175,8 +175,13 @@ read. The =--content= renderer is a prompt-compact projection: it collapses
 document whitespace inside each projected element to a single ASCII space,
 trims empty projections, prints one non-empty projection per line without blank
 separators, and emits no body lines when the content projection is empty.
-Document text recovery uses =query --selector <path-or-range> --content= and
-stays a filtered element-content projection, not a whole-file read.
+Document text recovery uses =query --selector <structural-selector> --content=
+and stays a filtered element-content projection, not a whole-file read.
+Structural selectors are parser-owned document identities such as
+=org://docs/a.org#headline/section[1]= or
+=md://README.md#heading/nodevalue-heading[2]=. A path line range may remain as
+a hook direct-read compatibility selector, but search/query packets and
+agent-facing next actions must not use line ranges as element identity.
 =--code= remains reserved for source-language providers.
 
 =guide= and =query guide= for document languages must expose the parser-owned
@@ -190,8 +195,9 @@ raw reads.
 
 =search toc= is the document-first repository orientation view.  It uses the
 same provider discovery as =search prime=, but returns only heading facts,
-grouped by document path, with =level=, =title=, line range, Org TODO/priority
-or tag fields when present, and a selector-query next action for each heading.
+grouped by document path, with =level=, =title=, structural selector, optional
+display line range, Org TODO/priority or tag fields when present, and a
+selector-query next action for each heading.
 Agents should use it before broad document reads when the task is to understand
 repo documentation structure, README sections, design docs, RFC outlines, or
 Org task hierarchies.  =search toc --json= emits the normal
@@ -218,7 +224,7 @@ candidate source, then projects those element hits into the shared
 graph/frontier surface.  Candidate rows may come from headings, paragraphs,
 properties, blocks, lists, tasks, links, images, or Markdown structural nodes,
 and the next read action for document text is always =asp org|md query
---selector <path:line-end> --workspace . --content=.  =--view
+--selector <structural-selector> --workspace . --content=.  =--view
 graph-turbo-request= emits the
 same graph request boundary used by source-language pipe, with action frontier
 typed facts carrying =capabilityId=query= and =projection=content= rather than

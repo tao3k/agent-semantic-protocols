@@ -163,8 +163,9 @@
         "id",
         "kind",
         "name",
-        "documentPath",
-        "location",
+      "documentPath",
+      "structuralSelector",
+      "location",
         "parserAuthority",
         "queryKeys",
         "attributes"
@@ -185,12 +186,15 @@
           "type": "string",
           "minLength": 1
         },
-        "documentPath": {
-          "$ref": "semantic-source-location.v1.schema.json#/$defs/projectPath"
-        },
-        "location": {
-          "$ref": "#/$defs/documentLocation"
-        },
+    "documentPath": {
+      "$ref": "semantic-source-location.v1.schema.json#/$defs/projectPath"
+    },
+    "structuralSelector": {
+      "$ref": "semantic-source-location.v1.schema.json#/$defs/structuralSelector"
+    },
+    "location": {
+      "$ref": "#/$defs/documentLocation"
+    },
         "parserAuthority": {
           "$ref": "#/$defs/parserAuthority"
         },

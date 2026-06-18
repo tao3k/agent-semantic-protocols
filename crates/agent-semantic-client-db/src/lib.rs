@@ -20,7 +20,7 @@ pub use pragmas::{ClientDbJournalMode, ClientDbRuntimePragmas};
 pub use source_index::{
     ClientDbSourceIndexImport, ClientDbSourceIndexLookup, ClientDbSourceIndexOwner,
     ClientDbSourceIndexPath, ClientDbSourceIndexQueryKey, ClientDbSourceIndexSelector,
-    ClientDbSourceIndexSource, ClientDbSourceIndexStats,
+    ClientDbSourceIndexSelectorLookup, ClientDbSourceIndexSource, ClientDbSourceIndexStats,
 };
 pub use structural_index::{
     ClientDbStructuralDependencyUsage, ClientDbStructuralHash, ClientDbStructuralIndexImport,

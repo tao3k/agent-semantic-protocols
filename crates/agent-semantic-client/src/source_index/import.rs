@@ -96,7 +96,7 @@ pub(super) fn source_index_import_with_file_hashes(
         });
         selectors.push(ClientDbSourceIndexSelector {
             owner_path,
-            selector_id: format!("{relative_path}:1:{}", line_count.max(1)),
+            selector_id: format!("{}://{relative_path}#file", file.language_id.as_str()),
             symbol: file
                 .path
                 .file_stem()

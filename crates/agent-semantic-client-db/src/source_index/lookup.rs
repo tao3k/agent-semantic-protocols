@@ -7,7 +7,8 @@ use crate::db::{ClientDb, normalized_project_root};
 use super::text::{parse_query_keys, source_index_like_query, u32_to_i64};
 use super::types::{
     ClientDbSourceIndexLookup, ClientDbSourceIndexOwner, ClientDbSourceIndexPath,
-    ClientDbSourceIndexSource, ClientDbSourceIndexStats,
+    ClientDbSourceIndexSelector, ClientDbSourceIndexSelectorLookup, ClientDbSourceIndexSource,
+    ClientDbSourceIndexStats,
 };
 
 pub(super) fn source_index_stats(
@@ -157,6 +158,65 @@ pub(super) fn latest_source_index_generation_owners(
     collect_rows(rows, "latest source owner")
 }
 
+pub(super) fn lookup_source_index_selectors(
+    db: &ClientDb,
+    lookup: &ClientDbSourceIndexSelectorLookup,
+) -> Result<Vec<ClientDbSourceIndexSelector>, String> {
+    if lookup.limit == 0 {
+        return Ok(Vec::new());
+    }
+    let project_root = normalized_project_root(&lookup.project_root);
+    let like_query = lookup
+        .query
+        .as_ref()
+        .map(|query| source_index_like_query(query.as_str()));
+    let mut statement = db
+        .conn
+        .prepare_cached(
+            "SELECT
+                s.owner_path,
+                s.selector_id,
+                s.symbol,
+                s.kind,
+                s.start_line,
+                s.end_line,
+                s.source,
+                s.query_keys_json
+            FROM source_index_selector s
+            JOIN source_index_generation g ON g.generation_id = s.generation_id
+            JOIN source_index_owner o
+              ON o.generation_id = s.generation_id
+             AND o.owner_path = s.owner_path
+            WHERE g.project_root = ?1
+              AND g.generation_id = (
+                SELECT latest.generation_id
+                FROM source_index_generation latest
+                WHERE latest.project_root = ?1
+                ORDER BY latest.updated_at DESC, latest.generation_id DESC
+                LIMIT 1
+              )
+              AND (?2 IS NULL OR o.language_id = ?2)
+              AND (?3 IS NULL OR s.kind = ?3)
+              AND (?4 IS NULL OR s.search_text LIKE ?4 ESCAPE '\\')
+            ORDER BY g.updated_at DESC, s.selector_ordinal
+            LIMIT ?5",
+        )
+        .map_err(|error| format!("failed to prepare source selector lookup: {error}"))?;
+    let rows = statement
+        .query_map(
+            params![
+                project_root,
+                lookup.language_id.as_ref().map(|value| value.as_str()),
+                lookup.kind.as_deref(),
+                like_query.as_deref(),
+                u32_to_i64(lookup.limit),
+            ],
+            source_selector_from_row,
+        )
+        .map_err(|error| format!("failed to read source selectors: {error}"))?;
+    collect_rows(rows, "source selector")
+}
+
 fn count_generation_rows(
     db: &ClientDb,
     table: &str,
@@ -185,6 +245,22 @@ fn source_owner_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ClientDbSo
             .get::<_, Option<i64>>(4)?
             .map(|value| value.max(0).min(i64::from(u32::MAX)) as u32),
         query_keys: parse_query_keys(&query_keys_json, 5)?,
+    })
+}
+
+fn source_selector_from_row(
+    row: &rusqlite::Row<'_>,
+) -> rusqlite::Result<ClientDbSourceIndexSelector> {
+    let query_keys_json = row.get::<_, String>(7)?;
+    Ok(ClientDbSourceIndexSelector {
+        owner_path: ClientDbSourceIndexPath::new(row.get::<_, String>(0)?),
+        selector_id: row.get::<_, String>(1)?,
+        symbol: row.get::<_, Option<String>>(2)?,
+        kind: row.get::<_, Option<String>>(3)?,
+        start_line: row.get::<_, i64>(4)?.max(0).min(i64::from(u32::MAX)) as u32,
+        end_line: row.get::<_, i64>(5)?.max(0).min(i64::from(u32::MAX)) as u32,
+        source: ClientDbSourceIndexSource::new(row.get::<_, String>(6)?),
+        query_keys: parse_query_keys(&query_keys_json, 7)?,
     })
 }
 

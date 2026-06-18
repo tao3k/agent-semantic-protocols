@@ -78,6 +78,9 @@ pub struct ClientDbSourceIndexOwner {
 }
 
 /// Rust-owned selector row retained for exact owner-local expansion.
+///
+/// `selector_id` is the stable structural selector identity. Line fields are
+/// compatibility/display hints and must not be used as selector identity.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ClientDbSourceIndexSelector {
     pub owner_path: ClientDbSourceIndexPath,
@@ -104,5 +107,15 @@ pub struct ClientDbSourceIndexLookup {
     pub project_root: PathBuf,
     pub language_id: Option<LanguageId>,
     pub query: ClientDbSourceIndexQueryKey,
+    pub limit: u32,
+}
+
+/// Lookup request for Rust-owned source index selector rows.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ClientDbSourceIndexSelectorLookup {
+    pub project_root: PathBuf,
+    pub language_id: Option<LanguageId>,
+    pub kind: Option<String>,
+    pub query: Option<ClientDbSourceIndexQueryKey>,
     pub limit: u32,
 }

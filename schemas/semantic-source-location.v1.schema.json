@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://agent-semantic-protocols.local/schemas/semantic-source-location.v1.schema.json",
   "title": "Semantic Source Location",
-  "description": "Shared source path, line range, and source locator base used by semantic query, search, read, tree-sitter provenance, and native syntax fact schemas. This schema is not a packet envelope.",
+  "description": "Shared source path, structural selector, line range, and source locator base used by semantic query, search, read, tree-sitter provenance, and native syntax fact schemas. This schema is not a packet envelope. Structural selectors are stable element identities; line ranges are display and compatibility hints.",
   "type": "object",
   "additionalProperties": false,
   "properties": {
@@ -17,6 +17,9 @@
     },
     "lineRange": {
       "$ref": "#/$defs/lineRange"
+    },
+    "structuralSelector": {
+      "$ref": "#/$defs/structuralSelector"
     },
     "location": {
       "$ref": "#/$defs/location"
@@ -37,8 +40,14 @@
     },
     "lineRange": {
       "type": "string",
-      "description": "Compact source line range as start:end, for example 10:43.",
+      "description": "Compact source line range as start:end, for example 10:43. This is a display or compatibility hint, not a semantic selector identity.",
       "pattern": "^[1-9][0-9]*:[1-9][0-9]*$"
+    },
+    "structuralSelector": {
+      "type": "string",
+      "description": "Parser-owned structural selector for an AST/document element. It identifies the element by language, project path, and structural path rather than by line range.",
+      "minLength": 1,
+      "pattern": "^[a-z][a-z0-9+.-]*://[^#\\s]+#[^\\s]+$"
     },
     "location": {
       "type": "object",
@@ -53,6 +62,9 @@
         },
         "lineRange": {
           "$ref": "#/$defs/lineRange"
+        },
+        "structuralSelector": {
+          "$ref": "#/$defs/structuralSelector"
         }
       }
     },
