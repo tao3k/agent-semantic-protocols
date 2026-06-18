@@ -179,9 +179,10 @@ Document text recovery uses =query --selector <structural-selector> --content=
 and stays a filtered element-content projection, not a whole-file read.
 Structural selectors are parser-owned document identities such as
 =org://docs/a.org#headline/section[1]= or
-=md://README.md#heading/nodevalue-heading[2]=. A path line range may remain as
-a hook direct-read compatibility selector, but search/query packets and
-agent-facing next actions must not use line ranges as element identity.
+=md://README.md#heading/nodevalue-heading[2]=. The public document guide,
+search, query, packet, and next-action contracts must not expose path line
+range selectors. Packet =lineRange= fields are display metadata only and must
+not be rendered as follow-up query commands.
 =--code= remains reserved for source-language providers.
 
 =guide= and =query guide= for document languages must expose the parser-owned
