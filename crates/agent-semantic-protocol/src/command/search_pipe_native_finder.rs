@@ -29,6 +29,17 @@ pub(super) struct NativeFinderCandidates {
     pub(super) provenance: NativeFinderProvenance,
 }
 
+pub(super) struct NativeFinderCollectionRequest<'a> {
+    pub(super) surface: NativeFinderSurface,
+    pub(super) language_id: &'a str,
+    pub(super) project_root: &'a Path,
+    pub(super) locator_root: &'a Path,
+    pub(super) roots: &'a [PathBuf],
+    pub(super) terms: &'a [String],
+    pub(super) config: &'a AspConfig,
+    pub(super) native_args: &'a [String],
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub(super) struct NativeFinderProvenance {
     backend: Option<&'static str>,
@@ -69,37 +80,34 @@ impl NativeFinderProvenance {
 }
 
 pub(super) fn collect_native_finder_candidates(
-    surface: NativeFinderSurface,
-    language_id: &str,
-    project_root: &Path,
-    locator_root: &Path,
-    roots: &[PathBuf],
-    terms: &[String],
-    config: &AspConfig,
-    native_args: &[String],
+    request: NativeFinderCollectionRequest<'_>,
 ) -> Result<Option<NativeFinderCandidates>, String> {
-    if terms.is_empty() {
+    if request.terms.is_empty() {
         return Ok(Some(NativeFinderCandidates {
             candidates: Vec::new(),
             provenance: NativeFinderProvenance::default(),
         }));
     }
-    let file_spec = language_file_spec(language_id);
+    let file_spec = language_file_spec(request.language_id);
     let mut collector = NativeFinderCollector {
-        surface,
-        project_root,
-        locator_root,
-        roots,
-        terms,
-        normalized_terms: terms.iter().map(|term| term.to_ascii_lowercase()).collect(),
+        surface: request.surface,
+        project_root: request.project_root,
+        locator_root: request.locator_root,
+        roots: request.roots,
+        terms: request.terms,
+        normalized_terms: request
+            .terms
+            .iter()
+            .map(|term| term.to_ascii_lowercase())
+            .collect(),
         file_spec,
-        config,
-        native_args,
+        config: request.config,
+        native_args: request.native_args,
         seen: HashSet::new(),
         candidates: Vec::new(),
         provenance: NativeFinderProvenance::default(),
     };
-    let ran_any = match surface {
+    let ran_any = match request.surface {
         NativeFinderSurface::Path => collector.append_fd_candidates()?,
         NativeFinderSurface::Content => collector.append_rg_candidates()?,
         NativeFinderSurface::Both => {
@@ -355,9 +363,7 @@ impl NativeFinderCollector<'_> {
     }
 
     fn rg_command(&self, pattern: &str, root: &Path) -> Option<Command> {
-        let Some(mut command) = native_command("rg") else {
-            return None;
-        };
+        let mut command = native_command("rg")?;
         command
             .arg("--line-number")
             .arg("--no-heading")

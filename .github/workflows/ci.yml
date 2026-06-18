@@ -41,6 +41,7 @@ jobs:
           git submodule update --init --depth 1 \
             languages/rust-lang-project-harness \
             languages/gerbil-scheme-language-project-harness \
+            languages/org \
             languages/orgize \
             languages/typescript-lang-project-harness \
             languages/python-lang-project-harness \
@@ -156,6 +157,7 @@ jobs:
           git submodule update --init --depth 1 \
             languages/rust-lang-project-harness \
             languages/gerbil-scheme-language-project-harness \
+            languages/org \
             languages/orgize \
             languages/typescript-lang-project-harness \
             languages/python-lang-project-harness \

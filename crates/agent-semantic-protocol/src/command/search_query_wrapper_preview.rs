@@ -5,8 +5,8 @@ use std::path::{Path, PathBuf};
 use super::search_config::AspConfig;
 use super::search_pipe_model::Candidate;
 use super::search_query_wrapper_candidates::{
-    collect_query_candidates, owner_candidates, package_clusters, query_clauses, rg_scope_next,
-    unique_clause_terms,
+    QueryCandidateRequest, collect_query_candidates, owner_candidates, package_clusters,
+    query_clauses, rg_scope_next, unique_clause_terms,
 };
 use super::search_query_wrapper_model::{FdQueryPreview, QueryWrapperSurface};
 
@@ -30,16 +30,16 @@ pub(super) fn fd_query_preview(
             }
         })
         .collect::<Vec<_>>();
-    let candidates = collect_query_candidates(
-        QueryWrapperSurface::Fd,
+    let candidates = collect_query_candidates(QueryCandidateRequest {
+        surface: QueryWrapperSurface::Fd,
         project_root,
-        project_root,
-        &preview_scopes,
-        &clauses,
-        &terms,
-        &config,
-        &[],
-    )
+        locator_root: project_root,
+        scopes: &preview_scopes,
+        clauses: &clauses,
+        terms: &terms,
+        config: &config,
+        native_args: &[],
+    })
     .ok()?;
     fd_query_preview_from_candidates(&candidates)
 }

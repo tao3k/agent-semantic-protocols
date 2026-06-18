@@ -7,7 +7,9 @@ use serde_json::Value;
 
 use super::search_config::AspConfig;
 use super::search_pipe_model::Candidate;
-use super::search_pipe_native_finder::{NativeFinderSurface, collect_native_finder_candidates};
+use super::search_pipe_native_finder::{
+    NativeFinderCollectionRequest, NativeFinderSurface, collect_native_finder_candidates,
+};
 use super::search_query_wrapper_candidate_scan::{
     QUERY_CANDIDATE_LIMIT, QueryCandidateAppend, append_query_candidates,
     augment_package_path_candidates, query_candidate_priority,
@@ -17,6 +19,17 @@ use super::search_query_wrapper_model::{QueryWrapperClause, QueryWrapperSurface}
 pub(super) struct QueryCandidateCollection {
     pub(super) candidates: Vec<Candidate>,
     pub(super) trace_fields: BTreeMap<String, Value>,
+}
+
+pub(super) struct QueryCandidateRequest<'a> {
+    pub(super) surface: QueryWrapperSurface,
+    pub(super) project_root: &'a Path,
+    pub(super) locator_root: &'a Path,
+    pub(super) scopes: &'a [PathBuf],
+    pub(super) clauses: &'a [QueryWrapperClause],
+    pub(super) terms: &'a [String],
+    pub(super) config: &'a AspConfig,
+    pub(super) native_args: &'a [String],
 }
 
 impl QueryCandidateCollection {
@@ -37,16 +50,15 @@ impl QueryCandidateCollection {
 }
 
 pub(super) fn collect_query_candidates(
-    surface: QueryWrapperSurface,
-    project_root: &Path,
-    locator_root: &Path,
-    scopes: &[PathBuf],
-    clauses: &[QueryWrapperClause],
-    terms: &[String],
-    config: &AspConfig,
-    native_args: &[String],
+    request: QueryCandidateRequest<'_>,
 ) -> Result<Vec<Candidate>, String> {
-    collect_query_candidate_collection(
+    collect_query_candidate_collection(request).map(|collection| collection.candidates)
+}
+
+pub(super) fn collect_query_candidate_collection(
+    request: QueryCandidateRequest<'_>,
+) -> Result<QueryCandidateCollection, String> {
+    let QueryCandidateRequest {
         surface,
         project_root,
         locator_root,
@@ -55,20 +67,7 @@ pub(super) fn collect_query_candidates(
         terms,
         config,
         native_args,
-    )
-    .map(|collection| collection.candidates)
-}
-
-pub(super) fn collect_query_candidate_collection(
-    surface: QueryWrapperSurface,
-    project_root: &Path,
-    locator_root: &Path,
-    scopes: &[PathBuf],
-    clauses: &[QueryWrapperClause],
-    terms: &[String],
-    config: &AspConfig,
-    native_args: &[String],
-) -> Result<QueryCandidateCollection, String> {
+    } = request;
     if terms.is_empty() {
         return Err(format!(
             "asp {} -query requires non-empty terms",
@@ -101,16 +100,16 @@ pub(super) fn collect_query_candidate_collection(
         QueryWrapperSurface::Rg => NativeFinderSurface::Content,
     };
     let axis_terms = query_axis_terms(clauses);
-    if let Some(mut collection) = collect_native_finder_candidates(
-        native_surface,
-        infer_language_id(project_root),
+    if let Some(mut collection) = collect_native_finder_candidates(NativeFinderCollectionRequest {
+        surface: native_surface,
+        language_id: infer_language_id(project_root),
         project_root,
-        &display_root,
-        &roots,
+        locator_root: &display_root,
+        roots: &roots,
         terms,
         config,
         native_args,
-    )?
+    })?
     .filter(|collection| !collection.candidates.is_empty())
     {
         collection

@@ -31,11 +31,6 @@ pub(super) fn search_terms_budget_block(
         .filter(|term| generic_search_term(term))
         .cloned()
         .collect::<Vec<_>>();
-    let specific_terms = terms
-        .iter()
-        .filter(|term| specific_search_term(term))
-        .cloned()
-        .collect::<Vec<_>>();
     let too_many_terms = terms.len() >= 10 && generic_terms.len() >= 5;
     let generic_dominated =
         terms.len() >= 5 && generic_terms.len() >= 5 && generic_terms.len() * 2 >= terms.len();

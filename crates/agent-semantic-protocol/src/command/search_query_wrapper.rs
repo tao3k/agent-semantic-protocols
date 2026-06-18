@@ -14,9 +14,9 @@ use super::search_pipe_render::render_ingest_frontier;
 use super::search_pipe_surfaces::default_search_surfaces;
 use super::search_query_budget::{SearchQueryBudgetBlock, search_terms_budget_block};
 use super::search_query_wrapper_candidates::{
-    QueryCandidateCollection, absolute_scope, collect_query_candidate_collection,
-    infer_language_id, owner_candidates, package_clusters, query_clauses, rg_scope_next,
-    unique_clause_terms,
+    QueryCandidateCollection, QueryCandidateRequest, absolute_scope,
+    collect_query_candidate_collection, infer_language_id, owner_candidates, package_clusters,
+    query_clauses, rg_scope_next, unique_clause_terms,
 };
 use super::search_query_wrapper_frontier::{
     print_query_wrapper_empty_receipt, print_query_wrapper_refinement_frontier, query_clauses_line,
@@ -66,16 +66,16 @@ pub(crate) fn run_query_wrapper_command(command: &str, args: &[String]) -> Resul
     let candidate_collection = if let Some(gate) = broad_gate.as_ref() {
         QueryCandidateCollection::blocked(gate)
     } else {
-        collect_query_candidate_collection(
+        collect_query_candidate_collection(QueryCandidateRequest {
             surface,
-            &project_root,
-            &invocation_root,
-            &wrapper_args.scopes,
-            &clauses,
-            &terms,
-            &config,
-            &wrapper_args.native_args,
-        )?
+            project_root: &project_root,
+            locator_root: &invocation_root,
+            scopes: &wrapper_args.scopes,
+            clauses: &clauses,
+            terms: &terms,
+            config: &config,
+            native_args: &wrapper_args.native_args,
+        })?
     };
     let collect_elapsed = collect_started_at.elapsed();
     let candidates = candidate_collection.candidates;
