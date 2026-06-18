@@ -112,7 +112,7 @@ fn non_agent_command_surface_is_rejected_without_provider_spawn() {
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("<guide|search|query|check|agent doctor|ast-patch|evidence>"),
+        stderr.contains("usage: asp <") && stderr.contains("<guide|search|query|check"),
         "{stderr}"
     );
     assert!(!called.exists(), "provider should not have been spawned");

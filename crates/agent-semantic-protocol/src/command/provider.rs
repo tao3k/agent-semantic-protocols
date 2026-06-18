@@ -45,6 +45,8 @@ const SUPPORTED_COMMANDS: &[&str] = &[
     "guide",
     "check",
     "cache",
+    "info",
+    "bench",
     "ast-patch",
     "evidence",
 ];
@@ -144,12 +146,13 @@ fn load_activation_for_language_message() -> Option<HookRuntime> {
 }
 
 pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result<(), String> {
-    fn uses_client_backend(args: &[String]) -> bool {
+    fn uses_client_backend(language_id: &str, args: &[String]) -> bool {
         (args.first().is_some_and(|command| command == "search")
             && args.get(1).is_none_or(|subcommand| subcommand != "guide"))
             || matches!(args.first().map(String::as_str), Some("check"))
             || matches!(args.first().map(String::as_str), Some("cache"))
-            || (args.first().is_some_and(|command| command == "query")
+            || (language_id != "gerbil-scheme"
+                && args.first().is_some_and(|command| command == "query")
                 && args.get(1).is_none_or(|subcommand| subcommand != "guide"))
     }
 
@@ -396,7 +399,7 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
             "--frontier-receipt-* fact flags require an ASP graph-turbo fast search".to_string(),
         );
     }
-    if uses_client_backend(&command_args) {
+    if uses_client_backend(language_id, &command_args) {
         return run_client_backend_command(
             language_id,
             &provider_args,
@@ -671,7 +674,7 @@ fn is_guide_help(args: &[String]) -> bool {
 
 fn provider_usage() -> String {
     format!(
-        "usage: asp <{}> [--help|--version] <guide|search|query|check|agent doctor|ast-patch|evidence> ...",
+        "usage: asp <{}> [--help|--version] <guide|search|query|check|cache|info|bench|agent doctor|ast-patch|evidence> ...",
         SUPPORTED_LANGUAGES.join("|")
     )
 }
