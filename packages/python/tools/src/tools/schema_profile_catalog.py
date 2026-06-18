@@ -112,6 +112,7 @@ LANGUAGE_SCHEMA_PROFILES: tuple[LanguageSchemaProfile, ...] = (
             "semantic-graph-turbo-request.v1.schema.json",
             "semantic-handle.v1.schema.json",
             "semantic-invariant-candidate.v1.schema.json",
+            "semantic-language-evidence.v1.schema.json",
             "semantic-language-registry.v1.schema.json",
             "semantic-native-syntax-fact-index.v1.schema.json",
             "semantic-query-packet.v1.schema.json",
@@ -121,6 +122,7 @@ LANGUAGE_SCHEMA_PROFILES: tuple[LanguageSchemaProfile, ...] = (
             "semantic-source-location.v1.schema.json",
             "semantic-structural-index.v1.schema.json",
             "semantic-tree-sitter-provenance.v1.schema.json",
+            "semantic-type-proof.v1.schema.json",
             "semantic-type-surface.v1.schema.json",
         ),
         provider_schema_files=(

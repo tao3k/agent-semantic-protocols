@@ -643,6 +643,11 @@
         "search/owner",
         "search/fzf",
         "search/ingest",
+        "search/pattern",
+        "search/runtime-source",
+        "search/compiler-evidence",
+        "search/proof",
+        "search/compare",
         "query/direct-source-read",
         "check/changed",
         "guide"
@@ -691,6 +696,86 @@
           "view": "fzf",
           "outputSchemaIds": [
             "agent.semantic-protocols.semantic-search-packet"
+          ],
+          "requiresQuery": true,
+          "acceptsStdin": false,
+          "supportsPackageScope": true
+        },
+        {
+          "method": "search/pattern",
+          "command": "search",
+          "supportsJson": true,
+          "supportsCompact": true,
+          "packetSchemas": [
+            "semantic-extension-pattern-mapping.v1"
+          ],
+          "view": "pattern",
+          "outputSchemaIds": [
+            "agent.semantic-protocols.semantic-extension-pattern-mapping"
+          ],
+          "requiresQuery": true,
+          "acceptsStdin": false,
+          "supportsPackageScope": true
+        },
+        {
+          "method": "search/runtime-source",
+          "command": "search",
+          "supportsJson": true,
+          "supportsCompact": true,
+          "packetSchemas": [
+            "semantic-runtime-source-acquisition.v1"
+          ],
+          "view": "runtime-source",
+          "outputSchemaIds": [
+            "agent.semantic-protocols.semantic-runtime-source-acquisition"
+          ],
+          "requiresQuery": true,
+          "acceptsStdin": false,
+          "supportsPackageScope": true
+        },
+        {
+          "method": "search/compiler-evidence",
+          "command": "search",
+          "supportsJson": true,
+          "supportsCompact": true,
+          "packetSchemas": [
+            "semantic-language-evidence.v1"
+          ],
+          "view": "compiler-evidence",
+          "outputSchemaIds": [
+            "agent.semantic-protocols.semantic-language-evidence"
+          ],
+          "requiresQuery": false,
+          "acceptsStdin": false,
+          "supportsPackageScope": true
+        },
+        {
+          "method": "search/proof",
+          "command": "search",
+          "supportsJson": true,
+          "supportsCompact": true,
+          "packetSchemas": [
+            "semantic-type-proof.v1"
+          ],
+          "view": "proof",
+          "outputSchemaIds": [
+            "agent.semantic-protocols.semantic-type-proof"
+          ],
+          "requiresQuery": true,
+          "acceptsStdin": false,
+          "supportsPackageScope": true
+        },
+        {
+          "method": "search/compare",
+          "command": "search",
+          "supportsJson": true,
+          "supportsCompact": true,
+          "packetSchemas": [
+            "semantic-compare-packet.v1"
+          ],
+          "view": "compare",
+          "outputSchemaIds": [
+            "agent.semantic-protocols.semantic-compare-packet"
           ],
           "requiresQuery": true,
           "acceptsStdin": false,
@@ -750,6 +835,31 @@
           "schemaId": "agent.semantic-protocols.semantic-read-packet",
           "schemaVersion": "1",
           "path": "schemas/semantic-read-packet.v1.schema.json"
+        },
+        {
+          "schemaId": "agent.semantic-protocols.semantic-extension-pattern-mapping",
+          "schemaVersion": "1",
+          "path": "schemas/semantic-extension-pattern-mapping.v1.schema.json"
+        },
+        {
+          "schemaId": "agent.semantic-protocols.semantic-runtime-source-acquisition",
+          "schemaVersion": "1",
+          "path": "schemas/semantic-runtime-source-acquisition.v1.schema.json"
+        },
+        {
+          "schemaId": "agent.semantic-protocols.semantic-language-evidence",
+          "schemaVersion": "1",
+          "path": "schemas/semantic-language-evidence.v1.schema.json"
+        },
+        {
+          "schemaId": "agent.semantic-protocols.semantic-type-proof",
+          "schemaVersion": "1",
+          "path": "schemas/semantic-type-proof.v1.schema.json"
+        },
+        {
+          "schemaId": "agent.semantic-protocols.semantic-compare-packet",
+          "schemaVersion": "1",
+          "path": "schemas/semantic-compare-packet.v1.schema.json"
         }
       ]
     },

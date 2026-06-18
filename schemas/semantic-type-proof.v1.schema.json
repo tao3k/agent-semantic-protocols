@@ -1,0 +1,313 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-type-proof.v1.schema.json",
+  "title": "Semantic Type Proof",
+  "description": "Medium-weight type proof packet for positive derivation witnesses over normalized TypeSpec values.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "protocolId",
+    "protocolVersion",
+    "languageId",
+    "providerId",
+    "namespace",
+    "authority",
+    "evidenceGrade",
+    "quality",
+    "query",
+    "proofSystem",
+    "proofs",
+    "compilerEvidence",
+    "failureCases",
+    "qualitySignals",
+    "missing",
+    "witness",
+    "next"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.semantic-type-proof"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "protocolId": {
+      "const": "agent.semantic-protocols.semantic-language"
+    },
+    "protocolVersion": {
+      "const": "1"
+    },
+    "languageId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "providerId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "namespace": {
+      "const": "proof"
+    },
+    "authority": {
+      "const": "medium-weight-type-proof"
+    },
+    "evidenceGrade": {
+      "enum": ["fact", "unknown"]
+    },
+    "quality": {
+      "enum": ["verified", "insufficient"]
+    },
+    "query": {
+      "type": "string"
+    },
+    "proofSystem": {
+      "$ref": "#/$defs/proofSystem"
+    },
+    "proofs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/proofExample"
+      }
+    },
+    "compilerEvidence": {
+      "$ref": "#/$defs/compilerEvidence"
+    },
+    "failureCases": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/failureCase"
+      }
+    },
+    "qualitySignals": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "missing": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "witness": {
+      "type": "string",
+      "minLength": 1
+    },
+    "next": {
+      "type": "string",
+      "pattern": "^search "
+    }
+  },
+  "$defs": {
+    "proofSystem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "level",
+        "engine",
+        "model",
+        "claim",
+        "relations",
+        "ruleCatalog",
+        "openTypePolicy",
+        "sourceBoundary",
+        "compilerEvidenceNamespace",
+        "notA"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "level": {
+          "const": "medium-weight"
+        },
+        "engine": {
+          "type": "string",
+          "minLength": 1
+        },
+        "model": {
+          "const": "TypeSpec"
+        },
+        "claim": {
+          "const": "positive-derivation-witness"
+        },
+        "relations": {
+          "type": "array",
+          "items": {
+            "enum": ["alias-equivalent", "subtype", "compatible"]
+          }
+        },
+        "ruleCatalog": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "openTypePolicy": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sourceBoundary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "compilerEvidenceNamespace": {
+          "const": "compiler-evidence"
+        },
+        "notA": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "proofExample": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "relation", "terms", "profile", "proof"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "relation": {
+          "enum": ["alias-equivalent", "subtype", "compatible"]
+        },
+        "terms": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "profile": {
+          "$ref": "#/$defs/proofProfile"
+        },
+        "proof": {
+          "$ref": "#/$defs/proofNode"
+        }
+      }
+    },
+    "proofProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rootRule", "conclusion", "depth", "nodeCount", "rules"],
+      "properties": {
+        "rootRule": {
+          "type": "string",
+          "minLength": 1
+        },
+        "conclusion": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "depth": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "nodeCount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "rules": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "proofNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rule", "conclusion", "detail", "premises"],
+      "properties": {
+        "rule": {
+          "type": "string",
+          "minLength": 1
+        },
+        "conclusion": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "detail": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/proofDetail"
+          }
+        },
+        "premises": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/proofNode"
+          }
+        }
+      }
+    },
+    "proofDetail": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "value"],
+      "properties": {
+        "key": {
+          "type": "string",
+          "minLength": 1
+        },
+        "value": {}
+      }
+    },
+    "compilerEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["namespace", "authority", "nextCommand", "selectors", "boundary"],
+      "properties": {
+        "namespace": {
+          "const": "compiler-evidence"
+        },
+        "authority": {
+          "const": "compiler-metadata-source"
+        },
+        "nextCommand": {
+          "type": "string",
+          "pattern": "^search compiler-evidence "
+        },
+        "selectors": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "boundary": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "failureCase": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["id"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}
