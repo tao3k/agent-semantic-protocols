@@ -19,6 +19,9 @@ use crate::process_contract::{
     ProviderProcessReceipt, ProviderProcessSpec, StdinMode,
 };
 
+const EXECUTABLE_BUSY_SPAWN_RETRIES: usize = 5;
+const EXECUTABLE_BUSY_SPAWN_RETRY_DELAY: Duration = Duration::from_millis(10);
+
 /// Captured result from a provider process run.
 #[derive(Debug)]
 pub struct ProviderProcessOutput {
@@ -101,7 +104,7 @@ pub async fn run_provider_process_async_with_framing(
         let stdout_mode = spec.stdout;
         let stderr_mode = spec.stderr;
         let limits = spec.limits;
-        let mut child = spawn_provider_process(&spec, &stdin_mode)?;
+        let mut child = spawn_provider_process(&spec, &stdin_mode).await?;
         debug!("spawned provider process");
         let io_tasks = spawn_provider_io_tasks(
             &mut child,
@@ -117,10 +120,37 @@ pub async fn run_provider_process_async_with_framing(
     .await
 }
 
-fn spawn_provider_process(
+async fn spawn_provider_process(
     spec: &ProviderProcessSpec,
     stdin_mode: &StdinMode,
 ) -> Result<Child, ProviderProcessError> {
+    for attempt in 0..=EXECUTABLE_BUSY_SPAWN_RETRIES {
+        let mut command = provider_command(spec, stdin_mode);
+        match command.spawn() {
+            Ok(child) => return Ok(child),
+            Err(source) => {
+                if source.kind() == ErrorKind::ExecutableFileBusy
+                    && attempt < EXECUTABLE_BUSY_SPAWN_RETRIES
+                {
+                    debug!(
+                        attempt = attempt + 1,
+                        program = %spec.program,
+                        "provider executable was busy; retrying spawn"
+                    );
+                    tokio::time::sleep(EXECUTABLE_BUSY_SPAWN_RETRY_DELAY).await;
+                    continue;
+                }
+                return Err(ProviderProcessError::Spawn {
+                    program: spec.program.clone(),
+                    source,
+                });
+            }
+        }
+    }
+    unreachable!("bounded provider spawn retry loop must return")
+}
+
+fn provider_command(spec: &ProviderProcessSpec, stdin_mode: &StdinMode) -> Command {
     let mut command = Command::new(&spec.program);
     command
         .args(&spec.args)
@@ -143,11 +173,6 @@ fn spawn_provider_process(
     }
 
     command
-        .spawn()
-        .map_err(|source| ProviderProcessError::Spawn {
-            program: spec.program.clone(),
-            source,
-        })
 }
 
 struct ProviderIoTasks {

@@ -28,6 +28,10 @@ pub(super) fn script(dir: &Path, name: &str, body: &str) -> PathBuf {
     permissions.set_mode(0o755);
     fs::set_permissions(&tmp_path, permissions).expect("chmod");
     fs::rename(&tmp_path, &path).expect("publish script");
+    fs::File::open(dir)
+        .expect("open script dir")
+        .sync_all()
+        .expect("sync script dir");
     path
 }
 
