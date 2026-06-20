@@ -67,6 +67,8 @@ def test_graph_turbo_sandtable_summary_consumes_large_library_report_chain(
         ],
         "localEvidenceAblationEnabled": True,
         "findingCount": 0,
+        "aspBinaryFreshnessRiskCommandCount": 0,
+        "aspBinaryFreshnessRiskScenarioCount": 0,
         "status": "pass",
         "reason": "report chain has multi-depth TS/Rust evidence",
         "blockingFindingCount": 0,

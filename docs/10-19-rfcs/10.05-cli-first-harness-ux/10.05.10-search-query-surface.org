@@ -1,4 +1,17 @@
 * CLI is the protocol: search plus query surface
+Search flow selection is evidence-state driven. =search prime= and
+=search pipe= are available protocol surfaces, but they are not a mandatory
+prelude before every read or edit. If the user prompt, hook recovery route,
+prior search packet, failure transcript, or CLI diagnostic already provides an
+exact owner, selector, symbol, dependency, or bounded =recommendedNext= action,
+the agent should start with that provider-owned =query=, =search owner=,
+=search fzf=, =asp fd=, =asp rg=, guide, or dependency route. =search prime=
+is the topology and owner-map entrypoint for an unknown workspace or language
+surface. =search pipe= is the query-set refinement surface for ambiguous or
+multi-axis frontiers after =prime= or another packet has shown that a narrower
+term is needed. A no-hit route should return a compact =noOutput= or
+no-candidates receipt with one bounded next action, not a verbose empty graph.
+
 
 Language-neutral examples use =<lang-harness>=.  The TypeScript implementation
 ships this as =ts-harness=; Rust/Cargo-specific lanes use =rs-harness=.
@@ -355,6 +368,13 @@ or omit it and let the provider use the invocation workspace.
 Providers must reject interactive or shell-shaped fzf options on agent paths
 and record accepted/rejected options in the search packet =finder= field.
 
+An explicit =--workspace <workspace-root>= selects the target project root for
+=search= and =query=, including absolute roots outside the current activation
+workspace. The provider activation, installed binary, and registry still come
+from the invocation workspace; only source resolution, selector reads, cache
+keys, and provider working directory move to the selected project root.
+Positional =PROJECT_ROOT= inference remains activation-workspace bounded so
+accidental trailing paths cannot silently escape the active project.
 Path scopes passed to =search fzf= are search scopes, not extra project roots.
 Providers must normalize them against the discovered project/package root and
 its ancestors.  For example, when the package root is =crates/demo= inside a

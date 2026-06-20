@@ -2,7 +2,8 @@
 ASP hook blocked `{reason}`; do not retry raw read/search commands on the same source.
 Codex: use one resident ASP search agent for this main task. If an ASP search agent thread is already open, call `send_input` on that recorded agent id with the safe route below and wait for `asp-search-subagent(role,action,evidence,missing,next,risk)`. Do not create another search agent for another `actionFrontier` item in the same main task.
 If no ASP search agent is open, call `spawn_agent` once with `agent_type="asp_explorer"` when the project role is available, otherwise fall back to `agent_type="explorer"`; pass `fork_context=false` and a self-contained ASP Explorer branch prompt. Keep model and reasoning settings in Codex config. Record the returned `agent-...` id in the parent reasoning ledger and reuse it with `send_input` for later ASP searches.
-If subagents are unavailable, run the safe route directly.
+Search recovery is evidence-state driven. If the prompt, prior packet, failure transcript, or hook route already has an exact selector, owner, symbol, dependency, or `recommendedNext`, start there and do not run `prime` first. Use `prime` or `ingest` routes only when the workspace topology or owner map is unknown. Use `pipe` only when a previous frontier exposes ambiguity that needs query-set refinement. If a route has no hits, return a compact `noOutput` or no-candidates receipt instead of expanding an empty search.
+If subagents are unavailable, run the selected safe route directly.
 
 {routes}
 <!-- ASP-HOOK-TRIGGER-PROMPT:MANAGED-END -->

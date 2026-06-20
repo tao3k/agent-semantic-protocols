@@ -45,6 +45,11 @@ def test_graph_turbo_benchmark_json_is_schema_owned(tmp_path) -> None:
     assert payload["cacheMode"] == "disabled"
     assert payload["durationMs"]["median"] >= 0
     assert payload["durationMs"]["p95"] >= payload["durationMs"]["median"]
+    assert payload["cacheStatusCounts"] == {"disabled": 3}
+    assert payload["warmupCacheStatusCounts"] == {"disabled": 1}
     assert payload["lastAlgorithmMetrics"]["cacheStatus"] == "disabled"
+    assert payload["lastAlgorithmMetrics"]["depthCacheStatus"] == "disabled"
+    assert payload["lastAlgorithmMetrics"]["pprCacheStatus"] == "disabled"
+    assert payload["lastAlgorithmMetrics"]["reachableEdgesCacheStatus"] == "disabled"
     assert payload["lastAlgorithmMetrics"]["pathCandidateCount"] >= 1
     assert payload["lastTypedPathTrace"]["step"] == "typed-paths"

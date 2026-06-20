@@ -74,7 +74,7 @@ def _scenario_entry(repo_root: Path, path: Path) -> dict[str, Any] | None:
         for question in list_value(evidence.get("deepQuestionCases"))
         if isinstance(question, dict)
     ]
-    return {
+    entry = {
         "scenarioId": require_str(scenario, "id", path.stem),
         "language": require_str(scenario, "language", "unknown"),
         "path": _display_path(repo_root, path),
@@ -86,6 +86,10 @@ def _scenario_entry(repo_root: Path, path: Path) -> dict[str, Any] | None:
         "live": "liveAgent" in scenario,
         "promptOnly": "prompt-only" in string_list(scenario.get("tags", [])),
     }
+    binary_provenance = _asp_binary_provenance_from_scenario(scenario)
+    if binary_provenance:
+        entry["aspBinaryProvenance"] = binary_provenance
+    return entry
 
 
 def _deep_question_entry(question: dict[str, Any]) -> dict[str, Any]:
@@ -126,7 +130,14 @@ def _language_entry(language: str, scenarios: list[dict[str, Any]]) -> dict[str,
         ):
             if question.get(signal) is True:
                 signal_counts[signal] += 1
-    return {
+    binary_provenance = _merge_binary_provenance(
+        [
+            dict_value(scenario.get("aspBinaryProvenance"))
+            for scenario in owned
+            if dict_value(scenario.get("aspBinaryProvenance"))
+        ]
+    )
+    entry = {
         "language": language,
         "scenarioCount": len(owned),
         "libraryCount": len(packages),
@@ -139,6 +150,17 @@ def _language_entry(language: str, scenarios: list[dict[str, Any]]) -> dict[str,
         "requiredSignalCounts": dict(sorted(signal_counts.items())),
         "reportChainReady": _report_chain_ready(depth_counts, deep_questions),
     }
+    if binary_provenance:
+        entry["aspBinaryProvenance"] = binary_provenance
+        entry["aspBinaryFreshnessRiskScenarioCount"] = sum(
+            1
+            for scenario in owned
+            if _binary_freshness_risk_commands(
+                dict_value(scenario.get("aspBinaryProvenance"))
+            )
+            > 0
+        )
+    return entry
 
 
 def _report_chain_ready(
@@ -187,6 +209,21 @@ def _findings(language_entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
                     "collect TS/Rust multi-depth evidence before algorithm tuning",
                 )
             )
+        binary_risk_commands = _binary_freshness_risk_commands(
+            dict_value(entry.get("aspBinaryProvenance"))
+        )
+        if binary_risk_commands > 0:
+            findings.append(
+                _finding(
+                    language,
+                    "asp-binary-freshness-risk",
+                    "error",
+                    (
+                        "sandtable observed ASP commands from ambient or external "
+                        f"binaries: {binary_risk_commands}"
+                    ),
+                )
+            )
     return findings
 
 
@@ -213,12 +250,130 @@ def _finding(language: str, kind: str, severity: str, message: str) -> dict[str,
     }
 
 
+def _asp_binary_provenance_from_scenario(
+    scenario: dict[str, Any],
+) -> dict[str, Any]:
+    aggregates = [
+        dict_value(item.get("aspBinaryProvenance"))
+        for item in _walk_mappings(scenario)
+        if dict_value(item.get("aspBinaryProvenance"))
+    ]
+    if aggregates:
+        return _merge_binary_provenance(aggregates)
+    binaries = [
+        dict_value(item.get("aspBinary"))
+        for item in _walk_mappings(scenario)
+        if dict_value(item.get("aspBinary"))
+    ]
+    return _binary_provenance_from_binaries(binaries)
+
+
+def _walk_mappings(value: object) -> list[dict[str, Any]]:
+    if isinstance(value, dict):
+        items = [value]
+        for item in value.values():
+            items.extend(_walk_mappings(item))
+        return items
+    if isinstance(value, list):
+        items: list[dict[str, Any]] = []
+        for item in value:
+            items.extend(_walk_mappings(item))
+        return items
+    return []
+
+
+def _merge_binary_provenance(entries: list[dict[str, Any]]) -> dict[str, Any]:
+    if not entries:
+        return {}
+    kind_counts: Counter[str] = Counter()
+    token_counts: Counter[str] = Counter()
+    command_count = 0
+    workspace_count = 0
+    risk_count = 0
+    for entry in entries:
+        command_count += _int_value(entry.get("commandCount"))
+        workspace_count += _int_value(entry.get("workspaceBinaryCommands"))
+        risk_count += _int_value(entry.get("freshnessRiskCommands"))
+        _add_counter_values(kind_counts, dict_value(entry.get("kindCounts")))
+        _add_counter_values(token_counts, dict_value(entry.get("tokens")))
+    if command_count == 0:
+        command_count = sum(kind_counts.values())
+    if workspace_count == 0:
+        workspace_count = _workspace_binary_commands(kind_counts)
+    if risk_count == 0:
+        risk_count = _freshness_risk_commands(kind_counts)
+    if command_count == 0 and not kind_counts and not token_counts:
+        return {}
+    return {
+        "commandCount": command_count,
+        "workspaceBinaryCommands": workspace_count,
+        "freshnessRiskCommands": risk_count,
+        "kindCounts": dict(sorted(kind_counts.items())),
+        "tokens": dict(sorted(token_counts.items())),
+    }
+
+
+def _binary_provenance_from_binaries(
+    binaries: list[dict[str, Any]],
+) -> dict[str, Any]:
+    if not binaries:
+        return {}
+    kind_counts = Counter(
+        str(binary.get("kind")) for binary in binaries if binary.get("kind")
+    )
+    token_counts = Counter(
+        str(binary.get("token")) for binary in binaries if binary.get("token")
+    )
+    return {
+        "commandCount": len(binaries),
+        "workspaceBinaryCommands": _workspace_binary_commands(kind_counts),
+        "freshnessRiskCommands": _freshness_risk_commands(kind_counts),
+        "kindCounts": dict(sorted(kind_counts.items())),
+        "tokens": dict(sorted(token_counts.items())),
+    }
+
+
+def _add_counter_values(counter: Counter[str], values: dict[str, Any]) -> None:
+    for key, value in values.items():
+        count = _int_value(value)
+        if count > 0:
+            counter[str(key)] += count
+
+
+def _workspace_binary_commands(kind_counts: Counter[str]) -> int:
+    return sum(
+        count
+        for kind, count in kind_counts.items()
+        if kind in {"project-bin", "cargo-target"}
+    )
+
+
+def _freshness_risk_commands(kind_counts: Counter[str]) -> int:
+    return sum(
+        count
+        for kind, count in kind_counts.items()
+        if kind not in {"project-bin", "cargo-target"}
+    )
+
+
+def _binary_freshness_risk_commands(binary_provenance: dict[str, Any]) -> int:
+    return _int_value(binary_provenance.get("freshnessRiskCommands"))
+
+
 def _rollup(
     language_entries: list[dict[str, Any]],
     findings: list[dict[str, Any]],
     optimization_matrix: list[dict[str, Any]],
     optimization_batch: dict[str, Any],
 ) -> dict[str, Any]:
+    binary_risk_commands = sum(
+        _binary_freshness_risk_commands(dict_value(entry.get("aspBinaryProvenance")))
+        for entry in language_entries
+    )
+    binary_risk_scenarios = sum(
+        _int_value(entry.get("aspBinaryFreshnessRiskScenarioCount"))
+        for entry in language_entries
+    )
     return {
         "languageCount": len(language_entries),
         "scenarioCount": sum(int(entry["scenarioCount"]) for entry in language_entries),
@@ -234,6 +389,8 @@ def _rollup(
             optimization_batch["variantRunCount"]
         ),
         "findingCount": len(findings),
+        "aspBinaryFreshnessRiskCommandCount": binary_risk_commands,
+        "aspBinaryFreshnessRiskScenarioCount": binary_risk_scenarios,
     }
 
 
@@ -241,7 +398,12 @@ def _optimization_gate(findings: list[dict[str, Any]]) -> dict[str, Any]:
     blocking = [
         finding
         for finding in findings
-        if finding["kind"] in {"report-chain-not-ready", "missing-depth-buckets"}
+        if finding["kind"]
+        in {
+            "report-chain-not-ready",
+            "missing-depth-buckets",
+            "asp-binary-freshness-risk",
+        }
     ]
     return {
         "status": "pass" if not blocking else "review",

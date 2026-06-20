@@ -10,6 +10,8 @@ use super::search_pipe_model::Candidate;
 #[derive(Debug)]
 struct OwnerRank {
     path: String,
+    package_root: String,
+    package_query_axis_count: usize,
     first_index: usize,
     local_hits: usize,
     parser_finder_local_hits: usize,
@@ -35,6 +37,7 @@ fn owner_rank_entries(
     query_axes: &[String],
 ) -> HashMap<String, OwnerRank> {
     let mut owner_ranks: HashMap<String, OwnerRank> = HashMap::new();
+    let package_axes = package_query_axes(candidates, query_axes);
     candidates
         .iter()
         .enumerate()
@@ -44,12 +47,20 @@ fn owner_rank_entries(
                 .or_insert_with(|| new_owner_rank(candidate, index));
             update_owner_rank(rank, candidate, query_axes);
         });
+    owner_ranks.values_mut().for_each(|rank| {
+        rank.package_query_axis_count = package_axes
+            .get(&rank.package_root)
+            .map(HashSet::len)
+            .unwrap_or_default();
+    });
     owner_ranks
 }
 
 fn new_owner_rank(candidate: &Candidate, first_index: usize) -> OwnerRank {
     OwnerRank {
         path: candidate.path.clone(),
+        package_root: owner_rank_package_root(&candidate.path),
+        package_query_axis_count: 0,
         first_index,
         local_hits: 0,
         parser_finder_local_hits: 0,
@@ -95,12 +106,14 @@ type OwnerRankSortKey = (
     Reverse<usize>,
     Reverse<usize>,
     Reverse<usize>,
+    Reverse<usize>,
     usize,
     String,
 );
 
 fn owner_rank_sort_key(rank: &OwnerRank) -> OwnerRankSortKey {
     (
+        Reverse(rank.package_query_axis_count.min(16)),
         Reverse(rank.query_axis_terms.len()),
         Reverse(rank.parser_finder_local_hits.min(12)),
         Reverse(rank.path_hits.min(8)),
@@ -108,6 +121,45 @@ fn owner_rank_sort_key(rank: &OwnerRank) -> OwnerRankSortKey {
         Reverse(rank.local_hits.min(12)),
         rank.first_index,
         rank.path.clone(),
+    )
+}
+
+fn package_query_axes(
+    candidates: &[Candidate],
+    query_axes: &[String],
+) -> HashMap<String, HashSet<String>> {
+    let mut package_axes: HashMap<String, HashSet<String>> = HashMap::new();
+    candidates.iter().for_each(|candidate| {
+        let package_root = owner_rank_package_root(&candidate.path);
+        matched_query_axes(candidate, query_axes)
+            .into_iter()
+            .for_each(|axis| {
+                package_axes
+                    .entry(package_root.clone())
+                    .or_default()
+                    .insert(axis);
+            });
+    });
+    package_axes
+}
+
+fn owner_rank_package_root(path: &str) -> String {
+    let segments = path
+        .split('/')
+        .filter(|segment| !segment.is_empty())
+        .collect::<Vec<_>>();
+    match segments.as_slice() {
+        ["packages", ecosystem, package, ..] => format!("packages/{ecosystem}/{package}"),
+        [root, package, ..] if !is_single_root_owner_segment(root) => format!("{root}/{package}"),
+        [root, ..] => (*root).to_string(),
+        [] => ".".to_string(),
+    }
+}
+
+fn is_single_root_owner_segment(segment: &str) -> bool {
+    matches!(
+        segment,
+        "." | "src" | "tests" | "test" | "docs" | "schemas" | "fixtures"
     )
 }
 

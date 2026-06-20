@@ -12,8 +12,8 @@ use super::{
         DependencyFact, collect_dependency_facts, dependency_matches_query,
     },
     search_pipe_graph_nodes::{
-        append_candidate_nodes, append_hot_nodes, append_project_topology_nodes, candidate_node_id,
-        hot_node_id, stable_node_id,
+        append_candidate_nodes, append_hot_nodes, append_project_topology_nodes,
+        append_submodule_owner_edges, candidate_node_id, hot_node_id, stable_node_id,
     },
     search_pipe_graph_turbo_owner_rank::ranked_candidate_paths,
     search_pipe_model::{Candidate, SearchPipeSourceTrace},
@@ -189,6 +189,7 @@ pub(super) fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> 
         query,
         &graph_candidates,
         &owners,
+        dependency_root,
         &dependency_facts,
         provider_facts,
         &surfaces,
@@ -528,6 +529,7 @@ fn append_graph_edges(
     query: Option<&str>,
     candidates: &[Candidate],
     owners: &[String],
+    workspace_root: &std::path::Path,
     dependency_facts: &[DependencyFact],
     provider_facts: &ProviderGraphFacts,
     surfaces: &[String],
@@ -542,6 +544,9 @@ fn append_graph_edges(
         append_owner_candidate_edges(edges, candidates);
         append_candidate_hot_edges(edges, candidates);
         append_provider_fact_edges(edges, provider_facts);
+    }
+    if include_topology(surfaces) && include_owner_context(surfaces) {
+        append_submodule_owner_edges(edges, workspace_root, owners);
     }
     if include_deps(surfaces) {
         append_owner_dependency_edges(edges, dependency_facts);

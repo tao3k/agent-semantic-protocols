@@ -167,6 +167,9 @@ def _algorithm_metrics_to_packet(result: GraphResult) -> dict[str, object]:
         "pathCandidateCount": metrics.path_candidate_count,
         "mergedWindowCount": metrics.merged_window_count,
         "cacheStatus": metrics.cache_status,
+        "depthCacheStatus": metrics.depth_cache_status,
+        "pprCacheStatus": metrics.ppr_cache_status,
+        "reachableEdgesCacheStatus": metrics.reachable_edges_cache_status,
         "readLoopDirectCodeActionCount": metrics.read_loop_direct_code_action_count,
         "readLoopDuplicateSelectorCount": metrics.read_loop_duplicate_selector_count,
         "readLoopAdjacentRangeWindowCount": (

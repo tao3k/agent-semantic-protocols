@@ -182,6 +182,14 @@ def _attach_report_chain(
         "optimizationAblationVariants": variants,
         "localEvidenceAblationEnabled": "no-local-evidence" in variants,
         "findingCount": rollup.get("findingCount"),
+        "aspBinaryFreshnessRiskCommandCount": rollup.get(
+            "aspBinaryFreshnessRiskCommandCount"
+        )
+        or 0,
+        "aspBinaryFreshnessRiskScenarioCount": rollup.get(
+            "aspBinaryFreshnessRiskScenarioCount"
+        )
+        or 0,
         "status": gate.get("status"),
         "reason": gate.get("reason"),
         "blockingFindingCount": gate.get("blockingFindingCount"),

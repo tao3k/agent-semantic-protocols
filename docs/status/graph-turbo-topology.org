@@ -154,6 +154,21 @@ bottleneck ranks from receipt metrics. This lets follow-up graph-turbo work
 target the most expensive query-first-stage variant instead of only the
 highest-quality variant.
 
+Sparse backend caching now uses a structural graph/profile fingerprint instead
+of the full rank fingerprint. Query-first-stage ablation variants keep distinct
+rank fingerprints, but share the same sparse backend when graph structure and
+profile relation weights are unchanged. Benchmark packets now report warmup and
+measured cache status counts so the report chain can prove whether reuse is
+working.
+
+Runtime ranking now also caches repeated seed-bound computation on top of the
+shared sparse backend: multi-source hop depth, typed PPR, and reachable edge
+filtering. A clean benchmark run shows warmup =miss=, measured backend =hit=,
+and final =depthCacheStatus=, =pprCacheStatus=, and
+=reachableEdgesCacheStatus= all =hit=. This is the larger optimization point
+after backend reuse because it removes repeated PPR iterations and graph
+reachability work across same-seed runs and compatible ablation variants.
+
 The next optimization loop should feed both measured failures and performance
 bottlenecks into first-stage route selection, owner ordering, and invariant
 graph work reuse. These fields remain report/analyzer calibration evidence; they

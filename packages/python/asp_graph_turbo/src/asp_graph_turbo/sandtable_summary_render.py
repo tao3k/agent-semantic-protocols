@@ -74,6 +74,7 @@ def _report_chain_text(report_chain: Mapping[str, object]) -> str:
         f"variantRuns={report_chain.get('optimizationVariantRunCount')},"
         f"ablationVariants={report_chain.get('optimizationAblationVariantCount')},"
         f"localEvidenceAblation={report_chain.get('localEvidenceAblationEnabled')},"
+        f"binaryRiskCommands={report_chain.get('aspBinaryFreshnessRiskCommandCount')},"
         f"findings={report_chain.get('findingCount')}"
     )
 

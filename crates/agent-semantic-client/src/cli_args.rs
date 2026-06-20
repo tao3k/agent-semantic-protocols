@@ -65,10 +65,7 @@ pub(crate) fn parse_client_args(
                 if value.starts_with('-') {
                     return Err("--workspace requires a project root".to_string());
                 }
-                project_root = workspace_bounded_root(
-                    resolve_project_root(&value, &invocation_root),
-                    &activation_root,
-                )?;
+                project_root = resolve_project_root(&value, &invocation_root);
                 explicit_project_root = true;
             }
             "--receipt-json" => {
@@ -93,10 +90,7 @@ pub(crate) fn parse_client_args(
                 if value.is_empty() || value.starts_with('-') {
                     return Err("--workspace requires a project root".to_string());
                 }
-                project_root = workspace_bounded_root(
-                    resolve_project_root(value, &invocation_root),
-                    &activation_root,
-                )?;
+                project_root = resolve_project_root(value, &invocation_root);
                 explicit_project_root = true;
             }
             _ => forwarded_args.push(arg),

@@ -75,7 +75,7 @@ fn validate_code_flag_boundary(args: &[String]) -> Result<(), String> {
 fn explicit_workspace_project_root(
     args: &[String],
     invocation_root: &Path,
-    activation_root: &Path,
+    _activation_root: &Path,
 ) -> Result<Option<(PathBuf, Vec<String>)>, String> {
     let mut selected = None::<PathBuf>;
     let mut normalized_args = Vec::new();
@@ -101,10 +101,7 @@ fn explicit_workspace_project_root(
         } else {
             invocation_root.join(path)
         };
-        selected = Some(workspace_bounded_root(
-            canonical_or_existing(absolute),
-            activation_root,
-        )?);
+        selected = Some(canonical_or_existing(absolute));
         index += 2;
     }
     Ok(selected.map(|root| (root, normalized_args)))

@@ -6,14 +6,59 @@ import shlex
 
 
 def asp_args(command: str) -> list[str]:
+    parts = _split_command(command)
+    index = _asp_binary_index(parts)
+    if index is None:
+        return []
+    return parts[index + 1 :]
+
+
+def asp_binary_provenance(command: str) -> dict[str, str]:
+    token = asp_binary_token(command)
+    if token is None:
+        return {}
+    return {
+        "token": token,
+        "kind": asp_binary_kind(token),
+    }
+
+
+def asp_binary_token(command: str) -> str | None:
+    parts = _split_command(command)
+    index = _asp_binary_index(parts)
+    if index is None:
+        return None
+    return parts[index]
+
+
+def asp_binary_kind(token: str) -> str:
+    value = token.strip()
+    if value == "asp":
+        return "ambient-path"
+    if value in {".bin/asp", "./.bin/asp"} or value.endswith("/.bin/asp"):
+        return "project-bin"
+    path_parts = [part for part in value.split("/") if part]
+    if value.endswith("/asp") and "target" in path_parts:
+        return "cargo-target"
+    if value.startswith("/"):
+        return "absolute-path"
+    if "/" in value:
+        return "relative-path"
+    return "named-binary"
+
+
+def _split_command(command: str) -> list[str]:
     try:
-        parts = shlex.split(command)
+        return shlex.split(command)
     except ValueError:
-        parts = command.split()
+        return command.split()
+
+
+def _asp_binary_index(parts: list[str]) -> int | None:
     for index, part in enumerate(parts):
         if _is_asp_binary_token(part) and _is_asp_invocation_position(parts, index):
-            return parts[index + 1 :]
-    return []
+            return index
+    return None
 
 
 def command_contains_asp(command: str) -> bool:

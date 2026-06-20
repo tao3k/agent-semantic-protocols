@@ -178,10 +178,16 @@ fn run_provider_process_with_stdin(
             protocol_bin.to_string_lossy().to_string(),
         );
     }
-    let mut path_entries = vec![runtime_bin];
+    let mut path_entries = Vec::new();
+    if let Some(home_local_bin) = home_local_bin_dir()
+        && home_local_bin.is_dir()
+    {
+        path_entries.push(home_local_bin);
+    }
     if let Some(path) = env::var_os("PATH") {
         path_entries.extend(env::split_paths(&path));
     }
+    path_entries.push(runtime_bin);
     if let Ok(path) = env::join_paths(path_entries) {
         envs.insert("PATH".to_string(), path.to_string_lossy().to_string());
     }
@@ -202,6 +208,13 @@ fn run_provider_process_with_stdin(
             provider.provider_id
         )
     })
+}
+
+fn home_local_bin_dir() -> Option<PathBuf> {
+    env::var_os("HOME")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .map(|home| home.join(".local/bin"))
 }
 
 fn resolve_provider_program(program: &str, project_root: &Path) -> String {

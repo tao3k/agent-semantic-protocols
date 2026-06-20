@@ -46,6 +46,7 @@ def build_trace_projection(
     pagerank: GraphTurboPprResult,
     query_adjustment_policy: Mapping[str, bool],
     query_adjustment_metrics: Mapping[str, int | float],
+    runtime_cache_statuses: Mapping[str, str],
     read_loop_second_pass: GraphTurboReadLoopSecondPass,
 ) -> TraceProjection:
     return TraceProjection(
@@ -86,6 +87,7 @@ def build_trace_projection(
             receipt_penalty_count,
             pagerank,
             query_adjustment_metrics,
+            runtime_cache_statuses,
             read_loop_second_pass,
         ),
     )
@@ -179,6 +181,7 @@ def _algorithm_metrics(
     receipt_penalty_count: int,
     pagerank: GraphTurboPprResult,
     query_adjustment_metrics: Mapping[str, int | float],
+    runtime_cache_statuses: Mapping[str, str],
     read_loop_second_pass: GraphTurboReadLoopSecondPass,
 ) -> AlgorithmMetrics:
     relation_channel_count = _selected_relation_channel_count(
@@ -196,6 +199,12 @@ def _algorithm_metrics(
         path_candidate_count=path_candidate_count,
         merged_window_count=len(projection.merged_windows),
         cache_status=graph_cache.status,
+        depth_cache_status=runtime_cache_statuses.get("depthCacheStatus", "unknown"),
+        ppr_cache_status=runtime_cache_statuses.get("pprCacheStatus", "unknown"),
+        reachable_edges_cache_status=runtime_cache_statuses.get(
+            "reachableEdgesCacheStatus",
+            "unknown",
+        ),
         read_loop_guard=projection.read_loop_guard,
         read_memory_suppressed_count=read_memory_suppressed_count,
         receipt_boost_count=receipt_boost_count,

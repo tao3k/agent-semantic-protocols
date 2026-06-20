@@ -72,18 +72,32 @@ thread before =spawn_agent= lists =asp_explorer=.
 
 ** Search Before Source
 
-For code tasks, keep the command order structural-first:
+For code tasks, choose the first ASP route from current evidence instead of
+running a fixed =prime -> pipe= prelude. If the user prompt, hook recovery
+route, prior packet, failure transcript, or CLI diagnostic already provides an
+exact owner, selector, symbol, dependency, or bounded =recommendedNext= action,
+start with that provider-owned =query=, =search owner=, =search fzf=, =asp fd=,
+=asp rg=, guide, or dependency route.
+
+Use =search prime= once only when the workspace topology, active language, or
+owner map is unknown. Use =search pipe= only after =prime= or another frontier
+shows ambiguous or multi-axis evidence that needs query-set refinement. A
+no-hit route should return a compact =noOutput= or no-candidates receipt with
+one bounded next action, not a verbose empty frontier.
+
+Common structural-first routes:
 
 #+begin_src sh
 asp <language> search prime --workspace <workspace-root> --view seeds
 asp <language> search pipe '<question-or-feature-term>' --workspace <workspace-root> --view seeds
 #+end_src
 
-For a concrete deep question, bug, feature, or API-usage task, use
-=search prime= once to establish the project graph context, then use
-=search pipe= with an LLM-generated question-or-feature term. Read its
-=queryPack=, =queryTerms=, =coverage=, =rankedEvidence=, =actionFrontier=,
-=recommendedNext=, =subagentHint=, =nextCommand=, and =avoid= lines.
+For a concrete deep question, bug, feature, or API-usage task with unknown
+owner context, use =search prime= to establish the project graph context, then
+use =search pipe= with a scoped question-or-feature term only if the prime
+frontier needs query refinement. Read its =queryPack=, =queryTerms=,
+=coverage=, =rankedEvidence=, =actionFrontier=, =recommendedNext=,
+=subagentHint=, =nextCommand=, and =avoid= lines.
 
 When more owner/path recall is needed, low-quality pipe output may include
 bounded =fdPreview= rows with =ownerCandidates=, =packageClusters=,
@@ -247,7 +261,7 @@ Detected from provider binaries plus =asp.toml=; only activated languages are li
 :END:
 
 Use =asp rust guide --workspace .= before rust-specific exploration.
-Use =asp rust search prime --workspace <workspace-root> --view seeds= before reading rust source.
+Use =asp rust search prime --workspace <workspace-root> --view seeds= only when the rust owner map is unknown; exact selectors, owners, symbols, dependencies, or hook frontiers should go straight to the provider-owned query, owner, finder, guide, or dependency route.
 
 ** typescript
 :PROPERTIES:
@@ -262,7 +276,7 @@ Use =asp rust search prime --workspace <workspace-root> --view seeds= before rea
 :END:
 
 Use =asp typescript guide --workspace .= before typescript-specific exploration.
-Use =asp typescript search prime --workspace <workspace-root> --view seeds= before reading typescript source.
+Use =asp typescript search prime --workspace <workspace-root> --view seeds= only when the typescript owner map is unknown; exact selectors, owners, symbols, dependencies, or hook frontiers should go straight to the provider-owned query, owner, finder, guide, or dependency route.
 
 ** python
 :PROPERTIES:
@@ -277,7 +291,7 @@ Use =asp typescript search prime --workspace <workspace-root> --view seeds= befo
 :END:
 
 Use =asp python guide --workspace .= before python-specific exploration.
-Use =asp python search prime --workspace <workspace-root> --view seeds= before reading python source.
+Use =asp python search prime --workspace <workspace-root> --view seeds= only when the python owner map is unknown; exact selectors, owners, symbols, dependencies, or hook frontiers should go straight to the provider-owned query, owner, finder, guide, or dependency route.
 
 ** julia
 :PROPERTIES:
@@ -292,7 +306,7 @@ Use =asp python search prime --workspace <workspace-root> --view seeds= before r
 :END:
 
 Use =asp julia guide --workspace .= before julia-specific exploration.
-Use =asp julia search prime --workspace <workspace-root> --view seeds= before reading julia source.
+Use =asp julia search prime --workspace <workspace-root> --view seeds= only when the julia owner map is unknown; exact selectors, owners, symbols, dependencies, or hook frontiers should go straight to the provider-owned query, owner, finder, guide, or dependency route.
 
 ** gerbil-scheme
 :PROPERTIES:
@@ -307,7 +321,7 @@ Use =asp julia search prime --workspace <workspace-root> --view seeds= before re
 :END:
 
 Use =asp gerbil-scheme guide --workspace .= before gerbil-scheme-specific exploration.
-Use =asp gerbil-scheme search prime --workspace <workspace-root> --view seeds= before reading gerbil-scheme source.
+Use =asp gerbil-scheme search prime --workspace <workspace-root> --view seeds= only when the gerbil-scheme owner map is unknown; exact selectors, owners, symbols, dependencies, or hook frontiers should go straight to the provider-owned query, owner, finder, guide, or dependency route.
 
 ** org
 :PROPERTIES:

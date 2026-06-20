@@ -146,6 +146,8 @@ fn delegation_hints(quality: &SearchPipeQuality, actions: &[ActionNode]) -> Vec<
 
 fn action_nodes(request: &SearchPipeActionRequest<'_>, scope_arg: &str) -> Vec<ActionNode> {
     let mut actions = Vec::new();
+    let command_scope = low_cohesion_command_scope_arg(request);
+    let command_scope_arg = command_scope.as_deref().unwrap_or(scope_arg);
     let low_cohesion_fd_owner_discovery = request.quality.package_cohesion == "low"
         && request.quality.owner_seed_terms.is_empty()
         && request.quality.fd_query.is_some();
@@ -166,13 +168,6 @@ fn action_nodes(request: &SearchPipeActionRequest<'_>, scope_arg: &str) -> Vec<A
         ));
         pushed_preferred_owner_items = true;
     }
-    if low_cohesion_fd_owner_discovery
-        && !pushed_preferred_owner_items
-        && let Some(fd_query) = &request.quality.fd_query
-    {
-        actions.push(fd_query_action(fd_query, scope_arg));
-        pushed_fd_query = true;
-    }
     if let Some(queries) = query_pack_queries(request) {
         actions.push(ActionNode {
             id: String::new(),
@@ -181,9 +176,20 @@ fn action_nodes(request: &SearchPipeActionRequest<'_>, scope_arg: &str) -> Vec<A
             route: ActionRoute::RgQuerySet {
                 queries,
                 scope: scope_arg.to_string(),
-                command_scope: scope_arg.to_string(),
+                command_scope: command_scope_arg.to_string(),
             },
         });
+    }
+    if low_cohesion_fd_owner_discovery
+        && !pushed_preferred_owner_items
+        && let Some(fd_query) = &request.quality.fd_query
+    {
+        actions.push(fd_query_action(
+            fd_query,
+            scope_arg,
+            command_scope.as_deref(),
+        ));
+        pushed_fd_query = true;
     }
     if request.quality.allow_query_selector
         && let Some(action) = request
@@ -213,7 +219,11 @@ fn action_nodes(request: &SearchPipeActionRequest<'_>, scope_arg: &str) -> Vec<A
         && (request.fd_preview.is_none() || !request.quality.allow_query_selector)
         && let Some(fd_query) = &request.quality.fd_query
     {
-        actions.push(fd_query_action(fd_query, scope_arg));
+        actions.push(fd_query_action(
+            fd_query,
+            scope_arg,
+            command_scope.as_deref(),
+        ));
     }
     if let Some(query) = rg_query(request.quality, request.ranked_compact) {
         actions.push(ActionNode {
@@ -223,7 +233,7 @@ fn action_nodes(request: &SearchPipeActionRequest<'_>, scope_arg: &str) -> Vec<A
             route: ActionRoute::RgQuery {
                 query,
                 scope: scope_arg.to_string(),
-                command_scope: None,
+                command_scope: command_scope,
             },
         });
     }
@@ -280,7 +290,7 @@ fn action_nodes(request: &SearchPipeActionRequest<'_>, scope_arg: &str) -> Vec<A
         .collect()
 }
 
-fn fd_query_action(fd_query: &str, scope_arg: &str) -> ActionNode {
+fn fd_query_action(fd_query: &str, scope_arg: &str, command_scope: Option<&str>) -> ActionNode {
     ActionNode {
         id: String::new(),
         kind: "fd-query".to_string(),
@@ -288,9 +298,60 @@ fn fd_query_action(fd_query: &str, scope_arg: &str) -> ActionNode {
         route: ActionRoute::FdQuery {
             query: fd_query.to_string(),
             scope: scope_arg.to_string(),
-            command_scope: None,
+            command_scope: command_scope.map(str::to_string),
         },
     }
+}
+
+fn low_cohesion_command_scope_arg(request: &SearchPipeActionRequest<'_>) -> Option<String> {
+    if request.quality.package_cohesion != "low" {
+        return None;
+    }
+    let package = dominant_compact_owner_package(request.ranked_compact?)?;
+    let scope = PathBuf::from(package);
+    scope_absolute(request.project_root, &scope)
+        .exists()
+        .then(|| display_scope_arg(request.project_root, request.locator_root, &scope))
+}
+
+fn dominant_compact_owner_package(compact: &str) -> Option<String> {
+    let packages = compact
+        .lines()
+        .flat_map(|line| line.split(';'))
+        .filter_map(compact_owner_path)
+        .map(|path| compact_package_key(&path))
+        .filter(|package| !package.is_empty())
+        .take(4)
+        .collect::<Vec<_>>();
+    let first = packages.first()?;
+    let first_count = packages
+        .iter()
+        .take(3)
+        .filter(|package| *package == first)
+        .count();
+    (first_count >= 2).then(|| first.clone())
+}
+
+fn compact_owner_path(segment: &str) -> Option<String> {
+    let marker = "owner:path(";
+    let start = segment.find(marker)? + marker.len();
+    let end = segment[start..].find(')')? + start;
+    let path = segment[start..end].trim();
+    (!path.is_empty()).then(|| path.to_string())
+}
+
+fn compact_package_key(path: &str) -> String {
+    let parts = path.split('/').collect::<Vec<_>>();
+    if let Some(index) = parts.iter().position(|part| *part == "packages") {
+        let end = (index + 3).min(parts.len());
+        return parts[index..end].join("/");
+    }
+    parts
+        .into_iter()
+        .filter(|part| !part.is_empty() && *part != ".")
+        .take(2)
+        .collect::<Vec<_>>()
+        .join("/")
 }
 
 fn owner_items_action(language_id: &str, scope_arg: &str, owner: &str, query: &str) -> ActionNode {

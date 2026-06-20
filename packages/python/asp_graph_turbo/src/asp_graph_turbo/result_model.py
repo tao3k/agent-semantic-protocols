@@ -104,6 +104,9 @@ class AlgorithmMetrics:
     path_count: int
     merged_window_count: int
     cache_status: str
+    depth_cache_status: str = "unknown"
+    ppr_cache_status: str = "unknown"
+    reachable_edges_cache_status: str = "unknown"
     path_backend: str = "python-bfs-small"
     path_fallback_count: int = 0
     path_pair_count: int = 0

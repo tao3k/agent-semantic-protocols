@@ -1,8 +1,6 @@
 //! Install command routing and rev-first language provider installer.
 
-use agent_semantic_runtime::{
-    ensure_project_provider_bin_dir, ensure_project_provider_lock_dir, project_runtime_state,
-};
+use agent_semantic_runtime::{ensure_project_provider_lock_dir, project_runtime_state};
 use sha2::{Digest, Sha256};
 use std::env;
 use std::fs;
@@ -11,6 +9,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use super::hook_runtime::{run_codex_plugin_install_args, run_hook_runtime_args};
+use super::install_provider_target::{home_dir, path_dirs, resolve_provider_binary_install_target};
+use super::search_config::AspConfig;
 
 #[derive(Clone, Copy)]
 struct ProviderReleaseSpec {
@@ -139,7 +139,19 @@ fn run_install_provider(args: &[String]) -> Result<(), String> {
     };
     validate_target(spec, &target)?;
     let repo = install_args.repo_override.as_deref().unwrap_or(spec.repo);
-    let provider_bin_dir = ensure_project_provider_bin_dir(&install_args.project_root)?;
+    let invocation_root =
+        env::current_dir().map_err(|error| format!("failed to read current directory: {error}"))?;
+    let project_root = absolute_project_root(&invocation_root, &install_args.project_root);
+    let config = AspConfig::load(&invocation_root, &project_root);
+    let provider_binary = binary_file_name(spec.binary, &target);
+    let install_target = resolve_provider_binary_install_target(
+        config.provider_bin(spec.language_id),
+        spec.language_id,
+        &provider_binary,
+        &project_root,
+        home_dir().as_deref(),
+        &path_dirs(),
+    )?;
     let provider_lock_dir = ensure_project_provider_lock_dir(&install_args.project_root)?;
     let provider_package_dir = provider_lock_dir
         .join(spec.language_id)
@@ -164,7 +176,7 @@ fn run_install_provider(args: &[String]) -> Result<(), String> {
         &archive_path,
         spec,
         &target,
-        &provider_bin_dir,
+        &install_target.path,
         &provider_package_dir,
     )?;
     let lock_path = provider_lock_dir.join(format!("{}.lock.toml", spec.language_id));
@@ -185,17 +197,26 @@ fn run_install_provider(args: &[String]) -> Result<(), String> {
     )?;
     let state = project_runtime_state(&install_args.project_root)?;
     println!(
-        "[asp-install] provider={} language={} rev={} target={} binary={} installedPath={} lock={} runtimeBinDir={}",
+        "[asp-install] provider={} language={} rev={} target={} binary={} installedPath={} installTargetSource={} lock={} runtimeBinDir={}",
         spec.provider_id,
         spec.language_id,
         rev,
         target,
         spec.binary,
         installed.display(),
+        install_target.source,
         lock_path.display(),
         state.runtime_bin_dir.display(),
     );
     Ok(())
+}
+
+fn absolute_project_root(invocation_root: &Path, project_root: &Path) -> PathBuf {
+    if project_root.is_absolute() {
+        project_root.to_path_buf()
+    } else {
+        invocation_root.join(project_root)
+    }
 }
 
 fn parse_install_args(args: &[String]) -> Result<InstallArgs, String> {
@@ -371,13 +392,12 @@ fn install_archive_binary(
     archive_path: &Path,
     spec: ProviderReleaseSpec,
     target: &str,
-    provider_bin_dir: &Path,
+    provider_binary_path: &Path,
     provider_package_dir: &Path,
 ) -> Result<PathBuf, String> {
-    let target_path = provider_bin_dir.join(binary_file_name(spec.binary, target));
     let package_binary = install_archive_package(archive_path, spec, target, provider_package_dir)?;
-    write_provider_launcher(&package_binary, &target_path, target)?;
-    Ok(target_path)
+    write_provider_launcher(&package_binary, provider_binary_path, target)?;
+    Ok(provider_binary_path.to_path_buf())
 }
 
 fn install_archive_package(
@@ -621,7 +641,7 @@ fn toml_escape(value: &str) -> String {
 }
 
 fn usage() -> String {
-    "usage: asp install hook --client claude [PROJECT_ROOT] [--subagent-model MODEL]\n       asp install plugin --codex [PROJECT_ROOT] [--global|--global-plugin] [--subagent-model MODEL]\n       asp install language <language> --rev <rev> [--target <target>] [--project <root>] [--repo <owner/repo>] [--archive <path>]".to_string()
+    "usage: asp install hook --client claude [PROJECT_ROOT] [--subagent-model MODEL]\n       asp install plugin --codex [PROJECT_ROOT] [--global|--global-plugin] [--subagent-model MODEL]\n       asp install language <language> --rev <rev> [--target <target>] [--project <root>] [--repo <owner/repo>] [--archive <path>]\n       language install target priority: asp.toml [languages.<language>].bin, $HOME/.local/bin, PATH".to_string()
 }
 
 fn install_hook_usage() -> String {

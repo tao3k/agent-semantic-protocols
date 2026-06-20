@@ -9,6 +9,9 @@ fn provider_command_prefix_is_used_as_full_invocation_prefix() {
     let root = temp_project_root("provider-prefix-facade");
     std::fs::remove_dir_all(root.join(".git")).expect("remove temp git marker");
     let cache_home = root.join(".cache-home");
+    let home = root.join("home");
+    let home_local_bin = home.join(".local/bin");
+    std::fs::create_dir_all(&home_local_bin).expect("create home local bin");
     let activation_path = cache_home.join("agent-semantic-protocol/hooks/activation.json");
     let bin_dir = root.join(".bin");
     std::fs::create_dir_all(&bin_dir).expect("create bin dir");
@@ -43,6 +46,7 @@ printf 'renderer=%s
 
     let output = asp_command(&root)
         .env("PRJ_CACHE_HOME", &cache_home)
+        .env("HOME", &home)
         .env("PATH", prepend_path(&bin_dir))
         .env_remove("SEMANTIC_AGENT_PROTOCOL_BIN")
         .args(["rust", "guide", "."])
@@ -70,7 +74,7 @@ printf 'renderer=%s
         "{stdout}"
     );
     assert!(
-        stdout.contains(&format!("path0={}\n", runtime_bin.display())),
+        stdout.contains(&format!("path0={}\n", home_local_bin.display())),
         "{stdout}"
     );
     assert!(
@@ -82,6 +86,7 @@ printf 'renderer=%s
     std::fs::create_dir_all(&nested_root).expect("create nested root");
     let output = asp_command(&root)
         .env("PRJ_CACHE_HOME", &cache_home)
+        .env("HOME", &home)
         .env("PATH", prepend_path(&bin_dir))
         .args(["rust", "guide", "languages/rust-lang-project-harness"])
         .output()
@@ -106,7 +111,7 @@ printf 'renderer=%s
         "{stdout}"
     );
     assert!(
-        stdout.contains(&format!("path0={}\n", runtime_bin.display())),
+        stdout.contains(&format!("path0={}\n", home_local_bin.display())),
         "{stdout}"
     );
     assert!(

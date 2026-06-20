@@ -98,11 +98,11 @@ fn workspace_flag_selects_project_root_without_provider_forwarding() {
 }
 
 #[test]
-fn workspace_flag_rejects_project_root_outside_activation_root() {
+fn workspace_flag_allows_explicit_project_root_outside_activation_root() {
     let cwd = temp_dir("workspace-flag-outside");
     let outside = temp_dir("workspace-flag-outside-target");
 
-    let err = parse_client_args(
+    let parsed = parse_client_args(
         vec![
             "query".to_string(),
             "--workspace".to_string(),
@@ -114,13 +114,18 @@ fn workspace_flag_rejects_project_root_outside_activation_root() {
         cwd.clone(),
         Some("rust"),
     )
-    .expect_err("workspace flag outside activation root should fail");
+    .expect("explicit workspace flag may target an external project root");
 
-    assert!(
-        err.contains("is outside workspace"),
-        "unexpected error: {err}"
+    assert_eq!(parsed.activation_root, cwd);
+    assert_eq!(
+        parsed.project_root,
+        fs::canonicalize(&outside).expect("canonical outside root")
     );
-    let _ = fs::remove_dir_all(cwd);
+    assert_eq!(
+        parsed.forwarded_args,
+        vec!["--selector", "src/lib.rs:1:20", "--code"]
+    );
+    let _ = fs::remove_dir_all(parsed.activation_root);
     let _ = fs::remove_dir_all(outside);
 }
 

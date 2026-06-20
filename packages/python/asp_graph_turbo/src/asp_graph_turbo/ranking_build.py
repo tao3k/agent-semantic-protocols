@@ -76,6 +76,7 @@ def build_graph_result(
     receipt_adjustments: tuple[ReceiptAdjustment, ...],
     pagerank: GraphTurboPprResult,
     query_adjustments: Mapping[str, Mapping[str, float]],
+    runtime_cache_statuses: Mapping[str, str],
     query_adjustment_policy: Mapping[str, bool],
     ranked: tuple[Node, ...],
     read_memory_seen_selectors: tuple[str, ...] = (),
@@ -132,6 +133,7 @@ def build_graph_result(
         pagerank=pagerank,
         query_adjustment_policy=query_adjustment_policy,
         query_adjustment_metrics=query_adjustment_metrics,
+        runtime_cache_statuses=runtime_cache_statuses,
         read_loop_second_pass=read_loop_second_pass,
     )
     read_memory_projection = ReadMemoryProjection(

@@ -1,6 +1,8 @@
 #+TITLE: RFC: Agent Compact Graph Feature
 #+AUTHOR: agent-semantic-protocols
 #+DATE: 2026-06-02
+#+PROPERTY: ID 10.06-agent-compact-graph-feature
+#+PROPERTY: RFC 10.06
 #+RFC: 006
 #+STATUS: active-implementation
 #+DEPENDS: docs/10-19-rfcs/10.05-cli-first-harness-ux.org (005), schemas/semantic-graph.v1.schema.json, schemas/semantic-search-packet.v1.schema.json, schemas/semantic-compact-graph-render.v1.schema.json
@@ -147,6 +149,7 @@ language-neutral identifier axes.
 When a first-stage pipe packet is low quality because the query is broad or package-drifting, graph-turbo should still materialize a bounded =fd-query= owner-discovery action from owner/path-axis terms even when no symbol term is present. This prevents a wide content =rg= turn from becoming the only route to owner recovery. The selected fd terms must exclude ASP protocol/action words such as query, fd, rg, owner, graph, turbo, command, and frontier; it must not exclude or promote ecosystem/library labels through fixed word lists.
 
 Graph-turbo owner candidate ranking must prefer evidence-dense local owners before first-seen candidate order. A weak early owner with only one local item hit must rank below an owner that covers more query axes, has denser parser/finder-local hits, exposes more distinct local symbols, or has stronger path/fd/package-path evidence. First-seen order is only a deterministic tie-breaker after those language-neutral evidence signals. This ranking rule is algorithmic and parser/finder-owned; it must not hard-code ecosystem labels, library names, or project-specific symbols as shortcut boosts.
+Owner candidate ranking may also consume package-axis coverage as a cluster signal. When two owners have comparable local evidence, the owner whose path-derived package cluster covers more query axes across its candidate set should outrank a first-seen owner from a package cluster with weaker aggregate coverage. The package cluster is derived from path topology, such as workspace member and package-root path segments, not from repository-specific package names, ecosystem labels, or library symbols. This prevents monorepo source-index drift from selecting a cross-package owner merely because it appeared earlier while preserving deterministic first-seen order as the final tie-breaker.
 
 When =fd-query= recovers an owner and materializes =owner-items=, the handoff query must not forward the flat fd query unchanged. It should remove protocol/action words such as query, search, fd, rg, owner, frontier, action, and command; prefer declaration-friendly semantic terms and language-neutral morphology variants before path-only owner axes; and keep path-covered terms only as backoff evidence. This prevents a correct owner recovery step from immediately selecting a file-header or path-window selector instead of the owner-local implementation item.
 
@@ -155,6 +158,7 @@ Owner-local selector ranking may create query-axis window candidates when declar
 Graph-turbo must also carry an explicit first-stage topology state model. Topology is the analyzer/status decision layer that records which evidence graph was available before the first stage chose owner discovery, owner-local expansion, query-pack refinement, dependency topology, test reachability, or selector-code expansion. It is not another agent-facing stdout field bundle. Normal =search= output should continue to expose only compact graph facts that directly help the next action. Developer/history mode and sandtable reports may persist topology snapshots so quality analysis can connect a bad answer to the graph shape and transition that caused it.
 
 Topology state is language-neutral and evidence-derived. It may use packet facts such as query-pack quality, package cohesion, matched query axes, owner candidate density, parser/finder-local hits, selector miss/coverage state, repeated-action memory, source-index/finder/provider provenance, latency, and packet size. It must not encode ecosystem labels, library names, or project-specific symbols as rules. If a domain label matters, it must enter through parser-owned declarations, provider semantic facts, dependency/package facts, finder evidence, or analyzer receipts.
+Topology must model monorepo and submodule boundaries as first-stage graph facts. A workspace that declares submodules, nested language harnesses, or package roots is not a flat owner namespace: topology nodes must connect the workspace to provider roots and submodules, and submodules must connect to owner paths that live under their declared path. Owner ranking, seed planning, and action scope selection may then consume these membership edges as language-neutral cluster evidence. The rule is path/topology derived; it must not special-case this repository, a package name, a language ecosystem, or any library symbol.
 
 Graph-turbo ranking may consume that topology through language-neutral score adjustments. The first implemented adjustment is =localEvidence=: owner nodes with dense owner-local graph support, such as contained item/syntax nodes or covering test nodes, receive a bounded score boost, while path-only owner seeds with no local evidence receive a bounded penalty. The score reason is emitted as =topology-local-evidence= in rank explanations. This is an algorithmic graph rule over node kinds and relations; it must not special-case ecosystem names, framework labels, package names, or project-specific symbols.
 
@@ -175,6 +179,22 @@ stdout bytes. These are report-chain calibration facts for deciding where to
 optimize graph-turbo execution, such as route selection or invariant graph work
 reuse. They are not ARI seed fields and must not be required in normal
 =search= stdout.
+
+Graph-turbo sparse backend caching must use a structural backend fingerprint,
+not the full rank fingerprint. The sparse backend depends on graph structure and
+profile relation weights, while rank fingerprints also include seeds, query
+clauses, query-adjustment policy, budgets, and render/window settings. Reusing
+the backend across query-first-stage ablation variants is an algorithmic
+performance optimization; it must preserve the full rank fingerprint on the
+result packet so calibration can still distinguish variant behavior.
+
+Runtime computation caches may also reuse graph/profile/seed-bound work after
+the sparse backend is stable. Multi-source hop depth, typed PPR, and reachable
+edge filtering are deterministic for the structural backend fingerprint, seed
+ids, max depth, and PPR personalization weights. Benchmark and result packets may
+expose =depthCacheStatus=, =pprCacheStatus=, and
+=reachableEdgesCacheStatus= as analyzer/report evidence. These statuses measure
+execution reuse; they must not change graph ranking semantics.
 
 Terminology is deliberately narrow:
 
@@ -206,6 +226,7 @@ grammar.  Compact graph output therefore follows six invariants:
 - Typed Target: every alias target declares a target role such as =path=,
   =term=, =pkg=, =symbol=, or =range=.
 - Typed Edge: every relation has an explicit relation label.
+  Visible edge endpoint rule: prompt-visible =evidenceEdges= may only reference aliases that are defined in prompt-visible =evidenceNodes=. Full graph/debug surfaces may retain edges to omitted nodes, but the default =search pipe --view seeds= projection must filter or rewrite those edges so the agent never has to infer a missing alias definition.
 - Algorithmic Rank: =rank= comes from =searchSynthesis.algorithm=, not renderer
   sorting.
 - Executable Frontier: every =frontier= entry maps to a schema-owned typed

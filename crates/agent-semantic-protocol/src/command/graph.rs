@@ -1,6 +1,6 @@
 //! `asp graph` command adapter.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
@@ -32,37 +32,47 @@ fn run_graph_render_command(args: &[String]) -> Result<(), String> {
     }
     let packet_bytes = read_packet_bytes(&request.packet_path)?;
     let packet = parse_packet(&packet_bytes)?;
-    if is_graph_turbo_request(&packet)
-        && let Some(output) = render_graph_turbo_packet(&packet_bytes)?
-    {
-        if request.frontier_receipt_out.is_some() {
-            write_graph_turbo_receipt(
-                &packet_bytes,
-                &GraphTurboReceiptCapture {
-                    out_path: request
-                        .frontier_receipt_out
-                        .as_deref()
-                        .ok_or_else(|| "missing frontier receipt output path".to_string())?,
-                    receipt_id: request
-                        .receipt_id
-                        .as_deref()
-                        .ok_or_else(|| "missing receipt id".to_string())?,
-                    task_fingerprint: request
-                        .task_fingerprint
-                        .as_deref()
-                        .ok_or_else(|| "missing task fingerprint".to_string())?,
-                    command_fingerprint: request
-                        .command_fingerprint
-                        .as_deref()
-                        .ok_or_else(|| "missing command fingerprint".to_string())?,
-                    capture_source: "asp graph render",
-                    extra_args: &[],
-                },
-            )?;
+    if is_graph_turbo_request(&packet) {
+        if let Some(output) = render_graph_turbo_packet(&packet_bytes)? {
+            if request.frontier_receipt_out.is_some() {
+                write_graph_turbo_receipt(
+                    &packet_bytes,
+                    &GraphTurboReceiptCapture {
+                        out_path: request
+                            .frontier_receipt_out
+                            .as_deref()
+                            .ok_or_else(|| "missing frontier receipt output path".to_string())?,
+                        receipt_id: request
+                            .receipt_id
+                            .as_deref()
+                            .ok_or_else(|| "missing receipt id".to_string())?,
+                        task_fingerprint: request
+                            .task_fingerprint
+                            .as_deref()
+                            .ok_or_else(|| "missing task fingerprint".to_string())?,
+                        command_fingerprint: request
+                            .command_fingerprint
+                            .as_deref()
+                            .ok_or_else(|| "missing command fingerprint".to_string())?,
+                        capture_source: "asp graph render",
+                        extra_args: &[],
+                    },
+                )?;
+            }
+            io::stdout()
+                .write_all(output.as_ref())
+                .map_err(|error| format!("failed to write asp-graph-turbo stdout: {error}"))?;
+            return Ok(());
         }
-        io::stdout()
-            .write_all(output.as_ref())
-            .map_err(|error| format!("failed to write asp-graph-turbo stdout: {error}"))?;
+        if request.frontier_receipt_out.is_some() {
+            return Err(
+                "--frontier-receipt-out requires the asp-graph-turbo receipt backend".to_string(),
+            );
+        }
+        let output = render_graph_turbo_value_rust_compact(&packet)?;
+        io::stdout().write_all(output.as_ref()).map_err(|error| {
+            format!("failed to write rust graph-turbo fallback stdout: {error}")
+        })?;
         return Ok(());
     }
     if request.frontier_receipt_out.is_some() {
@@ -207,7 +217,8 @@ pub(super) fn render_graph_turbo_value_rust_compact(packet: &Value) -> Result<Ve
         compact_seed_aliases(packet.get("seedIds"), &alias_map),
         packet.get("budget").and_then(Value::as_u64).unwrap_or(10),
     ));
-    let ranked = compact_ranked_aliases(&nodes, &alias_map);
+    let ranked = compact_ranked_aliases(&nodes, &edges, &alias_map);
+    let visible_aliases = ranked.iter().cloned().collect::<HashSet<_>>();
     output.push_str("rank=");
     output.push_str(&ranked.join(","));
     output.push('\n');
@@ -226,13 +237,13 @@ pub(super) fn render_graph_turbo_value_rust_compact(packet: &Value) -> Result<Ve
             .join(","),
     );
     output.push('\n');
-    for alias in ranked {
-        if let Some(node) = compact_node_for_alias(&alias, &nodes, &alias_map) {
-            output.push_str(&compact_node_line(&alias, node));
+    for alias in &ranked {
+        if let Some(node) = compact_node_for_alias(alias, &nodes, &alias_map) {
+            output.push_str(&compact_node_line(alias, node));
             output.push('\n');
         }
     }
-    for line in compact_edge_lines(&edges, &alias_map) {
+    for line in compact_edge_lines(&edges, &alias_map, &visible_aliases) {
         output.push_str(&line);
         output.push('\n');
     }
@@ -291,14 +302,85 @@ fn compact_seed_aliases(seed_ids: Option<&Value>, aliases: &HashMap<String, Stri
     }
 }
 
-fn compact_ranked_aliases(nodes: &[Value], aliases: &HashMap<String, String>) -> Vec<String> {
-    nodes
+fn compact_ranked_aliases(
+    nodes: &[Value],
+    edges: &[Value],
+    aliases: &HashMap<String, String>,
+) -> Vec<String> {
+    let mut ranked = nodes
         .iter()
         .filter(|node| compact_json_str(node.get("kind")) != Some("query"))
         .filter_map(|node| compact_json_str(node.get("id")).and_then(|id| aliases.get(id)))
         .take(10)
         .cloned()
-        .collect()
+        .collect::<Vec<_>>();
+    append_topology_support_aliases(&mut ranked, nodes, edges, aliases, 6);
+    ranked
+}
+
+fn append_topology_support_aliases(
+    ranked: &mut Vec<String>,
+    nodes: &[Value],
+    edges: &[Value],
+    aliases: &HashMap<String, String>,
+    limit: usize,
+) {
+    let mut visible = ranked.iter().cloned().collect::<HashSet<_>>();
+    let mut added = 0;
+    while added < limit {
+        let mut changed = false;
+        for edge in edges {
+            if added >= limit {
+                break;
+            }
+            let Some(candidate) = compact_topology_support_alias(edge, &visible, nodes, aliases)
+            else {
+                continue;
+            };
+            if visible.contains(&candidate) {
+                continue;
+            }
+            ranked.push(candidate.clone());
+            visible.insert(candidate);
+            added += 1;
+            changed = true;
+        }
+        if !changed {
+            break;
+        }
+    }
+}
+
+fn compact_topology_support_alias(
+    edge: &Value,
+    visible: &HashSet<String>,
+    nodes: &[Value],
+    aliases: &HashMap<String, String>,
+) -> Option<String> {
+    let relation = compact_json_str(edge.get("relation")).unwrap_or("rel");
+    let source = compact_json_str(edge.get("source")).and_then(|id| aliases.get(id))?;
+    let target = compact_json_str(edge.get("target")).and_then(|id| aliases.get(id))?;
+    let source_kind = compact_alias_kind(source, nodes, aliases)?;
+    let target_kind = compact_alias_kind(target, nodes, aliases)?;
+    match (relation, source_kind, target_kind) {
+        ("contains", "submodule", "owner") if visible.contains(target) => Some(source.clone()),
+        ("has_submodule", "workspace", "submodule") if visible.contains(target) => {
+            Some(source.clone())
+        }
+        ("has_provider_root", "workspace", "provider-root") if visible.contains(source) => {
+            Some(target.clone())
+        }
+        _ => None,
+    }
+}
+
+fn compact_alias_kind<'a>(
+    alias: &str,
+    nodes: &'a [Value],
+    aliases: &HashMap<String, String>,
+) -> Option<&'a str> {
+    compact_node_for_alias(alias, nodes, aliases)
+        .and_then(|node| compact_json_str(node.get("kind")))
 }
 
 fn compact_node_for_alias<'a>(
@@ -331,7 +413,11 @@ fn compact_node_line(alias: &str, node: &Value) -> String {
     )
 }
 
-fn compact_edge_lines(edges: &[Value], aliases: &HashMap<String, String>) -> Vec<String> {
+fn compact_edge_lines(
+    edges: &[Value],
+    aliases: &HashMap<String, String>,
+    visible_aliases: &HashSet<String>,
+) -> Vec<String> {
     let mut grouped: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for edge in edges {
         let Some(source) = compact_json_str(edge.get("source")).and_then(|id| aliases.get(id))
@@ -342,6 +428,9 @@ fn compact_edge_lines(edges: &[Value], aliases: &HashMap<String, String>) -> Vec
         else {
             continue;
         };
+        if !visible_aliases.contains(source) || !visible_aliases.contains(target) {
+            continue;
+        }
         let relation = compact_json_str(edge.get("relation")).unwrap_or("rel");
         grouped
             .entry(source.clone())

@@ -6,7 +6,7 @@ use rust_lang_project_harness::{
 fn main() {
     let config = default_rust_harness_config()
         .with_cargo_check_advice_allow_explanation(
-            "provider transport keeps process orchestration in one async entrypoint while the crate stabilizes",
+            "scope=agent-semantic-provider-transport cargo-check advice; owner=agent-semantic-provider-transport build gate; finding_category=advisory policy findings; why_safe_now=provider transport keeps process orchestration advice visible while warning and error findings still fail the build; cleanup_trigger=clear the crate advisory backlog and remove this allowance",
         )
         .with_criterion_performance_verification()
         .with_latency_sensitive_performance_owner(

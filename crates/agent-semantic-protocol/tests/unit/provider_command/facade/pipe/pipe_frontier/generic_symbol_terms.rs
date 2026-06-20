@@ -141,7 +141,7 @@ fn search_pipe_scope_query_does_not_spawn_provider_facts() {
 }
 
 #[test]
-fn search_pipe_owner_drift_fd_preview_prefers_fd_before_rg_query_pack() {
+fn search_pipe_owner_drift_query_pack_precedes_fd_preview() {
     let root = temp_project_root("search-pipe-owner-drift-fd-first");
     let bin_dir = root.join(".bin");
     let marker = root.join("provider-called");
@@ -200,11 +200,14 @@ fn search_pipe_owner_drift_fd_preview_prefers_fd_before_rg_query_pack() {
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(stdout.contains("packageCohesion=low"), "{stdout}");
     assert!(stdout.contains("fdPreview=ownerCandidates="), "{stdout}");
-    assert!(stdout.contains("A1=fd-query("), "{stdout}");
+    assert!(stdout.contains("A1=rg-query-set("), "{stdout}");
     assert!(!stdout.contains("A1=owner-items("), "{stdout}");
-    assert!(stdout.contains("A2=rg-query-set("), "{stdout}");
-    assert!(stdout.contains("recommendedNext=A1.fd-query"), "{stdout}");
-    assert!(stdout.contains("nextCommand=asp fd -query"), "{stdout}");
+    assert!(stdout.contains("A2=fd-query("), "{stdout}");
+    assert!(
+        stdout.contains("recommendedNext=A1.rg-query-set"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("nextCommand=asp rg -query"), "{stdout}");
     assert!(!marker.exists(), "search pipe should not spawn provider");
     let _ = std::fs::remove_dir_all(root);
 }

@@ -85,6 +85,40 @@ def test_large_library_report_chain_can_pass_with_multi_depth_ts_rust_fixture(
     assert _matrix_targets_query_first_stage(report)
 
 
+def test_large_library_report_chain_blocks_ambient_asp_binary_fixture(
+    tmp_path: Path,
+) -> None:
+    scenarios = []
+    for language in ("rust", "typescript"):
+        scenario = _scenario(language)
+        if language == "rust":
+            scenario["observation"] = {
+                "pipeFlow": {
+                    "aspBinaryProvenance": {
+                        "commandCount": 1,
+                        "workspaceBinaryCommands": 0,
+                        "freshnessRiskCommands": 1,
+                        "kindCounts": {"ambient-path": 1},
+                        "tokens": {"asp": 1},
+                    }
+                }
+            }
+        path = tmp_path / f"{language}.json"
+        path.write_text(json.dumps(scenario), encoding="utf-8")
+        scenarios.append(path)
+
+    report = build_large_library_report_chain(tmp_path, scenarios)
+
+    _validate_schema(report)
+    assert report["optimizationGate"]["status"] == "review"
+    assert report["optimizationGate"]["blockingFindingCount"] == 1
+    assert report["rollup"]["aspBinaryFreshnessRiskCommandCount"] == 1
+    assert report["rollup"]["aspBinaryFreshnessRiskScenarioCount"] == 1
+    by_language = {entry["language"]: entry for entry in report["languages"]}
+    assert _finding_kinds(by_language["rust"]) == {"asp-binary-freshness-risk"}
+    assert _finding_kinds(by_language["typescript"]) == set()
+
+
 def test_large_library_report_chain_cli_emits_json(capsys) -> None:
     assert main(["--repo-root", str(_ROOT), "--large-library-report-chain", "--json"]) == 0
 

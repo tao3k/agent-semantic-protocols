@@ -6,7 +6,7 @@ use rust_lang_project_harness::{
 fn main() {
     let config = default_rust_harness_config()
         .with_cargo_check_advice_allow_explanation(
-            "agent-semantic-client-db keeps advisory findings visible while the build gate blocks warning and error policy drift",
+            "scope=agent-semantic-client-db cargo-check advice; owner=agent-semantic-client-db build gate; finding_category=advisory policy findings; why_safe_now=agent-semantic-client-db keeps advisory findings visible while warning and error findings still fail the build; cleanup_trigger=clear the crate advisory backlog and remove this allowance",
         )
         .with_criterion_performance_verification()
         .with_latency_sensitive_performance_owner(

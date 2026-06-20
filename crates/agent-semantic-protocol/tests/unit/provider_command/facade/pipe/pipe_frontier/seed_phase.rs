@@ -130,13 +130,17 @@ fn search_pipe_graph_turbo_request_adds_owner_anchor_seeds_for_broad_query() {
         stdout.contains("recommendedActions=split-query-pack,narrow-owner-scope"),
         "{stdout}"
     );
-    assert!(stdout.contains("A1=fd-query("), "{stdout}");
-    assert!(stdout.contains("A2=rg-query-set("), "{stdout}");
-    assert!(stdout.contains("recommendedNext=A1.fd-query"), "{stdout}");
+    assert!(stdout.contains("A1=rg-query-set("), "{stdout}");
+    assert!(stdout.contains("A2=fd-query("), "{stdout}");
     assert!(
-        stdout.contains("nextCommand=asp fd -query") && stdout.contains(" --workspace ."),
+        stdout.contains("recommendedNext=A1.rg-query-set"),
         "{stdout}"
     );
+    assert!(
+        stdout.contains("nextCommand=asp rg -query") && stdout.contains(" --workspace ."),
+        "{stdout}"
+    );
+    assert_evidence_edges_reference_visible_nodes(&stdout);
     assert!(!marker.exists(), "search pipe should not spawn provider");
     let _ = std::fs::remove_dir_all(root);
 }
@@ -222,6 +226,124 @@ fn search_pipe_graph_turbo_request_ranks_dense_owner_seed_before_weak_local_item
             .iter()
             .any(|seed_id| seed_id.contains("src/aaa_graph.rs")),
         "test must include the weak first-seen owner as a competing seed: {payload}"
+    );
+    assert!(!marker.exists(), "search pipe should not spawn provider");
+    let _ = std::fs::remove_dir_all(root);
+}
+
+fn assert_evidence_edges_reference_visible_nodes(stdout: &str) {
+    let node_aliases = stdout
+        .lines()
+        .find_map(|line| line.strip_prefix("evidenceNodes="))
+        .into_iter()
+        .flat_map(|nodes| nodes.split(';'))
+        .filter_map(|node| node.split_once('=').map(|(alias, _)| alias.to_string()))
+        .collect::<std::collections::HashSet<_>>();
+    let Some(edges) = stdout
+        .lines()
+        .find_map(|line| line.strip_prefix("evidenceEdges="))
+    else {
+        return;
+    };
+    for edge in edges.split(';') {
+        let (source, targets) = edge.split_once(">{").expect("edge line");
+        assert!(
+            node_aliases.contains(source),
+            "edge source {source} must be in evidenceNodes: {stdout}"
+        );
+        for target in targets.trim_end_matches('}').split(',') {
+            let (alias, _) = target.split_once(':').expect("edge target");
+            assert!(
+                node_aliases.contains(alias),
+                "edge target {alias} must be in evidenceNodes: {stdout}"
+            );
+        }
+    }
+}
+
+#[test]
+fn search_pipe_graph_turbo_request_prefers_package_axis_cluster_over_cross_package_first_seen() {
+    let root = temp_project_root("search-pipe-graph-package-ranking");
+    let bin_dir = root.join(".bin");
+    let marker = root.join("provider-called");
+    std::fs::create_dir_all(root.join("crates/agent-semantic-client/src"))
+        .expect("create client source dir");
+    std::fs::create_dir_all(root.join("crates/agent-semantic-protocol/src/command"))
+        .expect("create protocol source dir");
+    std::fs::write(
+        root.join("crates/agent-semantic-client/src/tools_cli.rs"),
+        "pub fn graph_turbo_owner_candidate_ranking_package_local_evidence() {}\n",
+    )
+    .expect("write client owner");
+    std::fs::write(
+        root.join(
+            "crates/agent-semantic-protocol/src/command/search_pipe_graph_turbo_owner_rank.rs",
+        ),
+        "pub fn graph_turbo_owner_candidate_ranking_package_local_evidence() {}\n",
+    )
+    .expect("write protocol owner rank");
+    std::fs::write(
+        root.join("crates/agent-semantic-protocol/src/command/search_pipe_graph_nodes.rs"),
+        "pub fn topology_monorepo_submodule_owner_graph() {}\n",
+    )
+    .expect("write protocol topology owner");
+    std::fs::write(
+        root.join("crates/agent-semantic-protocol/src/command/search_pipe_graph_turbo.rs"),
+        "pub fn graph_turbo_topology_package() {}\n",
+    )
+    .expect("write protocol graph turbo owner");
+    write_marker_provider(&bin_dir, "rs-harness", &marker);
+    write_activation(&root, &[provider("rust", Vec::new())]);
+
+    let output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args([
+            "rust",
+            "search",
+            "pipe",
+            "graph turbo owner candidate ranking package topology local evidence monorepo submodule",
+            "--workspace",
+            ".",
+            "--view",
+            "graph-turbo-request",
+            ".",
+        ])
+        .output()
+        .expect("run asp rust search pipe graph request");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let payload: Value = serde_json::from_slice(&output.stdout).expect("graph request json");
+    super::assert_graph_turbo_request_contract(&payload);
+    let owner_ids = payload["graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .filter(|node| node["kind"].as_str() == Some("owner"))
+        .filter_map(|node| node["id"].as_str())
+        .collect::<Vec<_>>();
+    assert!(
+        owner_ids.first().is_some_and(|id| id.contains(
+            "crates/agent-semantic-protocol/src/command/search_pipe_graph_turbo_owner_rank.rs"
+        )),
+        "protocol owner rank package should outrank first-seen client owner: {payload}"
+    );
+    assert!(
+        owner_ids
+            .iter()
+            .position(|id| id.contains(
+                "crates/agent-semantic-protocol/src/command/search_pipe_graph_turbo_owner_rank.rs"
+            ))
+            .expect("protocol owner rank")
+            < owner_ids
+                .iter()
+                .position(|id| id.contains("crates/agent-semantic-client/src/tools_cli.rs"))
+                .expect("client owner"),
+        "{payload}"
     );
     assert!(!marker.exists(), "search pipe should not spawn provider");
     let _ = std::fs::remove_dir_all(root);

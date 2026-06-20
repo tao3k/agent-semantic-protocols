@@ -401,6 +401,8 @@
         "optimizationAblationVariants",
         "localEvidenceAblationEnabled",
         "findingCount",
+        "aspBinaryFreshnessRiskCommandCount",
+        "aspBinaryFreshnessRiskScenarioCount",
         "status",
         "reason",
         "blockingFindingCount"
@@ -455,6 +457,14 @@
           "type": "boolean"
         },
         "findingCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "aspBinaryFreshnessRiskCommandCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "aspBinaryFreshnessRiskScenarioCount": {
           "type": "integer",
           "minimum": 0
         },

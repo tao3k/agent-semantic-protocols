@@ -8,6 +8,7 @@ use std::path::Path;
 use agent_semantic_provider_transport::byte_text;
 
 use super::search_language_files::language_file_spec;
+use super::search_pipe_rust_item::rust_item_symbol_for_line;
 
 pub(super) fn render_owner_query_frontier(
     language_id: &str,
@@ -504,7 +505,8 @@ fn item_kind_for_line(path: &Path, line: &[u8]) -> Option<&'static str> {
 fn item_symbol_for_line(path: &Path, line: &[u8]) -> Option<String> {
     match path.extension().and_then(|extension| extension.to_str()) {
         Some("ss" | "ssi" | "scm" | "sld") => scheme_item_symbol_for_line(line),
-        Some("rs" | "ts" | "tsx" | "js" | "jsx" | "mts" | "cts" | "mjs" | "cjs") => None,
+        Some("rs") => rust_item_symbol_for_line(line),
+        Some("ts" | "tsx" | "js" | "jsx" | "mts" | "cts" | "mjs" | "cjs") => None,
         _ => None,
     }
 }

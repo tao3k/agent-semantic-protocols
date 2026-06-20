@@ -7,6 +7,7 @@ import re
 from typing import Any
 
 from .agent_observation_asp import (
+    asp_binary_provenance as _asp_binary_provenance,
     command_contains_asp as _command_contains_asp,
     normalize_command as _normalize_command,
 )
@@ -67,24 +68,26 @@ def asp_command_output_records_from_messages(
                 continue
             output = _tool_result_text(value.get("content"))
             denied = _is_denied_tool_result(value, output)
-            records.append(
-                {
-                    "command": _normalize_command(command),
-                    "output": output,
-                    "outputBytes": len(output.encode()),
-                    "outputLines": len(output.splitlines()),
-                    "outputFingerprint": _text_fingerprint(output),
-                    "denied": denied,
-                    "hookFeedback": _hook_feedback_from_output(output)
-                    if denied
-                    else None,
-                    "precision": _search_pipe_precision_facts(command, output),
-                    "failurePrecision": _failure_frontier_precision_facts(
-                        command, output
-                    ),
-                    "failureMemory": _failure_frontier_memory(command, output),
-                }
-            )
+            record = {
+                "command": _normalize_command(command),
+                "output": output,
+                "outputBytes": len(output.encode()),
+                "outputLines": len(output.splitlines()),
+                "outputFingerprint": _text_fingerprint(output),
+                "denied": denied,
+                "hookFeedback": _hook_feedback_from_output(output)
+                if denied
+                else None,
+                "precision": _search_pipe_precision_facts(command, output),
+                "failurePrecision": _failure_frontier_precision_facts(
+                    command, output
+                ),
+                "failureMemory": _failure_frontier_memory(command, output),
+            }
+            binary = _asp_binary_provenance(command)
+            if binary:
+                record["aspBinary"] = binary
+            records.append(record)
     return records
 
 

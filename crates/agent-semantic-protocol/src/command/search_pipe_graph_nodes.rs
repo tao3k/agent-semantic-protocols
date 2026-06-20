@@ -51,7 +51,7 @@ pub(super) fn append_project_topology_nodes(
         "relation": "has_provider_root",
     }));
 
-    for submodule_path in gitmodule_paths(workspace_root) {
+    for submodule_path in project_submodule_paths(workspace_root) {
         let submodule_id = stable_node_id("submodule", &submodule_path);
         nodes.push(json!({
             "id": submodule_id.clone(),
@@ -70,6 +70,34 @@ pub(super) fn append_project_topology_nodes(
             "target": submodule_id,
             "relation": "has_submodule",
         }));
+    }
+}
+
+pub(super) fn append_submodule_owner_edges(
+    edges: &mut Vec<Value>,
+    workspace_root: &Path,
+    owners: &[String],
+) {
+    let submodule_paths = project_submodule_paths(workspace_root);
+    if submodule_paths.is_empty() {
+        return;
+    }
+    let mut seen = BTreeSet::new();
+    for owner in owners {
+        let Some(submodule_path) = submodule_paths
+            .iter()
+            .find(|submodule_path| path_is_under(owner, submodule_path))
+        else {
+            continue;
+        };
+        let key = format!("{submodule_path}:{owner}");
+        if seen.insert(key) {
+            edges.push(json!({
+                "source": stable_node_id("submodule", submodule_path),
+                "target": stable_node_id("owner", owner),
+                "relation": "contains",
+            }));
+        }
     }
 }
 
@@ -205,7 +233,7 @@ fn candidate_tree_sitter_pattern(language_id: &str, symbol: &str) -> Option<Stri
     }
 }
 
-fn gitmodule_paths(workspace_root: &Path) -> Vec<String> {
+fn project_submodule_paths(workspace_root: &Path) -> Vec<String> {
     let Ok(content) = fs::read_to_string(workspace_root.join(".gitmodules")) else {
         return Vec::new();
     };
@@ -224,4 +252,11 @@ fn gitmodule_paths(workspace_root: &Path) -> Vec<String> {
         }
     }
     paths.into_iter().collect()
+}
+
+fn path_is_under(path: &str, root: &str) -> bool {
+    path == root
+        || path
+            .strip_prefix(root)
+            .is_some_and(|rest| rest.starts_with('/'))
 }

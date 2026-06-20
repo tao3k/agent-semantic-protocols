@@ -61,18 +61,32 @@ thread before =spawn_agent= lists =asp_explorer=.
 
 ** Search Before Source
 
-For code tasks, keep the command order structural-first:
+For code tasks, choose the first ASP route from current evidence instead of
+running a fixed =prime -> pipe= prelude. If the user prompt, hook recovery
+route, prior packet, failure transcript, or CLI diagnostic already provides an
+exact owner, selector, symbol, dependency, or bounded =recommendedNext= action,
+start with that provider-owned =query=, =search owner=, =search fzf=, =asp fd=,
+=asp rg=, guide, or dependency route.
+
+Use =search prime= once only when the workspace topology, active language, or
+owner map is unknown. Use =search pipe= only after =prime= or another frontier
+shows ambiguous or multi-axis evidence that needs query-set refinement. A
+no-hit route should return a compact =noOutput= or no-candidates receipt with
+one bounded next action, not a verbose empty frontier.
+
+Common structural-first routes:
 
 #+begin_src sh
 asp <language> search prime --workspace <workspace-root> --view seeds
 asp <language> search pipe '<question-or-feature-term>' --workspace <workspace-root> --view seeds
 #+end_src
 
-For a concrete deep question, bug, feature, or API-usage task, use
-=search prime= once to establish the project graph context, then use
-=search pipe= with an LLM-generated question-or-feature term. Read its
-=queryPack=, =queryTerms=, =coverage=, =rankedEvidence=, =actionFrontier=,
-=recommendedNext=, =subagentHint=, =nextCommand=, and =avoid= lines.
+For a concrete deep question, bug, feature, or API-usage task with unknown
+owner context, use =search prime= to establish the project graph context, then
+use =search pipe= with a scoped question-or-feature term only if the prime
+frontier needs query refinement. Read its =queryPack=, =queryTerms=,
+=coverage=, =rankedEvidence=, =actionFrontier=, =recommendedNext=,
+=subagentHint=, =nextCommand=, and =avoid= lines.
 
 When more owner/path recall is needed, low-quality pipe output may include
 bounded =fdPreview= rows with =ownerCandidates=, =packageClusters=,

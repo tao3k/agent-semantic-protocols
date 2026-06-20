@@ -43,9 +43,20 @@ def test_pipe_flow_records_asp_tool_result_output_bytes() -> None:
     assert stats["aspCommands"] == 1
     assert stats["searchPipeCommands"] == 1
     assert stats["aspCommandOutputBytes"] == len("frontier\nnextCommand\n".encode())
+    assert stats["aspBinaryProvenance"] == {
+        "commandCount": 1,
+        "workspaceBinaryCommands": 0,
+        "freshnessRiskCommands": 1,
+        "kindCounts": {"ambient-path": 1},
+        "tokens": {"asp": 1},
+    }
     assert stats["aspCommandOutputRecords"][0]["command"] == (
         "asp rust search pipe 'Vec scalar collection fields' --workspace . --view seeds"
     )
+    assert stats["aspCommandOutputRecords"][0]["aspBinary"] == {
+        "token": "asp",
+        "kind": "ambient-path",
+    }
     assert stats["aspCommandOutputRecords"][0]["outputBytes"] == len(
         "frontier\nnextCommand\n".encode()
     )
@@ -95,6 +106,10 @@ def test_pipe_flow_records_claude_sdk_dataclass_block_shape() -> None:
             "outputFingerprint": (
                 "sha256:32aead1be83ebc4f3379f43f9612d50f3592ff0ef3038425198ee63cb948fe26"
             ),
+            "aspBinary": {
+                "token": "asp",
+                "kind": "ambient-path",
+            },
             "precision": {},
             "failurePrecision": {},
             "failureMemory": {},

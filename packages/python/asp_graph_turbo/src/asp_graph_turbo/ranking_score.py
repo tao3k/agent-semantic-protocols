@@ -4,13 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 
-from .backend import multi_source_hop_lengths, reachable_edges
-from .cache import cached_sparse_backend
+from .cache import backend_fingerprint, cached_sparse_backend
 from .model import GraphCache, GraphProfile, OrientedEdge, ReceiptAdjustment, TypedGraph
-from .pagerank import (
-    GraphTurboPprResult,
-    graph_turbo_typed_personalized_pagerank_result,
-)
+from .pagerank import GraphTurboPprResult
 from .query_adjustments import (
     normalize_query_adjustment_policy,
     query_adjustments_by_node,
@@ -21,6 +17,7 @@ from .query_weights import (
     query_token_weights,
 )
 from .receipt import receipt_score_adjustments
+from .runtime_cache import cached_hop_lengths, cached_pagerank, cached_reachable_edges
 
 
 def seed_ids(graph: TypedGraph, seeds: Iterable[str]) -> tuple[str, ...]:
@@ -39,7 +36,6 @@ def collect_scores(
     profile: GraphProfile,
     seed_ids: Iterable[str],
     *,
-    fingerprint: str,
     cache_enabled: bool,
     query_clauses: Iterable[str] = (),
     query_adjustment_policy: Mapping[str, object] | None = None,
@@ -51,36 +47,47 @@ def collect_scores(
     tuple[ReceiptAdjustment, ...],
     GraphTurboPprResult,
     Mapping[str, Mapping[str, float]],
+    Mapping[str, str],
 ]:
     query_adjustment_policy = normalize_query_adjustment_policy(query_adjustment_policy)
+    seed_id_tuple = tuple(seed_ids)
     backend, graph_cache = cached_sparse_backend(
-        graph, profile, fingerprint, enabled=cache_enabled
+        graph, profile, backend_fingerprint(graph, profile), enabled=cache_enabled
     )
-    best_depth = multi_source_hop_lengths(backend, seed_ids, profile.max_depth)
-    pagerank = graph_turbo_typed_personalized_pagerank_result(
+    best_depth, depth_cache_status = cached_hop_lengths(
+        graph_cache.key,
         backend,
-        seed_ids,
-        seed_weights=(
-            query_seed_personalization_weights(
-                graph,
-                profile_name=profile.name,
-                seed_ids=seed_ids,
-            )
-            if query_adjustment_policy["seedPrior"]
-            else {}
-        ),
+        seed_id_tuple,
+        profile.max_depth,
+        enabled=cache_enabled,
+    )
+    seed_weights = (
+        query_seed_personalization_weights(
+            graph,
+            profile_name=profile.name,
+            seed_ids=seed_id_tuple,
+        )
+        if query_adjustment_policy["seedPrior"]
+        else {}
+    )
+    pagerank, ppr_cache_status = cached_pagerank(
+        graph_cache.key,
+        backend,
+        seed_id_tuple,
+        seed_weights,
+        enabled=cache_enabled,
     )
     query_adjustments = query_adjustments_by_node(
         graph,
         profile_name=profile.name,
-        seed_ids=seed_ids,
+        seed_ids=seed_id_tuple,
         query_clauses=query_clauses,
         policy=query_adjustment_policy,
     )
     scores = score_nodes(
         graph,
         profile,
-        seed_ids,
+        seed_id_tuple,
         best_depth,
         pagerank.scores,
         query_clauses=query_clauses,
@@ -91,7 +98,14 @@ def collect_scores(
     for node_id, score_delta in receipt_adjustments.items():
         if node_id in scores:
             scores[node_id] += score_delta
-    selected_edges = reachable_edges(backend, best_depth)
+    selected_edges, reachable_edges_cache_status = cached_reachable_edges(
+        graph_cache.key,
+        backend,
+        seed_id_tuple,
+        profile.max_depth,
+        best_depth,
+        enabled=cache_enabled,
+    )
     return (
         scores,
         best_depth,
@@ -100,6 +114,11 @@ def collect_scores(
         receipt_facts,
         pagerank,
         query_adjustments,
+        {
+            "depthCacheStatus": depth_cache_status,
+            "pprCacheStatus": ppr_cache_status,
+            "reachableEdgesCacheStatus": reachable_edges_cache_status,
+        },
     )
 
 

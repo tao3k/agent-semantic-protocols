@@ -19,6 +19,48 @@ _MAX_CACHE_ENTRIES = 16
 _BACKEND_CACHE: OrderedDict[str, SparseGraphBackend] = OrderedDict()
 
 
+def backend_fingerprint(graph: TypedGraph, profile: GraphProfile) -> str:
+    canonical = {
+        "algorithm": "typed-ppr-diverse-sparse-backend",
+        "profile": {
+            "name": profile.name,
+            "allowedRelations": sorted(profile.allowed_relations),
+            "relationWeightMultiplier": dict(
+                sorted(profile.relation_weight_multiplier.items())
+            ),
+        },
+        "graph": {
+            "nodes": [
+                {
+                    "id": node.id,
+                    "kind": node.kind,
+                    "role": node.role,
+                    "value": node.value,
+                    "action": node.action,
+                    "weight": node.weight,
+                    "fields": dict(sorted(node.fields.items())),
+                }
+                for node in sorted(graph.nodes.values(), key=lambda item: item.id)
+            ],
+            "edges": [
+                {
+                    "source": edge.source,
+                    "target": edge.target,
+                    "relation": edge.relation,
+                    "weight": edge.weight,
+                    "fields": dict(sorted(edge.fields.items())),
+                }
+                for edge in sorted(
+                    graph.edges,
+                    key=lambda item: (item.source, item.target, item.relation),
+                )
+            ],
+        },
+    }
+    payload = json.dumps(canonical, sort_keys=True, separators=(",", ":"))
+    return "sha256:backend:" + hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
 def packet_fingerprint(
     graph: TypedGraph,
     profile: GraphProfile,

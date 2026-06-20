@@ -42,7 +42,9 @@
         "readyLanguageCount",
         "optimizationRunCount",
         "optimizationVariantRunCount",
-        "findingCount"
+        "findingCount",
+        "aspBinaryFreshnessRiskCommandCount",
+        "aspBinaryFreshnessRiskScenarioCount"
       ],
       "properties": {
         "languageCount": {"type": "integer", "minimum": 0},
@@ -52,7 +54,15 @@
         "readyLanguageCount": {"type": "integer", "minimum": 0},
         "optimizationRunCount": {"type": "integer", "minimum": 0},
         "optimizationVariantRunCount": {"type": "integer", "minimum": 0},
-        "findingCount": {"type": "integer", "minimum": 0}
+        "findingCount": {"type": "integer", "minimum": 0},
+        "aspBinaryFreshnessRiskCommandCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "aspBinaryFreshnessRiskScenarioCount": {
+          "type": "integer",
+          "minimum": 0
+        }
       }
     },
     "optimizationBatch": {
@@ -115,6 +125,11 @@
           "type": "object",
           "additionalProperties": {"type": "integer", "minimum": 0}
         },
+        "aspBinaryProvenance": {"$ref": "#/$defs/aspBinaryProvenance"},
+        "aspBinaryFreshnessRiskScenarioCount": {
+          "type": "integer",
+          "minimum": 0
+        },
         "findings": {
           "type": "array",
           "items": {"$ref": "#/$defs/finding"}
@@ -131,6 +146,30 @@
         "kind": {"type": "string", "minLength": 1},
         "severity": {"enum": ["info", "warning", "error"]},
         "message": {"type": "string", "minLength": 1}
+      }
+    },
+    "aspBinaryProvenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "commandCount",
+        "workspaceBinaryCommands",
+        "freshnessRiskCommands",
+        "kindCounts",
+        "tokens"
+      ],
+      "properties": {
+        "commandCount": {"type": "integer", "minimum": 0},
+        "workspaceBinaryCommands": {"type": "integer", "minimum": 0},
+        "freshnessRiskCommands": {"type": "integer", "minimum": 0},
+        "kindCounts": {
+          "type": "object",
+          "additionalProperties": {"type": "integer", "minimum": 0}
+        },
+        "tokens": {
+          "type": "object",
+          "additionalProperties": {"type": "integer", "minimum": 0}
+        }
       }
     },
     "optimizationBatch": {

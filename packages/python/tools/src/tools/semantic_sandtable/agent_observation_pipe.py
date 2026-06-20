@@ -138,6 +138,7 @@ def _attach_output_record_observations(
     output_records: list[dict[str, Any]],
 ) -> None:
     if output_records:
+        _attach_binary_provenance(stats, output_records)
         stats["aspCommandOutputBytes"] = sum(
             record["outputBytes"] for record in output_records
         )
@@ -157,6 +158,42 @@ def _attach_output_record_observations(
     if failure_memory:
         stats["failureLoopMemory"] = failure_memory
         stats["failureLoopMemoryEntryCount"] = failure_memory["entryCount"]
+
+
+def _attach_binary_provenance(
+    stats: dict[str, Any],
+    output_records: list[dict[str, Any]],
+) -> None:
+    binaries = [
+        record["aspBinary"]
+        for record in output_records
+        if isinstance(record.get("aspBinary"), dict)
+    ]
+    if not binaries:
+        return
+    kind_counts = Counter(
+        str(binary.get("kind")) for binary in binaries if binary.get("kind")
+    )
+    token_counts = Counter(
+        str(binary.get("token")) for binary in binaries if binary.get("token")
+    )
+    workspace_count = sum(
+        count
+        for kind, count in kind_counts.items()
+        if kind in {"project-bin", "cargo-target"}
+    )
+    risk_count = sum(
+        count
+        for kind, count in kind_counts.items()
+        if kind not in {"project-bin", "cargo-target"}
+    )
+    stats["aspBinaryProvenance"] = {
+        "commandCount": len(binaries),
+        "workspaceBinaryCommands": workspace_count,
+        "freshnessRiskCommands": risk_count,
+        "kindCounts": dict(sorted(kind_counts.items())),
+        "tokens": dict(sorted(token_counts.items())),
+    }
 
 
 def _attach_frontier_context_observations(

@@ -488,6 +488,7 @@ pub(super) fn render_search_pipe_decision_projection(compact: &str) -> String {
     let mut rendered = String::new();
     let mut nodes = Vec::new();
     let mut edges = Vec::new();
+    let mut visible_aliases = HashSet::new();
     for line in compact.lines() {
         if is_graph_debug_line(line)
             || line.starts_with("legend:")
@@ -515,6 +516,9 @@ pub(super) fn render_search_pipe_decision_projection(compact: &str) -> String {
             continue;
         }
         if is_graph_node_line(line) {
+            if let Some((alias, _)) = line.split_once('=') {
+                visible_aliases.insert(alias.to_string());
+            }
             nodes.push(sanitize_evidence_line(line));
             continue;
         }
@@ -527,6 +531,13 @@ pub(super) fn render_search_pipe_decision_projection(compact: &str) -> String {
         rendered.push('\n');
     }
     if !edges.is_empty() {
+        let edges = edges
+            .into_iter()
+            .filter_map(|edge| visible_graph_edge_line(&edge, &visible_aliases))
+            .collect::<Vec<_>>();
+        if edges.is_empty() {
+            return rendered;
+        }
         rendered.push_str("evidenceEdges=");
         rendered.push_str(&edges.join(";"));
         rendered.push('\n');
@@ -566,6 +577,26 @@ fn is_graph_node_line(line: &str) -> bool {
 
 fn is_graph_edge_line(line: &str) -> bool {
     line.contains(">{") && line.ends_with('}')
+}
+
+fn visible_graph_edge_line(line: &str, visible_aliases: &HashSet<String>) -> Option<String> {
+    let Some((source, targets)) = line.split_once(">{") else {
+        return None;
+    };
+    if !visible_aliases.contains(source) {
+        return None;
+    }
+    let visible_targets = targets
+        .trim_end_matches('}')
+        .split(',')
+        .filter(|target| {
+            target
+                .split_once(':')
+                .map(|(alias, _)| visible_aliases.contains(alias.trim()))
+                .unwrap_or(false)
+        })
+        .collect::<Vec<_>>();
+    (!visible_targets.is_empty()).then(|| format!("{source}>{{{}}}", visible_targets.join(",")))
 }
 
 fn evidence_frontier_entry(entry: &str) -> String {

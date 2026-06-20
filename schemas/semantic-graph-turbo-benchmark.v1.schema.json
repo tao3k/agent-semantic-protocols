@@ -92,6 +92,20 @@
                 }
             }
         },
+        "cacheStatusCounts": {
+            "type": "object",
+            "additionalProperties": {
+                "type": "integer",
+                "minimum": 0
+            }
+        },
+        "warmupCacheStatusCounts": {
+            "type": "object",
+            "additionalProperties": {
+                "type": "integer",
+                "minimum": 0
+            }
+        },
         "lastAlgorithmMetrics": {
             "type": "object",
             "required": [
@@ -147,6 +161,30 @@
                         "hit",
                         "miss",
                         "disabled"
+                    ]
+                },
+                "depthCacheStatus": {
+                    "enum": [
+                        "hit",
+                        "miss",
+                        "disabled",
+                        "unknown"
+                    ]
+                },
+                "pprCacheStatus": {
+                    "enum": [
+                        "hit",
+                        "miss",
+                        "disabled",
+                        "unknown"
+                    ]
+                },
+                "reachableEdgesCacheStatus": {
+                    "enum": [
+                        "hit",
+                        "miss",
+                        "disabled",
+                        "unknown"
                     ]
                 }
             }

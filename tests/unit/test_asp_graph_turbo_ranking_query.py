@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from asp_graph_turbo.cache import backend_fingerprint
+from asp_graph_turbo.profiles import resolve_profile
+from asp_graph_turbo.ranking_build import rank_fingerprint
+
 from ._asp_graph_turbo_common import (
     TypedGraph,
     rank_frontier,
@@ -25,6 +29,54 @@ def test_owner_query_profile_masks_dependency_edges() -> None:
     assert ("dependency", "deps") not in [
         (entry.node.kind, entry.action) for entry in result.frontier
     ]
+
+
+def test_backend_fingerprint_ignores_query_policy() -> None:
+    graph = TypedGraph.from_packet(sample_packet())
+    profile = resolve_profile("owner-query")
+    seed_ids = ("q:parser", "owner:cli")
+
+    default_rank_key = rank_fingerprint(
+        graph,
+        profile,
+        seed_ids,
+        query_clauses=("parser command",),
+        query_adjustment_policy={"seedPrior": True, "localEvidence": True},
+        budget=8,
+        kind_budgets={},
+        path_budget=4,
+        path_max_hops=4,
+        window_merge_enabled=True,
+        window_merge_max_gap_lines=8,
+    )
+    no_local_evidence_rank_key = rank_fingerprint(
+        graph,
+        profile,
+        seed_ids,
+        query_clauses=("parser command",),
+        query_adjustment_policy={"seedPrior": True, "localEvidence": False},
+        budget=8,
+        kind_budgets={},
+        path_budget=4,
+        path_max_hops=4,
+        window_merge_enabled=True,
+        window_merge_max_gap_lines=8,
+    )
+
+    assert default_rank_key != no_local_evidence_rank_key
+    assert backend_fingerprint(graph, profile) == backend_fingerprint(graph, profile)
+    assert backend_fingerprint(graph, profile).startswith("sha256:backend:")
+
+
+def test_runtime_ranking_caches_reuse_seed_work() -> None:
+    graph = TypedGraph.from_packet(sample_packet())
+
+    rank_frontier(graph, profile="owner-query", seeds=["q:parser", "owner:cli"])
+    second = rank_frontier(graph, profile="owner-query", seeds=["q:parser", "owner:cli"])
+
+    assert second.algorithm_metrics.depth_cache_status == "hit"
+    assert second.algorithm_metrics.ppr_cache_status == "hit"
+    assert second.algorithm_metrics.reachable_edges_cache_status == "hit"
 
 
 def test_owner_query_ranking_prefers_rare_query_token_match_text() -> None:

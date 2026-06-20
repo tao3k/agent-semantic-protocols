@@ -226,6 +226,47 @@ fn sample_graph_turbo_request_packet() -> serde_json::Value {
     })
 }
 
+fn sample_graph_turbo_topology_request_packet() -> serde_json::Value {
+    json!({
+        "schemaId": "agent.semantic-protocols.semantic-graph-turbo-request",
+        "schemaVersion": "1",
+        "protocolId": "agent.semantic-protocols.semantic-language",
+        "protocolVersion": "1",
+        "packetKind": "graph-turbo-request",
+        "profile": "owner-query",
+        "algorithm": "typed-ppr-diverse",
+        "seedIds": ["query:topology"],
+        "budget": 10,
+        "kindBudgets": {"owner": 10},
+        "graph": {
+            "nodes": [
+                {"id": "query:topology", "kind": "query", "role": "term", "value": "submodule topology", "action": "query"},
+                {"id": "owner:0", "kind": "owner", "role": "path", "value": "languages/rust-lang-project-harness/src/lib.rs", "action": "owner"},
+                {"id": "owner:1", "kind": "owner", "role": "path", "value": "crates/agent-semantic-protocol/src/command/graph.rs", "action": "owner"},
+                {"id": "owner:2", "kind": "owner", "role": "path", "value": "crates/agent-semantic-protocol/src/command/search_pipe_graph_turbo.rs", "action": "owner"},
+                {"id": "owner:3", "kind": "owner", "role": "path", "value": "crates/agent-semantic-protocol/src/command/search_pipe_graph_nodes.rs", "action": "owner"},
+                {"id": "owner:4", "kind": "owner", "role": "path", "value": "packages/python/asp_graph_turbo/src/asp_graph_turbo/ranking.py", "action": "owner"},
+                {"id": "owner:5", "kind": "owner", "role": "path", "value": "packages/python/asp_graph_turbo/src/asp_graph_turbo/ranking_score.py", "action": "owner"},
+                {"id": "owner:6", "kind": "owner", "role": "path", "value": "tests/unit/test_asp_graph_turbo_ranking_query.py", "action": "owner"},
+                {"id": "owner:7", "kind": "owner", "role": "path", "value": "docs/10-19-rfcs/10.06-agent-compact-graph-feature.org", "action": "owner"},
+                {"id": "owner:8", "kind": "owner", "role": "path", "value": "docs/status/graph-turbo-topology.org", "action": "owner"},
+                {"id": "owner:9", "kind": "owner", "role": "path", "value": "schemas/semantic-graph-turbo-benchmark.v1.schema.json", "action": "owner"},
+                {"id": "workspace:.", "kind": "workspace", "role": "root", "value": ".", "action": "topology"},
+                {"id": "provider-root:rust:.", "kind": "provider-root", "role": "language-root", "value": "rust:.", "action": "topology"},
+                {"id": "submodule:languages/rust-lang-project-harness", "kind": "submodule", "role": "workspace-member", "value": "languages/rust-lang-project-harness", "action": "topology"},
+                {"id": "submodule:languages/typescript-lang-project-harness", "kind": "submodule", "role": "workspace-member", "value": "languages/typescript-lang-project-harness", "action": "topology"}
+            ],
+            "edges": [
+                {"source": "query:topology", "target": "owner:0", "relation": "matches"},
+                {"source": "submodule:languages/rust-lang-project-harness", "target": "owner:0", "relation": "contains"},
+                {"source": "workspace:.", "target": "submodule:languages/rust-lang-project-harness", "relation": "has_submodule"},
+                {"source": "workspace:.", "target": "submodule:languages/typescript-lang-project-harness", "relation": "has_submodule"},
+                {"source": "workspace:.", "target": "provider-root:rust:.", "relation": "has_provider_root"}
+            ]
+        }
+    })
+}
+
 #[test]
 fn shared_renderer_projects_search_packet_into_compact_graph() {
     let output = render_search_graph_packet(&sample_packet(), GraphRenderOptions::default());
@@ -317,6 +358,60 @@ fn shared_renderer_projects_prime_packet_into_tool_map_frontier() {
     assert!(output.contains("omit=items,blocks,code,full-test-list"));
     assert!(output.contains("avoid=raw-read,full-json,broad-fzf"));
     assert!(!output.contains("owner-rank-frontier"));
+}
+
+#[test]
+fn graph_render_cli_rust_fallback_keeps_topology_edge_aliases_defined() {
+    let packet_path = temp_packet_path();
+    let bin_dir = std::env::temp_dir().join(format!(
+        "agent-semantic-protocol-fallback-graph-bin-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&bin_dir);
+    fs::create_dir_all(&bin_dir).unwrap();
+    let asp_copy = bin_dir.join(format!("asp{}", std::env::consts::EXE_SUFFIX));
+    fs::copy(env!("CARGO_BIN_EXE_asp"), &asp_copy).unwrap();
+    make_executable(&asp_copy);
+    fs::write(
+        &packet_path,
+        sample_graph_turbo_topology_request_packet().to_string(),
+    )
+    .unwrap();
+
+    let output = Command::new(&asp_copy)
+        .env("PATH", &bin_dir)
+        .args([
+            "graph",
+            "render",
+            "--packet",
+            packet_path.to_str().unwrap(),
+            "--view",
+            "seeds",
+        ])
+        .output()
+        .unwrap();
+
+    fs::remove_file(&packet_path).unwrap();
+    let _ = fs::remove_dir_all(&bin_dir);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(
+        stdout
+            .contains("S=submodule:workspace-member(languages/rust-lang-project-harness)!topology")
+    );
+    assert!(stdout.contains("W=workspace:root(.)!topology"));
+    assert!(stdout.contains("P=provider-root:language-root(rust:.)!topology"));
+    assert!(stdout.contains("S>{O:contains}"));
+    assert!(stdout.contains("W>{S:has_submodule,P:has_provider_root}"));
+    assert!(!stdout.contains(
+        "S2=submodule:workspace-member(languages/typescript-lang-project-harness)!topology"
+    ));
+    assert!(!stdout.contains("S2:has_submodule"));
+    assert!(!stdout.contains("Q>{O:matches}"));
 }
 
 #[test]

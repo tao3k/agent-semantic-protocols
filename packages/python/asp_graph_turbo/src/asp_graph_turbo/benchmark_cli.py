@@ -8,6 +8,7 @@ import math
 import statistics
 import sys
 import time
+from collections import Counter
 from collections.abc import Mapping, Sequence
 
 from .cli import _load_packet, _rank_packet
@@ -68,15 +69,19 @@ def benchmark_packet_with_result(
 ) -> tuple[dict[str, object], dict[str, object]]:
     packet = _packet_with_cache_mode(packet, cache_mode)
     rank_args = _rank_args(profile=profile, seed=seed, limit=limit)
+    warmup_cache_statuses: list[str] = []
     for _ in range(warmup_runs):
-        _rank_packet(packet, rank_args)
+        warmup_packet = result_to_packet(_rank_packet(packet, rank_args))
+        warmup_cache_statuses.append(_cache_status(warmup_packet))
     durations: list[float] = []
+    cache_statuses: list[str] = []
     last_packet: dict[str, object] | None = None
     for _ in range(runs):
         started = time.perf_counter()
         result = _rank_packet(packet, rank_args)
         durations.append((time.perf_counter() - started) * 1000.0)
         last_packet = result_to_packet(result)
+        cache_statuses.append(_cache_status(last_packet))
     if last_packet is None:
         raise SystemExit("graph turbo benchmark runs must be positive")
     metrics = last_packet["algorithmMetrics"]
@@ -93,6 +98,8 @@ def benchmark_packet_with_result(
             "warmupRuns": warmup_runs,
             "cacheMode": cache_mode,
             "durationMs": _duration_summary(durations),
+            "cacheStatusCounts": _status_counts(cache_statuses),
+            "warmupCacheStatusCounts": _status_counts(warmup_cache_statuses),
             "lastAlgorithmMetrics": metrics,
             "lastProfileMatrix": _profile_matrix(last_packet),
             "lastTypedPathTrace": _last_typed_path_trace(last_packet),
@@ -114,6 +121,19 @@ def _duration_summary(durations: list[float]) -> dict[str, float]:
         "p95": round(sorted_durations[p95_index], 6),
         "max": round(max(durations), 6),
     }
+
+
+def _cache_status(packet: Mapping[str, object]) -> str:
+    metrics = packet.get("algorithmMetrics")
+    if isinstance(metrics, Mapping):
+        status = metrics.get("cacheStatus")
+        if isinstance(status, str) and status:
+            return status
+    return "unknown"
+
+
+def _status_counts(statuses: Sequence[str]) -> dict[str, int]:
+    return dict(sorted(Counter(statuses).items()))
 
 
 def _last_typed_path_trace(packet: Mapping[str, object]) -> Mapping[str, object]:
@@ -157,21 +177,32 @@ def _packet_with_cache_mode(
 def _render_text(packet: Mapping[str, object]) -> str:
     duration = packet["durationMs"]
     metrics = packet["lastAlgorithmMetrics"]
+    cache_counts = packet.get("cacheStatusCounts")
     if not isinstance(duration, Mapping) or not isinstance(metrics, Mapping):
         raise SystemExit("invalid graph turbo benchmark packet")
     return (
         "[graph-benchmark] "
         f"profile={packet['profile']} runs={packet['runs']} "
         f"warmup={packet['warmupRuns']} cacheMode={packet['cacheMode']} "
-        f"medianMs={duration['median']} p95Ms={duration['p95']}\n"
+        f"medianMs={duration['median']} p95Ms={duration['p95']} "
+        f"cacheStatuses={_render_counts(cache_counts)}\n"
         "metrics="
         f"pathBackend={metrics.get('pathBackend')},"
         f"pathPairs={metrics.get('pathPairCount')},"
         f"pathCandidates={metrics.get('pathCandidateCount')},"
         f"pathFallbacks={metrics.get('pathFallbackCount')},"
         f"pprIterations={metrics.get('pprIterations')},"
-        f"cache={metrics.get('cacheStatus')}"
+        f"cache={metrics.get('cacheStatus')},"
+        f"depthCache={metrics.get('depthCacheStatus')},"
+        f"pprCache={metrics.get('pprCacheStatus')},"
+        f"reachableEdgesCache={metrics.get('reachableEdgesCacheStatus')}"
     )
+
+
+def _render_counts(counts: object) -> str:
+    if not isinstance(counts, Mapping):
+        return "-"
+    return ",".join(f"{key}:{value}" for key, value in sorted(counts.items()))
 
 
 def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:

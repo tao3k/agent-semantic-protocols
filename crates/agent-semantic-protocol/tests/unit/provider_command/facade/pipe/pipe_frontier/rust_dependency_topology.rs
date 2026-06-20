@@ -266,7 +266,7 @@ fn search_pipe_graph_request_includes_language_neutral_project_topology() {
     let bin_dir = root.join(".bin");
     let marker = root.join("provider-called");
     std::fs::create_dir_all(root.join("src")).expect("create src");
-    std::fs::create_dir_all(root.join("languages/gerbil-scheme-language-project-harness"))
+    std::fs::create_dir_all(root.join("languages/gerbil-scheme-language-project-harness/src"))
         .expect("create submodule path");
     std::fs::write(
         root.join(".gitmodules"),
@@ -281,6 +281,11 @@ fn search_pipe_graph_request_includes_language_neutral_project_topology() {
     )
     .expect("write Cargo.toml");
     std::fs::write(root.join("src/lib.rs"), "pub struct TopologyReceipt;\n").expect("write source");
+    std::fs::write(
+        root.join("languages/gerbil-scheme-language-project-harness/src/lib.rs"),
+        "pub struct SubmoduleTopologyReceipt;\n",
+    )
+    .expect("write submodule source");
     write_marker_provider(&bin_dir, "rs-harness", &marker);
     write_activation(&root, &[provider("rust", Vec::new())]);
 
@@ -291,7 +296,7 @@ fn search_pipe_graph_request_includes_language_neutral_project_topology() {
             "rust",
             "search",
             "pipe",
-            "TopologyReceipt",
+            "SubmoduleTopologyReceipt",
             "--view",
             "graph-turbo-request",
             ".",
@@ -343,6 +348,7 @@ fn search_pipe_graph_request_includes_language_neutral_project_topology() {
         "{payload}"
     );
     let edges = payload["graph"]["edges"].as_array().expect("edges");
+    let owner_id = "owner:languages/gerbil-scheme-language-project-harness/src/lib.rs";
     assert!(
         edges.iter().any(|edge| {
             edge["relation"].as_str() == Some("has_provider_root")
@@ -355,6 +361,14 @@ fn search_pipe_graph_request_includes_language_neutral_project_topology() {
             edge["relation"].as_str() == Some("has_submodule")
                 && edge["source"].as_str() == Some("workspace:.")
                 && edge["target"].as_str() == Some(submodule_id)
+        }),
+        "{payload}"
+    );
+    assert!(
+        edges.iter().any(|edge| {
+            edge["relation"].as_str() == Some("contains")
+                && edge["source"].as_str() == Some(submodule_id)
+                && edge["target"].as_str() == Some(owner_id)
         }),
         "{payload}"
     );

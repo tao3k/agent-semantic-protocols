@@ -2,6 +2,7 @@ mod asp_owned;
 mod commands_view;
 mod generic_symbol_terms;
 mod late_query_tokens;
+mod low_cohesion_query_pack;
 mod owner_preview_strength;
 mod owner_role_score;
 mod plan_scope;
