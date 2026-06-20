@@ -30,6 +30,19 @@ def test_large_library_optimization_analysis_collects_missing_results() -> None:
         "observedVariantRunCount": 0,
         "missingVariantRunCount": 80,
         "findingCount": 1,
+        "costSummary": {
+            "metricSource": "receiptMetrics",
+            "observedRunCount": 0,
+            "measuredElapsedRunCount": 0,
+            "measuredAspCommandRunCount": 0,
+            "measuredStdoutBytesRunCount": 0,
+            "totalElapsedMs": 0.0,
+            "averageElapsedMs": None,
+            "totalAspCommandCount": 0.0,
+            "averageAspCommandCount": None,
+            "totalStdoutBytes": 0.0,
+            "averageStdoutBytes": None,
+        },
     }
     assert analysis["findings"][0]["kind"] == "missing-variant-results"
     assert analysis["improvementPlan"][0]["id"] == "collect-variant-receipts"
@@ -55,17 +68,24 @@ def test_large_library_optimization_analysis_aggregates_variant_results() -> Non
     analysis = build_large_library_optimization_analysis(report_chain, results)
 
     _validate_schema(analysis)
-    assert analysis["summary"] == {
-        "status": "analyzed",
-        "expectedVariantRunCount": 80,
-        "observedVariantRunCount": 80,
-        "missingVariantRunCount": 0,
-        "findingCount": 0,
-    }
+    assert analysis["summary"]["status"] == "analyzed"
+    assert analysis["summary"]["expectedVariantRunCount"] == 80
+    assert analysis["summary"]["observedVariantRunCount"] == 80
+    assert analysis["summary"]["missingVariantRunCount"] == 0
+    assert analysis["summary"]["findingCount"] == 0
+    assert analysis["summary"]["costSummary"]["observedRunCount"] == 80
+    assert analysis["summary"]["costSummary"]["measuredElapsedRunCount"] == 80
+    assert analysis["summary"]["costSummary"]["totalElapsedMs"] == 2000.0
+    assert analysis["summary"]["costSummary"]["averageElapsedMs"] == 25.0
+    assert analysis["summary"]["costSummary"]["totalStdoutBytes"] == 80000.0
+    assert analysis["summary"]["costSummary"]["averageStdoutBytes"] == 1000.0
     assert analysis["improvementPlan"][0]["id"] == "calibrate-query-first-stage"
     assert analysis["improvementPlan"][0]["overallWinner"] == "no-package-cohesion"
     assert analysis["improvementPlan"][0]["rankedVariantCount"] == 4
     assert analysis["improvementPlan"][0]["localEvidenceAblationRank"] == 4
+    assert analysis["improvementPlan"][1]["id"] == "profile-query-first-stage-performance"
+    assert analysis["improvementPlan"][1]["topBottleneckVariant"] == "no-local-evidence"
+    assert analysis["improvementPlan"][1]["totalElapsedMs"] == 2000.0
     assert analysis["variantRecommendations"]["status"] == "ready"
     assert analysis["variantRecommendations"]["overallWinner"][
         "ablationVariant"
@@ -85,6 +105,11 @@ def test_large_library_optimization_analysis_aggregates_variant_results() -> Non
         "no-query-seed-prior",
         "no-local-evidence",
     ]
+    top_bottleneck = analysis["variantRecommendations"]["performanceBottlenecks"][0]
+    assert top_bottleneck["ablationVariant"] == "no-local-evidence"
+    assert top_bottleneck["performanceRank"] == 1
+    assert top_bottleneck["qualityRank"] == 4
+    assert top_bottleneck["averageElapsedMs"] == 40.0
     assert analysis["variantRecommendations"]["bucketWinners"]
     assert analysis["variantRecommendations"]["adaptivePolicy"][0][
         "ablationVariant"
@@ -116,13 +141,13 @@ def test_large_library_optimization_analysis_collects_derived_receipts() -> None
     analysis = build_large_library_optimization_analysis(report_chain, results)
 
     _validate_schema(analysis)
-    assert analysis["summary"] == {
-        "status": "collecting",
-        "expectedVariantRunCount": 80,
-        "observedVariantRunCount": 80,
-        "missingVariantRunCount": 0,
-        "findingCount": 3,
-    }
+    assert analysis["summary"]["status"] == "collecting"
+    assert analysis["summary"]["expectedVariantRunCount"] == 80
+    assert analysis["summary"]["observedVariantRunCount"] == 80
+    assert analysis["summary"]["missingVariantRunCount"] == 0
+    assert analysis["summary"]["findingCount"] == 3
+    assert analysis["summary"]["costSummary"]["totalElapsedMs"] == 2000.0
+    assert analysis["summary"]["costSummary"]["averageElapsedMs"] == 25.0
     assert [item["kind"] for item in analysis["findings"]] == [
         "baseline-derived-variant-results",
         "source-equivalent-variant-results",

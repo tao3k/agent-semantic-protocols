@@ -169,6 +169,13 @@ The quality question is then precise: did the first-stage topology expose the ri
 
 The large-library report chain must treat first-stage topology adjustments as explicit ablation axes. The query-first-stage batch includes =no-local-evidence= alongside =no-query-seed-prior=, =no-package-cohesion=, and =no-query-clause-coverage=, and sandtable summaries persist the variant list plus local-evidence benchmark metrics for analyzer/report use. The optimization-analysis packet should rank all query-first-stage ablations, attach comparison deltas against the winning variant, and expose a dedicated =localEvidenceAblation= focus entry so reports can tell whether disabling owner-local topology evidence helped or hurt. These fields are calibration evidence for graph-turbo; they must not be rendered as required normal =search= stdout.
 
+The same analyzer packet may expose cost summaries and performance bottleneck
+ranks derived from receipt metrics such as elapsed time, ASP command count, and
+stdout bytes. These are report-chain calibration facts for deciding where to
+optimize graph-turbo execution, such as route selection or invariant graph work
+reuse. They are not ARI seed fields and must not be required in normal
+=search= stdout.
+
 Terminology is deliberately narrow:
 
 Analyzer-only observability is deliberately outside ARI. Developer/history

@@ -148,6 +148,16 @@ Topology is useful only if a report can answer:
 - whether the next action repaired that topology gap
 - whether the final answer was supported by the selected evidence
 - which graph-turbo rule should change next
+* Current Evidence Addendum
+Optimization analysis now emits analyzer-only cost summaries and performance
+bottleneck ranks from receipt metrics. This lets follow-up graph-turbo work
+target the most expensive query-first-stage variant instead of only the
+highest-quality variant.
+
+The next optimization loop should feed both measured failures and performance
+bottlenecks into first-stage route selection, owner ordering, and invariant
+graph work reuse. These fields remain report/analyzer calibration evidence; they
+must not become normal =search= stdout.
 
 If those questions cannot be answered from the status/report chain, topology
 has not been landed.

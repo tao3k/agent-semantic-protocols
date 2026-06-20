@@ -22,16 +22,22 @@ def build_large_library_optimization_analysis(
     aggregations = _aggregations(observed)
     findings = _findings(expected_variant_runs, observed, aggregations)
     recommendations = _variant_recommendations(observed, aggregations)
+    cost_summary = _cost_summary(observed)
     return {
         "schemaId": "agent.semantic-protocols.semantic-sandtable-large-library-optimization-analysis",
         "schemaVersion": "1",
         "packetKind": "large-library-optimization-analysis",
         "sourceReportChain": _source_report_chain(report_chain),
-        "summary": _summary(expected_variant_runs, observed, findings),
+        "summary": _summary(expected_variant_runs, observed, findings, cost_summary),
         "collectionManifest": collection,
         "aggregations": aggregations,
         "variantRecommendations": recommendations,
-        "improvementPlan": _improvement_plan(findings, aggregations, recommendations),
+        "improvementPlan": _improvement_plan(
+            findings,
+            aggregations,
+            recommendations,
+            cost_summary,
+        ),
         "findings": findings,
     }
 
@@ -263,6 +269,47 @@ def _average_metrics(items: list[dict[str, Any]], section: str) -> dict[str, flo
     }
 
 
+def _cost_summary(observed: list[dict[str, Any]]) -> dict[str, Any]:
+    elapsed_values = _receipt_metric_values(observed, "elapsedMs")
+    command_values = _receipt_metric_values(observed, "aspCommandCount")
+    stdout_values = _receipt_metric_values(observed, "stdoutBytes")
+    return {
+        "metricSource": "receiptMetrics",
+        "observedRunCount": len(observed),
+        "measuredElapsedRunCount": len(elapsed_values),
+        "measuredAspCommandRunCount": len(command_values),
+        "measuredStdoutBytesRunCount": len(stdout_values),
+        "totalElapsedMs": _metric_total(elapsed_values),
+        "averageElapsedMs": _metric_average(elapsed_values),
+        "totalAspCommandCount": _metric_total(command_values),
+        "averageAspCommandCount": _metric_average(command_values),
+        "totalStdoutBytes": _metric_total(stdout_values),
+        "averageStdoutBytes": _metric_average(stdout_values),
+    }
+
+
+def _receipt_metric_values(items: list[dict[str, Any]], key: str) -> list[float]:
+    values = []
+    for item in items:
+        value = dict_value(item.get("receiptMetrics")).get(key)
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            continue
+        values.append(float(value))
+    return values
+
+
+def _metric_total(values: list[float]) -> float:
+    if not values:
+        return 0.0
+    return round(sum(values), 6)
+
+
+def _metric_average(values: list[float]) -> float | None:
+    if not values:
+        return None
+    return round(sum(values) / len(values), 6)
+
+
 def _answer_status_counts(items: list[dict[str, Any]]) -> dict[str, int]:
     counts: dict[str, int] = {}
     for item in items:
@@ -295,6 +342,7 @@ def _variant_recommendations(
         "overallWinner": overall_rank[0] if overall_rank else None,
         "overallRank": overall_rank,
         "localEvidenceAblation": _variant_focus(overall_rank, "no-local-evidence"),
+        "performanceBottlenecks": _performance_bottlenecks(overall_rank),
         "bucketWinners": bucket_winners,
         "adaptivePolicy": _adaptive_policy(overall_rank, bucket_winners),
     }
@@ -367,6 +415,38 @@ def _variant_focus(
         if entry.get("ablationVariant") == variant:
             return entry
     return None
+
+
+def _performance_bottlenecks(rank: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    entries = [
+        {
+            "ablationVariant": entry["ablationVariant"],
+            "qualityRank": entry.get("rank"),
+            "averageElapsedMs": entry.get("averageElapsedMs"),
+            "averageAspCommandCount": entry.get("averageAspCommandCount"),
+            "averageStdoutBytes": entry.get("averageStdoutBytes"),
+            "answerQualityDeltaFromWinner": dict_value(
+                entry.get("comparisonDeltas")
+            ).get("answerQualityDeltaFromWinner"),
+        }
+        for entry in rank
+    ]
+    return [
+        {**entry, "performanceRank": index}
+        for index, entry in enumerate(
+            sorted(entries, key=_performance_sort_key),
+            start=1,
+        )
+    ]
+
+
+def _performance_sort_key(item: dict[str, Any]) -> tuple[float, float, float, str]:
+    return (
+        -_number(item.get("averageElapsedMs"), -1.0),
+        -_number(item.get("averageAspCommandCount"), -1.0),
+        -_number(item.get("averageStdoutBytes"), -1.0),
+        str(item.get("ablationVariant", "")),
+    )
 
 
 def _bucket_winners(aggregations: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -571,6 +651,7 @@ def _summary(
     expected_variant_runs: int,
     observed: list[dict[str, Any]],
     findings: list[dict[str, Any]],
+    cost_summary: dict[str, Any],
 ) -> dict[str, Any]:
     missing = max(expected_variant_runs - len(observed), 0)
     blocked = any(
@@ -592,6 +673,7 @@ def _summary(
         "observedVariantRunCount": len(observed),
         "missingVariantRunCount": missing,
         "findingCount": len(findings),
+        "costSummary": cost_summary,
     }
 
 
@@ -599,6 +681,7 @@ def _improvement_plan(
     findings: list[dict[str, Any]],
     aggregations: list[dict[str, Any]],
     recommendations: dict[str, Any],
+    cost_summary: dict[str, Any],
 ) -> list[dict[str, Any]]:
     if any(
         item["kind"]
@@ -618,7 +701,7 @@ def _improvement_plan(
                 "targetMetric": "runsNeedingVariantReceipt",
             }
         ]
-    return [
+    plans = [
         {
             "id": "calibrate-query-first-stage",
             "priority": "p1",
@@ -637,6 +720,29 @@ def _improvement_plan(
             "bucketWinnerCount": len(list_value(recommendations.get("bucketWinners"))),
         }
     ]
+    bottlenecks = list_value(recommendations.get("performanceBottlenecks"))
+    top_bottleneck = dict_value(bottlenecks[0] if bottlenecks else None)
+    if top_bottleneck:
+        plans.append(
+            {
+                "id": "profile-query-first-stage-performance",
+                "priority": "p2",
+                "action": (
+                    "profile and cache invariant graph-turbo ranking work for "
+                    "the most expensive query-first-stage variant"
+                ),
+                "targetMetric": (
+                    "variantRecommendations.performanceBottlenecks[0].averageElapsedMs"
+                ),
+                "topBottleneckVariant": top_bottleneck.get("ablationVariant"),
+                "averageElapsedMs": top_bottleneck.get("averageElapsedMs"),
+                "averageAspCommandCount": top_bottleneck.get("averageAspCommandCount"),
+                "averageStdoutBytes": top_bottleneck.get("averageStdoutBytes"),
+                "totalElapsedMs": cost_summary.get("totalElapsedMs"),
+                "observedVariantRunCount": cost_summary.get("observedRunCount"),
+            }
+        )
+    return plans
 
 
 def _source_report_chain(report_chain: dict[str, Any]) -> dict[str, Any]:
