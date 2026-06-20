@@ -90,6 +90,7 @@ fn fd_prime_owners(
     command
         .arg("--type")
         .arg("f")
+        .arg("--hidden")
         .arg("--color")
         .arg("never")
         .arg(".")
@@ -113,7 +114,11 @@ fn fd_prime_owners(
         .filter_map(|line| relative_owner_path(project_root, Path::new(line)))
         .take(NATIVE_PRIME_OWNER_LIMIT)
         .collect::<Vec<_>>();
-    Ok(Some(owners))
+    if owners.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(owners))
+    }
 }
 
 fn fs_prime_owners(

@@ -42,6 +42,33 @@ fn native_prime_seed_stdout_renders_owner_frontier_without_provider() {
 }
 
 #[test]
+fn native_prime_seed_stdout_renders_owner_frontier_for_hidden_workspace_root() {
+    let base = temp_project_root("native-prime-hidden-root");
+    let root = base.join(".data").join("gerbil");
+    fs::create_dir_all(root.join("src/std")).expect("create gerbil std");
+    fs::write(root.join("src/std/make.ss"), "(def (make . _) #!void)\n").expect("write make");
+    let request = ClientRequest::new(ClientMethod::Search, root.clone())
+        .with_language(LanguageId::from("gerbil-scheme"))
+        .with_forwarded_args(vec![
+            "prime".to_string(),
+            "--view".to_string(),
+            "seeds".to_string(),
+        ]);
+
+    let stdout = render_native_prime_seed_stdout(&root, &request, false)
+        .expect("native prime")
+        .expect("native prime stdout");
+    let stdout = String::from_utf8(stdout.to_vec()).expect("utf8 stdout");
+
+    assert!(
+        stdout.contains("O=owner:path(src/std/make.ss)!owner"),
+        "{stdout}"
+    );
+    assert!(!stdout.contains("G>{}"), "{stdout}");
+    let _ = fs::remove_dir_all(base);
+}
+
+#[test]
 fn native_prime_seed_stdout_does_not_intercept_json_requests() {
     let root = temp_project_root("native-prime-json");
     let request = ClientRequest::new(ClientMethod::Search, root.clone())
