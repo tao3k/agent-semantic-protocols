@@ -24,27 +24,21 @@ pub(super) fn install_agent_semantic_protocols_skill(
     runtime_profiles: &RuntimeProfiles,
 ) -> Result<InstalledAgentSkillPaths, String> {
     let skill_path = default_agent_skill_path(project_root);
-    let skill_contract_path = default_agent_skill_contract_path(project_root);
     let rendered_skill = render_agent_semantic_protocols_skill(activation, runtime_profiles)?;
-    write_agent_skill_pair(&skill_path, &skill_contract_path, &rendered_skill)?;
-    let plugin_paths = optional_plugin_skill_paths(project_root)
-        .map(|(plugin_skill_path, plugin_skill_contract_path)| {
-            write_agent_skill_pair(
-                &plugin_skill_path,
-                &plugin_skill_contract_path,
-                &rendered_skill,
-            )
-            .map(|()| (plugin_skill_path, plugin_skill_contract_path))
+    write_agent_skill(&skill_path, &rendered_skill)?;
+    remove_legacy_agent_skill_contract(&skill_path)?;
+    let plugin_skill_path = optional_plugin_skill_path(project_root)
+        .map(|plugin_skill_path| {
+            write_agent_skill(&plugin_skill_path, &rendered_skill)?;
+            remove_legacy_agent_skill_contract(&plugin_skill_path)?;
+            Ok::<PathBuf, String>(plugin_skill_path)
         })
         .transpose()?;
     Ok(InstalledAgentSkillPaths {
         skill_path: Some(skill_path),
-        skill_contract_path: Some(skill_contract_path),
-        plugin_skill_path: plugin_paths
-            .as_ref()
-            .map(|(plugin_skill_path, _)| plugin_skill_path.clone()),
-        plugin_skill_contract_path: plugin_paths
-            .map(|(_, plugin_skill_contract_path)| plugin_skill_contract_path),
+        skill_contract_path: None,
+        plugin_skill_path,
+        plugin_skill_contract_path: None,
     })
 }
 
@@ -63,15 +57,7 @@ fn default_agent_skill_path(project_root: &Path) -> PathBuf {
         .join("SKILL.org")
 }
 
-fn default_agent_skill_contract_path(project_root: &Path) -> PathBuf {
-    project_root
-        .join(".agents")
-        .join("skills")
-        .join("agent-semantic-protocols")
-        .join("SKILL.contract.org")
-}
-
-fn optional_plugin_skill_paths(project_root: &Path) -> Option<(PathBuf, PathBuf)> {
+fn optional_plugin_skill_path(project_root: &Path) -> Option<PathBuf> {
     let plugin_root = project_root.join("asp-codex-plugin");
     if !plugin_root
         .join(".codex-plugin")
@@ -81,31 +67,25 @@ fn optional_plugin_skill_paths(project_root: &Path) -> Option<(PathBuf, PathBuf)
         return None;
     }
     let skill_dir = plugin_root.join("skills").join("agent-semantic-protocols");
-    Some((
-        skill_dir.join("SKILL.org"),
-        skill_dir.join("SKILL.contract.org"),
-    ))
+    Some(skill_dir.join("SKILL.org"))
 }
 
-fn write_agent_skill_pair(
-    skill_path: &Path,
-    skill_contract_path: &Path,
-    rendered_skill: &str,
-) -> Result<(), String> {
+fn write_agent_skill(skill_path: &Path, rendered_skill: &str) -> Result<(), String> {
     if let Some(parent) = skill_path.parent() {
         fs::create_dir_all(parent)
             .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
     }
-    fs::write(
-        skill_contract_path,
-        format!(
-            "{}\n",
-            AGENT_SEMANTIC_PROTOCOLS_SKILL_CONTRACT_ORG.trim_end()
-        ),
-    )
-    .map_err(|error| format!("failed to write {}: {error}", skill_contract_path.display()))?;
     fs::write(skill_path, format!("{}\n", rendered_skill.trim_end()))
         .map_err(|error| format!("failed to write {}: {error}", skill_path.display()))?;
+    Ok(())
+}
+
+fn remove_legacy_agent_skill_contract(skill_path: &Path) -> Result<(), String> {
+    let contract_path = skill_path.with_file_name("SKILL.contract.org");
+    if contract_path.exists() {
+        fs::remove_file(&contract_path)
+            .map_err(|error| format!("failed to remove {}: {error}", contract_path.display()))?;
+    }
     Ok(())
 }
 
@@ -297,7 +277,7 @@ fn provider_contract_lines(
             provider.language_id, provider.language_id
         ));
         lines.push(format!(
-            "Use =asp {} search prime --workspace <workspace-root> --view seeds= before reading {} source.",
+            "Use =asp {} search prime --workspace <workspace-root> --view seeds= only when the {} owner map is unknown; exact selectors, owners, symbols, dependencies, or hook frontiers should go straight to the provider-owned query, owner, finder, guide, or dependency route.",
             provider.language_id, provider.language_id
         ));
     }

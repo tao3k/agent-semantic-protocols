@@ -12,6 +12,12 @@ use std::process::Command;
 
 const ASP_CODEX_PLUGIN_NAME: &str = "asp-codex-plugin";
 const ASP_CODEX_PLUGIN_MARKETPLACE_NAME: &str = "asp-project";
+const ASP_CODEX_PLUGIN_MANIFEST_JSON: &str =
+    include_str!("../../../../asp-codex-plugin/.codex-plugin/plugin.json");
+const ASP_CODEX_PLUGIN_HOOKS_JSON: &str =
+    include_str!("../../../../asp-codex-plugin/hooks/hooks.json");
+const ASP_CODEX_PLUGIN_SKILL_ORG: &str =
+    include_str!("../../../../asp-codex-plugin/skills/agent-semantic-protocols/SKILL.org");
 
 #[derive(Clone, Copy)]
 pub(super) enum CodexPluginScope {
@@ -50,16 +56,7 @@ pub(super) fn install_codex_plugin_hooks(
     scope: CodexPluginScope,
     subagent_model: &str,
 ) -> Result<(PathBuf, String), String> {
-    let plugin_manifest = project_root
-        .join(ASP_CODEX_PLUGIN_NAME)
-        .join(".codex-plugin")
-        .join("plugin.json");
-    if !plugin_manifest.is_file() {
-        return Err(format!(
-            "Codex plugin installation requires {}",
-            super::display_path(project_root, &plugin_manifest)
-        ));
-    }
+    let plugin_manifest = install_codex_plugin_bundle(project_root)?;
     let (marketplace_path, marketplace_name) =
         ensure_codex_project_plugin_marketplace(project_root)?;
     let project_config_path = install_codex_project_plugin_config(project_root)?;
@@ -113,8 +110,9 @@ pub(super) fn install_codex_plugin_hooks(
     Ok((
         config_path,
         format!(
-            " pluginScope={} pluginMarketplace={} pluginMarketplaceConfig={} projectConfig={} projectTrustConfig={} subagent={}{}",
+            " pluginScope={} pluginManifest={} pluginMarketplace={} pluginMarketplaceConfig={} projectConfig={} projectTrustConfig={} subagent={}{}",
             scope.label(),
+            super::display_path(project_root, &plugin_manifest),
             marketplace_name,
             super::display_path(project_root, &marketplace_path),
             super::display_path(project_root, &project_config_path),
@@ -123,6 +121,46 @@ pub(super) fn install_codex_plugin_hooks(
             installed_path,
         ),
     ))
+}
+
+fn install_codex_plugin_bundle(project_root: &Path) -> Result<PathBuf, String> {
+    let plugin_root = project_root.join(ASP_CODEX_PLUGIN_NAME);
+    if plugin_root.exists() && !plugin_root.is_dir() {
+        return Err(format!(
+            "Codex plugin installation requires {} to be a directory",
+            super::display_path(project_root, &plugin_root)
+        ));
+    }
+    write_codex_plugin_bundle_file(
+        &plugin_root.join(".codex-plugin").join("plugin.json"),
+        ASP_CODEX_PLUGIN_MANIFEST_JSON,
+    )?;
+    write_codex_plugin_bundle_file(
+        &plugin_root.join("hooks").join("hooks.json"),
+        ASP_CODEX_PLUGIN_HOOKS_JSON,
+    )?;
+    let skill_dir = plugin_root.join("skills").join("agent-semantic-protocols");
+    write_codex_plugin_bundle_file(&skill_dir.join("SKILL.org"), ASP_CODEX_PLUGIN_SKILL_ORG)?;
+    remove_codex_plugin_bundle_file(&skill_dir.join("SKILL.contract.org"))?;
+    Ok(plugin_root.join(".codex-plugin").join("plugin.json"))
+}
+
+fn write_codex_plugin_bundle_file(path: &Path, content: &str) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
+    }
+    fs::write(path, format!("{}\n", content.trim_end()).as_bytes())
+        .map_err(|error| format!("failed to write {}: {error}", path.display()))?;
+    Ok(())
+}
+
+fn remove_codex_plugin_bundle_file(path: &Path) -> Result<(), String> {
+    if path.exists() {
+        fs::remove_file(path)
+            .map_err(|error| format!("failed to remove {}: {error}", path.display()))?;
+    }
+    Ok(())
 }
 
 fn install_codex_project_plugin_config(project_root: &Path) -> Result<PathBuf, String> {

@@ -136,31 +136,52 @@ fn org_contract_rejects_missing_provider_contracts_section() {
 fn install_mirrors_generated_skill_into_codex_plugin_when_present() {
     let root = temp_project_root("skill-plugin-mirror");
     write_plugin_manifest(&root);
+    let project_contract_path = root
+        .join(".agents")
+        .join("skills")
+        .join("agent-semantic-protocols")
+        .join("SKILL.contract.org");
+    let plugin_contract_path = root
+        .join("asp-codex-plugin")
+        .join("skills")
+        .join("agent-semantic-protocols")
+        .join("SKILL.contract.org");
+    write_stale_contract(&project_contract_path);
+    write_stale_contract(&plugin_contract_path);
 
     let installed =
         install_agent_semantic_protocols_skill(&root, &test_activation(), &test_runtime_profiles())
             .unwrap();
     let project_skill_path = installed.skill_path.expect("project skill path");
-    let project_skill_contract_path = installed
-        .skill_contract_path
-        .expect("project skill contract path");
+    assert!(installed.skill_contract_path.is_none());
 
     let plugin_skill_path = installed.plugin_skill_path.expect("plugin skill path");
-    let plugin_skill_contract_path = installed
-        .plugin_skill_contract_path
-        .expect("plugin skill contract path");
+    assert!(installed.plugin_skill_contract_path.is_none());
 
     assert_eq!(
         std::fs::read_to_string(&project_skill_path).expect("read installed skill"),
         std::fs::read_to_string(&plugin_skill_path).expect("read plugin skill")
     );
-    assert_eq!(
-        std::fs::read_to_string(&project_skill_contract_path)
-            .expect("read installed skill contract"),
-        std::fs::read_to_string(&plugin_skill_contract_path).expect("read plugin skill contract")
+    assert!(
+        !project_skill_path
+            .with_file_name("SKILL.contract.org")
+            .exists(),
+        "project skill contract should not be installed"
+    );
+    assert!(
+        !plugin_skill_path
+            .with_file_name("SKILL.contract.org")
+            .exists(),
+        "plugin skill contract should not be installed"
     );
 
     let _ = std::fs::remove_dir_all(root);
+}
+
+fn write_stale_contract(path: &std::path::Path) {
+    std::fs::create_dir_all(path.parent().expect("contract parent"))
+        .expect("create stale contract parent");
+    std::fs::write(path, "* stale user-layer contract\n").expect("write stale contract");
 }
 
 fn write_plugin_manifest(root: &std::path::Path) {

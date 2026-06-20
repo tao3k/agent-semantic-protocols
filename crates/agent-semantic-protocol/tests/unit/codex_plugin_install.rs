@@ -9,17 +9,6 @@ mod unix {
         let root = temp_project_root("codex-plugin-cleans-retired-hooks");
         let codex_home = root.join(".codex-home");
         std::fs::create_dir_all(&codex_home).expect("create codex home");
-        let plugin_manifest = root
-            .join("asp-codex-plugin")
-            .join(".codex-plugin")
-            .join("plugin.json");
-        std::fs::create_dir_all(plugin_manifest.parent().expect("plugin manifest parent"))
-            .expect("create plugin manifest parent");
-        std::fs::write(
-            &plugin_manifest,
-            r#"{"name":"asp-codex-plugin","version":"0.0.0"}"#,
-        )
-        .expect("write plugin manifest");
         let project_config = root.join(".codex/config.toml");
         std::fs::create_dir_all(project_config.parent().expect("project config parent"))
             .expect("create project config parent");
@@ -53,6 +42,7 @@ mod unix {
             "stdout={}",
             String::from_utf8_lossy(&output.stdout)
         );
+        assert_project_plugin_bundle_installed(&root);
 
         let content = std::fs::read_to_string(&project_config).expect("read project config");
         assert!(content.contains("model = \"gpt-5\""), "{content}");
@@ -80,17 +70,7 @@ mod unix {
         let root = temp_project_root("codex-plugin-unified-install");
         let codex_home = root.join(".codex-home");
         std::fs::create_dir_all(&codex_home).expect("create codex home");
-        let plugin_manifest = root
-            .join("asp-codex-plugin")
-            .join(".codex-plugin")
-            .join("plugin.json");
-        std::fs::create_dir_all(plugin_manifest.parent().expect("plugin manifest parent"))
-            .expect("create plugin manifest parent");
-        std::fs::write(
-            &plugin_manifest,
-            r#"{"name":"asp-codex-plugin","version":"0.0.0"}"#,
-        )
-        .expect("write plugin manifest");
+        write_stale_plugin_skill_contract(&root);
 
         let fake_bin = write_fake_codex_cli(&root);
         let output = Command::new(env!("CARGO_BIN_EXE_asp"))
@@ -112,8 +92,49 @@ mod unix {
             "stdout={}",
             String::from_utf8_lossy(&output.stdout)
         );
+        assert_project_plugin_bundle_installed(&root);
 
         std::fs::remove_dir_all(root).expect("cleanup temp project root");
+    }
+
+    fn write_stale_plugin_skill_contract(root: &Path) {
+        let contract_path = root
+            .join("asp-codex-plugin")
+            .join("skills")
+            .join("agent-semantic-protocols")
+            .join("SKILL.contract.org");
+        std::fs::create_dir_all(contract_path.parent().expect("plugin skill dir"))
+            .expect("create plugin skill dir");
+        std::fs::write(&contract_path, "* stale user-layer contract\n")
+            .expect("write stale plugin skill contract");
+    }
+
+    fn assert_project_plugin_bundle_installed(root: &Path) {
+        let plugin_root = root.join("asp-codex-plugin");
+        assert!(
+            plugin_root
+                .join(".codex-plugin")
+                .join("plugin.json")
+                .is_file(),
+            "missing plugin manifest under {}",
+            plugin_root.display()
+        );
+        assert!(
+            plugin_root.join("hooks").join("hooks.json").is_file(),
+            "missing plugin hooks under {}",
+            plugin_root.display()
+        );
+        let skill_dir = plugin_root.join("skills").join("agent-semantic-protocols");
+        assert!(
+            skill_dir.join("SKILL.org").is_file(),
+            "missing plugin skill under {}",
+            skill_dir.display()
+        );
+        assert!(
+            !skill_dir.join("SKILL.contract.org").exists(),
+            "plugin skill contract should remain repository-side validation input, not an installed user artifact under {}",
+            skill_dir.display()
+        );
     }
 
     fn temp_project_root(name: &str) -> PathBuf {
