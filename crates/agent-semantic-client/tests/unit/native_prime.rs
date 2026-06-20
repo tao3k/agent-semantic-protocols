@@ -42,29 +42,62 @@ fn native_prime_seed_stdout_renders_owner_frontier_without_provider() {
 }
 
 #[test]
-fn native_prime_seed_stdout_renders_owner_frontier_for_hidden_workspace_root() {
+fn native_prime_seed_stdout_renders_owner_frontier_for_hidden_workspace_roots() {
+    let cases = [
+        ("rust", "src/lib.rs", "pub fn native_prime_gate() {}\n"),
+        (
+            "typescript",
+            "src/index.ts",
+            "export const nativePrimeGate = true;\n",
+        ),
+        (
+            "python",
+            "src/main.py",
+            "def native_prime_gate():\n    return True\n",
+        ),
+        ("julia", "src/Main.jl", "native_prime_gate() = true\n"),
+        (
+            "gerbil-scheme",
+            "src/std/make.ss",
+            "(def (make . _) #!void)\n",
+        ),
+        ("org", "docs/index.org", "* Native Prime\n"),
+        ("md", "docs/index.md", "# Native Prime\n"),
+    ];
     let base = temp_project_root("native-prime-hidden-root");
-    let root = base.join(".data").join("gerbil");
-    fs::create_dir_all(root.join("src/std")).expect("create gerbil std");
-    fs::write(root.join("src/std/make.ss"), "(def (make . _) #!void)\n").expect("write make");
-    let request = ClientRequest::new(ClientMethod::Search, root.clone())
-        .with_language(LanguageId::from("gerbil-scheme"))
-        .with_forwarded_args(vec![
-            "prime".to_string(),
-            "--view".to_string(),
-            "seeds".to_string(),
-        ]);
 
-    let stdout = render_native_prime_seed_stdout(&root, &request, false)
-        .expect("native prime")
-        .expect("native prime stdout");
-    let stdout = String::from_utf8(stdout.to_vec()).expect("utf8 stdout");
+    for (language_id, owner_path, source) in cases {
+        let root = base.join(".data").join(language_id);
+        let file = root.join(owner_path);
+        fs::create_dir_all(file.parent().expect("fixture parent")).expect("create fixture parent");
+        fs::write(&file, source).expect("write fixture source");
+        let request = ClientRequest::new(ClientMethod::Search, root.clone())
+            .with_language(LanguageId::from(language_id))
+            .with_forwarded_args(vec![
+                "prime".to_string(),
+                "--view".to_string(),
+                "seeds".to_string(),
+            ]);
 
-    assert!(
-        stdout.contains("O=owner:path(src/std/make.ss)!owner"),
-        "{stdout}"
-    );
-    assert!(!stdout.contains("G>{}"), "{stdout}");
+        let stdout = render_native_prime_seed_stdout(&root, &request, false)
+            .expect("native prime")
+            .expect("native prime stdout");
+        let stdout = String::from_utf8(stdout.to_vec()).expect("utf8 stdout");
+
+        assert!(
+            stdout.contains(&format!("O=owner:path({owner_path})!owner")),
+            "language={language_id} stdout={stdout}"
+        );
+        assert!(
+            stdout.contains("frontier=O.owner"),
+            "language={language_id} stdout={stdout}"
+        );
+        assert!(
+            !stdout.contains("G>{}"),
+            "language={language_id} stdout={stdout}"
+        );
+    }
+
     let _ = fs::remove_dir_all(base);
 }
 
