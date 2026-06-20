@@ -171,6 +171,7 @@ def _node_score(
         )
         + node_adjustments.get("packageCohesion", 0.0)
         + node_adjustments.get("queryClauseCoverage", 0.0)
+        + node_adjustments.get("localEvidence", 0.0)
     )
 
 

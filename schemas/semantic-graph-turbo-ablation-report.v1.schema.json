@@ -217,7 +217,8 @@
                             "relation-weight-flat",
                             "no-query-seed-prior",
                             "no-package-cohesion",
-                            "no-query-clause-coverage"
+                            "no-query-clause-coverage",
+                            "no-local-evidence"
                         ]
                     },
                     "changes": {
@@ -288,7 +289,9 @@
                             "querySeedPriorCountDelta",
                             "queryPackageCohesionCountDelta",
                             "queryPackageDriftPenaltyCountDelta",
-                            "queryClauseCoverageCountDelta"
+                            "queryClauseCoverageCountDelta",
+                            "queryLocalEvidenceBoostCountDelta",
+                            "queryLocalEvidencePenaltyCountDelta"
                         ],
                         "properties": {
                             "rankChanged": {
@@ -402,6 +405,20 @@
                                 ]
                             },
                             "queryClauseCoverageCountDelta": {
+                                "type": [
+                                    "integer",
+                                    "number",
+                                    "null"
+                                ]
+                            },
+                            "queryLocalEvidenceBoostCountDelta": {
+                                "type": [
+                                    "integer",
+                                    "number",
+                                    "null"
+                                ]
+                            },
+                            "queryLocalEvidencePenaltyCountDelta": {
                                 "type": [
                                     "integer",
                                     "number",

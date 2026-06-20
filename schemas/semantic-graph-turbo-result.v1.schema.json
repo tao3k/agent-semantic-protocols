@@ -1187,6 +1187,17 @@
         },
         "queryClauseCoverageDelta": {
           "type": "number"
+        },
+        "queryLocalEvidenceBoostCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "queryLocalEvidencePenaltyCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "queryLocalEvidenceDelta": {
+          "type": "number"
         }
       }
     },

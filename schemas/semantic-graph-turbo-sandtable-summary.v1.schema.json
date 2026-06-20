@@ -75,6 +75,16 @@
                 "readLoopSameOwnerSuppressedCount",
                 "receiptBoostCount",
                 "receiptPenaltyCount",
+                "querySeedPriorCount",
+                "querySeedPriorMass",
+                "queryPackageCohesionCount",
+                "queryPackageDriftPenaltyCount",
+                "queryPackageCohesionDelta",
+                "queryClauseCoverageCount",
+                "queryClauseCoverageDelta",
+                "queryLocalEvidenceBoostCount",
+                "queryLocalEvidencePenaltyCount",
+                "queryLocalEvidenceDelta",
                 "cacheStatus"
             ],
             "properties": {
@@ -204,6 +214,42 @@
                 "receiptPenaltyCount": {
                     "type": "integer",
                     "minimum": 0
+                },
+                "querySeedPriorCount": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "querySeedPriorMass": {
+                    "type": "number"
+                },
+                "queryPackageCohesionCount": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "queryPackageDriftPenaltyCount": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "queryPackageCohesionDelta": {
+                    "type": "number"
+                },
+                "queryClauseCoverageCount": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "queryClauseCoverageDelta": {
+                    "type": "number"
+                },
+                "queryLocalEvidenceBoostCount": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "queryLocalEvidencePenaltyCount": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "queryLocalEvidenceDelta": {
+                    "type": "number"
                 },
                 "cacheStatus": {
                     "enum": [
@@ -351,6 +397,9 @@
         "readyLanguageCount",
         "optimizationRunCount",
         "optimizationVariantRunCount",
+        "optimizationAblationVariantCount",
+        "optimizationAblationVariants",
+        "localEvidenceAblationEnabled",
         "findingCount",
         "status",
         "reason",
@@ -390,6 +439,20 @@
         "optimizationVariantRunCount": {
           "type": "integer",
           "minimum": 0
+        },
+        "optimizationAblationVariantCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "optimizationAblationVariants": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "localEvidenceAblationEnabled": {
+          "type": "boolean"
         },
         "findingCount": {
           "type": "integer",

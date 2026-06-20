@@ -8,6 +8,7 @@ QUERY_FIRST_STAGE_ABLATION_VARIANTS = (
     "no-query-seed-prior",
     "no-package-cohesion",
     "no-query-clause-coverage",
+    "no-local-evidence",
 )
 OPTIMIZATION_BATCH_AGGREGATION_AXES = (
     "language",

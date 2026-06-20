@@ -16,6 +16,7 @@ from .artifact_owner_collapse import owner_collapse_candidates
 from .artifact_prime_suppression import prime_suppression_candidates
 from .artifact_read_loop import read_loop_risk_summary
 from .artifact_timeline_targets import optimization_targets
+from .artifact_topology import hydrate_topology_metadata, topology_summary
 
 
 @dataclass(frozen=True)
@@ -42,6 +43,7 @@ class TimelineContext:
     owner_collapse: dict[str, object]
     fanout_planning: dict[str, object]
     read_loop_risk: dict[str, object]
+    topology: dict[str, object]
 
 
 def evaluate_artifact_timeline(
@@ -66,6 +68,7 @@ def evaluate_artifact_events_timeline(
     event_source: str = "artifact-scan",
 ) -> dict[str, object]:
     params = parameters or TimelineParameters()
+    events = hydrate_topology_metadata(events, artifact_dir)
     context = _timeline_context(events, params)
     return _timeline_report(artifact_dir, params, context, event_source=event_source)
 
@@ -97,6 +100,7 @@ def _timeline_context(
         limit=params.examples,
     )
     read_loop_risk = read_loop_risk_summary(events, limit=params.examples)
+    topology = topology_summary(events, limit=params.examples)
     return TimelineContext(
         events=events,
         sessions=sessions,
@@ -109,6 +113,7 @@ def _timeline_context(
         owner_collapse=owner_collapse,
         fanout_planning=fanout_planning,
         read_loop_risk=read_loop_risk,
+        topology=topology,
     )
 
 
@@ -182,6 +187,14 @@ def _timeline_report(
         "readLoopDuplicateSelectors": context.read_loop_risk["duplicateSelectors"],
         "readLoopAdjacentRangeWindows": context.read_loop_risk["adjacentRangeWindows"],
         "readLoopSameOwnerScans": context.read_loop_risk["sameOwnerScans"],
+        "topologyEventCount": context.topology["eventsWithTopology"],
+        "topologyWeakQueryPackEvents": context.topology["weakQueryPackEvents"],
+        "topologyWeakPackageCohesionEvents": context.topology[
+            "weakPackageCohesionEvents"
+        ],
+        "topologyWeakLocalEvidenceEvents": context.topology[
+            "weakLocalEvidenceEvents"
+        ],
         "kindCounts": dict(
             sorted(Counter(event.kind for event in context.events).items())
         ),
@@ -200,6 +213,7 @@ def _timeline_report(
         "ownerCollapse": context.owner_collapse,
         "fanoutPlanning": context.fanout_planning,
         "readLoopRisk": context.read_loop_risk,
+        "topology": context.topology,
         "actionSummary": summary,
     }
     report["efficiencyEstimate"] = efficiency_estimate(report)

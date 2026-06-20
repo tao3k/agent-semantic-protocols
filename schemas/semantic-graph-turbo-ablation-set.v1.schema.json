@@ -58,7 +58,8 @@
                             "relation-weight-flat",
                             "no-query-seed-prior",
                             "no-package-cohesion",
-                            "no-query-clause-coverage"
+                            "no-query-clause-coverage",
+                            "no-local-evidence"
                         ]
                     },
                     "changes": {

@@ -51,7 +51,7 @@ def test_large_library_variant_result_feeds_analysis_observed_count() -> None:
     analysis = build_large_library_optimization_analysis(report_chain, [packet])
 
     assert analysis["summary"]["observedVariantRunCount"] == 1
-    assert analysis["summary"]["missingVariantRunCount"] == 59
+    assert analysis["summary"]["missingVariantRunCount"] == 79
     assert packet["variantRunId"] in analysis["collectionManifest"][
         "observedVariantRunIds"
     ]

@@ -131,6 +131,9 @@ class AlgorithmMetrics:
     query_package_cohesion_delta: float = 0.0
     query_clause_coverage_count: int = 0
     query_clause_coverage_delta: float = 0.0
+    query_local_evidence_boost_count: int = 0
+    query_local_evidence_penalty_count: int = 0
+    query_local_evidence_delta: float = 0.0
 
 
 @dataclass(frozen=True)

@@ -198,6 +198,11 @@ def _algorithm_metrics_to_packet(result: GraphResult) -> dict[str, object]:
         "queryPackageCohesionDelta": metrics.query_package_cohesion_delta,
         "queryClauseCoverageCount": metrics.query_clause_coverage_count,
         "queryClauseCoverageDelta": metrics.query_clause_coverage_delta,
+        "queryLocalEvidenceBoostCount": metrics.query_local_evidence_boost_count,
+        "queryLocalEvidencePenaltyCount": (
+            metrics.query_local_evidence_penalty_count
+        ),
+        "queryLocalEvidenceDelta": metrics.query_local_evidence_delta,
     }
 
 

@@ -23,6 +23,7 @@ from .artifact_project_roots import (
     artifact_project_root_arg,
     artifact_workspace_root,
 )
+from .artifact_topology import packet_topology_metadata
 
 
 def scan_artifact_events(root: Path) -> tuple[ArtifactEvent, ...]:
@@ -57,6 +58,8 @@ def _events_from_directory(
             yield from _packet_event(path, "tree-sitter-query", workspace_root)
         elif directory.name == "search-output":
             yield _text_event(path, "search-output", workspace_root)
+        elif directory.name == "analysis-metadata":
+            yield from _packet_event(path, "analysis-metadata", workspace_root)
 
 
 def _prompt_output_events(path: Path, workspace_root: Path) -> Iterable[ArtifactEvent]:
@@ -88,6 +91,7 @@ def _packet_event(
             query=query,
             project_root=project_root,
             workspace_root=workspace_root,
+            metadata=packet_topology_metadata(packet),
         ),
     )
 
@@ -150,6 +154,7 @@ def _event(
     project_root: str,
     workspace_root: Path,
     argv: tuple[str, ...] = (),
+    metadata: Mapping[str, object] | None = None,
 ) -> ArtifactEvent:
     stat = path.stat()
     return ArtifactEvent(
@@ -164,6 +169,7 @@ def _event(
         path=str(path),
         bytes=stat.st_size,
         argv=argv,
+        metadata=dict(metadata or {}),
     )
 
 
@@ -196,6 +202,7 @@ def _method_from_name(path: Path) -> str:
 
 
 _KNOWN_DIRS = (
+    "analysis-metadata",
     "prompt-output",
     "query",
     "search",

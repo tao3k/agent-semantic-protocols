@@ -51,7 +51,12 @@ def rank_explanations(
 
 def _query_adjustment_reasons(adjustments: Mapping[str, float]) -> tuple[str, ...]:
     reasons: list[str] = []
-    for name in ("seedPrior", "packageCohesion", "queryClauseCoverage"):
+    for name in (
+        "seedPrior",
+        "packageCohesion",
+        "queryClauseCoverage",
+        "localEvidence",
+    ):
         value = adjustments.get(name)
         if not isinstance(value, int | float) or value == 0:
             continue
@@ -59,6 +64,7 @@ def _query_adjustment_reasons(adjustments: Mapping[str, float]) -> tuple[str, ..
             "seedPrior": "query-seed-prior",
             "packageCohesion": "query-package-cohesion",
             "queryClauseCoverage": "query-clause-coverage",
+            "localEvidence": "topology-local-evidence",
         }[name]
         reasons.append(f"{reason_name}:{value:+.2f}")
     return tuple(reasons)

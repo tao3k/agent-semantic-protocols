@@ -47,7 +47,7 @@ def test_graph_turbo_ablation_report_cli_generates_schema_packet(tmp_path) -> No
     variants = {entry["variant"]: entry for entry in payload["variants"]}
 
     assert payload["packetKind"] == "graph-turbo-ablation-report"
-    assert payload["summary"]["variantCount"] == 9
+    assert payload["summary"]["variantCount"] == 10
     assert payload["qualityGate"]["status"] == "pass"
     assert "queryFirstStage" in payload["qualityGate"]["signals"]
     assert variants["full"]["comparison"]["rankOverlapRatio"] == 1.0
@@ -184,6 +184,12 @@ def test_graph_turbo_ablation_report_exposes_query_first_stage_signal(
         ]
         < 0
     )
+    assert (
+        variants["no-local-evidence"]["comparison"][
+            "queryLocalEvidenceBoostCountDelta"
+        ]
+        < 0
+    )
 
 
 def test_graph_turbo_ablation_report_can_fail_quality_gate(tmp_path) -> None:
@@ -262,7 +268,13 @@ def _query_first_stage_request() -> dict[str, object]:
     ]
     graph = packet["graph"]
     assert isinstance(graph, dict)
-    graph["nodes"] = [
+    graph["nodes"] = _query_first_stage_nodes()
+    graph["edges"] = _query_first_stage_edges()
+    return packet
+
+
+def _query_first_stage_nodes() -> list[dict[str, object]]:
+    return [
         {
             "id": "query:asp_graph_turbo",
             "kind": "query",
@@ -296,8 +308,17 @@ def _query_first_stage_request() -> dict[str, object]:
             "ownerPath": "crates/agent-semantic-client/tests/unit/search_history.rs",
             "symbol": "asp_graph_turbo",
         },
+        {
+            "id": "test:ranking-score",
+            "kind": "test",
+            "role": "path",
+            "value": "tests/unit/test_asp_graph_turbo_ranking_query.py",
+        },
     ]
-    graph["edges"] = [
+
+
+def _query_first_stage_edges() -> list[dict[str, str]]:
+    return [
         {
             "source": "query:asp_graph_turbo",
             "target": "item:package-and-request",
@@ -313,5 +334,9 @@ def _query_first_stage_request() -> dict[str, object]:
             "target": "item:package-and-request",
             "relation": "contains",
         },
+        {
+            "source": "owner:packages/python/asp_graph_turbo/src/asp_graph_turbo/ranking_score.py",
+            "target": "test:ranking-score",
+            "relation": "covers",
+        },
     ]
-    return packet

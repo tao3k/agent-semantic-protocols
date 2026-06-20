@@ -81,6 +81,32 @@ def _benchmark_section(benchmark: Mapping[str, object]) -> dict[str, object]:
         ),
         "receiptBoostCount": benchmark_metrics.get("receiptBoostCount"),
         "receiptPenaltyCount": benchmark_metrics.get("receiptPenaltyCount"),
+        "querySeedPriorCount": benchmark_metrics.get("querySeedPriorCount"),
+        "querySeedPriorMass": benchmark_metrics.get("querySeedPriorMass"),
+        "queryPackageCohesionCount": benchmark_metrics.get(
+            "queryPackageCohesionCount"
+        ),
+        "queryPackageDriftPenaltyCount": benchmark_metrics.get(
+            "queryPackageDriftPenaltyCount"
+        ),
+        "queryPackageCohesionDelta": benchmark_metrics.get(
+            "queryPackageCohesionDelta"
+        ),
+        "queryClauseCoverageCount": benchmark_metrics.get(
+            "queryClauseCoverageCount"
+        ),
+        "queryClauseCoverageDelta": benchmark_metrics.get(
+            "queryClauseCoverageDelta"
+        ),
+        "queryLocalEvidenceBoostCount": benchmark_metrics.get(
+            "queryLocalEvidenceBoostCount"
+        ),
+        "queryLocalEvidencePenaltyCount": benchmark_metrics.get(
+            "queryLocalEvidencePenaltyCount"
+        ),
+        "queryLocalEvidenceDelta": benchmark_metrics.get(
+            "queryLocalEvidenceDelta"
+        ),
         "cacheStatus": benchmark_metrics.get("cacheStatus"),
     }
 
@@ -140,6 +166,8 @@ def _attach_report_chain(
         return
     rollup = _mapping(report_chain.get("rollup"))
     gate = _mapping(report_chain.get("optimizationGate"))
+    batch = _mapping(report_chain.get("optimizationBatch"))
+    variants = _string_list(batch.get("ablationVariants"))
     packet["largeLibraryReportChain"] = {
         "schemaId": report_chain.get("schemaId"),
         "packetKind": report_chain.get("packetKind"),
@@ -150,6 +178,9 @@ def _attach_report_chain(
         "readyLanguageCount": rollup.get("readyLanguageCount"),
         "optimizationRunCount": rollup.get("optimizationRunCount"),
         "optimizationVariantRunCount": rollup.get("optimizationVariantRunCount"),
+        "optimizationAblationVariantCount": batch.get("ablationVariantCount"),
+        "optimizationAblationVariants": variants,
+        "localEvidenceAblationEnabled": "no-local-evidence" in variants,
         "findingCount": rollup.get("findingCount"),
         "status": gate.get("status"),
         "reason": gate.get("reason"),
@@ -159,3 +190,9 @@ def _attach_report_chain(
 
 def _mapping(value: object) -> Mapping[str, object]:
     return value if isinstance(value, Mapping) else {}
+
+
+def _string_list(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [entry for entry in value if isinstance(entry, str)]

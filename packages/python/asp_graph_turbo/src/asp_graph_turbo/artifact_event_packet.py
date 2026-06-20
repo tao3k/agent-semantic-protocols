@@ -43,7 +43,7 @@ def artifact_events_from_packet(packet: Mapping[str, Any]) -> tuple[ArtifactEven
 
 
 def _event_row(event: ArtifactEvent) -> dict[str, object]:
-    return {
+    row: dict[str, object] = {
         "timestamp": event.timestamp,
         "kind": event.kind,
         "language": event.language,
@@ -55,6 +55,9 @@ def _event_row(event: ArtifactEvent) -> dict[str, object]:
         "path": event.path,
         "bytes": event.bytes,
     }
+    if event.metadata:
+        row["metadata"] = dict(event.metadata)
+    return row
 
 
 def _event_from_row(row: Mapping[str, Any]) -> ArtifactEvent:
@@ -69,6 +72,7 @@ def _event_from_row(row: Mapping[str, Any]) -> ArtifactEvent:
         project_root_arg=_string_field(row, "projectRootArg"),
         path=_string_field(row, "path"),
         bytes=int(_number_field(row, "bytes")),
+        metadata=_metadata_field(row, "metadata"),
     )
 
 
@@ -84,3 +88,12 @@ def _number_field(row: Mapping[str, Any], key: str) -> float:
     if not isinstance(value, int | float):
         raise ValueError(f"artifact event field {key} must be numeric")
     return float(value)
+
+
+def _metadata_field(row: Mapping[str, Any], key: str) -> dict[str, object]:
+    value = row.get(key)
+    if value is None:
+        return {}
+    if not isinstance(value, Mapping):
+        raise ValueError(f"artifact event field {key} must be an object")
+    return {str(field): item for field, item in value.items()}

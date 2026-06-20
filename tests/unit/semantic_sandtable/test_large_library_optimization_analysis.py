@@ -26,22 +26,22 @@ def test_large_library_optimization_analysis_collects_missing_results() -> None:
     _validate_schema(analysis)
     assert analysis["summary"] == {
         "status": "collecting",
-        "expectedVariantRunCount": 60,
+        "expectedVariantRunCount": 80,
         "observedVariantRunCount": 0,
-        "missingVariantRunCount": 60,
+        "missingVariantRunCount": 80,
         "findingCount": 1,
     }
     assert analysis["findings"][0]["kind"] == "missing-variant-results"
     assert analysis["improvementPlan"][0]["id"] == "collect-variant-receipts"
-    assert len(analysis["collectionManifest"]["expectedVariantRuns"]) == 60
-    assert len(analysis["collectionManifest"]["collectionRuns"]) == 60
-    assert len(analysis["collectionManifest"]["runsNeedingVariantReceipt"]) == 60
-    assert len(analysis["collectionManifest"]["missingVariantRuns"]) == 60
+    assert len(analysis["collectionManifest"]["expectedVariantRuns"]) == 80
+    assert len(analysis["collectionManifest"]["collectionRuns"]) == 80
+    assert len(analysis["collectionManifest"]["runsNeedingVariantReceipt"]) == 80
+    assert len(analysis["collectionManifest"]["missingVariantRuns"]) == 80
     assert analysis["collectionManifest"]["collectionStatus"] == "collecting"
-    assert analysis["collectionManifest"]["metricSourceCounts"] == {"missing": 60}
+    assert analysis["collectionManifest"]["metricSourceCounts"] == {"missing": 80}
     assert analysis["collectionManifest"]["missingVariantRuns"][0][
         "variantRunId"
-    ].endswith(":no-package-cohesion")
+    ].endswith(":no-local-evidence")
     assert (
         analysis["collectionManifest"]["missingVariantRuns"][0]["collectionStatus"]
         == "missing-result"
@@ -57,17 +57,25 @@ def test_large_library_optimization_analysis_aggregates_variant_results() -> Non
     _validate_schema(analysis)
     assert analysis["summary"] == {
         "status": "analyzed",
-        "expectedVariantRunCount": 60,
-        "observedVariantRunCount": 60,
+        "expectedVariantRunCount": 80,
+        "observedVariantRunCount": 80,
         "missingVariantRunCount": 0,
         "findingCount": 0,
     }
     assert analysis["improvementPlan"][0]["id"] == "calibrate-query-first-stage"
     assert analysis["improvementPlan"][0]["overallWinner"] == "no-package-cohesion"
+    assert analysis["improvementPlan"][0]["rankedVariantCount"] == 4
+    assert analysis["improvementPlan"][0]["localEvidenceAblationRank"] == 4
     assert analysis["variantRecommendations"]["status"] == "ready"
     assert analysis["variantRecommendations"]["overallWinner"][
         "ablationVariant"
     ] == "no-package-cohesion"
+    assert analysis["variantRecommendations"]["localEvidenceAblation"][
+        "ablationVariant"
+    ] == "no-local-evidence"
+    assert analysis["variantRecommendations"]["localEvidenceAblation"][
+        "comparisonDeltas"
+    ]["answerQualityDeltaFromWinner"] < 0
     assert [
         item["ablationVariant"]
         for item in analysis["variantRecommendations"]["overallRank"]
@@ -75,6 +83,7 @@ def test_large_library_optimization_analysis_aggregates_variant_results() -> Non
         "no-package-cohesion",
         "no-query-clause-coverage",
         "no-query-seed-prior",
+        "no-local-evidence",
     ]
     assert analysis["variantRecommendations"]["bucketWinners"]
     assert analysis["variantRecommendations"]["adaptivePolicy"][0][
@@ -88,11 +97,11 @@ def test_large_library_optimization_analysis_aggregates_variant_results() -> Non
     assert analysis["collectionManifest"]["runsNeedingVariantReceipt"] == []
     assert analysis["collectionManifest"]["collectionStatus"] == "collected"
     assert analysis["collectionManifest"]["metricSourceCounts"] == {
-        "variant-result-packet": 60
+        "variant-result-packet": 80
     }
-    assert len(analysis["collectionManifest"]["observedVariantRunIds"]) == 60
+    assert len(analysis["collectionManifest"]["observedVariantRunIds"]) == 80
     assert _aggregation_count(analysis, "rust", "deep") >= 3
-    assert _aggregation_count(analysis, "typescript", "strict") == 6
+    assert _aggregation_count(analysis, "typescript", "strict") == 8
 
 
 def test_large_library_optimization_analysis_collects_derived_receipts() -> None:
@@ -109,8 +118,8 @@ def test_large_library_optimization_analysis_collects_derived_receipts() -> None
     _validate_schema(analysis)
     assert analysis["summary"] == {
         "status": "collecting",
-        "expectedVariantRunCount": 60,
-        "observedVariantRunCount": 60,
+        "expectedVariantRunCount": 80,
+        "observedVariantRunCount": 80,
         "missingVariantRunCount": 0,
         "findingCount": 3,
     }
@@ -141,7 +150,7 @@ def test_large_library_optimization_analysis_collects_derived_receipts() -> None
         "fallback": 1,
         "source-sandtable-receipt": 1,
         "source-equivalent-variant-receipt": 1,
-        "variant-result-packet": 57,
+        "variant-result-packet": 77,
     }
 
 
@@ -217,7 +226,7 @@ def test_large_library_optimization_analysis_cli_fails_on_missing(
 
     output = capsys.readouterr().out
     assert output.startswith("[large-library-optimization-analysis] ")
-    assert "missing=60" in output
+    assert "missing=80" in output
     assert "|missing variantRunId=" in output
 
 
@@ -249,7 +258,7 @@ def _variant_results(report_chain: dict[str, object]) -> list[dict[str, object]]
                 },
                     "answerMetrics": {
                         "finalAnswerStatus": "answered",
-                        "answerQualityJudgment": 0.9,
+                        "answerQualityJudgment": _answer_quality_for_variant(variant),
                         "missingEvidenceCount": 0,
                         "wrongOwnerCount": 0,
                     },
@@ -263,7 +272,14 @@ def _elapsed_ms_for_variant(variant: object) -> int:
         "no-package-cohesion": 10,
         "no-query-clause-coverage": 20,
         "no-query-seed-prior": 30,
+        "no-local-evidence": 40,
     }.get(str(variant), 99)
+
+
+def _answer_quality_for_variant(variant: object) -> float:
+    if variant == "no-local-evidence":
+        return 0.82
+    return 0.9
 
 
 def _write_report_chain(tmp_path: Path) -> Path:

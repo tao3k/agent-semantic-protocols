@@ -152,6 +152,23 @@ When =fd-query= recovers an owner and materializes =owner-items=, the handoff qu
 
 Owner-local selector ranking may create query-axis window candidates when declaration-name matches are too weak. The candidate must be derived from the current owner file, the materialized query terms, and parser-owned item/block boundaries or a bounded local context window; it must clear a high query-axis coverage gate before competing with declaration candidates through deterministic query-axis coverage. This is an algorithmic graph-turbo selector-quality rule, not a fixed ecosystem-symbol shortcut: providers must not hard-code library, framework, or package-specific labels to manufacture selector confidence.
 
+Graph-turbo must also carry an explicit first-stage topology state model. Topology is the analyzer/status decision layer that records which evidence graph was available before the first stage chose owner discovery, owner-local expansion, query-pack refinement, dependency topology, test reachability, or selector-code expansion. It is not another agent-facing stdout field bundle. Normal =search= output should continue to expose only compact graph facts that directly help the next action. Developer/history mode and sandtable reports may persist topology snapshots so quality analysis can connect a bad answer to the graph shape and transition that caused it.
+
+Topology state is language-neutral and evidence-derived. It may use packet facts such as query-pack quality, package cohesion, matched query axes, owner candidate density, parser/finder-local hits, selector miss/coverage state, repeated-action memory, source-index/finder/provider provenance, latency, and packet size. It must not encode ecosystem labels, library names, or project-specific symbols as rules. If a domain label matters, it must enter through parser-owned declarations, provider semantic facts, dependency/package facts, finder evidence, or analyzer receipts.
+
+Graph-turbo ranking may consume that topology through language-neutral score adjustments. The first implemented adjustment is =localEvidence=: owner nodes with dense owner-local graph support, such as contained item/syntax nodes or covering test nodes, receive a bounded score boost, while path-only owner seeds with no local evidence receive a bounded penalty. The score reason is emitted as =topology-local-evidence= in rank explanations. This is an algorithmic graph rule over node kinds and relations; it must not special-case ecosystem names, framework labels, package names, or project-specific symbols.
+
+Sandtable validation should report topology snapshots and topology transitions alongside outcomes. A deep Rust or TypeScript question should be replayable as:
+
+#+begin_src text
+question -> seed-quality -> topology-state -> action-frontier ->
+command/result receipts -> answer -> analyzer judgment -> graph-turbo change plan
+#+end_src
+
+The quality question is then precise: did the first-stage topology expose the right owner/package/item/dependency/test shape before the agent spent turns? This gives graph-turbo a stable optimization target beyond adding output values.
+
+The large-library report chain must treat first-stage topology adjustments as explicit ablation axes. The query-first-stage batch includes =no-local-evidence= alongside =no-query-seed-prior=, =no-package-cohesion=, and =no-query-clause-coverage=, and sandtable summaries persist the variant list plus local-evidence benchmark metrics for analyzer/report use. The optimization-analysis packet should rank all query-first-stage ablations, attach comparison deltas against the winning variant, and expose a dedicated =localEvidenceAblation= focus entry so reports can tell whether disabling owner-local topology evidence helped or hurt. These fields are calibration evidence for graph-turbo; they must not be rendered as required normal =search= stdout.
+
 Terminology is deliberately narrow:
 
 Analyzer-only observability is deliberately outside ARI. Developer/history

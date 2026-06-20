@@ -1,0 +1,153 @@
+#+title: Graph Turbo Topology Status
+#+status: active
+#+owner: graph-turbo
+
+* Purpose
+
+This status file makes the graph-turbo topology layer explicit.
+
+The current search stack has strong local improvements: owner candidate ranking,
+owner-items handoff terms, source-index fast paths, and sandtable reports. The
+missing layer is the topology state that explains what graph shape existed
+before graph-turbo chose the first search action.
+
+Topology should improve search quality by making the seed phase auditable across
+real sandtable runs.
+
+* Current Gap
+
+Recent sandtable runs exposed a real topology gap:
+
+- broad queries drift across packages before an owner is stable
+- correct owners can still materialize weak owner-items queries
+- repeated query-set or owner-local probes can waste turns
+- quality reports explain symptoms after the fact, but do not preserve the
+  first-stage evidence graph as a first-class status artifact
+
+Without topology status, graph-turbo optimization collapses into isolated
+scoring patches. Those patches help, but they do not answer the higher-level
+question: did the seed phase expose the right owner/package/item/dependency/test
+shape before the agent spent turns?
+
+* Topology State
+
+The first-stage topology should record this state per sandtable question:
+
+#+begin_src text
+question
+  -> query-pack quality
+  -> package cohesion
+  -> owner candidate graph
+  -> parser/finder-local evidence density
+  -> dependency/package/test topology
+  -> source-index/finder/provider provenance
+  -> repeated-action memory
+  -> selected topology route
+  -> action budget
+  -> expected next evidence
+#+end_src
+
+The selected topology route is one of:
+
+- owner discovery
+- owner-local expansion
+- query-pack refinement
+- dependency topology
+- test reachability
+- selector-code expansion
+- failure recovery
+
+This is not an agent-facing verbosity expansion. Normal search output should
+only expose compact graph facts that help the next action. Topology belongs in
+developer/history receipts, analyzer reports, and status artifacts.
+
+* Non-goals
+
+Topology must not encode fixed ecosystem labels, library names, or
+project-specific symbols.
+
+It must not say that =tokio=, =Effect=, =Vite=, =Playwright=, =API=, or any
+similar label is intrinsically important. If such a term matters, it must enter
+through parser declarations, provider semantic facts, dependency/package facts,
+finder evidence, or analyzer receipts.
+
+Topology also must not become a second search stdout protocol. It is an
+auditable evidence graph used by analyzer and sandtable workflows.
+
+* Sandtable Validation
+
+Each deep Rust or TypeScript sandtable question should produce a report chain:
+
+#+begin_src text
+question
+  -> command/result receipts
+  -> topology snapshots and transitions
+  -> answer
+  -> analyzer judgment
+  -> human review notes
+  -> graph-turbo change plan
+#+end_src
+
+The report should measure:
+
+- command count before first useful owner
+- repeated action count
+- owner drift count
+- selector miss count
+- packet size and latency
+- topology route chosen by graph-turbo
+- whether the final answer used the intended evidence
+
+* Current Evidence
+
+The latest graph-turbo owner-ranking work supports this direction:
+
+- weak local item evidence is penalized
+- parser/finder-local hit density is promoted
+- owner-items handoff now prefers declaration-friendly local evidence before
+  path-only axes
+- graph-turbo ranking now applies a language-neutral =localEvidence= score
+  adjustment: evidence-dense owner seeds get a bounded boost, while path-only
+  owner seeds get a bounded penalty
+- rank explanations emit =topology-local-evidence= so analyzer reports can tie
+  owner order back to topology evidence
+- large-library report chains now include =no-local-evidence= as the fourth
+  query-first-stage ablation variant, and sandtable summaries persist the
+  variant list plus local-evidence benchmark metrics for report/analyzer use
+- optimization analysis now expands the TS/Rust matrix to 80 expected variant
+  runs, ranks all four query-first-stage ablations, emits per-variant
+  comparison deltas against the winner, and surfaces the =no-local-evidence=
+  rank as a dedicated report field
+- source-index fast-path tests now isolate refresh-time provider calls from
+  search-time provider calls
+
+Topology is now connected to both sides of the loop: the timeline analyzer can
+report topology weakness, and first-stage ranking can consume owner-local graph
+shape directly. The remaining work is to run deep Rust/TypeScript sandtable
+questions and use the measured failures to tune route selection, not just owner
+ordering.
+
+* Next Implementation Plan
+
+1. Add Rust and TypeScript deep-question fixtures that compare command count,
+   owner drift, selector misses, and final answer evidence before and after
+   topology changes.
+2. Feed measured failures back into graph-turbo first-stage route selection:
+   owner discovery, owner-local expansion, query-pack refinement, dependency
+   topology, test reachability, or selector-code expansion.
+3. Tune =localEvidence= bounds only from sandtable evidence, keeping the rule
+   language-neutral and free of ecosystem-name shortcuts.
+
+* Acceptance Criteria
+
+Topology is useful only if a report can answer:
+
+- which owner/package/item/dependency/test graph was available
+- why graph-turbo selected the first action
+- which evidence axis was missing or weak
+- whether the next action repaired that topology gap
+- whether the final answer was supported by the selected evidence
+- which graph-turbo rule should change next
+
+If those questions cannot be answered from the status/report chain, topology
+has not been landed.

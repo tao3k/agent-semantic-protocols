@@ -24,6 +24,7 @@ def _timeline_line_sections(report: dict[str, object]) -> tuple[tuple[str, ...],
         _target_lines(report),
         _efficiency_lines(report.get("efficiencyEstimate")),
         _read_loop_lines(report.get("readLoopRisk")),
+        _topology_lines(report.get("topology")),
         _action_summary_lines(report.get("actionSummary")),
         _suppression_lines(report.get("primeSuppression")),
         _promotion_lines(report.get("fzfPromotion")),
@@ -48,7 +49,12 @@ def _summary_lines(report: dict[str, object]) -> tuple[str, ...]:
         f"promotableFzfSearches={report['promotableFzfSearches']} "
         f"collapsibleOwnerSearches={report['collapsibleOwnerSearches']} "
         f"routableFanoutBursts={report['routableFanoutBursts']} "
-        f"avoidableFanoutBranches={report['avoidableFanoutBranches']}",
+        f"avoidableFanoutBranches={report['avoidableFanoutBranches']} "
+        f"topologyEvents={report.get('topologyEventCount', 0)} "
+        f"topologyWeakQueryPackEvents="
+        f"{report.get('topologyWeakQueryPackEvents', 0)} "
+        f"topologyWeakLocalEvidenceEvents="
+        f"{report.get('topologyWeakLocalEvidenceEvents', 0)}",
         f"parameters={report['parameters']}",
         f"kinds={report['kindCounts']}",
         f"actions={report['actionMethodCounts']}",
@@ -152,6 +158,51 @@ def _read_loop_lines(value: object) -> tuple[str, ...]:
         f"adjacentRangeWindows={value['adjacentRangeWindows']} "
         f"sameOwnerScans={value['sameOwnerScans']} "
         f"riskCount={value['riskCount']}",
+    )
+
+
+def _topology_lines(value: object) -> tuple[str, ...]:
+    if not isinstance(value, dict):
+        return ()
+    lines = [
+        "[graph-turbo-topology] "
+        f"policy={value['policy']} "
+        f"events={value['eventsWithTopology']} "
+        f"weakQueryPack={value['weakQueryPackEvents']} "
+        f"weakPackageCohesion={value['weakPackageCohesionEvents']} "
+        f"weakScope={value['weakScopeEvents']} "
+        f"weakLocalEvidence={value['weakLocalEvidenceEvents']} "
+        f"missingRoutes={value['missingRouteEvents']} "
+        f"missingAxes={value['missingAxisCounts']}"
+    ]
+    lines.extend(_topology_state_line(state) for state in value.get("states", []))
+    lines.extend(_topology_action_line(action) for action in value.get("actions", []))
+    return tuple(lines)
+
+
+def _topology_state_line(state: dict[str, object]) -> str:
+    return (
+        "[graph-turbo-topology-state] "
+        f"kind={state['kind']} method={state['method']} "
+        f"queryQuality={state['queryQuality']} "
+        f"scopeQuality={state['scopeQuality']} "
+        f"packageCohesion={state['packageCohesion']} "
+        f"owners={state['ownerCandidateCount']} "
+        f"rankedEvidence={state['rankedEvidenceCount']} "
+        f"route={state['recommendedRoute']} "
+        f"missingAxes={state['missingAxes']}"
+    )
+
+
+def _topology_action_line(action: dict[str, object]) -> str:
+    if action.get("axis"):
+        subject = f"axis={action['axis']}"
+    else:
+        subject = f"route={action.get('route', '')}"
+    return (
+        "[graph-turbo-topology-action] "
+        f"decision={action['decision']} {subject} "
+        f"count={action['count']} replacement={action['replacement']}"
     )
 
 

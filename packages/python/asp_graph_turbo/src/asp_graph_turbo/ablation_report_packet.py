@@ -188,6 +188,12 @@ def _comparison(
         "queryClauseCoverageCountDelta": _metric_delta(
             baseline, variant, "algorithmMetrics", "queryClauseCoverageCount"
         ),
+        "queryLocalEvidenceBoostCountDelta": _metric_delta(
+            baseline, variant, "algorithmMetrics", "queryLocalEvidenceBoostCount"
+        ),
+        "queryLocalEvidencePenaltyCountDelta": _metric_delta(
+            baseline, variant, "algorithmMetrics", "queryLocalEvidencePenaltyCount"
+        ),
     }
 
 
@@ -320,6 +326,7 @@ def _query_first_stage_signal(
             "no-query-seed-prior",
             "no-package-cohesion",
             "no-query-clause-coverage",
+            "no-local-evidence",
         )
     )
 
@@ -332,6 +339,8 @@ def _query_variant_signal(comparison: Mapping[str, object]) -> bool:
         or _delta_nonzero(comparison, "queryPackageCohesionCountDelta")
         or _delta_nonzero(comparison, "queryPackageDriftPenaltyCountDelta")
         or _delta_nonzero(comparison, "queryClauseCoverageCountDelta")
+        or _delta_nonzero(comparison, "queryLocalEvidenceBoostCountDelta")
+        or _delta_nonzero(comparison, "queryLocalEvidencePenaltyCountDelta")
     )
 
 

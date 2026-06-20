@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 
 
 @dataclass(frozen=True)
@@ -18,7 +19,14 @@ class ArtifactEvent:
     path: str
     bytes: int
     argv: tuple[str, ...] = ()
+    metadata: Mapping[str, object] = field(default_factory=dict)
 
     @property
     def action(self) -> bool:
-        return self.kind in {"command", "query", "search", "tree-sitter-query"}
+        return self.kind in {
+            "analysis-metadata",
+            "command",
+            "query",
+            "search",
+            "tree-sitter-query",
+        }

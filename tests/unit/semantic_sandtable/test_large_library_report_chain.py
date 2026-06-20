@@ -24,9 +24,11 @@ def test_large_library_report_chain_unblocks_tuning_with_ts_rust_depths() -> Non
     assert report["optimizationGate"]["status"] == "pass"
     assert report["findings"] == []
     assert report["rollup"]["optimizationRunCount"] == 20
-    assert report["rollup"]["optimizationVariantRunCount"] == 60
+    assert report["rollup"]["optimizationVariantRunCount"] == 80
     assert report["optimizationBatch"]["runCount"] == 20
-    assert report["optimizationBatch"]["variantRunCount"] == 60
+    assert report["optimizationBatch"]["ablationVariantCount"] == 4
+    assert report["optimizationBatch"]["variantRunCount"] == 80
+    assert "no-local-evidence" in report["optimizationBatch"]["ablationVariants"]
     assert report["optimizationBatch"]["aggregationAxes"] == [
         "language",
         "package",
@@ -76,7 +78,7 @@ def test_large_library_report_chain_can_pass_with_multi_depth_ts_rust_fixture(
     assert report["optimizationGate"]["status"] == "pass"
     assert report["rollup"]["readyLanguageCount"] == 2
     assert report["rollup"]["optimizationRunCount"] == 6
-    assert report["rollup"]["optimizationVariantRunCount"] == 18
+    assert report["rollup"]["optimizationVariantRunCount"] == 24
     assert report["optimizationBatch"]["readyToCollectReceipts"] is True
     assert report["findings"] == []
     assert all(entry["findings"] == [] for entry in report["languages"])
@@ -110,7 +112,7 @@ def test_large_library_report_chain_cli_passes_fail_on_missing_when_ready(
     assert output.startswith("[large-library-report-chain] ")
     assert "gate=pass" in output
     assert "runs=20" in output
-    assert "variantRuns=60" in output
+    assert "variantRuns=80" in output
 
 
 def _scenario(language: str) -> dict[str, object]:
@@ -219,6 +221,7 @@ def _matrix_targets_query_first_stage(report: dict[str, object]) -> bool:
         "no-query-seed-prior",
         "no-package-cohesion",
         "no-query-clause-coverage",
+        "no-local-evidence",
     }
     return all(
         isinstance(entry, dict)

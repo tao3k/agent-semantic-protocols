@@ -20,6 +20,7 @@ ABLATION_VARIANTS = (
     "no-query-seed-prior",
     "no-package-cohesion",
     "no-query-clause-coverage",
+    "no-local-evidence",
 )
 
 _QUALITY_FIELDS = frozenset({"confidence", "freshness", "provenance"})
@@ -88,6 +89,8 @@ def _variant_packet(packet: Mapping[str, object], variant: str) -> dict[str, obj
         return _with_query_adjustment_policy(mutable, "packageCohesion", False)
     if variant == "no-query-clause-coverage":
         return _with_query_adjustment_policy(mutable, "queryClauseCoverage", False)
+    if variant == "no-local-evidence":
+        return _with_query_adjustment_policy(mutable, "localEvidence", False)
     raise ValueError(f"unknown graph-turbo ablation variant: {variant}")
 
 
@@ -188,6 +191,9 @@ def _variant_changes(variant: str) -> dict[str, object]:
         },
         "no-query-clause-coverage": {
             "queryAdjustmentPolicy": {"queryClauseCoverage": False},
+        },
+        "no-local-evidence": {
+            "queryAdjustmentPolicy": {"localEvidence": False},
         },
     }[variant]
 

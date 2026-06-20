@@ -9,6 +9,7 @@ from .query_clause_coverage import (
     CLAUSE_COVERAGE_BONUS,
     query_clause_coverage_adjustment,
 )
+from .query_local_evidence import local_evidence_adjustment
 from .query_weights import (
     _MATCHED_SEED_FLOOR,
     _PACKAGE_COHESION_BONUS,
@@ -23,11 +24,13 @@ _QUERY_ADJUSTMENT_POLICY_KEYS = (
     "seedPrior",
     "packageCohesion",
     "queryClauseCoverage",
+    "localEvidence",
 )
 _DEFAULT_QUERY_ADJUSTMENT_POLICY = {
     "seedPrior": True,
     "packageCohesion": True,
     "queryClauseCoverage": True,
+    "localEvidence": True,
 }
 
 
@@ -56,36 +59,97 @@ def query_adjustments_by_node(
     seed_id_tuple = tuple(seed_ids)
     adjustments: dict[str, dict[str, float]] = {}
     if normalized_policy["seedPrior"]:
-        for seed_id, weight in query_seed_personalization_weights(
-            graph,
+        _record_seed_prior_adjustments(
+            adjustments,
+            graph=graph,
             profile_name=profile_name,
             seed_ids=seed_id_tuple,
-        ).items():
-            if weight:
-                adjustments.setdefault(seed_id, {})["seedPrior"] = round(weight, 6)
+        )
     for node in graph.nodes.values():
-        if normalized_policy["packageCohesion"]:
-            package_delta = query_package_cohesion_adjustment(
+        _record_node_adjustments(
+            adjustments,
+            graph=graph,
+            profile_name=profile_name,
+            seed_ids=seed_id_tuple,
+            query_clauses=query_clauses,
+            policy=normalized_policy,
+            node_id=node.id,
+        )
+    return adjustments
+
+
+def _record_seed_prior_adjustments(
+    adjustments: dict[str, dict[str, float]],
+    *,
+    graph: TypedGraph,
+    profile_name: str,
+    seed_ids: tuple[str, ...],
+) -> None:
+    for seed_id, weight in query_seed_personalization_weights(
+        graph,
+        profile_name=profile_name,
+        seed_ids=seed_ids,
+    ).items():
+        _record_adjustment(adjustments, seed_id, "seedPrior", weight)
+
+
+def _record_node_adjustments(
+    adjustments: dict[str, dict[str, float]],
+    *,
+    graph: TypedGraph,
+    profile_name: str,
+    seed_ids: tuple[str, ...],
+    query_clauses: Iterable[str],
+    policy: Mapping[str, bool],
+    node_id: str,
+) -> None:
+    node = graph.nodes[node_id]
+    if policy["packageCohesion"]:
+        _record_adjustment(
+            adjustments,
+            node_id,
+            "packageCohesion",
+            query_package_cohesion_adjustment(
                 graph,
                 profile_name=profile_name,
-                seed_ids=seed_id_tuple,
+                seed_ids=seed_ids,
                 node=node,
-            )
-            if package_delta:
-                adjustments.setdefault(node.id, {})["packageCohesion"] = round(
-                    package_delta, 6
-                )
-        if normalized_policy["queryClauseCoverage"]:
-            clause_delta = query_clause_coverage_adjustment(
+            ),
+        )
+    if policy["queryClauseCoverage"]:
+        _record_adjustment(
+            adjustments,
+            node_id,
+            "queryClauseCoverage",
+            query_clause_coverage_adjustment(
                 profile_name=profile_name,
                 query_clauses=query_clauses,
                 node=node,
-            )
-            if clause_delta:
-                adjustments.setdefault(node.id, {})["queryClauseCoverage"] = round(
-                    clause_delta, 6
-                )
-    return adjustments
+            ),
+        )
+    if policy["localEvidence"]:
+        _record_adjustment(
+            adjustments,
+            node_id,
+            "localEvidence",
+            local_evidence_adjustment(
+                graph,
+                profile_name=profile_name,
+                node_id=node_id,
+            ),
+        )
+
+
+def _record_adjustment(
+    adjustments: dict[str, dict[str, float]],
+    node_id: str,
+    name: str,
+    delta: float,
+) -> None:
+    if delta:
+        adjustments.setdefault(node_id, {})[name] = round(delta, 6)
+
+
 
 
 def query_adjustment_summary(
@@ -94,6 +158,7 @@ def query_adjustment_summary(
     seed_prior_values = _adjustment_values(adjustments, "seedPrior")
     package_values = _adjustment_values(adjustments, "packageCohesion")
     clause_values = _adjustment_values(adjustments, "queryClauseCoverage")
+    local_values = _adjustment_values(adjustments, "localEvidence")
     return {
         "querySeedPriorCount": len(seed_prior_values),
         "querySeedPriorMass": round(sum(seed_prior_values), 6),
@@ -104,6 +169,11 @@ def query_adjustment_summary(
         "queryPackageCohesionDelta": round(sum(package_values), 6),
         "queryClauseCoverageCount": len(clause_values),
         "queryClauseCoverageDelta": round(sum(clause_values), 6),
+        "queryLocalEvidenceBoostCount": sum(1 for value in local_values if value > 0),
+        "queryLocalEvidencePenaltyCount": sum(
+            1 for value in local_values if value < 0
+        ),
+        "queryLocalEvidenceDelta": round(sum(local_values), 6),
     }
 
 

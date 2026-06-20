@@ -40,6 +40,7 @@ def test_graph_turbo_ablation_cli_generates_packet_variants(tmp_path) -> None:
         "no-package-cohesion",
         "no-query-clause-coverage",
         "no-query-seed-prior",
+        "no-local-evidence",
         "no-provider-facts",
         "no-quality-fields",
         "no-read-memory",
@@ -66,6 +67,9 @@ def test_graph_turbo_ablation_cli_generates_packet_variants(tmp_path) -> None:
     }
     assert variants["no-query-clause-coverage"]["queryAdjustmentPolicy"] == {
         "queryClauseCoverage": False
+    }
+    assert variants["no-local-evidence"]["queryAdjustmentPolicy"] == {
+        "localEvidence": False
     }
 
 

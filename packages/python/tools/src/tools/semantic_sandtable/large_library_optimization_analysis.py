@@ -287,13 +287,14 @@ def _variant_recommendations(
     observed: list[dict[str, Any]],
     aggregations: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    overall_rank = _overall_variant_rank(observed)
+    overall_rank = _with_comparison_deltas(_overall_variant_rank(observed))
     bucket_winners = _bucket_winners(aggregations)
     return {
         "status": "ready" if overall_rank else "collecting",
         "rankingMetric": "answerQualityThenElapsedMs",
         "overallWinner": overall_rank[0] if overall_rank else None,
         "overallRank": overall_rank,
+        "localEvidenceAblation": _variant_focus(overall_rank, "no-local-evidence"),
         "bucketWinners": bucket_winners,
         "adaptivePolicy": _adaptive_policy(overall_rank, bucket_winners),
     }
@@ -325,6 +326,47 @@ def _variant_recommendation_entry(
         "averageAspCommandCount": receipt_metrics.get("aspCommandCount"),
         "averageStdoutBytes": receipt_metrics.get("stdoutBytes"),
     }
+
+
+def _with_comparison_deltas(rank: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if not rank:
+        return []
+    winner = rank[0]
+    return [
+        {
+            **entry,
+            "rank": index,
+            "comparisonDeltas": {
+                "answerQualityDeltaFromWinner": _delta(
+                    entry.get("averageAnswerQuality"),
+                    winner.get("averageAnswerQuality"),
+                ),
+                "elapsedMsDeltaFromWinner": _delta(
+                    entry.get("averageElapsedMs"),
+                    winner.get("averageElapsedMs"),
+                ),
+                "aspCommandCountDeltaFromWinner": _delta(
+                    entry.get("averageAspCommandCount"),
+                    winner.get("averageAspCommandCount"),
+                ),
+                "stdoutBytesDeltaFromWinner": _delta(
+                    entry.get("averageStdoutBytes"),
+                    winner.get("averageStdoutBytes"),
+                ),
+            },
+        }
+        for index, entry in enumerate(rank, start=1)
+    ]
+
+
+def _variant_focus(
+    rank: list[dict[str, Any]],
+    variant: str,
+) -> dict[str, Any] | None:
+    for entry in rank:
+        if entry.get("ablationVariant") == variant:
+            return entry
+    return None
 
 
 def _bucket_winners(aggregations: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -422,6 +464,17 @@ def _number(value: object, default: float) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return default
     return float(value)
+
+
+def _delta(value: object, baseline: object) -> float | None:
+    if (
+        isinstance(value, bool)
+        or isinstance(baseline, bool)
+        or not isinstance(value, (int, float))
+        or not isinstance(baseline, (int, float))
+    ):
+        return None
+    return round(float(value) - float(baseline), 6)
 
 
 def _findings(
@@ -575,6 +628,12 @@ def _improvement_plan(
             "overallWinner": dict_value(recommendations.get("overallWinner")).get(
                 "ablationVariant"
             ),
+            "rankedVariantCount": len(
+                list_value(recommendations.get("overallRank"))
+            ),
+            "localEvidenceAblationRank": dict_value(
+                recommendations.get("localEvidenceAblation")
+            ).get("rank"),
             "bucketWinnerCount": len(list_value(recommendations.get("bucketWinners"))),
         }
     ]

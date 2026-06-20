@@ -161,7 +161,8 @@
             "enum": [
               "no-query-seed-prior",
               "no-package-cohesion",
-              "no-query-clause-coverage"
+              "no-query-clause-coverage",
+              "no-local-evidence"
             ]
           }
         },
@@ -244,7 +245,8 @@
             "enum": [
               "no-query-seed-prior",
               "no-package-cohesion",
-              "no-query-clause-coverage"
+              "no-query-clause-coverage",
+              "no-local-evidence"
             ]
           }
         }
