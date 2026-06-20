@@ -5,6 +5,7 @@ use crate::provider_command::support::{
 #[test]
 fn org_facade_uses_native_orgize_dependency() {
     let root = temp_project_root("org-document-facade");
+    std::fs::write(root.join("plan.org"), "* Document Prime\n").expect("write org fixture");
     let bin_dir = root.join(".bin");
     std::fs::create_dir_all(&bin_dir).expect("create bin dir");
     let orgize = bin_dir.join("orgize");
@@ -35,6 +36,10 @@ fn org_facade_uses_native_orgize_dependency() {
         stdout.contains("[search-prime] lang=org"),
         "stdout={stdout}"
     );
+    assert!(stdout.contains("owner:path("), "stdout={stdout}");
+    assert!(stdout.contains("plan.org"), "stdout={stdout}");
+    assert!(stdout.contains("frontier=O.owner"), "stdout={stdout}");
+    assert!(!stdout.contains("G>{}"), "stdout={stdout}");
     let _ = std::fs::remove_dir_all(root);
 }
 
