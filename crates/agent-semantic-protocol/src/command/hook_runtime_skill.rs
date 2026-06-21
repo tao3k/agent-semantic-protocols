@@ -3,6 +3,7 @@
 use agent_semantic_hook::{
     ActivatedProviderConfig, HookActivation, RuntimeProfiles, RuntimeProviderProfile,
 };
+use agent_semantic_runtime::project_state_paths;
 use orgize::{
     Org,
     ast::{
@@ -10,8 +11,9 @@ use orgize::{
         parse_contract_reference, parse_contracts_from_document,
     },
 };
+use std::ffi::OsString;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 const AGENT_SEMANTIC_PROTOCOLS_SKILL_ORG: &str = include_str!("../../../../SKILL.org");
 const AGENT_SEMANTIC_PROTOCOLS_SKILL_CONTRACT_ORG: &str =
@@ -26,19 +28,28 @@ pub(super) fn install_agent_semantic_protocols_skill(
     let skill_path = default_agent_skill_path(project_root);
     let rendered_skill = render_agent_semantic_protocols_skill(activation, runtime_profiles)?;
     write_agent_skill(&skill_path, &rendered_skill)?;
-    remove_legacy_agent_skill_contract(&skill_path)?;
+    let org_state_skill_path = project_state_paths(project_root)?
+        .protocol_home
+        .join("org")
+        .join("skills")
+        .join("ASP_ORG.org");
+    let skill_contract_path = write_agent_skill_contract(&skill_path, &org_state_skill_path)?;
     let plugin_skill_path = optional_plugin_skill_path(project_root)
         .map(|plugin_skill_path| {
             write_agent_skill(&plugin_skill_path, &rendered_skill)?;
-            remove_legacy_agent_skill_contract(&plugin_skill_path)?;
-            Ok::<PathBuf, String>(plugin_skill_path)
+            let plugin_skill_contract_path =
+                write_agent_skill_contract(&plugin_skill_path, &org_state_skill_path)?;
+            Ok::<(PathBuf, PathBuf), String>((plugin_skill_path, plugin_skill_contract_path))
         })
         .transpose()?;
+    let (plugin_skill_path, plugin_skill_contract_path) = plugin_skill_path
+        .map(|(skill_path, contract_path)| (Some(skill_path), Some(contract_path)))
+        .unwrap_or((None, None));
     Ok(InstalledAgentSkillPaths {
         skill_path: Some(skill_path),
-        skill_contract_path: None,
+        skill_contract_path: Some(skill_contract_path),
         plugin_skill_path,
-        plugin_skill_contract_path: None,
+        plugin_skill_contract_path,
     })
 }
 
@@ -80,13 +91,89 @@ fn write_agent_skill(skill_path: &Path, rendered_skill: &str) -> Result<(), Stri
     Ok(())
 }
 
-fn remove_legacy_agent_skill_contract(skill_path: &Path) -> Result<(), String> {
+fn write_agent_skill_contract(
+    skill_path: &Path,
+    org_state_skill_path: &Path,
+) -> Result<PathBuf, String> {
     let contract_path = skill_path.with_file_name("SKILL.contract.org");
-    if contract_path.exists() {
-        fs::remove_file(&contract_path)
-            .map_err(|error| format!("failed to remove {}: {error}", contract_path.display()))?;
+    let rendered_contract =
+        render_agent_semantic_protocols_skill_contract(&contract_path, org_state_skill_path)?;
+    write_agent_skill(&contract_path, &rendered_contract)?;
+    Ok(contract_path)
+}
+
+pub(super) fn render_agent_semantic_protocols_skill_contract(
+    contract_path: &Path,
+    org_state_skill_path: &Path,
+) -> Result<String, String> {
+    let refer_org = refer_org_from_contract_path(contract_path, org_state_skill_path)?;
+    let refer_org_line = format!(":REFER_ORG: {refer_org}");
+    let mut replaced = false;
+    let rendered = AGENT_SEMANTIC_PROTOCOLS_SKILL_CONTRACT_ORG
+        .lines()
+        .map(|line| {
+            if line.starts_with(":REFER_ORG:") {
+                replaced = true;
+                refer_org_line.as_str()
+            } else {
+                line
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    if replaced {
+        Ok(rendered)
+    } else {
+        Err("SKILL.contract.org template missing :REFER_ORG: property".to_string())
     }
-    Ok(())
+}
+
+fn refer_org_from_contract_path(
+    contract_path: &Path,
+    org_state_skill_path: &Path,
+) -> Result<String, String> {
+    let contract_dir = contract_path.parent().ok_or_else(|| {
+        format!(
+            "failed to compute REFER_ORG for contract path without parent: {}",
+            contract_path.display()
+        )
+    })?;
+    let relative_path = relative_path_between(contract_dir, org_state_skill_path);
+    Ok(format!(
+        "{}#asp-org",
+        relative_path.to_string_lossy().replace('\\', "/")
+    ))
+}
+
+fn relative_path_between(from_dir: &Path, target: &Path) -> PathBuf {
+    let from_components = normalized_path_components(from_dir);
+    let target_components = normalized_path_components(target);
+    let common_prefix_len = from_components
+        .iter()
+        .zip(target_components.iter())
+        .take_while(|(left, right)| left == right)
+        .count();
+    let mut relative_path = PathBuf::new();
+    for _ in common_prefix_len..from_components.len() {
+        relative_path.push("..");
+    }
+    for component in &target_components[common_prefix_len..] {
+        relative_path.push(component);
+    }
+    if relative_path.as_os_str().is_empty() {
+        relative_path.push(".");
+    }
+    relative_path
+}
+
+fn normalized_path_components(path: &Path) -> Vec<OsString> {
+    path.components()
+        .filter_map(|component| match component {
+            Component::Normal(component) => Some(component.to_os_string()),
+            Component::ParentDir => Some(OsString::from("..")),
+            Component::CurDir | Component::RootDir | Component::Prefix(_) => None,
+        })
+        .collect()
 }
 
 pub(super) fn render_agent_semantic_protocols_skill(

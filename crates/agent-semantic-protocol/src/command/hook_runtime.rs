@@ -733,22 +733,18 @@ fn run_install_for_client(
     let client_config_path = default_client_config_path(&project_root.to_string_lossy());
     install_default_client_config(&client_config_path, &activation)?;
     timings.mark("client-config");
-    let installed_skill = if client == "claude" {
-        Some(install_agent_semantic_protocols_skill(
-            &project_root,
-            &activation,
-            &runtime_profiles,
-        )?)
-    } else {
-        None
-    };
-    timings.mark("skill");
     let (config_path, extra_config_receipt) = match client {
         "codex" => install_codex_plugin_hooks(&project_root, codex_plugin_scope, &subagent_model)?,
         "claude" => install_claude_project_hooks(&project_root, &subagent_model)?,
         _ => unreachable!("client support checked before install"),
     };
     timings.mark("project-hooks");
+    let installed_skill = Some(install_agent_semantic_protocols_skill(
+        &project_root,
+        &activation,
+        &runtime_profiles,
+    )?);
+    timings.mark("skill");
     let project_skill_receipt = installed_skill
         .as_ref()
         .and_then(|installed_skill| {

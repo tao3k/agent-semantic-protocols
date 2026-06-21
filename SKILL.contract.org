@@ -3,6 +3,7 @@
 * ASP skill contract v1
 :PROPERTIES:
 :CONTRACT_ID: asp.skill.v1
+:REFER_ORG: ./languages/org/skills/ASP_ORG.org#asp-org
 :CONTRACT_SCOPE: document
 :CONTRACT_KIND: org-elements
 :END:

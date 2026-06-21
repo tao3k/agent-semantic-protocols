@@ -11,7 +11,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use hook_runtime_skill::{
     install_agent_semantic_protocols_skill, render_agent_semantic_protocols_skill,
-    replace_generated_block, validate_agent_semantic_protocols_skill,
+    render_agent_semantic_protocols_skill_contract, replace_generated_block,
+    validate_agent_semantic_protocols_skill,
 };
 
 fn activation_provider(
@@ -120,6 +121,64 @@ fn rendered_skill_satisfies_org_contract() {
 }
 
 #[test]
+fn skill_contract_template_keeps_repo_local_refer_org() {
+    let contract = include_str!("../../../../SKILL.contract.org");
+
+    assert!(
+        contract.contains(":REFER_ORG: ./languages/org/skills/ASP_ORG.org#asp-org"),
+        "source SKILL.contract.org must reference the source-tree ASP_ORG.org"
+    );
+    assert!(
+        !contract.contains(":REFER_ORG: .cache/agent-semantic-protocol"),
+        "source SKILL.contract.org must not hard-code an installed state-tree path"
+    );
+}
+
+#[test]
+fn renders_skill_contract_refer_org_relative_to_install_target() {
+    let root = temp_project_root("skill-contract-refer-org");
+    let org_state_skill_path = root
+        .join(".cache")
+        .join("agent-semantic-protocol")
+        .join("org")
+        .join("skills")
+        .join("ASP_ORG.org");
+    let project_contract_path = root
+        .join(".agents")
+        .join("skills")
+        .join("agent-semantic-protocols")
+        .join("SKILL.contract.org");
+    let plugin_contract_path = root
+        .join(".codex")
+        .join("plugins")
+        .join("asp-codex-plugin")
+        .join("skills")
+        .join("agent-semantic-protocols")
+        .join("SKILL.contract.org");
+
+    let project_contract = render_agent_semantic_protocols_skill_contract(
+        &project_contract_path,
+        &org_state_skill_path,
+    )
+    .unwrap();
+    let plugin_contract = render_agent_semantic_protocols_skill_contract(
+        &plugin_contract_path,
+        &org_state_skill_path,
+    )
+    .unwrap();
+
+    assert!(project_contract.contains(
+        ":REFER_ORG: ../../../.cache/agent-semantic-protocol/org/skills/ASP_ORG.org#asp-org"
+    ));
+    assert!(plugin_contract.contains(
+        ":REFER_ORG: ../../../../../.cache/agent-semantic-protocol/org/skills/ASP_ORG.org#asp-org"
+    ));
+    assert_ne!(project_contract, plugin_contract);
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn org_contract_rejects_missing_provider_contracts_section() {
     let rendered =
         render_agent_semantic_protocols_skill(&test_activation(), &test_runtime_profiles())
@@ -153,27 +212,36 @@ fn install_mirrors_generated_skill_into_codex_plugin_when_present() {
         install_agent_semantic_protocols_skill(&root, &test_activation(), &test_runtime_profiles())
             .unwrap();
     let project_skill_path = installed.skill_path.expect("project skill path");
-    assert!(installed.skill_contract_path.is_none());
+    let project_skill_contract_path = installed
+        .skill_contract_path
+        .expect("project skill contract path");
 
     let plugin_skill_path = installed.plugin_skill_path.expect("plugin skill path");
-    assert!(installed.plugin_skill_contract_path.is_none());
+    let plugin_skill_contract_path = installed
+        .plugin_skill_contract_path
+        .expect("plugin skill contract path");
 
     assert_eq!(
         std::fs::read_to_string(&project_skill_path).expect("read installed skill"),
         std::fs::read_to_string(&plugin_skill_path).expect("read plugin skill")
     );
-    assert!(
-        !project_skill_path
-            .with_file_name("SKILL.contract.org")
-            .exists(),
-        "project skill contract should not be installed"
+    assert_eq!(
+        project_skill_contract_path,
+        project_skill_path.with_file_name("SKILL.contract.org")
     );
-    assert!(
-        !plugin_skill_path
-            .with_file_name("SKILL.contract.org")
-            .exists(),
-        "plugin skill contract should not be installed"
+    assert_eq!(
+        plugin_skill_contract_path,
+        plugin_skill_path.with_file_name("SKILL.contract.org")
     );
+    let project_contract =
+        std::fs::read_to_string(&project_skill_contract_path).expect("read project contract");
+    let plugin_contract =
+        std::fs::read_to_string(&plugin_skill_contract_path).expect("read plugin contract");
+    assert!(project_contract.contains(":REFER_ORG: "));
+    assert!(project_contract.contains("org/skills/ASP_ORG.org#asp-org"));
+    assert!(!project_contract.contains("./languages/org/skills/ASP_ORG.org"));
+    assert_eq!(project_contract, plugin_contract);
+    assert!(!project_contract.contains("* stale user-layer contract"));
 
     let _ = std::fs::remove_dir_all(root);
 }

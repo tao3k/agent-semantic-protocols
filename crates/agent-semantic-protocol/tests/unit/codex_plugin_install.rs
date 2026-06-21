@@ -125,15 +125,28 @@ mod unix {
             plugin_root.display()
         );
         let skill_dir = plugin_root.join("skills").join("agent-semantic-protocols");
+        let skill_path = skill_dir.join("SKILL.org");
+        let contract_path = skill_dir.join("SKILL.contract.org");
         assert!(
-            !skill_dir.join("SKILL.org").exists(),
-            "plugin skill should not be installed as a user project artifact under {}",
-            skill_dir.display()
+            skill_path.is_file(),
+            "missing plugin skill under {}",
+            skill_path.display()
         );
         assert!(
-            !skill_dir.join("SKILL.contract.org").exists(),
-            "plugin skill contract should remain repository-side validation input, not an installed user artifact under {}",
-            skill_dir.display()
+            contract_path.is_file(),
+            "missing plugin skill contract under {}",
+            contract_path.display()
+        );
+        let contract = std::fs::read_to_string(&contract_path).expect("read plugin contract");
+        assert!(
+            contract.contains(
+                ":REFER_ORG: ../../../.cache/agent-semantic-protocol/org/skills/ASP_ORG.org#asp-org"
+            ),
+            "plugin skill contract must reference ASP_ORG.org relative to its install directory: {contract}"
+        );
+        assert!(
+            !contract.contains("* stale user-layer contract"),
+            "plugin install must replace stale skill contract content"
         );
     }
 
