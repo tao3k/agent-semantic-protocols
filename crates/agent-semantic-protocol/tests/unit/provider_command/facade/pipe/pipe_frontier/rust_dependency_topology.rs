@@ -261,6 +261,93 @@ fn search_pipe_graph_request_uses_gerbil_manifest_dependencies() {
 }
 
 #[test]
+fn search_pipe_graph_request_uses_provider_declared_project_topology_markers() {
+    let cases = [
+        (
+            "typescript",
+            "ts-harness",
+            "package.json",
+            "package.json",
+            "src/index.ts",
+            "export class TopologyReceipt {}\n",
+            r#"{"name":"topology-fixture","dependencies":{"react":"18.2.0"}}"#,
+        ),
+        (
+            "python",
+            "py-harness",
+            "pyproject.toml",
+            "pyproject.toml",
+            "src/main.py",
+            "class TopologyReceipt:\n    pass\n",
+            "[project]\nname = \"topology-fixture\"\ndependencies = [\"requests>=2.31\"]\n",
+        ),
+        (
+            "julia",
+            "asp-julia-harness",
+            "Project.toml",
+            "Project.toml",
+            "src/main.jl",
+            "struct TopologyReceipt end\n",
+            "[deps]\nDataFrames = \"a93c6f00-e57d-5684-b7b6-d8193f3e46c0\"\n",
+        ),
+        (
+            "gerbil-scheme",
+            "gslph",
+            "gerbil.pkg",
+            "gerbil.pkg",
+            "src/main.ss",
+            ";;; TopologyReceipt\n(def TopologyReceipt 'ok)\n",
+            "(package: topology-fixture\n depend: (\"git.cons.io/example/pkg\"))\n",
+        ),
+    ];
+
+    for (
+        language,
+        binary,
+        project_marker,
+        dependency_marker,
+        source_path,
+        source_text,
+        manifest_text,
+    ) in cases
+    {
+        let root = temp_project_root(&format!("search-pipe-{language}-project-topology"));
+        let bin_dir = root.join(".bin");
+        let marker = root.join("provider-called");
+        std::fs::create_dir_all(root.join("src")).expect("create src");
+        std::fs::write(root.join(project_marker), manifest_text).expect("write project marker");
+        std::fs::write(root.join(source_path), source_text).expect("write source");
+        write_marker_provider(&bin_dir, binary, &marker);
+        write_activation(&root, &[provider(language, Vec::new())]);
+
+        let output = asp_command(&root)
+            .env("PATH", prepend_path(&bin_dir))
+            .env("PRJ_CACHE_HOME", root.join(".cache"))
+            .args([
+                language,
+                "search",
+                "pipe",
+                "TopologyReceipt",
+                "--view",
+                "graph-turbo-request",
+                ".",
+            ])
+            .output()
+            .expect("run asp search pipe topology graph request");
+
+        assert!(
+            output.status.success(),
+            "language={language} stderr: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let payload: Value = serde_json::from_slice(&output.stdout).expect("graph request json");
+        super::assert_graph_turbo_request_contract(&payload);
+        assert_provider_topology_marker(&payload, language, project_marker, dependency_marker);
+        let _ = std::fs::remove_dir_all(root);
+    }
+}
+
+#[test]
 fn search_pipe_graph_request_includes_language_neutral_project_topology() {
     let root = temp_project_root("search-pipe-project-topology");
     let bin_dir = root.join(".bin");
@@ -368,18 +455,19 @@ fn search_pipe_graph_request_includes_language_neutral_project_topology() {
         "{payload}"
     );
     let root_project_id = "language-project:rust-.";
-    let root_config_id = "project-config:rust-cargo.toml";
+    let root_config_id = "project-marker:rust-cargo.toml";
+    let root_dependency_marker_id = "dependency-marker:rust-cargo.toml";
     let submodule_project_id =
         "language-project:rust-zz-harnesses/gerbil-scheme-language-project-harness";
     let submodule_config_id =
-        "project-config:rust-zz-harnesses/gerbil-scheme-language-project-harness/cargo.toml";
+        "project-marker:rust-zz-harnesses/gerbil-scheme-language-project-harness/cargo.toml";
     assert!(
         nodes.iter().any(|node| {
             node["id"].as_str() == Some(root_project_id)
                 && node["kind"].as_str() == Some("language-project")
                 && node["role"].as_str() == Some("project-root")
                 && node["fields"]["languageId"].as_str() == Some("rust")
-                && node["fields"]["configFile"].as_str() == Some("Cargo.toml")
+                && node["fields"]["projectMarker"].as_str() == Some("Cargo.toml")
         }),
         "{payload}"
     );
@@ -390,7 +478,7 @@ fn search_pipe_graph_request_includes_language_neutral_project_topology() {
                 && node["role"].as_str() == Some("project-root")
                 && node["path"].as_str()
                     == Some("zz-harnesses/gerbil-scheme-language-project-harness")
-                && node["fields"]["configFile"].as_str()
+                && node["fields"]["projectMarker"].as_str()
                     == Some("zz-harnesses/gerbil-scheme-language-project-harness/Cargo.toml")
         }),
         "{payload}"
@@ -398,16 +486,24 @@ fn search_pipe_graph_request_includes_language_neutral_project_topology() {
     assert!(
         nodes.iter().any(|node| {
             node["id"].as_str() == Some(root_config_id)
-                && node["kind"].as_str() == Some("project-config")
-                && node["role"].as_str() == Some("config-file")
+                && node["kind"].as_str() == Some("project-marker")
+                && node["role"].as_str() == Some("project-marker")
+        }),
+        "{payload}"
+    );
+    assert!(
+        nodes.iter().any(|node| {
+            node["id"].as_str() == Some(root_dependency_marker_id)
+                && node["kind"].as_str() == Some("dependency-marker")
+                && node["role"].as_str() == Some("dependency-source")
         }),
         "{payload}"
     );
     assert!(
         nodes.iter().any(|node| {
             node["id"].as_str() == Some(submodule_config_id)
-                && node["kind"].as_str() == Some("project-config")
-                && node["role"].as_str() == Some("config-file")
+                && node["kind"].as_str() == Some("project-marker")
+                && node["role"].as_str() == Some("project-marker")
         }),
         "{payload}"
     );
@@ -513,6 +609,14 @@ fn search_pipe_graph_request_includes_language_neutral_project_topology() {
     );
     assert!(
         edges.iter().any(|edge| {
+            edge["relation"].as_str() == Some("uses_dependency_marker")
+                && edge["source"].as_str() == Some(root_project_id)
+                && edge["target"].as_str() == Some(root_dependency_marker_id)
+        }),
+        "{payload}"
+    );
+    assert!(
+        edges.iter().any(|edge| {
             edge["relation"].as_str() == Some("contains_project")
                 && edge["source"].as_str() == Some(submodule_id)
                 && edge["target"].as_str() == Some(submodule_project_id)
@@ -565,5 +669,65 @@ fn assert_manifest_dependency(payload: &Value, dependency: &str) {
                 && node["confidence"].as_str() == Some("exact")
         }),
         "{payload}"
+    );
+}
+
+fn assert_provider_topology_marker(
+    payload: &Value,
+    language: &str,
+    project_marker: &str,
+    dependency_marker: &str,
+) {
+    let nodes = payload["graph"]["nodes"].as_array().expect("nodes");
+    let project_id = format!("language-project:{language}-.");
+    assert!(
+        nodes.iter().any(|node| {
+            node["id"].as_str() == Some(project_id.as_str())
+                && node["kind"].as_str() == Some("language-project")
+                && node["role"].as_str() == Some("project-root")
+                && node["fields"]["languageId"].as_str() == Some(language)
+                && node["fields"]["projectMarker"].as_str() == Some(project_marker)
+        }),
+        "language={language} payload={payload}"
+    );
+    assert!(
+        nodes.iter().any(|node| {
+            node["kind"].as_str() == Some("project-marker")
+                && node["role"].as_str() == Some("project-marker")
+                && node["path"].as_str() == Some(project_marker)
+                && node["fields"]["marker"].as_str() == Some(project_marker)
+        }),
+        "language={language} payload={payload}"
+    );
+    assert!(
+        nodes.iter().any(|node| {
+            node["kind"].as_str() == Some("dependency-marker")
+                && node["role"].as_str() == Some("dependency-source")
+                && node["path"].as_str() == Some(dependency_marker)
+                && node["fields"]["marker"].as_str() == Some(dependency_marker)
+        }),
+        "language={language} payload={payload}"
+    );
+    let edges = payload["graph"]["edges"].as_array().expect("edges");
+    assert!(
+        edges.iter().any(|edge| {
+            edge["relation"].as_str() == Some("has_language_project")
+                && edge["target"].as_str() == Some(project_id.as_str())
+        }),
+        "language={language} payload={payload}"
+    );
+    assert!(
+        edges.iter().any(|edge| {
+            edge["relation"].as_str() == Some("declared_by")
+                && edge["source"].as_str() == Some(project_id.as_str())
+        }),
+        "language={language} payload={payload}"
+    );
+    assert!(
+        edges.iter().any(|edge| {
+            edge["relation"].as_str() == Some("uses_dependency_marker")
+                && edge["source"].as_str() == Some(project_id.as_str())
+        }),
+        "language={language} payload={payload}"
     );
 }

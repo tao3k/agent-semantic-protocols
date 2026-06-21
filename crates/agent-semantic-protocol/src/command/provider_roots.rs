@@ -210,7 +210,7 @@ fn positional_project_root(language_id: &str, path: &Path, check_command: bool) 
 fn language_project_marker_root(language_id: &str, path: &Path) -> Option<PathBuf> {
     let file_spec = language_file_spec(language_id);
     file_spec
-        .config_filenames()
+        .project_markers()
         .iter()
         .find_map(|marker| marker_root_for(path, marker))
 }

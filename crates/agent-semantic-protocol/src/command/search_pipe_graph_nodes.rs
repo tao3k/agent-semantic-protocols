@@ -78,6 +78,10 @@ pub(super) fn append_project_topology_nodes(
     for project in language_projects {
         let project_value = format!("{language_id}:{}", project.root_path);
         let project_id = stable_node_id("language-project", &project_value);
+        let primary_marker = project
+            .project_markers
+            .first()
+            .map(|marker| marker.path.as_str());
         nodes.push(json!({
             "id": project_id.clone(),
             "kind": "language-project",
@@ -88,7 +92,7 @@ pub(super) fn append_project_topology_nodes(
             "confidence": "exact",
             "fields": {
                 "languageId": language_id,
-                "configFile": project.config_path,
+                "projectMarker": primary_marker,
             },
         }));
         edges.push(json!({
@@ -97,25 +101,51 @@ pub(super) fn append_project_topology_nodes(
             "relation": "has_language_project",
         }));
 
-        let config_value = format!("{language_id}:{}", project.config_path);
-        let config_id = stable_node_id("project-config", &config_value);
-        nodes.push(json!({
-            "id": config_id.clone(),
-            "kind": "project-config",
-            "role": "config-file",
-            "value": project.config_path,
-            "action": "topology",
-            "path": project.config_path,
-            "confidence": "exact",
-            "fields": {
-                "languageId": language_id,
-            },
-        }));
-        edges.push(json!({
-            "source": project_id,
-            "target": config_id,
-            "relation": "declared_by",
-        }));
+        for marker in &project.project_markers {
+            let marker_value = format!("{language_id}:{}", marker.path);
+            let marker_id = stable_node_id("project-marker", &marker_value);
+            nodes.push(json!({
+                "id": marker_id.clone(),
+                "kind": "project-marker",
+                "role": "project-marker",
+                "value": marker.path.as_str(),
+                "action": "topology",
+                "path": marker.path.as_str(),
+                "confidence": "exact",
+                "fields": {
+                    "languageId": language_id,
+                    "marker": marker.name.as_str(),
+                },
+            }));
+            edges.push(json!({
+                "source": project_id,
+                "target": marker_id,
+                "relation": "declared_by",
+            }));
+        }
+
+        for marker in &project.dependency_markers {
+            let marker_value = format!("{language_id}:{}", marker.path);
+            let marker_id = stable_node_id("dependency-marker", &marker_value);
+            nodes.push(json!({
+                "id": marker_id.clone(),
+                "kind": "dependency-marker",
+                "role": "dependency-source",
+                "value": marker.path.as_str(),
+                "action": "topology",
+                "path": marker.path.as_str(),
+                "confidence": "exact",
+                "fields": {
+                    "languageId": language_id,
+                    "marker": marker.name.as_str(),
+                },
+            }));
+            edges.push(json!({
+                "source": project_id,
+                "target": marker_id,
+                "relation": "uses_dependency_marker",
+            }));
+        }
 
         for submodule_path in &submodule_paths {
             if path_is_under(&project.root_path, submodule_path) {
@@ -320,7 +350,14 @@ pub(super) fn path_is_under(path: &str, root: &str) -> bool {
 #[derive(Debug)]
 struct LanguageProjectRoot {
     root_path: String,
-    config_path: String,
+    project_markers: Vec<TopologyMarker>,
+    dependency_markers: Vec<TopologyMarker>,
+}
+
+#[derive(Debug)]
+struct TopologyMarker {
+    name: String,
+    path: String,
 }
 
 fn language_project_roots(
@@ -329,7 +366,7 @@ fn language_project_roots(
     candidates: &[Candidate],
 ) -> Vec<LanguageProjectRoot> {
     let file_spec = language_file_spec(language_id);
-    if file_spec.config_filenames().is_empty() || !workspace_root.exists() {
+    if file_spec.project_markers().is_empty() || !workspace_root.exists() {
         return Vec::new();
     }
     let mut seen_roots = BTreeSet::new();
@@ -339,7 +376,8 @@ fn language_project_roots(
         &mut seen_roots,
         workspace_root,
         workspace_root,
-        file_spec.config_filenames(),
+        file_spec.project_markers(),
+        file_spec.dependency_markers(),
     );
     for candidate in candidates {
         let candidate_path = workspace_root.join(&candidate.path);
@@ -348,20 +386,29 @@ fn language_project_roots(
         } else {
             candidate_path.as_path()
         };
-        for root in candidate_project_roots(workspace_root, start, file_spec.config_filenames()) {
+        for root in candidate_project_roots(workspace_root, start, file_spec.project_markers()) {
             push_language_project_root(
                 &mut projects,
                 &mut seen_roots,
                 workspace_root,
                 root,
-                file_spec.config_filenames(),
+                file_spec.project_markers(),
+                file_spec.dependency_markers(),
             );
         }
     }
     projects.sort_by(|left, right| {
-        left.root_path
-            .cmp(&right.root_path)
-            .then_with(|| left.config_path.cmp(&right.config_path))
+        left.root_path.cmp(&right.root_path).then_with(|| {
+            left.project_markers
+                .first()
+                .map(|marker| marker.path.as_str())
+                .cmp(
+                    &right
+                        .project_markers
+                        .first()
+                        .map(|marker| marker.path.as_str()),
+                )
+        })
     });
     projects
 }
@@ -396,25 +443,44 @@ fn push_language_project_root(
     seen_roots: &mut BTreeSet<String>,
     workspace_root: &Path,
     root: &Path,
-    config_filenames: &[String],
+    project_markers: &[String],
+    dependency_markers: &[String],
 ) {
-    let Some(config_path) = config_filenames.iter().find_map(|config_filename| {
-        let config_path = root.join(config_filename);
-        config_path
-            .is_file()
-            .then(|| relative_topology_path(workspace_root, &config_path))
-            .flatten()
-    }) else {
+    let project_markers = topology_marker_paths(workspace_root, root, project_markers);
+    if project_markers.is_empty() {
         return;
-    };
+    }
+    let dependency_markers = topology_marker_paths(workspace_root, root, dependency_markers);
     let root_path = relative_topology_path(workspace_root, root).unwrap_or_else(|| ".".to_string());
     if !seen_roots.insert(root_path.clone()) {
         return;
     }
     projects.push(LanguageProjectRoot {
         root_path,
-        config_path,
+        project_markers,
+        dependency_markers,
     });
+}
+
+fn topology_marker_paths(
+    workspace_root: &Path,
+    root: &Path,
+    marker_names: &[String],
+) -> Vec<TopologyMarker> {
+    marker_names
+        .iter()
+        .filter_map(|marker_name| {
+            let marker_path = root.join(marker_name);
+            let path = marker_path
+                .is_file()
+                .then(|| relative_topology_path(workspace_root, &marker_path))
+                .flatten()?;
+            Some(TopologyMarker {
+                name: marker_name.clone(),
+                path,
+            })
+        })
+        .collect()
 }
 
 fn relative_topology_path(workspace_root: &Path, path: &Path) -> Option<String> {

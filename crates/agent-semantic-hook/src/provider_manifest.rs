@@ -1,7 +1,7 @@
 //! Built-in provider manifests and default project activations.
 
 use serde::Deserialize;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
@@ -268,119 +268,14 @@ fn discover_package_roots_for_manifests<'a>(
     project_root: &Path,
     manifests: impl IntoIterator<Item = &'a ProviderManifest>,
 ) -> BTreeMap<String, Vec<String>> {
-    let manifests = manifests.into_iter().collect::<Vec<_>>();
-    let candidates = package_root_candidates(project_root);
     let mut roots_by_manifest = BTreeMap::new();
     for manifest in manifests {
-        let mut roots = candidates
-            .iter()
-            .filter(|candidate| package_root_matches(candidate, manifest))
-            .map(|candidate| relative_package_root(project_root, &candidate.path))
-            .collect::<Vec<_>>();
-        if roots.is_empty() {
-            roots.push(".".to_string());
-        }
-        roots.sort_by(|left, right| {
-            left.matches('/')
-                .count()
-                .cmp(&right.matches('/').count())
-                .then(left.cmp(right))
-        });
-        roots.dedup();
-        roots_by_manifest.insert(manifest.manifest_id.clone(), roots);
+        roots_by_manifest.insert(
+            manifest.manifest_id.clone(),
+            vec![relative_package_root(project_root, project_root)],
+        );
     }
     roots_by_manifest
-}
-
-struct PackageRootCandidate {
-    path: PathBuf,
-    files: BTreeSet<String>,
-    dirs: BTreeSet<String>,
-}
-
-fn package_root_candidates(project_root: &Path) -> Vec<PackageRootCandidate> {
-    let mut candidates = Vec::new();
-    collect_package_root_candidates(project_root, 0, &mut candidates);
-    candidates
-}
-
-fn collect_package_root_candidates(
-    current: &Path,
-    depth: usize,
-    candidates: &mut Vec<PackageRootCandidate>,
-) {
-    if depth > 5 {
-        return;
-    }
-    let Ok(entries) = fs::read_dir(current) else {
-        candidates.push(PackageRootCandidate {
-            path: current.to_path_buf(),
-            files: BTreeSet::new(),
-            dirs: BTreeSet::new(),
-        });
-        return;
-    };
-    let mut files = BTreeSet::new();
-    let mut dirs = BTreeSet::new();
-    let mut children = Vec::new();
-    for entry in entries.flatten() {
-        let Some(name) = entry.file_name().to_str().map(str::to_string) else {
-            continue;
-        };
-        let Ok(file_type) = entry.file_type() else {
-            continue;
-        };
-        if file_type.is_dir() {
-            dirs.insert(name);
-            let path = entry.path();
-            if depth < 5 && !should_skip_package_root_candidate_dir(&path) {
-                children.push(path);
-            }
-        } else if file_type.is_file() {
-            files.insert(name);
-        }
-    }
-    candidates.push(PackageRootCandidate {
-        path: current.to_path_buf(),
-        files,
-        dirs,
-    });
-    for child in children {
-        collect_package_root_candidates(&child, depth + 1, candidates);
-    }
-}
-
-fn package_root_matches(candidate: &PackageRootCandidate, manifest: &ProviderManifest) -> bool {
-    manifest
-        .source
-        .default_config_files
-        .iter()
-        .any(|config| candidate_file_matches(candidate, config))
-        && manifest
-            .source
-            .default_source_roots
-            .iter()
-            .any(|root| candidate_dir_matches(candidate, root))
-}
-
-fn candidate_file_matches(candidate: &PackageRootCandidate, file: &str) -> bool {
-    if simple_child_name(file) {
-        candidate.files.contains(file)
-    } else {
-        candidate.path.join(file).is_file()
-    }
-}
-
-fn candidate_dir_matches(candidate: &PackageRootCandidate, dir: &str) -> bool {
-    if simple_child_name(dir) {
-        candidate.dirs.contains(dir)
-    } else {
-        candidate.path.join(dir).is_dir()
-    }
-}
-
-fn simple_child_name(value: &str) -> bool {
-    !value.contains('/') && !value.contains('\\')
 }
 
 fn relative_package_root(project_root: &Path, package_root: &Path) -> String {
@@ -390,14 +285,4 @@ fn relative_package_root(project_root: &Path, package_root: &Path) -> String {
         .filter(|relative| !relative.as_os_str().is_empty())
         .map(|relative| relative.to_string_lossy().replace('\\', "/"))
         .unwrap_or_else(|| ".".to_string())
-}
-
-fn should_skip_package_root_candidate_dir(path: &Path) -> bool {
-    let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
-        return false;
-    };
-    if name.starts_with('.') {
-        return true;
-    }
-    matches!(name, "target" | "node_modules" | "dist" | "build" | "venv")
 }

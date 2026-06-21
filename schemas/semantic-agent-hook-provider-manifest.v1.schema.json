@@ -135,6 +135,20 @@
           "items": {
             "$ref": "#/$defs/pathPattern"
           }
+        },
+        "defaultProjectMarkers": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/pathPattern"
+          }
+        },
+        "defaultDependencyMarkers": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/pathPattern"
+          }
         }
       }
     },
@@ -143,6 +157,10 @@
       "additionalProperties": false,
       "properties": {
         "ownerItems": {
+          "type": "boolean",
+          "default": false
+        },
+        "semanticFacts": {
           "type": "boolean",
           "default": false
         }
@@ -173,12 +191,22 @@
       }
     },
     "actionPolicy": {
-      "enum": ["block", "allow", "advisory"]
+      "enum": [
+        "block",
+        "allow",
+        "advisory"
+      ]
     },
     "routes": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["prime", "owner", "fzf", "ingest", "checkChanged"],
+      "required": [
+        "prime",
+        "owner",
+        "fzf",
+        "ingest",
+        "checkChanged"
+      ],
       "properties": {
         "prime": {
           "$ref": "#/$defs/commandTemplate"
@@ -209,7 +237,9 @@
     "commandTemplate": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["argv"],
+      "required": [
+        "argv"
+      ],
       "properties": {
         "argv": {
           "type": "array",
@@ -219,7 +249,12 @@
           }
         },
         "stdinMode": {
-          "enum": ["none", "pipe-candidates", "pipe-diff", "unknown"]
+          "enum": [
+            "none",
+            "pipe-candidates",
+            "pipe-diff",
+            "unknown"
+          ]
         }
       }
     }

@@ -130,6 +130,10 @@ pub struct ManifestSourceDefaults {
     pub default_config_files: Vec<String>,
     pub default_source_roots: Vec<String>,
     pub default_ignored_path_prefixes: Vec<String>,
+    #[serde(default)]
+    pub default_project_markers: Vec<String>,
+    #[serde(default)]
+    pub default_dependency_markers: Vec<String>,
 }
 
 #[derive(Debug)]
