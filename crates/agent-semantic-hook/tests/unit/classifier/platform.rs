@@ -59,7 +59,7 @@ fn platform_response_wraps_denied_decision_for_codex_hooks() {
     assert!(reason.contains("`asp-search-subagent(role,action,evidence,missing,next,risk)`"));
     assert!(reason.contains("Keep model and reasoning settings in Codex config"));
     assert!(
-        reason.contains("If subagents are unavailable, run the safe route directly."),
+        reason.contains("If subagents are unavailable, run the selected safe route directly."),
         "{reason}"
     );
     let system_message = response["systemMessage"].as_str().expect("system message");
