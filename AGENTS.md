@@ -1,5 +1,5 @@
 @.agents/skills/agent-semantic-protocols/SKILL.md
-@.cache/agent-semantic-protocol/org/skills/ASP_ORG.org
+@.cache/agent-semantic-protocol/org/skills/ORG_SKILL.org
 
 # Project Workflow
 

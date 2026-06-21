@@ -18,7 +18,7 @@ pub(crate) fn run_language_command_with_config(
     args: &[String],
     config: &AspConfig,
 ) -> Result<(), String> {
-    if is_help(args) {
+    if is_language_help(args) {
         println!("{}", usage(language_id));
         return Ok(());
     }
@@ -29,7 +29,14 @@ pub(crate) fn run_language_command_with_config(
         return agent::run_org_contract_command(args[1..].to_vec());
     }
     if command == "capture" && language_id == "org" {
-        return org_capture::run_org_capture_command(&args[1..]);
+        let capture_args = &args[1..];
+        if is_capture_state_command(capture_args) {
+            return org_capture::run_org_capture_command(capture_args);
+        }
+        let mut orgize_args = Vec::with_capacity(args.len());
+        orgize_args.push("capture-plan".to_string());
+        orgize_args.extend(capture_args.iter().cloned());
+        return agent::run_org_cli_command(orgize_args);
     }
     if is_document_command(command) {
         return agent::run_document_command_with_walk_config(
@@ -54,9 +61,18 @@ pub(crate) fn run_language_command_with_config(
     unreachable!("document commands are returned above")
 }
 
-fn is_help(args: &[String]) -> bool {
-    args.iter()
-        .any(|arg| matches!(arg.as_str(), "--help" | "-h" | "help"))
+fn is_language_help(args: &[String]) -> bool {
+    args.len() == 1 && matches!(args[0].as_str(), "--help" | "-h" | "help")
+}
+
+fn is_capture_state_command(args: &[String]) -> bool {
+    args.is_empty()
+        || args.iter().any(|arg| {
+            matches!(
+                arg.as_str(),
+                "init" | "--state-root" | "--source-dir" | "--help" | "-h" | "help"
+            )
+        })
 }
 
 fn document_language(language_id: &str) -> Result<DocumentLanguage, String> {
@@ -76,7 +92,7 @@ fn usage(language_id: &str) -> String {
 
 fn supported_commands(language_id: &str) -> &'static str {
     match language_id {
-        "org" => "guide|search|query|elements-query|contract|capture|capture-plan|export|fmt|lint",
+        "org" => "guide|search|query|elements-query|contract|capture|export|fmt|lint",
         _ => "guide|search|query|elements-query",
     }
 }
@@ -86,5 +102,5 @@ fn is_document_command(command: &str) -> bool {
 }
 
 fn is_embedded_org_command(command: &str) -> bool {
-    matches!(command, "capture-plan" | "export" | "fmt" | "lint")
+    matches!(command, "export" | "fmt" | "lint")
 }

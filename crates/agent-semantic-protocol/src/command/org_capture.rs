@@ -94,7 +94,14 @@ fn init_capture_state(args: OrgCaptureArgs) -> Result<(), String> {
     println!("source-root: {}", display_path(&project_root, &source_root));
     println!("state-root: {}", display_path(&project_root, &state_root));
     println!(
-        "skill: {}",
+        "skill-entry: {}",
+        display_path(
+            &project_root,
+            &state_root.join("skills").join("ORG_SKILL.org")
+        )
+    );
+    println!(
+        "skill-impl: {}",
         display_path(
             &project_root,
             &state_root.join("skills").join("ASP_ORG.org")
@@ -119,9 +126,9 @@ fn init_capture_state(args: OrgCaptureArgs) -> Result<(), String> {
         println!("- {}", display_path(&project_root, &dir));
     }
     println!("copied-files: {copied_files}");
-    println!("agents-md-include: @.cache/agent-semantic-protocol/org/skills/ASP_ORG.org");
+    println!("agents-md-include: @.cache/agent-semantic-protocol/org/skills/ORG_SKILL.org");
     println!(
-        "next: reference the skill from AGENTS.md, then write Org state under flow/sdd, flow/BDR, and flow/plans"
+        "next: reference ORG_SKILL.org from AGENTS.md, then write Org state under flow/sdd, flow/BDR, and flow/plans"
     );
     Ok(())
 }
@@ -222,5 +229,5 @@ fn display_path(project_root: &Path, path: &Path) -> String {
 }
 
 fn capture_usage() -> &'static str {
-    "usage: asp org capture [init] [--source-dir PATH] [--state-root PATH]\n\nMaterializes the ASP Org resource tree into .cache/agent-semantic-protocol/org and creates flow/{sdd,BDR,plans}."
+    "usage: asp org capture init [--source-dir PATH] [--state-root PATH]\n       asp org capture --kind task --title TITLE --target-file ORG_FILE [--outline OUTLINE] [--tag TAG] [--property KEY=VALUE] [--body TEXT]\n\n`capture init` materializes the ASP Org resource tree into .cache/agent-semantic-protocol/org and creates flow/{sdd,BDR,plans}. `capture --kind ...` renders a non-mutating Org entry plan."
 }

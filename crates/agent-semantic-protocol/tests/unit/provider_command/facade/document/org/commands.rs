@@ -91,13 +91,13 @@ fn asp_org_exposes_ast_query_facts_and_capture_plan() {
     let capture_plan = asp_command(&root)
         .args([
             "org",
-            "capture-plan",
+            "capture",
             "--kind",
             "task",
             "--title",
             "Record ASP org plan",
             "--body",
-            "Use asp org capture-plan before applying an Org edit.",
+            "Use asp org capture before applying an Org edit.",
             "--target-file",
             "PLANS.org",
             "--outline",
@@ -108,7 +108,7 @@ fn asp_org_exposes_ast_query_facts_and_capture_plan() {
             "PLAN_ID=asp-org-recording",
         ])
         .output()
-        .expect("run asp org capture-plan");
+        .expect("run asp org capture");
     assert!(
         capture_plan.status.success(),
         "stderr: {}",
@@ -116,7 +116,7 @@ fn asp_org_exposes_ast_query_facts_and_capture_plan() {
     );
     let capture_plan_stdout = String::from_utf8(capture_plan.stdout).expect("capture plan stdout");
     assert!(
-        capture_plan_stdout.contains("[CAPTURE_PLAN] orgize capture-plan"),
+        capture_plan_stdout.contains("[CAPTURE] asp org capture"),
         "{capture_plan_stdout}"
     );
     assert!(
@@ -133,7 +133,7 @@ fn asp_org_exposes_ast_query_facts_and_capture_plan() {
     );
     assert!(
         !root.join("PLANS.org").exists(),
-        "asp org capture-plan must not create PLANS.org"
+        "asp org capture must not create PLANS.org"
     );
 
     let _ = std::fs::remove_dir_all(root);
@@ -155,8 +155,9 @@ fn asp_org_capture_initializes_state_resources_and_flow_dirs() {
     let stdout = String::from_utf8(output.stdout).expect("capture init stdout");
     assert!(stdout.contains("[ASP_ORG_CAPTURE] initialized"), "{stdout}");
     assert!(
-        stdout
-            .contains("agents-md-include: @.cache/agent-semantic-protocol/org/skills/ASP_ORG.org"),
+        stdout.contains(
+            "agents-md-include: @.cache/agent-semantic-protocol/org/skills/ORG_SKILL.org"
+        ),
         "{stdout}"
     );
     assert!(stdout.contains("flow/sdd"), "{stdout}");
@@ -167,6 +168,10 @@ fn asp_org_capture_initializes_state_resources_and_flow_dirs() {
         .join(".cache")
         .join("agent-semantic-protocol")
         .join("org");
+    assert!(
+        state_root.join("skills").join("ORG_SKILL.org").is_file(),
+        "ORG_SKILL.org should be materialized"
+    );
     assert!(
         state_root.join("skills").join("ASP_ORG.org").is_file(),
         "ASP_ORG.org should be materialized"
@@ -219,7 +224,7 @@ fn asp_org_guide_exposes_generic_ast_recipes_only() {
         "{stdout}"
     );
     assert!(
-        stdout.contains("|recipe capture-task=asp org capture-plan --kind task"),
+        stdout.contains("|recipe capture-task=asp org capture --kind task"),
         "{stdout}"
     );
     assert!(

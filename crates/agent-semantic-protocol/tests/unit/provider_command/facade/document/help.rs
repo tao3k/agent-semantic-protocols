@@ -50,7 +50,7 @@ fn document_facade_help_does_not_spawn_orgize() {
     for (language, commands) in [
         (
             "org",
-            "guide|search|query|elements-query|contract|capture|capture-plan|export|fmt|lint",
+            "guide|search|query|elements-query|contract|capture|export|fmt|lint",
         ),
         ("md", "guide|search|query|elements-query"),
     ] {
