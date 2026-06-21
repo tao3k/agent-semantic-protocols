@@ -11,8 +11,8 @@
 :ASP_RENDER: static
 :END:
 
-This file is the source Org contract template for generated ASP Codex skill
-contracts. Rust owns the generated sections; humans own the static sections.
+Source template for generated ASP skill contracts. Keep the static body focused
+on agent search flow; generated sections are owned by Rust.
 
 # BEGIN_ASP_GENERATED notice
 # END_ASP_GENERATED notice
@@ -33,200 +33,64 @@ contracts. Rust owns the generated sections; humans own the static sections.
 :ASP_RENDER: static
 :END:
 
-** ASP Explorer Subagent
+** Search Flow
+Search is a staged query language. Start at the earliest stage that current
+evidence justifies, then follow =recommendedNext= or =nextCommand=.
 
-When a hook deny message or =search pipe= output points to =asp-explorer=,
-Codex should reuse the ASP search agent thread already opened for the current
-main task. If no such thread exists, call =spawn_agent= once with
-=fork_context=false=, include a self-contained ASP Explorer branch prompt plus
-the safe ASP command group in the message, and record the returned =agent-...=
-id in the parent reasoning ledger.
+| Stage | Command | What the agent learns |
+| capability | =asp <language> guide --workspace .= | Supported surfaces, axes, recipes, and dependency profiles. |
+| topology | =asp <language> search prime --workspace . --view seeds= | Workspace owners, provider roots, package/member hints, and first action frontier. |
+| query refinement | =asp <language> search pipe '<question>' --workspace . --view seeds= | Ranked evidence, query terms, missing facts, risk, and next command. |
+| owner expansion | =asp <language> search owner <owner> items --query '<term>' --workspace . --view seeds= | Owner-local symbols, tests, imports, docs-use, and exact selectors. |
+| finder recovery | =asp fd -query '<path-or-owner-term>' --workspace <scope>= | Candidate owners when path or selector confidence is low. |
+| indexed text recovery | =asp rg -query '<term>' --workspace <scope>= | Candidate owners from indexed text when a search packet asks for scoped recovery. |
+| exact projection | =asp <language> query --selector <selector> --workspace . --code= | Source text for a precise selector already emitted by search. |
 
-Keep model, reasoning, and agent-type defaults in Codex config, not in the
-prompt. Keep exactly one read-only ASP search agent per main task; feed later
-=actionFrontier= or =targetActions= work to that same thread with =send_input=,
-and require a compact =[asp-search-subagent]= receipt with =role=, =action=,
-=evidence=, =missing=, =next=, and =risk=.
+** Execution Fan-out
+Subagents are optional client execution. They consume search-flow axes; they do
+not define new query semantics.
 
-Keep reasoning state in the parent. =asp-explorer= receives only explicit task
-prompts through =spawn_agent= or =send_input=, does not share hidden sibling
-context, must not edit files, and must not spawn child subagents. If the custom
-subagent remains open, reuse it with =send_input= so it keeps its own thread
-history. If the custom subagent is unavailable, run the same ASP routes
-sequentially and synthesize the receipts in the parent.
+| Trigger | Action |
+| session search worker id | Open at most one ASP search worker per main session, record its id in parent state, and reuse that id for later search fan-out. |
+| independent =actionFrontier= or =targetActions= rows | Assign each bounded command group to a read-only worker. |
+| worker result | Return compact evidence, missing facts, risk, and next action to the parent. |
+| no subagent support | Run the same command groups sequentially in the parent. |
 
-=asp hook install --client codex .= registers the role in project Codex config,
-but a thread that was already running before install may need a reload or new
-thread before =spawn_agent= lists =asp_explorer=.
+** Dependency Search Topology
+Dependency questions stay inside provider search until the provider reports a
+missing dependency frontier.
 
-** Search Before Source
+| Command | Purpose |
+| =asp <language> search dependency <name> --workspace . --view seeds= | Return manifest owner, dependency edge, import owners, docs/public API use, source/runtime hints, tests, and next command. |
+| =asp <language> search reasoning query-deps --workspace . --view seeds= | Use the shared dependency-topology profile when the provider advertises it. |
+| =asp <language> search owner <manifest-owner> items --query '<dependency>' --workspace . --view seeds= | Inspect dependency evidence in the manifest or package owner. |
 
-For code tasks, choose the first ASP route from current evidence instead of
-running a fixed =prime -> pipe= prelude. If the user prompt, hook recovery
-route, prior packet, failure transcript, or CLI diagnostic already provides an
-exact owner, selector, symbol, dependency, or bounded =recommendedNext= action,
-start with that provider-owned =query=, =search owner=, =search fzf=, =asp fd=,
-=asp rg=, guide, or dependency route.
+** Document Search
+Document providers expose AST facts rather than policy harnesses.
 
-Use =search prime= once only when the workspace topology, active language, or
-owner map is unknown. Use =search pipe= only after =prime= or another frontier
-shows ambiguous or multi-axis evidence that needs query-set refinement. A
-no-hit route should return a compact =noOutput= or no-candidates receipt with
-one bounded next action, not a verbose empty frontier.
+| Command | Purpose |
+| =asp org guide --workspace .= | Show Org element kinds, fields, capture, and contract trace commands. |
+| =asp org query --kind task --field todo=TODO --workspace . --view metadata= | Find TODO headlines as task facts. |
+| =asp org query --kind checklistItem --field checked=false --workspace . --view metadata= | Find unchecked checklist items without collapsing them into tasks. |
+| =asp org query --selector <structural-selector> --workspace . --content= | Print matched element content after a structural selector is known. |
+| =asp md guide --workspace .= | Show Markdown document query/search surfaces. |
 
-Common structural-first routes:
+** Failure And Recovery
 
-#+begin_src sh
-asp <language> search prime --workspace <workspace-root> --view seeds
-asp <language> search pipe '<question-or-feature-term>' --workspace <workspace-root> --view seeds
-#+end_src
+| Command | Purpose |
+| =asp <language> search failure '<compact-failure>' --workspace . --view seeds= | Project failure text into candidate owners, hot blocks, query profiles, and next actions. |
+| =asp <language> search guide --workspace .= | Confirm a failure or reasoning profile exists before reconstructing a command. |
 
-For a concrete deep question, bug, feature, or API-usage task with unknown
-owner context, use =search prime= to establish the project graph context, then
-use =search pipe= with a scoped question-or-feature term only if the prime
-frontier needs query refinement. Read its =queryPack=, =queryTerms=,
-=coverage=, =rankedEvidence=, =actionFrontier=, =recommendedNext=,
-=subagentHint=, =nextCommand=, and =avoid= lines.
-
-When more owner/path recall is needed, low-quality pipe output may include
-bounded =fdPreview= rows with =ownerCandidates=, =packageClusters=,
-=parserIndexNext=, and =rgScopeNext=; use those preview facts before running a
-separate =asp fd -query=. Use owner-local item queries and tree-sitter locator
-output only when the pipe action frontier asks for them.
-
-Do not follow a code selector when =queryQuality=low= or the output says
-=query-selector-low-confidence=; use =recommendedNext= and the ranked =A*=
-action rows instead. Only after an exact selector is known and the frontier
-permits =query-selector= should stdout become source text through
-=query --selector ... --code=.
-
-Within one task session, do not repeat =asp <language> search pipe ...= for the
-same concrete term or =asp <language> search prime --workspace <workspace-root>
---view seeds= for the same language/root after a fresh frontier is already
-available. Reuse that frontier and move to the emitted selector, owner, tests,
-read-plan, =fd -query=, =rg -query=, or query-code action unless the project
-root, language provider state, search scope, or requested =--source= changed.
-
-** Hook Recovery
-
-When a hook blocks a raw source read or broad raw search, follow the recovery
-route printed in the hook message. Do not retry =Read=, =cat=, =sed=, =rg=, or
-source-dump commands on the same matched source. Treat any
-=direct-source-read= route as a bounded fallback, not the default next step.
-
-Use =direct-source-read --code= only when the exact selector is already known
-and source preservation matters, such as a small file-header import window,
-staged/index/head source-version inspection, or a provider-selected read-plan
-frontier that cannot be expressed as a syntax query. If the selector is a whole
-file, glob, package root, or broad line range, ask the provider for owner items,
-tree-sitter locator output, or a read-plan frontier instead of printing code.
-
-** Command Selection
-Dependency search is a first-class provider surface. For dependency questions, start with =asp <language> search guide --workspace .= to confirm the current command shape, then use the advertised dependency/manifest profile such as =asp rust search dependency <crate-or-package> --workspace . --view seeds= or the shared =search reasoning query-deps= profile before reading source or searching the web. Treat manifest facts, import owners, docs-use/public-api lines, crate-source/runtime-source hints, and tests as the first frontier; use docs.rs or web search only after the provider reports a missing dependency frontier.
-
-Start with =asp <language> guide --workspace .= when a task needs the provider-owned tool
-map. Use =asp providers= or =asp doctor= when the active language or provider
-binary is unclear. The root =asp search= and =asp query= forms are thin
-routers: use =--language <id>= when the project root is ambiguous, or pass an
-owner/selector path or project root that matches one active provider's
-activation coverage so the root facade can route to the same
-=asp <language> search|query= boundary.
-
-Provider =guide= output is the interface contract for language-specific
-knowledge axes. Do not assume that an axis supported by one provider is
-available in another provider; run =asp <language> guide --workspace .= and follow only the
-=|cmd= rows it advertises.
-
-Treat =evidenceGrade=unknown=, =|missing=, or =witness pending= as a real
-frontier gap. Do not fill it from memory or inline examples; refine the axis
-query, route to runtime-source/pattern evidence, or record the provider gap.
-
-** Failure Frontier
-
-Use =asp <language> search guide --workspace .= as the source of truth for current reasoning
-profiles. Its =command== rows are executable shapes. Do not reconstruct
-reasoning commands from =entries== text as positional arguments.
-
-When a check or test failure has already produced a compact failure transcript,
-project it into hot selectors before reading code. =search failure= stdout is a
-search surface, not a source surface. It should return failure facts, candidate
-owners, hot blocks, query profiles, frontier actions, and =avoid= guidance.
-
-** Document Query
-
-Document languages use the same facade shape but are not policy harnesses:
-=asp org <guide|search|query> ...= and =asp md <guide|search|query> ...= run
-the native orgize document provider inside =asp=. Use them for parser-owned
-document elements and metadata navigation. Normal document query must be
-explicit and element-oriented, such as =--term= or =--selector= with
-=--view metadata=; use =--kind= and =--field= to narrow parser-owned elements
-without post-processing. Add =--content= only when the same explicit query
-should print the matched element content instead of metadata.
-
-Start from the document guide when you need the element and field vocabulary:
-
-#+begin_src sh
-asp org guide --workspace .
-asp md guide --workspace .
-#+end_src
-
-Document search and query return parser-owned element facts: headings,
-paragraphs, properties, planning rows, tables, blocks, lists, tasks, links, and
-images. Use =search toc= as the repository documentation entrypoint. Use
-selector query for the element frontier inside a known range. Use =--content=
-when stdout should be only the matched element content. Use
-=direct-source-read= only when source-preserved document text is required after
-that range is known.
-
-** Gerbil POO Extension Search
-:PROPERTIES:
-:REGISTERED_KNOWLEDGE: gerbil-poo://registry
-:SELECTOR_SCHEME: gerbil-poo-logical-symbol
-:NOT_PROJECT_ACTIVATION: true
-:ACTIVATION_SOURCE: gerbil.pkg
-:DEPENDENCY_MODE: required
-:END:
-
-When the =gerbil-scheme= provider reports extension =poo=, treat
-=gerbil-poo://registry= as registered logical knowledge, not as project
-activation fallback. The activation witness is the =gerbil.pkg= dependency on
-=git.cons.io/mighty-gerbils/gerbil-poo=, and source lookup remains
-runtime-resolved through the =gerbil-poo-logical-symbol= selector scheme.
-
-Use =asp gerbil-scheme search extension poo --workspace <workspace-root>
---view seeds= for the POO extension frontier. Read its registered knowledge,
-source refs, next command, and =notProjectActivation=true= signal before
-falling back to source selectors.
-
-** General Rules
-
-- Use the =asp <language>= facade for agent exploration; provider binaries are
-  implementation/debug surfaces.
-- Do not move language path-context resolution into =asp=. The facade may
-  locate a provider project hint from that language's marker file, such as
-  =Cargo.toml=, =tsconfig.json=, =package.json=, =pyproject.toml=, or
-  =Project.toml=, but it must not parse package membership, project references,
-  virtual environments, source/test roots, or language layout.
-- Do not add =--json= during agent exploration. =--json= is for schema tests,
-  validators, receipts, and IDE integrations.
-- When a search/query term contains shell metacharacters copied from docs or
-  code, such as backticks, pipes, =$=, globs, braces, or spaces, pass it as a
-  single-quoted argv literal. If the text itself contains single quotes, narrow
-  it into separate safe terms or use a provider-documented file/stdin surface.
-- =asp hook install --client codex .= installs hooks, provider activation, and
-  the rendered Org skill contract for the detected providers.
-- Search and non-code query are discovery surfaces and should not inline source
-  code.
-- Direct source reads are last-mile transport for exact, source-preserved text
-  after a parser-owned frontier has selected the locator. Do not use
-  =direct-source-read= for discovery, owner mapping, import scanning, symbol
-  search, or "show me this file" habits.
-- =--view metadata= is document-only and only valid for =asp org query= and
-  =asp md query=. Do not use it with code providers such as Python, Rust,
-  TypeScript, or Julia.
-- Query with =--code= is for exact or unique code extraction.
-- Hook config may disable provider =ast-patch=; when disabled, patch with
-  =apply_patch= after exact locator/code evidence.
+** Provider Contract Rules
+- Provider =guide= output is the command contract; do not infer unsupported axes.
+- Dependency topology must include manifest, dependency edge, import owner,
+  public API/docs use, test witness, and next action when the provider can
+  prove them.
+- Search output should be compact evidence, not source dumps.
+- Treat =missing=, =evidenceGrade=unknown=, and =witness pending= as real
+  frontier gaps.
+- Keep language project parsing in the language provider. ASP routes and
+  indexes; it does not reimplement package membership or source/test scope.
 
 * Provider Contracts
 :PROPERTIES:
@@ -245,6 +109,5 @@ falling back to source selectors.
 :ASP_CLIENT: codex
 :END:
 
-This contract is CLI-only for ASP: no MCP server and no Codex app connector are
-required. Lifecycle enforcement is owned by Codex hooks that invoke the local
-=asp= CLI.
+ASP is a CLI contract. Client lifecycle and installation details belong outside
+this skill body.

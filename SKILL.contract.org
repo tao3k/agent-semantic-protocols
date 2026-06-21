@@ -70,18 +70,18 @@
 
 #+BEGIN_SRC org-contract
 (assert exists
-  (headline :descendant-of $scope :summary-contains (title "ASP Explorer Subagent")))
+  (headline :descendant-of $scope :summary-contains (title "Search Flow")))
 #+END_SRC
 
-** Gerbil POO extension search contract
+** Dependency search topology section
 :PROPERTIES:
-:ASSERT_ID: asp.skill.agent-operating.gerbil-poo-extension-search
+:ASSERT_ID: asp.skill.agent-operating.dependency-search-topology
 :SEVERITY: error
 :END:
 
 #+BEGIN_SRC org-contract
 (assert exists
-  (headline :descendant-of $scope :summary-contains (title "Gerbil POO Extension Search")))
+  (headline :descendant-of $scope :summary-contains (title "Dependency Search Topology")))
 #+END_SRC
 
 ** Provider contracts section
@@ -103,7 +103,7 @@
 
 #+BEGIN_SRC org-contract
 (assert exists
-  (node-property :descendant-of $scope :summary (key "LANGUAGE_ID")))
+  (plain-text :descendant-of $scope :summary-contains (value "manifest, dependency edge, import owner")))
 #+END_SRC
 
 ** Client surface section
