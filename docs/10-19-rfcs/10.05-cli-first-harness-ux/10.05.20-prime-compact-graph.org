@@ -34,6 +34,7 @@ Text-flow evidence such as =surface=source|test=, =ownerRole=, and bounded
 =text= snippets exists so follow-up filters do not re-search the original query
 token.
 
+For Rust, the path context resolver is Cargo-owned. The provider identifies the top-level package or workspace member from =Cargo.toml=, then uses =cargo metadata= and lockfile facts to derive dependency topology, including registry, git, and path dependency source roots. These roots become incremental index inputs for code and documentation search surfaces such as =crate-source=, =docs-use=, =fd=, =rg=, and =exa= wrappers. Topology is the project map and routing index for those surfaces; it must not be replaced by hard-coded crate capability tables or ecosystem-specific symbol lists.
 ** What path context covers (and what it does not)
 
 Path context is provider-owned setup for search packets, not a standalone
