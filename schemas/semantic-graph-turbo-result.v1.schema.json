@@ -920,7 +920,7 @@
       "properties": {
         "key": {
           "type": "string",
-          "pattern": "^sha256:[0-9a-f]{64}$"
+          "pattern": "^sha256:([a-z][a-z0-9_-]*:)?[0-9a-f]{64}$"
         },
         "status": {
           "enum": [
@@ -1097,6 +1097,30 @@
             "hit",
             "miss",
             "disabled"
+          ]
+        },
+        "depthCacheStatus": {
+          "enum": [
+            "hit",
+            "miss",
+            "disabled",
+            "unknown"
+          ]
+        },
+        "pprCacheStatus": {
+          "enum": [
+            "hit",
+            "miss",
+            "disabled",
+            "unknown"
+          ]
+        },
+        "reachableEdgesCacheStatus": {
+          "enum": [
+            "hit",
+            "miss",
+            "disabled",
+            "unknown"
           ]
         },
         "readLoopDirectCodeActionCount": {

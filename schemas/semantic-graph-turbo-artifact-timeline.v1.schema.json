@@ -29,6 +29,10 @@
     "readLoopDuplicateSelectors",
     "readLoopAdjacentRangeWindows",
     "readLoopSameOwnerScans",
+    "topologyEventCount",
+    "topologyWeakQueryPackEvents",
+    "topologyWeakPackageCohesionEvents",
+    "topologyWeakLocalEvidenceEvents",
     "kindCounts",
     "actionMethodCounts",
     "sessions",
@@ -41,6 +45,7 @@
     "ownerCollapse",
     "fanoutPlanning",
     "readLoopRisk",
+    "topology",
     "actionSummary",
     "efficiencyEstimate"
   ],
@@ -120,6 +125,18 @@
     "readLoopSameOwnerScans": {
       "$ref": "#/$defs/nonNegativeInteger"
     },
+    "topologyEventCount": {
+      "$ref": "#/$defs/nonNegativeInteger"
+    },
+    "topologyWeakQueryPackEvents": {
+      "$ref": "#/$defs/nonNegativeInteger"
+    },
+    "topologyWeakPackageCohesionEvents": {
+      "$ref": "#/$defs/nonNegativeInteger"
+    },
+    "topologyWeakLocalEvidenceEvents": {
+      "$ref": "#/$defs/nonNegativeInteger"
+    },
     "kindCounts": {
       "$ref": "#/$defs/countMap"
     },
@@ -170,6 +187,9 @@
     },
     "readLoopRisk": {
       "$ref": "#/$defs/readLoopRisk"
+    },
+    "topology": {
+      "$ref": "#/$defs/topology"
     },
     "actionSummary": {
       "$ref": "#/$defs/actionGroup"
@@ -409,6 +429,163 @@
           "$ref": "#/$defs/nonNegativeInteger"
         },
         "examples": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/actionRow"
+          }
+        }
+      }
+    },
+    "topologyState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "kind",
+        "method",
+        "target",
+        "query",
+        "projectRootArg",
+        "queryQuality",
+        "scopeQuality",
+        "packageCohesion",
+        "ownerCandidateCount",
+        "rankedEvidenceCount",
+        "frontierKindCounts",
+        "recommendedRoute",
+        "missingAxes"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "method": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "query": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "projectRootArg": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "queryQuality": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scopeQuality": {
+          "type": "string",
+          "minLength": 1
+        },
+        "packageCohesion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ownerCandidateCount": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "rankedEvidenceCount": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "frontierKindCounts": {
+          "$ref": "#/$defs/countMap"
+        },
+        "recommendedRoute": {
+          "type": "string"
+        },
+        "missingAxes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "topology": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policy",
+        "eventCount",
+        "eventsWithTopology",
+        "weakQueryPackEvents",
+        "weakPackageCohesionEvents",
+        "weakScopeEvents",
+        "weakLocalEvidenceEvents",
+        "missingRouteEvents",
+        "queryQualityCounts",
+        "packageCohesionCounts",
+        "scopeQualityCounts",
+        "routeCounts",
+        "missingAxisCounts",
+        "states",
+        "actions"
+      ],
+      "properties": {
+        "policy": {
+          "const": "graph-turbo-first-stage-topology-v1"
+        },
+        "eventCount": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "eventsWithTopology": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "weakQueryPackEvents": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "weakPackageCohesionEvents": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "weakScopeEvents": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "weakLocalEvidenceEvents": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "missingRouteEvents": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "queryQualityCounts": {
+          "$ref": "#/$defs/countMap"
+        },
+        "packageCohesionCounts": {
+          "$ref": "#/$defs/countMap"
+        },
+        "scopeQualityCounts": {
+          "$ref": "#/$defs/countMap"
+        },
+        "routeCounts": {
+          "$ref": "#/$defs/countMap"
+        },
+        "missingAxisCounts": {
+          "$ref": "#/$defs/countMap"
+        },
+        "states": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/topologyState"
+          }
+        },
+        "actions": {
           "type": "array",
           "items": {
             "$ref": "#/$defs/actionRow"
