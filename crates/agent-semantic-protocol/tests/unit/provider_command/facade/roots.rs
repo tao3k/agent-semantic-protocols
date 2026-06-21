@@ -141,7 +141,7 @@ fn check_facade_uses_positional_existing_directory_as_project_root() {
     let bin_dir = root.join(".bin");
     let provider_root = root.join("fixture");
     std::fs::create_dir_all(provider_root.join("src")).expect("create provider root");
-    write_pwd_provider(&bin_dir, "gerbil-scheme-harness");
+    write_pwd_provider(&bin_dir, "gslph");
     write_activation(&root, &[provider("gerbil-scheme", Vec::new())]);
 
     let output = asp_command(&root)
@@ -181,7 +181,7 @@ fn gerbil_query_facade_allows_explicit_workspace_outside_activation_workspace() 
     std::fs::create_dir_all(&outside_root).expect("create outside root");
     std::fs::write(outside_root.join("build.ss"), ";; outside build\n")
         .expect("write outside build file");
-    write_pwd_provider(&bin_dir, "gerbil-scheme-harness");
+    write_pwd_provider(&bin_dir, "gslph");
     write_activation(&root, &[provider("gerbil-scheme", Vec::new())]);
 
     let output = asp_command(&root)

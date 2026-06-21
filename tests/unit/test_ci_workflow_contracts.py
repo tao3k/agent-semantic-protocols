@@ -40,7 +40,7 @@ LANGUAGE_RELEASE_WORKFLOWS = {
         },
     },
     "languages/gerbil-scheme-language-project-harness": {
-        "binary": "gerbil-scheme-harness",
+        "binary": "gslph",
         "darwin_os": "ubuntu-latest",
         "targets": {
             "x86_64-unknown-linux-gnu",

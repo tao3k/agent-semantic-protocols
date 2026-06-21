@@ -68,9 +68,11 @@ pub(super) fn collect_candidates(
             })
             .collect()
     };
-    if let Some(collection) = collect_native_finder_candidates(NativeFinderCollectionRequest {
+    let native_candidates = collect_native_finder_candidates(NativeFinderCollectionRequest {
         surface: native_surface_for_pipe_terms(&terms),
         language_id,
+        file_spec_override: None,
+        accept_all_files: false,
         project_root,
         locator_root,
         roots: &roots,
@@ -78,23 +80,31 @@ pub(super) fn collect_candidates(
         config,
         native_args: &[],
     })?
-    .filter(|collection| !collection.candidates.is_empty())
-    {
-        return Ok(collection.candidates);
-    }
+    .map(|collection| collection.candidates)
+    .unwrap_or_default();
     let file_spec = language_file_spec(language_id);
+    if !native_candidates.is_empty()
+        && !native_candidates_need_supplement(&native_candidates, &terms, &file_spec)
+    {
+        return Ok(native_candidates);
+    }
     let term_matcher = CandidateTermMatcher::new(&terms)?;
     let search_roots = roots
         .iter()
-        .map(|root| sorted_search_root_files(root, config, file_spec, &terms))
+        .map(|root| sorted_search_root_files(root, config, &file_spec, &terms))
         .collect::<Result<Vec<_>, _>>()?;
-    collect_candidates_from_search_roots(
+    let supplemental_candidates = collect_candidates_from_search_roots(
         locator_root,
-        file_spec,
+        &file_spec,
         &terms,
         &term_matcher,
         &search_roots,
-    )
+    )?;
+    if native_candidates.is_empty() {
+        Ok(supplemental_candidates)
+    } else {
+        Ok(merge_candidates(native_candidates, supplemental_candidates))
+    }
 }
 
 fn native_surface_for_pipe_terms(terms: &[String]) -> NativeFinderSurface {
@@ -112,9 +122,57 @@ fn search_term_looks_like_path(term: &str) -> bool {
         || path_basename_matches(term, term)
 }
 
+fn native_candidates_need_supplement(
+    candidates: &[Candidate],
+    terms: &[String],
+    file_spec: &LanguageFileSpec,
+) -> bool {
+    terms.iter().any(|term| {
+        (search_term_looks_like_path(term) || config_filename_term(file_spec, term))
+            && !candidates
+                .iter()
+                .any(|candidate| candidate_matches_term(candidate, term))
+    })
+}
+
+fn config_filename_term(file_spec: &LanguageFileSpec, term: &str) -> bool {
+    file_spec
+        .config_filenames()
+        .iter()
+        .any(|config_filename| config_filename.eq_ignore_ascii_case(term))
+}
+
+fn candidate_matches_term(candidate: &Candidate, term: &str) -> bool {
+    let term = term.to_ascii_lowercase();
+    candidate.path.to_ascii_lowercase().contains(&term)
+        || candidate.symbol.to_ascii_lowercase().contains(&term)
+        || candidate.text.to_ascii_lowercase().contains(&term)
+}
+
+fn merge_candidates(mut primary: Vec<Candidate>, supplemental: Vec<Candidate>) -> Vec<Candidate> {
+    let mut seen = HashSet::new();
+    primary.retain(|candidate| seen.insert(candidate_merge_key(candidate)));
+    for candidate in supplemental {
+        if primary.len() >= PIPE_CANDIDATE_LINE_LIMIT {
+            break;
+        }
+        if seen.insert(candidate_merge_key(&candidate)) {
+            primary.push(candidate);
+        }
+    }
+    primary
+}
+
+fn candidate_merge_key(candidate: &Candidate) -> String {
+    format!(
+        "{}:{}:{}:{}",
+        candidate.path, candidate.line, candidate.symbol, candidate.text
+    )
+}
+
 fn collect_candidates_from_search_roots(
     locator_root: &Path,
-    file_spec: LanguageFileSpec,
+    file_spec: &LanguageFileSpec,
     terms: &[String],
     term_matcher: &CandidateTermMatcher,
     search_roots: &[Vec<PathBuf>],
@@ -222,7 +280,7 @@ fn query_terms(query: &str) -> Vec<String> {
 
 struct CandidateCollector<'a> {
     locator_root: &'a Path,
-    file_spec: LanguageFileSpec,
+    file_spec: &'a LanguageFileSpec,
     terms: &'a [String],
     term_matcher: &'a CandidateTermMatcher,
     per_term_limit: usize,
@@ -439,18 +497,11 @@ fn path_basename_matches(lower_path: &str, term: &str) -> bool {
         .rsplit('/')
         .next()
         .map(|name| {
-            name.trim_end_matches(".tsx")
-                .trim_end_matches(".ts")
-                .trim_end_matches(".jsx")
-                .trim_end_matches(".js")
-                .trim_end_matches(".rs")
-                .trim_end_matches(".py")
-                .trim_end_matches(".jl")
-                .trim_end_matches(".ss")
-                .trim_end_matches(".ssi")
-                .trim_end_matches(".scm")
-                .trim_end_matches(".sld")
-                == term
+            name == term
+                || name
+                    .rsplit_once('.')
+                    .map(|(stem, _)| stem == term)
+                    .unwrap_or(false)
         })
         .unwrap_or(false)
 }
@@ -458,7 +509,7 @@ fn path_basename_matches(lower_path: &str, term: &str) -> bool {
 fn sorted_search_root_files(
     root: &Path,
     config: &AspConfig,
-    file_spec: LanguageFileSpec,
+    file_spec: &LanguageFileSpec,
     terms: &[String],
 ) -> Result<Vec<PathBuf>, String> {
     if !root.exists() {
@@ -479,12 +530,12 @@ fn sorted_search_root_files(
 fn sorted_search_files(
     root: &Path,
     config: &AspConfig,
-    file_spec: LanguageFileSpec,
+    file_spec: &LanguageFileSpec,
     terms: &[String],
 ) -> Result<Vec<PathBuf>, String> {
     let mut builder = WalkBuilder::new(root);
     builder.hidden(false);
-    builder.filter_entry(search_entry_filter(config, file_spec));
+    builder.filter_entry(search_entry_filter(config, file_spec.clone()));
     let mut paths = Vec::new();
     for result in builder.build() {
         let entry = result.map_err(|error| {

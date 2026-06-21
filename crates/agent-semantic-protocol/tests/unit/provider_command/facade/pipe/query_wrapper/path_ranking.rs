@@ -55,6 +55,106 @@ fn asp_fd_query_ranks_path_candidates_by_normalized_query_axis_coverage() {
 }
 
 #[test]
+fn asp_fd_query_ranks_query_dense_owner_before_low_coverage_path() {
+    let root = temp_project_root("asp-fd-query-wrapper-query-axis-rank");
+    std::fs::create_dir_all(root.join("semantic_sandtable")).expect("create sandtable dir");
+    std::fs::write(root.join("semantic_sandtable/overview.py"), "VALUE = 1\n")
+        .expect("write low coverage source");
+    std::fs::write(
+        root.join("semantic_sandtable/_discovery_steps_common.py"),
+        "VALUE = 2\n",
+    )
+    .expect("write discovery source");
+    std::fs::write(
+        root.join("semantic_sandtable/large_library_intent_matrix_support.py"),
+        "VALUE = 3\n",
+    )
+    .expect("write matrix source");
+    std::fs::write(
+        root.join("semantic_sandtable/test_large_library_report_chain.py"),
+        "VALUE = 4\n",
+    )
+    .expect("write report chain source");
+
+    let output = asp_command(&root)
+        .args([
+            "fd",
+            "-query",
+            "topology|membership|ablation|sandtable|runner|report|chain|controlled|full|disabled|request|policy",
+            ".",
+            "--view",
+            "seeds",
+        ])
+        .output()
+        .expect("run asp fd -query");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    let owner_line = stdout
+        .lines()
+        .find(|line| line.starts_with("ownerCandidates="))
+        .expect("owner candidates line");
+    assert!(
+        owner_line
+            .starts_with("ownerCandidates=semantic_sandtable/test_large_library_report_chain.py"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("rankedEvidence=H1:semantic_sandtable/test_large_library_report_chain.py"),
+        "{stdout}"
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn asp_fd_query_does_not_fan_out_package_path_when_axis_is_already_covered() {
+    let root = temp_project_root("asp-fd-query-wrapper-package-axis-covered");
+    let package_root = root.join("packages/python/asp_graph_turbo/src/asp_graph_turbo");
+    std::fs::create_dir_all(&package_root).expect("create graph turbo package dir");
+    std::fs::write(
+        package_root.join("benchmark_cli.py"),
+        "def benchmark_packet():\n    return None\n",
+    )
+    .expect("write benchmark source");
+    for index in 0..48 {
+        std::fs::write(
+            package_root.join(format!("unrelated_{index}.py")),
+            "VALUE = 1\n",
+        )
+        .expect("write unrelated source");
+    }
+
+    let output = asp_command(&root)
+        .args([
+            "fd",
+            "-query",
+            "asp_graph_turbo|benchmark",
+            "packages/python/asp_graph_turbo",
+            "--view",
+            "seeds",
+        ])
+        .output()
+        .expect("run asp fd package axis query");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    assert!(!stdout.contains("packagePathAugmented="), "{stdout}");
+    assert!(
+        stdout.contains("ownerCandidates=src/asp_graph_turbo/benchmark_cli.py"),
+        "{stdout}"
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn asp_fd_query_owner_items_query_uses_selected_owner_axes() {
     let root = temp_project_root("asp-fd-query-wrapper-owner-items-query");
     std::fs::create_dir_all(root.join("src")).expect("create src dir");

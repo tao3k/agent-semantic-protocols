@@ -92,6 +92,53 @@
                 }
             }
         },
+        "performanceGate": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "status",
+                "checks"
+            ],
+            "properties": {
+                "status": {
+                    "enum": [
+                        "pass",
+                        "fail"
+                    ]
+                },
+                "checks": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                            "metric",
+                            "observedMs",
+                            "maxMs",
+                            "passed"
+                        ],
+                        "properties": {
+                            "metric": {
+                                "enum": [
+                                    "p95"
+                                ]
+                            },
+                            "observedMs": {
+                                "type": "number",
+                                "minimum": 0
+                            },
+                            "maxMs": {
+                                "type": "number",
+                                "minimum": 0
+                            },
+                            "passed": {
+                                "type": "boolean"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "cacheStatusCounts": {
             "type": "object",
             "additionalProperties": {
@@ -273,6 +320,25 @@
                     }
                 }
             }
-        }
+        },
+        "requestFields": {
+            "type": "object",
+            "additionalProperties": {
+                "type": "string"
+            }
+        },
+    "requestSummary": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "requestPolicy": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "boolean"
+      }
     }
+  }
 }

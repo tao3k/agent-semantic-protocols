@@ -9,6 +9,7 @@ QUERY_FIRST_STAGE_ABLATION_VARIANTS = (
     "no-package-cohesion",
     "no-query-clause-coverage",
     "no-local-evidence",
+    "no-topology-membership",
 )
 OPTIMIZATION_BATCH_AGGREGATION_AXES = (
     "language",

@@ -6,6 +6,8 @@ use agent_semantic_runtime::{
     project_local_client_cache_manifest_path, project_root_for_activation_path,
 };
 
+use super::search_language_files::language_file_spec;
+
 pub(super) fn activation_project_root(activation_path: &Path, project_root: &str) -> PathBuf {
     let configured = PathBuf::from(project_root);
     let root = if configured.is_absolute() {
@@ -206,14 +208,9 @@ fn positional_project_root(language_id: &str, path: &Path, check_command: bool) 
 }
 
 fn language_project_marker_root(language_id: &str, path: &Path) -> Option<PathBuf> {
-    let marker_names = match language_id {
-        "rust" => &["Cargo.toml"][..],
-        "typescript" => &["tsconfig.json", "package.json"][..],
-        "python" => &["pyproject.toml"][..],
-        "julia" => &["Project.toml", "JuliaProject.toml"][..],
-        _ => &[][..],
-    };
-    marker_names
+    let file_spec = language_file_spec(language_id);
+    file_spec
+        .config_filenames()
         .iter()
         .find_map(|marker| marker_root_for(path, marker))
 }

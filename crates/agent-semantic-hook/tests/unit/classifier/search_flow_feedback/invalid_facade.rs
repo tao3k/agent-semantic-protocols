@@ -52,13 +52,13 @@ fn pre_tool_denies_unknown_facade_without_unrelated_provider_recovery() {
     runtime.providers.push(provider(
         "gerbil-scheme",
         "gerbil-scheme-harness",
-        "gerbil-scheme-harness",
+        "gslph",
         "agent.semantic-protocols.languages.gerbil-scheme.gerbil-scheme-harness",
         &[".ss", ".scm"],
         &["gerbil.pkg"],
         &["src", "test"],
         &[],
-        provider_routes("gerbil-scheme-harness", None),
+        provider_routes("gslph", None),
     ));
 
     let decision = classify_hook(

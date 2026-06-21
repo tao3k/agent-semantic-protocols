@@ -110,6 +110,11 @@ fn assert_install_pinned_release_writes_runtime_bin_package_and_lock() {
         "missing package binary {}",
         package_binary.display()
     );
+    assert_eq!(
+        std::fs::read(&bin).expect("read installed provider"),
+        std::fs::read(&package_binary).expect("read package provider"),
+        "installed provider target should be the release binary, not a shell launcher"
+    );
     let lock_contents = std::fs::read_to_string(&lock).expect("read install lock");
     assert!(lock_contents.contains("rev = \"v0.1.2\""));
     assert!(lock_contents.contains(
@@ -171,6 +176,14 @@ fn assert_install_language_pinned_release_prefers_asp_toml_provider_bin() {
 
     let bin = root.join("tools/rs-harness-config");
     assert!(bin.is_file(), "missing configured bin {}", bin.display());
+    let package_binary = root.join(
+        ".cache/agent-semantic-protocol/runtime/providers/rust/v0.1.2/x86_64-unknown-linux-gnu/rs-harness",
+    );
+    assert_eq!(
+        std::fs::read(&bin).expect("read configured provider"),
+        std::fs::read(&package_binary).expect("read package provider"),
+        "configured provider target should be the release binary, not a shell launcher"
+    );
 
     let provider_output = Command::new(&bin)
         .arg("probe")

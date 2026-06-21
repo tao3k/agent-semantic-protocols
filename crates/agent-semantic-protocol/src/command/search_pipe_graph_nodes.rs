@@ -233,7 +233,7 @@ fn candidate_tree_sitter_pattern(language_id: &str, symbol: &str) -> Option<Stri
     }
 }
 
-fn project_submodule_paths(workspace_root: &Path) -> Vec<String> {
+pub(super) fn project_submodule_paths(workspace_root: &Path) -> Vec<String> {
     let Ok(content) = fs::read_to_string(workspace_root.join(".gitmodules")) else {
         return Vec::new();
     };
@@ -254,7 +254,7 @@ fn project_submodule_paths(workspace_root: &Path) -> Vec<String> {
     paths.into_iter().collect()
 }
 
-fn path_is_under(path: &str, root: &str) -> bool {
+pub(super) fn path_is_under(path: &str, root: &str) -> bool {
     path == root
         || path
             .strip_prefix(root)

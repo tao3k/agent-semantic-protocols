@@ -199,10 +199,11 @@
           "items": {
             "enum": [
               "no-query-seed-prior",
-              "no-package-cohesion",
-              "no-query-clause-coverage",
-              "no-local-evidence"
-            ]
+            "no-package-cohesion",
+            "no-query-clause-coverage",
+            "no-local-evidence",
+            "no-topology-membership"
+          ]
           }
         },
         "aggregationAxes": {
@@ -283,10 +284,11 @@
           "items": {
             "enum": [
               "no-query-seed-prior",
-              "no-package-cohesion",
-              "no-query-clause-coverage",
-              "no-local-evidence"
-            ]
+            "no-package-cohesion",
+            "no-query-clause-coverage",
+            "no-local-evidence",
+            "no-topology-membership"
+          ]
           }
         }
       }

@@ -35,7 +35,7 @@ fn generated_activation_sync_refreshes_newly_available_parent_workspace_provider
     write_activation(&activation_path, &initial_activation).expect("write old activation");
 
     fs::remove_file(child.join("asp.toml")).expect("enable default child providers");
-    let gerbil_bin = root.join(".bin/gerbil-scheme-harness");
+    let gerbil_bin = root.join(".bin/gslph");
     fs::write(&gerbil_bin, "#!/bin/sh\nexit 0\n").expect("write gerbil provider bin");
     make_executable(&gerbil_bin);
 

@@ -53,3 +53,79 @@ def test_graph_turbo_benchmark_json_is_schema_owned(tmp_path) -> None:
     assert payload["lastAlgorithmMetrics"]["reachableEdgesCacheStatus"] == "disabled"
     assert payload["lastAlgorithmMetrics"]["pathCandidateCount"] >= 1
     assert payload["lastTypedPathTrace"]["step"] == "typed-paths"
+
+
+def test_graph_turbo_benchmark_passes_p95_performance_gate(tmp_path) -> None:
+    packet_path = tmp_path / "graph-turbo-request.json"
+    packet_path.write_text(json.dumps(sample_graph_turbo_request()), encoding="utf-8")
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "asp_graph_turbo",
+            "benchmark",
+            str(packet_path),
+            "--runs",
+            "2",
+            "--warmup-runs",
+            "0",
+            "--cache-mode",
+            "disabled",
+            "--max-p95-ms",
+            "1000000",
+            "--format",
+            "json",
+        ],
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    payload = json.loads(completed.stdout)
+    validate_shared_schema(payload, "semantic-graph-turbo-benchmark.v1.schema.json")
+
+    assert payload["performanceGate"]["status"] == "pass"
+    assert payload["performanceGate"]["checks"] == [
+        {
+            "metric": "p95",
+            "observedMs": payload["durationMs"]["p95"],
+            "maxMs": 1000000.0,
+            "passed": True,
+        }
+    ]
+
+
+def test_graph_turbo_benchmark_fails_p95_performance_gate(tmp_path) -> None:
+    packet_path = tmp_path / "graph-turbo-request.json"
+    packet_path.write_text(json.dumps(sample_graph_turbo_request()), encoding="utf-8")
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "asp_graph_turbo",
+            "benchmark",
+            str(packet_path),
+            "--runs",
+            "1",
+            "--warmup-runs",
+            "0",
+            "--cache-mode",
+            "disabled",
+            "--max-p95-ms",
+            "0",
+            "--format",
+            "json",
+        ],
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    payload = json.loads(completed.stdout)
+    validate_shared_schema(payload, "semantic-graph-turbo-benchmark.v1.schema.json")
+
+    assert completed.returncode == 1
+    assert payload["performanceGate"]["status"] == "fail"
+    assert payload["performanceGate"]["checks"][0]["metric"] == "p95"
+    assert payload["performanceGate"]["checks"][0]["passed"] is False
+    assert "performance gate failed" in completed.stderr

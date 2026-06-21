@@ -2,16 +2,27 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
 
-from .backend import SparseGraphBackend, build_sparse_backend
 from .model import (
     GraphProfile,
+    OrientedEdge,
     ProfileMatrixSummary,
     RelationChannelSummary,
     TypedGraph,
 )
-from .profiles import DEFAULT_PROFILES
+from .profiles import DEFAULT_PROFILES, allowed_oriented_edges
+
+
+@dataclass(frozen=True, slots=True)
+class _ProfileEdgeStats:
+    selected_edges: tuple[OrientedEdge, ...]
+    relation_edge_counts: Mapping[str, int]
+    relation_weight_mass: Mapping[str, float]
+    relation_matrix_nonzero_counts: Mapping[str, int]
+    transition_nonzero_count: int
+    transition_weight_mass: float
 
 
 def profile_matrix_bank(
@@ -51,10 +62,10 @@ def _profile_matrix_summary(
     ranked_node_ids: frozenset[str],
     frontier_node_ids: frozenset[str],
 ) -> ProfileMatrixSummary:
-    backend = build_sparse_backend(graph, profile)
+    edge_stats = _profile_edge_stats(graph, profile)
     relation_channels = _relation_channels(
         profile.allowed_relations,
-        backend,
+        edge_stats,
         reachable_node_ids,
         ranked_node_ids,
         frontier_node_ids,
@@ -74,19 +85,19 @@ def _profile_matrix_summary(
         supported_edge_count=supported_edge_count,
         reachable_edge_count=reachable_edge_count,
         density=round(density, 6),
-        relation_matrix_count=len(backend.relation_matrices),
+        relation_matrix_count=len(profile.allowed_relations),
         zero_edge_relation_count=sum(
             1 for channel in relation_channels if channel.supported_edge_count == 0
         ),
-        transition_nonzero_count=int(backend.transition.nnz),
-        transition_weight_mass=round(float(backend.transition.sum()), 6),
+        transition_nonzero_count=edge_stats.transition_nonzero_count,
+        transition_weight_mass=round(edge_stats.transition_weight_mass, 6),
         relation_channels=relation_channels,
     )
 
 
 def _relation_channels(
     allowed_relations: frozenset[str],
-    backend: SparseGraphBackend,
+    edge_stats: _ProfileEdgeStats,
     reachable_node_ids: frozenset[str],
     ranked_node_ids: frozenset[str],
     frontier_node_ids: frozenset[str],
@@ -95,7 +106,7 @@ def _relation_channels(
     reachable_weight_mass: dict[str, float] = {}
     ranked_contribution_mass: dict[str, float] = {}
     frontier_contribution_mass: dict[str, float] = {}
-    for edge in backend.selected_edges:
+    for edge in edge_stats.selected_edges:
         relation = edge.relation
         if edge.source in reachable_node_ids and edge.target in reachable_node_ids:
             reachable_counts[relation] = reachable_counts.get(relation, 0) + 1
@@ -113,11 +124,14 @@ def _relation_channels(
     return tuple(
         RelationChannelSummary(
             relation=relation,
-            supported_edge_count=backend.relation_edge_counts.get(relation, 0),
+            supported_edge_count=edge_stats.relation_edge_counts.get(relation, 0),
             reachable_edge_count=reachable_counts.get(relation, 0),
-            weight_mass=round(backend.relation_weight_mass.get(relation, 0.0), 6),
+            weight_mass=round(edge_stats.relation_weight_mass.get(relation, 0.0), 6),
             reachable_weight_mass=round(reachable_weight_mass.get(relation, 0.0), 6),
-            matrix_nonzero_count=int(backend.relation_matrices[relation].nnz),
+            matrix_nonzero_count=edge_stats.relation_matrix_nonzero_counts.get(
+                relation,
+                0,
+            ),
             ranked_contribution_mass=round(
                 ranked_contribution_mass.get(relation, 0.0), 6
             ),
@@ -126,4 +140,51 @@ def _relation_channels(
             ),
         )
         for relation in sorted(allowed_relations)
+    )
+
+
+def _profile_edge_stats(graph: TypedGraph, profile: GraphProfile) -> _ProfileEdgeStats:
+    selected_edges: dict[tuple[str, str, str, str, str], OrientedEdge] = {}
+    relation_edge_counts: dict[str, int] = {}
+    relation_weight_mass: dict[str, float] = {}
+    relation_pairs: dict[str, set[tuple[str, str]]] = {}
+    transition_pairs: set[tuple[str, str]] = set()
+    transition_sources: set[str] = set()
+    for source_id, target_id, edge in allowed_oriented_edges(graph, profile):
+        weight = edge.weight * profile.relation_weight_multiplier.get(
+            edge.relation,
+            1.0,
+        )
+        if weight <= 0.0:
+            continue
+        relation_edge_counts[edge.relation] = (
+            relation_edge_counts.get(edge.relation, 0) + 1
+        )
+        relation_weight_mass[edge.relation] = (
+            relation_weight_mass.get(edge.relation, 0.0) + weight
+        )
+        relation_pairs.setdefault(edge.relation, set()).add((source_id, target_id))
+        transition_pairs.add((source_id, target_id))
+        transition_sources.add(source_id)
+        selected_edges[(source_id, target_id, edge.relation, edge.source, edge.target)] = (
+            OrientedEdge(
+                source=source_id,
+                target=target_id,
+                relation=edge.relation,
+                original_source=edge.source,
+                original_target=edge.target,
+                reversed=source_id != edge.source or target_id != edge.target,
+                weight=weight,
+                fields=edge.fields,
+            )
+        )
+    return _ProfileEdgeStats(
+        selected_edges=tuple(selected_edges.values()),
+        relation_edge_counts=relation_edge_counts,
+        relation_weight_mass=relation_weight_mass,
+        relation_matrix_nonzero_counts={
+            relation: len(pairs) for relation, pairs in relation_pairs.items()
+        },
+        transition_nonzero_count=len(transition_pairs),
+        transition_weight_mass=float(len(transition_sources)),
     )

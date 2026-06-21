@@ -6,41 +6,12 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use super::search_config::AspConfig;
+use super::search_language_files::language_neutral_search_file_spec;
 use super::search_pipe_model::Candidate;
 use super::search_pipe_owner_roles::{has_strong_secondary_owner_intent, secondary_like_owner};
 use super::search_query_wrapper_model::QueryWrapperSurface;
 
 pub(super) const QUERY_CANDIDATE_LIMIT: usize = 256;
-
-const SUPPORTED_EXTENSIONS: &[&str] = &[
-    "rs",
-    "ts",
-    "tsx",
-    "js",
-    "jsx",
-    "py",
-    "jl",
-    "ss",
-    "ssi",
-    "scm",
-    "sld",
-    "org",
-    "org_archive",
-    "md",
-    "markdown",
-    "yml",
-    "yaml",
-];
-const SUPPORTED_CONFIG_FILENAMES: &[&str] = &[
-    "Cargo.toml",
-    "package.json",
-    "tsconfig.json",
-    "pnpm-workspace.yaml",
-    "pyproject.toml",
-    "Project.toml",
-    "gerbil.pkg",
-    "build.ss",
-];
 
 pub(super) struct QueryCandidateAppend<'a> {
     pub(super) surface: QueryWrapperSurface,
@@ -49,6 +20,7 @@ pub(super) struct QueryCandidateAppend<'a> {
     pub(super) terms: &'a [String],
     pub(super) axis_terms: &'a [String],
     pub(super) config: &'a AspConfig,
+    pub(super) accept_all_files: bool,
     pub(super) seen: &'a mut HashSet<String>,
     pub(super) candidates: &'a mut Vec<Candidate>,
 }
@@ -61,6 +33,7 @@ pub(super) fn append_query_candidates(input: QueryCandidateAppend<'_>) -> Result
         terms,
         axis_terms,
         config,
+        accept_all_files,
         seen,
         candidates,
     } = input;
@@ -74,7 +47,15 @@ pub(super) fn append_query_candidates(input: QueryCandidateAppend<'_>) -> Result
         )
     })?;
     if metadata.is_file() {
-        append_file_query_candidates(surface, locator_root, path, terms, seen, candidates);
+        append_file_query_candidates(
+            surface,
+            locator_root,
+            path,
+            terms,
+            accept_all_files,
+            seen,
+            candidates,
+        );
         return Ok(());
     }
     let mut entries = fs::read_dir(path)
@@ -114,11 +95,20 @@ pub(super) fn append_query_candidates(input: QueryCandidateAppend<'_>) -> Result
                 terms,
                 axis_terms,
                 config,
+                accept_all_files,
                 seen,
                 candidates,
             })?;
         } else if file_type.is_file() {
-            append_file_query_candidates(surface, locator_root, &path, terms, seen, candidates);
+            append_file_query_candidates(
+                surface,
+                locator_root,
+                &path,
+                terms,
+                accept_all_files,
+                seen,
+                candidates,
+            );
         }
     }
     Ok(())
@@ -139,6 +129,17 @@ pub(super) fn augment_package_path_candidates(
     if package_terms.is_empty() {
         return Ok(0);
     }
+    let missing_package_terms = package_terms
+        .into_iter()
+        .filter(|term| {
+            !candidates
+                .iter()
+                .any(|candidate| candidate_covers_term(candidate, term))
+        })
+        .collect::<Vec<_>>();
+    if missing_package_terms.is_empty() {
+        return Ok(0);
+    }
     let mut package_candidates = Vec::new();
     let mut seen = HashSet::new();
     for root in roots {
@@ -146,9 +147,10 @@ pub(super) fn augment_package_path_candidates(
             surface: QueryWrapperSurface::Fd,
             locator_root,
             path: root,
-            terms: &package_terms,
-            axis_terms: &package_terms,
+            terms: &missing_package_terms,
+            axis_terms: &missing_package_terms,
             config,
+            accept_all_files: false,
             seen: &mut seen,
             candidates: &mut package_candidates,
         })?;
@@ -176,10 +178,11 @@ fn append_file_query_candidates(
     locator_root: &Path,
     path: &Path,
     terms: &[String],
+    accept_all_files: bool,
     seen: &mut HashSet<String>,
     candidates: &mut Vec<Candidate>,
 ) {
-    if !supported_query_file(path) {
+    if !accept_all_files && !supported_query_file(path) {
         return;
     }
     match surface {
@@ -192,14 +195,14 @@ fn append_file_query_candidates(
     }
 }
 
+fn candidate_covers_term(candidate: &Candidate, term: &str) -> bool {
+    format!("{} {} {}", candidate.path, candidate.symbol, candidate.text)
+        .to_ascii_lowercase()
+        .contains(term)
+}
+
 fn supported_query_file(path: &Path) -> bool {
-    path.extension()
-        .and_then(|extension| extension.to_str())
-        .is_some_and(|extension| SUPPORTED_EXTENSIONS.contains(&extension))
-        || path
-            .file_name()
-            .and_then(|name| name.to_str())
-            .is_some_and(|name| SUPPORTED_CONFIG_FILENAMES.contains(&name))
+    language_neutral_search_file_spec().matches(path)
 }
 
 fn append_path_candidate(
@@ -272,7 +275,7 @@ fn path_priority(
     path: &Path,
     terms: &[String],
     axis_terms: &[String],
-) -> (u8, Reverse<usize>, u8, u8, String) {
+) -> (Reverse<usize>, u8, u8, u8, String) {
     let display = path.to_string_lossy().replace('\\', "/");
     let lower = display.to_ascii_lowercase();
     let secondary_priority = secondary_owner_priority(&lower, terms);
@@ -292,8 +295,8 @@ fn path_priority(
         1
     };
     (
-        secondary_priority,
         Reverse(axis_coverage),
+        secondary_priority,
         query_priority,
         layout_priority,
         display,
@@ -307,18 +310,9 @@ fn path_basename_matches(lower_path: &str, term: &str) -> bool {
         .map(|name| {
             name == term
                 || name
-                    .trim_end_matches(".tsx")
-                    .trim_end_matches(".ts")
-                    .trim_end_matches(".jsx")
-                    .trim_end_matches(".js")
-                    .trim_end_matches(".rs")
-                    .trim_end_matches(".py")
-                    .trim_end_matches(".jl")
-                    .trim_end_matches(".ss")
-                    .trim_end_matches(".ssi")
-                    .trim_end_matches(".scm")
-                    .trim_end_matches(".sld")
-                    == term
+                    .rsplit_once('.')
+                    .map(|(stem, _)| stem == term)
+                    .unwrap_or(false)
         })
         .unwrap_or(false)
 }
@@ -327,7 +321,7 @@ pub(super) fn query_candidate_priority(
     path: &str,
     terms: &[String],
     axis_terms: &[String],
-) -> (u8, Reverse<usize>, u8, u8, u8, String) {
+) -> (Reverse<usize>, u8, u8, u8, u8, String) {
     let lower = path.to_ascii_lowercase();
     let secondary_priority = secondary_owner_priority(&lower, terms);
     let axis_coverage = query_axis_coverage(&lower, axis_terms);
@@ -351,8 +345,8 @@ pub(super) fn query_candidate_priority(
         1
     };
     (
-        secondary_priority,
         Reverse(axis_coverage),
+        secondary_priority,
         query_priority,
         runtime_priority,
         owner_priority,

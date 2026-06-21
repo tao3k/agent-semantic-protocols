@@ -1,5 +1,6 @@
 //! Native fd/rg-backed candidate collection for ASP search surfaces.
 
+use std::cmp::Reverse;
 use std::collections::{BTreeMap, HashSet};
 use std::env;
 use std::io::{BufRead, BufReader};
@@ -32,6 +33,8 @@ pub(super) struct NativeFinderCandidates {
 pub(super) struct NativeFinderCollectionRequest<'a> {
     pub(super) surface: NativeFinderSurface,
     pub(super) language_id: &'a str,
+    pub(super) file_spec_override: Option<LanguageFileSpec>,
+    pub(super) accept_all_files: bool,
     pub(super) project_root: &'a Path,
     pub(super) locator_root: &'a Path,
     pub(super) roots: &'a [PathBuf],
@@ -51,6 +54,10 @@ pub(super) struct NativeFinderProvenance {
 }
 
 impl NativeFinderProvenance {
+    pub(super) fn input_candidate_count(&self) -> usize {
+        self.input_candidates
+    }
+
     pub(super) fn trace_fields(&self, selected_candidates: usize) -> BTreeMap<String, Value> {
         let mut fields = BTreeMap::new();
         if let Some(backend) = self.backend {
@@ -88,7 +95,9 @@ pub(super) fn collect_native_finder_candidates(
             provenance: NativeFinderProvenance::default(),
         }));
     }
-    let file_spec = language_file_spec(request.language_id);
+    let file_spec = request
+        .file_spec_override
+        .unwrap_or_else(|| language_file_spec(request.language_id));
     let mut collector = NativeFinderCollector {
         surface: request.surface,
         project_root: request.project_root,
@@ -101,6 +110,7 @@ pub(super) fn collect_native_finder_candidates(
             .map(|term| term.to_ascii_lowercase())
             .collect(),
         file_spec,
+        accept_all_files: request.accept_all_files,
         config: request.config,
         native_args: request.native_args,
         seen: HashSet::new(),
@@ -113,6 +123,7 @@ pub(super) fn collect_native_finder_candidates(
         NativeFinderSurface::Both => {
             let rg_ran = collector.append_rg_candidates()?;
             if !collector.candidates.is_empty() || collector.is_done() {
+                collector.sort_path_candidates();
                 return Ok(Some(NativeFinderCandidates {
                     candidates: collector.candidates,
                     provenance: collector.provenance,
@@ -123,6 +134,7 @@ pub(super) fn collect_native_finder_candidates(
         }
     };
     if ran_any {
+        collector.sort_path_candidates();
         Ok(Some(NativeFinderCandidates {
             candidates: collector.candidates,
             provenance: collector.provenance,
@@ -140,6 +152,7 @@ struct NativeFinderCollector<'a> {
     terms: &'a [String],
     normalized_terms: Vec<String>,
     file_spec: LanguageFileSpec,
+    accept_all_files: bool,
     config: &'a AspConfig,
     native_args: &'a [String],
     seen: HashSet<String>,
@@ -340,7 +353,8 @@ impl NativeFinderCollector<'_> {
             .args(self.native_args)
             .arg(pattern)
             .arg(root);
-        if !root.is_file() && self.file_spec.config_filenames().is_empty() {
+        if !self.accept_all_files && !root.is_file() && self.file_spec.config_filenames().is_empty()
+        {
             for extension in self.file_spec.extensions() {
                 command.arg("--extension").arg(extension);
             }
@@ -375,7 +389,7 @@ impl NativeFinderCollector<'_> {
             .arg("--ignore-case")
             .args(self.native_args)
             .arg(pattern);
-        if !root.is_file() {
+        if !self.accept_all_files && !root.is_file() {
             for extension in self.file_spec.extensions() {
                 command.arg("--glob").arg(format!("*.{extension}"));
             }
@@ -450,7 +464,9 @@ impl NativeFinderCollector<'_> {
 
     fn accepts_candidate_path(&self, path: &Path) -> bool {
         path.is_file()
-            && (self.file_spec.matches(path) || self.is_explicit_file_scope(path))
+            && (self.accept_all_files
+                || self.file_spec.matches(path)
+                || self.is_explicit_file_scope(path))
             && !ignored_by_config(path, self.project_root, self.config)
     }
 
@@ -474,6 +490,15 @@ impl NativeFinderCollector<'_> {
         self.candidates.len() >= NATIVE_CANDIDATE_LIMIT
     }
 
+    fn sort_path_candidates(&mut self) {
+        if self.surface != NativeFinderSurface::Path {
+            return;
+        }
+        self.candidates.sort_by_key(|candidate| {
+            native_path_candidate_sort_key(candidate, self.normalized_terms.as_slice())
+        });
+    }
+
     fn path_source(&self) -> &'static str {
         match self.surface {
             NativeFinderSurface::Path => "fd-query",
@@ -489,6 +514,24 @@ impl NativeFinderCollector<'_> {
             NativeFinderSurface::Both => "finder",
         }
     }
+}
+
+type NativePathCandidateSortKey = (Reverse<usize>, String);
+
+fn native_path_candidate_sort_key(
+    candidate: &Candidate,
+    normalized_terms: &[String],
+) -> NativePathCandidateSortKey {
+    let normalized_path = candidate.path.to_ascii_lowercase();
+    (
+        Reverse(
+            normalized_terms
+                .iter()
+                .filter(|term| !term.is_empty() && normalized_path.contains(term.as_str()))
+                .count(),
+        ),
+        candidate.path.clone(),
+    )
 }
 
 fn paths_resolve_to_same_file(left: &Path, right: &Path) -> bool {

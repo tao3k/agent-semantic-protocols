@@ -201,14 +201,15 @@ pub(super) fn render_graph_turbo_value_rust_compact(packet: &Value) -> Result<Ve
     let nodes = packet
         .pointer("/graph/nodes")
         .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
     let edges = packet
         .pointer("/graph/edges")
         .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
     let alias_map = compact_node_aliases(&nodes);
+    let alias_index = compact_alias_index(&nodes, &alias_map);
     let mut output = String::new();
     output.push_str(&format!(
         "[graph-frontier] profile={} alg={} seed={} budget={}\n",
@@ -217,7 +218,7 @@ pub(super) fn render_graph_turbo_value_rust_compact(packet: &Value) -> Result<Ve
         compact_seed_aliases(packet.get("seedIds"), &alias_map),
         packet.get("budget").and_then(Value::as_u64).unwrap_or(10),
     ));
-    let ranked = compact_ranked_aliases(&nodes, &edges, &alias_map);
+    let ranked = compact_ranked_aliases(&nodes, &edges, &alias_map, &alias_index);
     let visible_aliases = ranked.iter().cloned().collect::<HashSet<_>>();
     output.push_str("rank=");
     output.push_str(&ranked.join(","));
@@ -227,7 +228,7 @@ pub(super) fn render_graph_turbo_value_rust_compact(packet: &Value) -> Result<Ve
         &ranked
             .iter()
             .filter_map(|alias| {
-                let node = compact_node_for_alias(alias, &nodes, &alias_map)?;
+                let node = compact_node_for_alias(alias, &nodes, &alias_index)?;
                 Some(format!(
                     "{alias}.{}",
                     compact_json_str(node.get("action")).unwrap_or("evidence")
@@ -238,7 +239,7 @@ pub(super) fn render_graph_turbo_value_rust_compact(packet: &Value) -> Result<Ve
     );
     output.push('\n');
     for alias in &ranked {
-        if let Some(node) = compact_node_for_alias(alias, &nodes, &alias_map) {
+        if let Some(node) = compact_node_for_alias(alias, &nodes, &alias_index) {
             output.push_str(&compact_node_line(alias, node));
             output.push('\n');
         }
@@ -268,6 +269,20 @@ fn compact_node_aliases(nodes: &[Value]) -> HashMap<String, String> {
         aliases.insert(id.to_string(), alias);
     }
     aliases
+}
+
+fn compact_alias_index(
+    nodes: &[Value],
+    aliases: &HashMap<String, String>,
+) -> HashMap<String, usize> {
+    nodes
+        .iter()
+        .enumerate()
+        .filter_map(|(index, node)| {
+            let alias = compact_json_str(node.get("id")).and_then(|id| aliases.get(id))?;
+            Some((alias.clone(), index))
+        })
+        .collect()
 }
 
 fn compact_alias_base(kind: &str) -> &'static str {
@@ -306,6 +321,7 @@ fn compact_ranked_aliases(
     nodes: &[Value],
     edges: &[Value],
     aliases: &HashMap<String, String>,
+    alias_index: &HashMap<String, usize>,
 ) -> Vec<String> {
     let mut ranked = nodes
         .iter()
@@ -314,7 +330,7 @@ fn compact_ranked_aliases(
         .take(10)
         .cloned()
         .collect::<Vec<_>>();
-    append_topology_support_aliases(&mut ranked, nodes, edges, aliases, 6);
+    append_topology_support_aliases(&mut ranked, nodes, edges, aliases, alias_index, 6);
     ranked
 }
 
@@ -323,6 +339,7 @@ fn append_topology_support_aliases(
     nodes: &[Value],
     edges: &[Value],
     aliases: &HashMap<String, String>,
+    alias_index: &HashMap<String, usize>,
     limit: usize,
 ) {
     let mut visible = ranked.iter().cloned().collect::<HashSet<_>>();
@@ -333,7 +350,8 @@ fn append_topology_support_aliases(
             if added >= limit {
                 break;
             }
-            let Some(candidate) = compact_topology_support_alias(edge, &visible, nodes, aliases)
+            let Some(candidate) =
+                compact_topology_support_alias(edge, &visible, nodes, aliases, alias_index)
             else {
                 continue;
             };
@@ -356,12 +374,13 @@ fn compact_topology_support_alias(
     visible: &HashSet<String>,
     nodes: &[Value],
     aliases: &HashMap<String, String>,
+    alias_index: &HashMap<String, usize>,
 ) -> Option<String> {
     let relation = compact_json_str(edge.get("relation")).unwrap_or("rel");
     let source = compact_json_str(edge.get("source")).and_then(|id| aliases.get(id))?;
     let target = compact_json_str(edge.get("target")).and_then(|id| aliases.get(id))?;
-    let source_kind = compact_alias_kind(source, nodes, aliases)?;
-    let target_kind = compact_alias_kind(target, nodes, aliases)?;
+    let source_kind = compact_alias_kind(source, nodes, alias_index)?;
+    let target_kind = compact_alias_kind(target, nodes, alias_index)?;
     match (relation, source_kind, target_kind) {
         ("contains", "submodule", "owner") if visible.contains(target) => Some(source.clone()),
         ("has_submodule", "workspace", "submodule") if visible.contains(target) => {
@@ -377,22 +396,18 @@ fn compact_topology_support_alias(
 fn compact_alias_kind<'a>(
     alias: &str,
     nodes: &'a [Value],
-    aliases: &HashMap<String, String>,
+    alias_index: &HashMap<String, usize>,
 ) -> Option<&'a str> {
-    compact_node_for_alias(alias, nodes, aliases)
+    compact_node_for_alias(alias, nodes, alias_index)
         .and_then(|node| compact_json_str(node.get("kind")))
 }
 
 fn compact_node_for_alias<'a>(
     alias: &str,
     nodes: &'a [Value],
-    aliases: &HashMap<String, String>,
+    alias_index: &HashMap<String, usize>,
 ) -> Option<&'a Value> {
-    nodes.iter().find(|node| {
-        compact_json_str(node.get("id"))
-            .and_then(|id| aliases.get(id))
-            .is_some_and(|node_alias| node_alias == alias)
-    })
+    alias_index.get(alias).and_then(|index| nodes.get(*index))
 }
 
 fn compact_node_line(alias: &str, node: &Value) -> String {

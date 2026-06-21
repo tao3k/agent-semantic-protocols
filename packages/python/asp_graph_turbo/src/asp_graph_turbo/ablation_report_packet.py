@@ -198,6 +198,7 @@ def _comparison(
 
 
 def _summary(entries: Sequence[Mapping[str, object]]) -> dict[str, object]:
+    by_variant = {str(entry.get("variant")): entry for entry in entries}
     comparisons = [_mapping(entry.get("comparison")) for entry in entries]
     ratios = [
         value
@@ -220,6 +221,9 @@ def _summary(entries: Sequence[Mapping[str, object]]) -> dict[str, object]:
         "rankChangedVariants": changed,
         "worstRankOverlapRatio": min(ratios) if ratios else 1.0,
         "maxScoreDeltaL1": max(deltas) if deltas else 0.0,
+        "topologyMembershipAblationEnabled": _topology_membership_signal(
+            by_variant.get("no-topology-membership", {})
+        ),
     }
 
 
@@ -273,6 +277,7 @@ def _quality_thresholds(config: Mapping[str, object]) -> dict[str, object]:
 
 
 def _channel_signals(entries: Sequence[Mapping[str, object]]) -> dict[str, bool]:
+    by_entry = {str(entry.get("variant")): entry for entry in entries}
     by_variant = {
         str(entry.get("variant")): _mapping(entry.get("comparison"))
         for entry in entries
@@ -290,6 +295,9 @@ def _channel_signals(entries: Sequence[Mapping[str, object]]) -> dict[str, bool]
             by_variant.get("no-provider-facts", {})
         ),
         "queryFirstStage": _query_first_stage_signal(by_variant),
+        "topologyMembership": _topology_membership_signal(
+            by_entry.get("no-topology-membership", {})
+        ),
     }
 
 
@@ -327,8 +335,15 @@ def _query_first_stage_signal(
             "no-package-cohesion",
             "no-query-clause-coverage",
             "no-local-evidence",
+            "no-topology-membership",
         )
     )
+
+
+def _topology_membership_signal(entry: Mapping[str, object]) -> bool:
+    changes = _mapping(entry.get("changes"))
+    policy = _mapping(changes.get("queryAdjustmentPolicy"))
+    return policy.get("topologyMembership") is False
 
 
 def _query_variant_signal(comparison: Mapping[str, object]) -> bool:

@@ -87,6 +87,12 @@
         },
         "queryClauseCoverage": {
           "type": "boolean"
+        },
+        "localEvidence": {
+          "type": "boolean"
+        },
+        "topologyMembership": {
+          "type": "boolean"
         }
       }
     },

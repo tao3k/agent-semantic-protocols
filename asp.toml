@@ -1,2 +1,2 @@
 [providers.gerbil-scheme]
-binary = ".bin/gerbil-scheme-harness"
+binary = ".bin/gslph"

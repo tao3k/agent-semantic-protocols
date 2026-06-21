@@ -141,6 +141,10 @@ def test_large_library_variant_batch_all_variant_receipts_unlock_analysis() -> N
             "no-query-seed-prior": _variant_sandtable_receipt(first_run["scenarioId"]),
             "no-package-cohesion": _variant_sandtable_receipt(first_run["scenarioId"]),
             "no-query-clause-coverage": _variant_sandtable_receipt(first_run["scenarioId"]),
+            "no-local-evidence": _variant_sandtable_receipt(first_run["scenarioId"]),
+            "no-topology-membership": _variant_sandtable_receipt(
+                first_run["scenarioId"]
+            ),
         },
     )
     analysis = build_large_library_optimization_analysis(report_chain, packets)
@@ -153,7 +157,7 @@ def test_large_library_variant_batch_all_variant_receipts_unlock_analysis() -> N
     scoped_chain["optimizationMatrix"] = [first_run]
     scoped_chain["optimizationBatch"] = dict(report_chain["optimizationBatch"])
     scoped_chain["optimizationBatch"]["runCount"] = 1
-    scoped_chain["optimizationBatch"]["variantRunCount"] = 3
+    scoped_chain["optimizationBatch"]["variantRunCount"] = 5
     scoped_packets = build_large_library_variant_batch(
         scoped_chain,
         receipt_metrics=_fallback_receipt_metrics(),
@@ -162,6 +166,10 @@ def test_large_library_variant_batch_all_variant_receipts_unlock_analysis() -> N
             "no-query-seed-prior": _variant_sandtable_receipt(first_run["scenarioId"]),
             "no-package-cohesion": _variant_sandtable_receipt(first_run["scenarioId"]),
             "no-query-clause-coverage": _variant_sandtable_receipt(first_run["scenarioId"]),
+            "no-local-evidence": _variant_sandtable_receipt(first_run["scenarioId"]),
+            "no-topology-membership": _variant_sandtable_receipt(
+                first_run["scenarioId"]
+            ),
         },
     )
     scoped_analysis = build_large_library_optimization_analysis(

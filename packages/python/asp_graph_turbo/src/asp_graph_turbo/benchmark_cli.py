@@ -27,11 +27,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         profile=args.profile,
         seed=args.seed,
         limit=args.limit,
+        max_p95_ms=args.max_p95_ms,
     )
     if args.format == "json":
         sys.stdout.write(json.dumps(benchmark, sort_keys=True) + "\n")
     else:
         sys.stdout.write(_render_text(benchmark) + "\n")
+    if _performance_gate_failed(benchmark):
+        sys.stderr.write(_render_performance_gate_failure(benchmark) + "\n")
+        return 1
     return 0
 
 
@@ -44,6 +48,7 @@ def benchmark_packet(
     profile: str | None = None,
     seed: Sequence[str] = (),
     limit: int | None = None,
+    max_p95_ms: float | None = None,
 ) -> dict[str, object]:
     benchmark, _last_result_packet = benchmark_packet_with_result(
         packet,
@@ -53,6 +58,7 @@ def benchmark_packet(
         profile=profile,
         seed=seed,
         limit=limit,
+        max_p95_ms=max_p95_ms,
     )
     return benchmark
 
@@ -66,6 +72,7 @@ def benchmark_packet_with_result(
     profile: str | None = None,
     seed: Sequence[str] = (),
     limit: int | None = None,
+    max_p95_ms: float | None = None,
 ) -> tuple[dict[str, object], dict[str, object]]:
     packet = _packet_with_cache_mode(packet, cache_mode)
     rank_args = _rank_args(profile=profile, seed=seed, limit=limit)
@@ -85,25 +92,38 @@ def benchmark_packet_with_result(
     if last_packet is None:
         raise SystemExit("graph turbo benchmark runs must be positive")
     metrics = last_packet["algorithmMetrics"]
+    request_fields = packet.get("fields")
+    request_summary = packet.get("summary")
+    request_policy = packet.get("queryAdjustmentPolicy")
+    duration = _duration_summary(durations)
+    benchmark: dict[str, object] = {
+        "schemaId": "agent.semantic-protocols.semantic-graph-turbo-benchmark",
+        "schemaVersion": "1",
+        "protocolId": "agent.semantic-protocols.semantic-language",
+        "protocolVersion": "1",
+        "packetKind": "graph-turbo-benchmark",
+        "algorithm": ALGORITHM_ID,
+        "profile": last_packet["profile"],
+        "runs": runs,
+        "warmupRuns": warmup_runs,
+        "cacheMode": cache_mode,
+        "durationMs": duration,
+        "cacheStatusCounts": _status_counts(cache_statuses),
+        "warmupCacheStatusCounts": _status_counts(warmup_cache_statuses),
+        "lastAlgorithmMetrics": metrics,
+        "lastProfileMatrix": _profile_matrix(last_packet),
+        "lastTypedPathTrace": _last_typed_path_trace(last_packet),
+        "requestFields": request_fields if isinstance(request_fields, Mapping) else {},
+        "requestSummary": request_summary if isinstance(request_summary, Mapping) else {},
+        "requestPolicy": request_policy if isinstance(request_policy, Mapping) else {},
+    }
+    if max_p95_ms is not None:
+        benchmark["performanceGate"] = _performance_gate(
+            duration,
+            max_p95_ms=max_p95_ms,
+        )
     return (
-        {
-            "schemaId": "agent.semantic-protocols.semantic-graph-turbo-benchmark",
-            "schemaVersion": "1",
-            "protocolId": "agent.semantic-protocols.semantic-language",
-            "protocolVersion": "1",
-            "packetKind": "graph-turbo-benchmark",
-            "algorithm": ALGORITHM_ID,
-            "profile": last_packet["profile"],
-            "runs": runs,
-            "warmupRuns": warmup_runs,
-            "cacheMode": cache_mode,
-            "durationMs": _duration_summary(durations),
-            "cacheStatusCounts": _status_counts(cache_statuses),
-            "warmupCacheStatusCounts": _status_counts(warmup_cache_statuses),
-            "lastAlgorithmMetrics": metrics,
-            "lastProfileMatrix": _profile_matrix(last_packet),
-            "lastTypedPathTrace": _last_typed_path_trace(last_packet),
-        },
+        benchmark,
         last_packet,
     )
 
@@ -121,6 +141,46 @@ def _duration_summary(durations: list[float]) -> dict[str, float]:
         "p95": round(sorted_durations[p95_index], 6),
         "max": round(max(durations), 6),
     }
+
+
+def _performance_gate(
+    duration: Mapping[str, float], *, max_p95_ms: float
+) -> dict[str, object]:
+    observed_p95 = duration["p95"]
+    passed = observed_p95 <= max_p95_ms
+    return {
+        "status": "pass" if passed else "fail",
+        "checks": [
+            {
+                "metric": "p95",
+                "observedMs": observed_p95,
+                "maxMs": max_p95_ms,
+                "passed": passed,
+            }
+        ],
+    }
+
+
+def _performance_gate_failed(packet: Mapping[str, object]) -> bool:
+    gate = packet.get("performanceGate")
+    return isinstance(gate, Mapping) and gate.get("status") == "fail"
+
+
+def _render_performance_gate_failure(packet: Mapping[str, object]) -> str:
+    gate = packet.get("performanceGate")
+    if not isinstance(gate, Mapping):
+        return "graph turbo benchmark performance gate failed"
+    checks = gate.get("checks")
+    if not isinstance(checks, list):
+        return "graph turbo benchmark performance gate failed"
+    for check in checks:
+        if isinstance(check, Mapping) and check.get("passed") is False:
+            return (
+                "graph turbo benchmark performance gate failed: "
+                f"{check.get('metric')} {check.get('observedMs')}ms "
+                f"> {check.get('maxMs')}ms"
+            )
+    return "graph turbo benchmark performance gate failed"
 
 
 def _cache_status(packet: Mapping[str, object]) -> str:
@@ -180,10 +240,12 @@ def _render_text(packet: Mapping[str, object]) -> str:
     cache_counts = packet.get("cacheStatusCounts")
     if not isinstance(duration, Mapping) or not isinstance(metrics, Mapping):
         raise SystemExit("invalid graph turbo benchmark packet")
+    gate_segment = _render_gate_segment(packet.get("performanceGate"))
     return (
         "[graph-benchmark] "
         f"profile={packet['profile']} runs={packet['runs']} "
         f"warmup={packet['warmupRuns']} cacheMode={packet['cacheMode']} "
+        f"{gate_segment}"
         f"medianMs={duration['median']} p95Ms={duration['p95']} "
         f"cacheStatuses={_render_counts(cache_counts)}\n"
         "metrics="
@@ -205,6 +267,15 @@ def _render_counts(counts: object) -> str:
     return ",".join(f"{key}:{value}" for key, value in sorted(counts.items()))
 
 
+def _render_gate_segment(gate: object) -> str:
+    if not isinstance(gate, Mapping):
+        return ""
+    status = gate.get("status")
+    if not isinstance(status, str):
+        return ""
+    return f"gate={status} "
+
+
 def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("packet", nargs="?", default="-")
@@ -218,6 +289,12 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser.add_argument("--profile", default=None)
     parser.add_argument("--seed", action="append", default=[])
     parser.add_argument("--limit", type=int, default=None)
+    parser.add_argument(
+        "--max-p95-ms",
+        type=_non_negative_float,
+        default=None,
+        help="fail when benchmark p95 latency exceeds this many milliseconds",
+    )
     parser.add_argument("--format", choices=["json", "text"], default="json")
     return parser.parse_args(argv)
 
@@ -231,6 +308,13 @@ def _positive_int(value: str) -> int:
 
 def _non_negative_int(value: str) -> int:
     parsed = int(value)
+    if parsed < 0:
+        raise argparse.ArgumentTypeError("value must be non-negative")
+    return parsed
+
+
+def _non_negative_float(value: str) -> float:
+    parsed = float(value)
     if parsed < 0:
         raise argparse.ArgumentTypeError("value must be non-negative")
     return parsed

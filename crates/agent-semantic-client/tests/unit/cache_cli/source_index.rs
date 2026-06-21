@@ -1,4 +1,4 @@
-use crate::cache_cli::run_cache;
+use crate::{cache_cli::run_cache, lookup_source_index_for_language};
 use agent_semantic_client_core::{
     ASP_PROVIDER_ACTIVATION_PATH_ENV, ClientCacheManifest, LanguageId,
 };
@@ -235,6 +235,72 @@ fn cache_source_index_refresh_respects_provider_ignored_path_prefixes() {
 }
 
 #[test]
+fn source_index_lookup_ranks_query_dense_owner_before_low_coverage_path() {
+    let _guard = crate::test_support::CACHE_TEST_LOCK
+        .lock()
+        .expect("cache test lock");
+    let root = temp_root("source-index-query-axis-rank");
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[workspace]\nmembers = [\"crates/app\"]\nresolver = \"2\"\n",
+    )
+    .expect("write workspace manifest");
+    std::fs::create_dir_all(root.join("crates/app/src/semantic_sandtable"))
+        .expect("create package source dir");
+    std::fs::write(
+        root.join("crates/app/Cargo.toml"),
+        "[package]\nname = \"app\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+    )
+    .expect("write app manifest");
+    std::fs::write(
+        root.join("crates/app/src/semantic_sandtable/surface.rs"),
+        "pub fn ablation_surface() {}\n",
+    )
+    .expect("write low coverage source");
+    std::fs::write(
+        root.join("crates/app/src/semantic_sandtable/report_chain.rs"),
+        "pub fn topology_membership_report_chain_request_policy() {}\n",
+    )
+    .expect("write report chain source");
+    let activation_path = write_rust_activation_with_ignored_prefixes(&root, &[]);
+    let _activation_env = EnvVarGuard::set(
+        ASP_PROVIDER_ACTIVATION_PATH_ENV,
+        activation_path.as_os_str(),
+    );
+
+    run_cache(
+        &root,
+        None,
+        &["source-index".to_string(), "refresh".to_string()],
+        false,
+    )
+    .expect("refresh source index");
+
+    let result = lookup_source_index_for_language(
+        &root,
+        Some(&LanguageId::from("rust")),
+        "ablation sandtable topology membership report chain request policy",
+        8,
+    )
+    .expect("lookup source index");
+
+    assert_eq!(result.state.as_str(), "hit");
+    assert_eq!(
+        result.candidates[0].path,
+        "crates/app/src/semantic_sandtable/report_chain.rs"
+    );
+    assert!(
+        result
+            .candidates
+            .iter()
+            .any(|candidate| candidate.path == "crates/app/src/semantic_sandtable/surface.rs"),
+        "{:?}",
+        result.candidates
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn cache_source_index_refresh_prefers_provider_workspace_scope_packet() {
     let _guard = crate::test_support::CACHE_TEST_LOCK
         .lock()
@@ -257,7 +323,7 @@ fn cache_source_index_refresh_prefers_provider_workspace_scope_packet() {
         "(def (provider-scope-symbol) 'excluded)\n",
     )
     .expect("write excluded source");
-    let provider_bin = root.join("fake-gerbil-scheme-harness");
+    let provider_bin = root.join("fake-gslph");
     std::fs::write(
         &provider_bin,
         r#"#!/bin/sh

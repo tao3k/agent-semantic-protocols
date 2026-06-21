@@ -1,5 +1,6 @@
 //! Public lookup API for Rust SQL source-index candidates.
 
+use std::cmp::Reverse;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
@@ -87,7 +88,53 @@ fn lookup_source_index_candidates(
         })?;
         append_unique_source_index_candidates(&mut candidates, &mut seen, owners, limit);
     }
-    Ok(candidates)
+    Ok(rank_source_index_candidates(candidates, query))
+}
+
+type SourceIndexCandidateSortKey = (Reverse<usize>, usize);
+
+fn rank_source_index_candidates(
+    candidates: Vec<SourceIndexCandidate>,
+    query: &str,
+) -> Vec<SourceIndexCandidate> {
+    let terms = lookup_terms(query);
+    let mut indexed = candidates.into_iter().enumerate().collect::<Vec<_>>();
+    indexed.sort_by_key(|(index, candidate)| {
+        source_index_candidate_sort_key(candidate, terms.as_slice(), *index)
+    });
+    indexed
+        .into_iter()
+        .map(|(_index, candidate)| candidate)
+        .collect()
+}
+
+fn source_index_candidate_sort_key(
+    candidate: &SourceIndexCandidate,
+    terms: &[String],
+    index: usize,
+) -> SourceIndexCandidateSortKey {
+    (
+        Reverse(source_index_candidate_query_axis_coverage(candidate, terms)),
+        index,
+    )
+}
+
+fn source_index_candidate_query_axis_coverage(
+    candidate: &SourceIndexCandidate,
+    terms: &[String],
+) -> usize {
+    let normalized_path = candidate.path.to_ascii_lowercase();
+    terms
+        .iter()
+        .filter(|term| {
+            !term.is_empty()
+                && (normalized_path.contains(term.as_str())
+                    || candidate
+                        .query_keys
+                        .iter()
+                        .any(|key| key.contains(term.as_str())))
+        })
+        .count()
 }
 
 fn append_unique_source_index_candidates(

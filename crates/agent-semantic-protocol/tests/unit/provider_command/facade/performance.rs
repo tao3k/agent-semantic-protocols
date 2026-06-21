@@ -12,6 +12,7 @@ const ASP_QUERY_WRAPPER_WALL_SANITY_GATE: Duration = Duration::from_secs(3);
 // SourceTrace includes provider process startup under cargo-test parallelism; keep these gates
 // tight enough to catch hangs while functional tests assert candidate/input bounds separately.
 const ASP_SEARCH_PHASE_PERFORMANCE_GATE_MS: u64 = 250;
+const ASP_RENDER_PHASE_PERFORMANCE_GATE_MS: u64 = 100;
 const ASP_BLOCKED_QUERY_PHASE_PERFORMANCE_GATE_MS: u64 = 10;
 const ASP_PROVIDER_FACTS_PHASE_PERFORMANCE_GATE_MS: u64 = 2_000;
 const JULIA_FACADE_PERFORMANCE_GATE: Duration = Duration::from_secs(3);
@@ -61,7 +62,7 @@ fn language_facade_regular_commands_finish_inside_performance_gate() {
         },
         FacadePerformanceProvider {
             language: "gerbil-scheme",
-            binary: "gerbil-scheme-harness",
+            binary: "gslph",
             label: "gerbil",
             owner: "src/main.ss",
             query: "gerbil-gate",
@@ -374,7 +375,7 @@ fn search_pipe_does_not_call_provider_facts_without_capability() {
     let marker = root.join("semantic-facts-called");
     std::fs::create_dir_all(&bin_dir).expect("create bin dir");
     write_regular_search_fixtures(&root);
-    let provider_path = bin_dir.join("gerbil-scheme-harness");
+    let provider_path = bin_dir.join("gslph");
     std::fs::write(
         &provider_path,
         format!(
@@ -424,6 +425,44 @@ fn search_pipe_does_not_call_provider_facts_without_capability() {
 }
 
 #[test]
+fn search_pipe_generic_action_query_skips_source_index_inside_phase_gate() {
+    let root = temp_project_root("search-pipe-source-index-generic-action-gate");
+    write_regular_search_fixtures(&root);
+    agent_semantic_client::refresh_source_index(&root).expect("refresh source index");
+
+    let output = asp_command(&root)
+        .args([
+            "rust",
+            "search",
+            "pipe",
+            "owner-items selector-code",
+            "--workspace",
+            ".",
+            "--view",
+            "seeds",
+        ])
+        .output()
+        .expect("run asp search pipe generic action query");
+
+    assert!(
+        output.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    assert!(stdout.contains("sourceIndex:skipped"), "stdout={stdout}");
+    assert!(stdout.contains("reason=query-gate"), "stdout={stdout}");
+    assert!(!stdout.contains("sourceIndex:used"), "stdout={stdout}");
+    assert_trace_elapsed_under_gate_ms(
+        &["rust", "search", "pipe", "generic-action-query"],
+        &stdout,
+        ASP_SEARCH_PHASE_PERFORMANCE_GATE_MS,
+    );
+    assert_render_trace_under_gate(&["rust", "search", "pipe", "generic-action-query"], &stdout);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn search_pipe_broad_query_blocks_before_backend_collection() {
     let root = temp_project_root("search-pipe-broad-query-budget-gate");
     let bin_dir = root.join(".bin");
@@ -431,7 +470,7 @@ fn search_pipe_broad_query_blocks_before_backend_collection() {
     let marker = root.join("provider-called");
     std::fs::create_dir_all(&bin_dir).expect("create bin dir");
     write_regular_search_fixtures(&root);
-    let provider_path = bin_dir.join("gerbil-scheme-harness");
+    let provider_path = bin_dir.join("gslph");
     std::fs::write(
         &provider_path,
         format!(
@@ -497,7 +536,7 @@ fn search_fzf_broad_query_blocks_before_backend_collection() {
     let marker = root.join("provider-called");
     std::fs::create_dir_all(&bin_dir).expect("create bin dir");
     write_regular_search_fixtures(&root);
-    let provider_path = bin_dir.join("gerbil-scheme-harness");
+    let provider_path = bin_dir.join("gslph");
     std::fs::write(
         &provider_path,
         format!(
@@ -600,6 +639,7 @@ fn assert_regular_command_output(args: &[&str], stdout: &str, label: &str) {
             "args={args:?} stdout={stdout}"
         );
         assert_trace_elapsed_under_gate(args, stdout);
+        assert_render_trace_under_gate(args, stdout);
     }
 }
 
@@ -623,6 +663,32 @@ fn assert_trace_elapsed_under_gate_ms(args: &[&str], stdout: &str, gate_ms: u64)
     assert!(
         max_elapsed_ms < gate_ms,
         "args={args:?} exceeded search phase gate {gate_ms}ms; maxElapsedMs={max_elapsed_ms}; stdout={stdout}"
+    );
+}
+
+fn assert_render_trace_under_gate(args: &[&str], stdout: &str) {
+    for field in ["compactMs", "graphMs", "totalMs"] {
+        assert_trace_field_under_gate_ms(args, stdout, field, ASP_RENDER_PHASE_PERFORMANCE_GATE_MS);
+    }
+}
+
+fn assert_trace_field_under_gate_ms(args: &[&str], stdout: &str, field: &str, gate_ms: u64) {
+    let marker = format!("{field}=");
+    let max_field_ms = stdout
+        .match_indices(&marker)
+        .filter_map(|(index, _)| {
+            let value_start = index + marker.len();
+            let digits = stdout[value_start..]
+                .chars()
+                .take_while(|character| character.is_ascii_digit())
+                .collect::<String>();
+            digits.parse::<u64>().ok()
+        })
+        .max()
+        .unwrap_or(0);
+    assert!(
+        max_field_ms < gate_ms,
+        "args={args:?} exceeded render phase gate {gate_ms}ms for {field}; maxFieldMs={max_field_ms}; stdout={stdout}"
     );
 }
 
@@ -668,7 +734,7 @@ fn dependency_manifest_graph_requests_finish_inside_performance_gate() {
         ("typescript", "ts-harness", "ts"),
         ("python", "py-harness", "py"),
         ("julia", "asp-julia-harness", "julia"),
-        ("gerbil-scheme", "gerbil-scheme-harness", "gerbil"),
+        ("gerbil-scheme", "gslph", "gerbil"),
     ];
     std::fs::create_dir_all(&bin_dir).expect("create bin dir");
     write_dependency_manifest_fixtures(&root);

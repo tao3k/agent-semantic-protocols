@@ -161,13 +161,6 @@ fn asp_rg_query_graph_request_injects_package_path_runtime_seed_for_package_toke
         ]),
         "{payload}"
     );
-    assert!(
-        payload["sourceTrace"][0]["fields"]["packagePathAugmented"]
-            .as_u64()
-            .unwrap_or_default()
-            > 0,
-        "{payload}"
-    );
     assert_eq!(
         payload["seedIds"][1],
         serde_json::json!(

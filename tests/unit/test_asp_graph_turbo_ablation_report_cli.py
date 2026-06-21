@@ -47,13 +47,18 @@ def test_graph_turbo_ablation_report_cli_generates_schema_packet(tmp_path) -> No
     variants = {entry["variant"]: entry for entry in payload["variants"]}
 
     assert payload["packetKind"] == "graph-turbo-ablation-report"
-    assert payload["summary"]["variantCount"] == 10
+    assert payload["summary"]["variantCount"] == 11
+    assert payload["summary"]["topologyMembershipAblationEnabled"] is True
     assert payload["qualityGate"]["status"] == "pass"
     assert "queryFirstStage" in payload["qualityGate"]["signals"]
+    assert payload["qualityGate"]["signals"]["topologyMembership"] is True
     assert variants["full"]["comparison"]["rankOverlapRatio"] == 1.0
     assert variants["full"]["comparison"]["scoreDeltaL1"] == 0.0
     assert "transitionNonZeroDelta" in variants["no-provider-facts"]["comparison"]
     assert "querySeedPriorCountDelta" in variants["no-query-seed-prior"]["comparison"]
+    assert variants["no-topology-membership"]["changes"] == {
+        "queryAdjustmentPolicy": {"topologyMembership": False}
+    }
 
 
 def test_graph_turbo_ablation_report_cli_can_render_text(tmp_path) -> None:

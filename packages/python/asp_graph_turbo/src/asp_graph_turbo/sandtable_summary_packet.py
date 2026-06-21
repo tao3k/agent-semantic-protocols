@@ -26,6 +26,9 @@ def summary_packet(
         "benchmark": _benchmark_section(benchmark),
         "receipt": _receipt_section(receipt),
     }
+    topology_power = _topology_power_section(benchmark)
+    if topology_power:
+        packet["topologyPower"] = topology_power
     _attach_report_context(packet, report_scenario)
     _attach_report_chain(packet, report_chain)
     packet["qualityGate"] = quality_gate(packet, gate_config or {})
@@ -108,6 +111,34 @@ def _benchmark_section(benchmark: Mapping[str, object]) -> dict[str, object]:
             "queryLocalEvidenceDelta"
         ),
         "cacheStatus": benchmark_metrics.get("cacheStatus"),
+        "requestFields": _mapping(benchmark.get("requestFields")),
+        "requestSummary": _mapping(benchmark.get("requestSummary")),
+        "requestPolicy": _mapping(benchmark.get("requestPolicy")),
+    }
+
+
+def _topology_power_section(benchmark: Mapping[str, object]) -> dict[str, object]:
+    request_fields = _mapping(benchmark.get("requestFields"))
+    request_summary = _mapping(benchmark.get("requestSummary"))
+    request_policy = _mapping(benchmark.get("requestPolicy"))
+    rank_signal = request_fields.get("topologyRank")
+    submodule_count = request_summary.get("topologyRankSubmodules")
+    if not isinstance(submodule_count, int):
+        return {}
+    if request_policy.get("topologyMembership") is False:
+        return {
+            "source": "graph-turbo-request",
+            "rankSignal": "disabled",
+            "submoduleCount": submodule_count,
+            "active": False,
+        }
+    if not isinstance(rank_signal, str):
+        return {}
+    return {
+        "source": "graph-turbo-request",
+        "rankSignal": rank_signal,
+        "submoduleCount": submodule_count,
+        "active": rank_signal == "submodule-membership" and submodule_count > 0,
     }
 
 
@@ -181,6 +212,7 @@ def _attach_report_chain(
         "optimizationAblationVariantCount": batch.get("ablationVariantCount"),
         "optimizationAblationVariants": variants,
         "localEvidenceAblationEnabled": "no-local-evidence" in variants,
+        "topologyMembershipAblationEnabled": "no-topology-membership" in variants,
         "findingCount": rollup.get("findingCount"),
         "aspBinaryFreshnessRiskCommandCount": rollup.get(
             "aspBinaryFreshnessRiskCommandCount"

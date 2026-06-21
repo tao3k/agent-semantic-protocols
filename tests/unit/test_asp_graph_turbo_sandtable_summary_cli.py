@@ -84,7 +84,10 @@ def test_graph_turbo_sandtable_summary_text_is_single_table_row(tmp_path) -> Non
 
 def test_graph_turbo_sandtable_summary_can_benchmark_packet_inline(tmp_path) -> None:
     packet_path = tmp_path / "graph-turbo-request.json"
-    packet_path.write_text(json.dumps(sample_graph_turbo_request()), encoding="utf-8")
+    request = sample_graph_turbo_request()
+    request["fields"] = {"topologyRank": "submodule-membership"}
+    request["summary"] = {"topologyRankSubmodules": 2}
+    packet_path.write_text(json.dumps(request), encoding="utf-8")
 
     completed = subprocess.run(
         [
@@ -120,6 +123,63 @@ def test_graph_turbo_sandtable_summary_can_benchmark_packet_inline(tmp_path) -> 
     assert payload["scenario"] == "inline-benchmark"
     assert payload["benchmark"]["cacheMode"] == "disabled"
     assert payload["benchmark"]["pathCandidateCount"] >= 1
+    assert payload["benchmark"]["requestFields"]["topologyRank"] == "submodule-membership"
+    assert payload["benchmark"]["requestSummary"]["topologyRankSubmodules"] == 2
+    assert payload["topologyPower"] == {
+        "active": True,
+        "rankSignal": "submodule-membership",
+        "source": "graph-turbo-request",
+        "submoduleCount": 2,
+    }
+
+
+def test_graph_turbo_sandtable_summary_reports_disabled_topology_membership(
+    tmp_path,
+) -> None:
+    packet_path = tmp_path / "graph-turbo-request.json"
+    request = sample_graph_turbo_request()
+    request["summary"] = {"topologyRankSubmodules": 2}
+    request["queryAdjustmentPolicy"] = {"topologyMembership": False}
+    packet_path.write_text(json.dumps(request), encoding="utf-8")
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "asp_graph_turbo",
+            "sandtable-summary",
+            "--benchmark-packet",
+            str(packet_path),
+            "--benchmark-runs",
+            "2",
+            "--benchmark-warmup-runs",
+            "0",
+            "--benchmark-cache-mode",
+            "disabled",
+            "--receipt",
+            str(_receipt_fixtures_path()),
+            "--scenario",
+            "inline-disabled-topology",
+            "--format",
+            "json",
+        ],
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    payload = json.loads(completed.stdout)
+    validate_shared_schema(
+        payload,
+        "semantic-graph-turbo-sandtable-summary.v1.schema.json",
+    )
+
+    assert payload["benchmark"]["requestPolicy"]["topologyMembership"] is False
+    assert payload["topologyPower"] == {
+        "active": False,
+        "rankSignal": "disabled",
+        "source": "graph-turbo-request",
+        "submoduleCount": 2,
+    }
 
 
 def test_graph_turbo_sandtable_summary_consumes_benchmark_report_scenario(

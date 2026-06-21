@@ -89,7 +89,7 @@ fn language_facade_cache_source_index_lookup_routes_to_client_backend() {
     let root = temp_project_root("provider-cache-source-index-facade");
     let profile_bin_dir = root.join(".profile-bin");
     std::fs::create_dir_all(&profile_bin_dir).expect("create profile bin dir");
-    let provider_bin = profile_bin_dir.join("gerbil-scheme-harness");
+    let provider_bin = profile_bin_dir.join("gslph");
     std::fs::write(
         &provider_bin,
         "#!/bin/sh\nprintf 'provider should not run\\n' >&2\nexit 42\n",

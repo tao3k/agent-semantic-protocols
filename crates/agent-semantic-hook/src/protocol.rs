@@ -90,6 +90,8 @@ pub struct HookRoutes {
     pub ingest: CommandTemplate,
     pub check_changed: CommandTemplate,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub export_index: Option<CommandTemplate>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub guide: Option<CommandTemplate>,
 }
 

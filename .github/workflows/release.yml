@@ -1,0 +1,190 @@
+name: Release ASP tool bundle
+
+on:
+  push:
+    tags:
+      - "v*"
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to upload assets to
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            exe: ""
+            python_wrapper: asp-graph-turbo
+          - os: macos-14
+            target: aarch64-apple-darwin
+            exe: ""
+            python_wrapper: asp-graph-turbo
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            exe: .exe
+            python_wrapper: asp-graph-turbo.cmd
+
+    env:
+      ASP_BINARY: asp
+      GRAPH_TURBO_BINARY: asp-graph-turbo
+      RELEASE_BUNDLE: asp-tools
+      RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag || github.ref_name }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: false
+
+      - name: Ensure release tag checkout
+        if: github.event_name != 'push'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --tags --force origin "refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}"
+          git checkout --force "${RELEASE_TAG}"
+
+      - name: Checkout local language dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          git submodule update --init --depth 1 \
+            languages/rust-lang-project-harness \
+            languages/gerbil-scheme-language-project-harness \
+            languages/org \
+            languages/orgize \
+            languages/typescript-lang-project-harness \
+            languages/python-lang-project-harness \
+            languages/JuliaLangProjectHarness.jl
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Enable Windows long paths
+        if: runner.os == 'Windows'
+        shell: bash
+        run: git config --global core.longpaths true
+
+      - name: Build asp
+        shell: bash
+        run: cargo build --release --bin "$ASP_BINARY"
+
+      - name: Build graph turbo wheel
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          rm -rf dist
+          uv build packages/python/asp_memory_engine --out-dir dist
+          uv build packages/python/asp_graph_turbo --out-dir dist
+
+      - name: Assemble bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          package_dir="package"
+          site_dir="${package_dir}/${GRAPH_TURBO_BINARY}-site"
+
+          rm -rf "${package_dir}"
+          mkdir -p "${site_dir}"
+
+          cp "target/release/${ASP_BINARY}${{ matrix.exe }}" "${package_dir}/${ASP_BINARY}${{ matrix.exe }}"
+
+          python -m pip install \
+            --no-compile \
+            --no-warn-script-location \
+            --find-links dist \
+            --target "${site_dir}" \
+            dist/asp_memory_engine-*.whl \
+            dist/asp_graph_turbo-*.whl
+
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            cat > "${package_dir}/${{ matrix.python_wrapper }}" <<'BAT'
+          @echo off
+          set "ROOT=%~dp0"
+          if defined PYTHONPATH (
+            set "PYTHONPATH=%ROOT%asp-graph-turbo-site;%PYTHONPATH%"
+          ) else (
+            set "PYTHONPATH=%ROOT%asp-graph-turbo-site"
+          )
+          if defined PYTHON (
+            "%PYTHON%" -m asp_graph_turbo %*
+          ) else (
+            python -m asp_graph_turbo %*
+          )
+          BAT
+          else
+            cat > "${package_dir}/${{ matrix.python_wrapper }}" <<'SH'
+          #!/bin/sh
+          set -eu
+          ROOT="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+          if [ "${PYTHONPATH:-}" ]; then
+            export PYTHONPATH="$ROOT/asp-graph-turbo-site:$PYTHONPATH"
+          else
+            export PYTHONPATH="$ROOT/asp-graph-turbo-site"
+          fi
+          exec "${PYTHON:-python3}" -m asp_graph_turbo "$@"
+          SH
+            chmod +x "${package_dir}/${{ matrix.python_wrapper }}"
+          fi
+
+      - name: Smoke bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          "./package/${ASP_BINARY}${{ matrix.exe }}" guide >/dev/null
+
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            cmd.exe /c "package\\${{ matrix.python_wrapper }} --help >NUL"
+          else
+            "./package/${{ matrix.python_wrapper }}" --help >/dev/null
+          fi
+
+      - name: Package artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          asset="${RELEASE_BUNDLE}-${{ matrix.target }}.tar.gz"
+          tar -czf "${asset}" -C package .
+          python - <<'PY'
+          import hashlib
+          import os
+
+          asset = f"{os.environ['RELEASE_BUNDLE']}-${{ matrix.target }}.tar.gz"
+          digest = hashlib.sha256(open(asset, "rb").read()).hexdigest()
+          with open(f"{asset}.sha256", "w", encoding="utf-8") as handle:
+              handle.write(f"{digest}  {asset}\n")
+          PY
+
+      - name: Upload release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          asset="${RELEASE_BUNDLE}-${{ matrix.target }}.tar.gz"
+          gh release upload "${RELEASE_TAG}" "${asset}" "${asset}.sha256" --clobber

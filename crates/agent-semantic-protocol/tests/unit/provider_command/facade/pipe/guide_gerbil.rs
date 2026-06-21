@@ -10,10 +10,10 @@ fn gerbil_search_guide_resolves_repo_relative_provider_bin_with_workspace() {
         .join("gerbil-scheme-language-project-harness");
     let provider_bin_dir = workspace.join("bin");
     std::fs::create_dir_all(&workspace).expect("create workspace");
-    write_echo_provider(&provider_bin_dir, "gerbil-scheme-harness", "gerbil");
+    write_echo_provider(&provider_bin_dir, "gslph", "gerbil");
     std::fs::write(
         root.join("asp.toml"),
-        "[languages.gerbil-scheme]\nbin = \"languages/gerbil-scheme-language-project-harness/bin/gerbil-scheme-harness\"\n",
+        "[languages.gerbil-scheme]\nbin = \"languages/gerbil-scheme-language-project-harness/bin/gslph\"\n",
     )
     .expect("write asp.toml");
     write_activation(&root, &[provider("gerbil-scheme", Vec::new())]);
@@ -53,17 +53,12 @@ fn gerbil_search_structural_json_uses_activation_provider_prefix_with_workspace(
         .join("gerbil-scheme-language-project-harness");
     let provider_bin_dir = workspace.join("bin");
     std::fs::create_dir_all(&workspace).expect("create workspace");
-    write_echo_provider(&provider_bin_dir, "gerbil-scheme-harness", "gerbil");
+    write_echo_provider(&provider_bin_dir, "gslph", "gerbil");
     write_activation(
         &root,
         &[provider(
             "gerbil-scheme",
-            vec![
-                provider_bin_dir
-                    .join("gerbil-scheme-harness")
-                    .display()
-                    .to_string(),
-            ],
+            vec![provider_bin_dir.join("gslph").display().to_string()],
         )],
     );
 

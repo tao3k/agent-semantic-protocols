@@ -88,7 +88,7 @@ decision = "deny"
 fn cli_install_refreshes_generated_client_hook_config_from_activation_extensions() {
     let root = git_project_root("install-refreshes-generated-client-config");
     let codex_home = root.join(".codex-home");
-    let provider_path = write_fake_provider_binary(&root, "gerbil-scheme-harness");
+    let provider_path = write_fake_provider_binary(&root, "gslph");
     let protocol_bin_dir = root.join(".agent-bin");
     let path = env::join_paths([&protocol_bin_dir, &provider_path]).expect("join PATH");
     let client_config_path = root.join(".codex/agent-semantic-protocol/hooks/config.toml");

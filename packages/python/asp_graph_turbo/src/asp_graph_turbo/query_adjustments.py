@@ -25,12 +25,14 @@ _QUERY_ADJUSTMENT_POLICY_KEYS = (
     "packageCohesion",
     "queryClauseCoverage",
     "localEvidence",
+    "topologyMembership",
 )
 _DEFAULT_QUERY_ADJUSTMENT_POLICY = {
     "seedPrior": True,
     "packageCohesion": True,
     "queryClauseCoverage": True,
     "localEvidence": True,
+    "topologyMembership": True,
 }
 
 

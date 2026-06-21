@@ -13,9 +13,10 @@ use super::{
     },
     search_pipe_graph_nodes::{
         append_candidate_nodes, append_hot_nodes, append_project_topology_nodes,
-        append_submodule_owner_edges, candidate_node_id, hot_node_id, stable_node_id,
+        append_submodule_owner_edges, candidate_node_id, hot_node_id, project_submodule_paths,
+        stable_node_id,
     },
-    search_pipe_graph_turbo_owner_rank::ranked_candidate_paths,
+    search_pipe_graph_turbo_owner_rank::ranked_candidate_paths_with_topology,
     search_pipe_model::{Candidate, SearchPipeSourceTrace},
     search_pipe_provider_facts::ProviderGraphFacts,
     search_pipe_quality::{
@@ -41,6 +42,7 @@ pub(super) struct GraphTurboSearchPipeRequest<'a> {
     pub(super) query: Option<&'a str>,
     pub(super) query_clauses: &'a [String],
     pub(super) candidates: &'a [Candidate],
+    pub(super) precomputed_quality: Option<&'a SearchPipeQuality>,
     pub(super) pipes: &'a [String],
     pub(super) source: &'a str,
     pub(super) candidate_sources: &'a [String],
@@ -69,6 +71,7 @@ pub(super) fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> 
     let query = request.query;
     let query_clauses = request.query_clauses;
     let candidates = request.candidates;
+    let precomputed_quality = request.precomputed_quality;
     let pipes = request.pipes;
     let source = request.source;
     let candidate_sources = request.candidate_sources;
@@ -95,20 +98,33 @@ pub(super) fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> 
         }));
     }
 
-    let quality_for_query = query
-        .filter(|query| !query.trim().is_empty())
-        .map(|query| analyze_search_pipe_quality(language_id, query, candidates));
-    let augmented_candidates = if quality_for_query
-        .as_ref()
-        .is_some_and(allow_query_anchor_candidates)
-    {
+    let computed_quality = if precomputed_quality.is_none() {
+        query
+            .filter(|query| !query.trim().is_empty())
+            .map(|query| analyze_search_pipe_quality(language_id, query, candidates))
+    } else {
+        None
+    };
+    let quality_for_query = precomputed_quality.or(computed_quality.as_ref());
+    let augmented_candidates = if quality_for_query.is_some_and(allow_query_anchor_candidates) {
         query_anchor_candidates(language_id, query, candidates)
     } else {
         candidates.to_vec()
     };
     let query_terms = query.map(query_terms).unwrap_or_default();
     let graph_candidates = sparse_graph_candidates(&augmented_candidates, query);
-    let owners = ranked_candidate_paths(&graph_candidates, &query_terms);
+    let query_adjustment_policy = query_adjustment_policy_from_env();
+    let topology_membership_enabled = query_adjustment_policy
+        .as_ref()
+        .and_then(|policy| policy.get("topologyMembership"))
+        .and_then(Value::as_bool)
+        .unwrap_or(true);
+    let owners = ranked_candidate_paths_with_topology(
+        &graph_candidates,
+        &query_terms,
+        topology_membership_enabled.then_some(dependency_root),
+    );
+    let topology_submodule_count = project_submodule_paths(dependency_root).len();
     let dependency_facts =
         collect_dependency_facts(language_id, dependency_root, query, &graph_candidates);
     if should_auto_include_dependency_surface(query, &surfaces, &dependency_facts) {
@@ -122,14 +138,19 @@ pub(super) fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> 
     let include_topology = include_topology(&surfaces);
     let seed_decision =
         SeedPhaseDecision::from_query_shape(query_seed_present, query_terms.len(), owners.len());
-    let query_owner_anchor_budget = if has_package_path_candidate(&graph_candidates) {
+    let query_owner_anchor_budget = if has_package_path_candidate(&graph_candidates, &query_terms) {
         seed_decision.query_owner_anchor_budget.max(1)
     } else {
         seed_decision.query_owner_anchor_budget
     };
     let mut query_owner_seed_count = 0usize;
     if query_seed_present {
-        for owner in query_owner_seed_paths(&graph_candidates, &owners, query_owner_anchor_budget) {
+        for owner in query_owner_seed_paths(
+            &graph_candidates,
+            &owners,
+            query_owner_anchor_budget,
+            &query_terms,
+        ) {
             let owner_seed_id = stable_node_id("owner", &owner);
             if !seed_ids.contains(&owner_seed_id) {
                 seed_ids.push(owner_seed_id);
@@ -224,6 +245,12 @@ pub(super) fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> 
             "edges": edges,
         },
     });
+    if topology_membership_enabled && topology_submodule_count > 0 {
+        packet["fields"] = json!({"topologyRank": "submodule-membership"});
+    }
+    if topology_submodule_count > 0 {
+        packet["summary"] = json!({"topologyRankSubmodules": topology_submodule_count});
+    }
     if !query_clauses.is_empty() {
         packet["queryClauses"] = json!(query_clauses);
     }
@@ -232,7 +259,7 @@ pub(super) fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> 
             "seenSelectors": read_memory_selectors,
         });
     }
-    if let Some(policy) = query_adjustment_policy_from_env() {
+    if let Some(policy) = query_adjustment_policy {
         packet["queryAdjustmentPolicy"] = policy;
     }
     if !external_action_frontier.is_empty() {
@@ -307,6 +334,8 @@ fn query_adjustment_policy_from_env() -> Option<Value> {
         "no-query-seed-prior" => Some(json!({"seedPrior": false})),
         "no-package-cohesion" => Some(json!({"packageCohesion": false})),
         "no-query-clause-coverage" => Some(json!({"queryClauseCoverage": false})),
+        "no-local-evidence" => Some(json!({"localEvidence": false})),
+        "no-topology-membership" => Some(json!({"topologyMembership": false})),
         _ => None,
     }
 }
@@ -670,9 +699,10 @@ fn edge(source: &str, target: &str, relation: &str) -> Value {
     })
 }
 
-fn has_package_path_candidate(candidates: &[Candidate]) -> bool {
+fn has_package_path_candidate(candidates: &[Candidate], query_terms: &[String]) -> bool {
     candidates.iter().any(|candidate| {
-        candidate.source == "package-path-query" || candidate.confidence == "package-path"
+        is_explicit_package_path_candidate(candidate)
+            || candidate_path_covers_package_term(candidate, query_terms)
     })
 }
 
@@ -680,6 +710,7 @@ fn query_owner_seed_paths(
     candidates: &[Candidate],
     owners: &[String],
     budget: usize,
+    query_terms: &[String],
 ) -> Vec<String> {
     if budget == 0 {
         return Vec::new();
@@ -687,7 +718,8 @@ fn query_owner_seed_paths(
     let package_path_owners = candidates
         .iter()
         .filter(|candidate| {
-            candidate.source == "package-path-query" || candidate.confidence == "package-path"
+            is_explicit_package_path_candidate(candidate)
+                || candidate_path_covers_package_term(candidate, query_terms)
         })
         .map(|candidate| candidate.path.clone())
         .collect::<HashSet<_>>();
@@ -701,6 +733,19 @@ fn query_owner_seed_paths(
         return package_path_owners;
     }
     owners.iter().take(budget).cloned().collect()
+}
+
+fn is_explicit_package_path_candidate(candidate: &Candidate) -> bool {
+    candidate.source == "package-path-query" || candidate.confidence == "package-path"
+}
+
+fn candidate_path_covers_package_term(candidate: &Candidate, query_terms: &[String]) -> bool {
+    let lower_path = candidate.path.to_ascii_lowercase();
+    query_terms
+        .iter()
+        .filter(|term| term.contains('_'))
+        .map(|term| term.to_ascii_lowercase())
+        .any(|term| lower_path.contains(&term))
 }
 
 fn should_auto_include_dependency_surface(

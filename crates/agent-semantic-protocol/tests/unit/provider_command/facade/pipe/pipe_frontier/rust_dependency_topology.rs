@@ -231,7 +231,7 @@ fn search_pipe_graph_request_uses_gerbil_manifest_dependencies() {
         ";;; -*- Gerbil -*-\n(import :std/sugar)\n(export run)\n(def (run) 'ok)\n",
     )
     .expect("write source");
-    write_marker_provider(&bin_dir, "gerbil-scheme-harness", &marker);
+    write_marker_provider(&bin_dir, "gslph", &marker);
     write_activation(&root, &[provider("gerbil-scheme", Vec::new())]);
 
     let output = asp_command(&root)
@@ -266,12 +266,12 @@ fn search_pipe_graph_request_includes_language_neutral_project_topology() {
     let bin_dir = root.join(".bin");
     let marker = root.join("provider-called");
     std::fs::create_dir_all(root.join("src")).expect("create src");
-    std::fs::create_dir_all(root.join("languages/gerbil-scheme-language-project-harness/src"))
+    std::fs::create_dir_all(root.join("zz-harnesses/gerbil-scheme-language-project-harness/src"))
         .expect("create submodule path");
     std::fs::write(
         root.join(".gitmodules"),
-        "[submodule \"languages/gerbil-scheme-language-project-harness\"]\n\
-         \tpath = languages/gerbil-scheme-language-project-harness\n\
+        "[submodule \"zz-harnesses/gerbil-scheme-language-project-harness\"]\n\
+         \tpath = zz-harnesses/gerbil-scheme-language-project-harness\n\
          \turl = https://example.invalid/gerbil.git\n",
     )
     .expect("write .gitmodules");
@@ -282,7 +282,12 @@ fn search_pipe_graph_request_includes_language_neutral_project_topology() {
     .expect("write Cargo.toml");
     std::fs::write(root.join("src/lib.rs"), "pub struct TopologyReceipt;\n").expect("write source");
     std::fs::write(
-        root.join("languages/gerbil-scheme-language-project-harness/src/lib.rs"),
+        root.join("src/submodule_topology.rs"),
+        "pub struct SubmoduleTopologyReceipt;\n",
+    )
+    .expect("write root topology source");
+    std::fs::write(
+        root.join("zz-harnesses/gerbil-scheme-language-project-harness/src/lib.rs"),
         "pub struct SubmoduleTopologyReceipt;\n",
     )
     .expect("write submodule source");
@@ -319,6 +324,16 @@ fn search_pipe_graph_request_includes_language_neutral_project_topology() {
             .any(|surface| surface.as_str() == Some("topology")),
         "{payload}"
     );
+    assert_eq!(
+        payload["fields"]["topologyRank"].as_str(),
+        Some("submodule-membership"),
+        "{payload}"
+    );
+    assert_eq!(
+        payload["summary"]["topologyRankSubmodules"].as_u64(),
+        Some(1),
+        "{payload}"
+    );
     let nodes = payload["graph"]["nodes"].as_array().expect("nodes");
     assert!(
         nodes.iter().any(|node| {
@@ -336,19 +351,86 @@ fn search_pipe_graph_request_includes_language_neutral_project_topology() {
         }),
         "{payload}"
     );
-    let submodule_id = "submodule:languages/gerbil-scheme-language-project-harness";
+    let submodule_id = "submodule:zz-harnesses/gerbil-scheme-language-project-harness";
     assert!(
         nodes.iter().any(|node| {
             node["id"].as_str() == Some(submodule_id)
                 && node["kind"].as_str() == Some("submodule")
                 && node["role"].as_str() == Some("workspace-member")
                 && node["value"].as_str()
-                    == Some("languages/gerbil-scheme-language-project-harness")
+                    == Some("zz-harnesses/gerbil-scheme-language-project-harness")
         }),
         "{payload}"
     );
     let edges = payload["graph"]["edges"].as_array().expect("edges");
-    let owner_id = "owner:languages/gerbil-scheme-language-project-harness/src/lib.rs";
+    let root_owner_id = "owner:src/submodule_topology.rs";
+    let owner_id = "owner:zz-harnesses/gerbil-scheme-language-project-harness/src/lib.rs";
+    let root_owner_index = nodes
+        .iter()
+        .position(|node| node["id"].as_str() == Some(root_owner_id))
+        .expect("root owner node");
+    let submodule_owner_index = nodes
+        .iter()
+        .position(|node| node["id"].as_str() == Some(owner_id))
+        .expect("submodule owner node");
+    assert!(
+        submodule_owner_index < root_owner_index,
+        "submodule topology owner should outrank matching root owner: {payload}"
+    );
+
+    let disabled_output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .env("ASP_GRAPH_TURBO_ABLATION_VARIANT", "no-topology-membership")
+        .args([
+            "rust",
+            "search",
+            "pipe",
+            "SubmoduleTopologyReceipt",
+            "--view",
+            "graph-turbo-request",
+            ".",
+        ])
+        .output()
+        .expect("run asp rust search pipe topology graph request without topology ranking");
+
+    assert!(
+        disabled_output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&disabled_output.stderr)
+    );
+    let disabled_payload: Value =
+        serde_json::from_slice(&disabled_output.stdout).expect("disabled graph request json");
+    super::assert_graph_turbo_request_contract(&disabled_payload);
+    assert_eq!(
+        disabled_payload["queryAdjustmentPolicy"]["topologyMembership"].as_bool(),
+        Some(false),
+        "{disabled_payload}"
+    );
+    assert!(
+        disabled_payload["fields"]["topologyRank"].is_null(),
+        "disabled topology membership must not claim topology rank signal: {disabled_payload}"
+    );
+    assert_eq!(
+        disabled_payload["summary"]["topologyRankSubmodules"].as_u64(),
+        Some(1),
+        "{disabled_payload}"
+    );
+    let disabled_nodes = disabled_payload["graph"]["nodes"]
+        .as_array()
+        .expect("nodes");
+    let disabled_root_owner_index = disabled_nodes
+        .iter()
+        .position(|node| node["id"].as_str() == Some(root_owner_id))
+        .expect("disabled root owner node");
+    let disabled_submodule_owner_index = disabled_nodes
+        .iter()
+        .position(|node| node["id"].as_str() == Some(owner_id))
+        .expect("disabled submodule owner node");
+    assert!(
+        disabled_root_owner_index < disabled_submodule_owner_index,
+        "disabling topology membership should expose the baseline owner order: {disabled_payload}"
+    );
     assert!(
         edges.iter().any(|edge| {
             edge["relation"].as_str() == Some("has_provider_root")

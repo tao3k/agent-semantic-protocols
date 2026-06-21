@@ -235,7 +235,7 @@ fn gerbil_search_pipe_recalls_source_and_config_files_without_provider_spawn() {
         "(package: sample/local-alias)\n(def (use-let-star)\n  (let* ((star-value \"ok\")\n         (star-alias star-value))\n    (needs-string star-alias)))\n",
     )
     .expect("write gerbil source");
-    write_marker_provider(&bin_dir, "gerbil-scheme-harness", &marker);
+    write_marker_provider(&bin_dir, "gslph", &marker);
     write_activation(&root, &[provider("gerbil-scheme", Vec::new())]);
 
     let output = asp_command(&root)
@@ -483,7 +483,7 @@ fn search_pipe_keeps_gerbil_package_terms_on_gerbil_candidates() {
         "GitHub Actions matrix cache build restore key\n",
     )
     .expect("write distractor source");
-    write_marker_provider(&bin_dir, "gerbil-scheme-harness", &marker);
+    write_marker_provider(&bin_dir, "gslph", &marker);
     write_activation(&root, &[provider("gerbil-scheme", Vec::new())]);
 
     let output = asp_command(&root)

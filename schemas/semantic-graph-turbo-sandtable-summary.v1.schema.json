@@ -257,9 +257,28 @@
                         "miss",
                         "disabled"
                     ]
-                }
-            }
+                },
+                "requestFields": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+        "requestSummary": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
         },
+        "requestPolicy": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
         "receipt": {
             "type": "object",
             "additionalProperties": false,
@@ -357,6 +376,32 @@
                 }
             }
         },
+    "topologyPower": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "rankSignal",
+        "submoduleCount",
+        "active"
+      ],
+      "properties": {
+        "source": {
+          "const": "graph-turbo-request"
+        },
+        "rankSignal": {
+          "type": "string",
+          "minLength": 1
+        },
+        "submoduleCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "active": {
+          "type": "boolean"
+        }
+      }
+    },
     "benchmarkReport": {
       "type": "object",
       "additionalProperties": false,
@@ -397,10 +442,11 @@
         "readyLanguageCount",
         "optimizationRunCount",
         "optimizationVariantRunCount",
-        "optimizationAblationVariantCount",
-        "optimizationAblationVariants",
-        "localEvidenceAblationEnabled",
-        "findingCount",
+      "optimizationAblationVariantCount",
+      "optimizationAblationVariants",
+      "localEvidenceAblationEnabled",
+      "topologyMembershipAblationEnabled",
+      "findingCount",
         "aspBinaryFreshnessRiskCommandCount",
         "aspBinaryFreshnessRiskScenarioCount",
         "status",
@@ -453,9 +499,12 @@
             "minLength": 1
           }
         },
-        "localEvidenceAblationEnabled": {
-          "type": "boolean"
-        },
+    "localEvidenceAblationEnabled": {
+      "type": "boolean"
+    },
+    "topologyMembershipAblationEnabled": {
+      "type": "boolean"
+    },
         "findingCount": {
           "type": "integer",
           "minimum": 0

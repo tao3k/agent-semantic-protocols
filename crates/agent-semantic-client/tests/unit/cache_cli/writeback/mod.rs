@@ -79,7 +79,7 @@ fn gerbil_scheme_provider() -> ResolvedProvider {
     ResolvedProvider {
         language_id: LanguageId::from("gerbil-scheme"),
         provider_id: ProviderId::from("gerbil-scheme-harness"),
-        binary: "gerbil-scheme-harness".to_string(),
+        binary: "gslph".to_string(),
         execution: ProviderExecution::ExternalProcess,
         provider_command_prefix: Vec::new(),
         runtime_command_argv: None,

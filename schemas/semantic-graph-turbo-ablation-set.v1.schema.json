@@ -56,12 +56,13 @@
                             "no-quality-fields",
                             "no-provider-facts",
                             "relation-weight-flat",
-                            "no-query-seed-prior",
-                            "no-package-cohesion",
-                            "no-query-clause-coverage",
-                            "no-local-evidence"
-                        ]
-                    },
+          "no-query-seed-prior",
+          "no-package-cohesion",
+          "no-query-clause-coverage",
+          "no-local-evidence",
+          "no-topology-membership"
+        ]
+      },
                     "changes": {
                         "type": "object"
                     },

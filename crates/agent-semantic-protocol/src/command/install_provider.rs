@@ -386,7 +386,7 @@ fn install_archive_binary(
     provider_package_dir: &Path,
 ) -> Result<PathBuf, String> {
     let package_binary = install_archive_package(archive_path, spec, target, provider_package_dir)?;
-    write_provider_launcher(&package_binary, provider_binary_path, target)?;
+    copy_executable(&package_binary, provider_binary_path)?;
     Ok(provider_binary_path.to_path_buf())
 }
 
@@ -540,45 +540,6 @@ fn copy_executable(source: &Path, target: &Path) -> Result<(), String> {
             target.display()
         )
     })
-}
-
-fn write_provider_launcher(
-    source: &Path,
-    target: &Path,
-    target_triple: &str,
-) -> Result<(), String> {
-    if target_triple.contains("windows") {
-        return copy_executable(source, target);
-    }
-    if let Some(parent) = target.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
-    }
-    let contents = format!("#!/bin/sh\nexec {} \"$@\"\n", shell_single_quote(source));
-    let temp = target.with_extension("tmp");
-    fs::write(&temp, contents.as_bytes())
-        .map_err(|error| format!("failed to write {}: {error}", temp.display()))?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mut permissions = fs::metadata(&temp)
-            .map_err(|error| format!("failed to stat {}: {error}", temp.display()))?
-            .permissions();
-        permissions.set_mode(0o755);
-        fs::set_permissions(&temp, permissions)
-            .map_err(|error| format!("failed to chmod {}: {error}", temp.display()))?;
-    }
-    fs::rename(&temp, target).map_err(|error| {
-        format!(
-            "failed to move {} to {}: {error}",
-            temp.display(),
-            target.display()
-        )
-    })
-}
-
-fn shell_single_quote(path: &Path) -> String {
-    format!("'{}'", path.to_string_lossy().replace('\'', "'\\''"))
 }
 
 fn path_segment(value: &str) -> String {

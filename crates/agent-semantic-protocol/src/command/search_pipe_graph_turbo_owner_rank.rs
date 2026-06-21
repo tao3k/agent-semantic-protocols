@@ -3,15 +3,21 @@
 use std::{
     cmp::Reverse,
     collections::{HashMap, HashSet},
+    path::Path,
 };
 
-use super::search_pipe_model::Candidate;
+use super::{
+    search_pipe_graph_nodes::{path_is_under, project_submodule_paths},
+    search_pipe_model::Candidate,
+};
 
 #[derive(Debug)]
 struct OwnerRank {
     path: String,
     package_root: String,
     package_query_axis_count: usize,
+    topology_query_axis_count: usize,
+    topology_local_hits: usize,
     first_index: usize,
     local_hits: usize,
     parser_finder_local_hits: usize,
@@ -20,12 +26,24 @@ struct OwnerRank {
     symbols: HashSet<String>,
 }
 
-pub(super) fn ranked_candidate_paths(
+pub(super) fn ranked_candidate_paths_with_topology(
     candidates: &[Candidate],
     query_terms: &[String],
+    workspace_root: Option<&Path>,
+) -> Vec<String> {
+    let submodule_paths = workspace_root
+        .map(project_submodule_paths)
+        .unwrap_or_default();
+    ranked_candidate_paths_for_submodule_paths(candidates, query_terms, &submodule_paths)
+}
+
+fn ranked_candidate_paths_for_submodule_paths(
+    candidates: &[Candidate],
+    query_terms: &[String],
+    submodule_paths: &[String],
 ) -> Vec<String> {
     let query_axes = owner_rank_query_axes(query_terms);
-    let mut ranks = owner_rank_entries(candidates, &query_axes)
+    let mut ranks = owner_rank_entries(candidates, &query_axes, submodule_paths)
         .into_values()
         .collect::<Vec<_>>();
     ranks.sort_by_key(owner_rank_sort_key);
@@ -35,9 +53,11 @@ pub(super) fn ranked_candidate_paths(
 fn owner_rank_entries(
     candidates: &[Candidate],
     query_axes: &[String],
+    submodule_paths: &[String],
 ) -> HashMap<String, OwnerRank> {
     let mut owner_ranks: HashMap<String, OwnerRank> = HashMap::new();
     let package_axes = package_query_axes(candidates, query_axes);
+    let topology_axes = topology_query_axes(candidates, query_axes, submodule_paths);
     candidates
         .iter()
         .enumerate()
@@ -45,11 +65,17 @@ fn owner_rank_entries(
             let rank = owner_ranks
                 .entry(candidate.path.clone())
                 .or_insert_with(|| new_owner_rank(candidate, index));
-            update_owner_rank(rank, candidate, query_axes);
+            update_owner_rank(rank, candidate, query_axes, submodule_paths);
         });
     owner_ranks.values_mut().for_each(|rank| {
         rank.package_query_axis_count = package_axes
             .get(&rank.package_root)
+            .map(HashSet::len)
+            .unwrap_or_default();
+        rank.topology_query_axis_count = submodule_paths
+            .iter()
+            .find(|submodule_path| path_is_under(&rank.path, submodule_path))
+            .and_then(|submodule_path| topology_axes.get(submodule_path))
             .map(HashSet::len)
             .unwrap_or_default();
     });
@@ -61,6 +87,8 @@ fn new_owner_rank(candidate: &Candidate, first_index: usize) -> OwnerRank {
         path: candidate.path.clone(),
         package_root: owner_rank_package_root(&candidate.path),
         package_query_axis_count: 0,
+        topology_query_axis_count: 0,
+        topology_local_hits: 0,
         first_index,
         local_hits: 0,
         parser_finder_local_hits: 0,
@@ -70,8 +98,19 @@ fn new_owner_rank(candidate: &Candidate, first_index: usize) -> OwnerRank {
     }
 }
 
-fn update_owner_rank(rank: &mut OwnerRank, candidate: &Candidate, query_axes: &[String]) {
+fn update_owner_rank(
+    rank: &mut OwnerRank,
+    candidate: &Candidate,
+    query_axes: &[String],
+    submodule_paths: &[String],
+) {
     rank.local_hits += 1;
+    if submodule_paths
+        .iter()
+        .any(|submodule_path| path_is_under(&candidate.path, submodule_path))
+    {
+        rank.topology_local_hits += 1;
+    }
     if !candidate.symbol.trim().is_empty() {
         rank.symbols.insert(candidate.symbol.clone());
     }
@@ -107,6 +146,8 @@ type OwnerRankSortKey = (
     Reverse<usize>,
     Reverse<usize>,
     Reverse<usize>,
+    Reverse<usize>,
+    Reverse<usize>,
     usize,
     String,
 );
@@ -114,7 +155,9 @@ type OwnerRankSortKey = (
 fn owner_rank_sort_key(rank: &OwnerRank) -> OwnerRankSortKey {
     (
         Reverse(rank.package_query_axis_count.min(16)),
+        Reverse(rank.topology_query_axis_count.min(16)),
         Reverse(rank.query_axis_terms.len()),
+        Reverse(rank.topology_local_hits.min(12)),
         Reverse(rank.parser_finder_local_hits.min(12)),
         Reverse(rank.path_hits.min(8)),
         Reverse(rank.symbols.len().min(12)),
@@ -141,6 +184,34 @@ fn package_query_axes(
             });
     });
     package_axes
+}
+
+fn topology_query_axes(
+    candidates: &[Candidate],
+    query_axes: &[String],
+    submodule_paths: &[String],
+) -> HashMap<String, HashSet<String>> {
+    let mut topology_axes: HashMap<String, HashSet<String>> = HashMap::new();
+    if submodule_paths.is_empty() {
+        return topology_axes;
+    }
+    candidates.iter().for_each(|candidate| {
+        let Some(submodule_path) = submodule_paths
+            .iter()
+            .find(|submodule_path| path_is_under(&candidate.path, submodule_path))
+        else {
+            return;
+        };
+        matched_query_axes(candidate, query_axes)
+            .into_iter()
+            .for_each(|axis| {
+                topology_axes
+                    .entry(submodule_path.clone())
+                    .or_default()
+                    .insert(axis);
+            });
+    });
+    topology_axes
 }
 
 fn owner_rank_package_root(path: &str) -> String {

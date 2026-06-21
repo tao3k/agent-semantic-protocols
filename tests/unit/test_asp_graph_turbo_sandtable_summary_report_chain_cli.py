@@ -57,15 +57,17 @@ def test_graph_turbo_sandtable_summary_consumes_large_library_report_chain(
         "deepQuestionCount": 15,
         "readyLanguageCount": 2,
         "optimizationRunCount": 15,
-        "optimizationVariantRunCount": 60,
-        "optimizationAblationVariantCount": 4,
+        "optimizationVariantRunCount": 75,
+        "optimizationAblationVariantCount": 5,
         "optimizationAblationVariants": [
             "no-query-seed-prior",
             "no-package-cohesion",
             "no-query-clause-coverage",
             "no-local-evidence",
+            "no-topology-membership",
         ],
         "localEvidenceAblationEnabled": True,
+        "topologyMembershipAblationEnabled": True,
         "findingCount": 0,
         "aspBinaryFreshnessRiskCommandCount": 0,
         "aspBinaryFreshnessRiskScenarioCount": 0,
@@ -143,9 +145,10 @@ def test_graph_turbo_sandtable_summary_text_includes_report_chain(
     assert "ready=2" in completed.stdout
     assert "questions=15" in completed.stdout
     assert "runs=15" in completed.stdout
-    assert "variantRuns=60" in completed.stdout
-    assert "ablationVariants=4" in completed.stdout
+    assert "variantRuns=75" in completed.stdout
+    assert "ablationVariants=5" in completed.stdout
     assert "localEvidenceAblation=True" in completed.stdout
+    assert "topologyMembershipAblation=True" in completed.stdout
 
 
 def _benchmark_fixture_paths(tmp_path: Path) -> tuple[Path, Path]:
@@ -210,7 +213,7 @@ def _report_chain_path(tmp_path: Path, *, status: str) -> Path:
                     "deepQuestionCount": 15,
                     "readyLanguageCount": ready_count,
                     "optimizationRunCount": 15,
-                    "optimizationVariantRunCount": 60,
+                    "optimizationVariantRunCount": 75,
                     "findingCount": finding_count,
                 },
                 "optimizationBatch": {
@@ -218,13 +221,14 @@ def _report_chain_path(tmp_path: Path, *, status: str) -> Path:
                     "nextStage": "collect-receipts",
                     "readyToCollectReceipts": status == "pass",
                     "runCount": 15,
-                    "ablationVariantCount": 4,
-                    "variantRunCount": 60,
+                    "ablationVariantCount": 5,
+                    "variantRunCount": 75,
                     "ablationVariants": [
                         "no-query-seed-prior",
                         "no-package-cohesion",
                         "no-query-clause-coverage",
                         "no-local-evidence",
+                        "no-topology-membership",
                     ],
                     "aggregationAxes": [
                         "language",

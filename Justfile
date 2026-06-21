@@ -233,6 +233,7 @@ agent-tools-install-gx bin_dir="":
       if [ ! -x "${built_bin}" ]; then \
         just "${build_target}"; \
       fi; \
+      install -m 755 "${built_bin}" "${bin_dir}/gslph"; \
       for tool in "${built_dir}"/gslph*; do \
         if [ -x "${tool}" ]; then \
           rm -f "${bin_dir}/$(basename "${tool}")"; \

@@ -41,6 +41,7 @@ def test_graph_turbo_ablation_cli_generates_packet_variants(tmp_path) -> None:
         "no-query-clause-coverage",
         "no-query-seed-prior",
         "no-local-evidence",
+        "no-topology-membership",
         "no-provider-facts",
         "no-quality-fields",
         "no-read-memory",
@@ -70,6 +71,9 @@ def test_graph_turbo_ablation_cli_generates_packet_variants(tmp_path) -> None:
     }
     assert variants["no-local-evidence"]["queryAdjustmentPolicy"] == {
         "localEvidence": False
+    }
+    assert variants["no-topology-membership"]["queryAdjustmentPolicy"] == {
+        "topologyMembership": False
     }
 
 

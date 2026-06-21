@@ -16,7 +16,7 @@ fn gerbil_owner_items_query_set_uses_provider_scheme_item_selectors() {
     .expect("write source");
     write_stdout_stderr_provider(
         &bin_dir,
-        "gerbil-scheme-harness",
+        "gslph",
         "I=item:symbol(type-compatible?)@src/checker/types.ss:1:4!syntax\n\
 I2=item:symbol(any-type-compatible?)@src/checker/types.ss:6:9!syntax\n\
 nextCommand=asp gerbil-scheme query --selector src/checker/types.ss:1:4 --workspace . --code\n\
@@ -88,7 +88,7 @@ fn gerbil_owner_items_query_set_bypasses_client_backend_worker() {
     .expect("write source");
     write_activation_env_guard_provider(
         &bin_dir,
-        "gerbil-scheme-harness",
+        "gslph",
         "I=item:symbol(type-compatible?)@src/checker/types.ss:1:2!syntax\n\
 reason=owner-item-selector-ready\n",
     );
@@ -143,7 +143,7 @@ fn gerbil_owner_items_query_set_uses_provider_ssi_sources() {
     .expect("write source");
     write_stdout_stderr_provider(
         &bin_dir,
-        "gerbil-scheme-harness",
+        "gslph",
         "I=item:symbol(required-extension)@src/api/types.ssi:1:1!syntax\n\
 nextCommand=asp gerbil-scheme query --selector src/api/types.ssi:1:1 --workspace . --code\n\
 reason=owner-item-selector-ready\n",
@@ -204,7 +204,7 @@ fn gerbil_owner_items_query_set_rejects_empty_provider_output_for_existing_owner
         "(def (type-compatible? actual expected)\n  (equal? actual expected))\n",
     )
     .expect("write source");
-    write_marker_provider(&bin_dir, "gerbil-scheme-harness", &marker);
+    write_marker_provider(&bin_dir, "gslph", &marker);
     write_activation(&root, &[provider("gerbil-scheme", Vec::new())]);
 
     let output = asp_command(&root)
@@ -275,7 +275,7 @@ fn gerbil_owner_items_query_set_delegates_poo_operator_items_to_provider() {
     .expect("write source");
     write_stdout_stderr_provider(
         &bin_dir,
-        "gerbil-scheme-harness",
+        "gslph",
         "I=item:symbol(.defgeneric)@gerbil/src/poo-flow/poo.ss:5:5!syntax;\n\
 I2=item:symbol(defclass)@gerbil/src/poo-flow/poo.ss:7:7!syntax;\n\
 I3=item:symbol(defmethod)@gerbil/src/poo-flow/poo.ss:9:10!syntax;\n\
@@ -363,7 +363,7 @@ fn gerbil_owner_items_query_set_uses_provider_config_owner_selector() {
     .expect("write gerbil package");
     write_stdout_stderr_provider(
         &bin_dir,
-        "gerbil-scheme-harness",
+        "gslph",
         "I=item:symbol(gerbil.pkg)@gerbil.pkg:1:1!syntax\n\
 nextCommand=asp gerbil-scheme query --selector gerbil.pkg:1:1 --workspace . --code\n\
 reason=owner-item-selector-ready\n",
@@ -429,13 +429,7 @@ fn gerbil_owner_items_query_set_rejects_other_language_config_owner() {
         "[package]\nname = \"not-gerbil\"\n",
     )
     .expect("write rust package");
-    write_stdout_stderr_exit_provider(
-        &bin_dir,
-        "gerbil-scheme-harness",
-        "",
-        "owner not found Cargo.toml\n",
-        1,
-    );
+    write_stdout_stderr_exit_provider(&bin_dir, "gslph", "", "owner not found Cargo.toml\n", 1);
     write_activation(&root, &[provider("gerbil-scheme", Vec::new())]);
 
     let output = asp_command(&root)

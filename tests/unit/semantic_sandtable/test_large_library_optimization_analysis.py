@@ -26,9 +26,9 @@ def test_large_library_optimization_analysis_collects_missing_results() -> None:
     _validate_schema(analysis)
     assert analysis["summary"] == {
         "status": "collecting",
-        "expectedVariantRunCount": 80,
-        "observedVariantRunCount": 0,
-        "missingVariantRunCount": 80,
+            "expectedVariantRunCount": 100,
+            "observedVariantRunCount": 0,
+            "missingVariantRunCount": 100,
         "findingCount": 1,
         "costSummary": {
             "metricSource": "receiptMetrics",
@@ -46,12 +46,12 @@ def test_large_library_optimization_analysis_collects_missing_results() -> None:
     }
     assert analysis["findings"][0]["kind"] == "missing-variant-results"
     assert analysis["improvementPlan"][0]["id"] == "collect-variant-receipts"
-    assert len(analysis["collectionManifest"]["expectedVariantRuns"]) == 80
-    assert len(analysis["collectionManifest"]["collectionRuns"]) == 80
-    assert len(analysis["collectionManifest"]["runsNeedingVariantReceipt"]) == 80
-    assert len(analysis["collectionManifest"]["missingVariantRuns"]) == 80
+    assert len(analysis["collectionManifest"]["expectedVariantRuns"]) == 100
+    assert len(analysis["collectionManifest"]["collectionRuns"]) == 100
+    assert len(analysis["collectionManifest"]["runsNeedingVariantReceipt"]) == 100
+    assert len(analysis["collectionManifest"]["missingVariantRuns"]) == 100
     assert analysis["collectionManifest"]["collectionStatus"] == "collecting"
-    assert analysis["collectionManifest"]["metricSourceCounts"] == {"missing": 80}
+    assert analysis["collectionManifest"]["metricSourceCounts"] == {"missing": 100}
     assert analysis["collectionManifest"]["missingVariantRuns"][0][
         "variantRunId"
     ].endswith(":no-local-evidence")
@@ -69,23 +69,23 @@ def test_large_library_optimization_analysis_aggregates_variant_results() -> Non
 
     _validate_schema(analysis)
     assert analysis["summary"]["status"] == "analyzed"
-    assert analysis["summary"]["expectedVariantRunCount"] == 80
-    assert analysis["summary"]["observedVariantRunCount"] == 80
+    assert analysis["summary"]["expectedVariantRunCount"] == 100
+    assert analysis["summary"]["observedVariantRunCount"] == 100
     assert analysis["summary"]["missingVariantRunCount"] == 0
     assert analysis["summary"]["findingCount"] == 0
-    assert analysis["summary"]["costSummary"]["observedRunCount"] == 80
-    assert analysis["summary"]["costSummary"]["measuredElapsedRunCount"] == 80
-    assert analysis["summary"]["costSummary"]["totalElapsedMs"] == 2000.0
-    assert analysis["summary"]["costSummary"]["averageElapsedMs"] == 25.0
-    assert analysis["summary"]["costSummary"]["totalStdoutBytes"] == 80000.0
+    assert analysis["summary"]["costSummary"]["observedRunCount"] == 100
+    assert analysis["summary"]["costSummary"]["measuredElapsedRunCount"] == 100
+    assert analysis["summary"]["costSummary"]["totalElapsedMs"] == 2700.0
+    assert analysis["summary"]["costSummary"]["averageElapsedMs"] == 27.0
+    assert analysis["summary"]["costSummary"]["totalStdoutBytes"] == 100000.0
     assert analysis["summary"]["costSummary"]["averageStdoutBytes"] == 1000.0
     assert analysis["improvementPlan"][0]["id"] == "calibrate-query-first-stage"
     assert analysis["improvementPlan"][0]["overallWinner"] == "no-package-cohesion"
-    assert analysis["improvementPlan"][0]["rankedVariantCount"] == 4
-    assert analysis["improvementPlan"][0]["localEvidenceAblationRank"] == 4
+    assert analysis["improvementPlan"][0]["rankedVariantCount"] == 5
+    assert analysis["improvementPlan"][0]["localEvidenceAblationRank"] == 5
     assert analysis["improvementPlan"][1]["id"] == "profile-query-first-stage-performance"
     assert analysis["improvementPlan"][1]["topBottleneckVariant"] == "no-local-evidence"
-    assert analysis["improvementPlan"][1]["totalElapsedMs"] == 2000.0
+    assert analysis["improvementPlan"][1]["totalElapsedMs"] == 2700.0
     assert analysis["variantRecommendations"]["status"] == "ready"
     assert analysis["variantRecommendations"]["overallWinner"][
         "ablationVariant"
@@ -103,12 +103,13 @@ def test_large_library_optimization_analysis_aggregates_variant_results() -> Non
         "no-package-cohesion",
         "no-query-clause-coverage",
         "no-query-seed-prior",
+        "no-topology-membership",
         "no-local-evidence",
     ]
     top_bottleneck = analysis["variantRecommendations"]["performanceBottlenecks"][0]
     assert top_bottleneck["ablationVariant"] == "no-local-evidence"
     assert top_bottleneck["performanceRank"] == 1
-    assert top_bottleneck["qualityRank"] == 4
+    assert top_bottleneck["qualityRank"] == 5
     assert top_bottleneck["averageElapsedMs"] == 40.0
     assert analysis["variantRecommendations"]["bucketWinners"]
     assert analysis["variantRecommendations"]["adaptivePolicy"][0][
@@ -122,11 +123,11 @@ def test_large_library_optimization_analysis_aggregates_variant_results() -> Non
     assert analysis["collectionManifest"]["runsNeedingVariantReceipt"] == []
     assert analysis["collectionManifest"]["collectionStatus"] == "collected"
     assert analysis["collectionManifest"]["metricSourceCounts"] == {
-        "variant-result-packet": 80
+        "variant-result-packet": 100
     }
-    assert len(analysis["collectionManifest"]["observedVariantRunIds"]) == 80
+    assert len(analysis["collectionManifest"]["observedVariantRunIds"]) == 100
     assert _aggregation_count(analysis, "rust", "deep") >= 3
-    assert _aggregation_count(analysis, "typescript", "strict") == 8
+    assert _aggregation_count(analysis, "typescript", "strict") == 10
 
 
 def test_large_library_optimization_analysis_collects_derived_receipts() -> None:
@@ -142,12 +143,12 @@ def test_large_library_optimization_analysis_collects_derived_receipts() -> None
 
     _validate_schema(analysis)
     assert analysis["summary"]["status"] == "collecting"
-    assert analysis["summary"]["expectedVariantRunCount"] == 80
-    assert analysis["summary"]["observedVariantRunCount"] == 80
+    assert analysis["summary"]["expectedVariantRunCount"] == 100
+    assert analysis["summary"]["observedVariantRunCount"] == 100
     assert analysis["summary"]["missingVariantRunCount"] == 0
     assert analysis["summary"]["findingCount"] == 3
-    assert analysis["summary"]["costSummary"]["totalElapsedMs"] == 2000.0
-    assert analysis["summary"]["costSummary"]["averageElapsedMs"] == 25.0
+    assert analysis["summary"]["costSummary"]["totalElapsedMs"] == 2700.0
+    assert analysis["summary"]["costSummary"]["averageElapsedMs"] == 27.0
     assert [item["kind"] for item in analysis["findings"]] == [
         "baseline-derived-variant-results",
         "source-equivalent-variant-results",
@@ -175,7 +176,7 @@ def test_large_library_optimization_analysis_collects_derived_receipts() -> None
         "fallback": 1,
         "source-sandtable-receipt": 1,
         "source-equivalent-variant-receipt": 1,
-        "variant-result-packet": 77,
+        "variant-result-packet": 97,
     }
 
 
@@ -251,7 +252,7 @@ def test_large_library_optimization_analysis_cli_fails_on_missing(
 
     output = capsys.readouterr().out
     assert output.startswith("[large-library-optimization-analysis] ")
-    assert "missing=80" in output
+    assert "missing=100" in output
     assert "|missing variantRunId=" in output
 
 
@@ -297,6 +298,7 @@ def _elapsed_ms_for_variant(variant: object) -> int:
         "no-package-cohesion": 10,
         "no-query-clause-coverage": 20,
         "no-query-seed-prior": 30,
+        "no-topology-membership": 35,
         "no-local-evidence": 40,
     }.get(str(variant), 99)
 
@@ -304,6 +306,8 @@ def _elapsed_ms_for_variant(variant: object) -> int:
 def _answer_quality_for_variant(variant: object) -> float:
     if variant == "no-local-evidence":
         return 0.82
+    if variant == "no-topology-membership":
+        return 0.86
     return 0.9
 
 

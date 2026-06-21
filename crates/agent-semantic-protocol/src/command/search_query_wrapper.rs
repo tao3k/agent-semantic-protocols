@@ -15,8 +15,8 @@ use super::search_pipe_surfaces::default_search_surfaces;
 use super::search_query_budget::{SearchQueryBudgetBlock, search_terms_budget_block};
 use super::search_query_wrapper_candidates::{
     QueryCandidateCollection, QueryCandidateRequest, absolute_scope,
-    collect_query_candidate_collection, infer_language_id, owner_candidates, package_clusters,
-    query_clauses, rg_scope_next, unique_clause_terms,
+    collect_query_candidate_collection, owner_candidates, package_clusters, query_clauses,
+    rg_scope_next, unique_clause_terms,
 };
 use super::search_query_wrapper_frontier::{
     print_query_wrapper_empty_receipt, print_query_wrapper_refinement_frontier, query_clauses_line,
@@ -255,7 +255,7 @@ fn print_query_wrapper_view(request: QueryWrapperViewRequest<'_>) -> Result<(), 
         trace_fields,
         empty_reason,
     } = request;
-    let language_id = infer_language_id(project_root);
+    let language_id = "query-wrapper";
     let pipes = default_search_surfaces();
     let query = query_display(queries);
     let query_clause_texts = clauses
@@ -285,6 +285,7 @@ fn print_query_wrapper_view(request: QueryWrapperViewRequest<'_>) -> Result<(), 
         query: Some(&query),
         query_clauses: &query_clause_texts,
         candidates,
+        precomputed_quality: None,
         pipes: &pipes,
         source: "finder",
         candidate_sources: &["finder".to_string()],

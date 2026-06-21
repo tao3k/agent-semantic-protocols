@@ -221,11 +221,24 @@ fn search_pipe_graph_turbo_request_ranks_dense_owner_seed_before_weak_local_item
             .is_some_and(|seed_id| seed_id.contains("src/project_runtime/session_content.rs")),
         "dense owner should outrank weak first-seen owner: {payload}"
     );
+    let graph_owner_nodes = payload["graph"]["nodes"]
+        .as_array()
+        .expect("graph nodes")
+        .iter()
+        .filter(|node| node["kind"].as_str() == Some("owner"))
+        .filter_map(|node| node["path"].as_str())
+        .collect::<Vec<_>>();
     assert!(
-        owner_seed_ids
+        graph_owner_nodes
+            .iter()
+            .any(|path| path.contains("src/aaa_graph.rs")),
+        "request should retain the weak first-seen owner as graph evidence: {payload}"
+    );
+    assert!(
+        !owner_seed_ids
             .iter()
             .any(|seed_id| seed_id.contains("src/aaa_graph.rs")),
-        "test must include the weak first-seen owner as a competing seed: {payload}"
+        "weak first-seen owner should not consume a seed slot once denser owners are available: {payload}"
     );
     assert!(!marker.exists(), "search pipe should not spawn provider");
     let _ = std::fs::remove_dir_all(root);
@@ -343,6 +356,77 @@ fn search_pipe_graph_turbo_request_prefers_package_axis_cluster_over_cross_packa
                 .iter()
                 .position(|id| id.contains("crates/agent-semantic-client/src/tools_cli.rs"))
                 .expect("client owner"),
+        "{payload}"
+    );
+    assert!(!marker.exists(), "search pipe should not spawn provider");
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn search_pipe_graph_turbo_request_ranks_query_dense_owner_before_low_coverage_path() {
+    let root = temp_project_root("search-pipe-graph-query-axis-ranking");
+    let bin_dir = root.join(".bin");
+    let marker = root.join("provider-called");
+    std::fs::create_dir_all(root.join("src/semantic_sandtable")).expect("create source dir");
+    std::fs::write(
+        root.join("src/semantic_sandtable/overview.rs"),
+        "pub fn sandtable_policy() {}\n",
+    )
+    .expect("write low coverage owner");
+    std::fs::write(
+        root.join("src/semantic_sandtable/report_chain.rs"),
+        "pub fn topology_membership_ablation_sandtable_report_chain_policy() {}\n",
+    )
+    .expect("write concrete owner");
+    write_marker_provider(&bin_dir, "rs-harness", &marker);
+    write_activation(&root, &[provider("rust", Vec::new())]);
+
+    let output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args([
+            "rust",
+            "search",
+            "pipe",
+            "topology membership ablation sandtable report chain policy",
+            "--workspace",
+            ".",
+            "--view",
+            "graph-turbo-request",
+            ".",
+        ])
+        .output()
+        .expect("run asp rust search pipe graph request");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let payload: Value = serde_json::from_slice(&output.stdout).expect("graph request json");
+    super::assert_graph_turbo_request_contract(&payload);
+    let owner_ids = payload["graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .filter(|node| node["kind"].as_str() == Some("owner"))
+        .filter_map(|node| node["id"].as_str())
+        .collect::<Vec<_>>();
+    assert!(
+        owner_ids
+            .first()
+            .is_some_and(|id| id.contains("src/semantic_sandtable/report_chain.rs")),
+        "query-dense owner should outrank low-coverage owner: {payload}"
+    );
+    assert!(
+        owner_ids
+            .iter()
+            .position(|id| id.contains("src/semantic_sandtable/report_chain.rs"))
+            .expect("query-dense owner")
+            < owner_ids
+                .iter()
+                .position(|id| id.contains("src/semantic_sandtable/overview.rs"))
+                .expect("low-coverage owner"),
         "{payload}"
     );
     assert!(!marker.exists(), "search pipe should not spawn provider");

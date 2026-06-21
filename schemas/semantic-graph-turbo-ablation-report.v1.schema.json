@@ -65,11 +65,12 @@
             "additionalProperties": false,
             "required": [
                 "variantCount",
-                "rankChangedVariantCount",
-                "rankChangedVariants",
-                "worstRankOverlapRatio",
-                "maxScoreDeltaL1"
-            ],
+    "rankChangedVariantCount",
+    "rankChangedVariants",
+    "worstRankOverlapRatio",
+    "maxScoreDeltaL1",
+    "topologyMembershipAblationEnabled"
+  ],
             "properties": {
                 "variantCount": {
                     "type": "integer",
@@ -91,12 +92,15 @@
                     "minimum": 0,
                     "maximum": 1
                 },
-                "maxScoreDeltaL1": {
-                    "type": "number",
-                    "minimum": 0
-                }
-            }
-        },
+    "maxScoreDeltaL1": {
+      "type": "number",
+      "minimum": 0
+    },
+    "topologyMembershipAblationEnabled": {
+      "type": "boolean"
+    }
+  }
+},
         "qualityGate": {
             "type": "object",
             "additionalProperties": false,
@@ -143,10 +147,11 @@
                     "type": "object",
                     "additionalProperties": false,
                     "required": [
-                        "receipt",
-                        "readMemory",
-                        "qualityFields",
-                        "providerFacts"
+      "receipt",
+      "readMemory",
+      "qualityFields",
+      "providerFacts",
+      "topologyMembership"
                     ],
                     "properties": {
                         "receipt": {
@@ -161,11 +166,14 @@
                         "providerFacts": {
                             "type": "boolean"
                         },
-                        "queryFirstStage": {
-                            "type": "boolean"
-                        }
-                    }
-                },
+    "queryFirstStage": {
+      "type": "boolean"
+    },
+    "topologyMembership": {
+      "type": "boolean"
+    }
+  }
+},
                 "failures": {
                     "type": "array",
                     "items": {
@@ -215,12 +223,13 @@
                             "no-quality-fields",
                             "no-provider-facts",
                             "relation-weight-flat",
-                            "no-query-seed-prior",
-                            "no-package-cohesion",
-                            "no-query-clause-coverage",
-                            "no-local-evidence"
-                        ]
-                    },
+          "no-query-seed-prior",
+          "no-package-cohesion",
+          "no-query-clause-coverage",
+          "no-local-evidence",
+          "no-topology-membership"
+        ]
+      },
                     "changes": {
                         "type": "object"
                     },

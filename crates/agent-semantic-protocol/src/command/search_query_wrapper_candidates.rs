@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use serde_json::Value;
 
 use super::search_config::AspConfig;
+use super::search_language_files::language_neutral_search_file_spec;
 use super::search_pipe_model::Candidate;
 use super::search_pipe_native_finder::{
     NativeFinderCollectionRequest, NativeFinderSurface, collect_native_finder_candidates,
@@ -99,38 +100,56 @@ pub(super) fn collect_query_candidate_collection(
         QueryWrapperSurface::Fd => NativeFinderSurface::Path,
         QueryWrapperSurface::Rg => NativeFinderSurface::Content,
     };
+    let accept_all_files = !scopes.is_empty();
     let axis_terms = query_axis_terms(clauses);
     if let Some(mut collection) = collect_native_finder_candidates(NativeFinderCollectionRequest {
         surface: native_surface,
-        language_id: infer_language_id(project_root),
+        language_id: "query-wrapper",
+        file_spec_override: Some(language_neutral_search_file_spec()),
+        accept_all_files,
         project_root,
         locator_root: &display_root,
         roots: &roots,
         terms,
         config,
         native_args,
-    })?
-    .filter(|collection| !collection.candidates.is_empty())
-    {
-        collection
-            .candidates
-            .sort_by_key(|candidate| query_candidate_priority(&candidate.path, terms, &axis_terms));
-        let mut candidates = cohesive_query_candidates(collection.candidates, clauses);
-        let package_path_augmented_count =
-            augment_package_path_candidates(&display_root, &roots, terms, config, &mut candidates)?;
-        candidates
-            .sort_by_key(|candidate| query_candidate_priority(&candidate.path, terms, &axis_terms));
-        let mut trace_fields = collection.provenance.trace_fields(candidates.len());
-        if package_path_augmented_count > 0 {
-            trace_fields.insert(
-                "packagePathAugmented".to_string(),
-                Value::from(package_path_augmented_count),
-            );
+    })? {
+        if collection.candidates.is_empty()
+            && surface == QueryWrapperSurface::Fd
+            && collection.provenance.input_candidate_count() == 0
+        {
+            return Ok(QueryCandidateCollection {
+                candidates: Vec::new(),
+                trace_fields: collection.provenance.trace_fields(0),
+            });
         }
-        return Ok(QueryCandidateCollection {
-            candidates,
-            trace_fields,
-        });
+        if !collection.candidates.is_empty() {
+            collection.candidates.sort_by_key(|candidate| {
+                query_candidate_priority(&candidate.path, terms, &axis_terms)
+            });
+            let mut candidates = cohesive_query_candidates(collection.candidates, clauses);
+            let package_path_augmented_count = augment_package_path_candidates(
+                &display_root,
+                &roots,
+                terms,
+                config,
+                &mut candidates,
+            )?;
+            candidates.sort_by_key(|candidate| {
+                query_candidate_priority(&candidate.path, terms, &axis_terms)
+            });
+            let mut trace_fields = collection.provenance.trace_fields(candidates.len());
+            if package_path_augmented_count > 0 {
+                trace_fields.insert(
+                    "packagePathAugmented".to_string(),
+                    Value::from(package_path_augmented_count),
+                );
+            }
+            return Ok(QueryCandidateCollection {
+                candidates,
+                trace_fields,
+            });
+        }
     }
     let mut candidates = Vec::new();
     let mut seen = HashSet::new();
@@ -145,6 +164,7 @@ pub(super) fn collect_query_candidate_collection(
             terms,
             axis_terms: &axis_terms,
             config,
+            accept_all_files,
             seen: &mut seen,
             candidates: &mut candidates,
         })?;
@@ -388,20 +408,6 @@ fn unique_take(values: impl Iterator<Item = String>, limit: usize) -> Vec<String
         .filter(|value| seen.insert(value.clone()))
         .take(limit)
         .collect()
-}
-
-pub(super) fn infer_language_id(root: &Path) -> &'static str {
-    if root.join("Cargo.toml").exists() {
-        "rust"
-    } else if root.join("tsconfig.json").exists() || root.join("package.json").exists() {
-        "typescript"
-    } else if root.join("pyproject.toml").exists() {
-        "python"
-    } else if root.join("Project.toml").exists() {
-        "julia"
-    } else {
-        "unknown"
-    }
 }
 
 pub(super) fn absolute_scope(root: &Path, scope: &Path) -> PathBuf {

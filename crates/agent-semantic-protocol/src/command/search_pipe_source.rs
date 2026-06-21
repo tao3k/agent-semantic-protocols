@@ -349,6 +349,9 @@ fn source_index_candidates(
     if !scopes.is_empty() {
         return None;
     }
+    if let Some(acquisition) = source_index_query_gate(intent) {
+        return Some(acquisition);
+    }
     let started_at = Instant::now();
     let language_scope = agent_semantic_client::LanguageId::from(language_id);
     match lookup_source_index_for_language(
@@ -391,6 +394,78 @@ fn source_index_candidates(
         }
     }
 }
+
+fn source_index_query_gate(intent: &str) -> Option<CandidateAcquisition> {
+    let terms = source_index_gate_terms(intent);
+    if terms.is_empty() {
+        return None;
+    }
+    let generic_count = terms
+        .iter()
+        .filter(|term| SOURCE_INDEX_GATE_GENERIC_TERMS.contains(&term.as_str()))
+        .count();
+    let all_generic = generic_count == terms.len() && terms.len() >= 2;
+    let broad_generic = terms.len() >= 8 && generic_count * 2 >= terms.len();
+    if !all_generic && !broad_generic {
+        return None;
+    }
+    let mut fields = std::collections::BTreeMap::new();
+    fields.insert("reason".to_string(), Value::from("query-gate"));
+    fields.insert("termCount".to_string(), Value::from(terms.len()));
+    fields.insert("genericTermCount".to_string(), Value::from(generic_count));
+    Some(CandidateAcquisition {
+        candidates: Vec::new(),
+        candidate_sources: vec!["source-index".to_string()],
+        source_trace: vec![
+            SearchPipeSourceTrace::new("sourceIndex", "skipped", 0, 0, 0).with_fields(fields),
+        ],
+    })
+}
+
+fn source_index_gate_terms(intent: &str) -> Vec<String> {
+    intent
+        .split(|character: char| !character.is_ascii_alphanumeric())
+        .map(str::trim)
+        .filter(|term| !term.is_empty())
+        .map(str::to_ascii_lowercase)
+        .fold(Vec::new(), |mut terms, term| {
+            if !terms.iter().any(|seen| seen == &term) {
+                terms.push(term);
+            }
+            terms
+        })
+}
+
+const SOURCE_INDEX_GATE_GENERIC_TERMS: &[&str] = &[
+    "action",
+    "actions",
+    "code",
+    "collectms",
+    "command",
+    "compact",
+    "elapsedms",
+    "fd",
+    "frontier",
+    "gate",
+    "graph",
+    "items",
+    "latency",
+    "low",
+    "milliseconds",
+    "owner",
+    "performance",
+    "pipe",
+    "quality",
+    "query",
+    "render",
+    "rg",
+    "route",
+    "search",
+    "selector",
+    "sourceindex",
+    "trace",
+    "words",
+];
 
 fn source_index_trace_prefix(
     acquisition: Option<CandidateAcquisition>,

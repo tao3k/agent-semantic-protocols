@@ -1,4 +1,4 @@
-use agent_semantic_hook::build_default_activation;
+use agent_semantic_hook::{build_default_activation, builtin_provider_manifests};
 use std::fs;
 
 use super::{git_init, make_executable, temp_root};
@@ -44,7 +44,11 @@ fn default_activation_uses_parent_workspace_bin_for_nested_gerbil_package() {
     fs::create_dir_all(child.join("src")).expect("create child src");
     fs::write(root.join("asp.toml"), "[providers]\n").expect("write workspace asp.toml");
     fs::write(child.join("gerbil.pkg"), "(package: sample/gerbil)\n").expect("write gerbil.pkg");
-    let provider_bin = root.join(".bin/gerbil-scheme-harness");
+    let gerbil_manifest = builtin_provider_manifests()
+        .into_iter()
+        .find(|manifest| manifest.language_id == "gerbil-scheme")
+        .expect("builtin Gerbil provider manifest");
+    let provider_bin = root.join(".bin").join(&gerbil_manifest.binary);
     fs::write(&provider_bin, "#!/bin/sh\nexit 0\n").expect("write provider bin");
     make_executable(&provider_bin);
 
@@ -55,12 +59,13 @@ fn default_activation_uses_parent_workspace_bin_for_nested_gerbil_package() {
         .find(|provider| provider.language_id == "gerbil-scheme")
         .expect("gerbil provider activated from parent workspace .bin");
 
-    assert_eq!(gerbil.binary, "gerbil-scheme-harness");
+    assert_eq!(gerbil.binary, gerbil_manifest.binary);
+    let expected_bin_suffix = format!("/.bin/{}", gerbil.binary);
     assert!(
         gerbil
             .provider_command_prefix
             .first()
-            .is_some_and(|command| command.ends_with("/.bin/gerbil-scheme-harness")),
+            .is_some_and(|command| command.ends_with(&expected_bin_suffix)),
         "nested Gerbil package should reuse the parent workspace provider bin: {:?}",
         gerbil.provider_command_prefix
     );
