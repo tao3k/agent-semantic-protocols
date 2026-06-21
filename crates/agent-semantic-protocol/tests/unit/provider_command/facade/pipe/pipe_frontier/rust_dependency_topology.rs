@@ -280,6 +280,11 @@ fn search_pipe_graph_request_includes_language_neutral_project_topology() {
         "[package]\nname = \"project-topology-fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
     )
     .expect("write Cargo.toml");
+    std::fs::write(
+        root.join("zz-harnesses/gerbil-scheme-language-project-harness/Cargo.toml"),
+        "[package]\nname = \"submodule-topology-fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .expect("write submodule Cargo.toml");
     std::fs::write(root.join("src/lib.rs"), "pub struct TopologyReceipt;\n").expect("write source");
     std::fs::write(
         root.join("src/submodule_topology.rs"),
@@ -359,6 +364,50 @@ fn search_pipe_graph_request_includes_language_neutral_project_topology() {
                 && node["role"].as_str() == Some("workspace-member")
                 && node["value"].as_str()
                     == Some("zz-harnesses/gerbil-scheme-language-project-harness")
+        }),
+        "{payload}"
+    );
+    let root_project_id = "language-project:rust-.";
+    let root_config_id = "project-config:rust-cargo.toml";
+    let submodule_project_id =
+        "language-project:rust-zz-harnesses/gerbil-scheme-language-project-harness";
+    let submodule_config_id =
+        "project-config:rust-zz-harnesses/gerbil-scheme-language-project-harness/cargo.toml";
+    assert!(
+        nodes.iter().any(|node| {
+            node["id"].as_str() == Some(root_project_id)
+                && node["kind"].as_str() == Some("language-project")
+                && node["role"].as_str() == Some("project-root")
+                && node["fields"]["languageId"].as_str() == Some("rust")
+                && node["fields"]["configFile"].as_str() == Some("Cargo.toml")
+        }),
+        "{payload}"
+    );
+    assert!(
+        nodes.iter().any(|node| {
+            node["id"].as_str() == Some(submodule_project_id)
+                && node["kind"].as_str() == Some("language-project")
+                && node["role"].as_str() == Some("project-root")
+                && node["path"].as_str()
+                    == Some("zz-harnesses/gerbil-scheme-language-project-harness")
+                && node["fields"]["configFile"].as_str()
+                    == Some("zz-harnesses/gerbil-scheme-language-project-harness/Cargo.toml")
+        }),
+        "{payload}"
+    );
+    assert!(
+        nodes.iter().any(|node| {
+            node["id"].as_str() == Some(root_config_id)
+                && node["kind"].as_str() == Some("project-config")
+                && node["role"].as_str() == Some("config-file")
+        }),
+        "{payload}"
+    );
+    assert!(
+        nodes.iter().any(|node| {
+            node["id"].as_str() == Some(submodule_config_id)
+                && node["kind"].as_str() == Some("project-config")
+                && node["role"].as_str() == Some("config-file")
         }),
         "{payload}"
     );
@@ -443,6 +492,30 @@ fn search_pipe_graph_request_includes_language_neutral_project_topology() {
             edge["relation"].as_str() == Some("has_submodule")
                 && edge["source"].as_str() == Some("workspace:.")
                 && edge["target"].as_str() == Some(submodule_id)
+        }),
+        "{payload}"
+    );
+    assert!(
+        edges.iter().any(|edge| {
+            edge["relation"].as_str() == Some("has_language_project")
+                && edge["source"].as_str() == Some("provider-root:rust-.")
+                && edge["target"].as_str() == Some(root_project_id)
+        }),
+        "{payload}"
+    );
+    assert!(
+        edges.iter().any(|edge| {
+            edge["relation"].as_str() == Some("declared_by")
+                && edge["source"].as_str() == Some(root_project_id)
+                && edge["target"].as_str() == Some(root_config_id)
+        }),
+        "{payload}"
+    );
+    assert!(
+        edges.iter().any(|edge| {
+            edge["relation"].as_str() == Some("contains_project")
+                && edge["source"].as_str() == Some(submodule_id)
+                && edge["target"].as_str() == Some(submodule_project_id)
         }),
         "{payload}"
     );

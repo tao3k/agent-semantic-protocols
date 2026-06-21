@@ -182,7 +182,13 @@ pub(super) fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> 
         append_owner_nodes(&mut nodes, &owners);
     }
     if include_topology {
-        append_project_topology_nodes(&mut nodes, &mut edges, language_id, dependency_root);
+        append_project_topology_nodes(
+            &mut nodes,
+            &mut edges,
+            language_id,
+            dependency_root,
+            &graph_candidates,
+        );
     }
     if include_items {
         append_candidate_nodes(

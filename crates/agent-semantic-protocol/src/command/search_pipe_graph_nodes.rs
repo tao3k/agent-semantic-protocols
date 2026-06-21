@@ -5,6 +5,7 @@ use std::{collections::BTreeSet, fs, path::Path};
 use serde_json::{Value, json};
 
 use super::{
+    search_language_files::language_file_spec,
     search_pipe_model::Candidate,
     search_pipe_projection::{
         candidate_end_line, candidate_selector, graph_projection_action, is_document_language,
@@ -19,6 +20,7 @@ pub(super) fn append_project_topology_nodes(
     edges: &mut Vec<Value>,
     language_id: &str,
     workspace_root: &Path,
+    candidates: &[Candidate],
 ) {
     let workspace_id = stable_node_id("workspace", ".");
     nodes.push(json!({
@@ -51,7 +53,9 @@ pub(super) fn append_project_topology_nodes(
         "relation": "has_provider_root",
     }));
 
-    for submodule_path in project_submodule_paths(workspace_root) {
+    let submodule_paths = project_submodule_paths(workspace_root);
+    let language_projects = language_project_roots(workspace_root, language_id, candidates);
+    for submodule_path in &submodule_paths {
         let submodule_id = stable_node_id("submodule", &submodule_path);
         nodes.push(json!({
             "id": submodule_id.clone(),
@@ -70,6 +74,58 @@ pub(super) fn append_project_topology_nodes(
             "target": submodule_id,
             "relation": "has_submodule",
         }));
+    }
+    for project in language_projects {
+        let project_value = format!("{language_id}:{}", project.root_path);
+        let project_id = stable_node_id("language-project", &project_value);
+        nodes.push(json!({
+            "id": project_id.clone(),
+            "kind": "language-project",
+            "role": "project-root",
+            "value": project.root_path,
+            "action": "topology",
+            "path": project.root_path,
+            "confidence": "exact",
+            "fields": {
+                "languageId": language_id,
+                "configFile": project.config_path,
+            },
+        }));
+        edges.push(json!({
+            "source": provider_id,
+            "target": project_id,
+            "relation": "has_language_project",
+        }));
+
+        let config_value = format!("{language_id}:{}", project.config_path);
+        let config_id = stable_node_id("project-config", &config_value);
+        nodes.push(json!({
+            "id": config_id.clone(),
+            "kind": "project-config",
+            "role": "config-file",
+            "value": project.config_path,
+            "action": "topology",
+            "path": project.config_path,
+            "confidence": "exact",
+            "fields": {
+                "languageId": language_id,
+            },
+        }));
+        edges.push(json!({
+            "source": project_id,
+            "target": config_id,
+            "relation": "declared_by",
+        }));
+
+        for submodule_path in &submodule_paths {
+            if path_is_under(&project.root_path, submodule_path) {
+                edges.push(json!({
+                    "source": stable_node_id("submodule", submodule_path),
+                    "target": project_id,
+                    "relation": "contains_project",
+                }));
+            }
+        }
     }
 }
 
@@ -259,4 +315,119 @@ pub(super) fn path_is_under(path: &str, root: &str) -> bool {
         || path
             .strip_prefix(root)
             .is_some_and(|rest| rest.starts_with('/'))
+}
+
+#[derive(Debug)]
+struct LanguageProjectRoot {
+    root_path: String,
+    config_path: String,
+}
+
+fn language_project_roots(
+    workspace_root: &Path,
+    language_id: &str,
+    candidates: &[Candidate],
+) -> Vec<LanguageProjectRoot> {
+    let file_spec = language_file_spec(language_id);
+    if file_spec.config_filenames().is_empty() || !workspace_root.exists() {
+        return Vec::new();
+    }
+    let mut seen_roots = BTreeSet::new();
+    let mut projects = Vec::new();
+    push_language_project_root(
+        &mut projects,
+        &mut seen_roots,
+        workspace_root,
+        workspace_root,
+        file_spec.config_filenames(),
+    );
+    for candidate in candidates {
+        let candidate_path = workspace_root.join(&candidate.path);
+        let start = if candidate_path.is_file() {
+            candidate_path.parent().unwrap_or(workspace_root)
+        } else {
+            candidate_path.as_path()
+        };
+        for root in candidate_project_roots(workspace_root, start, file_spec.config_filenames()) {
+            push_language_project_root(
+                &mut projects,
+                &mut seen_roots,
+                workspace_root,
+                root,
+                file_spec.config_filenames(),
+            );
+        }
+    }
+    projects.sort_by(|left, right| {
+        left.root_path
+            .cmp(&right.root_path)
+            .then_with(|| left.config_path.cmp(&right.config_path))
+    });
+    projects
+}
+
+fn candidate_project_roots<'a>(
+    workspace_root: &'a Path,
+    start: &'a Path,
+    config_filenames: &[String],
+) -> Vec<&'a Path> {
+    let mut roots = Vec::new();
+    let mut current = Some(start);
+    while let Some(path) = current {
+        if !path.starts_with(workspace_root) {
+            break;
+        }
+        if config_filenames
+            .iter()
+            .any(|config_filename| path.join(config_filename).is_file())
+        {
+            roots.push(path);
+        }
+        if path == workspace_root {
+            break;
+        }
+        current = path.parent();
+    }
+    roots
+}
+
+fn push_language_project_root(
+    projects: &mut Vec<LanguageProjectRoot>,
+    seen_roots: &mut BTreeSet<String>,
+    workspace_root: &Path,
+    root: &Path,
+    config_filenames: &[String],
+) {
+    let Some(config_path) = config_filenames.iter().find_map(|config_filename| {
+        let config_path = root.join(config_filename);
+        config_path
+            .is_file()
+            .then(|| relative_topology_path(workspace_root, &config_path))
+            .flatten()
+    }) else {
+        return;
+    };
+    let root_path = relative_topology_path(workspace_root, root).unwrap_or_else(|| ".".to_string());
+    if !seen_roots.insert(root_path.clone()) {
+        return;
+    }
+    projects.push(LanguageProjectRoot {
+        root_path,
+        config_path,
+    });
+}
+
+fn relative_topology_path(workspace_root: &Path, path: &Path) -> Option<String> {
+    let relative = path.strip_prefix(workspace_root).ok()?;
+    if relative.as_os_str().is_empty() {
+        return Some(".".to_string());
+    }
+    Some(normalize_topology_path(relative))
+}
+
+fn normalize_topology_path(path: &Path) -> String {
+    path.components()
+        .map(|component| component.as_os_str().to_string_lossy())
+        .collect::<Vec<_>>()
+        .join("/")
 }
