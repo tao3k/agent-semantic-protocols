@@ -1,7 +1,9 @@
-//! Install command routing and rev-first language provider installer.
+//! Install command routing and pinned language provider installer.
 
 use agent_semantic_runtime::{ensure_project_provider_lock_dir, project_runtime_state};
+use serde::Deserialize;
 use sha2::{Digest, Sha256};
+use std::collections::BTreeMap;
 use std::env;
 use std::fs;
 use std::io::Read;
@@ -12,64 +14,39 @@ use super::hook_runtime::{run_codex_plugin_install_args, run_hook_runtime_args};
 use super::install_provider_target::{home_dir, path_dirs, resolve_provider_binary_install_target};
 use super::search_config::AspConfig;
 
-#[derive(Clone, Copy)]
+const PINNED_LANGUAGE_RELEASES_TOML: &str = include_str!("../../pinned-language-releases.toml");
+
+#[derive(Clone, Debug)]
 struct ProviderReleaseSpec {
-    language_id: &'static str,
-    provider_id: &'static str,
-    repo: &'static str,
-    binary: &'static str,
-    supported_targets: &'static [&'static str],
+    language_id: String,
+    provider_id: String,
+    repo: String,
+    release_version: String,
+    download_base_url: String,
+    binary: String,
+    supported_targets: Vec<String>,
 }
 
-const PROVIDER_RELEASES: &[ProviderReleaseSpec] = &[
-    ProviderReleaseSpec {
-        language_id: "rust",
-        provider_id: "rs-harness",
-        repo: "tao3k/rust-lang-project-harness",
-        binary: "rs-harness",
-        supported_targets: &[
-            "x86_64-unknown-linux-gnu",
-            "aarch64-apple-darwin",
-            "x86_64-pc-windows-msvc",
-        ],
-    },
-    ProviderReleaseSpec {
-        language_id: "typescript",
-        provider_id: "ts-harness",
-        repo: "tao3k/typescript-lang-project-harness",
-        binary: "ts-harness",
-        supported_targets: &["x86_64-unknown-linux-gnu", "aarch64-apple-darwin"],
-    },
-    ProviderReleaseSpec {
-        language_id: "python",
-        provider_id: "py-harness",
-        repo: "tao3k/python-lang-project-harness",
-        binary: "py-harness",
-        supported_targets: &["x86_64-unknown-linux-gnu", "aarch64-apple-darwin"],
-    },
-    ProviderReleaseSpec {
-        language_id: "julia",
-        provider_id: "julia-lang-project-harness",
-        repo: "JuliaCN/JuliaLangProjectHarness.jl",
-        binary: "asp-julia-harness",
-        supported_targets: &["x86_64-unknown-linux-gnu", "aarch64-apple-darwin"],
-    },
-    ProviderReleaseSpec {
-        language_id: "gerbil-scheme",
-        provider_id: "gerbil-scheme-harness",
-        repo: "tao3k/gerbil-scheme-language-project-harness",
-        binary: "gerbil-scheme-harness",
-        supported_targets: &["x86_64-unknown-linux-gnu", "aarch64-apple-darwin"],
-    },
-];
+#[derive(Deserialize)]
+struct PinnedLanguageReleaseManifest {
+    languages: BTreeMap<String, PinnedLanguageReleaseEntry>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PinnedLanguageReleaseEntry {
+    provider: String,
+    repo: String,
+    version: String,
+    download_base_url: String,
+    binary: String,
+    supported_targets: Vec<String>,
+}
 
 #[derive(Default)]
 struct InstallArgs {
     project_root: PathBuf,
-    rev: Option<String>,
     target: Option<String>,
-    archive: Option<PathBuf>,
-    repo_override: Option<String>,
 }
 
 pub(crate) fn run_install_command(args: &[String]) -> Result<(), String> {
@@ -77,7 +54,11 @@ pub(crate) fn run_install_command(args: &[String]) -> Result<(), String> {
         Some("hook") => run_install_hook(&args[1..]),
         Some("plugin") => run_install_plugin(&args[1..]),
         Some("language") => run_install_provider(&args[1..]),
-        Some("help" | "--help" | "-h") | None => Err(usage()),
+        Some("help" | "--help" | "-h") => {
+            println!("{}", usage());
+            Ok(())
+        }
+        None => Err(usage()),
         Some(_) => Err(usage()),
     }
 }
@@ -124,29 +105,24 @@ fn run_install_provider(args: &[String]) -> Result<(), String> {
     let Some(language_id) = args.first().map(String::as_str) else {
         return Err(usage());
     };
-    let spec = provider_release(language_id)
-        .ok_or_else(|| format!("unsupported provider language `{language_id}`"))?;
+    let spec = provider_release(language_id)?;
     let install_args = parse_install_args(&args[1..])?;
-    let rev = install_args
-        .rev
-        .as_deref()
-        .ok_or_else(|| "asp install language requires --rev <git-tag-or-rev>".to_string())?;
+    let rev = spec.release_version.as_str();
     let target = match install_args.target {
         Some(target) => target,
         None => host_target_triple().ok_or_else(|| {
             "failed to infer host target; pass --target <target-triple>".to_string()
         })?,
     };
-    validate_target(spec, &target)?;
-    let repo = install_args.repo_override.as_deref().unwrap_or(spec.repo);
+    validate_target(&spec, &target)?;
     let invocation_root =
         env::current_dir().map_err(|error| format!("failed to read current directory: {error}"))?;
     let project_root = absolute_project_root(&invocation_root, &install_args.project_root);
     let config = AspConfig::load(&invocation_root, &project_root);
-    let provider_binary = binary_file_name(spec.binary, &target);
+    let provider_binary = binary_file_name(&spec.binary, &target);
     let install_target = resolve_provider_binary_install_target(
-        config.provider_bin(spec.language_id),
-        spec.language_id,
+        config.provider_bin(&spec.language_id),
+        &spec.language_id,
         &provider_binary,
         &project_root,
         home_dir().as_deref(),
@@ -154,19 +130,15 @@ fn run_install_provider(args: &[String]) -> Result<(), String> {
     )?;
     let provider_lock_dir = ensure_project_provider_lock_dir(&install_args.project_root)?;
     let provider_package_dir = provider_lock_dir
-        .join(spec.language_id)
+        .join(&spec.language_id)
         .join(path_segment(rev))
         .join(&target);
-    let local_archive = install_args.archive.clone();
-    let archive_path = match local_archive.clone() {
-        Some(path) => path,
-        None => download_release_archive(repo, spec, rev, &target, &install_args.project_root)?,
-    };
-    let expected_sha256 = checksum_for_archive(repo, spec, rev, &target, local_archive.as_deref())?;
+    let asset_name = asset_name(&spec, &target);
+    let archive_source = release_asset_url(&spec, &asset_name);
+    let archive_path = download_release_archive(&spec, &target, &install_args.project_root)?;
+    let expected_sha256 = checksum_for_archive(&spec, &target)?;
     let actual_sha256 = sha256_file(&archive_path)?;
-    if let Some(expected_sha256) = expected_sha256.as_deref()
-        && expected_sha256 != actual_sha256
-    {
+    if expected_sha256 != actual_sha256 {
         return Err(format!(
             "checksum mismatch for {}: expected {expected_sha256}, got {actual_sha256}",
             archive_path.display()
@@ -174,7 +146,7 @@ fn run_install_provider(args: &[String]) -> Result<(), String> {
     }
     let installed = install_archive_binary(
         &archive_path,
-        spec,
+        &spec,
         &target,
         &install_target.path,
         &provider_package_dir,
@@ -183,16 +155,16 @@ fn run_install_provider(args: &[String]) -> Result<(), String> {
     write_provider_lock(
         &lock_path,
         &ProviderInstallLock {
-            language_id: spec.language_id,
-            provider_id: spec.provider_id,
-            repo,
+            language_id: &spec.language_id,
+            provider_id: &spec.provider_id,
+            repo: &spec.repo,
             rev,
             target: &target,
-            binary: spec.binary,
+            binary: &spec.binary,
             installed_path: &installed,
             package_path: &provider_package_dir,
             sha256: &actual_sha256,
-            source: archive_path.display().to_string(),
+            source: archive_source,
         },
     )?;
     let state = project_runtime_state(&install_args.project_root)?;
@@ -228,8 +200,10 @@ fn parse_install_args(args: &[String]) -> Result<InstallArgs, String> {
     while index < args.len() {
         match args[index].as_str() {
             "--rev" => {
-                index += 1;
-                parsed.rev = Some(required_value(args, index, "--rev")?.to_string());
+                return Err(
+                    "asp install language uses pinned provider releases; --rev is not supported"
+                        .to_string(),
+                );
             }
             "--target" => {
                 index += 1;
@@ -240,12 +214,16 @@ fn parse_install_args(args: &[String]) -> Result<InstallArgs, String> {
                 parsed.project_root = PathBuf::from(required_value(args, index, "--project")?);
             }
             "--archive" => {
-                index += 1;
-                parsed.archive = Some(PathBuf::from(required_value(args, index, "--archive")?));
+                return Err(
+                    "asp install language uses pinned GitHub release downloads; --archive is not supported"
+                        .to_string(),
+                );
             }
             "--repo" => {
-                index += 1;
-                parsed.repo_override = Some(required_value(args, index, "--repo")?.to_string());
+                return Err(
+                    "asp install language uses pinned provider repositories; --repo is not supported"
+                        .to_string(),
+                );
             }
             "help" | "--help" | "-h" => return Err(usage()),
             flag if flag.starts_with('-') => {
@@ -265,11 +243,29 @@ fn required_value<'a>(args: &'a [String], index: usize, flag: &str) -> Result<&'
         .ok_or_else(|| format!("{flag} requires a value"))
 }
 
-fn provider_release(language_id: &str) -> Option<ProviderReleaseSpec> {
-    PROVIDER_RELEASES
-        .iter()
-        .copied()
-        .find(|spec| spec.language_id == language_id)
+fn provider_release(language_id: &str) -> Result<ProviderReleaseSpec, String> {
+    let mut manifest: PinnedLanguageReleaseManifest = toml::from_str(PINNED_LANGUAGE_RELEASES_TOML)
+        .map_err(|error| format!("failed to parse pinned language releases: {error}"))?;
+    let Some(entry) = manifest.languages.remove(language_id) else {
+        let supported = manifest
+            .languages
+            .keys()
+            .map(String::as_str)
+            .collect::<Vec<_>>()
+            .join(", ");
+        return Err(format!(
+            "unsupported provider language `{language_id}`; pinned languages: {supported}"
+        ));
+    };
+    Ok(ProviderReleaseSpec {
+        language_id: language_id.to_string(),
+        provider_id: entry.provider,
+        repo: entry.repo,
+        release_version: entry.version,
+        download_base_url: entry.download_base_url,
+        binary: entry.binary,
+        supported_targets: entry.supported_targets,
+    })
 }
 
 fn host_target_triple() -> Option<String> {
@@ -284,11 +280,11 @@ fn host_target_triple() -> Option<String> {
     }
 }
 
-fn validate_target(spec: ProviderReleaseSpec, target: &str) -> Result<(), String> {
+fn validate_target(spec: &ProviderReleaseSpec, target: &str) -> Result<(), String> {
     if spec
         .supported_targets
         .iter()
-        .any(|supported| supported == &target)
+        .any(|supported| supported == target)
     {
         return Ok(());
     }
@@ -299,27 +295,29 @@ fn validate_target(spec: ProviderReleaseSpec, target: &str) -> Result<(), String
     ))
 }
 
-fn asset_name(spec: ProviderReleaseSpec, target: &str) -> String {
+fn asset_name(spec: &ProviderReleaseSpec, target: &str) -> String {
     format!("{}-{target}.tar.gz", spec.binary)
 }
 
-fn checksum_name(spec: ProviderReleaseSpec, target: &str) -> String {
+fn checksum_name(spec: &ProviderReleaseSpec, target: &str) -> String {
     format!("{}.sha256", asset_name(spec, target))
 }
 
-fn release_asset_url(repo: &str, rev: &str, asset_name: &str) -> String {
-    format!("https://github.com/{repo}/releases/download/{rev}/{asset_name}")
+fn release_asset_url(spec: &ProviderReleaseSpec, asset_name: &str) -> String {
+    format!(
+        "{}/{}",
+        spec.download_base_url.trim_end_matches('/'),
+        asset_name
+    )
 }
 
 fn download_release_archive(
-    repo: &str,
-    spec: ProviderReleaseSpec,
-    rev: &str,
+    spec: &ProviderReleaseSpec,
     target: &str,
     project_root: &Path,
 ) -> Result<PathBuf, String> {
     let asset_name = asset_name(spec, target);
-    let url = release_asset_url(repo, rev, &asset_name);
+    let url = release_asset_url(spec, &asset_name);
     let download_dir = ensure_project_provider_lock_dir(project_root)?.join("downloads");
     fs::create_dir_all(&download_dir)
         .map_err(|error| format!("failed to create {}: {error}", download_dir.display()))?;
@@ -328,17 +326,8 @@ fn download_release_archive(
     Ok(archive_path)
 }
 
-fn checksum_for_archive(
-    repo: &str,
-    spec: ProviderReleaseSpec,
-    rev: &str,
-    target: &str,
-    local_archive: Option<&Path>,
-) -> Result<Option<String>, String> {
-    if local_archive.is_some() {
-        return Ok(None);
-    }
-    let url = release_asset_url(repo, rev, &checksum_name(spec, target));
+fn checksum_for_archive(spec: &ProviderReleaseSpec, target: &str) -> Result<String, String> {
+    let url = release_asset_url(spec, &checksum_name(spec, target));
     let checksum_path = env::temp_dir().join(format!(
         "asp-provider-install-{}-{target}.sha256",
         spec.language_id
@@ -346,7 +335,8 @@ fn checksum_for_archive(
     run_curl(&url, &checksum_path)?;
     let checksum = fs::read_to_string(&checksum_path)
         .map_err(|error| format!("failed to read {}: {error}", checksum_path.display()))?;
-    Ok(parse_sha256_checksum(&checksum))
+    parse_sha256_checksum(&checksum)
+        .ok_or_else(|| format!("checksum file {url} did not contain a sha256 digest"))
 }
 
 fn run_curl(url: &str, output: &Path) -> Result<(), String> {
@@ -390,7 +380,7 @@ fn sha256_file(path: &Path) -> Result<String, String> {
 
 fn install_archive_binary(
     archive_path: &Path,
-    spec: ProviderReleaseSpec,
+    spec: &ProviderReleaseSpec,
     target: &str,
     provider_binary_path: &Path,
     provider_package_dir: &Path,
@@ -402,7 +392,7 @@ fn install_archive_binary(
 
 fn install_archive_package(
     archive_path: &Path,
-    spec: ProviderReleaseSpec,
+    spec: &ProviderReleaseSpec,
     target: &str,
     provider_package_dir: &Path,
 ) -> Result<PathBuf, String> {
@@ -430,7 +420,7 @@ fn install_archive_package(
                 archive_path.display()
             ));
         }
-        let extracted = find_binary_in_dir(&staging, spec.binary, target).ok_or_else(|| {
+        let extracted = find_binary_in_dir(&staging, &spec.binary, target).ok_or_else(|| {
             format!(
                 "archive {} did not contain executable {}",
                 archive_path.display(),
@@ -464,7 +454,7 @@ fn install_archive_package(
                 provider_package_dir.display()
             )
         })?;
-        let package_binary = provider_package_dir.join(binary_file_name(spec.binary, target));
+        let package_binary = provider_package_dir.join(binary_file_name(&spec.binary, target));
         copy_executable(archive_path, &package_binary)?;
         Ok(package_binary)
     }
@@ -641,7 +631,7 @@ fn toml_escape(value: &str) -> String {
 }
 
 fn usage() -> String {
-    "usage: asp install hook --client claude [PROJECT_ROOT] [--subagent-model MODEL]\n       asp install plugin --codex [PROJECT_ROOT] [--global|--global-plugin] [--subagent-model MODEL]\n       asp install language <language> --rev <rev> [--target <target>] [--project <root>] [--repo <owner/repo>] [--archive <path>]\n       language install target priority: asp.toml [languages.<language>].bin, $HOME/.local/bin, PATH".to_string()
+    "usage: asp install hook --client claude [PROJECT_ROOT] [--subagent-model MODEL]\n       asp install plugin --codex [PROJECT_ROOT] [--global|--global-plugin] [--subagent-model MODEL]\n       asp install language <language> [PROJECT_ROOT] [--target <target>] [--project <root>]\n       language provider releases are pinned by asp; install target priority: asp.toml [languages.<language>].bin, $HOME/.local/bin, PATH".to_string()
 }
 
 fn install_hook_usage() -> String {

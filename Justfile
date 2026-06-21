@@ -7,55 +7,43 @@ python_harness_project := "languages/python-lang-project-harness"
 julia_harness_project := "languages/JuliaLangProjectHarness.jl"
 julia_harness := "julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl"
 julia_compiled_harness := "languages/JuliaLangProjectHarness.jl/build/juliac-asp-local/asp-julia-harness"
+gerbil_harness_project := "languages/gerbil-scheme-language-project-harness"
 
 default:
-    @just --list
+	@just --list
+
+_agent-tools-run-asp bin_dir +args:
+	@bin_dir="{{bin_dir}}"; \
+	if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-$HOME/.local/bin}"; fi; \
+	protocol_bin="${ASP_BIN:-${bin_dir}/asp}"; \
+	if [ -x "${protocol_bin}" ]; then \
+	  "${protocol_bin}" {{args}}; \
+	elif command -v asp >/dev/null 2>&1; then \
+	  asp {{args}}; \
+	else \
+	  cargo run -q -p agent-semantic-protocol --bin asp -- {{args}}; \
+	fi
 
 # Install asp, asp-graph-turbo, and provider harnesses into $HOME/.local/bin by default, then install Codex hooks.
 install bin_dir="":
-    @just agent-hooks-install "{{bin_dir}}"
+	@just agent-hooks-install "{{bin_dir}}"
 
 # Install all agent tools, including asp-graph-turbo, and Codex hook config. Optional: just agent-hooks-install ~/.local/bin
 agent-hooks-install bin_dir="":
-    @bin_dir="{{bin_dir}}"; \
-      if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-$HOME/.local/bin}"; fi; \
-      just agent-tools-install-global "${bin_dir}"; \
-      just agent-hooks-install-current "${bin_dir}"; \
-      just agent-hooks-doctor "${bin_dir}"
-
-agent-hooks-install-current bin_dir="":
-    @just agent-hooks-install-root "{{bin_dir}}"
+	@bin_dir="{{bin_dir}}"; \
+	if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-$HOME/.local/bin}"; fi; \
+	just agent-tools-install-global "${bin_dir}"; \
+	just _agent-hooks-install-codex "${bin_dir}"; \
+	just agent-hooks-doctor "${bin_dir}"
 
 agent-hooks-doctor bin_dir="":
-    @just agent-hooks-doctor-root "{{bin_dir}}"
+	@just _agent-hooks-doctor-codex "{{bin_dir}}"
 
-agent-hooks-install-root bin_dir="":
-    @bin_dir="{{bin_dir}}"; \
-      if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-}"; fi; \
-      if [ -n "${bin_dir}" ]; then \
-        protocol_bin="${bin_dir}/asp"; \
-        if [ -x "${protocol_bin}" ]; then \
-          "${protocol_bin}" hook install --client codex {{repo}}; \
-        else \
-          cargo run -q -p agent-semantic-protocol --bin asp -- hook install --client codex {{repo}}; \
-        fi; \
-      else \
-        cargo run -q -p agent-semantic-protocol --bin asp -- hook install --client codex {{repo}}; \
-      fi
+_agent-hooks-install-codex bin_dir="":
+	@just _agent-tools-run-asp "{{bin_dir}}" hook install --client codex {{repo}}
 
-agent-hooks-doctor-root bin_dir="":
-    @bin_dir="{{bin_dir}}"; \
-      if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-}"; fi; \
-      if [ -n "${bin_dir}" ]; then \
-        protocol_bin="${bin_dir}/asp"; \
-        if [ -x "${protocol_bin}" ]; then \
-          "${protocol_bin}" hook doctor --client codex {{repo}}; \
-        else \
-          cargo run -q -p agent-semantic-protocol --bin asp -- hook doctor --client codex {{repo}}; \
-        fi; \
-      else \
-        cargo run -q -p agent-semantic-protocol --bin asp -- hook doctor --client codex {{repo}}; \
-      fi
+_agent-hooks-doctor-codex bin_dir="":
+	@just _agent-tools-run-asp "{{bin_dir}}" hook doctor --client codex {{repo}}
 
 # Replay the root classifier directly without launching Codex.
 agent-hooks-smoke-hook:
@@ -81,21 +69,29 @@ agent-hooks-smoke-codex:
       fi; \
       rm -f "${out}"
 
-# Install asp, asp-graph-turbo, rs-harness, ts-harness, py-harness, and asp-julia-harness.
+# Install asp, asp-graph-turbo, and all language provider harnesses under $HOME/.local/bin by default.
 agent-tools-install-global bin_dir="":
     @bin_dir="{{bin_dir}}"; \
       if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-$HOME/.local/bin}"; fi; \
       just agent-tools-install-protocol "${bin_dir}"; \
       just agent-tools-install-asp-graph-turbo "${bin_dir}"; \
+      just agent-tools-install-languages "${bin_dir}"; \
+      echo "[agent-tools-install-global] installed asp, asp-graph-turbo, and all language provider harnesses into ${bin_dir}"
+
+# Install all language provider harnesses under $HOME/.local/bin by default.
+agent-tools-install-languages bin_dir="":
+    @bin_dir="{{bin_dir}}"; \
+      if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-$HOME/.local/bin}"; fi; \
       just agent-tools-install-rs "${bin_dir}"; \
       just agent-tools-install-ts "${bin_dir}"; \
       just agent-tools-install-py "${bin_dir}"; \
       just agent-tools-install-julia "${bin_dir}"; \
-      echo "[agent-tools-install-global] installed asp, asp-graph-turbo, rs-harness, ts-harness, py-harness, and asp-julia-harness into ${bin_dir}"
+      just agent-tools-install-gerbil "${bin_dir}"; \
+      echo "[agent-tools-install-languages] installed rs-harness, ts-harness, py-harness, asp-julia-harness, and gslph into ${bin_dir}"
 
 # Install only the shared asp binary.
 agent-tools-install-asp bin_dir="":
-    @just agent-tools-install-protocol "{{bin_dir}}"
+	@just agent-tools-install-protocol "{{bin_dir}}"
 
 agent-tools-install-protocol bin_dir="":
     @bin_dir="{{bin_dir}}"; \
@@ -109,7 +105,16 @@ agent-tools-install-protocol bin_dir="":
 
 # Install the shared protocol binary used by hook runtime commands.
 agent-tools-install-hook bin_dir="":
-    @just agent-tools-install-protocol "{{bin_dir}}"
+	@just agent-tools-install-protocol "{{bin_dir}}"
+
+# Install a released language provider wrapper through asp.
+# Target priority is owned by asp itself: asp.toml [languages.<id>].bin, $HOME/.local/bin, PATH.
+agent-tools-install-language language rev bin_dir="" target="" project="." archive="" repo_override="":
+	@args=(install language "{{language}}" --rev "{{rev}}" --project "{{project}}"); \
+	if [ -n "{{target}}" ]; then args+=(--target "{{target}}"); fi; \
+	if [ -n "{{archive}}" ]; then args+=(--archive "{{archive}}"); fi; \
+	if [ -n "{{repo_override}}" ]; then args+=(--repo "{{repo_override}}"); fi; \
+	just _agent-tools-run-asp "{{bin_dir}}" "${args[@]}"
 
 # Install only the core asp-graph-turbo ranking binary.
 # Keep this entry repo-owned; uv tool install moves the same tool executable between bin dirs.
@@ -181,6 +186,60 @@ agent-tools-install-jl bin_dir="":
       fi; \
       install -m 755 "{{julia_compiled_harness}}" "${bin_dir}/asp-julia-harness"; \
       "${bin_dir}/asp-julia-harness" guide {{julia_harness_project}} >/dev/null
+
+# Install only the Gerbil Scheme standalone binary.
+agent-tools-install-gerbil bin_dir="":
+    @just agent-tools-install-gx "{{bin_dir}}"
+
+agent-tools-build-gerbil-static:
+    @set -e; \
+      repo_root="$PWD"; \
+      package_dir="${repo_root}/{{gerbil_harness_project}}"; \
+      static_bin="${package_dir}/.bin/gslph"; \
+      mkdir -p "$(dirname "${static_bin}")"; \
+      cd "${package_dir}"; \
+      gxi build-static.ss; \
+      test -x "${static_bin}"
+
+agent-tools-build-gerbil-native:
+    @set -e; \
+      repo_root="$PWD"; \
+      package_dir="${repo_root}/{{gerbil_harness_project}}"; \
+      native_bin="${package_dir}/.bin/gslph"; \
+      mkdir -p "$(dirname "${native_bin}")"; \
+      cd "${package_dir}"; \
+      gxi build-native.ss; \
+      test -x "${native_bin}"
+
+agent-tools-build-gerbil:
+    @set -e; \
+      case "$(uname -s)" in \
+        Darwin) just agent-tools-build-gerbil-native ;; \
+        *) just agent-tools-build-gerbil-static ;; \
+      esac
+
+agent-tools-install-gx bin_dir="":
+    @set -e; \
+      bin_dir="{{bin_dir}}"; \
+      if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-$HOME/.local/bin}"; fi; \
+      repo_root="$PWD"; \
+      package_dir="${repo_root}/{{gerbil_harness_project}}"; \
+      built_dir="${package_dir}/.bin"; \
+      case "$(uname -s)" in \
+        Darwin) built_bin="${built_dir}/gslph"; build_target=agent-tools-build-gerbil-native ;; \
+        *) built_bin="${built_dir}/gslph"; build_target=agent-tools-build-gerbil-static ;; \
+      esac; \
+      mkdir -p "${bin_dir}"; \
+      if [ ! -x "${built_bin}" ]; then \
+        just "${build_target}"; \
+      fi; \
+      for tool in "${built_dir}"/gslph*; do \
+        if [ -x "${tool}" ]; then \
+          rm -f "${bin_dir}/$(basename "${tool}")"; \
+          cp -p "${tool}" "${bin_dir}/$(basename "${tool}")"; \
+        fi; \
+      done; \
+      "${bin_dir}/gslph" --help >/dev/null
 
 agent-hooks-doctor-providers: agent-hooks-doctor-rs agent-hooks-doctor-ts agent-hooks-doctor-py agent-hooks-doctor-julia
 

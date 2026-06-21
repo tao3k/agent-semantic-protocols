@@ -16,8 +16,6 @@ const ASP_CODEX_PLUGIN_MANIFEST_JSON: &str =
     include_str!("../../../../asp-codex-plugin/.codex-plugin/plugin.json");
 const ASP_CODEX_PLUGIN_HOOKS_JSON: &str =
     include_str!("../../../../asp-codex-plugin/hooks/hooks.json");
-const ASP_CODEX_PLUGIN_SKILL_ORG: &str =
-    include_str!("../../../../asp-codex-plugin/skills/agent-semantic-protocols/SKILL.org");
 
 #[derive(Clone, Copy)]
 pub(super) enum CodexPluginScope {
@@ -140,7 +138,7 @@ fn install_codex_plugin_bundle(project_root: &Path) -> Result<PathBuf, String> {
         ASP_CODEX_PLUGIN_HOOKS_JSON,
     )?;
     let skill_dir = plugin_root.join("skills").join("agent-semantic-protocols");
-    write_codex_plugin_bundle_file(&skill_dir.join("SKILL.org"), ASP_CODEX_PLUGIN_SKILL_ORG)?;
+    remove_codex_plugin_bundle_file(&skill_dir.join("SKILL.org"))?;
     remove_codex_plugin_bundle_file(&skill_dir.join("SKILL.contract.org"))?;
     Ok(plugin_root.join(".codex-plugin").join("plugin.json"))
 }

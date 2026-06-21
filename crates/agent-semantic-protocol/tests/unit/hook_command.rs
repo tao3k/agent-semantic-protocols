@@ -72,15 +72,24 @@ fn top_level_install_help_is_non_mutating_unified_surface() {
         .output()
         .expect("run asp install --help");
 
-    assert!(!output.status.success());
+    assert!(output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stderr.contains("usage: asp install hook --client claude"),
-        "stderr: {stderr}"
+        stdout.contains("usage: asp install hook --client claude"),
+        "stdout: {stdout}"
     );
     assert!(
-        stderr.contains("asp install language <language> --rev <rev>"),
-        "stderr: {stderr}"
+        stdout.contains("asp install language <language> [PROJECT_ROOT]"),
+        "stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("language provider releases are pinned by asp"),
+        "stdout: {stdout}"
+    );
+    assert!(
+        !stdout.contains("--rev") && !stdout.contains("--archive") && !stdout.contains("--repo"),
+        "stdout: {stdout}\nstderr: {stderr}"
     );
     assert!(!root.join(".codex/config.toml").exists());
     assert!(

@@ -591,8 +591,13 @@ fn run_provider_owner_items_query(
         return Ok(false);
     }
     let existing_owner_path = owner_path_exists(project_root, owner);
-    let invocation =
-        provider_invocation_with_profile(context.profiles, context.provider, args, config)?;
+    let invocation = provider_invocation_with_profile(
+        context.profiles,
+        context.provider,
+        args,
+        project_root,
+        config,
+    )?;
     let output = run_provider_command_with_stdin(
         language_id,
         context.provider,

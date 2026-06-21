@@ -10,6 +10,12 @@ pub(super) struct ProviderBinaryInstallTarget {
     pub(super) source: &'static str,
 }
 
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub(super) struct ProviderBinaryInvocation {
+    pub(super) command: String,
+    pub(super) source: &'static str,
+}
+
 pub(super) fn resolve_provider_binary_install_target(
     configured_bin: Option<&str>,
     language_id: &str,
@@ -49,6 +55,39 @@ pub(super) fn resolve_provider_binary_install_target(
     ))
 }
 
+pub(super) fn resolve_provider_binary_invocation(
+    configured_bin: Option<&str>,
+    provider_binary: &str,
+    project_root: &Path,
+    home_dir: Option<&Path>,
+    path_dirs: &[PathBuf],
+) -> Result<Option<ProviderBinaryInvocation>, String> {
+    if let Some(configured_bin) = configured_bin {
+        return resolve_configured_provider_binary_invocation(
+            configured_bin,
+            project_root,
+            home_dir,
+            path_dirs,
+        )
+        .map(Some);
+    }
+    if let Some(home_bin) = home_local_bin(provider_binary, home_dir)
+        && home_bin.is_file()
+    {
+        return Ok(Some(ProviderBinaryInvocation {
+            command: home_bin.to_string_lossy().to_string(),
+            source: "home-local-bin",
+        }));
+    }
+    if let Some(existing) = provider_binary_on_path(provider_binary, path_dirs) {
+        return Ok(Some(ProviderBinaryInvocation {
+            command: existing.to_string_lossy().to_string(),
+            source: "path-existing",
+        }));
+    }
+    Ok(None)
+}
+
 fn resolve_configured_provider_binary_install_target(
     configured_bin: &str,
     project_root: &Path,
@@ -81,6 +120,33 @@ fn resolve_configured_provider_binary_install_target(
     })
 }
 
+fn resolve_configured_provider_binary_invocation(
+    configured_bin: &str,
+    project_root: &Path,
+    home_dir: Option<&Path>,
+    path_dirs: &[PathBuf],
+) -> Result<ProviderBinaryInvocation, String> {
+    let configured_bin = configured_bin.trim();
+    if configured_bin.is_empty() {
+        return Err("asp.toml provider bin must not be empty".to_string());
+    }
+    let configured_path = Path::new(configured_bin);
+    let command = if configured_path.is_absolute() {
+        configured_path.to_path_buf()
+    } else if configured_path.components().count() > 1 {
+        project_root.join(configured_path)
+    } else {
+        home_local_bin(configured_bin, home_dir)
+            .filter(|path| path.is_file())
+            .or_else(|| provider_binary_on_path(configured_bin, path_dirs))
+            .unwrap_or_else(|| configured_path.to_path_buf())
+    };
+    Ok(ProviderBinaryInvocation {
+        command: command.to_string_lossy().to_string(),
+        source: "asp.toml",
+    })
+}
+
 fn provider_binary_on_path(binary: &str, path_dirs: &[PathBuf]) -> Option<PathBuf> {
     path_dirs
         .iter()
@@ -92,6 +158,10 @@ fn first_writable_path_dir(path_dirs: &[PathBuf]) -> Option<&PathBuf> {
     path_dirs
         .iter()
         .find(|dir| dir.is_dir() && directory_is_writable(dir))
+}
+
+fn home_local_bin(binary: &str, home_dir: Option<&Path>) -> Option<PathBuf> {
+    home_dir.map(|home_dir| home_dir.join(".local/bin").join(binary))
 }
 
 pub(super) fn home_dir() -> Option<PathBuf> {

@@ -1,7 +1,7 @@
 use std::env;
 
 use crate::provider_command::support::{
-    asp_command, make_executable, prepend_path, provider, temp_project_root, write_activation_to,
+    asp_command, make_executable, provider, temp_project_root, write_activation_to,
 };
 
 #[test]
@@ -47,7 +47,7 @@ printf 'renderer=%s
     let output = asp_command(&root)
         .env("PRJ_CACHE_HOME", &cache_home)
         .env("HOME", &home)
-        .env("PATH", prepend_path(&bin_dir))
+        .env("PATH", &bin_dir)
         .env_remove("SEMANTIC_AGENT_PROTOCOL_BIN")
         .args(["rust", "guide", "."])
         .output()
@@ -87,7 +87,7 @@ printf 'renderer=%s
     let output = asp_command(&root)
         .env("PRJ_CACHE_HOME", &cache_home)
         .env("HOME", &home)
-        .env("PATH", prepend_path(&bin_dir))
+        .env("PATH", &bin_dir)
         .args(["rust", "guide", "languages/rust-lang-project-harness"])
         .output()
         .expect("run asp rust guide nested root");

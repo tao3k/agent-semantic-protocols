@@ -14,6 +14,7 @@ fn provider_native_ast_patch_command_is_wrapped_by_language_facade() {
     write_activation(&root, &[provider("rust", Vec::new())]);
 
     let output = asp_command(&root)
+        .env("HOME", root.join("home"))
         .env("PRJ_CACHE_HOME", root.join(".cache"))
         .env("PATH", prepend_path(&bin_dir))
         .args([
@@ -101,6 +102,7 @@ fn provider_native_ast_patch_command_is_wrapped_by_language_facade() {
     })
     .to_string();
     let mut child = asp_command(&root)
+        .env("HOME", root.join("home"))
         .env("PRJ_CACHE_HOME", root.join(".cache"))
         .env("PATH", prepend_path(&bin_dir))
         .args(["rust", "ast-patch", "apply", "--packet", "-", "."])

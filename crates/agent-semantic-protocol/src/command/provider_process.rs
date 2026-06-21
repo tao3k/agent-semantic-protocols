@@ -11,6 +11,7 @@ use std::env;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
+use super::install_provider_target::{home_dir, path_dirs, resolve_provider_binary_invocation};
 use super::search_config::AspConfig;
 
 pub(super) fn run_provider_command(
@@ -255,10 +256,21 @@ pub(super) fn provider_invocation_with_profile(
     profiles: &RuntimeProfiles,
     provider: &ActivatedProvider,
     args: &[String],
+    provider_bin_root: &Path,
     config: &AspConfig,
 ) -> Result<Vec<String>, String> {
-    if let Some(binary) = config.provider_bin(&provider.language_id) {
-        return Ok(provider_invocation_with_binary(provider, args, binary));
+    if let Some(invocation) = resolve_provider_binary_invocation(
+        config.provider_bin(&provider.language_id),
+        &provider.binary,
+        provider_bin_root,
+        home_dir().as_deref(),
+        &path_dirs(),
+    )? {
+        return Ok(provider_invocation_with_binary(
+            provider,
+            args,
+            &invocation.command,
+        ));
     }
     if let Some(invocation) = runtime_profile_invocation(profiles, provider, args) {
         return Ok(invocation);
@@ -283,12 +295,15 @@ pub(super) fn provider_invocations(
     provider: &ActivatedProvider,
     args: &[String],
     project_root: &Path,
+    provider_bin_root: &Path,
     profiles: &RuntimeProfiles,
     config: &AspConfig,
 ) -> Result<Vec<Vec<String>>, String> {
     search_scope_arg_sets(args, project_root)
         .into_iter()
-        .map(|args| provider_invocation_with_profile(profiles, provider, &args, config))
+        .map(|args| {
+            provider_invocation_with_profile(profiles, provider, &args, provider_bin_root, config)
+        })
         .collect()
 }
 

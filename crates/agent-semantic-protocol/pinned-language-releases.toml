@@ -1,0 +1,55 @@
+[languages.rust]
+provider = "rs-harness"
+repo = "tao3k/rust-lang-project-harness"
+version = "v0.1.2"
+downloadBaseUrl = "https://github.com/tao3k/rust-lang-project-harness/releases/download/v0.1.2"
+binary = "rs-harness"
+supportedTargets = [
+  "x86_64-unknown-linux-gnu",
+  "aarch64-apple-darwin",
+  "x86_64-pc-windows-msvc",
+]
+
+[languages.typescript]
+provider = "ts-harness"
+repo = "tao3k/typescript-lang-project-harness"
+version = "v0.1.0"
+downloadBaseUrl = "https://github.com/tao3k/typescript-lang-project-harness/releases/download/v0.1.0"
+binary = "ts-harness"
+supportedTargets = [
+  "x86_64-unknown-linux-gnu",
+  "aarch64-apple-darwin",
+]
+
+[languages.python]
+provider = "py-harness"
+repo = "tao3k/python-lang-project-harness"
+version = "v0.1.0"
+downloadBaseUrl = "https://github.com/tao3k/python-lang-project-harness/releases/download/v0.1.0"
+binary = "py-harness"
+supportedTargets = [
+  "x86_64-unknown-linux-gnu",
+  "aarch64-apple-darwin",
+]
+
+[languages.julia]
+provider = "julia-lang-project-harness"
+repo = "JuliaCN/JuliaLangProjectHarness.jl"
+version = "v0.1.0"
+downloadBaseUrl = "https://github.com/JuliaCN/JuliaLangProjectHarness.jl/releases/download/v0.1.0"
+binary = "asp-julia-harness"
+supportedTargets = [
+  "x86_64-unknown-linux-gnu",
+  "aarch64-apple-darwin",
+]
+
+[languages.gerbil-scheme]
+provider = "gerbil-scheme-harness"
+repo = "tao3k/gerbil-scheme-language-project-harness"
+version = "v0.1.0"
+downloadBaseUrl = "https://github.com/tao3k/gerbil-scheme-language-project-harness/releases/download/v0.1.0"
+binary = "gerbil-scheme-harness"
+supportedTargets = [
+  "x86_64-unknown-linux-gnu",
+  "aarch64-apple-darwin",
+]

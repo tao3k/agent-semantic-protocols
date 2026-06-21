@@ -54,8 +54,13 @@ pub(super) fn collect_provider_graph_facts(
         query.to_string(),
         "--json".to_string(),
     ];
-    let invocation =
-        provider_invocation_with_profile(context.profiles, context.provider, &args, config)?;
+    let invocation = provider_invocation_with_profile(
+        context.profiles,
+        context.provider,
+        &args,
+        project_root,
+        config,
+    )?;
     let output = run_provider_command_with_stdin(
         language_id,
         context.provider,

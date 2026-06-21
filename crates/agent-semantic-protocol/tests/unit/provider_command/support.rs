@@ -108,7 +108,10 @@ pub(super) fn write_cache_source_fixture(root: &Path) {
 
 pub(super) fn asp_command(root: &Path) -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_asp"));
-    command.current_dir(root).env_remove("PRJ_CACHE_HOME");
+    command
+        .current_dir(root)
+        .env("HOME", root.join("home"))
+        .env_remove("PRJ_CACHE_HOME");
     command
 }
 

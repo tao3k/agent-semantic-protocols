@@ -36,6 +36,43 @@ fn asp_toml_provider_bin_overrides_activation_binary() {
 }
 
 #[test]
+fn language_facade_prefers_home_local_provider_wrapper_before_activation_prefix() {
+    let root = temp_project_root("provider-home-wrapper-facade");
+    let home = root.join("home");
+    let home_bin = home.join(".local/bin");
+    let profile_bin_dir = root.join(".profile-bin");
+    write_echo_provider(&home_bin, "rs-harness", "home");
+    write_echo_provider(&profile_bin_dir, "rs-harness", "profile");
+
+    write_activation(
+        &root,
+        &[provider(
+            "rust",
+            vec![profile_bin_dir.join("rs-harness").display().to_string()],
+        )],
+    );
+
+    let output = asp_command(&root)
+        .env("HOME", &home)
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .env_remove("PATH")
+        .args(["rust", "evidence", "."])
+        .output()
+        .expect("run asp rust evidence");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8(output.stdout).expect("stdout"),
+        "home args=[evidence]\n"
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn language_facade_query_uses_activation_prefix_before_path_lookup() {
     let root = temp_project_root("provider-activation-prefix-facade");
     write_cache_source_fixture(&root);

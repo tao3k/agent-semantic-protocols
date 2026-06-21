@@ -126,8 +126,8 @@ mod unix {
         );
         let skill_dir = plugin_root.join("skills").join("agent-semantic-protocols");
         assert!(
-            skill_dir.join("SKILL.org").is_file(),
-            "missing plugin skill under {}",
+            !skill_dir.join("SKILL.org").exists(),
+            "plugin skill should not be installed as a user project artifact under {}",
             skill_dir.display()
         );
         assert!(

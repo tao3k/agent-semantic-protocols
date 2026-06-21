@@ -1,3 +1,5 @@
+use sha2::{Digest, Sha256};
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -6,43 +8,84 @@ static NEXT_TEMP_ID: AtomicU64 = AtomicU64::new(0);
 
 #[test]
 #[cfg(unix)]
-fn install_language_archive_writes_runtime_bin_package_and_lock() {
-    assert_install_archive_writes_runtime_bin_package_and_lock();
+fn install_language_pinned_release_writes_runtime_bin_package_and_lock() {
+    assert_install_pinned_release_writes_runtime_bin_package_and_lock();
 }
 
 #[test]
 #[cfg(unix)]
-fn install_language_archive_prefers_asp_toml_provider_bin() {
-    assert_install_language_archive_prefers_asp_toml_provider_bin();
+fn install_language_pinned_release_prefers_asp_toml_provider_bin() {
+    assert_install_language_pinned_release_prefers_asp_toml_provider_bin();
 }
 
-fn assert_install_archive_writes_runtime_bin_package_and_lock() {
+#[test]
+#[cfg(unix)]
+fn install_language_rejects_release_override_flags() {
     let root = temp_project_root();
     let home = root.join("home");
-    let archive = root.join("release/rs-harness");
-    std::fs::create_dir_all(archive.parent().expect("archive parent")).expect("create release dir");
-    std::fs::write(
-        &archive,
-        "#!/bin/sh\nprintf 'provider-ok:%s\\n' \"${1:-missing}\"\n",
-    )
-    .expect("write fake archive binary");
-    make_executable(&archive);
+
+    for (flag, value, expected) in [
+        (
+            "--rev",
+            "vtest",
+            "pinned provider releases; --rev is not supported",
+        ),
+        (
+            "--repo",
+            "example/repo",
+            "pinned provider repositories; --repo is not supported",
+        ),
+        (
+            "--archive",
+            "release.tar.gz",
+            "pinned GitHub release downloads; --archive is not supported",
+        ),
+    ] {
+        let output = Command::new(env!("CARGO_BIN_EXE_asp"))
+            .args(["install", "language", "rust", flag, value, "--project"])
+            .arg(&root)
+            .env("HOME", &home)
+            .env_remove("PRJ_CACHE_HOME")
+            .output()
+            .expect("run asp install language");
+
+        assert!(
+            !output.status.success(),
+            "flag: {flag}\nstdout: {}\nstderr: {}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let output_text = format!(
+            "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(
+            output_text.contains(expected),
+            "flag: {flag}\n{output_text}"
+        );
+    }
+}
+
+fn assert_install_pinned_release_writes_runtime_bin_package_and_lock() {
+    let root = temp_project_root();
+    let home = root.join("home");
+    let release_dir = create_pinned_release_fixture(&root);
+    let fake_bin = create_fake_curl_bin(&root);
 
     let output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .args([
             "install",
             "language",
             "rust",
-            "--rev",
-            "refs/tags/vtest",
             "--target",
             "x86_64-unknown-linux-gnu",
-            "--archive",
         ])
-        .arg(&archive)
         .arg("--project")
         .arg(&root)
         .env("HOME", &home)
+        .env("PATH", prepend_path(&fake_bin))
+        .env("ASP_TEST_RELEASE_DIR", &release_dir)
         .env_remove("PRJ_CACHE_HOME")
         .output()
         .expect("run asp install language");
@@ -55,12 +98,11 @@ fn assert_install_archive_writes_runtime_bin_package_and_lock() {
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("[asp-install]"), "{stdout}");
-    assert!(stdout.contains("rev=refs/tags/vtest"), "{stdout}");
+    assert!(stdout.contains("rev=v0.1.2"), "{stdout}");
 
     let runtime = root.join(".cache/agent-semantic-protocol/runtime");
     let bin = home.join(".local/bin/rs-harness");
-    let package_binary =
-        runtime.join("providers/rust/refs_tags_vtest/x86_64-unknown-linux-gnu/rs-harness");
+    let package_binary = runtime.join("providers/rust/v0.1.2/x86_64-unknown-linux-gnu/rs-harness");
     let lock = runtime.join("providers/rust.lock.toml");
     assert!(bin.is_file(), "missing runtime bin {}", bin.display());
     assert!(
@@ -69,7 +111,10 @@ fn assert_install_archive_writes_runtime_bin_package_and_lock() {
         package_binary.display()
     );
     let lock_contents = std::fs::read_to_string(&lock).expect("read install lock");
-    assert!(lock_contents.contains("rev = \"refs/tags/vtest\""));
+    assert!(lock_contents.contains("rev = \"v0.1.2\""));
+    assert!(lock_contents.contains(
+        "source = \"https://github.com/tao3k/rust-lang-project-harness/releases/download/v0.1.2/rs-harness-x86_64-unknown-linux-gnu.tar.gz\""
+    ));
     assert!(lock_contents.contains("packagePath = "));
 
     let provider_output = Command::new(&bin)
@@ -87,17 +132,11 @@ fn assert_install_archive_writes_runtime_bin_package_and_lock() {
     );
 }
 
-fn assert_install_language_archive_prefers_asp_toml_provider_bin() {
+fn assert_install_language_pinned_release_prefers_asp_toml_provider_bin() {
     let root = temp_project_root();
     let home = root.join("home");
-    let archive = root.join("release/rs-harness");
-    std::fs::create_dir_all(archive.parent().expect("archive parent")).expect("create release dir");
-    std::fs::write(
-        &archive,
-        "#!/bin/sh\nprintf 'provider-ok:%s\\n' \"${1:-missing}\"\n",
-    )
-    .expect("write fake archive binary");
-    make_executable(&archive);
+    let release_dir = create_pinned_release_fixture(&root);
+    let fake_bin = create_fake_curl_bin(&root);
     std::fs::write(
         root.join("asp.toml"),
         "[languages.rust]\nbin = \"tools/rs-harness-config\"\n",
@@ -109,16 +148,14 @@ fn assert_install_language_archive_prefers_asp_toml_provider_bin() {
             "install",
             "language",
             "rust",
-            "--rev",
-            "refs/tags/vconfig",
             "--target",
             "x86_64-unknown-linux-gnu",
-            "--archive",
         ])
-        .arg(&archive)
         .arg("--project")
         .arg(&root)
         .env("HOME", &home)
+        .env("PATH", prepend_path(&fake_bin))
+        .env("ASP_TEST_RELEASE_DIR", &release_dir)
         .env_remove("PRJ_CACHE_HOME")
         .output()
         .expect("run asp install language");
@@ -148,6 +185,97 @@ fn assert_install_language_archive_prefers_asp_toml_provider_bin() {
         String::from_utf8_lossy(&provider_output.stdout),
         "provider-ok:probe\n"
     );
+}
+
+fn create_pinned_release_fixture(root: &Path) -> PathBuf {
+    let release_dir = root.join("release");
+    let payload_dir = release_dir.join("payload");
+    let binary = payload_dir.join("rs-harness");
+    std::fs::create_dir_all(&payload_dir).expect("create release payload dir");
+    std::fs::write(
+        &binary,
+        "#!/bin/sh\nprintf 'provider-ok:%s\\n' \"${1:-missing}\"\n",
+    )
+    .expect("write fake provider binary");
+    make_executable(&binary);
+
+    let archive = release_dir.join("rs-harness-x86_64-unknown-linux-gnu.tar.gz");
+    let status = Command::new("tar")
+        .arg("-czf")
+        .arg(&archive)
+        .arg("-C")
+        .arg(&payload_dir)
+        .arg("rs-harness")
+        .status()
+        .expect("create provider archive");
+    assert!(status.success(), "tar failed with status {status}");
+    let sha256 = sha256_file(&archive);
+    std::fs::write(
+        release_dir.join("rs-harness-x86_64-unknown-linux-gnu.tar.gz.sha256"),
+        format!("{sha256}  rs-harness-x86_64-unknown-linux-gnu.tar.gz\n"),
+    )
+    .expect("write provider checksum");
+    release_dir
+}
+
+fn create_fake_curl_bin(root: &Path) -> PathBuf {
+    let fake_bin = root.join("fake-bin");
+    let fake_curl = fake_bin.join("curl");
+    std::fs::create_dir_all(&fake_bin).expect("create fake bin dir");
+    std::fs::write(
+        &fake_curl,
+        r#"#!/bin/sh
+if [ "$1" != "-fsSL" ] || [ "$2" != "-o" ]; then
+  echo "unexpected curl args: $*" >&2
+  exit 1
+fi
+out="$3"
+url="$4"
+case "$url" in
+  https://github.com/tao3k/rust-lang-project-harness/releases/download/v0.1.2/*)
+    ;;
+  *)
+    echo "unexpected release url: $url" >&2
+    exit 1
+    ;;
+esac
+name="${url##*/}"
+case "$name" in
+  rs-harness-x86_64-unknown-linux-gnu.tar.gz|rs-harness-x86_64-unknown-linux-gnu.tar.gz.sha256)
+    cp "$ASP_TEST_RELEASE_DIR/$name" "$out"
+    ;;
+  *)
+    echo "unexpected release asset: $url" >&2
+    exit 1
+    ;;
+esac
+"#,
+    )
+    .expect("write fake curl");
+    make_executable(&fake_curl);
+    fake_bin
+}
+
+fn prepend_path(path: &Path) -> std::ffi::OsString {
+    let mut paths = vec![path.to_path_buf()];
+    if let Some(existing_path) = std::env::var_os("PATH") {
+        paths.extend(std::env::split_paths(&existing_path));
+    }
+    std::env::join_paths(paths).expect("join PATH")
+}
+
+fn sha256_file(path: &Path) -> String {
+    let mut file = std::fs::File::open(path).expect("open file for sha256");
+    let mut hasher = Sha256::new();
+    let mut buffer = [0_u8; 32 * 1024];
+    loop {
+        let read = file.read(&mut buffer).expect("read file for sha256");
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+    format!("{:x}", hasher.finalize())
 }
 
 fn temp_project_root() -> PathBuf {

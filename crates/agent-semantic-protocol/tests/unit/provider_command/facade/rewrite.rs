@@ -52,7 +52,7 @@ fn guide_rewrites_command_lines_to_language_facade() {
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
 
-    assert!(stdout.contains("provider=rs-harness"));
+    assert!(stdout.contains("provider=rs-harness"), "{stdout}");
     assert!(
         stdout.contains("|cmd prime=asp rust search prime ."),
         "{stdout}"
