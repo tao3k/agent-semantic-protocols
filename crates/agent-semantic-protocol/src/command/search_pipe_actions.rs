@@ -233,7 +233,7 @@ fn action_nodes(request: &SearchPipeActionRequest<'_>, scope_arg: &str) -> Vec<A
             route: ActionRoute::RgQuery {
                 query,
                 scope: scope_arg.to_string(),
-                command_scope: command_scope,
+                command_scope,
             },
         });
     }

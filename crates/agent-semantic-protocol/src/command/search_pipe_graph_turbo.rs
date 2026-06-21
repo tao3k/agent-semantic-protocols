@@ -186,13 +186,15 @@ pub(super) fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> 
     }
     append_graph_edges(
         &mut edges,
-        query,
-        &graph_candidates,
-        &owners,
-        dependency_root,
-        &dependency_facts,
-        provider_facts,
-        &surfaces,
+        GraphEdgeInputs {
+            query,
+            candidates: &graph_candidates,
+            owners: &owners,
+            workspace_root: dependency_root,
+            dependency_facts: &dependency_facts,
+            provider_facts,
+            surfaces: &surfaces,
+        },
     );
 
     let mut packet = json!({
@@ -524,36 +526,37 @@ fn append_test_nodes(nodes: &mut Vec<Value>, owners: &[String]) {
     }
 }
 
-fn append_graph_edges(
-    edges: &mut Vec<Value>,
-    query: Option<&str>,
-    candidates: &[Candidate],
-    owners: &[String],
-    workspace_root: &std::path::Path,
-    dependency_facts: &[DependencyFact],
-    provider_facts: &ProviderGraphFacts,
-    surfaces: &[String],
-) {
-    if let Some(query) = query.filter(|query| !query.trim().is_empty()) {
-        append_query_match_edges(edges, query, candidates, owners, surfaces);
-        if include_deps(surfaces) {
-            append_query_dependency_edges(edges, query, dependency_facts);
+struct GraphEdgeInputs<'a> {
+    query: Option<&'a str>,
+    candidates: &'a [Candidate],
+    owners: &'a [String],
+    workspace_root: &'a std::path::Path,
+    dependency_facts: &'a [DependencyFact],
+    provider_facts: &'a ProviderGraphFacts,
+    surfaces: &'a [String],
+}
+
+fn append_graph_edges(edges: &mut Vec<Value>, input: GraphEdgeInputs<'_>) {
+    if let Some(query) = input.query.filter(|query| !query.trim().is_empty()) {
+        append_query_match_edges(edges, query, input.candidates, input.owners, input.surfaces);
+        if include_deps(input.surfaces) {
+            append_query_dependency_edges(edges, query, input.dependency_facts);
         }
     }
-    if include_items(surfaces) {
-        append_owner_candidate_edges(edges, candidates);
-        append_candidate_hot_edges(edges, candidates);
-        append_provider_fact_edges(edges, provider_facts);
+    if include_items(input.surfaces) {
+        append_owner_candidate_edges(edges, input.candidates);
+        append_candidate_hot_edges(edges, input.candidates);
+        append_provider_fact_edges(edges, input.provider_facts);
     }
-    if include_topology(surfaces) && include_owner_context(surfaces) {
-        append_submodule_owner_edges(edges, workspace_root, owners);
+    if include_topology(input.surfaces) && include_owner_context(input.surfaces) {
+        append_submodule_owner_edges(edges, input.workspace_root, input.owners);
     }
-    if include_deps(surfaces) {
-        append_owner_dependency_edges(edges, dependency_facts);
-        append_dependency_version_edges(edges, dependency_facts);
+    if include_deps(input.surfaces) {
+        append_owner_dependency_edges(edges, input.dependency_facts);
+        append_dependency_version_edges(edges, input.dependency_facts);
     }
-    if include_tests(surfaces) {
-        append_test_cover_edges(edges, owners);
+    if include_tests(input.surfaces) {
+        append_test_cover_edges(edges, input.owners);
     }
 }
 

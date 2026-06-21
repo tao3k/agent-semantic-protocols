@@ -580,9 +580,7 @@ fn is_graph_edge_line(line: &str) -> bool {
 }
 
 fn visible_graph_edge_line(line: &str, visible_aliases: &HashSet<String>) -> Option<String> {
-    let Some((source, targets)) = line.split_once(">{") else {
-        return None;
-    };
+    let (source, targets) = line.split_once(">{")?;
     if !visible_aliases.contains(source) {
         return None;
     }
