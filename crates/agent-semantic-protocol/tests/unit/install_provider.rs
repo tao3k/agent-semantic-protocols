@@ -7,11 +7,11 @@ use super::{
 fn asset_names_are_rev_independent_and_target_selected() {
     let spec = provider_release("julia").expect("julia release spec");
     assert_eq!(
-        asset_name(spec, "aarch64-apple-darwin"),
+        asset_name(&spec, "aarch64-apple-darwin"),
         "asp-julia-harness-aarch64-apple-darwin.tar.gz"
     );
     assert_eq!(
-        checksum_name(spec, "aarch64-apple-darwin"),
+        checksum_name(&spec, "aarch64-apple-darwin"),
         "asp-julia-harness-aarch64-apple-darwin.tar.gz.sha256"
     );
 }
@@ -38,7 +38,7 @@ fn rev_path_segment_is_filesystem_safe() {
 #[test]
 fn unsupported_apple_intel_target_is_rejected() {
     let spec = provider_release("rust").expect("rust release spec");
-    let error = validate_target(spec, "x86_64-apple-darwin").expect_err("unsupported target");
+    let error = validate_target(&spec, "x86_64-apple-darwin").expect_err("unsupported target");
     assert!(error.contains("unsupported target `x86_64-apple-darwin`"));
     assert!(error.contains("aarch64-apple-darwin"));
 }
