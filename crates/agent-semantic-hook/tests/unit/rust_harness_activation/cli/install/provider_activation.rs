@@ -121,8 +121,11 @@ fn cli_install_asp_toml_can_disable_language_and_override_provider_binary() {
     std::fs::create_dir_all(&empty_path).expect("empty path");
     write_fake_provider_file(&root, "custom-py-harness", 0o755);
     write_fake_provider_file(&root, "ts-harness", 0o755);
+    let config_path = root.join(".agents").join("asp.toml");
+    std::fs::create_dir_all(config_path.parent().expect("agent config parent"))
+        .expect("create agent config parent");
     std::fs::write(
-        root.join("asp.toml"),
+        &config_path,
         r#"
 [providers.rust]
 enabled = false
@@ -143,7 +146,7 @@ enabled = false
 enabled = false
 "#,
     )
-    .expect("write asp.toml");
+    .expect("write .agents/asp.toml");
 
     let path = env::join_paths([root.join(".bin"), empty_path]).expect("join PATH");
     let output = protocol_command()

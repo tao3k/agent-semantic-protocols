@@ -36,12 +36,13 @@ fn cli_install_writes_root_owned_codex_hook_config() {
     let stdout = String::from_utf8(output.stdout).expect("install stdout");
     assert_install_stdout(&stdout);
     assert!(protocol_bin_dir.join("asp").is_file());
-    assert_no_installed_project_skill_copy(&root);
+    assert_installed_codex_plugin_skill(&root);
     assert_no_profile_registry(&root);
     let config =
         std::fs::read_to_string(root.join(".codex/config.toml")).expect("installed config");
     assert_codex_config(&config, &root);
     assert_client_config(&root);
+    assert_agent_config(&root);
     let parsed_config =
         toml::from_str::<toml::Value>(&config).expect("installed Codex config is valid TOML");
     assert_plugin_entries(&parsed_config);
@@ -180,8 +181,13 @@ fn assert_install_stdout(stdout: &str) {
     assert!(!stdout.contains("agent-semantic-protocol/hooks/profiles.json"));
     assert!(!stdout.contains("skill="));
     assert!(!stdout.contains("skillContract="));
-    assert!(!stdout.contains("pluginSkill="));
+    assert!(
+        stdout.contains(
+            "pluginSkill=.codex/plugins/cache/asp-project/asp-codex-plugin/0.1.0/skills/agent-semantic-protocols/SKILL.org"
+        )
+    );
     assert!(!stdout.contains("pluginSkillContract="));
+    assert!(stdout.contains("pluginCache=.codex/plugins/cache/asp-project/asp-codex-plugin/0.1.0"));
     assert!(stdout.contains("pluginScope=project"));
     assert!(stdout.contains("pluginMarketplace=asp-project"));
     assert!(stdout.contains("pluginMarketplaceConfig=.agents/plugins/marketplace.json"));
@@ -308,7 +314,7 @@ fn cli_install_writes_claude_custom_subagent_by_default() {
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
 }
 
-fn assert_no_installed_project_skill_copy(root: &std::path::Path) {
+fn assert_installed_codex_plugin_skill(root: &std::path::Path) {
     assert!(
         !root
             .join(".agents/skills/agent-semantic-protocols/SKILL.org")
@@ -322,10 +328,14 @@ fn assert_no_installed_project_skill_copy(root: &std::path::Path) {
         "Codex plugin installation should remove the retired project skill contract copy"
     );
     assert!(
-        !root
-            .join("asp-codex-plugin/skills/agent-semantic-protocols/SKILL.org")
+        root.join("asp-codex-plugin/skills/agent-semantic-protocols/SKILL.org")
             .exists(),
-        "Codex plugin installation should not generate plugin skill files"
+        "Codex plugin installation should generate the project plugin SKILL.org"
+    );
+    assert!(
+        root.join(".codex/plugins/cache/asp-project/asp-codex-plugin/0.1.0/skills/agent-semantic-protocols/SKILL.org")
+            .exists(),
+        "Codex plugin installation should materialize the installed cache SKILL.org"
     );
     assert!(
         !root
@@ -607,7 +617,25 @@ fn assert_client_config(root: &std::path::Path) {
     assert!(client_config.contains("argvSourceGlobAny = ["));
     assert!(client_config.contains("\"**/*.rs\""));
     assert!(client_config.contains("argvSourceExcludeFlagAny = ["));
+    assert!(!client_config.contains("[agentOrgArtifacts]"));
     toml::from_str::<toml::Value>(&client_config).expect("client hook config is valid TOML");
+}
+
+fn assert_agent_config(root: &std::path::Path) {
+    let agent_config =
+        std::fs::read_to_string(root.join(".agents/asp.toml")).expect("installed agent config");
+    assert!(agent_config.contains("[skills.agent-semantic-protocols]"));
+    assert!(agent_config.contains("[hook.agentOrgArtifacts]"));
+    assert!(agent_config.contains("enabled = true"));
+    assert!(agent_config.contains("inactiveAfterMinutes = 30"));
+    assert!(
+        agent_config.contains("artifactsPath = \".cache/agent-semantic-protocol/artifacts/org\"")
+    );
+    assert!(
+        agent_config
+            .contains("entrySkillPath = \".cache/agent-semantic-protocol/org/skills/ASP_ORG.org\"")
+    );
+    toml::from_str::<toml::Value>(&agent_config).expect("agent config is valid TOML");
 }
 
 fn assert_installed_activation(root: &std::path::Path) {

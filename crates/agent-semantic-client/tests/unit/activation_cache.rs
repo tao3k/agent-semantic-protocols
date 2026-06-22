@@ -66,11 +66,14 @@ fn temp_project_root(name: &str) -> std::path::PathBuf {
 }
 
 fn write_python_provider_config(root: &std::path::Path, binary: &str) {
+    let config_path = root.join(".agents").join("asp.toml");
+    std::fs::create_dir_all(config_path.parent().expect("agent config parent"))
+        .expect("create agent config parent");
     std::fs::write(
-        root.join("asp.toml"),
+        &config_path,
         format!("[providers.python]\nenabled = true\nbinary = \"{binary}\"\n"),
     )
-    .expect("write asp.toml");
+    .expect("write .agents/asp.toml");
 }
 
 fn write_executable(path: &std::path::Path) {

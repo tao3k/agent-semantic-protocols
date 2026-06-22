@@ -45,6 +45,11 @@ pub(super) enum ActionRoute {
     OwnerItemsHint {
         owner: String,
     },
+    DependencySearch {
+        language_id: String,
+        dependency: String,
+        scope: String,
+    },
     TreeSitterQuery {
         language_id: String,
         recipe: String,
@@ -76,6 +81,11 @@ impl ActionNode {
                 format!("owner={owner},query={query}")
             }
             ActionRoute::OwnerItemsHint { owner } => format!("owner={owner}"),
+            ActionRoute::DependencySearch {
+                dependency, scope, ..
+            } => {
+                format!("dependency={dependency},scope={scope}")
+            }
             ActionRoute::TreeSitterQuery { recipe, names, .. } => {
                 format!("recipe={recipe},names={}", names.join("|"))
             }
@@ -133,6 +143,14 @@ impl ActionNode {
                 shell_arg(query),
             )),
             ActionRoute::OwnerItemsHint { .. } => None,
+            ActionRoute::DependencySearch {
+                language_id,
+                dependency,
+                scope,
+            } => Some(format!(
+                "asp {language_id} search deps {} --workspace {scope} --view seeds",
+                shell_arg(dependency)
+            )),
             ActionRoute::TreeSitterQuery {
                 language_id,
                 recipe,
@@ -200,6 +218,16 @@ impl ActionNode {
             ActionRoute::OwnerItemsHint { owner } => {
                 fields.insert("ownerPath".to_string(), json!(owner));
                 ("owner-items", owner.as_str(), "owner")
+            }
+            ActionRoute::DependencySearch {
+                language_id,
+                dependency,
+                scope,
+            } => {
+                fields.insert("languageId".to_string(), json!(language_id));
+                fields.insert("dependency".to_string(), json!(dependency));
+                fields.insert("scope".to_string(), json!(scope));
+                ("search-deps", dependency.as_str(), "dependency")
             }
             ActionRoute::TreeSitterQuery {
                 language_id,

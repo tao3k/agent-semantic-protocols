@@ -108,6 +108,30 @@ def _query_metric_kwargs(
         "query_local_evidence_delta": _float_metric(
             query_metrics, "queryLocalEvidenceDelta"
         ),
+        "query_topology_membership_candidate_count": _int_metric(
+            query_metrics, "queryTopologyMembershipCandidateCount"
+        ),
+        "query_topology_membership_boost_count": _int_metric(
+            query_metrics, "queryTopologyMembershipBoostCount"
+        ),
+        "query_topology_membership_penalty_count": _int_metric(
+            query_metrics, "queryTopologyMembershipPenaltyCount"
+        ),
+        "query_topology_membership_direct_count": _int_metric(
+            query_metrics, "queryTopologyMembershipDirectCount"
+        ),
+        "query_topology_membership_nearby_count": _int_metric(
+            query_metrics, "queryTopologyMembershipNearbyCount"
+        ),
+        "query_topology_membership_coverage_rate": _float_metric(
+            query_metrics, "queryTopologyMembershipCoverageRate"
+        ),
+        "query_topology_membership_drift_rate": _float_metric(
+            query_metrics, "queryTopologyMembershipDriftRate"
+        ),
+        "query_topology_membership_delta": _float_metric(
+            query_metrics, "queryTopologyMembershipDelta"
+        ),
     }
 
 

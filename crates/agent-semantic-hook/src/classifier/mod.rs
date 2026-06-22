@@ -1,5 +1,6 @@
 //! Root semantic agent hook classifier over activated providers.
 
+mod agent_org_artifacts;
 mod core;
 mod decision;
 #[path = "../classifier_inline_source_read.rs"]

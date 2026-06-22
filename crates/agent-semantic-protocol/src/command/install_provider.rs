@@ -11,7 +11,10 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use super::hook_runtime::{run_codex_plugin_install_args, run_hook_runtime_args};
-use super::install_provider_target::{home_dir, path_dirs, resolve_provider_binary_install_target};
+use super::install_provider_target::{
+    home_dir, path_dirs, resolve_provider_binary_install_target, semantic_agent_bin_dir,
+};
+use super::org_capture;
 use super::search_config::AspConfig;
 
 const PINNED_LANGUAGE_RELEASES_TOML: &str = include_str!("../../pinned-language-releases.toml");
@@ -122,6 +125,7 @@ fn run_install_provider(args: &[String]) -> Result<(), String> {
     let provider_binary = binary_file_name(&spec.binary, &target);
     let install_target = resolve_provider_binary_install_target(
         config.provider_bin(&spec.language_id),
+        semantic_agent_bin_dir().as_deref(),
         &spec.language_id,
         &provider_binary,
         &project_root,
@@ -167,9 +171,10 @@ fn run_install_provider(args: &[String]) -> Result<(), String> {
             source: archive_source,
         },
     )?;
-    let state = project_runtime_state(&install_args.project_root)?;
+    let state = project_runtime_state(&project_root)?;
+    let org_state_sync = org_capture::run_org_state_sync(&project_root)?;
     println!(
-        "[asp-install] provider={} language={} rev={} target={} binary={} installedPath={} installTargetSource={} lock={} runtimeBinDir={}",
+        "[asp-install] provider={} language={} rev={} target={} binary={} installedPath={} installTargetSource={} lock={} runtimeBinDir={} orgState={} orgStateSync={}",
         spec.provider_id,
         spec.language_id,
         rev,
@@ -179,6 +184,8 @@ fn run_install_provider(args: &[String]) -> Result<(), String> {
         install_target.source,
         lock_path.display(),
         state.runtime_bin_dir.display(),
+        state.protocol_home.join("org").display(),
+        org_state_sync.status,
     );
     Ok(())
 }
@@ -386,7 +393,7 @@ fn install_archive_binary(
     provider_package_dir: &Path,
 ) -> Result<PathBuf, String> {
     let package_binary = install_archive_package(archive_path, spec, target, provider_package_dir)?;
-    copy_executable(&package_binary, provider_binary_path)?;
+    install_executable_entrypoint(&package_binary, provider_binary_path)?;
     Ok(provider_binary_path.to_path_buf())
 }
 
@@ -542,6 +549,39 @@ fn copy_executable(source: &Path, target: &Path) -> Result<(), String> {
     })
 }
 
+fn install_executable_entrypoint(source: &Path, target: &Path) -> Result<(), String> {
+    if let Some(parent) = target.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::symlink;
+
+        let temp = target.with_extension("tmp");
+        let _ = fs::remove_file(&temp);
+        symlink(source, &temp).map_err(|error| {
+            format!(
+                "failed to symlink {} to {}: {error}",
+                source.display(),
+                temp.display()
+            )
+        })?;
+        fs::rename(&temp, target).map_err(|error| {
+            format!(
+                "failed to move {} to {}: {error}",
+                temp.display(),
+                target.display()
+            )
+        })?;
+        Ok(())
+    }
+    #[cfg(not(unix))]
+    {
+        copy_executable(source, target)
+    }
+}
+
 fn path_segment(value: &str) -> String {
     value
         .chars()
@@ -592,7 +632,7 @@ fn toml_escape(value: &str) -> String {
 }
 
 fn usage() -> String {
-    "usage: asp install hook --client claude [PROJECT_ROOT] [--subagent-model MODEL]\n       asp install plugin --codex [PROJECT_ROOT] [--global|--global-plugin] [--subagent-model MODEL]\n       asp install language <language> [PROJECT_ROOT] [--target <target>] [--project <root>]\n       language provider releases are pinned by asp; install target priority: asp.toml [languages.<language>].bin, $HOME/.local/bin, PATH".to_string()
+    "usage: asp install hook --client claude [PROJECT_ROOT] [--subagent-model MODEL]\n       asp install plugin --codex [PROJECT_ROOT] [--global|--global-plugin] [--subagent-model MODEL]\n       asp install language <language> [PROJECT_ROOT] [--target <target>] [--project <root>]\n       language provider releases are pinned by asp; install target priority: .agents/asp.toml [languages.<language>].bin, SEMANTIC_AGENT_BIN_DIR, $HOME/.local/bin, PATH".to_string()
 }
 
 fn install_hook_usage() -> String {

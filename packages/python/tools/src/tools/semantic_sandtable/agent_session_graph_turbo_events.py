@@ -6,6 +6,9 @@ import json
 from pathlib import Path
 from typing import Any
 
+from .agent_session_graph_turbo_topology import (
+    topology_membership_candidates_from_event,
+)
 from .utils import dict_value, list_value, optional_int, require_str
 
 
@@ -14,15 +17,25 @@ def graph_turbo_seed_plan_candidates_from_events(
     events: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
     artifact_root = receipt.get("artifactRoot")
-    root = Path(artifact_root) if isinstance(artifact_root, str) and artifact_root else None
+    root = (
+        Path(artifact_root)
+        if isinstance(artifact_root, str) and artifact_root
+        else None
+    )
     candidates = []
     seen: set[str] = set()
     for event in events:
         if event.get("kind") != "command.result":
             continue
-        for packet in _graph_turbo_request_packets(event, root):
+        stdout_texts = _event_stdout_texts(event, root)
+        for packet in _graph_turbo_request_packets(stdout_texts):
             seed_plan = dict_value(packet.get("seedPlan"))
             candidate = _candidate_from_seed_plan(event, packet, seed_plan)
+            if not candidate or candidate["id"] in seen:
+                continue
+            candidates.append(candidate)
+            seen.add(candidate["id"])
+        for candidate in topology_membership_candidates_from_event(event, stdout_texts):
             if not candidate or candidate["id"] in seen:
                 continue
             candidates.append(candidate)
@@ -35,12 +48,16 @@ def graph_turbo_request_packet_from_events(
     events: list[dict[str, Any]],
 ) -> dict[str, Any] | None:
     artifact_root = receipt.get("artifactRoot")
-    root = Path(artifact_root) if isinstance(artifact_root, str) and artifact_root else None
+    root = (
+        Path(artifact_root)
+        if isinstance(artifact_root, str) and artifact_root
+        else None
+    )
     packets = [
         packet
         for event in events
         if event.get("kind") == "command.result"
-        for packet in _graph_turbo_request_packets(event, root)
+        for packet in _graph_turbo_request_packets(_event_stdout_texts(event, root))
     ]
     for packet in packets:
         graph = dict_value(packet.get("graph"))
@@ -50,11 +67,10 @@ def graph_turbo_request_packet_from_events(
 
 
 def _graph_turbo_request_packets(
-    event: dict[str, Any],
-    artifact_root: Path | None,
+    stdout_texts: list[str],
 ) -> list[dict[str, Any]]:
     packets = []
-    for text in _event_stdout_texts(event, artifact_root):
+    for text in stdout_texts:
         packet = _json_object(text)
         if packet.get("schemaId") == (
             "agent.semantic-protocols.semantic-graph-turbo-request"
@@ -110,7 +126,9 @@ def _candidate_from_seed_plan(
     seed_quality = require_str(seed_plan, "seedQuality", "unknown")
     if query_seed_present and selected > 0 and not risk:
         return None
-    command_id = require_str(event, "commandId", require_str(event, "eventId", "command"))
+    command_id = require_str(
+        event, "commandId", require_str(event, "eventId", "command")
+    )
     packet_seed_ids = [str(item) for item in list_value(seed_plan.get("seedIds"))]
     owner_count = optional_int(seed_plan.get("candidateOwnerCount")) or 0
     candidate_count = optional_int(seed_plan.get("candidateCount")) or 0

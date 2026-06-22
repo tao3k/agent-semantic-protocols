@@ -17,11 +17,21 @@ on agent search flow; generated sections are owned by Rust.
 # BEGIN_ASP_GENERATED notice
 # END_ASP_GENERATED notice
 
+* ASP Org Reference
+:PROPERTIES:
+:ASP_SECTION: asp-org-reference
+:ASP_RENDER: generated
+:ASP_SOURCE: project_state_paths.protocol_home/org/skills/ASP_ORG.org
+:END:
+
+# BEGIN_ASP_GENERATED asp-org-reference
+# END_ASP_GENERATED asp-org-reference
+
 * Runtime Activation
 :PROPERTIES:
 :ASP_SECTION: activation
 :ASP_RENDER: generated
-:ASP_SOURCE: asp.toml,path,.bin
+:ASP_SOURCE: .agents/asp.toml,path,.bin
 :END:
 
 # BEGIN_ASP_GENERATED activation
@@ -38,7 +48,7 @@ Search is a staged query language. Start at the earliest stage that current
 evidence justifies, then follow =recommendedNext= or =nextCommand=.
 
 | Stage | Command | What the agent learns |
-| capability | =asp <language> guide --workspace .= | Supported surfaces, axes, recipes, and dependency profiles. |
+| capability | =asp <language> guide .= | Supported surfaces, axes, recipes, and dependency profiles. |
 | topology | =asp <language> search prime --workspace . --view seeds= | Workspace owners, provider roots, package/member hints, and first action frontier. |
 | query refinement | =asp <language> search pipe '<question>' --workspace . --view seeds= | Ranked evidence, query terms, missing facts, risk, and next command. |
 | owner expansion | =asp <language> search owner <owner> items --query '<term>' --workspace . --view seeds= | Owner-local symbols, tests, imports, docs-use, and exact selectors. |
@@ -61,18 +71,22 @@ Dependency questions stay inside provider search until the provider reports a
 missing dependency frontier.
 
 | Command | Purpose |
-| =asp <language> search dependency <name> --workspace . --view seeds= | Return manifest owner, dependency edge, import owners, docs/public API use, source/runtime hints, tests, and next command. |
-| =asp <language> search reasoning query-deps --workspace . --view seeds= | Use the shared dependency-topology profile when the provider advertises it. |
+| =asp <language> search deps <dependency[@version][::api]> --workspace . --view seeds= | Return manifest owner, dependency edge, import owners, docs/public API use, source/runtime hints, tests, and next command. |
+| =asp <language> search pipe '<question>' --workspace . --view seeds= | Graph-turbo may surface =search-deps= as an action affordance when dependency topology nodes prove a package frontier. |
 | =asp <language> search owner <manifest-owner> items --query '<dependency>' --workspace . --view seeds= | Inspect dependency evidence in the manifest or package owner. |
 
 ** Document Search
+path-context resolution is part of the document-provider contract: pass =--workspace= explicitly and recover content through exact parser-owned selectors.
 Document providers expose AST facts rather than policy harnesses.
+Use asp org capture --contract CONTRACT_ID for non-mutating Org entry plans backed by explicit contracts such as agent.task.v1, agent.plan.v1, agent.sdd.v1, agent.adr.v1, agent.bdd.v1, agent.prd.v1, or agent.execplan.v1.
+The contract id must be explicit; do not use positional aliases such as task, plan, or sdd.
 
 | Command | Purpose |
 | =asp org guide --workspace .= | Show Org element kinds, fields, capture, and contract trace commands. |
 | =asp org query --kind task --field todo=TODO --workspace . --view metadata= | Find TODO headlines as task facts. |
 | =asp org query --kind checklistItem --field checked=false --workspace . --view metadata= | Find unchecked checklist items without collapsing them into tasks. |
 | =asp org query --selector <structural-selector> --workspace . --content= | Print matched element content after a structural selector is known. |
+| =asp org capture --contract agent.task.v1 --kind task --title <TITLE> --target-file <file.org>= | Render a non-mutating Org entry plan for review before writing. |
 | =asp md guide --workspace .= | Show Markdown document query/search surfaces. |
 
 ** Failure And Recovery
@@ -91,6 +105,10 @@ Document providers expose AST facts rather than policy harnesses.
   frontier gaps.
 - Keep language project parsing in the language provider. ASP routes and
   indexes; it does not reimplement package membership or source/test scope.
+- Do not edit languages/org/skills/ASP_ORG.org directly or patch the
+  materialized project-state copy by hand. Change the governing contract,
+  template, or Rust materialization source and rerun =asp sync= or the relevant
+  =asp install ...= command so the skill is regenerated.
 
 * Provider Contracts
 :PROPERTIES:

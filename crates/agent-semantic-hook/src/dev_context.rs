@@ -16,7 +16,7 @@ const PROJECT_ANCHORS: &[&str] = &[
     "Project.toml",
     ".git",
 ];
-const ASP_DEV_CONFIG_PATH: &str = "agents/asp.toml";
+const ASP_DEV_CONFIG_PATH: &str = ".agents/asp.toml";
 
 /// Named input for writing a development active-context marker.
 pub struct ActiveContextRecord<'a> {

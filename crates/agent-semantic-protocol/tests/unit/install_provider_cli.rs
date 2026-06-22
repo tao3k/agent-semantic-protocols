@@ -142,8 +142,9 @@ fn assert_install_language_pinned_release_prefers_asp_toml_provider_bin() {
     let home = root.join("home");
     let release_dir = create_pinned_release_fixture(&root);
     let fake_bin = create_fake_curl_bin(&root);
+    std::fs::create_dir_all(root.join(".agents")).expect("create .agents");
     std::fs::write(
-        root.join("asp.toml"),
+        root.join(".agents/asp.toml"),
         "[languages.rust]\nbin = \"tools/rs-harness-config\"\n",
     )
     .expect("write asp.toml");

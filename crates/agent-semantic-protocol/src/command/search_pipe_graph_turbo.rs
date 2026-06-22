@@ -3,22 +3,26 @@
 use std::{
     collections::{HashMap, HashSet},
     env,
+    path::Path,
 };
 
 use serde_json::{Value, json};
 
 use super::{
+    search_config::AspConfig,
     search_pipe_dependency_facts::{
-        DependencyFact, collect_dependency_facts, dependency_matches_query,
+        DependencyFact, candidate_usage_dependency_matches_query, dependency_matches_query,
     },
+    search_pipe_dependency_seed_cache::collect_cached_dependency_facts,
     search_pipe_graph_nodes::{
         append_candidate_nodes, append_hot_nodes, append_project_topology_nodes,
         append_submodule_owner_edges, candidate_node_id, hot_node_id, project_submodule_paths,
         stable_node_id,
     },
     search_pipe_graph_turbo_owner_rank::ranked_candidate_paths_with_topology,
+    search_pipe_graph_turbo_seed::{has_package_path_candidate, query_owner_seed_paths},
     search_pipe_model::{Candidate, SearchPipeSourceTrace},
-    search_pipe_provider_facts::ProviderGraphFacts,
+    search_pipe_provider_facts::{ProviderGraphFacts, ProviderGraphFactsContext},
     search_pipe_quality::{
         SearchPipeQuality, analyze_search_pipe_quality, compact_fact_value, is_generated_path,
         query_allows_generated,
@@ -38,7 +42,8 @@ const GRAPH_TURBO_CANDIDATE_NODE_LIMIT: usize = 64;
 pub(super) struct GraphTurboSearchPipeRequest<'a> {
     pub(super) surface: &'a str,
     pub(super) language_id: &'a str,
-    pub(super) dependency_root: &'a std::path::Path,
+    pub(super) dependency_root: &'a Path,
+    pub(super) cache_home: &'a Path,
     pub(super) query: Option<&'a str>,
     pub(super) query_clauses: &'a [String],
     pub(super) candidates: &'a [Candidate],
@@ -48,6 +53,8 @@ pub(super) struct GraphTurboSearchPipeRequest<'a> {
     pub(super) candidate_sources: &'a [String],
     pub(super) source_trace: &'a [SearchPipeSourceTrace],
     pub(super) provider_facts: &'a ProviderGraphFacts,
+    pub(super) provider_context: Option<&'a ProviderGraphFactsContext<'a>>,
+    pub(super) config: &'a AspConfig,
     pub(super) read_memory_selectors: &'a [String],
     pub(super) action_frontier: &'a [Value],
 }
@@ -67,6 +74,7 @@ pub(super) fn render_graph_turbo_request(
 pub(super) fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> Value {
     let language_id = request.language_id;
     let dependency_root = request.dependency_root;
+    let cache_home = request.cache_home;
     let surface = request.surface;
     let query = request.query;
     let query_clauses = request.query_clauses;
@@ -77,6 +85,8 @@ pub(super) fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> 
     let candidate_sources = request.candidate_sources;
     let source_trace = request.source_trace;
     let provider_facts = request.provider_facts;
+    let provider_context = request.provider_context;
+    let config = request.config;
     let read_memory_selectors = request.read_memory_selectors;
     let external_action_frontier = request.action_frontier;
     let mut surfaces = normalized_search_surfaces(pipes);
@@ -125,8 +135,24 @@ pub(super) fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> 
         topology_membership_enabled.then_some(dependency_root),
     );
     let topology_submodule_count = project_submodule_paths(dependency_root).len();
-    let dependency_facts =
-        collect_dependency_facts(language_id, dependency_root, query, &graph_candidates);
+    let dependency_seed = collect_cached_dependency_facts(
+        language_id,
+        dependency_root,
+        cache_home,
+        config,
+        provider_context_for_dependency_seed(
+            surface,
+            language_id,
+            provider_context,
+            &surfaces,
+            query,
+            &graph_candidates,
+        ),
+        query,
+        &graph_candidates,
+    );
+    let dependency_seed_cache_status = dependency_seed.cache_status;
+    let dependency_facts = dependency_seed.facts;
     if should_auto_include_dependency_surface(query, &surfaces, &dependency_facts) {
         surfaces.push("deps".to_string());
     }
@@ -245,7 +271,15 @@ pub(super) fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> 
         "windowMerge": {"enabled": true, "maxGapLines": 8},
         "pathBudget": 5,
         "pathMaxHops": 4,
-        "cache": {"enabled": true},
+        "cache": {
+            "enabled": true,
+            "dependencySeed": {
+                "enabled": true,
+                "status": dependency_seed_cache_status,
+                "topology": dependency_seed.topology_source,
+                "facts": dependency_facts.len(),
+            },
+        },
         "graph": {
             "nodes": nodes,
             "edges": edges,
@@ -278,6 +312,25 @@ fn allow_query_anchor_candidates(quality: &SearchPipeQuality) -> bool {
     quality.query_pack_quality != "low"
         && quality.package_cohesion != "low"
         && quality.weak_terms.is_empty()
+}
+
+fn provider_context_for_dependency_seed<'a>(
+    surface: &str,
+    language_id: &str,
+    provider_context: Option<&'a ProviderGraphFactsContext<'a>>,
+    surfaces: &[String],
+    query: Option<&str>,
+    candidates: &[Candidate],
+) -> Option<&'a ProviderGraphFactsContext<'a>> {
+    let context = provider_context?;
+    if include_deps(surfaces) && surface != "search-fzf" {
+        return Some(context);
+    }
+    let search_pipe_dependency_query = surface == "search-pipe"
+        && query.is_some_and(|query| {
+            candidate_usage_dependency_matches_query(language_id, candidates, query)
+        });
+    search_pipe_dependency_query.then_some(context)
 }
 
 fn query_anchor_candidates(
@@ -703,55 +756,6 @@ fn edge(source: &str, target: &str, relation: &str) -> Value {
         "target": target,
         "relation": relation,
     })
-}
-
-fn has_package_path_candidate(candidates: &[Candidate], query_terms: &[String]) -> bool {
-    candidates.iter().any(|candidate| {
-        is_explicit_package_path_candidate(candidate)
-            || candidate_path_covers_package_term(candidate, query_terms)
-    })
-}
-
-fn query_owner_seed_paths(
-    candidates: &[Candidate],
-    owners: &[String],
-    budget: usize,
-    query_terms: &[String],
-) -> Vec<String> {
-    if budget == 0 {
-        return Vec::new();
-    }
-    let package_path_owners = candidates
-        .iter()
-        .filter(|candidate| {
-            is_explicit_package_path_candidate(candidate)
-                || candidate_path_covers_package_term(candidate, query_terms)
-        })
-        .map(|candidate| candidate.path.clone())
-        .collect::<HashSet<_>>();
-    let package_path_owners = owners
-        .iter()
-        .filter(|owner| package_path_owners.contains(*owner))
-        .take(budget)
-        .cloned()
-        .collect::<Vec<_>>();
-    if !package_path_owners.is_empty() {
-        return package_path_owners;
-    }
-    owners.iter().take(budget).cloned().collect()
-}
-
-fn is_explicit_package_path_candidate(candidate: &Candidate) -> bool {
-    candidate.source == "package-path-query" || candidate.confidence == "package-path"
-}
-
-fn candidate_path_covers_package_term(candidate: &Candidate, query_terms: &[String]) -> bool {
-    let lower_path = candidate.path.to_ascii_lowercase();
-    query_terms
-        .iter()
-        .filter(|term| term.contains('_'))
-        .map(|term| term.to_ascii_lowercase())
-        .any(|term| lower_path.contains(&term))
 }
 
 fn should_auto_include_dependency_surface(

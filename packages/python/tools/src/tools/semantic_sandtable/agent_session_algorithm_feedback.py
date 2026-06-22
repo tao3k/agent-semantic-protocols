@@ -31,7 +31,9 @@ def build_graph_turbo_algorithm_feedback(
         if isinstance(candidate, dict)
     }
     nodes = []
-    for index, point in enumerate(list_value(improvement_report.get("improvementPoints"))):
+    for index, point in enumerate(
+        list_value(improvement_report.get("improvementPoints"))
+    ):
         if isinstance(point, dict) and point.get("category") == "graph-turbo":
             nodes.extend(_nodes_for_point(point, candidates, index))
     success_count = sum(1 for node in nodes if node["fields"]["effect"] == "boost")
@@ -182,7 +184,9 @@ def _selector_for_point(point: dict[str, Any], candidate: dict[str, Any]) -> str
 
 
 def _reason_for_point(point: dict[str, Any], candidate: dict[str, Any]) -> str:
-    reason = require_str(candidate, "kind", require_str(point, "category", "graph-turbo"))
+    reason = require_str(
+        candidate, "kind", require_str(point, "category", "graph-turbo")
+    )
     reason = _REASON_RE.sub("-", reason.lower()).strip("-")
     return reason or "graph-turbo"
 
@@ -226,6 +230,7 @@ def _target_kinds_for_candidate(candidate: dict[str, Any]) -> list[str]:
         "path-intent-lost": ["owner", "item"],
         "finder-path-ignored": ["owner", "item", "hot"],
         "search-flow-drift": ["query", "owner"],
+        "topology-membership-coverage": ["workspace", "submodule", "owner"],
     }.get(kind, ["item", "owner"])
 
 
@@ -237,6 +242,12 @@ def _propagate_relations_for_candidate(candidate: dict[str, Any]) -> list[str]:
         "profile-rank-change": ["contains", "imports", "covers"],
         "seed-plan-quality": ["matches", "contains", "selects"],
         "search-flow-drift": ["matches", "selects"],
+        "topology-membership-coverage": [
+            "contains",
+            "has_submodule",
+            "has_provider_root",
+            "owns",
+        ],
     }.get(kind, ["contains"])
 
 

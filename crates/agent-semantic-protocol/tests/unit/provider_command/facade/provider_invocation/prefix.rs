@@ -62,7 +62,7 @@ printf 'renderer=%s
     let runtime_bin = cache_home.join("agent-semantic-protocol/runtime/bin");
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(
-        stdout.contains("wrapper args=[rs-harness][guide]"),
+        stdout.contains("wrapper args=[rs-harness][guide][.]"),
         "{stdout}"
     );
     assert!(
@@ -74,7 +74,7 @@ printf 'renderer=%s
         "{stdout}"
     );
     assert!(
-        stdout.contains(&format!("path0={}\n", home_local_bin.display())),
+        stdout.contains(&format!("path0={}\n", runtime_bin.display())),
         "{stdout}"
     );
     assert!(
@@ -99,7 +99,7 @@ printf 'renderer=%s
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(
-        stdout.contains("wrapper args=[rs-harness][guide]"),
+        stdout.contains("wrapper args=[rs-harness][guide][languages/rust-lang-project-harness]"),
         "{stdout}"
     );
     assert!(
@@ -111,7 +111,7 @@ printf 'renderer=%s
         "{stdout}"
     );
     assert!(
-        stdout.contains(&format!("path0={}\n", home_local_bin.display())),
+        stdout.contains(&format!("path0={}\n", runtime_bin.display())),
         "{stdout}"
     );
     assert!(

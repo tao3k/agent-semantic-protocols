@@ -64,6 +64,43 @@ class AgentSemanticProjectConfigSchemaTests(unittest.TestCase):
         }
         self.assertEqual([], self.validation_errors(config))
 
+    def test_hook_agent_org_artifacts_config_is_valid(self) -> None:
+        config = {
+            "schemaId": "agent.semantic-protocols.project-config",
+            "schemaVersion": "1",
+            "hook": {
+                "agentOrgArtifacts": {
+                    "enabled": True,
+                    "inactiveAfterMinutes": 30,
+                    "artifactsPath": ".cache/agent-semantic-protocol/artifacts/org",
+                    "entrySkillPath": ".cache/agent-semantic-protocol/org/skills/ASP_ORG.org",
+                    "archiveWarning": {
+                        "enabled": True,
+                        "activeOrgFileThreshold": 10,
+                        "archivesDir": "archives",
+                        "maxReportedFiles": 5,
+                    },
+                }
+            },
+        }
+        self.assertEqual([], self.validation_errors(config))
+
+    def test_skills_config_is_valid(self) -> None:
+        config = {
+            "schemaId": "agent.semantic-protocols.project-config",
+            "schemaVersion": "1",
+            "skills": {
+                "agent-semantic-protocols": {
+                    "template": "SKILL.org",
+                    "pluginSkill": "asp-codex-plugin/skills/agent-semantic-protocols/SKILL.org",
+                    "projectSkill": ".agents/skills/agent-semantic-protocols/SKILL.org",
+                    "aspOrg": ".cache/agent-semantic-protocol/org/skills/ASP_ORG.org#asp-org",
+                    "orgArtifacts": ".cache/agent-semantic-protocol/artifacts/org",
+                }
+            },
+        }
+        self.assertEqual([], self.validation_errors(config))
+
     def test_codeql_extension_config_is_valid(self) -> None:
         config = {
             "schemaId": "agent.semantic-protocols.project-config",
@@ -117,6 +154,34 @@ class AgentSemanticProjectConfigSchemaTests(unittest.TestCase):
                 "schemaId": "agent.semantic-protocols.project-config",
                 "schemaVersion": "1",
                 "extensions": {"codeql": {"allowHotPath": True}},
+            }
+        )
+        self.assertTrue(errors)
+
+    def test_rejects_zero_agent_org_artifact_minutes(self) -> None:
+        errors = self.validation_errors(
+            {
+                "schemaId": "agent.semantic-protocols.project-config",
+                "schemaVersion": "1",
+                "hook": {"agentOrgArtifacts": {"inactiveAfterMinutes": 0}},
+            }
+        )
+        self.assertTrue(errors)
+
+    def test_rejects_invalid_agent_org_archive_warning(self) -> None:
+        errors = self.validation_errors(
+            {
+                "schemaId": "agent.semantic-protocols.project-config",
+                "schemaVersion": "1",
+                "hook": {
+                    "agentOrgArtifacts": {
+                        "archiveWarning": {
+                            "activeOrgFileThreshold": 0,
+                            "archivesDir": "",
+                            "maxReportedFiles": 0,
+                        }
+                    }
+                },
             }
         )
         self.assertTrue(errors)

@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from .sandtable_quality_gate import quality_gate
+from .topology_membership_packet import topology_membership_metric_packet
 
 
 def summary_packet(
@@ -86,30 +87,21 @@ def _benchmark_section(benchmark: Mapping[str, object]) -> dict[str, object]:
         "receiptPenaltyCount": benchmark_metrics.get("receiptPenaltyCount"),
         "querySeedPriorCount": benchmark_metrics.get("querySeedPriorCount"),
         "querySeedPriorMass": benchmark_metrics.get("querySeedPriorMass"),
-        "queryPackageCohesionCount": benchmark_metrics.get(
-            "queryPackageCohesionCount"
-        ),
+        "queryPackageCohesionCount": benchmark_metrics.get("queryPackageCohesionCount"),
         "queryPackageDriftPenaltyCount": benchmark_metrics.get(
             "queryPackageDriftPenaltyCount"
         ),
-        "queryPackageCohesionDelta": benchmark_metrics.get(
-            "queryPackageCohesionDelta"
-        ),
-        "queryClauseCoverageCount": benchmark_metrics.get(
-            "queryClauseCoverageCount"
-        ),
-        "queryClauseCoverageDelta": benchmark_metrics.get(
-            "queryClauseCoverageDelta"
-        ),
+        "queryPackageCohesionDelta": benchmark_metrics.get("queryPackageCohesionDelta"),
+        "queryClauseCoverageCount": benchmark_metrics.get("queryClauseCoverageCount"),
+        "queryClauseCoverageDelta": benchmark_metrics.get("queryClauseCoverageDelta"),
         "queryLocalEvidenceBoostCount": benchmark_metrics.get(
             "queryLocalEvidenceBoostCount"
         ),
         "queryLocalEvidencePenaltyCount": benchmark_metrics.get(
             "queryLocalEvidencePenaltyCount"
         ),
-        "queryLocalEvidenceDelta": benchmark_metrics.get(
-            "queryLocalEvidenceDelta"
-        ),
+        "queryLocalEvidenceDelta": benchmark_metrics.get("queryLocalEvidenceDelta"),
+        **topology_membership_metric_packet(benchmark_metrics),
         "cacheStatus": benchmark_metrics.get("cacheStatus"),
         "requestFields": _mapping(benchmark.get("requestFields")),
         "requestSummary": _mapping(benchmark.get("requestSummary")),

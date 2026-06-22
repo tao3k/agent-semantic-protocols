@@ -26,6 +26,7 @@ pub(super) struct SearchPipeActionRequest<'a> {
     pub(super) fd_preview: Option<&'a FdQueryPreview>,
     pub(super) seed_action_intents: &'a [SeedActionIntent],
     pub(super) read_memory_selectors: &'a [String],
+    pub(super) dependency_action_targets: &'a [String],
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -133,7 +134,12 @@ fn delegation_hints(quality: &SearchPipeQuality, actions: &[ActionNode]) -> Vec<
         .filter(|action| {
             matches!(
                 action.kind.as_str(),
-                "fd-query" | "rg-query" | "rg-query-set" | "owner-items" | "treesitter-query"
+                "fd-query"
+                    | "rg-query"
+                    | "rg-query-set"
+                    | "owner-items"
+                    | "treesitter-query"
+                    | "search-deps"
             )
         })
         .map(|action| format!("{}.{}", action.id, action.kind))
@@ -148,6 +154,13 @@ fn action_nodes(request: &SearchPipeActionRequest<'_>, scope_arg: &str) -> Vec<A
     let mut actions = Vec::new();
     let command_scope = low_cohesion_command_scope_arg(request);
     let command_scope_arg = command_scope.as_deref().unwrap_or(scope_arg);
+    if let Some(dependency) = request.dependency_action_targets.first() {
+        actions.push(dependency_search_action(
+            request.language_id,
+            dependency,
+            scope_arg,
+        ));
+    }
     let low_cohesion_fd_owner_discovery = request.quality.package_cohesion == "low"
         && request.quality.owner_seed_terms.is_empty()
         && request.quality.fd_query.is_some();
@@ -299,6 +312,19 @@ fn fd_query_action(fd_query: &str, scope_arg: &str, command_scope: Option<&str>)
             query: fd_query.to_string(),
             scope: scope_arg.to_string(),
             command_scope: command_scope.map(str::to_string),
+        },
+    }
+}
+
+fn dependency_search_action(language_id: &str, dependency: &str, scope_arg: &str) -> ActionNode {
+    ActionNode {
+        id: String::new(),
+        kind: "search-deps".to_string(),
+        suffix: "dependency-topology".to_string(),
+        route: ActionRoute::DependencySearch {
+            language_id: language_id.to_string(),
+            dependency: dependency.to_string(),
+            scope: scope_arg.to_string(),
         },
     }
 }

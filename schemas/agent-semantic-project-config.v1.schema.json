@@ -17,12 +17,16 @@
       "properties": {
         "ignoredDirNames": {
           "type": "array",
-          "items": { "$ref": "#/$defs/dirName" },
+          "items": {
+            "$ref": "#/$defs/dirName"
+          },
           "uniqueItems": true
         },
         "includeHiddenDirNames": {
           "type": "array",
-          "items": { "$ref": "#/$defs/hiddenDirName" },
+          "items": {
+            "$ref": "#/$defs/hiddenDirName"
+          },
           "uniqueItems": true
         }
       }
@@ -31,20 +35,48 @@
       "type": "object",
       "additionalProperties": false,
       "patternProperties": {
-        "^[a-z][a-z0-9_-]*$": { "$ref": "#/$defs/providerConfig" }
+        "^[a-z][a-z0-9_-]*$": {
+          "$ref": "#/$defs/providerConfig"
+        }
       },
       "properties": {
-        "rust": { "$ref": "#/$defs/providerConfig" },
-        "typescript": { "$ref": "#/$defs/providerConfig" },
-        "python": { "$ref": "#/$defs/providerConfig" },
-        "julia": { "$ref": "#/$defs/providerConfig" }
+        "rust": {
+          "$ref": "#/$defs/providerConfig"
+        },
+        "typescript": {
+          "$ref": "#/$defs/providerConfig"
+        },
+        "python": {
+          "$ref": "#/$defs/providerConfig"
+        },
+        "julia": {
+          "$ref": "#/$defs/providerConfig"
+        }
+      }
+    },
+    "hook": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "agentOrgArtifacts": {
+          "$ref": "#/$defs/agentOrgArtifactsConfig"
+        }
+      }
+    },
+    "skills": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": true
       }
     },
     "extensions": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "codeql": { "$ref": "#/$defs/codeqlExtensionConfig" }
+        "codeql": {
+          "$ref": "#/$defs/codeqlExtensionConfig"
+        }
       }
     }
   },
@@ -62,6 +94,59 @@
         }
       }
     },
+    "agentOrgArtifactsConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "inactiveAfterMinutes": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 30
+        },
+        "artifactsPath": {
+          "type": "string",
+          "minLength": 1,
+          "default": ".cache/agent-semantic-protocol/artifacts/org"
+        },
+        "entrySkillPath": {
+          "type": "string",
+          "minLength": 1,
+          "default": ".cache/agent-semantic-protocol/org/skills/ASP_ORG.org"
+        },
+        "archiveWarning": {
+          "$ref": "#/$defs/agentOrgArtifactsArchiveWarningConfig"
+        }
+      }
+    },
+    "agentOrgArtifactsArchiveWarningConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "activeOrgFileThreshold": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 10
+        },
+        "archivesDir": {
+          "type": "string",
+          "minLength": 1,
+          "default": "archives"
+        },
+        "maxReportedFiles": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 5
+        }
+      }
+    },
     "codeqlExtensionConfig": {
       "type": "object",
       "additionalProperties": false,
@@ -76,7 +161,13 @@
         },
         "mode": {
           "type": "string",
-          "enum": ["disabled", "metadata", "cache-only", "manual", "ci"],
+          "enum": [
+            "disabled",
+            "metadata",
+            "cache-only",
+            "manual",
+            "ci"
+          ],
           "default": "disabled"
         },
         "allowDatabaseCreate": {
@@ -114,16 +205,24 @@
       "minLength": 1,
       "not": {
         "anyOf": [
-          { "const": "." },
-          { "const": ".." }
+          {
+            "const": "."
+          },
+          {
+            "const": ".."
+          }
         ]
       },
       "pattern": "^[^/\\\\]+$"
     },
     "hiddenDirName": {
       "allOf": [
-        { "$ref": "#/$defs/dirName" },
-        { "pattern": "^\\.[^.]|^\\.[^.].*" }
+        {
+          "$ref": "#/$defs/dirName"
+        },
+        {
+          "pattern": "^\\.[^.]|^\\.[^.].*"
+        }
       ]
     }
   }

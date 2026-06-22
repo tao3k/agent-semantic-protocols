@@ -43,8 +43,65 @@ mod language {
         );
         std::fs::remove_dir_all(root).expect("remove temp root");
     }
+
+    #[test]
+    fn language_facade_prefers_project_bin_over_home_local_provider() {
+        let root =
+            crate::provider_command::support::temp_project_root("language-agent-doctor-bin-order");
+        let bin_dir = root.join(".bin");
+        let home_bin_dir = root.join("home/.local/bin");
+        let cache_home = root.join(".cache");
+        std::fs::create_dir_all(&bin_dir).expect("create bin dir");
+        std::fs::create_dir_all(&home_bin_dir).expect("create home bin dir");
+
+        let project_provider = bin_dir.join("rs-harness");
+        std::fs::write(
+            &project_provider,
+            "#!/bin/sh\nprintf 'project-bin:%s\n' \"$*\"\n",
+        )
+        .expect("write project provider");
+        crate::provider_command::support::make_executable(&project_provider);
+        let home_provider = home_bin_dir.join("rs-harness");
+        std::fs::write(
+            &home_provider,
+            "#!/bin/sh\nprintf 'home-local:%s\n' \"$*\"\n",
+        )
+        .expect("write home provider");
+        crate::provider_command::support::make_executable(&home_provider);
+
+        crate::provider_command::support::write_activation(
+            &root,
+            &[crate::provider_command::support::provider(
+                "rust",
+                Vec::new(),
+            )],
+        );
+        let output = crate::provider_command::support::asp_command(&root)
+            .env(
+                "PATH",
+                crate::provider_command::support::prepend_path(&bin_dir),
+            )
+            .env("PRJ_CACHE_HOME", &cache_home)
+            .args(["rust", "agent", "doctor", "--json", "."])
+            .output()
+            .expect("run asp");
+        assert!(
+            output.status.success(),
+            "status={:?} stderr={}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let stdout = String::from_utf8(output.stdout).expect("stdout");
+        assert!(
+            stdout.contains("project-bin:agent doctor --json"),
+            "stdout={stdout}"
+        );
+        assert!(!stdout.contains("home-local:"), "stdout={stdout}");
+        std::fs::remove_dir_all(root).expect("remove temp root");
+    }
 }
 mod client_commands;
+mod dependency_seed;
 mod document;
 mod guide;
 mod performance;

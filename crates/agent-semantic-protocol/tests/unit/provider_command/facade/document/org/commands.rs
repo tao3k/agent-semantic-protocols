@@ -88,27 +88,87 @@ fn asp_org_exposes_ast_query_facts_and_capture_plan() {
         "{checklist_stdout}"
     );
 
+    let capture_task = asp_command(&root)
+        .args([
+            "org",
+            "capture",
+            "--contract",
+            "agent.task.v1",
+            "--title",
+            "Record ASP org task",
+            "--target-file",
+            "TASKS.org",
+        ])
+        .output()
+        .expect("run asp org capture");
+    assert!(
+        capture_task.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&capture_task.stderr)
+    );
+    let capture_task_stdout = String::from_utf8(capture_task.stdout).expect("capture task stdout");
+    assert!(
+        capture_task_stdout.contains("[CAPTURE] asp org capture"),
+        "{capture_task_stdout}"
+    );
+    assert!(
+        capture_task_stdout.contains("target-file: TASKS.org"),
+        "{capture_task_stdout}"
+    );
+    assert!(
+        capture_task_stdout.contains("* TODO Record ASP org task :task:"),
+        "{capture_task_stdout}"
+    );
+    assert!(
+        capture_task_stdout.contains(":CONTRACT_ORG: agent.task.v1"),
+        "{capture_task_stdout}"
+    );
+    assert!(
+        capture_task_stdout.contains(":ID: record-asp-org-task"),
+        "{capture_task_stdout}"
+    );
+    assert!(
+        capture_task_stdout.contains("** Goal"),
+        "{capture_task_stdout}"
+    );
+    assert!(
+        capture_task_stdout.contains("** Acceptance"),
+        "{capture_task_stdout}"
+    );
+    assert!(
+        capture_task_stdout.contains("contract-check:"),
+        "{capture_task_stdout}"
+    );
+    assert!(
+        capture_task_stdout.contains("- contract: agent.task.v1"),
+        "{capture_task_stdout}"
+    );
+    assert!(
+        capture_task_stdout.contains("- status: passed"),
+        "{capture_task_stdout}"
+    );
+    assert!(
+        capture_task_stdout.contains("- nonMutating:"),
+        "{capture_task_stdout}"
+    );
+    assert!(
+        !root.join("TASKS.org").exists(),
+        "asp org capture must not create TASKS.org"
+    );
+
     let capture_plan = asp_command(&root)
         .args([
             "org",
             "capture",
-            "--kind",
-            "task",
+            "--contract",
+            "agent.plan.v1",
             "--title",
             "Record ASP org plan",
-            "--body",
-            "Use asp org capture before applying an Org edit.",
             "--target-file",
             "PLANS.org",
-            "--outline",
-            "Plans/Active",
-            "--tag",
-            "plan",
-            "--property",
-            "PLAN_ID=asp-org-recording",
         ])
         .output()
-        .expect("run asp org capture");
+        .expect("run asp org capture plan");
     assert!(
         capture_plan.status.success(),
         "stderr: {}",
@@ -116,24 +176,127 @@ fn asp_org_exposes_ast_query_facts_and_capture_plan() {
     );
     let capture_plan_stdout = String::from_utf8(capture_plan.stdout).expect("capture plan stdout");
     assert!(
-        capture_plan_stdout.contains("[CAPTURE] asp org capture"),
+        capture_plan_stdout.contains("* TODO Record ASP org plan [1/8] [12%] :agent:plan:"),
         "{capture_plan_stdout}"
     );
     assert!(
-        capture_plan_stdout.contains("target-file: PLANS.org"),
+        capture_plan_stdout.contains(":ID: record-asp-org-plan"),
         "{capture_plan_stdout}"
     );
     assert!(
-        capture_plan_stdout.contains("* TODO Record ASP org plan :plan:"),
+        capture_plan_stdout.contains(":OBJECTIVE: Record ASP org plan"),
         "{capture_plan_stdout}"
     );
     assert!(
-        capture_plan_stdout.contains("- nonMutating:"),
+        capture_plan_stdout.contains("** Context"),
+        "{capture_plan_stdout}"
+    );
+    assert!(
+        capture_plan_stdout.contains("** Checkpoints"),
+        "{capture_plan_stdout}"
+    );
+    assert!(
+        capture_plan_stdout.contains("** Scope And Boundaries"),
+        "{capture_plan_stdout}"
+    );
+    assert!(
+        capture_plan_stdout.contains("** Validation"),
+        "{capture_plan_stdout}"
+    );
+    assert!(
+        capture_plan_stdout.contains("Capture rendered and =agent.plan.v1= contract check passed."),
+        "{capture_plan_stdout}"
+    );
+    assert!(
+        capture_plan_stdout.contains("** Evidence Loop"),
+        "{capture_plan_stdout}"
+    );
+    assert!(
+        capture_plan_stdout.contains("| Claim | Evidence | Command | Result |"),
+        "{capture_plan_stdout}"
+    );
+    assert!(
+        capture_plan_stdout.contains("** Adversarial Review"),
+        "{capture_plan_stdout}"
+    );
+    assert!(
+        capture_plan_stdout
+            .contains("Does this plan repeat information that belongs in a governing spec"),
+        "{capture_plan_stdout}"
+    );
+    assert!(
+        !capture_plan_stdout.contains("agent.plan.v1 defaults"),
+        "{capture_plan_stdout}"
+    );
+    assert!(
+        capture_plan_stdout.contains("** Recovery"),
+        "{capture_plan_stdout}"
+    );
+    assert!(
+        capture_plan_stdout.contains("- contract: agent.plan.v1"),
+        "{capture_plan_stdout}"
+    );
+    assert!(
+        capture_plan_stdout.contains("- status: passed"),
         "{capture_plan_stdout}"
     );
     assert!(
         !root.join("PLANS.org").exists(),
         "asp org capture must not create PLANS.org"
+    );
+
+    let capture_task_kind = asp_command(&root)
+        .args([
+            "org",
+            "capture",
+            "task",
+            "--kind",
+            "task",
+            "--title",
+            "Record ASP org task by kind",
+            "--body",
+            task_contract_body(),
+            "--target-file",
+            "TASK_KIND.org",
+            "--outline",
+            "Plans/Active",
+            "--tag",
+            "task",
+        ])
+        .output()
+        .expect("run asp org capture positional fallback");
+    assert!(
+        !capture_task_kind.status.success(),
+        "asp org capture task must not resolve agent.task.v1 implicitly"
+    );
+    let capture_task_kind_stderr =
+        String::from_utf8(capture_task_kind.stderr).expect("capture task kind stderr");
+    assert!(
+        capture_task_kind_stderr.contains("expects `--contract CONTRACT_ID`"),
+        "{capture_task_kind_stderr}"
+    );
+    assert!(
+        !capture_task_kind_stderr.contains("--kind task"),
+        "{capture_task_kind_stderr}"
+    );
+
+    let missing_contract_capture = asp_command(&root)
+        .args(["org", "capture", "--kind", "task"])
+        .output()
+        .expect("run asp org capture without contract");
+    assert!(
+        !missing_contract_capture.status.success(),
+        "asp org capture without --contract should fail"
+    );
+    let missing_contract_stderr =
+        String::from_utf8(missing_contract_capture.stderr).expect("missing contract stderr");
+    assert!(
+        missing_contract_stderr.contains("expects `--contract CONTRACT_ID`"),
+        "{missing_contract_stderr}"
+    );
+    assert!(
+        !missing_contract_stderr.contains("--kind task"),
+        "{missing_contract_stderr}"
     );
 
     let _ = std::fs::remove_dir_all(root);
@@ -155,23 +318,18 @@ fn asp_org_capture_initializes_state_resources_and_flow_dirs() {
     let stdout = String::from_utf8(output.stdout).expect("capture init stdout");
     assert!(stdout.contains("[ASP_ORG_CAPTURE] initialized"), "{stdout}");
     assert!(
-        stdout.contains(
-            "agents-md-include: @.cache/agent-semantic-protocol/org/skills/ORG_SKILL.org"
-        ),
+        stdout
+            .contains("agents-md-include: @.cache/agent-semantic-protocol/org/skills/ASP_ORG.org"),
         "{stdout}"
     );
-    assert!(stdout.contains("flow/sdd"), "{stdout}");
-    assert!(stdout.contains("flow/BDR"), "{stdout}");
-    assert!(stdout.contains("flow/plans"), "{stdout}");
+    assert!(stdout.contains("artifacts/org/flow/sdd"), "{stdout}");
+    assert!(stdout.contains("artifacts/org/flow/BDR"), "{stdout}");
+    assert!(stdout.contains("artifacts/org/flow/plans"), "{stdout}");
 
     let state_root = root
         .join(".cache")
         .join("agent-semantic-protocol")
         .join("org");
-    assert!(
-        state_root.join("skills").join("ORG_SKILL.org").is_file(),
-        "ORG_SKILL.org should be materialized"
-    );
     assert!(
         state_root.join("skills").join("ASP_ORG.org").is_file(),
         "ASP_ORG.org should be materialized"
@@ -190,9 +348,14 @@ fn asp_org_capture_initializes_state_resources_and_flow_dirs() {
             .is_file(),
         "execplan template should be materialized"
     );
-    assert!(state_root.join("flow").join("sdd").is_dir());
-    assert!(state_root.join("flow").join("BDR").is_dir());
-    assert!(state_root.join("flow").join("plans").is_dir());
+    let org_artifacts = root
+        .join(".cache")
+        .join("agent-semantic-protocol")
+        .join("artifacts")
+        .join("org");
+    assert!(org_artifacts.join("flow").join("sdd").is_dir());
+    assert!(org_artifacts.join("flow").join("BDR").is_dir());
+    assert!(org_artifacts.join("flow").join("plans").is_dir());
 
     let _ = std::fs::remove_dir_all(root);
 }
@@ -224,7 +387,7 @@ fn asp_org_guide_exposes_generic_ast_recipes_only() {
         "{stdout}"
     );
     assert!(
-        stdout.contains("|recipe capture-task=asp org capture --kind task"),
+        stdout.contains("|recipe capture-task=asp org capture --contract agent.task.v1 --title"),
         "{stdout}"
     );
     assert!(
@@ -341,4 +504,8 @@ SCHEDULED: <2026-05-14 Thu>
 Routing work is visible to sparse-tree queries.
 - [X] checklist evidence is a checklist item, not a task headline
 "#
+}
+
+fn task_contract_body() -> &'static str {
+    "** Goal\nUse asp org capture before applying an Org edit.\n** Acceptance\n- [X] Contract check passes before org-entry is returned.\n** Progress\n- [X] Capture command rendered the entry.\n** Evidence\n- asp org capture --contract agent.task.v1"
 }

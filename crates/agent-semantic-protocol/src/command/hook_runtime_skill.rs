@@ -1,24 +1,22 @@
 // Installed ASP Org skill rendering for `asp install hook`.
 
-use agent_semantic_hook::{
-    ActivatedProviderConfig, HookActivation, RuntimeProfiles, RuntimeProviderProfile,
-};
-use agent_semantic_runtime::project_state_paths;
-use orgize::{
-    Org,
-    ast::{
-        OrgContractEvaluationScope, OrgContractSeverity, evaluate_org_contract,
-        parse_contract_reference, parse_contracts_from_document,
-    },
-};
-use std::ffi::OsString;
-use std::fs;
-use std::path::{Component, Path, PathBuf};
+#[path = "hook_runtime_skill_render.rs"]
+pub(crate) mod hook_runtime_skill_render;
 
-const AGENT_SEMANTIC_PROTOCOLS_SKILL_ORG: &str = include_str!("../../../../SKILL.org");
-const AGENT_SEMANTIC_PROTOCOLS_SKILL_CONTRACT_ORG: &str =
-    include_str!("../../../../SKILL.contract.org");
-const AGENT_SEMANTIC_PROTOCOLS_SKILL_CONTRACT_REFERENCE: &str = "./SKILL.contract.org#asp.skill.v1";
+pub(super) use hook_runtime_skill_render::render_agent_semantic_protocols_skill_contract;
+use hook_runtime_skill_render::{
+    render_agent_semantic_protocols_installed_skill, render_agent_semantic_protocols_plugin_skill,
+};
+
+use agent_semantic_hook::{HookActivation, RuntimeProfiles, project_agent_config_path};
+use agent_semantic_runtime::project_state_paths;
+use std::fs;
+use std::path::{Path, PathBuf};
+
+const ASP_CODEX_PLUGIN_NAME: &str = "asp-codex-plugin";
+const ASP_CODEX_PLUGIN_MARKETPLACE_NAME: &str = "asp-project";
+const ASP_CODEX_PLUGIN_MANIFEST_JSON: &str =
+    include_str!("../../../../asp-codex-plugin/.codex-plugin/plugin.json");
 
 pub(super) fn install_agent_semantic_protocols_skill(
     project_root: &Path,
@@ -26,38 +24,88 @@ pub(super) fn install_agent_semantic_protocols_skill(
     runtime_profiles: &RuntimeProfiles,
 ) -> Result<InstalledAgentSkillPaths, String> {
     let skill_path = default_agent_skill_path(project_root);
-    let rendered_skill = render_agent_semantic_protocols_skill(activation, runtime_profiles)?;
-    write_agent_skill(&skill_path, &rendered_skill)?;
     let org_state_skill_path = project_state_paths(project_root)?
         .protocol_home
         .join("org")
         .join("skills")
         .join("ASP_ORG.org");
+    let org_artifacts_path = project_state_paths(project_root)?
+        .protocol_home
+        .join("artifacts")
+        .join("org");
+    let rendered_skill = render_agent_semantic_protocols_installed_skill(
+        project_root,
+        &org_state_skill_path,
+        &org_artifacts_path,
+        activation,
+        runtime_profiles,
+    )?;
+    write_agent_skill(&skill_path, &rendered_skill)?;
     let skill_contract_path = write_agent_skill_contract(&skill_path, &org_state_skill_path)?;
-    let plugin_skill_path = optional_plugin_skill_path(project_root)
-        .map(|plugin_skill_path| {
-            write_agent_skill(&plugin_skill_path, &rendered_skill)?;
-            let plugin_skill_contract_path =
-                write_agent_skill_contract(&plugin_skill_path, &org_state_skill_path)?;
-            Ok::<(PathBuf, PathBuf), String>((plugin_skill_path, plugin_skill_contract_path))
-        })
-        .transpose()?;
-    let (plugin_skill_path, plugin_skill_contract_path) = plugin_skill_path
-        .map(|(skill_path, contract_path)| (Some(skill_path), Some(contract_path)))
-        .unwrap_or((None, None));
     Ok(InstalledAgentSkillPaths {
         skill_path: Some(skill_path),
         skill_contract_path: Some(skill_contract_path),
-        plugin_skill_path,
-        plugin_skill_contract_path,
+        plugin_skill_path: None,
     })
+}
+
+pub(super) fn install_agent_semantic_protocols_plugin_skill(
+    project_root: &Path,
+    activation: &HookActivation,
+    runtime_profiles: &RuntimeProfiles,
+) -> Result<InstalledAgentSkillPaths, String> {
+    let plugin_skill_path = plugin_skill_path(project_root)?;
+    let org_state_skill_path = project_state_paths(project_root)?
+        .protocol_home
+        .join("org")
+        .join("skills")
+        .join("ASP_ORG.org");
+    let org_artifacts_path = project_state_paths(project_root)?
+        .protocol_home
+        .join("artifacts")
+        .join("org");
+    let rendered_skill = render_agent_semantic_protocols_plugin_skill(
+        project_root,
+        &org_state_skill_path,
+        &org_artifacts_path,
+        activation,
+        runtime_profiles,
+    )?;
+    write_agent_skill(&plugin_skill_path, &rendered_skill)?;
+    remove_plugin_skill_contract(&plugin_skill_path)?;
+    Ok(InstalledAgentSkillPaths {
+        skill_path: None,
+        skill_contract_path: None,
+        plugin_skill_path: Some(plugin_skill_path),
+    })
+}
+
+pub(super) fn install_agent_semantic_protocols_agent_config(
+    project_root: &Path,
+) -> Result<PathBuf, String> {
+    let config_path = project_agent_config_path(project_root);
+    if let Some(parent) = config_path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
+    }
+    let existing = match fs::read_to_string(&config_path) {
+        Ok(contents) => contents,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(error) => return Err(format!("failed to read {}: {error}", config_path.display())),
+    };
+    let merged = merge_agent_semantic_protocols_agent_config(&existing)
+        .map_err(|error| format!("invalid {}: {error}", config_path.display()))?;
+    if merged != existing {
+        fs::write(&config_path, merged.as_bytes())
+            .map_err(|error| format!("failed to write {}: {error}", config_path.display()))?;
+    }
+    Ok(config_path)
 }
 
 pub(super) struct InstalledAgentSkillPaths {
     pub skill_path: Option<PathBuf>,
     pub skill_contract_path: Option<PathBuf>,
     pub plugin_skill_path: Option<PathBuf>,
-    pub plugin_skill_contract_path: Option<PathBuf>,
 }
 
 fn default_agent_skill_path(project_root: &Path) -> PathBuf {
@@ -68,17 +116,99 @@ fn default_agent_skill_path(project_root: &Path) -> PathBuf {
         .join("SKILL.org")
 }
 
-fn optional_plugin_skill_path(project_root: &Path) -> Option<PathBuf> {
+fn plugin_skill_path(project_root: &Path) -> Result<PathBuf, String> {
     let plugin_root = project_root.join("asp-codex-plugin");
     if !plugin_root
         .join(".codex-plugin")
         .join("plugin.json")
         .is_file()
     {
-        return None;
+        return Err(format!(
+            "Codex plugin bundle is missing {}; run plugin bundle installation before rendering plugin SKILL.org",
+            plugin_root
+                .join(".codex-plugin")
+                .join("plugin.json")
+                .display()
+        ));
     }
     let skill_dir = plugin_root.join("skills").join("agent-semantic-protocols");
-    Some(skill_dir.join("SKILL.org"))
+    Ok(skill_dir.join("SKILL.org"))
+}
+
+fn merge_agent_semantic_protocols_agent_config(existing: &str) -> Result<String, String> {
+    let mut config = if existing.trim().is_empty() {
+        toml::Value::Table(toml::Table::new())
+    } else {
+        toml::from_str::<toml::Value>(existing).map_err(|error| error.to_string())?
+    };
+    let root = config
+        .as_table_mut()
+        .ok_or_else(|| "root document must be a TOML table".to_string())?;
+    let skills = root
+        .entry("skills".to_string())
+        .or_insert_with(|| toml::Value::Table(toml::Table::new()));
+    let skills = skills
+        .as_table_mut()
+        .ok_or_else(|| "`skills` must be a TOML table".to_string())?;
+    let mut asp_skill = toml::Table::new();
+    asp_skill.insert(
+        "template".to_string(),
+        toml::Value::String("SKILL.org".to_string()),
+    );
+    asp_skill.insert(
+        "pluginSkill".to_string(),
+        toml::Value::String(codex_project_plugin_cache_skill_config_path()?),
+    );
+    asp_skill.insert(
+        "projectSkill".to_string(),
+        toml::Value::String(".agents/skills/agent-semantic-protocols/SKILL.org".to_string()),
+    );
+    asp_skill.insert(
+        "aspOrg".to_string(),
+        toml::Value::String(
+            ".cache/agent-semantic-protocol/org/skills/ASP_ORG.org#asp-org".to_string(),
+        ),
+    );
+    asp_skill.insert(
+        "orgArtifacts".to_string(),
+        toml::Value::String(".cache/agent-semantic-protocol/artifacts/org".to_string()),
+    );
+    skills.insert(
+        "agent-semantic-protocols".to_string(),
+        toml::Value::Table(asp_skill),
+    );
+    let hook = root
+        .entry("hook".to_string())
+        .or_insert_with(|| toml::Value::Table(toml::Table::new()));
+    let hook = hook
+        .as_table_mut()
+        .ok_or_else(|| "`hook` must be a TOML table".to_string())?;
+    let mut agent_org_artifacts = toml::Table::new();
+    agent_org_artifacts.insert("enabled".to_string(), toml::Value::Boolean(true));
+    agent_org_artifacts.insert("inactiveAfterMinutes".to_string(), toml::Value::Integer(30));
+    agent_org_artifacts.insert(
+        "artifactsPath".to_string(),
+        toml::Value::String(".cache/agent-semantic-protocol/artifacts/org".to_string()),
+    );
+    agent_org_artifacts.insert(
+        "entrySkillPath".to_string(),
+        toml::Value::String(".cache/agent-semantic-protocol/org/skills/ASP_ORG.org".to_string()),
+    );
+    hook.entry("agentOrgArtifacts".to_string())
+        .or_insert_with(|| toml::Value::Table(agent_org_artifacts));
+    toml::to_string_pretty(&config).map_err(|error| error.to_string())
+}
+
+fn codex_project_plugin_cache_skill_config_path() -> Result<String, String> {
+    let manifest = serde_json::from_str::<serde_json::Value>(ASP_CODEX_PLUGIN_MANIFEST_JSON)
+        .map_err(|error| format!("invalid ASP Codex plugin manifest JSON: {error}"))?;
+    let version = manifest
+        .get("version")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| "ASP Codex plugin manifest missing string `version`".to_string())?;
+    Ok(format!(
+        ".codex/plugins/cache/{ASP_CODEX_PLUGIN_MARKETPLACE_NAME}/{ASP_CODEX_PLUGIN_NAME}/{version}/skills/agent-semantic-protocols/SKILL.org"
+    ))
 }
 
 fn write_agent_skill(skill_path: &Path, rendered_skill: &str) -> Result<(), String> {
@@ -102,359 +232,11 @@ fn write_agent_skill_contract(
     Ok(contract_path)
 }
 
-pub(super) fn render_agent_semantic_protocols_skill_contract(
-    contract_path: &Path,
-    org_state_skill_path: &Path,
-) -> Result<String, String> {
-    let refer_org = refer_org_from_contract_path(contract_path, org_state_skill_path)?;
-    let refer_org_line = format!(":REFER_ORG: {refer_org}");
-    let mut replaced = false;
-    let rendered = AGENT_SEMANTIC_PROTOCOLS_SKILL_CONTRACT_ORG
-        .lines()
-        .map(|line| {
-            if line.starts_with(":REFER_ORG:") {
-                replaced = true;
-                refer_org_line.as_str()
-            } else {
-                line
-            }
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-    if replaced {
-        Ok(rendered)
-    } else {
-        Err("SKILL.contract.org template missing :REFER_ORG: property".to_string())
+fn remove_plugin_skill_contract(skill_path: &Path) -> Result<(), String> {
+    let contract_path = skill_path.with_file_name("SKILL.contract.org");
+    if contract_path.exists() {
+        fs::remove_file(&contract_path)
+            .map_err(|error| format!("failed to remove {}: {error}", contract_path.display()))?;
     }
-}
-
-fn refer_org_from_contract_path(
-    contract_path: &Path,
-    org_state_skill_path: &Path,
-) -> Result<String, String> {
-    let contract_dir = contract_path.parent().ok_or_else(|| {
-        format!(
-            "failed to compute REFER_ORG for contract path without parent: {}",
-            contract_path.display()
-        )
-    })?;
-    let relative_path = relative_path_between(contract_dir, org_state_skill_path);
-    Ok(format!(
-        "{}#asp-org",
-        relative_path.to_string_lossy().replace('\\', "/")
-    ))
-}
-
-fn relative_path_between(from_dir: &Path, target: &Path) -> PathBuf {
-    let from_components = normalized_path_components(from_dir);
-    let target_components = normalized_path_components(target);
-    let common_prefix_len = from_components
-        .iter()
-        .zip(target_components.iter())
-        .take_while(|(left, right)| left == right)
-        .count();
-    let mut relative_path = PathBuf::new();
-    for _ in common_prefix_len..from_components.len() {
-        relative_path.push("..");
-    }
-    for component in &target_components[common_prefix_len..] {
-        relative_path.push(component);
-    }
-    if relative_path.as_os_str().is_empty() {
-        relative_path.push(".");
-    }
-    relative_path
-}
-
-fn normalized_path_components(path: &Path) -> Vec<OsString> {
-    path.components()
-        .filter_map(|component| match component {
-            Component::Normal(component) => Some(component.to_os_string()),
-            Component::ParentDir => Some(OsString::from("..")),
-            Component::CurDir | Component::RootDir | Component::Prefix(_) => None,
-        })
-        .collect()
-}
-
-pub(super) fn render_agent_semantic_protocols_skill(
-    activation: &HookActivation,
-    runtime_profiles: &RuntimeProfiles,
-) -> Result<String, String> {
-    let rendered = replace_generated_block(
-        AGENT_SEMANTIC_PROTOCOLS_SKILL_ORG,
-        "notice",
-        installed_skill_notice(),
-    )?;
-    let rendered = replace_generated_block(
-        &rendered,
-        "activation",
-        &installed_activation_summary(activation),
-    )?;
-    replace_generated_block(
-        &rendered,
-        "providers",
-        &installed_provider_contracts(activation, runtime_profiles),
-    )
-    .and_then(|rendered| {
-        validate_agent_semantic_protocols_skill(&rendered)?;
-        Ok(rendered)
-    })
-}
-
-pub(super) fn validate_agent_semantic_protocols_skill(rendered_skill: &str) -> Result<(), String> {
-    let contract_document = Org::parse(AGENT_SEMANTIC_PROTOCOLS_SKILL_CONTRACT_ORG).document();
-    let registry =
-        parse_contracts_from_document(&contract_document, Some(Path::new("SKILL.contract.org")));
-    let reference = parse_contract_reference(AGENT_SEMANTIC_PROTOCOLS_SKILL_CONTRACT_REFERENCE);
-    let contract = registry.resolve(&reference).ok_or_else(|| {
-        format!(
-            "SKILL.contract.org missing contract `{}`",
-            AGENT_SEMANTIC_PROTOCOLS_SKILL_CONTRACT_REFERENCE
-        )
-    })?;
-    if contract.assertions.is_empty() {
-        return Err(format!(
-            "SKILL.contract.org contract `{}` has no assertions",
-            contract.id
-        ));
-    }
-
-    let skill_document = Org::parse(rendered_skill).document();
-    let evaluation = evaluate_org_contract(
-        &skill_document,
-        contract,
-        OrgContractEvaluationScope::document(),
-    );
-    let failures = evaluation
-        .assertions
-        .iter()
-        .filter(|assertion| {
-            assertion.status.is_failed() && assertion.severity == OrgContractSeverity::Error
-        })
-        .map(|assertion| {
-            format!(
-                "- assertion `{}` failed: expected {}, actual {}",
-                assertion.assertion_id,
-                assertion.expectation.expected_summary(),
-                assertion.actual_count
-            )
-        })
-        .collect::<Vec<_>>();
-
-    if failures.is_empty() {
-        Ok(())
-    } else {
-        Err(format!(
-            "generated SKILL.org does not match Org contract `{}`:\n{}\nFix root SKILL.org, SKILL.contract.org, or the Rust skill renderer before installing.",
-            evaluation.contract_id,
-            failures.join("\n")
-        ))
-    }
-}
-
-pub(super) fn replace_generated_block(
-    template: &str,
-    name: &str,
-    content: &str,
-) -> Result<String, String> {
-    let begin = format!("# BEGIN_ASP_GENERATED {name}");
-    let end = format!("# END_ASP_GENERATED {name}");
-    let Some(begin_start) = template.find(&begin) else {
-        return Err(format!(
-            "SKILL.org template missing generated block begin `{begin}`"
-        ));
-    };
-    let begin_content_start = begin_start + begin.len();
-    let Some(relative_end_start) = template[begin_content_start..].find(&end) else {
-        return Err(format!(
-            "SKILL.org template missing generated block end `{end}`"
-        ));
-    };
-    let end_start = begin_content_start + relative_end_start;
-    let mut rendered = String::with_capacity(template.len() + content.len());
-    rendered.push_str(&template[..begin_content_start]);
-    rendered.push('\n');
-    rendered.push_str(content.trim_matches('\n'));
-    rendered.push('\n');
-    rendered.push_str(&template[end_start..]);
-    Ok(rendered)
-}
-
-fn installed_skill_notice() -> &'static str {
-    "#+begin_quote\nIMPORTANT: Generated from the repository root =SKILL.org= template, validated by =SKILL.contract.org=, and expanded from the current provider activation. Do not edit this installed copy. Edit root =SKILL.org=, =SKILL.contract.org=, or =asp.toml=, then rerun =asp install plugin --codex .= for Codex or =asp install hook --client claude .= for Claude.\n#+end_quote"
-}
-
-fn installed_activation_summary(activation: &HookActivation) -> String {
-    [
-        "Generated from =asp.toml=, =PATH=, and project =.bin= provider binaries.".to_string(),
-        String::new(),
-        "| Field | Value |".to_string(),
-        "|-------+-------|".to_string(),
-        format!(
-            "| Runtime | ={}= |",
-            org_table_cell(&activation.generated_by.runtime)
-        ),
-        format!(
-            "| Version | ={}= |",
-            org_table_cell(&activation.generated_by.version)
-        ),
-        format!("| Active provider count | {} |", activation.providers.len()),
-        "| Active language list | See generated =Provider Contracts= subtrees. |".to_string(),
-    ]
-    .join("\n")
-}
-
-fn installed_provider_contracts(
-    activation: &HookActivation,
-    runtime_profiles: &RuntimeProfiles,
-) -> String {
-    let mut lines = vec![
-        "Detected from provider binaries plus =asp.toml=; only activated languages are listed."
-            .to_string(),
-        String::new(),
-    ];
-    for provider in &activation.providers {
-        let runtime_provider = runtime_profiles.providers.iter().find(|profile| {
-            profile.manifest_id == provider.manifest_id
-                && profile.language_id == provider.language_id
-                && profile.provider_id == provider.provider_id
-        });
-        lines.extend(provider_contract_lines(
-            &activation.project_root,
-            provider,
-            runtime_provider,
-        ));
-    }
-    lines.join("\n")
-}
-
-fn provider_contract_lines(
-    project_root: &str,
-    provider: &ActivatedProviderConfig,
-    runtime_provider: Option<&RuntimeProviderProfile>,
-) -> Vec<String> {
-    let command = provider_command_display(project_root, provider, runtime_provider);
-    let document_provider = is_document_provider(provider);
-    let mut lines = vec![
-        format!("** {}", provider.language_id),
-        ":PROPERTIES:".to_string(),
-        format!(":LANGUAGE_ID: {}", provider.language_id),
-        format!(":PROVIDER_ID: {}", provider.provider_id),
-        format!(":BINARY: {}", provider.binary),
-        format!(":EXECUTION: {}", provider.execution.as_str()),
-        format!(":FACADE: asp {}", provider.language_id),
-        format!(":COMMAND: {}", command),
-        format!(":DOCUMENT_PROVIDER: {}", document_provider),
-        ":ENABLED: true".to_string(),
-        ":END:".to_string(),
-        String::new(),
-    ];
-    if document_provider {
-        lines.push(format!(
-            "Use =asp {} guide .= before document element navigation.",
-            provider.language_id
-        ));
-        lines.push(format!(
-            "Use =asp {} query= for parser-owned document elements and metadata.",
-            provider.language_id
-        ));
-    } else {
-        lines.push(format!(
-            "Use =asp {} guide .= before {}-specific exploration.",
-            provider.language_id, provider.language_id
-        ));
-        lines.push(format!(
-            "Use =asp {} search prime --workspace <workspace-root> --view seeds= only when the {} owner map is unknown; exact selectors, owners, symbols, dependencies, or hook frontiers should go straight to the provider-owned query, owner, finder, guide, or dependency route.",
-            provider.language_id, provider.language_id
-        ));
-    }
-    lines.push(String::new());
-    lines
-}
-
-fn is_document_provider(provider: &ActivatedProviderConfig) -> bool {
-    matches!(provider.language_id.as_str(), "org" | "md") && provider.provider_id == "orgize"
-}
-
-fn provider_command_display(
-    project_root: &str,
-    provider: &ActivatedProviderConfig,
-    runtime_provider: Option<&RuntimeProviderProfile>,
-) -> String {
-    let argv = runtime_provider
-        .and_then(runtime_provider_command_argv)
-        .or_else(|| {
-            if provider.provider_command_prefix.is_empty() {
-                None
-            } else {
-                Some(provider.provider_command_prefix.clone())
-            }
-        })
-        .unwrap_or_else(|| vec![provider_display_binary(project_root, &provider.binary)]);
-    argv.iter()
-        .map(|arg| {
-            shell_display_word(&installed_skill_display_arg(
-                project_root,
-                &provider.binary,
-                arg,
-            ))
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
-fn runtime_provider_command_argv(profile: &RuntimeProviderProfile) -> Option<Vec<String>> {
-    if !profile.argv.is_empty() {
-        return Some(profile.argv.clone());
-    }
-    profile
-        .resolved_binary
-        .as_ref()
-        .map(|binary| vec![binary.clone()])
-}
-
-fn provider_display_binary(project_root: &str, binary: &str) -> String {
-    let project_bin = Path::new(project_root).join(".bin").join(binary);
-    if project_bin.is_file() {
-        return format!(".bin/{binary}");
-    }
-    Path::new(binary)
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or(binary)
-        .to_string()
-}
-
-fn installed_skill_display_arg(project_root: &str, provider_binary: &str, arg: &str) -> String {
-    let path = Path::new(arg);
-    if !path.is_absolute() {
-        return arg.to_string();
-    }
-    let project_bin = Path::new(project_root).join(".bin").join(provider_binary);
-    if project_bin.is_file()
-        && path.file_name().and_then(|name| name.to_str()) == Some(provider_binary)
-    {
-        return format!(".bin/{provider_binary}");
-    }
-    if let Ok(relative) = path.strip_prefix(project_root) {
-        return relative.to_string_lossy().replace('\\', "/");
-    }
-    path.file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or(arg)
-        .to_string()
-}
-
-fn shell_display_word(arg: &str) -> String {
-    if arg
-        .chars()
-        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.' | '/' | ':' | '='))
-    {
-        return arg.to_string();
-    }
-    format!("'{}'", arg.replace('\'', "'\\''"))
-}
-
-fn org_table_cell(value: &str) -> String {
-    value.replace('|', "\\|")
+    Ok(())
 }

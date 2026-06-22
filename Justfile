@@ -17,11 +17,9 @@ _agent-tools-run-asp bin_dir +args:
 	if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-$HOME/.local/bin}"; fi; \
 	protocol_bin="${ASP_BIN:-${bin_dir}/asp}"; \
 	if [ -x "${protocol_bin}" ]; then \
-	  "${protocol_bin}" {{args}}; \
-	elif command -v asp >/dev/null 2>&1; then \
-	  asp {{args}}; \
+	  SEMANTIC_AGENT_BIN_DIR="${bin_dir}" "${protocol_bin}" {{args}}; \
 	else \
-	  cargo run -q -p agent-semantic-protocol --bin asp -- {{args}}; \
+	  SEMANTIC_AGENT_BIN_DIR="${bin_dir}" cargo run -q -p agent-semantic-protocol --bin asp -- {{args}}; \
 	fi
 
 # Install asp, asp-graph-turbo, and provider harnesses into $HOME/.local/bin by default, then install Codex hooks.
@@ -107,13 +105,11 @@ agent-tools-install-protocol bin_dir="":
 agent-tools-install-hook bin_dir="":
 	@just agent-tools-install-protocol "{{bin_dir}}"
 
-# Install a released language provider wrapper through asp.
-# Target priority is owned by asp itself: asp.toml [languages.<id>].bin, $HOME/.local/bin, PATH.
-agent-tools-install-language language rev bin_dir="" target="" project="." archive="" repo_override="":
-	@args=(install language "{{language}}" --rev "{{rev}}" --project "{{project}}"); \
+# Install a released language provider binary through asp.
+# Target priority is owned by asp itself: asp.toml [languages.<id>].bin, SEMANTIC_AGENT_BIN_DIR, $HOME/.local/bin, PATH.
+agent-tools-install-language language bin_dir="" target="" project=".":
+	@args=(install language "{{language}}" --project "{{project}}"); \
 	if [ -n "{{target}}" ]; then args+=(--target "{{target}}"); fi; \
-	if [ -n "{{archive}}" ]; then args+=(--archive "{{archive}}"); fi; \
-	if [ -n "{{repo_override}}" ]; then args+=(--repo "{{repo_override}}"); fi; \
 	just _agent-tools-run-asp "{{bin_dir}}" "${args[@]}"
 
 # Install only the core asp-graph-turbo ranking binary.
@@ -134,58 +130,28 @@ agent-tools-install-rust bin_dir="":
     @just agent-tools-install-rs "{{bin_dir}}"
 
 agent-tools-install-rs bin_dir="":
-    @bin_dir="{{bin_dir}}"; \
-      if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-$HOME/.local/bin}"; fi; \
-      mkdir -p "${bin_dir}"; \
-      cargo build --release --manifest-path {{rust_harness_project}}/Cargo.toml --features cli --bin rs-harness; \
-      install -m 755 {{rust_harness_project}}/target/release/rs-harness "${bin_dir}/rs-harness"; \
-      "${bin_dir}/rs-harness" --help >/dev/null
+    @just agent-tools-install-language rust "{{bin_dir}}"
 
 # Install only the TypeScript provider binary.
 agent-tools-install-typescript bin_dir="":
     @just agent-tools-install-ts "{{bin_dir}}"
 
 agent-tools-install-ts bin_dir="":
-    @bin_dir="{{bin_dir}}"; \
-      if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-$HOME/.local/bin}"; fi; \
-      mkdir -p "${bin_dir}"; \
-      npm --prefix {{typescript_harness_project}} run -s build >/dev/null; \
-      rm -f "${bin_dir}/ts-harness"; \
-      printf '#!/usr/bin/env bash\nexec node "%s/%s/dist/src/cli/main.js" "$@"\n' "$PWD" "{{typescript_harness_project}}" > "${bin_dir}/ts-harness"; \
-      chmod 755 "${bin_dir}/ts-harness"; \
-      "${bin_dir}/ts-harness" --help >/dev/null
+    @just agent-tools-install-language typescript "{{bin_dir}}"
 
 # Install only the Python provider binary.
 agent-tools-install-python bin_dir="":
     @just agent-tools-install-py "{{bin_dir}}"
 
 agent-tools-install-py bin_dir="":
-    @bin_dir="{{bin_dir}}"; \
-      if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-$HOME/.local/bin}"; fi; \
-      mkdir -p "${bin_dir}"; \
-      UV_TOOL_BIN_DIR="${bin_dir}" uv tool install --force --editable {{python_harness_project}}; \
-      test -x "${bin_dir}/py-harness"; \
-      "${bin_dir}/py-harness" --help >/dev/null
+    @just agent-tools-install-language python "{{bin_dir}}"
 
 # Install only the Julia provider binary.
 agent-tools-install-julia bin_dir="":
     @just agent-tools-install-jl "{{bin_dir}}"
 
 agent-tools-install-jl bin_dir="":
-    @bin_dir="{{bin_dir}}"; \
-      if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-$HOME/.local/bin}"; fi; \
-      mkdir -p "${bin_dir}"; \
-      needs_build=0; \
-      if [ ! -x "{{julia_compiled_harness}}" ]; then \
-        needs_build=1; \
-      elif [ -n "$$(find "{{julia_harness_project}}/src" "{{julia_harness_project}}/juliac" "{{julia_harness_project}}/Project.toml" -type f -newer "{{julia_compiled_harness}}" -print -quit)" ]; then \
-        needs_build=1; \
-      fi; \
-      if [ "${needs_build}" -eq 1 ]; then \
-        (cd "{{julia_harness_project}}" && rm -rf build/juliac-asp-local && ASP_JULIA_BUILD_DIR=build/juliac-asp-local juliac/build_provider.sh); \
-      fi; \
-      install -m 755 "{{julia_compiled_harness}}" "${bin_dir}/asp-julia-harness"; \
-      "${bin_dir}/asp-julia-harness" guide {{julia_harness_project}} >/dev/null
+    @just agent-tools-install-language julia "{{bin_dir}}"
 
 # Install only the Gerbil Scheme standalone binary.
 agent-tools-install-gerbil bin_dir="":
@@ -219,28 +185,7 @@ agent-tools-build-gerbil:
       esac
 
 agent-tools-install-gx bin_dir="":
-    @set -e; \
-      bin_dir="{{bin_dir}}"; \
-      if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-$HOME/.local/bin}"; fi; \
-      repo_root="$PWD"; \
-      package_dir="${repo_root}/{{gerbil_harness_project}}"; \
-      built_dir="${package_dir}/.bin"; \
-      case "$(uname -s)" in \
-        Darwin) built_bin="${built_dir}/gslph"; build_target=agent-tools-build-gerbil-native ;; \
-        *) built_bin="${built_dir}/gslph"; build_target=agent-tools-build-gerbil-static ;; \
-      esac; \
-      mkdir -p "${bin_dir}"; \
-      if [ ! -x "${built_bin}" ]; then \
-        just "${build_target}"; \
-      fi; \
-      install -m 755 "${built_bin}" "${bin_dir}/gslph"; \
-      for tool in "${built_dir}"/gslph*; do \
-        if [ -x "${tool}" ]; then \
-          rm -f "${bin_dir}/$(basename "${tool}")"; \
-          cp -p "${tool}" "${bin_dir}/$(basename "${tool}")"; \
-        fi; \
-      done; \
-      "${bin_dir}/gslph" --help >/dev/null
+    @just agent-tools-install-language gerbil-scheme "{{bin_dir}}"
 
 agent-hooks-doctor-providers: agent-hooks-doctor-rs agent-hooks-doctor-ts agent-hooks-doctor-py agent-hooks-doctor-julia
 
@@ -277,13 +222,9 @@ check-language-evidence-smoke-setup:
     mkdir -p .bin
     cargo build -q --manifest-path Cargo.toml --package agent-semantic-protocol --bin asp
     install -m 755 target/debug/asp .bin/asp
-    cargo build -q --manifest-path {{rust_harness_project}}/Cargo.toml --features cli --bin rs-harness
-    install -m 755 {{rust_harness_project}}/target/debug/rs-harness .bin/rs-harness
-    npm --prefix {{typescript_harness_project}} run -s build >/dev/null
-    printf '#!/usr/bin/env bash\nexec node "%s/%s/dist/src/cli/main.js" "$@"\n' "$PWD" "{{typescript_harness_project}}" > .bin/ts-harness
-    chmod 755 .bin/ts-harness
-    printf '#!/usr/bin/env bash\nexec uv run --project "%s/%s" --frozen py-harness "$@"\n' "$PWD" "{{python_harness_project}}" > .bin/py-harness
-    chmod 755 .bin/py-harness
+    just agent-tools-install-rs .bin
+    just agent-tools-install-ts .bin
+    just agent-tools-install-py .bin
     PATH="$PWD/.bin:$PATH" .bin/asp hook install --client codex .
 
 check-language-evidence-smoke-core: check-language-evidence-smoke-setup

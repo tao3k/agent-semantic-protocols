@@ -1,10 +1,11 @@
 //! Optional client-side hook rules loaded on each hook invocation.
 
 use agent_semantic_config::{
-    HookClientConfigDecision, HookClientConfigFile, HookClientConfigReasonKind,
-    HookClientConfigRouteKind, HookClientConfigStdinMode, HookClientRuleConfig,
-    HookClientRuleMatchConfig, HookClientRuleRouteConfig, default_hook_client_config_path,
-    default_hook_client_config_template, default_hook_client_config_template_for_source_extensions,
+    HookClientAgentOrgArtifactsConfig, HookClientConfigDecision, HookClientConfigFile,
+    HookClientConfigReasonKind, HookClientConfigRouteKind, HookClientConfigStdinMode,
+    HookClientRuleConfig, HookClientRuleMatchConfig, HookClientRuleRouteConfig,
+    default_hook_client_config_path, default_hook_client_config_template,
+    default_hook_client_config_template_for_source_extensions, load_asp_project_config_file,
     load_hook_client_config_file,
 };
 use aho_corasick::{AhoCorasick, AhoCorasickBuilder, MatchKind};
@@ -12,12 +13,16 @@ use globset::{GlobBuilder, GlobSet, GlobSetBuilder};
 use std::path::{Path, PathBuf};
 
 use crate::command::path_like_token_matches;
+pub(crate) use crate::hook_config_agent_org::AgentOrgArtifactsArchiveWarning;
+pub(crate) use crate::hook_config_agent_org::AgentOrgArtifactsRecovery;
+use crate::hook_config_agent_org::CompiledAgentOrgArtifactsConfig;
 use crate::protocol::{
     DecisionKind, DecisionRoute, DecisionRouteKind, HOOK_DECISION_SCHEMA_ID,
     HOOK_DECISION_SCHEMA_VERSION, HOOK_PROTOCOL_ID, HOOK_PROTOCOL_VERSION, HookDecision,
     ReasonKind, StdinMode,
 };
 use crate::protocol_activation::HookRuntime;
+use crate::provider_manifest::project_agent_config_path;
 use crate::source_selector::collect_source_selector_matches;
 use crate::tool_action::{ToolAction, subject_for_action};
 
@@ -26,6 +31,7 @@ use crate::tool_action::{ToolAction, subject_for_action};
 pub struct ClientHookConfig {
     rules: Vec<CompiledHookRule>,
     semantic_ast_patch_disabled: bool,
+    agent_org_artifacts: CompiledAgentOrgArtifactsConfig,
 }
 
 #[derive(Debug)]
@@ -103,12 +109,38 @@ where
 /// Load and compile project-local hook config rules.
 pub fn load_client_config(path: &Path) -> Result<ClientHookConfig, String> {
     let parsed = load_hook_client_config_file(path)?;
-    compile_config(parsed)
+    compile_config(parsed, None)
+}
+
+/// Load hook config plus ASP project policy from `.agents/asp.toml`.
+pub fn load_client_config_for_project(
+    path: &Path,
+    project_root: &Path,
+) -> Result<ClientHookConfig, String> {
+    let parsed = load_hook_client_config_file(path)?;
+    let agent_config_path = project_agent_config_path(project_root);
+    let agent_config = load_asp_project_config_file(&agent_config_path)?;
+    compile_config(parsed, agent_config.hook.agent_org_artifacts)
 }
 
 impl ClientHookConfig {
     pub(crate) fn semantic_ast_patch_enabled(&self) -> bool {
         !self.semantic_ast_patch_disabled
+    }
+
+    pub(crate) fn agent_org_artifacts_recovery(
+        &self,
+        project_root: impl AsRef<Path>,
+    ) -> Option<AgentOrgArtifactsRecovery> {
+        self.agent_org_artifacts.recovery(project_root.as_ref())
+    }
+
+    pub(crate) fn agent_org_artifacts_archive_warning(
+        &self,
+        project_root: impl AsRef<Path>,
+    ) -> Option<AgentOrgArtifactsArchiveWarning> {
+        self.agent_org_artifacts
+            .archive_warning(project_root.as_ref())
     }
 
     pub(crate) fn classify(
@@ -364,7 +396,10 @@ impl RuleRoute {
     }
 }
 
-fn compile_config(config: HookClientConfigFile) -> Result<ClientHookConfig, String> {
+fn compile_config(
+    config: HookClientConfigFile,
+    project_agent_org_artifacts: Option<HookClientAgentOrgArtifactsConfig>,
+) -> Result<ClientHookConfig, String> {
     let semantic_ast_patch_enabled = config
         .experimental
         .get("semanticAstPatch")
@@ -382,6 +417,11 @@ fn compile_config(config: HookClientConfigFile) -> Result<ClientHookConfig, Stri
     Ok(ClientHookConfig {
         rules,
         semantic_ast_patch_disabled: !semantic_ast_patch_enabled,
+        agent_org_artifacts: project_agent_org_artifacts
+            .or(config.agent_org_artifacts)
+            .map(CompiledAgentOrgArtifactsConfig::try_from)
+            .transpose()?
+            .unwrap_or_else(CompiledAgentOrgArtifactsConfig::disabled),
     })
 }
 

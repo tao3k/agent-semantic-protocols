@@ -6,6 +6,7 @@ use crate::command::{
     apply_patch_source_paths, infer_query_from_path, search_json_route, semantic_shell_tokens,
 };
 
+use super::agent_org_artifacts::with_agent_org_artifact_recovery;
 use super::decision::{allow, deny_for_action};
 use super::recovery::command_line;
 use super::source_access_routes::{
@@ -69,7 +70,8 @@ pub fn classify_hook_with_config(request: HookClassificationRequest<'_>) -> Hook
             allow(request.platform, request.event, subject)
         }
     };
-    with_prompt_scope_fields(decision, request.payload)
+    let decision = with_prompt_scope_fields(decision, request.payload);
+    with_agent_org_artifact_recovery(decision, request.config, &request.registry.project_root)
 }
 
 fn with_prompt_scope_fields(mut decision: HookDecision, payload: &Value) -> HookDecision {
@@ -294,6 +296,8 @@ fn is_root_asp_command(value: &str) -> bool {
             | "hook"
             | "plugin"
             | "install"
+            | "sync"
+            | "paths"
             | "healthcheck"
             | "source-access"
             | "ast-patch"

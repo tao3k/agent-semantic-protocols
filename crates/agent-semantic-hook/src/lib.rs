@@ -11,6 +11,7 @@ mod command;
 mod event_state;
 mod executable;
 mod hook_config;
+mod hook_config_agent_org;
 mod profile_registry;
 mod protocol;
 mod protocol_activation;
@@ -47,6 +48,7 @@ pub use event_state::{
 pub use hook_config::{
     ClientHookConfig, default_client_config_path, default_client_config_template,
     default_client_config_template_for_source_extensions, load_client_config,
+    load_client_config_for_project,
 };
 pub use profile_registry::remove_retired_codex_hook_cache_files;
 pub use protocol::{
@@ -65,7 +67,7 @@ pub use protocol_activation::{
 };
 pub use provider_manifest::{
     ProviderCommandSelection, build_default_activation, builtin_provider_manifests,
-    provider_command_selections,
+    migrate_legacy_project_agent_config, project_agent_config_path, provider_command_selections,
 };
 pub use runtime_profile::{
     RUNTIME_PROFILES_PROTOCOL_ID, RUNTIME_PROFILES_PROTOCOL_VERSION, RUNTIME_PROFILES_SCHEMA_ID,

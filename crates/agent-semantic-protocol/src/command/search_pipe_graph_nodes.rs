@@ -56,7 +56,7 @@ pub(super) fn append_project_topology_nodes(
     let submodule_paths = project_submodule_paths(workspace_root);
     let language_projects = language_project_roots(workspace_root, language_id, candidates);
     for submodule_path in &submodule_paths {
-        let submodule_id = stable_node_id("submodule", &submodule_path);
+        let submodule_id = stable_node_id("submodule", submodule_path);
         nodes.push(json!({
             "id": submodule_id.clone(),
             "kind": "submodule",

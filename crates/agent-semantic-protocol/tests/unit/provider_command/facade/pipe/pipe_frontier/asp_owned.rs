@@ -71,8 +71,9 @@ fn search_pipe_is_asp_owned_and_renders_generated_candidates_without_provider_sp
         "{stdout}"
     );
     assert!(
-        stdout
-            .contains("nextClasses=fd-query,rg-query,owner-items,treesitter-query,query-selector"),
+        stdout.contains(
+            "nextClasses=search-deps,fd-query,rg-query,owner-items,treesitter-query,query-selector"
+        ),
         "{stdout}"
     );
     assert!(stdout.contains("[graph-frontier]"), "{stdout}");
@@ -519,11 +520,13 @@ fn search_pipe_keeps_gerbil_package_terms_on_gerbil_candidates() {
         "{stdout}"
     );
     assert!(
-        stdout.contains("recommendedNext=A1.owner-items"),
+        stdout.contains("recommendedNext=A1.search-deps"),
         "{stdout}"
     );
     assert!(
-        stdout.contains("nextCommand=asp gerbil-scheme search owner gerbil.pkg items"),
+        stdout.contains(
+            "nextCommand=asp gerbil-scheme search deps git.cons.io/mighty-gerbils/gerbil-poo"
+        ),
         "{stdout}"
     );
     assert!(

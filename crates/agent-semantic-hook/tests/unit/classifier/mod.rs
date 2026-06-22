@@ -121,6 +121,8 @@ pub(super) fn provider_routes(binary: &str, query: Option<CommandTemplate>) -> H
             StdinMode::PipeCandidates,
         ),
         check_changed: command(&[binary, "check", "--changed", "."]),
+        dependency_topology: None,
+        dependency_topology_metadata: None,
         export_index: None,
         guide: Some(command(&[binary, "agent", "guide", "."])),
     }

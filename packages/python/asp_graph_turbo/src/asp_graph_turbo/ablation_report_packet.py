@@ -6,6 +6,10 @@ from collections.abc import Mapping, Sequence
 
 from .ablation_cli import ABLATION_VARIANTS, build_ablation_set
 from .benchmark_cli import benchmark_packet_with_result
+from .topology_membership_packet import (
+    TOPOLOGY_MEMBERSHIP_ABLATION_DELTA_KEYS,
+    topology_membership_delta_packet,
+)
 
 
 def build_ablation_report(
@@ -194,6 +198,14 @@ def _comparison(
         "queryLocalEvidencePenaltyCountDelta": _metric_delta(
             baseline, variant, "algorithmMetrics", "queryLocalEvidencePenaltyCount"
         ),
+        **topology_membership_delta_packet(
+            lambda metric_name: _metric_delta(
+                baseline,
+                variant,
+                "algorithmMetrics",
+                metric_name,
+            )
+        ),
     }
 
 
@@ -221,7 +233,7 @@ def _summary(entries: Sequence[Mapping[str, object]]) -> dict[str, object]:
         "rankChangedVariants": changed,
         "worstRankOverlapRatio": min(ratios) if ratios else 1.0,
         "maxScoreDeltaL1": max(deltas) if deltas else 0.0,
-        "topologyMembershipAblationEnabled": _topology_membership_signal(
+        "topologyMembershipAblationEnabled": _topology_membership_configured(
             by_variant.get("no-topology-membership", {})
         ),
     }
@@ -341,6 +353,10 @@ def _query_first_stage_signal(
 
 
 def _topology_membership_signal(entry: Mapping[str, object]) -> bool:
+    return _topology_membership_configured(entry)
+
+
+def _topology_membership_configured(entry: Mapping[str, object]) -> bool:
     changes = _mapping(entry.get("changes"))
     policy = _mapping(changes.get("queryAdjustmentPolicy"))
     return policy.get("topologyMembership") is False
@@ -356,6 +372,10 @@ def _query_variant_signal(comparison: Mapping[str, object]) -> bool:
         or _delta_nonzero(comparison, "queryClauseCoverageCountDelta")
         or _delta_nonzero(comparison, "queryLocalEvidenceBoostCountDelta")
         or _delta_nonzero(comparison, "queryLocalEvidencePenaltyCountDelta")
+        or any(
+            _delta_nonzero(comparison, name)
+            for name in TOPOLOGY_MEMBERSHIP_ABLATION_DELTA_KEYS
+        )
     )
 
 

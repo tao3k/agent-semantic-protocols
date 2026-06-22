@@ -26,6 +26,9 @@ use super::query_direct_read::{
 };
 use super::query_owner::run_asp_fast_owner_query_command;
 use super::search_config::AspConfig;
+use super::search_dependency_seed::{
+    is_search_dependency_seed, run_search_dependency_seed_command,
+};
 use super::search_pipe::{FastSearchContext, is_asp_fast_search, run_asp_fast_search_command};
 use super::search_pipe_meta::run_asp_fast_search_meta_command;
 use super::search_pipe_provider_facts::{ProviderGraphFactsContext, query_requests_semantic_facts};
@@ -334,12 +337,30 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
         .iter()
         .find(|provider| provider.language_id == language_id)
         .ok_or_else(|| format!("no activated provider for language {language_id}"))?;
+    if is_search_dependency_seed(&provider_args) {
+        let runtime_profiles = runtime_profiles_for_runtime(&project_root, &runtime);
+        let provider_context = ProviderGraphFactsContext {
+            provider,
+            profiles: &runtime_profiles,
+            provider_bin_root: &activation_root,
+            cache_home: &cache_home,
+        };
+        return run_search_dependency_seed_command(
+            language_id,
+            &provider_args,
+            &project_root,
+            &cache_home,
+            &config,
+            Some(&provider_context),
+        );
+    }
     if is_asp_fast_search(&provider_args) {
         if fast_search_needs_provider_context(&provider_args, provider) {
             let runtime_profiles = runtime_profiles_for_runtime(&project_root, &runtime);
             let provider_context = ProviderGraphFactsContext {
                 provider,
                 profiles: &runtime_profiles,
+                provider_bin_root: &activation_root,
                 cache_home: &cache_home,
             };
             return run_asp_fast_search_command(
@@ -646,6 +667,11 @@ fn fast_search_needs_provider_context(
     provider: &agent_semantic_hook::ActivatedProvider,
 ) -> bool {
     if matches!(args.get(1).map(String::as_str), Some("pipe" | "fzf")) {
+        if provider.search_capabilities.dependency_topology
+            && fast_search_requests_dependency_topology(args)
+        {
+            return true;
+        }
         return provider.search_capabilities.semantic_facts
             && args
                 .get(2)
@@ -662,6 +688,60 @@ fn fast_search_needs_provider_context(
             && provider_flag_value(args, "--query").is_some_and(query_requests_semantic_facts);
     }
     false
+}
+
+fn fast_search_requests_dependency_topology(args: &[String]) -> bool {
+    let Some(subcommand) = args.get(1).map(String::as_str) else {
+        return false;
+    };
+    match subcommand {
+        "pipe" => {
+            explicit_view_value(args).is_some_and(|view| view == "graph-turbo-request")
+                || surface_option_requests_deps(args)
+        }
+        _ => false,
+    }
+}
+
+fn surface_option_requests_deps(args: &[String]) -> bool {
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--surface" | "--surfaces" => {
+                if args
+                    .get(index + 1)
+                    .is_some_and(|value| surface_list_requests_deps(value))
+                {
+                    return true;
+                }
+                index += 2;
+            }
+            _ => index += 1,
+        }
+    }
+    false
+}
+
+fn explicit_view_value(args: &[String]) -> Option<&str> {
+    let mut index = 0;
+    while index < args.len() {
+        if args[index] == "--view" {
+            return args.get(index + 1).map(String::as_str);
+        }
+        if let Some(value) = args[index].strip_prefix("--view=") {
+            return Some(value);
+        }
+        index += 1;
+    }
+    None
+}
+
+fn surface_list_requests_deps(value: &str) -> bool {
+    value.split(',').map(str::trim).any(dependency_surface_name)
+}
+
+fn dependency_surface_name(value: &str) -> bool {
+    matches!(value, "dep" | "deps" | "dependency" | "dependencies")
 }
 
 fn provider_flag_value<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {

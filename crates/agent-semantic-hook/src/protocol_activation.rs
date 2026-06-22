@@ -120,6 +120,10 @@ pub struct ProviderSearchCapabilities {
     pub owner_items: bool,
     #[serde(default)]
     pub semantic_facts: bool,
+    #[serde(default)]
+    pub dependency_topology: bool,
+    #[serde(default)]
+    pub dependency_topology_metadata: bool,
 }
 
 /// Source matching defaults declared by a provider manifest.

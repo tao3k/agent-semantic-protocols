@@ -85,6 +85,14 @@
                 "queryLocalEvidenceBoostCount",
                 "queryLocalEvidencePenaltyCount",
                 "queryLocalEvidenceDelta",
+                "queryTopologyMembershipCandidateCount",
+                "queryTopologyMembershipBoostCount",
+                "queryTopologyMembershipPenaltyCount",
+                "queryTopologyMembershipDirectCount",
+                "queryTopologyMembershipNearbyCount",
+                "queryTopologyMembershipCoverageRate",
+                "queryTopologyMembershipDriftRate",
+                "queryTopologyMembershipDelta",
                 "cacheStatus"
             ],
             "properties": {
@@ -249,6 +257,39 @@
                     "minimum": 0
                 },
                 "queryLocalEvidenceDelta": {
+                    "type": "number"
+                },
+                "queryTopologyMembershipCandidateCount": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "queryTopologyMembershipBoostCount": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "queryTopologyMembershipPenaltyCount": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "queryTopologyMembershipDirectCount": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "queryTopologyMembershipNearbyCount": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "queryTopologyMembershipCoverageRate": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                },
+                "queryTopologyMembershipDriftRate": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                },
+                "queryTopologyMembershipDelta": {
                     "type": "number"
                 },
                 "cacheStatus": {

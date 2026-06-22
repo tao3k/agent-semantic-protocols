@@ -1,5 +1,6 @@
 use crate::provider_command::support::{
-    asp_command, prepend_path, provider, temp_project_root, write_activation, write_marker_provider,
+    asp_command, make_executable, prepend_path, provider, temp_project_root, write_activation,
+    write_marker_provider,
 };
 use serde_json::Value;
 
@@ -24,7 +25,14 @@ fn search_pipe_graph_request_uses_rust_manifest_dependency_versions() {
         "use serde::Serialize;\npub struct Receipt;\n",
     )
     .expect("write source");
-    write_marker_provider(&bin_dir, "rs-harness", &marker);
+    write_dependency_topology_provider(
+        &bin_dir,
+        "rs-harness",
+        &marker,
+        "serde",
+        "1.0.228",
+        "Cargo.toml",
+    );
     write_activation(&root, &[provider("rust", Vec::new())]);
 
     let output = asp_command(&root)
@@ -49,6 +57,15 @@ fn search_pipe_graph_request_uses_rust_manifest_dependency_versions() {
     );
     let payload: Value = serde_json::from_slice(&output.stdout).expect("graph request json");
     super::assert_graph_turbo_request_contract(&payload);
+    assert!(
+        marker.exists(),
+        "graph request should use provider-owned dependency topology"
+    );
+    assert_eq!(
+        payload["cache"]["dependencySeed"]["topology"].as_str(),
+        Some("provider-owned"),
+        "{payload}"
+    );
     let nodes = payload["graph"]["nodes"].as_array().expect("nodes");
     assert!(
         nodes.iter().any(|node| {
@@ -72,6 +89,125 @@ fn search_pipe_graph_request_uses_rust_manifest_dependency_versions() {
             .any(|edge| edge["relation"].as_str() == Some("version_locked")),
         "{payload}"
     );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn search_pipe_seeds_promotes_matching_dependency_route() {
+    let root = temp_project_root("search-pipe-seeds-dependency-action");
+    let bin_dir = root.join(".bin");
+    let marker = root.join("provider-called");
+    std::fs::create_dir_all(root.join("src")).expect("create src");
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"dep-action-fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[dependencies]\nserde = \"1\"\n",
+    )
+    .expect("write Cargo.toml");
+    std::fs::write(
+        root.join("src/lib.rs"),
+        "use serde::Serialize;\npub struct Receipt;\n",
+    )
+    .expect("write source");
+    write_marker_provider(&bin_dir, "rs-harness", &marker);
+    write_activation(&root, &[provider("rust", Vec::new())]);
+
+    let output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args(["rust", "search", "pipe", "serde", "--view", "seeds", "."])
+        .output()
+        .expect("run asp rust search pipe seeds");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("A1=search-deps(dependency=serde,scope=.)!dependency-topology"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("recommendedNext=A1.search-deps"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("nextCommand=asp rust search deps serde --workspace . --view seeds"),
+        "{stdout}"
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+fn write_dependency_topology_provider(
+    bin_dir: &std::path::Path,
+    binary: &str,
+    marker: &std::path::Path,
+    dependency: &str,
+    version: &str,
+    manifest_path: &str,
+) {
+    std::fs::create_dir_all(bin_dir).expect("create fake provider bin dir");
+    let path = bin_dir.join(binary);
+    std::fs::write(
+        &path,
+        format!(
+            "#!/bin/sh\nprintf called > '{}'\ncat <<'JSON'\n{{\"packetKind\":\"dependency-topology\",\"fingerprint\":\"sha256:2222222222222222222222222222222222222222222222222222222222222222\",\"graph\":{{\"nodes\":[{{\"id\":\"dependency:{}\",\"kind\":\"dependency\",\"value\":\"{}\",\"path\":\"{}\",\"fields\":{{\"dependencyName\":\"{}\",\"manifestPath\":\"{}\"}}}},{{\"id\":\"dependency-version:{}\",\"kind\":\"dependency-version\",\"value\":\"{}\",\"fields\":{{\"version\":\"{}\"}}}}],\"edges\":[{{\"source\":\"dependency:{}\",\"target\":\"dependency-version:{}\",\"relation\":\"version_locked\"}}]}}}}\nJSON\n",
+            marker.display(),
+            dependency,
+            dependency,
+            manifest_path,
+            dependency,
+            manifest_path,
+            dependency,
+            version,
+            version,
+            dependency,
+            dependency
+        ),
+    )
+    .expect("write fake provider");
+    make_executable(&path);
+}
+
+#[test]
+fn search_pipe_graph_request_reuses_cached_manifest_dependency_seed() {
+    let root = temp_project_root("search-pipe-rust-dependency-seed-cache");
+    let bin_dir = root.join(".bin");
+    let marker = root.join("provider-called");
+    let cache_home = root.join(".cache");
+    std::fs::create_dir_all(root.join("src")).expect("create src");
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"dep-seed-cache-fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[dependencies]\nserde = \"1\"\n",
+    )
+    .expect("write Cargo.toml");
+    std::fs::write(
+        root.join("src/lib.rs"),
+        "use serde::Serialize;\npub struct Receipt;\n",
+    )
+    .expect("write source");
+    write_marker_provider(&bin_dir, "rs-harness", &marker);
+    write_activation(&root, &[provider("rust", Vec::new())]);
+
+    let first =
+        rust_dependency_graph_request_payload(&root, &bin_dir, &cache_home, "serde Serialize");
+    assert_eq!(
+        first["cache"]["dependencySeed"]["status"].as_str(),
+        Some("miss"),
+        "{first}"
+    );
+    assert_manifest_dependency(&first, "serde");
+
+    let second =
+        rust_dependency_graph_request_payload(&root, &bin_dir, &cache_home, "serde Serialize");
+    assert_eq!(
+        second["cache"]["dependencySeed"]["status"].as_str(),
+        Some("hit"),
+        "{second}"
+    );
+    assert_manifest_dependency(&second, "serde");
+
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -632,6 +768,36 @@ fn search_pipe_graph_request_includes_language_neutral_project_topology() {
         "{payload}"
     );
     let _ = std::fs::remove_dir_all(root);
+}
+
+fn rust_dependency_graph_request_payload(
+    root: &std::path::Path,
+    bin_dir: &std::path::Path,
+    cache_home: &std::path::Path,
+    query: &str,
+) -> Value {
+    let output = asp_command(root)
+        .env("PATH", prepend_path(bin_dir))
+        .env("PRJ_CACHE_HOME", cache_home)
+        .args([
+            "rust",
+            "search",
+            "pipe",
+            query,
+            "--view",
+            "graph-turbo-request",
+            ".",
+        ])
+        .output()
+        .expect("run asp rust search pipe graph request");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let payload: Value = serde_json::from_slice(&output.stdout).expect("graph request json");
+    super::assert_graph_turbo_request_contract(&payload);
+    payload
 }
 
 fn assert_manifest_dependency_version(payload: &Value, dependency: &str, version: &str) {

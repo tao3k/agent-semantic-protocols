@@ -1,26 +1,27 @@
 //! ASP-owned search pipeline wrapper.
 
 use std::collections::BTreeMap;
-use std::fs;
-use std::io::{self, Write};
 use std::path::{Component, Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use serde_json::Value;
 
 use super::graph::GraphTurboReceiptRequest;
-use super::provider_process::{provider_invocation_with_profile, run_provider_command_with_stdin};
 use super::search_config::AspConfig;
-use super::search_failure_render::{render_failure_frontier, render_failure_graph_turbo_request};
 use super::search_pipe_args::{
-    parse_failure_args, parse_fzf_args, parse_ingest_args, parse_owner_only_args,
-    parse_owner_query_args, parse_search_owner_items_query_args, parse_search_pipe_args,
+    parse_fzf_args, parse_ingest_args, parse_owner_only_args, parse_owner_query_args,
+    parse_search_pipe_args,
 };
 use super::search_pipe_candidates::{
     collect_candidates, parse_ingest_candidates, read_piped_stdin,
 };
-use super::search_pipe_dependency_facts::{collect_dependency_facts, dependency_matches_query};
+use super::search_pipe_dependency_facts::dependency_matches_query;
+use super::search_pipe_dependency_seed_cache::collect_cached_dependency_facts;
+use super::search_pipe_failure::run_search_failure_command;
 use super::search_pipe_model::SearchPipeSourceTrace;
+use super::search_pipe_owner_items_fast::{
+    SearchOwnerItemsFastContext, run_search_owner_items_query_command,
+};
 use super::search_pipe_owner_query::render_owner_query_frontier;
 use super::search_pipe_provider_facts::{ProviderGraphFactsContext, collect_provider_graph_facts};
 use super::search_pipe_read_memory::read_loop_memory_selectors;
@@ -84,26 +85,10 @@ pub(super) fn run_asp_fast_search_command(
         return reject_unsupported_search_pipeline_command();
     }
     if is_search_ingest(args) {
-        return run_search_ingest_command(
-            context.language_id,
-            args,
-            context.project_root,
-            context.locator_root,
-            context.config,
-            context.provider_context,
-            context.frontier_receipt,
-        );
+        return run_search_ingest_command(args, &context);
     }
     if is_search_fzf(args) {
-        return run_search_fzf_command(
-            context.language_id,
-            args,
-            context.project_root,
-            context.locator_root,
-            context.config,
-            context.provider_context,
-            context.frontier_receipt,
-        );
+        return run_search_fzf_command(args, &context);
     }
     if is_search_failure(args) {
         return run_search_failure_command(
@@ -133,7 +118,18 @@ pub(super) fn run_asp_fast_search_command(
         );
     }
     if is_search_owner_items_query(args) {
-        return run_search_owner_items_query_command(args, &context);
+        return run_search_owner_items_query_command(
+            args,
+            SearchOwnerItemsFastContext {
+                language_id: context.language_id,
+                project_root: context.project_root,
+                locator_root: context.locator_root,
+                cache_home: context.cache_home,
+                config: context.config,
+                provider_context: context.provider_context,
+                frontier_receipt: context.frontier_receipt,
+            },
+        );
     }
     Err("unsupported ASP fast search command".to_string())
 }
@@ -189,8 +185,12 @@ fn is_search_owner_items_query(args: &[String]) -> bool {
         && matches!(args.get(1).map(String::as_str), Some("owner"))
         && args.iter().any(|arg| arg == "--query")
         && args.iter().any(|arg| arg == "items")
-        && has_explicit_seed_view(args)
+        && has_supported_owner_items_view(args)
         && !args.iter().any(|arg| arg == "--json" || arg == "--code")
+}
+
+fn has_supported_owner_items_view(args: &[String]) -> bool {
+    explicit_view(args).is_none_or(|view| matches!(view, "seeds" | "hits"))
 }
 
 fn has_explicit_seed_view(args: &[String]) -> bool {
@@ -234,25 +234,29 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
         );
         return Ok(());
     }
-    let acquisition = dependency_manifest_fast_acquisition(
-        context.language_id,
-        &project_root,
-        &pipe_args.seed_query,
-        pipe_args.source,
-        &pipe_args.view,
-    )
-    .map(Ok)
-    .unwrap_or_else(|| {
-        collect_search_pipe_candidates(
-            context.language_id,
-            &project_root,
-            context.locator_root,
-            &pipe_args.seed_query,
-            &pipe_args.scopes,
-            pipe_args.source,
-            context.config,
-        )
-    })?;
+    let acquisition =
+        dependency_manifest_fast_acquisition(DependencyManifestFastAcquisitionRequest {
+            language_id: context.language_id,
+            project_root: &project_root,
+            cache_home: context.cache_home,
+            config: context.config,
+            provider_context: context.provider_context,
+            query: &pipe_args.seed_query,
+            source: pipe_args.source,
+            view: &pipe_args.view,
+        })
+        .map(Ok)
+        .unwrap_or_else(|| {
+            collect_search_pipe_candidates(
+                context.language_id,
+                &project_root,
+                context.locator_root,
+                &pipe_args.seed_query,
+                &pipe_args.scopes,
+                pipe_args.source,
+                context.config,
+            )
+        })?;
     let provider_facts_started_at = Instant::now();
     let provider_facts = collect_provider_graph_facts(
         context.language_id,
@@ -272,6 +276,7 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
         language_id: context.language_id,
         project_root: &project_root,
         locator_root: context.locator_root,
+        cache_home: context.cache_home,
         surface: "search-pipe",
         query: Some(&pipe_args.seed_query),
         candidates: &acquisition.candidates,
@@ -283,6 +288,8 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
         view: &pipe_args.view,
         include_pipe_plan: true,
         provider_facts: &provider_facts,
+        provider_context: context.provider_context,
+        config: context.config,
         read_memory_selectors: &read_loop_memory_selectors(
             context.cache_home,
             &project_root,
@@ -422,20 +429,46 @@ fn elapsed_millis(duration: Duration) -> u64 {
     duration.as_millis().try_into().unwrap_or(u64::MAX)
 }
 
-fn dependency_manifest_fast_acquisition(
-    language_id: &str,
-    project_root: &Path,
-    query: &str,
+struct DependencyManifestFastAcquisitionRequest<'a> {
+    language_id: &'a str,
+    project_root: &'a Path,
+    cache_home: &'a Path,
+    config: &'a AspConfig,
+    provider_context: Option<&'a ProviderGraphFactsContext<'a>>,
+    query: &'a str,
     source: SourceSpec,
-    view: &str,
+    view: &'a str,
+}
+
+fn dependency_manifest_fast_acquisition(
+    request: DependencyManifestFastAcquisitionRequest<'_>,
 ) -> Option<CandidateAcquisition> {
+    let DependencyManifestFastAcquisitionRequest {
+        language_id,
+        project_root,
+        cache_home,
+        config,
+        provider_context,
+        query,
+        source,
+        view,
+    } = request;
     if source != SourceSpec::Auto
         || view != "graph-turbo-request"
         || !is_single_dependency_query(query)
     {
         return None;
     }
-    let facts = collect_dependency_facts(language_id, project_root, Some(query), &[]);
+    let seed = collect_cached_dependency_facts(
+        language_id,
+        project_root,
+        cache_home,
+        config,
+        provider_context,
+        Some(query),
+        &[],
+    );
+    let facts = seed.facts;
     let matched_manifest_facts = facts
         .iter()
         .filter(|fact| fact.source == "manifest")
@@ -444,6 +477,9 @@ fn dependency_manifest_fast_acquisition(
     if matched_manifest_facts == 0 {
         return None;
     }
+    let mut manifest_fields = BTreeMap::new();
+    manifest_fields.insert("seedCache".to_string(), Value::from(seed.cache_status));
+    manifest_fields.insert("topology".to_string(), Value::from(seed.topology_source));
     Some(CandidateAcquisition {
         candidates: Vec::new(),
         candidate_sources: vec!["manifest".to_string(), "finder".to_string()],
@@ -454,7 +490,8 @@ fn dependency_manifest_fast_acquisition(
                 matched_manifest_facts,
                 0,
                 matched_manifest_facts,
-            ),
+            )
+            .with_fields(manifest_fields),
             SearchPipeSourceTrace::new("finder", "skipped", 0, 0, 0),
         ],
     })
@@ -542,130 +579,9 @@ fn run_reasoning_owner_tests_command(
     Ok(())
 }
 
-fn run_search_owner_items_query_command(
+fn run_search_ingest_command(
     args: &[String],
     context: &FastSearchContext<'_>,
-) -> Result<(), String> {
-    reject_non_graph_turbo_receipt(context.frontier_receipt)?;
-    let owner_query_args = parse_search_owner_items_query_args(args)?;
-    if owner_query_args.view != "seeds" {
-        return Err("search owner items fast path supports --view seeds".to_string());
-    }
-    if run_provider_owner_items_query(
-        context.language_id,
-        args,
-        &owner_query_args.owner,
-        context.project_root,
-        context.cache_home,
-        context.config,
-        context.provider_context,
-    )? {
-        return Ok(());
-    }
-    print!(
-        "{}",
-        render_owner_query_frontier(
-            context.language_id,
-            context.project_root,
-            context.locator_root,
-            &owner_query_args.owner,
-            &owner_query_args.query
-        )
-    );
-    Ok(())
-}
-
-fn run_provider_owner_items_query(
-    language_id: &str,
-    args: &[String],
-    owner: &Path,
-    project_root: &Path,
-    cache_home: &Path,
-    config: &AspConfig,
-    provider_context: Option<&ProviderGraphFactsContext<'_>>,
-) -> Result<bool, String> {
-    let Some(context) = provider_context else {
-        return Ok(false);
-    };
-    if !context.provider.search_capabilities.owner_items {
-        return Ok(false);
-    }
-    let existing_owner_path = owner_path_exists(project_root, owner);
-    let invocation = provider_invocation_with_profile(
-        context.profiles,
-        context.provider,
-        args,
-        project_root,
-        config,
-    )?;
-    let output = run_provider_command_with_stdin(
-        language_id,
-        context.provider,
-        &invocation,
-        project_root,
-        cache_home,
-        Vec::new(),
-    )?;
-    if !output.status.success() {
-        if existing_owner_path {
-            return Err(provider_owner_items_failure(
-                "provider-owned owner-items failed",
-                owner,
-                output.stderr.as_ref(),
-            ));
-        }
-        return Ok(false);
-    }
-    if output
-        .stdout
-        .iter()
-        .all(|byte| byte.is_ascii_whitespace() || *byte == 0)
-    {
-        if existing_owner_path {
-            return Err(provider_owner_items_failure(
-                "provider-owned owner-items produced empty output",
-                owner,
-                output.stderr.as_ref(),
-            ));
-        }
-        return Ok(false);
-    }
-    io::stderr()
-        .write_all(output.stderr.as_ref())
-        .map_err(|error| format!("failed to write provider stderr: {error}"))?;
-    io::stdout()
-        .write_all(output.stdout.as_ref())
-        .map_err(|error| format!("failed to write provider stdout: {error}"))?;
-    Ok(true)
-}
-
-fn owner_path_exists(project_root: &Path, owner: &Path) -> bool {
-    let path = if owner.is_absolute() {
-        owner.to_path_buf()
-    } else {
-        project_root.join(owner)
-    };
-    fs::metadata(path).is_ok()
-}
-
-fn provider_owner_items_failure(message: &str, owner: &Path, stderr: &[u8]) -> String {
-    let mut failure = format!("{message} for existing owner path `{}`", owner.display());
-    let provider_stderr = String::from_utf8_lossy(stderr).trim().to_string();
-    if !provider_stderr.is_empty() {
-        failure.push_str(": ");
-        failure.push_str(&provider_stderr);
-    }
-    failure
-}
-
-fn run_search_ingest_command(
-    language_id: &str,
-    args: &[String],
-    project_root: &Path,
-    locator_root: &Path,
-    config: &AspConfig,
-    provider_context: Option<&ProviderGraphFactsContext<'_>>,
-    frontier_receipt: Option<&GraphTurboReceiptRequest>,
 ) -> Result<(), String> {
     let ingest_args = parse_ingest_args(args)?;
     if !matches!(ingest_args.view.as_str(), "seeds" | "graph-turbo-request") {
@@ -679,22 +595,24 @@ fn run_search_ingest_command(
         .iter()
         .all(|byte| byte.is_ascii_whitespace() || *byte == 0)
     {
-        print!("{}", render_empty_ingest_diagnostic(language_id));
+        print!("{}", render_empty_ingest_diagnostic(context.language_id));
         return Ok(());
     }
-    let candidates = parse_ingest_candidates(project_root, locator_root, stdin.as_slice());
+    let candidates =
+        parse_ingest_candidates(context.project_root, context.locator_root, stdin.as_slice());
     let provider_facts = collect_provider_graph_facts(
-        language_id,
-        project_root,
+        context.language_id,
+        context.project_root,
         None,
         &candidates,
-        config,
-        provider_context,
+        context.config,
+        context.provider_context,
     )?;
     print_search_pipe_view(SearchPipeViewRequest {
-        language_id,
-        project_root,
-        locator_root,
+        language_id: context.language_id,
+        project_root: context.project_root,
+        locator_root: context.locator_root,
+        cache_home: context.cache_home,
         surface: "search-ingest",
         query: None,
         candidates: &candidates,
@@ -712,21 +630,15 @@ fn run_search_ingest_command(
         view: &ingest_args.view,
         include_pipe_plan: false,
         provider_facts: &provider_facts,
+        provider_context: context.provider_context,
+        config: context.config,
         read_memory_selectors: &[],
-        frontier_receipt,
+        frontier_receipt: context.frontier_receipt,
     })?;
     Ok(())
 }
 
-fn run_search_fzf_command(
-    language_id: &str,
-    args: &[String],
-    project_root: &Path,
-    locator_root: &Path,
-    config: &AspConfig,
-    provider_context: Option<&ProviderGraphFactsContext<'_>>,
-    frontier_receipt: Option<&GraphTurboReceiptRequest>,
-) -> Result<(), String> {
+fn run_search_fzf_command(args: &[String], context: &FastSearchContext<'_>) -> Result<(), String> {
     let pipe_args = parse_fzf_args(args)?;
     if !matches!(pipe_args.view.as_str(), "seeds" | "graph-turbo-request") {
         return Err(
@@ -736,7 +648,7 @@ fn run_search_fzf_command(
     if let Some(block) = search_query_budget_block(&pipe_args.query, &pipe_args.owners, false) {
         print_search_query_budget_block(
             "search-fzf",
-            language_id,
+            context.language_id,
             &pipe_args.query,
             None,
             &pipe_args.owners,
@@ -745,12 +657,12 @@ fn run_search_fzf_command(
         return Ok(());
     }
     let candidates = collect_candidates(
-        language_id,
-        project_root,
-        locator_root,
+        context.language_id,
+        context.project_root,
+        context.locator_root,
         &pipe_args.query,
         &pipe_args.owners,
-        config,
+        context.config,
     )?;
     let acquisition = CandidateAcquisition {
         candidate_sources: vec!["finder".to_string()],
@@ -768,17 +680,18 @@ fn run_search_fzf_command(
         candidates,
     };
     let provider_facts = collect_provider_graph_facts(
-        language_id,
-        project_root,
+        context.language_id,
+        context.project_root,
         Some(&pipe_args.query),
         &acquisition.candidates,
-        config,
-        provider_context,
+        context.config,
+        context.provider_context,
     )?;
     print_search_pipe_view(SearchPipeViewRequest {
-        language_id,
-        project_root,
-        locator_root,
+        language_id: context.language_id,
+        project_root: context.project_root,
+        locator_root: context.locator_root,
+        cache_home: context.cache_home,
         surface: "search-fzf",
         query: Some(&pipe_args.query),
         candidates: &acquisition.candidates,
@@ -790,138 +703,10 @@ fn run_search_fzf_command(
         view: &pipe_args.view,
         include_pipe_plan: false,
         provider_facts: &provider_facts,
+        provider_context: context.provider_context,
+        config: context.config,
         read_memory_selectors: &[],
-        frontier_receipt,
+        frontier_receipt: context.frontier_receipt,
     })?;
     Ok(())
-}
-
-fn run_search_failure_command(
-    language_id: &str,
-    args: &[String],
-    project_root: &Path,
-    locator_root: &Path,
-    cache_home: &Path,
-    config: &AspConfig,
-) -> Result<(), String> {
-    let failure_args = parse_failure_args(args)?;
-    if !matches!(failure_args.view.as_str(), "seeds" | "graph-turbo-request") {
-        return Err(
-            "search failure fast path supports --view seeds or --view graph-turbo-request"
-                .to_string(),
-        );
-    }
-    let message = if failure_args.from_last_check {
-        read_last_check_output(cache_home)?
-    } else {
-        failure_args
-            .message
-            .ok_or_else(|| "search failure requires --message or --from-last-check".to_string())?
-    };
-    if message.trim().is_empty() {
-        return Err("search failure requires non-empty failure text".to_string());
-    }
-    let candidate_query = failure_candidate_query(&message);
-    let candidates = collect_candidates(
-        language_id,
-        project_root,
-        locator_root,
-        &candidate_query,
-        &[],
-        config,
-    )?;
-    let rendered = if failure_args.view == "graph-turbo-request" {
-        render_failure_graph_turbo_request(
-            language_id,
-            project_root,
-            locator_root,
-            &message,
-            &candidates,
-        )?
-    } else {
-        render_failure_frontier(
-            language_id,
-            project_root,
-            locator_root,
-            &message,
-            &candidates,
-        )?
-    };
-    print!("{rendered}");
-    Ok(())
-}
-
-fn read_last_check_output(cache_home: &Path) -> Result<String, String> {
-    let path = cache_home
-        .join("agent-semantic-protocol")
-        .join("last-check-output.txt");
-    fs::read_to_string(&path).map_err(|error| {
-        format!(
-            "search failure --from-last-check could not read {}: {error}",
-            path.display()
-        )
-    })
-}
-
-fn failure_candidate_query(message: &str) -> String {
-    let mut terms = Vec::new();
-    for token in message
-        .split(|character: char| !failure_token_character(character))
-        .filter(|token| !token.is_empty())
-    {
-        if token.contains("::") {
-            if let Some(last) = token.rsplit("::").find(|part| !part.is_empty()) {
-                push_failure_candidate_term(&mut terms, last);
-            }
-        } else {
-            push_failure_candidate_term(&mut terms, token);
-        }
-    }
-    if terms.is_empty() {
-        return message.to_string();
-    }
-    terms.join(" ")
-}
-
-fn push_failure_candidate_term(terms: &mut Vec<String>, token: &str) {
-    let token = token.trim_matches([':', '.', ',', ';', '(', ')', '[', ']']);
-    let lower = token.to_ascii_lowercase();
-    if token.len() < 4
-        || failure_candidate_stop_word(&lower)
-        || !(token.contains('_') || token.contains('-'))
-    {
-        return;
-    }
-    if !terms.iter().any(|term| term == token) {
-        terms.push(token.to_string());
-    }
-}
-
-fn failure_candidate_stop_word(token: &str) -> bool {
-    matches!(
-        token,
-        "expected"
-            | "actual"
-            | "failure"
-            | "failed"
-            | "panic"
-            | "error"
-            | "status"
-            | "stdout"
-            | "stderr"
-            | "left"
-            | "right"
-            | "pass"
-            | "fail"
-            | "hit"
-            | "miss"
-            | "observed"
-            | "unknown"
-            | "request_fingerprint"
-            | "file_hash"
-    )
-}
-
-fn failure_token_character(character: char) -> bool {
-    character == '_' || character == '-' || character == ':' || character.is_ascii_alphanumeric()
 }

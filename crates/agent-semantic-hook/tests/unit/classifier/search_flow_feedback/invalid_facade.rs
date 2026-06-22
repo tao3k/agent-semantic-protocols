@@ -171,3 +171,55 @@ fn pre_tool_allows_install_plugin_codex_command_without_facade_feedback() {
     assert!(!decision.fields.contains_key("invalidFacade"));
     let _ = fs::remove_dir_all(project_root);
 }
+
+#[test]
+fn pre_tool_allows_sync_command_without_facade_feedback() {
+    let project_root = temp_project_root("asp-hook-root-sync-command");
+    let runtime = runtime_for_project(&project_root);
+
+    let decision = classify_hook(
+        &runtime,
+        "codex",
+        "pre-tool",
+        &json!({
+            "hook_event_name": "PreToolUse",
+            "session_id": "session-sync",
+            "transcript_path": "transcript-sync.jsonl",
+            "tool_name": "Bash",
+            "tool_input": {
+                "command": "asp sync ."
+            }
+        }),
+    );
+
+    assert_eq!(decision.decision, DecisionKind::Allow);
+    assert!(!decision.fields.contains_key("hookFeedback"));
+    assert!(!decision.fields.contains_key("invalidFacade"));
+    let _ = fs::remove_dir_all(project_root);
+}
+
+#[test]
+fn pre_tool_allows_paths_command_without_facade_feedback() {
+    let project_root = temp_project_root("asp-hook-root-paths-command");
+    let runtime = runtime_for_project(&project_root);
+
+    let decision = classify_hook(
+        &runtime,
+        "codex",
+        "pre-tool",
+        &json!({
+            "hook_event_name": "PreToolUse",
+            "session_id": "session-paths",
+            "transcript_path": "transcript-paths.jsonl",
+            "tool_name": "Bash",
+            "tool_input": {
+                "command": "asp paths --get projectRoot"
+            }
+        }),
+    );
+
+    assert_eq!(decision.decision, DecisionKind::Allow);
+    assert!(!decision.fields.contains_key("hookFeedback"));
+    assert!(!decision.fields.contains_key("invalidFacade"));
+    let _ = fs::remove_dir_all(project_root);
+}

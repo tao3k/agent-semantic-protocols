@@ -15,12 +15,8 @@ fn generated_activation_sync_refreshes_newly_available_parent_workspace_provider
     fs::create_dir_all(root.join(".bin")).expect("create workspace bin");
     fs::create_dir_all(child.join("src")).expect("create child src");
     fs::write(child.join("gerbil.pkg"), "(package: sample/gerbil)\n").expect("write gerbil.pkg");
-    fs::write(root.join("asp.toml"), "[providers]\n").expect("write workspace asp.toml");
-    fs::write(
-        child.join("asp.toml"),
-        "[providers.gerbil-scheme]\nenabled = false\n",
-    )
-    .expect("write initial child asp.toml");
+    write_agent_config(&root, "[providers]\n");
+    write_agent_config(&child, "[providers.gerbil-scheme]\nenabled = false\n");
     let asp_bin = root.join(".bin/asp");
     fs::write(&asp_bin, "#!/bin/sh\nexit 0\n").expect("write asp bin");
     make_executable(&asp_bin);
@@ -34,7 +30,8 @@ fn generated_activation_sync_refreshes_newly_available_parent_workspace_provider
     );
     write_activation(&activation_path, &initial_activation).expect("write old activation");
 
-    fs::remove_file(child.join("asp.toml")).expect("enable default child providers");
+    fs::remove_file(child.join(".agents").join("asp.toml"))
+        .expect("enable default child providers");
     let gerbil_bin = root.join(".bin/gslph");
     fs::write(&gerbil_bin, "#!/bin/sh\nexit 0\n").expect("write gerbil provider bin");
     make_executable(&gerbil_bin);
@@ -49,6 +46,46 @@ fn generated_activation_sync_refreshes_newly_available_parent_workspace_provider
     );
     let refreshed_activation = fs::read_to_string(&activation_path).expect("read refreshed");
     assert!(refreshed_activation.contains("\"languageId\": \"gerbil-scheme\""));
+
+    fs::remove_dir_all(root).expect("remove temp root");
+}
+
+#[test]
+fn generated_activation_sync_migrates_legacy_top_level_asp_toml() {
+    let root = temp_root("legacy-top-level-migration");
+    fs::create_dir_all(root.join(".bin")).expect("create bin dir");
+    let asp_bin = root.join(".bin/asp");
+    fs::write(&asp_bin, "#!/bin/sh\nexit 0\n").expect("write asp bin");
+    make_executable(&asp_bin);
+    let activation_path = default_activation_path(&root);
+    let activation = build_default_activation(&root).expect("build activation");
+    assert!(
+        activation
+            .providers
+            .iter()
+            .any(|provider| provider.language_id == "org")
+    );
+    write_activation(&activation_path, &activation).expect("write old activation");
+    fs::write(root.join("asp.toml"), "[providers.org]\nenabled = false\n")
+        .expect("write legacy asp.toml");
+
+    let runtime = load_or_sync_activation(&activation_path, &root).expect("sync activation");
+
+    assert!(
+        !runtime
+            .providers
+            .iter()
+            .any(|provider| provider.language_id == "org"),
+        "sync should migrate legacy top-level asp.toml before provider selection"
+    );
+    assert!(
+        !root.join("asp.toml").exists(),
+        "legacy top-level asp.toml should be removed during migration"
+    );
+    assert!(
+        root.join(".agents").join("asp.toml").is_file(),
+        "canonical .agents/asp.toml should receive migrated provider config"
+    );
 
     fs::remove_dir_all(root).expect("remove temp root");
 }
@@ -114,4 +151,11 @@ fn generated_activation_sync_refreshes_stale_manifest_coverage_defaults() {
     );
 
     fs::remove_dir_all(root).expect("remove temp root");
+}
+
+fn write_agent_config(root: &std::path::Path, contents: &str) {
+    let config_path = root.join(".agents").join("asp.toml");
+    fs::create_dir_all(config_path.parent().expect("agent config parent"))
+        .expect("create agent config parent");
+    fs::write(&config_path, contents).expect("write .agents/asp.toml");
 }

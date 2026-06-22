@@ -20,10 +20,47 @@ class LanguageSchemaProfile:
         return tuple(sorted({*self.shared_schema_files, *self.provider_schema_files}))
 
 
+_PRIVATE_SCHEMA_OWNERS = {
+    "semantic-org-elements-query-packet.v1.schema.json": "org",
+    "semantic-gerbil-scheme-harness-info.v1.schema.json": "gerbil-scheme",
+    "python-semantic-capabilities.v1.schema.json": "python",
+    "rust-ast-patch-real-project-evidence.v1.schema.json": "rust",
+    "rust-semantic-capabilities.v1.schema.json": "rust",
+    "typescript-semantic-capabilities.v1.schema.json": "typescript",
+}
+
+
+def schema_private_owner(schema_name: str) -> str | None:
+    """Return the provider language that owns a private schema name, if known."""
+
+    return _PRIVATE_SCHEMA_OWNERS.get(schema_name)
+
+
+def schema_profile_contract_errors(
+    profiles: Iterable[LanguageSchemaProfile],
+) -> tuple[str, ...]:
+    """Validate that package profiles do not downsync another provider's schema."""
+
+    errors: list[str] = []
+    for profile in profiles:
+        for schema_name in profile.shared_schema_files:
+            owner = schema_private_owner(schema_name)
+            if owner is not None:
+                errors.append(
+                    f"{profile.language_id}: shared-schema-owned-by-{owner} {schema_name}"
+                )
+        for schema_name in profile.provider_schema_files:
+            owner = schema_private_owner(schema_name)
+            if owner is not None and owner != profile.language_id:
+                errors.append(
+                    f"{profile.language_id}: provider-schema-owned-by-{owner} {schema_name}"
+                )
+    return tuple(errors)
+
+
 _CORE_QUERY_SCHEMAS = (
     "semantic-search-packet.v1.schema.json",
     "semantic-query-packet.v1.schema.json",
-    "semantic-org-elements-query-packet.v1.schema.json",
     "semantic-content-compaction.v1.schema.json",
     "semantic-read-packet.v1.schema.json",
     "semantic-source-location.v1.schema.json",
@@ -69,9 +106,11 @@ LANGUAGE_SCHEMA_PROFILES: tuple[LanguageSchemaProfile, ...] = (
             "semantic-invariant-candidate.v1.schema.json",
             *_AGENT_REASONING_SCHEMAS,
             "semantic-compare-packet.v1.schema.json",
-            "rust-ast-patch-real-project-evidence.v1.schema.json",
         ),
-        provider_schema_files=("rust-semantic-capabilities.v1.schema.json",),
+        provider_schema_files=(
+            "rust-ast-patch-real-project-evidence.v1.schema.json",
+            "rust-semantic-capabilities.v1.schema.json",
+        ),
     ),
     LanguageSchemaProfile(
         language_id="typescript",

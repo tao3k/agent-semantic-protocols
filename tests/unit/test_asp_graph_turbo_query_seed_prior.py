@@ -6,8 +6,8 @@ from scipy.sparse import csr_matrix
 from asp_graph_turbo import TypedGraph, rank_frontier, result_to_packet
 from asp_graph_turbo.backend import sparse_backend_from_parts
 from asp_graph_turbo.pagerank import graph_turbo_typed_personalized_pagerank_result
+from asp_graph_turbo.query_clause_coverage import query_clause_coverage_adjustment
 from asp_graph_turbo.query_weights import (
-    query_clause_coverage_adjustment,
     query_package_cohesion_adjustment,
     query_seed_personalization_weights,
 )
@@ -240,12 +240,10 @@ def test_clause_coverage_requires_package_path_for_package_clause() -> None:
                     "role": "symbol",
                     "value": "queryClauses coverage typed graph request",
                     "path": (
-                        "packages/python/asp_graph_turbo/src/"
-                        "asp_graph_turbo/cli.py"
+                        "packages/python/asp_graph_turbo/src/asp_graph_turbo/cli.py"
                     ),
                     "ownerPath": (
-                        "packages/python/asp_graph_turbo/src/"
-                        "asp_graph_turbo/cli.py"
+                        "packages/python/asp_graph_turbo/src/asp_graph_turbo/cli.py"
                     ),
                     "symbol": "queryClauses",
                 },
@@ -266,11 +264,14 @@ def test_clause_coverage_requires_package_path_for_package_clause() -> None:
         )
         == 0.0
     )
-    assert query_clause_coverage_adjustment(
-        profile_name="owner-query",
-        query_clauses=clauses,
-        node=graph.nodes["item:python-clause-path"],
-    ) > 0.0
+    assert (
+        query_clause_coverage_adjustment(
+            profile_name="owner-query",
+            query_clauses=clauses,
+            node=graph.nodes["item:python-clause-path"],
+        )
+        > 0.0
+    )
 
 
 def test_query_clauses_rank_multi_clause_package_evidence_above_single_clause() -> None:
@@ -346,12 +347,12 @@ def test_query_clauses_rank_multi_clause_package_evidence_above_single_clause() 
         for explanation in packet["rankExplanations"]
     }
 
-    assert result.scores["item:package-and-request"] > result.scores["item:package-only"]
+    assert (
+        result.scores["item:package-and-request"] > result.scores["item:package-only"]
+    )
     assert packet["algorithmMetrics"]["queryPackageCohesionCount"] >= 2
     assert packet["algorithmMetrics"]["queryClauseCoverageCount"] == 1
-    assert any(
-        step["step"] == "query-adjustments" for step in packet["algorithmTrace"]
-    )
+    assert any(step["step"] == "query-adjustments" for step in packet["algorithmTrace"])
     assert "query-clause-coverage:+0.30" in explanations["item:package-and-request"]
 
 

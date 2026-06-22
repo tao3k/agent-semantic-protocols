@@ -10,7 +10,7 @@ mod hook_runtime_stdin;
 mod hook_runtime_subagent;
 
 use super::{
-    codex_enforcement_report, ensure_protocol_binary_installed_for_path,
+    codex_enforcement_report, ensure_protocol_binary_installed_for_path, org_capture,
     payload_indicates_subagent_context, protocol_binary_on_path,
 };
 use agent_semantic_hook::{
@@ -23,15 +23,22 @@ use agent_semantic_hook::{
     default_claude_settings_path, default_client_config_path,
     default_client_config_template_for_source_extensions, default_hook_trigger_prompt_message,
     discover_activation_path, has_recorded_subagent_context, load_activation, load_client_config,
-    load_or_refresh_default_activation, load_or_sync_activation, merge_claude_settings,
-    merge_hook_trigger_prompt_document, parse_payload, record_active_context,
-    remove_incompatible_hook_event_state, remove_retired_codex_hook_cache_files,
-    render_hook_trigger_prompt_document, render_platform_response, runtime_profiles_for_activation,
-    runtime_profiles_for_runtime, subagent_deny_message, validate_claude_settings_json,
+    load_client_config_for_project, load_or_refresh_default_activation, load_or_sync_activation,
+    merge_claude_settings, merge_hook_trigger_prompt_document, parse_payload,
+    record_active_context, remove_incompatible_hook_event_state,
+    remove_retired_codex_hook_cache_files, render_hook_trigger_prompt_document,
+    render_platform_response, runtime_profiles_for_activation, runtime_profiles_for_runtime,
+    subagent_deny_message, validate_claude_settings_json,
 };
-use agent_semantic_runtime::{project_activation_path, project_state_paths};
-use hook_runtime_codex_plugin::{codex_plugin_scope_arg, install_codex_plugin_hooks};
-use hook_runtime_skill::install_agent_semantic_protocols_skill;
+use agent_semantic_runtime::{project_activation_path, project_runtime_state, project_state_paths};
+use hook_runtime_codex_plugin::{
+    CodexPluginScope, codex_plugin_scope_arg, codex_project_plugin_cache_skill_path,
+    install_codex_plugin_hooks, sync_codex_project_plugin_cache,
+};
+use hook_runtime_skill::{
+    install_agent_semantic_protocols_agent_config, install_agent_semantic_protocols_plugin_skill,
+    install_agent_semantic_protocols_skill,
+};
 use hook_runtime_stdin::read_hook_stdin_bounded;
 use hook_runtime_subagent::{install_claude_asp_explorer_agent, subagent_model_arg};
 use std::collections::BTreeMap;
@@ -110,7 +117,7 @@ fn run_hook(args: &[String]) -> Result<(), String> {
     let config_path = flag_value(args, "--config")
         .map(PathBuf::from)
         .unwrap_or_else(|| default_client_config_path(&project_root.to_string_lossy()));
-    let hook_config = match load_client_config(&config_path) {
+    let hook_config = match load_client_config_for_project(&config_path, &project_root) {
         Ok(config) => config,
         Err(error) => {
             emit_hook_config_load_failure(client, event, emit, &config_path, &error)?;
@@ -504,12 +511,16 @@ fn run_doctor(args: &[String]) -> Result<(), String> {
     let config = fs::read_to_string(&config_path).unwrap_or_default();
     let client_config_path = default_client_config_path(&project_root.to_string_lossy());
     let hook_config = if client_config_path.is_file() {
-        Some(load_client_config(&client_config_path).map_err(|error| {
-            format!(
-                "invalid client hook config {}: {error}",
-                display_path(&project_root, &client_config_path)
-            )
-        })?)
+        Some(
+            load_client_config_for_project(&client_config_path, &project_root).map_err(
+                |error| {
+                    format!(
+                        "invalid client hook config {}: {error}",
+                        display_path(&project_root, &client_config_path)
+                    )
+                },
+            )?,
+        )
     } else {
         None
     };
@@ -717,6 +728,10 @@ fn run_install_for_client(
         subagent_model_arg(client, optional_flag_value(args, "--subagent-model")?)?;
     let project_root = project_root_arg(args)?;
     timings.mark("args");
+    let runtime_state = project_runtime_state(&project_root)?;
+    timings.mark("runtime-state");
+    let org_state_sync = org_capture::run_org_state_sync(&project_root)?;
+    timings.mark("org-state");
     let binary_install = ensure_protocol_binary_installed_for_path()?;
     timings.mark("binary");
     remove_retired_codex_hook_cache_files(&project_root)?;
@@ -739,12 +754,27 @@ fn run_install_for_client(
         _ => unreachable!("client support checked before install"),
     };
     timings.mark("project-hooks");
-    let installed_skill = Some(install_agent_semantic_protocols_skill(
-        &project_root,
-        &activation,
-        &runtime_profiles,
-    )?);
+    let agent_config_path = install_agent_semantic_protocols_agent_config(&project_root)?;
+    timings.mark("agent-config");
+    let installed_skill = Some(match client {
+        "codex" => install_agent_semantic_protocols_plugin_skill(
+            &project_root,
+            &activation,
+            &runtime_profiles,
+        )?,
+        "claude" => {
+            install_agent_semantic_protocols_skill(&project_root, &activation, &runtime_profiles)?
+        }
+        _ => unreachable!("client support checked before install"),
+    });
     timings.mark("skill");
+    let plugin_cache_path =
+        if client == "codex" && matches!(codex_plugin_scope, CodexPluginScope::Project) {
+            sync_codex_project_plugin_cache(&project_root)?
+        } else {
+            None
+        };
+    timings.mark("plugin-cache");
     let project_skill_receipt = installed_skill
         .as_ref()
         .and_then(|installed_skill| {
@@ -761,31 +791,35 @@ fn run_install_for_client(
             )
         })
         .unwrap_or_default();
-    let plugin_skill_receipt = installed_skill
-        .as_ref()
-        .and_then(|installed_skill| {
+    let plugin_skill_path =
+        if client == "codex" && matches!(codex_plugin_scope, CodexPluginScope::Project) {
+            Some(codex_project_plugin_cache_skill_path(&project_root)?)
+        } else {
             installed_skill
-                .plugin_skill_path
                 .as_ref()
-                .zip(installed_skill.plugin_skill_contract_path.as_ref())
-        })
-        .map(|(skill_path, skill_contract_path)| {
-            format!(
-                " pluginSkill={} pluginSkillContract={}",
-                display_path(&project_root, skill_path),
-                display_path(&project_root, skill_contract_path)
-            )
-        })
+                .and_then(|installed_skill| installed_skill.plugin_skill_path.clone())
+        };
+    let plugin_skill_receipt = plugin_skill_path
+        .as_ref()
+        .map(|skill_path| format!(" pluginSkill={}", display_path(&project_root, skill_path),))
+        .unwrap_or_default();
+    let plugin_cache_receipt = plugin_cache_path
+        .as_ref()
+        .map(|cache_path| format!(" pluginCache={}", display_path(&project_root, cache_path)))
         .unwrap_or_default();
     println!(
-        "[{receipt_label}] client={client} activation={} activationRuntime=derived activationSync={} clientConfig={} config={}{}{}{} binary=asp binaryPath={} binaryInstall={} mode=updated",
+        "[{receipt_label}] client={client} activation={} activationRuntime=derived activationSync={} clientConfig={} agentConfig={} orgState={} orgStateSync={} config={}{}{}{}{} binary=asp binaryPath={} binaryInstall={} mode=updated",
         display_path(&project_root, &activation_path),
         activation_status,
         display_path(&project_root, &client_config_path),
+        display_path(&project_root, &agent_config_path),
+        display_path(&project_root, &runtime_state.protocol_home.join("org")),
+        org_state_sync.status,
         display_path(&project_root, &config_path),
         extra_config_receipt,
         project_skill_receipt,
         plugin_skill_receipt,
+        plugin_cache_receipt,
         binary_install.path.display(),
         binary_install.status,
     );

@@ -13,6 +13,7 @@ sys.path.insert(0, str(_ROOT / "packages/python/src"))
 from tools.schema_profiles import (  # noqa: E402
     LANGUAGE_SCHEMA_PROFILES,
     assert_language_schema_profiles,
+    schema_profile_contract_errors,
 )
 
 
@@ -34,3 +35,7 @@ def test_language_package_profiled_schema_copies_match_protocol_root() -> None:
 
 def test_language_package_schema_directories_match_profiles() -> None:
     assert_language_schema_profiles(_ROOT)
+
+
+def test_language_package_schema_profiles_do_not_downsync_private_schemas() -> None:
+    assert schema_profile_contract_errors(LANGUAGE_SCHEMA_PROFILES) == ()

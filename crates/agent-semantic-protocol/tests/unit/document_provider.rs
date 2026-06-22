@@ -111,8 +111,11 @@ fn markdown_query_skips_hidden_directories_by_default() {
 #[test]
 fn markdown_query_can_include_configured_hidden_directories() {
     let root = temp_project_root("md-query-hidden-dir-config");
+    let config_path = root.join(".agents").join("asp.toml");
+    std::fs::create_dir_all(config_path.parent().expect("agent config parent"))
+        .expect("create agent config parent");
     std::fs::write(
-        root.join("asp.toml"),
+        &config_path,
         "[discovery]\nincludeHiddenDirNames = [\".cache\"]\n",
     )
     .expect("write asp config");

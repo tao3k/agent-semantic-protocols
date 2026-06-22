@@ -7,6 +7,7 @@ mod guide_gerbil;
 mod ingest;
 mod options;
 mod owner_items_gerbil;
+mod owner_items_python;
 mod owner_items_rust;
 mod owner_items_typescript;
 mod pipe_frontier;

@@ -30,6 +30,10 @@ REQUIRED_RECEIPT_METRICS = (
     "elapsedMs",
     "stdoutBytes",
     "stderrBytes",
+    "queryTopologyMembershipCandidateCount",
+    "queryTopologyMembershipCoverageRate",
+    "queryTopologyMembershipDriftRate",
+    "queryTopologyMembershipDelta",
 )
 REQUIRED_ANSWER_METRICS = (
     "finalAnswerStatus",

@@ -24,6 +24,7 @@ pub(super) struct ProviderGraphFacts {
 pub(super) struct ProviderGraphFactsContext<'a> {
     pub(super) provider: &'a ActivatedProvider,
     pub(super) profiles: &'a RuntimeProfiles,
+    pub(super) provider_bin_root: &'a Path,
     pub(super) cache_home: &'a Path,
 }
 
@@ -58,7 +59,7 @@ pub(super) fn collect_provider_graph_facts(
         context.profiles,
         context.provider,
         &args,
-        project_root,
+        context.provider_bin_root,
         config,
     )?;
     let output = run_provider_command_with_stdin(

@@ -29,16 +29,20 @@ _DEFAULT_FRONTIER_ACTIONS = {
     "key": "evidence",
     "owner": "owner",
     "package": "package",
+    "project": "evidence",
+    "provider-root": "evidence",
     "query": "fzf",
     "range": "code",
     "review-action": "evidence",
     "review-packet": "evidence",
+    "submodule": "evidence",
     "symbol": "code",
     "test": "tests",
     "type": "code",
     "verification-receipt": "evidence",
     "waiver": "evidence",
     "window": "code",
+    "workspace": "evidence",
 }
 
 
@@ -103,6 +107,8 @@ DEFAULT_PROFILES: dict[str, GraphProfile] = {
                 "calls",
                 "covers",
                 "covered_by",
+                "has_provider_root",
+                "has_submodule",
                 "has_type",
                 "collection_of",
             }
@@ -110,9 +116,17 @@ DEFAULT_PROFILES: dict[str, GraphProfile] = {
         allowed_transitions=_transitions(
             (
                 ("query", "item"),
+                ("query", "owner"),
                 ("query", "field"),
                 ("query", "type"),
                 ("query", "collection"),
+                ("query", "workspace"),
+                ("query", "submodule"),
+                ("query", "provider-root"),
+                ("workspace", "provider-root"),
+                ("workspace", "submodule"),
+                ("provider-root", "owner"),
+                ("submodule", "owner"),
                 ("owner", "item"),
                 ("owner", "field"),
                 ("item", "hot"),

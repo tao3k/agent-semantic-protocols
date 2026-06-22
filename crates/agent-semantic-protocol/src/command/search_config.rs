@@ -55,11 +55,12 @@ impl AspConfig {
     pub(super) fn load(invocation_root: &Path, activation_root: &Path) -> Self {
         let mut config = Self::default();
         for root in config_roots(invocation_root, activation_root) {
-            let path = root.join("asp.toml");
-            let Ok(text) = fs::read_to_string(&path) else {
-                continue;
-            };
-            config.merge_text(&text);
+            for path in config_paths(root) {
+                let Ok(text) = fs::read_to_string(&path) else {
+                    continue;
+                };
+                config.merge_text(&text);
+            }
         }
         config
     }
@@ -155,6 +156,10 @@ fn config_roots<'a>(invocation_root: &'a Path, activation_root: &'a Path) -> Vec
     } else {
         vec![activation_root, invocation_root]
     }
+}
+
+fn config_paths(root: &Path) -> [std::path::PathBuf; 2] {
+    [root.join("asp.toml"), root.join(".agents").join("asp.toml")]
 }
 
 fn parse_bool(value: &str) -> Option<bool> {

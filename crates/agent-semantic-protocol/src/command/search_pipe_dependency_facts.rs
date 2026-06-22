@@ -21,15 +21,22 @@ pub(super) struct DependencyFact {
     pub(super) source: &'static str,
 }
 
-pub(super) fn collect_dependency_facts(
+pub(super) fn collect_manifest_dependency_facts(
     language_id: &str,
     project_root: &Path,
-    query: Option<&str>,
-    candidates: &[Candidate],
 ) -> Vec<DependencyFact> {
     let mut seen_facts = HashSet::new();
     let mut facts = Vec::new();
     push_manifest_dependency_facts(language_id, project_root, &mut seen_facts, &mut facts);
+    facts
+}
+
+pub(super) fn append_usage_dependency_facts(
+    language_id: &str,
+    candidates: &[Candidate],
+    seen_facts: &mut HashSet<String>,
+    facts: &mut Vec<DependencyFact>,
+) {
     for candidate in candidates {
         push_dependency_fact(
             language_id,
@@ -37,13 +44,30 @@ pub(super) fn collect_dependency_facts(
             &candidate.text,
             None,
             "usage",
-            &mut seen_facts,
-            &mut facts,
+            seen_facts,
+            facts,
         );
         if facts.len() >= DEPENDENCY_FACT_LIMIT {
             break;
         }
     }
+}
+
+pub(super) fn candidate_usage_dependency_matches_query(
+    language_id: &str,
+    candidates: &[Candidate],
+    query: &str,
+) -> bool {
+    candidates
+        .iter()
+        .filter_map(|candidate| dependency_from_line(language_id, &candidate.text))
+        .any(|dependency| dependency_matches_query(&dependency, query))
+}
+
+pub(super) fn rank_filter_truncate_dependency_facts(
+    facts: &mut Vec<DependencyFact>,
+    query: Option<&str>,
+) {
     if let Some(query) = query {
         facts.sort_by_key(|fact| dependency_fact_rank(fact, query));
         if facts
@@ -54,7 +78,6 @@ pub(super) fn collect_dependency_facts(
         }
     }
     facts.truncate(DEPENDENCY_FACT_LIMIT);
-    facts
 }
 
 pub(super) fn dependency_matches_query(dependency: &str, query: &str) -> bool {

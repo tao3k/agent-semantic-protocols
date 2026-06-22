@@ -18,6 +18,7 @@ pub(super) struct ProviderBinaryInvocation {
 
 pub(super) fn resolve_provider_binary_install_target(
     configured_bin: Option<&str>,
+    env_bin_dir: Option<&Path>,
     language_id: &str,
     provider_binary: &str,
     project_root: &Path,
@@ -31,6 +32,12 @@ pub(super) fn resolve_provider_binary_install_target(
             home_dir,
             path_dirs,
         );
+    }
+    if let Some(env_bin_dir) = env_bin_dir {
+        return Ok(ProviderBinaryInstallTarget {
+            path: env_bin_dir.join(provider_binary),
+            source: "semantic-agent-bin-dir",
+        });
     }
     if let Some(home_dir) = home_dir {
         return Ok(ProviderBinaryInstallTarget {
@@ -71,18 +78,24 @@ pub(super) fn resolve_provider_binary_invocation(
         )
         .map(Some);
     }
-    if let Some(home_bin) = home_local_bin(provider_binary, home_dir)
-        && home_bin.is_file()
-    {
+    if let Some(project_bin) = project_local_bin(provider_binary, project_root) {
         return Ok(Some(ProviderBinaryInvocation {
-            command: home_bin.to_string_lossy().to_string(),
-            source: "home-local-bin",
+            command: project_bin.to_string_lossy().to_string(),
+            source: "project-bin",
         }));
     }
     if let Some(existing) = provider_binary_on_path(provider_binary, path_dirs) {
         return Ok(Some(ProviderBinaryInvocation {
             command: existing.to_string_lossy().to_string(),
             source: "path-existing",
+        }));
+    }
+    if let Some(home_bin) = home_local_bin(provider_binary, home_dir)
+        && home_bin.is_file()
+    {
+        return Ok(Some(ProviderBinaryInvocation {
+            command: home_bin.to_string_lossy().to_string(),
+            source: "home-local-bin",
         }));
     }
     Ok(None)
@@ -96,7 +109,7 @@ fn resolve_configured_provider_binary_install_target(
 ) -> Result<ProviderBinaryInstallTarget, String> {
     let configured_bin = configured_bin.trim();
     if configured_bin.is_empty() {
-        return Err("asp.toml provider bin must not be empty".to_string());
+        return Err(".agents/asp.toml provider bin must not be empty".to_string());
     }
     let configured_path = Path::new(configured_bin);
     let path = if configured_path.is_absolute() {
@@ -111,7 +124,7 @@ fn resolve_configured_provider_binary_install_target(
         writable_dir.join(configured_path)
     } else {
         return Err(format!(
-            "no install target for asp.toml provider bin `{configured_bin}`; set HOME or put a writable directory on PATH"
+            "no install target for .agents/asp.toml provider bin `{configured_bin}`; set HOME or put a writable directory on PATH"
         ));
     };
     Ok(ProviderBinaryInstallTarget {
@@ -136,9 +149,9 @@ fn resolve_configured_provider_binary_invocation(
     } else if configured_path.components().count() > 1 {
         project_root.join(configured_path)
     } else {
-        home_local_bin(configured_bin, home_dir)
-            .filter(|path| path.is_file())
+        project_local_bin(configured_bin, project_root)
             .or_else(|| provider_binary_on_path(configured_bin, path_dirs))
+            .or_else(|| home_local_bin(configured_bin, home_dir).filter(|path| path.is_file()))
             .unwrap_or_else(|| configured_path.to_path_buf())
     };
     Ok(ProviderBinaryInvocation {
@@ -164,8 +177,19 @@ fn home_local_bin(binary: &str, home_dir: Option<&Path>) -> Option<PathBuf> {
     home_dir.map(|home_dir| home_dir.join(".local/bin").join(binary))
 }
 
+fn project_local_bin(binary: &str, project_root: &Path) -> Option<PathBuf> {
+    let path = project_root.join(".bin").join(binary);
+    path.is_file().then_some(path)
+}
+
 pub(super) fn home_dir() -> Option<PathBuf> {
     env::var_os("HOME")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+}
+
+pub(super) fn semantic_agent_bin_dir() -> Option<PathBuf> {
+    env::var_os("SEMANTIC_AGENT_BIN_DIR")
         .filter(|value| !value.is_empty())
         .map(PathBuf::from)
 }

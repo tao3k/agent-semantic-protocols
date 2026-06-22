@@ -427,7 +427,14 @@ fn search_pipe_does_not_call_provider_facts_without_capability() {
 #[test]
 fn search_pipe_generic_action_query_skips_source_index_inside_phase_gate() {
     let root = temp_project_root("search-pipe-source-index-generic-action-gate");
+    let bin_dir = root.join(".bin");
+    let provider_path = bin_dir.join("rs-harness");
     write_regular_search_fixtures(&root);
+    write_echo_provider(&bin_dir, "rs-harness", "rs");
+    write_activation(
+        &root,
+        &[provider("rust", vec![provider_path.display().to_string()])],
+    );
     agent_semantic_client::refresh_source_index(&root).expect("refresh source index");
 
     let output = asp_command(&root)

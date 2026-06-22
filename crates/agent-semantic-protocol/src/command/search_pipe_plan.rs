@@ -23,6 +23,7 @@ pub(super) struct SearchPipePlanRequest<'a> {
     pub(super) ranked_compact: Option<&'a str>,
     pub(super) seed_action_intents: &'a [SeedActionIntent],
     pub(super) read_memory_selectors: &'a [String],
+    pub(super) dependency_action_targets: &'a [String],
 }
 
 pub(super) fn render_search_pipe_plan(request: SearchPipePlanRequest<'_>) -> String {
@@ -37,6 +38,7 @@ pub(super) fn render_search_pipe_plan(request: SearchPipePlanRequest<'_>) -> Str
         ranked_compact,
         seed_action_intents,
         read_memory_selectors,
+        dependency_action_targets,
     } = request;
     let mut quality = precomputed_quality
         .unwrap_or_else(|| analyze_search_pipe_quality(language_id, query, candidates));
@@ -62,7 +64,9 @@ pub(super) fn render_search_pipe_plan(request: SearchPipePlanRequest<'_>) -> Str
     } else {
         Vec::new()
     };
-    let fd_preview = if !quality.allow_query_selector {
+    let fd_preview = if !quality.allow_query_selector
+        && !skip_fd_preview_for_action_meta_query(&quality, candidates)
+    {
         fd_query_preview_from_candidates(candidates).or_else(|| {
             quality
                 .fd_query
@@ -84,14 +88,37 @@ pub(super) fn render_search_pipe_plan(request: SearchPipePlanRequest<'_>) -> Str
         fd_preview: fd_preview.as_ref(),
         seed_action_intents,
         read_memory_selectors,
+        dependency_action_targets,
     });
     format!(
         "seedPlan=seed-query alg=asp-search-pipe-v2 budget=frontier<=3 repeated=0\n\
 {action_frontier_lines}\
-nextClasses=fd-query,rg-query,owner-items,treesitter-query,query-selector\n\
+nextClasses=search-deps,fd-query,rg-query,owner-items,treesitter-query,query-selector\n\
 omit=source,full-candidate-list,raw-finder-output,generated-files,long-field-signatures\n\
 avoid=repeat-search-pipe,broad-fzf,raw-rg,manual-window-scan,direct-source-read,raw-read\n",
     )
+}
+
+fn skip_fd_preview_for_action_meta_query(
+    quality: &SearchPipeQuality,
+    candidates: &[Candidate],
+) -> bool {
+    candidates.is_empty()
+        && quality.global_matched.is_empty()
+        && quality.owner_seed_terms.is_empty()
+        && !quality.concept_terms.is_empty()
+        && quality.concept_terms.iter().all(|term| {
+            matches!(
+                term.as_str(),
+                "fd-query"
+                    | "rg-query"
+                    | "rg-query-set"
+                    | "owner-items"
+                    | "selector-code"
+                    | "treesitter-query"
+                    | "query-selector"
+            )
+        })
 }
 
 fn compact_has_provider_semantic_answer(query: &str, compact: &str) -> bool {

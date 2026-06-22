@@ -35,6 +35,7 @@ Text-flow evidence such as =surface=source|test=, =ownerRole=, and bounded
 token.
 
 For Rust, the path context resolver is Cargo-owned. The provider identifies the top-level package or workspace member from =Cargo.toml=, then uses =cargo metadata= and lockfile facts to derive dependency topology, including registry, git, and path dependency source roots. These roots become incremental index inputs for code and documentation search surfaces such as =crate-source=, =docs-use=, =fd=, =rg=, and =exa= wrappers. Topology is the project map and routing index for those surfaces; it must not be replaced by hard-coded crate capability tables or ecosystem-specific symbol lists.
+Language providers expose lightweight package-manager and parser interface facts; ASP owns the heavier topology/index computation that consumes those facts. For dependency search this means a Rust provider may emit manifest dependency facts, lockfile/version facts, package roots, source roots, and typed next actions such as =dependency-topology=, =crate-source=, =docs-use=, and =import=. It must not rebuild ASP-owned reasoning trees, source symbol indexes, documentation indexes, or dependency source indexes merely to answer the first dependency seed. Those indexes are cacheable ASP topology artifacts keyed by provider/package-manager facts.
 ** What path context covers (and what it does not)
 
 Path context is provider-owned setup for search packets, not a standalone

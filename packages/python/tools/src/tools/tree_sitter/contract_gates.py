@@ -156,12 +156,15 @@ class _runtime_env:
         self._tmp = tempfile.TemporaryDirectory()
         shim_dir = Path(self._tmp.name)
         try:
-            self._asp_toml_backup = _backup_runtime_file(shim_dir, ROOT / "asp.toml")
+            self._asp_toml_backup = _backup_runtime_file(
+                shim_dir,
+                ROOT / ".agents/asp.toml",
+            )
             self._hook_config_backup = _backup_runtime_file(
                 shim_dir,
                 ROOT / ".codex/agent-semantic-protocol/hooks/config.toml",
             )
-            (ROOT / "asp.toml").write_text(_CORE_FAST_ASP_TOML, encoding="utf-8")
+            (ROOT / ".agents/asp.toml").write_text(_CORE_FAST_ASP_TOML, encoding="utf-8")
             _write_shim(
                 shim_dir / "rs-harness",
                 f'exec "{ROOT}/languages/rust-lang-project-harness/target/debug/rs-harness" "$@"\n',
@@ -184,7 +187,7 @@ class _runtime_env:
             raise
 
     def __exit__(self, *_exc: object) -> None:
-        _restore_runtime_file(ROOT / "asp.toml", self._asp_toml_backup)
+        _restore_runtime_file(ROOT / ".agents/asp.toml", self._asp_toml_backup)
         _restore_runtime_file(
             ROOT / ".codex/agent-semantic-protocol/hooks/config.toml",
             self._hook_config_backup,

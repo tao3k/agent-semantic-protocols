@@ -208,8 +208,8 @@ pub(super) fn render_graph_turbo_value_rust_compact(packet: &Value) -> Result<Ve
         .and_then(Value::as_array)
         .map(Vec::as_slice)
         .unwrap_or(&[]);
-    let alias_map = compact_node_aliases(&nodes);
-    let alias_index = compact_alias_index(&nodes, &alias_map);
+    let alias_map = compact_node_aliases(nodes);
+    let alias_index = compact_alias_index(nodes, &alias_map);
     let mut output = String::new();
     output.push_str(&format!(
         "[graph-frontier] profile={} alg={} seed={} budget={}\n",
@@ -218,7 +218,7 @@ pub(super) fn render_graph_turbo_value_rust_compact(packet: &Value) -> Result<Ve
         compact_seed_aliases(packet.get("seedIds"), &alias_map),
         packet.get("budget").and_then(Value::as_u64).unwrap_or(10),
     ));
-    let ranked = compact_ranked_aliases(&nodes, &edges, &alias_map, &alias_index);
+    let ranked = compact_ranked_aliases(nodes, edges, &alias_map, &alias_index);
     let visible_aliases = ranked.iter().cloned().collect::<HashSet<_>>();
     output.push_str("rank=");
     output.push_str(&ranked.join(","));
@@ -228,7 +228,7 @@ pub(super) fn render_graph_turbo_value_rust_compact(packet: &Value) -> Result<Ve
         &ranked
             .iter()
             .filter_map(|alias| {
-                let node = compact_node_for_alias(alias, &nodes, &alias_index)?;
+                let node = compact_node_for_alias(alias, nodes, &alias_index)?;
                 Some(format!(
                     "{alias}.{}",
                     compact_json_str(node.get("action")).unwrap_or("evidence")
@@ -239,12 +239,12 @@ pub(super) fn render_graph_turbo_value_rust_compact(packet: &Value) -> Result<Ve
     );
     output.push('\n');
     for alias in &ranked {
-        if let Some(node) = compact_node_for_alias(alias, &nodes, &alias_index) {
+        if let Some(node) = compact_node_for_alias(alias, nodes, &alias_index) {
             output.push_str(&compact_node_line(alias, node));
             output.push('\n');
         }
     }
-    for line in compact_edge_lines(&edges, &alias_map, &visible_aliases) {
+    for line in compact_edge_lines(edges, &alias_map, &visible_aliases) {
         output.push_str(&line);
         output.push('\n');
     }

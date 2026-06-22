@@ -9,6 +9,8 @@ use super::graph::{
     GraphTurboReceiptCapture, GraphTurboReceiptRequest, render_graph_turbo_value_rust_compact,
     write_graph_turbo_receipt,
 };
+use super::search_config::AspConfig;
+use super::search_pipe_dependency_facts::dependency_matches_query;
 use super::search_pipe_graph_turbo::{
     GraphTurboSearchPipeRequest, graph_turbo_request, render_graph_turbo_request,
 };
@@ -16,7 +18,7 @@ use super::search_pipe_model::{Candidate, SearchPipeSourceTrace};
 use super::search_pipe_plan::{
     SearchPipePlanRequest, render_search_pipe_decision_projection, render_search_pipe_plan,
 };
-use super::search_pipe_provider_facts::ProviderGraphFacts;
+use super::search_pipe_provider_facts::{ProviderGraphFacts, ProviderGraphFactsContext};
 use super::search_pipe_quality::analyze_search_pipe_quality;
 use super::search_pipe_query_pack::query_clause_texts;
 use super::search_pipe_render::render_ingest_frontier;
@@ -27,6 +29,7 @@ pub(super) struct SearchPipeViewRequest<'a> {
     pub(super) language_id: &'a str,
     pub(super) project_root: &'a Path,
     pub(super) locator_root: &'a Path,
+    pub(super) cache_home: &'a Path,
     pub(super) surface: &'a str,
     pub(super) query: Option<&'a str>,
     pub(super) candidates: &'a [Candidate],
@@ -38,6 +41,8 @@ pub(super) struct SearchPipeViewRequest<'a> {
     pub(super) view: &'a str,
     pub(super) include_pipe_plan: bool,
     pub(super) provider_facts: &'a ProviderGraphFacts,
+    pub(super) provider_context: Option<&'a ProviderGraphFactsContext<'a>>,
+    pub(super) config: &'a AspConfig,
     pub(super) read_memory_selectors: &'a [String],
     pub(super) frontier_receipt: Option<&'a GraphTurboReceiptRequest>,
 }
@@ -47,6 +52,7 @@ pub(super) fn print_search_pipe_view(request: SearchPipeViewRequest<'_>) -> Resu
         language_id,
         project_root,
         locator_root,
+        cache_home,
         surface,
         query,
         candidates,
@@ -58,6 +64,8 @@ pub(super) fn print_search_pipe_view(request: SearchPipeViewRequest<'_>) -> Resu
         view,
         include_pipe_plan,
         provider_facts,
+        provider_context,
+        config,
         read_memory_selectors,
         frontier_receipt,
     } = request;
@@ -76,6 +84,7 @@ pub(super) fn print_search_pipe_view(request: SearchPipeViewRequest<'_>) -> Resu
                 surface,
                 language_id,
                 dependency_root: locator_root,
+                cache_home,
                 query,
                 query_clauses: &graph_query_clauses,
                 candidates,
@@ -85,6 +94,8 @@ pub(super) fn print_search_pipe_view(request: SearchPipeViewRequest<'_>) -> Resu
                 candidate_sources,
                 source_trace,
                 provider_facts,
+                provider_context,
+                config,
                 read_memory_selectors,
                 action_frontier: &[],
             })?;
@@ -100,6 +111,7 @@ pub(super) fn print_search_pipe_view(request: SearchPipeViewRequest<'_>) -> Resu
             language_id,
             project_root,
             locator_root,
+            cache_home,
             surface,
             query,
             candidates,
@@ -110,6 +122,8 @@ pub(super) fn print_search_pipe_view(request: SearchPipeViewRequest<'_>) -> Resu
             scopes,
             include_pipe_plan,
             provider_facts,
+            provider_context,
+            config,
             read_memory_selectors,
             frontier_receipt,
             graph_query_clauses: &graph_query_clauses,
@@ -142,6 +156,7 @@ pub(super) fn print_search_pipe_view(request: SearchPipeViewRequest<'_>) -> Resu
                         ranked_compact: None,
                         seed_action_intents: &[],
                         read_memory_selectors,
+                        dependency_action_targets: &[],
                     })
                 );
             }
@@ -154,6 +169,7 @@ struct SearchPipeSeedsViewRequest<'a> {
     language_id: &'a str,
     project_root: &'a Path,
     locator_root: &'a Path,
+    cache_home: &'a Path,
     surface: &'a str,
     query: Option<&'a str>,
     candidates: &'a [Candidate],
@@ -164,6 +180,8 @@ struct SearchPipeSeedsViewRequest<'a> {
     scopes: &'a [PathBuf],
     include_pipe_plan: bool,
     provider_facts: &'a ProviderGraphFacts,
+    provider_context: Option<&'a ProviderGraphFactsContext<'a>>,
+    config: &'a AspConfig,
     read_memory_selectors: &'a [String],
     frontier_receipt: Option<&'a GraphTurboReceiptRequest>,
     graph_query_clauses: &'a [String],
@@ -175,6 +193,7 @@ fn render_search_pipe_seeds_view(request: SearchPipeSeedsViewRequest<'_>) -> Res
         language_id,
         project_root,
         locator_root,
+        cache_home,
         surface,
         query,
         candidates,
@@ -185,6 +204,8 @@ fn render_search_pipe_seeds_view(request: SearchPipeSeedsViewRequest<'_>) -> Res
         scopes,
         include_pipe_plan,
         provider_facts,
+        provider_context,
+        config,
         read_memory_selectors,
         frontier_receipt,
         graph_query_clauses,
@@ -197,6 +218,7 @@ fn render_search_pipe_seeds_view(request: SearchPipeSeedsViewRequest<'_>) -> Res
         surface,
         language_id,
         dependency_root: locator_root,
+        cache_home,
         query,
         query_clauses: graph_query_clauses,
         candidates,
@@ -206,6 +228,8 @@ fn render_search_pipe_seeds_view(request: SearchPipeSeedsViewRequest<'_>) -> Res
         candidate_sources,
         source_trace,
         provider_facts,
+        provider_context,
+        config,
         read_memory_selectors,
         action_frontier: &[],
     });
@@ -224,6 +248,7 @@ fn render_search_pipe_seeds_view(request: SearchPipeSeedsViewRequest<'_>) -> Res
     let receipt_elapsed = receipt_started_at.elapsed();
     let seed_started_at = Instant::now();
     let seed_action_intents = seed_action_intents(&request_packet);
+    let dependency_action_targets = dependency_action_targets_from_graph(&request_packet, query);
     let seed_plan_line = include_pipe_plan
         .then(|| seed_plan_detail_line(&request_packet))
         .flatten();
@@ -257,6 +282,7 @@ fn render_search_pipe_seeds_view(request: SearchPipeSeedsViewRequest<'_>) -> Res
                 ranked_compact: ranked_compact.as_deref(),
                 seed_action_intents: &seed_action_intents,
                 read_memory_selectors,
+                dependency_action_targets: &dependency_action_targets,
             })
         })
     } else {
@@ -409,7 +435,9 @@ fn print_search_pipe_header(header: SearchPipeHeader<'_>) {
     }
     println!("sourceTrace={}", compact_source_trace(source_trace));
     println!("{}", quality.handles_line());
-    println!("nextClasses=fd-query,rg-query,owner-items,treesitter-query,query-selector");
+    println!(
+        "nextClasses=search-deps,fd-query,rg-query,owner-items,treesitter-query,query-selector"
+    );
 }
 
 fn shell_quote(value: &str) -> String {
@@ -477,6 +505,27 @@ fn compact_string_array(value: Option<&Value>) -> String {
     } else {
         values.join(",")
     }
+}
+
+fn dependency_action_targets_from_graph(packet: &Value, query: Option<&str>) -> Vec<String> {
+    let Some(query) = query.filter(|query| !query.trim().is_empty()) else {
+        return Vec::new();
+    };
+    packet
+        .get("graph")
+        .and_then(|graph| graph.get("nodes"))
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|node| node.get("kind").and_then(Value::as_str) == Some("dependency"))
+        .filter_map(|node| node.get("value").and_then(Value::as_str))
+        .filter(|dependency| dependency_matches_query(dependency, query))
+        .fold(Vec::new(), |mut targets, dependency| {
+            if !targets.iter().any(|target| target == dependency) {
+                targets.push(dependency.to_string());
+            }
+            targets
+        })
 }
 
 fn workspace_label(project_root: &Path, locator_root: &Path) -> Option<String> {

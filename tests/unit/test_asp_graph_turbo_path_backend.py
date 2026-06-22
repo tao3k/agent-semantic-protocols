@@ -31,7 +31,7 @@ def test_small_graph_keeps_python_bfs_path_backend() -> None:
     assert result.algorithm_metrics.path_backend == "python-bfs-small"
     assert result.algorithm_metrics.path_fallback_count == 0
     assert result.algorithm_metrics.path_pair_count == 6
-    assert result.algorithm_metrics.path_candidate_count == 5
+    assert result.algorithm_metrics.path_candidate_count == 8
 
 
 def test_large_graph_uses_scipy_yen_path_backend() -> None:

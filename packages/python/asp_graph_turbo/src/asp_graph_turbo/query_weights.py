@@ -5,20 +5,30 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 
 from .model import Node, TypedGraph
+from .query_package_cohesion import (
+    query_package_cohesion_adjustment,
+    query_package_cohesion_tokens,
+)
 from .query_token_priority import (
     QUERY_TOKEN_UNCOVERED_BONUS,
     query_token_balance_weights,
 )
-from .query_tokens import GENERIC_PATH_TOKENS, query_tokens_from_text
+from .query_tokens import query_tokens_from_text
 
 _MAX_QUERY_MATCH_BONUS = 0.75
 _QUERY_SEED_WEIGHT = 1.20
 _MATCHED_SEED_FLOOR = 0.35
 _UNMATCHED_SEED_FLOOR = 0.20
-_PACKAGE_COHESION_BONUS = 0.45
-_PACKAGE_DRIFT_PENALTY = 0.35
 _QUERY_WEIGHT_NODE_KINDS = {"collection", "field", "hot", "item", "owner", "type"}
 _QUERY_MATCH_COMPOUND_RATIO = 0.25
+
+__all__ = [
+    "query_node_match_bonus",
+    "query_package_cohesion_adjustment",
+    "query_package_cohesion_tokens",
+    "query_seed_personalization_weights",
+    "query_token_weights",
+]
 
 
 def query_token_weights(
@@ -66,7 +76,9 @@ def query_node_match_bonus(
     exact_node_text = _node_exact_semantic_text(node)
     exact_tokens = {token for token in token_weights if token in exact_node_text}
     broad_tokens = {
-        token for token in token_weights if token in node_text and token not in exact_tokens
+        token
+        for token in token_weights
+        if token in node_text and token not in exact_tokens
     }
     matched_tokens = exact_tokens | broad_tokens
     if not matched_tokens:
@@ -121,27 +133,6 @@ def query_seed_personalization_weights(
     return weights
 
 
-def query_package_cohesion_adjustment(
-    graph: TypedGraph,
-    *,
-    profile_name: str,
-    seed_ids: Iterable[str],
-    node: Node,
-) -> float:
-    if profile_name != "owner-query" or node.kind == "query":
-        return 0.0
-    package_tokens = _query_package_tokens(graph, seed_ids)
-    if not package_tokens:
-        return 0.0
-    path_text = _node_path_text(node)
-    if any(token in path_text for token in package_tokens):
-        return _PACKAGE_COHESION_BONUS
-    node_text = _node_text(node)
-    if any(token in node_text for token in package_tokens):
-        return -_PACKAGE_DRIFT_PENALTY
-    return 0.0
-
-
 def _query_tokens(graph: TypedGraph, seed_ids: Iterable[str]) -> tuple[str, ...]:
     tokens: list[str] = []
     seen: set[str] = set()
@@ -155,18 +146,6 @@ def _query_tokens(graph: TypedGraph, seed_ids: Iterable[str]) -> tuple[str, ...]
             seen.add(token)
             tokens.append(token)
     return tuple(tokens)
-
-
-def _query_package_tokens(
-    graph: TypedGraph,
-    seed_ids: Iterable[str],
-) -> tuple[str, ...]:
-    path_tokens = _path_tokens(graph)
-    return tuple(
-        token
-        for token in _query_tokens(graph, seed_ids)
-        if "_" in token or (token in path_tokens and token not in GENERIC_PATH_TOKENS)
-    )
 
 
 def _node_text(node: Node) -> str:
@@ -233,10 +212,3 @@ def _semantic_alias_text(node: Node) -> str:
 
 def _tokens(value: str) -> tuple[str, ...]:
     return query_tokens_from_text(value)
-
-
-def _path_tokens(graph: TypedGraph) -> set[str]:
-    tokens: set[str] = set()
-    for node in graph.nodes.values():
-        tokens.update(_tokens(_node_path_text(node)))
-    return tokens

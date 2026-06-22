@@ -96,6 +96,37 @@ def test_schema_profile_validate_cli_fails_on_drift(
     assert "demo: copy shared.schema.json reason=drifted" in captured.err
 
 
+def test_schema_profile_validate_cli_rejects_cross_language_schema_downsync(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    schema_name = "semantic-org-elements-query-packet.v1.schema.json"
+    profile = LanguageSchemaProfile(
+        language_id="python",
+        package_root="languages/python",
+        shared_schema_files=(schema_name,),
+        provider_schema_files=(),
+    )
+    root_schema_dir = tmp_path / "schemas"
+    package_schema_dir = tmp_path / profile.package_root / "schemas"
+    root_schema_dir.mkdir(parents=True)
+    package_schema_dir.mkdir(parents=True)
+    _write_json(root_schema_dir / schema_name, {"version": 1})
+    _write_json(package_schema_dir / schema_name, {"version": 1})
+    monkeypatch.setattr(schema_profiles_module, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(schema_profiles_module, "LANGUAGE_SCHEMA_PROFILES", (profile,))
+
+    assert schema_profile_errors(tmp_path, profiles=(profile,)) == [
+        f"python: shared-schema-owned-by-org {schema_name}"
+    ]
+    assert schema_profiles_module.main(["validate", "python"]) == 1
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == f"python: shared-schema-owned-by-org {schema_name}\n"
+
+
 def _write_demo_profile(repo_root: Path) -> LanguageSchemaProfile:
     profile = LanguageSchemaProfile(
         language_id="demo",

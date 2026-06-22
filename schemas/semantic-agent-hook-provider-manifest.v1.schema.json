@@ -163,6 +163,14 @@
         "semanticFacts": {
           "type": "boolean",
           "default": false
+        },
+        "dependencyTopology": {
+          "type": "boolean",
+          "default": false
+        },
+        "dependencyTopologyMetadata": {
+          "type": "boolean",
+          "default": false
         }
       }
     },
@@ -221,6 +229,12 @@
           "$ref": "#/$defs/commandTemplate"
         },
         "checkChanged": {
+          "$ref": "#/$defs/commandTemplate"
+        },
+        "dependencyTopology": {
+          "$ref": "#/$defs/commandTemplate"
+        },
+        "dependencyTopologyMetadata": {
           "$ref": "#/$defs/commandTemplate"
         },
         "guide": {

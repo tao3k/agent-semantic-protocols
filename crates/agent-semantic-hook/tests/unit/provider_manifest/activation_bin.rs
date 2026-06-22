@@ -42,7 +42,7 @@ fn default_activation_uses_parent_workspace_bin_for_nested_gerbil_package() {
         .join("gerbil-scheme-language-project-harness");
     fs::create_dir_all(root.join(".bin")).expect("create workspace bin");
     fs::create_dir_all(child.join("src")).expect("create child src");
-    fs::write(root.join("asp.toml"), "[providers]\n").expect("write workspace asp.toml");
+    write_agent_config(&root, "[providers]\n");
     fs::write(child.join("gerbil.pkg"), "(package: sample/gerbil)\n").expect("write gerbil.pkg");
     let gerbil_manifest = builtin_provider_manifests()
         .into_iter()
@@ -122,11 +122,10 @@ fn default_activation_accepts_languages_bin_provider_override() {
     let provider_bin = root.join("tools/custom-rs-harness");
     fs::write(&provider_bin, "#!/bin/sh\nexit 0\n").expect("write provider bin");
     make_executable(&provider_bin);
-    fs::write(
-        root.join("asp.toml"),
+    write_agent_config(
+        &root,
         "[languages.rust]\nbin = \"tools/custom-rs-harness\"\n",
-    )
-    .expect("write asp.toml");
+    );
 
     let activation = build_default_activation(&root).expect("build activation");
     let rust = activation
@@ -153,7 +152,7 @@ fn asp_toml_can_disable_document_language_hook_activation() {
     let asp_bin = root.join(".bin/asp");
     fs::write(&asp_bin, "#!/bin/sh\nexit 0\n").expect("write asp bin");
     make_executable(&asp_bin);
-    fs::write(root.join("asp.toml"), "[providers.org]\nenabled = false\n").expect("write asp.toml");
+    write_agent_config(&root, "[providers.org]\nenabled = false\n");
 
     let activation = build_default_activation(&root).expect("build activation");
 
@@ -180,4 +179,34 @@ fn asp_toml_can_disable_document_language_hook_activation() {
     );
 
     fs::remove_dir_all(root).expect("remove temp root");
+}
+
+#[test]
+fn top_level_asp_toml_no_longer_configures_provider_activation() {
+    let root = temp_root("legacy-top-level-ignored");
+    fs::create_dir_all(root.join(".bin")).expect("create project bin");
+    let asp_bin = root.join(".bin/asp");
+    fs::write(&asp_bin, "#!/bin/sh\nexit 0\n").expect("write asp bin");
+    make_executable(&asp_bin);
+    fs::write(root.join("asp.toml"), "[providers.org]\nenabled = false\n")
+        .expect("write legacy asp.toml");
+
+    let activation = build_default_activation(&root).expect("build activation");
+
+    assert!(
+        activation
+            .providers
+            .iter()
+            .any(|provider| provider.language_id == "org"),
+        "build_default_activation must ignore legacy top-level asp.toml; sync/install owns migration"
+    );
+
+    fs::remove_dir_all(root).expect("remove temp root");
+}
+
+fn write_agent_config(root: &std::path::Path, contents: &str) {
+    let config_path = root.join(".agents").join("asp.toml");
+    fs::create_dir_all(config_path.parent().expect("agent config parent"))
+        .expect("create agent config parent");
+    fs::write(&config_path, contents).expect("write .agents/asp.toml");
 }

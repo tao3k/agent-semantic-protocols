@@ -31,6 +31,8 @@ mod hook_paths;
 mod hook_runtime_skill;
 #[path = "unit/install_provider_cli.rs"]
 mod install_provider_cli;
+#[path = "unit/paths_command.rs"]
+mod paths_command;
 #[path = "unit/provider_command/mod.rs"]
 mod provider_command;
 #[path = "unit/rs_harness_attribute.rs"]
@@ -39,3 +41,5 @@ mod rs_harness_attribute;
 mod rust_harness_activation;
 #[path = "unit/source_access_command/mod.rs"]
 mod source_access_command;
+#[path = "unit/sync_command.rs"]
+mod sync_command;

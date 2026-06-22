@@ -11,7 +11,8 @@ use agent_semantic_client_core::{
 use agent_semantic_client_db::{ClientDb, ClientDbProviderCommandSelection};
 use agent_semantic_hook::{
     HookRuntime, ProviderCommandSelection, build_default_activation, discover_activation_path,
-    load_or_sync_activation, provider_command_selections, write_activation,
+    load_or_sync_activation, project_agent_config_path, provider_command_selections,
+    write_activation,
 };
 use agent_semantic_runtime::is_project_activation_path;
 use sha2::{Digest, Sha256};
@@ -117,14 +118,15 @@ fn provider_command_selection_context_fingerprint(project_root: &Path) -> Result
             .to_string_lossy()
             .as_bytes(),
     );
-    hasher.update(b"\0asp.toml\0");
-    match fs::read(project_root.join("asp.toml")) {
+    let config_path = project_agent_config_path(project_root);
+    hasher.update(b"\0.agents/asp.toml\0");
+    match fs::read(&config_path) {
         Ok(bytes) => hasher.update(bytes),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => hasher.update(b"<missing>"),
         Err(error) => {
             return Err(format!(
                 "failed to read provider activation cache context {}: {error}",
-                project_root.join("asp.toml").display()
+                config_path.display()
             ));
         }
     }

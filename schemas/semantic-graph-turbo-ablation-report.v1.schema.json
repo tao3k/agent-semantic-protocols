@@ -300,7 +300,14 @@
                             "queryPackageDriftPenaltyCountDelta",
                             "queryClauseCoverageCountDelta",
                             "queryLocalEvidenceBoostCountDelta",
-                            "queryLocalEvidencePenaltyCountDelta"
+                            "queryLocalEvidencePenaltyCountDelta",
+                            "queryTopologyMembershipCandidateCountDelta",
+                            "queryTopologyMembershipBoostCountDelta",
+                            "queryTopologyMembershipPenaltyCountDelta",
+                            "queryTopologyMembershipDirectCountDelta",
+                            "queryTopologyMembershipNearbyCountDelta",
+                            "queryTopologyMembershipCoverageRateDelta",
+                            "queryTopologyMembershipDriftRateDelta"
                         ],
                         "properties": {
                             "rankChanged": {
@@ -428,6 +435,55 @@
                                 ]
                             },
                             "queryLocalEvidencePenaltyCountDelta": {
+                                "type": [
+                                    "integer",
+                                    "number",
+                                    "null"
+                                ]
+                            },
+                            "queryTopologyMembershipCandidateCountDelta": {
+                                "type": [
+                                    "integer",
+                                    "number",
+                                    "null"
+                                ]
+                            },
+                            "queryTopologyMembershipBoostCountDelta": {
+                                "type": [
+                                    "integer",
+                                    "number",
+                                    "null"
+                                ]
+                            },
+                            "queryTopologyMembershipPenaltyCountDelta": {
+                                "type": [
+                                    "integer",
+                                    "number",
+                                    "null"
+                                ]
+                            },
+                            "queryTopologyMembershipDirectCountDelta": {
+                                "type": [
+                                    "integer",
+                                    "number",
+                                    "null"
+                                ]
+                            },
+                            "queryTopologyMembershipNearbyCountDelta": {
+                                "type": [
+                                    "integer",
+                                    "number",
+                                    "null"
+                                ]
+                            },
+                            "queryTopologyMembershipCoverageRateDelta": {
+                                "type": [
+                                    "integer",
+                                    "number",
+                                    "null"
+                                ]
+                            },
+                            "queryTopologyMembershipDriftRateDelta": {
                                 "type": [
                                     "integer",
                                     "number",

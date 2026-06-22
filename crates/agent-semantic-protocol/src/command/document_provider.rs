@@ -30,13 +30,13 @@ pub(crate) fn run_language_command_with_config(
     }
     if command == "capture" && language_id == "org" {
         let capture_args = &args[1..];
-        if is_capture_state_command(capture_args) {
+        if is_capture_state_command(capture_args) || capture_has_contract(capture_args) {
             return org_capture::run_org_capture_command(capture_args);
         }
-        let mut orgize_args = Vec::with_capacity(args.len());
-        orgize_args.push("capture-plan".to_string());
-        orgize_args.extend(capture_args.iter().cloned());
-        return agent::run_org_cli_command(orgize_args);
+        return Err(
+            "asp org capture expects `--contract CONTRACT_ID`; use `asp org capture --contract agent.task.v1 --title TITLE --target-file ORG_FILE` for a contract-checked non-mutating Org entry. ASP Org state is initialized during install/sync."
+                .to_string(),
+        );
     }
     if is_document_command(command) {
         return agent::run_document_command_with_walk_config(
@@ -66,13 +66,14 @@ fn is_language_help(args: &[String]) -> bool {
 }
 
 fn is_capture_state_command(args: &[String]) -> bool {
-    args.is_empty()
-        || args.iter().any(|arg| {
-            matches!(
-                arg.as_str(),
-                "init" | "--state-root" | "--source-dir" | "--help" | "-h" | "help"
-            )
-        })
+    matches!(
+        args.first().map(String::as_str),
+        Some("init" | "--state-root" | "--source-dir" | "--help" | "-h" | "help")
+    )
+}
+
+fn capture_has_contract(args: &[String]) -> bool {
+    args.iter().any(|arg| arg == "--contract")
 }
 
 fn document_language(language_id: &str) -> Result<DocumentLanguage, String> {

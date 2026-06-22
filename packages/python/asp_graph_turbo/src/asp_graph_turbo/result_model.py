@@ -137,6 +137,14 @@ class AlgorithmMetrics:
     query_local_evidence_boost_count: int = 0
     query_local_evidence_penalty_count: int = 0
     query_local_evidence_delta: float = 0.0
+    query_topology_membership_candidate_count: int = 0
+    query_topology_membership_boost_count: int = 0
+    query_topology_membership_penalty_count: int = 0
+    query_topology_membership_direct_count: int = 0
+    query_topology_membership_nearby_count: int = 0
+    query_topology_membership_coverage_rate: float = 0.0
+    query_topology_membership_drift_rate: float = 0.0
+    query_topology_membership_delta: float = 0.0
 
 
 @dataclass(frozen=True)

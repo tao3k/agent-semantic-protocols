@@ -79,6 +79,41 @@ class SemanticAgentHookClientConfigSchemaTests(unittest.TestCase):
             [],
         )
 
+    def test_agent_org_artifacts_archive_warning_config_is_valid(self) -> None:
+        config = {
+            "agentOrgArtifacts": {
+                "enabled": True,
+                "artifactsPath": ".cache/agent-semantic-protocol/artifacts/org",
+                "entrySkillPath": ".cache/agent-semantic-protocol/org/skills/ASP_ORG.org",
+                "archiveWarning": {
+                    "enabled": True,
+                    "activeOrgFileThreshold": 10,
+                    "archivesDir": "archives",
+                    "maxReportedFiles": 5,
+                },
+            },
+            "rules": [{"id": "block", "decision": "block"}],
+        }
+
+        self.assertEqual(self.validation_errors(config), [])
+
+    def test_agent_org_artifacts_archive_warning_rejects_zero_threshold(self) -> None:
+        errors = self.validation_errors(
+            {
+                "agentOrgArtifacts": {
+                    "archiveWarning": {
+                        "activeOrgFileThreshold": 0,
+                        "archivesDir": "",
+                        "maxReportedFiles": 0,
+                    }
+                },
+                "rules": [{"id": "block", "decision": "block"}],
+            }
+        )
+
+        self.assertTrue(any("less than the minimum of 1" in error for error in errors))
+        self.assertTrue(any("should be non-empty" in error for error in errors))
+
     def test_client_config_rejects_wrong_schema_id(self) -> None:
         errors = self.validation_errors(
             {

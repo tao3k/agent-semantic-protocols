@@ -90,6 +90,10 @@ pub struct HookRoutes {
     pub ingest: CommandTemplate,
     pub check_changed: CommandTemplate,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dependency_topology: Option<CommandTemplate>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dependency_topology_metadata: Option<CommandTemplate>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub export_index: Option<CommandTemplate>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub guide: Option<CommandTemplate>,
@@ -297,9 +301,24 @@ pub fn render_platform_response(decision: &HookDecision) -> Result<Value, AgentH
                     }
                 }));
             }
+            if decision_has_warning(decision) {
+                return Ok(json!({
+                    "hookSpecificOutput": {
+                        "hookEventName": platform_hook_event_name(&decision.event),
+                        "additionalContext": decision_context,
+                    },
+                    "systemMessage": message.as_ref(),
+                }));
+            }
         }
     }
     Ok(json!({}))
+}
+
+fn decision_has_warning(decision: &HookDecision) -> bool {
+    decision
+        .fields
+        .contains_key("agentOrgArtifactsArchiveWarning")
 }
 
 fn platform_decision_message(decision: &HookDecision) -> Cow<'_, str> {

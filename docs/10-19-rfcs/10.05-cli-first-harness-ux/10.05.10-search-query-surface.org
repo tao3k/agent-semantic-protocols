@@ -407,6 +407,17 @@ language provider.  Providers should set =cache.rawSourceStored=false= for this
 view because replay stores compact search output and packet artifacts, not raw
 dependency source.
 
+Agent-facing search command surfaces should expose dependency routes as command
+affordances, not as natural-language workflow rules.  The prompt-visible command
+shape is =asp <language> search deps <dependency[@version][::api]> --workspace
+<workspace-root> --view seeds=.  =search pipe= remains the graph-ranked query
+frontier, but when its graph-turbo packet contains dependency topology nodes
+that match the query, the action frontier should materialize a =search-deps=
+action and executable =nextCommand= ahead of generic =fd= or =rg= fallback.  The
+graph signal owns this promotion: SKILL text lists command syntax and purpose,
+while the agent chooses the command from intent, graph evidence, and the ranked
+frontier.
+
 Dependency API and documentation questions must stay local-first.  When a query
 mentions a dependency plus an API, module path, platform concept, or external
 documentation target, the dependency view should emit executable local next

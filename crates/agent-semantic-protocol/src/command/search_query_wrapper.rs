@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use super::graph::render_graph_turbo_packet;
+use super::provider_roots::client_backend_cache_home;
 use super::search_config::AspConfig;
 use super::search_pipe_graph_turbo::{GraphTurboSearchPipeRequest, render_graph_turbo_request};
 use super::search_pipe_model::{Candidate, SearchPipeSourceTrace};
@@ -57,6 +58,7 @@ pub(crate) fn run_query_wrapper_command(command: &str, args: &[String]) -> Resul
         .first()
         .map(|scope| absolute_scope(&invocation_root, scope))
         .unwrap_or_else(|| invocation_root.clone());
+    let cache_home = client_backend_cache_home(&invocation_root, &project_root)?;
     let config = AspConfig::load(&invocation_root, &project_root);
     let clauses = query_clauses(&wrapper_args.queries);
     let terms = unique_clause_terms(&clauses);
@@ -93,6 +95,7 @@ pub(crate) fn run_query_wrapper_command(command: &str, args: &[String]) -> Resul
     print_query_wrapper_view(QueryWrapperViewRequest {
         surface,
         project_root: &project_root,
+        cache_home: &cache_home,
         scopes: &wrapper_args.scopes,
         queries: &wrapper_args.queries,
         clauses: &clauses,
@@ -228,6 +231,7 @@ fn parse_query_wrapper_args(
 struct QueryWrapperViewRequest<'a> {
     surface: QueryWrapperSurface,
     project_root: &'a Path,
+    cache_home: &'a Path,
     scopes: &'a [PathBuf],
     queries: &'a [String],
     clauses: &'a [QueryWrapperClause],
@@ -244,6 +248,7 @@ fn print_query_wrapper_view(request: QueryWrapperViewRequest<'_>) -> Result<(), 
     let QueryWrapperViewRequest {
         surface,
         project_root,
+        cache_home,
         scopes,
         queries,
         clauses,
@@ -278,10 +283,12 @@ fn print_query_wrapper_view(request: QueryWrapperViewRequest<'_>) -> Result<(), 
     ];
     let action_frontier =
         query_wrapper_action_frontier(surface, scopes, queries, terms, candidates, quality);
+    let config = AspConfig::load(project_root, project_root);
     let request = render_graph_turbo_request(GraphTurboSearchPipeRequest {
         surface: surface.graph_surface(),
         language_id,
         dependency_root: project_root,
+        cache_home,
         query: Some(&query),
         query_clauses: &query_clause_texts,
         candidates,
@@ -291,6 +298,8 @@ fn print_query_wrapper_view(request: QueryWrapperViewRequest<'_>) -> Result<(), 
         candidate_sources: &["finder".to_string()],
         source_trace: &source_trace,
         provider_facts: &ProviderGraphFacts::default(),
+        provider_context: None,
+        config: &config,
         read_memory_selectors: &[],
         action_frontier: &action_frontier,
     })?;

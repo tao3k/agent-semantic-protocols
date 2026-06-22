@@ -202,10 +202,30 @@ def _algorithm_metrics_to_packet(result: GraphResult) -> dict[str, object]:
         "queryClauseCoverageCount": metrics.query_clause_coverage_count,
         "queryClauseCoverageDelta": metrics.query_clause_coverage_delta,
         "queryLocalEvidenceBoostCount": metrics.query_local_evidence_boost_count,
-        "queryLocalEvidencePenaltyCount": (
-            metrics.query_local_evidence_penalty_count
-        ),
+        "queryLocalEvidencePenaltyCount": (metrics.query_local_evidence_penalty_count),
         "queryLocalEvidenceDelta": metrics.query_local_evidence_delta,
+        "queryTopologyMembershipCandidateCount": (
+            metrics.query_topology_membership_candidate_count
+        ),
+        "queryTopologyMembershipBoostCount": (
+            metrics.query_topology_membership_boost_count
+        ),
+        "queryTopologyMembershipPenaltyCount": (
+            metrics.query_topology_membership_penalty_count
+        ),
+        "queryTopologyMembershipDirectCount": (
+            metrics.query_topology_membership_direct_count
+        ),
+        "queryTopologyMembershipNearbyCount": (
+            metrics.query_topology_membership_nearby_count
+        ),
+        "queryTopologyMembershipCoverageRate": (
+            metrics.query_topology_membership_coverage_rate
+        ),
+        "queryTopologyMembershipDriftRate": (
+            metrics.query_topology_membership_drift_rate
+        ),
+        "queryTopologyMembershipDelta": metrics.query_topology_membership_delta,
     }
 
 

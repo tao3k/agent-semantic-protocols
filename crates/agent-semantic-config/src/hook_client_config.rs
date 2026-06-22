@@ -55,7 +55,25 @@ pub struct HookClientConfigFile {
     #[serde(default)]
     pub experimental: BTreeMap<String, BTreeMap<String, bool>>,
     #[serde(default)]
+    pub agent_org_artifacts: Option<HookClientAgentOrgArtifactsConfig>,
+    #[serde(default)]
     pub rules: Vec<HookClientRuleConfig>,
+}
+
+/// Parsed ASP project config from `.agents/asp.toml`.
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AspProjectConfigFile {
+    #[serde(default)]
+    pub hook: AspProjectHookConfig,
+}
+
+/// Hook-owned ASP project config.
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AspProjectHookConfig {
+    #[serde(default)]
+    pub agent_org_artifacts: Option<HookClientAgentOrgArtifactsConfig>,
 }
 
 #[derive(Debug, Serialize)]
@@ -65,6 +83,36 @@ struct HookClientConfigMetadataDefaults {
     schema_version: &'static str,
     protocol_id: &'static str,
     protocol_version: &'static str,
+}
+
+/// Agent-facing Org artifact workflow guard from project-local hook config.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HookClientAgentOrgArtifactsConfig {
+    #[serde(default = "default_enabled")]
+    pub enabled: bool,
+    #[serde(default = "default_agent_org_artifacts_inactive_after_minutes")]
+    pub inactive_after_minutes: u64,
+    #[serde(default = "default_agent_org_artifacts_path")]
+    pub artifacts_path: String,
+    #[serde(default = "default_agent_org_artifacts_entry_skill_path")]
+    pub entry_skill_path: String,
+    #[serde(default)]
+    pub archive_warning: HookClientAgentOrgArtifactsArchiveWarningConfig,
+}
+
+/// Warning policy for active Org artifacts that should be archived.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HookClientAgentOrgArtifactsArchiveWarningConfig {
+    #[serde(default = "default_enabled")]
+    pub enabled: bool,
+    #[serde(default = "default_agent_org_artifacts_archive_warning_threshold")]
+    pub active_org_file_threshold: usize,
+    #[serde(default = "default_agent_org_artifacts_archives_dir")]
+    pub archives_dir: String,
+    #[serde(default = "default_agent_org_artifacts_archive_warning_max_reported_files")]
+    pub max_reported_files: usize,
 }
 
 /// One declarative hook rule from project-local config.
@@ -285,6 +333,17 @@ pub fn load_hook_client_config_file(path: &Path) -> Result<HookClientConfigFile,
     Ok(parsed)
 }
 
+/// Load the ASP project config. Unknown project sections are ignored here; each
+/// subsystem owns its own parsed subset.
+pub fn load_asp_project_config_file(path: &Path) -> Result<AspProjectConfigFile, String> {
+    if !path.is_file() {
+        return Ok(AspProjectConfigFile::default());
+    }
+    Figment::from(Toml::file(path))
+        .extract::<AspProjectConfigFile>()
+        .map_err(|error| format!("failed to parse {}: {error}", path.display()))
+}
+
 fn hook_client_config_metadata_defaults() -> HookClientConfigMetadataDefaults {
     HookClientConfigMetadataDefaults {
         schema_id: CLIENT_HOOK_CONFIG_SCHEMA_ID,
@@ -296,6 +355,7 @@ fn hook_client_config_metadata_defaults() -> HookClientConfigMetadataDefaults {
 
 fn validate_config(config: &HookClientConfigFile) -> Result<(), String> {
     validate_protocol(config)?;
+    validate_agent_org_artifacts(config.agent_org_artifacts.as_ref())?;
     validate_unique_rule_ids(&config.rules)?;
     validate_rule_schema_shape(&config.rules)
 }
@@ -389,6 +449,42 @@ fn validate_route_schema_shape(route: &HookClientRuleRouteConfig) -> Result<(), 
     Ok(())
 }
 
+fn validate_agent_org_artifacts(
+    config: Option<&HookClientAgentOrgArtifactsConfig>,
+) -> Result<(), String> {
+    let Some(config) = config else {
+        return Ok(());
+    };
+    if config.inactive_after_minutes == 0 {
+        return Err("agentOrgArtifacts.inactiveAfterMinutes must be greater than 0".to_string());
+    }
+    validate_non_empty("agentOrgArtifacts.artifactsPath", &config.artifacts_path)?;
+    validate_non_empty("agentOrgArtifacts.entrySkillPath", &config.entry_skill_path)?;
+    validate_agent_org_artifacts_archive_warning(&config.archive_warning)?;
+    Ok(())
+}
+
+fn validate_agent_org_artifacts_archive_warning(
+    config: &HookClientAgentOrgArtifactsArchiveWarningConfig,
+) -> Result<(), String> {
+    if config.active_org_file_threshold == 0 {
+        return Err(
+            "agentOrgArtifacts.archiveWarning.activeOrgFileThreshold must be greater than 0"
+                .to_string(),
+        );
+    }
+    if config.max_reported_files == 0 {
+        return Err(
+            "agentOrgArtifacts.archiveWarning.maxReportedFiles must be greater than 0".to_string(),
+        );
+    }
+    validate_non_empty(
+        "agentOrgArtifacts.archiveWarning.archivesDir",
+        &config.archives_dir,
+    )?;
+    Ok(())
+}
+
 fn validate_identifiers(field: &str, values: &[String]) -> Result<(), String> {
     for value in values {
         validate_identifier(field, value)?;
@@ -423,6 +519,14 @@ fn validate_non_empty_values(field: &str, values: &[String]) -> Result<(), Strin
         }
     }
     Ok(())
+}
+
+fn validate_non_empty(field: &str, value: &str) -> Result<(), String> {
+    if value.is_empty() {
+        Err(format!("{field} must not be empty"))
+    } else {
+        Ok(())
+    }
 }
 
 fn validate_unique_values(field: &str, values: &[String]) -> Result<(), String> {
@@ -477,6 +581,41 @@ fn expect_optional_field(field: &str, actual: Option<&str>, expected: &str) -> R
 
 fn default_enabled() -> bool {
     true
+}
+
+fn default_agent_org_artifacts_inactive_after_minutes() -> u64 {
+    30
+}
+
+fn default_agent_org_artifacts_path() -> String {
+    ".cache/agent-semantic-protocol/artifacts/org".to_string()
+}
+
+fn default_agent_org_artifacts_entry_skill_path() -> String {
+    ".cache/agent-semantic-protocol/org/skills/ASP_ORG.org".to_string()
+}
+
+fn default_agent_org_artifacts_archive_warning_threshold() -> usize {
+    10
+}
+
+fn default_agent_org_artifacts_archives_dir() -> String {
+    "archives".to_string()
+}
+
+fn default_agent_org_artifacts_archive_warning_max_reported_files() -> usize {
+    5
+}
+
+impl Default for HookClientAgentOrgArtifactsArchiveWarningConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            active_org_file_threshold: default_agent_org_artifacts_archive_warning_threshold(),
+            archives_dir: default_agent_org_artifacts_archives_dir(),
+            max_reported_files: default_agent_org_artifacts_archive_warning_max_reported_files(),
+        }
+    }
 }
 
 #[cfg(test)]

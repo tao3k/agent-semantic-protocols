@@ -18,6 +18,9 @@
     "protocolVersion": {
       "const": "1"
     },
+    "agentOrgArtifacts": {
+      "$ref": "#/$defs/agentOrgArtifacts"
+    },
     "rules": {
       "description": "Typed client-hook rules. Rule ids are runtime-validated as unique because config-derived decisions use fields.configRuleId as the machine receipt.",
       "type": "array",
@@ -62,6 +65,53 @@
       "properties": {
         "enabled": {
           "type": "boolean"
+        }
+      }
+    },
+    "agentOrgArtifacts": {
+      "description": "Agent Org artifact entry guard. When enabled, hook decisions can direct the agent back to ASP_ORG.org if no Org artifact write has occurred recently and warn when DONE Org records should be archived.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "inactiveAfterMinutes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "artifactsPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "entrySkillPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "archiveWarning": {
+          "$ref": "#/$defs/agentOrgArtifactsArchiveWarning"
+        }
+      }
+    },
+    "agentOrgArtifactsArchiveWarning": {
+      "description": "Warning gate for active Org artifact directories that contain DONE records not yet moved under archives.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "activeOrgFileThreshold": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "archivesDir": {
+          "type": "string",
+          "minLength": 1
+        },
+        "maxReportedFiles": {
+          "type": "integer",
+          "minimum": 1
         }
       }
     },

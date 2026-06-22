@@ -25,7 +25,7 @@ LANGUAGE_RELEASE_WORKFLOWS = {
     },
     "languages/python-lang-project-harness": {
         "binary": "py-harness",
-        "darwin_os": "ubuntu-latest",
+        "darwin_os": "macos-latest",
         "targets": {
             "x86_64-unknown-linux-gnu",
             "aarch64-apple-darwin",
@@ -104,8 +104,11 @@ def test_language_release_workflows_are_project_owned_and_publish_assets() -> No
         ) in workflow
 
         if language_path == "languages/gerbil-scheme-language-project-harness":
-            assert "Build Gerbil" not in workflow
-            assert "gxpkg deps --install" not in workflow
+            assert "- name: Build Gerbil" in workflow
+            assert "gxpkg deps --install" in workflow
+            assert "- name: Build native binary" in workflow
+            assert "gxpkg env gxi build-native.ss" in workflow
+            assert "package/bin/gslph" in workflow
 
 
 def test_asp_rust_ci_checks_out_provider_catalog_submodules() -> None:
@@ -155,13 +158,9 @@ def test_julia_full_provider_gate_uses_fresh_compiled_harness_perf_guard() -> No
 
     install_julia = justfile.split('agent-tools-install-jl bin_dir="":', 1)[1]
     install_julia = install_julia.split("agent-hooks-doctor-providers:", 1)[0]
-    assert 'find "{{julia_harness_project}}/src"' in install_julia
-    assert '"{{julia_harness_project}}/juliac"' in install_julia
-    assert '"{{julia_harness_project}}/Project.toml"' in install_julia
-    assert '-newer "{{julia_compiled_harness}}"' in install_julia
-    assert "rm -rf build/juliac-asp-local" in install_julia
-    assert "juliac/build_provider.sh" in install_julia
-    assert 'install -m 755 "{{julia_compiled_harness}}" "${bin_dir}/asp-julia-harness"' in install_julia
+    assert "agent-tools-install-language julia" in install_julia
+    assert "juliac/build_provider.sh" not in install_julia
+    assert 'install -m 755 "{{julia_compiled_harness}}"' not in install_julia
 
     all_smoke = justfile.split("check-language-evidence-smoke-all-setup:", 1)[1]
     all_smoke = all_smoke.split("provider-gate:", 1)[0]

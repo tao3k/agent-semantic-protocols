@@ -16,7 +16,7 @@ fn cli_hook_records_dev_context_when_agents_asp_toml_enables_develop_mode() {
         "[package]\nname = \"hook-dev-context-test\"\nversion = \"0.0.0\"\nedition = \"2024\"\n",
     )
     .expect("write project anchor");
-    let agents_dir = root.join("agents");
+    let agents_dir = root.join(".agents");
     fs::create_dir_all(&agents_dir).expect("create agents config dir");
     fs::write(agents_dir.join("asp.toml"), "develop_mode = true\n").expect("write asp config");
     let activation_path = root.join("activation.json");

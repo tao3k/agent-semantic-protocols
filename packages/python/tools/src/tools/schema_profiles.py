@@ -13,6 +13,7 @@ from tools.console import emit
 from tools.schema_profile_catalog import (
     LANGUAGE_SCHEMA_PROFILES,
     LanguageSchemaProfile,
+    schema_profile_contract_errors,
     select_schema_profiles,
 )
 from tools.paths import repo_root
@@ -42,7 +43,14 @@ def schema_profile_errors(
     *,
     profiles: Iterable[LanguageSchemaProfile] | None = None,
 ) -> list[str]:
-    return [change.render() for change in schema_profile_changes(repo_root, profiles=profiles)]
+    selected_profiles = tuple(LANGUAGE_SCHEMA_PROFILES if profiles is None else profiles)
+    return [
+        *schema_profile_contract_errors(selected_profiles),
+        *[
+            change.render()
+            for change in schema_profile_changes(repo_root, profiles=selected_profiles)
+        ],
+    ]
 
 
 def schema_profile_changes(

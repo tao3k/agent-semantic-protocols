@@ -161,6 +161,98 @@ fn remove_codex_plugin_bundle_file(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
+pub(super) fn sync_codex_project_plugin_cache(
+    project_root: &Path,
+) -> Result<Option<PathBuf>, String> {
+    let cache_root = codex_project_plugin_cache_path(project_root)?;
+    if !cache_root.is_dir() {
+        if cache_root.exists() {
+            return Err(format!(
+                "Codex plugin cache path {} exists but is not a directory",
+                cache_root.display()
+            ));
+        }
+        fs::create_dir_all(&cache_root)
+            .map_err(|error| format!("failed to create {}: {error}", cache_root.display()))?;
+    }
+    let plugin_root = project_root.join(ASP_CODEX_PLUGIN_NAME);
+    sync_codex_plugin_cache_file(
+        &plugin_root,
+        &cache_root,
+        Path::new(".codex-plugin").join("plugin.json"),
+    )?;
+    sync_codex_plugin_cache_file(
+        &plugin_root,
+        &cache_root,
+        Path::new("hooks").join("hooks.json"),
+    )?;
+    sync_codex_plugin_cache_file(
+        &plugin_root,
+        &cache_root,
+        codex_plugin_skill_relative_path(),
+    )?;
+    remove_codex_plugin_bundle_file(&cache_root.join(codex_plugin_skill_contract_relative_path()))?;
+    Ok(Some(cache_root))
+}
+
+pub(super) fn codex_project_plugin_cache_skill_path(
+    project_root: &Path,
+) -> Result<PathBuf, String> {
+    Ok(codex_project_plugin_cache_path(project_root)?.join(codex_plugin_skill_relative_path()))
+}
+
+fn codex_project_plugin_cache_path(project_root: &Path) -> Result<PathBuf, String> {
+    Ok(project_root
+        .join(".codex")
+        .join("plugins")
+        .join("cache")
+        .join(ASP_CODEX_PLUGIN_MARKETPLACE_NAME)
+        .join(ASP_CODEX_PLUGIN_NAME)
+        .join(asp_codex_plugin_version()?))
+}
+
+fn codex_plugin_skill_relative_path() -> PathBuf {
+    Path::new("skills")
+        .join("agent-semantic-protocols")
+        .join("SKILL.org")
+}
+
+fn codex_plugin_skill_contract_relative_path() -> PathBuf {
+    Path::new("skills")
+        .join("agent-semantic-protocols")
+        .join("SKILL.contract.org")
+}
+
+fn sync_codex_plugin_cache_file(
+    plugin_root: &Path,
+    cache_root: &Path,
+    relative_path: PathBuf,
+) -> Result<(), String> {
+    let source = plugin_root.join(&relative_path);
+    let target = cache_root.join(&relative_path);
+    if let Some(parent) = target.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
+    }
+    fs::copy(&source, &target).map_err(|error| {
+        format!(
+            "failed to refresh Codex plugin cache {} from {}: {error}",
+            target.display(),
+            source.display()
+        )
+    })?;
+    Ok(())
+}
+
+fn asp_codex_plugin_version() -> Result<String, String> {
+    serde_json::from_str::<serde_json::Value>(ASP_CODEX_PLUGIN_MANIFEST_JSON)
+        .map_err(|error| format!("invalid ASP Codex plugin manifest JSON: {error}"))?
+        .get("version")
+        .and_then(serde_json::Value::as_str)
+        .map(ToString::to_string)
+        .ok_or_else(|| "ASP Codex plugin manifest JSON missing version".to_string())
+}
+
 fn install_codex_project_plugin_config(project_root: &Path) -> Result<PathBuf, String> {
     let codex_dir = project_root.join(".codex");
     fs::create_dir_all(&codex_dir)

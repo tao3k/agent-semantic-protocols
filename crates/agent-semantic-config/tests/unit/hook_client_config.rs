@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use super::{
     CLIENT_HOOK_CONFIG_SCHEMA_ID, default_hook_client_config_path,
     default_hook_client_config_template, default_hook_client_config_template_for_source_extensions,
-    load_hook_client_config_file,
+    load_asp_project_config_file, load_hook_client_config_file,
 };
 
 #[test]
@@ -27,6 +27,7 @@ fn default_template_round_trips_through_config_parser() {
             .and_then(|feature| feature.get("enabled")),
         Some(&false)
     );
+    assert!(config.agent_org_artifacts.is_none());
     assert_eq!(config.rules.len(), 1);
     let rule = config.rules.first().expect("default rule");
     assert_eq!(rule.id, "deny-shell-source-argv");
@@ -61,6 +62,61 @@ fn default_template_round_trips_through_config_parser() {
 }
 
 #[test]
+fn project_config_loads_hook_agent_org_artifacts() {
+    let root = temp_root("asp-project-config-agent-org-artifacts");
+    let config_path = root.join(".agents").join("asp.toml");
+    fs::create_dir_all(config_path.parent().expect("config parent")).expect("config dir");
+    fs::write(
+        &config_path,
+        r#"
+[skills.agent-semantic-protocols]
+template = "SKILL.org"
+
+[hook.agentOrgArtifacts]
+enabled = false
+inactiveAfterMinutes = 45
+artifactsPath = ".cache/agent-semantic-protocol/artifacts/org"
+entrySkillPath = ".cache/agent-semantic-protocol/org/skills/ASP_ORG.org"
+
+[hook.agentOrgArtifacts.archiveWarning]
+enabled = true
+activeOrgFileThreshold = 12
+archivesDir = "archives"
+maxReportedFiles = 3
+"#,
+    )
+    .expect("write asp config");
+
+    let config = load_asp_project_config_file(&config_path).expect("load asp config");
+    let agent_org_artifacts = config
+        .hook
+        .agent_org_artifacts
+        .as_ref()
+        .expect("agent org artifacts config");
+
+    assert!(!agent_org_artifacts.enabled);
+    assert_eq!(agent_org_artifacts.inactive_after_minutes, 45);
+    assert_eq!(
+        agent_org_artifacts.artifacts_path,
+        ".cache/agent-semantic-protocol/artifacts/org"
+    );
+    assert_eq!(
+        agent_org_artifacts.entry_skill_path,
+        ".cache/agent-semantic-protocol/org/skills/ASP_ORG.org"
+    );
+    assert!(agent_org_artifacts.archive_warning.enabled);
+    assert_eq!(
+        agent_org_artifacts
+            .archive_warning
+            .active_org_file_threshold,
+        12
+    );
+    assert_eq!(agent_org_artifacts.archive_warning.archives_dir, "archives");
+    assert_eq!(agent_org_artifacts.archive_warning.max_reported_files, 3);
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
 fn template_source_globs_are_derived_from_source_extensions() {
     let root = temp_root("hook-client-template-extensions");
     let config_path = default_hook_client_config_path(&root);
@@ -90,6 +146,7 @@ fn missing_config_loads_empty_defaults() {
 
     assert!(config.rules.is_empty());
     assert!(config.experimental.is_empty());
+    assert!(config.agent_org_artifacts.is_none());
     let _ = fs::remove_dir_all(root);
 }
 
@@ -119,9 +176,81 @@ decision = "deny"
         Some("agent.semantic-protocols.hook")
     );
     assert_eq!(config.protocol_version.as_deref(), Some("1"));
+    assert!(config.agent_org_artifacts.is_none());
     assert_eq!(config.rules.len(), 1);
     assert_eq!(config.rules[0].id, "deny-rust-read");
 
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn agent_org_artifacts_config_defaults_partial_block() {
+    let root = temp_root("hook-client-agent-org-artifacts-defaults");
+    let config_path = root.join("config.toml");
+    fs::write(
+        &config_path,
+        r#"
+schemaId = "agent.semantic-protocols.hook.client-config"
+schemaVersion = "1"
+protocolId = "agent.semantic-protocols.hook"
+protocolVersion = "1"
+
+[agentOrgArtifacts]
+entrySkillPath = ".cache/agent-semantic-protocol/org/skills/ASP_ORG.org"
+"#,
+    )
+    .expect("write config");
+
+    let config = load_hook_client_config_file(&config_path).expect("load config");
+    let agent_org_artifacts = config
+        .agent_org_artifacts
+        .as_ref()
+        .expect("agent org artifacts config");
+
+    assert!(agent_org_artifacts.enabled);
+    assert_eq!(agent_org_artifacts.inactive_after_minutes, 30);
+    assert_eq!(
+        agent_org_artifacts.artifacts_path,
+        ".cache/agent-semantic-protocol/artifacts/org"
+    );
+    assert_eq!(
+        agent_org_artifacts.entry_skill_path,
+        ".cache/agent-semantic-protocol/org/skills/ASP_ORG.org"
+    );
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn agent_org_artifacts_rejects_empty_paths_and_zero_minutes() {
+    let root = temp_root("hook-client-agent-org-artifacts-invalid");
+    let config_path = root.join("config.toml");
+    fs::write(
+        &config_path,
+        r#"
+schemaId = "agent.semantic-protocols.hook.client-config"
+schemaVersion = "1"
+protocolId = "agent.semantic-protocols.hook"
+protocolVersion = "1"
+
+[agentOrgArtifacts]
+inactiveAfterMinutes = 0
+artifactsPath = ""
+entrySkillPath = ""
+
+[agentOrgArtifacts.archiveWarning]
+activeOrgFileThreshold = 0
+archivesDir = ""
+maxReportedFiles = 0
+"#,
+    )
+    .expect("write config");
+
+    let error =
+        load_hook_client_config_file(&config_path).expect_err("reject invalid agent org artifacts");
+    assert!(
+        error.contains("agentOrgArtifacts.inactiveAfterMinutes must be greater than 0"),
+        "{error}"
+    );
     let _ = fs::remove_dir_all(root);
 }
 
