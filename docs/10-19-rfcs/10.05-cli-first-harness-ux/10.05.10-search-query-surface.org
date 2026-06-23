@@ -159,6 +159,8 @@ on PATH.  The root =asp= facade owns this stable command routing; Org facts are
 owned by the =orgize= parser and Markdown facts are owned by =comrak= through
 the native =orgize= document provider.
 
+Agents should compose search queries from stable semantic anchors first: owner paths, exported symbols, parser node names, dependency names, public API names, policy ids, or test fixture names. Example values and low-information literals such as =A=, =B=, =C=, =xx=, or prose-only “current behavior” terms should remain secondary context after a concrete anchor has been selected. When a user asks whether a syntax form such as an Org priority cookie is supported, the agent should first search for anchors like =headline_priority_node=, =priority_value_len=, =PriorityValue=, or the relevant fixture/test owner, then use examples such as =[#A]= or =[#xx]= only to confirm boundary cases. Providers should surface low-quality query receipts instead of upgrading these literals into owner selectors or dependency names.
+
 #+begin_src shell
 asp org guide --workspace .                 # native orgize document provider through asp
 asp org search prime --workspace . --view seeds
@@ -429,6 +431,18 @@ exhausted manifest facts, local dependency usage, local public API facts, and
 available crate source/doc artifacts.  A =doc= or =docs= frontier node is a
 provider-owned local documentation/API frontier; agents must not interpret it
 as permission to browse docs.rs while local dependency actions are available.
+
+The dependency selector grammar is one positional token:
+=<crate[@version][::api]>=.  A command such as =search deps tokio thread= is
+ambiguous because =thread= is neither a workspace nor a flag; facades must fail
+closed with a compact diagnostic that points to =search deps tokio::thread=
+instead of silently ignoring the extra token.  When a selector includes =::api=,
+compact output should preserve the original selector in =q= and emit local next
+actions for =dependency:<selector>=, =docs-use:<selector>=,
+=crate-source:<crate>=, =import:<crate>=, and =tests:<api>= so an agent can
+answer version-sensitive dependency questions from current local code or
+provider-owned documentation artifacts before relying on stale model memory or
+external web search.
 
 Dependency usage guidance is a capability-coverage surface, not just a
 declared-or-unused check.  When a provider has local dependency usage owners, it
