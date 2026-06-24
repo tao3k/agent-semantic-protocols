@@ -2,9 +2,11 @@ use crate::provider_command::support::{
     asp_command, prepend_path, provider, temp_project_root, write_activation,
     write_check_failure_provider, write_stdout_stderr_exit_provider,
 };
-use std::time::{Duration, Instant, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 
 const GERBIL_CHECK_CACHE_REPLAY_WALL_SANITY_GATE: Duration = Duration::from_secs(2);
+const FNV64_OFFSET: u64 = 14_695_981_039_346_656_037;
+const FNV64_PRIME: u64 = 1_099_511_628_211;
 
 #[test]
 fn check_changed_view_seeds_renders_failure_frontier_after_provider_failure() {
@@ -269,18 +271,48 @@ fn gerbil_file_fingerprint(root: &std::path::Path, path: &str) -> String {
         root.join(path_buf)
     };
     let metadata = std::fs::metadata(&expanded).expect("fingerprint metadata");
-    let modified_secs = metadata
-        .modified()
-        .expect("modified")
-        .duration_since(UNIX_EPOCH)
-        .expect("modified after epoch")
-        .as_secs();
+    if metadata.is_dir() {
+        let entries = sorted_directory_entries(&expanded);
+        return format!(
+            "({} directory ({}))",
+            scheme_string(path),
+            entries
+                .iter()
+                .map(|entry| scheme_string(entry))
+                .collect::<Vec<_>>()
+                .join(" ")
+        );
+    }
     format!(
-        "({} {} {}.)",
+        "({} file {} {})",
         scheme_string(path),
         metadata.len(),
-        modified_secs
+        fnv64_file_hash(&expanded)
     )
+}
+
+fn sorted_directory_entries(path: &std::path::Path) -> Vec<String> {
+    let mut entries = std::fs::read_dir(path)
+        .expect("read dir")
+        .map(|entry| {
+            entry
+                .expect("dir entry")
+                .file_name()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect::<Vec<_>>();
+    entries.sort();
+    entries
+}
+
+fn fnv64_file_hash(path: &std::path::Path) -> u64 {
+    std::fs::read(path)
+        .expect("read fingerprint file")
+        .into_iter()
+        .fold(FNV64_OFFSET, |hash, byte| {
+            (hash ^ u64::from(byte)).wrapping_mul(FNV64_PRIME)
+        })
 }
 
 fn scheme_string(text: &str) -> String {
