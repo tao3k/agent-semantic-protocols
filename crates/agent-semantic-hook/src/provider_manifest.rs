@@ -2,6 +2,7 @@
 
 use serde::Deserialize;
 use std::collections::BTreeMap;
+use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
@@ -290,6 +291,9 @@ fn default_provider_binary(project_root: &Path, manifest: &ProviderManifest) -> 
             return managed_bin.display().to_string();
         }
     }
+    if let Some(user_bin) = home_local_provider_binary(&manifest.binary) {
+        return user_bin.display().to_string();
+    }
     manifest.binary.clone()
 }
 
@@ -299,6 +303,12 @@ fn ancestor_workspace_provider_binary(project_root: &Path, binary: &str) -> Opti
         (project_agent_config_path(ancestor).is_file() && is_executable_file(&candidate))
             .then_some(candidate)
     })
+}
+
+fn home_local_provider_binary(binary: &str) -> Option<PathBuf> {
+    let home = env::var_os("HOME")?;
+    let candidate = PathBuf::from(home).join("local").join("bin").join(binary);
+    is_executable_file(&candidate).then_some(candidate)
 }
 
 fn project_root_relative_binary(project_root: &Path, binary: &str) -> String {

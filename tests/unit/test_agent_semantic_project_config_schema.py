@@ -73,7 +73,7 @@ class AgentSemanticProjectConfigSchemaTests(unittest.TestCase):
                     "enabled": True,
                     "inactiveAfterMinutes": 30,
                     "artifactsPath": ".cache/agent-semantic-protocol/artifacts/org",
-                    "entrySkillPath": ".cache/agent-semantic-protocol/org/skills/ASP_ORG.org",
+                    "entrySkillPath": ".cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org",
                     "archiveWarning": {
                         "enabled": True,
                         "activeOrgFileThreshold": 10,
@@ -94,7 +94,7 @@ class AgentSemanticProjectConfigSchemaTests(unittest.TestCase):
                     "template": "SKILL.org",
                     "pluginSkill": "asp-codex-plugin/skills/agent-semantic-protocols/SKILL.org",
                     "projectSkill": ".agents/skills/agent-semantic-protocols/SKILL.org",
-                    "aspOrg": ".cache/agent-semantic-protocol/org/skills/ASP_ORG.org#asp-org",
+                    "aspOrg": ".cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org#asp-org",
                     "orgArtifacts": ".cache/agent-semantic-protocol/artifacts/org",
                 }
             },

@@ -17,6 +17,8 @@ mod client_hook_config_runtime;
 mod client_hook_desktop_smoke;
 #[path = "unit/codex_plugin_install.rs"]
 mod codex_plugin_install;
+#[path = "unit/command/search_pipe_gerbil_owner_items.rs"]
+mod command_search_pipe_gerbil_owner_items;
 #[path = "unit/document_provider.rs"]
 mod document_provider;
 #[path = "unit/graph_render.rs"]

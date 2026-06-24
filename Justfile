@@ -13,14 +13,26 @@ default:
 	@just --list
 
 _agent-tools-run-asp bin_dir +args:
-	@bin_dir="{{bin_dir}}"; \
-	if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-$HOME/.local/bin}"; fi; \
-	protocol_bin="${ASP_BIN:-${bin_dir}/asp}"; \
-	if [ -x "${protocol_bin}" ]; then \
-	  SEMANTIC_AGENT_BIN_DIR="${bin_dir}" "${protocol_bin}" {{args}}; \
-	else \
-	  SEMANTIC_AGENT_BIN_DIR="${bin_dir}" cargo run -q -p agent-semantic-protocol --bin asp -- {{args}}; \
-	fi
+    @bin_dir="{{bin_dir}}"; \
+    if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-$HOME/.local/bin}"; fi; \
+    protocol_bin="${ASP_BIN:-${bin_dir}/asp}"; \
+    if [ -x "${protocol_bin}" ]; then \
+      stale_reason=""; \
+      if [ -z "${ASP_BIN:-}" ]; then \
+        if [ -x target/release/asp ] && [ target/release/asp -nt "${protocol_bin}" ]; then \
+          stale_reason="target/release/asp is newer"; \
+        elif find crates/agent-semantic-protocol/src crates/agent-semantic-protocol/Cargo.toml Cargo.lock -type f -newer "${protocol_bin}" 2>/dev/null | grep -q .; then \
+          stale_reason="agent-semantic-protocol Rust source is newer"; \
+        fi; \
+      fi; \
+      if [ -n "${stale_reason}" ]; then \
+        echo "[agent-tools-run-asp] stale ${protocol_bin}: ${stale_reason}; run \`just agent-tools-install-protocol ${bin_dir}\`" >&2; \
+        exit 1; \
+      fi; \
+      SEMANTIC_AGENT_BIN_DIR="${bin_dir}" "${protocol_bin}" {{args}}; \
+    else \
+      SEMANTIC_AGENT_BIN_DIR="${bin_dir}" cargo run -q -p agent-semantic-protocol --bin asp -- {{args}}; \
+    fi
 
 # Install asp, asp-graph-turbo, and provider harnesses into $HOME/.local/bin by default, then install Codex hooks.
 install bin_dir="":
@@ -157,32 +169,27 @@ agent-tools-install-jl bin_dir="":
 agent-tools-install-gerbil bin_dir="":
     @just agent-tools-install-gx "{{bin_dir}}"
 
-agent-tools-build-gerbil-static:
-    @set -e; \
-      repo_root="$PWD"; \
-      package_dir="${repo_root}/{{gerbil_harness_project}}"; \
-      static_bin="${package_dir}/.bin/gslph"; \
-      mkdir -p "$(dirname "${static_bin}")"; \
-      cd "${package_dir}"; \
-      gxi build-static.ss; \
-      test -x "${static_bin}"
-
-agent-tools-build-gerbil-native:
-    @set -e; \
-      repo_root="$PWD"; \
-      package_dir="${repo_root}/{{gerbil_harness_project}}"; \
-      native_bin="${package_dir}/.bin/gslph"; \
-      mkdir -p "$(dirname "${native_bin}")"; \
-      cd "${package_dir}"; \
-      gxi build-native.ss; \
-      test -x "${native_bin}"
-
 agent-tools-build-gerbil:
     @set -e; \
-      case "$(uname -s)" in \
-        Darwin) just agent-tools-build-gerbil-native ;; \
-        *) just agent-tools-build-gerbil-static ;; \
-      esac
+      repo_root="$PWD"; \
+      package_dir="${repo_root}/{{gerbil_harness_project}}"; \
+      package_bin="${package_dir}/.bin"; \
+      root_bin="${repo_root}/.bin"; \
+      launcher="${package_dir}/.gerbil/bin/gslph"; \
+      cores="${GERBIL_BUILD_CORES:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 1)}"; \
+      cd "${package_dir}"; \
+      if [ ! -x "${launcher}" ] || find src/cli-launcher.ss src/search-light-launcher.ss src/constants.ss src/commands/search-prime-light.ss build.ss gerbil.pkg version.ss -type f -newer "${launcher}" 2>/dev/null | grep -q .; then \
+        rm -f "${launcher}" "${package_dir}/.gerbil/static/bin/gslph" "${package_dir}/.gerbil/bin/gslph__exe".*; \
+        GERBIL_PATH="${package_dir}/.gerbil" GERBIL_BUILD_CORES="${cores}" ./build.ss compile --release --optimized; \
+      else \
+        echo "[agent-tools-build-gerbil] ${launcher} is up to date"; \
+      fi; \
+      test -x "${launcher}"; \
+      mkdir -p "${package_bin}" "${root_bin}"; \
+      ln -f "${launcher}" "${package_bin}/gslph"; \
+      ln -f "${launcher}" "${root_bin}/gslph"; \
+      test -x "${package_bin}/gslph"; \
+      test -x "${root_bin}/gslph"
 
 agent-tools-install-gx bin_dir="":
     @just agent-tools-install-language gerbil-scheme "{{bin_dir}}"
@@ -220,8 +227,7 @@ check-graph-turbo-focused:
 
 check-language-evidence-smoke-setup:
     mkdir -p .bin
-    cargo build -q --manifest-path Cargo.toml --package agent-semantic-protocol --bin asp
-    install -m 755 target/debug/asp .bin/asp
+    just agent-tools-install-protocol .bin
     just agent-tools-install-rs .bin
     just agent-tools-install-ts .bin
     just agent-tools-install-py .bin
@@ -280,6 +286,7 @@ check-rfc-docs:
       -q
 
 provider-gate-root: check-language-evidence-smoke
+    just check-gerbil-owner-items-fast-path
     cargo test -p agent-semantic-hook
     uv run --project packages/python --frozen python -m pytest \
       tests/unit/test_semantic_*_schema.py \
@@ -289,6 +296,75 @@ provider-gate-root: check-language-evidence-smoke
       tests/unit/test_docs_rfc_skill_contracts.py \
       tests/unit/test_python_package_dependency_boundary.py \
       tests/unit/semantic_sandtable
+
+check-gerbil-owner-items-fast-path:
+    #!/usr/bin/env python3
+    import os
+    import statistics
+    import subprocess
+    import sys
+    import time
+    from pathlib import Path
+
+    root = Path.cwd()
+    asp_bin = Path(os.environ.get("ASP_BIN", root / ".bin" / "asp"))
+    if not asp_bin.is_file() or not os.access(asp_bin, os.X_OK):
+        raise SystemExit(
+            f"[gerbil-owner-items-fast] missing executable {asp_bin}; "
+            "run `just agent-tools-install-protocol .bin`"
+        )
+
+    command = [
+        str(asp_bin),
+        "gerbil-scheme",
+        "search",
+        "owner",
+        "build.ss",
+        "items",
+        "--query",
+        "build-spec release cli-launcher make parallelize build-release build-optimized",
+        "--workspace",
+        "{{gerbil_harness_project}}",
+        "--view",
+        "seeds",
+    ]
+    max_seconds = float(os.environ.get("ASP_GERBIL_OWNER_ITEMS_MAX_SECONDS", "0.25"))
+    runs = int(os.environ.get("ASP_GERBIL_OWNER_ITEMS_RUNS", "5"))
+    if runs < 1:
+        raise SystemExit("[gerbil-owner-items-fast] ASP_GERBIL_OWNER_ITEMS_RUNS must be >= 1")
+
+    durations: list[float] = []
+    for _ in range(runs):
+        started = time.perf_counter()
+        proc = subprocess.run(command, cwd=root, text=True, capture_output=True)
+        elapsed = time.perf_counter() - started
+        if proc.returncode != 0:
+            sys.stderr.write(proc.stderr)
+            sys.stderr.write(proc.stdout)
+            raise SystemExit(proc.returncode)
+        stdout = proc.stdout
+        if "reason=rust-inline-gerbil-owner-items" not in stdout:
+            sys.stderr.write(stdout)
+            raise SystemExit(
+                "[gerbil-owner-items-fast] expected Rust inline owner-items path; "
+                "no fallback to Gerbil provider is allowed"
+            )
+        if "source=rust-inline" not in stdout:
+            sys.stderr.write(stdout)
+            raise SystemExit("[gerbil-owner-items-fast] expected Rust inline item source")
+        durations.append(elapsed)
+
+    median = statistics.median(durations)
+    max_seen = max(durations)
+    print(
+        "[gerbil-owner-items-fast] "
+        f"runs={runs} median={median:.3f}s max={max_seen:.3f}s threshold={max_seconds:.3f}s"
+    )
+    if median > max_seconds:
+        raise SystemExit(
+            "[gerbil-owner-items-fast] median latency exceeded threshold; "
+            "keep `asp gerbil-scheme search owner ... items` on the Rust inline path"
+        )
 
 provider-gate-rust:
     cargo test --manifest-path {{rust_harness_project}}/Cargo.toml --features cli,search search

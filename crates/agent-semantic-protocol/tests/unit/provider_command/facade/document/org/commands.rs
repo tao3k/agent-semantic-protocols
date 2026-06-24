@@ -165,7 +165,7 @@ fn asp_org_exposes_ast_query_facts_and_capture_plan() {
             "--title",
             "Record ASP org plan",
             "--target-file",
-            "PLANS.org",
+            ".cache/agent-semantic-protocol/artifacts/org/flow/plans/agent-plan-session-test.org",
         ])
         .output()
         .expect("run asp org capture plan");
@@ -241,9 +241,53 @@ fn asp_org_exposes_ast_query_facts_and_capture_plan() {
         "{capture_plan_stdout}"
     );
     assert!(
-        !root.join("PLANS.org").exists(),
-        "asp org capture must not create PLANS.org"
+        !root
+            .join(".cache")
+            .join("agent-semantic-protocol")
+            .join("artifacts")
+            .join("org")
+            .join("flow")
+            .join("plans")
+            .join("agent-plan-session-test.org")
+            .exists(),
+        "asp org capture must not create plan file"
     );
+
+    for (target_file, message) in [
+        (
+            ".cache/agent-semantic-protocol/artifacts/org/current-agent-task.org",
+            "agent.plan.v1 --target-file filename must match `agent-plan-*.org`",
+        ),
+        (
+            ".cache/agent-semantic-protocol/artifacts/org/agent-plan-session-test.org",
+            "agent.plan.v1 --target-file must be stored under an `org/flow/plans/` path",
+        ),
+        (
+            ".cache/agent-semantic-protocol/artifacts/org/flow/plans/archive/agent-plan-session-test.org",
+            "agent.plan.v1 --target-file must be stored under an `org/flow/plans/` path",
+        ),
+    ] {
+        let invalid_capture_plan = asp_command(&root)
+            .args([
+                "org",
+                "capture",
+                "--contract",
+                "agent.plan.v1",
+                "--title",
+                "Invalid ASP org plan target",
+                "--target-file",
+                target_file,
+            ])
+            .output()
+            .expect("run invalid asp org capture plan");
+        assert!(
+            !invalid_capture_plan.status.success(),
+            "agent.plan.v1 target-file should reject {target_file}"
+        );
+        let stderr =
+            String::from_utf8(invalid_capture_plan.stderr).expect("invalid capture plan stderr");
+        assert!(stderr.contains(message), "{stderr}");
+    }
 
     let capture_task_kind = asp_command(&root)
         .args([
@@ -318,8 +362,9 @@ fn asp_org_capture_initializes_state_resources_and_flow_dirs() {
     let stdout = String::from_utf8(output.stdout).expect("capture init stdout");
     assert!(stdout.contains("[ASP_ORG_CAPTURE] initialized"), "{stdout}");
     assert!(
-        stdout
-            .contains("agents-md-include: @.cache/agent-semantic-protocol/org/skills/ASP_ORG.org"),
+        stdout.contains(
+            "agents-md-include: @.cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org"
+        ),
         "{stdout}"
     );
     assert!(stdout.contains("artifacts/org/flow/sdd"), "{stdout}");
@@ -331,8 +376,11 @@ fn asp_org_capture_initializes_state_resources_and_flow_dirs() {
         .join("agent-semantic-protocol")
         .join("org");
     assert!(
-        state_root.join("skills").join("ASP_ORG.org").is_file(),
-        "ASP_ORG.org should be materialized"
+        state_root
+            .join("templates")
+            .join("ASP_ORG_SKILL.org")
+            .is_file(),
+        "ASP_ORG_SKILL.org should be materialized"
     );
     assert!(
         state_root
@@ -356,6 +404,59 @@ fn asp_org_capture_initializes_state_resources_and_flow_dirs() {
     assert!(org_artifacts.join("flow").join("sdd").is_dir());
     assert!(org_artifacts.join("flow").join("BDR").is_dir());
     assert!(org_artifacts.join("flow").join("plans").is_dir());
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn asp_org_archive_done_moves_done_records_under_archives() {
+    let root = temp_project_root("org-document-command-archive-done");
+    let org_artifacts = root
+        .join(".cache")
+        .join("agent-semantic-protocol")
+        .join("artifacts")
+        .join("org");
+    let plans = org_artifacts.join("flow").join("plans");
+    std::fs::create_dir_all(&plans).expect("create plans dir");
+    let done = plans.join("done-plan.org");
+    let todo = plans.join("todo-plan.org");
+    std::fs::write(&done, "* DONE Finished plan\nArchive me.\n").expect("write done plan");
+    std::fs::write(&todo, "* TODO Open plan\nKeep me active.\n").expect("write todo plan");
+
+    let output = asp_command(&root)
+        .args(["org", "archive", "done"])
+        .output()
+        .expect("run asp org archive done");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("archive stdout");
+    assert!(stdout.contains("[ASP_ORG_ARCHIVE] done"), "{stdout}");
+    assert!(stdout.contains("archived-count: 1"), "{stdout}");
+    assert!(stdout.contains("flow/plans/done-plan.org"), "{stdout}");
+
+    let archived = org_artifacts
+        .join("archives")
+        .join("flow")
+        .join("plans")
+        .join("done-plan.org");
+    assert!(!done.exists(), "DONE source should be moved");
+    assert!(todo.exists(), "TODO source should stay active");
+    let archived_text = std::fs::read_to_string(&archived).expect("read archived plan");
+    assert!(
+        archived_text.contains("#+ARCHIVED_FROM: flow/plans/done-plan.org"),
+        "{archived_text}"
+    );
+    assert!(
+        archived_text.contains("#+ARCHIVE_REASON: done"),
+        "{archived_text}"
+    );
+    assert!(
+        archived_text.contains("* DONE Finished plan"),
+        "{archived_text}"
+    );
 
     let _ = std::fs::remove_dir_all(root);
 }

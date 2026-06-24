@@ -1,7 +1,38 @@
 use agent_semantic_hook::{build_default_activation, builtin_provider_manifests};
+use std::env;
+use std::ffi::OsString;
 use std::fs;
+use std::sync::Mutex;
 
 use super::{git_init, make_executable, temp_root};
+
+static HOME_ENV_LOCK: Mutex<()> = Mutex::new(());
+
+struct HomeEnvGuard {
+    previous: Option<OsString>,
+}
+
+impl HomeEnvGuard {
+    fn set(home: &std::path::Path) -> Self {
+        let previous = env::var_os("HOME");
+        unsafe {
+            env::set_var("HOME", home);
+        }
+        Self { previous }
+    }
+}
+
+impl Drop for HomeEnvGuard {
+    fn drop(&mut self) {
+        unsafe {
+            if let Some(previous) = &self.previous {
+                env::set_var("HOME", previous);
+            } else {
+                env::remove_var("HOME");
+            }
+        }
+    }
+}
 
 #[test]
 fn default_activation_records_project_bin_provider_prefix() {
@@ -107,6 +138,40 @@ fn default_activation_uses_project_runtime_bin_provider_prefix() {
     );
 
     fs::remove_dir_all(root).expect("remove temp root");
+}
+
+#[test]
+fn default_activation_uses_home_local_bin_before_path_fallback_for_gerbil() {
+    let _home_lock = HOME_ENV_LOCK.lock().expect("lock HOME env");
+    let root = temp_root("home-local-gerbil-provider");
+    let home = temp_root("home-local-gerbil-home");
+    let home_bin = home.join("local").join("bin");
+    fs::create_dir_all(&home_bin).expect("create home local bin");
+    fs::create_dir_all(root.join("src")).expect("create src");
+    fs::write(root.join("gerbil.pkg"), "(package: sample/gerbil)\n").expect("write gerbil.pkg");
+    let provider_bin = home_bin.join("gslph");
+    fs::write(&provider_bin, "#!/bin/sh\nexit 0\n").expect("write provider bin");
+    make_executable(&provider_bin);
+    let _home_guard = HomeEnvGuard::set(&home);
+
+    let activation = build_default_activation(&root).expect("build activation");
+    let gerbil = activation
+        .providers
+        .iter()
+        .find(|provider| provider.language_id == "gerbil-scheme")
+        .expect("gerbil provider activated from HOME local bin");
+
+    assert_eq!(gerbil.binary, "gslph");
+    let expected_provider_bin =
+        fs::canonicalize(&provider_bin).unwrap_or_else(|_| provider_bin.clone());
+    assert_eq!(
+        gerbil.provider_command_prefix,
+        vec![expected_provider_bin.display().to_string()],
+        "Gerbil provider should prefer $HOME/local/bin/gslph before PATH fallback"
+    );
+
+    fs::remove_dir_all(root).expect("remove temp root");
+    fs::remove_dir_all(home).expect("remove temp home");
 }
 
 #[test]

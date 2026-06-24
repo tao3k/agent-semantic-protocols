@@ -631,10 +631,9 @@ fn assert_agent_config(root: &std::path::Path) {
     assert!(
         agent_config.contains("artifactsPath = \".cache/agent-semantic-protocol/artifacts/org\"")
     );
-    assert!(
-        agent_config
-            .contains("entrySkillPath = \".cache/agent-semantic-protocol/org/skills/ASP_ORG.org\"")
-    );
+    assert!(agent_config.contains(
+        "entrySkillPath = \".cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org\""
+    ));
     toml::from_str::<toml::Value>(&agent_config).expect("agent config is valid TOML");
 }
 

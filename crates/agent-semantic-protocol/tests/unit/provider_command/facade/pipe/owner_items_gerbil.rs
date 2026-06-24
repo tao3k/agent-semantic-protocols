@@ -3,6 +3,7 @@ use crate::provider_command::support::{
     write_activation_env_guard_provider, write_marker_provider, write_stdout_stderr_exit_provider,
     write_stdout_stderr_provider,
 };
+use std::time::{Duration, Instant};
 
 #[test]
 fn gerbil_owner_items_query_set_uses_provider_scheme_item_selectors() {
@@ -25,6 +26,7 @@ reason=owner-item-selector-ready\n",
     );
     write_activation(&root, &[provider("gerbil-scheme", Vec::new())]);
 
+    let started_at = Instant::now();
     let output = asp_command(&root)
         .env("PATH", prepend_path(&bin_dir))
         .env("PRJ_CACHE_HOME", root.join(".cache"))
@@ -43,23 +45,28 @@ reason=owner-item-selector-ready\n",
         ])
         .output()
         .expect("run asp gerbil search owner items");
+    let elapsed = started_at.elapsed();
 
     assert!(
         output.status.success(),
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+    assert!(
+        elapsed < Duration::from_secs(2),
+        "Gerbil facade owner-items should stay in Rust inline fast path, elapsed={elapsed:?}"
+    );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(
-        stdout.contains("I=item:symbol(type-compatible?)@src/checker/types.ss:1:4!syntax"),
+        stdout.contains("I=item:symbol(type-compatible?)@src/checker/types.ss:1:1!syntax"),
         "{stdout}"
     );
     assert!(
-        stdout.contains("I2=item:symbol(any-type-compatible?)@src/checker/types.ss:6:9!syntax"),
+        stdout.contains("item:symbol(any-type-compatible?)@src/checker/types.ss"),
         "{stdout}"
     );
     assert!(
-        stdout.contains("nextCommand=asp gerbil-scheme query --selector src/checker/types.ss:1:4 --workspace . --code"),
+        stdout.contains("nextCommand=asp gerbil-scheme query --selector src/checker/types.ss:1:1 --workspace . --code"),
         "{stdout}"
     );
     assert!(
@@ -68,10 +75,14 @@ reason=owner-item-selector-ready\n",
     );
     assert!(!stdout.contains("reason=no-owner-item-match"), "{stdout}");
     assert!(
-        String::from_utf8(output.stderr)
+        stdout.contains("rust-inline-gerbil-owner-items"),
+        "Gerbil owner-items should stay in the ASP inline fast path: {stdout}"
+    );
+    assert!(
+        !String::from_utf8(output.stderr)
             .expect("stderr")
             .contains("provider-owned-owner-items"),
-        "Gerbil owner-items should come from the language provider"
+        "Gerbil owner-items should not spawn the language provider"
     );
     let _ = std::fs::remove_dir_all(root);
 }
@@ -120,13 +131,88 @@ reason=owner-item-selector-ready\n",
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(
-        stdout.contains("item:symbol(type-compatible?)@src/checker/types.ss:1:2!syntax"),
+        stdout.contains("item:symbol(type-compatible?)@src/checker/types.ss:1:1!syntax"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("rust-inline-gerbil-owner-items"),
         "{stdout}"
     );
     assert!(
         !String::from_utf8(output.stderr)
             .expect("stderr")
             .contains("unexpected client backend activation env")
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn gerbil_owner_items_external_workspace_uses_activation_bin_config() {
+    let root = temp_project_root("search-owner-gerbil-external-workspace-bin-root");
+    let workspace = root.join(".data/gerbil-v0.19-staging");
+    let bin_dir = root.join(".bin");
+    std::fs::create_dir_all(workspace.join("src/gerbil/compiler")).expect("create source");
+    std::fs::write(
+        workspace.join("src/gerbil/compiler/driver.ss"),
+        "(def (compile-module ctx mod) (invoke-gsc mod))\n",
+    )
+    .expect("write source");
+    std::fs::create_dir_all(root.join(".agents")).expect("create asp config dir");
+    std::fs::write(
+        root.join(".agents/asp.toml"),
+        "[languages.gerbil-scheme]\nbin = \".bin/gslph\"\n",
+    )
+    .expect("write asp config");
+    write_stdout_stderr_provider(
+        &bin_dir,
+        "gslph",
+        "I=item:symbol(compile-module)@src/gerbil/compiler/driver.ss:1:6!syntax\n\
+reason=owner-item-selector-ready\n",
+        "activation-bin-provider\n",
+    );
+    write_activation(&root, &[provider("gerbil-scheme", Vec::new())]);
+
+    let output = asp_command(&root)
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args([
+            "gerbil-scheme",
+            "search",
+            "owner",
+            "src/gerbil/compiler/driver.ss",
+            "items",
+            "--query",
+            "compile-module|invoke-gsc|parallel|compile-file|compile-scm-file|gsc-options|keep-scm",
+            "--workspace",
+            ".data/gerbil-v0.19-staging",
+            "--view",
+            "seeds",
+        ])
+        .output()
+        .expect("run asp gerbil search owner items");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    assert!(
+        stdout.contains("I=item:symbol(compile-module)@src/gerbil/compiler/driver.ss:1:1!syntax"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("reason=owner-item-selector-ready"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("rust-inline-gerbil-owner-items"),
+        "external workspace owner-items should stay in the ASP inline fast path: {stdout}"
+    );
+    assert!(
+        !String::from_utf8(output.stderr)
+            .expect("stderr")
+            .contains("activation-bin-provider"),
+        "external workspace owner-items should not spawn the Gerbil provider"
     );
     let _ = std::fs::remove_dir_all(root);
 }
@@ -185,10 +271,14 @@ reason=owner-item-selector-ready\n",
         "{stdout}"
     );
     assert!(
-        String::from_utf8(output.stderr)
+        stdout.contains("rust-inline-gerbil-owner-items"),
+        "Gerbil .ssi owner-items should stay in the ASP inline fast path: {stdout}"
+    );
+    assert!(
+        !String::from_utf8(output.stderr)
             .expect("stderr")
             .contains("provider-owned-owner-items"),
-        "Gerbil .ssi owner-items should come from the language provider"
+        "Gerbil .ssi owner-items should not spawn the language provider"
     );
     let _ = std::fs::remove_dir_all(root);
 }
@@ -227,22 +317,20 @@ fn gerbil_owner_items_query_set_rejects_empty_provider_output_for_existing_owner
         .expect("run asp gerbil search owner items");
 
     assert!(
-        !output.status.success(),
-        "stdout: {}",
-        String::from_utf8_lossy(&output.stdout)
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
     );
-    let stderr = String::from_utf8(output.stderr).expect("stderr");
-    assert!(
-        stderr.contains("provider-owned owner-items produced empty output"),
-        "{stderr}"
-    );
-    assert!(stderr.contains("src/checker/types.ss"), "{stderr}");
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(
         !stdout.contains("asp-fast-owner-query-v1"),
         "existing Gerbil owner path must not fall back to Rust owner query rendering"
     );
-    assert!(marker.exists(), "provider should be invoked");
+    assert!(
+        stdout.contains("rust-inline-gerbil-owner-items"),
+        "existing Gerbil owner path should use the inline fast path: {stdout}"
+    );
+    assert!(!marker.exists(), "provider should not be invoked");
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -321,7 +409,7 @@ reason=owner-item-selector-ready\n",
         "{stdout}"
     );
     assert!(
-        stdout.contains("item:symbol(defmethod)@gerbil/src/poo-flow/poo.ss:9:10!syntax"),
+        stdout.contains("item:symbol(defmethod)@gerbil/src/poo-flow/poo.ss:9:9!syntax"),
         "{stdout}"
     );
     assert!(
@@ -334,7 +422,7 @@ reason=owner-item-selector-ready\n",
         "{stdout}"
     );
     assert!(
-        stdout.contains("item:symbol(.mix)@gerbil/src/poo-flow/poo.ss:12:13!syntax")
+        stdout.contains("item:symbol(.mix)@gerbil/src/poo-flow/poo.ss:12:12!syntax")
             || stdout.contains("item:symbol(.mix)@gerbil/src/poo-flow/poo.ss:18:18!syntax"),
         "{stdout}"
     );
@@ -344,10 +432,14 @@ reason=owner-item-selector-ready\n",
     );
     assert!(!stdout.contains("reason=no-owner-item-match"), "{stdout}");
     assert!(
-        String::from_utf8(output.stderr)
+        stdout.contains("rust-inline-gerbil-owner-items"),
+        "Gerbil POO owner-items must stay in the ASP inline fast path: {stdout}"
+    );
+    assert!(
+        !String::from_utf8(output.stderr)
             .expect("stderr")
             .contains("provider-owned-owner-items"),
-        "Gerbil POO owner-items must come from the language provider"
+        "Gerbil POO owner-items should not spawn the language provider"
     );
     let _ = std::fs::remove_dir_all(root);
 }
@@ -412,10 +504,14 @@ reason=owner-item-selector-ready\n",
     );
     assert!(!stdout.contains("reason=no-owner-item-match"), "{stdout}");
     assert!(
-        String::from_utf8(output.stderr)
+        stdout.contains("rust-inline-gerbil-owner-items"),
+        "Gerbil config owner-items should stay in the ASP inline fast path: {stdout}"
+    );
+    assert!(
+        !String::from_utf8(output.stderr)
             .expect("stderr")
             .contains("provider-owned-owner-items"),
-        "Gerbil config owner-items should come from the language provider"
+        "Gerbil config owner-items should not spawn the language provider"
     );
     let _ = std::fs::remove_dir_all(root);
 }

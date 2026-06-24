@@ -1,9 +1,13 @@
 use agent_semantic_config::{
     HookClientAgentOrgArtifactsArchiveWarningConfig, HookClientAgentOrgArtifactsConfig,
 };
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, SystemTime};
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+const ARCHIVE_WARNING_CACHE_TTL: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Clone)]
 pub(crate) struct AgentOrgArtifactsRecovery {
@@ -39,13 +43,32 @@ struct CompiledAgentOrgArtifactsArchiveWarningConfig {
     max_reported_files: usize,
 }
 
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+struct ArchiveWarningCacheKey {
+    artifacts_root: PathBuf,
+    archives_dir: String,
+    active_org_file_threshold: usize,
+    max_reported_files: usize,
+}
+
+#[derive(Clone)]
+struct ArchiveWarningCacheEntry {
+    checked_at: Instant,
+    warning: Option<AgentOrgArtifactsArchiveWarning>,
+}
+
+static ARCHIVE_WARNING_CACHE: OnceLock<
+    Mutex<HashMap<ArchiveWarningCacheKey, ArchiveWarningCacheEntry>>,
+> = OnceLock::new();
+
 impl Default for CompiledAgentOrgArtifactsConfig {
     fn default() -> Self {
         Self {
             enabled: false,
             inactive_after_minutes: 30,
             artifacts_path: PathBuf::from(".cache/agent-semantic-protocol/artifacts/org"),
-            entry_skill_path: ".cache/agent-semantic-protocol/org/skills/ASP_ORG.org".to_string(),
+            entry_skill_path: ".cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org"
+                .to_string(),
             archive_warning: CompiledAgentOrgArtifactsArchiveWarningConfig::default(),
         }
     }
@@ -67,7 +90,11 @@ impl CompiledAgentOrgArtifactsConfig {
         Self::default()
     }
 
-    pub(crate) fn recovery(&self, project_root: &Path) -> Option<AgentOrgArtifactsRecovery> {
+    pub(crate) fn recovery(
+        &self,
+        project_root: &Path,
+        session_id: Option<&str>,
+    ) -> Option<AgentOrgArtifactsRecovery> {
         if !self.enabled {
             return None;
         }
@@ -80,7 +107,7 @@ impl CompiledAgentOrgArtifactsConfig {
             artifacts_path: artifacts_root.display().to_string(),
             entry_skill_path: self.entry_skill_path.clone(),
             inactive_after_minutes: self.inactive_after_minutes,
-            capture_contract_command: capture_contract_command(&artifacts_root),
+            capture_contract_command: capture_contract_command(&artifacts_root, session_id),
         })
     }
 
@@ -92,6 +119,24 @@ impl CompiledAgentOrgArtifactsConfig {
             return None;
         }
         let artifacts_root = resolve_project_path(project_root, &self.artifacts_path);
+        let cache_key = ArchiveWarningCacheKey {
+            artifacts_root: artifacts_root.clone(),
+            archives_dir: self.archive_warning.archives_dir.clone(),
+            active_org_file_threshold: self.archive_warning.active_org_file_threshold,
+            max_reported_files: self.archive_warning.max_reported_files,
+        };
+        if let Some(cached) = cached_archive_warning(&cache_key) {
+            return cached;
+        }
+        let warning = self.compute_archive_warning(&artifacts_root);
+        store_archive_warning(cache_key, warning.clone());
+        warning
+    }
+
+    fn compute_archive_warning(
+        &self,
+        artifacts_root: &Path,
+    ) -> Option<AgentOrgArtifactsArchiveWarning> {
         let active_org_files =
             collect_active_org_files(&artifacts_root, &self.archive_warning.archives_dir);
         if active_org_files.len() <= self.archive_warning.active_org_file_threshold {
@@ -113,6 +158,37 @@ impl CompiledAgentOrgArtifactsConfig {
             active_org_file_count: active_org_files.len(),
             done_org_files,
         })
+    }
+}
+
+fn archive_warning_cache()
+-> &'static Mutex<HashMap<ArchiveWarningCacheKey, ArchiveWarningCacheEntry>> {
+    ARCHIVE_WARNING_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn cached_archive_warning(
+    key: &ArchiveWarningCacheKey,
+) -> Option<Option<AgentOrgArtifactsArchiveWarning>> {
+    let cache = archive_warning_cache().lock().ok()?;
+    let entry = cache.get(key)?;
+    if entry.checked_at.elapsed() <= ARCHIVE_WARNING_CACHE_TTL {
+        return Some(entry.warning.clone());
+    }
+    None
+}
+
+fn store_archive_warning(
+    key: ArchiveWarningCacheKey,
+    warning: Option<AgentOrgArtifactsArchiveWarning>,
+) {
+    if let Ok(mut cache) = archive_warning_cache().lock() {
+        cache.insert(
+            key,
+            ArchiveWarningCacheEntry {
+                checked_at: Instant::now(),
+                warning,
+            },
+        );
     }
 }
 
@@ -315,12 +391,45 @@ fn artifact_display_path(root: &Path, path: &Path) -> String {
         .to_string()
 }
 
-fn capture_contract_command(artifacts_root: &Path) -> String {
-    let sample_path = artifacts_root.join("current-agent-task.org");
+fn capture_contract_command(artifacts_root: &Path, session_id: Option<&str>) -> String {
+    let plan_path = artifacts_root
+        .join("flow")
+        .join("plans")
+        .join(agent_plan_filename(session_id));
     format!(
-        "asp org capture --contract agent.task.v1 --title 'Current agent task' --target-file {} --no-confirm",
-        shell_arg(&sample_path.display().to_string())
+        "asp org capture --contract agent.plan.v1 --title 'Agent session plan' --target-file {} --no-confirm",
+        shell_arg(&plan_path.display().to_string())
     )
+}
+
+fn agent_plan_filename(session_id: Option<&str>) -> String {
+    let session = session_id
+        .map(slugify_filename_component)
+        .filter(|slug| !slug.is_empty())
+        .unwrap_or_else(|| "session-unknown".to_string());
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or_default();
+    format!("agent-plan-{session}-{timestamp}.org")
+}
+
+fn slugify_filename_component(value: &str) -> String {
+    let mut slug = String::new();
+    let mut previous_dash = false;
+    for ch in value.chars().flat_map(char::to_lowercase) {
+        if ch.is_ascii_alphanumeric() {
+            slug.push(ch);
+            previous_dash = false;
+        } else if !previous_dash && !slug.is_empty() {
+            slug.push('-');
+            previous_dash = true;
+        }
+    }
+    while slug.ends_with('-') {
+        slug.pop();
+    }
+    slug
 }
 
 fn shell_arg(value: &str) -> String {

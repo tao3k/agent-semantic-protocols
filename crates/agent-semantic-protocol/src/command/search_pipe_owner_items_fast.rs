@@ -8,6 +8,7 @@ use super::graph::GraphTurboReceiptRequest;
 use super::provider_process::{provider_invocation_with_profile, run_provider_command_with_stdin};
 use super::search_config::AspConfig;
 use super::search_pipe_args::parse_search_owner_items_query_args;
+use super::search_pipe_gerbil_owner_items::run_inline_gerbil_owner_items_query;
 use super::search_pipe_owner_query::render_owner_query_frontier;
 use super::search_pipe_provider_facts::ProviderGraphFactsContext;
 use super::search_pipe_python_owner_items::run_inline_python_owner_items_query;
@@ -87,6 +88,18 @@ impl<'a> OwnerItemsSearchState<'a> {
         )
     }
 
+    fn try_inline_gerbil(&self) -> Result<OwnerItemsSearchStep, String> {
+        if run_inline_gerbil_owner_items_query(
+            self.language_id,
+            self.owner,
+            self.query,
+            &self.owner_project_root,
+        )? {
+            return Ok(OwnerItemsSearchStep::Handled);
+        }
+        Ok(OwnerItemsSearchStep::Unsupported)
+    }
+
     fn try_provider(&self) -> Result<OwnerItemsSearchStep, String> {
         run_provider_owner_items_query(
             self.language_id,
@@ -133,6 +146,9 @@ pub(super) fn run_search_owner_items_query_command(
     if state.language_id == "python" {
         return Err(state.python_inline_miss_error());
     }
+    if state.try_inline_gerbil()? == OwnerItemsSearchStep::Handled {
+        return Ok(());
+    }
     if state.try_provider()? == OwnerItemsSearchStep::Handled {
         return Ok(());
     }
@@ -171,7 +187,7 @@ fn run_provider_owner_items_query(
         context.profiles,
         context.provider,
         args,
-        project_root,
+        context.provider_bin_root,
         config,
     )?;
     let output = run_provider_command_with_stdin(

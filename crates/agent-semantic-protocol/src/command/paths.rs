@@ -90,7 +90,7 @@ impl ProjectPaths {
         })?;
         let paths = project_state_paths(&project_root)?;
         let org_state_root = paths.protocol_home.join("org");
-        let org_state_skill = org_state_root.join("skills").join("ASP_ORG.org");
+        let org_state_skill = org_state_root.join("templates").join("ASP_ORG_SKILL.org");
         let org_artifacts = paths.artifacts_dir.join("org");
         let org_flow = org_artifacts.join("flow");
 

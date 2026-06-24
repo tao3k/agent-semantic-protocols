@@ -27,8 +27,8 @@ pub(super) fn install_agent_semantic_protocols_skill(
     let org_state_skill_path = project_state_paths(project_root)?
         .protocol_home
         .join("org")
-        .join("skills")
-        .join("ASP_ORG.org");
+        .join("templates")
+        .join("ASP_ORG_SKILL.org");
     let org_artifacts_path = project_state_paths(project_root)?
         .protocol_home
         .join("artifacts")
@@ -58,8 +58,8 @@ pub(super) fn install_agent_semantic_protocols_plugin_skill(
     let org_state_skill_path = project_state_paths(project_root)?
         .protocol_home
         .join("org")
-        .join("skills")
-        .join("ASP_ORG.org");
+        .join("templates")
+        .join("ASP_ORG_SKILL.org");
     let org_artifacts_path = project_state_paths(project_root)?
         .protocol_home
         .join("artifacts")
@@ -152,21 +152,13 @@ fn merge_agent_semantic_protocols_agent_config(existing: &str) -> Result<String,
         .ok_or_else(|| "`skills` must be a TOML table".to_string())?;
     let mut asp_skill = toml::Table::new();
     asp_skill.insert(
-        "template".to_string(),
-        toml::Value::String("SKILL.org".to_string()),
-    );
-    asp_skill.insert(
         "pluginSkill".to_string(),
         toml::Value::String(codex_project_plugin_cache_skill_config_path()?),
     );
     asp_skill.insert(
-        "projectSkill".to_string(),
-        toml::Value::String(".agents/skills/agent-semantic-protocols/SKILL.org".to_string()),
-    );
-    asp_skill.insert(
         "aspOrg".to_string(),
         toml::Value::String(
-            ".cache/agent-semantic-protocol/org/skills/ASP_ORG.org#asp-org".to_string(),
+            ".cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org#asp-org".to_string(),
         ),
     );
     asp_skill.insert(
@@ -192,7 +184,9 @@ fn merge_agent_semantic_protocols_agent_config(existing: &str) -> Result<String,
     );
     agent_org_artifacts.insert(
         "entrySkillPath".to_string(),
-        toml::Value::String(".cache/agent-semantic-protocol/org/skills/ASP_ORG.org".to_string()),
+        toml::Value::String(
+            ".cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org".to_string(),
+        ),
     );
     hook.entry("agentOrgArtifacts".to_string())
         .or_insert_with(|| toml::Value::Table(agent_org_artifacts));

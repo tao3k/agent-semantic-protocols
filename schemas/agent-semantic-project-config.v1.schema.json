@@ -115,7 +115,7 @@
         "entrySkillPath": {
           "type": "string",
           "minLength": 1,
-          "default": ".cache/agent-semantic-protocol/org/skills/ASP_ORG.org"
+          "default": ".cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org"
         },
         "archiveWarning": {
           "$ref": "#/$defs/agentOrgArtifactsArchiveWarningConfig"

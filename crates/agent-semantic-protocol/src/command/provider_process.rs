@@ -258,12 +258,14 @@ pub(super) fn provider_invocation_with_profile(
     provider_bin_root: &Path,
     config: &AspConfig,
 ) -> Result<Vec<String>, String> {
+    let home = home_dir();
+    let paths = path_dirs();
     if let Some(invocation) = resolve_provider_binary_invocation(
         config.provider_bin(&provider.language_id),
         &provider.binary,
         provider_bin_root,
-        home_dir().as_deref(),
-        &path_dirs(),
+        home.as_deref(),
+        &paths,
     )? {
         return Ok(provider_invocation_with_binary(
             provider,

@@ -76,7 +76,7 @@ template = "SKILL.org"
 enabled = false
 inactiveAfterMinutes = 45
 artifactsPath = ".cache/agent-semantic-protocol/artifacts/org"
-entrySkillPath = ".cache/agent-semantic-protocol/org/skills/ASP_ORG.org"
+entrySkillPath = ".cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org"
 
 [hook.agentOrgArtifacts.archiveWarning]
 enabled = true
@@ -102,7 +102,7 @@ maxReportedFiles = 3
     );
     assert_eq!(
         agent_org_artifacts.entry_skill_path,
-        ".cache/agent-semantic-protocol/org/skills/ASP_ORG.org"
+        ".cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org"
     );
     assert!(agent_org_artifacts.archive_warning.enabled);
     assert_eq!(
@@ -196,7 +196,7 @@ protocolId = "agent.semantic-protocols.hook"
 protocolVersion = "1"
 
 [agentOrgArtifacts]
-entrySkillPath = ".cache/agent-semantic-protocol/org/skills/ASP_ORG.org"
+entrySkillPath = ".cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org"
 "#,
     )
     .expect("write config");
@@ -215,7 +215,7 @@ entrySkillPath = ".cache/agent-semantic-protocol/org/skills/ASP_ORG.org"
     );
     assert_eq!(
         agent_org_artifacts.entry_skill_path,
-        ".cache/agent-semantic-protocol/org/skills/ASP_ORG.org"
+        ".cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org"
     );
     let _ = fs::remove_dir_all(root);
 }

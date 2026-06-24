@@ -1,4 +1,4 @@
-@.cache/agent-semantic-protocol/org/skills/ASP_ORG.org
+@.cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org
 
 # Project Workflow
 

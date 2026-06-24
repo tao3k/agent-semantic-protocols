@@ -21,7 +21,7 @@ on agent search flow; generated sections are owned by Rust.
 :PROPERTIES:
 :ASP_SECTION: asp-org-reference
 :ASP_RENDER: generated
-:ASP_SOURCE: project_state_paths.protocol_home/org/skills/ASP_ORG.org
+:ASP_SOURCE: project_state_paths.protocol_home/org/templates/ASP_ORG_SKILL.org
 :END:
 
 # BEGIN_ASP_GENERATED asp-org-reference
@@ -71,7 +71,7 @@ Dependency questions stay inside provider search until the provider reports a
 missing dependency frontier.
 
 | Command | Purpose |
-| =asp <language> search deps <dependency[@version][::api]> --workspace . --view seeds= | Return manifest owner, dependency edge, import owners, docs/public API use, source/runtime hints, tests, and next command. |
+| =asp <language> search deps <dependency[@version][::api]> --workspace . --view seeds= | Return current manifest owner, dependency edge, import owners, docs/public API use, source/runtime hints, tests, and next command. Use one selector token such as =tokio::spawn=; do not pass an extra positional API token. |
 | =asp <language> search pipe '<question>' --workspace . --view seeds= | Graph-turbo may surface =search-deps= as an action affordance when dependency topology nodes prove a package frontier. |
 | =asp <language> search owner <manifest-owner> items --query '<dependency>' --workspace . --view seeds= | Inspect dependency evidence in the manifest or package owner. |
 
@@ -105,7 +105,7 @@ The contract id must be explicit; do not use positional aliases such as task, pl
   frontier gaps.
 - Keep language project parsing in the language provider. ASP routes and
   indexes; it does not reimplement package membership or source/test scope.
-- Do not edit languages/org/skills/ASP_ORG.org directly or patch the
+- Do not edit languages/org/templates/ASP_ORG_SKILL.org directly or patch the
   materialized project-state copy by hand. Change the governing contract,
   template, or Rust materialization source and rerun =asp sync= or the relevant
   =asp install ...= command so the skill is regenerated.

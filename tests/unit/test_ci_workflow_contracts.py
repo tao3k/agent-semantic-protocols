@@ -107,7 +107,9 @@ def test_language_release_workflows_are_project_owned_and_publish_assets() -> No
             assert "- name: Build Gerbil" in workflow
             assert "gxpkg deps --install" in workflow
             assert "- name: Build native binary" in workflow
-            assert "gxpkg env gxi build-native.ss" in workflow
+            assert "gxpkg env ./build.ss compile --release --optimized" in workflow
+            assert ".bin/gslph search prime --view seeds --workspace ." in workflow
+            assert ".bin/gslph search workspace-scope --workspace ." in workflow
             assert "package/bin/gslph" in workflow
 
 
@@ -151,6 +153,100 @@ def test_language_evidence_ci_hot_path_stays_core_fast() -> None:
     assert "asp-julia-harness" not in step
     assert ".bin/gerbil-scheme-harness" not in step
     assert "agent-tools-install-julia" not in step
+
+
+def test_language_evidence_setup_installs_release_asp_binary() -> None:
+    justfile = JUSTFILE.read_text(encoding="utf-8")
+
+    setup = justfile.split("check-language-evidence-smoke-setup:", 1)[1]
+    setup = setup.split("check-language-evidence-smoke-core:", 1)[0]
+
+    assert "just agent-tools-install-protocol .bin" in setup
+    assert "target/debug/asp" not in setup
+    assert "cargo build -q --manifest-path Cargo.toml --package agent-semantic-protocol --bin asp" not in setup
+
+
+def test_agent_tools_run_asp_rejects_stale_default_binary() -> None:
+    justfile = JUSTFILE.read_text(encoding="utf-8")
+
+    runner = justfile.split("_agent-tools-run-asp bin_dir +args:", 1)[1]
+    runner = runner.split("# Install asp, asp-graph-turbo", 1)[0]
+
+    assert 'protocol_bin="${ASP_BIN:-${bin_dir}/asp}"' in runner
+    assert '[ -z "${ASP_BIN:-}" ]' in runner
+    assert '[ target/release/asp -nt "${protocol_bin}" ]' in runner
+    assert "crates/agent-semantic-protocol/src" in runner
+    assert "agent-semantic-protocol Rust source is newer" in runner
+    assert "run \\`just agent-tools-install-protocol ${bin_dir}\\`" in runner
+
+
+def test_gerbil_owner_items_fast_path_gate_uses_rust_inline_and_millisecond_budget() -> None:
+    justfile = JUSTFILE.read_text(encoding="utf-8")
+
+    provider_gate_root = justfile.split("provider-gate-root:", 1)[1]
+    provider_gate_root = provider_gate_root.split("provider-gate-rust:", 1)[0]
+    assert "just check-gerbil-owner-items-fast-path" in provider_gate_root
+
+    gate = justfile.split("check-gerbil-owner-items-fast-path:", 1)[1]
+    gate = gate.split("provider-gate-rust:", 1)[0]
+
+    assert "ASP_GERBIL_OWNER_ITEMS_MAX_SECONDS" in gate
+    assert '"0.25"' in gate
+    assert "ASP_GERBIL_OWNER_ITEMS_RUNS" in gate
+    assert "statistics.median" in gate
+    assert "reason=rust-inline-gerbil-owner-items" in gate
+    assert "source=rust-inline" in gate
+    assert "no fallback to Gerbil provider is allowed" in gate
+    assert "build.ss" in gate
+    assert "{{gerbil_harness_project}}" in gate
+
+
+def test_gerbil_ci_uses_canonical_gslph_binary() -> None:
+    workflow_path = (
+        REPO_ROOT
+        / "languages"
+        / "gerbil-scheme-language-project-harness"
+        / ".github"
+        / "workflows"
+        / "ci.yml"
+    )
+    workflow = workflow_path.read_text(encoding="utf-8")
+
+    assert "- name: Build canonical gslph binary" in workflow
+    assert "gxpkg env ./build.ss compile --release --optimized" in workflow
+    assert "test -x .gerbil/bin/gslph" in workflow
+    assert "- name: Smoke canonical search subcommands" in workflow
+    assert ".gerbil/bin/gslph search prime --view seeds --workspace ." in workflow
+    assert ".gerbil/bin/gslph search workspace-scope --workspace ." in workflow
+    assert ".gerbil/bin/gslph check --full ." in workflow
+    assert ".gerbil/bin/gslph bench --json" in workflow
+    assert ".gerbil/bin/gslph search prime --json ." in workflow
+
+
+def test_gerbil_just_build_skips_up_to_date_launcher_without_full_src_scan() -> None:
+    justfile = JUSTFILE.read_text(encoding="utf-8")
+
+    target = justfile.split("agent-tools-build-gerbil:", 1)[1]
+    target = target.split('agent-tools-install-gx bin_dir="":', 1)[0]
+
+    assert 'launcher="${package_dir}/.gerbil/bin/gslph"' in target
+    assert (
+        "find src/cli-launcher.ss src/search-light-launcher.ss src/constants.ss "
+        'src/commands/search-prime-light.ss build.ss gerbil.pkg version.ss '
+        '-type f -newer "${launcher}"'
+    ) in target
+    assert "find src build.ss gerbil.pkg version.ss" not in target
+    assert "src/parser" not in target
+    assert "src/support/args.ss" not in target
+    assert (
+        'rm -f "${launcher}" "${package_dir}/.gerbil/static/bin/gslph" '
+        '"${package_dir}/.gerbil/bin/gslph__exe".*'
+    ) in target
+    assert '"${package_dir}/.gerbil/bin/gslph__exe".*' in target
+    assert '"${package_dir}/.gerbil/lib/static/gslph__src__commands__search-prime-light".*' not in target
+    assert '"${package_dir}/.gerbil/lib/static/gslph__src__search-light-launcher".*' not in target
+    assert '"${package_dir}/.gerbil/lib/static/gslph__src__cli-launcher".*' not in target
+    assert "[agent-tools-build-gerbil] ${launcher} is up to date" in target
 
 
 def test_julia_full_provider_gate_uses_fresh_compiled_harness_perf_guard() -> None:

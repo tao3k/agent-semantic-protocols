@@ -120,6 +120,7 @@ fn default_source_argv_rule_matches_command_names_not_harness_subcommands() {
         platform: "codex",
         event: "pre-tool",
         payload: &json!({
+            "session_id": "session-ABC_123",
             "tool_name": "Bash",
             "tool_input": {"command": "rg HookDecision crates/agent-semantic-hook/src/hook_config.rs"}
         }),
@@ -153,17 +154,16 @@ fn deny_decision_mentions_agent_org_artifact_entry_when_inactive() {
         event: "pre-tool",
         payload: &json!({
             "tool_name": "Bash",
-            "tool_input": {"command": "rg HookDecision crates/agent-semantic-hook/src/hook_config.rs"}
+            "tool_input": {"command": "rg HookDecision crates/agent-semantic-hook/src/hook_config.rs"},
+            "session_id": "session-ABC_123"
         }),
     });
 
     assert_eq!(decision.decision, DecisionKind::Deny);
     assert!(decision.message.contains("ASP Org Artifact Entry:"));
-    assert!(
-        decision.message.contains(
-            "Read @.cache/agent-semantic-protocol/org/skills/ASP_ORG.org before continuing"
-        )
-    );
+    assert!(decision.message.contains(
+        "Read @.cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org before continuing"
+    ));
     let artifacts_path = org_artifacts_root(&root);
     assert!(
         decision
@@ -191,24 +191,39 @@ fn deny_decision_mentions_agent_org_artifact_entry_when_inactive() {
             .fields
             .get("agentOrgArtifactsEntrySkillPath")
             .and_then(|path| path.as_str()),
-        Some(".cache/agent-semantic-protocol/org/skills/ASP_ORG.org")
+        Some(".cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org")
     );
-    let sample_task_path = artifacts_path.join("current-agent-task.org");
-    let expected_capture_command = format!(
-        "asp org capture --contract agent.task.v1 --title 'Current agent task' --target-file {} --no-confirm",
-        sample_task_path.display()
+    let plans_path = artifacts_path.join("flow").join("plans");
+    let expected_capture_command_prefix = format!(
+        "asp org capture --contract agent.plan.v1 --title 'Agent session plan' --target-file {}/agent-plan-session-abc-123-",
+        plans_path.display()
     );
-    assert_eq!(
-        decision
-            .fields
-            .get("agentOrgCaptureContractCommand")
-            .and_then(|command| command.as_str()),
-        Some(expected_capture_command.as_str())
+    let expected_capture_command_suffix = ".org --no-confirm";
+    let capture_command = decision
+        .fields
+        .get("agentOrgCaptureContractCommand")
+        .and_then(|command| command.as_str())
+        .expect("capture command field");
+    assert!(
+        capture_command.starts_with(&expected_capture_command_prefix),
+        "{capture_command}"
     );
     assert!(
-        decision.message.contains(&expected_capture_command),
+        capture_command.ends_with(expected_capture_command_suffix),
+        "{capture_command}"
+    );
+    assert!(
+        decision.message.contains(capture_command),
         "{}",
         decision.message
+    );
+    assert!(
+        !capture_command.contains("current-agent-task.org"),
+        "{capture_command}"
+    );
+    assert!(
+        !capture_command.contains("agent.task.v1"),
+        "{capture_command}"
     );
 
     let _ = fs::remove_dir_all(root);
@@ -489,8 +504,17 @@ fn deny_decision_warns_when_done_org_artifacts_should_be_archived() {
         "asp org query --kind task --field todo=DONE --exclude-dir archives --workspace {} --content",
         artifacts_path.display()
     );
+    let expected_archive_command = format!(
+        "asp org archive done --artifacts-root {} --archive-dir archives",
+        artifacts_path.display()
+    );
     assert!(
         decision.message.contains(&expected_command),
+        "{}",
+        decision.message
+    );
+    assert!(
+        decision.message.contains(&expected_archive_command),
         "{}",
         decision.message
     );
@@ -507,6 +531,13 @@ fn deny_decision_warns_when_done_org_artifacts_should_be_archived() {
             .get("agentOrgArtifactsArchiveQueryCommand")
             .and_then(|command| command.as_str()),
         Some(expected_command.as_str())
+    );
+    assert_eq!(
+        decision
+            .fields
+            .get("agentOrgArtifactsArchiveCommand")
+            .and_then(|command| command.as_str()),
+        Some(expected_archive_command.as_str())
     );
     let files = decision
         .fields
@@ -914,7 +945,7 @@ protocolVersion = "1"
 enabled = {enabled}
 inactiveAfterMinutes = 30
 artifactsPath = ".cache/agent-semantic-protocol/artifacts/org"
-entrySkillPath = ".cache/agent-semantic-protocol/org/skills/ASP_ORG.org"
+entrySkillPath = ".cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org"
 
 [[rules]]
 id = "deny-rg"

@@ -137,7 +137,7 @@ fn init_capture_state(args: OrgCaptureArgs) -> Result<(), String> {
         "skill-entry: {}",
         display_path(
             &project_root,
-            &state_root.join("skills").join("ASP_ORG.org")
+            &state_root.join("templates").join("ASP_ORG_SKILL.org")
         )
     );
     println!(
@@ -166,9 +166,9 @@ fn init_capture_state(args: OrgCaptureArgs) -> Result<(), String> {
         println!("legacy-backup: {}", display_path(&project_root, backup));
     }
     println!("copied-files: {}", sync.copied_files);
-    println!("agents-md-include: @.cache/agent-semantic-protocol/org/skills/ASP_ORG.org");
+    println!("agents-md-include: @.cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org");
     println!(
-        "next: reference ASP_ORG.org from AGENTS.md, then write Org state under artifacts/org/flow/sdd, artifacts/org/flow/BDR, and artifacts/org/flow/plans"
+        "next: reference ASP_ORG_SKILL.org from AGENTS.md, then write Org state under artifacts/org/flow/sdd, artifacts/org/flow/BDR, and artifacts/org/flow/plans"
     );
     Ok(())
 }

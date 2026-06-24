@@ -25,7 +25,7 @@ fn paths_reports_project_root_and_org_state_paths() {
         "stdout: {stdout}"
     );
     assert!(
-        stdout.contains(".cache/agent-semantic-protocol/org/skills/ASP_ORG.org"),
+        stdout.contains(".cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org"),
         "stdout: {stdout}"
     );
     assert!(
@@ -58,8 +58,8 @@ fn paths_get_returns_single_absolute_field() {
         root.join(".cache")
             .join("agent-semantic-protocol")
             .join("org")
-            .join("skills")
-            .join("ASP_ORG.org")
+            .join("templates")
+            .join("ASP_ORG_SKILL.org")
             .display()
             .to_string()
     );

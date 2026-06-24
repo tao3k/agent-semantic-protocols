@@ -272,6 +272,68 @@ fn direct_dependency_seed_no_hit_does_not_dump_full_manifest() {
 }
 
 #[test]
+fn direct_dependency_seed_rejects_extra_positional_api_token() {
+    let root = temp_project_root("direct-dependency-seed-extra-positional");
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"dep-seed-extra-positional\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[dependencies]\ntokio = \"1\"\n",
+    )
+    .expect("write Cargo.toml");
+    write_activation(&root, &[provider("rust", Vec::new())]);
+
+    let output = asp_command(&root)
+        .args([
+            "rust",
+            "search",
+            "deps",
+            "tokio",
+            "spawn",
+            "--workspace",
+            ".",
+            "--view",
+            "hits",
+        ])
+        .output()
+        .expect("run direct dependency seed with extra positional");
+
+    assert!(
+        !output.status.success(),
+        "stdout={}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("search deps accepts one dependency selector"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("search deps tokio::spawn"), "{stderr}");
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn direct_dependency_seed_api_selector_emits_local_usage_frontier() {
+    let root = temp_project_root("direct-dependency-seed-api-selector");
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"dep-seed-api-selector\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[dependencies]\ntokio = \"1\"\n",
+    )
+    .expect("write Cargo.toml");
+    write_activation(&root, &[provider("rust", Vec::new())]);
+
+    let stdout = run_dependency_seed_stdout(&root, "tokio@1::spawn");
+    assert!(stdout.contains("q=tokio@1::spawn"), "{stdout}");
+    assert!(stdout.contains("apiQuery=spawn"), "{stdout}");
+    assert!(stdout.contains("|dependency D:tokio"), "{stdout}");
+    assert!(stdout.contains("docs-use:tokio@1::spawn"), "{stdout}");
+    assert!(stdout.contains("crate-source:tokio"), "{stdout}");
+    assert!(stdout.contains("import:tokio"), "{stdout}");
+    assert!(stdout.contains("tests:spawn"), "{stdout}");
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn direct_dependency_seed_reuses_cached_manifest_topology_until_manifest_changes() {
     let root = temp_project_root("direct-dependency-seed-cache");
     std::fs::write(

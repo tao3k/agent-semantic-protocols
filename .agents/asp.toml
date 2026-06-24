@@ -1,15 +1,13 @@
 [hook.agentOrgArtifacts]
 artifactsPath = ".cache/agent-semantic-protocol/artifacts/org"
 enabled = true
-entrySkillPath = ".cache/agent-semantic-protocol/org/skills/ASP_ORG.org"
+entrySkillPath = ".cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org"
 inactiveAfterMinutes = 30
 
 [providers.gerbil-scheme]
 binary = ".bin/gslph"
 
 [skills.agent-semantic-protocols]
-aspOrg = ".cache/agent-semantic-protocol/org/skills/ASP_ORG.org#asp-org"
+aspOrg = ".cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org#asp-org"
 orgArtifacts = ".cache/agent-semantic-protocol/artifacts/org"
 pluginSkill = ".codex/plugins/cache/asp-project/asp-codex-plugin/0.1.0/skills/agent-semantic-protocols/SKILL.org"
-projectSkill = ".agents/skills/agent-semantic-protocols/SKILL.org"
-template = "SKILL.org"

@@ -17,7 +17,9 @@ pub(super) fn with_agent_org_artifact_recovery(
     if !matches!(decision.decision, DecisionKind::Deny | DecisionKind::Block) {
         return decision;
     }
-    let Some(recovery) = config.agent_org_artifacts_recovery(Path::new(project_root)) else {
+    let session_id = decision.fields.get("sessionId").and_then(Value::as_str);
+    let Some(recovery) = config.agent_org_artifacts_recovery(Path::new(project_root), session_id)
+    else {
         return decision;
     };
 
@@ -96,6 +98,10 @@ fn with_agent_org_artifact_archive_warning(
         Value::String(archive_query_command(&warning)),
     );
     decision.fields.insert(
+        "agentOrgArtifactsArchiveCommand".to_string(),
+        Value::String(archive_command(&warning)),
+    );
+    decision.fields.insert(
         "agentOrgArtifactsUnarchivedDoneFiles".to_string(),
         Value::Array(
             warning
@@ -110,15 +116,17 @@ fn with_agent_org_artifact_archive_warning(
 
 fn archive_warning_message(warning: &AgentOrgArtifactsArchiveWarning) -> String {
     let files = warning.done_org_files.join(", ");
-    let command = archive_query_command(warning);
+    let query_command = archive_query_command(warning);
+    let archive_command = archive_command(warning);
     format!(
-        "ASP Org Archive Warning: `{}` contains {} active .org files, above threshold {}; DONE records not under `{}` should be archived after selector review: {}.\nRun `{}` to list the unarchived DONE tasks from the Org parser.",
+        "ASP Org Archive Warning: `{}` contains {} active .org files, above threshold {}; DONE records not under `{}` should be archived after selector review: {}.\nRun `{}` to list the unarchived DONE tasks from the Org parser, then run `{}` to move reviewed DONE records into the archive.",
         warning.artifacts_path,
         warning.active_org_file_count,
         warning.active_org_file_threshold,
         warning.archives_dir,
         files,
-        command
+        query_command,
+        archive_command
     )
 }
 
@@ -127,6 +135,14 @@ fn archive_query_command(warning: &AgentOrgArtifactsArchiveWarning) -> String {
         "asp org query --kind task --field todo=DONE --exclude-dir {} --workspace {} --content",
         shell_arg(&warning.archives_dir),
         shell_arg(&warning.artifacts_path)
+    )
+}
+
+fn archive_command(warning: &AgentOrgArtifactsArchiveWarning) -> String {
+    format!(
+        "asp org archive done --artifacts-root {} --archive-dir {}",
+        shell_arg(&warning.artifacts_path),
+        shell_arg(&warning.archives_dir)
     )
 }
 

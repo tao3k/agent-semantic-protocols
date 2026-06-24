@@ -131,8 +131,10 @@ impl ClientHookConfig {
     pub(crate) fn agent_org_artifacts_recovery(
         &self,
         project_root: impl AsRef<Path>,
+        session_id: Option<&str>,
     ) -> Option<AgentOrgArtifactsRecovery> {
-        self.agent_org_artifacts.recovery(project_root.as_ref())
+        self.agent_org_artifacts
+            .recovery(project_root.as_ref(), session_id)
     }
 
     pub(crate) fn agent_org_artifacts_archive_warning(

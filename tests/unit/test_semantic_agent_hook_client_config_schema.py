@@ -84,7 +84,7 @@ class SemanticAgentHookClientConfigSchemaTests(unittest.TestCase):
             "agentOrgArtifacts": {
                 "enabled": True,
                 "artifactsPath": ".cache/agent-semantic-protocol/artifacts/org",
-                "entrySkillPath": ".cache/agent-semantic-protocol/org/skills/ASP_ORG.org",
+                "entrySkillPath": ".cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org",
                 "archiveWarning": {
                     "enabled": True,
                     "activeOrgFileThreshold": 10,

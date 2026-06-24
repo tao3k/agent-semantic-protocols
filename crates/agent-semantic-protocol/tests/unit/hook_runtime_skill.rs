@@ -126,7 +126,7 @@ fn skill_contract_template_keeps_repo_local_refer_org() {
     let contract = include_str!("../../../../SKILL.contract.org");
 
     assert!(
-        contract.contains(":REFER_ORG: ./languages/org/skills/ASP_ORG.org#asp-org"),
+        contract.contains(":REFER_ORG: ./languages/org/templates/ASP_ORG_SKILL.org#asp-org"),
         "source SKILL.contract.org must reference the source-tree ASP_ORG.org"
     );
     assert!(
@@ -142,8 +142,8 @@ fn renders_skill_contract_refer_org_relative_to_install_target() {
         .join(".cache")
         .join("agent-semantic-protocol")
         .join("org")
-        .join("skills")
-        .join("ASP_ORG.org");
+        .join("templates")
+        .join("ASP_ORG_SKILL.org");
     let project_contract_path = root
         .join(".agents")
         .join("skills")
@@ -169,10 +169,10 @@ fn renders_skill_contract_refer_org_relative_to_install_target() {
     .unwrap();
 
     assert!(project_contract.contains(
-        ":REFER_ORG: ../../../.cache/agent-semantic-protocol/org/skills/ASP_ORG.org#asp-org"
+        ":REFER_ORG: ../../../.cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org#asp-org"
     ));
     assert!(plugin_contract.contains(
-        ":REFER_ORG: ../../../../../.cache/agent-semantic-protocol/org/skills/ASP_ORG.org#asp-org"
+        ":REFER_ORG: ../../../../../.cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org#asp-org"
     ));
     assert_ne!(project_contract, plugin_contract);
 
@@ -237,8 +237,8 @@ fn install_project_skill_does_not_write_codex_plugin_skill() {
     let project_contract =
         std::fs::read_to_string(&project_skill_contract_path).expect("read project contract");
     assert!(project_contract.contains(":REFER_ORG: "));
-    assert!(project_contract.contains("org/skills/ASP_ORG.org#asp-org"));
-    assert!(!project_contract.contains("./languages/org/skills/ASP_ORG.org"));
+    assert!(project_contract.contains("org/templates/ASP_ORG_SKILL.org#asp-org"));
+    assert!(!project_contract.contains("./languages/org/templates/ASP_ORG_SKILL.org"));
     assert!(!project_contract.contains("* stale user-layer contract"));
     assert!(
         !plugin_contract_path.with_file_name("SKILL.org").exists(),
@@ -285,7 +285,7 @@ fn install_plugin_skill_writes_only_codex_plugin_skill() {
     let plugin_skill_path = installed.plugin_skill_path.expect("plugin skill path");
 
     let plugin_skill = std::fs::read_to_string(&plugin_skill_path).expect("read plugin skill");
-    let expected_asp_org = ".cache/agent-semantic-protocol/org/skills/ASP_ORG.org#asp-org";
+    let expected_asp_org = ".cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org#asp-org";
     let expected_org_artifacts = ".cache/agent-semantic-protocol/artifacts/org";
     assert!(plugin_skill.contains("ASP Org Reference"));
     assert!(plugin_skill.contains("REFER_ORG"));
@@ -331,7 +331,6 @@ fn install_agent_config_preserves_providers_and_adds_skill_config() {
         config.contains("[skills.agent-semantic-protocols]"),
         "{config}"
     );
-    assert!(config.contains("template = \"SKILL.org\""), "{config}");
     assert!(
         config.contains(
             "pluginSkill = \".codex/plugins/cache/asp-project/asp-codex-plugin/0.1.0/skills/agent-semantic-protocols/SKILL.org\""
@@ -339,14 +338,17 @@ fn install_agent_config_preserves_providers_and_adds_skill_config() {
         "{config}"
     );
     assert!(
-        config
-            .contains("aspOrg = \".cache/agent-semantic-protocol/org/skills/ASP_ORG.org#asp-org\""),
+        config.contains(
+            "aspOrg = \".cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org#asp-org\""
+        ),
         "{config}"
     );
     assert!(
         config.contains("orgArtifacts = \".cache/agent-semantic-protocol/artifacts/org\""),
         "{config}"
     );
+    assert!(!config.contains("template = \"SKILL.org\""), "{config}");
+    assert!(!config.contains("projectSkill = "), "{config}");
     assert!(config.contains("[hook.agentOrgArtifacts]"), "{config}");
     assert!(config.contains("enabled = true"), "{config}");
     assert!(config.contains("inactiveAfterMinutes = 30"), "{config}");
@@ -355,8 +357,9 @@ fn install_agent_config_preserves_providers_and_adds_skill_config() {
         "{config}"
     );
     assert!(
-        config
-            .contains("entrySkillPath = \".cache/agent-semantic-protocol/org/skills/ASP_ORG.org\""),
+        config.contains(
+            "entrySkillPath = \".cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org\""
+        ),
         "{config}"
     );
     assert!(!config.contains("orgSkill"), "{config}");

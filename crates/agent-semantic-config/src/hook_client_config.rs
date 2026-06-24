@@ -592,7 +592,7 @@ fn default_agent_org_artifacts_path() -> String {
 }
 
 fn default_agent_org_artifacts_entry_skill_path() -> String {
-    ".cache/agent-semantic-protocol/org/skills/ASP_ORG.org".to_string()
+    ".cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org".to_string()
 }
 
 fn default_agent_org_artifacts_archive_warning_threshold() -> usize {

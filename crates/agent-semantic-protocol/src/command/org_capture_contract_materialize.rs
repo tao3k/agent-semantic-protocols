@@ -35,12 +35,51 @@ fn materialize_plan_contract_capture(
     capture_args: &mut Vec<String>,
     template_path: Option<&Path>,
 ) -> Result<(), String> {
+    validate_plan_target_file(args)?;
     let materialized =
         materialize_from_template(args, capture_args, template_path, "agent.plan.v1")?;
     if !has_flag(args, "--kind") {
         capture_args.extend(["--kind".to_string(), "task".to_string()]);
     }
     ensure_plan_title_progress_cookie(capture_args, &materialized.progress_cookies)?;
+    Ok(())
+}
+
+fn validate_plan_target_file(args: &[String]) -> Result<(), String> {
+    let Some(target_file) = flag_value(args, "--target-file") else {
+        return Ok(());
+    };
+    let target_path = Path::new(target_file);
+    let filename = target_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| "agent.plan.v1 --target-file must end with an Org filename".to_string())?;
+    if !filename.starts_with("agent-plan-") || !filename.ends_with(".org") {
+        return Err(
+            "agent.plan.v1 --target-file filename must match `agent-plan-*.org`".to_string(),
+        );
+    }
+    let parent_parts: Vec<&str> = target_path
+        .parent()
+        .into_iter()
+        .flat_map(|parent| parent.components())
+        .filter_map(|component| component.as_os_str().to_str())
+        .collect();
+    let under_org_flow_plans = parent_parts
+        .len()
+        .checked_sub(3)
+        .map(|start| {
+            parent_parts[start] == "org"
+                && parent_parts[start + 1] == "flow"
+                && parent_parts[start + 2] == "plans"
+        })
+        .unwrap_or(false);
+    if !under_org_flow_plans {
+        return Err(
+            "agent.plan.v1 --target-file must be stored under an `org/flow/plans/` path"
+                .to_string(),
+        );
+    }
     Ok(())
 }
 

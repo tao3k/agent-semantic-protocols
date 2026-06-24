@@ -131,7 +131,7 @@ mod unix {
         std::fs::write(
             &cache_skill_path,
             format!(
-                "* ASP\n| REFER_ORG | ={}/.cache/agent-semantic-protocol/org/skills/ASP_ORG.org#asp-org= |\n",
+                "* ASP\n| REFER_ORG | ={}/.cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org#asp-org= |\n",
                 root.display()
             ),
         )
@@ -162,7 +162,8 @@ mod unix {
             skill_path.display()
         );
         let skill = std::fs::read_to_string(&skill_path).expect("read plugin skill");
-        let expected_asp_org = ".cache/agent-semantic-protocol/org/skills/ASP_ORG.org#asp-org";
+        let expected_asp_org =
+            ".cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org#asp-org";
         let expected_org_artifacts = ".cache/agent-semantic-protocol/artifacts/org";
         assert!(skill.contains("ASP Org Reference"));
         assert!(skill.contains("REFER_ORG"));
@@ -205,7 +206,7 @@ mod unix {
             "{agent_config}"
         );
         assert!(
-            agent_config.contains("template = \"SKILL.org\""),
+            !agent_config.contains("template = \"SKILL.org\""),
             "{agent_config}"
         );
         assert!(
@@ -215,7 +216,7 @@ mod unix {
             "{agent_config}"
         );
         assert!(
-            agent_config.contains("ASP_ORG.org#asp-org"),
+            agent_config.contains("ASP_ORG_SKILL.org#asp-org"),
             "{agent_config}"
         );
         assert!(
@@ -234,7 +235,8 @@ mod unix {
         let skill = std::fs::read_to_string(&cache_skill_path).expect("read plugin cache skill");
         assert!(skill.contains("ASP Org Reference"), "{skill}");
         assert!(
-            skill.contains(".cache/agent-semantic-protocol/org/skills/ASP_ORG.org#asp-org"),
+            skill
+                .contains(".cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org#asp-org"),
             "{skill}"
         );
         assert!(
