@@ -1,3 +1,5 @@
+//! Compiles `agentOrgArtifacts` hook policy and caches filesystem-derived Org artifact state.
+
 use agent_semantic_config::{
     HookClientAgentOrgArtifactsArchiveWarningConfig, HookClientAgentOrgArtifactsConfig,
 };
@@ -8,6 +10,7 @@ use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const ARCHIVE_WARNING_CACHE_TTL: Duration = Duration::from_secs(5);
+const RECOVERY_ACTIVE_CACHE_TTL: Duration = Duration::from_secs(1);
 
 #[derive(Debug, Clone)]
 pub(crate) struct AgentOrgArtifactsRecovery {
@@ -17,6 +20,7 @@ pub(crate) struct AgentOrgArtifactsRecovery {
     pub(crate) capture_contract_command: String,
 }
 
+/// Archive warning metadata rendered into hook decisions for active Org artifacts.
 #[derive(Debug, Clone)]
 pub struct AgentOrgArtifactsArchiveWarning {
     pub artifacts_path: String,
@@ -57,8 +61,23 @@ struct ArchiveWarningCacheEntry {
     warning: Option<AgentOrgArtifactsArchiveWarning>,
 }
 
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+struct RecoveryActiveCacheKey {
+    artifacts_root: PathBuf,
+    inactive_after_secs: u64,
+}
+
+#[derive(Clone)]
+struct RecoveryActiveCacheEntry {
+    checked_at: Instant,
+    active: bool,
+}
+
 static ARCHIVE_WARNING_CACHE: OnceLock<
     Mutex<HashMap<ArchiveWarningCacheKey, ArchiveWarningCacheEntry>>,
+> = OnceLock::new();
+static RECOVERY_ACTIVE_CACHE: OnceLock<
+    Mutex<HashMap<RecoveryActiveCacheKey, RecoveryActiveCacheEntry>>,
 > = OnceLock::new();
 
 impl Default for CompiledAgentOrgArtifactsConfig {
@@ -99,8 +118,21 @@ impl CompiledAgentOrgArtifactsConfig {
             return None;
         }
         let artifacts_root = resolve_project_path(project_root, &self.artifacts_path);
-        let inactive_after = Duration::from_secs(self.inactive_after_minutes.saturating_mul(60));
-        if agent_org_contract_artifacts_active(&artifacts_root, inactive_after) {
+        let inactive_after_secs = self.inactive_after_minutes.saturating_mul(60);
+        let inactive_after = Duration::from_secs(inactive_after_secs);
+        if cached_agent_org_contract_artifacts_active(&artifacts_root, inactive_after_secs)
+            .unwrap_or_else(|| {
+                let active = agent_org_contract_artifacts_active(&artifacts_root, inactive_after);
+                store_agent_org_contract_artifacts_active(
+                    RecoveryActiveCacheKey {
+                        artifacts_root: artifacts_root.clone(),
+                        inactive_after_secs,
+                    },
+                    active,
+                );
+                active
+            })
+        {
             return None;
         }
         Some(AgentOrgArtifactsRecovery {
@@ -187,6 +219,38 @@ fn store_archive_warning(
             ArchiveWarningCacheEntry {
                 checked_at: Instant::now(),
                 warning,
+            },
+        );
+    }
+}
+
+fn recovery_active_cache()
+-> &'static Mutex<HashMap<RecoveryActiveCacheKey, RecoveryActiveCacheEntry>> {
+    RECOVERY_ACTIVE_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn cached_agent_org_contract_artifacts_active(
+    artifacts_root: &Path,
+    inactive_after_secs: u64,
+) -> Option<bool> {
+    let cache = recovery_active_cache().lock().ok()?;
+    let entry = cache.get(&RecoveryActiveCacheKey {
+        artifacts_root: artifacts_root.to_path_buf(),
+        inactive_after_secs,
+    })?;
+    if entry.checked_at.elapsed() <= RECOVERY_ACTIVE_CACHE_TTL {
+        return Some(entry.active);
+    }
+    None
+}
+
+fn store_agent_org_contract_artifacts_active(key: RecoveryActiveCacheKey, active: bool) {
+    if let Ok(mut cache) = recovery_active_cache().lock() {
+        cache.insert(
+            key,
+            RecoveryActiveCacheEntry {
+                checked_at: Instant::now(),
+                active,
             },
         );
     }

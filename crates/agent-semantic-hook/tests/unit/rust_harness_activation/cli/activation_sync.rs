@@ -112,10 +112,13 @@ fn cli_doctor_syncs_generated_activation_drift() {
     assert!(stdout.contains("[agent-doctor] status=ok"));
     let synced = std::fs::read_to_string(&activation_path).expect("synced activation");
     let registry = parse_hook_activation(&synced).expect("canonical synced activation");
-    assert_eq!(registry.providers.len(), 1);
-    assert_eq!(registry.providers[0].provider_id, "rs-harness");
+    let rust_provider = registry
+        .providers
+        .iter()
+        .find(|provider| provider.provider_id == "rs-harness")
+        .expect("synced rust provider");
     assert_eq!(
-        registry.providers[0].routes.prime.argv,
+        rust_provider.routes.prime.argv,
         vec![
             "rs-harness",
             "search",

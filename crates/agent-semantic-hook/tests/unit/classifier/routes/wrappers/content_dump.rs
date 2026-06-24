@@ -16,7 +16,10 @@ fn shell_path_wrapper_routes_content_dump_to_provider_query() {
     );
     assert_eq!(decision.decision, DecisionKind::Deny);
     assert_eq!(decision.reason_kind, ReasonKind::BulkSourceDump);
-    assert_eq!(decision.subject.paths, ["src/cli/agent-hooks.ts:1:8"]);
+    assert_eq!(
+        decision.subject.paths,
+        ["src/cli/agent-hooks.ts:1:8", "src/cli/agent-hooks.ts"]
+    );
     assert_eq!(decision.routes[0].kind, DecisionRouteKind::Query);
     assert_eq!(decision.routes[0].provider_id, "ts-harness");
     assert_eq!(

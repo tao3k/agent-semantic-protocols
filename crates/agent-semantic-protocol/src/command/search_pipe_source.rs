@@ -302,6 +302,26 @@ fn auto_candidates(
         source_index_candidates(language_id, project_root, intent, scopes);
     if let Some(acquisition) = source_index_acquisition
         .as_ref()
+        .filter(|acquisition| source_index_acquisition_blocks_backend(acquisition))
+    {
+        return Ok(CandidateAcquisition {
+            candidates: acquisition.candidates.clone(),
+            candidate_sources: vec!["source-index".to_string()],
+            source_trace: acquisition.source_trace.clone(),
+        });
+    }
+    if let Some(acquisition) = source_index_acquisition
+        .as_ref()
+        .filter(|acquisition| source_index_path_query_defers_backend(acquisition, intent))
+    {
+        return Ok(CandidateAcquisition {
+            candidates: acquisition.candidates.clone(),
+            candidate_sources: vec!["source-index".to_string()],
+            source_trace: acquisition.source_trace.clone(),
+        });
+    }
+    if let Some(acquisition) = source_index_acquisition
+        .as_ref()
         .filter(|acquisition| !acquisition.candidates.is_empty())
     {
         return Ok(CandidateAcquisition {
@@ -338,6 +358,41 @@ fn auto_candidates(
             .collect(),
         candidates,
     })
+}
+
+fn source_index_acquisition_blocks_backend(acquisition: &CandidateAcquisition) -> bool {
+    acquisition.source_trace.iter().any(|trace| {
+        trace.source == "sourceIndex"
+            && trace.status == "skipped"
+            && trace
+                .fields
+                .get("reason")
+                .and_then(Value::as_str)
+                .is_some_and(|reason| reason == "query-gate")
+    })
+}
+
+fn source_index_path_query_defers_backend(
+    acquisition: &CandidateAcquisition,
+    intent: &str,
+) -> bool {
+    intent_terms_all_path_like(intent)
+        && acquisition.source_trace.iter().any(|trace| {
+            trace.source == "sourceIndex"
+                && matches!(trace.status.as_str(), "missing-db" | "empty-index" | "miss")
+        })
+}
+
+fn intent_terms_all_path_like(intent: &str) -> bool {
+    let terms = intent
+        .split(|character: char| character == ',' || character == '|' || character.is_whitespace())
+        .map(str::trim)
+        .filter(|term| !term.is_empty())
+        .collect::<Vec<_>>();
+    !terms.is_empty()
+        && terms
+            .iter()
+            .all(|term| term.contains('/') || term.contains('\\') || term.contains('.'))
 }
 
 fn source_index_candidates(

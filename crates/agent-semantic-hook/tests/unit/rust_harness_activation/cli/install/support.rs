@@ -12,6 +12,7 @@ pub(super) fn git_project_root(name: &str) -> PathBuf {
 
 pub(super) fn protocol_command() -> Command {
     let mut command = asp_command();
+    command.env_remove("ASP_ORG_REPO_URL");
     command.env_remove("PRJ_CACHE_HOME");
     command
 }

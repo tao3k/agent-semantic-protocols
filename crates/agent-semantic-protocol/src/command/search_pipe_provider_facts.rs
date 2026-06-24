@@ -165,6 +165,12 @@ fn candidate_path_for_provider(project_root: &Path, path: &str) -> String {
 }
 
 pub(super) fn query_requests_semantic_facts(query: &str) -> bool {
+    if query
+        .split_whitespace()
+        .any(term_looks_like_path_or_selector)
+    {
+        return false;
+    }
     query_terms(query).into_iter().any(|term| {
         matches!(
             term.as_str(),
@@ -204,6 +210,10 @@ pub(super) fn query_requests_semantic_facts(query: &str) -> bool {
                 | "fibers"
         )
     })
+}
+
+fn term_looks_like_path_or_selector(term: &str) -> bool {
+    term.contains('.') || term.contains('/') || term.contains('\\')
 }
 
 fn query_terms(query: &str) -> Vec<String> {

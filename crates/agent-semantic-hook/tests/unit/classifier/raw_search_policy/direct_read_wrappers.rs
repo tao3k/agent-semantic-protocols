@@ -86,7 +86,10 @@ fn rtk_read_line_locator_routes_to_provider_query_with_range() {
     assert_eq!(decision.decision, DecisionKind::Deny);
     assert_eq!(
         decision.subject.paths,
-        ["crates/agent-semantic-hook/src/lib.rs:10-20"]
+        [
+            "crates/agent-semantic-hook/src/lib.rs:10-20",
+            "crates/agent-semantic-hook/src/lib.rs"
+        ]
     );
     assert_eq!(decision.routes[0].kind, DecisionRouteKind::Query);
     assert_eq!(

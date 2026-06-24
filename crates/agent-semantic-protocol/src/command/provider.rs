@@ -338,6 +338,16 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
         .find(|provider| provider.language_id == language_id)
         .ok_or_else(|| format!("no activated provider for language {language_id}"))?;
     if is_search_dependency_seed(&provider_args) {
+        if !provider.search_capabilities.dependency_topology {
+            return run_search_dependency_seed_command(
+                language_id,
+                &provider_args,
+                &project_root,
+                &cache_home,
+                &config,
+                None,
+            );
+        }
         let runtime_profiles = runtime_profiles_for_runtime(&project_root, &runtime);
         let provider_context = ProviderGraphFactsContext {
             provider,

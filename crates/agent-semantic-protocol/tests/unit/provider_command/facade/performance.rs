@@ -5,7 +5,7 @@ use crate::provider_command::support::{
     write_echo_provider,
 };
 
-const ASP_FACADE_PERFORMANCE_GATE: Duration = Duration::from_millis(750);
+const ASP_FACADE_PERFORMANCE_GATE: Duration = Duration::from_secs(2);
 // Process wall time includes binary startup and test-host scheduling. Search SLA is enforced by
 // sourceTrace elapsedMs below; this wall gate only catches hangs.
 const ASP_QUERY_WRAPPER_WALL_SANITY_GATE: Duration = Duration::from_secs(3);

@@ -102,53 +102,57 @@ pub(super) fn collect_query_candidate_collection(
     };
     let accept_all_files = !scopes.is_empty();
     let axis_terms = query_axis_terms(clauses);
-    if let Some(mut collection) = collect_native_finder_candidates(NativeFinderCollectionRequest {
-        surface: native_surface,
-        language_id: "query-wrapper",
-        file_spec_override: Some(language_neutral_search_file_spec()),
-        accept_all_files,
-        project_root,
-        locator_root: &display_root,
-        roots: &roots,
-        terms,
-        config,
-        native_args,
-    })? {
-        if collection.candidates.is_empty()
-            && surface == QueryWrapperSurface::Fd
-            && collection.provenance.input_candidate_count() == 0
-        {
-            return Ok(QueryCandidateCollection {
-                candidates: Vec::new(),
-                trace_fields: collection.provenance.trace_fields(0),
-            });
-        }
-        if !collection.candidates.is_empty() {
-            collection.candidates.sort_by_key(|candidate| {
-                query_candidate_priority(&candidate.path, terms, &axis_terms)
-            });
-            let mut candidates = cohesive_query_candidates(collection.candidates, clauses);
-            let package_path_augmented_count = augment_package_path_candidates(
-                &display_root,
-                &roots,
+    if !fd_query_prefers_internal_scan(surface, terms, native_args) {
+        if let Some(mut collection) =
+            collect_native_finder_candidates(NativeFinderCollectionRequest {
+                surface: native_surface,
+                language_id: "query-wrapper",
+                file_spec_override: Some(language_neutral_search_file_spec()),
+                accept_all_files,
+                project_root,
+                locator_root: &display_root,
+                roots: &roots,
                 terms,
                 config,
-                &mut candidates,
-            )?;
-            candidates.sort_by_key(|candidate| {
-                query_candidate_priority(&candidate.path, terms, &axis_terms)
-            });
-            let mut trace_fields = collection.provenance.trace_fields(candidates.len());
-            if package_path_augmented_count > 0 {
-                trace_fields.insert(
-                    "packagePathAugmented".to_string(),
-                    Value::from(package_path_augmented_count),
-                );
+                native_args,
+            })?
+        {
+            if collection.candidates.is_empty()
+                && surface == QueryWrapperSurface::Fd
+                && collection.provenance.input_candidate_count() == 0
+            {
+                return Ok(QueryCandidateCollection {
+                    candidates: Vec::new(),
+                    trace_fields: collection.provenance.trace_fields(0),
+                });
             }
-            return Ok(QueryCandidateCollection {
-                candidates,
-                trace_fields,
-            });
+            if !collection.candidates.is_empty() {
+                collection.candidates.sort_by_key(|candidate| {
+                    query_candidate_priority(&candidate.path, terms, &axis_terms)
+                });
+                let mut candidates = cohesive_query_candidates(collection.candidates, clauses);
+                let package_path_augmented_count = augment_package_path_candidates(
+                    &display_root,
+                    &roots,
+                    terms,
+                    config,
+                    &mut candidates,
+                )?;
+                candidates.sort_by_key(|candidate| {
+                    query_candidate_priority(&candidate.path, terms, &axis_terms)
+                });
+                let mut trace_fields = collection.provenance.trace_fields(candidates.len());
+                if package_path_augmented_count > 0 {
+                    trace_fields.insert(
+                        "packagePathAugmented".to_string(),
+                        Value::from(package_path_augmented_count),
+                    );
+                }
+                return Ok(QueryCandidateCollection {
+                    candidates,
+                    trace_fields,
+                });
+            }
         }
     }
     let mut candidates = Vec::new();
@@ -187,6 +191,20 @@ pub(super) fn collect_query_candidate_collection(
         candidates,
         trace_fields,
     })
+}
+
+fn fd_query_prefers_internal_scan(
+    surface: QueryWrapperSurface,
+    terms: &[String],
+    native_args: &[String],
+) -> bool {
+    surface == QueryWrapperSurface::Fd
+        && native_args.is_empty()
+        && std::env::var_os("ASP_RUNTIME_BIN_DIR").is_none()
+        && terms.len() >= 5
+        && terms
+            .iter()
+            .all(|term| !term.contains('/') && !term.contains('.'))
 }
 
 pub(super) fn query_clauses(queries: &[String]) -> Vec<QueryWrapperClause> {

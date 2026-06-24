@@ -10,6 +10,7 @@ use std::{
 };
 
 const RESOURCE_DIRS: &[&str] = &["contracts", "templates", "skills"];
+const BUNDLED_REQUIRED_RESOURCE_DIRS: &[&str] = &["contracts", "templates"];
 const FLOW_DIRS: &[&str] = &["sdd", "BDR", "plans"];
 const ORG_ARTIFACTS_DIR: &str = "artifacts/org";
 const DEFAULT_ASP_ORG_REPO_URL: &str = "https://github.com/tao3k/org.git";
@@ -220,7 +221,7 @@ fn default_org_repo_url() -> String {
 
 fn bundled_org_source_root() -> Option<PathBuf> {
     let source_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../languages/org");
-    RESOURCE_DIRS
+    BUNDLED_REQUIRED_RESOURCE_DIRS
         .iter()
         .all(|resource| source_root.join(resource).is_dir())
         .then_some(source_root)

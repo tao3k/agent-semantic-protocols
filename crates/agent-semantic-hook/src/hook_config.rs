@@ -10,6 +10,8 @@ use agent_semantic_config::{
 };
 use aho_corasick::{AhoCorasick, AhoCorasickBuilder, MatchKind};
 use globset::{GlobBuilder, GlobSet, GlobSetBuilder};
+use std::borrow::Cow;
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use crate::command::path_like_token_matches;
@@ -54,9 +56,9 @@ struct RuleMatch {
     command_any: Vec<String>,
     command_contains_any: CompiledCommandContains,
     path_any: Vec<String>,
-    path_glob_any: Option<GlobSet>,
+    path_glob_any: CompiledPathGlobs,
     argv_source_any: Vec<String>,
-    argv_source_glob_any: Option<GlobSet>,
+    argv_source_glob_any: CompiledPathGlobs,
     argv_source_exclude_flag_any: Vec<String>,
 }
 
@@ -74,6 +76,39 @@ impl CompiledCommandContains {
         self.matcher
             .as_ref()
             .is_some_and(|matcher| matcher.is_match(command))
+    }
+}
+
+#[derive(Debug, Default)]
+struct CompiledPathGlobs {
+    suffix_ext_any: HashSet<String>,
+    suffix_any: Vec<String>,
+    globset: Option<GlobSet>,
+}
+
+impl CompiledPathGlobs {
+    fn is_empty(&self) -> bool {
+        self.suffix_ext_any.is_empty() && self.suffix_any.is_empty() && self.globset.is_none()
+    }
+
+    fn is_suffix_only(&self) -> bool {
+        (!self.suffix_ext_any.is_empty() || !self.suffix_any.is_empty()) && self.globset.is_none()
+    }
+
+    fn matches(&self, path: &str) -> bool {
+        self.matches_suffix_extension(path)
+            || self.suffix_any.iter().any(|suffix| path.ends_with(suffix))
+            || self
+                .globset
+                .as_ref()
+                .is_some_and(|globset| globset.is_match(path))
+    }
+
+    fn matches_suffix_extension(&self, path: &str) -> bool {
+        let Some(dot_index) = path.rfind('.') else {
+            return false;
+        };
+        self.suffix_ext_any.contains(&path[dot_index..])
     }
 }
 
@@ -152,29 +187,73 @@ impl ClientHookConfig {
         event: &str,
         action: &ToolAction,
     ) -> Option<HookDecision> {
-        let mut command_tokens = None;
-        self.rules
-            .iter()
-            .find(|rule| {
-                let command_token_slice = if rule.match_config.needs_command_tokens() {
-                    command_tokens
-                        .get_or_insert_with(|| {
-                            action.command_tokens().map(|tokens| tokens.into_owned())
-                        })
-                        .as_deref()
-                } else {
-                    None
+        let mut command_tokens: Option<Option<Cow<'_, [String]>>> = None;
+        let mut effective_paths: Option<Vec<String>> = None;
+        for rule in &self.rules {
+            let needs_command_tokens =
+                rule.match_config.needs_command_tokens() || rule.needs_match_paths();
+            let command_token_slice = if needs_command_tokens {
+                command_tokens
+                    .get_or_insert_with(|| action.command_tokens())
+                    .as_deref()
+            } else {
+                None
+            };
+            if !rule.matches_before_paths(platform, event, action, command_token_slice) {
+                continue;
+            }
+            let match_paths = if rule.needs_match_paths() {
+                effective_paths
+                    .get_or_insert_with(|| derive_effective_paths(action, command_token_slice))
+                    .as_slice()
+            } else {
+                action.paths.as_slice()
+            };
+            if !rule.matches_after_paths(runtime, match_paths) {
+                continue;
+            }
+            let argv_source_paths = if rule.match_config.needs_argv_source_match() {
+                let Some(paths) = rule
+                    .match_config
+                    .matching_argv_source_paths(command_token_slice)
+                else {
+                    continue;
                 };
-                rule.matches(runtime, platform, event, action, command_token_slice)
-            })
-            .map(|rule| rule.decision(runtime, platform, event, action))
+                Some(paths)
+            } else {
+                None
+            };
+            let decision_paths = if rule.needs_decision_paths() {
+                if let Some(paths) = argv_source_paths.as_deref()
+                    && !rule.match_config.needs_path_match()
+                {
+                    paths
+                } else {
+                    effective_paths
+                        .get_or_insert_with(|| derive_effective_paths(action, command_token_slice))
+                        .as_slice()
+                }
+            } else {
+                action.paths.as_slice()
+            };
+            return Some(rule.decision(runtime, platform, event, action, decision_paths));
+        }
+        None
     }
 }
 
 impl CompiledHookRule {
-    fn matches(
+    fn needs_match_paths(&self) -> bool {
+        self.match_config.needs_path_match()
+            || (!self.language_ids.is_empty() && self.match_config.needs_source_paths())
+    }
+
+    fn needs_decision_paths(&self) -> bool {
+        self.match_config.needs_source_paths()
+    }
+
+    fn matches_before_paths(
         &self,
-        runtime: &HookRuntime,
         platform: &str,
         event: &str,
         action: &ToolAction,
@@ -187,26 +266,27 @@ impl CompiledHookRule {
                 .event
                 .as_deref()
                 .is_none_or(|expected| canonical_event(expected) == canonical_event(event))
-            && self.matches_language(runtime, action)
-            && self.match_config.matches(action, command_tokens)
+            && self
+                .match_config
+                .matches_before_paths(action, command_tokens)
     }
 
-    fn matches_language(&self, runtime: &HookRuntime, action: &ToolAction) -> bool {
+    fn matches_after_paths(&self, runtime: &HookRuntime, paths: &[String]) -> bool {
+        self.matches_language(runtime, paths) && self.match_config.matches_paths(paths)
+    }
+
+    fn matches_language(&self, runtime: &HookRuntime, paths: &[String]) -> bool {
         if self.language_ids.is_empty() {
             return true;
         }
-        if action.paths.is_empty() {
+        if paths.is_empty() {
             return false;
         }
-        !collect_source_selector_matches(
-            runtime,
-            action.paths.iter().map(String::as_str),
-            |provider| {
-                self.language_ids
-                    .iter()
-                    .any(|language_id| language_id.eq_ignore_ascii_case(&provider.language_id))
-            },
-        )
+        !collect_source_selector_matches(runtime, paths.iter().map(String::as_str), |provider| {
+            self.language_ids
+                .iter()
+                .any(|language_id| language_id.eq_ignore_ascii_case(&provider.language_id))
+        })
         .is_empty()
     }
 
@@ -216,6 +296,7 @@ impl CompiledHookRule {
         platform: &str,
         event: &str,
         action: &ToolAction,
+        paths: &[String],
     ) -> HookDecision {
         let decision = match self.decision {
             HookClientConfigDecision::Block => DecisionKind::Block,
@@ -232,6 +313,8 @@ impl CompiledHookRule {
                 self.id
             )
         });
+        let mut subject = subject_for_action(action);
+        subject.paths = paths.to_vec();
         HookDecision {
             schema_id: HOOK_DECISION_SCHEMA_ID,
             schema_version: HOOK_DECISION_SCHEMA_VERSION,
@@ -242,7 +325,7 @@ impl CompiledHookRule {
             decision,
             reason_kind: self.reason_kind,
             language_ids: self.language_ids.clone(),
-            subject: subject_for_action(action),
+            subject,
             routes,
             message,
             fields: std::collections::BTreeMap::from([(
@@ -254,11 +337,12 @@ impl CompiledHookRule {
 }
 
 impl RuleMatch {
-    fn matches(&self, action: &ToolAction, command_tokens: Option<&[String]>) -> bool {
-        if !self.matches_tool(action) || !self.matches_path(action) {
-            return false;
-        }
-        self.matches_command(action, command_tokens) && self.matches_argv_source(command_tokens)
+    fn matches_before_paths(&self, action: &ToolAction, command_tokens: Option<&[String]>) -> bool {
+        self.matches_tool(action) && self.matches_command(action, command_tokens)
+    }
+
+    fn matches_paths(&self, paths: &[String]) -> bool {
+        self.matches_path(paths)
     }
 
     fn matches_tool(&self, action: &ToolAction) -> bool {
@@ -272,7 +356,21 @@ impl RuleMatch {
     fn needs_command_tokens(&self) -> bool {
         !self.command_any.is_empty()
             || !self.argv_source_any.is_empty()
-            || self.argv_source_glob_any.is_some()
+            || !self.argv_source_glob_any.is_empty()
+    }
+
+    fn needs_path_match(&self) -> bool {
+        !self.path_any.is_empty() || !self.path_glob_any.is_empty()
+    }
+
+    fn needs_source_paths(&self) -> bool {
+        self.needs_path_match()
+            || !self.argv_source_any.is_empty()
+            || !self.argv_source_glob_any.is_empty()
+    }
+
+    fn needs_argv_source_match(&self) -> bool {
+        !self.argv_source_any.is_empty() || !self.argv_source_glob_any.is_empty()
     }
 
     fn matches_command(&self, action: &ToolAction, command_tokens: Option<&[String]>) -> bool {
@@ -296,33 +394,29 @@ impl RuleMatch {
         token_match && contains_match
     }
 
-    fn matches_path(&self, action: &ToolAction) -> bool {
-        if self.path_any.is_empty() && self.path_glob_any.is_none() {
+    fn matches_path(&self, paths: &[String]) -> bool {
+        if self.path_any.is_empty() && self.path_glob_any.is_empty() {
             return true;
         }
         let exact_match = !self.path_any.is_empty()
-            && action.paths.iter().any(|path| {
+            && paths.iter().any(|path| {
                 self.path_any
                     .iter()
                     .any(|expected| path == expected || path.ends_with(expected))
             });
-        let glob_match = self.path_glob_any.as_ref().is_some_and(|globset| {
-            action
-                .paths
-                .iter()
-                .any(|path| globset.is_match(path.as_str()))
-        });
+        let glob_match = paths.iter().any(|path| self.path_glob_any.matches(path));
         exact_match || glob_match
     }
 
-    fn matches_argv_source(&self, command_tokens: Option<&[String]>) -> bool {
-        if self.argv_source_any.is_empty() && self.argv_source_glob_any.is_none() {
-            return true;
+    fn matching_argv_source_paths(&self, command_tokens: Option<&[String]>) -> Option<Vec<String>> {
+        if self.argv_source_any.is_empty() && self.argv_source_glob_any.is_empty() {
+            return Some(Vec::new());
         }
         let Some(tokens) = command_tokens else {
-            return false;
+            return None;
         };
 
+        let mut paths = Vec::new();
         let mut skip_next = false;
         let mut positional_only = false;
         for token in tokens {
@@ -352,11 +446,34 @@ impl RuleMatch {
             {
                 continue;
             }
-            if path_like_token_matches(token, |path| self.matches_argv_source_path(path)) {
-                return true;
+            if self.argv_source_glob_any.is_suffix_only() {
+                if let Some(path) = self.fast_argv_source_path(token)
+                    && !paths.iter().any(|existing| existing == &path)
+                {
+                    paths.push(path);
+                }
+            } else {
+                path_like_token_matches(token, |path| {
+                    if self.matches_argv_source_path(path)
+                        && !paths.iter().any(|existing| existing == path)
+                    {
+                        paths.push(path.to_string());
+                    }
+                    false
+                });
             }
         }
-        false
+        (!paths.is_empty()).then_some(paths)
+    }
+
+    fn fast_argv_source_path(&self, token: &str) -> Option<String> {
+        let path = fast_path_token(token)?;
+        if self.matches_argv_source_path(path) {
+            return Some(path.to_string());
+        }
+        let base = path_without_line_range(path)?;
+        self.matches_argv_source_path(base)
+            .then(|| base.to_string())
     }
 
     fn matches_argv_source_path(&self, path: &str) -> bool {
@@ -365,12 +482,50 @@ impl RuleMatch {
                 .argv_source_any
                 .iter()
                 .any(|expected| path == expected || path.ends_with(expected));
-        let glob_match = self
-            .argv_source_glob_any
-            .as_ref()
-            .is_some_and(|globset| globset.is_match(path));
+        let glob_match = self.argv_source_glob_any.matches(path);
         exact_match || glob_match
     }
+}
+
+fn fast_path_token(token: &str) -> Option<&str> {
+    if token.starts_with('-') {
+        return None;
+    }
+    let trimmed = token.trim_matches(|ch| matches!(ch, '"' | '\'' | ',' | ';'));
+    let path = trimmed.strip_prefix("file://").unwrap_or(trimmed);
+    path.contains('.').then_some(path)
+}
+
+fn path_without_line_range(path: &str) -> Option<&str> {
+    let (base, suffix) = path.rsplit_once(':')?;
+    if suffix.chars().all(|character| character.is_ascii_digit()) {
+        let (base, start) = base.rsplit_once(':')?;
+        return start
+            .chars()
+            .all(|character| character.is_ascii_digit())
+            .then_some(base);
+    }
+    let (start, end) = suffix.split_once('-')?;
+    (!start.is_empty()
+        && !end.is_empty()
+        && start.chars().all(|character| character.is_ascii_digit())
+        && end.chars().all(|character| character.is_ascii_digit()))
+    .then_some(base)
+}
+
+fn derive_effective_paths(action: &ToolAction, command_tokens: Option<&[String]>) -> Vec<String> {
+    let mut paths = action.paths.clone();
+    if let Some(tokens) = command_tokens {
+        for token in tokens {
+            path_like_token_matches(token, |path| {
+                if !paths.iter().any(|existing| existing == path) {
+                    paths.push(path.to_string());
+                }
+                false
+            });
+        }
+    }
+    paths
 }
 
 impl RuleRoute {
@@ -530,22 +685,83 @@ impl From<HookClientConfigStdinMode> for StdinMode {
     }
 }
 
-fn compile_globs(label: &str, patterns: Vec<String>) -> Result<Option<GlobSet>, String> {
+fn compile_globs(label: &str, patterns: Vec<String>) -> Result<CompiledPathGlobs, String> {
     if patterns.is_empty() {
-        return Ok(None);
+        return Ok(CompiledPathGlobs::default());
+    }
+    let paired_suffixes = paired_suffix_globs(&patterns);
+    let mut suffix_ext_any = HashSet::new();
+    let mut suffix_any = Vec::new();
+    for suffix in &paired_suffixes {
+        if simple_extension_suffix(suffix) {
+            suffix_ext_any.insert(suffix.clone());
+        } else {
+            suffix_any.push(suffix.clone());
+        }
     }
     let mut builder = GlobSetBuilder::new();
+    let mut glob_count = 0usize;
     for pattern in patterns {
+        if simple_glob_suffix(&pattern)
+            .is_some_and(|suffix| paired_suffixes.iter().any(|existing| existing == suffix))
+        {
+            continue;
+        }
         let glob = GlobBuilder::new(&pattern)
             .literal_separator(true)
             .build()
             .map_err(|error| format!("invalid {label} pattern `{pattern}`: {error}"))?;
         builder.add(glob);
+        glob_count += 1;
     }
-    builder
-        .build()
-        .map(Some)
-        .map_err(|error| format!("failed to compile {label} patterns: {error}"))
+    let globset = if glob_count == 0 {
+        None
+    } else {
+        Some(
+            builder
+                .build()
+                .map_err(|error| format!("failed to compile {label} patterns: {error}"))?,
+        )
+    };
+    Ok(CompiledPathGlobs {
+        suffix_ext_any,
+        suffix_any,
+        globset,
+    })
+}
+
+fn paired_suffix_globs(patterns: &[String]) -> Vec<String> {
+    let mut suffixes = Vec::new();
+    for pattern in patterns {
+        let Some(suffix) = simple_glob_suffix(pattern) else {
+            continue;
+        };
+        let has_pair = patterns.iter().any(|candidate| {
+            candidate != pattern
+                && simple_glob_suffix(candidate).is_some_and(|other| other == suffix)
+        });
+        if has_pair && !suffixes.iter().any(|existing| existing == suffix) {
+            suffixes.push(suffix.to_string());
+        }
+    }
+    suffixes
+}
+
+fn simple_glob_suffix(pattern: &str) -> Option<&str> {
+    let suffix = pattern
+        .strip_prefix("**/*")
+        .or_else(|| pattern.strip_prefix('*'))?;
+    (!suffix.is_empty()
+        && !suffix
+            .chars()
+            .any(|character| matches!(character, '*' | '?' | '[' | ']' | '{' | '}')))
+    .then_some(suffix)
+}
+
+fn simple_extension_suffix(suffix: &str) -> bool {
+    suffix
+        .strip_prefix('.')
+        .is_some_and(|extension| !extension.is_empty() && !extension.contains('.'))
 }
 
 fn compile_command_contains(patterns: Vec<String>) -> Result<CompiledCommandContains, String> {

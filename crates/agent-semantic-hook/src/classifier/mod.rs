@@ -5,6 +5,7 @@ mod core;
 mod decision;
 #[path = "../classifier_inline_source_read.rs"]
 mod inline_source_read;
+mod prompt_search_flow;
 #[path = "../classifier_recovery.rs"]
 mod recovery;
 mod source_access_routes;

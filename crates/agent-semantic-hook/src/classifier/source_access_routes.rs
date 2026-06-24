@@ -1,9 +1,9 @@
 //! Source-access, direct-read, and raw-search classifier routes.
 
 use crate::command::{
-    CommandIntent, command_intent, contains_ingest_pipe, looks_like_command_transcript,
-    path_like_tokens, raw_search_plan, search_query_route, search_query_route_for_selector,
-    selector_query_route,
+    CommandIntent, command_intent, command_source_paths, contains_ingest_pipe,
+    looks_like_command_transcript, path_like_tokens, raw_search_plan, search_query_route,
+    search_query_route_for_selector, selector_query_route,
 };
 use crate::source_selector::source_selector_base;
 use crate::{
@@ -162,13 +162,23 @@ pub(super) fn classify_direct_read_action(
     {
         return None;
     }
+    let direct_read_selectors = if action.operation.is_direct_read_candidate() {
+        action.paths.clone()
+    } else {
+        action
+            .command
+            .as_deref()
+            .zip(action.command_tokens().as_deref())
+            .map(|(command, tokens)| command_source_paths(command, tokens))
+            .unwrap_or_default()
+    };
     direct_read_decision(
         registry,
         platform,
         event,
         action,
         semantic_ast_patch_enabled,
-        collect_direct_read_matches(registry, action.paths.iter().map(String::as_str)),
+        collect_direct_read_matches(registry, direct_read_selectors.iter().map(String::as_str)),
     )
 }
 
@@ -181,7 +191,8 @@ pub(super) fn classify_source_read_command(
     tokens: &[String],
     semantic_ast_patch_enabled: bool,
 ) -> Option<HookDecision> {
-    let inline_source_read_paths = inline_source_read::source_read_paths(command, tokens);
+    let mut inline_source_read_paths = inline_source_read::source_read_paths(command, tokens);
+    append_selector_base_paths_for_ranges(&mut inline_source_read_paths);
     if !inline_source_read_paths.is_empty() {
         let matches = collect_content_dump_matches(
             registry,
@@ -210,14 +221,12 @@ pub(super) fn classify_source_read_command(
         ),
         CommandIntent::ContentDump => {
             let selectors = action_path_selectors(action, tokens);
-            let matches = collect_content_dump_matches(registry, selectors.iter().copied());
+            let matches =
+                collect_content_dump_matches(registry, selectors.iter().map(String::as_str));
             if matches.is_empty() {
                 return None;
             }
-            let subject_paths = selectors
-                .into_iter()
-                .map(str::to_string)
-                .collect::<Vec<_>>();
+            let subject_paths = selectors;
             Some(content_dump_decision(
                 platform,
                 event,
@@ -231,29 +240,66 @@ pub(super) fn classify_source_read_command(
     }
 }
 
-fn action_path_selectors<'a>(action: &'a ToolAction, tokens: &'a [String]) -> Vec<&'a str> {
+fn action_path_selectors(action: &ToolAction, tokens: &[String]) -> Vec<String> {
     let mut selectors = Vec::new();
     for path in &action.paths {
         push_unique_selector(&mut selectors, path);
     }
-    for path in path_like_tokens(tokens) {
-        push_unique_selector(&mut selectors, path);
+    if !action.paths.is_empty() {
+        append_selector_base_paths_for_ranges(&mut selectors);
+        return selectors;
+    }
+    if let Some(command) = action.command.as_deref() {
+        for path in command_source_paths(command, tokens) {
+            push_unique_selector(&mut selectors, &path);
+        }
+    } else {
+        for path in path_like_tokens(tokens) {
+            push_unique_selector(&mut selectors, path);
+        }
     }
     selectors
 }
 
-fn push_unique_selector<'a>(selectors: &mut Vec<&'a str>, selector: &'a str) {
-    let selector_base = source_selector_base(selector);
+fn append_selector_base_paths_for_ranges(selectors: &mut Vec<String>) {
+    for selector in selectors.clone() {
+        if let Some(base) = selector_without_line_range(&selector)
+            && !selectors.iter().any(|selector| selector == base)
+        {
+            selectors.push(base.to_string());
+        }
+    }
+}
+
+fn selector_without_line_range(selector: &str) -> Option<&str> {
+    let (base, suffix) = selector.rsplit_once(':')?;
+    if suffix.chars().all(|character| character.is_ascii_digit()) {
+        let (base, start) = base.rsplit_once(':')?;
+        return start
+            .chars()
+            .all(|character| character.is_ascii_digit())
+            .then_some(base);
+    }
+    let (start, end) = suffix.split_once('-')?;
+    (!start.is_empty()
+        && !end.is_empty()
+        && start.chars().all(|character| character.is_ascii_digit())
+        && end.chars().all(|character| character.is_ascii_digit()))
+    .then_some(base)
+}
+
+fn push_unique_selector(selectors: &mut Vec<String>, selector: &str) {
+    let selector_base = source_selector_base(selector).to_string();
     if let Some(existing) = selectors
         .iter_mut()
         .find(|existing| source_selector_base(existing) == selector_base)
     {
-        let existing_base = source_selector_base(existing);
-        if selector != selector_base && *existing == existing_base {
-            *existing = selector;
+        let existing_base = source_selector_base(existing).to_string();
+        if selector != selector_base && existing.as_str() == existing_base {
+            *existing = selector.to_string();
         }
     } else {
-        selectors.push(selector);
+        selectors.push(selector.to_string());
     }
 }
 

@@ -6,7 +6,7 @@ use std::borrow::Cow;
 
 use serde_json::Value;
 
-use crate::command::{apply_patch_source_paths, path_like_token_matches, semantic_shell_tokens};
+use crate::command::{apply_patch_source_paths, command_source_paths, semantic_shell_tokens};
 use crate::protocol::DecisionSubject;
 
 const PATH_SCALAR_KEYS: &[&str] = &[
@@ -54,6 +54,30 @@ const PATH_VALUE_KEYS: &[&str] = &[
     "documents",
     "text_document",
     "textDocument",
+];
+const ACTION_SCAN_KEYS: &[&str] = &[
+    "commandActions",
+    "command_actions",
+    "action",
+    "toolAction",
+    "tool_action",
+    "item",
+    "items",
+    "input",
+    "arguments",
+    "args",
+    "parameters",
+    "params",
+    "toolInput",
+    "tool_input",
+    "toolUse",
+    "tool_use",
+    "function",
+    "tool_uses",
+    "toolUses",
+    "tools",
+    "tool_calls",
+    "toolCalls",
 ];
 
 #[derive(Clone, Debug)]
@@ -332,8 +356,7 @@ pub fn collect_tool_actions(tool_name: &str, tool_input: &Value) -> Vec<ToolActi
     }
 
     fn is_codex_command_execution_tool(tool_name: &str) -> bool {
-        let leaf = tool_name.rsplit(['.', ':']).next().unwrap_or(tool_name);
-        matches!(leaf, "command_execution" | "command-execution")
+        is_codex_command_execution_tool_name(tool_name)
     }
 
     fn codex_command_action(tool_name: &str, value: &Value) -> Option<ToolAction> {
@@ -382,6 +405,11 @@ pub fn collect_tool_actions(tool_name: &str, tool_input: &Value) -> Vec<ToolActi
             return None;
         }
         let command_tokens = command.as_deref().map(semantic_shell_tokens);
+        if let (Some(command), Some(tokens)) = (command.as_deref(), command_tokens.as_deref()) {
+            for path in command_source_paths(command, tokens) {
+                push_unique_path(&mut paths, path);
+            }
+        }
 
         Some(ToolAction {
             tool_name: format!("{tool_name}.command_action.{action_type}"),
@@ -424,22 +452,25 @@ pub fn collect_tool_actions(tool_name: &str, tool_input: &Value) -> Vec<ToolActi
         actions.push(action);
     }
 
-    let decoded_tool_input = decoded_or_cloned(tool_input);
-    let tool_input = &decoded_tool_input;
+    let decoded_tool_input = decoded_json_input(tool_input);
+    let tool_input = decoded_tool_input.as_ref().unwrap_or(tool_input);
     let surface = ToolSurface::from_tool_name(tool_name);
     let command = extract_command_direct(surface, tool_name, tool_input);
     let command_tokens = command.as_deref().map(semantic_shell_tokens);
     let mut paths = extract_paths_direct(tool_input);
     if let Some(command) = command.as_deref() {
         let patch_paths = apply_patch_source_paths(tool_name, command);
-        let command_paths = if patch_paths.is_empty() {
+        let mut command_paths = if !patch_paths.is_empty() {
+            patch_paths
+        } else if command_paths_are_needed_at_action_boundary(surface, command_tokens.as_deref()) {
             command_tokens
                 .as_deref()
                 .map(|tokens| command_source_paths(command, tokens))
                 .unwrap_or_default()
         } else {
-            patch_paths
+            Vec::new()
         };
+        append_base_paths_for_ranges(&mut command_paths);
         for path in command_paths {
             if !paths.iter().any(|existing| existing == &path) {
                 paths.push(path);
@@ -455,11 +486,76 @@ pub fn collect_tool_actions(tool_name: &str, tool_input: &Value) -> Vec<ToolActi
         command_tokens,
         paths,
     }];
-    actions.extend(codex_command_actions(tool_name, tool_input));
-    for nested in nested_tool_actions(tool_input) {
-        actions.extend(collect_tool_actions(&nested.tool_name, &nested.input));
+    if tool_input_needs_action_scan(tool_name, tool_input) {
+        actions.extend(codex_command_actions(tool_name, tool_input));
+        for nested in nested_tool_actions(tool_input) {
+            actions.extend(collect_tool_actions(&nested.tool_name, &nested.input));
+        }
     }
     actions
+}
+
+fn command_paths_are_needed_at_action_boundary(
+    surface: ToolSurface,
+    command_tokens: Option<&[String]>,
+) -> bool {
+    if !matches!(
+        surface,
+        ToolSurface::CodexShell | ToolSurface::CodexStdinContinuation
+    ) {
+        return true;
+    }
+    let Some(command_name) = command_tokens
+        .and_then(|tokens| tokens.first())
+        .map(|token| token.rsplit('/').next().unwrap_or(token))
+    else {
+        return false;
+    };
+    matches!(
+        command_name,
+        "awk"
+            | "gawk"
+            | "sed"
+            | "gsed"
+            | "head"
+            | "ghead"
+            | "tail"
+            | "gtail"
+            | "cat"
+            | "less"
+            | "more"
+            | "bat"
+            | "nl"
+            | "read"
+            | "rtk"
+    )
+}
+
+fn append_base_paths_for_ranges(paths: &mut Vec<String>) {
+    for path in paths.clone() {
+        if let Some(base) = path_without_line_range(&path)
+            && !paths.iter().any(|path| path == base)
+        {
+            paths.push(base.to_string());
+        }
+    }
+}
+
+fn path_without_line_range(path: &str) -> Option<&str> {
+    let (base, suffix) = path.rsplit_once(':')?;
+    if suffix.chars().all(|character| character.is_ascii_digit()) {
+        let (base, start) = base.rsplit_once(':')?;
+        return start
+            .chars()
+            .all(|character| character.is_ascii_digit())
+            .then_some(base);
+    }
+    let (start, end) = suffix.split_once('-')?;
+    (!start.is_empty()
+        && !end.is_empty()
+        && start.chars().all(|character| character.is_ascii_digit())
+        && end.chars().all(|character| character.is_ascii_digit()))
+    .then_some(base)
 }
 
 pub(crate) fn subject_for_action(action: &ToolAction) -> DecisionSubject {
@@ -591,6 +687,21 @@ fn normalize_path_value(path: &str) -> String {
     uri_path.to_string()
 }
 
+fn tool_input_needs_action_scan(tool_name: &str, tool_input: &Value) -> bool {
+    if is_codex_command_execution_tool_name(tool_name) {
+        return true;
+    }
+    let Some(object) = tool_input.as_object() else {
+        return false;
+    };
+    ACTION_SCAN_KEYS.iter().any(|key| object.contains_key(*key))
+}
+
+fn is_codex_command_execution_tool_name(tool_name: &str) -> bool {
+    let leaf = tool_name.rsplit(['.', ':']).next().unwrap_or(tool_name);
+    matches!(leaf, "command_execution" | "command-execution")
+}
+
 struct NestedToolAction {
     tool_name: String,
     input: Value,
@@ -679,60 +790,6 @@ fn shell_quote_arg(value: &str) -> String {
     } else {
         value.to_string()
     }
-}
-
-fn command_source_paths(command: &str, tokens: &[String]) -> Vec<String> {
-    let range_paths = crate::source_dump_range::line_range_source_paths(command);
-    if !range_paths.is_empty() {
-        return range_paths;
-    }
-    let mut paths = Vec::new();
-    for token in tokens {
-        path_like_token_matches(token, |token| {
-            push_command_source_path(&mut paths, token);
-            false
-        });
-    }
-    paths
-}
-
-fn push_command_source_path(paths: &mut Vec<String>, token: &str) {
-    let embedded = embedded_source_path_candidates(token);
-    if embedded.is_empty() {
-        if !looks_like_code_call_token(token) {
-            push_unique_path(paths, token.to_string());
-        }
-    } else {
-        for path in embedded {
-            push_unique_path(paths, path);
-        }
-    }
-}
-
-fn looks_like_code_call_token(token: &str) -> bool {
-    token.contains('(') || token.contains(')')
-}
-
-fn embedded_source_path_candidates(token: &str) -> Vec<String> {
-    let mut paths = Vec::new();
-    let mut current = String::new();
-    for ch in token.chars().chain(std::iter::once(' ')) {
-        if ch.is_ascii_alphanumeric() || matches!(ch, '/' | '.' | '_' | '-' | '*' | ':' | '~') {
-            current.push(ch);
-            continue;
-        }
-        if is_embedded_source_path_candidate(&current) {
-            push_unique_path(&mut paths, current.clone());
-        }
-        current.clear();
-    }
-    paths
-}
-
-fn is_embedded_source_path_candidate(candidate: &str) -> bool {
-    !candidate.starts_with('-')
-        && (candidate.contains('/') || candidate.contains('*'))
-        && candidate.contains('.')
 }
 
 fn push_unique_path(paths: &mut Vec<String>, path: String) {

@@ -13,7 +13,9 @@ use super::search_pipe_plan::render_primary_frontier_actions_only;
 use super::search_pipe_provider_facts::ProviderGraphFacts;
 use super::search_pipe_render::render_ingest_frontier;
 use super::search_pipe_surfaces::default_search_surfaces;
-use super::search_query_budget::{SearchQueryBudgetBlock, search_terms_budget_block};
+use super::search_query_budget::{
+    SearchQueryBudgetBlock, search_rg_terms_budget_block, search_terms_budget_block,
+};
 use super::search_query_wrapper_candidates::{
     QueryCandidateCollection, QueryCandidateRequest, absolute_scope,
     collect_query_candidate_collection, owner_candidates, package_clusters, query_clauses,
@@ -64,7 +66,7 @@ pub(crate) fn run_query_wrapper_command(command: &str, args: &[String]) -> Resul
     let terms = unique_clause_terms(&clauses);
     let started_at = Instant::now();
     let collect_started_at = Instant::now();
-    let broad_gate = query_wrapper_budget_gate(&wrapper_args, &terms);
+    let broad_gate = query_wrapper_budget_gate(surface, &wrapper_args, &terms);
     let candidate_collection = if let Some(gate) = broad_gate.as_ref() {
         QueryCandidateCollection::blocked(gate)
     } else {
@@ -113,10 +115,23 @@ pub(crate) fn run_query_wrapper_command(command: &str, args: &[String]) -> Resul
 }
 
 fn query_wrapper_budget_gate(
+    surface: QueryWrapperSurface,
     args: &QueryWrapperArgs,
     terms: &[String],
 ) -> Option<SearchQueryBudgetBlock> {
-    search_terms_budget_block(terms, &args.scopes, !args.native_args.is_empty())
+    if let Some(block) =
+        search_terms_budget_block(terms, &args.scopes, !args.native_args.is_empty())
+    {
+        return Some(block);
+    }
+    if surface == QueryWrapperSurface::Rg
+        && args.queries.len() == 1
+        && let Some(block) =
+            search_rg_terms_budget_block(terms, &args.scopes, !args.native_args.is_empty())
+    {
+        return Some(block);
+    }
+    None
 }
 
 fn duration_ms_value(duration: Duration) -> serde_json::Value {

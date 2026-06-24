@@ -29,14 +29,10 @@ shell_kind_matcher!(
 );
 
 fn shell_tokens(command: &str) -> Vec<String> {
-    if can_use_fallback_shell_tokens(command) {
-        return fallback_shell_tokens(command);
+    if let Some(tokens) = fallback_shell_tokens_if_simple(command) {
+        return tokens;
     }
     bash_ast_tokens(command).unwrap_or_else(|| fallback_shell_tokens(command))
-}
-
-fn can_use_fallback_shell_tokens(command: &str) -> bool {
-    !command.contains(['$', '`', '<', '>', '\n', '\\', '(', ')']) && !command.contains("||")
 }
 
 fn bash_ast_tokens(command: &str) -> Option<Vec<String>> {
@@ -136,6 +132,38 @@ fn normalize_shell_word_text(text: String) -> String {
         .replace("\\\\", "\\")
 }
 
+fn fallback_shell_tokens_if_simple(command: &str) -> Option<Vec<String>> {
+    let mut tokens = Vec::new();
+    let mut current = String::new();
+    let mut quote: Option<char> = None;
+    let mut chars = command.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if matches!(ch, '$' | '`' | '<' | '>' | '\n' | '\\' | '(' | ')') {
+            return None;
+        }
+        match (quote, ch) {
+            (Some(q), c) if c == q => quote = None,
+            (Some(_), c) => current.push(c),
+            (None, '\'' | '"') => quote = Some(ch),
+            (None, '|' | ';' | '&') => {
+                push_token(&mut tokens, &mut current);
+                if ch == '|' && chars.peek() == Some(&'|') {
+                    return None;
+                } else if ch == '&' && chars.peek() == Some(&'&') {
+                    chars.next();
+                    tokens.push("&&".to_string());
+                } else {
+                    tokens.push(ch.to_string());
+                }
+            }
+            (None, c) if c.is_whitespace() => push_token(&mut tokens, &mut current),
+            (None, c) => current.push(c),
+        }
+    }
+    push_token(&mut tokens, &mut current);
+    Some(tokens)
+}
+
 fn fallback_shell_tokens(command: &str) -> Vec<String> {
     let mut tokens = Vec::new();
     let mut current = String::new();
@@ -164,7 +192,11 @@ fn fallback_shell_tokens(command: &str) -> Vec<String> {
 }
 
 pub(crate) fn semantic_shell_tokens(command: &str) -> Vec<String> {
-    split_command_stages(shell_tokens(command))
+    let tokens = shell_tokens(command);
+    if !tokens.iter().any(|token| is_separator(token)) {
+        return unwrap_command_stage(&tokens);
+    }
+    split_command_stages(tokens)
         .into_iter()
         .flat_map(|stage| unwrap_command_stage(&stage))
         .collect()

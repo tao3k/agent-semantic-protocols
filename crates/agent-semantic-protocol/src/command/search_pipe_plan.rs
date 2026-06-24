@@ -65,6 +65,7 @@ pub(super) fn render_search_pipe_plan(request: SearchPipePlanRequest<'_>) -> Str
         Vec::new()
     };
     let fd_preview = if !quality.allow_query_selector
+        && !candidates.is_empty()
         && !skip_fd_preview_for_action_meta_query(&quality, candidates)
     {
         fd_query_preview_from_candidates(candidates).or_else(|| {

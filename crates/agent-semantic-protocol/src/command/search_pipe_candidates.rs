@@ -68,24 +68,22 @@ pub(super) fn collect_candidates(
             })
             .collect()
     };
-    let native_candidates = collect_native_finder_candidates(NativeFinderCollectionRequest {
-        surface: native_surface_for_pipe_terms(&terms),
-        language_id,
-        file_spec_override: None,
-        accept_all_files: false,
-        project_root,
-        locator_root,
-        roots: &roots,
-        terms: &terms,
-        config,
-        native_args: &[],
-    })?
-    .map(|collection| collection.candidates)
-    .unwrap_or_default();
     let file_spec = language_file_spec(language_id);
-    if !native_candidates.is_empty()
-        && !native_candidates_need_supplement(&native_candidates, &terms, &file_spec)
-    {
+    if terms.iter().all(|term| search_term_looks_like_path(term)) {
+        let native_candidates = collect_native_finder_candidates(NativeFinderCollectionRequest {
+            surface: native_surface_for_pipe_terms(&terms),
+            language_id,
+            file_spec_override: None,
+            accept_all_files: false,
+            project_root,
+            locator_root,
+            roots: &roots,
+            terms: &terms,
+            config,
+            native_args: &[],
+        })?
+        .map(|collection| collection.candidates)
+        .unwrap_or_default();
         return Ok(native_candidates);
     }
     let term_matcher = CandidateTermMatcher::new(&terms)?;
@@ -100,11 +98,7 @@ pub(super) fn collect_candidates(
         &term_matcher,
         &search_roots,
     )?;
-    if native_candidates.is_empty() {
-        Ok(supplemental_candidates)
-    } else {
-        Ok(merge_candidates(native_candidates, supplemental_candidates))
-    }
+    Ok(supplemental_candidates)
 }
 
 fn native_surface_for_pipe_terms(terms: &[String]) -> NativeFinderSurface {
@@ -116,58 +110,7 @@ fn native_surface_for_pipe_terms(terms: &[String]) -> NativeFinderSurface {
 }
 
 fn search_term_looks_like_path(term: &str) -> bool {
-    term.contains('/')
-        || term.contains('\\')
-        || term.contains('.')
-        || path_basename_matches(term, term)
-}
-
-fn native_candidates_need_supplement(
-    candidates: &[Candidate],
-    terms: &[String],
-    file_spec: &LanguageFileSpec,
-) -> bool {
-    terms.iter().any(|term| {
-        (search_term_looks_like_path(term) || config_filename_term(file_spec, term))
-            && !candidates
-                .iter()
-                .any(|candidate| candidate_matches_term(candidate, term))
-    })
-}
-
-fn config_filename_term(file_spec: &LanguageFileSpec, term: &str) -> bool {
-    file_spec
-        .config_filenames()
-        .iter()
-        .any(|config_filename| config_filename.eq_ignore_ascii_case(term))
-}
-
-fn candidate_matches_term(candidate: &Candidate, term: &str) -> bool {
-    let term = term.to_ascii_lowercase();
-    candidate.path.to_ascii_lowercase().contains(&term)
-        || candidate.symbol.to_ascii_lowercase().contains(&term)
-        || candidate.text.to_ascii_lowercase().contains(&term)
-}
-
-fn merge_candidates(mut primary: Vec<Candidate>, supplemental: Vec<Candidate>) -> Vec<Candidate> {
-    let mut seen = HashSet::new();
-    primary.retain(|candidate| seen.insert(candidate_merge_key(candidate)));
-    for candidate in supplemental {
-        if primary.len() >= PIPE_CANDIDATE_LINE_LIMIT {
-            break;
-        }
-        if seen.insert(candidate_merge_key(&candidate)) {
-            primary.push(candidate);
-        }
-    }
-    primary
-}
-
-fn candidate_merge_key(candidate: &Candidate) -> String {
-    format!(
-        "{}:{}:{}:{}",
-        candidate.path, candidate.line, candidate.symbol, candidate.text
-    )
+    term.contains('/') || term.contains('\\') || term.contains('.')
 }
 
 fn collect_candidates_from_search_roots(

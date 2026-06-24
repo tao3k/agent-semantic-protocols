@@ -484,6 +484,10 @@ fn is_prompt_scope_boundary(event: &Value) -> bool {
 /// Classify an ASP search command into prime/pipe stages.
 pub(crate) fn asp_search_stage(command: &str) -> Option<AspSearchCommandStage> {
     let tokens = semantic_shell_tokens(command);
+    asp_search_stage_tokens(&tokens)
+}
+
+pub(crate) fn asp_search_stage_tokens(tokens: &[String]) -> Option<AspSearchCommandStage> {
     let asp_index = asp_token_index(&tokens)?;
     let after_asp = &tokens[asp_index + 1..];
     if after_asp.first().map(String::as_str) == Some("search") {
@@ -497,9 +501,7 @@ pub(crate) fn asp_search_stage(command: &str) -> Option<AspSearchCommandStage> {
     search_stage_from_tokens(&after_asp[1..], language_id)
 }
 
-/// Return true for ASP query commands that print source or bypass search pipe.
-pub(crate) fn asp_query_code_or_direct_read_command(command: &str) -> bool {
-    let tokens = semantic_shell_tokens(command);
+pub(crate) fn asp_query_code_or_direct_read_tokens(tokens: &[String]) -> bool {
     let Some(asp_index) = asp_token_index(&tokens) else {
         return false;
     };
@@ -523,10 +525,9 @@ pub(crate) enum AspDirectSourceReadShape {
     Unbounded,
 }
 
-pub(crate) fn asp_query_direct_source_read_shape(
-    command: &str,
+pub(crate) fn asp_query_direct_source_read_shape_tokens(
+    tokens: &[String],
 ) -> Option<AspDirectSourceReadShape> {
-    let tokens = semantic_shell_tokens(command);
     let asp_index = asp_token_index(&tokens)?;
     let after_asp = &tokens[asp_index + 1..];
     let query_tokens = if after_asp.first().map(String::as_str) == Some("query") {
@@ -589,6 +590,10 @@ fn option_value<'a>(args: &'a [String], option: &str) -> Option<&'a str> {
 /// Return true when a shell command invokes ASP.
 pub(crate) fn asp_command(command: &str) -> bool {
     let tokens = semantic_shell_tokens(command);
+    asp_command_tokens(&tokens)
+}
+
+pub(crate) fn asp_command_tokens(tokens: &[String]) -> bool {
     asp_token_index(&tokens).is_some()
 }
 
