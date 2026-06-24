@@ -11,24 +11,29 @@ use std::{
 
 const RESOURCE_DIRS: &[&str] = &["contracts", "templates", "skills"];
 const BUNDLED_REQUIRED_RESOURCE_DIRS: &[&str] = &["contracts", "templates"];
-const FLOW_DIRS: &[&str] = &["sdd", "BDR", "plans"];
+const FLOW_DIRS: &[&str] = &["plans", "sdd", "bdd", "tdd", "bdr"];
 const ORG_ARTIFACTS_DIR: &str = "artifacts/org";
 const DEFAULT_ASP_ORG_REPO_URL: &str = "https://github.com/tao3k/org.git";
 const ASP_ORG_REPO_URL_ENV: &str = "ASP_ORG_REPO_URL";
 
 pub(crate) fn run_org_capture_command(args: &[String]) -> Result<(), String> {
-    if capture_contract_requested(args) {
-        return run_contract_capture(args);
-    }
-    let args = OrgCaptureArgs::parse(args)?;
-    if args.help {
+    if args
+        .iter()
+        .any(|arg| matches!(arg.as_str(), "-h" | "--help" | "help"))
+    {
         println!("{}", capture_usage());
         return Ok(());
     }
-
-    match args.command {
-        OrgCaptureCommand::Init => init_capture_state(args),
+    if args.first().is_some_and(|arg| arg == "init") {
+        return Err(
+            "asp org capture init is not a public command; Org resources are synchronized automatically when capture resolves a contract or template"
+                .to_string(),
+        );
     }
+    if capture_contract_requested(args) {
+        return run_contract_capture(args);
+    }
+    Err("asp org capture expects `--contract CONTRACT_ID`".to_string())
 }
 
 fn run_contract_capture(args: &[String]) -> Result<(), String> {
@@ -48,130 +53,6 @@ fn run_contract_capture(args: &[String]) -> Result<(), String> {
         );
     }
     agent::run_org_cli_command(orgize_args)
-}
-
-struct OrgCaptureArgs {
-    help: bool,
-    command: OrgCaptureCommand,
-    source_dir: Option<PathBuf>,
-    state_root: Option<PathBuf>,
-}
-
-#[derive(Clone, Copy)]
-enum OrgCaptureCommand {
-    Init,
-}
-
-impl OrgCaptureArgs {
-    fn parse(args: &[String]) -> Result<Self, String> {
-        let mut parsed = Self {
-            help: false,
-            command: OrgCaptureCommand::Init,
-            source_dir: None,
-            state_root: None,
-        };
-        let mut index = 0;
-        while index < args.len() {
-            let arg = &args[index];
-            match arg.as_str() {
-                "-h" | "--help" | "help" => parsed.help = true,
-                "init" if index == 0 => parsed.command = OrgCaptureCommand::Init,
-                "--source-dir" => {
-                    index += 1;
-                    parsed.source_dir = Some(PathBuf::from(required_flag_value(
-                        args,
-                        index,
-                        "--source-dir",
-                    )?));
-                }
-                "--state-root" => {
-                    index += 1;
-                    parsed.state_root = Some(PathBuf::from(required_flag_value(
-                        args,
-                        index,
-                        "--state-root",
-                    )?));
-                }
-                _ if arg.starts_with('-') => return Err(format!("unknown capture flag `{arg}`")),
-                _ => return Err(format!("unknown capture subcommand `{arg}`")),
-            }
-            index += 1;
-        }
-        Ok(parsed)
-    }
-}
-
-fn init_capture_state(args: OrgCaptureArgs) -> Result<(), String> {
-    let project_root =
-        env::current_dir().map_err(|error| format!("failed to read current directory: {error}"))?;
-    let state_root = args.state_root.unwrap_or(
-        project_state_paths(&project_root)?
-            .protocol_home
-            .join("org"),
-    );
-    let sync = if let Some(source_dir) = args.source_dir {
-        let source_root = source_dir.canonicalize().map_err(|error| {
-            format!(
-                "ASP Org source directory `{}` was not found; pass --source-dir for a local development copy override: {error}",
-                source_dir.display()
-            )
-        })?;
-        let copied_files = materialize_org_resources(&source_root, &state_root)?;
-        OrgStateSync {
-            source: source_root.display().to_string(),
-            status: "copied",
-            legacy_backup: None,
-            copied_files,
-        }
-    } else {
-        sync_default_org_state(&project_root, &state_root)?
-    };
-    let artifacts_root = org_artifacts_root(&state_root)?;
-    migrate_legacy_flow(&state_root, &artifacts_root)?;
-    let flow_dirs = ensure_flow_dirs(&artifacts_root)?;
-
-    println!("[ASP_ORG_CAPTURE] initialized");
-    println!("source: {}", sync.source);
-    println!("state-root: {}", display_path(&project_root, &state_root));
-    println!("sync-status: {}", sync.status);
-    println!(
-        "skill-entry: {}",
-        display_path(
-            &project_root,
-            &state_root.join("templates").join("ASP_ORG_SKILL.org")
-        )
-    );
-    println!(
-        "artifacts-root: {}",
-        display_path(&project_root, &artifacts_root)
-    );
-    println!(
-        "template-plan: {}",
-        display_path(
-            &project_root,
-            &state_root.join("templates").join("agent.plan.v1.org")
-        )
-    );
-    println!(
-        "template-execplan: {}",
-        display_path(
-            &project_root,
-            &state_root.join("templates").join("agent.execplan.v1.org")
-        )
-    );
-    println!("flow:");
-    for dir in flow_dirs {
-        println!("- {}", display_path(&project_root, &dir));
-    }
-    if let Some(backup) = sync.legacy_backup.as_ref() {
-        println!("legacy-backup: {}", display_path(&project_root, backup));
-    }
-    println!("copied-files: {}", sync.copied_files);
-    println!("agents-md-include: @.cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org");
-    println!(
-        "next: reference ASP_ORG_SKILL.org from AGENTS.md, then write Org state under artifacts/org/flow/sdd, artifacts/org/flow/BDR, and artifacts/org/flow/plans"
-    );
-    Ok(())
 }
 
 pub(crate) fn run_org_state_sync(project_root: &Path) -> Result<OrgStateSync, String> {
@@ -518,15 +399,8 @@ fn required_flag_value<'a>(
         .ok_or_else(|| format!("{flag} requires a value"))
 }
 
-fn display_path(project_root: &Path, path: &Path) -> String {
-    path.strip_prefix(project_root)
-        .unwrap_or(path)
-        .to_string_lossy()
-        .replace('\\', "/")
-}
-
 fn capture_usage() -> &'static str {
-    "usage: asp org capture --contract CONTRACT_ID --title TITLE --target-file ORG_FILE [--outline OUTLINE] [--kind KIND] [--tag TAG] [--property KEY=VALUE] [--body TEXT]\n       asp org capture init [--source-dir PATH] [--state-root PATH]\n\n`capture --contract CONTRACT_ID ...` renders a non-mutating Org entry and validates it against the ASP Org contract registry before returning org-entry. CONTRACT_ID must be explicit, such as agent.task.v1, agent.plan.v1, agent.sdd.v1, agent.adr.v1, agent.bdd.v1, agent.prd.v1, or agent.execplan.v1. The agent.task.v1 and agent.plan.v1 capture shapes are materialized from .cache/agent-semantic-protocol/org/templates/<CONTRACT_ID>.org unless the caller overrides kind, tags, properties, or body. ASP resolves CONTRACT_ID from .cache/agent-semantic-protocol/org/contracts/<CONTRACT_ID>.org, synchronizing bundled resources when needed. `capture init` is a diagnostic recovery entry that synchronizes .cache/agent-semantic-protocol/org from ASP_ORG_REPO_URL, defaulting to https://github.com/tao3k/org.git, and creates artifacts/org/flow/{sdd,BDR,plans}."
+    "usage: asp org capture --contract CONTRACT_ID --title TITLE --target-file ORG_FILE [--outline OUTLINE] [--kind KIND] [--tag TAG] [--property KEY=VALUE] [--body TEXT]\n\n`capture --contract CONTRACT_ID ...` renders a non-mutating Org entry and validates it against the ASP Org contract registry before returning org-entry. CONTRACT_ID must be explicit, such as agent.task.v1, agent.plan.v1, agent.sdd.v1, agent.adr.v1, agent.bdd.v1, agent.tdd.v1, agent.bdr.v1, agent.prd.v1, or agent.execplan.v1. The agent.task.v1 and agent.plan.v1 capture shapes are materialized from .cache/agent-semantic-protocol/org/templates/<CONTRACT_ID>.org unless the caller overrides kind, tags, properties, or body. ASP resolves CONTRACT_ID from .cache/agent-semantic-protocol/org/contracts/<CONTRACT_ID>.org, synchronizing bundled resources and creating artifacts/org/flow/{plans,sdd,bdd,tdd,bdr} when needed."
 }
 
 fn capture_contract_requested(args: &[String]) -> bool {

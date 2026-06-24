@@ -1,6 +1,6 @@
 //! Document language provider facade backed by orgize.
 
-use super::{org_archive, org_capture, search_config::AspConfig};
+use super::{org_archive, org_capture, org_recall, search_config::AspConfig};
 use orgize::agent::{self, DocumentLanguage, DocumentWalkConfig};
 
 const DOCUMENT_LANGUAGES: &[&str] = &["org", "md"];
@@ -30,6 +30,9 @@ pub(crate) fn run_language_command_with_config(
     }
     if command == "archive" && language_id == "org" {
         return org_archive::run_org_archive_command(&args[1..]);
+    }
+    if command == "recall" && language_id == "org" {
+        return org_recall::run_org_recall_command(&args[1..]);
     }
     if command == "capture" && language_id == "org" {
         let capture_args = &args[1..];
@@ -96,7 +99,9 @@ fn usage(language_id: &str) -> String {
 
 fn supported_commands(language_id: &str) -> &'static str {
     match language_id {
-        "org" => "guide|search|query|elements-query|contract|capture|archive|export|fmt|lint",
+        "org" => {
+            "guide|search|query|elements-query|contract|capture|recall|archive|export|fmt|lint"
+        }
         _ => "guide|search|query|elements-query",
     }
 }

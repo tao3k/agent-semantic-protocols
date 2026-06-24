@@ -83,18 +83,39 @@ pub(super) fn run_provider_command_with_stdin(
     cache_home: &Path,
     stdin: Vec<u8>,
 ) -> Result<ProviderProcessOutput, String> {
+    run_provider_command_with_stdin_limits(
+        language_id,
+        provider,
+        invocation,
+        project_root,
+        cache_home,
+        stdin,
+        ProviderProcessLimits::default(),
+    )
+}
+
+pub(super) fn run_provider_command_with_stdin_limits(
+    language_id: &str,
+    provider: &ActivatedProvider,
+    invocation: &[String],
+    project_root: &Path,
+    cache_home: &Path,
+    stdin: Vec<u8>,
+    limits: ProviderProcessLimits,
+) -> Result<ProviderProcessOutput, String> {
     let (program, forwarded) = invocation
         .split_first()
         .ok_or_else(|| format!("language `{language_id}` has an empty provider command"))?;
-    run_provider_process_with_stdin(
+    run_provider_process_with_stdin(ProviderProcessRun {
         language_id,
         provider,
         program,
         forwarded,
         project_root,
         cache_home,
-        StdinMode::bytes(stdin),
-    )
+        limits,
+        stdin: StdinMode::bytes(stdin),
+    })
 }
 
 pub(super) fn run_guide_command(
@@ -141,26 +162,42 @@ fn run_provider_process(
     project_root: &Path,
     cache_home: &Path,
 ) -> Result<ProviderProcessOutput, String> {
-    run_provider_process_with_stdin(
+    run_provider_process_with_stdin(ProviderProcessRun {
         language_id,
         provider,
         program,
         forwarded,
         project_root,
         cache_home,
-        StdinMode::Inherit,
-    )
+        limits: ProviderProcessLimits::default(),
+        stdin: StdinMode::Inherit,
+    })
+}
+
+struct ProviderProcessRun<'a> {
+    language_id: &'a str,
+    provider: &'a ActivatedProvider,
+    program: &'a str,
+    forwarded: &'a [String],
+    project_root: &'a Path,
+    cache_home: &'a Path,
+    stdin: StdinMode,
+    limits: ProviderProcessLimits,
 }
 
 fn run_provider_process_with_stdin(
-    language_id: &str,
-    provider: &ActivatedProvider,
-    program: &str,
-    forwarded: &[String],
-    project_root: &Path,
-    cache_home: &Path,
-    stdin: StdinMode,
+    request: ProviderProcessRun<'_>,
 ) -> Result<ProviderProcessOutput, String> {
+    let ProviderProcessRun {
+        language_id,
+        provider,
+        program,
+        forwarded,
+        project_root,
+        cache_home,
+        stdin,
+        limits,
+    } = request;
     let runtime_bin = project_state_paths(project_root)
         .map(|paths| paths.runtime_bin_dir)
         .unwrap_or_else(|_| runtime_bin_dir_for_cache_home(cache_home));
@@ -200,7 +237,7 @@ fn run_provider_process_with_stdin(
         stdin,
         stdout: OutputMode::Capture,
         stderr: OutputMode::Capture,
-        limits: ProviderProcessLimits::default(),
+        limits,
     })
     .map_err(|error| {
         format!(

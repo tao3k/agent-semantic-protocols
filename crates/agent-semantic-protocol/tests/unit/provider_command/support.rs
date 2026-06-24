@@ -77,6 +77,20 @@ pub(super) fn write_activation_to(root: &Path, activation_path: &Path, providers
     .expect("write activation");
 }
 
+pub(super) fn write_provider_bin_config(root: &Path, language_id: &str, binary: &Path) {
+    let config_path = root.join(".agents").join("asp.toml");
+    std::fs::create_dir_all(config_path.parent().expect("config parent"))
+        .expect("create asp config dir");
+    std::fs::write(
+        config_path,
+        format!(
+            "[providers.{language_id}]\nbin = \"{}\"\n",
+            binary.display().to_string().replace('"', "\\\"")
+        ),
+    )
+    .expect("write asp provider bin config");
+}
+
 pub(super) fn write_cache_manifest(root: &Path, manifest: serde_json::Value) -> PathBuf {
     let manifest_path = cache_manifest_path(root);
     std::fs::create_dir_all(manifest_path.parent().expect("manifest parent"))
@@ -111,6 +125,7 @@ pub(super) fn asp_command(root: &Path) -> Command {
     command
         .current_dir(root)
         .env("HOME", root.join("home"))
+        .env_remove("ASP_MEMORY_ENGINE")
         .env_remove("PRJ_CACHE_HOME");
     command
 }
@@ -175,6 +190,23 @@ pub(super) fn write_stdout_stderr_provider(
     stderr_text: &str,
 ) {
     write_stdout_stderr_exit_provider(bin_dir, binary, stdout_text, stderr_text, 0);
+}
+
+pub(super) fn write_semantic_facts_provider(
+    bin_dir: &Path,
+    binary: &str,
+    stdout_text: &str,
+    stderr_text: &str,
+) {
+    write_provider_script(
+        bin_dir,
+        binary,
+        &format!(
+            "#!/bin/sh\nprintf '%s' {}\nprintf '%s' {} >&2\nexit 0\n",
+            shell_single_quote(stdout_text),
+            shell_single_quote(stderr_text)
+        ),
+    );
 }
 
 pub(super) fn write_stdout_stderr_exit_provider(

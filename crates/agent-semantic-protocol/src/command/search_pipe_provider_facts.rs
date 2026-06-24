@@ -2,15 +2,21 @@
 
 use std::path::Path;
 use std::path::PathBuf;
+use std::time::Duration;
 
 use agent_semantic_hook::{ActivatedProvider, RuntimeProfiles};
+use agent_semantic_provider_transport::ProviderProcessLimits;
 use serde_json::Value;
 
-use super::provider_process::{provider_invocation_with_profile, run_provider_command_with_stdin};
+use super::provider_process::{
+    provider_invocation_with_profile, run_provider_command_with_stdin_limits,
+};
 use super::search_config::AspConfig;
 use super::search_pipe_model::Candidate;
 
-const PROVIDER_GRAPH_FACT_CANDIDATE_LIMIT: usize = 24;
+const PROVIDER_GRAPH_FACT_CANDIDATE_LIMIT: usize = 12;
+const PROVIDER_GRAPH_FACT_TIMEOUT: Duration = Duration::from_millis(1_500);
+const PROVIDER_GRAPH_FACT_OUTPUT_LIMIT_BYTES: usize = 256 * 1024;
 
 #[derive(Debug, Default)]
 pub(super) struct ProviderGraphFacts {
@@ -49,6 +55,13 @@ pub(super) fn collect_provider_graph_facts(
         return Ok(ProviderGraphFacts::default());
     }
     let fact_candidates = provider_fact_candidates(candidates);
+    let input_candidates = candidates.len();
+    let truncated_candidates = input_candidates.saturating_sub(fact_candidates.len());
+    let semantic_fact_limits = ProviderProcessLimits {
+        timeout: Some(PROVIDER_GRAPH_FACT_TIMEOUT),
+        max_stdout_bytes: Some(PROVIDER_GRAPH_FACT_OUTPUT_LIMIT_BYTES),
+        max_stderr_bytes: Some(PROVIDER_GRAPH_FACT_OUTPUT_LIMIT_BYTES),
+    };
     let args = vec![
         "search".to_string(),
         "semantic-facts".to_string(),
@@ -62,21 +75,37 @@ pub(super) fn collect_provider_graph_facts(
         context.provider_bin_root,
         config,
     )?;
-    let output = run_provider_command_with_stdin(
+    let output = match run_provider_command_with_stdin_limits(
         language_id,
         context.provider,
         &invocation,
         project_root,
         context.cache_home,
         candidate_stdin(project_root, &fact_candidates),
-    )?;
+        semantic_fact_limits,
+    ) {
+        Ok(output) => output,
+        Err(_) => {
+            return Ok(ProviderGraphFacts {
+                input_candidates,
+                fact_candidates: fact_candidates.len(),
+                truncated_candidates,
+                ..ProviderGraphFacts::default()
+            });
+        }
+    };
     if !output.status.success() {
-        return Ok(ProviderGraphFacts::default());
+        return Ok(ProviderGraphFacts {
+            input_candidates,
+            fact_candidates: fact_candidates.len(),
+            truncated_candidates,
+            ..ProviderGraphFacts::default()
+        });
     }
     let mut facts = provider_graph_facts_from_stdout(output.stdout.as_ref())?;
-    facts.input_candidates = candidates.len();
+    facts.input_candidates = input_candidates;
     facts.fact_candidates = fact_candidates.len();
-    facts.truncated_candidates = candidates.len().saturating_sub(fact_candidates.len());
+    facts.truncated_candidates = truncated_candidates;
     Ok(facts)
 }
 

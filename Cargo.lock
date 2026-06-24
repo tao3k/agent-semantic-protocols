@@ -121,6 +121,7 @@ dependencies = [
  "bytes",
  "criterion",
  "futures-util",
+ "libc",
  "memchr",
  "rust-lang-project-harness 0.1.2",
  "sha2",

@@ -23,6 +23,7 @@ criterion = "0.8.2"
 futures-util = "0.3"
 fs2 = "0.4"
 globset = "0.4"
+libc = "0.2"
 memchr = "2"
 rust-lang-project-harness = { path = "languages/rust-lang-project-harness", default-features = false }
 rusqlite = { version = "0.37", features = ["bundled"] }

@@ -157,6 +157,7 @@ fn provider_command(spec: &ProviderProcessSpec, stdin_mode: &StdinMode) -> Comma
         .current_dir(&spec.cwd)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    configure_process_group(&mut command);
     for (key, value) in &spec.env {
         command.env(key, value);
     }
@@ -174,6 +175,14 @@ fn provider_command(spec: &ProviderProcessSpec, stdin_mode: &StdinMode) -> Comma
 
     command
 }
+
+#[cfg(unix)]
+fn configure_process_group(command: &mut Command) {
+    command.process_group(0);
+}
+
+#[cfg(not(unix))]
+fn configure_process_group(_command: &mut Command) {}
 
 struct ProviderIoTasks {
     stdin: JoinHandle<Result<(), ProviderProcessError>>,
@@ -240,8 +249,7 @@ async fn collect_provider_output(
                     timeout_ms = timeout.as_millis(),
                     "provider process timed out; requesting kill"
                 );
-                let _ = child.start_kill();
-                let _ = child.wait().await;
+                terminate_provider_process(&mut child).await;
                 let _ = join_transport_task(stdin_task, "stdin").await;
                 let (stdout, stderr) =
                     join_readers_after_timeout(stdout_task, stderr_task).await;
@@ -270,6 +278,28 @@ async fn collect_provider_output(
         start, status, stdout, stderr, false,
     ))
 }
+
+async fn terminate_provider_process(child: &mut Child) {
+    kill_provider_process_group(child);
+    let _ = child.start_kill();
+    let _ = child.wait().await;
+}
+
+#[cfg(unix)]
+fn kill_provider_process_group(child: &Child) {
+    let Some(pid) = child.id() else {
+        return;
+    };
+    let Ok(process_group_id) = i32::try_from(pid) else {
+        return;
+    };
+    unsafe {
+        libc::kill(-process_group_id, libc::SIGKILL);
+    }
+}
+
+#[cfg(not(unix))]
+fn kill_provider_process_group(_child: &Child) {}
 
 fn provider_process_output(
     start: Instant,

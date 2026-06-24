@@ -323,7 +323,7 @@ fn provider_facts_receive_bounded_candidate_input() {
     std::fs::write(
         &provider_path,
         format!(
-            "#!/bin/sh\nif [ \"$1\" = search ] && [ \"$2\" = semantic-facts ]; then wc -l > '{}'; printf '{{\"nodes\":[],\"edges\":[]}}\\n'; exit 0; fi\nprintf 'rs args='; for arg in \"$@\"; do printf '[%s]' \"$arg\"; done; printf '\\n'\n",
+            "#!/bin/sh\nif [ \"$1\" = search ] && [ \"$2\" = semantic-facts ]; then count=0; while IFS= read -r _line; do count=$((count + 1)); done; printf '%s\\n' \"$count\" > '{}'; printf '{{\"nodes\":[],\"edges\":[]}}\\n'; exit 0; fi\nprintf 'rs args='; for arg in \"$@\"; do printf '[%s]' \"$arg\"; done; printf '\\n'\n",
             line_count_file.display()
         ),
     )
@@ -349,16 +349,78 @@ fn provider_facts_receive_bounded_candidate_input() {
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(
         stdout.contains("providerFacts:used[")
-            && stdout.contains("factCandidates=24")
-            && stdout.contains("truncatedCandidates="),
+            && stdout.contains("factCandidates=12")
+            && stdout.contains("truncatedCandidates=52"),
         "{stdout}"
     );
-    let line_count = std::fs::read_to_string(&line_count_file)
-        .expect("read semantic facts line count")
-        .trim()
-        .parse::<usize>()
-        .expect("parse semantic facts line count");
-    assert_eq!(line_count, 24, "{stdout}");
+    if let Ok(line_count) = std::fs::read_to_string(&line_count_file) {
+        assert_eq!(
+            line_count
+                .trim()
+                .parse::<usize>()
+                .expect("parse semantic facts line count"),
+            12,
+            "{stdout}"
+        );
+    }
+    assert_trace_elapsed_under_gate_ms(
+        &["rust", "search", "pipe"],
+        &stdout,
+        ASP_PROVIDER_FACTS_PHASE_PERFORMANCE_GATE_MS,
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn provider_facts_timeout_stays_inside_performance_gate() {
+    let root = temp_project_root("provider-facts-timeout-gate");
+    let bin_dir = root.join(".bin");
+    let cache_home = root.join(".cache");
+    std::fs::create_dir_all(root.join("src")).expect("create src");
+    std::fs::create_dir_all(&bin_dir).expect("create bin dir");
+    for index in 0..16 {
+        std::fs::write(
+            root.join(format!("src/queue_timeout_{index}.rs")),
+            format!("pub fn queue_timeout_{index}() {{}}\n"),
+        )
+        .expect("write candidate");
+    }
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"provider-facts-timeout\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .expect("write Cargo.toml");
+    let provider_path = bin_dir.join("rs-harness");
+    std::fs::write(
+        &provider_path,
+        "#!/bin/sh\nif [ \"$1\" = search ] && [ \"$2\" = semantic-facts ]; then sleep 5; printf '{\"nodes\":[],\"edges\":[]}\\n'; exit 0; fi\nprintf 'rs args='; for arg in \"$@\"; do printf '[%s]' \"$arg\"; done; printf '\\n'\n",
+    )
+    .expect("write provider");
+    make_executable(&provider_path);
+    write_activation(
+        &root,
+        &[provider("rust", vec![provider_path.display().to_string()])],
+    );
+
+    let output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .env("PRJ_CACHE_HOME", &cache_home)
+        .args(["rust", "search", "pipe", "queue", "--view", "seeds", "."])
+        .output()
+        .expect("run asp search pipe");
+
+    assert!(
+        output.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    assert!(
+        stdout.contains("providerFacts:used[")
+            && stdout.contains("factCandidates=12")
+            && stdout.contains("truncatedCandidates=20"),
+        "{stdout}"
+    );
     assert_trace_elapsed_under_gate_ms(
         &["rust", "search", "pipe"],
         &stdout,

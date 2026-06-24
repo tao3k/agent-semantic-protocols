@@ -7,9 +7,12 @@ import json
 import sys
 from collections.abc import Sequence
 
+from .binary_build import DEFAULT_BINARY_INTERPRETER, build_memory_engine_binary
 from .graph_turbo_memory import read_memory_projection
 from .plan_context import PlanMemoryContext
+from .plan_rank import rank_plan_candidates
 from .store import EpisodeStore, StoreConfig
+from .worker import serve_memory_worker, serve_memory_worker_socket
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -59,6 +62,35 @@ def main(argv: Sequence[str] | None = None) -> int:
                 f"experience={_field(episode.experience)}\n"
             )
         return 0
+    if args.command == "rank-plans":
+        return _rank_plans(args)
+    if args.command == "build-binary":
+        binary = build_memory_engine_binary(
+            args.output,
+            interpreter=args.interpreter,
+            compressed=args.compress,
+        )
+        sys.stdout.write(
+            "[build-binary] "
+            "engine=asp-memory-engine "
+            "kind=zipapp "
+            f"path={_field(str(binary))} "
+            f"interpreter={_field(args.interpreter)} "
+            f"compressed={str(args.compress).lower()} "
+            "venv=false\n"
+        )
+        return 0
+    if args.command == "worker":
+        if args.socket:
+            return serve_memory_worker_socket(
+                args.socket,
+                default_state=args.state,
+                default_embedding_dim=args.embedding_dim,
+            )
+        return serve_memory_worker(
+            default_state=args.state,
+            default_embedding_dim=args.embedding_dim,
+        )
     raise SystemExit(f"unsupported command: {args.command}")
 
 
@@ -76,7 +108,45 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     recall_plan.add_argument("--branch")
     recall_plan.add_argument("--top-k", type=int, default=5)
     recall_plan.add_argument("--embedding-dim", type=int, default=384)
+    rank_plans = subparsers.add_parser("rank-plans")
+    rank_plans.add_argument("--state", default=StoreConfig().path)
+    rank_plans.add_argument("--intent", required=True)
+    rank_plans.add_argument("--project", default="_global_project")
+    rank_plans.add_argument("--session")
+    rank_plans.add_argument("--branch")
+    rank_plans.add_argument("--top-k", type=int, default=5)
+    rank_plans.add_argument("--embedding-dim", type=int, default=384)
+    build_binary = subparsers.add_parser("build-binary")
+    build_binary.add_argument("--output", required=True)
+    build_binary.add_argument("--interpreter", default=DEFAULT_BINARY_INTERPRETER)
+    build_binary.add_argument("--compress", action="store_true")
+    worker = subparsers.add_parser("worker")
+    worker.add_argument("--state", default=StoreConfig().path)
+    worker.add_argument("--embedding-dim", type=int, default=384)
+    worker.add_argument("--socket")
     return parser.parse_args(argv)
+
+
+def _rank_plans(args: argparse.Namespace) -> int:
+    payload = json.load(sys.stdin)
+    store = EpisodeStore(StoreConfig(path=args.state, embedding_dim=args.embedding_dim))
+    store.load_state(args.state)
+    sys.stdout.write(
+        json.dumps(
+            rank_plan_candidates(
+                payload,
+                store=store,
+                intent=args.intent,
+                project=args.project,
+                session=args.session,
+                branch=args.branch,
+                top_k=args.top_k,
+            ),
+            sort_keys=True,
+        )
+        + "\n"
+    )
+    return 0
 
 
 def _field(value: str) -> str:

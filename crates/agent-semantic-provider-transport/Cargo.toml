@@ -9,6 +9,7 @@ license = "MIT"
 bstr = { workspace = true }
 bytes = { workspace = true }
 futures-util = { workspace = true }
+libc = { workspace = true }
 memchr = { workspace = true }
 sha2 = { workspace = true }
 tokio = { workspace = true }

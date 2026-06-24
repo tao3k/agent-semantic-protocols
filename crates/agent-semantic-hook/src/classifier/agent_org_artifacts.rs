@@ -98,6 +98,10 @@ fn with_agent_org_artifact_archive_warning(
         Value::String(archive_query_command(&warning)),
     );
     decision.fields.insert(
+        "agentOrgArtifactsRecallPlansCommand".to_string(),
+        Value::String(recall_plans_command(&warning)),
+    );
+    decision.fields.insert(
         "agentOrgArtifactsArchiveCommand".to_string(),
         Value::String(archive_command(&warning)),
     );
@@ -116,17 +120,27 @@ fn with_agent_org_artifact_archive_warning(
 
 fn archive_warning_message(warning: &AgentOrgArtifactsArchiveWarning) -> String {
     let files = warning.done_org_files.join(", ");
+    let recall_command = recall_plans_command(warning);
     let query_command = archive_query_command(warning);
     let archive_command = archive_command(warning);
     format!(
-        "ASP Org Archive Warning: `{}` contains {} active .org files, above threshold {}; DONE records not under `{}` should be archived after selector review: {}.\nRun `{}` to list the unarchived DONE tasks from the Org parser, then run `{}` to move reviewed DONE records into the archive.",
+        "ASP Org Archive Warning: `{}` contains {} active .org files, above threshold {}; DONE records not under `{}` should be archived after selector review: {}.\nRun `{}` first to recall active unfinished plans through Rust-owned Org discovery and Python asp-memory-engine ranking, use the selected resumeCommand to finish or mark current work, then run `{}` to list parser-selected DONE tasks and `{}` to move reviewed DONE records into the archive.",
         warning.artifacts_path,
         warning.active_org_file_count,
         warning.active_org_file_threshold,
         warning.archives_dir,
         files,
+        recall_command,
         query_command,
         archive_command
+    )
+}
+
+fn recall_plans_command(warning: &AgentOrgArtifactsArchiveWarning) -> String {
+    format!(
+        "asp org recall plans --artifacts-root {} --archive-dir {} --intent 'active unfinished ASP Org plan'",
+        shell_arg(&warning.artifacts_path),
+        shell_arg(&warning.archives_dir)
     )
 }
 

@@ -500,6 +500,10 @@ fn deny_decision_warns_when_done_org_artifacts_should_be_archived() {
         Some(11)
     );
     let artifacts_path = org_artifacts_root(&root);
+    let expected_recall_command = format!(
+        "asp org recall plans --artifacts-root {} --archive-dir archives --intent 'active unfinished ASP Org plan'",
+        artifacts_path.display()
+    );
     let expected_command = format!(
         "asp org query --kind task --field todo=DONE --exclude-dir archives --workspace {} --content",
         artifacts_path.display()
@@ -507,6 +511,11 @@ fn deny_decision_warns_when_done_org_artifacts_should_be_archived() {
     let expected_archive_command = format!(
         "asp org archive done --artifacts-root {} --archive-dir archives",
         artifacts_path.display()
+    );
+    assert!(
+        decision.message.contains(&expected_recall_command),
+        "{}",
+        decision.message
     );
     assert!(
         decision.message.contains(&expected_command),
@@ -531,6 +540,13 @@ fn deny_decision_warns_when_done_org_artifacts_should_be_archived() {
             .get("agentOrgArtifactsArchiveQueryCommand")
             .and_then(|command| command.as_str()),
         Some(expected_command.as_str())
+    );
+    assert_eq!(
+        decision
+            .fields
+            .get("agentOrgArtifactsRecallPlansCommand")
+            .and_then(|command| command.as_str()),
+        Some(expected_recall_command.as_str())
     );
     assert_eq!(
         decision

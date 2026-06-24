@@ -36,12 +36,33 @@ fn materialize_plan_contract_capture(
     template_path: Option<&Path>,
 ) -> Result<(), String> {
     validate_plan_target_file(args)?;
+    validate_plan_title(args)?;
     let materialized =
         materialize_from_template(args, capture_args, template_path, "agent.plan.v1")?;
     if !has_flag(args, "--kind") {
         capture_args.extend(["--kind".to_string(), "task".to_string()]);
     }
     ensure_plan_title_progress_cookie(capture_args, &materialized.progress_cookies)?;
+    Ok(())
+}
+
+fn validate_plan_title(args: &[String]) -> Result<(), String> {
+    let Some(title) = flag_value(args, "--title").map(str::trim) else {
+        return Err(
+            "agent.plan.v1 capture requires `--title` with the real task title; do not rely on session id or template placeholders for recall"
+                .to_string(),
+        );
+    };
+    if title.is_empty()
+        || ["agent session plan", "plan title", "<plan_title>"]
+            .iter()
+            .any(|placeholder| title.eq_ignore_ascii_case(placeholder))
+    {
+        return Err(
+            "agent.plan.v1 --title must be a task-specific recall title, not a generic session label or template placeholder"
+                .to_string(),
+        );
+    }
     Ok(())
 }
 

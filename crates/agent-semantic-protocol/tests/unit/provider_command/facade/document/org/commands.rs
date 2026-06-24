@@ -1,4 +1,8 @@
-use crate::provider_command::support::{asp_command, temp_project_root};
+use crate::provider_command::support::{
+    asp_command, make_executable, prepend_path, temp_project_root,
+};
+use std::path::Path;
+use std::process::Command;
 
 #[test]
 fn asp_org_exposes_ast_query_facts_and_capture_plan() {
@@ -176,7 +180,7 @@ fn asp_org_exposes_ast_query_facts_and_capture_plan() {
     );
     let capture_plan_stdout = String::from_utf8(capture_plan.stdout).expect("capture plan stdout");
     assert!(
-        capture_plan_stdout.contains("* TODO Record ASP org plan [1/8] [12%] :agent:plan:"),
+        capture_plan_stdout.contains("* TODO Record ASP org plan [1/7] [14%] :agent:plan:"),
         "{capture_plan_stdout}"
     );
     assert!(
@@ -200,6 +204,18 @@ fn asp_org_exposes_ast_query_facts_and_capture_plan() {
         "{capture_plan_stdout}"
     );
     assert!(
+        !capture_plan_stdout.contains("Specification Applicability"),
+        "{capture_plan_stdout}"
+    );
+    assert!(
+        !capture_plan_stdout.contains("GOVERNING_CONTRACT"),
+        "{capture_plan_stdout}"
+    );
+    assert!(
+        !capture_plan_stdout.contains("GOVERNING_REF"),
+        "{capture_plan_stdout}"
+    );
+    assert!(
         capture_plan_stdout.contains("** Validation"),
         "{capture_plan_stdout}"
     );
@@ -216,12 +232,11 @@ fn asp_org_exposes_ast_query_facts_and_capture_plan() {
         "{capture_plan_stdout}"
     );
     assert!(
-        capture_plan_stdout.contains("** Adversarial Review"),
+        capture_plan_stdout.contains("** Reflection"),
         "{capture_plan_stdout}"
     );
     assert!(
-        capture_plan_stdout
-            .contains("Does this plan repeat information that belongs in a governing spec"),
+        capture_plan_stdout.contains("| Did project scope drift? | pending |"),
         "{capture_plan_stdout}"
     );
     assert!(
@@ -289,6 +304,71 @@ fn asp_org_exposes_ast_query_facts_and_capture_plan() {
         assert!(stderr.contains(message), "{stderr}");
     }
 
+    let missing_title_plan = asp_command(&root)
+        .args([
+            "org",
+            "capture",
+            "--contract",
+            "agent.plan.v1",
+            "--target-file",
+            ".cache/agent-semantic-protocol/artifacts/org/flow/plans/agent-plan-missing-title.org",
+        ])
+        .output()
+        .expect("run missing title asp org capture plan");
+    assert!(
+        !missing_title_plan.status.success(),
+        "agent.plan.v1 should require a recall title"
+    );
+    let missing_title_stderr =
+        String::from_utf8(missing_title_plan.stderr).expect("missing title stderr");
+    assert!(
+        missing_title_stderr.contains("agent.plan.v1 capture requires `--title`"),
+        "{missing_title_stderr}"
+    );
+
+    let placeholder_title_plan = asp_command(&root)
+        .args([
+            "org",
+            "capture",
+            "--contract",
+            "agent.plan.v1",
+            "--title",
+            "Agent session plan",
+            "--target-file",
+            ".cache/agent-semantic-protocol/artifacts/org/flow/plans/agent-plan-placeholder-title.org",
+        ])
+        .output()
+        .expect("run placeholder title asp org capture plan");
+    assert!(
+        !placeholder_title_plan.status.success(),
+        "agent.plan.v1 should reject generic session titles"
+    );
+    let placeholder_title_stderr =
+        String::from_utf8(placeholder_title_plan.stderr).expect("placeholder title stderr");
+    assert!(
+        placeholder_title_stderr.contains("must be a task-specific recall title"),
+        "{placeholder_title_stderr}"
+    );
+
+    let recall_help = asp_command(&root)
+        .args(["org", "recall", "--help"])
+        .output()
+        .expect("run asp org recall help");
+    assert!(
+        recall_help.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&recall_help.stderr)
+    );
+    let recall_help_stdout = String::from_utf8(recall_help.stdout).expect("recall help stdout");
+    assert!(
+        recall_help_stdout.contains("usage: asp org recall plans"),
+        "{recall_help_stdout}"
+    );
+    assert!(
+        recall_help_stdout.contains("Python asp-memory-engine owns plan ranking"),
+        "{recall_help_stdout}"
+    );
+
     let capture_task_kind = asp_command(&root)
         .args([
             "org",
@@ -343,33 +423,55 @@ fn asp_org_exposes_ast_query_facts_and_capture_plan() {
         "{missing_contract_stderr}"
     );
 
+    let capture_help = asp_command(&root)
+        .args(["org", "capture", "--help"])
+        .output()
+        .expect("run asp org capture help");
+    assert!(
+        capture_help.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&capture_help.stderr)
+    );
+    let capture_help_stdout = String::from_utf8(capture_help.stdout).expect("capture help stdout");
+    assert!(
+        capture_help_stdout.contains("usage: asp org capture --contract CONTRACT_ID"),
+        "{capture_help_stdout}"
+    );
+    assert!(
+        !capture_help_stdout.contains("capture init"),
+        "{capture_help_stdout}"
+    );
+
     let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
-fn asp_org_capture_initializes_state_resources_and_flow_dirs() {
-    let root = temp_project_root("org-document-command-capture-init");
+fn asp_org_capture_auto_initializes_state_resources_and_flow_dirs() {
+    let root = temp_project_root("org-document-command-capture-auto-init");
 
     let output = asp_command(&root)
-        .args(["org", "capture", "init"])
+        .args([
+            "org",
+            "capture",
+            "--contract",
+            "agent.plan.v1",
+            "--title",
+            "Auto initialize ASP org resources",
+            "--target-file",
+            ".cache/agent-semantic-protocol/artifacts/org/flow/plans/agent-plan-auto-init.org",
+            "--no-confirm",
+        ])
         .output()
-        .expect("run asp org capture init");
+        .expect("run asp org capture with automatic state init");
     assert!(
         output.status.success(),
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    let stdout = String::from_utf8(output.stdout).expect("capture init stdout");
-    assert!(stdout.contains("[ASP_ORG_CAPTURE] initialized"), "{stdout}");
-    assert!(
-        stdout.contains(
-            "agents-md-include: @.cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org"
-        ),
-        "{stdout}"
-    );
-    assert!(stdout.contains("artifacts/org/flow/sdd"), "{stdout}");
-    assert!(stdout.contains("artifacts/org/flow/BDR"), "{stdout}");
-    assert!(stdout.contains("artifacts/org/flow/plans"), "{stdout}");
+    let stdout = String::from_utf8(output.stdout).expect("capture stdout");
+    assert!(stdout.contains("[CAPTURE] asp org capture"), "{stdout}");
+    assert!(stdout.contains("- contract: agent.plan.v1"), "{stdout}");
+    assert!(stdout.contains("- status: passed"), "{stdout}");
 
     let state_root = root
         .join(".cache")
@@ -396,14 +498,37 @@ fn asp_org_capture_initializes_state_resources_and_flow_dirs() {
             .is_file(),
         "execplan template should be materialized"
     );
+    assert!(
+        state_root
+            .join("contracts")
+            .join("agent.plan.v1.org")
+            .is_file(),
+        "plan contract should be materialized"
+    );
     let org_artifacts = root
         .join(".cache")
         .join("agent-semantic-protocol")
         .join("artifacts")
         .join("org");
-    assert!(org_artifacts.join("flow").join("sdd").is_dir());
-    assert!(org_artifacts.join("flow").join("BDR").is_dir());
     assert!(org_artifacts.join("flow").join("plans").is_dir());
+    assert!(org_artifacts.join("flow").join("sdd").is_dir());
+    assert!(org_artifacts.join("flow").join("bdd").is_dir());
+    assert!(org_artifacts.join("flow").join("tdd").is_dir());
+    assert!(org_artifacts.join("flow").join("bdr").is_dir());
+
+    let init_output = asp_command(&root)
+        .args(["org", "capture", "init"])
+        .output()
+        .expect("run removed asp org capture init");
+    assert!(
+        !init_output.status.success(),
+        "asp org capture init must not remain public"
+    );
+    let init_stderr = String::from_utf8(init_output.stderr).expect("capture init stderr");
+    assert!(
+        init_stderr.contains("asp org capture init is not a public command"),
+        "{init_stderr}"
+    );
 
     let _ = std::fs::remove_dir_all(root);
 }
@@ -459,6 +584,257 @@ fn asp_org_archive_done_moves_done_records_under_archives() {
     );
 
     let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn asp_org_recall_plans_scans_in_rust_and_ranks_with_memory_engine() {
+    let root = temp_project_root("org-document-command-recall-plans-rank");
+    let org_artifacts = root
+        .join(".cache")
+        .join("agent-semantic-protocol")
+        .join("artifacts")
+        .join("org");
+    let plans = org_artifacts.join("flow").join("plans");
+    std::fs::create_dir_all(&plans).expect("create plans dir");
+    let hot_plan = plans.join("agent-plan-memory-engine-hot-path.org");
+    let cold_plan = plans.join("agent-plan-unrelated-cold-path.org");
+    std::fs::write(
+        &hot_plan,
+        "* TODO Stabilize memory engine recall flow [1/8] [12%] :agent:plan:\n:PROPERTIES:\n:CONTRACT_ORG: agent.plan.v1\n:ID: memory-engine-hot-path\n:OBJECTIVE: Stabilize memory engine recall flow\n:NEXT_ACTION: continue memory engine sandtable\n:RECOVERY_REF: PLAN_ID=memory-engine-hot-path\n:END:\n",
+    )
+    .expect("write hot plan");
+    std::fs::write(
+        &cold_plan,
+        "* TODO Unrelated packaging cleanup :agent:plan:\n:PROPERTIES:\n:CONTRACT_ORG: agent.plan.v1\n:ID: unrelated-cold-path\n:OBJECTIVE: Unrelated packaging cleanup\n:NEXT_ACTION: continue unrelated cleanup\n:END:\n",
+    )
+    .expect("write cold plan");
+    let state_path = root.join("memory-state.json");
+    write_memory_rank_state(&root, &state_path, "memory-engine-hot-path");
+
+    let output = asp_command(&root)
+        .args([
+            "org",
+            "recall",
+            "plans",
+            "--artifacts-root",
+            org_artifacts.to_str().unwrap(),
+            "--state",
+            state_path.to_str().unwrap(),
+            "--project",
+            "repo",
+            "--intent",
+            "stabilize memory engine recall flow",
+            "--top-k",
+            "1",
+            "--embedding-dim",
+            "8",
+        ])
+        .output()
+        .expect("run asp org recall plans");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("recall stdout");
+    assert!(
+        stdout.contains(
+            "[org-recall-plans] owner=rust memoryEngine=asp-memory-engine ranker=memory-engine"
+        ),
+        "{stdout}"
+    );
+    assert!(stdout.contains("id=\"memory-engine-hot-path\""), "{stdout}");
+    assert!(
+        stdout.contains("objective=\"Stabilize memory engine recall flow\""),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("memoryScore=") && !stdout.contains("id=\"unrelated-cold-path\""),
+        "{stdout}"
+    );
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn asp_org_recall_plans_uses_explicit_memory_engine_binary() {
+    let root = temp_project_root("org-document-command-recall-plans-binary");
+    let org_artifacts = root
+        .join(".cache")
+        .join("agent-semantic-protocol")
+        .join("artifacts")
+        .join("org");
+    let plans = org_artifacts.join("flow").join("plans");
+    std::fs::create_dir_all(&plans).expect("create plans dir");
+    std::fs::write(
+        plans.join("agent-plan-binary-plan.org"),
+        "* TODO Binary backed recall plan :agent:plan:\n:PROPERTIES:\n:CONTRACT_ORG: agent.plan.v1\n:ID: binary-plan\n:OBJECTIVE: Binary backed recall plan\n:NEXT_ACTION: keep the memory engine on a packaged binary path\n:END:\n",
+    )
+    .expect("write binary plan");
+    let bin_dir = root.join("bin");
+    std::fs::create_dir_all(&bin_dir).expect("create binary dir");
+    let memory_engine = bin_dir.join("asp-memory-engine-test-binary");
+    std::fs::write(
+        &memory_engine,
+        "#!/bin/sh\ncat >/dev/null\nprintf '%s\\n' '{\"plans\":[{\"id\":\"binary-plan\",\"score\":9.0,\"textScore\":0.0,\"memoryScore\":9.0,\"recencyScore\":0.0,\"intentScore\":0.0}]}'\n",
+    )
+    .expect("write fake memory engine binary");
+    make_executable(&memory_engine);
+
+    let output = asp_command(&root)
+        .env("ASP_MEMORY_ENGINE", &memory_engine)
+        .args([
+            "org",
+            "recall",
+            "plans",
+            "--artifacts-root",
+            org_artifacts.to_str().unwrap(),
+            "--project",
+            "repo",
+            "--intent",
+            "binary backed recall plan",
+            "--top-k",
+            "1",
+        ])
+        .output()
+        .expect("run asp org recall plans with explicit binary");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("recall stdout");
+    assert!(stdout.contains("id=\"binary-plan\""), "{stdout}");
+    assert!(stdout.contains("score=9.000"), "{stdout}");
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn asp_org_recall_plans_uses_path_memory_engine_binary() {
+    let root = temp_project_root("org-document-command-recall-plans-path-binary");
+    let org_artifacts = root
+        .join(".cache")
+        .join("agent-semantic-protocol")
+        .join("artifacts")
+        .join("org");
+    let plans = org_artifacts.join("flow").join("plans");
+    std::fs::create_dir_all(&plans).expect("create plans dir");
+    std::fs::write(
+        plans.join("agent-plan-path-binary-plan.org"),
+        "* TODO PATH backed recall plan :agent:plan:\n:PROPERTIES:\n:CONTRACT_ORG: agent.plan.v1\n:ID: path-binary-plan\n:OBJECTIVE: PATH backed recall plan\n:NEXT_ACTION: keep packaged asp-memory-engine ahead of development fallbacks\n:END:\n",
+    )
+    .expect("write path binary plan");
+    let bin_dir = root.join("bin");
+    std::fs::create_dir_all(&bin_dir).expect("create binary dir");
+    let memory_engine = bin_dir.join("asp-memory-engine");
+    std::fs::write(
+        &memory_engine,
+        "#!/bin/sh\ncat >/dev/null\nprintf '%s\\n' '{\"plans\":[{\"id\":\"path-binary-plan\",\"score\":7.0,\"textScore\":0.0,\"memoryScore\":7.0,\"recencyScore\":0.0,\"intentScore\":0.0}]}'\n",
+    )
+    .expect("write fake memory engine binary");
+    make_executable(&memory_engine);
+
+    let output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .args([
+            "org",
+            "recall",
+            "plans",
+            "--artifacts-root",
+            org_artifacts.to_str().unwrap(),
+            "--project",
+            "repo",
+            "--intent",
+            "path backed recall plan",
+            "--top-k",
+            "1",
+        ])
+        .output()
+        .expect("run asp org recall plans with path binary");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("recall stdout");
+    assert!(stdout.contains("id=\"path-binary-plan\""), "{stdout}");
+    assert!(stdout.contains("score=7.000"), "{stdout}");
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[cfg(unix)]
+#[test]
+fn asp_org_recall_plans_uses_memory_engine_socket_worker() {
+    let root = temp_project_root("org-document-command-recall-plans-socket-worker");
+    let org_artifacts = root
+        .join(".cache")
+        .join("agent-semantic-protocol")
+        .join("artifacts")
+        .join("org");
+    let plans = org_artifacts.join("flow").join("plans");
+    std::fs::create_dir_all(&plans).expect("create plans dir");
+    std::fs::write(
+        plans.join("agent-plan-socket-worker-plan.org"),
+        "* TODO Socket worker recall plan :agent:plan:\n:PROPERTIES:\n:CONTRACT_ORG: agent.plan.v1\n:ID: socket-worker-plan\n:OBJECTIVE: Socket worker recall plan\n:NEXT_ACTION: rank through resident memory worker\n:END:\n",
+    )
+    .expect("write socket worker plan");
+    let socket_id = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("system time")
+        .as_nanos();
+    let socket_path = std::path::PathBuf::from(format!(
+        "/tmp/asp-memory-worker-{}-{socket_id}.sock",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_file(&socket_path);
+    let listener =
+        std::os::unix::net::UnixListener::bind(&socket_path).expect("bind memory worker socket");
+    let handle = std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().expect("accept memory worker request");
+        let mut request = String::new();
+        let mut reader = std::io::BufReader::new(stream.try_clone().expect("clone worker stream"));
+        std::io::BufRead::read_line(&mut reader, &mut request).expect("read worker request");
+        assert!(request.contains("\"command\":\"rank-plans\""), "{request}");
+        assert!(request.contains("\"payload\""), "{request}");
+        assert!(request.contains("\"socket-worker-plan\""), "{request}");
+        std::io::Write::write_all(
+            &mut stream,
+            b"{\"plans\":[{\"id\":\"socket-worker-plan\",\"score\":6.0,\"textScore\":0.0,\"memoryScore\":6.0,\"recencyScore\":0.0,\"intentScore\":0.0}]}\n",
+        )
+        .expect("write worker response");
+    });
+
+    let output = asp_command(&root)
+        .env("ASP_MEMORY_ENGINE_SOCKET", &socket_path)
+        .args([
+            "org",
+            "recall",
+            "plans",
+            "--artifacts-root",
+            org_artifacts.to_str().unwrap(),
+            "--project",
+            "repo",
+            "--intent",
+            "socket worker recall plan",
+            "--top-k",
+            "1",
+        ])
+        .output()
+        .expect("run asp org recall plans with socket worker");
+    handle.join().expect("worker socket thread");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("recall stdout");
+    assert!(stdout.contains("id=\"socket-worker-plan\""), "{stdout}");
+    assert!(stdout.contains("score=6.000"), "{stdout}");
+
+    let _ = std::fs::remove_dir_all(root);
+    let _ = std::fs::remove_file(socket_path);
 }
 
 #[test]
@@ -558,6 +934,49 @@ fn asp_org_rejects_domain_specific_embedded_commands() {
     }
 
     let _ = std::fs::remove_dir_all(root);
+}
+
+fn write_memory_rank_state(root: &Path, state_path: &Path, plan_id: &str) {
+    let script = root.join("write-memory-state.py");
+    std::fs::write(
+        &script,
+        format!(
+            r#"from pathlib import Path
+import sys
+from asp_memory_engine import Episode, EpisodeDraft, EpisodeStore, PlanMemoryContext, StoreConfig
+
+state = Path(sys.argv[1])
+store = EpisodeStore(StoreConfig(path=str(state), embedding_dim=8))
+context = PlanMemoryContext(project_id="repo", plan_id="{plan_id}")
+store.store(Episode.new(EpisodeDraft(
+    id="memory-engine-hot-episode",
+    intent="stabilize memory engine recall flow",
+    intent_embedding=store.encoder.encode("stabilize memory engine recall flow"),
+    experience="continue memory engine sandtable",
+    outcome="pending",
+).with_plan_context(context, sharing="project")))
+store.save_state(state)
+"#
+        ),
+    )
+    .expect("write memory state script");
+    let packages_python = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packages/python");
+    let output = Command::new("uv")
+        .args(["run", "--project"])
+        .arg(packages_python)
+        .arg("--frozen")
+        .arg("python")
+        .arg(&script)
+        .arg(state_path)
+        .current_dir(root)
+        .output()
+        .expect("run memory state script");
+    assert!(
+        output.status.success(),
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 #[test]

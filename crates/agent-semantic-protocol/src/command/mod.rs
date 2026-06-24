@@ -16,6 +16,7 @@ mod install_provider_target;
 mod org_archive;
 mod org_capture;
 mod org_capture_contract_materialize;
+mod org_recall;
 mod paths;
 mod protocol_binary;
 mod protocol_version;
