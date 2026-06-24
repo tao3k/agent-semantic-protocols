@@ -12,6 +12,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use super::client_backend_worker::run_client_backend_on_worker;
+use super::gerbil_check_cache::try_replay_gerbil_check_cache;
 use super::protocol_version_line;
 use super::provider_process::{
     provider_invocation_with_profile, provider_invocations, run_guide_command,
@@ -430,6 +431,9 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
         return Err(
             "--frontier-receipt-* fact flags require an ASP graph-turbo fast search".to_string(),
         );
+    }
+    if try_replay_gerbil_check_cache(language_id, &provider_args, &project_root)? {
+        return Ok(());
     }
     if uses_client_backend(language_id, &command_args) {
         return run_client_backend_command(

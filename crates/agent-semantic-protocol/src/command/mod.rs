@@ -4,6 +4,7 @@ mod ast_patch;
 mod client_backend_worker;
 mod dispatch;
 mod document_provider;
+mod gerbil_check_cache;
 mod graph;
 mod healthcheck;
 mod hook;
