@@ -170,7 +170,7 @@ impl CompiledAgentOrgArtifactsConfig {
         artifacts_root: &Path,
     ) -> Option<AgentOrgArtifactsArchiveWarning> {
         let active_org_files =
-            collect_active_org_files(&artifacts_root, &self.archive_warning.archives_dir);
+            collect_active_org_files(artifacts_root, &self.archive_warning.archives_dir);
         if active_org_files.len() <= self.archive_warning.active_org_file_threshold {
             return None;
         }
@@ -178,7 +178,7 @@ impl CompiledAgentOrgArtifactsConfig {
             .iter()
             .filter(|path| org_file_has_done_heading(path))
             .take(self.archive_warning.max_reported_files)
-            .map(|path| artifact_display_path(&artifacts_root, path))
+            .map(|path| artifact_display_path(artifacts_root, path))
             .collect::<Vec<_>>();
         if done_org_files.is_empty() {
             return None;

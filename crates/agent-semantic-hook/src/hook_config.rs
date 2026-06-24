@@ -412,9 +412,7 @@ impl RuleMatch {
         if self.argv_source_any.is_empty() && self.argv_source_glob_any.is_empty() {
             return Some(Vec::new());
         }
-        let Some(tokens) = command_tokens else {
-            return None;
-        };
+        let tokens = command_tokens?;
 
         let mut paths = Vec::new();
         let mut skip_next = false;

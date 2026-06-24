@@ -488,7 +488,7 @@ pub(crate) fn asp_search_stage(command: &str) -> Option<AspSearchCommandStage> {
 }
 
 pub(crate) fn asp_search_stage_tokens(tokens: &[String]) -> Option<AspSearchCommandStage> {
-    let asp_index = asp_token_index(&tokens)?;
+    let asp_index = asp_token_index(tokens)?;
     let after_asp = &tokens[asp_index + 1..];
     if after_asp.first().map(String::as_str) == Some("search") {
         let language_id = language_from_flags(after_asp)?;
@@ -502,7 +502,7 @@ pub(crate) fn asp_search_stage_tokens(tokens: &[String]) -> Option<AspSearchComm
 }
 
 pub(crate) fn asp_query_code_or_direct_read_tokens(tokens: &[String]) -> bool {
-    let Some(asp_index) = asp_token_index(&tokens) else {
+    let Some(asp_index) = asp_token_index(tokens) else {
         return false;
     };
     let after_asp = &tokens[asp_index + 1..];
@@ -528,7 +528,7 @@ pub(crate) enum AspDirectSourceReadShape {
 pub(crate) fn asp_query_direct_source_read_shape_tokens(
     tokens: &[String],
 ) -> Option<AspDirectSourceReadShape> {
-    let asp_index = asp_token_index(&tokens)?;
+    let asp_index = asp_token_index(tokens)?;
     let after_asp = &tokens[asp_index + 1..];
     let query_tokens = if after_asp.first().map(String::as_str) == Some("query") {
         after_asp
@@ -594,7 +594,7 @@ pub(crate) fn asp_command(command: &str) -> bool {
 }
 
 pub(crate) fn asp_command_tokens(tokens: &[String]) -> bool {
-    asp_token_index(&tokens).is_some()
+    asp_token_index(tokens).is_some()
 }
 
 fn asp_token_index(tokens: &[String]) -> Option<usize> {

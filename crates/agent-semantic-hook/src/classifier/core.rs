@@ -237,7 +237,7 @@ fn invalid_asp_facade_from_tokens(tokens: &[String], registry: &HookRuntime) -> 
     let asp_index = tokens.iter().enumerate().find_map(|(index, token)| {
         is_asp_binary_token(token)
             .then_some(index)
-            .filter(|index| is_asp_invocation_position(&tokens, *index))
+            .filter(|index| is_asp_invocation_position(tokens, *index))
     })?;
     let facade = tokens.get(asp_index + 1)?;
     if facade.starts_with('-')
