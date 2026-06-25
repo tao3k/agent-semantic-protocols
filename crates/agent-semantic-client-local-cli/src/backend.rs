@@ -1,7 +1,7 @@
 //! Local native-provider process execution for `agent-semantic-client`.
 
 use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use agent_semantic_client_core::{
@@ -78,19 +78,7 @@ impl LocalNativeCliBackend {
         provider: &ResolvedProvider,
         forwarded_args: Vec<String>,
     ) -> Result<LocalNativeCommand, String> {
-        let mut invocation = if !provider.provider_command_prefix.is_empty() {
-            provider.command_prefix()
-        } else if let Some(runtime_command) = provider.runtime_command_prefix() {
-            runtime_command
-        } else if let Some(status) = provider.runtime_profile_status {
-            let status = status.as_str();
-            return Err(format!(
-                "runtime profile for provider `{}` language `{}` is {status}; run `asp hook doctor --client codex .`",
-                provider.provider_id, provider.language_id
-            ));
-        } else {
-            provider.command_prefix()
-        };
+        let mut invocation = vec![Self::home_local_provider_binary(provider)?];
         Self::push_method(&mut invocation, &request.method)?;
         let forwarded_args = append_syntax_query_plan_args(
             &request.method,
@@ -129,6 +117,28 @@ impl LocalNativeCliBackend {
             }
         }
         Ok(())
+    }
+
+    fn home_local_provider_binary(provider: &ResolvedProvider) -> Result<String, String> {
+        let home = std::env::var_os("HOME")
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| {
+                format!(
+                    "provider binary `{}` for language `{}` must be installed at $HOME/.local/bin/{}; HOME is not set",
+                    provider.binary, provider.language_id, provider.binary
+                )
+            })?;
+        let path = Path::new(&home).join(".local/bin").join(&provider.binary);
+        if !path.is_file() {
+            return Err(format!(
+                "provider binary `{}` for language `{}` must be installed at {}; run `asp install language {}`",
+                provider.binary,
+                provider.language_id,
+                path.display(),
+                provider.language_id
+            ));
+        }
+        Ok(path.to_string_lossy().to_string())
     }
 
     fn forwarded_arg_sets(request: &ClientRequest) -> Vec<Vec<String>> {

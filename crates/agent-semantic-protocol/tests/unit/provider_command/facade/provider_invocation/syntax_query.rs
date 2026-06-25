@@ -1,6 +1,6 @@
 use crate::provider_command::support::{
-    asp_command, make_executable, prepend_path, provider, temp_project_root, write_activation,
-    write_echo_provider,
+    asp_command, home_local_bin, make_executable, prepend_path, provider, temp_project_root,
+    write_activation, write_echo_provider,
 };
 
 #[test]
@@ -112,9 +112,9 @@ fn language_facade_query_injects_asp_compiled_tree_sitter_plan_for_each_provider
 #[test]
 fn language_facade_query_allows_syntax_code_output_with_exact_selector() {
     let root = temp_project_root("provider-syntax-query-stdout-facade");
-    let bin_dir = root.join(".bin");
-    std::fs::create_dir_all(&bin_dir).expect("create bin dir");
-    let provider_path = bin_dir.join("rs-harness");
+    let home_bin = home_local_bin(&root);
+    std::fs::create_dir_all(&home_bin).expect("create home local bin");
+    let provider_path = home_bin.join("rs-harness");
     std::fs::write(
         &provider_path,
         r#"#!/bin/sh
@@ -130,7 +130,6 @@ printf 'pub fn provider_owned() -> usize {
 
     let output = asp_command(&root)
         .env("PRJ_CACHE_HOME", root.join(".cache"))
-        .env("PATH", prepend_path(&bin_dir))
         .args([
             "rust",
             "query",
@@ -241,9 +240,9 @@ fn language_facade_rejects_direct_source_read_code_trailing_root_before_fast_pat
 #[test]
 fn language_facade_rejects_inline_code_in_compact_frontier_mode() {
     let root = temp_project_root("provider-compact-frontier-inline-code");
-    let bin_dir = root.join(".bin");
-    std::fs::create_dir_all(&bin_dir).expect("create bin dir");
-    let provider_path = bin_dir.join("rs-harness");
+    let home_bin = home_local_bin(&root);
+    std::fs::create_dir_all(&home_bin).expect("create home local bin");
+    let provider_path = home_bin.join("rs-harness");
     std::fs::write(
         &provider_path,
         r#"#!/bin/sh
@@ -258,7 +257,6 @@ printf '|code path=src/lib.rs lineRange=1:2 text="pub fn bad() {}"\n'
 
     let output = asp_command(&root)
         .env("PRJ_CACHE_HOME", root.join(".cache"))
-        .env("PATH", prepend_path(&bin_dir))
         .args([
             "rust",
             "query",

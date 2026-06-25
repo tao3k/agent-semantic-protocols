@@ -138,7 +138,10 @@ fn provider_workspace_scope_files(
         activation_path: PathBuf::new(),
         providers: vec![provider.clone()],
     };
-    let output = LocalNativeCliBackend::new(snapshot).execute(&request)?;
+    let output = match LocalNativeCliBackend::new(snapshot).execute(&request) {
+        Ok(output) => output,
+        Err(_) => return Ok(None),
+    };
     if output.status_code != 0 {
         return Ok(None);
     }

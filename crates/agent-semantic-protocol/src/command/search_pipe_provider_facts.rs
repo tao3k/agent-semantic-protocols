@@ -30,7 +30,6 @@ pub(super) struct ProviderGraphFacts {
 pub(super) struct ProviderGraphFactsContext<'a> {
     pub(super) provider: &'a ActivatedProvider,
     pub(super) profiles: &'a RuntimeProfiles,
-    pub(super) provider_bin_root: &'a Path,
     pub(super) cache_home: &'a Path,
 }
 
@@ -68,13 +67,8 @@ pub(super) fn collect_provider_graph_facts(
         query.to_string(),
         "--json".to_string(),
     ];
-    let invocation = provider_invocation_with_profile(
-        context.profiles,
-        context.provider,
-        &args,
-        context.provider_bin_root,
-        config,
-    )?;
+    let invocation =
+        provider_invocation_with_profile(context.profiles, context.provider, &args, config)?;
     let output = match run_provider_command_with_stdin_limits(
         language_id,
         context.provider,

@@ -14,8 +14,8 @@ fn install_language_pinned_release_writes_runtime_bin_package_and_lock() {
 
 #[test]
 #[cfg(unix)]
-fn install_language_pinned_release_prefers_asp_toml_provider_bin() {
-    assert_install_language_pinned_release_prefers_asp_toml_provider_bin();
+fn install_language_pinned_release_ignores_asp_toml_provider_bin() {
+    assert_install_language_pinned_release_ignores_asp_toml_provider_bin();
 }
 
 #[test]
@@ -137,7 +137,7 @@ fn assert_install_pinned_release_writes_runtime_bin_package_and_lock() {
     );
 }
 
-fn assert_install_language_pinned_release_prefers_asp_toml_provider_bin() {
+fn assert_install_language_pinned_release_ignores_asp_toml_provider_bin() {
     let root = temp_project_root();
     let home = root.join("home");
     let release_dir = create_pinned_release_fixture(&root);
@@ -173,10 +173,17 @@ fn assert_install_language_pinned_release_prefers_asp_toml_provider_bin() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("installTargetSource=asp.toml"), "{stdout}");
+    assert!(
+        stdout.contains("installTargetSource=home-local-bin"),
+        "{stdout}"
+    );
 
-    let bin = root.join("tools/rs-harness-config");
-    assert!(bin.is_file(), "missing configured bin {}", bin.display());
+    let bin = home.join(".local/bin/rs-harness");
+    assert!(bin.is_file(), "missing home-local bin {}", bin.display());
+    assert!(
+        !root.join("tools/rs-harness-config").exists(),
+        "asp.toml language bin must not be an install target"
+    );
     let package_binary = root.join(
         ".cache/agent-semantic-protocol/runtime/providers/rust/v0.1.2/x86_64-unknown-linux-gnu/rs-harness",
     );

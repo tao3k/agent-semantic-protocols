@@ -20,6 +20,7 @@ fn cache_source_index_refresh_builds_rust_sql_rows() {
         .lock()
         .expect("cache test lock");
     let root = temp_root("source-index-refresh");
+    let _home_env = isolate_home(&root);
     let source_dir = root.join("src");
     std::fs::create_dir_all(&source_dir).expect("create source dir");
     std::fs::write(root.join("gerbil.pkg"), "(package source-index-refresh)\n")
@@ -95,6 +96,7 @@ fn cache_source_index_refresh_invalidates_when_empty_source_root_gains_file() {
         .lock()
         .expect("cache test lock");
     let root = temp_root("source-index-empty-root-invalidates");
+    let _home_env = isolate_home(&root);
     let source_dir = root.join("src");
     let extra_dir = root.join("extra");
     std::fs::create_dir_all(&source_dir).expect("create source dir");
@@ -172,6 +174,7 @@ fn cache_source_index_refresh_respects_provider_ignored_path_prefixes() {
         .lock()
         .expect("cache test lock");
     let root = temp_root("source-index-workspace-exclude");
+    let _home_env = isolate_home(&root);
     std::fs::write(
         root.join("Cargo.toml"),
         "[workspace]\nmembers = [\"crates/app\", \"vendor/tool\"]\nexclude = [\"vendor/tool\"]\nresolver = \"2\"\n",
@@ -240,6 +243,7 @@ fn source_index_lookup_ranks_query_dense_owner_before_low_coverage_path() {
         .lock()
         .expect("cache test lock");
     let root = temp_root("source-index-query-axis-rank");
+    let _home_env = isolate_home(&root);
     std::fs::write(
         root.join("Cargo.toml"),
         "[workspace]\nmembers = [\"crates/app\"]\nresolver = \"2\"\n",
@@ -306,6 +310,7 @@ fn cache_source_index_refresh_prefers_provider_workspace_scope_packet() {
         .lock()
         .expect("cache test lock");
     let root = temp_root("source-index-provider-workspace-scope");
+    let _home_env = isolate_home(&root);
     std::fs::write(
         root.join("gerbil.pkg"),
         "(package source-index-provider-scope)\n",
@@ -323,7 +328,9 @@ fn cache_source_index_refresh_prefers_provider_workspace_scope_packet() {
         "(def (provider-scope-symbol) 'excluded)\n",
     )
     .expect("write excluded source");
-    let provider_bin = root.join("fake-gslph");
+    let provider_bin = home_local_provider_path(&root, "gslph");
+    std::fs::create_dir_all(provider_bin.parent().expect("provider parent"))
+        .expect("create home local bin");
     std::fs::write(
         &provider_bin,
         r#"#!/bin/sh
@@ -487,6 +494,16 @@ fn make_executable(path: &Path) {
         permissions.set_mode(0o755);
         std::fs::set_permissions(path, permissions).expect("set executable");
     }
+}
+
+fn isolate_home(root: &Path) -> EnvVarGuard {
+    let home = root.join("home");
+    std::fs::create_dir_all(&home).expect("create isolated home");
+    EnvVarGuard::set("HOME", home.as_os_str())
+}
+
+fn home_local_provider_path(root: &Path, binary: &str) -> std::path::PathBuf {
+    root.join("home").join(".local/bin").join(binary)
 }
 
 struct EnvVarGuard {

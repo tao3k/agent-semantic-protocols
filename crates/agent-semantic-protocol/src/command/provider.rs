@@ -353,7 +353,6 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
         let provider_context = ProviderGraphFactsContext {
             provider,
             profiles: &runtime_profiles,
-            provider_bin_root: &activation_root,
             cache_home: &cache_home,
         };
         return run_search_dependency_seed_command(
@@ -371,7 +370,6 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
             let provider_context = ProviderGraphFactsContext {
                 provider,
                 profiles: &runtime_profiles,
-                provider_bin_root: &activation_root,
                 cache_home: &cache_home,
             };
             return run_asp_fast_search_command(
@@ -409,7 +407,6 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
             provider,
             &provider_args,
             &project_root,
-            &activation_root,
             &runtime_profiles,
             &config,
         )? {
@@ -449,13 +446,8 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
     let runtime_profiles = runtime_profiles_for_runtime(&project_root, &runtime);
     if is_guide(&command_args) {
         let guide_args = provider_guide_args(language_id, &provider_args);
-        let invocation = provider_invocation_with_profile(
-            &runtime_profiles,
-            provider,
-            &guide_args,
-            &activation_root,
-            &config,
-        )?;
+        let invocation =
+            provider_invocation_with_profile(&runtime_profiles, provider, &guide_args, &config)?;
         return run_guide_command(
             language_id,
             provider,
@@ -468,7 +460,6 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
         provider,
         &provider_args,
         &project_root,
-        &activation_root,
         &runtime_profiles,
         &config,
     )? {

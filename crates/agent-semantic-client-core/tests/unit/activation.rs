@@ -40,7 +40,7 @@ fn runtime_profile_status_maps_from_hook_health_status() {
 }
 
 #[test]
-fn activation_provider_prefix_takes_precedence_over_runtime_profile_argv() {
+fn activation_provider_prefix_is_metadata_not_client_invocation() {
     let provider = ResolvedProvider {
         language_id: LanguageId::from("rust"),
         provider_id: ProviderId::from("rs-harness"),
@@ -57,10 +57,17 @@ fn activation_provider_prefix_takes_precedence_over_runtime_profile_argv() {
     };
 
     assert_eq!(
-        provider.command_prefix(),
+        provider.provider_command_prefix,
         vec!["./.bin/rs-harness".to_string()]
     );
-    assert_eq!(provider.runtime_command_prefix(), None);
+    assert_eq!(
+        provider.runtime_command_argv,
+        Some(vec!["/opt/homebrew/bin/rs-harness".to_string()])
+    );
+    assert_eq!(
+        provider.runtime_profile_status,
+        Some(RuntimeProfileStatus::Available)
+    );
 }
 
 #[test]
@@ -108,10 +115,10 @@ fn activation_snapshot_skips_runtime_profile_when_prefix_is_present() {
         .expect("python provider");
 
     assert_eq!(
-        provider.command_prefix(),
+        provider.provider_command_prefix,
         vec!["missing-python-provider-prefix".to_string()]
     );
-    assert_eq!(provider.runtime_command_prefix(), None);
+    assert_eq!(provider.runtime_command_argv, None);
     assert_eq!(provider.runtime_profile_status, None);
     std::fs::remove_dir_all(root).expect("remove temp root");
 }

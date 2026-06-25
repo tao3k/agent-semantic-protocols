@@ -130,6 +130,10 @@ pub(super) fn asp_command(root: &Path) -> Command {
     command
 }
 
+pub(super) fn home_local_bin(root: &Path) -> PathBuf {
+    root.join("home").join(".local/bin")
+}
+
 pub(super) fn prepend_path(path_prefix: &Path) -> OsString {
     let mut paths = vec![path_prefix.to_path_buf()];
     if let Some(path) = env::var_os("PATH") {
@@ -263,6 +267,15 @@ fn write_provider_script(bin_dir: &Path, binary: &str, text: &str) {
     let path = bin_dir.join(binary);
     std::fs::write(&path, text).expect("write fake provider");
     make_executable(&path);
+    if bin_dir.file_name().and_then(|name| name.to_str()) == Some(".bin")
+        && let Some(root) = bin_dir.parent()
+    {
+        let home_bin = home_local_bin(root);
+        std::fs::create_dir_all(&home_bin).expect("create fake home-local provider bin dir");
+        let home_path = home_bin.join(binary);
+        std::fs::write(&home_path, text).expect("write fake home-local provider");
+        make_executable(&home_path);
+    }
 }
 
 pub(super) fn make_executable(path: &Path) {

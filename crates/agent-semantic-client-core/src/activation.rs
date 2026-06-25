@@ -79,25 +79,6 @@ impl ResolvedProvider {
             provider_binary: self.binary.clone(),
         }
     }
-
-    /// Return the registry-owned provider command prefix.
-    #[must_use]
-    pub fn command_prefix(&self) -> Vec<String> {
-        if self.provider_command_prefix.is_empty() {
-            vec![self.binary.clone()]
-        } else {
-            self.provider_command_prefix.clone()
-        }
-    }
-
-    /// Return the profile-pinned provider argv when runtime profile health is usable.
-    #[must_use]
-    pub fn runtime_command_prefix(&self) -> Option<Vec<String>> {
-        if !self.provider_command_prefix.is_empty() {
-            return None;
-        }
-        self.runtime_command_argv.clone()
-    }
 }
 
 impl From<&ActivatedProvider> for ResolvedProvider {

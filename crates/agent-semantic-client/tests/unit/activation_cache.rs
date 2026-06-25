@@ -42,7 +42,10 @@ fn cached_activation_loader_refreshes_stale_provider_command_prefix() {
         .unwrap_or(provider_v2.clone())
         .display()
         .to_string();
-    assert_eq!(provider.command_prefix(), vec![expected_prefix.clone()]);
+    assert_eq!(
+        provider.provider_command_prefix,
+        vec![expected_prefix.clone()]
+    );
     let rewritten = std::fs::read_to_string(&activation_path).expect("read rewritten activation");
     assert!(rewritten.contains(&expected_prefix));
     assert!(!rewritten.contains(&provider_v1.display().to_string()));

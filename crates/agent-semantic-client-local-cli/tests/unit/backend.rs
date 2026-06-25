@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::sync::{Mutex, MutexGuard};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use agent_semantic_client_core::{
@@ -8,8 +9,11 @@ use agent_semantic_client_core::{
 };
 use agent_semantic_client_local_cli::LocalNativeCliBackend;
 
+static ENV_LOCK: Mutex<()> = Mutex::new(());
+
 #[test]
 fn prepares_registry_owned_provider_command() {
+    let home = install_home_provider("registry", "rs-harness", "");
     let backend = LocalNativeCliBackend::new(snapshot(vec![provider("rust", "rs-harness")]));
     let request = ClientRequest::new(ClientMethod::Search, PathBuf::from("/repo"))
         .with_language("rust")
@@ -21,19 +25,8 @@ fn prepares_registry_owned_provider_command() {
 
     let command = backend.prepare(&request).expect("prepare command");
 
-    assert_eq!(command.program, "direnv");
-    assert_eq!(
-        command.args,
-        vec![
-            "exec",
-            ".",
-            "rs-harness",
-            "search",
-            "owner",
-            "src/lib.rs",
-            "."
-        ]
-    );
+    assert_eq!(command.program, home.provider_path.to_string_lossy());
+    assert_eq!(command.args, vec!["search", "owner", "src/lib.rs", "."]);
     assert_eq!(command.provider.language_id, "rust");
 }
 
@@ -52,6 +45,7 @@ fn requires_language_for_multi_provider_route() {
 
 #[test]
 fn prepares_query_with_asp_compiled_syntax_plan() {
+    let _home = install_home_provider("syntax-plan", "rs-harness", "");
     let backend = LocalNativeCliBackend::new(snapshot(vec![provider("rust", "rs-harness")]));
     let request = ClientRequest::new(ClientMethod::Query, PathBuf::from("/repo"))
         .with_language("rust")
@@ -66,9 +60,6 @@ fn prepares_query_with_asp_compiled_syntax_plan() {
     assert_eq!(
         command.args,
         vec![
-            "exec",
-            ".",
-            "rs-harness",
             "query",
             "--treesitter-query",
             "(function_item name: (identifier) @function.name)",
@@ -85,6 +76,7 @@ fn prepares_query_with_asp_compiled_syntax_plan() {
 
 #[test]
 fn prepares_catalog_query_with_asp_compiled_syntax_plan() {
+    let _home = install_home_provider("catalog-plan", "rs-harness", "");
     let backend = LocalNativeCliBackend::new(snapshot(vec![provider("rust", "rs-harness")]));
     let request = ClientRequest::new(ClientMethod::Query, PathBuf::from("/repo"))
         .with_language("rust")
@@ -111,7 +103,8 @@ fn prepares_catalog_query_with_asp_compiled_syntax_plan() {
 }
 
 #[test]
-fn reports_unusable_runtime_profile_status_before_falling_back_to_path() {
+fn missing_home_local_binary_reports_install_language_without_runtime_profile_fallback() {
+    let _home = isolated_home("missing-provider");
     let mut provider = provider("rust", "rs-harness");
     provider.provider_command_prefix.clear();
     provider.runtime_profile_status = Some(RuntimeProfileStatus::Missing);
@@ -122,14 +115,18 @@ fn reports_unusable_runtime_profile_status_before_falling_back_to_path() {
 
     let error = backend
         .prepare(&request)
-        .expect_err("missing runtime profile");
+        .expect_err("missing home-local provider");
 
-    assert!(error.contains("provider `rs-harness` language `rust` is missing"));
-    assert!(error.contains("asp hook doctor --client codex ."));
+    assert!(error.contains("provider binary `rs-harness` for language `rust`"));
+    assert!(
+        error.contains("$HOME/.local/bin/rs-harness") || error.contains(".local/bin/rs-harness")
+    );
+    assert!(error.contains("asp install language rust"));
 }
 
 #[test]
-fn activation_prefix_takes_precedence_over_runtime_profile_argv() {
+fn home_local_binary_takes_precedence_over_activation_and_runtime_profile_argv() {
+    let home = install_home_provider("activation-prefix", "rs-harness", "");
     let mut provider = provider("rust", "rs-harness");
     provider.runtime_command_argv = Some(vec!["/opt/homebrew/bin/rs-harness".to_string()]);
     provider.runtime_profile_status = Some(RuntimeProfileStatus::Available);
@@ -144,23 +141,13 @@ fn activation_prefix_takes_precedence_over_runtime_profile_argv() {
 
     let command = backend.prepare(&request).expect("prepare command");
 
-    assert_eq!(command.program, "direnv");
-    assert_eq!(
-        command.args,
-        vec![
-            "exec",
-            ".",
-            "rs-harness",
-            "search",
-            "workspace",
-            "--view",
-            "seeds"
-        ]
-    );
+    assert_eq!(command.program, home.provider_path.to_string_lossy());
+    assert_eq!(command.args, vec!["search", "workspace", "--view", "seeds"]);
 }
 
 #[test]
 fn relative_project_root_is_canonicalized_for_provider_cwd() {
+    let _home = install_home_provider("relative-root", "rs-harness", "");
     let backend = LocalNativeCliBackend::new(snapshot(vec![provider("rust", "rs-harness")]));
     let current_dir = std::env::current_dir().expect("current dir");
     let request = ClientRequest::new(ClientMethod::Search, PathBuf::from("."))
@@ -175,12 +162,12 @@ fn relative_project_root_is_canonicalized_for_provider_cwd() {
 
 #[test]
 fn execute_records_transport_receipt_fields() {
-    let mut provider = provider("rust", "fake-rust-provider");
-    provider.provider_command_prefix = vec![
-        "/bin/sh".to_string(),
-        "-c".to_string(),
-        "printf 'provider-out'; printf 'provider-err' >&2".to_string(),
-    ];
+    let _home = install_home_provider(
+        "receipt",
+        "fake-rust-provider",
+        "printf 'provider-out'; printf 'provider-err' >&2\n",
+    );
+    let provider = provider("rust", "fake-rust-provider");
     let root = temp_project_root("local-native-receipt");
     let backend = LocalNativeCliBackend::new(snapshot(vec![provider]));
     let request = ClientRequest::new(ClientMethod::Search, root.clone())
@@ -271,6 +258,82 @@ fn temp_project_root(name: &str) -> PathBuf {
     let root = std::env::temp_dir().join(format!("agent-semantic-local-cli-{name}-{unique}"));
     std::fs::create_dir_all(&root).expect("create temp project root");
     root
+}
+
+struct HomeFixture {
+    root: PathBuf,
+    _home_env: EnvVarGuard,
+    _env_lock: MutexGuard<'static, ()>,
+}
+
+struct HomeProviderFixture {
+    _home: HomeFixture,
+    provider_path: PathBuf,
+}
+
+fn isolated_home(name: &str) -> HomeFixture {
+    let env_lock = ENV_LOCK.lock().expect("env lock");
+    let root = temp_project_root(name);
+    let home = root.join("home");
+    std::fs::create_dir_all(&home).expect("create isolated home");
+    let guard = EnvVarGuard::set("HOME", home.as_os_str());
+    HomeFixture {
+        root,
+        _home_env: guard,
+        _env_lock: env_lock,
+    }
+}
+
+fn install_home_provider(name: &str, binary: &str, body: &str) -> HomeProviderFixture {
+    let home = isolated_home(name);
+    let provider_path = home.root.join("home").join(".local/bin").join(binary);
+    std::fs::create_dir_all(provider_path.parent().expect("provider parent"))
+        .expect("create home local bin");
+    std::fs::write(&provider_path, format!("#!/bin/sh\n{body}")).expect("write provider");
+    make_executable(&provider_path);
+    HomeProviderFixture {
+        _home: home,
+        provider_path,
+    }
+}
+
+fn make_executable(path: &std::path::Path) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut permissions = std::fs::metadata(path)
+            .expect("provider metadata")
+            .permissions();
+        permissions.set_mode(0o755);
+        std::fs::set_permissions(path, permissions).expect("set executable");
+    }
+}
+
+struct EnvVarGuard {
+    name: &'static str,
+    previous: Option<std::ffi::OsString>,
+}
+
+impl EnvVarGuard {
+    fn set(name: &'static str, value: &std::ffi::OsStr) -> Self {
+        let previous = std::env::var_os(name);
+        unsafe {
+            std::env::set_var(name, value);
+        }
+        Self { name, previous }
+    }
+}
+
+impl Drop for EnvVarGuard {
+    fn drop(&mut self) {
+        unsafe {
+            if let Some(value) = &self.previous {
+                std::env::set_var(self.name, value);
+            } else {
+                std::env::remove_var(self.name);
+            }
+        }
+    }
 }
 
 fn assert_internal_arg_contains(args: &[String], key: &str, expected_value: &str) {

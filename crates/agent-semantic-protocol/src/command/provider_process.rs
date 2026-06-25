@@ -1,6 +1,4 @@
-use agent_semantic_hook::{
-    ActivatedProvider, RuntimeProfiles, RuntimeProviderHealthStatus, runtime_profile_invocation,
-};
+use agent_semantic_hook::{ActivatedProvider, RuntimeProfiles};
 use agent_semantic_provider_transport::{
     OutputMode, ProviderProcessLimits, ProviderProcessOutput, ProviderProcessSpec, StdinMode,
     run_provider_process as run_transport_process,
@@ -11,7 +9,7 @@ use std::env;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
-use super::install_provider_target::{home_dir, path_dirs, resolve_provider_binary_invocation};
+use super::install_provider_target::{home_dir, resolve_provider_binary_invocation};
 use super::search_config::AspConfig;
 
 pub(super) fn run_provider_command(
@@ -289,80 +287,35 @@ fn resolve_provider_program_from(
 }
 
 pub(super) fn provider_invocation_with_profile(
-    profiles: &RuntimeProfiles,
+    _profiles: &RuntimeProfiles,
     provider: &ActivatedProvider,
     args: &[String],
-    provider_bin_root: &Path,
-    config: &AspConfig,
+    _config: &AspConfig,
 ) -> Result<Vec<String>, String> {
     let home = home_dir();
-    let paths = path_dirs();
-    if let Some(invocation) = resolve_provider_binary_invocation(
-        config.provider_bin(&provider.language_id),
+    let invocation = resolve_provider_binary_invocation(
+        &provider.language_id,
         &provider.binary,
-        provider_bin_root,
         home.as_deref(),
-        &paths,
-    )? {
-        return Ok(provider_invocation_with_binary(
-            provider,
-            args,
-            &invocation.command,
-        ));
-    }
-    if let Some(invocation) = runtime_profile_invocation(profiles, provider, args) {
-        return Ok(invocation);
-    }
-    if let Some(profile) = profiles.providers.iter().find(|profile| {
-        profile.manifest_id == provider.manifest_id
-            && profile.language_id == provider.language_id
-            && profile.provider_id == provider.provider_id
-            && profile.binary == provider.binary
-    }) {
-        return Err(format!(
-            "runtime profile for provider `{}` language `{}` is {}; run `asp hook doctor --client codex .`",
-            provider.provider_id,
-            provider.language_id,
-            runtime_profile_status_label(profile.health.status)
-        ));
-    }
-    Ok(provider_invocation(provider, args))
+    )?;
+    Ok(provider_invocation_with_binary(args, &invocation.command))
 }
 
 pub(super) fn provider_invocations(
     provider: &ActivatedProvider,
     args: &[String],
     project_root: &Path,
-    provider_bin_root: &Path,
     profiles: &RuntimeProfiles,
     config: &AspConfig,
 ) -> Result<Vec<Vec<String>>, String> {
     search_scope_arg_sets(args, project_root)
         .into_iter()
-        .map(|args| {
-            provider_invocation_with_profile(profiles, provider, &args, provider_bin_root, config)
-        })
+        .map(|args| provider_invocation_with_profile(profiles, provider, &args, config))
         .collect()
 }
 
-fn provider_invocation(provider: &ActivatedProvider, args: &[String]) -> Vec<String> {
-    provider_invocation_with_binary(provider, args, &provider.binary)
-}
-
-fn provider_invocation_with_binary(
-    provider: &ActivatedProvider,
-    args: &[String],
-    binary: &str,
-) -> Vec<String> {
-    let mut invocation = if provider.provider_command_prefix.is_empty() {
-        vec![binary.to_string()]
-    } else {
-        let mut prefix = provider.provider_command_prefix.clone();
-        if let Some(program) = prefix.first_mut() {
-            *program = binary.to_string();
-        }
-        prefix
-    };
+fn provider_invocation_with_binary(args: &[String], binary: &str) -> Vec<String> {
+    let mut invocation = vec![binary.to_string()];
     invocation.extend(args.iter().cloned());
     invocation
 }
@@ -499,12 +452,4 @@ fn rewrite_provider_command_mentions(
 ) -> String {
     let facade = format!("asp {language_id} ");
     text.replace(&format!("{} ", provider.binary), &facade)
-}
-
-fn runtime_profile_status_label(status: RuntimeProviderHealthStatus) -> &'static str {
-    match status {
-        RuntimeProviderHealthStatus::Available => "available",
-        RuntimeProviderHealthStatus::Missing => "missing",
-        RuntimeProviderHealthStatus::Unexecutable => "unexecutable",
-    }
 }

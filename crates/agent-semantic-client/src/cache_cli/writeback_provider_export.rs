@@ -1,6 +1,7 @@
 //! Provider packet export for write-back side artifacts.
 
 use std::collections::BTreeMap;
+use std::path::Path;
 use std::time::Instant;
 
 use agent_semantic_client_core::{
@@ -26,9 +27,8 @@ pub(super) fn export_provider_packet(
     provider: &ResolvedProvider,
     request: &ClientRequest,
 ) -> Option<ProviderPacketExport> {
-    let invocation = provider.command_prefix();
-    let (program, prefix_args) = invocation.split_first()?;
-    let mut args = prefix_args.to_vec();
+    let program = home_local_provider_binary(provider)?;
+    let mut args = Vec::new();
     let provider_method = match request.method {
         ClientMethod::Search => "search",
         ClientMethod::Query => "query",
@@ -82,4 +82,10 @@ pub(super) fn export_provider_packet(
         },
         elapsed_ms: ElapsedMillis::from_duration(started.elapsed()),
     })
+}
+
+fn home_local_provider_binary(provider: &ResolvedProvider) -> Option<String> {
+    let home = std::env::var_os("HOME").filter(|value| !value.is_empty())?;
+    let path = Path::new(&home).join(".local/bin").join(&provider.binary);
+    path.is_file().then(|| path.to_string_lossy().to_string())
 }
