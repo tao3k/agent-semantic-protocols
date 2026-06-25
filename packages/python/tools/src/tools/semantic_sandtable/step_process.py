@@ -32,8 +32,15 @@ def resolve_step_command(
 
 
 def workspace_dev_command(repo_root: Path, command: list[str]) -> list[str]:
+    if command[0] == "ts-harness":
+        if typescript_harness := _typescript_harness_dist_entry(repo_root):
+            return ["node", str(typescript_harness), *command[1:]]
+        return command
     if command[0] != "asp":
         return command
+    if len(command) > 1 and command[1] == "python":
+        if python_harness := _python_harness_entry(repo_root):
+            return [str(python_harness), *command[2:]]
     if protocol_bin := _workspace_protocol_bin(repo_root):
         rewritten = [str(protocol_bin), *command[1:]]
         return _append_default_hook_activation(repo_root, command, rewritten)
@@ -73,6 +80,29 @@ def _workspace_protocol_bin(repo_root: Path) -> Path | None:
         candidate = repo_root / relative
         if candidate.exists():
             return candidate.resolve()
+    return None
+
+
+def _typescript_harness_dist_entry(repo_root: Path) -> Path | None:
+    dist_cli = (
+        repo_root
+        / "languages"
+        / "typescript-lang-project-harness"
+        / "dist"
+        / "src"
+        / "cli"
+    )
+    for filename in ("main.bundle.js", "main.js"):
+        candidate = dist_cli / filename
+        if candidate.exists():
+            return candidate.resolve()
+    return None
+
+
+def _python_harness_entry(repo_root: Path) -> Path | None:
+    candidate = repo_root / ".bin" / "py-harness"
+    if candidate.exists():
+        return candidate.resolve()
     return None
 
 
