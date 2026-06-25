@@ -34,6 +34,7 @@ def validate_step(
     _validate_pipe_flow_expectation(expect, result)
     _validate_agent_answer_expectation(expect, result)
     _validate_line_protocol_expectation(expect, result, stdout)
+    _validate_elapsed_expectation(expect, result)
     _validate_budget_warnings(expect, result)
 
 
@@ -80,6 +81,12 @@ def _validate_line_protocol_expectation(
 ) -> None:
     if bool(expect.get("lineProtocol", False)):
         validate_line_protocol(result, stdout)
+
+
+def _validate_elapsed_expectation(expect: dict[str, Any], result: StepResult) -> None:
+    maximum = optional_int(expect.get("maxElapsedMs"))
+    if maximum is not None and result.elapsed_ms > maximum:
+        result.errors.append(f"elapsedMs={result.elapsed_ms} exceeds maxElapsedMs={maximum}")
 
 
 def _validate_pipe_flow_expectation(expect: dict[str, Any], result: StepResult) -> None:

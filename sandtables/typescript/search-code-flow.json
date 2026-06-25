@@ -15,7 +15,7 @@
   "budgets": {
     "maxCommands": 8,
     "maxTotalLinesWarn": 120,
-      "maxTotalStdoutBytesWarn": 90000
+    "maxTotalStdoutBytesWarn": 90000
   },
   "steps": [
     {
@@ -26,8 +26,7 @@
         "json-schema"
       ],
       "command": [
-        "node",
-        "dist/src/cli/main.js",
+        "ts-harness",
         "agent",
         "doctor",
         "--json",
@@ -55,8 +54,7 @@
         "performance"
       ],
       "command": [
-        "node",
-        "dist/src/cli/main.js",
+        "ts-harness",
         "search",
         "prime",
         "--json",
@@ -95,8 +93,7 @@
         "performance"
       ],
       "command": [
-        "node",
-        "dist/src/cli/main.js",
+        "ts-harness",
         "search",
         "dependency",
         "typescript",
@@ -121,8 +118,7 @@
     {
       "id": "workspace",
       "command": [
-        "node",
-        "dist/src/cli/main.js",
+        "ts-harness",
         "search",
         "workspace",
         "--workspace",
@@ -141,8 +137,7 @@
     {
       "id": "prime",
       "command": [
-        "node",
-        "dist/src/cli/main.js",
+        "ts-harness",
         "search",
         "prime",
         "--view",
@@ -172,8 +167,7 @@
     {
       "id": "text-owner-tests-pipe",
       "command": [
-        "node",
-        "dist/src/cli/main.js",
+        "ts-harness",
         "search",
         "fzf",
         "--query-set",
@@ -218,8 +212,7 @@
     {
       "id": "owner-from-pipe",
       "command": [
-        "node",
-        "dist/src/cli/main.js",
+        "ts-harness",
         "search",
         "owner",
         "{tsOwner}",
@@ -250,8 +243,7 @@
       "id": "rg-to-ingest",
       "stdin": "src/cli/semantic-search/owner-fallback.ts:11:export interface SemanticSearchOwnerFallback {\ntests/unit/cli_semantic_search.test.ts:1:SemanticSearchOwnerFallback\n",
       "command": [
-        "node",
-        "dist/src/cli/main.js",
+        "ts-harness",
         "search",
         "ingest",
         "--view",

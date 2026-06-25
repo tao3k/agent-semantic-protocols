@@ -30,6 +30,7 @@ fn search_pipe_graph_turbo_request_keeps_late_query_token_candidates() {
     let output = asp_command(&root)
         .env("PATH", prepend_path(&bin_dir))
         .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .env("ASP_PROVIDER_GRAPH_FACT_TIMEOUT_MS", "2000")
         .args([
             "rust",
             "search",

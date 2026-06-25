@@ -95,7 +95,12 @@ fn cli_install_runtime_profile_prefers_project_bin_provider() {
             .expect("installed activation");
     let registry = parse_hook_activation(&activation).expect("valid installed activation");
     let runtime_profiles = runtime_profiles_for_runtime(&root, &registry);
-    let resolved_binary = runtime_profiles.providers[0]
+    let python_profile = runtime_profiles
+        .providers
+        .iter()
+        .find(|provider| provider.language_id == "python")
+        .expect("python runtime profile");
+    let resolved_binary = python_profile
         .resolved_binary
         .as_deref()
         .expect("resolved provider binary");
@@ -137,6 +142,9 @@ enabled = false
 binary = ".bin/custom-py-harness"
 
 [providers.julia]
+enabled = false
+
+[providers.gerbil-scheme]
 enabled = false
 
 [providers.org]

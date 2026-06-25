@@ -1,24 +1,39 @@
+use super::org_capture_interactive::{AgentInteractiveChoice, choice_arg_value, strip_choice_args};
 use orgize::Org;
 use orgize::rowan::ast::AstNode;
 use orgize::syntax_ast::{Headline, PropertyDrawer};
 use std::{fs, path::Path};
 
+pub(super) enum ContractCaptureArgs {
+    Continue(Vec<String>),
+    DeferredChoice(String),
+}
+
 pub(super) fn materialize_contract_capture_args(
     args: &[String],
     contract_id: &str,
     template_path: Option<&Path>,
-) -> Result<Vec<String>, String> {
+    contract_path: Option<&Path>,
+) -> Result<ContractCaptureArgs, String> {
     let mut capture_args = args.to_vec();
     match contract_id {
         "agent.task.v1" => {
             materialize_task_contract_capture(args, &mut capture_args, template_path)?
         }
         "agent.plan.v1" => {
-            materialize_plan_contract_capture(args, &mut capture_args, template_path)?
+            if let Some(output) = materialize_plan_contract_capture(
+                args,
+                &mut capture_args,
+                contract_id,
+                template_path,
+                contract_path,
+            )? {
+                return Ok(ContractCaptureArgs::DeferredChoice(output));
+            }
         }
         _ => {}
     }
-    Ok(capture_args)
+    Ok(ContractCaptureArgs::Continue(capture_args))
 }
 
 fn materialize_task_contract_capture(
@@ -33,17 +48,72 @@ fn materialize_task_contract_capture(
 fn materialize_plan_contract_capture(
     args: &[String],
     capture_args: &mut Vec<String>,
+    contract_id: &str,
     template_path: Option<&Path>,
-) -> Result<(), String> {
+    contract_path: Option<&Path>,
+) -> Result<Option<String>, String> {
     validate_plan_target_file(args)?;
     validate_plan_title(args)?;
-    let materialized =
-        materialize_from_template(args, capture_args, template_path, "agent.plan.v1")?;
+    let specification_contract =
+        match resolve_plan_pre_capture_choice(args, capture_args, contract_id, contract_path)? {
+            PlanPreCaptureChoice::Deferred(output) => return Ok(Some(output)),
+            PlanPreCaptureChoice::Selected(selection) => selection.governing_contract,
+        };
+    let materialized = materialize_from_template(args, capture_args, template_path, contract_id)?;
+    if let Some(contract) = specification_contract {
+        ensure_capture_property(capture_args, "GOVERNING_CONTRACT", &contract);
+    }
     if !has_flag(args, "--kind") {
         capture_args.extend(["--kind".to_string(), "task".to_string()]);
     }
     ensure_plan_title_progress_cookie(capture_args, &materialized.progress_cookies)?;
-    Ok(())
+    Ok(None)
+}
+
+enum PlanPreCaptureChoice {
+    Deferred(String),
+    Selected(PlanSpecificationSelection),
+}
+
+struct PlanSpecificationSelection {
+    governing_contract: Option<String>,
+}
+
+fn resolve_plan_pre_capture_choice(
+    args: &[String],
+    capture_args: &mut Vec<String>,
+    contract_id: &str,
+    contract_path: Option<&Path>,
+) -> Result<PlanPreCaptureChoice, String> {
+    let choice = AgentInteractiveChoice::read(
+        contract_path.ok_or_else(|| {
+            format!(
+                "{contract_id} capture requires a contract registry path for pre-capture choice"
+            )
+        })?,
+        "pre-capture",
+    )?;
+    let Some(value) = choice_arg_value(args, &choice.id) else {
+        return Ok(PlanPreCaptureChoice::Deferred(
+            choice.render_compact(contract_id),
+        ));
+    };
+    let selected = choice.resolve(value).ok_or_else(|| {
+        format!(
+            "invalid {contract_id} choice `{}={}`; expected {}",
+            choice.id,
+            value,
+            choice.expected_values()
+        )
+    })?;
+    if selected == "detail" {
+        return Ok(PlanPreCaptureChoice::Deferred(choice.render_detail()));
+    }
+    let governing_contract = choice.contract_for(selected).map(str::to_string);
+    strip_choice_args(capture_args);
+    Ok(PlanPreCaptureChoice::Selected(PlanSpecificationSelection {
+        governing_contract,
+    }))
 }
 
 fn validate_plan_title(args: &[String]) -> Result<(), String> {
@@ -112,7 +182,7 @@ fn materialize_from_template(
 ) -> Result<TemplateMaterialization, String> {
     let template_path = template_path.ok_or_else(|| {
         format!(
-            "ASP Org template for `{contract_id}` was not found; run `asp org capture init` to sync templates"
+            "ASP Org template for `{contract_id}` was not found; run `asp sync` to refresh Org resources"
         )
     })?;
     let CaptureTemplate {

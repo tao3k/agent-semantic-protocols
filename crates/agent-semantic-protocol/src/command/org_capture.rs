@@ -1,6 +1,8 @@
 //! ASP-owned Org capture state materialization.
 
-use super::org_capture_contract_materialize::materialize_contract_capture_args;
+use super::org_capture_contract_materialize::{
+    ContractCaptureArgs, materialize_contract_capture_args,
+};
 use agent_semantic_runtime::project_state_paths;
 use orgize::agent;
 use std::{
@@ -39,18 +41,25 @@ pub(crate) fn run_org_capture_command(args: &[String]) -> Result<(), String> {
 fn run_contract_capture(args: &[String]) -> Result<(), String> {
     let contract_id = capture_contract_id(args)?;
     let template_path = resolve_capture_template(&contract_id)?;
-    let capture_args =
-        materialize_contract_capture_args(args, &contract_id, template_path.as_deref())?;
+    let contract_registry_path = resolve_capture_contract_registry_from_args(args, &contract_id)?;
+    let capture_args = match materialize_contract_capture_args(
+        args,
+        &contract_id,
+        template_path.as_deref(),
+        Some(&contract_registry_path),
+    )? {
+        ContractCaptureArgs::Continue(capture_args) => capture_args,
+        ContractCaptureArgs::DeferredChoice(output) => {
+            println!("{output}");
+            return Ok(());
+        }
+    };
     let mut orgize_args = Vec::with_capacity(capture_args.len() + 1);
     orgize_args.push("capture-plan".to_string());
     orgize_args.extend(capture_args.iter().cloned());
     if !capture_contract_registry_provided(args) {
         orgize_args.push("--org-contract-registry".to_string());
-        orgize_args.push(
-            resolve_capture_contract_registry(&contract_id)?
-                .display()
-                .to_string(),
-        );
+        orgize_args.push(contract_registry_path.display().to_string());
     }
     agent::run_org_cli_command(orgize_args)
 }
@@ -400,7 +409,7 @@ fn required_flag_value<'a>(
 }
 
 fn capture_usage() -> &'static str {
-    "usage: asp org capture --contract CONTRACT_ID --title TITLE --target-file ORG_FILE [--outline OUTLINE] [--kind KIND] [--tag TAG] [--property KEY=VALUE] [--body TEXT]\n\n`capture --contract CONTRACT_ID ...` renders a non-mutating Org entry and validates it against the ASP Org contract registry before returning org-entry. CONTRACT_ID must be explicit, such as agent.task.v1, agent.plan.v1, agent.sdd.v1, agent.adr.v1, agent.bdd.v1, agent.tdd.v1, agent.bdr.v1, agent.prd.v1, or agent.execplan.v1. The agent.task.v1 and agent.plan.v1 capture shapes are materialized from .cache/agent-semantic-protocol/org/templates/<CONTRACT_ID>.org unless the caller overrides kind, tags, properties, or body. ASP resolves CONTRACT_ID from .cache/agent-semantic-protocol/org/contracts/<CONTRACT_ID>.org, synchronizing bundled resources and creating artifacts/org/flow/{plans,sdd,bdd,tdd,bdr} when needed."
+    "usage: asp org capture --contract CONTRACT_ID --title TITLE --target-file ORG_FILE [--choice KEY=VALUE] [--outline OUTLINE] [--kind KIND] [--tag TAG] [--property KEY=VALUE] [--body TEXT]\n\n`capture --contract CONTRACT_ID ...` renders a non-mutating Org entry and validates it against the ASP Org contract registry before returning org-entry. CONTRACT_ID must be explicit, such as agent.task.v1, agent.plan.v1, agent.sdd.v1, agent.adr.v1, agent.bdd.v1, agent.tdd.v1, agent.bdr.v1, agent.prd.v1, or agent.execplan.v1. The agent.task.v1 and agent.plan.v1 capture shapes are materialized from .cache/agent-semantic-protocol/org/templates/<CONTRACT_ID>.org unless the caller overrides kind, tags, properties, or body. When a contract declares `org-contract :type agent-interactive` with `method: choice` and `stage: pre-capture`, capture prints the compact choice window until the caller passes `--choice <id>=N|ID|?`; `<id>` comes from that Org block. ASP resolves CONTRACT_ID from .cache/agent-semantic-protocol/org/contracts/<CONTRACT_ID>.org, synchronizing bundled resources and creating artifacts/org/flow/{plans,sdd,bdd,tdd,bdr} when needed."
 }
 
 fn capture_contract_requested(args: &[String]) -> bool {
@@ -408,11 +417,11 @@ fn capture_contract_requested(args: &[String]) -> bool {
 }
 
 fn capture_contract_registry_provided(args: &[String]) -> bool {
+    let flags = ["--org-contract-registry", "--contract-registry"];
     args.iter().any(|arg| {
-        matches!(
-            arg.as_str(),
-            "--org-contract-registry" | "--contract-registry"
-        )
+        flags
+            .iter()
+            .any(|flag| arg == flag || arg.starts_with(&format!("{flag}=")))
     })
 }
 
@@ -448,6 +457,34 @@ fn resolve_capture_contract_registry(contract_id: &str) -> Result<PathBuf, Strin
         "ASP Org contract `{contract_id}` was not found at {}; run `asp org capture init` or pass --org-contract-registry PATH.org",
         registry_path.display()
     ))
+}
+
+fn resolve_capture_contract_registry_from_args(
+    args: &[String],
+    contract_id: &str,
+) -> Result<PathBuf, String> {
+    if let Some(path) = capture_contract_registry_arg(args)? {
+        return Ok(path);
+    }
+    resolve_capture_contract_registry(contract_id)
+}
+
+fn capture_contract_registry_arg(args: &[String]) -> Result<Option<PathBuf>, String> {
+    let flags = ["--org-contract-registry", "--contract-registry"];
+    for (index, arg) in args.iter().enumerate() {
+        for flag in flags {
+            if arg == flag {
+                let value = args
+                    .get(index + 1)
+                    .ok_or_else(|| format!("{flag} requires a value"))?;
+                return Ok(Some(PathBuf::from(value)));
+            }
+            if let Some(value) = arg.strip_prefix(&format!("{flag}=")) {
+                return Ok(Some(PathBuf::from(value)));
+            }
+        }
+    }
+    Ok(None)
 }
 
 fn resolve_capture_template(contract_id: &str) -> Result<Option<PathBuf>, String> {

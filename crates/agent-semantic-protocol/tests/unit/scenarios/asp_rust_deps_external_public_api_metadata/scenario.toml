@@ -1,0 +1,6 @@
+id = "asp-rust-deps-external-public-api-metadata"
+title = "Rust dependency API search resolves external package source through ASP"
+policy_ids = ["ASP-RUST-DEPS-EXTERNAL-API", "ASP-SEARCH-DEPS-SOURCE-ROOT"]
+agent_goal = "When an agent asks for a Rust dependency API such as rust-lang-project-harness::Scenario, ASP must expose the dependency source root and API frontier through search deps instead of forcing manual .cargo/git checkout exploration."
+inputs = "inputs"
+expected = "expected"

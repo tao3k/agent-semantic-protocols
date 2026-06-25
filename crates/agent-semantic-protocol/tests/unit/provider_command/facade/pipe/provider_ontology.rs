@@ -28,6 +28,7 @@ fn search_pipe_graph_turbo_request_accepts_rust_provider_ontology_facts() {
     let output = asp_command(&root)
         .env("PATH", prepend_path(&bin_dir))
         .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .env("ASP_PROVIDER_GRAPH_FACT_TIMEOUT_MS", "2000")
         .args([
             "rust",
             "search",
@@ -100,6 +101,7 @@ fn search_pipe_graph_turbo_request_accepts_python_provider_ontology_facts() {
     let output = asp_command(&root)
         .env("PATH", prepend_path(&bin_dir))
         .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .env("ASP_PROVIDER_GRAPH_FACT_TIMEOUT_MS", "2000")
         .args([
             "python",
             "search",
@@ -169,6 +171,7 @@ fn search_pipe_graph_turbo_request_accepts_typescript_context_provider_facts() {
     let output = asp_command(&root)
         .env("PATH", prepend_path(&bin_dir))
         .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .env("ASP_PROVIDER_GRAPH_FACT_TIMEOUT_MS", "2000")
         .args([
             "typescript",
             "search",

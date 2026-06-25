@@ -141,7 +141,7 @@
         },
         "maxStdoutLinesWarn": 1,
         "maxStdoutBytesWarn": 9000,
-      "maxElapsedMsWarn": 1000
+        "maxElapsedMsWarn": 1000
       }
     },
     {
@@ -254,7 +254,7 @@
           "fn main"
         ],
         "maxStdoutLinesWarn": 1,
-      "maxElapsedMsWarn": 5000
+        "maxElapsedMsWarn": 5000
       }
     },
     {
@@ -281,15 +281,15 @@
           "reasonKind": "raw-broad-search"
         },
         "stdoutJsonArrayContains": {
-        "routes": {
-          "binary": "asp",
-          "kind": "fzf",
-          "languageId": "rust",
-          "providerId": "rs-harness"
-        }
-      },
-      "maxElapsedMsWarn": 5000
+          "routes": {
+            "binary": "asp",
+            "kind": "fzf",
+            "languageId": "rust",
+            "providerId": "rs-harness"
+          }
+        },
+        "maxElapsedMsWarn": 5000
+      }
     }
-  }
   ]
 }

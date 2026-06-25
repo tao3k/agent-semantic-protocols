@@ -146,9 +146,9 @@
     ]
   },
   "budgets": {
-    "maxCommands": 2,
-    "maxTotalLinesWarn": 24,
-    "maxTotalStdoutBytesWarn": 10000
+    "maxCommands": 4,
+    "maxTotalLinesWarn": 42,
+    "maxTotalStdoutBytesWarn": 20000
   },
   "steps": [
     {
@@ -175,7 +175,56 @@
           "entries=owner-query(O,Q=>items+tests+dependency-usage),owner-tests(O=>covering-tests+test-entrypoints+fixtures)"
         ],
         "maxStdoutLinesWarn": 10,
-        "maxElapsedMsWarn": 18000
+        "maxElapsedMs": 300,
+        "maxElapsedMsWarn": 250
+      }
+    },
+    {
+      "id": "owner-program",
+      "command": [
+        "ts-harness",
+        "search",
+        "owner",
+        "src/compiler/program.ts",
+        "--view",
+        "seeds",
+        "--workspace",
+        "."
+      ],
+      "expect": {
+        "lineProtocol": true,
+        "stdoutContains": [
+          "[search-owner]",
+          "src/compiler/program.ts",
+          "entries=owner-tests(O=>covering-tests+test-entrypoints+fixtures)"
+        ],
+        "maxStdoutLinesWarn": 14,
+        "maxElapsedMs": 300,
+        "maxElapsedMsWarn": 250
+      }
+    },
+    {
+      "id": "deps-typescript",
+      "command": [
+        "ts-harness",
+        "search",
+        "deps",
+        "typescript",
+        "--view",
+        "seeds",
+        "--workspace",
+        "."
+      ],
+      "expect": {
+        "lineProtocol": true,
+        "stdoutContains": [
+          "[search-dependency]",
+          "typescript",
+          "frontier="
+        ],
+        "maxStdoutLinesWarn": 16,
+        "maxElapsedMs": 300,
+        "maxElapsedMsWarn": 250
       }
     },
     {
@@ -207,7 +256,8 @@
           "entries=owner-query(O,Q=>items+tests+dependency-usage),owner-tests(O=>covering-tests+test-entrypoints+fixtures)"
         ],
         "maxStdoutLinesWarn": 14,
-        "maxElapsedMsWarn": 9000
+        "maxElapsedMs": 300,
+        "maxElapsedMsWarn": 250
       }
     }
   ]

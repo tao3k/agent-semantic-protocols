@@ -4,16 +4,13 @@ use crate::provider_command::support::{
 };
 
 #[test]
-fn asp_toml_provider_bin_does_not_override_home_local_binary() {
-    let root = temp_project_root("provider-bin-home-only-facade");
+fn asp_toml_provider_bin_name_uses_home_local_binary() {
+    let root = temp_project_root("provider-bin-name-home-local-facade");
     let home_bin = home_local_bin(&root);
-    let override_bin_dir = root.join(".bin");
-    let override_bin = override_bin_dir.join("override-rs-harness");
     write_echo_provider(&home_bin, "rs-harness", "home");
-    write_echo_provider(&override_bin_dir, "override-rs-harness", "override");
     std::fs::write(
         root.join("asp.toml"),
-        format!("[languages.rust]\nbin = \"{}\"\n", override_bin.display()),
+        "[languages.rust]\nbin = \"rs-harness\"\n",
     )
     .expect("write asp.toml");
     write_activation(&root, &[provider("rust", Vec::new())]);

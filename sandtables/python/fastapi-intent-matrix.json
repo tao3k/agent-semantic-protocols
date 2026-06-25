@@ -67,9 +67,9 @@
     ]
   },
   "budgets": {
-    "maxCommands": 2,
-    "maxTotalLinesWarn": 22,
-    "maxTotalStdoutBytesWarn": 12000
+    "maxCommands": 4,
+    "maxTotalLinesWarn": 42,
+    "maxTotalStdoutBytesWarn": 20000
   },
   "steps": [
     {
@@ -87,16 +87,62 @@
         "lineProtocol": true,
         "stdoutContains": [
           "[search-prime]",
-          "analysis=structure",
-          "nativeSyntaxFacts=skipped",
-          "policyFindings=skipped",
           "root=fastapi",
           "alg=fast-prime-frontier-v1",
           "entries=owner-tests(O=>covering-tests+test-entrypoints+fixtures)",
           "omit=items,blocks,code,full-json reason=fast-seeds-frontier"
         ],
         "maxStdoutLinesWarn": 9,
-        "maxElapsedMsWarn": 16000
+        "maxElapsedMs": 300,
+        "maxElapsedMsWarn": 250
+      }
+    },
+    {
+      "id": "owner-routing",
+      "command": [
+        "py-harness",
+        "search",
+        "owner",
+        "fastapi/routing.py",
+        "--view",
+        "seeds",
+        "--workspace",
+        "."
+      ],
+      "expect": {
+        "lineProtocol": true,
+        "stdoutContains": [
+          "[search-owner]",
+          "fastapi/routing.py",
+          "entries=owner-tests(O=>covering-tests+test-entrypoints+fixtures)"
+        ],
+        "maxStdoutLinesWarn": 14,
+        "maxElapsedMs": 300,
+        "maxElapsedMsWarn": 250
+      }
+    },
+    {
+      "id": "deps-pydantic",
+      "command": [
+        "py-harness",
+        "search",
+        "deps",
+        "pydantic",
+        "--view",
+        "seeds",
+        "--workspace",
+        "."
+      ],
+      "expect": {
+        "lineProtocol": true,
+        "stdoutContains": [
+          "[search-dependency]",
+          "pydantic",
+          "frontier="
+        ],
+        "maxStdoutLinesWarn": 16,
+        "maxElapsedMs": 300,
+        "maxElapsedMsWarn": 250
       }
     },
     {
@@ -128,7 +174,8 @@
           "entries=owner-query(O,Q=>items+tests+dependency-usage),owner-tests(O=>covering-tests+test-entrypoints+fixtures)"
         ],
         "maxStdoutLinesWarn": 14,
-        "maxElapsedMsWarn": 12000
+        "maxElapsedMs": 300,
+        "maxElapsedMsWarn": 250
       }
     }
   ]

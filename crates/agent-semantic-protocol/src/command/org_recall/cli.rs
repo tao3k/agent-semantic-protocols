@@ -160,7 +160,7 @@ fn recall_plans(args: OrgRecallArgs) -> Result<(), String> {
         },
     )?;
     if args.json {
-        render::print_json_report(&artifacts_root, &ranked)?;
+        render::print_json_report(&artifacts_root, &args.archive_dir, &ranked)?;
     } else {
         render::print_text_report(&artifacts_root, &args.archive_dir, &ranked);
     }
@@ -194,5 +194,5 @@ fn required_flag_value<'a>(
 }
 
 fn recall_usage() -> &'static str {
-    "usage: asp org recall plans [--artifacts-root PATH] [--archive-dir DIR] [--state PATH] [--intent TEXT] [--project ID] [--session ID] [--branch ID] [--top-k N] [--embedding-dim N] [--org-query-bin BIN] [--include-done] [--json]\n\n`recall plans` keeps Org discovery and contract filtering in Rust. Plan candidates come from parser-owned Org query facts. Python asp-memory-engine owns plan ranking, including text, recency, and memory scores. Python does not scan Org files. Full performance runs must set ASP_MEMORY_ENGINE to a packaged binary or provide asp-memory-engine on PATH; build one with `asp-memory-engine build-binary --output .bin/asp-memory-engine`. For repeated agent runs, start `asp-memory-engine worker --socket /tmp/asp-memory-engine.sock` and set ASP_MEMORY_ENGINE_SOCKET to that socket so recall uses the resident ranker. Local packages/python uv fallback is for development only and is not performance evidence. The command lists active agent.plan.v1 Org plan ledgers by title, path, recovery command, and score so agents can resume recent unfinished work before archiving DONE records."
+    "usage: asp org recall plans [--artifacts-root PATH] [--archive-dir DIR] [--state PATH] [--intent TEXT] [--project ID] [--session ID] [--branch ID] [--top-k N] [--embedding-dim N] [--org-query-bin BIN] [--include-done] [--json]\n\n`recall plans` keeps Org discovery and contract filtering in Rust. Plan candidates come from parser-owned Org query facts. Python asp-memory-engine owns plan ranking, including text, recency, and memory scores. Python does not scan Org files. Repeated agent runs use a resident memory-engine socket by default; set ASP_MEMORY_ENGINE_SOCKET to force a specific worker, ASP_MEMORY_ENGINE_SOCKET_DIR to choose the auto socket directory, or ASP_MEMORY_ENGINE_AUTO_SOCKET=0 to force the direct process fallback. Full cold-start performance runs should set ASP_MEMORY_ENGINE to a packaged binary or provide asp-memory-engine on PATH; build one with `asp-memory-engine build-binary --output .bin/asp-memory-engine`. Local packages/python uv fallback is for development only and is not cold-start performance evidence. The command lists active agent.plan.v1 Org plan ledgers by title, path, recovery command, and score so agents can resume recent unfinished work before archiving DONE records."
 }

@@ -191,6 +191,10 @@ pub(super) fn classify_source_read_command(
     tokens: &[String],
     semantic_ast_patch_enabled: bool,
 ) -> Option<HookDecision> {
+    let intent = command_intent(tokens);
+    if intent == CommandIntent::VcsDiffReview {
+        return None;
+    }
     let mut inline_source_read_paths = inline_source_read::source_read_paths(command, tokens);
     append_selector_base_paths_for_ranges(&mut inline_source_read_paths);
     if !inline_source_read_paths.is_empty() {
@@ -210,7 +214,7 @@ pub(super) fn classify_source_read_command(
         }
     }
 
-    match command_intent(tokens) {
+    match intent {
         CommandIntent::DirectRead => direct_read_decision(
             registry,
             platform,

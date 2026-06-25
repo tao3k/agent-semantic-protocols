@@ -93,7 +93,8 @@
           "entries="
         ],
         "maxStdoutLinesWarn": 8,
-        "maxElapsedMsWarn": 9000
+        "maxElapsedMs": 300,
+        "maxElapsedMsWarn": 250
       }
     },
     {
@@ -123,7 +124,8 @@
           "entries=owner-query(O,Q=>items+tests+dependency-usage),owner-tests(O=>covering-tests+test-entrypoints+fixtures)"
         ],
         "maxStdoutLinesWarn": 14,
-        "maxElapsedMsWarn": 14000
+        "maxElapsedMs": 300,
+        "maxElapsedMsWarn": 250
       }
     }
   ]

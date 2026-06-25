@@ -446,8 +446,13 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
     let runtime_profiles = runtime_profiles_for_runtime(&project_root, &runtime);
     if is_guide(&command_args) {
         let guide_args = provider_guide_args(language_id, &provider_args);
-        let invocation =
-            provider_invocation_with_profile(&runtime_profiles, provider, &guide_args, &config)?;
+        let invocation = provider_invocation_with_profile(
+            &runtime_profiles,
+            provider,
+            &guide_args,
+            &project_root,
+            &config,
+        )?;
         return run_guide_command(
             language_id,
             provider,

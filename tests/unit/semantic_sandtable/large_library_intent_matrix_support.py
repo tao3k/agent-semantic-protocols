@@ -6,13 +6,14 @@ import unittest
 from pathlib import Path
 from typing import Any
 
-REQUIRED_LANGUAGES = {"python", "rust", "typescript"}
+REQUIRED_LANGUAGES = {"julia", "python", "rust", "typescript"}
 REQUIRED_INTENTS = {
     "feature-implementation",
     "api-usage",
     "implementation-principle",
 }
 _PROVIDER_BINARY_BY_LANGUAGE = {
+    "julia": "asp-julia-harness",
     "python": "py-harness",
     "rust": "rs-harness",
     "typescript": "ts-harness",

@@ -1,0 +1,69 @@
+{
+  "id": "org.capture-plan-interactive-choice-flow",
+  "title": "Org plan capture requires and records specification choice",
+  "language": "org",
+  "workdir": ".",
+  "tags": ["org", "capture", "interactive", "plan", "specification"],
+  "coverage": ["real-trigger", "performance"],
+  "budgets": {
+    "maxCommands": 2,
+    "maxTotalLinesWarn": 180,
+    "maxTotalStdoutBytesWarn": 30000
+  },
+  "steps": [
+    {
+      "id": "plan-capture-defers-for-choice",
+      "kind": "command",
+      "command": [
+        "asp",
+        "org",
+        "capture",
+        "--contract",
+        "agent.plan.v1",
+        "--title",
+        "Audit ASP org interactive plan choice",
+        "--target-file",
+        ".cache/agent-semantic-protocol/artifacts/org/flow/plans/agent-plan-interactive-choice-audit.org",
+        "--no-confirm"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "stdoutContains": [
+          "[agent-interactive] contract=agent.plan.v1 id=specification",
+          "status=interactive-required entry=not-created",
+          "load: --choice specification=?",
+          "categories: 1=SDD,2=BDD,3=TDD,4=BDR,5=TASK,?=detail"
+        ],
+        "stdoutNotContains": ["[CAPTURE] asp org capture"]
+      }
+    },
+    {
+      "id": "plan-capture-records-sdd-contract",
+      "kind": "command",
+      "command": [
+        "asp",
+        "org",
+        "capture",
+        "--contract",
+        "agent.plan.v1",
+        "--title",
+        "Audit ASP org interactive plan choice",
+        "--target-file",
+        ".cache/agent-semantic-protocol/artifacts/org/flow/plans/agent-plan-interactive-choice-audit.org",
+        "--choice",
+        "specification=1",
+        "--no-confirm"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "stdoutContains": [
+          "[CAPTURE] asp org capture",
+          ":GOVERNING_CONTRACT: agent.sdd.v1",
+          "contract-check:",
+          "- status: passed"
+        ],
+        "stdoutNotContains": [":GOVERNING_REF:"]
+      }
+    }
+  ]
+}

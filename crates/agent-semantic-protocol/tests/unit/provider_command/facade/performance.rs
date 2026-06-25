@@ -14,7 +14,7 @@ const ASP_QUERY_WRAPPER_WALL_SANITY_GATE: Duration = Duration::from_secs(3);
 const ASP_SEARCH_PHASE_PERFORMANCE_GATE_MS: u64 = 250;
 const ASP_RENDER_PHASE_PERFORMANCE_GATE_MS: u64 = 100;
 const ASP_BLOCKED_QUERY_PHASE_PERFORMANCE_GATE_MS: u64 = 10;
-const ASP_PROVIDER_FACTS_PHASE_PERFORMANCE_GATE_MS: u64 = 2_000;
+const ASP_PROVIDER_FACTS_PHASE_PERFORMANCE_GATE_MS: u64 = 150;
 const JULIA_FACADE_PERFORMANCE_GATE: Duration = Duration::from_secs(3);
 
 #[derive(Clone, Copy)]
@@ -337,7 +337,15 @@ fn provider_facts_receive_bounded_candidate_input() {
     let output = asp_command(&root)
         .env("PATH", prepend_path(&bin_dir))
         .env("PRJ_CACHE_HOME", &cache_home)
-        .args(["rust", "search", "pipe", "queue", "--view", "seeds", "."])
+        .args([
+            "rust",
+            "search",
+            "pipe",
+            "queue collection fields",
+            "--view",
+            "seeds",
+            ".",
+        ])
         .output()
         .expect("run asp search pipe");
 
@@ -415,12 +423,7 @@ fn provider_facts_timeout_stays_inside_performance_gate() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
-    assert!(
-        stdout.contains("providerFacts:used[")
-            && stdout.contains("factCandidates=12")
-            && stdout.contains("truncatedCandidates=20"),
-        "{stdout}"
-    );
+    assert!(stdout.contains("providerFacts:skipped["), "{stdout}");
     assert_trace_elapsed_under_gate_ms(
         &["rust", "search", "pipe"],
         &stdout,

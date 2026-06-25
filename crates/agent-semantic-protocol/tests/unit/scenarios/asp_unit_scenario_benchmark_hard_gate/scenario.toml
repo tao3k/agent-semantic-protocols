@@ -1,0 +1,6 @@
+id = "asp-unit-scenario-benchmark-hard-gate"
+title = "ASP unit scenario benchmark.toml hard gate stays enforced"
+policy_ids = ["ASP-RUST-HARNESS-SCENARIO-BENCH-001"]
+agent_goal = "Ensure every ASP Rust unit scenario fixture is validated through rust-lang-project-harness benchmark.toml contracts."
+inputs = "inputs"
+expected = "expected"

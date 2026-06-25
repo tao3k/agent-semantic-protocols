@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-from time import time
-
 from .plan_context import (
     GLOBAL_PROJECT_SCOPE,
     PlanMemoryContext,
     normalize_plan_sharing,
     normalize_plan_token,
 )
+from .plan_rank_text import candidate_text, recency_score, token_overlap_tokens, tokens
 from .store import EpisodeStore
 from .two_phase import calculate_score
 
@@ -25,11 +24,12 @@ def rank_plan_candidates(
     top_k: int = 5,
 ) -> dict[str, object]:
     memory_index = _PlanMemoryRankIndex(store, intent)
+    intent_tokens = tokens(intent)
     ranked = [
         _rank_candidate(
             plan,
             memory_index=memory_index,
-            intent=intent,
+            intent_tokens=intent_tokens,
             project=project,
             session=session,
             branch=branch,
@@ -51,7 +51,7 @@ def _rank_candidate(
     plan: dict[str, object],
     *,
     memory_index: "_PlanMemoryRankIndex",
-    intent: str,
+    intent_tokens: set[str],
     project: str,
     session: str | None,
     branch: str | None,
@@ -68,16 +68,16 @@ def _rank_candidate(
         branch=branch,
     )
     memory_score = memory_index.score(context, plan_id)
-    intent_score = _token_overlap(intent, _candidate_text(plan, properties))
-    recency_score = _recency_score(float(plan.get("mtime") or 0.0))
-    text_score = (0.65 * intent_score) + (0.35 * recency_score)
-    score = (0.55 * text_score) + (0.35 * memory_score) + (0.10 * recency_score)
+    intent_score = token_overlap_tokens(intent_tokens, candidate_text(plan, properties))
+    recent = recency_score(float(plan.get("mtime") or 0.0))
+    text_score = (0.65 * intent_score) + (0.35 * recent)
+    score = (0.55 * text_score) + (0.35 * memory_score) + (0.10 * recent)
     return {
         "id": plan_id,
         "score": score,
         "textScore": text_score,
         "memoryScore": memory_score,
-        "recencyScore": recency_score,
+        "recencyScore": recent,
         "intentScore": intent_score,
     }
 
@@ -201,17 +201,6 @@ def _episode_rank_score(
     return _clamp01(calculate_score(similarity, store.q_table.get_q(episode.id), 0.3))
 
 
-def _candidate_text(plan: dict[str, object], properties: dict[object, object]) -> str:
-    return " ".join(
-        [
-            _display_title(str(plan.get("title") or "")),
-            str(properties.get("OBJECTIVE") or ""),
-            str(properties.get("NEXT_ACTION") or ""),
-            str(properties.get("RECOVERY_REF") or ""),
-        ]
-    )
-
-
 def _plan_memory_weight(episode: object, plan_id: str) -> float:
     if plan_id and getattr(episode, "plan_id", None) == plan_id:
         return 1.0
@@ -227,36 +216,6 @@ def _plan_memory_weight(episode: object, plan_id: str) -> float:
     return 0.0
 
 
-def _display_title(title: str) -> str:
-    return " ".join(token for token in title.split() if not _is_progress_cookie(token))
-
-
-def _is_progress_cookie(token: str) -> bool:
-    if not token.startswith("[") or not token.endswith("]"):
-        return False
-    inner = token[1:-1]
-    if inner.endswith("%"):
-        return inner[:-1].isdigit()
-    left, separator, right = inner.partition("/")
-    return bool(separator) and left.isdigit() and right.isdigit()
-
-
-def _token_overlap(left: str, right: str) -> float:
-    left_tokens = _tokens(left)
-    if not left_tokens:
-        return 0.0
-    return len(left_tokens & _tokens(right)) / len(left_tokens)
-
-
-def _tokens(value: str) -> set[str]:
-    import re
-
-    return {token for token in re.findall(r"[A-Za-z0-9]+", value.lower()) if len(token) > 1}
-
-
-def _recency_score(mtime: float) -> float:
-    age_days = max(0.0, time() - mtime) / 86_400.0
-    return 1.0 / (1.0 + age_days)
 
 
 def _optional_token(value: object) -> str | None:

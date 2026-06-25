@@ -23,11 +23,41 @@ from .large_library_intent_matrix_support import (
 
 
 _PROTOCOL_REPO_ROOT = Path(__file__).resolve().parents[3]
+_REQUIRED_SEARCH_SUBCOMMANDS_BY_LANGUAGE = {
+    "julia": {"deps", "fzf", "owner", "prime"},
+    "python": {"deps", "fzf", "owner", "prime"},
+    "rust": {"deps", "fzf", "owner", "prime"},
+    "typescript": {"deps", "fzf", "owner", "prime"},
+}
+
+
+def _search_subcommands(command_by_step_id: dict[str, list[str]]) -> set[str]:
+    subcommands: set[str] = set()
+    for command in command_by_step_id.values():
+        if len(command) >= 3 and command[1] == "search":
+            subcommands.add(command[2])
+    return subcommands
+
+
+def _assert_language_search_subcommand_coverage(
+    subcommands_by_language: dict[str, set[str]],
+) -> None:
+    for language, required_subcommands in sorted(
+        _REQUIRED_SEARCH_SUBCOMMANDS_BY_LANGUAGE.items()
+    ):
+        actual_subcommands = subcommands_by_language.get(language, set())
+        missing = required_subcommands - actual_subcommands
+        if missing:
+            raise AssertionError(
+                f"{language} large-library scenarios must cover search subcommands "
+                f"{sorted(missing)}; actual={sorted(actual_subcommands)}"
+            )
 
 
 class LargeLibraryIntentMatrixTests(unittest.TestCase):
     def test_each_language_has_three_large_libraries_with_all_intents(self) -> None:
         matrix: dict[str, dict[str, set[str]]] = defaultdict(lambda: defaultdict(set))
+        search_subcommands_by_language: dict[str, set[str]] = defaultdict(set)
 
         for path in discover_scenarios(_PROTOCOL_REPO_ROOT, []):
             scenario = load_scenario(path, _PROTOCOL_REPO_ROOT)
@@ -52,6 +82,9 @@ class LargeLibraryIntentMatrixTests(unittest.TestCase):
             _assert_provider_binary_commands(command_by_step_id, language, path)
             _assert_query_set_steps_include_entries(scenario, path)
             _assert_prime_steps_include_entries_and_status(scenario, path)
+            search_subcommands_by_language[language].update(
+                _search_subcommands(command_by_step_id)
+            )
             step_ids = set(command_by_step_id)
             for intent_case in _list_value(evidence.get("intentCases")):
                 case = _dict_value(intent_case)
@@ -90,3 +123,4 @@ class LargeLibraryIntentMatrixTests(unittest.TestCase):
                     f"{language}/{library_name} missing intents "
                     f"{sorted(_REQUIRED_INTENTS - intents)}",
                 )
+        _assert_language_search_subcommand_coverage(search_subcommands_by_language)

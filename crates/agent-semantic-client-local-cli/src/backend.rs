@@ -1,6 +1,7 @@
 //! Local native-provider process execution for `agent-semantic-client`.
 
 use std::collections::BTreeMap;
+use std::env;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
@@ -78,7 +79,8 @@ impl LocalNativeCliBackend {
         provider: &ResolvedProvider,
         forwarded_args: Vec<String>,
     ) -> Result<LocalNativeCommand, String> {
-        let mut invocation = vec![Self::home_local_provider_binary(provider)?];
+        let project_root = provider_process_cwd(&request.project_root)?;
+        let mut invocation = Self::provider_command_prefix(provider, &project_root)?;
         Self::push_method(&mut invocation, &request.method)?;
         let forwarded_args = append_syntax_query_plan_args(
             &request.method,
@@ -89,7 +91,6 @@ impl LocalNativeCliBackend {
         let (program, args) = invocation
             .split_first()
             .ok_or_else(|| "provider command is empty".to_string())?;
-        let project_root = provider_process_cwd(&request.project_root)?;
         Ok(LocalNativeCommand {
             program: program.clone(),
             args: args.to_vec(),
@@ -120,7 +121,7 @@ impl LocalNativeCliBackend {
     }
 
     fn home_local_provider_binary(provider: &ResolvedProvider) -> Result<String, String> {
-        let home = std::env::var_os("HOME")
+        let home = env::var_os("HOME")
             .filter(|value| !value.is_empty())
             .ok_or_else(|| {
                 format!(
@@ -139,6 +140,60 @@ impl LocalNativeCliBackend {
             ));
         }
         Ok(path.to_string_lossy().to_string())
+    }
+
+    fn provider_command_prefix(
+        provider: &ResolvedProvider,
+        project_root: &std::path::Path,
+    ) -> Result<Vec<String>, String> {
+        if let Some(binary) = Self::provider_binary_on_path(&provider.binary, project_root) {
+            return Ok(vec![binary]);
+        }
+        if let Ok(binary) = Self::home_local_provider_binary(provider) {
+            return Ok(vec![binary]);
+        }
+        if let Some(argv) = provider.runtime_command_argv.as_ref()
+            && !argv.is_empty()
+        {
+            return Ok(argv.clone());
+        }
+        if !provider.provider_command_prefix.is_empty() {
+            return Ok(provider.provider_command_prefix.clone());
+        }
+        Self::home_local_provider_binary(provider).map(|binary| vec![binary])
+    }
+
+    fn provider_binary_on_path(binary: &str, project_root: &std::path::Path) -> Option<String> {
+        let path = Path::new(binary);
+        let project_root = project_root
+            .canonicalize()
+            .unwrap_or_else(|_| project_root.to_path_buf());
+        if path.components().count() > 1 {
+            let candidate = if path.is_absolute() {
+                path.to_path_buf()
+            } else {
+                project_root.join(path)
+            };
+            return candidate.is_file().then(|| {
+                candidate
+                    .canonicalize()
+                    .unwrap_or(candidate)
+                    .to_string_lossy()
+                    .to_string()
+            });
+        }
+        env::var_os("PATH").and_then(|path| {
+            env::split_paths(&path).find_map(|entry| {
+                let candidate = entry.join(binary);
+                let resolved = candidate.canonicalize().unwrap_or(candidate);
+                if !resolved.starts_with(&project_root) {
+                    return None;
+                }
+                resolved
+                    .is_file()
+                    .then(|| resolved.to_string_lossy().to_string())
+            })
+        })
     }
 
     fn forwarded_arg_sets(request: &ClientRequest) -> Vec<Vec<String>> {

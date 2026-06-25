@@ -7,18 +7,24 @@ pub(crate) enum CommandIntent {
     Other,
     DirectRead,
     ContentDump,
+    VcsDiffReview,
     RawSearch,
 }
 
 pub(crate) fn command_intent(tokens: &[String]) -> CommandIntent {
+    let mut saw_vcs_diff_review = false;
     for stage in command_stages(tokens) {
         match command_stage_intent(stage) {
             CommandIntent::Other | CommandIntent::RawSearch => {}
+            CommandIntent::VcsDiffReview => saw_vcs_diff_review = true,
             intent => return intent,
         }
     }
     if raw_search::raw_search_stage(tokens).is_some() {
         return CommandIntent::RawSearch;
+    }
+    if saw_vcs_diff_review {
+        return CommandIntent::VcsDiffReview;
     }
     CommandIntent::Other
 }
@@ -31,7 +37,7 @@ fn command_stage_intent(tokens: &[String]) -> CommandIntent {
     if matches!(command.as_deref().map(command_name), Some("git"))
         && git_diff_outputs_source(tokens)
     {
-        return CommandIntent::ContentDump;
+        return CommandIntent::VcsDiffReview;
     }
     if matches!(
         command.as_deref().map(command_name),

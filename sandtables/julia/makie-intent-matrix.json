@@ -1,0 +1,149 @@
+{
+  "id": "julia.makie-intent-matrix",
+  "language": "julia",
+  "title": "Makie.jl large-library feature/API/principle intent matrix",
+  "coverage": [
+    "search-flow",
+    "performance",
+    "large-library"
+  ],
+  "tags": [
+    "large-library",
+    "makie",
+    "intent-matrix"
+  ],
+  "evidence": {
+    "source": "handwritten",
+    "fixtureTier": "large-library",
+    "targetLibrary": {
+      "language": "julia",
+      "name": "Makie.jl",
+      "package": "Makie",
+      "repository": "MakieOrg/Makie.jl",
+      "workdirKind": "registry"
+    },
+    "intentCases": [
+      {
+        "intentKind": "feature-implementation",
+        "intent": "Find plot pipeline owners from compact seeds",
+        "stepIds": [
+          "prime",
+          "intent-query-set"
+        ],
+        "queryTerms": [
+          "plot"
+        ]
+      },
+      {
+        "intentKind": "api-usage",
+        "intent": "Find Figure API exposure and examples",
+        "stepIds": [
+          "prime",
+          "intent-query-set"
+        ],
+        "queryTerms": [
+          "Figure"
+        ]
+      },
+      {
+        "intentKind": "implementation-principle",
+        "intent": "Understand Axis/layout implementation principles without reading the whole package",
+        "stepIds": [
+          "prime",
+          "intent-query-set"
+        ],
+        "queryTerms": [
+          "Axis"
+        ]
+      }
+    ]
+  },
+  "workdir": {
+    "env": "SANDTABLE_JULIA_MAKIE_ROOT",
+    "candidates": [
+      "~/.julia/packages/Makie/*"
+    ]
+  },
+  "budgets": {
+    "maxCommands": 2,
+    "maxTotalLinesWarn": 24,
+    "maxTotalStdoutBytesWarn": 16000
+  },
+  "steps": [
+    {
+      "id": "prime",
+      "command": [
+        "asp-julia-harness",
+        "search",
+        "prime",
+        "--view",
+        "seeds",
+        "--workspace",
+        "."
+      ],
+      "expect": {
+        "lineProtocol": true,
+        "stdoutContains": [
+          "[search-prime]",
+          "alg=budgeted-prime-frontier-v1",
+          "|decision purpose=decision-primer",
+          "capabilities=pipe,fzf,fd-query,rg-query,owner-items,selector-code,treesitter-query",
+          "legend: ID=kind:role(value)!next; entries profile(selectors=>returns); frontier ID.next",
+          "G>{",
+          "rank=",
+          "frontier=",
+          "omit=items,blocks,code,full-test-list",
+          "avoid=raw-read"
+        ],
+        "maxStdoutLinesWarn": 10,
+        "maxElapsedMs": 2000,
+        "maxElapsedMsWarn": 1500,
+        "stdoutNotContains": [
+          "|seed",
+          "|synthesis",
+          "G=search:result!query"
+        ]
+      }
+    },
+    {
+      "id": "intent-query-set",
+      "command": [
+        "asp-julia-harness",
+        "search",
+        "fzf",
+        "--query-set",
+        "plot",
+        "--query-set",
+        "Figure",
+        "--query-set",
+        "Axis",
+        "owner",
+        "tests",
+        "--view",
+        "seeds",
+        "--workspace",
+        "."
+      ],
+      "expect": {
+        "lineProtocol": true,
+        "stdoutContains": [
+          "[search-fzf]",
+          "querySet=3",
+          "legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next",
+          "G>{",
+          "rank=",
+          "frontier=",
+          "entries=owner-query(O,Q=>items+tests+dependency-usage),owner-tests(O=>covering-tests+test-entrypoints+fixtures)"
+        ],
+        "maxStdoutLinesWarn": 10,
+        "maxElapsedMs": 2000,
+        "maxElapsedMsWarn": 1500,
+        "stdoutNotContains": [
+          "|seed",
+          "|synthesis",
+          "G=search:result!query"
+        ]
+      }
+    }
+  ]
+}

@@ -170,6 +170,8 @@ fn asp_org_exposes_ast_query_facts_and_capture_plan() {
             "Record ASP org plan",
             "--target-file",
             ".cache/agent-semantic-protocol/artifacts/org/flow/plans/agent-plan-session-test.org",
+            "--choice",
+            "specification=5",
         ])
         .output()
         .expect("run asp org capture plan");
@@ -459,6 +461,8 @@ fn asp_org_capture_auto_initializes_state_resources_and_flow_dirs() {
             "Auto initialize ASP org resources",
             "--target-file",
             ".cache/agent-semantic-protocol/artifacts/org/flow/plans/agent-plan-auto-init.org",
+            "--choice",
+            "specification=TASK",
             "--no-confirm",
         ])
         .output()
@@ -650,6 +654,18 @@ fn asp_org_recall_plans_scans_in_rust_and_ranks_with_memory_engine() {
     );
     assert!(
         stdout.contains("memoryScore=") && !stdout.contains("id=\"unrelated-cold-path\""),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("|plan-action rank=1 action=\"resume\""),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("reason=\"unfinished plan ranked by memory, intent, and recency\""),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("|next recommendedAction=\"resume\" rank=1"),
         "{stdout}"
     );
 

@@ -307,7 +307,7 @@ fn ancestor_workspace_provider_binary(project_root: &Path, binary: &str) -> Opti
 
 fn home_local_provider_binary(binary: &str) -> Option<PathBuf> {
     let home = env::var_os("HOME")?;
-    let candidate = PathBuf::from(home).join("local").join("bin").join(binary);
+    let candidate = PathBuf::from(home).join(".local").join("bin").join(binary);
     is_executable_file(&candidate).then_some(candidate)
 }
 

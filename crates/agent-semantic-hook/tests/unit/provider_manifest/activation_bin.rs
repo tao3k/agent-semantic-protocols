@@ -145,7 +145,7 @@ fn default_activation_uses_home_local_bin_before_path_fallback_for_gerbil() {
     let _home_lock = HOME_ENV_LOCK.lock().expect("lock HOME env");
     let root = temp_root("home-local-gerbil-provider");
     let home = temp_root("home-local-gerbil-home");
-    let home_bin = home.join("local").join("bin");
+    let home_bin = home.join(".local").join("bin");
     fs::create_dir_all(&home_bin).expect("create home local bin");
     fs::create_dir_all(root.join("src")).expect("create src");
     fs::write(root.join("gerbil.pkg"), "(package: sample/gerbil)\n").expect("write gerbil.pkg");
@@ -167,7 +167,7 @@ fn default_activation_uses_home_local_bin_before_path_fallback_for_gerbil() {
     assert_eq!(
         gerbil.provider_command_prefix,
         vec![expected_provider_bin.display().to_string()],
-        "Gerbil provider should prefer $HOME/local/bin/gslph before PATH fallback"
+        "Gerbil provider should prefer $HOME/.local/bin/gslph before PATH fallback"
     );
 
     fs::remove_dir_all(root).expect("remove temp root");

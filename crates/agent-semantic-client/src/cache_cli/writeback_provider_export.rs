@@ -27,14 +27,13 @@ pub(super) fn export_provider_packet(
     provider: &ResolvedProvider,
     request: &ClientRequest,
 ) -> Option<ProviderPacketExport> {
-    let program = home_local_provider_binary(provider)?;
-    let mut args = Vec::new();
+    let mut invocation = provider_command_prefix(provider, &request.project_root)?;
     let provider_method = match request.method {
         ClientMethod::Search => "search",
         ClientMethod::Query => "query",
         _ => return None,
     };
-    args.push(provider_method.to_string());
+    invocation.push(provider_method.to_string());
     let mut forwarded_args = append_syntax_query_plan_args(
         &request.method,
         Some(&provider.language_id),
@@ -42,14 +41,13 @@ pub(super) fn export_provider_packet(
     )
     .ok()?;
     insert_json_flag_before_project_root(&mut forwarded_args);
-    args.extend(forwarded_args);
-    let argv = std::iter::once(program.clone())
-        .chain(args.iter().cloned())
-        .collect::<Vec<_>>();
+    invocation.extend(forwarded_args);
+    let (program, args) = invocation.split_first()?;
+    let argv = invocation.clone();
     let started = Instant::now();
     let output = run_transport_process(ProviderProcessSpec {
         program: program.clone(),
-        args,
+        args: args.to_vec(),
         cwd: request.project_root.clone(),
         env: BTreeMap::new(),
         stdin: StdinMode::Closed,
@@ -81,6 +79,60 @@ pub(super) fn export_provider_packet(
             elapsed_ms: ElapsedMillis::from_duration(output.receipt.elapsed),
         },
         elapsed_ms: ElapsedMillis::from_duration(started.elapsed()),
+    })
+}
+
+fn provider_command_prefix(
+    provider: &ResolvedProvider,
+    project_root: &Path,
+) -> Option<Vec<String>> {
+    if let Some(binary) = provider_binary_on_path(&provider.binary, project_root) {
+        return Some(vec![binary]);
+    }
+    if let Some(binary) = home_local_provider_binary(provider) {
+        return Some(vec![binary]);
+    }
+    if let Some(argv) = provider.runtime_command_argv.as_ref()
+        && !argv.is_empty()
+    {
+        return Some(argv.clone());
+    }
+    if !provider.provider_command_prefix.is_empty() {
+        return Some(provider.provider_command_prefix.clone());
+    }
+    home_local_provider_binary(provider).map(|binary| vec![binary])
+}
+
+fn provider_binary_on_path(binary: &str, project_root: &Path) -> Option<String> {
+    let path = Path::new(binary);
+    let project_root = project_root
+        .canonicalize()
+        .unwrap_or_else(|_| project_root.to_path_buf());
+    if path.components().count() > 1 {
+        let candidate = if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            project_root.join(path)
+        };
+        return candidate.is_file().then(|| {
+            candidate
+                .canonicalize()
+                .unwrap_or(candidate)
+                .to_string_lossy()
+                .to_string()
+        });
+    }
+    std::env::var_os("PATH").and_then(|path| {
+        std::env::split_paths(&path).find_map(|entry| {
+            let candidate = entry.join(binary);
+            let resolved = candidate.canonicalize().unwrap_or(candidate);
+            if !resolved.starts_with(&project_root) {
+                return None;
+            }
+            resolved
+                .is_file()
+                .then(|| resolved.to_string_lossy().to_string())
+        })
     })
 }
 

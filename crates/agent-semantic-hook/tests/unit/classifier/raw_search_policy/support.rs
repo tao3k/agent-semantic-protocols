@@ -54,23 +54,6 @@ pub(super) fn assert_raw_search_denied(command: &str, provider_id: &str) {
     );
 }
 
-pub(super) fn assert_bulk_source_dump_denied(command: &str, provider_id: &str) {
-    let decision = classify_hook(
-        &polyglot_registry(),
-        "codex",
-        "pre-tool",
-        &json!({
-            "tool_name": "functions.exec_command",
-            "tool_input": {"cmd": command}
-        }),
-    );
-
-    assert_eq!(decision.decision, DecisionKind::Deny, "{command}");
-    assert_eq!(decision.reason_kind, ReasonKind::BulkSourceDump);
-    assert_agent_facade_decision(&decision, command);
-    assert_eq!(decision.routes[0].provider_id, provider_id, "{command}");
-}
-
 pub(super) fn assert_direct_read_denied(command: &str, provider_id: &str) {
     let decision = classify_hook(
         &polyglot_registry(),

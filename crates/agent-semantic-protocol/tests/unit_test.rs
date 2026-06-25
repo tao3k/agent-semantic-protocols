@@ -43,6 +43,8 @@ mod provider_command;
 mod rs_harness_attribute;
 #[path = "../../agent-semantic-hook/tests/unit/rust_harness_activation/mod.rs"]
 mod rust_harness_activation;
+#[path = "unit/scenario_performance_gate.rs"]
+mod scenario_performance_gate;
 #[path = "unit/source_access_command/mod.rs"]
 mod source_access_command;
 #[path = "unit/sync_command.rs"]

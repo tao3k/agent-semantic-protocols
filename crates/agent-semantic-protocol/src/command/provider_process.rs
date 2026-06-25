@@ -290,15 +290,12 @@ pub(super) fn provider_invocation_with_profile(
     _profiles: &RuntimeProfiles,
     provider: &ActivatedProvider,
     args: &[String],
-    _config: &AspConfig,
+    project_root: &Path,
+    config: &AspConfig,
 ) -> Result<Vec<String>, String> {
-    let home = home_dir();
-    let invocation = resolve_provider_binary_invocation(
-        &provider.language_id,
-        &provider.binary,
-        home.as_deref(),
-    )?;
-    Ok(provider_invocation_with_binary(args, &invocation.command))
+    let mut invocation = provider_command_prefix(provider, project_root, config)?;
+    invocation.extend(args.iter().cloned());
+    Ok(invocation)
 }
 
 pub(super) fn provider_invocations(
@@ -310,14 +307,86 @@ pub(super) fn provider_invocations(
 ) -> Result<Vec<Vec<String>>, String> {
     search_scope_arg_sets(args, project_root)
         .into_iter()
-        .map(|args| provider_invocation_with_profile(profiles, provider, &args, config))
+        .map(|args| {
+            provider_invocation_with_profile(profiles, provider, &args, project_root, config)
+        })
         .collect()
 }
 
-fn provider_invocation_with_binary(args: &[String], binary: &str) -> Vec<String> {
-    let mut invocation = vec![binary.to_string()];
-    invocation.extend(args.iter().cloned());
-    invocation
+fn provider_command_prefix(
+    provider: &ActivatedProvider,
+    project_root: &Path,
+    config: &AspConfig,
+) -> Result<Vec<String>, String> {
+    let home = home_dir();
+    if let Some(binary) = config.provider_bin(&provider.language_id) {
+        return Ok(vec![resolve_configured_provider_binary(
+            &provider.language_id,
+            binary,
+            project_root,
+            home.as_deref(),
+        )?]);
+    }
+    if let Some(binary) = provider_binary_on_path(&provider.binary, project_root) {
+        return Ok(vec![binary]);
+    }
+    if let Ok(invocation) =
+        resolve_provider_binary_invocation(&provider.language_id, &provider.binary, home.as_deref())
+    {
+        return Ok(vec![invocation.command]);
+    }
+    if !provider.provider_command_prefix.is_empty() {
+        return Ok(provider.provider_command_prefix.clone());
+    }
+    resolve_provider_binary_invocation(&provider.language_id, &provider.binary, home.as_deref())
+        .map(|invocation| vec![invocation.command])
+}
+
+fn resolve_configured_provider_binary(
+    language_id: &str,
+    binary: &str,
+    project_root: &Path,
+    home: Option<&Path>,
+) -> Result<String, String> {
+    let binary_path = Path::new(binary);
+    if binary_path.components().count() <= 1 {
+        return resolve_provider_binary_invocation(language_id, binary, home)
+            .map(|invocation| invocation.command);
+    }
+    Ok(resolve_provider_program(binary, project_root))
+}
+
+fn provider_binary_on_path(binary: &str, project_root: &Path) -> Option<String> {
+    let path = Path::new(binary);
+    let project_root = project_root
+        .canonicalize()
+        .unwrap_or_else(|_| project_root.to_path_buf());
+    if path.components().count() > 1 {
+        let candidate = if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            project_root.join(path)
+        };
+        return candidate.is_file().then(|| {
+            candidate
+                .canonicalize()
+                .unwrap_or(candidate)
+                .to_string_lossy()
+                .to_string()
+        });
+    }
+    env::var_os("PATH").and_then(|path| {
+        env::split_paths(&path).find_map(|entry| {
+            let candidate = entry.join(binary);
+            let resolved = candidate.canonicalize().unwrap_or(candidate);
+            if !resolved.starts_with(&project_root) {
+                return None;
+            }
+            resolved
+                .is_file()
+                .then(|| resolved.to_string_lossy().to_string())
+        })
+    })
 }
 
 fn search_scope_arg_sets(args: &[String], project_root: &Path) -> Vec<Vec<String>> {

@@ -222,7 +222,13 @@ fn provider_dependency_topology_metadata_invocation(
         return Err("provider dependencyTopologyMetadata route argv is empty".to_string());
     };
     if program == &context.provider.binary {
-        provider_invocation_with_profile(context.profiles, context.provider, forwarded, config)
+        provider_invocation_with_profile(
+            context.profiles,
+            context.provider,
+            forwarded,
+            project_root,
+            config,
+        )
     } else {
         Ok(argv)
     }
@@ -253,7 +259,13 @@ fn provider_dependency_topology_invocation(
         return Err("provider dependencyTopology route argv is empty".to_string());
     };
     if program == &context.provider.binary {
-        provider_invocation_with_profile(context.profiles, context.provider, forwarded, config)
+        provider_invocation_with_profile(
+            context.profiles,
+            context.provider,
+            forwarded,
+            project_root,
+            config,
+        )
     } else {
         Ok(argv)
     }

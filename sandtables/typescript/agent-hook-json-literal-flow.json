@@ -80,8 +80,7 @@
     {
       "id": "prime",
       "command": [
-        "node",
-        "dist/src/cli/main.js",
+        "ts-harness",
         "search",
         "prime",
         "--view",
@@ -102,8 +101,7 @@
     {
       "id": "text-hook-query-set",
       "command": [
-        "node",
-        "dist/src/cli/main.js",
+        "ts-harness",
         "search",
         "fzf",
         "--query-set",
@@ -132,8 +130,7 @@
     {
       "id": "fixture-query-set-json-schema",
       "command": [
-        "node",
-        "dist/src/cli/main.js",
+        "ts-harness",
         "search",
         "fzf",
         "--query-set",
@@ -170,8 +167,7 @@
     {
       "id": "owner-protocol-cli",
       "command": [
-        "node",
-        "dist/src/cli/main.js",
+        "ts-harness",
         "search",
         "owner",
         "src/cli/protocol.ts",
@@ -193,8 +189,7 @@
     {
       "id": "tests-protocol-cli",
       "command": [
-        "node",
-        "dist/src/cli/main.js",
+        "ts-harness",
         "search",
         "tests",
         "src/cli/protocol.ts",
@@ -216,8 +211,7 @@
     {
       "id": "flag-like-json-query",
       "command": [
-        "node",
-        "dist/src/cli/main.js",
+        "ts-harness",
         "search",
         "fzf",
         "--json",

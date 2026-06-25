@@ -125,7 +125,10 @@ pub(super) fn asp_command(root: &Path) -> Command {
     command
         .current_dir(root)
         .env("HOME", root.join("home"))
+        .env("ASP_MEMORY_ENGINE_AUTO_SOCKET", "0")
         .env_remove("ASP_MEMORY_ENGINE")
+        .env_remove("ASP_MEMORY_ENGINE_SOCKET")
+        .env_remove("ASP_MEMORY_ENGINE_SOCKET_DIR")
         .env_remove("PRJ_CACHE_HOME");
     command
 }
@@ -202,13 +205,18 @@ pub(super) fn write_semantic_facts_provider(
     stdout_text: &str,
     stderr_text: &str,
 ) {
+    std::fs::create_dir_all(bin_dir).expect("create fake provider bin dir");
+    let stdout_path = bin_dir.join(format!("{binary}.semantic-facts.stdout"));
+    let stderr_path = bin_dir.join(format!("{binary}.semantic-facts.stderr"));
+    std::fs::write(&stdout_path, stdout_text).expect("write semantic facts stdout");
+    std::fs::write(&stderr_path, stderr_text).expect("write semantic facts stderr");
     write_provider_script(
         bin_dir,
         binary,
         &format!(
-            "#!/bin/sh\nprintf '%s' {}\nprintf '%s' {} >&2\nexit 0\n",
-            shell_single_quote(stdout_text),
-            shell_single_quote(stderr_text)
+            "#!/bin/sh\ncat >/dev/null\ncat {}\ncat {} >&2\nexit 0\n",
+            shell_single_quote(&stdout_path.to_string_lossy()),
+            shell_single_quote(&stderr_path.to_string_lossy())
         ),
     );
 }

@@ -94,7 +94,8 @@
           "entries="
         ],
         "maxStdoutLinesWarn": 8,
-        "maxElapsedMsWarn": 6000
+        "maxElapsedMs": 300,
+        "maxElapsedMsWarn": 250
       }
     },
     {
@@ -124,7 +125,8 @@
           "entries=owner-query(O,Q=>items+tests+dependency-usage),owner-tests(O=>covering-tests+test-entrypoints+fixtures)"
         ],
         "maxStdoutLinesWarn": 12,
-        "maxElapsedMsWarn": 6000
+        "maxElapsedMs": 300,
+        "maxElapsedMsWarn": 250
       }
     },
     {
@@ -152,7 +154,8 @@
           "entries=owner-query(O,Q=>items+tests+dependency-usage),owner-tests(O=>covering-tests+test-entrypoints+fixtures)"
         ],
         "maxStdoutLinesWarn": 12,
-        "maxElapsedMsWarn": 6000
+        "maxElapsedMs": 300,
+        "maxElapsedMsWarn": 250
       }
     }
   ]

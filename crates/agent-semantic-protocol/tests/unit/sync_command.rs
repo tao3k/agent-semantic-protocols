@@ -36,7 +36,7 @@ mod unix {
             .join("org");
         assert!(org_artifacts.join("flow").join("plans").is_dir());
         assert!(org_artifacts.join("flow").join("sdd").is_dir());
-        assert!(org_artifacts.join("flow").join("BDR").is_dir());
+        assert!(org_artifacts.join("flow").join("bdr").is_dir());
         let local_plan = org_artifacts.join("flow").join("plans").join("local.org");
         std::fs::write(&local_plan, "* Local plan\n").expect("write local flow file");
 

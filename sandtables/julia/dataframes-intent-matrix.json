@@ -1,0 +1,222 @@
+{
+  "id": "julia.dataframes-intent-matrix",
+  "language": "julia",
+  "title": "DataFrames.jl large-library feature/API/principle intent matrix",
+  "coverage": [
+    "search-flow",
+    "performance",
+    "large-library"
+  ],
+  "tags": [
+    "large-library",
+    "dataframes",
+    "intent-matrix"
+  ],
+  "evidence": {
+    "source": "handwritten",
+    "fixtureTier": "large-library",
+    "targetLibrary": {
+      "language": "julia",
+      "name": "DataFrames.jl",
+      "package": "DataFrames",
+      "repository": "JuliaData/DataFrames.jl",
+      "workdirKind": "registry"
+    },
+    "intentCases": [
+      {
+        "intentKind": "feature-implementation",
+        "intent": "Implement or inspect grouped data behavior from compact owner seeds",
+        "stepIds": [
+          "prime",
+          "intent-query-set"
+        ],
+        "queryTerms": [
+          "groupby"
+        ]
+      },
+      {
+        "intentKind": "api-usage",
+        "intent": "Find how DataFrame is exposed and used",
+        "stepIds": [
+          "prime",
+          "intent-query-set"
+        ],
+        "queryTerms": [
+          "DataFrame"
+        ]
+      },
+      {
+        "intentKind": "implementation-principle",
+        "intent": "Understand transform/combine implementation principles without reading the whole package",
+        "stepIds": [
+          "prime",
+          "intent-query-set"
+        ],
+        "queryTerms": [
+          "transform"
+        ]
+      }
+    ]
+  },
+  "workdir": {
+    "env": "SANDTABLE_JULIA_DATAFRAMES_ROOT",
+    "candidates": [
+      "~/.julia/packages/DataFrames/*"
+    ]
+  },
+  "budgets": {
+    "maxCommands": 4,
+    "maxTotalLinesWarn": 42,
+    "maxTotalStdoutBytesWarn": 24000
+  },
+  "steps": [
+    {
+      "id": "prime",
+      "command": [
+        "asp-julia-harness",
+        "search",
+        "prime",
+        "--view",
+        "seeds",
+        "--workspace",
+        "."
+      ],
+      "expect": {
+        "lineProtocol": true,
+        "stdoutContains": [
+          "[search-prime]",
+          "alg=budgeted-prime-frontier-v1",
+          "|decision purpose=decision-primer",
+          "capabilities=pipe,fzf,fd-query,rg-query,owner-items,selector-code,treesitter-query",
+          "legend: ID=kind:role(value)!next; entries profile(selectors=>returns); frontier ID.next",
+          "G>{",
+          "rank=",
+          "frontier=",
+          "omit=items,blocks,code,full-test-list",
+          "avoid=raw-read"
+        ],
+        "maxStdoutLinesWarn": 10,
+        "maxElapsedMs": 5000,
+        "maxElapsedMsWarn": 4500,
+        "stdoutNotContains": [
+          "|seed",
+          "|synthesis",
+          "G=search:result!query"
+        ]
+      }
+    },
+    {
+      "id": "owner-dataframes",
+      "command": [
+        "asp-julia-harness",
+        "search",
+        "owner",
+        "src/DataFrames.jl",
+        "--view",
+        "seeds",
+        "--workspace",
+        "."
+      ],
+      "expect": {
+        "lineProtocol": true,
+        "stdoutContains": [
+          "[search-owner]",
+          "src/DataFrames.jl",
+          "entries=owner-tests(O=>covering-tests+test-entrypoints+fixtures)"
+        ],
+        "maxStdoutLinesWarn": 14,
+        "maxElapsedMs": 5000,
+        "maxElapsedMsWarn": 4500,
+        "stdoutNotContains": [
+          "|seed",
+          "|synthesis",
+          "G=search:result!query"
+        ]
+      }
+    },
+    {
+      "id": "deps-tables",
+      "command": [
+        "asp-julia-harness",
+        "search",
+        "deps",
+        "Tables",
+        "--view",
+        "seeds",
+        "--workspace",
+        "."
+      ],
+      "expect": {
+        "lineProtocol": true,
+        "stdoutContains": [
+          "Tables",
+          "dependency",
+          "frontier="
+        ],
+        "maxStdoutLinesWarn": 16,
+        "maxElapsedMs": 5000,
+        "maxElapsedMsWarn": 4500,
+        "stdoutNotContains": [
+          "|seed",
+          "|synthesis",
+          "G=search:result!query"
+        ]
+      }
+    },
+    {
+      "id": "intent-query-set",
+      "command": [
+        "asp-julia-harness",
+        "search",
+        "fzf",
+        "--query-set",
+        "groupby",
+        "--query-set",
+        "DataFrame",
+        "--query-set",
+        "transform",
+        "owner",
+        "tests",
+        "--view",
+        "seeds",
+        "--workspace",
+        "."
+      ],
+      "expect": {
+        "lineProtocol": true,
+        "stdoutContains": [
+          "[search-fzf]",
+          "querySet=3",
+          "legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next",
+          "G>{",
+          "rank=",
+          "frontier=",
+          "entries=owner-query(O,Q=>items+tests+dependency-usage),owner-tests(O=>covering-tests+test-entrypoints+fixtures)"
+        ],
+        "maxStdoutLinesWarn": 10,
+        "maxElapsedMs": 5000,
+        "maxElapsedMsWarn": 4500,
+        "stdoutNotContains": [
+          "|seed",
+          "|synthesis",
+          "G=search:result!query"
+        ]
+      }
+    }
+  ],
+  "warmup": [
+    {
+      "id": "julia-warmup",
+      "command": [
+        "asp-julia-harness",
+        "search",
+        "prime",
+        "--view",
+        "seeds",
+        "--workspace",
+        "."
+      ],
+      "timeoutSeconds": 30
+    }
+  ]
+}

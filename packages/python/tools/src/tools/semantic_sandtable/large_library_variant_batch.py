@@ -220,6 +220,20 @@ def _derive_receipt_metrics(scenario: dict[str, Any]) -> dict[str, Any]:
         "elapsedMs": optional_int(flow_metrics.get("elapsedMs")) or 0,
         "stdoutBytes": optional_int(flow_metrics.get("stdoutBytes")) or 0,
         "stderrBytes": optional_int(flow_metrics.get("stderrBytes")) or 0,
+        "queryTopologyMembershipCandidateCount": optional_int(
+            flow_metrics.get("queryTopologyMembershipCandidateCount")
+        )
+        or 0,
+        "queryTopologyMembershipCoverageRate": _optional_float(
+            flow_metrics.get("queryTopologyMembershipCoverageRate")
+        ),
+        "queryTopologyMembershipDriftRate": _optional_float(
+            flow_metrics.get("queryTopologyMembershipDriftRate")
+        ),
+        "queryTopologyMembershipDelta": optional_int(
+            flow_metrics.get("queryTopologyMembershipDelta")
+        )
+        or 0,
     }
 
 
@@ -326,3 +340,16 @@ def _same_owner_scan_count(commands: list[tuple[str, ...]]) -> int:
     ]
     counts = Counter(owners)
     return sum(count - 1 for count in counts.values() if count > 1)
+
+
+def _optional_float(value: Any) -> float:
+    if isinstance(value, bool) or value is None:
+        return 0.0
+    if isinstance(value, int | float):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return 0.0
+    return 0.0

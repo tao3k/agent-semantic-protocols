@@ -44,6 +44,20 @@ def _run_loaded_scenario(
         return prepared
     scenario_id, workdir, result, steps, budgets, execution = prepared
     captures: dict[str, str] = {}
+    warmup_steps = _resolve_warmup_steps(scenario, result)
+    if warmup_steps is None:
+        return result
+    _run_scenario_warmup(
+        repo_root,
+        workdir,
+        scenario_id,
+        warmup_steps,
+        env,
+        captures,
+        result,
+    )
+    if result.status == "fail":
+        return result
     totals = _run_scenario_steps(
         repo_root,
         workdir,
@@ -57,6 +71,55 @@ def _run_loaded_scenario(
     _apply_scenario_budget_warnings(result, budgets, totals)
     _finalize_scenario_status(result)
     return result
+
+
+def _resolve_warmup_steps(
+    scenario: dict[str, Any],
+    result: ScenarioResult,
+) -> list[Any] | None:
+    warmup = scenario.get("warmup", [])
+    if not isinstance(warmup, list):
+        result.status = "fail"
+        result.errors.append("scenario.warmup must be an array")
+        return None
+    return warmup
+
+
+def _run_scenario_warmup(
+    repo_root: Path,
+    workdir: Path,
+    scenario_id: str,
+    warmup_steps: list[Any],
+    env: dict[str, str],
+    captures: dict[str, str],
+    result: ScenarioResult,
+) -> None:
+    if not warmup_steps:
+        return
+    summaries: list[dict[str, Any]] = []
+    for index, step in enumerate(warmup_steps, start=1):
+        step_result = run_step(
+            repo_root=repo_root,
+            workdir=workdir,
+            scenario_id=scenario_id,
+            step=step,
+            index=index,
+            env=env,
+            captures=captures,
+        )
+        summaries.append(
+            {
+                "id": step_result.step_id,
+                "status": step_result.status,
+                "elapsedMs": step_result.elapsed_ms,
+            }
+        )
+        if step_result.status == "fail":
+            result.status = "fail"
+            result.errors.append(f"warmup {step_result.step_id} failed")
+            result.errors.extend(step_result.errors)
+            break
+    result.evidence["warmup"] = {"steps": summaries}
 
 
 def _prepare_loaded_scenario(

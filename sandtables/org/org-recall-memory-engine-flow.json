@@ -1,0 +1,78 @@
+{
+  "id": "org.recall-memory-engine-flow",
+  "title": "Org recall uses the Python memory engine ranker",
+  "language": "org",
+  "workdir": ".",
+  "tags": ["org", "recall", "memory-engine", "plan"],
+  "coverage": ["search-flow", "performance", "real-trigger"],
+  "budgets": {
+    "maxCommands": 2,
+    "maxTotalLinesWarn": 80,
+    "maxTotalStdoutBytesWarn": 16000
+  },
+  "steps": [
+    {
+      "id": "recall-plans-starts-auto-worker",
+      "kind": "performance",
+      "command": [
+        "asp",
+        "org",
+        "recall",
+        "plans",
+        "--artifacts-root",
+        ".cache/agent-semantic-protocol/artifacts/org",
+        "--intent",
+        "memory engine plan recall ranking worker socket performance",
+        "--top-k",
+        "3"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "stdoutContains": [
+          "[org-recall-plans]",
+          "memoryEngine=asp-memory-engine",
+          "ranker=memory-engine",
+          "memoryTransport=socket:auto",
+          "|plan-action rank=1",
+          "|next recommendedAction="
+        ],
+        "stdoutMatches": [
+          "\\|plan rank=1 .*reflectionComplete=\"false\"",
+          "\\|plan-action rank=1 action=\"resume\""
+        ]
+      }
+    },
+    {
+      "id": "recall-plans-reuses-auto-worker",
+      "kind": "performance",
+      "command": [
+        "asp",
+        "org",
+        "recall",
+        "plans",
+        "--artifacts-root",
+        ".cache/agent-semantic-protocol/artifacts/org",
+        "--intent",
+        "memory engine plan recall ranking worker socket performance",
+        "--top-k",
+        "3"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "maxElapsedMs": 150,
+        "stdoutContains": [
+          "[org-recall-plans]",
+          "memoryEngine=asp-memory-engine",
+          "ranker=memory-engine",
+          "memoryTransport=socket:auto",
+          "|plan-action rank=1",
+          "|next recommendedAction="
+        ],
+        "stdoutMatches": [
+          "\\|plan rank=1 .*reflectionComplete=\"false\"",
+          "\\|plan-action rank=1 action=\"resume\""
+        ]
+      }
+    }
+  ]
+}

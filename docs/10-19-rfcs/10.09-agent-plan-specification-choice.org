@@ -1,0 +1,68 @@
+* One-sentence summary
+The active plan contract owns a compact =specification= interactive gate before plan capture materializes. The gate uses =agent-interactive method=choice= so an agent can load details once with =?=, then select =SDD=, =BDD=, =TDD=, =BDR=, or =TASK= by number or id only when it has task-specific confidence.
+
+* Motivation
+Plan capture is an agent-facing workflow. The agent often knows whether work needs a governing specification, but it can also forget acronyms after context compaction. A plan command should therefore expose a small choice surface without writing unused =none= rows, placeholder framework sections, or Rust-owned explanations into every plan.
+
+The durable source of the choice text and target metadata must be the Org contract registry. Rust may render the choice, resolve numeric aliases, and defer materialization, but it must not decide that a task needs SDD, BDD, TDD, BDR, or only a task plan.
+
+* Contract-owned interaction
+The =agent.plan.v1= contract declares one =org-contract :type agent-interactive= block whose method is =choice=:
+
+#+begin_example
+#+BEGIN_SRC org-contract :type agent-interactive
+id: specification
+method: choice
+stage: pre-capture
+group: SPEC
+create: deferred
+target: agent.plan.v1
+info: Select one specification if you already know the terms. If not, choose ? to expand details before selecting.
+categories: 1=SDD,2=BDD,3=TDD,4=BDR,5=TASK,?=detail
+details:
+|n|id|full|use-if|
+|1|SDD|Specification-Driven Development|scope/design/API/schema boundary changes|
+|2|BDD|Behavior-Driven Development|behavior/scenario/acceptance unclear|
+|3|TDD|Test-Driven Development|failing test/regression gate drives work|
+|4|BDR|Business Development Representative|market/customer/revenue/outreach hypothesis|
+|5|TASK|Task Plan|plain checklist/reflection is enough|
+#+END_SRC
+#+end_example
+
+* CLI behavior
+When =asp org capture --contract agent.plan.v1 ...= has no =--choice specification=...= value, the CLI prints only the compact gate and does not call the Org capture materializer. The output must identify this as =status=interactive-required= and =entry=not-created= so the agent does not mistake a successful command exit for a created plan entry.
+The compact gate exposes a generic interactive load action, such as =load: --choice specification=?=. This is an interactive-window affordance, not a choice-specific default. It tells the agent how to load enough detail before choosing.
+
+#+begin_example
+[agent-interactive] contract=agent.plan.v1 id=specification method=choice stage=pre-capture create=deferred
+info: Select one specification if you already know the terms. If not, choose ? to expand details before selecting.
+categories: 1=SDD,2=BDD,3=TDD,4=BDR,5=TASK,?=detail
+#+end_example
+
+When the agent passes =--choice specification=?=, the CLI prints the detail table from the contract and still does not create or render a plan entry.
+
+When the agent passes a concrete selection, such as =--choice specification=1= or =--choice specification=TASK=, Rust resolves the alias, strips the transient =--choice= argument before delegating to Org capture, and allows normal template generation and contract validation to continue. Agents must not use =asp org capture --help= to decide this window and must not default to =TASK= without task-specific confidence.
+
+* Non-goals
+- Do not persist =?=.
+- Do not add placeholder specification sections to every plan.
+- Do not make Rust infer which specification applies.
+- Do not make Python scan Org files for this choice; Python remains responsible for memory ranking and graph/scientific scoring work.
+
+* Template refinement extension
+The same =agent-interactive= envelope can later describe post-materialization template refinement without changing Rust's interaction renderer:
+
+#+begin_example
+#+BEGIN_SRC org-contract :type agent-interactive
+id: template-refine
+method: choice
+stage: post-materialize
+target: agent.plan.v1
+scope: rendered-entry
+create: deferred
+info: Select whether the rendered template needs contract-bounded refinement.
+categories: 1=accept,2=refine-within-contract,?=detail
+#+END_SRC
+#+end_example
+
+Rust renders the window and routes the chosen method. The agent performs any refinement, then contract trace verifies the rendered artifact stays inside the template and contract boundary.

@@ -166,6 +166,10 @@ def _receipt_metrics() -> dict[str, object]:
         "elapsedMs": 100,
         "stdoutBytes": 200,
         "stderrBytes": 0,
+        "queryTopologyMembershipCandidateCount": 0,
+        "queryTopologyMembershipCoverageRate": 0.0,
+        "queryTopologyMembershipDriftRate": 0.0,
+        "queryTopologyMembershipDelta": 0,
     }
 
 

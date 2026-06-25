@@ -110,49 +110,27 @@ class StepRunnerProtocolCommandTests(unittest.TestCase):
             [str(part) for part in command],
         )
 
-    def test_typescript_harness_command_uses_dist_entry(self) -> None:
+    def test_direct_language_harness_commands_are_not_python_rewritten(self) -> None:
+        commands = [
+            ["rs-harness", "search", "prime", "--workspace", "."],
+            ["ts-harness", "search", "prime", "--workspace", "."],
+            ["asp-julia-harness", "search", "prime", "--workspace", "."],
+            ["py-harness", "search", "prime", "--workspace", "."],
+        ]
+
+        for command in commands:
+            with self.subTest(command=command[0]):
+                self.assertEqual(
+                    command,
+                    _workspace_dev_command(Path("/workspace"), command),
+                )
+
+    def test_python_protocol_command_uses_workspace_protocol_binary(self) -> None:
         with TemporaryDirectory() as directory:
             repo_root = Path(directory)
-            entry = (
-                repo_root
-                / "languages"
-                / "typescript-lang-project-harness"
-                / "dist"
-                / "src"
-                / "cli"
-                / "main.bundle.js"
-            )
-            entry.parent.mkdir(parents=True)
-            entry.write_text("#!/usr/bin/env node\n", encoding="utf-8")
-
-            command = _workspace_dev_command(
-                repo_root,
-                ["ts-harness", "search", "prime", "--workspace", "."],
-            )
-
-        self.assertEqual(
-            [
-                "node",
-                str(entry.resolve()),
-                "search",
-                "prime",
-                "--workspace",
-                ".",
-            ],
-            [str(part) for part in command],
-        )
-
-    def test_typescript_harness_command_without_dist_is_not_rewritten(self) -> None:
-        command = ["ts-harness", "search", "prime", "--workspace", "."]
-
-        self.assertEqual(command, _workspace_dev_command(Path("/workspace"), command))
-
-    def test_python_protocol_command_uses_workspace_harness_entry(self) -> None:
-        with TemporaryDirectory() as directory:
-            repo_root = Path(directory)
-            entry = repo_root / ".bin" / "py-harness"
-            entry.parent.mkdir(parents=True)
-            entry.write_text("#!/bin/sh\n", encoding="utf-8")
+            binary = repo_root / ".bin" / "asp"
+            binary.parent.mkdir(parents=True)
+            binary.write_text("#!/bin/sh\n", encoding="utf-8")
 
             command = _workspace_dev_command(
                 repo_root,
@@ -161,7 +139,8 @@ class StepRunnerProtocolCommandTests(unittest.TestCase):
 
         self.assertEqual(
             [
-                str(entry.resolve()),
+                str(binary.resolve()),
+                "python",
                 "search",
                 "prime",
                 "--workspace",

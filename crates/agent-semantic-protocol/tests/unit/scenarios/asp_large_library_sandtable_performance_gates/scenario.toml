@@ -1,0 +1,6 @@
+id = "asp-large-library-sandtable-performance-gates"
+title = "ASP large-library sandtable performance gates stay bounded"
+policy_ids = ["ASP-SANDTABLE-PERF-001"]
+agent_goal = "Keep large-library sandtable hard elapsed gates explicit for FastAPI, Tokio, and TypeScript compiler scenarios."
+inputs = "inputs"
+expected = "expected"

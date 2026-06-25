@@ -9,6 +9,7 @@ pub(super) struct OrgPlanCandidate {
     pub(super) todo_type: String,
     pub(super) properties: BTreeMap<String, String>,
     pub(super) mtime: f64,
+    pub(super) reflection_complete: bool,
 }
 
 pub(super) struct RankedOrgPlan {
@@ -49,11 +50,50 @@ impl OrgPlanCandidate {
             .unwrap_or_default()
     }
 
+    pub(super) fn status(&self) -> String {
+        self.properties.get("STATUS").cloned().unwrap_or_default()
+    }
+
+    pub(super) fn evidence_status(&self) -> String {
+        self.properties
+            .get("EVIDENCE_STATUS")
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    pub(super) fn review_status(&self) -> String {
+        self.properties
+            .get("REVIEW_STATUS")
+            .cloned()
+            .unwrap_or_default()
+    }
+
     pub(super) fn recovery_ref(&self) -> String {
         self.properties
             .get("RECOVERY_REF")
             .cloned()
             .unwrap_or_default()
+    }
+
+    pub(super) fn is_done(&self) -> bool {
+        self.todo.eq_ignore_ascii_case("DONE") || self.todo_type.eq_ignore_ascii_case("Done")
+    }
+
+    pub(super) fn is_archive_ready(&self) -> bool {
+        self.reflection_complete
+            && (self.is_done()
+                || self.next_action().eq_ignore_ascii_case("archive-ready")
+                || (self.status().eq_ignore_ascii_case("complete")
+                    && self.evidence_status().eq_ignore_ascii_case("validated")
+                    && self.review_status().eq_ignore_ascii_case("passed")))
+    }
+
+    pub(super) fn needs_reflection_completion(&self) -> bool {
+        !self.reflection_complete
+            && (self.is_done()
+                || self.next_action().eq_ignore_ascii_case("archive-ready")
+                || self.status().eq_ignore_ascii_case("complete")
+                || self.review_status().eq_ignore_ascii_case("passed"))
     }
 
     pub(super) fn display_title(&self) -> String {

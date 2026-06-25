@@ -334,6 +334,73 @@ fn direct_dependency_seed_api_selector_emits_local_usage_frontier() {
 }
 
 #[test]
+fn direct_dependency_seed_api_selector_expands_rust_path_dependency_public_api() {
+    let root = temp_project_root("direct-dependency-seed-api-selector-public-api");
+    let dependency_root = root.join("rust-lang-project-harness");
+    std::fs::create_dir_all(root.join("src")).expect("create root src");
+    std::fs::create_dir_all(dependency_root.join("src")).expect("create dependency src");
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"dep-seed-api-selector-public-api\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[dependencies]\nrust-lang-project-harness = { path = \"rust-lang-project-harness\" }\n",
+    )
+    .expect("write Cargo.toml");
+    std::fs::write(root.join("src/lib.rs"), "pub fn root() {}\n").expect("write root lib");
+    std::fs::write(
+        dependency_root.join("Cargo.toml"),
+        "[package]\nname = \"rust-lang-project-harness\"\nversion = \"0.1.2\"\nedition = \"2024\"\n\n[lib]\npath = \"src/lib.rs\"\n",
+    )
+    .expect("write dependency Cargo.toml");
+    std::fs::write(
+        dependency_root.join("src/lib.rs"),
+        "pub struct Scenario;\nstruct InternalScenario;\npub fn performance_gate() {}\n",
+    )
+    .expect("write dependency lib");
+    write_activation(&root, &[provider("rust", Vec::new())]);
+
+    let output = asp_command(&root)
+        .args([
+            "rust",
+            "search",
+            "deps",
+            "rust-lang-project-harness::Scenario",
+            "--workspace",
+            ".",
+            "--view",
+            "public-external-types",
+        ])
+        .output()
+        .expect("run direct dependency seed API expansion");
+
+    assert!(
+        output.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    assert!(
+        stdout.contains("|external dependency=rust-lang-project-harness"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("source=cargo-metadata"), "{stdout}");
+    assert!(
+        stdout.contains("|external-api name=Scenario kind=struct"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("match=exact"), "{stdout}");
+    assert!(stdout.contains("src/lib.rs:1-1"), "{stdout}");
+    assert!(
+        stdout.contains("asp rust query --selector"),
+        "agent should receive a concrete selector command; stdout={stdout}"
+    );
+    assert!(
+        !stdout.contains("InternalScenario"),
+        "private dependency item must not be exposed; stdout={stdout}"
+    );
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn direct_dependency_seed_reuses_cached_manifest_topology_until_manifest_changes() {
     let root = temp_project_root("direct-dependency-seed-cache");
     std::fs::write(

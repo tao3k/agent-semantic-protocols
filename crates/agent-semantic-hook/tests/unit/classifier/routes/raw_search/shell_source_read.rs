@@ -66,7 +66,6 @@ fn codex_shell_source_read_wrappers_are_denied() {
             format!("ruby -e \"puts File.read('{source}')\""),
             source.clone(),
         ),
-        ("git-diff-source", format!("git diff -- {source}"), source),
         (
             "language-extension-source",
             format!("true | cat {extension_source}"),
@@ -81,6 +80,39 @@ fn codex_shell_source_read_wrappers_are_denied() {
     for (name, command, expected_path) in cases {
         assert_shell_source_dump_denied(name, &command, &expected_path);
     }
+}
+
+#[test]
+fn codex_shell_git_diff_patch_review_is_allowed() {
+    let source = rust_runner_source_path();
+    let command = format!("git diff -- {source}");
+    let decision = classify_hook(
+        &registry(),
+        "codex",
+        "pre-tool",
+        &json!({
+            "toolName": "command_execution",
+            "tool_name": "command_execution",
+            "toolInput": {
+                "item": {
+                    "action": {
+                        "type": "unknown",
+                        "cmd": command,
+                    }
+                }
+            },
+            "tool_input": {
+                "item": {
+                    "action": {
+                        "type": "unknown",
+                        "cmd": command,
+                    }
+                }
+            }
+        }),
+    );
+
+    assert_eq!(decision.decision, DecisionKind::Allow);
 }
 
 #[test]

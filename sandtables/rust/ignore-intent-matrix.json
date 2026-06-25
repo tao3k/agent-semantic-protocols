@@ -155,20 +155,21 @@
       "expect": {
         "lineProtocol": true,
         "stdoutContains": [
-            "[search-prime]",
-            "alg=budgeted-prime-frontier-v1",
-            "|decision purpose=decision-primer",
-            "capabilities=pipe,fzf,fd-query,rg-query,owner-items,selector-code,treesitter-query",
-            "legend: ID=kind:role(value)!next; entries profile(selectors=>returns); frontier ID.next",
-            "entries=owner-tests(O=>covering-tests+test-entrypoints+fixtures)",
-            "G>{",
-            "rank=",
-            "frontier=",
-            "omit=items,blocks,code,full-test-list",
-            "avoid=raw-read"
+          "[search-prime]",
+          "alg=budgeted-prime-frontier-v1",
+          "|decision purpose=decision-primer",
+          "capabilities=pipe,fzf,fd-query,rg-query,owner-items,selector-code,treesitter-query",
+          "legend: ID=kind:role(value)!next; entries profile(selectors=>returns); frontier ID.next",
+          "entries=owner-tests(O=>covering-tests+test-entrypoints+fixtures)",
+          "G>{",
+          "rank=",
+          "frontier=",
+          "omit=items,blocks,code,full-test-list",
+          "avoid=raw-read"
         ],
         "maxStdoutLinesWarn": 10,
-        "maxElapsedMsWarn": 2500,
+        "maxElapsedMs": 300,
+        "maxElapsedMsWarn": 250,
         "stdoutNotContains": [
           "|seed",
           "|synthesis",
@@ -207,7 +208,8 @@
           "entries=owner-query(O,Q=>items+tests+dependency-usage),owner-tests(O=>covering-tests+test-entrypoints+fixtures)"
         ],
         "maxStdoutLinesWarn": 10,
-        "maxElapsedMsWarn": 2500,
+        "maxElapsedMs": 300,
+        "maxElapsedMsWarn": 250,
         "stdoutNotContains": [
           "|seed",
           "|synthesis",

@@ -1,0 +1,164 @@
+{
+  "id": "julia.flux-intent-matrix",
+  "language": "julia",
+  "title": "Flux.jl large-library feature/API/principle intent matrix",
+  "coverage": [
+    "search-flow",
+    "performance",
+    "large-library"
+  ],
+  "tags": [
+    "large-library",
+    "flux",
+    "intent-matrix"
+  ],
+  "evidence": {
+    "source": "handwritten",
+    "fixtureTier": "large-library",
+    "targetLibrary": {
+      "language": "julia",
+      "name": "Flux.jl",
+      "package": "Flux",
+      "repository": "FluxML/Flux.jl",
+      "workdirKind": "registry"
+    },
+    "intentCases": [
+      {
+        "intentKind": "feature-implementation",
+        "intent": "Find training loop owners from compact seeds",
+        "stepIds": [
+          "prime",
+          "intent-query-set"
+        ],
+        "queryTerms": [
+          "train"
+        ]
+      },
+      {
+        "intentKind": "api-usage",
+        "intent": "Find Chain API exposure and examples",
+        "stepIds": [
+          "prime",
+          "intent-query-set"
+        ],
+        "queryTerms": [
+          "Chain"
+        ]
+      },
+      {
+        "intentKind": "implementation-principle",
+        "intent": "Understand gradient and parameter flow without reading the whole package",
+        "stepIds": [
+          "prime",
+          "intent-query-set"
+        ],
+        "queryTerms": [
+          "gradient"
+        ]
+      }
+    ]
+  },
+  "workdir": {
+    "env": "SANDTABLE_JULIA_FLUX_ROOT",
+    "candidates": [
+      "~/.julia/packages/Flux/*"
+    ]
+  },
+  "warmup": [
+    {
+      "id": "julia-warmup",
+      "command": [
+        "asp-julia-harness",
+        "search",
+        "prime",
+        "--view",
+        "seeds",
+        "--workspace",
+        "."
+      ],
+      "timeoutSeconds": 30
+    }
+  ],
+  "budgets": {
+    "maxCommands": 2,
+    "maxTotalLinesWarn": 24,
+    "maxTotalStdoutBytesWarn": 16000
+  },
+  "steps": [
+    {
+      "id": "prime",
+      "command": [
+        "asp-julia-harness",
+        "search",
+        "prime",
+        "--view",
+        "seeds",
+        "--workspace",
+        "."
+      ],
+      "expect": {
+        "lineProtocol": true,
+        "stdoutContains": [
+          "[search-prime]",
+          "alg=budgeted-prime-frontier-v1",
+          "|decision purpose=decision-primer",
+          "capabilities=pipe,fzf,fd-query,rg-query,owner-items,selector-code,treesitter-query",
+          "legend: ID=kind:role(value)!next; entries profile(selectors=>returns); frontier ID.next",
+          "G>{",
+          "rank=",
+          "frontier=",
+          "omit=items,blocks,code,full-test-list",
+          "avoid=raw-read"
+        ],
+        "maxStdoutLinesWarn": 10,
+        "maxElapsedMs": 2000,
+        "maxElapsedMsWarn": 1500,
+        "stdoutNotContains": [
+          "|seed",
+          "|synthesis",
+          "G=search:result!query"
+        ]
+      }
+    },
+    {
+      "id": "intent-query-set",
+      "command": [
+        "asp-julia-harness",
+        "search",
+        "fzf",
+        "--query-set",
+        "train",
+        "--query-set",
+        "Chain",
+        "--query-set",
+        "gradient",
+        "owner",
+        "tests",
+        "--view",
+        "seeds",
+        "--workspace",
+        "."
+      ],
+      "expect": {
+        "lineProtocol": true,
+        "stdoutContains": [
+          "[search-fzf]",
+          "querySet=3",
+          "legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next",
+          "G>{",
+          "rank=",
+          "frontier=",
+          "entries=owner-query(O,Q=>items+tests+dependency-usage),owner-tests(O=>covering-tests+test-entrypoints+fixtures)"
+        ],
+        "maxStdoutLinesWarn": 10,
+        "maxElapsedMs": 2000,
+        "maxElapsedMsWarn": 1500,
+        "stdoutNotContains": [
+          "|seed",
+          "|synthesis",
+          "G=search:result!query"
+        ]
+      }
+    }
+  ]
+}

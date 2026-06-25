@@ -1,5 +1,6 @@
 //! Provider-owned semantic fact enrichment for ASP search pipe graph requests.
 
+use std::env;
 use std::path::Path;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -15,7 +16,7 @@ use super::search_config::AspConfig;
 use super::search_pipe_model::Candidate;
 
 const PROVIDER_GRAPH_FACT_CANDIDATE_LIMIT: usize = 12;
-const PROVIDER_GRAPH_FACT_TIMEOUT: Duration = Duration::from_millis(1_500);
+const PROVIDER_GRAPH_FACT_TIMEOUT_MS: u64 = 100;
 const PROVIDER_GRAPH_FACT_OUTPUT_LIMIT_BYTES: usize = 256 * 1024;
 
 #[derive(Debug, Default)]
@@ -57,7 +58,7 @@ pub(super) fn collect_provider_graph_facts(
     let input_candidates = candidates.len();
     let truncated_candidates = input_candidates.saturating_sub(fact_candidates.len());
     let semantic_fact_limits = ProviderProcessLimits {
-        timeout: Some(PROVIDER_GRAPH_FACT_TIMEOUT),
+        timeout: Some(provider_graph_fact_timeout()),
         max_stdout_bytes: Some(PROVIDER_GRAPH_FACT_OUTPUT_LIMIT_BYTES),
         max_stderr_bytes: Some(PROVIDER_GRAPH_FACT_OUTPUT_LIMIT_BYTES),
     };
@@ -67,8 +68,13 @@ pub(super) fn collect_provider_graph_facts(
         query.to_string(),
         "--json".to_string(),
     ];
-    let invocation =
-        provider_invocation_with_profile(context.profiles, context.provider, &args, config)?;
+    let invocation = provider_invocation_with_profile(
+        context.profiles,
+        context.provider,
+        &args,
+        project_root,
+        config,
+    )?;
     let output = match run_provider_command_with_stdin_limits(
         language_id,
         context.provider,
@@ -101,6 +107,15 @@ pub(super) fn collect_provider_graph_facts(
     facts.fact_candidates = fact_candidates.len();
     facts.truncated_candidates = truncated_candidates;
     Ok(facts)
+}
+
+fn provider_graph_fact_timeout() -> Duration {
+    env::var("ASP_PROVIDER_GRAPH_FACT_TIMEOUT_MS")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .filter(|value| *value > 0)
+        .map(Duration::from_millis)
+        .unwrap_or_else(|| Duration::from_millis(PROVIDER_GRAPH_FACT_TIMEOUT_MS))
 }
 
 fn provider_fact_candidates(candidates: &[Candidate]) -> Vec<Candidate> {
@@ -194,7 +209,11 @@ pub(super) fn query_requests_semantic_facts(query: &str) -> bool {
     {
         return false;
     }
-    query_terms(query).into_iter().any(|term| {
+    let terms = query_terms(query);
+    if terms.len() < 2 {
+        return false;
+    }
+    terms.into_iter().any(|term| {
         matches!(
             term.as_str(),
             "field"
