@@ -271,21 +271,14 @@ mod unix {
             "{agent_config}"
         );
         assert!(!agent_config.contains("orgSkill"), "{agent_config}");
-        let marketplace = std::fs::read_to_string(
-            root.join(".agents")
-                .join("plugins")
-                .join("marketplace.json"),
-        )
-        .expect("read project plugin marketplace");
+        let marketplace_path = root
+            .join(".agents")
+            .join("plugins")
+            .join("marketplace.json");
         assert!(
-            marketplace.contains(
-                "\"path\": \"./.codex/plugins/cache/asp-project/asp-codex-plugin/0.1.0\""
-            ),
-            "{marketplace}"
-        );
-        assert!(
-            !marketplace.contains("\"path\": \"./asp-codex-plugin\""),
-            "{marketplace}"
+            !marketplace_path.exists(),
+            "Codex plugin install must not write marketplace catalog under {}",
+            marketplace_path.display()
         );
     }
 

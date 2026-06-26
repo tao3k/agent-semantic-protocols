@@ -190,7 +190,7 @@ fn assert_install_stdout(stdout: &str) {
     assert!(stdout.contains("pluginCache=.codex/plugins/cache/asp-project/asp-codex-plugin/0.1.0"));
     assert!(stdout.contains("pluginScope=project"));
     assert!(stdout.contains("pluginMarketplace=asp-project"));
-    assert!(stdout.contains("pluginMarketplaceConfig=.agents/plugins/marketplace.json"));
+    assert!(!stdout.contains("pluginMarketplaceConfig="));
     assert!(stdout.contains("config=.codex/config.toml"));
     assert!(stdout.contains("projectConfig=.codex/config.toml"));
     assert!(!stdout.contains("projectHookConfig="));

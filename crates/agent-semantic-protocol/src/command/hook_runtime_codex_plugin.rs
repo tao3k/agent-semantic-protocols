@@ -57,8 +57,7 @@ pub(super) fn install_codex_plugin_hooks(
     remove_downstream_codex_plugin_bundle(project_root)?;
     let plugin_cache = ensure_codex_project_plugin_cache_static_files(project_root)?;
     let plugin_manifest = plugin_cache.join(".codex-plugin").join("plugin.json");
-    let (marketplace_path, marketplace_name) =
-        ensure_codex_project_plugin_marketplace(project_root)?;
+    let marketplace_name = ASP_CODEX_PLUGIN_MARKETPLACE_NAME;
     let project_config_path = install_codex_project_plugin_config(project_root)?;
     let trust_config_path = install_codex_user_project_trust(&project_config_path)?;
     let subagent_path = install_codex_asp_explorer_agent(project_root, subagent_model)?;
@@ -75,7 +74,7 @@ pub(super) fn install_codex_plugin_hooks(
         CodexPluginScope::Project => {
             normalize_codex_project_marketplace_source(
                 &project_config_path,
-                &marketplace_name,
+                marketplace_name,
                 true,
             )?;
             ensure_codex_project_plugin_enabled(&project_config_path, &plugin_id)?;
@@ -85,7 +84,7 @@ pub(super) fn install_codex_plugin_hooks(
             ensure_codex_plugin_marketplace_registered(
                 project_root,
                 codex_home.as_deref(),
-                &marketplace_name,
+                marketplace_name,
             )?;
             let add_stdout = run_codex_plugin_command(
                 &[
@@ -110,11 +109,10 @@ pub(super) fn install_codex_plugin_hooks(
     Ok((
         config_path,
         format!(
-            " pluginScope={} pluginManifest={} pluginMarketplace={} pluginMarketplaceConfig={} projectConfig={} projectTrustConfig={} subagent={}{}",
+            " pluginScope={} pluginManifest={} pluginMarketplace={} projectConfig={} projectTrustConfig={} subagent={}{}",
             scope.label(),
             super::display_path(project_root, &plugin_manifest),
             marketplace_name,
-            super::display_path(project_root, &marketplace_path),
             super::display_path(project_root, &project_config_path),
             super::display_path(project_root, &trust_config_path),
             super::display_path(project_root, &subagent_path),
@@ -416,79 +414,6 @@ fn normalize_codex_project_marketplace_source(
             .map_err(|error| format!("failed to write {}: {error}", config_path.display()))?;
     }
     Ok(())
-}
-
-fn ensure_codex_project_plugin_marketplace(
-    project_root: &Path,
-) -> Result<(PathBuf, String), String> {
-    let marketplace_path = project_root
-        .join(".agents")
-        .join("plugins")
-        .join("marketplace.json");
-    if let Some(parent) = marketplace_path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
-    }
-    let mut root = if marketplace_path.is_file() {
-        let content = fs::read_to_string(&marketplace_path)
-            .map_err(|error| format!("failed to read {}: {error}", marketplace_path.display()))?;
-        serde_json::from_str::<serde_json::Value>(&content)
-            .map_err(|error| format!("invalid {}: {error}", marketplace_path.display()))?
-    } else {
-        serde_json::json!({
-            "name": ASP_CODEX_PLUGIN_MARKETPLACE_NAME,
-            "interface": {
-                "displayName": "ASP Project"
-            },
-            "plugins": []
-        })
-    };
-    let root_object = root
-        .as_object_mut()
-        .ok_or_else(|| format!("{} must contain a JSON object", marketplace_path.display()))?;
-    let marketplace_name = match root_object.get("name").and_then(serde_json::Value::as_str) {
-        Some(name) if !name.trim().is_empty() => name.to_string(),
-        Some(_) => return Err(format!("{} has an empty name", marketplace_path.display())),
-        None => {
-            root_object.insert(
-                "name".to_string(),
-                serde_json::Value::String(ASP_CODEX_PLUGIN_MARKETPLACE_NAME.to_string()),
-            );
-            ASP_CODEX_PLUGIN_MARKETPLACE_NAME.to_string()
-        }
-    };
-    root_object
-        .entry("interface")
-        .or_insert_with(|| serde_json::json!({"displayName": "ASP Project"}));
-    let plugins = root_object
-        .entry("plugins")
-        .or_insert_with(|| serde_json::Value::Array(Vec::new()))
-        .as_array_mut()
-        .ok_or_else(|| format!("{} plugins must be an array", marketplace_path.display()))?;
-    plugins.retain(|plugin| {
-        plugin.get("name").and_then(serde_json::Value::as_str) != Some(ASP_CODEX_PLUGIN_NAME)
-    });
-    let plugin_source_path = format!(
-        "./{}",
-        codex_project_plugin_cache_relative_path()?.display()
-    );
-    plugins.push(serde_json::json!({
-        "name": ASP_CODEX_PLUGIN_NAME,
-        "source": {
-            "source": "local",
-            "path": plugin_source_path
-        },
-        "policy": {
-            "installation": "AVAILABLE",
-            "authentication": "ON_INSTALL"
-        },
-        "category": "Productivity"
-    }));
-    let rendered = serde_json::to_string_pretty(&root)
-        .map_err(|error| format!("failed to render {}: {error}", marketplace_path.display()))?;
-    fs::write(&marketplace_path, format!("{rendered}\n").as_bytes())
-        .map_err(|error| format!("failed to write {}: {error}", marketplace_path.display()))?;
-    Ok((marketplace_path, marketplace_name))
 }
 
 fn ensure_codex_plugin_marketplace_registered(
