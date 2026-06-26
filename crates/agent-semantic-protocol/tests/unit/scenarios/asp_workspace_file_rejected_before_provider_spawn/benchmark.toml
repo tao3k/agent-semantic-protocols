@@ -1,0 +1,14 @@
+harness = "libtest"
+test = "workspace_file_rejection_error_snapshot_and_perf"
+snapshot = "workspace_file_rejection_error_snapshot_and_perf"
+target_total = "1ms"
+max_total = "25ms"
+observed_total = "1ms"
+regression_budget = "250us"
+memory_budget_bytes = 8388608
+observed_memory_bytes = 4194304
+target_rationale = "The workspace-file guard is a Rust internal argument-validation path around fs::metadata and error rendering; it must stay well below provider spawn cost."
+
+[observed_timings]
+workspace_metadata = "750us"
+error_render = "250us"

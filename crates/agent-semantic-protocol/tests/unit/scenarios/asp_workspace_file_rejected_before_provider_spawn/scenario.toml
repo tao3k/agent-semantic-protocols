@@ -1,0 +1,6 @@
+id = "asp-workspace-file-rejected-before-provider-spawn"
+title = "ASP rejects file-valued --workspace before provider spawn"
+policy_ids = ["ASP-WORKSPACE-FILE-REJECT-BEFORE-PROVIDER-SPAWN"]
+agent_goal = "Keep ASP language facade workspace parsing from passing file paths as provider current_dir, so provider binaries such as gslph are not blamed for ENOTDIR or ENOENT workspace mistakes."
+inputs = "inputs"
+expected = "expected"

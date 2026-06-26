@@ -1,12 +1,14 @@
-bench_command = "cargo test -p agent-semantic-protocol large_library_sandtables_have_hard_elapsed_gates"
-target_total_ms = 50
-max_total_ms = 250
-observed_total_ms = 10
-regression_budget_ms = 50
+harness = "libtest"
+test = "large_library_sandtables_have_hard_elapsed_gates"
+snapshot = "large_library_sandtables_have_hard_elapsed_gates"
+target_total = "50ms"
+max_total = "250ms"
+observed_total = "10ms"
+regression_budget = "50ms"
 memory_budget_bytes = 8388608
 observed_memory_bytes = 4194304
 target_rationale = "The Rust unit test only scans ASP sandtable JSON metadata and should stay a small deterministic fixture gate."
 
 [observed_timings]
-scan_ms = 5
-assert_ms = 2
+scan = "5ms"
+assert = "2ms"

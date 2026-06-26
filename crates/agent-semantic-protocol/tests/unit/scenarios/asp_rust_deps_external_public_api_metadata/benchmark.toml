@@ -1,13 +1,15 @@
-bench_command = "target/debug/asp rust search deps rust-lang-project-harness::Scenario --workspace crates/agent-semantic-protocol/tests/unit/scenarios/asp_rust_deps_external_public_api_metadata/inputs/project --view public-external-types"
-target_total_ms = 50
-max_total_ms = 500
-observed_total_ms = 70
-regression_budget_ms = 100
+harness = "libtest"
+test = "rust_deps_external_public_api_metadata"
+snapshot = "rust_deps_external_public_api_metadata"
+target_total = "50ms"
+max_total = "500ms"
+observed_total = "70ms"
+regression_budget = "100ms"
 memory_budget_bytes = 268435456
 observed_memory_bytes = 67108864
 target_rationale = "The scenario uses a local path dependency fixture and validates the Rust search deps external API resolver without network access or cargo metadata; it should stay inside the millisecond hard gate."
 
 [observed_timings]
-manifest_path_dependency_ms = 5
-public_api_scan_ms = 20
-asp_search_deps_external_api_ms = 70
+manifest_path_dependency = "5ms"
+public_api_scan = "20ms"
+asp_search_deps_external_api = "70ms"

@@ -22,6 +22,8 @@ const REQUIRED_PERFORMANCE_SUBCOMMAND_POLICY_IDS: &[&str] = &[
     "ASP-PERF-SUBCOMMAND-SOURCE-INDEX",
     "ASP-PERF-SUBCOMMAND-PROVIDER-FACTS",
 ];
+const REQUIRED_WORKSPACE_ARGUMENT_POLICY_IDS: &[&str] =
+    &["ASP-WORKSPACE-FILE-REJECT-BEFORE-PROVIDER-SPAWN"];
 
 #[test]
 fn asp_unit_scenarios_have_rust_harness_benchmark_toml_gates() {
@@ -41,7 +43,7 @@ fn asp_unit_scenarios_have_rust_harness_benchmark_toml_gates() {
         rust_lang_project_harness::render_rust_scenario_benchmark_gate_failure(&receipt)
     );
     assert!(receipt.receipts.iter().all(|receipt| {
-        receipt.benchmark.observed_total_ms <= receipt.benchmark.max_total_ms
+        receipt.benchmark.observed_total <= receipt.benchmark.max_total
             && receipt.benchmark.observed_memory_bytes <= receipt.benchmark.memory_budget_bytes
     }));
 }
@@ -62,6 +64,25 @@ fn asp_unit_scenarios_cover_perf_sensitive_query_search_subcommands() {
     assert!(
         missing.is_empty(),
         "ASP unit scenarios must cover performance-sensitive query/search subcommands; missing={missing:?}; observed={policy_ids:?}"
+    );
+}
+
+#[test]
+fn asp_unit_scenarios_cover_workspace_argument_guards() {
+    let scenario_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("unit")
+        .join("scenarios");
+    let policy_ids = discover_scenario_policy_ids(&scenario_root);
+    let missing = REQUIRED_WORKSPACE_ARGUMENT_POLICY_IDS
+        .iter()
+        .copied()
+        .filter(|policy_id| !policy_ids.contains(*policy_id))
+        .collect::<Vec<_>>();
+
+    assert!(
+        missing.is_empty(),
+        "ASP unit scenarios must cover workspace argument guardrails before provider spawn; missing={missing:?}; observed={policy_ids:?}"
     );
 }
 

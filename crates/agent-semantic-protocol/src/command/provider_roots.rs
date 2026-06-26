@@ -33,7 +33,7 @@ pub(super) fn effective_project_root_and_args(
 ) -> Result<(PathBuf, Vec<String>), String> {
     validate_code_flag_boundary(args)?;
     if let Some((workspace_root, normalized_args)) =
-        explicit_workspace_project_root(args, invocation_root, activation_root)?
+        explicit_workspace_project_root(language_id, args, invocation_root)?
     {
         return Ok((workspace_root, normalized_args));
     }
@@ -75,9 +75,9 @@ fn validate_code_flag_boundary(args: &[String]) -> Result<(), String> {
 }
 
 fn explicit_workspace_project_root(
+    language_id: &str,
     args: &[String],
     invocation_root: &Path,
-    _activation_root: &Path,
 ) -> Result<Option<(PathBuf, Vec<String>)>, String> {
     let mut selected = None::<PathBuf>;
     let mut normalized_args = Vec::new();
@@ -103,10 +103,34 @@ fn explicit_workspace_project_root(
         } else {
             invocation_root.join(path)
         };
-        selected = Some(canonical_or_existing(absolute));
+        let root = canonical_or_existing(absolute);
+        validate_workspace_root(language_id, &root)?;
+        selected = Some(root);
         index += 2;
     }
     Ok(selected.map(|root| (root, normalized_args)))
+}
+
+fn validate_workspace_root(language_id: &str, root: &Path) -> Result<(), String> {
+    let metadata = fs::metadata(root).map_err(|error| {
+        format!(
+            "--workspace project root does not exist or cannot be read: `{}`: {error}",
+            root.display()
+        )
+    })?;
+    if metadata.is_dir() {
+        return Ok(());
+    }
+    if metadata.is_file() {
+        return Err(format!(
+            "--workspace requires a directory project root, got file `{}`. Keep the file path as the owner/selector and use a directory workspace, for example `asp {language_id} search owner <file> items --query '<terms>' --workspace . --view seeds`.",
+            root.display()
+        ));
+    }
+    Err(format!(
+        "--workspace requires a directory project root, got non-directory `{}`",
+        root.display()
+    ))
 }
 
 fn workspace_bounded_root(root: PathBuf, activation_root: &Path) -> Result<PathBuf, String> {

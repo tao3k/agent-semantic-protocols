@@ -1,12 +1,14 @@
-bench_command = "cargo test -p agent-semantic-protocol asp_unit_scenarios_cover_perf_sensitive_query_search_subcommands"
-target_total_ms = 50
-max_total_ms = 250
-observed_total_ms = 10
-regression_budget_ms = 50
+harness = "libtest"
+test = "asp_unit_scenarios_cover_perf_sensitive_query_search_subcommands"
+snapshot = "asp_unit_scenarios_cover_perf_sensitive_query_search_subcommands"
+target_total = "50ms"
+max_total = "250ms"
+observed_total = "10ms"
+regression_budget = "50ms"
 memory_budget_bytes = 8388608
 observed_memory_bytes = 4194304
 target_rationale = "The focused unit test only scans scenario.toml policy ids and should stay a deterministic metadata gate while ensuring query/search performance surfaces remain covered."
 
 [observed_timings]
-discover_scenarios_ms = 4
-policy_id_assert_ms = 4
+discover_scenarios = "4ms"
+policy_id_assert = "4ms"
