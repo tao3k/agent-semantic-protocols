@@ -20,7 +20,7 @@ use super::provider_process::{
 };
 use super::provider_roots::{
     activation_project_root, activation_storage_root, client_backend_cache_home,
-    effective_project_root_and_args,
+    effective_project_root_and_args, validate_explicit_workspace_project_root,
 };
 use super::query_direct_read::{
     is_asp_fast_direct_source_read, run_asp_fast_direct_source_read_command,
@@ -293,6 +293,7 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
     if run_asp_fast_search_meta_command(language_id, &command_args) {
         return Ok(());
     }
+    validate_explicit_workspace_project_root(language_id, &command_args, &invocation_root)?;
     if let Some(result) =
         run_pre_activation_fast_owner_query(language_id, &command_args, &invocation_root)?
     {

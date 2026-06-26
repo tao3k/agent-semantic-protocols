@@ -59,6 +59,14 @@ pub(super) fn effective_project_root_and_args(
     }
 }
 
+pub(super) fn validate_explicit_workspace_project_root(
+    language_id: &str,
+    args: &[String],
+    invocation_root: &Path,
+) -> Result<(), String> {
+    explicit_workspace_project_root(language_id, args, invocation_root).map(|_| ())
+}
+
 fn validate_code_flag_boundary(args: &[String]) -> Result<(), String> {
     if !matches!(args.first().map(String::as_str), Some("query" | "search")) {
         return Ok(());
