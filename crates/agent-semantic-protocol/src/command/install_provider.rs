@@ -138,7 +138,7 @@ fn run_install_provider(args: &[String]) -> Result<(), String> {
     let asset_name = asset_name(&spec, &target);
     let archive_source = release_asset_url(&spec, &asset_name);
     let archive_path = download_release_archive(&spec, &target, &install_args.project_root)?;
-    let expected_sha256 = checksum_for_archive(&spec, &target)?;
+    let expected_sha256 = checksum_for_archive(&spec, &target, &install_args.project_root)?;
     let actual_sha256 = sha256_file(&archive_path)?;
     if expected_sha256 != actual_sha256 {
         return Err(format!(
@@ -334,12 +334,16 @@ fn download_release_archive(
     Ok(archive_path)
 }
 
-fn checksum_for_archive(spec: &ProviderReleaseSpec, target: &str) -> Result<String, String> {
+fn checksum_for_archive(
+    spec: &ProviderReleaseSpec,
+    target: &str,
+    project_root: &Path,
+) -> Result<String, String> {
     let url = release_asset_url(spec, &checksum_name(spec, target));
-    let checksum_path = env::temp_dir().join(format!(
-        "asp-provider-install-{}-{target}.sha256",
-        spec.language_id
-    ));
+    let download_dir = ensure_project_provider_lock_dir(project_root)?.join("downloads");
+    fs::create_dir_all(&download_dir)
+        .map_err(|error| format!("failed to create {}: {error}", download_dir.display()))?;
+    let checksum_path = download_dir.join(checksum_name(spec, target));
     run_curl(&url, &checksum_path)?;
     let checksum = fs::read_to_string(&checksum_path)
         .map_err(|error| format!("failed to read {}: {error}", checksum_path.display()))?;
