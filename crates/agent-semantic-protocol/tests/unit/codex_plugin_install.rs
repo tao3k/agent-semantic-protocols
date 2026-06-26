@@ -110,6 +110,47 @@ mod unix {
         std::fs::remove_dir_all(root).expect("cleanup temp project root");
     }
 
+    #[test]
+    fn install_plugin_codex_preserves_tracked_source_bundle() {
+        let root = temp_project_root("codex-plugin-tracked-source-bundle");
+        let codex_home = root.join(".codex-home");
+        std::fs::create_dir_all(&codex_home).expect("create codex home");
+        write_tracked_plugin_source_bundle(&root);
+
+        let fake_bin = write_fake_codex_cli(&root);
+        let output = Command::new(env!("CARGO_BIN_EXE_asp"))
+            .current_dir(&root)
+            .env("CODEX_HOME", &codex_home)
+            .env("PATH", prepend_path(&fake_bin))
+            .env("PRJ_CACHE_HOME", root.join(".cache"))
+            .args(["install", "plugin", "--codex", "."])
+            .output()
+            .expect("run asp install plugin --codex");
+        assert!(
+            output.status.success(),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(
+            root.join("asp-codex-plugin")
+                .join(".codex-plugin")
+                .join("plugin.json")
+                .is_file(),
+            "tracked source plugin manifest must be preserved"
+        );
+        assert!(
+            root.join("asp-codex-plugin")
+                .join("hooks")
+                .join("hooks.json")
+                .is_file(),
+            "tracked source plugin hooks must be preserved"
+        );
+        assert_project_plugin_cache_refreshed(&root);
+
+        std::fs::remove_dir_all(root).expect("cleanup temp project root");
+    }
+
     fn write_stale_plugin_skill_contract(root: &Path) {
         let contract_path = root
             .join("asp-codex-plugin")
@@ -137,6 +178,40 @@ mod unix {
             ),
         )
         .expect("write stale plugin cache skill");
+    }
+
+    fn write_tracked_plugin_source_bundle(root: &Path) {
+        let manifest_path = root
+            .join("asp-codex-plugin")
+            .join(".codex-plugin")
+            .join("plugin.json");
+        let hooks_path = root
+            .join("asp-codex-plugin")
+            .join("hooks")
+            .join("hooks.json");
+        std::fs::create_dir_all(manifest_path.parent().expect("plugin manifest dir"))
+            .expect("create plugin manifest dir");
+        std::fs::create_dir_all(hooks_path.parent().expect("plugin hooks dir"))
+            .expect("create plugin hooks dir");
+        std::fs::write(&manifest_path, "{}\n").expect("write plugin manifest");
+        std::fs::write(&hooks_path, "{}\n").expect("write plugin hooks");
+        run_git(root, &["init"]);
+        run_git(root, &["add", "asp-codex-plugin"]);
+    }
+
+    fn run_git(root: &Path, args: &[&str]) {
+        let output = Command::new("git")
+            .current_dir(root)
+            .args(args)
+            .output()
+            .expect("run git");
+        assert!(
+            output.status.success(),
+            "git {:?} stdout={} stderr={}",
+            args,
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
     }
 
     fn assert_no_downstream_plugin_bundle(root: &Path) {

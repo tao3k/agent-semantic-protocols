@@ -128,6 +128,9 @@ fn remove_downstream_codex_plugin_bundle(project_root: &Path) -> Result<(), Stri
     if !plugin_root.exists() {
         return Ok(());
     }
+    if path_has_git_tracked_entries(project_root, ASP_CODEX_PLUGIN_NAME) {
+        return Ok(());
+    }
     if !plugin_root.is_dir() {
         return Err(format!(
             "Codex plugin installation no longer writes {}; remove this non-directory path before installing",
@@ -137,6 +140,17 @@ fn remove_downstream_codex_plugin_bundle(project_root: &Path) -> Result<(), Stri
     fs::remove_dir_all(&plugin_root)
         .map_err(|error| format!("failed to remove {}: {error}", plugin_root.display()))?;
     Ok(())
+}
+
+fn path_has_git_tracked_entries(project_root: &Path, path: &str) -> bool {
+    Command::new("git")
+        .arg("-C")
+        .arg(project_root)
+        .args(["ls-files", "--"])
+        .arg(path)
+        .output()
+        .map(|output| output.status.success() && !output.stdout.is_empty())
+        .unwrap_or(false)
 }
 
 fn write_codex_plugin_file(path: &Path, content: &str) -> Result<(), String> {
