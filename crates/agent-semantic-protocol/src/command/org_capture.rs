@@ -7,12 +7,11 @@ use agent_semantic_runtime::project_state_paths;
 use orgize::agent;
 use std::{
     env, fs,
+    io::ErrorKind,
     path::{Path, PathBuf},
     process::Command,
 };
 
-const RESOURCE_DIRS: &[&str] = &["contracts", "templates", "skills"];
-const BUNDLED_REQUIRED_RESOURCE_DIRS: &[&str] = &["contracts", "templates"];
 const FLOW_DIRS: &[&str] = &["plans", "sdd", "bdd", "tdd", "bdr"];
 const ORG_ARTIFACTS_DIR: &str = "artifacts/org";
 const DEFAULT_ASP_ORG_REPO_URL: &str = "https://github.com/tao3k/org.git";
@@ -83,22 +82,10 @@ pub(crate) struct OrgStateSync {
     pub(crate) source: String,
     pub(crate) status: &'static str,
     pub(crate) legacy_backup: Option<PathBuf>,
-    pub(crate) copied_files: usize,
 }
 
 fn sync_default_org_state(project_root: &Path, state_root: &Path) -> Result<OrgStateSync, String> {
     let repo_url = default_org_repo_url();
-    if env::var_os(ASP_ORG_REPO_URL_ENV).is_none()
-        && let Some(source_root) = bundled_org_source_root()
-    {
-        let copied_files = materialize_org_resources(&source_root, state_root)?;
-        return Ok(OrgStateSync {
-            source: source_root.display().to_string(),
-            status: "bundled-copied",
-            legacy_backup: None,
-            copied_files,
-        });
-    }
     sync_org_state_repo(project_root, state_root, &repo_url)
 }
 
@@ -106,15 +93,19 @@ fn default_org_repo_url() -> String {
     env::var(ASP_ORG_REPO_URL_ENV)
         .ok()
         .filter(|value| !value.trim().is_empty())
+        .or_else(bundled_org_remote_url)
         .unwrap_or_else(|| DEFAULT_ASP_ORG_REPO_URL.to_string())
 }
 
-fn bundled_org_source_root() -> Option<PathBuf> {
+fn bundled_org_remote_url() -> Option<String> {
     let source_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../languages/org");
-    BUNDLED_REQUIRED_RESOURCE_DIRS
-        .iter()
-        .all(|resource| source_root.join(resource).is_dir())
-        .then_some(source_root)
+    git_output(
+        &["config", "--get", "remote.origin.url"],
+        Some(&source_root),
+    )
+    .ok()
+    .map(|value| value.trim().to_string())
+    .filter(|value| !value.is_empty())
 }
 
 fn sync_org_state_repo(
@@ -133,7 +124,6 @@ fn sync_org_state_repo(
                 source: repo_url.to_string(),
                 status: "dirty-skipped",
                 legacy_backup: None,
-                copied_files: 0,
             });
         }
         run_git(&["pull", "--ff-only"], Some(state_root))?;
@@ -142,7 +132,6 @@ fn sync_org_state_repo(
             source: repo_url.to_string(),
             status: "updated",
             legacy_backup: None,
-            copied_files: 0,
         });
     }
 
@@ -174,7 +163,6 @@ fn sync_org_state_repo(
         source: repo_url.to_string(),
         status: "cloned",
         legacy_backup,
-        copied_files: 0,
     })
 }
 
@@ -277,33 +265,20 @@ fn legacy_backup_path(project_root: &Path, state_root: &Path) -> Result<PathBuf,
 }
 
 fn run_git(args: &[&str], cwd: Option<&Path>) -> Result<(), String> {
-    let mut command = Command::new("git");
-    command.args(args);
-    if let Some(cwd) = cwd {
-        command.current_dir(cwd);
+    let output = git_output_bytes(args, cwd)?;
+    if output.status.success() {
+        return Ok(());
     }
-    let status = command
-        .status()
-        .map_err(|error| format!("failed to run git {}: {error}", args.join(" ")))?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(format!(
-            "git {} failed with status {status}",
-            args.join(" ")
-        ))
-    }
+    Err(format!(
+        "git {} failed with status {}: {}",
+        args.join(" "),
+        output.status,
+        String::from_utf8_lossy(&output.stderr).trim()
+    ))
 }
 
 fn git_output(args: &[&str], cwd: Option<&Path>) -> Result<String, String> {
-    let mut command = Command::new("git");
-    command.args(args);
-    if let Some(cwd) = cwd {
-        command.current_dir(cwd);
-    }
-    let output = command
-        .output()
-        .map_err(|error| format!("failed to run git {}: {error}", args.join(" ")))?;
+    let output = git_output_bytes(args, cwd)?;
     if !output.status.success() {
         return Err(format!(
             "git {} failed with status {}: {}",
@@ -316,30 +291,77 @@ fn git_output(args: &[&str], cwd: Option<&Path>) -> Result<String, String> {
         .map_err(|error| format!("git {} output was not UTF-8: {error}", args.join(" ")))
 }
 
-fn materialize_org_resources(source_root: &Path, state_root: &Path) -> Result<usize, String> {
-    if !source_root.is_dir() {
-        return Err(format!(
-            "ASP Org source directory `{}` was not found; pass --source-dir for a local development copy override",
-            source_root.display()
-        ));
+fn git_output_bytes(args: &[&str], cwd: Option<&Path>) -> Result<std::process::Output, String> {
+    let mut not_found = Vec::new();
+    for git in git_command_candidates() {
+        let mut command = Command::new(&git);
+        command.args(args);
+        if let Some(cwd) = cwd {
+            command.current_dir(cwd);
+        }
+        match command.output() {
+            Ok(output) if output.status.success() => return Ok(output),
+            Ok(output) if looks_like_tool_resolution_failure(&output.stderr) => {
+                not_found.push(format!(
+                    "{git}: {}",
+                    String::from_utf8_lossy(&output.stderr).trim()
+                ));
+            }
+            Ok(output) => return Ok(output),
+            Err(error) if error.kind() == ErrorKind::NotFound => {
+                not_found.push(format!("{git}: {error}"));
+            }
+            Err(error) => {
+                return Err(format!("failed to run {git} {}: {error}", args.join(" ")));
+            }
+        }
     }
-    fs::create_dir_all(state_root)
-        .map_err(|error| format!("failed to create {}: {error}", state_root.display()))?;
+    Err(format!(
+        "failed to find git for {}: {}",
+        args.join(" "),
+        not_found.join("; ")
+    ))
+}
 
-    let mut copied_files = 0;
-    for resource in RESOURCE_DIRS {
-        let source = source_root.join(resource);
-        if !source.is_dir() {
-            continue;
-        }
-        let target = state_root.join(resource);
-        if target.exists() {
-            fs::remove_dir_all(&target)
-                .map_err(|error| format!("failed to refresh {}: {error}", target.display()))?;
-        }
-        copied_files += copy_tree(&source, &target)?;
+fn git_command_candidates() -> Vec<String> {
+    let mut candidates = Vec::new();
+    push_git_candidate_from_env(&mut candidates, "ASP_GIT_BIN");
+    candidates.push("git".to_string());
+    for path in [
+        "/usr/bin/git",
+        "/opt/homebrew/bin/git",
+        "/usr/local/bin/git",
+        "/run/current-system/sw/bin/git",
+    ] {
+        push_git_candidate(&mut candidates, path);
     }
-    Ok(copied_files)
+    if let Ok(user) = env::var("USER") {
+        push_git_candidate(
+            &mut candidates,
+            &format!("/etc/profiles/per-user/{user}/bin/git"),
+        );
+    }
+    if let Ok(home) = env::var("HOME") {
+        push_git_candidate(&mut candidates, &format!("{home}/.nix-profile/bin/git"));
+    }
+    candidates
+}
+
+fn push_git_candidate_from_env(candidates: &mut Vec<String>, key: &str) {
+    if let Ok(value) = env::var(key) {
+        push_git_candidate(candidates, value.trim());
+    }
+}
+
+fn push_git_candidate(candidates: &mut Vec<String>, path: &str) {
+    if !path.is_empty() && !candidates.iter().any(|candidate| candidate == path) {
+        candidates.push(path.to_string());
+    }
+}
+
+fn looks_like_tool_resolution_failure(stderr: &[u8]) -> bool {
+    let stderr = String::from_utf8_lossy(stderr);
+    stderr.contains("tool 'git' not found") || stderr.contains("tool `git` not found")
 }
 
 fn ensure_flow_dirs(artifacts_root: &Path) -> Result<Vec<PathBuf>, String> {
@@ -352,40 +374,6 @@ fn ensure_flow_dirs(artifacts_root: &Path) -> Result<Vec<PathBuf>, String> {
             Ok(path)
         })
         .collect()
-}
-
-fn copy_tree(source: &Path, target: &Path) -> Result<usize, String> {
-    fs::create_dir_all(target)
-        .map_err(|error| format!("failed to create {}: {error}", target.display()))?;
-    let mut copied_files = 0;
-    for entry in fs::read_dir(source)
-        .map_err(|error| format!("failed to read {}: {error}", source.display()))?
-    {
-        let entry =
-            entry.map_err(|error| format!("failed to read {}: {error}", source.display()))?;
-        let name = entry.file_name();
-        if name.to_string_lossy().starts_with(".git") {
-            continue;
-        }
-        let source_path = entry.path();
-        let target_path = target.join(name);
-        let file_type = entry
-            .file_type()
-            .map_err(|error| format!("failed to stat {}: {error}", source_path.display()))?;
-        if file_type.is_dir() {
-            copied_files += copy_tree(&source_path, &target_path)?;
-        } else if file_type.is_file() {
-            fs::copy(&source_path, &target_path).map_err(|error| {
-                format!(
-                    "failed to copy {} to {}: {error}",
-                    source_path.display(),
-                    target_path.display()
-                )
-            })?;
-            copied_files += 1;
-        }
-    }
-    Ok(copied_files)
 }
 
 fn path_segment(value: &str) -> String {
@@ -409,7 +397,7 @@ fn required_flag_value<'a>(
 }
 
 fn capture_usage() -> &'static str {
-    "usage: asp org capture --contract CONTRACT_ID --title TITLE --target-file ORG_FILE [--choice KEY=VALUE] [--outline OUTLINE] [--kind KIND] [--tag TAG] [--property KEY=VALUE] [--body TEXT]\n\n`capture --contract CONTRACT_ID ...` renders a non-mutating Org entry and validates it against the ASP Org contract registry before returning org-entry. CONTRACT_ID must be explicit, such as agent.task.v1, agent.plan.v1, agent.sdd.v1, agent.adr.v1, agent.bdd.v1, agent.tdd.v1, agent.bdr.v1, agent.prd.v1, or agent.execplan.v1. The agent.task.v1 and agent.plan.v1 capture shapes are materialized from .cache/agent-semantic-protocol/org/templates/<CONTRACT_ID>.org unless the caller overrides kind, tags, properties, or body. When a contract declares `org-contract :type agent-interactive` with `method: choice` and `stage: pre-capture`, capture prints the compact choice window until the caller passes `--choice <id>=N|ID|?`; `<id>` comes from that Org block. ASP resolves CONTRACT_ID from .cache/agent-semantic-protocol/org/contracts/<CONTRACT_ID>.org, synchronizing bundled resources and creating artifacts/org/flow/{plans,sdd,bdd,tdd,bdr} when needed."
+    "usage: asp org capture --contract CONTRACT_ID --title TITLE --target-file ORG_FILE [--choice KEY=VALUE] [--outline OUTLINE] [--kind KIND] [--tag TAG] [--property KEY=VALUE] [--body TEXT]\n\n`capture --contract CONTRACT_ID ...` renders a non-mutating Org entry and validates it against the ASP Org contract registry before returning org-entry. CONTRACT_ID must be explicit, such as agent.task.v1, agent.plan.v1, agent.sdd.v1, agent.adr.v1, agent.bdd.v1, agent.tdd.v1, agent.bdr.v1, agent.prd.v1, or agent.execplan.v1. The agent.task.v1 and agent.plan.v1 capture shapes are materialized from .cache/agent-semantic-protocol/org/templates/<CONTRACT_ID>.org unless the caller overrides kind, tags, properties, or body. When a contract declares `org-contract :type agent-interactive` with `method: choice` and `stage: pre-capture`, capture prints the compact choice window until the caller passes `--choice <id>=N|ID|?`; `<id>` comes from that Org block. ASP resolves CONTRACT_ID from .cache/agent-semantic-protocol/org/contracts/<CONTRACT_ID>.org, synchronizing the Org resource git remote and creating artifacts/org/flow/{plans,sdd,bdd,tdd,bdr} when needed."
 }
 
 fn capture_contract_requested(args: &[String]) -> bool {
@@ -454,7 +442,7 @@ fn resolve_capture_contract_registry(contract_id: &str) -> Result<PathBuf, Strin
         return Ok(registry_path);
     }
     Err(format!(
-        "ASP Org contract `{contract_id}` was not found at {}; run `asp org capture init` or pass --org-contract-registry PATH.org",
+        "ASP Org contract `{contract_id}` was not found at {}; run `asp sync` or pass --org-contract-registry PATH.org",
         registry_path.display()
     ))
 }

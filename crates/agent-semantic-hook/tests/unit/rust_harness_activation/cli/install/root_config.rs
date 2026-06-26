@@ -328,9 +328,10 @@ fn assert_installed_codex_plugin_skill(root: &std::path::Path) {
         "Codex plugin installation should remove the retired project skill contract copy"
     );
     assert!(
-        root.join("asp-codex-plugin/skills/agent-semantic-protocols/SKILL.org")
+        !root
+            .join("asp-codex-plugin/skills/agent-semantic-protocols/SKILL.org")
             .exists(),
-        "Codex plugin installation should generate the project plugin SKILL.org"
+        "Codex plugin installation should remove the retired project plugin SKILL.org"
     );
     assert!(
         root.join(".codex/plugins/cache/asp-project/asp-codex-plugin/0.1.0/skills/agent-semantic-protocols/SKILL.org")

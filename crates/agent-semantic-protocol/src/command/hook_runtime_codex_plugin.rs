@@ -54,7 +54,9 @@ pub(super) fn install_codex_plugin_hooks(
     scope: CodexPluginScope,
     subagent_model: &str,
 ) -> Result<(PathBuf, String), String> {
-    let plugin_manifest = install_codex_plugin_bundle(project_root)?;
+    remove_downstream_codex_plugin_bundle(project_root)?;
+    let plugin_cache = ensure_codex_project_plugin_cache_static_files(project_root)?;
+    let plugin_manifest = plugin_cache.join(".codex-plugin").join("plugin.json");
     let (marketplace_path, marketplace_name) =
         ensure_codex_project_plugin_marketplace(project_root)?;
     let project_config_path = install_codex_project_plugin_config(project_root)?;
@@ -121,29 +123,23 @@ pub(super) fn install_codex_plugin_hooks(
     ))
 }
 
-fn install_codex_plugin_bundle(project_root: &Path) -> Result<PathBuf, String> {
+fn remove_downstream_codex_plugin_bundle(project_root: &Path) -> Result<(), String> {
     let plugin_root = project_root.join(ASP_CODEX_PLUGIN_NAME);
-    if plugin_root.exists() && !plugin_root.is_dir() {
+    if !plugin_root.exists() {
+        return Ok(());
+    }
+    if !plugin_root.is_dir() {
         return Err(format!(
-            "Codex plugin installation requires {} to be a directory",
+            "Codex plugin installation no longer writes {}; remove this non-directory path before installing",
             super::display_path(project_root, &plugin_root)
         ));
     }
-    write_codex_plugin_bundle_file(
-        &plugin_root.join(".codex-plugin").join("plugin.json"),
-        ASP_CODEX_PLUGIN_MANIFEST_JSON,
-    )?;
-    write_codex_plugin_bundle_file(
-        &plugin_root.join("hooks").join("hooks.json"),
-        ASP_CODEX_PLUGIN_HOOKS_JSON,
-    )?;
-    let skill_dir = plugin_root.join("skills").join("agent-semantic-protocols");
-    remove_codex_plugin_bundle_file(&skill_dir.join("SKILL.org"))?;
-    remove_codex_plugin_bundle_file(&skill_dir.join("SKILL.contract.org"))?;
-    Ok(plugin_root.join(".codex-plugin").join("plugin.json"))
+    fs::remove_dir_all(&plugin_root)
+        .map_err(|error| format!("failed to remove {}: {error}", plugin_root.display()))?;
+    Ok(())
 }
 
-fn write_codex_plugin_bundle_file(path: &Path, content: &str) -> Result<(), String> {
+fn write_codex_plugin_file(path: &Path, content: &str) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)
             .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
@@ -153,7 +149,7 @@ fn write_codex_plugin_bundle_file(path: &Path, content: &str) -> Result<(), Stri
     Ok(())
 }
 
-fn remove_codex_plugin_bundle_file(path: &Path) -> Result<(), String> {
+fn remove_codex_plugin_file(path: &Path) -> Result<(), String> {
     if path.exists() {
         fs::remove_file(path)
             .map_err(|error| format!("failed to remove {}: {error}", path.display()))?;
@@ -164,6 +160,12 @@ fn remove_codex_plugin_bundle_file(path: &Path) -> Result<(), String> {
 pub(super) fn sync_codex_project_plugin_cache(
     project_root: &Path,
 ) -> Result<Option<PathBuf>, String> {
+    let cache_root = ensure_codex_project_plugin_cache_static_files(project_root)?;
+    remove_codex_plugin_file(&cache_root.join(codex_plugin_skill_contract_relative_path()))?;
+    Ok(Some(cache_root))
+}
+
+fn ensure_codex_project_plugin_cache_static_files(project_root: &Path) -> Result<PathBuf, String> {
     let cache_root = codex_project_plugin_cache_path(project_root)?;
     if !cache_root.is_dir() {
         if cache_root.exists() {
@@ -175,24 +177,15 @@ pub(super) fn sync_codex_project_plugin_cache(
         fs::create_dir_all(&cache_root)
             .map_err(|error| format!("failed to create {}: {error}", cache_root.display()))?;
     }
-    let plugin_root = project_root.join(ASP_CODEX_PLUGIN_NAME);
-    sync_codex_plugin_cache_file(
-        &plugin_root,
-        &cache_root,
-        Path::new(".codex-plugin").join("plugin.json"),
+    write_codex_plugin_file(
+        &cache_root.join(".codex-plugin").join("plugin.json"),
+        ASP_CODEX_PLUGIN_MANIFEST_JSON,
     )?;
-    sync_codex_plugin_cache_file(
-        &plugin_root,
-        &cache_root,
-        Path::new("hooks").join("hooks.json"),
+    write_codex_plugin_file(
+        &cache_root.join("hooks").join("hooks.json"),
+        ASP_CODEX_PLUGIN_HOOKS_JSON,
     )?;
-    sync_codex_plugin_cache_file(
-        &plugin_root,
-        &cache_root,
-        codex_plugin_skill_relative_path(),
-    )?;
-    remove_codex_plugin_bundle_file(&cache_root.join(codex_plugin_skill_contract_relative_path()))?;
-    Ok(Some(cache_root))
+    Ok(cache_root)
 }
 
 pub(super) fn codex_project_plugin_cache_skill_path(
@@ -202,8 +195,11 @@ pub(super) fn codex_project_plugin_cache_skill_path(
 }
 
 fn codex_project_plugin_cache_path(project_root: &Path) -> Result<PathBuf, String> {
-    Ok(project_root
-        .join(".codex")
+    Ok(project_root.join(codex_project_plugin_cache_relative_path()?))
+}
+
+fn codex_project_plugin_cache_relative_path() -> Result<PathBuf, String> {
+    Ok(Path::new(".codex")
         .join("plugins")
         .join("cache")
         .join(ASP_CODEX_PLUGIN_MARKETPLACE_NAME)
@@ -221,27 +217,6 @@ fn codex_plugin_skill_contract_relative_path() -> PathBuf {
     Path::new("skills")
         .join("agent-semantic-protocols")
         .join("SKILL.contract.org")
-}
-
-fn sync_codex_plugin_cache_file(
-    plugin_root: &Path,
-    cache_root: &Path,
-    relative_path: PathBuf,
-) -> Result<(), String> {
-    let source = plugin_root.join(&relative_path);
-    let target = cache_root.join(&relative_path);
-    if let Some(parent) = target.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
-    }
-    fs::copy(&source, &target).map_err(|error| {
-        format!(
-            "failed to refresh Codex plugin cache {} from {}: {error}",
-            target.display(),
-            source.display()
-        )
-    })?;
-    Ok(())
 }
 
 fn asp_codex_plugin_version() -> Result<String, String> {
@@ -479,11 +454,15 @@ fn ensure_codex_project_plugin_marketplace(
     plugins.retain(|plugin| {
         plugin.get("name").and_then(serde_json::Value::as_str) != Some(ASP_CODEX_PLUGIN_NAME)
     });
+    let plugin_source_path = format!(
+        "./{}",
+        codex_project_plugin_cache_relative_path()?.display()
+    );
     plugins.push(serde_json::json!({
         "name": ASP_CODEX_PLUGIN_NAME,
         "source": {
             "source": "local",
-            "path": format!("./{ASP_CODEX_PLUGIN_NAME}")
+            "path": plugin_source_path
         },
         "policy": {
             "installation": "AVAILABLE",

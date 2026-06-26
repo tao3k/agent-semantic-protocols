@@ -117,22 +117,7 @@ fn default_agent_skill_path(project_root: &Path) -> PathBuf {
 }
 
 fn plugin_skill_path(project_root: &Path) -> Result<PathBuf, String> {
-    let plugin_root = project_root.join("asp-codex-plugin");
-    if !plugin_root
-        .join(".codex-plugin")
-        .join("plugin.json")
-        .is_file()
-    {
-        return Err(format!(
-            "Codex plugin bundle is missing {}; run plugin bundle installation before rendering plugin SKILL.org",
-            plugin_root
-                .join(".codex-plugin")
-                .join("plugin.json")
-                .display()
-        ));
-    }
-    let skill_dir = plugin_root.join("skills").join("agent-semantic-protocols");
-    Ok(skill_dir.join("SKILL.org"))
+    Ok(project_root.join(codex_project_plugin_cache_skill_config_path()?))
 }
 
 fn merge_agent_semantic_protocols_agent_config(existing: &str) -> Result<String, String> {

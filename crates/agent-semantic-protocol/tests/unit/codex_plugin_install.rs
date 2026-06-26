@@ -39,7 +39,8 @@ mod unix {
         );
         let stdout = String::from_utf8_lossy(&output.stdout);
         assert!(stdout.contains("[plugin-install]"), "stdout={stdout}");
-        assert_project_plugin_bundle_installed(&root);
+        assert_no_downstream_plugin_bundle(&root);
+        assert_project_plugin_cache_refreshed(&root);
 
         let content = std::fs::read_to_string(&project_config).expect("read project config");
         assert!(content.contains("model = \"gpt-5\""), "{content}");
@@ -99,7 +100,7 @@ mod unix {
             stdout.contains("pluginCache=.codex/plugins/cache/asp-project/asp-codex-plugin/0.1.0"),
             "stdout={stdout}"
         );
-        assert_project_plugin_bundle_installed(&root);
+        assert_no_downstream_plugin_bundle(&root);
         assert_project_plugin_cache_refreshed(&root);
         let agent_config = std::fs::read_to_string(root.join(".agents").join("asp.toml"))
             .expect("read agent config");
@@ -138,42 +139,12 @@ mod unix {
         .expect("write stale plugin cache skill");
     }
 
-    fn assert_project_plugin_bundle_installed(root: &Path) {
+    fn assert_no_downstream_plugin_bundle(root: &Path) {
         let plugin_root = root.join("asp-codex-plugin");
         assert!(
-            plugin_root
-                .join(".codex-plugin")
-                .join("plugin.json")
-                .is_file(),
-            "missing plugin manifest under {}",
+            !plugin_root.exists(),
+            "Codex plugin install must not write downstream plugin bundle under {}",
             plugin_root.display()
-        );
-        assert!(
-            plugin_root.join("hooks").join("hooks.json").is_file(),
-            "missing plugin hooks under {}",
-            plugin_root.display()
-        );
-        let skill_dir = plugin_root.join("skills").join("agent-semantic-protocols");
-        let skill_path = skill_dir.join("SKILL.org");
-        let contract_path = skill_dir.join("SKILL.contract.org");
-        assert!(
-            skill_path.is_file(),
-            "missing plugin skill under {}",
-            skill_path.display()
-        );
-        let skill = std::fs::read_to_string(&skill_path).expect("read plugin skill");
-        let expected_asp_org =
-            ".cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org#asp-org";
-        let expected_org_artifacts = ".cache/agent-semantic-protocol/artifacts/org";
-        assert!(skill.contains("ASP Org Reference"));
-        assert!(skill.contains("REFER_ORG"));
-        assert!(skill.contains(expected_asp_org), "{skill}");
-        assert!(skill.contains(expected_org_artifacts), "{skill}");
-        assert!(!skill.contains(&root.display().to_string()), "{skill}");
-        assert!(
-            !contract_path.exists(),
-            "plugin directory must not contain SKILL.contract.org under {}",
-            contract_path.display()
         );
         let project_skill_dir = root
             .join(".agents")
@@ -225,13 +196,41 @@ mod unix {
             "{agent_config}"
         );
         assert!(!agent_config.contains("orgSkill"), "{agent_config}");
+        let marketplace = std::fs::read_to_string(
+            root.join(".agents")
+                .join("plugins")
+                .join("marketplace.json"),
+        )
+        .expect("read project plugin marketplace");
+        assert!(
+            marketplace.contains(
+                "\"path\": \"./.codex/plugins/cache/asp-project/asp-codex-plugin/0.1.0\""
+            ),
+            "{marketplace}"
+        );
+        assert!(
+            !marketplace.contains("\"path\": \"./asp-codex-plugin\""),
+            "{marketplace}"
+        );
     }
 
     fn assert_project_plugin_cache_refreshed(root: &Path) {
-        let cache_skill_path = project_plugin_cache_root(root)
-            .join("skills")
-            .join("agent-semantic-protocols")
-            .join("SKILL.org");
+        let cache_root = project_plugin_cache_root(root);
+        assert!(
+            cache_root
+                .join(".codex-plugin")
+                .join("plugin.json")
+                .is_file(),
+            "missing plugin cache manifest under {}",
+            cache_root.display()
+        );
+        assert!(
+            cache_root.join("hooks").join("hooks.json").is_file(),
+            "missing plugin cache hooks under {}",
+            cache_root.display()
+        );
+        let cache_skill_dir = cache_root.join("skills").join("agent-semantic-protocols");
+        let cache_skill_path = cache_skill_dir.join("SKILL.org");
         let skill = std::fs::read_to_string(&cache_skill_path).expect("read plugin cache skill");
         assert!(skill.contains("ASP Org Reference"), "{skill}");
         assert!(
@@ -244,6 +243,11 @@ mod unix {
             "{skill}"
         );
         assert!(!skill.contains(&root.display().to_string()), "{skill}");
+        assert!(
+            !cache_skill_dir.join("SKILL.contract.org").exists(),
+            "plugin cache must not contain SKILL.contract.org under {}",
+            cache_skill_dir.display()
+        );
     }
 
     fn project_plugin_cache_root(root: &Path) -> PathBuf {

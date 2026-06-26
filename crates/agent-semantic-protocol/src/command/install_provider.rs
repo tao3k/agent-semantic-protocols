@@ -24,6 +24,9 @@ struct ProviderReleaseSpec {
     release_version: String,
     download_base_url: String,
     binary: String,
+    archive_prefix: String,
+    archive_binary: String,
+    require_native_binary: bool,
     supported_targets: Vec<String>,
 }
 
@@ -40,6 +43,9 @@ struct PinnedLanguageReleaseEntry {
     version: String,
     download_base_url: String,
     binary: String,
+    archive_prefix: Option<String>,
+    archive_binary: Option<String>,
+    require_native_binary: Option<bool>,
     supported_targets: Vec<String>,
 }
 
@@ -262,6 +268,9 @@ fn provider_release(language_id: &str) -> Result<ProviderReleaseSpec, String> {
         repo: entry.repo,
         release_version: entry.version,
         download_base_url: entry.download_base_url,
+        archive_prefix: entry.archive_prefix.unwrap_or_else(|| entry.binary.clone()),
+        archive_binary: entry.archive_binary.unwrap_or_else(|| entry.binary.clone()),
+        require_native_binary: entry.require_native_binary.unwrap_or(false),
         binary: entry.binary,
         supported_targets: entry.supported_targets,
     })
@@ -295,7 +304,7 @@ fn validate_target(spec: &ProviderReleaseSpec, target: &str) -> Result<(), Strin
 }
 
 fn asset_name(spec: &ProviderReleaseSpec, target: &str) -> String {
-    format!("{}-{target}.tar.gz", spec.binary)
+    format!("{}-{target}.tar.gz", spec.archive_prefix)
 }
 
 fn checksum_name(spec: &ProviderReleaseSpec, target: &str) -> String {
@@ -385,6 +394,9 @@ fn install_archive_binary(
     provider_package_dir: &Path,
 ) -> Result<PathBuf, String> {
     let package_binary = install_archive_package(archive_path, spec, target, provider_package_dir)?;
+    if spec.require_native_binary {
+        validate_native_binary(&package_binary)?;
+    }
     install_executable_entrypoint(&package_binary, provider_binary_path)?;
     Ok(provider_binary_path.to_path_buf())
 }
@@ -419,13 +431,14 @@ fn install_archive_package(
                 archive_path.display()
             ));
         }
-        let extracted = find_binary_in_dir(&staging, &spec.binary, target).ok_or_else(|| {
-            format!(
-                "archive {} did not contain executable {}",
-                archive_path.display(),
-                spec.binary
-            )
-        })?;
+        let extracted =
+            find_binary_in_dir(&staging, &spec.archive_binary, target).ok_or_else(|| {
+                format!(
+                    "archive {} did not contain executable {}",
+                    archive_path.display(),
+                    spec.archive_binary
+                )
+            })?;
         let binary_relative = extracted
             .strip_prefix(&staging)
             .map_err(|error| {
@@ -453,7 +466,8 @@ fn install_archive_package(
                 provider_package_dir.display()
             )
         })?;
-        let package_binary = provider_package_dir.join(binary_file_name(&spec.binary, target));
+        let package_binary =
+            provider_package_dir.join(binary_file_name(&spec.archive_binary, target));
         copy_executable(archive_path, &package_binary)?;
         Ok(package_binary)
     }
@@ -509,6 +523,38 @@ fn binary_file_name(binary: &str, target: &str) -> String {
     }
 }
 
+fn validate_native_binary(path: &Path) -> Result<(), String> {
+    let mut file = fs::File::open(path)
+        .map_err(|error| format!("failed to open {}: {error}", path.display()))?;
+    let mut magic = [0_u8; 4];
+    let read = file
+        .read(&mut magic)
+        .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
+    if read >= 4 && is_native_binary_magic(&magic) {
+        return Ok(());
+    }
+    if read >= 2 && magic[..2] == *b"MZ" {
+        return Ok(());
+    }
+    Err(format!(
+        "provider archive binary {} is not a native executable; rebuild the release with --binary --release -O",
+        path.display()
+    ))
+}
+
+fn is_native_binary_magic(magic: &[u8; 4]) -> bool {
+    matches!(
+        magic,
+        b"\x7FELF"
+            | b"\xCF\xFA\xED\xFE"
+            | b"\xFE\xED\xFA\xCF"
+            | b"\xCE\xFA\xED\xFE"
+            | b"\xFE\xED\xFA\xCE"
+            | b"\xCA\xFE\xBA\xBE"
+            | b"\xBE\xBA\xFE\xCA"
+    )
+}
+
 fn copy_executable(source: &Path, target: &Path) -> Result<(), String> {
     if let Some(parent) = target.parent() {
         fs::create_dir_all(parent)
@@ -546,32 +592,7 @@ fn install_executable_entrypoint(source: &Path, target: &Path) -> Result<(), Str
         fs::create_dir_all(parent)
             .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
     }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::symlink;
-
-        let temp = target.with_extension("tmp");
-        let _ = fs::remove_file(&temp);
-        symlink(source, &temp).map_err(|error| {
-            format!(
-                "failed to symlink {} to {}: {error}",
-                source.display(),
-                temp.display()
-            )
-        })?;
-        fs::rename(&temp, target).map_err(|error| {
-            format!(
-                "failed to move {} to {}: {error}",
-                temp.display(),
-                target.display()
-            )
-        })?;
-        Ok(())
-    }
-    #[cfg(not(unix))]
-    {
-        copy_executable(source, target)
-    }
+    copy_executable(source, target)
 }
 
 fn path_segment(value: &str) -> String {

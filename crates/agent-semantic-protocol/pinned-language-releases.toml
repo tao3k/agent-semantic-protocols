@@ -49,6 +49,9 @@ repo = "tao3k/gerbil-scheme-language-project-harness"
 version = "v0.1.0"
 downloadBaseUrl = "https://github.com/tao3k/gerbil-scheme-language-project-harness/releases/download/v0.1.0"
 binary = "gslph"
+archivePrefix = "gerbil-scheme-harness"
+archiveBinary = "gerbil-scheme-harness"
+requireNativeBinary = true
 supportedTargets = [
   "x86_64-unknown-linux-gnu",
   "aarch64-apple-darwin",

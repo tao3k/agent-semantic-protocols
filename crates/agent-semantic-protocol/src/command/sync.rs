@@ -19,12 +19,11 @@ pub(crate) fn run_sync_command(args: &[String]) -> Result<(), String> {
         .join("org");
     let org_artifacts = org_artifacts_root_for_project(&project_root)?;
     println!(
-        "[asp-sync] orgState={} orgArtifacts={} orgRepo={} orgStatus={} copiedFiles={}",
+        "[asp-sync] orgState={} orgArtifacts={} orgRepo={} orgStatus={}",
         display_path(&project_root, &org_state),
         display_path(&project_root, &org_artifacts),
         sync.source,
         sync.status,
-        sync.copied_files,
     );
     if let Some(backup) = sync.legacy_backup.as_ref() {
         println!("|legacyBackup={}", display_path(&project_root, backup));

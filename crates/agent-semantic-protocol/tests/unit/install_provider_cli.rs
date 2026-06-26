@@ -20,6 +20,122 @@ fn install_language_pinned_release_ignores_asp_toml_provider_bin() {
 
 #[test]
 #[cfg(unix)]
+fn install_language_gerbil_uses_release_asset_prefix_and_installs_gslph() {
+    let root = temp_project_root();
+    let home = root.join("home");
+    let release_dir = create_gerbil_pinned_release_fixture(&root);
+    let fake_bin = create_fake_curl_bin(&root);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_asp"))
+        .args([
+            "install",
+            "language",
+            "gerbil-scheme",
+            "--target",
+            "x86_64-unknown-linux-gnu",
+        ])
+        .arg("--project")
+        .arg(&root)
+        .env("HOME", &home)
+        .env("PATH", prepend_path(&fake_bin))
+        .env("ASP_TEST_RELEASE_DIR", &release_dir)
+        .env_remove("PRJ_CACHE_HOME")
+        .output()
+        .expect("run asp install language gerbil-scheme");
+
+    assert!(
+        output.status.success(),
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let bin = home.join(".local/bin/gslph");
+    let package_binary = root.join(
+        ".cache/agent-semantic-protocol/runtime/providers/gerbil-scheme/v0.1.0/x86_64-unknown-linux-gnu/bin/gerbil-scheme-harness",
+    );
+    assert!(bin.is_file(), "missing installed gslph {}", bin.display());
+    assert!(
+        package_binary.is_file(),
+        "missing Gerbil package binary {}",
+        package_binary.display()
+    );
+    assert!(
+        !std::fs::symlink_metadata(&bin)
+            .expect("stat installed gslph")
+            .file_type()
+            .is_symlink(),
+        "installed provider command must be a binary file, not a symlink"
+    );
+    assert!(
+        std::fs::read(&bin)
+            .expect("read installed Gerbil provider")
+            .starts_with(b"\x7FELF"),
+        "installed Gerbil provider must be a native binary release payload"
+    );
+    let local_bin_entries = sorted_file_names(&home.join(".local/bin"));
+    assert_eq!(
+        local_bin_entries,
+        vec!["gslph".to_string()],
+        "provider install must not copy package companions or build artifacts into ~/.local/bin"
+    );
+    let lock = std::fs::read_to_string(
+        root.join(".cache/agent-semantic-protocol/runtime/providers/gerbil-scheme.lock.toml"),
+    )
+    .expect("read Gerbil lock");
+    assert!(lock.contains("binary = \"gslph\""), "{lock}");
+    assert!(lock.contains(
+        "source = \"https://github.com/tao3k/gerbil-scheme-language-project-harness/releases/download/v0.1.0/gerbil-scheme-harness-x86_64-unknown-linux-gnu.tar.gz\""
+    ), "{lock}");
+}
+
+#[test]
+#[cfg(unix)]
+fn install_language_gerbil_rejects_script_release_payload() {
+    let root = temp_project_root();
+    let home = root.join("home");
+    let release_dir = create_gerbil_script_release_fixture(&root);
+    let fake_bin = create_fake_curl_bin(&root);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_asp"))
+        .args([
+            "install",
+            "language",
+            "gerbil-scheme",
+            "--target",
+            "x86_64-unknown-linux-gnu",
+        ])
+        .arg("--project")
+        .arg(&root)
+        .env("HOME", &home)
+        .env("PATH", prepend_path(&fake_bin))
+        .env("ASP_TEST_RELEASE_DIR", &release_dir)
+        .env_remove("PRJ_CACHE_HOME")
+        .output()
+        .expect("run asp install language gerbil-scheme");
+
+    assert!(
+        !output.status.success(),
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let output_text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        output_text.contains("is not a native executable"),
+        "{output_text}"
+    );
+    assert!(
+        !home.join(".local/bin/gslph").exists(),
+        "script payload must not be installed as gslph"
+    );
+}
+
+#[test]
+#[cfg(unix)]
 fn install_language_rejects_release_override_flags() {
     let root = temp_project_root();
     let home = root.join("home");
@@ -239,6 +355,45 @@ fn create_pinned_release_fixture(root: &Path) -> PathBuf {
     release_dir
 }
 
+fn create_gerbil_pinned_release_fixture(root: &Path) -> PathBuf {
+    create_gerbil_release_fixture(root, b"\x7FELFfake-gerbil-native-provider\n")
+}
+
+fn create_gerbil_script_release_fixture(root: &Path) -> PathBuf {
+    create_gerbil_release_fixture(
+        root,
+        b"#!/bin/sh\nprintf 'gerbil-provider-ok:%s\\n' \"${1:-missing}\"\n",
+    )
+}
+
+fn create_gerbil_release_fixture(root: &Path, payload: &[u8]) -> PathBuf {
+    let release_dir = root.join("release");
+    let payload_dir = release_dir.join("payload");
+    let bin_dir = payload_dir.join("bin");
+    let binary = bin_dir.join("gerbil-scheme-harness");
+    std::fs::create_dir_all(&bin_dir).expect("create Gerbil release bin dir");
+    std::fs::write(&binary, payload).expect("write fake Gerbil provider binary");
+    make_executable(&binary);
+
+    let archive = release_dir.join("gerbil-scheme-harness-x86_64-unknown-linux-gnu.tar.gz");
+    let status = Command::new("tar")
+        .arg("-czf")
+        .arg(&archive)
+        .arg("-C")
+        .arg(&payload_dir)
+        .arg("bin")
+        .status()
+        .expect("create Gerbil provider archive");
+    assert!(status.success(), "tar failed with status {status}");
+    let sha256 = sha256_file(&archive);
+    std::fs::write(
+        release_dir.join("gerbil-scheme-harness-x86_64-unknown-linux-gnu.tar.gz.sha256"),
+        format!("{sha256}  gerbil-scheme-harness-x86_64-unknown-linux-gnu.tar.gz\n"),
+    )
+    .expect("write Gerbil provider checksum");
+    release_dir
+}
+
 fn create_fake_curl_bin(root: &Path) -> PathBuf {
     let fake_bin = root.join("fake-bin");
     let fake_curl = fake_bin.join("curl");
@@ -255,6 +410,8 @@ url="$4"
 case "$url" in
   https://github.com/tao3k/rust-lang-project-harness/releases/download/v0.1.2/*)
     ;;
+  https://github.com/tao3k/gerbil-scheme-language-project-harness/releases/download/v0.1.0/*)
+    ;;
   *)
     echo "unexpected release url: $url" >&2
     exit 1
@@ -263,6 +420,9 @@ esac
 name="${url##*/}"
 case "$name" in
   rs-harness-x86_64-unknown-linux-gnu.tar.gz|rs-harness-x86_64-unknown-linux-gnu.tar.gz.sha256)
+    cp "$ASP_TEST_RELEASE_DIR/$name" "$out"
+    ;;
+  gerbil-scheme-harness-x86_64-unknown-linux-gnu.tar.gz|gerbil-scheme-harness-x86_64-unknown-linux-gnu.tar.gz.sha256)
     cp "$ASP_TEST_RELEASE_DIR/$name" "$out"
     ;;
   *)
@@ -297,6 +457,21 @@ fn sha256_file(path: &Path) -> String {
         hasher.update(&buffer[..read]);
     }
     format!("{:x}", hasher.finalize())
+}
+
+fn sorted_file_names(path: &Path) -> Vec<String> {
+    let mut entries = std::fs::read_dir(path)
+        .expect("read dir")
+        .map(|entry| {
+            entry
+                .expect("dir entry")
+                .file_name()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect::<Vec<_>>();
+    entries.sort();
+    entries
 }
 
 fn temp_project_root() -> PathBuf {

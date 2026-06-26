@@ -89,11 +89,14 @@ asp install plugin --codex .
 
 The Codex installer uses the official plugin marketplace model. It writes or
 refreshes `.agents/plugins/marketplace.json`, installs
-`asp-codex-plugin@asp-project` into the project-scoped `.codex` home, writes the
-generated skill to
-`asp-codex-plugin/skills/agent-semantic-protocols/SKILL.org`, and removes the
-retired project skill and direct Codex hook/subagent files. After installing,
-restart Codex or start a new thread so the plugin bundle and hooks are loaded.
+`asp-codex-plugin@asp-project` through the project-scoped `.codex` cache,
+materializes the plugin bundle in
+`.codex/plugins/cache/asp-project/asp-codex-plugin/<version>/`, writes the
+generated skill to that cache, and removes the retired project skill,
+project-root `asp-codex-plugin/` artifact, and direct Codex hook/subagent
+files. It does not create `asp-codex-plugin/` at the downstream project root.
+After installing, restart Codex or start a new thread so the plugin bundle and
+hooks are loaded.
 
 For a manual install that mirrors the Codex marketplace flow, run:
 

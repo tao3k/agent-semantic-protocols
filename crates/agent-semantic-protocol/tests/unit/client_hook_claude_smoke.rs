@@ -78,7 +78,12 @@ fn codex_install_writes_project_plugin_and_runtime_decision_config() {
     assert!(codex_agent.contains("fork_context=false"));
     assert!(!codex_agent.contains("fork_turns"));
     assert!(
-        root.join("asp-codex-plugin/skills/agent-semantic-protocols/SKILL.org")
+        !root
+            .join("asp-codex-plugin/skills/agent-semantic-protocols/SKILL.org")
+            .is_file()
+    );
+    assert!(
+        root.join(".codex/plugins/cache/asp-project/asp-codex-plugin/0.1.0/skills/agent-semantic-protocols/SKILL.org")
             .is_file()
     );
     assert!(

@@ -66,32 +66,46 @@ mod unix {
     }
 
     #[test]
-    fn sync_refreshes_bundled_org_resources_even_when_state_is_dirty() {
-        let project = temp_root("bundled-dirty-project");
+    fn sync_uses_languages_org_remote_by_default_without_copying_bundled_files() {
+        let source = temp_root("default-org-source");
+        init_org_repo(&source, "default");
+        let git_config = temp_root("default-org-gitconfig");
+        std::fs::write(
+            &git_config,
+            format!(
+                "[url \"file://{}\"]\n\tinsteadOf = https://github.com/tao3k/org.git\n",
+                source.display()
+            ),
+        )
+        .expect("write git config");
+
+        let project = temp_root("default-remote-project");
         std::fs::create_dir_all(project.join(".git")).expect("create project git marker");
+
+        let output = run_default_remote_asp_sync(&project, &git_config);
+        assert!(
+            output.contains("orgRepo=https://github.com/tao3k/org.git"),
+            "expected default org remote receipt, got {output}"
+        );
+        assert!(
+            output.contains("orgStatus=cloned"),
+            "expected default remote clone receipt, got {output}"
+        );
+        assert!(
+            !output.contains("copiedFiles="),
+            "asp sync receipt must not expose copy semantics, got {output}"
+        );
         let org_state = project
             .join(".cache")
             .join("agent-semantic-protocol")
             .join("org");
-        std::fs::create_dir_all(org_state.join(".git")).expect("create dirty org git marker");
-        std::fs::write(org_state.join("local-note.org"), "* local note\n")
-            .expect("write local dirty note");
-
-        let output = run_bundled_asp_sync(&project);
         assert!(
-            output.contains("orgStatus=bundled-copied"),
-            "expected bundled resource sync receipt, got {output}"
+            org_state.join(".git").is_dir(),
+            "default sync must create a git checkout"
         );
         assert!(
-            org_state
-                .join("templates")
-                .join("agent.task.v1.org")
-                .is_file(),
-            "asp sync must refresh templates from bundled languages/org"
-        );
-        assert!(
-            org_state.join("local-note.org").is_file(),
-            "asp sync must not remove non-resource local state"
+            org_state.join("skills").join("ASP_ORG.org").is_file(),
+            "asp sync must materialize org resources through git clone"
         );
         assert!(
             project
@@ -105,6 +119,8 @@ mod unix {
             "asp sync must keep creating org artifact flow dirs"
         );
 
+        let _ = std::fs::remove_file(git_config);
+        let _ = std::fs::remove_dir_all(source);
         let _ = std::fs::remove_dir_all(project);
     }
 
@@ -125,14 +141,15 @@ mod unix {
         String::from_utf8(output.stdout).expect("utf8 stdout")
     }
 
-    fn run_bundled_asp_sync(project: &Path) -> String {
+    fn run_default_remote_asp_sync(project: &Path, git_config: &Path) -> String {
         let output = Command::new(env!("CARGO_BIN_EXE_asp"))
             .current_dir(project)
             .env_remove("ASP_ORG_REPO_URL")
+            .env("GIT_CONFIG_GLOBAL", git_config)
             .env("PRJ_CACHE_HOME", project.join(".cache"))
             .args(["sync"])
             .output()
-            .expect("run bundled asp sync");
+            .expect("run default remote asp sync");
         assert!(
             output.status.success(),
             "stdout={} stderr={}",

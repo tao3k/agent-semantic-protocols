@@ -1,7 +1,8 @@
 //! Runtime-source checkout management for ASP-managed language source facts.
 
 use std::{
-    fs,
+    env, fs,
+    io::ErrorKind,
     path::{Path, PathBuf},
     process::Command,
 };
@@ -120,30 +121,21 @@ fn safe_path_segment(segment: &str) -> Result<&str, String> {
 }
 
 fn run_git<const N: usize>(cwd: &Path, args: [&str; N]) -> Result<(), String> {
-    let output = Command::new("git")
-        .args(args)
-        .current_dir(cwd)
-        .output()
-        .map_err(|error| format!("failed to run git: {error}"))?;
+    let output = git_output_bytes(cwd, args)?;
     if output.status.success() {
-        Ok(())
-    } else {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        Err(format!(
-            "git failed in {} with status {}: {}",
-            cwd.display(),
-            output.status,
-            stderr.trim()
-        ))
+        return Ok(());
     }
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    Err(format!(
+        "git failed in {} with status {}: {}",
+        cwd.display(),
+        output.status,
+        stderr.trim()
+    ))
 }
 
 fn git_output<const N: usize>(cwd: &Path, args: [&str; N]) -> Result<String, String> {
-    let output = Command::new("git")
-        .args(args)
-        .current_dir(cwd)
-        .output()
-        .map_err(|error| format!("failed to run git: {error}"))?;
+    let output = git_output_bytes(cwd, args)?;
     if output.status.success() {
         String::from_utf8(output.stdout)
             .map_err(|error| format!("git output was not utf8: {error}"))
@@ -156,6 +148,74 @@ fn git_output<const N: usize>(cwd: &Path, args: [&str; N]) -> Result<String, Str
             stderr.trim()
         ))
     }
+}
+
+fn git_output_bytes<const N: usize>(
+    cwd: &Path,
+    args: [&str; N],
+) -> Result<std::process::Output, String> {
+    let mut not_found = Vec::new();
+    for git in git_command_candidates() {
+        let output = match Command::new(&git).args(args).current_dir(cwd).output() {
+            Ok(output) => output,
+            Err(error) if error.kind() == ErrorKind::NotFound => {
+                not_found.push(format!("{git}: {error}"));
+                continue;
+            }
+            Err(error) => {
+                return Err(format!("failed to run {git}: {error}"));
+            }
+        };
+        if output.status.success() || !looks_like_tool_resolution_failure(&output.stderr) {
+            return Ok(output);
+        }
+        not_found.push(format!(
+            "{git}: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    Err(format!("failed to find git: {}", not_found.join("; ")))
+}
+
+fn git_command_candidates() -> Vec<String> {
+    let mut candidates = Vec::new();
+    push_git_candidate_from_env(&mut candidates, "ASP_GIT_BIN");
+    candidates.push("git".to_string());
+    for path in [
+        "/usr/bin/git",
+        "/opt/homebrew/bin/git",
+        "/usr/local/bin/git",
+        "/run/current-system/sw/bin/git",
+    ] {
+        push_git_candidate(&mut candidates, path);
+    }
+    if let Ok(user) = env::var("USER") {
+        push_git_candidate(
+            &mut candidates,
+            &format!("/etc/profiles/per-user/{user}/bin/git"),
+        );
+    }
+    if let Ok(home) = env::var("HOME") {
+        push_git_candidate(&mut candidates, &format!("{home}/.nix-profile/bin/git"));
+    }
+    candidates
+}
+
+fn push_git_candidate_from_env(candidates: &mut Vec<String>, key: &str) {
+    if let Ok(value) = env::var(key) {
+        push_git_candidate(candidates, value.trim());
+    }
+}
+
+fn push_git_candidate(candidates: &mut Vec<String>, path: &str) {
+    if !path.is_empty() && !candidates.iter().any(|candidate| candidate == path) {
+        candidates.push(path.to_string());
+    }
+}
+
+fn looks_like_tool_resolution_failure(stderr: &[u8]) -> bool {
+    let stderr = String::from_utf8_lossy(stderr);
+    stderr.contains("tool 'git' not found") || stderr.contains("tool `git` not found")
 }
 
 #[cfg(test)]

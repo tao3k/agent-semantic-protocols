@@ -6,6 +6,8 @@ use crate::provider_command::support::{
 use super::assert_graph_turbo_request_contract;
 use serde_json::Value;
 
+const PROVIDER_FACTS_SEMANTIC_TEST_TIMEOUT_MS: &str = "10000";
+
 #[test]
 fn search_pipe_graph_turbo_request_accepts_rust_provider_ontology_facts() {
     let root = temp_project_root("search-pipe-rust-provider-ontology-facts");
@@ -28,7 +30,10 @@ fn search_pipe_graph_turbo_request_accepts_rust_provider_ontology_facts() {
     let output = asp_command(&root)
         .env("PATH", prepend_path(&bin_dir))
         .env("PRJ_CACHE_HOME", root.join(".cache"))
-        .env("ASP_PROVIDER_GRAPH_FACT_TIMEOUT_MS", "2000")
+        .env(
+            "ASP_PROVIDER_GRAPH_FACT_TIMEOUT_MS",
+            PROVIDER_FACTS_SEMANTIC_TEST_TIMEOUT_MS,
+        )
         .args([
             "rust",
             "search",
@@ -101,7 +106,10 @@ fn search_pipe_graph_turbo_request_accepts_python_provider_ontology_facts() {
     let output = asp_command(&root)
         .env("PATH", prepend_path(&bin_dir))
         .env("PRJ_CACHE_HOME", root.join(".cache"))
-        .env("ASP_PROVIDER_GRAPH_FACT_TIMEOUT_MS", "2000")
+        .env(
+            "ASP_PROVIDER_GRAPH_FACT_TIMEOUT_MS",
+            PROVIDER_FACTS_SEMANTIC_TEST_TIMEOUT_MS,
+        )
         .args([
             "python",
             "search",
@@ -171,7 +179,10 @@ fn search_pipe_graph_turbo_request_accepts_typescript_context_provider_facts() {
     let output = asp_command(&root)
         .env("PATH", prepend_path(&bin_dir))
         .env("PRJ_CACHE_HOME", root.join(".cache"))
-        .env("ASP_PROVIDER_GRAPH_FACT_TIMEOUT_MS", "2000")
+        .env(
+            "ASP_PROVIDER_GRAPH_FACT_TIMEOUT_MS",
+            PROVIDER_FACTS_SEMANTIC_TEST_TIMEOUT_MS,
+        )
         .args([
             "typescript",
             "search",

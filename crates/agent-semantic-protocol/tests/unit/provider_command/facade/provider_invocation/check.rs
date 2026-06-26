@@ -2,6 +2,7 @@ use crate::provider_command::support::{
     asp_command, prepend_path, provider, temp_project_root, write_activation,
     write_check_failure_provider, write_stdout_stderr_exit_provider,
 };
+use std::process::Command;
 use std::time::{Duration, Instant};
 
 const GERBIL_CHECK_CACHE_REPLAY_WALL_SANITY_GATE: Duration = Duration::from_secs(2);
@@ -89,6 +90,59 @@ fn check_changed_view_seeds_renders_failure_frontier_after_provider_failure() {
         last_check.contains("cache_cli::write_prompt_output_artifact"),
         "{last_check}"
     );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn gerbil_check_changed_without_gerbil_changes_returns_without_provider_spawn() {
+    let root = temp_project_root("gerbil-check-changed-empty-fast-path");
+    let bin_dir = root.join(".bin");
+    let cache_home = root.join(".cache");
+    std::fs::write(root.join("README.md"), "non-gerbil change\n").expect("write non-gerbil file");
+    let git_init = Command::new("git")
+        .arg("init")
+        .current_dir(&root)
+        .output()
+        .expect("git init");
+    assert!(
+        git_init.status.success(),
+        "git init stderr={}",
+        String::from_utf8_lossy(&git_init.stderr)
+    );
+    write_stdout_stderr_exit_provider(
+        &bin_dir,
+        "gslph",
+        "provider should not run\n",
+        "provider should not run\n",
+        66,
+    );
+    write_activation(
+        &root,
+        &[provider(
+            "gerbil-scheme",
+            vec![bin_dir.join("gslph").display().to_string()],
+        )],
+    );
+
+    let output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .env("PRJ_CACHE_HOME", &cache_home)
+        .args(["gerbil-scheme", "check", "changed", "--view", "seeds", "."])
+        .output()
+        .expect("run asp gerbil changed check");
+
+    assert!(
+        output.status.success(),
+        "status={:?} stderr={}",
+        output.status,
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    assert_eq!(
+        stdout,
+        "[gerbil-check] status=pass scope=changed files=0 definitions=0 findings=0\n"
+    );
+    assert!(!stdout.contains("provider should not run"), "{stdout}");
     let _ = std::fs::remove_dir_all(root);
 }
 

@@ -255,17 +255,13 @@ fn install_project_skill_does_not_write_codex_plugin_skill() {
 #[test]
 fn install_plugin_skill_writes_only_codex_plugin_skill() {
     let root = temp_project_root("skill-plugin-only");
-    write_plugin_manifest(&root);
     let project_skill_path = root
         .join(".agents")
         .join("skills")
         .join("agent-semantic-protocols")
         .join("SKILL.org");
-    let plugin_contract_path = root
-        .join("asp-codex-plugin")
-        .join("skills")
-        .join("agent-semantic-protocols")
-        .join("SKILL.contract.org");
+    let plugin_contract_path =
+        codex_plugin_cache_skill_path(&root).with_file_name("SKILL.contract.org");
     write_stale_contract(&plugin_contract_path);
 
     let installed = install_agent_semantic_protocols_plugin_skill(
@@ -283,6 +279,7 @@ fn install_plugin_skill_writes_only_codex_plugin_skill() {
         "plugin skill install must not create project SKILL.contract.org"
     );
     let plugin_skill_path = installed.plugin_skill_path.expect("plugin skill path");
+    assert_eq!(plugin_skill_path, codex_plugin_cache_skill_path(&root));
 
     let plugin_skill = std::fs::read_to_string(&plugin_skill_path).expect("read plugin skill");
     let expected_asp_org = ".cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org#asp-org";
@@ -303,7 +300,11 @@ fn install_plugin_skill_writes_only_codex_plugin_skill() {
         !plugin_skill_path
             .with_file_name("SKILL.contract.org")
             .exists(),
-        "plugin directory must not contain SKILL.contract.org"
+        "plugin cache must not contain SKILL.contract.org"
+    );
+    assert!(
+        !root.join("asp-codex-plugin").exists(),
+        "plugin skill render must not create downstream asp-codex-plugin"
     );
 
     let _ = std::fs::remove_dir_all(root);
@@ -384,6 +385,18 @@ fn write_plugin_manifest(root: &std::path::Path) {
         r#"{"name":"asp-codex-plugin","version":"0.1.0","description":"test","author":{"name":"ASP"},"skills":"./skills/"}"#,
     )
     .expect("write plugin manifest");
+}
+
+fn codex_plugin_cache_skill_path(root: &std::path::Path) -> std::path::PathBuf {
+    root.join(".codex")
+        .join("plugins")
+        .join("cache")
+        .join("asp-project")
+        .join("asp-codex-plugin")
+        .join("0.1.0")
+        .join("skills")
+        .join("agent-semantic-protocols")
+        .join("SKILL.org")
 }
 
 fn temp_project_root(name: &str) -> std::path::PathBuf {

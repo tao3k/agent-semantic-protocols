@@ -11,6 +11,30 @@ const FNV64_OFFSET: u64 = 14_695_981_039_346_656_037;
 const FNV64_PRIME: u64 = 1_099_511_628_211;
 
 #[test]
+fn changed_check_empty_scope_stays_in_millisecond_budget() {
+    let root = temp_root("gerbil-check-changed-empty-fast-path");
+    let args = vec![
+        "check".to_string(),
+        "changed".to_string(),
+        "--view".to_string(),
+        "seeds".to_string(),
+        ".".to_string(),
+    ];
+
+    let started_at = Instant::now();
+    let replayed = gerbil_check_cache::try_replay_gerbil_check_cache("gerbil-scheme", &args, &root)
+        .expect("changed fast path");
+    let elapsed = started_at.elapsed();
+
+    assert!(replayed);
+    assert!(
+        elapsed < Duration::from_millis(10),
+        "Gerbil changed empty fast path exceeded 10ms: {elapsed:?}"
+    );
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
 fn check_cache_hit_validation_stays_in_millisecond_budget() {
     let root = temp_root("gerbil-check-cache-hit-validation");
     let source_path = root.join("src/main.ss");

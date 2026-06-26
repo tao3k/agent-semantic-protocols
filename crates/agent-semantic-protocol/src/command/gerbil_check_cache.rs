@@ -4,6 +4,7 @@ use std::fs;
 use std::io::Read;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 const CHECK_CACHE_VERSION: &str = "check-full-output-cache.v1";
 const FNV64_OFFSET: u64 = 14_695_981_039_346_656_037;
@@ -32,7 +33,14 @@ pub(super) fn try_replay_gerbil_check_cache(
     args: &[String],
     project_root: &Path,
 ) -> Result<bool, String> {
-    if language_id != "gerbil-scheme" || !check_cache_eligible(args) {
+    if language_id != "gerbil-scheme" {
+        debug_miss("ineligible-language", None);
+        return Ok(false);
+    }
+    if try_emit_empty_changed_check(args, project_root)? {
+        return Ok(true);
+    }
+    if !check_cache_eligible(args) {
         debug_miss("ineligible", None);
         return Ok(false);
     }
@@ -84,6 +92,57 @@ fn check_cache_eligible(args: &[String]) -> bool {
         && !has_flag(args, "--receipt-json")
         && !has_flag(args, "--view")
         && !has_option(args, "--whitelist")
+}
+
+fn try_emit_empty_changed_check(args: &[String], project_root: &Path) -> Result<bool, String> {
+    if !changed_check_fast_path_eligible(args) {
+        debug_miss("changed-ineligible", None);
+        return Ok(false);
+    }
+    if has_gerbil_relevant_changes(project_root)? {
+        debug_miss("changed-gerbil-source", None);
+        return Ok(false);
+    }
+    let output = "[gerbil-check] status=pass scope=changed files=0 definitions=0 findings=0\n";
+    io::stdout()
+        .write_all(output.as_bytes())
+        .map_err(|error| format!("failed to write Gerbil changed check fast path: {error}"))?;
+    Ok(true)
+}
+
+fn changed_check_fast_path_eligible(args: &[String]) -> bool {
+    args.first().is_some_and(|arg| arg == "check")
+        && (has_flag(args, "--changed") || has_flag(args, "changed"))
+        && !has_flag(args, "--full")
+        && !has_flag(args, "--json")
+        && !has_flag(args, "--profile-json")
+        && !has_flag(args, "--receipt-json")
+        && !has_option(args, "--whitelist")
+}
+
+fn has_gerbil_relevant_changes(project_root: &Path) -> Result<bool, String> {
+    if !project_root.join(".git").exists() {
+        return Ok(false);
+    }
+    let output = Command::new("git")
+        .args([
+            "status",
+            "--porcelain",
+            "--untracked-files=all",
+            "--",
+            ":(glob)**/*.ss",
+            ":(glob)**/*.scm",
+            ":(glob)**/gerbil.pkg",
+            "gerbil.pkg",
+        ])
+        .current_dir(project_root)
+        .output()
+        .map_err(|error| format!("failed to run git status for Gerbil changed check: {error}"))?;
+    if !output.status.success() {
+        debug_miss("changed-git-status", None);
+        return Ok(false);
+    }
+    Ok(!output.stdout.is_empty())
 }
 
 fn has_flag(args: &[String], flag: &str) -> bool {
