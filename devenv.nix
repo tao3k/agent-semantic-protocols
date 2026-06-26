@@ -13,6 +13,7 @@
   # https://devenv.sh/packages/
   packages = [
     pkgs.pkg-config
+    pkgs.openssl
     pkgs.protobuf
     pkgs.just
     pkgs.codeql
@@ -20,6 +21,10 @@
     pkgs.ripgrep
     pkgs.fzf
     pkgs.eza
+  ];
+
+  env.PKG_CONFIG_PATH = lib.makeSearchPath "lib/pkgconfig" [
+    pkgs.openssl.dev
   ];
 
   languages.rust = {
