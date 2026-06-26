@@ -214,13 +214,13 @@ def test_gerbil_ci_uses_canonical_gslph_binary() -> None:
 
     assert "- name: Build canonical gslph binary" in workflow
     assert "gxpkg env ./build.ss compile --release --optimized" in workflow
-    assert "test -x .gerbil/bin/gslph" in workflow
+    assert "test -x .bin/gslph" in workflow
     assert "- name: Smoke canonical search subcommands" in workflow
-    assert ".gerbil/bin/gslph search prime --view seeds --workspace ." in workflow
-    assert ".gerbil/bin/gslph search workspace-scope --workspace ." in workflow
-    assert ".gerbil/bin/gslph check --full ." in workflow
-    assert ".gerbil/bin/gslph bench --json" in workflow
-    assert ".gerbil/bin/gslph search prime --json ." in workflow
+    assert ".bin/gslph search prime --view seeds --workspace ." in workflow
+    assert ".bin/gslph search workspace-scope --workspace ." in workflow
+    assert ".bin/gslph check --full ." in workflow
+    assert ".bin/gslph bench --json" in workflow
+    assert ".bin/gslph search prime --json ." in workflow
 
 
 def test_gerbil_just_build_skips_up_to_date_launcher_without_full_src_scan() -> None:
