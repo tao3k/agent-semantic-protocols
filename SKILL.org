@@ -48,15 +48,15 @@ Search is not a mandatory pipeline. Infer the current =evidenceState= first, cho
 
 Before any ASP search command, record the route justification mentally or in the receipt: known anchors, chosen route, rejected broader routes, expected projection, code policy, and fallback reason when a fallback is used. =displayLineRange= and =sourceLocatorHint= are display or transport hints, not executable semantic identity. =query-code= requires exact parser-owned identity.
 
-After each ASP command, verify the trajectory: =.syntax= actions must stay non-code unless upgraded through an exact selector, fallback reads must be bounded and justified, repeated prime/fzf/rg after a frontier is a route smell, and completion claims require packet or test evidence.
-| Stage | Command | What the agent learns |
-| capability | =asp <language> guide .= | Supported surfaces, axes, recipes, and dependency profiles. |
-| topology | =asp <language> search prime --workspace . --view seeds= | Workspace owners, provider roots, package/member hints, and first action frontier. |
-| query refinement | =asp <language> search pipe '<question>' --workspace . --view seeds= | Ranked evidence, query terms, missing facts, risk, and next command. |
-| owner expansion | =asp <language> search owner <owner> items --query '<term>' --workspace . --view seeds= | Owner-local symbols, tests, imports, docs-use, and exact selectors. |
-| finder recovery | =asp fd -query '<path-or-owner-term>' --workspace <scope>= | Candidate owners when path or selector confidence is low. |
-| indexed text recovery | =asp rg -query '<term>' --workspace <scope>= | Candidate owners from indexed text when a search packet asks for scoped recovery. |
-| exact projection | =asp <language> query --selector <selector> --workspace . --code= | Source text for a precise selector already emitted by search. |
+After each ASP command, verify the trajectory: =.syntax= actions must stay non-code unless upgraded through an exact selector, fallback reads must be bounded and justified, repeated prime/fzf/rg after a frontier is a route smell, feedback risks should link to =route-feedback:<id>= entries through =feedback.dataset-linked=, and completion claims require packet or test evidence.
+| Evidence state | Preferred route | What the agent learns |
+| capability unknown | =asp <language> guide .= | Supported surfaces, axes, recipes, and dependency profiles. |
+| no precise owner, selector, dependency, failure/test, changed-file, or user anchor | =asp <language> search prime --workspace . --view seeds= | Workspace owners, provider roots, package/member hints, and first action frontier. |
+| question terms but no owner | =asp <language> search pipe '<question>' --workspace . --view seeds= | Ranked evidence, query terms, missing facts, risk, and next command. |
+| known owner path | =asp <language> search owner <owner> items --query '<term>' --workspace . --view seeds= | Owner-local symbols, tests, imports, docs-use, and exact selectors. |
+| uncertain path or owner term | =asp fd -query '<path-or-owner-term>' --workspace <scope>= | Candidate owners when path or selector confidence is low. |
+| packet asks for scoped text recovery | =asp rg -query '<term>' --workspace <scope>= | Candidate owners from indexed text when a search packet asks for scoped recovery. |
+| exact parser-owned selector | =asp <language> query --selector <selector> --workspace . --code= | Source text for a precise selector already emitted by search. |
 
 ** Execution Fan-out
 Subagents are optional client execution. They consume search-flow axes; they do

@@ -80,6 +80,11 @@ def test_root_skill_template_contract() -> None:
     assert "Do not edit this installed copy" not in root_skill
     assert "path-context resolution" in root_skill
     assert "workspace discovery" not in root_skill
+    assert "| Evidence state | Preferred route | What the agent learns |" in root_skill
+    assert "| Stage | Command | What the agent learns |" not in root_skill
+    assert "no precise owner, selector, dependency, failure/test, changed-file, or user anchor" in root_skill
+    assert "feedback.dataset-linked" in root_skill
+    assert "route-feedback:<id>" in root_skill
     assert not _RETIRED_PLUGIN_SKILL_PATH.exists()
 
 
