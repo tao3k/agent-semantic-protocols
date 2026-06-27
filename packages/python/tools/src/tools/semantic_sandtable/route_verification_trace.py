@@ -8,6 +8,11 @@ from typing import Any
 
 from .direct_read_shape import direct_source_read_shape
 from .route_verification_judge import judge_checklist
+from .route_verification_patterns import (
+    MONITOR_PATTERN_SET_VERSION,
+    feedback_confidence_for_severity,
+    feedback_reason_for_risk,
+)
 from .route_verification_common import (
     ANCHORS_FOR_PRECISE_ROUTING,
     BROAD_SEARCH_ROUTES,
@@ -36,7 +41,7 @@ def build_trace(
         "schemaId": "agent.semantic-protocols.semantic-route-verification-trace",
         "schemaVersion": "1",
         "verifierVersion": "asp-route-verifier.v1",
-        "monitorPatternSetVersion": "2026-06-27",
+        "monitorPatternSetVersion": MONITOR_PATTERN_SET_VERSION,
         "evidenceState": _evidence_state(commands, anchors),
         "chosenRoute": {
             "route": chosen_route,
@@ -599,37 +604,15 @@ def _feedback_signals(risks: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def _feedback_signal(risk: dict[str, Any]) -> dict[str, Any] | None:
-    reason = _feedback_reason(str(risk.get("kind")))
+    reason = feedback_reason_for_risk(str(risk.get("kind")))
     if reason is None:
         return None
     signal: dict[str, Any] = {
         "reason": reason,
         "polarity": "negative",
-        "confidence": _feedback_confidence(str(risk.get("severity"))),
+        "confidence": feedback_confidence_for_severity(str(risk.get("severity"))),
     }
     refs = risk.get("evidenceRefs")
     if isinstance(refs, list) and all(isinstance(item, str) for item in refs):
         signal["evidenceRefs"] = refs
     return signal
-
-
-def _feedback_reason(risk_kind: str) -> str | None:
-    if risk_kind in {"unnecessary-prime", "repeated-broad-search"}:
-        return "inefficiency"
-    if risk_kind in {
-        "direct-read-over-parser",
-        "executable-line-range",
-        "hidden-line-selector",
-    }:
-        return "overaction"
-    if risk_kind == "unsupported-verification-claim":
-        return "communication"
-    return None
-
-
-def _feedback_confidence(severity: str) -> float:
-    if severity == "error":
-        return 0.95
-    if severity == "warning":
-        return 0.85
-    return 0.65

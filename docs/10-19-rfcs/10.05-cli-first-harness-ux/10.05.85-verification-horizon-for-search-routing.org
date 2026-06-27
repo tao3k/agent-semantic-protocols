@@ -86,6 +86,12 @@ failures, and user feedback. Passing the current monitor only proves that the
 current proxy was not violated; it does not prove that future agents cannot
 find a new shortcut.
 
+The active monitor patterns SHOULD be published as
+=semantic-route-monitor-pattern-set.v1=. The pattern-set fixture is the audit
+surface that links risk flags, feedback reasons, triggers, severity, and the
+source of the pattern, so trace receipts can prove which monitor version judged
+the trajectory.
+
 ** Route quality
 
 Route verification is not binary. Two trajectories can answer the same

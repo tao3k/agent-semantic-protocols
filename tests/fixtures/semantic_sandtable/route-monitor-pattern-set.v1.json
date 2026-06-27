@@ -1,0 +1,105 @@
+{
+  "description": "Baseline route monitor patterns for evidence-state search routing.",
+  "monitorPatternSetVersion": "2026-06-27",
+  "patterns": [
+    {
+      "addedFrom": "user-feedback",
+      "description": "search prime ran after a narrower evidence anchor existed.",
+      "feedbackReason": "inefficiency",
+      "id": "route.unnecessary-prime",
+      "riskKind": "unnecessary-prime",
+      "severity": "warning",
+      "status": "active",
+      "trigger": {
+        "evidenceAnchors": [
+          "exact-selector",
+          "structural-selector",
+          "owner-path",
+          "symbol",
+          "changed-file"
+        ],
+        "routes": [
+          "prime"
+        ]
+      }
+    },
+    {
+      "addedFrom": "sandtable",
+      "description": "broad search repeated instead of narrowing the evidence state.",
+      "feedbackReason": "inefficiency",
+      "id": "route.repeated-broad-search",
+      "riskKind": "repeated-broad-search",
+      "severity": "warning",
+      "status": "active",
+      "trigger": {
+        "minimumOccurrences": 2,
+        "routes": [
+          "prime",
+          "fd-query",
+          "rg-query"
+        ]
+      }
+    },
+    {
+      "addedFrom": "user-feedback",
+      "description": "direct source read was used where parser-owned identity was available.",
+      "feedbackReason": "overaction",
+      "id": "route.direct-read-over-parser",
+      "riskKind": "direct-read-over-parser",
+      "severity": "warning",
+      "status": "active",
+      "trigger": {
+        "evidenceAnchors": [
+          "exact-selector",
+          "structural-selector",
+          "owner-path",
+          "symbol"
+        ],
+        "routes": [
+          "direct-read"
+        ]
+      }
+    },
+    {
+      "addedFrom": "user-feedback",
+      "description": "a display line range was used as an executable selector.",
+      "feedbackReason": "overaction",
+      "id": "selector.executable-line-range",
+      "riskKind": "executable-line-range",
+      "severity": "error",
+      "status": "active",
+      "trigger": {
+        "selectorPosition": "executable",
+        "selectorShape": "path-line-range"
+      }
+    },
+    {
+      "addedFrom": "sandtable",
+      "description": "a line range appeared outside a display-only field.",
+      "feedbackReason": "overaction",
+      "id": "selector.hidden-line-range",
+      "riskKind": "hidden-line-selector",
+      "severity": "warning",
+      "status": "active",
+      "trigger": {
+        "selectorPosition": "hidden",
+        "selectorShape": "path-line-range"
+      }
+    },
+    {
+      "addedFrom": "sandtable",
+      "description": "verification was claimed without replayable route evidence.",
+      "feedbackReason": "communication",
+      "id": "verification.unsupported-claim",
+      "riskKind": "unsupported-verification-claim",
+      "severity": "warning",
+      "status": "active",
+      "trigger": {
+        "minimumExecutedRoutes": 1,
+        "requiresVerificationEvidence": true
+      }
+    }
+  ],
+  "schemaId": "agent.semantic-protocols.semantic-route-monitor-pattern-set",
+  "schemaVersion": "1"
+}
