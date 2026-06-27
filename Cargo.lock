@@ -1027,7 +1027,7 @@ dependencies = [
  "nom",
  "orgize-build-support",
  "rowan",
- "rust-lang-project-harness 0.1.2 (git+https://github.com/tao3k/rust-lang-project-harness?rev=bc91d78aea16b122612312ce59826c67e1740691)",
+ "rust-lang-project-harness 0.1.2 (git+https://github.com/tao3k/rust-lang-project-harness?rev=715c45335784bdd54110508cd4837663b913a3bc)",
  "serde_json",
 ]
 
@@ -1267,7 +1267,7 @@ dependencies = [
 [[package]]
 name = "rust-lang-project-harness"
 version = "0.1.2"
-source = "git+https://github.com/tao3k/rust-lang-project-harness?rev=bc91d78aea16b122612312ce59826c67e1740691#bc91d78aea16b122612312ce59826c67e1740691"
+source = "git+https://github.com/tao3k/rust-lang-project-harness?rev=715c45335784bdd54110508cd4837663b913a3bc#715c45335784bdd54110508cd4837663b913a3bc"
 dependencies = [
  "cargo-lock",
  "cargo_toml",

@@ -2,6 +2,7 @@ use std::time::{Duration, Instant};
 
 use crate::provider_command::support::{
     asp_command, make_executable, prepend_path, provider, temp_project_root, write_activation,
+    write_provider_bin_config,
 };
 
 const DIRECT_DEPENDENCY_SEED_GATE: Duration = Duration::from_millis(500);
@@ -409,14 +410,17 @@ fn direct_dependency_seed_reuses_cached_manifest_topology_until_manifest_changes
     )
     .expect("write Cargo.toml");
     write_activation(&root, &[provider("rust", Vec::new())]);
+    write_provider_bin_config(&root, "rust", &root.join(".missing/rs-harness"));
 
     let first = run_dependency_seed_stdout(&root, "serde");
+    assert!(first.contains("topology=asp-owned"), "{first}");
     assert!(first.contains("seedCache=miss"), "{first}");
-    assert!(first.contains("requirement=\"^1\""), "{first}");
+    assert!(first.contains("requirement=\"1\""), "{first}");
 
     let second = run_dependency_seed_stdout(&root, "serde");
+    assert!(second.contains("topology=asp-owned"), "{second}");
     assert!(second.contains("seedCache=hit"), "{second}");
-    assert!(second.contains("requirement=\"^1\""), "{second}");
+    assert!(second.contains("requirement=\"1\""), "{second}");
 
     std::fs::write(
         root.join("Cargo.toml"),
@@ -425,11 +429,13 @@ fn direct_dependency_seed_reuses_cached_manifest_topology_until_manifest_changes
     .expect("update Cargo.toml");
 
     let third = run_dependency_seed_stdout(&root, "tokio");
+    assert!(third.contains("topology=asp-owned"), "{third}");
     assert!(third.contains("seedCache=miss"), "{third}");
     assert!(third.contains("|dependency D:tokio"), "{third}");
-    assert!(third.contains("requirement=\"^1\""), "{third}");
+    assert!(third.contains("requirement=\"1\""), "{third}");
 
     let fourth = run_dependency_seed_stdout(&root, "tokio");
+    assert!(fourth.contains("topology=asp-owned"), "{fourth}");
     assert!(fourth.contains("seedCache=hit"), "{fourth}");
     assert!(fourth.contains("|dependency D:tokio"), "{fourth}");
 

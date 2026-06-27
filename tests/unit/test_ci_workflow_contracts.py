@@ -223,29 +223,20 @@ def test_gerbil_ci_uses_canonical_gslph_binary() -> None:
     assert ".bin/gslph search prime --json ." in workflow
 
 
-def test_gerbil_just_build_skips_up_to_date_launcher_without_full_src_scan() -> None:
+def test_gerbil_just_build_scans_only_launcher_build_inputs() -> None:
     justfile = JUSTFILE.read_text(encoding="utf-8")
 
-    target = justfile.split("agent-tools-build-gerbil:", 1)[1]
+    target = justfile.split('agent-tools-build-gerbil bin_dir="":', 1)[1]
     target = target.split('agent-tools-install-gx bin_dir="":', 1)[0]
 
-    assert 'launcher="${package_dir}/.gerbil/bin/gslph"' in target
+    assert 'launcher="${package_bin}/gslph"' in target
     assert (
-        "find src/cli-launcher.ss src/search-light-launcher.ss src/constants.ss "
-        'src/commands/search-prime-light.ss build.ss gerbil.pkg version.ss '
-        '-type f -newer "${launcher}"'
+        "find src/cli-launcher.ss src/cli-dev-linker.ss "
+        "src/search-light-launcher.ss src/constants.ss "
+        "src/commands/search-prime-light.ss build.ss gerbil.pkg version.ss"
     ) in target
-    assert "find src build.ss gerbil.pkg version.ss" not in target
-    assert "src/parser" not in target
-    assert "src/support/args.ss" not in target
-    assert (
-        'rm -f "${launcher}" "${package_dir}/.gerbil/static/bin/gslph" '
-        '"${package_dir}/.gerbil/bin/gslph__exe".*'
-    ) in target
-    assert '"${package_dir}/.gerbil/bin/gslph__exe".*' in target
-    assert '"${package_dir}/.gerbil/lib/static/gslph__src__commands__search-prime-light".*' not in target
-    assert '"${package_dir}/.gerbil/lib/static/gslph__src__search-light-launcher".*' not in target
-    assert '"${package_dir}/.gerbil/lib/static/gslph__src__cli-launcher".*' not in target
+    assert 'GERBIL_BUILD_CORES="${cores}" ./build.ss compile --binary --optimized' in target
+    assert "find src build.ss gerbil.pkg version.ss" not in justfile
     assert "[agent-tools-build-gerbil] ${launcher} is up to date" in target
 
 

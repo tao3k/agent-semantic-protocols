@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 import unittest
 
-from jsonschema import Draft202012Validator
 
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -27,6 +25,7 @@ def semantic_read_minimal_packet() -> dict[str, object]:
         "ownerPath": "src/lib.rs",
         "selector": "src/lib.rs",
         "fromHook": "direct-source-read",
+        "fallbackReason": "parser structural selector unavailable for this direct read",
         "outputMode": "read-packet",
         "sourceWindows": [
             {

@@ -138,7 +138,16 @@ fn direct_source_read_accepts_bounded_selector_range() {
 #[test]
 fn ordinary_selector_query_does_not_use_direct_source_read_limit() {
     let root = direct_read_fixture("ordinary-selector-query");
+    let bin_dir = root.join(".bin");
+    support::write_stdout_stderr_exit_provider(
+        &bin_dir,
+        "rs-harness",
+        &std::fs::read_to_string(root.join("src/lib.rs")).expect("read source"),
+        "",
+        0,
+    );
     let output = support::asp_command(&root)
+        .env("PATH", support::prepend_path(&bin_dir))
         .args([
             "rust",
             "query",

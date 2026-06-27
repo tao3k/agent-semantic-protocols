@@ -9,7 +9,9 @@ _CI_PATH = _REPO_ROOT / ".github" / "workflows" / "ci.yml"
 _ROADMAP_PATH = (
     _REPO_ROOT / "docs" / "30-39-research" / "31.18-tree-sitter-query-rfc-roadmap.org"
 )
-_ROOT_SKILL_PATH = _REPO_ROOT / "SKILL.org"
+_ASP_SKILL_CONTRACT_PATH = (
+    _REPO_ROOT / "languages" / "org" / "contracts" / "asp.skill.v1.org"
+)
 _RETIRED_PLUGIN_SKILL_PATH = (
     _REPO_ROOT
     / "asp-codex-plugin"
@@ -19,7 +21,7 @@ _RETIRED_PLUGIN_SKILL_PATH = (
 )
 _ACTIVE_DOC_PATHS = [
     _README_PATH,
-    _ROOT_SKILL_PATH,
+    _ASP_SKILL_CONTRACT_PATH,
     _REPO_ROOT / "docs" / "10-19-rfcs" / "10.15-agent-hook-interception-protocol.org",
     _REPO_ROOT / "docs" / "10-19-rfcs" / "10.05-cli-first-harness-ux.org",
     _REPO_ROOT
@@ -69,22 +71,21 @@ def test_tree_sitter_roadmap_records_closure_plan() -> None:
 
 
 def test_root_skill_template_contract() -> None:
-    root_skill = _ROOT_SKILL_PATH.read_text(encoding="utf-8")
+    root_skill = _ASP_SKILL_CONTRACT_PATH.read_text(encoding="utf-8")
 
-    assert "#+PROPERTY: ASP_CONTRACT_VERSION 1" in root_skill
-    assert ":ASP_SECTION: activation" in root_skill
-    assert ":ASP_SECTION: providers" in root_skill
-    assert "# BEGIN_ASP_GENERATED notice" in root_skill
-    assert "# BEGIN_ASP_GENERATED activation" in root_skill
-    assert "# BEGIN_ASP_GENERATED providers" in root_skill
-    assert "Do not edit this installed copy" not in root_skill
-    assert "path-context resolution" in root_skill
-    assert "workspace discovery" not in root_skill
-    assert "| Evidence state | Preferred route | What the agent learns |" in root_skill
+    assert "* asp-skill-v1" in root_skill
+    assert "** What This Produces" in root_skill
+    assert "** ASP Org" in root_skill
+    assert "*** State Workflow" in root_skill
+    assert "*** Contract Capture" in root_skill
+    assert "ASP_ORG_SKILL.org" in root_skill
+    assert "single ASP Org skill entry" in root_skill
+    assert "do not reintroduce a wrapper skill" in root_skill
+    assert "asp org capture --contract CONTRACT_ID" in root_skill
+    assert "Do not edit the audited template output directly" in root_skill
     assert "| Stage | Command | What the agent learns |" not in root_skill
-    assert "no precise owner, selector, dependency, failure/test, changed-file, or user anchor" in root_skill
-    assert "feedback.dataset-linked" in root_skill
-    assert "route-feedback:<id>" in root_skill
+    assert "semantic AST provider boundary" in root_skill
+    assert "query AST facts" in root_skill
     assert not _RETIRED_PLUGIN_SKILL_PATH.exists()
 
 
