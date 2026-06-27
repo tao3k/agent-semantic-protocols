@@ -135,6 +135,12 @@ owner is known", "line ranges are hints", "skeleton is not code", or "do not
 claim verification without evidence" SHOULD be translated into monitor
 patterns, route-quality examples, or sandtable scenarios.
 
+The feedback source itself SHOULD be recorded as
+=semantic-route-user-feedback-dataset.v1=. Feedback entries preserve polarity,
+confidence, failure reason, target risk, and the monitor pattern ids they seeded.
+Pattern sets SHOULD cite feedback entries through =route-feedback:<id>= evidence
+refs so a future monitor update can explain why the pattern exists.
+
 Feedback labels SHOULD preserve the failure reason:
 
 | Feedback reason | ASP interpretation |

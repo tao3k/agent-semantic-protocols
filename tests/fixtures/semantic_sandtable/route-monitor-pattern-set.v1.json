@@ -5,6 +5,9 @@
     {
       "addedFrom": "user-feedback",
       "description": "search prime ran after a narrower evidence anchor existed.",
+      "evidenceRefs": [
+        "route-feedback:avoid-prime-when-owner-known"
+      ],
       "feedbackReason": "inefficiency",
       "id": "route.unnecessary-prime",
       "riskKind": "unnecessary-prime",
@@ -43,6 +46,9 @@
     {
       "addedFrom": "user-feedback",
       "description": "direct source read was used where parser-owned identity was available.",
+      "evidenceRefs": [
+        "route-feedback:parser-before-direct-read"
+      ],
       "feedbackReason": "overaction",
       "id": "route.direct-read-over-parser",
       "riskKind": "direct-read-over-parser",
@@ -63,6 +69,9 @@
     {
       "addedFrom": "user-feedback",
       "description": "a display line range was used as an executable selector.",
+      "evidenceRefs": [
+        "route-feedback:line-range-is-display-hint"
+      ],
       "feedbackReason": "overaction",
       "id": "selector.executable-line-range",
       "riskKind": "executable-line-range",

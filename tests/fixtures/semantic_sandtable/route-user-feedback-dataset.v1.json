@@ -1,0 +1,75 @@
+{
+  "datasetVersion": "2026-06-27",
+  "description": "Baseline user feedback signals that seed route monitor patterns.",
+  "entries": [
+    {
+      "confidence": 0.95,
+      "feedbackReason": "inefficiency",
+      "id": "avoid-prime-when-owner-known",
+      "patternIds": [
+        "route.unnecessary-prime"
+      ],
+      "polarity": "negative",
+      "recommendedAction": "When an owner path, symbol, or exact selector is already known, start from owner or query routes instead of search prime.",
+      "source": "user-feedback",
+      "sourceSummary": "Do not hard-code seed or prime first when evidence already identifies the owner or selector.",
+      "target": {
+        "riskKind": "unnecessary-prime",
+        "route": "prime",
+        "surface": "monitor-pattern"
+      }
+    },
+    {
+      "confidence": 0.95,
+      "feedbackReason": "overaction",
+      "id": "line-range-is-display-hint",
+      "patternIds": [
+        "selector.executable-line-range",
+        "selector.hidden-line-range"
+      ],
+      "polarity": "negative",
+      "recommendedAction": "Keep displayLineRange and sourceLocatorHint out of executable selector positions; execute structural selectors only.",
+      "source": "user-feedback",
+      "sourceSummary": "Line numbers should not be agent-executable selectors; they are display hints.",
+      "target": {
+        "riskKind": "executable-line-range",
+        "surface": "monitor-pattern"
+      }
+    },
+    {
+      "confidence": 0.9,
+      "feedbackReason": "overaction",
+      "id": "parser-before-direct-read",
+      "patternIds": [
+        "route.direct-read-over-parser"
+      ],
+      "polarity": "negative",
+      "recommendedAction": "Prefer parser-owned owner, syntax, and query-code routes before falling back to source windows.",
+      "source": "user-feedback",
+      "sourceSummary": "Use query language and AST parser routes instead of deterministic line-window reading.",
+      "target": {
+        "riskKind": "direct-read-over-parser",
+        "route": "direct-read",
+        "surface": "monitor-pattern"
+      }
+    },
+    {
+      "confidence": 0.9,
+      "feedbackReason": "communication",
+      "id": "do-not-claim-verification-without-evidence",
+      "patternIds": [
+        "verification.unsupported-claim"
+      ],
+      "polarity": "negative",
+      "recommendedAction": "Only claim a route or answer is verified when replayable command, packet, or test evidence is attached.",
+      "source": "user-feedback",
+      "sourceSummary": "Verification claims need concrete evidence; skeleton or intent alone is not enough.",
+      "target": {
+        "riskKind": "unsupported-verification-claim",
+        "surface": "trace"
+      }
+    }
+  ],
+  "schemaId": "agent.semantic-protocols.semantic-route-user-feedback-dataset",
+  "schemaVersion": "1"
+}

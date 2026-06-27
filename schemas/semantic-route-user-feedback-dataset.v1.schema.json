@@ -1,0 +1,137 @@
+{
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-route-user-feedback-dataset.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ASP route user feedback dataset",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "datasetVersion",
+    "entries"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.semantic-route-user-feedback-dataset"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "datasetVersion": {
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "$ref": "#/$defs/portableString"
+    },
+    "entries": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/feedbackEntry"
+      }
+    }
+  },
+  "$defs": {
+    "feedbackEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "source",
+        "polarity",
+        "confidence",
+        "feedbackReason",
+        "sourceSummary",
+        "target",
+        "recommendedAction"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.-]*$"
+        },
+        "source": {
+          "enum": [
+            "user-feedback",
+            "live-agent",
+            "sandtable",
+            "agentic-reviewer"
+          ]
+        },
+        "polarity": {
+          "enum": [
+            "negative",
+            "neutral",
+            "positive"
+          ]
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "feedbackReason": {
+          "$ref": "semantic-route-verification-trace.v1.schema.json#/$defs/feedbackReason"
+        },
+        "sourceSummary": {
+          "$ref": "#/$defs/portableString"
+        },
+        "target": {
+          "$ref": "#/$defs/feedbackTarget"
+        },
+        "recommendedAction": {
+          "$ref": "#/$defs/portableString"
+        },
+        "patternIds": {
+          "$ref": "#/$defs/stringList"
+        },
+        "evidenceRefs": {
+          "$ref": "#/$defs/stringList"
+        }
+      }
+    },
+    "feedbackTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "riskKind": {
+          "$ref": "semantic-route-verification-trace.v1.schema.json#/$defs/riskKind"
+        },
+        "route": {
+          "$ref": "semantic-route-verification-trace.v1.schema.json#/$defs/routeId"
+        },
+        "surface": {
+          "enum": [
+            "skill",
+            "rfc",
+            "schema",
+            "sandtable",
+            "monitor-pattern",
+            "trace"
+          ]
+        }
+      }
+    },
+    "stringList": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/portableString"
+      }
+    },
+    "portableString": {
+      "type": "string",
+      "minLength": 1,
+      "not": {
+        "anyOf": [
+          {
+            "pattern": "(^|\\s)/(Users|home|private|Volumes)/"
+          },
+          {
+            "pattern": "(^|\\s)[A-Za-z]:[\\\\/]"
+          }
+        ]
+      }
+    }
+  }
+}

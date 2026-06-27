@@ -25,6 +25,7 @@ ROUTE_MONITOR_PATTERNS: tuple[dict[str, Any], ...] = (
         },
         "description": "search prime ran after a narrower evidence anchor existed.",
         "addedFrom": "user-feedback",
+        "evidenceRefs": ["route-feedback:avoid-prime-when-owner-known"],
         "status": "active",
     },
     {
@@ -56,6 +57,7 @@ ROUTE_MONITOR_PATTERNS: tuple[dict[str, Any], ...] = (
         },
         "description": "direct source read was used where parser-owned identity was available.",
         "addedFrom": "user-feedback",
+        "evidenceRefs": ["route-feedback:parser-before-direct-read"],
         "status": "active",
     },
     {
@@ -69,6 +71,7 @@ ROUTE_MONITOR_PATTERNS: tuple[dict[str, Any], ...] = (
         },
         "description": "a display line range was used as an executable selector.",
         "addedFrom": "user-feedback",
+        "evidenceRefs": ["route-feedback:line-range-is-display-hint"],
         "status": "active",
     },
     {
