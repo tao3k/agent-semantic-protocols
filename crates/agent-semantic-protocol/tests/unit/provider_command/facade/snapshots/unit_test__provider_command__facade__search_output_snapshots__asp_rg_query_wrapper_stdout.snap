@@ -1,0 +1,42 @@
+---
+source: crates/agent-semantic-protocol/tests/unit/provider_command/facade/search_output_snapshots.rs
+expression: normalize_search_output(&stdout)
+---
+[search-rg] view=seeds querySet=6 source=finder ranker=graph-turbo:owner-query
+query=Fiber|Queue + stale|refresh|sqlite|cache
+queryPack=clauses=2 quality=high reason=ok
+queryClauses=C1='Fiber|Queue';C2='stale|refresh|sqlite|cache'
+terms=fiber,queue,stale,refresh,sqlite,cache
+scopeQuality=high
+clauseCoverage=C1 matched=fiber,queue missing=-
+clauseCoverage=C2 matched=stale,refresh,sqlite,cache missing=-
+packageCohesion=high packages=effect.ts
+sourceTrace=finder:used[backend=rg;candidateBasis=source-lines;collectMs=<ms>;elapsedMs=<ms>;inputCandidates=3;qualityMs=<ms>;selectedCandidates=3;sourceSearchPasses=1]
+[graph-frontier] profile=owner-query alg=typed-ppr-diverse seed=Q budget=10
+legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next
+aliases=G:graph,I:item,Q:query,H:hot,I2:item,I3:item,O:owner,T:test,H2:hot,H3:hot
+I=item:symbol(fiber)@query-wrapper://effect.ts#item/symbol/fiber!syntax
+H=hot:range(queue)@query-wrapper://effect.ts#range/hot/queue!hot
+I2=item:symbol(stale)@query-wrapper://effect.ts#item/symbol/stale!syntax
+I3=item:symbol(queue)@query-wrapper://effect.ts#item/symbol/queue!syntax
+O=owner:path(effect.ts)!owner
+T=test:path(effect.ts)!tests
+H2=hot:range(stale)@query-wrapper://effect.ts#range/hot/stale!hot
+H3=hot:range(fiber)@query-wrapper://effect.ts#range/hot/fiber!hot
+G>{Q:matches}
+I>{H3:contains}
+I2>{H2:contains}
+I3>{H:contains}
+O>{I:contains,I3:contains,I2:contains,T:covers}
+Q>{O:matches,I:matches,I3:matches,I2:matches}
+rankedEvidence=I,H,I2,I3,O,T,H2,H3
+evidenceFrontier=I.syntax,H.hot,I2.syntax,I3.syntax,O.owner,T.tests,H2.hot,H3.hot
+[route-graph] profile=asp-search-routing evidence=broad-query chosen=BROAD_QUERY reason="query has no stable owner/selector anchor; refine finder evidence" routeFrontier=A1.fd-query,A2.multi-clause-rg-query routeAvoid=repeat-search-pipe|manual-window-scan|direct-source-read
+actionRank=A1,A2
+A1=fd-query(query=Fiber|Queue|stale|refresh|sqlite|cache,scope=src)!finder-owner
+A2=multi-clause-rg-query(queryClauses=C1='Fiber|Queue';C2='stale|refresh|sqlite|cache',scope=src)!query-pack-refine
+actionFrontier=A1.fd-query,A2.multi-clause-rg-query
+recommendedNext=A1.fd-query
+nextCommand=asp fd -query 'Fiber|Queue|stale|refresh|sqlite|cache' --workspace src
+nextClasses=owner-items,query-selector,fd-query
+avoid=repeat-rg,manual-window-scan,raw-read

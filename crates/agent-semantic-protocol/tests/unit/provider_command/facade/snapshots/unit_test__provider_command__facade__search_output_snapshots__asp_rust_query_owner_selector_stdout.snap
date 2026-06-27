@@ -1,0 +1,15 @@
+---
+source: crates/agent-semantic-protocol/tests/unit/provider_command/facade/search_output_snapshots.rs
+expression: stdout
+---
+[search-owner] q=src/core.rs pkg=. selector=items alg=item-frontier
+legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next
+aliases: graph:{G=search,O=owner,I=item}
+O=owner:path(src/core.rs)!owner;I=item:symbol(QueryExpr)@src/core.rs:1:1!syntax;I2=item:symbol(parse_query_expr)@src/core.rs:3:3!syntax
+syntax I selector=src/core.rs:1:1 pattern='((struct_item name: (_) @type.name) (#eq? @type.name "QueryExpr"))'
+syntax I2 selector=src/core.rs:3:3 pattern='((function_item name: (_) @function.name) (#eq? @function.name "parse_query_expr"))'
+G>{O:selects}
+O>{I:contains,I2:contains}
+rank=I,I2,O frontier=I.syntax,I2.syntax
+omit=code,projection-nodes,large-item-text
+avoid=inline-code-in-search,raw-read,repeat-owner
