@@ -20,6 +20,13 @@ fn rank_frontier_is_redundant_for_owner_with_topology_context() {
 }
 
 #[test]
+fn rank_frontier_is_redundant_for_owner_with_submodule_context() {
+    let kinds = evidence_kinds(&[("O", "owner"), ("S", "submodule")]);
+
+    assert!(rank_frontier_has_only_owner_or_topology_nodes(&kinds));
+}
+
+#[test]
 fn rank_frontier_stays_visible_for_syntax_evidence() {
     let kinds = evidence_kinds(&[("O", "owner"), ("I", "item")]);
 

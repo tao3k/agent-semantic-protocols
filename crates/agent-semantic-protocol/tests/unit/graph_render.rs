@@ -468,6 +468,8 @@ fn graph_render_cli_rust_fallback_keeps_topology_edge_aliases_defined() {
     assert!(stdout.contains("P=provider-root:language-root(rust:.)!topology"));
     assert!(stdout.contains("S>{O:contains}"));
     assert!(stdout.contains("W>{S:has_submodule,P:has_provider_root}"));
+    assert!(!stdout.contains("rank="));
+    assert!(!stdout.contains("frontier="));
     assert!(!stdout.contains(
         "S2=submodule:workspace-member(languages/typescript-lang-project-harness)!topology"
     ));

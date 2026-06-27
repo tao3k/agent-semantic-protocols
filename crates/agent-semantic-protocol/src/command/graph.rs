@@ -10,6 +10,7 @@ use agent_semantic_provider_transport::{
 };
 use serde_json::Value;
 
+use super::search_pipe_evidence_projection::rank_frontier_has_only_owner_or_topology_nodes;
 use crate::graph::{GraphRenderOptions, render_search_graph_packet};
 
 const GRAPH_TURBO_REQUEST_SCHEMA_ID: &str = "agent.semantic-protocols.semantic-graph-turbo-request";
@@ -220,24 +221,27 @@ pub(super) fn render_graph_turbo_value_rust_compact(packet: &Value) -> Result<Ve
     ));
     let ranked = compact_ranked_aliases(nodes, edges, &alias_map, &alias_index);
     let visible_aliases = ranked.iter().cloned().collect::<HashSet<_>>();
-    output.push_str("rank=");
-    output.push_str(&ranked.join(","));
-    output.push('\n');
-    output.push_str("frontier=");
-    output.push_str(
-        &ranked
-            .iter()
-            .filter_map(|alias| {
-                let node = compact_node_for_alias(alias, nodes, &alias_index)?;
-                Some(format!(
-                    "{alias}.{}",
-                    compact_json_str(node.get("action")).unwrap_or("evidence")
-                ))
-            })
-            .collect::<Vec<_>>()
-            .join(","),
-    );
-    output.push('\n');
+    let visible_node_kinds = compact_ranked_node_kinds(&ranked, nodes, &alias_index);
+    if !rank_frontier_has_only_owner_or_topology_nodes(&visible_node_kinds) {
+        output.push_str("rank=");
+        output.push_str(&ranked.join(","));
+        output.push('\n');
+        output.push_str("frontier=");
+        output.push_str(
+            &ranked
+                .iter()
+                .filter_map(|alias| {
+                    let node = compact_node_for_alias(alias, nodes, &alias_index)?;
+                    Some(format!(
+                        "{alias}.{}",
+                        compact_json_str(node.get("action")).unwrap_or("evidence")
+                    ))
+                })
+                .collect::<Vec<_>>()
+                .join(","),
+        );
+        output.push('\n');
+    }
     for alias in &ranked {
         if let Some(node) = compact_node_for_alias(alias, nodes, &alias_index) {
             output.push_str(&compact_node_line(alias, node));
@@ -249,6 +253,21 @@ pub(super) fn render_graph_turbo_value_rust_compact(packet: &Value) -> Result<Ve
         output.push('\n');
     }
     Ok(output.into_bytes())
+}
+
+fn compact_ranked_node_kinds(
+    ranked: &[String],
+    nodes: &[Value],
+    alias_index: &HashMap<String, usize>,
+) -> HashMap<String, String> {
+    ranked
+        .iter()
+        .filter_map(|alias| {
+            let kind = compact_node_for_alias(alias, nodes, alias_index)
+                .and_then(|node| compact_json_str(node.get("kind")))?;
+            Some((alias.clone(), kind.to_string()))
+        })
+        .collect()
 }
 
 fn compact_node_aliases(nodes: &[Value]) -> HashMap<String, String> {

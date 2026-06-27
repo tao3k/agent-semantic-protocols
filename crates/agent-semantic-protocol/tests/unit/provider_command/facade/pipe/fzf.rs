@@ -404,6 +404,8 @@ fn assert_builtin_graph_frontier(stdout: &str, symbol: &str) {
         stdout.contains(&format!("H=hot:range({symbol})")),
         "{stdout}"
     );
+    assert!(stdout.contains("rank="), "{stdout}");
+    assert!(stdout.contains("frontier="), "{stdout}");
 }
 
 fn assert_graph_has_hot_code_path(payload: &Value, symbol: &str) {
