@@ -30,6 +30,9 @@ fn native_prime_seed_stdout_renders_owner_frontier_without_provider() {
         stdout.contains("O=owner:path(src/lib.rs)!owner"),
         "{stdout}"
     );
+    assert!(!stdout.contains("G>{O:selects}"), "{stdout}");
+    assert!(!stdout.contains("rank=O frontier=O.owner"), "{stdout}");
+    assert!(stdout.contains("frontier=O.owner"), "{stdout}");
     assert!(
         stdout.contains("next=\"asp rust search pipe '<question-or-feature-term>'"),
         "{stdout}"
@@ -94,6 +97,14 @@ fn native_prime_seed_stdout_renders_owner_frontier_for_hidden_workspace_roots() 
         );
         assert!(
             !stdout.contains("G>{}"),
+            "language={language_id} stdout={stdout}"
+        );
+        assert!(
+            !stdout.contains("G>{O:selects}"),
+            "language={language_id} stdout={stdout}"
+        );
+        assert!(
+            !stdout.contains("rank=O frontier=O.owner"),
             "language={language_id} stdout={stdout}"
         );
     }

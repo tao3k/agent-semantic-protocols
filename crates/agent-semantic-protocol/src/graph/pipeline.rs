@@ -42,6 +42,8 @@ pub(super) fn render_search_graph_packet(packet: &Value, options: GraphRenderOpt
     let seed_limit = graph_seed_limit(options.seed_limit);
     let aliases = graph_aliases(packet, seed_limit);
     let owner_item_query = is_owner_item_query(packet, mode, &aliases);
+    let prime_owner_only_frontier =
+        prime_mode && aliases.iter().all(|alias| alias.node_type == "owner");
     let mut header = graph_header(
         packet,
         mode,
@@ -72,10 +74,16 @@ pub(super) fn render_search_graph_packet(packet: &Value, options: GraphRenderOpt
         lines.push(alias_definitions);
     }
     lines.extend(graph_syntax_lines(&aliases));
-    lines.extend(graph_edge_lines(&aliases, owner_item_query));
+    if !prime_owner_only_frontier {
+        lines.extend(graph_edge_lines(&aliases, owner_item_query));
+    }
     let rank = graph_rank(&aliases, owner_item_query);
     let frontier = graph_frontier(&aliases, owner_item_query);
-    lines.push(format!("rank={rank} frontier={frontier}"));
+    if prime_owner_only_frontier {
+        lines.push(format!("frontier={frontier}"));
+    } else {
+        lines.push(format!("rank={rank} frontier={frontier}"));
+    }
     if owner_item_query && let Some(revisions) = owner_item_query_revisions(packet) {
         lines.push(format!("revise={}", revisions.join(",")));
     }

@@ -250,9 +250,7 @@ fn render_prime_seed_text(project_root: &Path, language_id: &str, owners: &[Stri
             }
         })
         .collect::<Vec<_>>();
-    if owners.is_empty() {
-        lines.push("G>{}".to_string());
-    } else {
+    if !owners.is_empty() {
         lines.push(
             owners
                 .iter()
@@ -261,18 +259,9 @@ fn render_prime_seed_text(project_root: &Path, language_id: &str, owners: &[Stri
                 .collect::<Vec<_>>()
                 .join(";"),
         );
-        lines.push(format!(
-            "G>{{{}}}",
-            owner_ids
-                .iter()
-                .map(|owner_id| format!("{owner_id}:selects"))
-                .collect::<Vec<_>>()
-                .join(",")
-        ));
     }
     lines.push(format!(
-        "rank={} frontier={}",
-        owner_ids.join(","),
+        "frontier={}",
         owner_ids
             .iter()
             .map(|owner_id| format!("{owner_id}.owner"))
