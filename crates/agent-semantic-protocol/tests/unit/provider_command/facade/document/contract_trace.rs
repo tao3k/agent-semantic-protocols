@@ -120,16 +120,16 @@ fn contract_source() -> &'static str {
 :CONTRACT_KIND: org-elements
 :END:
 
-** evidence-has-link
-:PROPERTIES:
-:ASSERT_ID: task.evidence-has-link
-:SEVERITY: warning
-:END:
-
-#+BEGIN_SRC org-contract
+#+NAME: task.evidence-has-link
+#+BEGIN_SRC org-contract :severity warning
 (let (($evidence (headline :child-of $scope :summary (title "Evidence"))))
   (assert count >= 1
     (link :descendant-of $evidence)))
+#+END_SRC
+
+#+NAME: task.evidence-has-link.message
+#+BEGIN_SRC jinja2
+Task must include a replayable evidence link.
 #+END_SRC
 "#
 }

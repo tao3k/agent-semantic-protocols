@@ -3,7 +3,6 @@
 #[path = "hook_runtime_skill_render.rs"]
 pub(crate) mod hook_runtime_skill_render;
 
-pub(super) use hook_runtime_skill_render::render_agent_semantic_protocols_skill_contract;
 use hook_runtime_skill_render::{
     render_agent_semantic_protocols_installed_skill, render_agent_semantic_protocols_plugin_skill,
 };
@@ -41,10 +40,9 @@ pub(super) fn install_agent_semantic_protocols_skill(
         runtime_profiles,
     )?;
     write_agent_skill(&skill_path, &rendered_skill)?;
-    let skill_contract_path = write_agent_skill_contract(&skill_path, &org_state_skill_path)?;
+    remove_skill_contract(&skill_path)?;
     Ok(InstalledAgentSkillPaths {
         skill_path: Some(skill_path),
-        skill_contract_path: Some(skill_contract_path),
         plugin_skill_path: None,
     })
 }
@@ -72,10 +70,9 @@ pub(super) fn install_agent_semantic_protocols_plugin_skill(
         runtime_profiles,
     )?;
     write_agent_skill(&plugin_skill_path, &rendered_skill)?;
-    remove_plugin_skill_contract(&plugin_skill_path)?;
+    remove_skill_contract(&plugin_skill_path)?;
     Ok(InstalledAgentSkillPaths {
         skill_path: None,
-        skill_contract_path: None,
         plugin_skill_path: Some(plugin_skill_path),
     })
 }
@@ -104,7 +101,6 @@ pub(super) fn install_agent_semantic_protocols_agent_config(
 
 pub(super) struct InstalledAgentSkillPaths {
     pub skill_path: Option<PathBuf>,
-    pub skill_contract_path: Option<PathBuf>,
     pub plugin_skill_path: Option<PathBuf>,
 }
 
@@ -200,18 +196,7 @@ fn write_agent_skill(skill_path: &Path, rendered_skill: &str) -> Result<(), Stri
     Ok(())
 }
 
-fn write_agent_skill_contract(
-    skill_path: &Path,
-    org_state_skill_path: &Path,
-) -> Result<PathBuf, String> {
-    let contract_path = skill_path.with_file_name("SKILL.contract.org");
-    let rendered_contract =
-        render_agent_semantic_protocols_skill_contract(&contract_path, org_state_skill_path)?;
-    write_agent_skill(&contract_path, &rendered_contract)?;
-    Ok(contract_path)
-}
-
-fn remove_plugin_skill_contract(skill_path: &Path) -> Result<(), String> {
+fn remove_skill_contract(skill_path: &Path) -> Result<(), String> {
     let contract_path = skill_path.with_file_name("SKILL.contract.org");
     if contract_path.exists() {
         fs::remove_file(&contract_path)

@@ -277,10 +277,10 @@ fn provider_command_prefix(
 }
 
 fn default_provider_binary(project_root: &Path, manifest: &ProviderManifest) -> String {
-    if provider_prefers_home_local_binary(manifest) {
-        if let Some(user_bin) = home_local_provider_binary(&manifest.binary) {
-            return user_bin.display().to_string();
-        }
+    if provider_prefers_home_local_binary(manifest)
+        && let Some(user_bin) = home_local_provider_binary(&manifest.binary)
+    {
+        return user_bin.display().to_string();
     }
     let project_bin = project_root.join(".bin").join(&manifest.binary);
     if is_executable_file(&project_bin) {

@@ -412,11 +412,11 @@ fn direct_dependency_seed_reuses_cached_manifest_topology_until_manifest_changes
 
     let first = run_dependency_seed_stdout(&root, "serde");
     assert!(first.contains("seedCache=miss"), "{first}");
-    assert!(first.contains("requirement=\"1\""), "{first}");
+    assert!(first.contains("requirement=\"^1\""), "{first}");
 
     let second = run_dependency_seed_stdout(&root, "serde");
     assert!(second.contains("seedCache=hit"), "{second}");
-    assert!(second.contains("requirement=\"1\""), "{second}");
+    assert!(second.contains("requirement=\"^1\""), "{second}");
 
     std::fs::write(
         root.join("Cargo.toml"),
@@ -427,7 +427,7 @@ fn direct_dependency_seed_reuses_cached_manifest_topology_until_manifest_changes
     let third = run_dependency_seed_stdout(&root, "tokio");
     assert!(third.contains("seedCache=miss"), "{third}");
     assert!(third.contains("|dependency D:tokio"), "{third}");
-    assert!(third.contains("requirement=\"1\""), "{third}");
+    assert!(third.contains("requirement=\"^1\""), "{third}");
 
     let fourth = run_dependency_seed_stdout(&root, "tokio");
     assert!(fourth.contains("seedCache=hit"), "{fourth}");

@@ -300,10 +300,18 @@ mod unix {
         let cache_skill_dir = cache_root.join("skills").join("agent-semantic-protocols");
         let cache_skill_path = cache_skill_dir.join("SKILL.org");
         let skill = std::fs::read_to_string(&cache_skill_path).expect("read plugin cache skill");
-        assert!(skill.contains("ASP Org Reference"), "{skill}");
+        assert!(skill.contains("* ASP Org"), "{skill}");
+        assert!(skill.contains(":SKILL_ID: asp-org"), "{skill}");
+        assert!(!skill.contains("SKILL.contract.org"), "{skill}");
+        assert!(!skill.contains("Contract Assertions"), "{skill}");
+        assert!(!skill.contains("asp-skill-has-root-heading"), "{skill}");
         assert!(
-            skill
-                .contains(".cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org#asp-org"),
+            !skill.contains("Generated from the repository root =SKILL.org="),
+            "{skill}"
+        );
+        assert!(!skill.contains("#+CONTRACT_ORG:"), "{skill}");
+        assert!(
+            skill.contains(".cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org"),
             "{skill}"
         );
         assert!(

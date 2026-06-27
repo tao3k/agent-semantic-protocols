@@ -248,12 +248,12 @@ fn write_executable_provider(root: &Path, binary: &str) -> PathBuf {
 
 fn write_executable_file(path: &Path) {
     std::fs::create_dir_all(path.parent().expect("executable parent")).expect("bin dir");
-    std::fs::write(&path, "#!/usr/bin/env sh\nexit 0\n").expect("provider");
+    std::fs::write(path, "#!/usr/bin/env sh\nexit 0\n").expect("provider");
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let mut permissions = std::fs::metadata(&path).expect("metadata").permissions();
+        let mut permissions = std::fs::metadata(path).expect("metadata").permissions();
         permissions.set_mode(0o755);
-        std::fs::set_permissions(&path, permissions).expect("permissions");
+        std::fs::set_permissions(path, permissions).expect("permissions");
     }
 }

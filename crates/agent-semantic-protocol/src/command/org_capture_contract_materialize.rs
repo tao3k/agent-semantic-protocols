@@ -232,12 +232,16 @@ impl CaptureTemplate {
                 path.display()
             )
         })?;
-        let drawer = org.first_node::<PropertyDrawer>().ok_or_else(|| {
-            format!(
-                "Org capture template {} does not contain a property drawer",
-                path.display()
-            )
-        })?;
+        let drawer = headline
+            .syntax()
+            .descendants()
+            .find_map(PropertyDrawer::cast)
+            .ok_or_else(|| {
+                format!(
+                    "Org capture template {} does not contain a property drawer",
+                    path.display()
+                )
+            })?;
         let dynamic = TemplateDynamicValues::from_args(args);
         let tags = headline.tags().map(|tag| tag.to_string()).collect();
         let progress_cookies = progress_cookies_from_org(&org);

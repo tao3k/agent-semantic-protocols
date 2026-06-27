@@ -53,12 +53,11 @@ fn collect_path_violations(
     violations: &mut Vec<String>,
 ) {
     match value {
-        Value::String(text) => {
-            if contains_absolute_local_path(text) {
-                let relative = fixture_path.strip_prefix(repo_root).unwrap_or(fixture_path);
-                violations.push(format!("{} {pointer}: {text:?}", relative.display()));
-            }
+        Value::String(text) if contains_absolute_local_path(text) => {
+            let relative = fixture_path.strip_prefix(repo_root).unwrap_or(fixture_path);
+            violations.push(format!("{} {pointer}: {text:?}", relative.display()));
         }
+        Value::String(_) => {}
         Value::Array(items) => {
             for (index, item) in items.iter().enumerate() {
                 collect_path_violations(

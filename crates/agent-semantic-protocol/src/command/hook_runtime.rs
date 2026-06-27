@@ -777,19 +777,8 @@ fn run_install_for_client(
     timings.mark("plugin-cache");
     let project_skill_receipt = installed_skill
         .as_ref()
-        .and_then(|installed_skill| {
-            installed_skill
-                .skill_path
-                .as_ref()
-                .zip(installed_skill.skill_contract_path.as_ref())
-        })
-        .map(|(skill_path, skill_contract_path)| {
-            format!(
-                " skill={} skillContract={}",
-                display_path(&project_root, skill_path),
-                display_path(&project_root, skill_contract_path)
-            )
-        })
+        .and_then(|installed_skill| installed_skill.skill_path.as_ref())
+        .map(|skill_path| format!(" skill={}", display_path(&project_root, skill_path)))
         .unwrap_or_default();
     let plugin_skill_path =
         if client == "codex" && matches!(codex_plugin_scope, CodexPluginScope::Project) {
