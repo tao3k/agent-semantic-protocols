@@ -16,6 +16,8 @@ const DEFAULT_SEED_LIMIT: usize = 12;
 const PRIME_GRAPH_ALGORITHM: &str = "budgeted-prime-frontier-v1";
 const PRIME_GRAPH_LEGEND: &str =
     "legend: ID=kind:role(value)!next; entries profile(selectors=>returns); frontier ID.next";
+const PRIME_OWNER_ONLY_LEGEND: &str =
+    "legend: ID=kind:role(value)!next; entries profile(selectors=>returns)";
 
 pub(super) fn render_search_graph_packet(packet: &Value, options: GraphRenderOptions) -> String {
     fn graph_avoid_line(packet: &Value) -> Option<String> {
@@ -59,12 +61,18 @@ pub(super) fn render_search_graph_packet(packet: &Value, options: GraphRenderOpt
     if prime_mode {
         lines.push(prime_decision_line(packet));
     }
-    lines.push(if prime_mode {
+    lines.push(if prime_owner_only_frontier {
+        PRIME_OWNER_ONLY_LEGEND.to_string()
+    } else if prime_mode {
         PRIME_GRAPH_LEGEND.to_string()
     } else {
         COMPACT_GRAPH_MICRO_LEGEND.to_string()
     });
-    lines.push(graph_legend_line(&aliases));
+    lines.push(if prime_owner_only_frontier {
+        "aliases: owner:{O=owner}".to_string()
+    } else {
+        graph_legend_line(&aliases)
+    });
     let alias_definitions = aliases
         .iter()
         .map(aliases::GraphAlias::render)
@@ -77,11 +85,9 @@ pub(super) fn render_search_graph_packet(packet: &Value, options: GraphRenderOpt
     if !prime_owner_only_frontier {
         lines.extend(graph_edge_lines(&aliases, owner_item_query));
     }
-    let rank = graph_rank(&aliases, owner_item_query);
-    let frontier = graph_frontier(&aliases, owner_item_query);
-    if prime_owner_only_frontier {
-        lines.push(format!("frontier={frontier}"));
-    } else {
+    if !prime_owner_only_frontier {
+        let rank = graph_rank(&aliases, owner_item_query);
+        let frontier = graph_frontier(&aliases, owner_item_query);
         lines.push(format!("rank={rank} frontier={frontier}"));
     }
     if owner_item_query && let Some(revisions) = owner_item_query_revisions(packet) {

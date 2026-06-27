@@ -119,6 +119,33 @@ fn sample_prime_packet() -> serde_json::Value {
     })
 }
 
+fn sample_owner_only_prime_packet() -> serde_json::Value {
+    json!({
+        "schemaId": "agent.semantic-protocols.semantic-search-packet",
+        "schemaVersion": "1",
+        "protocolId": "agent.semantic-protocols.semantic-language",
+        "protocolVersion": "1",
+        "languageId": "rust",
+        "providerId": "rs-harness",
+        "projectRoot": "marlin-agent-core",
+        "view": "prime",
+        "header": {
+            "kind": "search-prime",
+            "fields": {
+                "package": "marlin-agent-core"
+            }
+        },
+        "nextActions": [
+            { "kind": "owner", "target": "build-support/build.rs" },
+            { "kind": "owner", "target": "build-support/src/archive.rs" },
+            { "kind": "owner", "target": "build-support/tests/unit/archive.rs" }
+        ],
+        "searchSynthesis": {
+            "algorithm": "owner-rank-frontier"
+        }
+    })
+}
+
 fn sample_owner_items_packet() -> serde_json::Value {
     json!({
         "schemaId": "agent.semantic-protocols.semantic-search-packet",
@@ -373,6 +400,25 @@ fn shared_renderer_projects_prime_packet_into_tool_map_frontier() {
     assert!(output.contains("omit=items,blocks,code,full-test-list"));
     assert!(output.contains("avoid=raw-read,full-json,broad-fzf"));
     assert!(!output.contains("owner-rank-frontier"));
+}
+
+#[test]
+fn shared_renderer_omits_redundant_frontier_for_owner_only_prime_packet() {
+    let output = render_search_graph_packet(
+        &sample_owner_only_prime_packet(),
+        GraphRenderOptions {
+            seed_limit: Some(12),
+        },
+    );
+    assert!(output.starts_with("[search-prime] root=marlin-agent-core"));
+    assert!(output.contains("aliases: owner:{O=owner}"));
+    assert!(output.contains("O=owner:path(build-support/build.rs)!owner"));
+    assert!(output.contains("entries=owner-tests(O=>covering-tests+test-entrypoints+fixtures)"));
+    assert!(output.contains("omit=items,blocks,code,full-test-list"));
+    assert!(!output.contains("aliases: graph:{G=search"));
+    assert!(!output.contains("G>{"));
+    assert!(!output.contains("rank="));
+    assert!(!output.contains("frontier="));
 }
 
 #[test]
