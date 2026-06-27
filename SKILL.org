@@ -44,9 +44,11 @@ on agent search flow; generated sections are owned by Rust.
 :END:
 
 ** Search Flow
-Search is a staged query language. Start at the earliest stage that current
-evidence justifies, then follow =recommendedNext= or =nextCommand=.
+Search is not a mandatory pipeline. Infer the current =evidenceState= first, choose the narrowest route whose preconditions are already satisfied, then follow =recommendedNext= or =nextCommand= when the packet proves it. Do not run =search prime= when an owner path, exact structural selector, dependency anchor, failure/test frontier, changed file, or user-provided file/symbol anchor already identifies a narrower route.
 
+Before any ASP search command, record the route justification mentally or in the receipt: known anchors, chosen route, rejected broader routes, expected projection, code policy, and fallback reason when a fallback is used. =displayLineRange= and =sourceLocatorHint= are display or transport hints, not executable semantic identity. =query-code= requires exact parser-owned identity.
+
+After each ASP command, verify the trajectory: =.syntax= actions must stay non-code unless upgraded through an exact selector, fallback reads must be bounded and justified, repeated prime/fzf/rg after a frontier is a route smell, and completion claims require packet or test evidence.
 | Stage | Command | What the agent learns |
 | capability | =asp <language> guide .= | Supported surfaces, axes, recipes, and dependency profiles. |
 | topology | =asp <language> search prime --workspace . --view seeds= | Workspace owners, provider roots, package/member hints, and first action frontier. |

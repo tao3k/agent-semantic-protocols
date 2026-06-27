@@ -1,0 +1,407 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-route-verification-trace.v1.schema.json",
+  "title": "Semantic Route Verification Trace",
+  "description": "Verifier-facing trajectory trace for ASP search/query route choices in sandtable and live-session receipts.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "verifierVersion",
+    "monitorPatternSetVersion",
+    "evidenceState",
+    "chosenRoute",
+    "routePlan",
+    "executedTrace",
+    "behaviorScores",
+    "riskFlags"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.semantic-route-verification-trace"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "verifierVersion": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*\\.v[1-9][0-9]*$"
+    },
+    "monitorPatternSetVersion": {
+      "type": "string",
+      "minLength": 1
+    },
+    "evidenceState": {
+      "$ref": "#/$defs/evidenceState"
+    },
+    "chosenRoute": {
+      "$ref": "#/$defs/routeDecision"
+    },
+    "rejectedRoutes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/rejectedRoute"
+      }
+    },
+    "routePlan": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/plannedRoute"
+      }
+    },
+    "executedTrace": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/executedRouteStep"
+      }
+    },
+    "behaviorScores": {
+      "$ref": "#/$defs/behaviorScores"
+    },
+    "riskFlags": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/riskFlag"
+      }
+    },
+    "routeRegret": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4
+    },
+    "feedbackSignals": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/feedbackSignal"
+      }
+    },
+    "notes": {
+      "$ref": "#/$defs/stringList"
+    }
+  },
+  "$defs": {
+    "behaviorScores": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "routeFaithfulness",
+        "routeEfficiency",
+        "semanticPrecision",
+        "fallbackDiscipline",
+        "verificationHonesty",
+        "finalAnswerGrounding"
+      ],
+      "properties": {
+        "routeFaithfulness": {
+          "$ref": "#/$defs/score"
+        },
+        "routeEfficiency": {
+          "$ref": "#/$defs/score"
+        },
+        "semanticPrecision": {
+          "$ref": "#/$defs/score"
+        },
+        "fallbackDiscipline": {
+          "$ref": "#/$defs/score"
+        },
+        "verificationHonesty": {
+          "$ref": "#/$defs/score"
+        },
+        "finalAnswerGrounding": {
+          "$ref": "#/$defs/score"
+        }
+      }
+    },
+    "codePolicy": {
+      "enum": [
+        "disabled",
+        "exact-only",
+        "fallback-bounded",
+        "unknown"
+      ]
+    },
+    "evidenceAnchor": {
+      "enum": [
+        "exact-selector",
+        "structural-selector",
+        "native-fact",
+        "owner-path",
+        "symbol",
+        "dependency",
+        "failure-output",
+        "test-owner",
+        "previous-frontier",
+        "changed-file",
+        "user-anchor",
+        "unknown-workspace"
+      ]
+    },
+    "evidenceState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "anchors"
+      ],
+      "properties": {
+        "anchors": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/evidenceAnchor"
+          },
+          "uniqueItems": true
+        },
+        "ownerPath": {
+          "$ref": "semantic-source-location.v1.schema.json#/$defs/projectPath"
+        },
+        "structuralSelector": {
+          "$ref": "semantic-source-location.v1.schema.json#/$defs/structuralSelector"
+        },
+        "sourceLocatorHint": {
+          "$ref": "semantic-source-location.v1.schema.json#/$defs/sourceLocator"
+        },
+        "query": {
+          "type": "string",
+          "minLength": 1
+        },
+        "previousRecommendedNext": {
+          "$ref": "#/$defs/stringList"
+        },
+        "evidenceRefs": {
+          "$ref": "#/$defs/stringList"
+        }
+      }
+    },
+    "executedRouteStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "commandId",
+        "route"
+      ],
+      "properties": {
+        "commandId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "route": {
+          "$ref": "#/$defs/routeId"
+        },
+        "projection": {
+          "$ref": "#/$defs/projection"
+        },
+        "codePolicy": {
+          "$ref": "#/$defs/codePolicy"
+        },
+        "fallbackReason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidenceRefs": {
+          "$ref": "#/$defs/stringList"
+        }
+      }
+    },
+    "feedbackReason": {
+      "enum": [
+        "misunderstanding",
+        "omission",
+        "overaction",
+        "inefficiency",
+        "execution-error",
+        "communication"
+      ]
+    },
+    "feedbackSignal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reason",
+        "polarity",
+        "confidence"
+      ],
+      "properties": {
+        "reason": {
+          "$ref": "#/$defs/feedbackReason"
+        },
+        "polarity": {
+          "enum": [
+            "negative",
+            "neutral",
+            "positive"
+          ]
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "evidenceRefs": {
+          "$ref": "#/$defs/stringList"
+        }
+      }
+    },
+    "plannedRoute": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "route",
+        "expectedProjection",
+        "codePolicy",
+        "reason"
+      ],
+      "properties": {
+        "route": {
+          "$ref": "#/$defs/routeId"
+        },
+        "preconditions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/evidenceAnchor"
+          },
+          "uniqueItems": true
+        },
+        "expectedProjection": {
+          "$ref": "#/$defs/projection"
+        },
+        "codePolicy": {
+          "$ref": "#/$defs/codePolicy"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "projection": {
+      "enum": [
+        "none",
+        "seeds",
+        "skeleton",
+        "outline",
+        "names",
+        "code",
+        "json",
+        "unknown"
+      ]
+    },
+    "rejectedRoute": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "route",
+        "reason"
+      ],
+      "properties": {
+        "route": {
+          "$ref": "#/$defs/routeId"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "risk": {
+          "$ref": "#/$defs/riskKind"
+        }
+      }
+    },
+    "riskFlag": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "severity",
+        "message"
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/riskKind"
+        },
+        "severity": {
+          "enum": [
+            "info",
+            "warning",
+            "error"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        },
+        "commandId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "evidenceRefs": {
+          "$ref": "#/$defs/stringList"
+        }
+      }
+    },
+    "riskKind": {
+      "enum": [
+        "unnecessary-prime",
+        "repeated-broad-search",
+        "syntax-as-code",
+        "executable-line-range",
+        "hint-as-selector",
+        "direct-read-over-parser",
+        "hidden-line-selector",
+        "edit-before-exact-preimage",
+        "unsupported-verification-claim",
+        "missing-route-justification",
+        "unknown"
+      ]
+    },
+    "routeDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "route",
+        "reason"
+      ],
+      "properties": {
+        "route": {
+          "$ref": "#/$defs/routeId"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidenceRefs": {
+          "$ref": "#/$defs/stringList"
+        }
+      }
+    },
+    "routeId": {
+      "enum": [
+        "prime",
+        "pipe",
+        "fzf",
+        "fd-query",
+        "rg-query",
+        "owner-items",
+        "owner-skeleton",
+        "syntax-outline",
+        "query-code",
+        "dependency-topology",
+        "failure-frontier",
+        "test-frontier",
+        "direct-read",
+        "custom"
+      ]
+    },
+    "score": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4
+    },
+    "stringList": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  }
+}

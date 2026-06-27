@@ -1,0 +1,130 @@
+* Verification horizon for search routing
+
+Search routing is verifier-facing behavior, not only prompt-facing UX. No
+fixed route policy is final: every =search=, =query=, skeleton, topology, and
+line-selector rule is a proxy for user intent. Stronger agents will eventually
+overfit, bypass, or saturate any proxy that is not monitored at trajectory
+level.
+
+This module makes route verification a durable ASP responsibility. The goal
+is not to reward "the agent used ASP"; the goal is to verify that the agent
+chose the narrowest route justified by current evidence, exposed why broader
+routes were rejected, and kept code reads behind exact parser-owned identity.
+
+** Routing principle
+
+Search is not a mandatory pipeline. Before =search prime=, =search pipe=,
+=search fzf=, or =query --code=, the agent or runner derives an
+=evidenceState=:
+
+| Evidence anchor | Expected route consequence |
+|-----------------+----------------------------|
+| exact structural selector or native fact id | Skip prime. Use non-code projection first; =query-code= requires exact identity. |
+| owner path | Skip prime unless the owner is stale or failed. Start at owner skeleton/items. |
+| symbol, function, type, or module | Prefer owner/items or syntax outline over workspace map. |
+| dependency or package API | Use dependency topology before generic prime/pipe. |
+| failure output or test owner | Use failure/test frontier before broad search. |
+| previous packet =recommendedNext= | Follow it or record why it failed. |
+| changed file or user-provided file anchor | Treat it as owner evidence; do not re-map the workspace. |
+| unknown workspace or no owner map | =search prime --view seeds= is allowed as orientation. |
+
+Every route decision SHOULD record:
+
+| Field | Purpose |
+|-------+---------|
+| =evidenceState= | Which anchors were known before the command. |
+| =chosenRoute= | The narrowest satisfied route. |
+| =rejectedRoutes= | Broader or riskier routes and why they were not used. |
+| =expectedProjection= | The expected non-code shape, such as =skeleton= or =outline=. |
+| =codePolicy= | =disabled=, =exact-only=, or =fallback-bounded=. |
+| =fallbackReason= | Required when a broader search or bounded source window is used. |
+
+** Trajectory monitor
+
+Sandtable and live-session receipts SHOULD inspect the command trajectory, not
+only the final answer. A successful answer is still suspect when it used a
+shortcut route that the available evidence did not justify.
+
+Initial monitor patterns:
+
+| Pattern | Risk |
+|---------+------|
+| known owner or selector followed by =search prime= | unnecessary-prime |
+| repeated =prime=, =fzf=, or broad =rg= after a frontier exists | repeated-broad-search |
+| =.syntax= action materialized as =--code= | syntax-as-code |
+| =path:start:end= used as executable selector identity | executable-line-range |
+| =sourceLocatorHint= used as identity instead of display hint | hint-as-selector |
+| direct source read when structural selector exists | direct-read-over-parser |
+| hidden line range in =nextCommand= | hidden-line-selector |
+| edit before exact preimage read | edit-before-exact-preimage |
+| "verified" claim without packet/test evidence | unsupported-verification-claim |
+
+Monitor patterns are versioned and updated from live failures, sandtable
+failures, and user feedback. Passing the current monitor only proves that the
+current proxy was not violated; it does not prove that future agents cannot
+find a new shortcut.
+
+** Route quality
+
+Route verification is not binary. Two trajectories can answer the same
+question while having different engineering value. Sandtable receipts SHOULD
+stratify route quality with 0-4 scores:
+
+| Score | Meaning |
+|-------+---------|
+| =routeFaithfulness= | Route follows the user's actual evidence and intent. |
+| =routeEfficiency= | Route avoids unnecessary prime/fzf/raw search loops. |
+| =semanticPrecision= | Route uses parser-owned selectors, owners, and topology. |
+| =fallbackDiscipline= | Fallbacks are bounded and justified. |
+| =verificationHonesty= | Claims match available packet/test evidence. |
+| =finalAnswerGrounding= | Final answer cites the trajectory evidence it actually used. |
+
+Quality scores support ranking and regression analysis. They must not be used
+as a permanent reward without monitoring for new proxy failures.
+
+** Contract surface
+
+The shared search packet remains focused on language-provider evidence. Route
+verification lives in sandtable and session receipts through
+=semantic-route-verification-trace.v1=. Receipts may attach a
+=routeVerificationTrace= that records evidence state, route plan, executed
+trace, behavior scores, and risk flags.
+
+This avoids making a new parallel search API while making trajectory evidence
+contract-visible and testable.
+
+** User feedback loop
+
+Developer corrections are verifier data. Feedback such as "do not prime when
+owner is known", "line ranges are hints", "skeleton is not code", or "do not
+claim verification without evidence" SHOULD be translated into monitor
+patterns, route-quality examples, or sandtable scenarios.
+
+Feedback labels SHOULD preserve the failure reason:
+
+| Feedback reason | ASP interpretation |
+|-----------------+--------------------|
+| misunderstanding | wrong route for known evidence |
+| omission | missing selector, projection, or verification evidence |
+| overaction | unnecessary broad search, raw read, or edit |
+| inefficiency | repeated prime/fzf/rg or token-heavy route |
+| execution-error | invalid command, unsupported selector, or failed fallback |
+| communication | route claim not grounded in evidence |
+
+** Evolution rule
+
+The verifier horizon recedes as agents improve. Each substantial sandtable or
+live-agent audit SHOULD close the loop:
+
+#+begin_src text
+trajectory trace
+  -> monitor pattern review
+  -> route-quality judgment
+  -> user feedback annotation
+  -> schema/RFC/skill update
+  -> regenerated sandtable cases
+#+end_src
+
+The durable invariant is not a fixed command order. It is that every broader
+route has to earn its place from evidence, and every verification claim has to
+point at replayable evidence.

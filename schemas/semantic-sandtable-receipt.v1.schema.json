@@ -83,6 +83,9 @@
       "items": {
         "$ref": "#/$defs/qualityFinding"
       }
+    },
+    "routeVerificationTrace": {
+      "$ref": "semantic-route-verification-trace.v1.schema.json"
     }
   },
   "$defs": {
