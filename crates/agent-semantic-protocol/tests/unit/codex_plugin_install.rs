@@ -4,6 +4,9 @@ mod unix {
     use std::process::Command;
     use std::time::{SystemTime, UNIX_EPOCH};
 
+    const ASP_ORG_SKILL_TEMPLATE: &str =
+        include_str!("../../../../languages/org/templates/ASP_ORG_SKILL.org");
+
     #[test]
     fn cleans_retired_project_hook_config() {
         let root = temp_project_root("codex-plugin-cleans-retired-hooks");
@@ -300,6 +303,7 @@ mod unix {
         let cache_skill_dir = cache_root.join("skills").join("agent-semantic-protocols");
         let cache_skill_path = cache_skill_dir.join("SKILL.org");
         let skill = std::fs::read_to_string(&cache_skill_path).expect("read plugin cache skill");
+        assert_eq!(skill, format!("{}\n", ASP_ORG_SKILL_TEMPLATE.trim_end()));
         assert!(skill.contains("* ASP Org"), "{skill}");
         assert!(skill.contains(":SKILL_ID: asp-org"), "{skill}");
         assert!(!skill.contains("SKILL.contract.org"), "{skill}");

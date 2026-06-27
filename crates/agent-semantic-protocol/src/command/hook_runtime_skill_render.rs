@@ -14,8 +14,8 @@ const ASP_SKILL_CONTRACT_ORG: &str =
     include_str!("../../../../languages/org/contracts/asp.skill.v1.org");
 const ASP_SKILL_CONTRACT_REFERENCE: &str = "languages/org/contracts/asp.skill.v1.org#asp.skill.v1";
 const ASP_SKILL_TEMPLATE_SOURCE_PATH: &str = "languages/org/templates/ASP_ORG_SKILL.org";
-const ASP_SKILL_TEMPLATE_HEADING: &str = "** ASP Org";
-const ASP_SKILL_ASSERTIONS_HEADING: &str = "** Contract Assertions";
+const ASP_SKILL_TEMPLATE_ORG: &str =
+    include_str!("../../../../languages/org/templates/ASP_ORG_SKILL.org");
 
 pub(crate) fn render_agent_semantic_protocols_installed_skill(
     _project_root: &Path,
@@ -101,42 +101,5 @@ pub(crate) fn validate_agent_semantic_protocols_skill(rendered_skill: &str) -> R
 }
 
 fn renderable_agent_semantic_protocols_skill_template() -> Result<String, String> {
-    let lines = ASP_SKILL_CONTRACT_ORG.lines().collect::<Vec<_>>();
-    let template_start = lines
-        .iter()
-        .position(|line| *line == ASP_SKILL_TEMPLATE_HEADING)
-        .ok_or_else(|| {
-            format!(
-                "{ASP_SKILL_CONTRACT_SOURCE_PATH} missing `{ASP_SKILL_TEMPLATE_HEADING}` template root"
-            )
-        })?;
-    let assertion_start = lines
-        .iter()
-        .enumerate()
-        .skip(template_start + 1)
-        .find_map(|(index, line)| (*line == ASP_SKILL_ASSERTIONS_HEADING).then_some(index))
-        .ok_or_else(|| {
-            format!(
-                "{ASP_SKILL_CONTRACT_SOURCE_PATH} missing `{ASP_SKILL_ASSERTIONS_HEADING}` boundary"
-            )
-        })?;
-    if assertion_start <= template_start {
-        return Err(format!(
-            "{ASP_SKILL_CONTRACT_SOURCE_PATH} assertion boundary must follow the template root"
-        ));
-    }
-
-    Ok(lines[template_start..assertion_start]
-        .iter()
-        .map(|line| demote_org_heading_line(line))
-        .collect::<Vec<_>>()
-        .join("\n"))
-}
-
-fn demote_org_heading_line(line: &str) -> String {
-    if line.starts_with("**") {
-        line[1..].to_string()
-    } else {
-        line.to_string()
-    }
+    Ok(ASP_SKILL_TEMPLATE_ORG.trim_end().to_string())
 }

@@ -1,261 +1,109 @@
-#+TITLE: Agent Semantic Protocols
-#+PROPERTY: ASP_CONTRACT_VERSION 1
-#+PROPERTY: ASP_TEMPLATE_KIND skill
-#+PROPERTY: ASP_RENDERER rust
-
-#+CONTRACT_ORG: ./SKILL.contract.org#asp.skill.v1
-
-* Contract Metadata
+* ASP Org
 :PROPERTIES:
-:ASP_SECTION: metadata
-:ASP_RENDER: static
+:CONTRACT_ORG: [[../contracts/skill.v1.org][skill.v1]]
+:CONTRACT_ORG: [[../contracts/asp.skill.v1.org][asp.skill.v1]]
+:SKILL_ID: asp-org
+:SKILL_DESCRIPTION: Use when durable Org planning state, Org contracts, Org template outputs, or Org AST facts should be queried through asp org.
 :END:
-
-Source template for generated ASP skill contracts. Keep the static body focused
-on agent search flow; generated sections are owned by Rust.
-
-# BEGIN_ASP_GENERATED notice
-#+begin_quote
-IMPORTANT: Generated from the repository root =SKILL.org= template, validated by =SKILL.contract.org=, and expanded from the current provider activation. Do not edit this installed copy. Edit root =SKILL.org=, =SKILL.contract.org=, or =.agents/asp.toml=, then rerun =asp install plugin --codex .= for Codex or =asp install hook --client claude .= for Claude.
-#+end_quote
-# END_ASP_GENERATED notice
-
-* ASP Org Reference
-:PROPERTIES:
-:ASP_SECTION: asp-org-reference
-:ASP_RENDER: generated
-:ASP_SOURCE: project_state_paths.protocol_home/org/templates/ASP_ORG_SKILL.org
-:END:
-
-# BEGIN_ASP_GENERATED asp-org-reference
-The ASP Org operational skill is materialized in project state, not inside the Codex plugin directory.
-Use this reference when durable Org planning, contracts, templates, or flow state are needed.
-Resolve project-local state paths through =asp paths= before opening Org artifacts from a different working directory.
-
-| Field | Value |
-|-------+-------|
-| Project root | =asp paths --get projectRoot= |
-| REFER_ORG | =.cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org#asp-org= |
-| ASP Org skill | =asp paths --get orgStateSkill= |
-| Org artifacts | =asp paths --get orgArtifacts= |
-| Project-relative ASP Org skill | =.cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org= |
-| Project-relative Org artifacts | =.cache/agent-semantic-protocol/artifacts/org= |
-| Missing state | Run =asp org capture init= from the project root. |
-# END_ASP_GENERATED asp-org-reference
-
-* Runtime Activation
-:PROPERTIES:
-:ASP_SECTION: activation
-:ASP_RENDER: generated
-:ASP_SOURCE: .agents/asp.toml,path,.bin
-:END:
-
-# BEGIN_ASP_GENERATED activation
-Generated from =.agents/asp.toml=, =PATH=, and project =.bin= provider binaries.
-
-| Field | Value |
-|-------+-------|
-| Runtime | =asp= |
-| Version | =0.1.0= |
-| Active provider count | 7 |
-| Active language list | See generated =Provider Contracts= subtrees. |
-# END_ASP_GENERATED activation
-
-* Agent Operating Contract
-:PROPERTIES:
-:ASP_SECTION: operating-contract
-:ASP_RENDER: static
-:END:
-
-** Search Flow
-Search is a staged query language. Start at the earliest stage that current
-evidence justifies, then follow =recommendedNext= or =nextCommand=.
-
-| Stage | Command | What the agent learns |
-| capability | =asp <language> guide .= | Supported surfaces, axes, recipes, and dependency profiles. |
-| topology | =asp <language> search prime --workspace . --view seeds= | Workspace owners, provider roots, package/member hints, and first action frontier. |
-| query refinement | =asp <language> search pipe '<question>' --workspace . --view seeds= | Ranked evidence, query terms, missing facts, risk, and next command. |
-| owner expansion | =asp <language> search owner <owner> items --query '<term>' --workspace . --view seeds= | Owner-local symbols, tests, imports, docs-use, and exact selectors. |
-| finder recovery | =asp fd -query '<path-or-owner-term>' --workspace <scope>= | Candidate owners when path or selector confidence is low. |
-| indexed text recovery | =asp rg -query '<term>' --workspace <scope>= | Candidate owners from indexed text when a search packet asks for scoped recovery. |
-| exact projection | =asp <language> query --selector <selector> --workspace . --code= | Source text for a precise selector already emitted by search. |
-
-** Execution Fan-out
-Subagents are optional client execution. They consume search-flow axes; they do
-not define new query semantics.
-
-| Trigger | Action |
-| session search worker id | Open at most one ASP search worker per main session, record its id in parent state, and reuse that id for later search fan-out. |
-| independent =actionFrontier= or =targetActions= rows | Assign each bounded command group to a read-only worker. |
-| worker result | Return compact evidence, missing facts, risk, and next action to the parent. |
-| no subagent support | Run the same command groups sequentially in the parent. |
-
-** Dependency Search Topology
-Dependency questions stay inside provider search until the provider reports a
-missing dependency frontier.
-
-| Command | Purpose |
-| =asp <language> search deps <dependency[@version][::api]> --workspace . --view seeds= | Return current manifest owner, dependency edge, import owners, docs/public API use, source/runtime hints, tests, and next command. Use one selector token such as =tokio::spawn=; do not pass an extra positional API token. |
-| =asp <language> search pipe '<question>' --workspace . --view seeds= | Graph-turbo may surface =search-deps= as an action affordance when dependency topology nodes prove a package frontier. |
-| =asp <language> search owner <manifest-owner> items --query '<dependency>' --workspace . --view seeds= | Inspect dependency evidence in the manifest or package owner. |
-
-** Document Search
-path-context resolution is part of the document-provider contract: pass =--workspace= explicitly and recover content through exact parser-owned selectors.
-Document providers expose AST facts rather than policy harnesses.
-Use asp org capture --contract CONTRACT_ID for non-mutating Org entry plans backed by explicit contracts such as agent.task.v1, agent.plan.v1, agent.sdd.v1, agent.adr.v1, agent.bdd.v1, agent.prd.v1, or agent.execplan.v1.
-The contract id must be explicit; do not use positional aliases such as task, plan, or sdd.
-
-| Command | Purpose |
-| =asp org guide --workspace .= | Show Org element kinds, fields, capture, and contract trace commands. |
-| =asp org query --kind task --field todo=TODO --workspace . --view metadata= | Find TODO headlines as task facts. |
-| =asp org query --kind checklistItem --field checked=false --workspace . --view metadata= | Find unchecked checklist items without collapsing them into tasks. |
-| =asp org query --selector <structural-selector> --workspace . --content= | Print matched element content after a structural selector is known. |
-| =asp org capture --contract agent.task.v1 --kind task --title <TITLE> --target-file <file.org>= | Render a non-mutating Org entry plan for review before writing. |
-| =asp md guide --workspace .= | Show Markdown document query/search surfaces. |
-
-** Failure And Recovery
-
-| Command | Purpose |
-| =asp <language> search failure '<compact-failure>' --workspace . --view seeds= | Project failure text into candidate owners, hot blocks, query profiles, and next actions. |
-| =asp <language> search guide --workspace .= | Confirm a failure or reasoning profile exists before reconstructing a command. |
-
-** Provider Contract Rules
-- Provider =guide= output is the command contract; do not infer unsupported axes.
-- Dependency topology must include manifest, dependency edge, import owner,
-  public API/docs use, test witness, and next action when the provider can
-  prove them.
-- Search output should be compact evidence, not source dumps.
-- Treat =missing=, =evidenceGrade=unknown=, and =witness pending= as real
-  frontier gaps.
-- Keep language project parsing in the language provider. ASP routes and
-  indexes; it does not reimplement package membership or source/test scope.
-- Do not edit languages/org/templates/ASP_ORG_SKILL.org directly or patch the
-  materialized project-state copy by hand. Change the governing contract,
-  template, or Rust materialization source and rerun =asp sync= or the relevant
-  =asp install ...= command so the skill is regenerated.
-
-* Provider Contracts
-:PROPERTIES:
-:ASP_SECTION: providers
-:ASP_RENDER: generated
-:ASP_SOURCE: HookActivation.providers
-:END:
-
-# BEGIN_ASP_GENERATED providers
-Detected from provider binaries plus =.agents/asp.toml=; only activated languages are listed.
-
-** rust
-:PROPERTIES:
-:LANGUAGE_ID: rust
-:PROVIDER_ID: rs-harness
-:BINARY: rs-harness
-:EXECUTION: external-process
-:FACADE: asp rust
-:COMMAND: .bin/rs-harness
-:DOCUMENT_PROVIDER: false
-:ENABLED: true
-:END:
-
-Use =asp rust guide .= before rust-specific exploration.
-Use =asp rust search prime --workspace <workspace-root> --view seeds= only when the rust owner map is unknown; exact selectors, owners, symbols, dependencies, or hook frontiers should go straight to the provider-owned query, owner, finder, guide, or dependency route.
-
-** typescript
-:PROPERTIES:
-:LANGUAGE_ID: typescript
-:PROVIDER_ID: ts-harness
-:BINARY: ts-harness
-:EXECUTION: external-process
-:FACADE: asp typescript
-:COMMAND: .bin/ts-harness
-:DOCUMENT_PROVIDER: false
-:ENABLED: true
-:END:
-
-Use =asp typescript guide .= before typescript-specific exploration.
-Use =asp typescript search prime --workspace <workspace-root> --view seeds= only when the typescript owner map is unknown; exact selectors, owners, symbols, dependencies, or hook frontiers should go straight to the provider-owned query, owner, finder, guide, or dependency route.
-
-** python
-:PROPERTIES:
-:LANGUAGE_ID: python
-:PROVIDER_ID: py-harness
-:BINARY: py-harness
-:EXECUTION: external-process
-:FACADE: asp python
-:COMMAND: .bin/py-harness
-:DOCUMENT_PROVIDER: false
-:ENABLED: true
-:END:
-
-Use =asp python guide .= before python-specific exploration.
-Use =asp python search prime --workspace <workspace-root> --view seeds= only when the python owner map is unknown; exact selectors, owners, symbols, dependencies, or hook frontiers should go straight to the provider-owned query, owner, finder, guide, or dependency route.
-
-** julia
-:PROPERTIES:
-:LANGUAGE_ID: julia
-:PROVIDER_ID: julia-lang-project-harness
-:BINARY: asp-julia-harness
-:EXECUTION: external-process
-:FACADE: asp julia
-:COMMAND: .bin/asp-julia-harness
-:DOCUMENT_PROVIDER: false
-:ENABLED: true
-:END:
-
-Use =asp julia guide .= before julia-specific exploration.
-Use =asp julia search prime --workspace <workspace-root> --view seeds= only when the julia owner map is unknown; exact selectors, owners, symbols, dependencies, or hook frontiers should go straight to the provider-owned query, owner, finder, guide, or dependency route.
-
-** gerbil-scheme
-:PROPERTIES:
-:LANGUAGE_ID: gerbil-scheme
-:PROVIDER_ID: gerbil-scheme-harness
-:BINARY: gslph
-:EXECUTION: external-process
-:FACADE: asp gerbil-scheme
-:COMMAND: .bin/gslph
-:DOCUMENT_PROVIDER: false
-:ENABLED: true
-:END:
-
-Use =asp gerbil-scheme guide .= before gerbil-scheme-specific exploration.
-Use =asp gerbil-scheme search prime --workspace <workspace-root> --view seeds= only when the gerbil-scheme owner map is unknown; exact selectors, owners, symbols, dependencies, or hook frontiers should go straight to the provider-owned query, owner, finder, guide, or dependency route.
-
-** org
-:PROPERTIES:
-:LANGUAGE_ID: org
-:PROVIDER_ID: orgize
-:BINARY: asp
-:EXECUTION: embedded
-:FACADE: asp org
-:COMMAND: .bin/asp
-:DOCUMENT_PROVIDER: true
-:ENABLED: true
-:END:
-
-Use =asp org guide .= before document element navigation.
-Use =asp org query= for parser-owned document elements and metadata.
-
-** md
-:PROPERTIES:
-:LANGUAGE_ID: md
-:PROVIDER_ID: orgize
-:BINARY: asp
-:EXECUTION: embedded
-:FACADE: asp md
-:COMMAND: .bin/asp
-:DOCUMENT_PROVIDER: true
-:ENABLED: true
-:END:
-
-Use =asp md guide .= before document element navigation.
-Use =asp md query= for parser-owned document elements and metadata.
-# END_ASP_GENERATED providers
-
-* Client Surface
-:PROPERTIES:
-:ASP_SECTION: client-surface
-:ASP_RENDER: static
-:ASP_CLIENT: codex
-:END:
-
-ASP is a CLI contract. Client lifecycle and installation details belong outside
-this skill body.
+** Use Boundary
+Use this skill when the task depends on durable Org planning state, Org contracts, Org templates, TODO headlines, checklist items, property drawers, planning timestamps, links, or source blocks that should be queried through =asp org=.
+Do not use this skill when the task is generic Markdown authoring, free-form chat planning, or client-local todo management that does not need Org AST facts or Org contract validation.
+** State Workflow
+ASP materializes the Org resource tree when project runtime state is installed or synchronized. Start by resolving the writable artifact root, then ask the provider what Org facts exist and let the result shape the next action. The provider exposes asp org query for semantic AST facts. The provider exposes asp org contract trace for contract validation.
+#+begin_src shell
+asp paths --get orgArtifacts
+asp org guide
+asp org query --kind task --field todo=TODO --workspace . --view metadata
+asp org query --kind checklistItem --field checked=false --workspace . --view metadata
+asp org query --kind property --field key=<KEY> --workspace . --view metadata
+asp org query --kind property --field key=GOVERNING_CONTRACT --workspace . --view metadata
+#+end_src
+ASP resolves the Org resource root as =${PRJ_CACHE_HOME}/agent-semantic-protocol/org= when =PRJ_CACHE_HOME= is set, otherwise as =<git-toplevel>/.cache/agent-semantic-protocol/org=. The resource root is managed by ASP install/sync and should not be used for agent-authored state.
+Agent-authored Org state belongs under the separate artifacts root returned by =asp paths --get orgArtifacts=. It resolves to =${PRJ_CACHE_HOME}/agent-semantic-protocol/artifacts/org= when =PRJ_CACHE_HOME= is set, otherwise to =<git-toplevel>/.cache/agent-semantic-protocol/artifacts/org=. Reference this materialized skill from AGENTS.md with =@.cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org=.
+Run asp paths --get orgArtifacts before writing agent-authored Org state from a non-root working directory.
+State layout after ASP install/sync: Flow records are artifacts/org/flow/plans, artifacts/org/flow/sdd, artifacts/org/flow/bdd, artifacts/org/flow/tdd, and artifacts/org/flow/bdr.
+- =.cache/agent-semantic-protocol/org= is the git-backed Org resource checkout.
+- =.cache/agent-semantic-protocol/org/contracts= stores contract resources.
+- =.cache/agent-semantic-protocol/org/templates= stores audited template outputs.
+- =.cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org= is the single ASP Org skill entry.
+- =.cache/agent-semantic-protocol/artifacts/org= stores agent-authored Org state.
+- =.cache/agent-semantic-protocol/artifacts/org/flow/plans= stores plan records.
+- =.cache/agent-semantic-protocol/artifacts/org/flow/sdd= stores SDD records.
+- =.cache/agent-semantic-protocol/artifacts/org/flow/bdd= stores BDD records.
+- =.cache/agent-semantic-protocol/artifacts/org/flow/tdd= stores TDD records.
+- =.cache/agent-semantic-protocol/artifacts/org/flow/bdr= stores BDR records.
+- =.cache/agent-semantic-protocol/artifacts/org/archives= stores completed, superseded, or inactive agent-authored Org state.
+The archive root is =.cache/agent-semantic-protocol/artifacts/org/archives=, or the corresponding path under =$(asp paths --get orgArtifacts)/archives= when the artifacts root is resolved dynamically.
+Archive records live under artifacts/org/archives.
+Archive lane:
+- Resolve the writable artifact root with =asp paths --get orgArtifacts= before archiving from a non-root working directory.
+- Query active Org facts first, such as =asp org query --kind task --field todo=DONE --workspace . --view metadata=, then inspect the returned selector before moving content.
+- Preserve active layout under =archives= when possible: move =flow/plans/<PLAN_SLUG>.org= to =archives/flow/plans/<PLAN_SLUG>.org=, SDD records to =archives/flow/sdd/=, BDD records to =archives/flow/bdd/=, TDD records to =archives/flow/tdd/=, and BDR records to =archives/flow/bdr/=.
+- Add archive metadata such as =ARCHIVED_FROM= and =ARCHIVE_REASON= on the destination record instead of encoding archive status as a hidden search/query side effect.
+- Do not archive by deleting AST facts discovered through =asp org query= without writing the destination archive record first.
+- If the query returns TODO headlines, treat them as =kind=task= and inspect the relevant selector before editing.
+- If the query returns checkbox list items, treat them as =kind=checklistItem=; do not collapse them into task headlines.
+- If the query returns a property drawer match, use the property key/value as the semantic anchor; do not invent SDD, Wendao, or agent-plan search modes.
+- If the task needs a governing specification, choose it by purpose: =agent.sdd.v1= for software architecture and design drift, =agent.bdd.v1= for behavior and acceptance, =agent.tdd.v1= for test-first or regression contracts, and =agent.bdr.v1= for Business Development Representative workflow, qualification, outreach, or handoff. Add only the relevant specification reference to the plan. If none applies, do not write placeholder =none= rows or properties.
+- Use =agent.adr.v1= for a decision and =agent.prd.v1= for product requirements when those are the relevant governing records.
+- If the task needs a new governing specification family, use =agent.spec-flow.v1= first. Define the theory, then add contract, template output, skill registration, template index entry, validation, and adversarial review in that order.
+- If no query result matches, narrow the AST query or inspect the linked contract or audited output before creating new structure.
+Validate contract or template state through the contract provider, not by reading prose alone:
+#+begin_src shell
+asp org contract trace --org-contract-registry ../contracts/agent.plan.v1.org ../templates/agent.plan.v1.org
+asp org contract trace --org-contract-registry ../contracts/agent.execplan.v1.org ../templates/agent.execplan.v1.org
+asp org contract trace --org-contract-registry ../contracts/agent.spec-flow.v1.org ../templates/agent.spec-flow.v1.org
+asp org contract trace --org-contract-registry ../contracts/agent.sdd.v1.org ../templates/agent.sdd.v1.org
+asp org contract trace --org-contract-registry ../contracts/agent.adr.v1.org ../templates/agent.adr.v1.org
+asp org contract trace --org-contract-registry ../contracts/agent.bdd.v1.org ../templates/agent.bdd.v1.org
+asp org contract trace --org-contract-registry ../contracts/agent.tdd.v1.org ../templates/agent.tdd.v1.org
+asp org contract trace --org-contract-registry ../contracts/agent.bdr.v1.org ../templates/agent.bdr.v1.org
+asp org contract trace --org-contract-registry ../contracts/agent.prd.v1.org ../templates/agent.prd.v1.org
+asp org contract trace --org-contract-registry ../contracts/skill.v1.org --org-contract-registry ../contracts/asp.skill.v1.org ../templates/ASP_ORG_SKILL.org
+#+end_src
+Before creating or updating a Plan, ExecPlan, or governing specification family, read the matching contract's =Definition= section. For =agent.plan.v1=, also read =Specification Choice Reasoning= so the agent can decide whether SDD, BDD, TDD, BDR, or none applies before writing the plan. The definition tells the agent what the artifact is, what it is not, and which governing records should be linked only when relevant.
+#+begin_src shell
+asp org search owner .cache/agent-semantic-protocol/org/contracts/agent.plan.v1.org items --query "Specification Choice Reasoning SDD BDD TDD BDR" --workspace . --view seeds
+#+end_src
+** Contract Capture
+Use =asp org capture --contract CONTRACT_ID= for a non-mutating, contract-checked Org entry plan. =CONTRACT_ID= must be a registry id such as =agent.task.v1=, =agent.plan.v1=, =agent.sdd.v1=, =agent.adr.v1=, =agent.bdd.v1=, =agent.tdd.v1=, =agent.bdr.v1=, =agent.prd.v1=, or =agent.execplan.v1=. Capture kinds stay generic; contract semantics are carried by the =CONTRACT_ORG= property injected by capture. The contract id must be explicit; do not use positional aliases such as =task=, =plan=, or =sdd=.
+#+begin_src shell
+asp org capture --contract agent.task.v1 \
+  --title <TITLE> \
+  --target-file <ASP_ORG_ARTIFACTS_ROOT>/<TASK_SLUG>.org
+#+end_src
+The command renders an Org entry, application preconditions, and a contract-check receipt before returning =org-entry=. It does not write the target file. The =agent.task.v1= wrapper supplies task kind, task tag, and a minimal Goal/Acceptance/Progress/Evidence scaffold unless the caller overrides them.
+** Rules
+- Preserve the semantic AST provider boundary: query Org tasks, checklist items, properties, planning timestamps, links, and source blocks as Org facts.
+- Keep =ASP_ORG_SKILL.org= as the single state skill entry; do not reintroduce a wrapper skill.
+- Do not edit materialized copies directly. Change the contract source and refresh the audited output through the Org provider path.
+- Do not use =--kind agent-plan=; =agent-plan= is not a provider-owned capture kind.
+- Do not add guide labels such as =agent-plan-*=, =wendao-task-*=, =wendao-orgid=, =sdd-property=, or =plan-record=.
+- Do not encode SDD, Wendao, or task archive behavior as hidden search/query side effects. Express them as AST queries first, then route mutations through an edit-plan or AST-patch contract.
+- Do not place SDD, ADR, BDD, TDD, BDR, or PRD body content inside =agent.plan.v1= or =agent.execplan.v1=. Link a plan to a specification only when that specification is relevant; otherwise omit the specification reference entirely.
+- Do not add a new governing specification family by editing the skill alone. First create or update a SpecFlow record, then add the contract, template output, skill registration, template index entry, validation evidence, and adversarial review.
+- Do not rewrite package-relative links as installation-root placeholders or repository-root paths.
+** Validation
+Run these checks after changing this skill contract or its audited template output:
+#+begin_src shell
+asp paths --get orgArtifacts
+asp org lint --org-contract-registry ../contracts/skill.v1.org --org-contract-registry ../contracts/asp.skill.v1.org ../templates/ASP_ORG_SKILL.org
+asp org contract trace --org-contract-registry ../contracts/skill.v1.org --org-contract-registry ../contracts/asp.skill.v1.org ../templates/ASP_ORG_SKILL.org
+asp org contract trace --org-contract-registry ../contracts/agent.plan.v1.org ../templates/agent.plan.v1.org
+asp org contract trace --org-contract-registry ../contracts/agent.execplan.v1.org ../templates/agent.execplan.v1.org
+asp org contract trace --org-contract-registry ../contracts/agent.spec-flow.v1.org ../templates/agent.spec-flow.v1.org
+asp org contract trace --org-contract-registry ../contracts/agent.sdd.v1.org ../templates/agent.sdd.v1.org
+asp org contract trace --org-contract-registry ../contracts/agent.adr.v1.org ../templates/agent.adr.v1.org
+asp org contract trace --org-contract-registry ../contracts/agent.bdd.v1.org ../templates/agent.bdd.v1.org
+asp org contract trace --org-contract-registry ../contracts/agent.prd.v1.org ../templates/agent.prd.v1.org
+asp org lint ../contracts/asp.skill.v1.org
+#+end_src
+Evidence loop pressure scenario: if reflection answers a question, it must also leave an evidence loop receipt with a linked evidence cell, replayable shell command, and evaluated result.
+Pressure scenario: an agent asks for "SDD tasks" or "Wendao task records" in an Org file. The correct behavior is to query AST facts such as TODO headlines, checkbox list items, and properties first, then route any write through =asp org capture --contract CONTRACT_ID=.
+** Recovery
+If Codex does not load the plugin skill, use the configurable hook receipt and run =asp sync= from the project root. Then read =.cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org= and write durable Org state only under =.cache/agent-semantic-protocol/artifacts/org=.
+** Adversarial Review
+Ask reflection to challenge this skill with the receipt contract [[../contracts/agent.adversarial-review.v1.org][agent.adversarial-review.v1]]. Record answered questions with the table contract [[../contracts/agent.reflection-answers.v1.org][agent.reflection-answers.v1]].
+[[../contracts/agent.adversarial-review.v1.org][agent.adversarial-review.v1]]
+[[../contracts/agent.reflection-answers.v1.org][agent.reflection-answers.v1]]
+Check redundancy: this skill must remain the single ASP Org entry and must not duplicate itself through a wrapper file. Check out of scope content: this skill must not describe unrelated language providers, client hook internals, or non-Org workflows. Check command clarity: every command shown here must be runnable after ASP install/sync materializes the resource and artifact roots. Check mechanism clarity: the reader must understand that =.cache/agent-semantic-protocol/org= is the managed resource checkout and =.cache/agent-semantic-protocol/artifacts/org= is the agent-authored state root. Check structure: this contract, not a parallel template, is the source of the generated skill.
