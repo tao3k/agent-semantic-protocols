@@ -69,6 +69,10 @@ def test_route_verification_accepts_owner_query_without_prime_for_languages(
         "prime",
         "direct-read",
     }
+    assert _check_status(trace, "route.first.allowed") == "pass"
+    assert _check_status(trace, "route.forbidden.avoided") == "pass"
+    assert _check_status(trace, "code.exact-identity") == "pass"
+    assert _check_status(trace, "selector.line-range-not-executable") == "pass"
     assert trace["riskFlags"] == []
     assert "qualityFindings" not in receipt
     assert "/Users/" not in json.dumps(receipt, sort_keys=True)
@@ -107,6 +111,9 @@ def test_route_verification_flags_forbidden_prime(
     _route_validator().validate(trace)
     assert trace["chosenRoute"]["route"] == "prime"
     assert any(flag["kind"] == "unnecessary-prime" for flag in trace["riskFlags"])
+    assert _check_status(trace, "route.first.allowed") == "fail"
+    assert _check_status(trace, "route.forbidden.avoided") == "fail"
+    assert _check_status(trace, "risk.forbidden.absent") == "fail"
     assert any(
         signal["reason"] == "inefficiency"
         for signal in trace["feedbackSignals"]
@@ -162,6 +169,8 @@ def test_route_verification_flags_line_range_selector(
     _route_validator().validate(trace)
     assert trace["chosenRoute"]["route"] == "direct-read"
     assert any(flag["kind"] == "executable-line-range" for flag in trace["riskFlags"])
+    assert _check_status(trace, "selector.line-range-not-executable") == "fail"
+    assert _check_status(trace, "code.exact-identity") == "fail"
     assert any(signal["reason"] == "overaction" for signal in trace["feedbackSignals"])
     finding_ids = {finding["id"] for finding in receipt["qualityFindings"]}
     assert "route.executable-line-range" in finding_ids
@@ -216,6 +225,13 @@ def _strict_route_expectation() -> dict[str, Any]:
         "requireNoExecutableLineRange": True,
         "requireVerificationEvidence": True,
     }
+
+
+def _check_status(trace: dict[str, Any], check_id: str) -> str:
+    for item in trace["judgeChecklist"]:
+        if item["id"] == check_id:
+            return str(item["status"])
+    raise AssertionError(f"missing judge checklist item: {check_id}")
 
 
 def _prime_event() -> dict[str, Any]:

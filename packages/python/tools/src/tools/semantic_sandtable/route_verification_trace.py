@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from .direct_read_shape import direct_source_read_shape
+from .route_verification_judge import judge_checklist
 from .route_verification_common import (
     ANCHORS_FOR_PRECISE_ROUTING,
     BROAD_SEARCH_ROUTES,
@@ -47,6 +48,7 @@ def build_trace(
         "executedTrace": executed,
         "behaviorScores": behavior_scores,
         "riskFlags": risk_flags,
+        "judgeChecklist": judge_checklist(executed, anchors, risk_flags, expected),
         "routeRegret": max(0, 4 - min(behavior_scores.values())),
     }
     feedback = _feedback_signals(risk_flags)

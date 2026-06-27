@@ -77,6 +77,12 @@
         "$ref": "#/$defs/feedbackSignal"
       }
     },
+    "judgeChecklist": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/judgeChecklistItem"
+      }
+    },
     "notes": {
       "$ref": "#/$defs/stringList"
     }
@@ -239,6 +245,52 @@
         },
         "evidenceRefs": {
           "$ref": "#/$defs/stringList"
+        }
+      }
+    },
+    "judgeChecklistItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "status",
+        "message"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.-]*$"
+        },
+        "kind": {
+          "enum": [
+            "evidence-grounding",
+            "route-choice",
+            "code-policy",
+            "fallback-discipline",
+            "verification-evidence",
+            "risk-monitor"
+          ]
+        },
+        "status": {
+          "enum": [
+            "pass",
+            "fail",
+            "unknown"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidenceRefs": {
+          "$ref": "#/$defs/stringList"
+        },
+        "route": {
+          "$ref": "#/$defs/routeId"
+        },
+        "risk": {
+          "$ref": "#/$defs/riskKind"
         }
       }
     },

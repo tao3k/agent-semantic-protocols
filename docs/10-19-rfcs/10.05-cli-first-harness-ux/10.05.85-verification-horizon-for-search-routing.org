@@ -104,6 +104,13 @@ stratify route quality with 0-4 scores:
 Quality scores support ranking and regression analysis. They must not be used
 as a permanent reward without monitoring for new proxy failures.
 
+Route judges SHOULD also emit a =judgeChecklist=. The checklist is generated
+from the current =evidenceState=, scenario expectations, and monitor patterns.
+It records pass/fail/unknown status for route-choice, code-policy,
+fallback-discipline, verification-evidence, and risk-monitor checks. This keeps
+the route judge inspectable: a score regression can be traced back to the exact
+check that failed instead of being treated as an opaque reward value.
+
 ** Contract surface
 
 The shared search packet remains focused on language-provider evidence. Route

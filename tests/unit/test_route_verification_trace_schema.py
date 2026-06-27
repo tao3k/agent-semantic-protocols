@@ -87,6 +87,16 @@ def test_route_verification_trace_schema_accepts_evidence_state_routing() -> Non
                 "finalAnswerGrounding": 3,
             },
             "riskFlags": [],
+            "judgeChecklist": [
+                {
+                    "id": "route.first.allowed",
+                    "kind": "route-choice",
+                    "status": "pass",
+                    "message": "First route follows the evidence-state oracle.",
+                    "route": "owner-skeleton",
+                    "evidenceRefs": ["command:c1"],
+                }
+            ],
             "routeRegret": 0,
             "feedbackSignals": [
                 {
