@@ -237,7 +237,7 @@ fn render_prime_seed_text(project_root: &Path, language_id: &str, owners: &[Stri
         ),
         "legend: ID=kind:role(value)!next; entries profile(selectors=>returns); frontier ID.next"
             .to_string(),
-        "aliases: graph:{G=search,O=owner}".to_string(),
+        "aliases: owner:{O=owner}".to_string(),
     ];
     let owner_ids = owners
         .iter()
@@ -260,14 +260,6 @@ fn render_prime_seed_text(project_root: &Path, language_id: &str, owners: &[Stri
                 .join(";"),
         );
     }
-    lines.push(format!(
-        "frontier={}",
-        owner_ids
-            .iter()
-            .map(|owner_id| format!("{owner_id}.owner"))
-            .collect::<Vec<_>>()
-            .join(",")
-    ));
     lines.push("entries=owner-tests(O=>covering-tests+test-entrypoints+fixtures)".to_string());
     lines.push("omit=items,blocks,code,full-test-list".to_string());
     lines.push("avoid=raw-read,full-json,broad-fzf".to_string());

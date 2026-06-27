@@ -40,6 +40,7 @@ mod search_pipe_args;
 mod search_pipe_candidates;
 mod search_pipe_dependency_facts;
 mod search_pipe_dependency_seed_cache;
+mod search_pipe_evidence_projection;
 mod search_pipe_failure;
 mod search_pipe_gerbil_owner_items;
 mod search_pipe_graph_nodes;

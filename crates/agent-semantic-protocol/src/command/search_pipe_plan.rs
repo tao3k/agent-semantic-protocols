@@ -7,6 +7,7 @@ use super::search_pipe_action_model::PipeAction;
 use super::search_pipe_actions::{
     SearchPipeActionRequest, render_action_frontier, sanitize_evidence_line,
 };
+use super::search_pipe_evidence_projection::rank_frontier_has_only_owner_or_topology_nodes;
 use super::search_pipe_quality::{SearchPipeQuality, analyze_search_pipe_quality};
 use super::search_pipe_seed_decision::SeedActionIntent;
 use super::search_query_wrapper_preview::{fd_query_preview, fd_query_preview_from_candidates};
@@ -523,6 +524,8 @@ pub(super) fn render_search_pipe_decision_projection(compact: &str) -> String {
     let mut nodes = Vec::new();
     let mut edges = Vec::new();
     let mut visible_aliases = HashSet::new();
+    let mut visible_node_kinds = HashMap::new();
+    let mut rank_frontier_lines = Vec::new();
     for line in compact.lines() {
         if is_graph_debug_line(line)
             || line.starts_with("legend:")
@@ -534,8 +537,7 @@ pub(super) fn render_search_pipe_decision_projection(compact: &str) -> String {
             continue;
         }
         if let Some(filtered) = seedless_rank_or_frontier_line(line) {
-            rendered.push_str(&filtered);
-            rendered.push('\n');
+            rank_frontier_lines.push(filtered);
             continue;
         }
         if line.starts_with("[graph-frontier]") {
@@ -552,12 +554,21 @@ pub(super) fn render_search_pipe_decision_projection(compact: &str) -> String {
         if is_graph_node_line(line) {
             if let Some((alias, _)) = line.split_once('=') {
                 visible_aliases.insert(alias.to_string());
+                if let Some(kind) = graph_node_kind(line) {
+                    visible_node_kinds.insert(alias.to_string(), kind.to_string());
+                }
             }
             nodes.push(sanitize_evidence_line(line));
             continue;
         }
         rendered.push_str(&sanitize_evidence_line(line));
         rendered.push('\n');
+    }
+    if !rank_frontier_has_only_owner_or_topology_nodes(&visible_node_kinds) {
+        for line in rank_frontier_lines {
+            rendered.push_str(&line);
+            rendered.push('\n');
+        }
     }
     if !nodes.is_empty() {
         rendered.push_str("evidenceNodes=");
@@ -607,6 +618,11 @@ fn is_graph_node_line(line: &str) -> bool {
             .chars()
             .all(|character| character.is_ascii_uppercase() || character.is_ascii_digit())
         && value.contains(':')
+}
+
+fn graph_node_kind(line: &str) -> Option<&str> {
+    let (_, value) = line.split_once('=')?;
+    value.split_once(':').map(|(kind, _)| kind)
 }
 
 fn is_graph_edge_line(line: &str) -> bool {

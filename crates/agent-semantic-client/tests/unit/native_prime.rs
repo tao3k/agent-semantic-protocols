@@ -5,7 +5,7 @@ use agent_semantic_client_core::{ClientMethod, ClientRequest, LanguageId};
 use crate::native_prime::render_native_prime_seed_stdout;
 
 #[test]
-fn native_prime_seed_stdout_renders_owner_frontier_without_provider() {
+fn native_prime_seed_stdout_renders_owner_nodes_without_provider() {
     let root = temp_project_root("native-prime-seed");
     fs::create_dir_all(root.join("src")).expect("create src");
     fs::write(root.join("src/lib.rs"), "pub fn native_prime_gate() {}\n").expect("write src");
@@ -30,9 +30,14 @@ fn native_prime_seed_stdout_renders_owner_frontier_without_provider() {
         stdout.contains("O=owner:path(src/lib.rs)!owner"),
         "{stdout}"
     );
+    assert!(stdout.contains("aliases: owner:{O=owner}"), "{stdout}");
+    assert!(
+        !stdout.contains("aliases: graph:{G=search,O=owner}"),
+        "{stdout}"
+    );
     assert!(!stdout.contains("G>{O:selects}"), "{stdout}");
     assert!(!stdout.contains("rank=O frontier=O.owner"), "{stdout}");
-    assert!(stdout.contains("frontier=O.owner"), "{stdout}");
+    assert!(!stdout.contains("frontier=O.owner"), "{stdout}");
     assert!(
         stdout.contains("next=\"asp rust search pipe '<question-or-feature-term>'"),
         "{stdout}"
@@ -45,7 +50,7 @@ fn native_prime_seed_stdout_renders_owner_frontier_without_provider() {
 }
 
 #[test]
-fn native_prime_seed_stdout_renders_owner_frontier_for_hidden_workspace_roots() {
+fn native_prime_seed_stdout_renders_owner_nodes_for_hidden_workspace_roots() {
     let cases = [
         ("rust", "src/lib.rs", "pub fn native_prime_gate() {}\n"),
         (
@@ -92,7 +97,15 @@ fn native_prime_seed_stdout_renders_owner_frontier_for_hidden_workspace_roots() 
             "language={language_id} stdout={stdout}"
         );
         assert!(
-            stdout.contains("frontier=O.owner"),
+            stdout.contains("aliases: owner:{O=owner}"),
+            "language={language_id} stdout={stdout}"
+        );
+        assert!(
+            !stdout.contains("aliases: graph:{G=search,O=owner}"),
+            "language={language_id} stdout={stdout}"
+        );
+        assert!(
+            !stdout.contains("frontier=O.owner"),
             "language={language_id} stdout={stdout}"
         );
         assert!(
