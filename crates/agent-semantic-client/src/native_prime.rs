@@ -48,7 +48,6 @@ pub(crate) fn render_native_prime_seed_stdout(
     let owners = native_prime_owners(project_root, file_spec)?;
     Ok(Some(Bytes::from(render_prime_seed_text(
         project_root,
-        language_id.as_str(),
         &owners,
     ))))
 }
@@ -223,7 +222,7 @@ fn relative_owner_path(project_root: &Path, path: &Path) -> Option<String> {
         .map(|path| path.to_string_lossy().replace('\\', "/"))
 }
 
-fn render_prime_seed_text(project_root: &Path, language_id: &str, owners: &[String]) -> String {
+fn render_prime_seed_text(project_root: &Path, owners: &[String]) -> String {
     let root_label = project_root
         .file_name()
         .and_then(|name| name.to_str())
@@ -233,7 +232,7 @@ fn render_prime_seed_text(project_root: &Path, language_id: &str, owners: &[Stri
             "[search-prime] root={root_label} alg=native-fd-prime-frontier-v1 budget=handles:{NATIVE_PRIME_OWNER_LIMIT}"
         ),
         format!(
-            "|decision purpose=decision-primer answer=false code=false capabilities=pipe,fzf,fd-query,rg-query,owner-items,selector-code,treesitter-query ladder=pipe>fzf>fd-query|rg-query>owner-items>selector-code history=asp-artifacts:directReadRisk,repeatedPrime,repeatedPipe,bestPath risk=broad-direct-read,manual-window-scan,repeat-prime next=\"asp {language_id} search pipe '<question-or-feature-term>' --workspace . --view seeds\""
+            "|decision purpose=decision-primer answer=false code=false route=evidence-state capabilities=pipe,fzf,fd-query,rg-query,owner-items,selector-code,treesitter-query history=asp-artifacts:directReadRisk,repeatedPrime,repeatedPipe,bestPath risk=broad-direct-read,manual-window-scan,repeat-prime rule=\"prime maps workspace/owners only; choose the narrowest route justified by current evidence\" routeOptions=\"owner-items when owner known; selector-code when exact selector known; deps when dependency known; pipe/fzf only for ambiguous query refinement\""
         ),
         "legend: ID=kind:role(value)!next; entries profile(selectors=>returns); frontier ID.next"
             .to_string(),

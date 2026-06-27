@@ -261,7 +261,7 @@ fn search_flow_feedback_message(language_id: &str, feedback_kind: &str, heading:
         .join("\n"),
         "direct-source-read-after-pipe" => [
             heading.to_string(),
-            "`--from-hook direct-source-read` is a low-priority exact-window fallback, not the first code extraction path."
+            "`--from-hook direct-source-read` is a low-priority exact-window fallback after a route frontier, not the first code extraction path."
                 .to_string(),
             String::new(),
             "## Run Next".to_string(),
@@ -270,7 +270,7 @@ fn search_flow_feedback_message(language_id: &str, feedback_kind: &str, heading:
             ),
             String::new(),
             "## Rules".to_string(),
-            format!("A direct-source-read fallback is allowed only after `search pipe` when the selector is an exact bounded range of {LOW_PRIORITY_DIRECT_SOURCE_READ_MAX_LINES} lines or fewer."),
+            format!("A direct-source-read fallback is allowed only after owner/query/syntax/read-plan evidence when the selector is an exact bounded range of {LOW_PRIORITY_DIRECT_SOURCE_READ_MAX_LINES} lines or fewer."),
             format!(
                 "For file-wide or broad ranges, follow locator/frontier commands and extract with ordinary `query --selector {projection_flag}` or a read-plan frontier."
             ),

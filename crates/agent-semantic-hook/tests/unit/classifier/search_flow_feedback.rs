@@ -40,7 +40,7 @@ fn user_prompt_decision_records_prompt_scope_fields() {
 }
 
 #[test]
-fn stop_hook_blocks_prime_only_flow_until_search_pipe_runs() {
+fn stop_hook_blocks_prime_only_flow_until_evidence_frontier_runs() {
     let project_root = temp_project_root("asp-hook-stop-prime-only");
     append_hook_event_state(
         &project_root,
@@ -71,7 +71,14 @@ fn stop_hook_blocks_prime_only_flow_until_search_pipe_runs() {
     assert_eq!(decision.language_ids, vec!["typescript"]);
     assert_eq!(decision.fields["hookFeedback"], "search-pipe-required");
     assert!(
-        decision.message.contains(pipe_command()),
+        decision
+            .message
+            .contains("Choose the narrowest ASP route justified by the current evidence state"),
+        "{}",
+        decision.message
+    );
+    assert!(
+        decision.message.contains("skip pipe and use the narrower"),
         "{}",
         decision.message
     );
@@ -80,7 +87,7 @@ fn stop_hook_blocks_prime_only_flow_until_search_pipe_runs() {
         .as_str()
         .expect("additional context");
     assert!(
-        context.contains("The prime packet is only a project map"),
+        context.contains("The prime packet is only a project/owner map"),
         "{context}"
     );
     assert!(

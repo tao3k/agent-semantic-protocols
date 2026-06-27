@@ -36,7 +36,14 @@ fn pre_tool_denies_package_name_as_asp_facade() {
         decision.message
     );
     assert!(
-        decision
+        decision.message.contains(
+            "Choose the narrowest `asp typescript` route from the current evidence state"
+        ),
+        "{}",
+        decision.message
+    );
+    assert!(
+        !decision
             .message
             .contains("asp typescript search prime --workspace . --view seeds"),
         "{}",

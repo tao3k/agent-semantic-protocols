@@ -178,7 +178,10 @@ fn user_prompt_submit_allow_adds_search_first_context_for_claude() {
     let context = response["hookSpecificOutput"]["additionalContext"]
         .as_str()
         .expect("user prompt additional context");
-    assert!(context.contains("ASP evidence-state search routing"), "{context}");
+    assert!(
+        context.contains("ASP evidence-state search routing"),
+        "{context}"
+    );
     assert!(
         context.contains("Search is not a mandatory pipeline"),
         "{context}"
@@ -187,16 +190,15 @@ fn user_prompt_submit_allow_adds_search_first_context_for_claude() {
         context.contains("Choose the narrowest ASP route"),
         "{context}"
     );
-    assert!(
-        context.contains("skip `search prime`"),
-        "{context}"
-    );
+    assert!(context.contains("skip `search prime`"), "{context}");
     assert!(
         context.contains("search prime --workspace <workspace-root> --view seeds"),
         "{context}"
     );
     assert!(
-        context.contains("search pipe '<question-or-feature-term>' --workspace <workspace-root> --view seeds"),
+        context.contains(
+            "search pipe '<question-or-feature-term>' --workspace <workspace-root> --view seeds"
+        ),
         "{context}"
     );
     assert!(

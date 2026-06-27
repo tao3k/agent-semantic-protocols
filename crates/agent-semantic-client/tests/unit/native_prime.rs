@@ -38,8 +38,11 @@ fn native_prime_seed_stdout_renders_owner_nodes_without_provider() {
     assert!(!stdout.contains("G>{O:selects}"), "{stdout}");
     assert!(!stdout.contains("rank=O frontier=O.owner"), "{stdout}");
     assert!(!stdout.contains("frontier=O.owner"), "{stdout}");
+    assert!(!stdout.contains("ladder=pipe"), "{stdout}");
+    assert!(!stdout.contains("next=\"asp rust search pipe"), "{stdout}");
+    assert!(stdout.contains("route=evidence-state"), "{stdout}");
     assert!(
-        stdout.contains("next=\"asp rust search pipe '<question-or-feature-term>'"),
+        stdout.contains("routeOptions=\"owner-items when owner known"),
         "{stdout}"
     );
     assert!(

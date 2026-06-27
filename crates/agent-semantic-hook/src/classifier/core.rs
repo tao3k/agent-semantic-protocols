@@ -347,7 +347,7 @@ fn invalid_asp_facade_message(
     lines.extend([String::new(), "## Run Next".to_string()]);
     if let Some(language_id) = preferred_language {
         lines.push(format!(
-            "asp {language_id} search prime --workspace . --view seeds"
+            "Choose the narrowest `asp {language_id}` route from the current evidence state: owner/reasoning/query for known anchors, `search prime --workspace . --view seeds` only when the owner map is unknown, and `search pipe '<question-or-feature-term>' --workspace . --view seeds` only for ambiguous query refinement."
         ));
     } else {
         lines.extend([
@@ -443,22 +443,23 @@ fn classify_stop(
 
 fn search_pipe_required_stop_message(language_id: &str) -> String {
     [
-        "ASP hook blocked Stop because this prompt ran `search prime` but did not run `search pipe`."
+        "ASP hook blocked Stop because this prompt ran `search prime` but has not shown final evidence beyond the prime map."
             .to_string(),
-        "The prime packet is only a project map; it is not enough evidence for a final answer."
+        "The prime packet is only a project/owner map; answer from a justified route frontier, not from prime alone."
             .to_string(),
         String::new(),
         "## Run Next".to_string(),
-        format!(
-            "asp {language_id} search pipe '<question-or-feature-term>' --workspace . --view seeds"
-        ),
+        "Choose the narrowest ASP route justified by the current evidence state.".to_string(),
         String::new(),
         "## Rules".to_string(),
-        "Compress the user's question into one code-search seed before running the pipe."
+        "Follow `recommendedNext` or `nextCommand` when the prime packet supplied one."
+            .to_string(),
+        format!(
+            "Run `asp {language_id} search pipe '<question-or-feature-term>' --workspace . --view seeds` only when the evidence is still ambiguous and needs query refinement."
+        ),
+        "If an owner, symbol, dependency, test/failure, or exact selector is already known, skip pipe and use the narrower owner/reasoning/query route."
             .to_string(),
         "Do not repeat `search prime`. Do not answer from prime alone.".to_string(),
-        "After pipe, follow `recommendedNext` or answer from locator/frontier metadata when the question only asks where to look."
-            .to_string(),
     ]
     .join("\n")
 }
