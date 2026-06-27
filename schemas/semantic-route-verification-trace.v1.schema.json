@@ -417,6 +417,7 @@
       "enum": [
         "unnecessary-prime",
         "repeated-broad-search",
+        "owner-only-frontier-redundancy",
         "syntax-as-code",
         "executable-line-range",
         "hint-as-selector",

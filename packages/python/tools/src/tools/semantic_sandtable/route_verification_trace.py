@@ -16,6 +16,7 @@ from .route_verification_patterns import (
     feedback_confidence_for_severity,
     feedback_reason_for_risk,
 )
+from .route_verification_output_shape import has_owner_only_frontier_redundancy
 from .route_verification_common import (
     ANCHORS_FOR_PRECISE_ROUTING,
     BROAD_SEARCH_ROUTES,
@@ -148,6 +149,7 @@ def _risk_flags(
         _collect_command_risks(
             risks,
             route_counts,
+            command,
             argv(command),
             command_id(command, item_index),
             precise=precise,
@@ -169,6 +171,7 @@ def _risk_flags(
 def _collect_command_risks(
     risks: list[dict[str, Any]],
     route_counts: dict[str, int],
+    command: dict[str, Any],
     command_argv: list[str],
     safe_id: str,
     *,
@@ -199,6 +202,14 @@ def _collect_command_risks(
             safe_id,
         )
     _collect_line_selector_risks(risks, command_argv, safe_id)
+    if has_owner_only_frontier_redundancy(command):
+        _append_risk(
+            risks,
+            "owner-only-frontier-redundancy",
+            "warning",
+            "owner/topology-only search output rendered redundant rank or frontier fields.",
+            safe_id,
+        )
 
 
 def _collect_line_selector_risks(
@@ -273,6 +284,8 @@ def _apply_risk_score_penalties(scores: dict[str, int], risk_kinds: set[str]) ->
     if "unnecessary-prime" in risk_kinds:
         scores["routeEfficiency"] -= 2
     if "repeated-broad-search" in risk_kinds:
+        scores["routeEfficiency"] -= 1
+    if "owner-only-frontier-redundancy" in risk_kinds:
         scores["routeEfficiency"] -= 1
     if "direct-read-over-parser" in risk_kinds:
         scores["semanticPrecision"] -= 2

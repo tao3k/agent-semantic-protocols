@@ -45,6 +45,27 @@
     },
     {
       "addedFrom": "user-feedback",
+      "description": "owner/topology-only graph output repeated rank or frontier fields.",
+      "evidenceRefs": [
+        "route-feedback:owner-only-frontier-is-redundant"
+      ],
+      "feedbackReason": "inefficiency",
+      "id": "graph.owner-only-frontier-redundancy",
+      "riskKind": "owner-only-frontier-redundancy",
+      "severity": "warning",
+      "status": "active",
+      "trigger": {
+        "outputShape": "owner-topology-only-graph",
+        "redundantFields": [
+          "rank",
+          "frontier",
+          "rankedEvidence",
+          "evidenceFrontier"
+        ]
+      }
+    },
+    {
+      "addedFrom": "user-feedback",
       "description": "direct source read was used where parser-owned identity was available.",
       "evidenceRefs": [
         "route-feedback:parser-before-direct-read"

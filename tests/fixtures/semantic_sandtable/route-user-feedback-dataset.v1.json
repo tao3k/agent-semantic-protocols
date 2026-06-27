@@ -68,6 +68,22 @@
         "riskKind": "unsupported-verification-claim",
         "surface": "trace"
       }
+    },
+    {
+      "confidence": 0.9,
+      "feedbackReason": "inefficiency",
+      "id": "owner-only-frontier-is-redundant",
+      "patternIds": [
+        "graph.owner-only-frontier-redundancy"
+      ],
+      "polarity": "negative",
+      "recommendedAction": "When search output contains only owner or topology evidence, collapse rank and frontier fields into compact owner evidence plus explicit omissions.",
+      "source": "user-feedback",
+      "sourceSummary": "Owner/topology-only rank and frontier lines are redundant token cost, not actionable selector guidance.",
+      "target": {
+        "riskKind": "owner-only-frontier-redundancy",
+        "surface": "monitor-pattern"
+      }
     }
   ],
   "schemaId": "agent.semantic-protocols.semantic-route-user-feedback-dataset",

@@ -217,6 +217,12 @@ agent-facing render surface, and providers must not depend on client-specific
 developer-mode switches to satisfy the shared search contract.
 
 - =frontier= means locator/next-action candidates selected from typed facts.
+- Owner/topology-only graph slices MUST NOT expose =rank=, =frontier=,
+  =rankedEvidence=, or =evidenceFrontier= as agent next-action selectors. If a
+  graph only contains owner, workspace, provider-root, submodule, search, or
+  query nodes, the renderer should collapse it to compact owner evidence plus
+  explicit omissions. Repeating topology rank/frontier in that state is a
+  route-efficiency risk, not useful graph guidance.
 - =ARI= means the line-oriented agent render interface: the last-mile stdout
   serialization read by an agent, not the internal data model.
 - =typed render IR= means the renderer-owned object model between JSON packets

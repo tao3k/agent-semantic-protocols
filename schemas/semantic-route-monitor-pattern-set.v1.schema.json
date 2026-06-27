@@ -133,6 +133,24 @@
         "minimumExecutedRoutes": {
           "type": "integer",
           "minimum": 0
+        },
+        "outputShape": {
+          "enum": [
+            "owner-topology-only-graph",
+            "unknown"
+          ]
+        },
+        "redundantFields": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "rank",
+              "frontier",
+              "rankedEvidence",
+              "evidenceFrontier"
+            ]
+          },
+          "uniqueItems": true
         }
       }
     },

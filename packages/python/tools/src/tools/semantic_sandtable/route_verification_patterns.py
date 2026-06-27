@@ -43,6 +43,25 @@ ROUTE_MONITOR_PATTERNS: tuple[dict[str, Any], ...] = (
         "status": "active",
     },
     {
+        "id": "graph.owner-only-frontier-redundancy",
+        "riskKind": "owner-only-frontier-redundancy",
+        "feedbackReason": "inefficiency",
+        "severity": "warning",
+        "trigger": {
+            "outputShape": "owner-topology-only-graph",
+            "redundantFields": [
+                "rank",
+                "frontier",
+                "rankedEvidence",
+                "evidenceFrontier",
+            ],
+        },
+        "description": "owner/topology-only graph output repeated rank or frontier fields.",
+        "addedFrom": "user-feedback",
+        "evidenceRefs": ["route-feedback:owner-only-frontier-is-redundant"],
+        "status": "active",
+    },
+    {
         "id": "route.direct-read-over-parser",
         "riskKind": "direct-read-over-parser",
         "feedbackReason": "overaction",

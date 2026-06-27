@@ -9,6 +9,7 @@ import pytest
 from jsonschema import Draft202012Validator
 from referencing import Registry, Resource
 
+from tools.semantic_sandtable.route_verification import build_route_verification_trace
 from tools.semantic_sandtable.trace_receipts import (
     TraceReceiptConfig,
     build_receipt_from_trace_path,
@@ -192,6 +193,96 @@ def test_route_verification_flags_line_range_selector(
     finding_ids = {finding["id"] for finding in receipt["qualityFindings"]}
     assert "route.executable-line-range" in finding_ids
     assert "route.risk.executable-line-range" in finding_ids
+
+
+def test_route_verification_flags_owner_only_frontier_redundancy() -> None:
+    trace = build_route_verification_trace(
+        [
+            {
+                "id": "owner-only-pipe",
+                "kind": "search",
+                "argv": [
+                    "asp",
+                    "python",
+                    "search",
+                    "pipe",
+                    "route feedback",
+                    "--workspace",
+                    ".",
+                    "--view",
+                    "seeds",
+                ],
+                "stdout": "\n".join(
+                    [
+                        "[search-pipe] q=route feedback",
+                        "aliases: graph:{G=search,O=owner}",
+                        "O=owner:path(src/a.py)!owner",
+                        "O2=owner:path(src/b.py)!owner",
+                        "W=workspace:root(.)@.!topology",
+                        "P=provider-root:language-root(python:.)@.!topology",
+                        "G>{O:selects,O2:selects,W:contains,P:contains}",
+                        "rank=O,O2,W,P frontier=O.owner,O2.owner,W.topology,P.topology",
+                    ]
+                ),
+                "metrics": {"elapsedMs": 1, "stdoutBytes": 320, "stderrBytes": 0},
+            }
+        ],
+        {"allowedFirstRoutes": ["pipe"], "requireVerificationEvidence": True},
+    )
+
+    _route_validator().validate(trace)
+    assert any(
+        flag["kind"] == "owner-only-frontier-redundancy"
+        for flag in trace["riskFlags"]
+    )
+    signal = _feedback_signal_for_risk(trace, "owner-only-frontier-redundancy")
+    assert signal["reason"] == "inefficiency"
+    assert signal["patternId"] == "graph.owner-only-frontier-redundancy"
+    assert signal["userFeedbackRefs"] == [
+        "route-feedback:owner-only-frontier-is-redundant"
+    ]
+    assert trace["behaviorScores"]["routeEfficiency"] == 3
+
+
+def test_route_verification_allows_actionable_item_frontier_output() -> None:
+    trace = build_route_verification_trace(
+        [
+            {
+                "id": "item-pipe",
+                "kind": "search",
+                "argv": [
+                    "asp",
+                    "python",
+                    "search",
+                    "pipe",
+                    "route feedback",
+                    "--workspace",
+                    ".",
+                    "--view",
+                    "seeds",
+                ],
+                "stdout": "\n".join(
+                    [
+                        "[search-pipe] q=route feedback",
+                        "O=owner:path(src/a.py)!owner",
+                        "Q=query:term(route feedback)!query",
+                        "I=item:symbol(RouteVerifier)@python://src/a.py#item/class/RouteVerifier!syntax",
+                        "G>{O:selects,Q:matches}",
+                        "O>{I:contains}",
+                        "rank=I,O frontier=I.syntax",
+                    ]
+                ),
+                "metrics": {"elapsedMs": 1, "stdoutBytes": 260, "stderrBytes": 0},
+            }
+        ],
+        {"allowedFirstRoutes": ["pipe"], "requireVerificationEvidence": True},
+    )
+
+    _route_validator().validate(trace)
+    assert not any(
+        flag["kind"] == "owner-only-frontier-redundancy"
+        for flag in trace["riskFlags"]
+    )
 
 
 def test_committed_fixtures_do_not_contain_absolute_local_paths() -> None:
