@@ -31,7 +31,7 @@ def build_trace(
     chosen_route = executed[0]["route"] if executed else _planned_first_route(expected)
     risk_flags = _risk_flags(commands, executed, anchors, expected)
     behavior_scores = _behavior_scores(executed, risk_flags, expected)
-    return {
+    trace = {
         "schemaId": "agent.semantic-protocols.semantic-route-verification-trace",
         "schemaVersion": "1",
         "verifierVersion": "asp-route-verifier.v1",
@@ -49,6 +49,10 @@ def build_trace(
         "riskFlags": risk_flags,
         "routeRegret": max(0, 4 - min(behavior_scores.values())),
     }
+    feedback = _feedback_signals(risk_flags)
+    if feedback:
+        trace["feedbackSignals"] = feedback
+    return trace
 
 
 def _executed_trace(commands: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -582,3 +586,48 @@ def _first_command_for_route(
         if step.get("route") == route and isinstance(step.get("commandId"), str):
             return str(step["commandId"])
     return None
+
+
+def _feedback_signals(risks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        signal
+        for risk in risks
+        if (signal := _feedback_signal(risk)) is not None
+    ]
+
+
+def _feedback_signal(risk: dict[str, Any]) -> dict[str, Any] | None:
+    reason = _feedback_reason(str(risk.get("kind")))
+    if reason is None:
+        return None
+    signal: dict[str, Any] = {
+        "reason": reason,
+        "polarity": "negative",
+        "confidence": _feedback_confidence(str(risk.get("severity"))),
+    }
+    refs = risk.get("evidenceRefs")
+    if isinstance(refs, list) and all(isinstance(item, str) for item in refs):
+        signal["evidenceRefs"] = refs
+    return signal
+
+
+def _feedback_reason(risk_kind: str) -> str | None:
+    if risk_kind in {"unnecessary-prime", "repeated-broad-search"}:
+        return "inefficiency"
+    if risk_kind in {
+        "direct-read-over-parser",
+        "executable-line-range",
+        "hidden-line-selector",
+    }:
+        return "overaction"
+    if risk_kind == "unsupported-verification-claim":
+        return "communication"
+    return None
+
+
+def _feedback_confidence(severity: str) -> float:
+    if severity == "error":
+        return 0.95
+    if severity == "warning":
+        return 0.85
+    return 0.65

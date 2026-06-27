@@ -329,6 +329,9 @@
             "$ref": "#/$defs/agentSessionQualityFinding"
           }
         },
+        "scenarioQuality": {
+          "$ref": "#/$defs/scenarioQuality"
+        },
         "routeVerification": {
           "$ref": "#/$defs/routeVerificationExpectation"
         }
@@ -437,6 +440,52 @@
         },
         "routeVerification": {
           "$ref": "#/$defs/routeVerificationExpectation"
+        },
+        "scenarioQuality": {
+          "$ref": "#/$defs/scenarioQuality"
+        }
+      }
+    },
+    "scenarioQuality": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "intentClear",
+        "intentRouteAligned",
+        "evidenceStateComplete",
+        "forbiddenRoutesJustified",
+        "oracleRoute",
+        "ambiguousIntent"
+      ],
+      "properties": {
+        "intentClear": {
+          "type": "boolean"
+        },
+        "intentRouteAligned": {
+          "type": "boolean"
+        },
+        "evidenceStateComplete": {
+          "type": "boolean"
+        },
+        "forbiddenRoutesJustified": {
+          "type": "boolean"
+        },
+        "oracleRoute": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "semantic-route-verification-trace.v1.schema.json#/$defs/routeId"
+          }
+        },
+        "ambiguousIntent": {
+          "type": "boolean"
+        },
+        "reviewer": {
+          "type": "string",
+          "minLength": 1
+        },
+        "notes": {
+          "$ref": "#/$defs/stringList"
         }
       }
     },

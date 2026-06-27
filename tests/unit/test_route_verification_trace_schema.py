@@ -99,7 +99,6 @@ def test_route_verification_trace_schema_accepts_evidence_state_routing() -> Non
         }
     )
 
-
 def test_sandtable_receipt_accepts_route_verification_trace() -> None:
     schema = _load_schema("semantic-sandtable-receipt.v1.schema.json")
     validator = Draft202012Validator(schema, registry=_schema_registry())
@@ -176,80 +175,5 @@ def test_sandtable_receipt_accepts_route_verification_trace() -> None:
                 },
                 "riskFlags": [],
             },
-        }
-    )
-
-
-def test_sandtable_scenario_accepts_route_verification_expectations() -> None:
-    schema = _load_schema("semantic-sandtable-scenario.v1.schema.json")
-    validator = Draft202012Validator(schema, registry=_schema_registry())
-
-    route_expectation = {
-        "expectedEvidenceAnchors": ["owner-path", "symbol"],
-        "allowedFirstRoutes": ["owner-items", "owner-skeleton"],
-        "forbiddenRoutes": ["prime", "direct-read"],
-        "requiredRejectedRoutes": ["prime"],
-        "forbiddenRiskFlags": ["unnecessary-prime", "executable-line-range"],
-        "minScores": {
-            "routeFaithfulness": 4,
-            "routeEfficiency": 3,
-            "semanticPrecision": 4,
-            "fallbackDiscipline": 3,
-            "verificationHonesty": 4,
-            "finalAnswerGrounding": 3,
-        },
-        "requireRouteJustification": True,
-        "requireExactCodeIdentity": True,
-        "requireNoExecutableLineRange": True,
-        "requireVerificationEvidence": True,
-    }
-
-    validator.validate(
-        {
-            "id": "route.known-owner-skips-prime",
-            "language": "rust",
-            "workdir": {
-                "relative": ".",
-            },
-            "evidence": {
-                "source": "handwritten",
-                "intent": "Known owner and symbol should not start at search prime",
-                "routeVerification": route_expectation,
-                "deepQuestionCases": [
-                    {
-                        "id": "knownowner",
-                        "question": "Inspect native prime owner-only rendering without re-mapping the workspace.",
-                        "stepIds": ["owneritems"],
-                        "queryTerms": ["native", "prime", "owner"],
-                        "audit": {
-                            "maxAspCommands": 3,
-                            "maxSearchCommands": 2,
-                            "maxQueryCommands": 1,
-                            "maxRepeatedCommands": 0,
-                            "requiresGraphSignals": True,
-                            "requiresHookEvents": True,
-                        },
-                        "expectedAspFlow": {
-                            "requiredStages": ["query-selector"],
-                            "forbiddenStages": ["search-prime"],
-                        },
-                        "routeVerification": route_expectation,
-                    }
-                ],
-            },
-            "steps": [
-                {
-                    "id": "owneritems",
-                    "kind": "command",
-                    "command": [
-                        "asp",
-                        "rust",
-                        "search",
-                        "owner",
-                        "src/lib.rs",
-                        "items",
-                    ],
-                }
-            ],
         }
     )

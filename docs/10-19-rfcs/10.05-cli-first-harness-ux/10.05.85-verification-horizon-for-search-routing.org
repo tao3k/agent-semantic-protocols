@@ -11,6 +11,28 @@ is not to reward "the agent used ASP"; the goal is to verify that the agent
 chose the narrowest route justified by current evidence, exposed why broader
 routes were rejected, and kept code reads behind exact parser-owned identity.
 
+** Scenario quality
+Sandtable scenarios are verifier inputs, so they need their own quality contract.
+A route-verification scenario SHOULD state whether the intent is clear, the
+evidence state is complete, forbidden routes are justified, and the oracle route
+is specific enough to judge an agent trajectory.
+
+The =scenarioQuality= object is a static scenario-review receipt, not an agent
+answer. It prevents sandtable gates from rewarding the wrong behavior simply
+because a fixture omitted the evidence needed to choose a narrower route.
+
+Required review facts:
+| Field | Meaning |
+| =intentClear= | The task is self-contained enough for route selection. |
+| =intentRouteAligned= | The expected route follows from the intent. |
+| =evidenceStateComplete= | Known owner, selector, symbol, dependency, or failure evidence is declared. |
+| =forbiddenRoutesJustified= | Every forbidden broad or unsafe route has a scenario reason. |
+| =oracleRoute= | The expected route sequence used by route-quality checks. |
+| =ambiguousIntent= | True when multiple routes remain equally defensible. |
+
+Scenario quality does not replace trajectory verification. It checks whether the
+gate itself is faithful before =routeVerificationTrace= judges an execution.
+
 ** Routing principle
 
 Search is not a mandatory pipeline. Before =search prime=, =search pipe=,

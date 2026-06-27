@@ -107,6 +107,10 @@ def test_route_verification_flags_forbidden_prime(
     _route_validator().validate(trace)
     assert trace["chosenRoute"]["route"] == "prime"
     assert any(flag["kind"] == "unnecessary-prime" for flag in trace["riskFlags"])
+    assert any(
+        signal["reason"] == "inefficiency"
+        for signal in trace["feedbackSignals"]
+    )
     finding_ids = {finding["id"] for finding in receipt["qualityFindings"]}
     assert "route.forbidden.prime" in finding_ids
     assert "route.risk.unnecessary-prime" in finding_ids
@@ -158,6 +162,7 @@ def test_route_verification_flags_line_range_selector(
     _route_validator().validate(trace)
     assert trace["chosenRoute"]["route"] == "direct-read"
     assert any(flag["kind"] == "executable-line-range" for flag in trace["riskFlags"])
+    assert any(signal["reason"] == "overaction" for signal in trace["feedbackSignals"])
     finding_ids = {finding["id"] for finding in receipt["qualityFindings"]}
     assert "route.executable-line-range" in finding_ids
     assert "route.risk.executable-line-range" in finding_ids
