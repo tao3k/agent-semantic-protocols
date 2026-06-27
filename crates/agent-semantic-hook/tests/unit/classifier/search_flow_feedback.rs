@@ -209,7 +209,7 @@ fn pre_tool_denies_direct_read_before_pipe() {
     assert_eq!(decision.fields["hookFeedback"], "read-before-pipe");
     assert!(
         decision.message.contains(
-            "Do not repeat `search prime`. Do not read source or code before the pipe frontier."
+            "Do not repeat `search prime`. Do not read source or code before exact parser-owned identity or a route frontier justifies it."
         ),
         "{}",
         decision.message

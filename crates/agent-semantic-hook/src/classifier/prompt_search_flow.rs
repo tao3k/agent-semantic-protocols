@@ -282,14 +282,17 @@ fn search_flow_feedback_message(language_id: &str, feedback_kind: &str, heading:
                 .to_string(),
             String::new(),
             "## Run Next".to_string(),
-            format!(
-                "asp {language_id} search pipe '<question-or-feature-term>' --workspace . --view seeds"
-            ),
+            "Choose the next ASP route from the current evidence state.".to_string(),
             String::new(),
             "## Rules".to_string(),
-            "Compress the user's question into one code-search seed before running the pipe."
+            "Follow `recommendedNext` or `nextCommand` when the prime packet supplied one."
                 .to_string(),
-            "Do not repeat `search prime`. Do not read source or code before the pipe frontier."
+            format!(
+                "Run `asp {language_id} search pipe '<question-or-feature-term>' --workspace . --view seeds` only when the evidence is still ambiguous and needs query refinement."
+            ),
+            "If an owner, symbol, dependency, test/failure, or exact selector is already known, skip pipe and use the narrower owner/reasoning/query route."
+                .to_string(),
+            "Do not repeat `search prime`. Do not read source or code before exact parser-owned identity or a route frontier justifies it."
                 .to_string(),
         ]
         .join("\n"),
