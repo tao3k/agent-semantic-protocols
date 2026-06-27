@@ -178,7 +178,7 @@ fn render_inline_python_owner_items(
     let next = selected_items
         .iter()
         .take(3)
-        .map(|item| format!("syntax:{}", item.name))
+        .map(|item| python_item_structural_selector(owner, item))
         .collect::<Vec<_>>()
         .join(",");
     let mut output = String::new();
@@ -196,7 +196,7 @@ fn render_inline_python_owner_items(
         item_status,
         item_match,
         selected_items.len(),
-        if item_status == "hit" { "syntax" } else { "revise-query" },
+        if item_status == "hit" { "item-skeleton" } else { "revise-query" },
     ));
     output.push_str(&format!(
         "|owner {} role=\"root,module\" public=true exp={} kind=module surface=source doc={} lines={} exportKind=inferred next={}\n",
@@ -207,12 +207,15 @@ fn render_inline_python_owner_items(
         if next.is_empty() { "-" } else { next.as_str() },
     ));
     for item in &selected_items {
+        let selector = python_item_structural_selector(owner, item);
         output.push_str(&format!(
-            "|item {} kind={}{} next=syntax:{} read={}:{}:{} syn={} tsqRef=semantic-tree-sitter-query/python-owner-items.v1\n",
+            "|item {} kind={}{} structuralSelector={} displayLineRange={}:{} sourceLocatorHint={}:{}:{} syn={} tsqRef=semantic-tree-sitter-query/python-owner-items.v1 projection=skeleton codePolicy=code-after-exact-selector\n",
             item.name,
             item.kind,
             if item.public { " public=true" } else { "" },
-            item.name,
+            selector,
+            item.start_line,
+            item.end_line,
             owner,
             item.start_line,
             item.end_line,
@@ -228,10 +231,40 @@ fn render_inline_python_owner_items(
         "|runtime paths=1 ownerPath={} reason=owner-items-rust-inline-python\n",
         owner
     ));
-    if !next.is_empty() {
+    if let Some(first_item) = selected_items.first() {
+        let selector = python_item_structural_selector(owner, first_item);
+        let hint = format!(
+            "{}:{}:{}",
+            owner, first_item.start_line, first_item.end_line
+        );
+        output.push_str(&format!(
+            "A1=item-skeleton(selector={},projection=skeleton,hint={})!skeleton\n",
+            selector, hint
+        ));
+        output.push_str(&format!(
+            "A2=syntax-outline(selector={},projection=outline,hint={})!syntax\n",
+            selector, hint
+        ));
+        output.push_str(&format!(
+            "A3=query-code(selector={},requiresExact=true,codePolicy=exact-only,hint={})!query-code\n",
+            selector, hint
+        ));
+        output.push_str("actionFrontier=A1.item-skeleton,A2.syntax-outline,A3.query-code\n");
+        output.push_str("recommendedNext=A1.item-skeleton\n");
+        output.push_str(&format!(
+            "nextCommand=asp python query --from-hook item-skeleton --selector '{}' --workspace . --names-only\n",
+            selector
+        ));
+        output.push_str("reason=owner-item-skeleton-ready\n");
+        output.push_str("avoid=selector-code-before-exact,direct-source-read,manual-window-scan\n");
+    } else if !next.is_empty() {
         output.push_str(&format!("|next {next}\n"));
     }
     output
+}
+
+fn python_item_structural_selector(owner: &str, item: &PythonOwnerItem) -> String {
+    format!("python://{}#item/{}/{}", owner, item.kind, item.name)
 }
 
 fn owner_items_query_tokens(query: &str) -> Vec<String> {

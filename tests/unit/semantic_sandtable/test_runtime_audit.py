@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import sys
 import tempfile
 import unittest
 from contextlib import redirect_stdout
@@ -89,7 +88,7 @@ def _audit_fixture_repo(root: Path) -> Path:
                     {
                         "id": "noisy",
                         "command": [
-                            sys.executable,
+                            "python",
                             "-c",
                             "print('[ok]')\nprint('|owner src/a.py')",
                         ],
@@ -112,7 +111,7 @@ def _audit_fixture_repo(root: Path) -> Path:
                 "steps": [
                     {
                         "id": "bad",
-                        "command": [sys.executable, "-c", "import sys; sys.exit(3)"],
+                        "command": ["python", "-c", "import sys; sys.exit(3)"],
                     }
                 ],
             }
@@ -133,7 +132,7 @@ def _audit_fixture_repo(root: Path) -> Path:
                 "steps": [
                     {
                         "id": "never",
-                        "command": [sys.executable, "-c", "print('[never]')"],
+                        "command": ["python", "-c", "print('[never]')"],
                     }
                 ],
             }
@@ -150,7 +149,7 @@ def _audit_fixture_repo(root: Path) -> Path:
                     {
                         "id": "agent-summary",
                         "command": [
-                            sys.executable,
+                            "python",
                             "-c",
                             (
                                 "import json; "

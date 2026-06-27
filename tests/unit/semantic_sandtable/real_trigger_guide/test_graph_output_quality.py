@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -37,7 +36,7 @@ class RealTriggerGraphOutputGuideTests(unittest.TestCase):
                             {
                                 "id": "guide",
                                 "command": [
-                                    sys.executable,
+                                    "python",
                                     "-c",
                                     (
                         "import json; "
@@ -105,7 +104,7 @@ class RealTriggerGraphOutputGuideTests(unittest.TestCase):
                             {
                                 "id": "guide",
                                 "command": [
-                                    sys.executable,
+                                    "python",
                                     "-c",
                                     (
                                         "import json; "
@@ -160,7 +159,7 @@ class RealTriggerGraphOutputGuideTests(unittest.TestCase):
                             {
                                 "id": "guide",
                                 "command": [
-                                    sys.executable,
+                                    "python",
                                     "-c",
                                     (
                                         "import json; "
@@ -214,7 +213,7 @@ class RealTriggerGraphOutputGuideTests(unittest.TestCase):
                             {
                                 "id": "guide",
                                 "command": [
-                                    sys.executable,
+                                    "python",
                                     "-c",
                                     (
                                         "import json; "
@@ -269,7 +268,7 @@ class RealTriggerGraphOutputGuideTests(unittest.TestCase):
                             {
                                 "id": "guide",
                                 "command": [
-                                    sys.executable,
+                                    "python",
                                     "-c",
                                     (
                                         "import json; "
@@ -329,7 +328,7 @@ class RealTriggerGraphOutputGuideTests(unittest.TestCase):
                             {
                                 "id": "guide",
                                 "command": [
-                                    sys.executable,
+                                    "python",
                                     "-c",
                                     (
                                         "import json; "

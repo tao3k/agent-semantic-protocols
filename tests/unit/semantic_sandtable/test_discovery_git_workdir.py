@@ -7,7 +7,6 @@ from ._discovery_steps_common import (
     json,
     run_scenario,
     subprocess,
-    sys,
     tempfile,
     unittest,
 )
@@ -57,7 +56,7 @@ class DiscoveryAndStepRunnerTests(unittest.TestCase):
                         "language": "root",
                         "workdir": {
                             "git": {
-                                "url": origin.as_uri(),
+                                "url": "origin",
                                 "ref": "v1",
                                 "depth": 1,
                                 "cacheKey": "fixture-v1",
@@ -68,7 +67,7 @@ class DiscoveryAndStepRunnerTests(unittest.TestCase):
                             {
                                 "id": "touch-marker",
                                 "command": [
-                                    sys.executable,
+                                    "python",
                                     "-c",
                                     (
                                         "from pathlib import Path; "

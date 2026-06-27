@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -26,7 +25,7 @@ class LineProtocolLocationTextPathTests(unittest.TestCase):
                             {
                                 "id": "good-path",
                                 "command": [
-                                    sys.executable,
+                                    "python",
                                     "-c",
                                     (
                                         "print('[search-owner]')\n"
@@ -61,7 +60,7 @@ class LineProtocolLocationTextPathTests(unittest.TestCase):
                             {
                                 "id": "bad-locator",
                                 "command": [
-                                    sys.executable,
+                                    "python",
                                     "-c",
                                     (
                                         "print('[search-fzf]')\n"
@@ -95,7 +94,7 @@ class LineProtocolLocationTextPathTests(unittest.TestCase):
                             {
                                 "id": "snippet",
                                 "command": [
-                                    sys.executable,
+                                    "python",
                                     "-c",
                                     (
                                         "print('[search-ingest]')\n"

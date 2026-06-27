@@ -1319,14 +1319,18 @@
           "type": "integer",
           "minimum": 1
         },
-        "maxElapsedMs": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "maxElapsedMsWarn": {
-          "type": "integer",
-          "minimum": 1
-        },
+      "maxElapsedMs": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "maxColdStartElapsedMs": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "maxElapsedMsWarn": {
+        "type": "integer",
+        "minimum": 1
+      },
         "maxAgentInputTokensWarn": {
           "type": "integer",
           "minimum": 1

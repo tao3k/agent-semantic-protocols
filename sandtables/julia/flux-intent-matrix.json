@@ -68,7 +68,8 @@
     {
       "id": "julia-warmup",
       "command": [
-        "asp-julia-harness",
+        "asp",
+        "julia",
         "search",
         "prime",
         "--view",
@@ -88,7 +89,8 @@
     {
       "id": "prime",
       "command": [
-        "asp-julia-harness",
+        "asp",
+        "julia",
         "search",
         "prime",
         "--view",
@@ -123,7 +125,8 @@
     {
       "id": "intent-query-set",
       "command": [
-        "asp-julia-harness",
+        "asp",
+        "julia",
         "search",
         "fzf",
         "--query-set",

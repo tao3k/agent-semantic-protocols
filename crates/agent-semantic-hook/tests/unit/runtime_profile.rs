@@ -1,3 +1,4 @@
+use std::env;
 use std::path::{Path, PathBuf};
 
 use crate::protocol_activation::{
@@ -121,11 +122,88 @@ fn runtime_profiles_for_activation_uses_provider_command_prefix() {
     let _ = std::fs::remove_dir_all(root);
 }
 
+#[test]
+fn runtime_profiles_for_runtime_prefers_home_local_gslph_for_gerbil() {
+    let root = temp_root("gerbil-home-local");
+    let home = root.join("home");
+    let home_gslph = home.join(".local/bin/gslph");
+    write_executable_file(&home_gslph);
+    let _project_gslph = write_executable_provider(&root, "gslph");
+    let wrapper = write_executable_provider(&root, "asp");
+    let provider = activated_gerbil_provider(vec![
+        wrapper.display().to_string(),
+        "gerbil-scheme".to_string(),
+    ]);
+    let runtime = HookRuntime {
+        project_root: root.display().to_string(),
+        providers: vec![provider],
+    };
+    let provider = &runtime.providers[0];
+    let previous_home = env::var_os("HOME");
+    unsafe {
+        env::set_var("HOME", &home);
+    }
+
+    let profiles = runtime_profiles_for_runtime(&root, &runtime);
+    let invocation =
+        runtime_profile_invocation(&profiles, provider, &["query".into()]).expect("invocation");
+
+    match previous_home {
+        Some(value) => unsafe {
+            env::set_var("HOME", value);
+        },
+        None => unsafe {
+            env::remove_var("HOME");
+        },
+    }
+    assert_eq!(
+        invocation,
+        [
+            std::fs::canonicalize(&home_gslph)
+                .expect("canonical home gslph")
+                .display()
+                .to_string(),
+            "query".to_string(),
+        ]
+    );
+    assert_eq!(
+        profiles.providers[0].health.status,
+        RuntimeProviderHealthStatus::Available
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
 fn activated_rust_provider(provider_command_prefix: Vec<String>) -> ActivatedProvider {
     let manifest = provider_manifests()
         .into_iter()
         .find(|manifest| manifest.language_id == "rust")
         .expect("rust manifest");
+    let manifest_digest = provider_manifest_digest(&manifest).expect("manifest digest");
+    ActivatedProvider {
+        manifest_id: manifest.manifest_id,
+        manifest_digest,
+        language_id: manifest.language_id,
+        provider_id: manifest.provider_id,
+        binary: manifest.binary,
+        execution: manifest.execution,
+        provider_command_prefix,
+        namespace: manifest.namespace,
+        package_roots: vec![".".to_string()],
+        source_extensions: manifest.source.default_extensions,
+        config_files: manifest.source.default_config_files,
+        source_roots: manifest.source.default_source_roots,
+        ignored_path_prefixes: manifest.source.default_ignored_path_prefixes,
+        search_capabilities: ProviderSearchCapabilities::default(),
+        policy: manifest.policy,
+        routes: manifest.routes,
+    }
+}
+
+fn activated_gerbil_provider(provider_command_prefix: Vec<String>) -> ActivatedProvider {
+    let manifest = provider_manifests()
+        .into_iter()
+        .find(|manifest| manifest.language_id == "gerbil-scheme")
+        .expect("gerbil manifest");
     let manifest_digest = provider_manifest_digest(&manifest).expect("manifest digest");
     ActivatedProvider {
         manifest_id: manifest.manifest_id,
@@ -164,6 +242,12 @@ fn write_executable_provider(root: &Path, binary: &str) -> PathBuf {
     let bin_dir = root.join(".bin");
     std::fs::create_dir_all(&bin_dir).expect("bin dir");
     let path = bin_dir.join(binary);
+    write_executable_file(&path);
+    path
+}
+
+fn write_executable_file(path: &Path) {
+    std::fs::create_dir_all(path.parent().expect("executable parent")).expect("bin dir");
     std::fs::write(&path, "#!/usr/bin/env sh\nexit 0\n").expect("provider");
     #[cfg(unix)]
     {
@@ -172,5 +256,4 @@ fn write_executable_provider(root: &Path, binary: &str) -> PathBuf {
         permissions.set_mode(0o755);
         std::fs::set_permissions(&path, permissions).expect("permissions");
     }
-    path
 }

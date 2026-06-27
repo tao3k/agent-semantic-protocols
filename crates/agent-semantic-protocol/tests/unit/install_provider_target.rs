@@ -1,7 +1,27 @@
-use super::{resolve_provider_binary_install_target, resolve_provider_binary_invocation};
+use super::{
+    resolve_provider_binary_install_target, resolve_provider_binary_install_target_with_bin_dir,
+    resolve_provider_binary_invocation,
+};
 
 #[test]
-fn provider_install_target_uses_home_local_bin_only() {
+fn provider_install_target_uses_semantic_agent_bin_dir_when_set() {
+    let home = std::env::temp_dir().join("asp-install-target-home-with-env");
+    let bin_dir = std::env::temp_dir().join("asp-install-target-env-bin");
+
+    let target = resolve_provider_binary_install_target_with_bin_dir(
+        "rust",
+        "rs-harness",
+        Some(&home),
+        Some(&bin_dir),
+    )
+    .expect("install target");
+
+    assert_eq!(target.path, bin_dir.join("rs-harness"));
+    assert_eq!(target.source, "semantic-agent-bin-dir");
+}
+
+#[test]
+fn provider_install_target_uses_home_local_bin_by_default() {
     let home = std::env::temp_dir().join("asp-install-target-home-only-home");
 
     let target = resolve_provider_binary_install_target("rust", "rs-harness", Some(&home))

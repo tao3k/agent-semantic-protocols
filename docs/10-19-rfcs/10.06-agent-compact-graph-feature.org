@@ -242,6 +242,19 @@ grammar.  Compact graph output therefore follows six invariants:
 - Bounded Locator: every read/edit/query frontier has an exact locator or a
   target that the provider can recover into one.
 
+Line selector compatibility is intentionally narrow. Compact graph aliases, =syntax= rows, action frontier entries, and default owner/item rows must put parser-owned identities in executable selector fields: =structuralSelector=, semantic handle ids, native fact ids, owner path plus item name, or a compiled tree-sitter query recipe. They may carry =displayLineRange= and =sourceLocatorHint= beside that identity so humans can inspect the range and the trusted materializer can perform an exact source transport later.
+
+The trusted materializer is the only layer allowed to turn a source locator hint into a shell command. It may emit =asp <language> query --selector <path:line-range> --code= only when the typed action has an exact-code policy. For search defaults and syntax exploration the materialized command must stay parser-native, such as =owner-items=, =query --names-only=, =query --selector <structuralSelector>= with a non-code projection, or =treesitter-query=. Production code must not recover actions by parsing =@path:start:end= aliases from ARI text.
+
+Schema fields used by this boundary:
+
+#+begin_src text
+structuralSelector  parser-owned element identity
+displayLineRange    human display hint only
+sourceLocatorHint   exact source transport hint
+projection          outline | names | content | code
+codePolicy          no-code | code-after-exact-selector | requires-exact-code
+#+end_src
 * Agent-driven search flow boundary
 
 The compact graph renderer is part of an agent-driven search flow.  It does not
@@ -1630,3 +1643,12 @@ owner-items hint without a materialized command, but it must not rank a
 package-level scoped-rg action ahead of an exact finder-confirmed path.
 * Provider/ASP Topology Boundary
 Language providers provide lightweight interface facts; ASP owns heavyweight derived topology artifacts. A provider dependency seed may expose manifest dependency facts, lockfile/version facts, package roots, source roots, and typed follow-up actions, but graph-turbo must build and cache reasoning trees, source symbol indexes, dependency source indexes, documentation indexes, and route-selection state inside ASP from those provider facts. Normal =search= stdout should expose only the next-action facts useful to the agent; developer/history and sandtable analyzers may persist the heavier ASP topology/index receipts for quality and latency analysis.
+* Skeleton-first action frontier
+Compact graph action facts must distinguish non-code structural projections from
+exact code transport.  Owner-local item hits should project an =item-skeleton=
+action with =projection=skeleton= before =syntax-outline= and =query-code=.
+The graph/action schema may carry =displayLineRange= and =sourceLocatorHint= as
+display or transport hints, but the executable target is the structural selector
+until the agent deliberately asks for exact code.  Direct source read fallback
+belongs outside the normal graph frontier and requires an explicit fallback
+reason when represented in read packets.

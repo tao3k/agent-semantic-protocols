@@ -3,14 +3,10 @@
 from __future__ import annotations
 
 import json
-import sys
 import tempfile
 import unittest
-from contextlib import redirect_stdout
-from io import StringIO
 from pathlib import Path
 
-from tools.semantic_sandtable.cli import semantic_sandtable_main as main
 from tools.semantic_sandtable.scenario_runner import run_scenario
 
 
@@ -32,7 +28,7 @@ class RealTriggerIngestPipeGuideTests(unittest.TestCase):
                             {
                                 "id": "guide",
                                 "command": [
-                                    sys.executable,
+                                    "python",
                                     "-c",
                                     (
                                         "import json; "

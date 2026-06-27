@@ -33,12 +33,28 @@ aliases: graph:{G=search,Q=query,T=test,O=owner,I=item}\n",
         rendered,
         "Q=query:term({query})!query;T=test:path({display_owner})!tests;O=owner:path({display_owner})!owner;"
     );
+    let language = if language_id.is_empty() {
+        "code"
+    } else {
+        language_id
+    };
+    let structural_selector_for = |kind: &str, term: &str| {
+        format!(
+            "{}://{}#item/{}/{}",
+            language,
+            display_owner,
+            kind,
+            term.replace(char::is_whitespace, "-")
+        )
+    };
     for (index, item_match) in item_matches.iter().enumerate() {
         let item_id = numbered_id("I", index);
-        let selector = format!("{display_owner}:{}:{}", item_match.start, item_match.end);
+        let source_locator_hint =
+            format!("{display_owner}:{}:{}", item_match.start, item_match.end);
+        let structural_selector = structural_selector_for(item_match.kind, &item_match.term);
         let _ = writeln!(
             rendered,
-            "{item_id}=item:symbol({})@{selector}!syntax;",
+            "{item_id}=item:symbol({})@{structural_selector}!syntax;",
             item_match.term
         );
         if let Some(pattern) =
@@ -46,7 +62,8 @@ aliases: graph:{G=search,Q=query,T=test,O=owner,I=item}\n",
         {
             let _ = writeln!(
                 rendered,
-                "syntax {item_id} selector={selector} pattern='{pattern}'"
+                "syntax {item_id} selector={structural_selector} displayLineRange={}:{} sourceLocatorHint={source_locator_hint} pattern='{pattern}'",
+                item_match.start, item_match.end
             );
         }
     }
@@ -88,13 +105,34 @@ aliases: graph:{G=search,Q=query,T=test,O=owner,I=item}\n",
         );
         rendered.push_str("reason=no-owner-item-match\n");
     } else if let Some(item_match) = item_matches.first() {
-        let selector = format!("{display_owner}:{}:{}", item_match.start, item_match.end);
-        let _ = writeln!(rendered, "recommendedNext=query-selector");
+        let source_locator_hint =
+            format!("{display_owner}:{}:{}", item_match.start, item_match.end);
+        let structural_selector = structural_selector_for(item_match.kind, &item_match.term);
         let _ = writeln!(
             rendered,
-            "nextCommand=asp {language_id} query --selector {selector} --workspace . --code"
+            "A1=item-skeleton(selector={structural_selector},projection=skeleton,hint={source_locator_hint})!skeleton"
         );
-        rendered.push_str("reason=owner-item-selector-ready\n");
+        let _ = writeln!(
+            rendered,
+            "A2=syntax-outline(selector={structural_selector},projection=outline,hint={source_locator_hint})!syntax"
+        );
+        let _ = writeln!(
+            rendered,
+            "A3=query-code(selector={structural_selector},requiresExact=true,codePolicy=exact-only,hint={source_locator_hint})!query-code"
+        );
+        let _ = writeln!(
+            rendered,
+            "actionFrontier=A1.item-skeleton,A2.syntax-outline,A3.query-code"
+        );
+        let _ = writeln!(rendered, "recommendedNext=A1.item-skeleton");
+        let _ = writeln!(
+            rendered,
+            "nextCommand=asp {language} query --from-hook item-skeleton --selector {} --workspace . --names-only",
+            shell_arg(&structural_selector)
+        );
+        rendered.push_str("reason=owner-item-skeleton-ready\n");
+        rendered
+            .push_str("avoid=selector-code-before-exact,direct-source-read,manual-window-scan\n");
     }
     rendered.push_str("entries=owner-query(O,Q=>items+tests+dependency-usage)\n");
     rendered

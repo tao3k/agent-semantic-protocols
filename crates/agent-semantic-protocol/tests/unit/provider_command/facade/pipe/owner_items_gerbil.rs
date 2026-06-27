@@ -1,7 +1,7 @@
 use crate::provider_command::support::{
     asp_command, prepend_path, provider, temp_project_root, write_activation,
-    write_activation_env_guard_provider, write_marker_provider, write_stdout_stderr_exit_provider,
-    write_stdout_stderr_provider,
+    write_activation_env_guard_provider, write_echo_provider, write_marker_provider,
+    write_stdout_stderr_exit_provider, write_stdout_stderr_provider,
 };
 use std::time::{Duration, Instant};
 
@@ -58,11 +58,19 @@ reason=owner-item-selector-ready\n",
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(
-        stdout.contains("I=item:symbol(type-compatible?)@src/checker/types.ss:1:1!syntax"),
+        stdout.contains("I=item:symbol(type-compatible?)@gerbil-scheme://src/checker/types.ss#item/def/type-compatible?!syntax"),
         "{stdout}"
     );
     assert!(
-        stdout.contains("item:symbol(any-type-compatible?)@src/checker/types.ss"),
+        stdout.contains("item:symbol(any-type-compatible?)@gerbil-scheme://src/checker/types.ss#item/def/any-type-compatible?!syntax"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("sourceLocatorHint=src/checker/types.ss:1:1"),
+        "{stdout}"
+    );
+    assert!(
+        !stdout.contains("item:symbol(type-compatible?)@src/checker/types.ss:"),
         "{stdout}"
     );
     assert!(
@@ -83,6 +91,53 @@ reason=owner-item-selector-ready\n",
             .expect("stderr")
             .contains("provider-owned-owner-items"),
         "Gerbil owner-items should not spawn the language provider"
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn gerbil_regular_range_query_delegates_to_provider_without_source_read() {
+    let root = temp_project_root("search-owner-gerbil-range-query-provider");
+    let bin_dir = root.join(".bin");
+    std::fs::create_dir_all(root.join("src/checker")).expect("create source");
+    std::fs::write(
+        root.join("src/checker/types.ss"),
+        "(def (type-compatible? actual expected)\n  (equal? actual expected))\n",
+    )
+    .expect("write source");
+    write_echo_provider(&bin_dir, "gslph", "gerbil");
+    write_activation(&root, &[provider("gerbil-scheme", Vec::new())]);
+
+    let output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args([
+            "gerbil-scheme",
+            "query",
+            "--selector",
+            "src/checker/types.ss:1:2",
+            "--workspace",
+            ".",
+            "--code",
+        ])
+        .output()
+        .expect("run asp gerbil range query");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    assert!(
+        !stdout.contains("(def (type-compatible? actual expected)"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains(
+            "gerbil args=[query][--from-hook][direct-source-read][--selector][src/checker/types.ss:1:2][--code]"
+        ),
+        "regular selector query should invoke provider-owned direct-source-read: {stdout}"
     );
     let _ = std::fs::remove_dir_all(root);
 }
@@ -131,7 +186,11 @@ reason=owner-item-selector-ready\n",
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(
-        stdout.contains("item:symbol(type-compatible?)@src/checker/types.ss:1:1!syntax"),
+        stdout.contains("item:symbol(type-compatible?)@gerbil-scheme://src/checker/types.ss#item/def/type-compatible?!syntax"),
+        "{stdout}"
+    );
+    assert!(
+        !stdout.contains("item:symbol(type-compatible?)@src/checker/types.ss:"),
         "{stdout}"
     );
     assert!(
@@ -197,7 +256,11 @@ reason=owner-item-selector-ready\n",
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(
-        stdout.contains("I=item:symbol(compile-module)@src/gerbil/compiler/driver.ss:1:1!syntax"),
+        stdout.contains("I=item:symbol(compile-module)@gerbil-scheme://src/gerbil/compiler/driver.ss#item/def/compile-module!syntax"),
+        "{stdout}"
+    );
+    assert!(
+        !stdout.contains("I=item:symbol(compile-module)@src/gerbil/compiler/driver.ss:"),
         "{stdout}"
     );
     assert!(
@@ -263,7 +326,11 @@ reason=owner-item-selector-ready\n",
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(
-        stdout.contains("I=item:symbol(required-extension)@src/api/types.ssi:1:1!syntax"),
+        stdout.contains("I=item:symbol(required-extension)@gerbil-scheme://src/api/types.ssi#item/struct/required-extension!syntax"),
+        "{stdout}"
+    );
+    assert!(
+        !stdout.contains("I=item:symbol(required-extension)@src/api/types.ssi:"),
         "{stdout}"
     );
     assert!(
@@ -401,29 +468,39 @@ reason=owner-item-selector-ready\n",
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(
-        stdout.contains("item:symbol(.defgeneric)@gerbil/src/poo-flow/poo.ss:5:5!syntax"),
+        stdout.contains("item:symbol(.defgeneric)@gerbil-scheme://gerbil/src/poo-flow/poo.ss#item/call/.defgeneric!syntax"),
         "{stdout}"
     );
     assert!(
-        stdout.contains("item:symbol(defclass)@gerbil/src/poo-flow/poo.ss:7:7!syntax"),
+        stdout.contains("item:symbol(defclass)@gerbil-scheme://gerbil/src/poo-flow/poo.ss#item/call/defclass!syntax"),
         "{stdout}"
     );
     assert!(
-        stdout.contains("item:symbol(defmethod)@gerbil/src/poo-flow/poo.ss:9:9!syntax"),
+        stdout.contains("item:symbol(defmethod)@gerbil-scheme://gerbil/src/poo-flow/poo.ss#item/call/defmethod!syntax"),
         "{stdout}"
     );
     assert!(
-        stdout.contains("item:symbol(.o)@gerbil/src/poo-flow/poo.ss:16:16!syntax"),
+        stdout.contains(
+            "item:symbol(.o)@gerbil-scheme://gerbil/src/poo-flow/poo.ss#item/call/.o!syntax"
+        ),
         "{stdout}"
     );
     assert!(
-        stdout.contains("item:symbol(.@)@gerbil/src/poo-flow/poo.ss:10:10!syntax")
-            || stdout.contains("item:symbol(.@)@gerbil/src/poo-flow/poo.ss:17:17!syntax"),
+        stdout.contains(
+            "item:symbol(.@)@gerbil-scheme://gerbil/src/poo-flow/poo.ss#item/call/.@!syntax"
+        ),
         "{stdout}"
     );
     assert!(
-        stdout.contains("item:symbol(.mix)@gerbil/src/poo-flow/poo.ss:12:12!syntax")
-            || stdout.contains("item:symbol(.mix)@gerbil/src/poo-flow/poo.ss:18:18!syntax"),
+        stdout.contains(
+            "item:symbol(.mix)@gerbil-scheme://gerbil/src/poo-flow/poo.ss#item/def/.mix!syntax"
+        ) || stdout.contains(
+            "item:symbol(.mix)@gerbil-scheme://gerbil/src/poo-flow/poo.ss#item/call/.mix!syntax"
+        ),
+        "{stdout}"
+    );
+    assert!(
+        !stdout.contains("item:symbol(.defgeneric)@gerbil/src/poo-flow/poo.ss:"),
         "{stdout}"
     );
     assert!(
@@ -489,7 +566,13 @@ reason=owner-item-selector-ready\n",
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(
-        stdout.contains("I=item:symbol(gerbil.pkg)@gerbil.pkg:1:1!syntax"),
+        stdout.contains(
+            "I=item:symbol(gerbil.pkg)@gerbil-scheme://gerbil.pkg#item/package/gerbil.pkg!syntax"
+        ),
+        "{stdout}"
+    );
+    assert!(
+        !stdout.contains("I=item:symbol(gerbil.pkg)@gerbil.pkg:1:1!syntax"),
         "{stdout}"
     );
     assert!(

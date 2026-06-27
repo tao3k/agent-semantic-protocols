@@ -154,7 +154,8 @@
     {
       "id": "prime-compiler",
       "command": [
-        "ts-harness",
+        "asp",
+        "typescript",
         "search",
         "prime",
         "--package",
@@ -182,7 +183,8 @@
     {
       "id": "owner-program",
       "command": [
-        "ts-harness",
+        "asp",
+        "typescript",
         "search",
         "owner",
         "src/compiler/program.ts",
@@ -206,7 +208,8 @@
     {
       "id": "deps-typescript",
       "command": [
-        "ts-harness",
+        "asp",
+        "typescript",
         "search",
         "deps",
         "typescript",
@@ -230,7 +233,8 @@
     {
       "id": "intent-query-set",
       "command": [
-        "ts-harness",
+        "asp",
+        "typescript",
         "search",
         "fzf",
         "--query-set",

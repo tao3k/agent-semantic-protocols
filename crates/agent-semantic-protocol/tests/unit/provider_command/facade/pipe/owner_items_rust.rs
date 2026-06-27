@@ -43,8 +43,12 @@ fn rust_owner_items_labels_async_fn_with_declaration_name() {
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(
         stdout.contains(
-            "I=item:symbol(local_store_upserts_and_lists_direct_children_with_status_filters)@codex-rs/agent-graph-store/src/local.rs:1:5!syntax"
+            "I=item:symbol(local_store_upserts_and_lists_direct_children_with_status_filters)@rust://codex-rs/agent-graph-store/src/local.rs#item/fn/local_store_upserts_and_lists_direct_children_with_status_filters!syntax"
         ),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("sourceLocatorHint=codex-rs/agent-graph-store/src/local.rs:1:5"),
         "{stdout}"
     );
     assert!(

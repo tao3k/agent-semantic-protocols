@@ -390,7 +390,10 @@ fn parse_selector_action(value: &str) -> Option<PipeAction> {
     let (index, rest) = rest.split_once(".selector(")?;
     let index = index.parse::<usize>().ok()?;
     let fields = rest.split_once(")!")?.0;
-    let selector = action_field(fields, "selector")?.to_string();
+    let selector = action_field(fields, "sourceLocatorHint")
+        .or_else(|| action_field(fields, "structuralSelector"))
+        .or_else(|| action_field(fields, "selector"))?
+        .to_string();
     let owner = action_field(fields, "owner")
         .unwrap_or_default()
         .to_string();
@@ -414,7 +417,10 @@ fn parse_query_code_action(value: &str) -> Option<PipeAction> {
     let (index, rest) = rest.split_once(".query-code(")?;
     let index = index.parse::<usize>().ok()?;
     let fields = rest.split_once(")!")?.0;
-    let selector = action_field(fields, "selector")?.to_string();
+    let selector = action_field(fields, "sourceLocatorHint")
+        .or_else(|| action_field(fields, "structuralSelector"))
+        .or_else(|| action_field(fields, "selector"))?
+        .to_string();
     let owner = action_field(fields, "owner")
         .unwrap_or_default()
         .to_string();

@@ -67,7 +67,9 @@ impl ActionNode {
                 symbol,
                 ..
             } => {
-                format!("selector={selector},owner={owner},symbol={symbol}")
+                format!(
+                    "sourceLocatorHint={selector},owner={owner},symbol={symbol},codePolicy=requires-exact-code"
+                )
             }
             ActionRoute::FdQuery { query, scope, .. }
             | ActionRoute::RgQuery { query, scope, .. } => format!("query={query},scope={scope}"),
@@ -179,6 +181,11 @@ impl ActionNode {
             } => {
                 fields.insert("languageId".to_string(), json!(language_id));
                 fields.insert("selector".to_string(), json!(selector));
+                if is_source_locator(selector) {
+                    fields.insert("sourceLocatorHint".to_string(), json!(selector));
+                    fields.insert("codePolicy".to_string(), json!("requires-exact-code"));
+                    fields.insert("requiresExact".to_string(), json!(true));
+                }
                 fields.insert("ownerPath".to_string(), json!(owner));
                 fields.insert("symbol".to_string(), json!(symbol));
                 fields.insert("workspace".to_string(), json!(workspace));
@@ -186,7 +193,7 @@ impl ActionNode {
                     "projection".to_string(),
                     json!(query_projection_kind(language_id)),
                 );
-                ("query", selector.as_str(), "selector")
+                ("query", owner.as_str(), "owner")
             }
             ActionRoute::FdQuery { query, scope, .. } => {
                 fields.insert("query".to_string(), json!(query));
@@ -414,6 +421,23 @@ fn shell_arg(value: &str) -> String {
     } else {
         shell_quote(value)
     }
+}
+
+fn is_source_locator(value: &str) -> bool {
+    let Some((_, range)) = value.split_once(':') else {
+        return false;
+    };
+    let mut parts = range.split([':', '-']);
+    let Some(start) = parts.next() else {
+        return false;
+    };
+    let Some(end) = parts.next() else {
+        return false;
+    };
+    !start.is_empty()
+        && !end.is_empty()
+        && start.chars().all(|character| character.is_ascii_digit())
+        && end.chars().all(|character| character.is_ascii_digit())
 }
 
 fn shell_quote(value: &str) -> String {

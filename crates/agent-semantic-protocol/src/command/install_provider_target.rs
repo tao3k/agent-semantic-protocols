@@ -20,6 +20,27 @@ pub(super) fn resolve_provider_binary_install_target(
     provider_binary: &str,
     home_dir: Option<&Path>,
 ) -> Result<ProviderBinaryInstallTarget, String> {
+    let bin_dir = semantic_agent_bin_dir();
+    resolve_provider_binary_install_target_with_bin_dir(
+        language_id,
+        provider_binary,
+        home_dir,
+        bin_dir.as_deref(),
+    )
+}
+
+fn resolve_provider_binary_install_target_with_bin_dir(
+    language_id: &str,
+    provider_binary: &str,
+    home_dir: Option<&Path>,
+    semantic_agent_bin_dir: Option<&Path>,
+) -> Result<ProviderBinaryInstallTarget, String> {
+    if let Some(bin_dir) = semantic_agent_bin_dir {
+        return Ok(ProviderBinaryInstallTarget {
+            path: bin_dir.join(provider_binary),
+            source: "semantic-agent-bin-dir",
+        });
+    }
     Ok(ProviderBinaryInstallTarget {
         path: home_local_bin_required(provider_binary, home_dir, language_id)?,
         source: "home-local-bin",
@@ -62,6 +83,12 @@ fn home_local_bin_required(
 
 pub(super) fn home_dir() -> Option<PathBuf> {
     env::var_os("HOME")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+}
+
+fn semantic_agent_bin_dir() -> Option<PathBuf> {
+    env::var_os("SEMANTIC_AGENT_BIN_DIR")
         .filter(|value| !value.is_empty())
         .map(PathBuf::from)
 }

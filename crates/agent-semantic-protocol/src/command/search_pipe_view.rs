@@ -468,8 +468,28 @@ fn seed_plan_detail_line(packet: &Value) -> Option<String> {
         .unwrap_or(0);
     let risk_factors = compact_string_array(seed_plan.get("riskFactors"));
     let recommended_actions = compact_string_array(seed_plan.get("recommendedActions"));
+    let selection_policy = seed_plan.get("selectionPolicy");
+    let flow = selection_policy
+        .and_then(|policy| policy.get("flow"))
+        .and_then(Value::as_str)
+        .unwrap_or("-");
+    let first_action_matches_evidence_state = compact_bool(
+        selection_policy.and_then(|policy| policy.get("firstActionMatchesEvidenceState")),
+    );
+    let reasoning_tree_route_shown =
+        compact_bool(selection_policy.and_then(|policy| policy.get("reasoningTreeRouteShown")));
+    let chosen_route_preconditions_met =
+        compact_bool(selection_policy.and_then(|policy| policy.get("chosenRoutePreconditionsMet")));
+    let unnecessary_seed_count =
+        compact_u64(selection_policy.and_then(|policy| policy.get("unnecessarySeedCount")));
+    let seed_when_known_owner_count =
+        compact_u64(selection_policy.and_then(|policy| policy.get("seedWhenKnownOwnerCount")));
+    let seed_when_known_symbol_count =
+        compact_u64(selection_policy.and_then(|policy| policy.get("seedWhenKnownSymbolCount")));
+    let seed_when_known_selector_count =
+        compact_u64(selection_policy.and_then(|policy| policy.get("seedWhenKnownSelectorCount")));
     Some(format!(
-        "seedPlanDetail=quality={quality} queryOwnerSeedCount={query_owner_seed_count} selectedSeedCount={selected_seed_count} riskFactors={risk_factors} recommendedActions={recommended_actions}"
+        "seedPlanDetail=quality={quality} queryOwnerSeedCount={query_owner_seed_count} selectedSeedCount={selected_seed_count} riskFactors={risk_factors} recommendedActions={recommended_actions} flow={flow} firstActionMatchesEvidenceState={first_action_matches_evidence_state} reasoningTreeRouteShown={reasoning_tree_route_shown} chosenRoutePreconditionsMet={chosen_route_preconditions_met} unnecessarySeedCount={unnecessary_seed_count} seedWhenKnownOwnerCount={seed_when_known_owner_count} seedWhenKnownSymbolCount={seed_when_known_symbol_count} seedWhenKnownSelectorCount={seed_when_known_selector_count}"
     ))
 }
 
@@ -507,10 +527,26 @@ fn compact_string_array(value: Option<&Value>) -> String {
     }
 }
 
+fn compact_bool(value: Option<&Value>) -> &'static str {
+    match value.and_then(Value::as_bool) {
+        Some(true) => "true",
+        Some(false) => "false",
+        None => "-",
+    }
+}
+
+fn compact_u64(value: Option<&Value>) -> String {
+    value
+        .and_then(Value::as_u64)
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "-".to_string())
+}
+
 fn dependency_action_targets_from_graph(packet: &Value, query: Option<&str>) -> Vec<String> {
     let Some(query) = query.filter(|query| !query.trim().is_empty()) else {
         return Vec::new();
     };
+    let dependency_route_intent = query_has_dependency_route_intent(query);
     packet
         .get("graph")
         .and_then(|graph| graph.get("nodes"))
@@ -519,13 +555,117 @@ fn dependency_action_targets_from_graph(packet: &Value, query: Option<&str>) -> 
         .flatten()
         .filter(|node| node.get("kind").and_then(Value::as_str) == Some("dependency"))
         .filter_map(|node| node.get("value").and_then(Value::as_str))
-        .filter(|dependency| dependency_matches_query(dependency, query))
+        .filter(|dependency| {
+            dependency_route_preconditions_met(dependency, query, dependency_route_intent)
+        })
         .fold(Vec::new(), |mut targets, dependency| {
             if !targets.iter().any(|target| target == dependency) {
                 targets.push(dependency.to_string());
             }
             targets
         })
+}
+
+fn dependency_route_preconditions_met(
+    dependency: &str,
+    query: &str,
+    dependency_route_intent: bool,
+) -> bool {
+    if query_has_search_protocol_meta_intent(query) {
+        return false;
+    }
+    dependency_literal_in_query(dependency, query)
+        || (dependency_route_intent && dependency_matches_query(dependency, query))
+}
+
+fn dependency_literal_in_query(dependency: &str, query: &str) -> bool {
+    let dependency = dependency.to_ascii_lowercase();
+    query
+        .split(token_boundary_for_dependency_literal)
+        .filter(|token| !token.is_empty())
+        .map(str::to_ascii_lowercase)
+        .any(|token| token == dependency)
+}
+
+fn query_has_dependency_route_intent(query: &str) -> bool {
+    if query_has_search_protocol_meta_intent(query) {
+        return false;
+    }
+    dependency_route_query_tokens(query).iter().any(|token| {
+        matches!(
+            token.as_str(),
+            "cargo"
+                | "crate"
+                | "crates"
+                | "dep"
+                | "deps"
+                | "dependencies"
+                | "dependency"
+                | "import"
+                | "imports"
+                | "manifest"
+                | "npm"
+                | "package"
+                | "packages"
+                | "pip"
+                | "requirements"
+                | "uv"
+        )
+    })
+}
+
+fn query_has_search_protocol_meta_intent(query: &str) -> bool {
+    let tokens = dependency_route_query_tokens(query);
+    let has_meta_term = tokens.iter().any(|token| {
+        matches!(
+            token.as_str(),
+            "audit"
+                | "conclusion"
+                | "conclusions"
+                | "evidence"
+                | "expected"
+                | "frontier"
+                | "meta"
+                | "not"
+                | "plan"
+                | "protocol"
+                | "reasoning"
+                | "router"
+                | "routing"
+                | "should"
+                | "test"
+                | "tests"
+        )
+    });
+    let has_search_surface_term = tokens.iter().any(|token| {
+        matches!(
+            token.as_str(),
+            "action"
+                | "deps"
+                | "line"
+                | "owner"
+                | "pipe"
+                | "query"
+                | "route"
+                | "search"
+                | "seed"
+                | "selector"
+                | "symbol"
+        )
+    });
+    has_meta_term && has_search_surface_term
+}
+
+fn dependency_route_query_tokens(query: &str) -> Vec<String> {
+    query
+        .split(|character: char| !(character == '_' || character.is_ascii_alphanumeric()))
+        .filter(|token| !token.is_empty())
+        .map(str::to_ascii_lowercase)
+        .collect()
+}
+
+fn token_boundary_for_dependency_literal(character: char) -> bool {
+    !(character == '-' || character == '_' || character == '.' || character.is_ascii_alphanumeric())
 }
 
 fn workspace_label(project_root: &Path, locator_root: &Path) -> Option<String> {

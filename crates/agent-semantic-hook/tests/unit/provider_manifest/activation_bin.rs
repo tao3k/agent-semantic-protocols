@@ -67,7 +67,10 @@ fn default_activation_records_project_bin_provider_prefix() {
 
 #[test]
 fn default_activation_uses_parent_workspace_bin_for_nested_gerbil_package() {
+    let _home_lock = HOME_ENV_LOCK.lock().expect("lock HOME env");
     let root = temp_root("nested-gerbil-parent-bin-provider");
+    let home = temp_root("nested-gerbil-parent-bin-home");
+    let _home_guard = HomeEnvGuard::set(&home);
     let child = root
         .join("languages")
         .join("gerbil-scheme-language-project-harness");
@@ -103,6 +106,7 @@ fn default_activation_uses_parent_workspace_bin_for_nested_gerbil_package() {
     assert!(gerbil.coverage.package_roots.contains(&".".to_string()));
 
     fs::remove_dir_all(root).expect("remove temp root");
+    fs::remove_dir_all(home).expect("remove temp home");
 }
 
 #[test]
@@ -141,14 +145,18 @@ fn default_activation_uses_project_runtime_bin_provider_prefix() {
 }
 
 #[test]
-fn default_activation_uses_home_local_bin_before_path_fallback_for_gerbil() {
+fn default_activation_uses_home_local_bin_before_project_bin_for_gerbil() {
     let _home_lock = HOME_ENV_LOCK.lock().expect("lock HOME env");
     let root = temp_root("home-local-gerbil-provider");
     let home = temp_root("home-local-gerbil-home");
     let home_bin = home.join(".local").join("bin");
     fs::create_dir_all(&home_bin).expect("create home local bin");
+    fs::create_dir_all(root.join(".bin")).expect("create project bin");
     fs::create_dir_all(root.join("src")).expect("create src");
     fs::write(root.join("gerbil.pkg"), "(package: sample/gerbil)\n").expect("write gerbil.pkg");
+    let project_provider_bin = root.join(".bin").join("gslph");
+    fs::write(&project_provider_bin, "#!/bin/sh\nexit 0\n").expect("write project provider bin");
+    make_executable(&project_provider_bin);
     let provider_bin = home_bin.join("gslph");
     fs::write(&provider_bin, "#!/bin/sh\nexit 0\n").expect("write provider bin");
     make_executable(&provider_bin);
@@ -167,7 +175,7 @@ fn default_activation_uses_home_local_bin_before_path_fallback_for_gerbil() {
     assert_eq!(
         gerbil.provider_command_prefix,
         vec![expected_provider_bin.display().to_string()],
-        "Gerbil provider should prefer $HOME/.local/bin/gslph before PATH fallback"
+        "Gerbil provider should prefer $HOME/.local/bin/gslph before project .bin/gslph"
     );
 
     fs::remove_dir_all(root).expect("remove temp root");

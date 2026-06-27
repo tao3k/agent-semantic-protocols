@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -26,7 +25,7 @@ class LineProtocolWindowSetPathTests(unittest.TestCase):
                             {
                                 "id": "good-window-set",
                                 "command": [
-                                    sys.executable,
+                                    "python",
                                     "-c",
                                     (
                                         "print('[search-fzf]')\n"
@@ -63,7 +62,7 @@ class LineProtocolWindowSetPathTests(unittest.TestCase):
                             {
                                 "id": "bad-window-set-rank",
                                 "command": [
-                                    sys.executable,
+                                    "python",
                                     "-c",
                                     (
                                         "print('[search-fzf]')\n"
@@ -98,7 +97,7 @@ class LineProtocolWindowSetPathTests(unittest.TestCase):
                             {
                                 "id": "bad-window-set-owner-test",
                                 "command": [
-                                    sys.executable,
+                                    "python",
                                     "-c",
                                     (
                                         "print('[search-fzf]')\n"
@@ -133,7 +132,7 @@ class LineProtocolWindowSetPathTests(unittest.TestCase):
                             {
                                 "id": "bad-window-set-tests-source",
                                 "command": [
-                                    sys.executable,
+                                    "python",
                                     "-c",
                                     (
                                         "print('[search-fzf]')\n"

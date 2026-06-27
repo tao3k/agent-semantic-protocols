@@ -8,7 +8,6 @@ from ._discovery_steps_common import (
     os,
     patch,
     run_scenario,
-    sys,
     tempfile,
     unittest,
 )
@@ -28,7 +27,7 @@ class DiscoveryAndStepRunnerTests(unittest.TestCase):
                         "steps": [
                             {
                                 "id": "stdin",
-                                "command": [sys.executable, "-c", "print('[ok]')"],
+                                "command": ["python", "-c", "print('[ok]')"],
                                 "stdin": "{missing}",
                             }
                         ],
@@ -55,9 +54,9 @@ class DiscoveryAndStepRunnerTests(unittest.TestCase):
                         "steps": [
                             {
                                 "id": "stdin-command",
-                                "command": [sys.executable, "-c", "print('[ok]')"],
+                                "command": ["python", "-c", "print('[ok]')"],
                                 "stdinCommand": [
-                                    sys.executable,
+                                    "python",
                                     "-c",
                                     "import sys; sys.exit(7)",
                                 ],
@@ -90,11 +89,11 @@ class DiscoveryAndStepRunnerTests(unittest.TestCase):
                             {
                                 "id": "touch-marker",
                                 "command": [
-                                    sys.executable,
+                                    "python",
                                     "-c",
                                     (
                                         "from pathlib import Path; "
-                                        f"Path({str(marker)!r}).write_text('ran')"
+                                        "Path('should-not-run').write_text('ran')"
                                     ),
                                 ],
                             }
@@ -104,7 +103,7 @@ class DiscoveryAndStepRunnerTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            with patch.dict(os.environ, {}, clear=True):
+            with patch.dict(os.environ, {"PATH": os.environ.get("PATH", "")}, clear=True):
                 result = run_scenario(repo_root, scenario_path)
 
         self.assertEqual("skip", result.status)
@@ -126,7 +125,7 @@ class DiscoveryAndStepRunnerTests(unittest.TestCase):
                         "language": "root",
                         "env": {
                             "ASP_LIVE_CLAUDE_CLI": "1",
-                            "SANDTABLE_LIVE_ROOT": str(live_root),
+                            "SANDTABLE_LIVE_ROOT": "live-workdir",
                         },
                         "workdir": {"env": "SANDTABLE_LIVE_ROOT"},
                         "skipUnlessEnv": ["ASP_LIVE_CLAUDE_CLI"],
@@ -134,7 +133,7 @@ class DiscoveryAndStepRunnerTests(unittest.TestCase):
                             {
                                 "id": "touch-marker",
                                 "command": [
-                                    sys.executable,
+                                    "python",
                                     "-c",
                                     (
                                         "from pathlib import Path; "
@@ -148,7 +147,7 @@ class DiscoveryAndStepRunnerTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            with patch.dict(os.environ, {}, clear=True):
+            with patch.dict(os.environ, {"PATH": os.environ.get("PATH", "")}, clear=True):
                 result = run_scenario(repo_root, scenario_path)
 
             self.assertEqual("pass", result.status)

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -26,7 +25,7 @@ class JsonExpectationTests(unittest.TestCase):
                                 {
                                     "id": "deny",
                                     "command": [
-                                        sys.executable,
+                                        "python",
                                         "-c",
                                         (
                                             "print('{\"hookSpecificOutput\":"
@@ -98,7 +97,7 @@ class JsonExpectationTests(unittest.TestCase):
                                 {
                                     "id": "schema",
                                     "command": [
-                                        sys.executable,
+                                        "python",
                                         "-c",
                                         (
                                             "import json; "
@@ -139,7 +138,7 @@ class JsonExpectationTests(unittest.TestCase):
                                 {
                                     "id": "array-index",
                                     "command": [
-                                        sys.executable,
+                                        "python",
                                         "-c",
                                         (
                                             "import json; "
@@ -177,7 +176,7 @@ class JsonExpectationTests(unittest.TestCase):
                                 {
                                     "id": "synthesis",
                                     "command": [
-                                        sys.executable,
+                                        "python",
                                         "-c",
                                         (
                                             "import json; "

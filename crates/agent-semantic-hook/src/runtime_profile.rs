@@ -6,6 +6,7 @@ use crate::protocol_activation::{ActivatedProvider, HookActivation, HookRuntime}
 use crate::provider_manifest::provider_manifests;
 use agent_semantic_runtime::{is_project_activation_path, project_root_for_activation_path};
 use serde::{Deserialize, Serialize};
+use std::env;
 use std::path::{Path, PathBuf};
 
 /// Schema id for runtime provider profiles.
@@ -189,15 +190,22 @@ fn runtime_provider_profile_for_provider(
     provider: &ActivatedProvider,
 ) -> RuntimeProviderProfile {
     let project_bin = project_root.join(".bin").join(&provider.binary);
-    let binary_resolution = if is_executable_file(&project_bin) {
-        crate::executable::ExecutableResolution {
-            path: Some(std::fs::canonicalize(&project_bin).unwrap_or(project_bin)),
-            status: ExecutableStatus::Available,
-            reason: None,
-        }
-    } else {
-        resolve_executable_with_status(&provider.binary)
-    };
+    let binary_resolution =
+        if let Some(home_binary) = preferred_home_local_provider_binary(provider) {
+            crate::executable::ExecutableResolution {
+                path: Some(home_binary),
+                status: ExecutableStatus::Available,
+                reason: None,
+            }
+        } else if is_executable_file(&project_bin) {
+            crate::executable::ExecutableResolution {
+                path: Some(std::fs::canonicalize(&project_bin).unwrap_or(project_bin)),
+                status: ExecutableStatus::Available,
+                reason: None,
+            }
+        } else {
+            resolve_executable_with_status(&provider.binary)
+        };
     let command = runtime_provider_command(provider, binary_resolution.path.as_ref());
     let resolved_binary = command.argv.first().cloned().or_else(|| {
         binary_resolution
@@ -236,7 +244,9 @@ fn runtime_provider_command(
     provider: &ActivatedProvider,
     resolved_binary: Option<&PathBuf>,
 ) -> RuntimeProviderCommand {
-    if provider.provider_command_prefix.is_empty() {
+    if provider.provider_command_prefix.is_empty()
+        || provider_prefers_resolved_binary_over_prefix(provider)
+    {
         return match resolved_binary {
             Some(binary) => RuntimeProviderCommand {
                 argv: vec![binary.display().to_string()],
@@ -275,6 +285,29 @@ fn runtime_provider_command(
         status: Some(RuntimeProviderHealthStatus::Available),
         reason: None,
     }
+}
+
+fn provider_prefers_resolved_binary_over_prefix(provider: &ActivatedProvider) -> bool {
+    provider_is_gerbil_scheme(provider)
+}
+
+fn preferred_home_local_provider_binary(provider: &ActivatedProvider) -> Option<PathBuf> {
+    if !provider_is_gerbil_scheme(provider) {
+        return None;
+    }
+    let candidate = env::var_os("HOME")
+        .filter(|home| !home.is_empty())
+        .map(PathBuf::from)?
+        .join(".local/bin/gslph");
+    is_executable_file(&candidate).then(|| std::fs::canonicalize(&candidate).unwrap_or(candidate))
+}
+
+fn provider_is_gerbil_scheme(provider: &ActivatedProvider) -> bool {
+    provider.language_id == "gerbil-scheme"
+        || provider
+            .provider_command_prefix
+            .iter()
+            .any(|arg| arg == "gerbil-scheme")
 }
 
 fn runtime_provider_profile<'a>(

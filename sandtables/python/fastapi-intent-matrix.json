@@ -75,7 +75,8 @@
     {
       "id": "prime",
       "command": [
-        "py-harness",
+        "asp",
+        "python",
         "search",
         "prime",
         "--view",
@@ -100,7 +101,8 @@
     {
       "id": "owner-routing",
       "command": [
-        "py-harness",
+        "asp",
+        "python",
         "search",
         "owner",
         "fastapi/routing.py",
@@ -124,7 +126,8 @@
     {
       "id": "deps-pydantic",
       "command": [
-        "py-harness",
+        "asp",
+        "python",
         "search",
         "deps",
         "pydantic",
@@ -148,7 +151,8 @@
     {
       "id": "intent-query-set",
       "command": [
-        "py-harness",
+        "asp",
+        "python",
         "search",
         "fzf",
         "--query-set",

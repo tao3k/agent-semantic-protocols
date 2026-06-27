@@ -347,7 +347,7 @@ def test_real_trigger_replay_scenario_fails_on_window_scan_candidate(
                             "sandtables/fixtures/asp/"
                             "failure-frontier-baseline-receipt.json"
                         ),
-                        "candidateReceiptPath": str(candidate_path),
+                        "candidateReceiptPath": "candidate.json",
                         "expectedHotBlocks": _HOT_BLOCKS,
                     },
                 },

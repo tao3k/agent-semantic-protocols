@@ -226,6 +226,19 @@ search/query command lifecycle; RFC 006 owns the LLM-oriented graph facts,
 rank, compact projection, and next-action semantics shared by all =search=
 surfaces.
 
+** Agent-facing locator boundary
+Prime and pipe renderers must not let compatibility line ranges become the graph identity that drives the next action. Compact graph aliases and frontier actions should render parser-owned identity first, such as =structuralSelector=, semantic handle ids, native fact ids, owner/item names, and tree-sitter query recipes. =displayLineRange= and =sourceLocatorHint= may be shown as auxiliary facts, but they are not the executable selector for =syntax= or =owner-items= actions.
+
+The trusted materializer consumes typed action facts. It may materialize =query --selector <path:line-range> --code= only for an explicit exact-code action whose policy says the source range is already selected. Search and prime defaults should materialize parser-native follow-ups, including owner-items, names, outline, query-set, dependency, or tree-sitter recipe actions. This keeps compact graph exploration in the parser/query language ecosystem and prevents line-number trial reads from becoming the default agent strategy.
+
+Sandtable and large-library evidence should track this as a first-class metric:
+
+#+begin_src text
+lineSelectorShownInSyntaxAction=0
+lineSelectorShownInOwnerItemsAction=0
+lineSelectorShownInGraphActionFrontier=0
+sourceLocatorHintShownForExactCodeActions>=1
+#+end_src
 ** What prime must NOT output
 
 #+begin_src text

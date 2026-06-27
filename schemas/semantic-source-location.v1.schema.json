@@ -21,6 +21,18 @@
     "structuralSelector": {
       "$ref": "#/$defs/structuralSelector"
     },
+    "displayLineRange": {
+      "$ref": "#/$defs/lineRange"
+    },
+    "sourceLocatorHint": {
+      "$ref": "#/$defs/sourceLocator"
+    },
+    "projection": {
+      "$ref": "#/$defs/projection"
+    },
+    "codePolicy": {
+      "$ref": "#/$defs/codePolicy"
+    },
     "location": {
       "$ref": "#/$defs/location"
     },
@@ -65,6 +77,12 @@
         },
         "structuralSelector": {
           "$ref": "#/$defs/structuralSelector"
+        },
+        "displayLineRange": {
+          "$ref": "#/$defs/lineRange"
+        },
+        "sourceLocatorHint": {
+          "$ref": "#/$defs/sourceLocator"
         }
       }
     },
@@ -77,6 +95,27 @@
       "type": "string",
       "description": "Project-root-relative source selector requiring an explicit start:end span.",
       "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*):[1-9][0-9]*:[1-9][0-9]*$"
+    },
+    "projection": {
+      "enum": [
+        "skeleton",
+        "outline",
+        "names",
+        "signature",
+        "doc",
+        "children",
+        "content",
+        "code"
+      ],
+      "description": "Requested or rendered projection for a semantic locator. Non-code projections are search/query frontiers; code is exact source transport."
+    },
+    "codePolicy": {
+      "enum": [
+        "no-code",
+        "code-after-exact-selector",
+        "requires-exact-code"
+      ],
+      "description": "Boundary for when a source locator hint may be materialized into --code transport."
     }
   }
 }

@@ -175,7 +175,13 @@ fn fzf_scoped_root_outputs_workspace_relative_replayable_locators() {
         "{stdout}"
     );
     assert!(
-        stdout.contains("I=item:symbol(cache_root)@crates/demo/src/lib.rs:1:1"),
+        stdout.contains(
+            "I=item:symbol(cache_root)@rust://crates/demo/src/lib.rs#item/symbol/cache_root"
+        ),
+        "{stdout}"
+    );
+    assert!(
+        !stdout.contains("I=item:symbol(cache_root)@crates/demo/src/lib.rs:1:1"),
         "{stdout}"
     );
 

@@ -204,10 +204,18 @@ fn gerbil_query_facade_allows_explicit_workspace_outside_activation_workspace() 
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    assert_eq!(
-        String::from_utf8(output.stdout).expect("stdout"),
-        ";; outside build\n"
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    assert!(
+        stdout.trim_end().ends_with(
+            outside_root
+                .file_name()
+                .expect("outside root file name")
+                .to_str()
+                .expect("outside root utf8")
+        ),
+        "{stdout}"
     );
+    assert!(!stdout.contains(";; outside build"), "{stdout}");
     let _ = std::fs::remove_dir_all(root);
     let _ = std::fs::remove_dir_all(outside_root);
 }

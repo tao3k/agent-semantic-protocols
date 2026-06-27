@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -29,7 +28,7 @@ class RealTriggerCodexWrappedGuideTests(unittest.TestCase):
                             {
                                 "id": "guide",
                                 "command": [
-                                    sys.executable,
+                                    "python",
                                     "-c",
                                     (
                                         "import json; "
@@ -87,7 +86,7 @@ class RealTriggerCodexWrappedGuideTests(unittest.TestCase):
                             {
                                 "id": "guide",
                                 "command": [
-                                    sys.executable,
+                                    "python",
                                     "-c",
                                     (
                                         "import json; "

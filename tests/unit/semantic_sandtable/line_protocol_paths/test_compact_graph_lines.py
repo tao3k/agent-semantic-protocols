@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -26,7 +25,7 @@ class LineProtocolCompactGraphTests(unittest.TestCase):
                             {
                                 "id": "compact-graph",
                                 "command": [
-                                    sys.executable,
+                                    "python",
                                     "-c",
                                     (
                                         "print('[search-prime] root=. alg=owner-rank-frontier')\n"
@@ -63,7 +62,7 @@ class LineProtocolCompactGraphTests(unittest.TestCase):
                             {
                                 "id": "prime",
                                 "command": [
-                                    sys.executable,
+                                    "python",
                                     "-c",
                                     (
                                         "print('[search-prime] root=. alg=budgeted-prime-frontier-v1')\n"
@@ -100,7 +99,7 @@ class LineProtocolCompactGraphTests(unittest.TestCase):
                             {
                                 "id": "compact-graph",
                                 "command": [
-                                    sys.executable,
+                                    "python",
                                     "-c",
                                     (
                                         "print('[search-prime] root=. alg=owner-rank-frontier')\n"
@@ -144,7 +143,7 @@ class LineProtocolCompactGraphTests(unittest.TestCase):
                             {
                                 "id": "compact-graph-omit-avoid",
                                 "command": [
-                                    sys.executable,
+                                    "python",
                                     "-c",
                                     (
                                         "print('[search-owner] owner=src/lib.rs alg=owner')\n"
@@ -183,7 +182,7 @@ class LineProtocolCompactGraphTests(unittest.TestCase):
                             {
                                 "id": "syntax-locator",
                                 "command": [
-                                    sys.executable,
+                                    "python",
                                     "-c",
                                     (
                                         "print('[search-owner] owner=src/lib.rs alg=owner')\n"
@@ -221,7 +220,7 @@ class LineProtocolCompactGraphTests(unittest.TestCase):
                             {
                                 "id": "missing-graph",
                                 "command": [
-                                    sys.executable,
+                                    "python",
                                     "-c",
                                     "print('[search-prime] root=. alg=owner-rank-frontier')",
                                     "search",
@@ -258,7 +257,7 @@ class LineProtocolCompactGraphTests(unittest.TestCase):
                             {
                                 "id": "empty-graph",
                                 "command": [
-                                    sys.executable,
+                                    "python",
                                     "-c",
                                     (
                                         "print('[search-prime] root=. alg=owner-rank-frontier')\n"

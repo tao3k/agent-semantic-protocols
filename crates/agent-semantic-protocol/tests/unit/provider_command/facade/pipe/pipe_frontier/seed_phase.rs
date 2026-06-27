@@ -71,6 +71,22 @@ fn search_pipe_graph_turbo_request_adds_owner_anchor_seeds_for_broad_query() {
     );
     assert_eq!(payload["seedPlan"]["reason"].as_str(), Some("query"));
     assert_eq!(payload["seedPlan"]["seedQuality"].as_str(), Some("review"));
+    assert_eq!(
+        payload["seedPlan"]["selectionPolicy"]["flow"].as_str(),
+        Some("evidence-state-reasoning-tree")
+    );
+    assert_eq!(
+        payload["seedPlan"]["selectionPolicy"]["evidenceState"].as_str(),
+        Some("unknown")
+    );
+    assert_eq!(
+        payload["seedPlan"]["selectionPolicy"]["firstActionMatchesEvidenceState"].as_bool(),
+        Some(true)
+    );
+    assert_eq!(
+        payload["seedPlan"]["selectionPolicy"]["unnecessarySeedCount"].as_u64(),
+        Some(0)
+    );
     assert!(
         payload["seedPlan"]["riskFactors"]
             .as_array()
@@ -130,6 +146,23 @@ fn search_pipe_graph_turbo_request_adds_owner_anchor_seeds_for_broad_query() {
         stdout.contains("recommendedActions=split-query-pack,narrow-owner-scope"),
         "{stdout}"
     );
+    assert!(
+        stdout.contains("flow=evidence-state-reasoning-tree"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("firstActionMatchesEvidenceState=true"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("reasoningTreeRouteShown=true"), "{stdout}");
+    assert!(
+        stdout.contains("chosenRoutePreconditionsMet=true"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("unnecessarySeedCount=0"), "{stdout}");
+    assert!(stdout.contains("seedWhenKnownOwnerCount=0"), "{stdout}");
+    assert!(stdout.contains("seedWhenKnownSymbolCount=0"), "{stdout}");
+    assert!(stdout.contains("seedWhenKnownSelectorCount=0"), "{stdout}");
     assert!(stdout.contains("A1=rg-query-set("), "{stdout}");
     assert!(stdout.contains("A2=fd-query("), "{stdout}");
     assert!(

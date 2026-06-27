@@ -112,7 +112,11 @@ fn search_ingest_stdin_is_asp_owned_and_does_not_spawn_provider() {
     );
     assert!(stdout.contains("O=owner:path(src/lib.rs)"), "{stdout}");
     assert!(
-        stdout.contains("I=item:symbol(hookdecision)@src/lib.rs:10:10"),
+        stdout.contains("I=item:symbol(hookdecision)@rust://src/lib.rs#item/symbol/hookdecision"),
+        "{stdout}"
+    );
+    assert!(
+        !stdout.contains("I=item:symbol(hookdecision)@src/lib.rs:10:10"),
         "{stdout}"
     );
     assert!(!marker.exists(), "search ingest should not spawn provider");

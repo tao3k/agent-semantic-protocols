@@ -75,7 +75,8 @@
     {
       "id": "prime",
       "command": [
-        "py-harness",
+        "asp",
+        "python",
         "search",
         "prime",
         "--view",
@@ -100,7 +101,8 @@
     {
       "id": "intent-query-set",
       "command": [
-        "py-harness",
+        "asp",
+        "python",
         "search",
         "fzf",
         "--query-set",

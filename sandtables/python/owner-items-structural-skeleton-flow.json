@@ -1,0 +1,159 @@
+{
+  "id": "python.owner-items-structural-skeleton-flow",
+  "language": "python",
+  "title": "FastAPI owner-items default to structural skeleton before exact code",
+  "coverage": [
+    "search-flow",
+    "large-library"
+  ],
+  "tags": [
+    "large-library",
+    "python",
+    "asp-facade",
+    "owner-items",
+    "structural-selector"
+  ],
+  "evidence": {
+    "source": "handwritten",
+    "fixtureTier": "large-library",
+    "targetLibrary": {
+      "language": "python",
+      "name": "FastAPI",
+      "package": "fastapi",
+      "repository": "fastapi/fastapi",
+      "workdirKind": "checkout"
+    },
+    "intentCases": [
+      {
+        "intentKind": "api-usage",
+        "intent": "Inspect FastAPI routing owner items without making a line range the default executable selector",
+        "stepIds": [
+          "owner-items-structural-skeleton",
+          "structural-selector-query"
+        ],
+        "queryTerms": [
+          "APIRouter",
+          "lifespan",
+          "solve_dependencies"
+        ]
+      },
+      {
+        "intentKind": "feature-implementation",
+        "intent": "Understand FastAPI routing behavior through structural owner items before requesting exact code",
+        "stepIds": [
+          "owner-items-structural-skeleton",
+          "structural-selector-query"
+        ],
+        "queryTerms": [
+          "APIRouter",
+          "lifespan"
+        ]
+      },
+      {
+        "intentKind": "implementation-principle",
+        "intent": "Keep Python source line ranges as display hints while action identity remains a parser-owned selector",
+        "stepIds": [
+          "owner-items-structural-skeleton",
+          "structural-selector-query"
+        ],
+        "queryTerms": [
+      "APIRouter",
+          "item-skeleton"
+        ]
+      }
+    ]
+  },
+  "workdir": {
+    "env": "SANDTABLE_PY_FASTAPI_ROOT",
+    "candidates": [
+      "~/ghq/github.com/fastapi/fastapi",
+      "~/src/fastapi",
+      "~/work/fastapi"
+    ]
+  },
+  "steps": [
+    {
+      "id": "owner-items-structural-skeleton",
+      "command": [
+        "asp",
+        "python",
+        "search",
+        "owner",
+        "fastapi/routing.py",
+        "items",
+        "--query",
+        "APIRouter|lifespan|solve_dependencies",
+        "--workspace",
+        ".",
+        "--view",
+        "seeds"
+      ],
+  "expect": {
+    "lineProtocol": true,
+    "stdoutContains": [
+          "[search-owner] q=fastapi/routing.py",
+          "next=item-skeleton",
+          "structuralSelector=python://fastapi/routing.py#item/class/APIRouter",
+          "displayLineRange=1005:4956",
+          "sourceLocatorHint=fastapi/routing.py:1005:4956",
+          "projection=skeleton",
+          "codePolicy=code-after-exact-selector",
+          "A1=item-skeleton(selector=python://fastapi/routing.py#item/",
+          "A2=syntax-outline(selector=python://fastapi/routing.py#item/",
+          "A3=query-code(selector=python://fastapi/routing.py#item/",
+          "actionFrontier=A1.item-skeleton,A2.syntax-outline,A3.query-code",
+          "recommendedNext=A1.item-skeleton",
+          "nextCommand=asp python query --from-hook item-skeleton --selector 'python://fastapi/routing.py#item/",
+          "--names-only",
+          "reason=owner-item-skeleton-ready",
+          "avoid=selector-code-before-exact,direct-source-read,manual-window-scan"
+        ],
+        "stdoutNotContains": [
+          " read=",
+          "next=syntax:",
+          "nextCommand=asp python query --selector fastapi/routing.py:",
+          "actionFrontier=A1.query-code"
+        ],
+        "maxStdoutLinesWarn": 80,
+        "maxElapsedMs": 300,
+        "maxColdStartElapsedMs": 2500,
+        "maxElapsedMsWarn": 2500
+      }
+    },
+    {
+      "id": "structural-selector-query",
+      "command": [
+        "asp",
+        "python",
+        "query",
+        "--from-hook",
+        "item-skeleton",
+        "--selector",
+        "python://fastapi/routing.py#item/class/APIRouter",
+        "--workspace",
+        ".",
+        "--names-only"
+      ],
+      "expect": {
+        "stdoutContains": [
+          "[search-owner] q=fastapi/routing.py",
+          "itemQuery=APIRouter",
+          "structuralSelector=python://fastapi/routing.py#item/class/APIRouter",
+          "displayLineRange=1005:4956",
+          "sourceLocatorHint=fastapi/routing.py:1005:4956",
+          "projection=skeleton",
+          "codePolicy=code-after-exact-selector",
+          "reason=asp-syn-owner-query"
+        ],
+        "stdoutNotContains": [
+          " read=",
+          "query --selector fastapi/routing.py:"
+        ],
+        "maxStdoutLinesWarn": 40,
+        "maxElapsedMs": 300,
+        "maxColdStartElapsedMs": 2500,
+        "maxElapsedMsWarn": 2500
+      }
+    }
+  ]
+}

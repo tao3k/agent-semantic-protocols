@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import unittest
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 REQUIRED_LANGUAGES = {"julia", "python", "rust", "typescript"}
 REQUIRED_INTENTS = {
@@ -29,20 +29,20 @@ def _assert_provider_binary_commands(
     language: str,
     path: Path,
 ) -> None:
-    provider_binary = _PROVIDER_BINARY_BY_LANGUAGE.get(language)
-    if provider_binary is None:
+    if language not in {"julia", "python", "rust", "typescript"}:
         raise AssertionError(f"{path}: unsupported large-library language {language}")
     for step_id, command in command_by_step_id.items():
         if not command:
             raise AssertionError(f"{path}: {step_id} command must not be empty")
-        if command[0] != provider_binary:
+        if len(command) < 2 or command[0] != "asp" or command[1] != language:
             raise AssertionError(
-                f"{path}: {step_id} must use {provider_binary}, got {' '.join(command)}"
+                f"{path}: {step_id} must use asp {language}, got {' '.join(command)}"
             )
+        command_offset = 2
         if (
-            len(command) >= 3
-            and command[1] == "search"
-            and command[2]
+            len(command) >= command_offset + 3
+            and command[command_offset] == "search"
+            and command[command_offset + 1]
             in {
                 "api",
                 "text",
@@ -51,6 +51,15 @@ def _assert_provider_binary_commands(
             raise AssertionError(
                 f"{path}: {step_id} must use search fzf/query-set, got {' '.join(command)}"
             )
+
+
+_KNOWN_REASONING_PROFILE_NAMES: Final[set[str]] = {
+    "owner-query",
+    "query-deps",
+    "owner-tests",
+    "finding-frontier",
+    "feature-cfg",
+}
 
 
 def _assert_query_set_steps_include_entries(
@@ -76,13 +85,6 @@ def _assert_query_set_steps_include_entries(
             raise AssertionError(
                 f"{path}: {step_id} query-set --view seeds step must assert compact graph entries"
             )
-        known_profile_names = {
-            "owner-query",
-            "query-deps",
-            "owner-tests",
-            "finding-frontier",
-            "feature-cfg",
-        }
         for entry_line in stdout_contains:
             if not entry_line.startswith("entries=") or entry_line == "entries=":
                 continue
@@ -90,7 +92,7 @@ def _assert_query_set_steps_include_entries(
                 if "(" not in segment:
                     continue
                 profile_name = segment.lstrip(",").split("(", 1)[0]
-                if profile_name not in known_profile_names:
+                if profile_name not in _KNOWN_REASONING_PROFILE_NAMES:
                     raise AssertionError(
                         f"{path}: {step_id} entries profile {profile_name!r} is not in the shared reasoning profile catalog"
                     )
@@ -131,13 +133,6 @@ def _assert_prime_steps_include_entries_and_status(
             raise AssertionError(
                 f"{path}: {step_id} prime --view seeds step must assert compact graph entries or budgeted prime frontier controls"
             )
-        known_profile_names = {
-            "owner-query",
-            "query-deps",
-            "owner-tests",
-            "finding-frontier",
-            "feature-cfg",
-        }
         for entry_line in stdout_contains:
             if not entry_line.startswith("entries=") or entry_line == "entries=":
                 continue
@@ -145,7 +140,7 @@ def _assert_prime_steps_include_entries_and_status(
                 if "(" not in segment:
                     continue
                 profile_name = segment.lstrip(",").split("(", 1)[0]
-                if profile_name not in known_profile_names:
+                if profile_name not in _KNOWN_REASONING_PROFILE_NAMES:
                     raise AssertionError(
                         f"{path}: {step_id} entries profile {profile_name!r} is not in the shared reasoning profile catalog"
                     )
@@ -157,16 +152,10 @@ def _assert_prime_steps_include_entries_and_status(
                     )
 
 def _is_seed_view_command(command: list[str]) -> bool:
-    for index, arg in enumerate(command):
-        if arg == "--view=seeds":
-            return True
-        if (
-            arg == "--view"
-            and index + 1 < len(command)
-            and command[index + 1] == "seeds"
-        ):
-            return True
-    return False
+    return "--view=seeds" in command or any(
+        arg == "--view" and command[index + 1 : index + 2] == ["seeds"]
+        for index, arg in enumerate(command)
+    )
 
 
 def _assert_intent_uses_query_set(
@@ -181,21 +170,54 @@ def _assert_intent_uses_query_set(
     ]
     if not intent_commands:
         raise AssertionError(f"{path}: intent must reference a non-prime search step")
-    if not any(_is_query_set_search(command) for command in intent_commands):
+    if not any(
+        _is_query_set_search(command, include_owner_items=True)
+        for command in intent_commands
+    ):
         rendered = [" ".join(command) for command in intent_commands]
-        raise AssertionError(f"{path}: intent search must use query-set: {rendered}")
+        raise AssertionError(
+            f"{path}: intent search must use query-set or owner-items: {rendered}"
+        )
+
+
+def _search_offset(command: list[str]) -> int | None:
+    for index, part in enumerate(command):
+        if part == "search":
+            return index
+    return None
 
 
 def _is_prime_command(command: list[str]) -> bool:
-    return len(command) >= 3 and command[1:3] == ["search", "prime"]
+    search_offset = _search_offset(command)
+    return search_offset is not None and command[
+        search_offset + 1 : search_offset + 2
+    ] == ["prime"]
 
 
-def _is_query_set_search(command: list[str]) -> bool:
+def _is_query_set_search(
+    command: list[str], *, include_owner_items: bool = False
+) -> bool:
+    search_offset = _search_offset(command)
+    if search_offset is None or len(command) <= search_offset + 1:
+        return False
+    subcommand = command[search_offset + 1]
+    if subcommand == "fzf" and "--query-set" in command:
+        return True
     return (
-        len(command) >= 4
-        and command[1:3] == ["search", "fzf"]
-        and "--query-set" in command
+        include_owner_items
+        and (
+            subcommand == "pipe"
+            or (
+                subcommand == "owner"
+                and "items" in command[search_offset + 2 :]
+                and "--query" in command
+            )
+        )
     )
+
+
+
+
 
 
 def _list_value(value: Any) -> list[Any]:

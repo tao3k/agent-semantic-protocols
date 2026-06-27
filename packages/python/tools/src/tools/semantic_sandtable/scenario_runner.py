@@ -98,7 +98,7 @@ def _run_scenario_warmup(
         return
     summaries: list[dict[str, Any]] = []
     for index, step in enumerate(warmup_steps, start=1):
-        step_result = run_step(
+        step_result = _run_step_with_cold_retry(
             repo_root=repo_root,
             workdir=workdir,
             scenario_id=scenario_id,
@@ -301,7 +301,9 @@ def _apply_env_gate_skip(
 
 
 def _apply_receipt_error(repo_root: Path, result: ScenarioResult) -> bool:
-    receipt_error = validate_linked_receipt(repo_root, result.evidence)
+    receipt_error = validate_linked_receipt(
+        repo_root, result.evidence, path_base=result.path.parent
+    )
     if receipt_error is None:
         return False
     result.status = "fail"
@@ -318,6 +320,7 @@ def _apply_failure_frontier_comparison(
         return False
     comparison = failure_frontier_comparison_from_evidence(
         repo_root,
+        path_base=result.path.parent,
         scenario_id=result.scenario_id,
         language=result.language,
         evidence=result.evidence,
@@ -368,7 +371,7 @@ def _run_scenario_steps(
             max_concurrent_steps,
         )
     for index, step in enumerate(steps, start=1):
-        step_result = run_step(
+        step_result = _run_step_with_cold_retry(
             repo_root=repo_root,
             workdir=workdir,
             scenario_id=scenario_id,
@@ -436,6 +439,87 @@ def _record_step_result(
     totals["stderrBytes"] += step_result.stderr_bytes
     if step_result.status == "fail":
         result.status = "fail"
+
+
+def _max_elapsed_error(elapsed_ms: int, maximum: int) -> str:
+    return f"elapsedMs={elapsed_ms} exceeds maxElapsedMs={maximum}"
+
+
+def _cold_start_elapsed_error(elapsed_ms: int, maximum: int) -> str:
+    return f"elapsedMs={elapsed_ms} exceeds maxColdStartElapsedMs={maximum}"
+
+
+def _cold_retry_limits(step: Any) -> tuple[int, int] | None:
+    if not isinstance(step, dict):
+        return None
+    expect = step.get("expect")
+    if not isinstance(expect, dict):
+        return None
+    maximum = optional_int(expect.get("maxElapsedMs"))
+    cold_maximum = optional_int(expect.get("maxColdStartElapsedMs"))
+    if maximum is None or cold_maximum is None:
+        return None
+    return maximum, cold_maximum
+
+
+def _should_retry_cold_start(step: Any, step_result: StepResult) -> tuple[int, int] | None:
+    limits = _cold_retry_limits(step)
+    if limits is None:
+        return None
+    maximum, cold_maximum = limits
+    warm_error = _max_elapsed_error(step_result.elapsed_ms, maximum)
+    cold_error = _cold_start_elapsed_error(step_result.elapsed_ms, cold_maximum)
+    if (
+        step_result.status == "fail"
+        and step_result.errors == [warm_error]
+        and cold_error not in step_result.errors
+        and maximum < step_result.elapsed_ms <= cold_maximum
+    ):
+        return limits
+    return None
+
+
+def _run_step_with_cold_retry(
+    *,
+    repo_root: Path,
+    workdir: Path,
+    scenario_id: str,
+    step: Any,
+    index: int,
+    env: dict[str, str],
+    captures: dict[str, str],
+) -> StepResult:
+    first_result = run_step(
+        repo_root=repo_root,
+        workdir=workdir,
+        scenario_id=scenario_id,
+        step=step,
+        index=index,
+        env=env,
+        captures=captures,
+    )
+    retry_limits = _should_retry_cold_start(step, first_result)
+    if retry_limits is None:
+        return first_result
+
+    maximum, cold_maximum = retry_limits
+    retry_result = run_step(
+        repo_root=repo_root,
+        workdir=workdir,
+        scenario_id=scenario_id,
+        step=step,
+        index=index,
+        env=env,
+        captures=captures,
+    )
+    retry_result.observations["coldStartRetry"] = {
+        "firstElapsedMs": first_result.elapsed_ms,
+        "finalElapsedMs": retry_result.elapsed_ms,
+        "maxElapsedMs": maximum,
+        "maxColdStartElapsedMs": cold_maximum,
+        "firstErrors": list(first_result.errors),
+    }
+    return retry_result
 
 
 def _apply_scenario_budget_warnings(

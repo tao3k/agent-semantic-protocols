@@ -12,7 +12,7 @@ fn direct_read_fixture(name: &str) -> std::path::PathBuf {
 }
 
 #[test]
-fn direct_source_read_accepts_whole_file_selector() {
+fn direct_source_read_rejects_missing_fallback_reason() {
     let root = direct_read_fixture("direct-read-whole-file");
     let output = support::asp_command(&root)
         .args([
@@ -30,18 +30,53 @@ fn direct_source_read_accepts_whole_file_selector() {
         .expect("run asp");
 
     assert!(
-        output.status.success(),
-        "stderr={}",
-        String::from_utf8_lossy(&output.stderr)
+        !output.status.success(),
+        "stdout={}",
+        String::from_utf8_lossy(&output.stdout)
     );
-    let stdout = String::from_utf8(output.stdout).expect("stdout");
-    assert!(stdout.contains("pub fn line_1() {}"), "stdout={stdout}");
-    assert!(stdout.contains("pub fn line_50() {}"), "stdout={stdout}");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("direct-source-read requires --fallback-reason"),
+        "stderr={stderr}"
+    );
     std::fs::remove_dir_all(root).expect("remove temp root");
 }
 
 #[test]
-fn direct_source_read_accepts_wide_selector_range() {
+fn direct_source_read_rejects_whole_file_selector_even_with_fallback_reason() {
+    let root = direct_read_fixture("direct-read-whole-file-with-reason");
+    let output = support::asp_command(&root)
+        .args([
+            "rust",
+            "query",
+            "--from-hook",
+            "direct-source-read",
+            "--fallback-reason",
+            "parser-missing-structural-selector",
+            "--selector",
+            "src/lib.rs",
+            "--workspace",
+            ".",
+            "--code",
+        ])
+        .output()
+        .expect("run asp");
+
+    assert!(
+        !output.status.success(),
+        "stdout={}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("whole-file fallback is disabled"),
+        "stderr={stderr}"
+    );
+    std::fs::remove_dir_all(root).expect("remove temp root");
+}
+
+#[test]
+fn direct_source_read_rejects_wide_selector_range() {
     let root = direct_read_fixture("direct-read-wide-range");
     let output = support::asp_command(&root)
         .args([
@@ -49,6 +84,8 @@ fn direct_source_read_accepts_wide_selector_range() {
             "query",
             "--from-hook",
             "direct-source-read",
+            "--fallback-reason",
+            "parser-missing-structural-selector",
             "--selector",
             "src/lib.rs:1-41",
             "--workspace",
@@ -59,13 +96,12 @@ fn direct_source_read_accepts_wide_selector_range() {
         .expect("run asp");
 
     assert!(
-        output.status.success(),
-        "stderr={}",
-        String::from_utf8_lossy(&output.stderr)
+        !output.status.success(),
+        "stdout={}",
+        String::from_utf8_lossy(&output.stdout)
     );
-    let stdout = String::from_utf8(output.stdout).expect("stdout");
-    assert!(stdout.contains("pub fn line_1() {}"), "stdout={stdout}");
-    assert!(stdout.contains("pub fn line_41() {}"), "stdout={stdout}");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("exceeds max 24"), "stderr={stderr}");
     std::fs::remove_dir_all(root).expect("remove temp root");
 }
 
@@ -78,6 +114,8 @@ fn direct_source_read_accepts_bounded_selector_range() {
             "query",
             "--from-hook",
             "direct-source-read",
+            "--fallback-reason",
+            "parser-missing-structural-selector",
             "--selector",
             "src/lib.rs:2-3",
             "--workspace",

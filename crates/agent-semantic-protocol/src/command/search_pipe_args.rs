@@ -68,6 +68,16 @@ pub(super) fn parse_search_pipe_args(args: &[String]) -> Result<SearchPipeArgs, 
                 scopes.extend(split_csv(value).into_iter().map(PathBuf::from));
                 index += 2;
             }
+            "--packages" | "--package" => {
+                let value = args
+                    .get(index + 1)
+                    .ok_or_else(|| format!("{} requires a value", args[index]))?;
+                if value.starts_with('-') {
+                    return Err(format!("{} requires a value", args[index]));
+                }
+                scopes.extend(split_csv(value).into_iter().map(PathBuf::from));
+                index += 2;
+            }
             "--source" => {
                 source = parse_source_spec(
                     args.get(index + 1)

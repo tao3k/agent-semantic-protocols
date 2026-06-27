@@ -29,7 +29,10 @@ use super::{
     },
     search_pipe_query_evidence::{is_high_value_term, strong_match},
     search_pipe_query_pack::{query_clauses, unique_query_terms},
-    search_pipe_seed_decision::{SeedPhaseDecision, recommended_action_for_seed_risk},
+    search_pipe_seed_decision::{
+        SearchActionSelection, SearchEvidenceState, SeedPhaseDecision,
+        recommended_action_for_seed_risk,
+    },
     search_pipe_surfaces::{
         include_deps, include_items, include_owner_context, include_tests, include_topology,
         normalized_search_surfaces,
@@ -444,6 +447,11 @@ fn graph_turbo_seed_plan(input: GraphTurboSeedPlanInput<'_>) -> Value {
             .filter_map(|risk| recommended_action_for_seed_risk(risk))
             .collect::<Vec<_>>()
     };
+    let selection = SearchActionSelection::for_first_action(SearchEvidenceState::Unknown, "seed");
+    let evidence_states = SearchEvidenceState::all()
+        .iter()
+        .map(|state| state.as_str())
+        .collect::<Vec<_>>();
     json!({
         "phase": "seed-query",
         "algorithm": "asp-search-pipe-v2",
@@ -459,6 +467,21 @@ fn graph_turbo_seed_plan(input: GraphTurboSeedPlanInput<'_>) -> Value {
         "seedIds": input.seed_ids,
         "riskFactors": risk_factors,
         "recommendedActions": recommended_actions,
+        "selectionPolicy": {
+            "flow": "evidence-state-reasoning-tree",
+            "evidenceState": selection.evidence_state.as_str(),
+            "knownEvidenceStates": evidence_states,
+            "firstActionStage": selection.first_action_stage,
+            "allowedFirstStages": selection.allowed_first_stages,
+            "disallowedFirstStages": selection.disallowed_first_stages,
+            "firstActionMatchesEvidenceState": selection.first_action_matches_evidence_state,
+            "reasoningTreeRouteShown": selection.reasoning_tree_route_shown,
+            "chosenRoutePreconditionsMet": selection.chosen_route_preconditions_met,
+            "unnecessarySeedCount": selection.unnecessary_seed_count,
+            "seedWhenKnownOwnerCount": selection.seed_when_known_owner_count,
+            "seedWhenKnownSymbolCount": selection.seed_when_known_symbol_count,
+            "seedWhenKnownSelectorCount": selection.seed_when_known_selector_count,
+        },
     })
 }
 

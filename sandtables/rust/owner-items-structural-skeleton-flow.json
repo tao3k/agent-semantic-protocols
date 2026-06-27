@@ -1,0 +1,156 @@
+{
+  "id": "rust.owner-items-structural-skeleton-flow",
+  "language": "rust",
+  "title": "Tokio owner-items default to structural skeleton before exact code",
+  "coverage": [
+    "search-flow",
+    "large-library"
+  ],
+  "tags": [
+    "large-library",
+    "rust",
+    "asp-facade",
+    "owner-items",
+    "structural-selector"
+  ],
+  "evidence": {
+    "source": "handwritten",
+    "fixtureTier": "large-library",
+    "targetLibrary": {
+      "language": "rust",
+      "name": "Tokio",
+      "package": "tokio",
+      "repository": "tokio-rs/tokio",
+      "workdirKind": "registry"
+    },
+    "intentCases": [
+      {
+        "intentKind": "api-usage",
+        "intent": "Inspect Tokio AsyncRead owner items without making a line range the default executable selector",
+        "stepIds": [
+          "owner-items-structural-skeleton",
+          "structural-selector-query"
+        ],
+        "queryTerms": [
+          "AsyncRead",
+          "poll_read"
+        ]
+      },
+      {
+        "intentKind": "feature-implementation",
+        "intent": "Understand Tokio AsyncRead behavior through structural owner items before requesting exact code",
+        "stepIds": [
+          "owner-items-structural-skeleton",
+          "structural-selector-query"
+        ],
+        "queryTerms": [
+          "AsyncRead",
+          "poll_read"
+        ]
+      },
+      {
+        "intentKind": "implementation-principle",
+        "intent": "Keep Rust source line ranges as display hints while action identity remains a parser-owned selector",
+        "stepIds": [
+          "owner-items-structural-skeleton",
+          "structural-selector-query"
+        ],
+        "queryTerms": [
+      "AsyncRead",
+          "item-skeleton"
+        ]
+      }
+    ]
+  },
+  "workdir": {
+    "env": "SANDTABLE_RUST_TOKIO_ROOT",
+    "candidates": [
+      "~/.cargo/registry/src/*/tokio-[0-9]*"
+    ]
+  },
+  "steps": [
+    {
+      "id": "owner-items-structural-skeleton",
+      "command": [
+        "asp",
+        "rust",
+        "search",
+        "owner",
+        "src/io/async_read.rs",
+        "items",
+        "--query",
+        "AsyncRead|poll_read",
+        "--workspace",
+        ".",
+        "--view",
+        "seeds"
+      ],
+  "expect": {
+    "lineProtocol": true,
+    "stdoutContains": [
+          "[search-reasoning] q=owner-query",
+          "selector=rust://",
+          "src/io/async_read.rs#item/trait/AsyncRead",
+          "sourceLocatorHint=",
+          "src/io/async_read.rs:",
+          "A1=item-skeleton(selector=rust://",
+          "projection=skeleton",
+          "A2=syntax-outline(selector=rust://",
+          "projection=outline",
+          "A3=query-code(selector=rust://",
+          "requiresExact=true",
+          "codePolicy=exact-only",
+          "actionFrontier=A1.item-skeleton,A2.syntax-outline,A3.query-code",
+          "recommendedNext=A1.item-skeleton",
+          "nextCommand=asp rust query --from-hook item-skeleton --selector 'rust://",
+          "--names-only",
+          "reason=owner-item-skeleton-ready",
+          "avoid=selector-code-before-exact,direct-source-read,manual-window-scan"
+        ],
+        "stdoutNotContains": [
+          " read=",
+          "nextCommand=asp rust query --selector src/io/async_read.rs:",
+          "actionFrontier=A1.query-code"
+        ],
+        "maxStdoutLinesWarn": 80,
+        "maxElapsedMs": 300,
+        "maxColdStartElapsedMs": 2500,
+        "maxElapsedMsWarn": 2500
+      }
+    },
+    {
+      "id": "structural-selector-query",
+      "command": [
+        "asp",
+        "rust",
+        "query",
+        "--from-hook",
+        "item-skeleton",
+        "--selector",
+        "rust://src/io/async_read.rs#item/trait/AsyncRead",
+        "--workspace",
+        ".",
+        "--names-only"
+      ],
+      "expect": {
+        "stdoutContains": [
+          "[search-owner] q=src/io/async_read.rs",
+          "itemQuery=AsyncRead",
+          "structuralSelector=rust://src/io/async_read.rs#item/trait/AsyncRead",
+          "sourceLocatorHint=src/io/async_read.rs:",
+          "projection=skeleton",
+          "codePolicy=code-after-exact-selector",
+          "reason=asp-syn-owner-query"
+        ],
+        "stdoutNotContains": [
+          " read=",
+          "query --selector src/io/async_read.rs:"
+        ],
+        "maxStdoutLinesWarn": 40,
+        "maxElapsedMs": 300,
+        "maxColdStartElapsedMs": 2500,
+        "maxElapsedMsWarn": 2500
+      }
+    }
+  ]
+}

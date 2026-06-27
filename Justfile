@@ -167,32 +167,34 @@ agent-tools-install-jl bin_dir="":
 
 # Install only the Gerbil Scheme standalone binary.
 agent-tools-install-gerbil bin_dir="":
-    @just agent-tools-install-gx "{{bin_dir}}"
+    @just agent-tools-build-gerbil "{{bin_dir}}"
 
-agent-tools-build-gerbil:
+agent-tools-build-gerbil bin_dir="":
     @set -e; \
       repo_root="$PWD"; \
+      bin_dir="{{bin_dir}}"; \
+      if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-$HOME/.local/bin}"; fi; \
       package_dir="${repo_root}/{{gerbil_harness_project}}"; \
       package_bin="${package_dir}/.bin"; \
       root_bin="${repo_root}/.bin"; \
-      launcher="${package_dir}/.gerbil/bin/gslph"; \
+      launcher="${package_bin}/gslph"; \
       cores="${GERBIL_BUILD_CORES:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 1)}"; \
       cd "${package_dir}"; \
-      if [ ! -x "${launcher}" ] || find src/cli-launcher.ss src/search-light-launcher.ss src/constants.ss src/commands/search-prime-light.ss build.ss gerbil.pkg version.ss -type f -newer "${launcher}" 2>/dev/null | grep -q .; then \
-        rm -f "${launcher}" "${package_dir}/.gerbil/static/bin/gslph" "${package_dir}/.gerbil/bin/gslph__exe".*; \
-        GERBIL_PATH="${package_dir}/.gerbil" GERBIL_BUILD_CORES="${cores}" ./build.ss compile --release --optimized; \
+      if [ ! -x "${launcher}" ] || find src/cli-launcher.ss src/cli-dev-linker.ss src/search-light-launcher.ss src/constants.ss src/commands/search-prime-light.ss build.ss gerbil.pkg version.ss -type f -newer "${launcher}" 2>/dev/null | grep -q .; then \
+        rm -f "${launcher}" "${package_bin}/gslph__exe".*; \
+        GERBIL_PATH="${package_dir}/.gerbil" GERBIL_BUILD_CORES="${cores}" ./build.ss compile --binary --optimized; \
       else \
         echo "[agent-tools-build-gerbil] ${launcher} is up to date"; \
       fi; \
       test -x "${launcher}"; \
-      mkdir -p "${package_bin}" "${root_bin}"; \
-      ln -f "${launcher}" "${package_bin}/gslph"; \
-      ln -f "${launcher}" "${root_bin}/gslph"; \
-      test -x "${package_bin}/gslph"; \
-      test -x "${root_bin}/gslph"
+      mkdir -p "${root_bin}" "${bin_dir}"; \
+      if [ ! "${launcher}" -ef "${root_bin}/gslph" ]; then install -m 755 "${launcher}" "${root_bin}/gslph"; fi; \
+      if [ ! "${launcher}" -ef "${bin_dir}/gslph" ]; then install -m 755 "${launcher}" "${bin_dir}/gslph"; fi; \
+      test -x "${root_bin}/gslph"; \
+      test -x "${bin_dir}/gslph"
 
 agent-tools-install-gx bin_dir="":
-    @just agent-tools-install-language gerbil-scheme "{{bin_dir}}"
+    @just agent-tools-build-gerbil "{{bin_dir}}"
 
 agent-hooks-doctor-providers: agent-hooks-doctor-rs agent-hooks-doctor-ts agent-hooks-doctor-py agent-hooks-doctor-julia
 

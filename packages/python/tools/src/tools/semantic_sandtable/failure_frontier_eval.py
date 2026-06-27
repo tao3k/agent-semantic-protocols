@@ -25,12 +25,17 @@ def compare_failure_frontier_receipt_paths(
     baseline_path: Path,
     candidate_path: Path,
     *,
+    path_base: Path | None = None,
     expected_hot_blocks: list[str] | None = None,
     thresholds: FailureFrontierThresholds | None = None,
 ) -> dict[str, Any]:
-    baseline = load_receipt(_resolve_receipt_path(repo_root, baseline_path), repo_root)
+    baseline = load_receipt(
+        _resolve_receipt_path(repo_root, baseline_path, path_base=path_base),
+        repo_root,
+    )
     candidate = load_receipt(
-        _resolve_receipt_path(repo_root, candidate_path), repo_root
+        _resolve_receipt_path(repo_root, candidate_path, path_base=path_base),
+        repo_root,
     )
     return compare_failure_frontier_receipts(
         baseline,
@@ -195,8 +200,19 @@ def print_failure_frontier_comparison(comparison: dict[str, Any]) -> None:
         emit(f"|failure {failure}")
 
 
-def _resolve_receipt_path(repo_root: Path, path: Path) -> Path:
-    return path if path.is_absolute() else repo_root / path
+def _resolve_receipt_path(
+    repo_root: Path,
+    path: Path,
+    *,
+    path_base: Path | None = None,
+) -> Path:
+    if path.is_absolute():
+        return path
+    if path_base is not None:
+        scenario_local = path_base / path
+        if scenario_local.exists():
+            return scenario_local
+    return repo_root / path
 
 
 def _receipt_metrics(receipt: dict[str, Any]) -> dict[str, Any]:

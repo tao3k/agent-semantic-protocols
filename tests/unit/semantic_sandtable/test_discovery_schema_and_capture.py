@@ -7,7 +7,6 @@ from ._discovery_steps_common import (
     discover_scenarios,
     json,
     run_scenario,
-    sys,
     tempfile,
     unittest,
 )
@@ -131,7 +130,7 @@ class DiscoveryAndStepRunnerTests(unittest.TestCase):
                         "steps": [
                             {
                                 "id": "seed",
-                                "command": [sys.executable, str(helper), "seed"],
+                                "command": ["python", "../helper.py", "seed"],
                                 "capture": {"owner": "\\|owner ([^\\s]+)"},
                                 "expect": {
                                     "lineProtocol": True,
@@ -141,12 +140,12 @@ class DiscoveryAndStepRunnerTests(unittest.TestCase):
                             {
                                 "id": "inspect",
                                 "command": [
-                                    sys.executable,
-                                    str(helper),
+                                    "python",
+                                    "../helper.py",
                                     "inspect",
                                     "{owner}",
                                 ],
-                                "stdinCommand": [sys.executable, str(helper), "seed"],
+                                "stdinCommand": ["python", "../helper.py", "seed"],
                                 "expect": {
                                     "lineProtocol": True,
                                     "stdoutContains": [

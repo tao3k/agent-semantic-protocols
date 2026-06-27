@@ -464,7 +464,7 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
     }
     for invocation in provider_invocations(
         provider,
-        &provider_args,
+        &provider_process_args(language_id, &provider_args),
         &project_root,
         &runtime_profiles,
         &config,
@@ -478,6 +478,24 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
         )?;
     }
     Ok(())
+}
+
+fn provider_process_args(language_id: &str, args: &[String]) -> Vec<String> {
+    if language_id == "gerbil-scheme" && gerbil_query_needs_provider_hook(args) {
+        let mut process_args = Vec::with_capacity(args.len() + 2);
+        process_args.push(args[0].clone());
+        process_args.extend(["--from-hook".to_string(), "direct-source-read".to_string()]);
+        process_args.extend(args[1..].iter().cloned());
+        return process_args;
+    }
+    args.to_vec()
+}
+
+fn gerbil_query_needs_provider_hook(args: &[String]) -> bool {
+    args.first().map(String::as_str) == Some("query")
+        && !args
+            .iter()
+            .any(|arg| arg == "--from-hook" || arg.starts_with("--from-hook="))
 }
 
 fn search_owner_items_owner_path(args: &[String]) -> Option<&str> {

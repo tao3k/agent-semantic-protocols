@@ -15,6 +15,8 @@ use agent_semantic_tree_sitter::{
 use syn::spanned::Spanned;
 use tree_sitter::StreamingIterator;
 
+use super::query_owner_structural_selector::parse_structural_owner_query;
+
 pub(super) fn run_asp_fast_owner_query_command(
     language_id: &str,
     args: &[String],
@@ -98,10 +100,12 @@ pub(super) fn run_asp_fast_owner_query_command(
 }
 
 struct OwnerQueryRequest {
+    language_id: String,
     owner_path: PathBuf,
     term: String,
     names_only: bool,
     code: bool,
+    projection: &'static str,
 }
 
 impl OwnerQueryRequest {
@@ -110,6 +114,9 @@ impl OwnerQueryRequest {
             || !matches!(args.first().map(String::as_str), Some("query"))
         {
             return None;
+        }
+        if let Some(request) = Self::parse_structural_selector(language_id, args) {
+            return Some(request);
         }
         if has_any_arg(
             args,
@@ -132,10 +139,26 @@ impl OwnerQueryRequest {
             return None;
         }
         Some(Self {
+            language_id: language_id.to_string(),
             owner_path: PathBuf::from(owner_path),
             term,
             names_only: args.iter().any(|arg| arg == "--names-only"),
             code: args.iter().any(|arg| arg == "--code"),
+            projection: "outline",
+        })
+    }
+
+    fn parse_structural_selector(language_id: &str, args: &[String]) -> Option<Self> {
+        let from_hook = arg_value(args, "--from-hook")?;
+        let selector = arg_value(args, "--selector")?;
+        let structural = parse_structural_owner_query(language_id, from_hook, selector)?;
+        Some(Self {
+            language_id: language_id.to_string(),
+            owner_path: structural.owner_path,
+            term: structural.term,
+            names_only: args.iter().any(|arg| arg == "--names-only"),
+            code: args.iter().any(|arg| arg == "--code"),
+            projection: structural.projection,
         })
     }
 }
@@ -630,14 +653,26 @@ fn render_locator_matches(
         display_path.display()
     ));
     for item in matches {
+        let structural_selector = format!(
+            "{}://{}#item/{}/{}",
+            request.language_id,
+            display_path.display(),
+            item.kind.replace(char::is_whitespace, "-"),
+            item.name.replace(char::is_whitespace, "-")
+        );
         rendered.push_str(&format!(
-            "|item name={} kind={} range={}:{}:{} syn=node:{}\n",
+            "|item name={} kind={} owner={} structuralSelector={} displayLineRange={}:{} sourceLocatorHint={}:{}:{} syn=node:{} projection={} codePolicy=code-after-exact-selector\n",
             item.name,
             item.kind,
             display_path.display(),
+            structural_selector,
             item.start_line,
             item.end_line,
-            item.syntax_node
+            display_path.display(),
+            item.start_line,
+            item.end_line,
+            item.syntax_node,
+            request.projection
         ));
     }
     if matches.is_empty() {
@@ -647,7 +682,7 @@ fn render_locator_matches(
         ));
     } else {
         rendered.push_str(&format!(
-            "|query itemQuery={} status=hit match=exact item={} reason=asp-syn-owner-query output={output} next=query --code\n",
+            "|query itemQuery={} status=hit match=exact item={} reason=asp-syn-owner-query output={output} next=query --code codePolicy=requires-exact-code\n",
             request.term,
             matches.len()
         ));

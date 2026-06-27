@@ -141,7 +141,8 @@
     {
       "id": "prime",
       "command": [
-        "rs-harness",
+        "asp",
+        "rust",
         "search",
         "prime",
         "--view",
@@ -178,7 +179,8 @@
     {
       "id": "intent-query-set",
       "command": [
-        "rs-harness",
+        "asp",
+        "rust",
         "search",
         "fzf",
         "--query-set",

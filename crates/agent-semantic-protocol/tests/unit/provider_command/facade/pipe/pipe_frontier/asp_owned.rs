@@ -79,11 +79,23 @@ fn search_pipe_is_asp_owned_and_renders_generated_candidates_without_provider_sp
     assert!(stdout.contains("[graph-frontier]"), "{stdout}");
     assert!(!stdout.contains("Q=query:term"), "{stdout}");
     assert!(
-        stdout.contains("I=item:symbol(hookdecision)@src/lib.rs:1:1!syntax"),
+        stdout.contains(
+            "I=item:symbol(hookdecision)@rust://src/lib.rs#item/symbol/hookdecision!syntax"
+        ),
         "{stdout}"
     );
     assert!(
-        stdout.contains("I2=item:symbol(clientreceipt)@src/lib.rs:2:2!syntax"),
+        stdout.contains(
+            "I2=item:symbol(clientreceipt)@rust://src/lib.rs#item/symbol/clientreceipt!syntax"
+        ),
+        "{stdout}"
+    );
+    assert!(
+        !stdout.contains("I=item:symbol(hookdecision)@src/lib.rs:"),
+        "{stdout}"
+    );
+    assert!(
+        !stdout.contains("I2=item:symbol(clientreceipt)@src/lib.rs:"),
         "{stdout}"
     );
     let frontier_line = stdout
@@ -130,9 +142,10 @@ fn search_pipe_is_asp_owned_and_renders_generated_candidates_without_provider_sp
     );
     assert!(stdout.contains("actionRank=A1,A2,A3,A4,A5"), "{stdout}");
     assert!(
-        stdout.contains("A1=query-code(selector=src/lib.rs:"),
+        stdout.contains("A1=query-code(sourceLocatorHint=src/lib.rs:"),
         "{stdout}"
     );
+    assert!(!stdout.contains("A1=query-code(selector="), "{stdout}");
     assert!(
         stdout.contains("actionFrontier=A1.query-code,A2.fd-query,A3.rg-query,A4.owner-items,A5.treesitter-query"),
         "{stdout}"

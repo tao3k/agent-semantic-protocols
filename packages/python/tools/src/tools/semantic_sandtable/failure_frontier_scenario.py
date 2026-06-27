@@ -18,6 +18,7 @@ from .utils import dict_value, optional_int, require_str, string_list
 def failure_frontier_comparison_from_evidence(
     repo_root: Path,
     *,
+    path_base: Path | None = None,
     scenario_id: str,
     language: str,
     evidence: dict[str, Any],
@@ -29,8 +30,22 @@ def failure_frontier_comparison_from_evidence(
     thresholds = failure_frontier_thresholds(config.get("thresholds"))
     if _has_trace_pair(config):
         return compare_failure_frontier_receipts(
-            _trace_receipt(repo_root, config, scenario_id, language, "baseline"),
-            _trace_receipt(repo_root, config, scenario_id, language, "candidate"),
+            _trace_receipt(
+                repo_root,
+                config,
+                scenario_id,
+                language,
+                "baseline",
+                path_base=path_base,
+            ),
+            _trace_receipt(
+                repo_root,
+                config,
+                scenario_id,
+                language,
+                "candidate",
+                path_base=path_base,
+            ),
             expected_hot_blocks=expected_hot_blocks,
             thresholds=thresholds,
         )
@@ -38,6 +53,7 @@ def failure_frontier_comparison_from_evidence(
         repo_root,
         Path(require_str(config, "baselineReceiptPath", "")),
         Path(require_str(config, "candidateReceiptPath", "")),
+        path_base=path_base,
         expected_hot_blocks=expected_hot_blocks,
         thresholds=thresholds,
     )
@@ -80,8 +96,10 @@ def _trace_receipt(
     scenario_id: str,
     language: str,
     side: str,
+    *,
+    path_base: Path | None = None,
 ) -> dict[str, Any]:
-    trace_path = _trace_path(repo_root, config, side)
+    trace_path = _trace_path(repo_root, config, side, path_base=path_base)
     return build_receipt_from_trace_path(
         trace_path,
         config=TraceReceiptConfig(
@@ -97,9 +115,22 @@ def _trace_receipt(
     )
 
 
-def _trace_path(repo_root: Path, config: dict[str, Any], side: str) -> Path:
+def _trace_path(
+    repo_root: Path,
+    config: dict[str, Any],
+    side: str,
+    *,
+    path_base: Path | None = None,
+) -> Path:
     field = f"{side}TracePath"
-    return repo_root / Path(require_str(config, field, ""))
+    path = Path(require_str(config, field, ""))
+    if path.is_absolute():
+        return path
+    if path_base is not None:
+        scenario_local = path_base / path
+        if scenario_local.exists():
+            return scenario_local
+    return repo_root / path
 
 
 def _has_trace_pair(config: dict[str, Any]) -> bool:

@@ -277,6 +277,11 @@ fn provider_command_prefix(
 }
 
 fn default_provider_binary(project_root: &Path, manifest: &ProviderManifest) -> String {
+    if provider_prefers_home_local_binary(manifest) {
+        if let Some(user_bin) = home_local_provider_binary(&manifest.binary) {
+            return user_bin.display().to_string();
+        }
+    }
     let project_bin = project_root.join(".bin").join(&manifest.binary);
     if is_executable_file(&project_bin) {
         return project_bin.display().to_string();
@@ -295,6 +300,10 @@ fn default_provider_binary(project_root: &Path, manifest: &ProviderManifest) -> 
         return user_bin.display().to_string();
     }
     manifest.binary.clone()
+}
+
+fn provider_prefers_home_local_binary(manifest: &ProviderManifest) -> bool {
+    manifest.binary == "gslph"
 }
 
 fn ancestor_workspace_provider_binary(project_root: &Path, binary: &str) -> Option<PathBuf> {

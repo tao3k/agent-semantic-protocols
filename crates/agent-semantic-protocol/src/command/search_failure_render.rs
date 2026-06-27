@@ -152,22 +152,47 @@ fn failure_graph_turbo_request(
         }));
     }
     for hot in &hot_blocks {
+        let display_line_range = format!("{}:{}", hot.start, hot.end);
+        let structural_selector = format!(
+            "{}://{}#item/{}/{}",
+            language_id, hot.path, hot.kind, hot.symbol
+        );
         nodes.push(json!({
             "id": hot.id.clone(),
             "kind": "hot",
             "role": hot.kind,
             "value": hot.symbol.clone(),
+            "target": hot.symbol.clone(),
             "action": "code",
             "path": hot.path.clone(),
             "ownerPath": hot.path.clone(),
+            "itemName": hot.symbol.clone(),
+            "itemKind": hot.kind,
             "symbol": hot.symbol.clone(),
             "startLine": hot.start,
             "endLine": hot.end,
-            "locator": hot.selector.clone(),
+            "displayLineRange": display_line_range.clone(),
+            "sourceLocatorHint": hot.selector.clone(),
+            "structuralSelector": structural_selector.clone(),
+            "projection": "code",
+            "codePolicy": "requires-exact-code",
+            "requiresExact": true,
+            "locator": structural_selector.clone(),
             "matchedTerm": hot.matched_term.clone(),
             "matchLine": hot.match_line,
             "boundarySource": "syntax-header-scan",
             "languageId": language_id,
+            "fields": {
+                "ownerPath": hot.path.clone(),
+                "itemName": hot.symbol.clone(),
+                "itemKind": hot.kind,
+                "displayLineRange": display_line_range,
+                "sourceLocatorHint": hot.selector.clone(),
+                "structuralSelector": structural_selector,
+                "projection": "code",
+                "codePolicy": "requires-exact-code",
+                "requiresExact": true
+            }
         }));
     }
 

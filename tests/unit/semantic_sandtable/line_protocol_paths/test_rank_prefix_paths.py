@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -26,7 +25,7 @@ class LineProtocolRankPrefixPathTests(unittest.TestCase):
                             {
                                 "id": "bad-path",
                                 "command": [
-                                    sys.executable,
+                                    "python",
                                     "-c",
                                     (
                                         "print('[search-owner]')\n"
@@ -62,7 +61,7 @@ class LineProtocolRankPrefixPathTests(unittest.TestCase):
                             {
                                 "id": "bad-synthesis-path",
                                 "command": [
-                                    sys.executable,
+                                    "python",
                                     "-c",
                                     (
                                         "print('[search-prime]')\n"

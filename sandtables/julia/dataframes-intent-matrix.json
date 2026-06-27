@@ -73,7 +73,8 @@
     {
       "id": "prime",
       "command": [
-        "asp-julia-harness",
+        "asp",
+        "julia",
         "search",
         "prime",
         "--view",
@@ -108,7 +109,8 @@
     {
       "id": "owner-dataframes",
       "command": [
-        "asp-julia-harness",
+        "asp",
+        "julia",
         "search",
         "owner",
         "src/DataFrames.jl",
@@ -137,7 +139,8 @@
     {
       "id": "deps-tables",
       "command": [
-        "asp-julia-harness",
+        "asp",
+        "julia",
         "search",
         "deps",
         "Tables",
@@ -166,7 +169,8 @@
     {
       "id": "intent-query-set",
       "command": [
-        "asp-julia-harness",
+        "asp",
+        "julia",
         "search",
         "fzf",
         "--query-set",
@@ -208,7 +212,8 @@
     {
       "id": "julia-warmup",
       "command": [
-        "asp-julia-harness",
+        "asp",
+        "julia",
         "search",
         "prime",
         "--view",

@@ -1,0 +1,164 @@
+{
+  "id": "typescript.owner-items-structural-skeleton-flow",
+  "language": "typescript",
+  "title": "TypeScript compiler owner-items default to structural skeleton before exact code",
+  "coverage": [
+    "search-flow",
+    "large-library"
+  ],
+  "tags": [
+    "large-library",
+    "typescript",
+    "asp-facade",
+    "owner-items",
+    "structural-selector"
+  ],
+  "evidence": {
+    "source": "handwritten",
+    "fixtureTier": "large-library",
+    "targetLibrary": {
+      "language": "typescript",
+      "name": "TypeScript",
+      "package": "typescript",
+      "repository": "microsoft/TypeScript",
+      "workdirKind": "checkout"
+    },
+    "intentCases": [
+      {
+        "intentKind": "api-usage",
+        "intent": "Inspect TypeScript compiler program owners without making a line range the default executable selector",
+        "stepIds": [
+          "owner-items-structural-skeleton",
+          "structural-selector-query"
+        ],
+        "queryTerms": [
+          "createProgram",
+          "Program",
+          "options",
+          "host"
+        ]
+      },
+      {
+        "intentKind": "feature-implementation",
+        "intent": "Understand program construction topology through structural owner items before requesting exact code",
+        "stepIds": [
+          "owner-items-structural-skeleton",
+          "structural-selector-query"
+        ],
+        "queryTerms": [
+          "createProgram",
+          "Program"
+        ]
+      },
+      {
+        "intentKind": "implementation-principle",
+        "intent": "Keep source line ranges as display hints while action identity remains a parser-owned selector",
+        "stepIds": [
+          "owner-items-structural-skeleton",
+          "structural-selector-query"
+        ],
+      "queryTerms": [
+        "createProgram",
+        "item-skeleton"
+      ]
+      }
+    ]
+  },
+  "workdir": {
+    "env": "SANDTABLE_TS_TYPESCRIPT_ROOT",
+    "candidates": [
+      "~/ghq/github.com/microsoft/TypeScript",
+      "~/src/TypeScript",
+      "~/work/TypeScript"
+    ]
+  },
+  "steps": [
+    {
+      "id": "owner-items-structural-skeleton",
+      "command": [
+        "asp",
+        "typescript",
+        "search",
+        "owner",
+        "src/compiler/program.ts",
+        "items",
+        "--query",
+        "createProgram|Program|options|host",
+        "--workspace",
+        ".",
+        "--view",
+        "seeds"
+      ],
+  "expect": {
+    "lineProtocol": true,
+    "stdoutContains": [
+          "[search-reasoning] q=owner-query",
+          "selector=typescript://src/compiler/program.ts#item/",
+          "sourceLocatorHint=src/compiler/program.ts:",
+          "A1=item-skeleton(selector=typescript://src/compiler/program.ts#item/",
+          "projection=skeleton",
+          "A2=syntax-outline(selector=typescript://src/compiler/program.ts#item/",
+          "projection=outline",
+          "A3=query-code(selector=typescript://src/compiler/program.ts#item/",
+          "requiresExact=true",
+          "codePolicy=exact-only",
+          "actionFrontier=A1.item-skeleton,A2.syntax-outline,A3.query-code",
+          "recommendedNext=A1.item-skeleton",
+          "nextCommand=asp typescript query --from-hook item-skeleton --selector 'typescript://src/compiler/program.ts#item/",
+          "--names-only",
+          "reason=owner-item-skeleton-ready"
+        ],
+        "stdoutNotContains": [
+          " read=",
+          "recommendedNext=query-selector",
+          "recommendedNext=A1.syntax-outline",
+          "reason=owner-item-selector-ready",
+          "reason=owner-item-structural-selector-ready",
+          "nextCommand=asp typescript query --selector src/compiler/program.ts:",
+          "nextCommand=asp typescript query --selector src/compiler/program.ts:1514:1514 --workspace . --code",
+          "nextCommand=asp typescript query --from-hook syntax-outline",
+          "actionFrontier=A1.query-code"
+        ],
+        "maxStdoutLinesWarn": 80,
+        "maxElapsedMs": 300,
+        "maxColdStartElapsedMs": 2500,
+        "maxElapsedMsWarn": 2500
+      }
+    },
+    {
+      "id": "structural-selector-query",
+      "command": [
+        "asp",
+        "typescript",
+        "query",
+        "--from-hook",
+        "item-skeleton",
+        "--selector",
+        "typescript://src/compiler/program.ts#item/function/createProgram",
+        "--workspace",
+        ".",
+        "--names-only"
+      ],
+      "expect": {
+        "stdoutContains": [
+          "[search-owner] q=src/compiler/program.ts",
+          "itemQuery=createProgram",
+          "structuralSelector=typescript://src/compiler/program.ts#item/function/createProgram",
+          "displayLineRange=1515:4841",
+          "sourceLocatorHint=src/compiler/program.ts:1515:4841",
+          "projection=skeleton",
+          "codePolicy=code-after-exact-selector",
+          "reason=asp-syn-owner-query"
+        ],
+        "stdoutNotContains": [
+          " read=",
+          "query --selector src/compiler/program.ts:"
+        ],
+        "maxStdoutLinesWarn": 40,
+        "maxElapsedMs": 300,
+        "maxColdStartElapsedMs": 2500,
+        "maxElapsedMsWarn": 2500
+      }
+    }
+  ]
+}

@@ -44,11 +44,19 @@ fn gerbil_owner_items_large_source_stays_inline_and_filters_short_noise() {
         "Gerbil owner-items inline parse/render exceeded 100ms: {elapsed:?}"
     );
     assert!(
-        output.contains("I=item:symbol(compile-module)@src/gerbil/compiler/driver.ss:2:2!syntax"),
+        output.contains("I=item:symbol(compile-module)@gerbil-scheme://src/gerbil/compiler/driver.ss#item/def/compile-module!syntax"),
         "{output}"
     );
     assert!(
-        output.contains("item:symbol(invoke-gsc)@src/gerbil/compiler/driver.ss:2:2!syntax"),
+        output.contains("item:symbol(invoke-gsc)@gerbil-scheme://src/gerbil/compiler/driver.ss#item/call/invoke-gsc!syntax"),
+        "{output}"
+    );
+    assert!(
+        output.contains("sourceLocatorHint=src/gerbil/compiler/driver.ss:2:2"),
+        "{output}"
+    );
+    assert!(
+        !output.contains("item:symbol(compile-module)@src/gerbil/compiler/driver.ss:"),
         "{output}"
     );
     assert!(

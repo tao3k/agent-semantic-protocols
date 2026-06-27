@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -32,7 +31,7 @@ class RealTriggerPlainTextGraphGuideTests(unittest.TestCase):
                             {
                                 "id": "guide",
                                 "command": [
-                                    sys.executable,
+                                    "python",
                                     "-c",
                                     f"print({output!r}, end='')",
                                 ],
@@ -75,7 +74,7 @@ class RealTriggerPlainTextGraphGuideTests(unittest.TestCase):
                             {
                                 "id": "prime",
                                 "command": [
-                                    sys.executable,
+                                    "python",
                                     "-c",
                                     f"print({output!r}, end='')",
                                 ],

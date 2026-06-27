@@ -57,6 +57,25 @@ fn search_pipe_plan_uses_scope_root_for_provider_local_selectors() {
         stdout.contains("collection:family(Vec)!evidence"),
         "{stdout}"
     );
+    assert!(
+        stdout.contains("I=item:symbol(vec)@rust://src/lib.rs#item/symbol/vec!syntax"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("H=hot:range(vec)@rust://src/lib.rs#range/hot/vec!hot"),
+        "{stdout}"
+    );
+    assert!(
+        !stdout.contains("I=item:symbol(vec)@src/lib.rs:"),
+        "{stdout}"
+    );
+    assert!(!stdout.contains("A1=query-code(selector="), "{stdout}");
+    assert!(
+        stdout.contains(
+            "A1=query-code(sourceLocatorHint=src/lib.rs:3:3,owner=src/lib.rs,symbol=vec,codePolicy=requires-exact-code)!terminal-code"
+        ),
+        "{stdout}"
+    );
     assert!(stdout.contains("has_type"), "{stdout}");
     assert!(stdout.contains("collection_of"), "{stdout}");
     assert!(
@@ -74,7 +93,7 @@ fn search_pipe_plan_uses_scope_root_for_provider_local_selectors() {
     );
     assert!(
         stdout.contains(
-            "nextCommand=asp rust query --selector src/lib.rs:1:15 --workspace languages/rust-harness --code"
+            "nextCommand=asp rust query --selector src/lib.rs:3:3 --workspace languages/rust-harness --code"
         ),
         "{stdout}"
     );

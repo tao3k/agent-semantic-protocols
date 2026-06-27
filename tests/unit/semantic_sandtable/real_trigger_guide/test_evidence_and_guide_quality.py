@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import sys
 import tempfile
 import unittest
 from contextlib import redirect_stdout
@@ -70,7 +69,7 @@ class RealTriggerEvidenceGuideTests(unittest.TestCase):
                         "evidence": {
                             "source": "real-trigger",
                             "intent": "Add async IO feature behavior before editing",
-                            "receiptPath": str(receipt_path),
+                            "receiptPath": "receipt.json",
                             "editBoundary": "before-edit",
                             "metrics": {
                                 "recordedCommandCount": 3,
@@ -98,7 +97,7 @@ class RealTriggerEvidenceGuideTests(unittest.TestCase):
                             {
                                 "id": "guide",
                                 "command": [
-                                    sys.executable,
+                                    "python",
                                     "-c",
                                     (
                                         "import json; "

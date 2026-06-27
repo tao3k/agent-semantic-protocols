@@ -78,7 +78,11 @@ fn assert_document_pipe_packet(packet: &serde_json::Value, language_id: &str, ma
             node["source"] == "document-element"
                 && node["locator"]
                     .as_str()
-                    .is_some_and(|locator| locator.contains('-'))
+                    .is_some_and(|locator| locator.starts_with(&format!("{language_id}://")))
+                && node["sourceLocatorHint"]
+                    .as_str()
+                    .is_some_and(|locator| locator.contains(':'))
+                && node["displayLineRange"].as_str().is_some()
                 && node["matchText"]
                     .as_str()
                     .is_some_and(|text| text.contains(matched_text))

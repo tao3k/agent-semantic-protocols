@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-import sys
 import tempfile
 import unittest
 
@@ -150,7 +149,7 @@ def _run_entry_scenario(scenario_id: str, python_script: str):
                     "steps": [
                         {
                             "id": "compact-graph-entries",
-                            "command": [sys.executable, "-c", python_script],
+                            "command": ["python", "-c", python_script],
                             "expect": {"lineProtocol": True},
                         }
                     ],

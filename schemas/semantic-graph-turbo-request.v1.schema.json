@@ -628,38 +628,49 @@
           "type": "string",
           "pattern": "^A[1-9][0-9]*$"
         },
-        "kind": {
-          "enum": [
-            "query-code",
-            "fd-query",
-            "rg-query",
-            "owner-items",
-            "treesitter-query"
-          ]
-        },
+      "kind": {
+        "enum": [
+          "item-skeleton",
+          "query-code",
+          "fd-query",
+          "rg-query",
+          "owner-items",
+          "treesitter-query",
+          "multi-clause-rg-query",
+          "scoped-rg-query",
+          "search-deps",
+          "syntax"
+        ]
+      },
         "capabilityId": {
           "enum": [
             "query",
             "fd",
             "rg",
             "owner-items",
-            "treesitter-query"
+            "treesitter-query",
+            "search-deps"
           ]
         },
         "target": {
           "type": "string",
           "minLength": 1
         },
-        "targetRole": {
-          "enum": [
-            "selector",
-            "query",
-            "owner",
-            "syntax-recipe"
-          ]
-        },
-        "fields": {
-          "type": "object",
+      "targetRole": {
+        "enum": [
+          "selector",
+          "query",
+          "query-set",
+          "owner",
+          "syntax-recipe",
+          "semantic-selector",
+          "semantic-handle",
+          "display-hint",
+          "dependency"
+        ]
+      },
+      "fields": {
+        "type": "object",
           "propertyNames": {
             "not": {
               "enum": [
@@ -668,26 +679,77 @@
               ]
             }
           },
-          "additionalProperties": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "integer"
-              },
-              {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              }
-            ]
+        "properties": {
+          "structuralSelector": {
+            "$ref": "semantic-source-location.v1.schema.json#/$defs/structuralSelector"
+          },
+          "semanticHandleRef": {
+            "type": "string",
+            "minLength": 1
+          },
+          "nativeFactId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "ownerPath": {
+            "$ref": "semantic-source-location.v1.schema.json#/$defs/projectPath"
+          },
+          "itemName": {
+            "type": "string",
+            "minLength": 1
+          },
+          "itemKind": {
+            "type": "string",
+            "minLength": 1
+          },
+          "qualifiedName": {
+            "type": "string",
+            "minLength": 1
+          },
+          "nodeType": {
+            "type": "string",
+            "minLength": 1
+          },
+          "capture": {
+            "type": "string",
+            "minLength": 1
+          },
+          "displayLineRange": {
+            "$ref": "semantic-source-location.v1.schema.json#/$defs/lineRange"
+          },
+          "sourceLocatorHint": {
+            "$ref": "semantic-source-location.v1.schema.json#/$defs/sourceLocator"
+          },
+          "projection": {
+            "$ref": "semantic-source-location.v1.schema.json#/$defs/projection"
+          },
+          "codePolicy": {
+            "$ref": "semantic-source-location.v1.schema.json#/$defs/codePolicy"
+          },
+          "requiresExact": {
+            "type": "boolean"
           }
+        },
+        "additionalProperties": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ]
         }
+      }
       }
     },
     "evidenceGap": {
@@ -806,6 +868,68 @@
           ],
           "minLength": 1,
           "description": "Optional parser-owned syntax query used to locate the candidate symbol."
+        },
+        "languageId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1
+        },
+        "itemName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "itemKind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "displayLineRange": {
+          "type": "string",
+          "description": "Human-display-only line range for this graph node."
+        },
+        "sourceLocatorHint": {
+          "type": "string",
+          "description": "Exact source transport hint; not an executable semantic selector."
+        },
+        "structuralSelector": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Parser-owned structural selector for executable graph actions."
+        },
+        "projection": {
+          "enum": [
+            "skeleton",
+            "outline",
+            "names",
+            "signature",
+            "doc",
+            "children",
+            "content",
+            "code"
+          ]
+        },
+        "codePolicy": {
+          "enum": [
+            "no-code",
+            "code-after-exact-selector",
+            "requires-exact-code"
+          ]
+        },
+        "requiresExact": {
+          "type": "boolean"
+        },
+        "matchedTerm": {
+          "type": "string"
+        },
+        "matchLine": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "boundarySource": {
+          "type": "string",
+          "minLength": 1
         },
         "name": {
           "type": "string",

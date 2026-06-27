@@ -26,6 +26,7 @@ mod provider_process;
 mod provider_roots;
 mod query_direct_read;
 mod query_owner;
+mod query_owner_structural_selector;
 mod root_language_facade;
 mod search_config;
 mod search_dependency_seed;

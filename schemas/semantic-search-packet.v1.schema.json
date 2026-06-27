@@ -1233,15 +1233,30 @@
         "ownerPath": {
           "$ref": "#/$defs/projectPath"
         },
-        "read": {
-          "type": "string",
-          "description": "Canonical source read locator for graph/code frontier actions, formatted as project/path:start:end.",
-          "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*):[1-9][0-9]*:[1-9][0-9]*$"
-        },
-        "fields": {
-          "$ref": "#/$defs/fields"
-        }
-      }
+  "read": {
+    "type": "string",
+    "description": "Compatibility source transport locator for exact graph/code frontier actions, formatted as project/path:start:end. This is not the semantic selector identity for syntax exploration.",
+    "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*):[1-9][0-9]*:[1-9][0-9]*$"
+  },
+  "structuralSelector": {
+    "$ref": "semantic-source-location.v1.schema.json#/$defs/structuralSelector"
+  },
+  "displayLineRange": {
+    "$ref": "semantic-source-location.v1.schema.json#/$defs/lineRange"
+  },
+  "sourceLocatorHint": {
+    "$ref": "semantic-source-location.v1.schema.json#/$defs/sourceLocator"
+  },
+  "projection": {
+    "$ref": "semantic-source-location.v1.schema.json#/$defs/projection"
+  },
+  "codePolicy": {
+    "$ref": "semantic-source-location.v1.schema.json#/$defs/codePolicy"
+  },
+  "fields": {
+    "$ref": "#/$defs/fields"
+  }
+}
     },
     "avoidNextAction": {
       "type": "object",
@@ -1731,13 +1746,25 @@
         "ownerPath": {
           "$ref": "#/$defs/projectPath"
         },
-        "location": {
-          "$ref": "#/$defs/location"
-        },
-        "fields": {
-          "$ref": "#/$defs/fields"
-        }
-      }
+  "location": {
+    "$ref": "#/$defs/location"
+  },
+  "structuralSelector": {
+    "$ref": "semantic-source-location.v1.schema.json#/$defs/structuralSelector"
+  },
+  "displayLineRange": {
+    "$ref": "semantic-source-location.v1.schema.json#/$defs/lineRange"
+  },
+  "sourceLocatorHint": {
+    "$ref": "semantic-source-location.v1.schema.json#/$defs/sourceLocator"
+  },
+  "projection": {
+    "$ref": "semantic-source-location.v1.schema.json#/$defs/projection"
+  },
+  "fields": {
+    "$ref": "#/$defs/fields"
+  }
+}
     },
     "hit": {
       "type": "object",

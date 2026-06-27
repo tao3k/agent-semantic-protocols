@@ -17,6 +17,25 @@
       ]
     }
   ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "fromHook": {
+            "const": "direct-source-read"
+          }
+        },
+        "required": [
+          "fromHook"
+        ]
+      },
+      "then": {
+        "required": [
+          "fallbackReason"
+        ]
+      }
+    }
+  ],
   "required": [
     "schemaId",
     "schemaVersion",
@@ -108,6 +127,11 @@
       "enum": [
         "direct-source-read"
       ]
+    },
+    "fallbackReason": {
+      "type": "string",
+      "description": "Required when fromHook=direct-source-read. Explains why parser-owned structural selector or skeleton/outline projection was unavailable.",
+      "minLength": 1
     },
     "query": {
       "type": "string",
@@ -228,12 +252,37 @@
           "type": "string",
           "minLength": 1
         },
-        "location": {
-          "$ref": "#/$defs/location"
-        },
-        "read": {
-          "$ref": "#/$defs/sourceLocator"
-        },
+    "location": {
+      "$ref": "#/$defs/location"
+    },
+    "displayLineRange": {
+      "$ref": "#/$defs/lineRange"
+    },
+    "sourceLocatorHint": {
+      "$ref": "#/$defs/sourceLocator"
+    },
+    "projection": {
+      "enum": [
+        "skeleton",
+        "outline",
+        "names",
+        "signature",
+        "doc",
+        "children",
+        "content",
+        "code"
+      ]
+    },
+    "codePolicy": {
+      "enum": [
+        "no-code",
+        "code-after-exact-selector",
+        "requires-exact-code"
+      ]
+    },
+    "read": {
+      "$ref": "#/$defs/sourceLocator"
+    },
         "lineCount": {
           "type": "integer",
           "minimum": 1
@@ -509,13 +558,43 @@
             "search"
           ]
         },
-        "target": {
-          "type": "string",
-          "minLength": 1
-        },
-        "read": {
-          "$ref": "#/$defs/sourceLocator"
-        },
+    "target": {
+      "type": "string",
+      "minLength": 1
+    },
+    "structuralSelector": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[a-z][a-z0-9+.-]*://[^#\\s]+#[^\\s]+$"
+    },
+    "displayLineRange": {
+      "$ref": "#/$defs/lineRange"
+    },
+    "sourceLocatorHint": {
+      "$ref": "#/$defs/sourceLocator"
+    },
+    "projection": {
+      "enum": [
+        "skeleton",
+        "outline",
+        "names",
+        "signature",
+        "doc",
+        "children",
+        "content",
+        "code"
+      ]
+    },
+    "codePolicy": {
+      "enum": [
+        "no-code",
+        "code-after-exact-selector",
+        "requires-exact-code"
+      ]
+    },
+    "read": {
+      "$ref": "#/$defs/sourceLocator"
+    },
         "action": {
           "enum": [
             "code",

@@ -25,7 +25,7 @@
         "--client",
         "claude"
       ],
-      "stdin": "{\"session_id\":\"session-claude-read\",\"transcript_path\":\"/tmp/session-claude-read.jsonl\",\"cwd\":\".\",\"hook_event_name\":\"PreToolUse\",\"tool_use_id\":\"toolu_read\",\"tool_name\":\"Read\",\"tool_input\":{\"file_path\":\"crates/agent-semantic-hook/src/classifier.rs\"}}",
+      "stdin": "{\"session_id\":\"session-claude-read\",\"transcript_path\":\".cache/agent-semantic-protocol/sandtable/session-claude-read.jsonl\",\"cwd\":\".\",\"hook_event_name\":\"PreToolUse\",\"tool_use_id\":\"toolu_read\",\"tool_name\":\"Read\",\"tool_input\":{\"file_path\":\"crates/agent-semantic-hook/src/classifier.rs\"}}",
       "expect": {
         "stdoutJsonEquals": {
           "hookSpecificOutput.hookEventName": "PreToolUse",
@@ -48,7 +48,7 @@
         "--emit",
         "decision"
       ],
-      "stdin": "{\"session_id\":\"session-claude-listfiles\",\"transcript_path\":\"/tmp/session-claude-listfiles.jsonl\",\"cwd\":\".\",\"hook_event_name\":\"PreToolUse\",\"tool_use_id\":\"toolu_listfiles\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"ls crates/agent-semantic-hook/src\",\"commandActions\":[{\"type\":\"listFiles\",\"command\":\"ls crates/agent-semantic-hook/src\",\"path\":\"crates/agent-semantic-hook/src\"}]}}",
+      "stdin": "{\"session_id\":\"session-claude-listfiles\",\"transcript_path\":\".cache/agent-semantic-protocol/sandtable/session-claude-listfiles.jsonl\",\"cwd\":\".\",\"hook_event_name\":\"PreToolUse\",\"tool_use_id\":\"toolu_listfiles\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"ls crates/agent-semantic-hook/src\",\"commandActions\":[{\"type\":\"listFiles\",\"command\":\"ls crates/agent-semantic-hook/src\",\"path\":\"crates/agent-semantic-hook/src\"}]}}",
       "expect": {
         "stdoutJsonEquals": {
           "platform": "claude",

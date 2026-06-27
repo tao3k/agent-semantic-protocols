@@ -249,19 +249,36 @@ pub(crate) fn render_inline_gerbil_owner_items(
         shown_items.len(),
     ));
     for (index, item) in shown_items.iter().enumerate() {
+        let structural_selector = format!(
+            "gerbil-scheme://{}#item/{}/{}",
+            owner,
+            item.kind,
+            item.name.replace(char::is_whitespace, "-")
+        );
         output.push_str(&format!(
-            "{}=item:symbol({})@{}:{}:{}!syntax\n",
+            "{}=item:symbol({})@{}!syntax\n",
             item_alias(index),
             item.name,
-            owner,
-            item.start_line,
-            item.end_line,
+            structural_selector,
         ));
     }
     for item in &shown_items {
+        let source_locator_hint = format!("{}:{}:{}", owner, item.start_line, item.end_line);
+        let structural_selector = format!(
+            "gerbil-scheme://{}#item/{}/{}",
+            owner,
+            item.kind,
+            item.name.replace(char::is_whitespace, "-")
+        );
         output.push_str(&format!(
-            "|item kind={} name={} selector={}:{}:{} source=rust-inline languageKind={}\n",
-            item.kind, item.name, owner, item.start_line, item.end_line, item.language_kind
+            "|item kind={} name={} structuralSelector={} displayLineRange={}:{} sourceLocatorHint={} source=rust-inline languageKind={} projection=outline codePolicy=code-after-exact-selector\n",
+            item.kind,
+            item.name,
+            structural_selector,
+            item.start_line,
+            item.end_line,
+            source_locator_hint,
+            item.language_kind
         ));
     }
     if let Some(first) = shown_items.first() {

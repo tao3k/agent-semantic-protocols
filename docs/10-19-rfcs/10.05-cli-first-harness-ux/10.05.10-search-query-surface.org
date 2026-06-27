@@ -467,6 +467,22 @@ example, a query for a protocol should rank a =defprotocol= owner because the
 parser emitted =kind=interface=, =languageKind=defprotocol=, and =role=protocol=
 facts, not because a provider string-searched the source body.
 
+** Line selectors are display and transport hints
+Agent-facing =search= and default =query= frontiers must distinguish semantic identity from source transport. Parser-owned identities are =structuralSelector=, semantic handle ids, native fact ids, owner/item names, tree-sitter query recipes, or another schema-owned structural selector. Line ranges remain useful, but only as =displayLineRange= for humans and =sourceLocatorHint= for the final exact source transport path.
+
+Prompt-visible =syntax=, =owner-items=, =treeSitterHandles=, compact graph aliases, and action-frontier entries must not put =path:start:end= or =path:start-end= in the executable selector position. If the only known fact is a line range, the next action is an outline, names, owner-items, or query-set repair action. A =query --selector <path:line-range> --code= command is valid only after the agent has selected an exact source transport action, and the action must carry =codePolicy=requires-exact-code= or an equivalent schema field.
+
+This rule does not delete line fields from packets. It moves them out of the decision selector. Renderers should prefer:
+
+#+begin_src text
+structuralSelector=<parser-owned-uri-or-handle>
+displayLineRange=<start:end>
+sourceLocatorHint=<path:start:end>
+projection=outline|names|content|code
+codePolicy=no-code|code-after-exact-selector|requires-exact-code
+#+end_src
+
+The regression gate is observable at the ARI layer: =syntax= aliases, =syntax ... selector= rows, default =owner-items= rows, and graph-turbo action-frontier JSON must have zero prompt-visible line selectors in executable selector fields. Exact =--code= routes may still carry line selectors as source transport.
 ** =query= — first-class parser-native extraction and reroutes
 
 Provider-native item query is the default code extraction path for agents:
@@ -2096,6 +2112,25 @@ hard-coded platform-specific argument structs.
 =search pipe <question> --view seeds= is the source-language agent frontier for deep natural-language questions. Its =recommendedNext= must be selected from query quality and owner/package evidence, not only from graph rank. When package cohesion is low, a finder preview that already names package-local owners should promote =owner-items= before a global =rg-query-set= refinement. Exact =fd-query= remains first when it contains a strong API or owner symbol and there is no reliable owner preview. Best-owner tie breaks must be deterministic so the header, graph request, and materialized next command agree.
 When =search owner <owner> items --query <terms> --view seeds= cannot produce parser item matches, it must still emit a typed recovery frontier. The no-hit output should keep =reason=no-owner-item-match= and add =recommendedNext=scoped-rg-query= plus a materialized =asp rg -query <terms> <owner>= command scoped to that owner. A no-hit owner query is a narrowing failure, not a terminal failure or permission to repeat broad workspace search.
 
+When owner-items does produce parser item matches, its default executable
+frontier must be skeleton-first.  The first materialized action is
+=item-skeleton= with =projection=skeleton= and a parser-owned structural
+selector.  =syntax-outline= follows as the next non-code outline projection,
+and exact source transport is a later =query-code= action that carries
+=requiresExact=true= and =codePolicy=exact-only=.  =displayLineRange= and
+=sourceLocatorHint= may be shown for human inspection and source transport
+debugging, but they must not become the default =recommendedNext= selector.
+The compact reason for this path is =owner-item-skeleton-ready=.
+
+=direct-source-read= is a hook recovery fallback, not a normal selector
+strategy.  It must require an explicit =--from-hook direct-source-read= and a
+non-empty =--fallback-reason= explaining why parser-owned structural lookup or
+skeleton/outline projection was unavailable.  Whole-file fallback and wide
+line-range fallback are disabled on the default path; a small bounded range may
+be used only after the fallback reason is visible.  Agents must prefer
+=item-skeleton=, =syntax-outline=, or another structural query action before
+requesting exact code.
+
 Owner item granularity is not limited to top-level declarations. The owner-items
 contract is owner-scoped parser evidence: if a language parser or its shared
 fast-owner source reader can prove a language-native intra-owner syntax item, the
@@ -2129,3 +2164,34 @@ A fixed term list may exist only as test input or documentation example. It must
 Owner selection may use structural path-role evidence, but only when the evidence is language-neutral and query-conditioned. For example, owners under structural test, unittest, spec, fixture, baseline, case, template, example, sample, demo, or benchmark paths may be ranked below source owners when the query does not strongly ask for those artifact roles. A mixed implementation query that merely mentions tests should still prefer source owners for the primary =owner-items= action; explicit multi-token artifact intent such as =tests cases= or =template example= keeps those owners eligible. This is not an ecosystem symbol rule: it does not name Tokio, Playwright, TypeScript, Vite, package APIs, or project-specific symbols, and it must be visible in shared search behavior rather than hidden in a provider-private shortcut.
 
 Low-cohesion fallback owner-items should also be query-axis aware. When the chosen fallback owner covers fewer than half of the query terms that would be sent to =owner-items=, the first action should stay with query-pack refinement instead of producing a likely partial selector. Strong artifact-role queries keep their artifact owner exception; otherwise this gate prefers a slower but clearer refinement step over a misleading executable selector.
+** Evidence-State Reasoning Tree Gate
+
+Search flow is a reasoning tree, not a mandatory pipeline. Providers expose
+route capabilities, preconditions, costs, projections, and typed
+=actionFrontier= entries; the agent chooses the next route from the current
+evidence state.
+
+Seed and prime routes are orientation stages for unknown or low-evidence
+states. They are not valid default roots when the prompt, hook recovery packet,
+previous search packet, failure transcript, or CLI diagnostic already provides a
+known owner, symbol, structural selector, dependency, changed file, or bounded
+=recommendedNext= action.
+
+Dependency-topology routes are similarly evidence-gated. A dependency node in
+the graph is not enough to promote =search-deps= as the first action when the
+query only overlaps a natural-language token such as =tree=. The route
+precondition is explicit dependency intent, such as dependency, deps, package,
+crate, cargo, npm, pip, or import wording, or a full dependency literal such as
+=tree-sitter= or =serde= in the query. Search-protocol meta queries that
+discuss audit evidence, route choice, =search-deps= behavior, seed usage, line
+selectors, expected tests, or closure plans must not be treated as
+dependency-topology intent even when they mention dependency terms or dependency
+literals.
+
+Search packets that include seed planning MUST expose a compact seed-overuse
+gate. The gate must include =firstActionMatchesEvidenceState=,
+=reasoningTreeRouteShown=, =chosenRoutePreconditionsMet=,
+=unnecessarySeedCount=, =seedWhenKnownOwnerCount=,
+=seedWhenKnownSymbolCount=, and =seedWhenKnownSelectorCount=. These fields are
+contract evidence for agents and sandtable checks. They do not move arbitrary
+natural-language intent planning into the harness.

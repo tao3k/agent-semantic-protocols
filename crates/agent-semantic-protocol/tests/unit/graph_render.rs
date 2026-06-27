@@ -77,7 +77,9 @@ fn sample_packet() -> serde_json::Value {
                     "kind": "symbol",
                     "target": "SemanticSearchOwnerFallback",
                     "targetRole": "symbol",
-                    "read": "src/cli/semantic-search/owner-fallback.ts:1:5"
+                    "structuralSelector": "typescript://src/cli/semantic-search/owner-fallback.ts#item/symbol/SemanticSearchOwnerFallback",
+                    "displayLineRange": "1:5",
+                    "sourceLocatorHint": "src/cli/semantic-search/owner-fallback.ts:1:5"
                 },
                 {
                     "kind": "tests",
@@ -277,7 +279,10 @@ fn shared_renderer_projects_search_packet_into_compact_graph() {
     assert!(output.contains("F=finding:finding(serde)!finding"));
     assert!(output.contains("F2=feature:feature(test)!cfg"));
     assert!(output.contains("O=owner:path(src/cli/semantic-search/owner-fallback.ts)!owner"));
-    assert!(output.contains("S=symbol:symbol(SemanticSearchOwnerFallback)@src/cli/semantic-search/owner-fallback.ts:1:5!symbol"));
+    assert!(output.contains("S=symbol:symbol(SemanticSearchOwnerFallback)@typescript://src/cli/semantic-search/owner-fallback.ts#item/symbol/SemanticSearchOwnerFallback!symbol"));
+    assert!(!output.contains(
+        "S=symbol:symbol(SemanticSearchOwnerFallback)@src/cli/semantic-search/owner-fallback.ts:1:5!symbol"
+    ));
     assert!(output.contains("F:flags"));
     assert!(output.contains("F2:gates"));
     assert!(output.contains("rank="));
@@ -307,11 +312,21 @@ fn shared_renderer_projects_owner_items_into_query_item_hot_frontier() {
         "Q=query:term(tool_action|structured|payload|command_intent|from_payload|from_action)!query"
     ));
     assert!(output.contains(
-        "I=item:symbol(payload_string)@crates/agent-semantic-hook/src/tool_action.rs:212:214!syntax"
+        "I=item:symbol(payload_string)@rust://crates/agent-semantic-hook/src/tool_action.rs#item/fn/payload_string!syntax"
     ));
-    assert!(output.contains("I2=item:symbol(collect_tool_actions)@crates/agent-semantic-hook/src/tool_action.rs:216:419!syntax"));
-    assert!(output.contains("H=hot:symbol(command_source_paths)@crates/agent-semantic-hook/src/tool_action.rs:397:401!syntax"));
-    assert!(output.contains("syntax I selector=crates/agent-semantic-hook/src/tool_action.rs:212:214 pattern='((function_item name: (_) @function.name) (#eq? @function.name \"payload_string\"))'"));
+    assert!(output.contains("I2=item:symbol(collect_tool_actions)@rust://crates/agent-semantic-hook/src/tool_action.rs#item/fn/collect_tool_actions!syntax"));
+    assert!(output.contains("H=hot:symbol(command_source_paths)@rust://crates/agent-semantic-hook/src/tool_action.rs#item/hot/command_source_paths!syntax"));
+    assert!(output.contains("syntax I selector=rust://crates/agent-semantic-hook/src/tool_action.rs#item/fn/payload_string pattern='((function_item name: (_) @function.name) (#eq? @function.name \"payload_string\"))'"));
+    assert!(
+        !output.contains(
+            "I=item:symbol(payload_string)@crates/agent-semantic-hook/src/tool_action.rs:"
+        ),
+        "{output}"
+    );
+    assert!(
+        !output.contains("syntax I selector=crates/agent-semantic-hook/src/tool_action.rs:"),
+        "{output}"
+    );
     assert!(output.contains("G>{O:selects,Q:matches}"));
     assert!(output.contains("O>{I:contains,I2:contains,H:contains,H2:contains}"));
     assert!(output.contains("Q>{I:matches,I2:matches,H:revise,H2:revise}"));

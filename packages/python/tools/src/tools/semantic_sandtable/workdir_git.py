@@ -40,7 +40,7 @@ def _git_workdir_spec(spec: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def _git_checkout_target(repo_root: Path, git_spec: dict[str, Any]) -> Path | None:
-    url = str(git_spec["url"])
+    url = _resolve_git_url(repo_root, str(git_spec["url"]))
     cache_key = str(git_spec["cacheKey"])
     ref = git_spec.get("ref")
     depth = _optional_int(git_spec.get("depth"))
@@ -65,6 +65,15 @@ def _resolved_git_subdir(
     if workdir is None or not _is_relative_to(workdir, target) or not workdir.exists():
         return None
     return workdir
+
+
+def _resolve_git_url(repo_root: Path, url: str) -> str:
+    if "://" in url or url.startswith("git@") or Path(url).is_absolute():
+        return url
+    local_url = repo_root / url
+    if local_url.exists():
+        return str(local_url)
+    return url
 
 
 def _ensure_git_checkout(

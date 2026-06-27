@@ -223,7 +223,8 @@
     {
       "id": "prime",
       "command": [
-        "rs-harness",
+        "asp",
+        "rust",
         "search",
         "prime",
         "--view",
@@ -260,7 +261,8 @@
     {
       "id": "owner-lib",
       "command": [
-        "rs-harness",
+        "asp",
+        "rust",
         "search",
         "owner",
         "src/lib.rs",
@@ -289,7 +291,8 @@
     {
       "id": "deps-tokio",
       "command": [
-        "rs-harness",
+        "asp",
+        "rust",
         "search",
         "deps",
         "tokio",
@@ -318,7 +321,8 @@
     {
       "id": "intent-query-set",
       "command": [
-        "rs-harness",
+        "asp",
+        "rust",
         "search",
         "fzf",
         "--query-set",

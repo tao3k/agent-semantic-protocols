@@ -322,10 +322,15 @@ fn batch_argv_line(step: &Value) -> String {
         .collect::<Vec<_>>();
     assert_eq!(
         argv.first().copied(),
-        Some("asp-julia-harness"),
-        "julia batch command must start with asp-julia-harness: {argv:?}"
+        Some("asp"),
+        "julia batch command must start with asp facade: {argv:?}"
     );
-    argv[1..].join("\t")
+    assert_eq!(
+        argv.get(1).copied(),
+        Some("julia"),
+        "julia batch command must select the julia facade: {argv:?}"
+    );
+    argv[2..].join("\t")
 }
 
 fn run_julia_batch(binary: &Path, workdir: &Path, batch_input: &str) -> String {

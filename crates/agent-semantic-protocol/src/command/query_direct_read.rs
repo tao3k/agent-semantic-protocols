@@ -4,6 +4,8 @@ use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
+const MAX_DIRECT_SOURCE_READ_LINES: usize = 24;
+
 pub(super) fn is_asp_fast_direct_source_read(args: &[String]) -> bool {
     if !matches!(args.first().map(String::as_str), Some("query"))
         || arg_value(args, "--selector").is_none()
@@ -13,7 +15,7 @@ pub(super) fn is_asp_fast_direct_source_read(args: &[String]) -> bool {
     {
         return false;
     }
-    arg_value(args, "--from-hook").is_none_or(|value| value == "direct-source-read")
+    arg_value(args, "--from-hook") == Some("direct-source-read")
 }
 
 pub(super) fn run_asp_fast_direct_source_read_command(
@@ -21,16 +23,47 @@ pub(super) fn run_asp_fast_direct_source_read_command(
     project_root: &Path,
     locator_root: &Path,
 ) -> Result<(), String> {
+    let fallback_reason = arg_value(args, "--fallback-reason")
+        .ok_or_else(|| {
+            "direct-source-read requires --fallback-reason <reason>; use structural search or syntax-outline first".to_string()
+        })?
+        .trim();
+    if fallback_reason.is_empty() {
+        return Err("direct-source-read --fallback-reason must not be empty".to_string());
+    }
     let selector = arg_value(args, "--selector")
         .ok_or_else(|| "direct-source-read requires --selector <path-or-range>".to_string())?;
+    run_bounded_selector_read(
+        selector,
+        project_root,
+        locator_root,
+        MAX_DIRECT_SOURCE_READ_LINES,
+        "direct-source-read",
+    )
+}
+
+fn run_bounded_selector_read(
+    selector: &str,
+    project_root: &Path,
+    locator_root: &Path,
+    max_lines: usize,
+    label: &str,
+) -> Result<(), String> {
     let selector = parse_selector(selector)?;
+    let (start, end) = selector.range.ok_or_else(|| {
+        "direct-source-read requires a bounded selector range; whole-file fallback is disabled"
+            .to_string()
+    })?;
+    let span = end - start + 1;
+    if span > max_lines {
+        return Err(format!(
+            "{label} range {span} lines exceeds max {max_lines}; use skeleton or syntax-outline before exact code"
+        ));
+    }
     let path = resolve_selector_path(project_root, locator_root, &selector.path)?;
     let bytes =
         fs::read(&path).map_err(|error| format!("failed to read {}: {error}", path.display()))?;
-    let output = match selector.range {
-        Some((start, end)) => select_line_range(&bytes, start, end),
-        None => bytes,
-    };
+    let output = select_line_range(&bytes, start, end);
     io::stdout()
         .write_all(&output)
         .map_err(|error| format!("failed to write direct-source-read stdout: {error}"))

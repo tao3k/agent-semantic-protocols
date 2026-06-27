@@ -85,8 +85,8 @@ def _write_session_filter_scenario(path: Path, trace_root: Path) -> None:
                 "evidence": {
                     "source": "recorded-replay",
                     "failureFrontierComparison": {
-                        "baselineTracePath": str(trace_root),
-                        "candidateTracePath": str(trace_root),
+                        "baselineTracePath": "trace-root",
+                        "candidateTracePath": "trace-root",
                         "baselineTraceSessionId": "baseline",
                         "candidateTraceSessionId": "candidate",
                         "traceLanguageId": "rust",

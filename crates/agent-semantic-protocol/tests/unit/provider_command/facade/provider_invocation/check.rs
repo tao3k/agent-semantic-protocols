@@ -52,7 +52,13 @@ fn check_changed_view_seeds_renders_failure_frontier_after_provider_failure() {
     );
     assert!(
         stdout.contains("frontierActions=")
-            && stdout.contains("C1.query-code(selector=src/cache_cli/writeback.rs:1:5"),
+            && stdout.contains(
+                "C1.query-code(selector=rust://src/cache_cli/writeback.rs#item/fn/write_prompt_output_artifact"
+            ),
+        "{stdout}"
+    );
+    assert!(
+        !stdout.contains("C1.query-code(selector=src/cache_cli/writeback.rs:1:5"),
         "{stdout}"
     );
     assert!(

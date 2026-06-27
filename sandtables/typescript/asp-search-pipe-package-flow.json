@@ -1,0 +1,106 @@
+{
+  "id": "typescript.asp-search-pipe-package-flow",
+  "language": "typescript",
+  "title": "TypeScript compiler ASP facade scoped search pipe package flow",
+  "coverage": [
+    "search-flow",
+    "large-library"
+  ],
+  "tags": [
+    "large-library",
+    "typescript",
+    "asp-facade",
+    "package-scope"
+  ],
+  "evidence": {
+    "source": "handwritten",
+    "fixtureTier": "large-library",
+    "targetLibrary": {
+      "language": "typescript",
+      "name": "TypeScript",
+      "package": "typescript",
+      "repository": "microsoft/TypeScript",
+      "workdirKind": "checkout"
+    },
+    "intentCases": [
+      {
+        "intentKind": "feature-implementation",
+        "intent": "Keep TypeScript compiler search pipe scoped to compiler owners before changing project-program behavior",
+      "stepIds": [
+        "asp-search-pipe-package-scope"
+      ],
+      "queryTerms": [
+        "createProgram",
+        "src/compiler"
+      ]
+      },
+      {
+        "intentKind": "api-usage",
+        "intent": "Locate createProgram public owners through the ASP facade while keeping the search scoped to src/compiler",
+        "stepIds": [
+          "asp-search-pipe-package-scope"
+        ],
+        "queryTerms": [
+          "createProgram",
+          "public",
+          "owner"
+        ]
+      },
+      {
+        "intentKind": "implementation-principle",
+        "intent": "Understand module resolution owners through a scoped compiler search instead of full checkout search",
+      "stepIds": [
+        "asp-search-pipe-package-scope"
+      ],
+      "queryTerms": [
+        "createProgram",
+        "src/compiler"
+      ]
+      }
+    ]
+  },
+  "workdir": {
+    "env": "SANDTABLE_TS_TYPESCRIPT_ROOT",
+    "candidates": [
+      "~/ghq/github.com/microsoft/TypeScript",
+      "~/src/TypeScript",
+      "~/work/TypeScript"
+    ]
+  },
+  "steps": [
+    {
+      "id": "asp-search-pipe-package-scope",
+      "command": [
+        "asp",
+        "typescript",
+        "search",
+        "pipe",
+        "createProgram public owner",
+        "--package",
+        "src/compiler",
+        "--workspace",
+        ".",
+        "--view",
+        "seeds"
+      ],
+      "expect": {
+        "stdoutContains": [
+          "[search-pipe] lang=typescript",
+          "query=createProgram public owner",
+          "scope=src/compiler",
+          "actionFrontier=",
+          "direct-source-read"
+        ],
+        "stdoutNotContains": [
+          "unknown search pipe option: --package",
+          "query-code(selector=",
+          "actionFrontier=A1.query-code"
+        ],
+        "maxStdoutLinesWarn": 50,
+        "maxElapsedMs": 300,
+        "maxColdStartElapsedMs": 2500,
+        "maxElapsedMsWarn": 2500
+      }
+    }
+  ]
+}

@@ -7,7 +7,7 @@ use crate::provider_command::support::{
 };
 
 #[test]
-fn provider_command_prefix_is_ignored_for_home_local_binary() {
+fn runtime_profile_command_prefix_overrides_home_local_binary() {
     let root = temp_project_root("provider-prefix-facade");
     std::fs::remove_dir_all(root.join(".git")).expect("remove temp git marker");
     let cache_home = root.join(".cache-home");
@@ -15,13 +15,33 @@ fn provider_command_prefix_is_ignored_for_home_local_binary() {
     let activation_path = cache_home.join("agent-semantic-protocol/hooks/activation.json");
     let bin_dir = root.join(".bin");
     std::fs::create_dir_all(&bin_dir).expect("create bin dir");
+    let profile_wrapper = bin_dir.join("provider-wrapper");
+    std::fs::write(
+        &profile_wrapper,
+        r#"#!/bin/sh
+printf 'profile args='
+for arg in "$@"; do printf '[%s]' "$arg"; done
+printf '
+'
+printf 'cache=%s
+' "$PRJ_CACHE_HOME"
+printf 'runtime=%s
+' "$ASP_RUNTIME_BIN_DIR"
+printf 'path0=%s
+' "${PATH%%:*}"
+printf 'renderer=%s
+' "$SEMANTIC_AGENT_PROTOCOL_BIN"
+"#,
+    )
+    .expect("write profile provider wrapper");
+    make_executable(&profile_wrapper);
     let home_bin = home_local_bin(&root);
     let wrapper_path = home_bin.join("rs-harness");
     std::fs::create_dir_all(&home_bin).expect("create home local bin");
     std::fs::write(
         &wrapper_path,
         r#"#!/bin/sh
-printf 'wrapper args='
+printf 'home-local args='
 for arg in "$@"; do printf '[%s]' "$arg"; done
 printf '
 '
@@ -63,7 +83,11 @@ printf 'renderer=%s
     let cache_home = std::fs::canonicalize(&cache_home).unwrap_or_else(|_| cache_home.clone());
     let runtime_bin = cache_home.join("agent-semantic-protocol/runtime/bin");
     let stdout = String::from_utf8(output.stdout).expect("stdout");
-    assert!(stdout.contains("wrapper args=[guide][.]"), "{stdout}");
+    assert!(
+        stdout.contains("profile args=[rs-harness][guide][.]"),
+        "{stdout}"
+    );
+    assert!(!stdout.contains("home-local args="), "{stdout}");
     assert!(
         stdout.contains(&format!("cache={}\n", cache_home.display())),
         "{stdout}"
@@ -98,9 +122,10 @@ printf 'renderer=%s
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(
-        stdout.contains("wrapper args=[guide][languages/rust-lang-project-harness]"),
+        stdout.contains("profile args=[rs-harness][guide][languages/rust-lang-project-harness]"),
         "{stdout}"
     );
+    assert!(!stdout.contains("home-local args="), "{stdout}");
     assert!(
         stdout.contains(&format!("cache={}\n", cache_home.display())),
         "{stdout}"

@@ -84,6 +84,11 @@ def _validate_line_protocol_expectation(
 
 
 def _validate_elapsed_expectation(expect: dict[str, Any], result: StepResult) -> None:
+    cold_maximum = optional_int(expect.get("maxColdStartElapsedMs"))
+    if cold_maximum is not None and result.elapsed_ms > cold_maximum:
+        result.errors.append(
+            f"elapsedMs={result.elapsed_ms} exceeds maxColdStartElapsedMs={cold_maximum}"
+        )
     maximum = optional_int(expect.get("maxElapsedMs"))
     if maximum is not None and result.elapsed_ms > maximum:
         result.errors.append(f"elapsedMs={result.elapsed_ms} exceeds maxElapsedMs={maximum}")

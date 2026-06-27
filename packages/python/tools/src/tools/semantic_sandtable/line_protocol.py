@@ -39,7 +39,7 @@ def validate_line_protocol(result: StepResult, stdout: str) -> None:
 
 def _validate_compact_graph_contract(result: StepResult, lines: list[str]) -> None:
     if not _requires_compact_graph_contract(result.command) and not any(
-        _is_compact_graph_line(line) for line in lines
+        _is_compact_graph_contract_line(line) for line in lines
     ):
         return
     if (
@@ -67,6 +67,12 @@ def _validate_compact_graph_contract(result: StepResult, lines: list[str]) -> No
 def _requires_compact_graph_contract(command: list[str]) -> bool:
     if "search" not in command:
         return False
+    search_index = command.index("search")
+    if (
+        command[search_index + 1 : search_index + 2] == ["owner"]
+        and "items" in command[search_index + 2 :]
+    ):
+        return False
     for index, arg in enumerate(command):
         if (
             arg == "--view"
@@ -92,20 +98,59 @@ def _is_compact_graph_line(line: str) -> bool:
         return _looks_like_compact_graph_entries_line(line)
     if line.startswith("omit=") or line.startswith("avoid="):
         return _looks_like_compact_graph_csv_metadata_line(line)
+    if _looks_like_action_frontier_line(line):
+        return True
+    if ">{" in line and line.endswith("}"):
+        return _looks_like_compact_graph_edge_line(line)
+    return _looks_like_compact_graph_alias_line(
+        line
+    ) or _looks_like_action_alias_line(line)
+
+
+def _is_compact_graph_contract_line(line: str) -> bool:
+    if _looks_like_action_alias_line(line):
+        return False
+    if line in {COMPACT_GRAPH_MICRO_LEGEND, SEED_FRONTIER_MICRO_LEGEND}:
+        return True
+    if line.startswith("aliases: graph:{"):
+        return _looks_like_compact_graph_aliases_line(line)
+    if line.startswith("rank=") or line.startswith("entries="):
+        return True
     if ">{" in line and line.endswith("}"):
         return _looks_like_compact_graph_edge_line(line)
     return _looks_like_compact_graph_alias_line(line)
 
 
 def _looks_like_syntax_locator_line(line: str) -> bool:
-    syntax_match = re.match(
-        r"^syntax\s+([A-Za-z][A-Za-z0-9_]*)\s+selector=([^\s]+)(?:\s+pattern='.*')?$",
-        line,
-    )
-    if syntax_match is None:
+    prefix, sep, remainder = line.partition(" selector=")
+    if not sep:
         return False
-    alias, selector = syntax_match.groups()
-    return _looks_like_compact_graph_alias_id(alias) and ":" in selector
+    prefix_parts = prefix.split()
+    if len(prefix_parts) != 2 or prefix_parts[0] != "syntax":
+        return False
+    alias = prefix_parts[1]
+    fields, pattern_sep, pattern = remainder.partition(" pattern='")
+    if pattern_sep and not pattern.endswith("'"):
+        return False
+    field_parts = fields.split()
+    if not field_parts:
+        return False
+    selector = field_parts[0]
+    return (
+        _looks_like_compact_graph_alias_id(alias)
+        and ":" in selector
+        and all(_looks_like_syntax_locator_field(field) for field in field_parts[1:])
+    )
+
+
+def _looks_like_syntax_locator_field(field: str) -> bool:
+    key, sep, value = field.partition("=")
+    if not sep or not value:
+        return False
+    if key == "displayLineRange":
+        start, range_sep, end = value.partition(":")
+        return bool(range_sep) and start.isdigit() and end.isdigit()
+    return key == "sourceLocatorHint" and ":" in value
 
 
 def _looks_like_compact_graph_aliases_line(line: str) -> bool:
@@ -288,6 +333,8 @@ def _looks_like_compact_graph_metadata_value(value: str) -> bool:
 
 def _looks_like_compact_graph_alias_line(line: str) -> bool:
     for entry in line.split(";"):
+        if not entry:
+            continue
         alias, sep, fact = entry.partition("=")
         if not sep or not alias:
             return False
@@ -296,6 +343,44 @@ def _looks_like_compact_graph_alias_line(line: str) -> bool:
         if ":" not in fact or "!" not in fact:
             return False
     return True
+
+
+def _looks_like_action_alias_line(line: str) -> bool:
+    alias, sep, fact = line.partition("=")
+    action, open_sep, args_and_kind = fact.partition("(")
+    if not sep or not open_sep or not alias.startswith("A") or not alias[1:].isdigit():
+        return False
+    args, kind_sep, kind = args_and_kind.rpartition(")!")
+    return (
+        bool(args)
+        and bool(kind_sep)
+        and _looks_like_compact_graph_metadata_value(action)
+        and _looks_like_compact_graph_metadata_value(kind)
+        and "selector=" in args
+    )
+
+
+def _looks_like_action_frontier_line(line: str) -> bool:
+    key, sep, value = line.partition("=")
+    if not sep or not value:
+        return False
+    if key == "actionFrontier":
+        return all(_looks_like_action_ref(part) for part in value.split(","))
+    if key == "recommendedNext":
+        return _looks_like_action_ref(value)
+    if key == "reason":
+        return _looks_like_compact_graph_metadata_value(value)
+    return key == "nextCommand" and value.startswith("asp ")
+
+
+def _looks_like_action_ref(value: str) -> bool:
+    alias, sep, action = value.partition(".")
+    return (
+        bool(sep)
+        and alias.startswith("A")
+        and alias[1:].isdigit()
+        and _looks_like_compact_graph_metadata_value(action)
+    )
 
 
 def _looks_like_compact_graph_alias_id(value: str) -> bool:

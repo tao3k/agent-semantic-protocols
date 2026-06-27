@@ -125,9 +125,22 @@ def receipt_command_output_mode(command: dict[str, Any]) -> str:
     return "compact"
 
 
-def validate_receipt_path(repo_root: Path, path: Path) -> ReceiptResult:
-    receipt_path = path if path.is_absolute() else repo_root / path
-    receipt_path = receipt_path.resolve()
+def _resolve_receipt_path(
+    repo_root: Path, path: Path, *, path_base: Path | None = None
+) -> Path:
+    if path.is_absolute():
+        return path.resolve()
+    if path_base is not None:
+        scenario_local = path_base / path
+        if scenario_local.exists():
+            return scenario_local.resolve()
+    return (repo_root / path).resolve()
+
+
+def validate_receipt_path(
+    repo_root: Path, path: Path, *, path_base: Path | None = None
+) -> ReceiptResult:
+    receipt_path = _resolve_receipt_path(repo_root, path, path_base=path_base)
     try:
         receipt = load_receipt(receipt_path, repo_root)
     except ReceiptLoadError as error:
@@ -182,11 +195,13 @@ def receipt_command_token_costs(receipt: dict[str, Any]) -> list[dict[str, Any]]
     return costs
 
 
-def validate_linked_receipt(repo_root: Path, evidence: dict[str, Any]) -> str | None:
+def validate_linked_receipt(
+    repo_root: Path, evidence: dict[str, Any], *, path_base: Path | None = None
+) -> str | None:
     receipt_path = evidence.get("receiptPath")
     if not isinstance(receipt_path, str):
         return None
-    result = validate_receipt_path(repo_root, Path(receipt_path))
+    result = validate_receipt_path(repo_root, Path(receipt_path), path_base=path_base)
     if result.status == "pass":
         return None
     return "; ".join(result.errors) if result.errors else "receipt validation failed"

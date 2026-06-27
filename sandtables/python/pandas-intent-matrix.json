@@ -74,7 +74,8 @@
     {
       "id": "prime-groupby",
       "command": [
-        "py-harness",
+        "asp",
+        "python",
         "search",
         "prime",
         "--package",
@@ -101,7 +102,8 @@
     {
       "id": "groupby-query-set",
       "command": [
-        "py-harness",
+        "asp",
+        "python",
         "search",
         "fzf",
         "--query-set",
@@ -132,7 +134,8 @@
     {
       "id": "internals-query-set",
       "command": [
-        "py-harness",
+        "asp",
+        "python",
         "search",
         "fzf",
         "--query-set",

@@ -194,6 +194,10 @@ pub(super) fn append_candidate_nodes(
     limit: usize,
 ) {
     for candidate in candidates.iter().take(limit) {
+        let source_locator_hint = candidate_selector(language_id, candidate);
+        let structural_selector =
+            candidate_structural_selector(language_id, candidate, "item", "symbol");
+        let display_line_range = display_line_range(candidate.line, candidate_end_line(candidate));
         nodes.push(json!({
             "id": candidate_node_id(candidate),
             "kind": "item",
@@ -205,9 +209,21 @@ pub(super) fn append_candidate_nodes(
             "symbol": candidate.symbol,
             "startLine": candidate.line,
             "endLine": candidate_end_line(candidate),
-            "locator": candidate_selector(language_id, candidate),
+            "locator": structural_selector,
+            "structuralSelector": structural_selector,
+            "displayLineRange": display_line_range,
+            "sourceLocatorHint": source_locator_hint,
             "matchText": candidate.text,
             "syntaxQuery": candidate_tree_sitter_pattern(language_id, &candidate.symbol),
+            "projection": "outline",
+            "codePolicy": "code-after-exact-selector",
+            "fields": {
+                "structuralSelector": structural_selector,
+                "displayLineRange": display_line_range,
+                "sourceLocatorHint": source_locator_hint,
+                "projection": "outline",
+                "codePolicy": "code-after-exact-selector",
+            },
             "source": candidate.source,
             "confidence": candidate.confidence,
         }));
@@ -227,24 +243,45 @@ pub(super) fn append_hot_nodes(
         } else {
             hot_context_range(candidate.line)
         };
-        let locator = if document {
+        let source_locator_hint = if document {
             candidate_selector(language_id, candidate)
         } else {
             format!("{}:{}:{end_line}", candidate.path, start_line)
+        };
+        let structural_selector =
+            candidate_structural_selector(language_id, candidate, "range", "hot");
+        let display_line_range = display_line_range(start_line, end_line);
+        let action = graph_projection_action(language_id);
+        let (projection, code_policy) = if action == "code" {
+            ("code", "requires-exact-code")
+        } else {
+            ("outline", "code-after-exact-selector")
         };
         nodes.push(json!({
             "id": hot_node_id(candidate),
             "kind": "hot",
             "role": "range",
             "value": candidate.symbol,
-            "action": graph_projection_action(language_id),
+            "action": action,
             "path": candidate.path,
             "ownerPath": candidate.path,
             "symbol": candidate.symbol,
             "startLine": start_line,
             "endLine": end_line,
-            "locator": locator,
+            "locator": structural_selector,
+            "structuralSelector": structural_selector,
+            "displayLineRange": display_line_range,
+            "sourceLocatorHint": source_locator_hint,
             "matchText": candidate.text,
+            "projection": projection,
+            "codePolicy": code_policy,
+            "fields": {
+                "structuralSelector": structural_selector,
+                "displayLineRange": display_line_range,
+                "sourceLocatorHint": source_locator_hint,
+                "projection": projection,
+                "codePolicy": code_policy,
+            },
             "source": candidate.source,
             "confidence": candidate.confidence,
         }));
@@ -304,6 +341,51 @@ fn hot_context_range(line: usize) -> (usize, usize) {
         line.saturating_sub(HOT_CONTEXT_BEFORE_LINES).max(1),
         line + HOT_CONTEXT_AFTER_LINES,
     )
+}
+
+fn candidate_structural_selector(
+    language_id: &str,
+    candidate: &Candidate,
+    kind: &str,
+    role: &str,
+) -> String {
+    let language = if language_id.is_empty() {
+        "code"
+    } else {
+        language_id
+    };
+    format!(
+        "{}://{}#{}/{}/{}",
+        selector_token(language),
+        selector_token(&candidate.path),
+        selector_token(kind),
+        selector_token(role),
+        selector_token(&candidate.symbol)
+    )
+}
+
+fn display_line_range(start_line: usize, end_line: usize) -> String {
+    format!("{start_line}:{end_line}")
+}
+
+fn selector_token(value: &str) -> String {
+    let token = value
+        .trim()
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || matches!(character, '_' | '-' | '.' | '/' | ':')
+            {
+                character
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>();
+    if token.is_empty() {
+        "selector".to_string()
+    } else {
+        token
+    }
 }
 
 fn candidate_tree_sitter_pattern(language_id: &str, symbol: &str) -> Option<String> {

@@ -34,8 +34,10 @@ _REQUIRED_SEARCH_SUBCOMMANDS_BY_LANGUAGE = {
 def _search_subcommands(command_by_step_id: dict[str, list[str]]) -> set[str]:
     subcommands: set[str] = set()
     for command in command_by_step_id.values():
-        if len(command) >= 3 and command[1] == "search":
-            subcommands.add(command[2])
+        if "search" in command:
+            search_index = command.index("search")
+            if command[search_index + 1 : search_index + 2]:
+                subcommands.add(command[search_index + 1])
     return subcommands
 
 

@@ -128,8 +128,21 @@
         },
         "lineRange": {
           "type": "string",
-          "description": "Compact source line range as start:end, for example 10:43.",
+          "description": "Compact source line range as start:end, for example 10:43. This is display metadata, not selector identity.",
           "pattern": "^[1-9][0-9]*:[1-9][0-9]*$"
+        },
+        "structuralSelector": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[a-z][a-z0-9+.-]*://[^#\\s]+#[^\\s]+$"
+        },
+        "displayLineRange": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]*:[1-9][0-9]*$"
+        },
+        "sourceLocatorHint": {
+          "type": "string",
+          "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*):[1-9][0-9]*(?:(?::|-)[1-9][0-9]*)?$"
         }
       }
     },
@@ -252,6 +265,45 @@
         },
         "ownerPath": {
           "$ref": "#/$defs/projectPath"
+        },
+        "structuralSelector": {
+          "type": "string",
+          "description": "Parser-owned stable selector for this handle. This is the executable semantic identity when present.",
+          "minLength": 1,
+          "pattern": "^[a-z][a-z0-9+.-]*://[^#\\s]+#[^\\s]+$"
+        },
+        "nativeFactId": {
+          "type": "string",
+          "description": "Provider-native fact id usable as a semantic handle within the provider packet.",
+          "minLength": 1
+        },
+        "displayLineRange": {
+          "type": "string",
+          "description": "Human display line range. This is not an executable selector.",
+          "pattern": "^[1-9][0-9]*:[1-9][0-9]*$"
+        },
+        "sourceLocatorHint": {
+          "type": "string",
+          "description": "Compatibility source locator for exact code transport after a semantic selector has been chosen.",
+          "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*):[1-9][0-9]*(?:(?::|-)[1-9][0-9]*)?$"
+        },
+        "projection": {
+          "enum": [
+            "outline",
+            "names",
+            "signature",
+            "doc",
+            "children",
+            "content",
+            "code"
+          ]
+        },
+        "codePolicy": {
+          "enum": [
+            "no-code",
+            "code-after-exact-selector",
+            "requires-exact-code"
+          ]
         },
         "implementationOwnerPath": {
           "$ref": "#/$defs/projectPath"

@@ -174,3 +174,64 @@ fn search_pipe_rejects_unknown_surface_without_provider_spawn() {
     );
     let _ = std::fs::remove_dir_all(root);
 }
+
+#[test]
+fn search_pipe_package_option_scopes_finder_frontier_without_provider_spawn() {
+    let root = temp_project_root("search-pipe-package-option");
+    let bin_dir = root.join(".bin");
+    let marker = root.join("provider-called");
+    write_marker_provider(&bin_dir, "ts-harness", &marker);
+    write_activation(&root, &[provider("typescript", Vec::new())]);
+    std::fs::create_dir_all(root.join("src/compiler")).expect("create scoped source");
+    std::fs::create_dir_all(root.join("src/server")).expect("create out-of-scope source");
+    std::fs::write(
+        root.join("src/compiler/program.ts"),
+        "export function createProgram() { return 1; }\n",
+    )
+    .expect("write scoped source");
+    std::fs::write(
+        root.join("src/server/program.ts"),
+        "export function createProgramServer() { return 2; }\n",
+    )
+    .expect("write out-of-scope source");
+
+    let output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args([
+            "typescript",
+            "search",
+            "pipe",
+            "createProgram",
+            "--package",
+            "src/compiler",
+            "--source",
+            "finder",
+            "--workspace",
+            ".",
+            "--view",
+            "seeds",
+        ])
+        .output()
+        .expect("run asp typescript search pipe with package scope");
+
+    assert!(
+        output.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    assert!(stdout.contains("owner:path(program.ts)"), "{stdout}");
+    assert!(stdout.contains("scope=src/compiler"), "{stdout}");
+    assert!(!stdout.contains("src/server/program.ts"), "{stdout}");
+    assert!(stdout.contains("actionFrontier="), "{stdout}");
+    assert!(
+        !stdout.contains("query-code(selector=src/compiler/program.ts:"),
+        "{stdout}"
+    );
+    assert!(
+        !marker.exists(),
+        "finder-scoped pipe should not spawn provider"
+    );
+    let _ = std::fs::remove_dir_all(root);
+}

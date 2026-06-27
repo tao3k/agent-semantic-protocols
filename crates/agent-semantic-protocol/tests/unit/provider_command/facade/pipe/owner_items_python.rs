@@ -89,8 +89,18 @@ fn python_owner_items_hits_view_uses_asp_owned_inline_fast_path() {
     assert!(
         stdout.contains("reason=rust-inline-python-owner-items")
             && stdout.contains("|item fetch kind=function")
-            && stdout.contains("read=src/pkg/service.py:1:2"),
+            && stdout
+                .contains("structuralSelector=python://src/pkg/service.py#item/function/fetch")
+            && stdout.contains("displayLineRange=1:2")
+            && stdout.contains("sourceLocatorHint=src/pkg/service.py:1:2")
+            && stdout.contains("actionFrontier=A1.item-skeleton,A2.syntax-outline,A3.query-code")
+            && stdout.contains("recommendedNext=A1.item-skeleton")
+            && stdout.contains("reason=owner-item-skeleton-ready"),
         "{stdout}"
+    );
+    assert!(
+        !stdout.contains("read=src/pkg/service.py:1:2"),
+        "line range must not remain an executable read selector: {stdout}"
     );
     assert!(
         !stdout.contains("fallback="),

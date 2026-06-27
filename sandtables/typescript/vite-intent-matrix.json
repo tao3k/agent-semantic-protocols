@@ -144,7 +144,8 @@
     {
       "id": "prime",
       "command": [
-        "ts-harness",
+        "asp",
+        "typescript",
         "search",
         "prime",
         "--view",
@@ -169,7 +170,8 @@
     {
       "id": "intent-query-set",
       "command": [
-        "ts-harness",
+        "asp",
+        "typescript",
         "search",
         "fzf",
         "--query-set",
