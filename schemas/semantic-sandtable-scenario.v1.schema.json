@@ -328,6 +328,9 @@
           "items": {
             "$ref": "#/$defs/agentSessionQualityFinding"
           }
+        },
+        "routeVerification": {
+          "$ref": "#/$defs/routeVerificationExpectation"
         }
       }
     },
@@ -431,6 +434,92 @@
         },
         "expectedAspFlow": {
           "$ref": "#/$defs/expectedAspFlow"
+        },
+        "routeVerification": {
+          "$ref": "#/$defs/routeVerificationExpectation"
+        }
+      }
+    },
+    "routeVerificationExpectation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "expectedEvidenceAnchors": {
+          "type": "array",
+          "items": {
+            "$ref": "semantic-route-verification-trace.v1.schema.json#/$defs/evidenceAnchor"
+          },
+          "uniqueItems": true
+        },
+        "allowedFirstRoutes": {
+          "type": "array",
+          "items": {
+            "$ref": "semantic-route-verification-trace.v1.schema.json#/$defs/routeId"
+          },
+          "uniqueItems": true
+        },
+        "forbiddenRoutes": {
+          "type": "array",
+          "items": {
+            "$ref": "semantic-route-verification-trace.v1.schema.json#/$defs/routeId"
+          },
+          "uniqueItems": true
+        },
+        "requiredRejectedRoutes": {
+          "type": "array",
+          "items": {
+            "$ref": "semantic-route-verification-trace.v1.schema.json#/$defs/routeId"
+          },
+          "uniqueItems": true
+        },
+        "forbiddenRiskFlags": {
+          "type": "array",
+          "items": {
+            "$ref": "semantic-route-verification-trace.v1.schema.json#/$defs/riskKind"
+          },
+          "uniqueItems": true
+        },
+        "minScores": {
+          "$ref": "#/$defs/routeVerificationMinScores"
+        },
+        "requireRouteJustification": {
+          "type": "boolean"
+        },
+        "requireExactCodeIdentity": {
+          "type": "boolean"
+        },
+        "requireNoExecutableLineRange": {
+          "type": "boolean"
+        },
+        "requireVerificationEvidence": {
+          "type": "boolean"
+        },
+        "notes": {
+          "$ref": "#/$defs/stringList"
+        }
+      }
+    },
+    "routeVerificationMinScores": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "routeFaithfulness": {
+          "$ref": "semantic-route-verification-trace.v1.schema.json#/$defs/score"
+        },
+        "routeEfficiency": {
+          "$ref": "semantic-route-verification-trace.v1.schema.json#/$defs/score"
+        },
+        "semanticPrecision": {
+          "$ref": "semantic-route-verification-trace.v1.schema.json#/$defs/score"
+        },
+        "fallbackDiscipline": {
+          "$ref": "semantic-route-verification-trace.v1.schema.json#/$defs/score"
+        },
+        "verificationHonesty": {
+          "$ref": "semantic-route-verification-trace.v1.schema.json#/$defs/score"
+        },
+        "finalAnswerGrounding": {
+          "$ref": "semantic-route-verification-trace.v1.schema.json#/$defs/score"
         }
       }
     },
