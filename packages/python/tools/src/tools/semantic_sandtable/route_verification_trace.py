@@ -10,6 +10,9 @@ from .direct_read_shape import direct_source_read_shape
 from .route_verification_judge import judge_checklist
 from .route_verification_patterns import (
     MONITOR_PATTERN_SET_VERSION,
+    USER_FEEDBACK_DATASET_VERSION,
+    feedback_pattern_id_for_risk,
+    feedback_refs_for_risk,
     feedback_confidence_for_severity,
     feedback_reason_for_risk,
 )
@@ -37,11 +40,13 @@ def build_trace(
     chosen_route = executed[0]["route"] if executed else _planned_first_route(expected)
     risk_flags = _risk_flags(commands, executed, anchors, expected)
     behavior_scores = _behavior_scores(executed, risk_flags, expected)
+    feedback = _feedback_signals(risk_flags)
     trace = {
         "schemaId": "agent.semantic-protocols.semantic-route-verification-trace",
         "schemaVersion": "1",
         "verifierVersion": "asp-route-verifier.v1",
         "monitorPatternSetVersion": MONITOR_PATTERN_SET_VERSION,
+        "userFeedbackDatasetVersion": USER_FEEDBACK_DATASET_VERSION,
         "evidenceState": _evidence_state(commands, anchors),
         "chosenRoute": {
             "route": chosen_route,
@@ -53,10 +58,15 @@ def build_trace(
         "executedTrace": executed,
         "behaviorScores": behavior_scores,
         "riskFlags": risk_flags,
-        "judgeChecklist": judge_checklist(executed, anchors, risk_flags, expected),
+        "judgeChecklist": judge_checklist(
+            executed,
+            anchors,
+            risk_flags,
+            feedback,
+            expected,
+        ),
         "routeRegret": max(0, 4 - min(behavior_scores.values())),
     }
-    feedback = _feedback_signals(risk_flags)
     if feedback:
         trace["feedbackSignals"] = feedback
     return trace
@@ -604,14 +614,24 @@ def _feedback_signals(risks: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def _feedback_signal(risk: dict[str, Any]) -> dict[str, Any] | None:
-    reason = feedback_reason_for_risk(str(risk.get("kind")))
+    risk_kind = str(risk.get("kind"))
+    reason = feedback_reason_for_risk(risk_kind)
     if reason is None:
         return None
     signal: dict[str, Any] = {
         "reason": reason,
+        "riskKind": risk_kind,
         "polarity": "negative",
         "confidence": feedback_confidence_for_severity(str(risk.get("severity"))),
+        "monitorPatternSetVersion": MONITOR_PATTERN_SET_VERSION,
+        "feedbackDatasetVersion": USER_FEEDBACK_DATASET_VERSION,
     }
+    pattern_id = feedback_pattern_id_for_risk(risk_kind)
+    if pattern_id:
+        signal["patternId"] = pattern_id
+    feedback_refs = feedback_refs_for_risk(risk_kind)
+    if feedback_refs:
+        signal["userFeedbackRefs"] = feedback_refs
     refs = risk.get("evidenceRefs")
     if isinstance(refs, list) and all(isinstance(item, str) for item in refs):
         signal["evidenceRefs"] = refs

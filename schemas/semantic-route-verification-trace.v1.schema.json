@@ -32,6 +32,10 @@
       "type": "string",
       "minLength": 1
     },
+    "userFeedbackDatasetVersion": {
+      "type": "string",
+      "minLength": 1
+    },
     "evidenceState": {
       "$ref": "#/$defs/evidenceState"
     },
@@ -231,6 +235,13 @@
         "reason": {
           "$ref": "#/$defs/feedbackReason"
         },
+        "riskKind": {
+          "$ref": "#/$defs/riskKind"
+        },
+        "patternId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.-]*$"
+        },
         "polarity": {
           "enum": [
             "negative",
@@ -242,6 +253,17 @@
           "type": "number",
           "minimum": 0,
           "maximum": 1
+        },
+        "monitorPatternSetVersion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "feedbackDatasetVersion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "userFeedbackRefs": {
+          "$ref": "#/$defs/stringList"
         },
         "evidenceRefs": {
           "$ref": "#/$defs/stringList"
@@ -269,6 +291,7 @@
             "code-policy",
             "fallback-discipline",
             "verification-evidence",
+            "feedback-loop",
             "risk-monitor"
           ]
         },

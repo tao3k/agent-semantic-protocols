@@ -6,6 +6,7 @@ from typing import Any
 
 
 MONITOR_PATTERN_SET_VERSION = "2026-06-27"
+USER_FEEDBACK_DATASET_VERSION = "2026-06-27"
 
 ROUTE_MONITOR_PATTERNS: tuple[dict[str, Any], ...] = (
     {
@@ -104,9 +105,33 @@ ROUTE_MONITOR_PATTERNS: tuple[dict[str, Any], ...] = (
 
 
 def feedback_reason_for_risk(risk_kind: str) -> str | None:
+    pattern = monitor_pattern_for_risk(risk_kind)
+    return str(pattern["feedbackReason"]) if pattern else None
+
+
+def feedback_pattern_id_for_risk(risk_kind: str) -> str | None:
+    pattern = monitor_pattern_for_risk(risk_kind)
+    return str(pattern["id"]) if pattern else None
+
+
+def feedback_refs_for_risk(risk_kind: str) -> list[str]:
+    pattern = monitor_pattern_for_risk(risk_kind)
+    if not pattern:
+        return []
+    refs = pattern.get("evidenceRefs")
+    if not isinstance(refs, list):
+        return []
+    return [
+        str(ref)
+        for ref in refs
+        if isinstance(ref, str) and ref.startswith("route-feedback:")
+    ]
+
+
+def monitor_pattern_for_risk(risk_kind: str) -> dict[str, Any] | None:
     for pattern in ROUTE_MONITOR_PATTERNS:
         if pattern["riskKind"] == risk_kind:
-            return str(pattern["feedbackReason"])
+            return pattern
     return None
 
 

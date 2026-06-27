@@ -12,6 +12,7 @@ def judge_checklist(
     executed: list[dict[str, Any]],
     anchors: list[str],
     risks: list[dict[str, Any]],
+    feedback_signals: list[dict[str, Any]],
     expectation: dict[str, Any],
 ) -> list[dict[str, Any]]:
     checks = [
@@ -19,6 +20,7 @@ def judge_checklist(
         _first_route_check(executed, expectation),
         _forbidden_route_check(executed, expectation),
         _risk_monitor_check(risks, expectation),
+        _feedback_linkage_check(risks, feedback_signals),
     ]
     checks.extend(_conditional_checks(executed, risks, expectation))
     return checks
@@ -163,6 +165,50 @@ def _verification_evidence_check(executed: list[dict[str, Any]]) -> dict[str, An
     )
 
 
+def _feedback_linkage_check(
+    risks: list[dict[str, Any]],
+    feedback_signals: list[dict[str, Any]],
+) -> dict[str, Any]:
+    risk_kinds = [
+        str(risk.get("kind"))
+        for risk in risks
+        if isinstance(risk.get("kind"), str)
+    ]
+    if not risk_kinds:
+        return _check(
+            "feedback.dataset-linked",
+            "feedback-loop",
+            "pass",
+            "No route risks required feedback dataset linkage.",
+        )
+
+    signal_risks = {
+        str(signal.get("riskKind"))
+        for signal in feedback_signals
+        if isinstance(signal.get("riskKind"), str)
+    }
+    unlinked_signals = [
+        signal
+        for signal in feedback_signals
+        if not string_list(signal.get("userFeedbackRefs"))
+    ]
+    missing_risks = [risk for risk in risk_kinds if risk not in signal_risks]
+    status = (
+        "pass"
+        if feedback_signals and not unlinked_signals and not missing_risks
+        else "fail"
+    )
+    return _check(
+        "feedback.dataset-linked",
+        "feedback-loop",
+        status,
+        "Route risks are linked to feedback dataset entries."
+        if status == "pass"
+        else "Route risks are missing feedback dataset links.",
+        evidence_refs=_feedback_refs(feedback_signals),
+    )
+
+
 def _check(
     check_id: str,
     kind: str,
@@ -224,4 +270,12 @@ def _step_refs(items: list[dict[str, Any]]) -> list[str]:
         command_id = dict_value(item).get("commandId")
         if isinstance(command_id, str):
             refs.append(f"command:{command_id}")
+    return list(dict.fromkeys(refs))
+
+
+def _feedback_refs(signals: list[dict[str, Any]]) -> list[str]:
+    refs: list[str] = []
+    for signal in signals:
+        refs.extend(string_list(signal.get("userFeedbackRefs")))
+        refs.extend(string_list(signal.get("evidenceRefs")))
     return list(dict.fromkeys(refs))

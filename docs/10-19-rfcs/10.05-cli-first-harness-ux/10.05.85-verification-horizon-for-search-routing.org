@@ -141,6 +141,12 @@ confidence, failure reason, target risk, and the monitor pattern ids they seeded
 Pattern sets SHOULD cite feedback entries through =route-feedback:<id>= evidence
 refs so a future monitor update can explain why the pattern exists.
 
+Route verification traces SHOULD carry the active feedback dataset version and
+link each generated =feedbackSignal= back to the monitor pattern and
+=route-feedback:<id>= entries that justify it. The route judge SHOULD emit a
+=feedback.dataset-linked= checklist item so feedback loops fail visibly when a
+risk flag has no dataset-backed explanation.
+
 Feedback labels SHOULD preserve the failure reason:
 
 | Feedback reason | ASP interpretation |

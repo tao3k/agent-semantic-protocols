@@ -60,6 +60,7 @@ def test_route_verification_accepts_owner_query_without_prime_for_languages(
     trace = receipt["routeVerificationTrace"]
     _receipt_validator().validate(receipt)
     _route_validator().validate(trace)
+    assert trace["userFeedbackDatasetVersion"] == "2026-06-27"
     assert trace["chosenRoute"]["route"] == "owner-items"
     assert [step["route"] for step in trace["executedTrace"]] == [
         "owner-items",
@@ -73,6 +74,7 @@ def test_route_verification_accepts_owner_query_without_prime_for_languages(
     assert _check_status(trace, "route.forbidden.avoided") == "pass"
     assert _check_status(trace, "code.exact-identity") == "pass"
     assert _check_status(trace, "selector.line-range-not-executable") == "pass"
+    assert _check_status(trace, "feedback.dataset-linked") == "pass"
     assert trace["riskFlags"] == []
     assert "qualityFindings" not in receipt
     assert "/Users/" not in json.dumps(receipt, sort_keys=True)
@@ -118,6 +120,14 @@ def test_route_verification_flags_forbidden_prime(
         signal["reason"] == "inefficiency"
         for signal in trace["feedbackSignals"]
     )
+    inefficiency_signal = _feedback_signal(trace, "inefficiency")
+    assert inefficiency_signal["riskKind"] == "unnecessary-prime"
+    assert inefficiency_signal["patternId"] == "route.unnecessary-prime"
+    assert inefficiency_signal["feedbackDatasetVersion"] == "2026-06-27"
+    assert inefficiency_signal["userFeedbackRefs"] == [
+        "route-feedback:avoid-prime-when-owner-known"
+    ]
+    assert _check_status(trace, "feedback.dataset-linked") == "pass"
     finding_ids = {finding["id"] for finding in receipt["qualityFindings"]}
     assert "route.forbidden.prime" in finding_ids
     assert "route.risk.unnecessary-prime" in finding_ids
@@ -172,6 +182,13 @@ def test_route_verification_flags_line_range_selector(
     assert _check_status(trace, "selector.line-range-not-executable") == "fail"
     assert _check_status(trace, "code.exact-identity") == "fail"
     assert any(signal["reason"] == "overaction" for signal in trace["feedbackSignals"])
+    overaction_signal = _feedback_signal_for_risk(trace, "executable-line-range")
+    assert overaction_signal["riskKind"] == "executable-line-range"
+    assert overaction_signal["patternId"] == "selector.executable-line-range"
+    assert overaction_signal["userFeedbackRefs"] == [
+        "route-feedback:line-range-is-display-hint"
+    ]
+    assert _check_status(trace, "feedback.dataset-linked") == "pass"
     finding_ids = {finding["id"] for finding in receipt["qualityFindings"]}
     assert "route.executable-line-range" in finding_ids
     assert "route.risk.executable-line-range" in finding_ids
@@ -232,6 +249,20 @@ def _check_status(trace: dict[str, Any], check_id: str) -> str:
         if item["id"] == check_id:
             return str(item["status"])
     raise AssertionError(f"missing judge checklist item: {check_id}")
+
+
+def _feedback_signal(trace: dict[str, Any], reason: str) -> dict[str, Any]:
+    for signal in trace["feedbackSignals"]:
+        if signal["reason"] == reason:
+            return signal
+    raise AssertionError(f"missing feedback signal: {reason}")
+
+
+def _feedback_signal_for_risk(trace: dict[str, Any], risk_kind: str) -> dict[str, Any]:
+    for signal in trace["feedbackSignals"]:
+        if signal["riskKind"] == risk_kind:
+            return signal
+    raise AssertionError(f"missing feedback signal for risk: {risk_kind}")
 
 
 def _prime_event() -> dict[str, Any]:
