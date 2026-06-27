@@ -30,7 +30,7 @@ def test_compact_render_uses_asp_graph_frontier_contract() -> None:
     assert "I=item:fn(collect_actions)@src/cli.py:10:20!code" in compact
     assert "H=hot:call(command_intent)@src/cli.py:24:28!code" in compact
     assert "G>{" in compact and "Q:matches" in compact and "O:selects" in compact
-    assert "Q>{I:matches}" in compact
+    assert "Q>{O:matches,I:matches}" in compact
     assert "O>{" in compact and "T:covers" in compact
     assert "\nrank=" in compact
     assert "\nfrontier=" in compact
