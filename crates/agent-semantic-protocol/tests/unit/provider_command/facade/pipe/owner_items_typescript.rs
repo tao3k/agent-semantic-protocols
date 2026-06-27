@@ -161,6 +161,50 @@ fn typescript_item_skeleton_query_materializes_structural_selector_without_provi
 }
 
 #[test]
+fn typescript_ts_scheme_query_code_materializes_without_provider() {
+    let root = temp_project_root("query-typescript-ts-scheme-code");
+    let bin_dir = root.join(".bin");
+    let marker = root.join("provider-called");
+    std::fs::create_dir_all(root.join("packages/effect/src")).expect("create source");
+    std::fs::write(
+        root.join("packages/effect/src/Fiber.ts"),
+        "export interface Fiber {\n  readonly id: number\n}\n\nexport interface Queue {\n  readonly size: number\n}\n",
+    )
+    .expect("write source");
+    write_marker_provider(&bin_dir, "ts-harness", &marker);
+    write_activation(&root, &[provider("typescript", Vec::new())]);
+
+    let output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args([
+            "typescript",
+            "query",
+            "--selector",
+            "ts://packages/effect/src/Fiber.ts#item/interface/Fiber",
+            "--workspace",
+            ".",
+            "--code",
+        ])
+        .output()
+        .expect("run asp typescript ts-scheme query");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    assert!(stdout.contains("export interface Fiber"), "{stdout}");
+    assert!(!stdout.contains("export interface Queue"), "{stdout}");
+    assert!(
+        !marker.exists(),
+        "TypeScript ts:// structural query should not spawn provider"
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn typescript_owner_items_prefers_selector_with_more_query_axis_coverage() {
     let root = temp_project_root("search-owner-typescript-axis-coverage");
     let bin_dir = root.join(".bin");

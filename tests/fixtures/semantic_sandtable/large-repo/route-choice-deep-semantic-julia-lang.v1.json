@@ -1,0 +1,187 @@
+{
+  "schemaVersion": "1",
+  "id": "route-choice-deep-semantic-julia-lang",
+  "title": "Large-repo route choice fixture for JuliaLang/julia",
+  "purpose": "Validate that Julia search reasoning starts from known owner and symbol evidence, not prime or executable line selectors.",
+  "language": "julia",
+  "repo": "JuliaLang/julia",
+  "source": "sandtable-simulated",
+  "globalGates": {
+    "firstRouteIsPrime": false,
+    "unnecessaryPrimeCount": 0,
+    "fullFileReadCount": 0,
+    "lineRangeExecutableSelectorCount": 0,
+    "queryCodeRequiresExact": true,
+    "orgArtifactByDefault": false
+  },
+  "cases": [
+    {
+      "id": "julia-compiler-typeinf-abstract-call-flow",
+      "intent": "Trace compiler inference from typeinf entrypoints into abstract-call dispatch without scanning compiler files by line windows.",
+      "givenEvidence": {
+        "repo": "JuliaLang/julia",
+        "language": "julia",
+        "ownerScopes": [
+          "base/compiler/typeinfer.jl",
+          "base/compiler/abstractinterpretation.jl"
+        ],
+        "symbols": [
+          "typeinf_ext",
+          "abstract_call_gf_by_type",
+          "InferenceState",
+          "MethodMatch"
+        ]
+      },
+      "routeExpectation": {
+        "evidenceState": "known-owner+symbol",
+        "allowedFirstRoutes": [
+          "owner-skeleton",
+          "symbol-skeleton",
+          "syntax-fact-query"
+        ],
+        "forbiddenFirstRoutes": [
+          "search-prime",
+          "full-file-read",
+          "direct-source-read"
+        ],
+        "requiredRejectedRoutes": [
+          "search-prime",
+          "full-file-read",
+          "line-selector-code"
+        ],
+        "recommendedNext": "owner-skeleton",
+        "queryCodeRequiresExact": true,
+        "requireNoExecutableLineRange": true
+      },
+      "requiredFacts": [
+        "typeInferenceEntrypoint",
+        "abstractCallDispatch",
+        "inferenceStateMutation",
+        "methodMatchResolution"
+      ],
+      "expectedGoldSelectors": [
+        "julia://base/compiler/typeinfer.jl#item/function/typeinf_ext",
+        "julia://base/compiler/abstractinterpretation.jl#item/function/abstract_call_gf_by_type",
+        "julia://base/compiler/inferenceresult.jl#item/struct/InferenceResult"
+      ],
+      "metrics": {
+        "commandBudgetMax": 6,
+        "firstRouteIsPrime": false,
+        "unnecessaryPrimeCount": 0,
+        "fullFileReadCount": 0,
+        "lineRangeExecutableSelectorCount": 0,
+        "ownerSkeletonCountMin": 1,
+        "syntaxFactQueryCountMin": 1,
+        "capsuleProjectionCountMin": 1
+      },
+      "simulatedPacket": {
+        "evidenceState": "known-owner+symbol",
+        "routeGraph": [
+          {
+            "route": "owner-skeleton",
+            "reason": "compiler owner files are already known"
+          },
+          {
+            "route": "syntax-fact-query",
+            "reason": "inference behavior needs compact call and mutation facts"
+          }
+        ],
+        "actionFrontier": [
+          "owner-skeleton:base/compiler/typeinfer.jl",
+          "symbol-skeleton:typeinf_ext",
+          "syntax-fact-query:abstract_call_gf_by_type InferenceState"
+        ],
+        "recommendedNext": "owner-skeleton:base/compiler/typeinfer.jl",
+        "avoid": [
+          "search-prime",
+          "full-file-read",
+          "line-selector-code"
+        ]
+      }
+    },
+    {
+      "id": "julia-task-scheduler-channel-wakeup-flow",
+      "intent": "Trace task scheduling, channel wakeups, and runnable queue transitions using owner-local Julia parser facts.",
+      "givenEvidence": {
+        "repo": "JuliaLang/julia",
+        "language": "julia",
+        "ownerScopes": [
+          "base/task.jl",
+          "base/channels.jl"
+        ],
+        "symbols": [
+          "schedule",
+          "wait",
+          "Channel",
+          "notify"
+        ]
+      },
+      "routeExpectation": {
+        "evidenceState": "known-owner+symbol",
+        "allowedFirstRoutes": [
+          "owner-skeleton",
+          "symbol-skeleton",
+          "flow-capsule"
+        ],
+        "forbiddenFirstRoutes": [
+          "search-prime",
+          "full-file-read",
+          "direct-source-read"
+        ],
+        "requiredRejectedRoutes": [
+          "search-prime",
+          "full-file-read",
+          "line-selector-code"
+        ],
+        "recommendedNext": "symbol-skeleton",
+        "queryCodeRequiresExact": true,
+        "requireNoExecutableLineRange": true
+      },
+      "requiredFacts": [
+        "taskSchedule",
+        "waitQueueWakeup",
+        "channelPutTake",
+        "notifyCondition"
+      ],
+      "expectedGoldSelectors": [
+        "julia://base/task.jl#item/function/schedule",
+        "julia://base/task.jl#item/function/wait",
+        "julia://base/channels.jl#item/struct/Channel"
+      ],
+      "metrics": {
+        "commandBudgetMax": 6,
+        "firstRouteIsPrime": false,
+        "unnecessaryPrimeCount": 0,
+        "fullFileReadCount": 0,
+        "lineRangeExecutableSelectorCount": 0,
+        "ownerSkeletonCountMin": 1,
+        "syntaxFactQueryCountMin": 1,
+        "runtimeFlowCapsuleCountMin": 1
+      },
+      "simulatedPacket": {
+        "evidenceState": "known-owner+symbol",
+        "routeGraph": [
+          {
+            "route": "symbol-skeleton",
+            "reason": "schedule/wait/Channel symbols identify the scheduler path"
+          },
+          {
+            "route": "flow-capsule",
+            "reason": "wakeups require compact control-flow and call edges"
+          }
+        ],
+        "actionFrontier": [
+          "symbol-skeleton:schedule",
+          "owner-skeleton:base/task.jl",
+          "flow-capsule:task-channel-wakeup"
+        ],
+        "recommendedNext": "symbol-skeleton:schedule",
+        "avoid": [
+          "search-prime",
+          "full-file-read",
+          "line-selector-code"
+        ]
+      }
+    }
+  ]
+}

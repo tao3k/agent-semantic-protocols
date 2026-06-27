@@ -66,7 +66,7 @@ reason=owner-item-selector-ready\n",
         "{stdout}"
     );
     assert!(
-        stdout.contains("sourceLocatorHint=src/checker/types.ss:1:1"),
+        stdout.contains("sourceLocatorHint=src/checker/types.ss:1:4"),
         "{stdout}"
     );
     assert!(
@@ -74,7 +74,7 @@ reason=owner-item-selector-ready\n",
         "{stdout}"
     );
     assert!(
-        stdout.contains("nextCommand=asp gerbil-scheme query --selector src/checker/types.ss:1:1 --workspace . --code"),
+        stdout.contains("nextCommand=asp gerbil-scheme query --from-hook query-code --selector 'gerbil-scheme://src/checker/types.ss#item/def/type-compatible?' --workspace . --code"),
         "{stdout}"
     );
     assert!(
@@ -91,6 +91,58 @@ reason=owner-item-selector-ready\n",
             .expect("stderr")
             .contains("provider-owned-owner-items"),
         "Gerbil owner-items should not spawn the language provider"
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn gerbil_structural_selector_query_materializes_inline_without_provider() {
+    let root = temp_project_root("query-gerbil-structural-selector-inline");
+    let bin_dir = root.join(".bin");
+    std::fs::create_dir_all(root.join("src/checker")).expect("create source");
+    std::fs::write(
+        root.join("src/checker/types.ss"),
+        "(def (type-compatible? actual expected)\n  (equal? actual expected))\n\n(type-compatible? 'a 'a)\n",
+    )
+    .expect("write source");
+    write_stdout_stderr_provider(&bin_dir, "gslph", "", "provider-owned-structural-query\n");
+    write_activation(&root, &[provider("gerbil-scheme", Vec::new())]);
+
+    let output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args([
+            "gerbil-scheme",
+            "query",
+            "--selector",
+            "gerbil-scheme://src/checker/types.ss#item/def/type-compatible?",
+            "--workspace",
+            ".",
+            "--code",
+        ])
+        .output()
+        .expect("run asp gerbil structural query");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    assert!(
+        stdout.contains("(def (type-compatible? actual expected)"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("  (equal? actual expected)"), "{stdout}");
+    assert!(
+        !stdout.contains("(type-compatible? 'a 'a)"),
+        "structural def selector should not fall through to call matches: {stdout}"
+    );
+    assert!(
+        !String::from_utf8(output.stderr)
+            .expect("stderr")
+            .contains("provider-owned-structural-query"),
+        "Gerbil structural selector query should stay in the inline parser"
     );
     let _ = std::fs::remove_dir_all(root);
 }
@@ -334,7 +386,7 @@ reason=owner-item-selector-ready\n",
         "{stdout}"
     );
     assert!(
-        stdout.contains("nextCommand=asp gerbil-scheme query --selector src/api/types.ssi:1:1 --workspace . --code"),
+        stdout.contains("nextCommand=asp gerbil-scheme query --from-hook query-code --selector 'gerbil-scheme://src/api/types.ssi#item/struct/required-extension' --workspace . --code"),
         "{stdout}"
     );
     assert!(
@@ -577,7 +629,7 @@ reason=owner-item-selector-ready\n",
     );
     assert!(
         stdout.contains(
-            "nextCommand=asp gerbil-scheme query --selector gerbil.pkg:1:1 --workspace . --code"
+            "nextCommand=asp gerbil-scheme query --from-hook query-code --selector 'gerbil-scheme://gerbil.pkg#item/package/gerbil.pkg' --workspace . --code"
         ),
         "{stdout}"
     );

@@ -9,14 +9,26 @@ from typing import Any
 REPO_ROOT = Path(__file__).resolve().parents[3]
 FIXTURE_DIR = REPO_ROOT / "tests" / "fixtures" / "semantic_sandtable" / "large-repo"
 FAMILY_FILES = {
+    "julia": FIXTURE_DIR / "route-choice-deep-semantic-julia-lang.v1.json",
+    "python": FIXTURE_DIR / "route-choice-deep-semantic-python-cpython.v1.json",
     "rust": FIXTURE_DIR / "route-choice-deep-semantic-rust-lang.v1.json",
     "typescript": FIXTURE_DIR / "route-choice-deep-semantic-effect-ts.v1.json",
 }
 EXPECTED_CASE_IDS = {
+    "cpython-asyncio-taskgroup-create-task-cancellation-flow",
+    "cpython-importlib-metadata-distribution-entry-points-flow",
+    "julia-compiler-typeinf-abstract-call-flow",
+    "julia-task-scheduler-channel-wakeup-flow",
     "rust-lang-core-array-const-generic-unsafe-layout",
     "rust-lang-rustc-borrowck-live-long-enough-diagnostic",
     "effect-layer-memomap-scope-finalizer-flow",
     "effect-fiberruntime-interrupt-async-runtime-flow",
+}
+SELECTOR_PREFIXES = {
+    "julia": "julia://",
+    "python": "python://",
+    "rust": "rust://",
+    "typescript": "ts://",
 }
 LOCAL_ABSOLUTE_PATH = re.compile(r"(^|[\s\"'=])/(Users|home|tmp|var|private|Volumes)/")
 LINE_RANGE_SELECTOR = re.compile(r":[0-9]+(?::|-)[0-9]+$")
@@ -73,10 +85,17 @@ def test_large_repo_route_choice_family_covers_required_cases() -> None:
 
     assert {case["id"] for _, _, case in cases} == EXPECTED_CASE_IDS
     assert {family["repo"] for _, family, _ in cases} == {
+        "JuliaLang/julia",
         "rust-lang/rust",
+        "python/cpython",
         "Effect-TS/effect",
     }
-    assert {language for language, _, _ in cases} == {"rust", "typescript"}
+    assert {language for language, _, _ in cases} == {
+        "julia",
+        "python",
+        "rust",
+        "typescript",
+    }
 
 
 def test_large_repo_route_choice_forbids_prime_full_read_and_line_selectors() -> None:
@@ -108,7 +127,7 @@ def test_large_repo_route_choice_forbids_prime_full_read_and_line_selectors() ->
 
 def test_large_repo_route_choice_uses_structural_gold_selectors() -> None:
     for language, _, case in _all_cases():
-        selector_prefix = "rust://" if language == "rust" else "ts://"
+        selector_prefix = SELECTOR_PREFIXES[language]
         selectors = case["expectedGoldSelectors"]
 
         assert selectors

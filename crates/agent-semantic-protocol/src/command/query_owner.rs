@@ -15,6 +15,9 @@ use agent_semantic_tree_sitter::{
 use syn::spanned::Spanned;
 use tree_sitter::StreamingIterator;
 
+use super::query_owner_item::{
+    OwnerItem, collect_gerbil_query_owner_items, owner_item_matches_request,
+};
 use super::query_owner_structural_selector::parse_structural_owner_query;
 
 pub(super) fn run_asp_fast_owner_query_command(
@@ -41,6 +44,8 @@ pub(super) fn run_asp_fast_owner_query_command(
             return Ok(true);
         }
         collect_syn_rust_owner_items(&source, &path)?
+    } else if language_id == "gerbil-scheme" {
+        collect_gerbil_query_owner_items(&source)
     } else {
         let Some(items) = collect_tree_sitter_owner_items(language_id, &source, &path)? else {
             render_non_source_owner_query(&request, &path, project_root, locator_root, &source)?;
@@ -50,7 +55,14 @@ pub(super) fn run_asp_fast_owner_query_command(
     };
     let matches = items
         .iter()
-        .filter(|item| item.name == request.term)
+        .filter(|item| {
+            owner_item_matches_request(
+                item,
+                &request.language_id,
+                &request.term,
+                request.kind.as_deref(),
+            )
+        })
         .collect::<Vec<_>>();
     if language_id == "python" && matches.is_empty() {
         if let Some(imported) =
@@ -59,7 +71,14 @@ pub(super) fn run_asp_fast_owner_query_command(
             let imported_matches = imported
                 .items
                 .iter()
-                .filter(|item| item.name == request.term)
+                .filter(|item| {
+                    owner_item_matches_request(
+                        item,
+                        &request.language_id,
+                        &request.term,
+                        request.kind.as_deref(),
+                    )
+                })
                 .collect::<Vec<_>>();
             if !imported_matches.is_empty() {
                 if request.code {
@@ -102,6 +121,7 @@ pub(super) fn run_asp_fast_owner_query_command(
 struct OwnerQueryRequest {
     language_id: String,
     owner_path: PathBuf,
+    kind: Option<String>,
     term: String,
     names_only: bool,
     code: bool,
@@ -110,8 +130,10 @@ struct OwnerQueryRequest {
 
 impl OwnerQueryRequest {
     fn parse(language_id: &str, args: &[String]) -> Option<Self> {
-        if !matches!(language_id, "rust" | "typescript" | "python" | "julia")
-            || !matches!(args.first().map(String::as_str), Some("query"))
+        if !matches!(
+            language_id,
+            "rust" | "typescript" | "python" | "julia" | "gerbil-scheme"
+        ) || !matches!(args.first().map(String::as_str), Some("query"))
         {
             return None;
         }
@@ -141,6 +163,7 @@ impl OwnerQueryRequest {
         Some(Self {
             language_id: language_id.to_string(),
             owner_path: PathBuf::from(owner_path),
+            kind: None,
             term,
             names_only: args.iter().any(|arg| arg == "--names-only"),
             code: args.iter().any(|arg| arg == "--code"),
@@ -149,27 +172,25 @@ impl OwnerQueryRequest {
     }
 
     fn parse_structural_selector(language_id: &str, args: &[String]) -> Option<Self> {
-        let from_hook = arg_value(args, "--from-hook")?;
         let selector = arg_value(args, "--selector")?;
+        let from_hook = arg_value(args, "--from-hook").unwrap_or_else(|| {
+            if args.iter().any(|arg| arg == "--code") {
+                "query-code"
+            } else {
+                "syntax-outline"
+            }
+        });
         let structural = parse_structural_owner_query(language_id, from_hook, selector)?;
         Some(Self {
             language_id: language_id.to_string(),
             owner_path: structural.owner_path,
+            kind: structural.kind,
             term: structural.term,
             names_only: args.iter().any(|arg| arg == "--names-only"),
             code: args.iter().any(|arg| arg == "--code"),
             projection: structural.projection,
         })
     }
-}
-
-#[derive(Debug)]
-struct OwnerItem {
-    name: String,
-    kind: &'static str,
-    syntax_node: &'static str,
-    start_line: usize,
-    end_line: usize,
 }
 
 struct ImportedOwnerItems {

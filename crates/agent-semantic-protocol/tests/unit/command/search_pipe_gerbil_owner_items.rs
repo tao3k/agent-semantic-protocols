@@ -61,7 +61,7 @@ fn gerbil_owner_items_large_source_stays_inline_and_filters_short_noise() {
     );
     assert!(
         output.contains(
-            "nextCommand=asp gerbil-scheme query --selector src/gerbil/compiler/driver.ss:2:2 --workspace . --code"
+            "nextCommand=asp gerbil-scheme query --from-hook query-code --selector 'gerbil-scheme://src/gerbil/compiler/driver.ss#item/def/compile-module' --workspace . --code"
         ),
         "{output}"
     );

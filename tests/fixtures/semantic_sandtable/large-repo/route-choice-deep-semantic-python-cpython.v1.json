@@ -1,0 +1,186 @@
+{
+  "schemaVersion": "1",
+  "id": "route-choice-deep-semantic-python-cpython",
+  "title": "Large-repo route choice fixture for CPython",
+  "purpose": "Validate that Python search reasoning starts from known owner and symbol evidence, not prime or executable line selectors.",
+  "language": "python",
+  "repo": "python/cpython",
+  "source": "sandtable-simulated",
+  "globalGates": {
+    "firstRouteIsPrime": false,
+    "unnecessaryPrimeCount": 0,
+    "fullFileReadCount": 0,
+    "lineRangeExecutableSelectorCount": 0,
+    "queryCodeRequiresExact": true,
+    "orgArtifactByDefault": false
+  },
+  "cases": [
+    {
+      "id": "cpython-asyncio-taskgroup-create-task-cancellation-flow",
+      "intent": "Trace asyncio TaskGroup task creation, cancellation propagation, and exception aggregation without reading whole asyncio owners.",
+      "givenEvidence": {
+        "repo": "python/cpython",
+        "language": "python",
+        "ownerScopes": [
+          "Lib/asyncio/taskgroups.py",
+          "Lib/asyncio/tasks.py"
+        ],
+        "symbols": [
+          "TaskGroup",
+          "create_task",
+          "CancelledError",
+          "ExceptionGroup"
+        ]
+      },
+      "routeExpectation": {
+        "evidenceState": "known-owner+symbol",
+        "allowedFirstRoutes": [
+          "owner-skeleton",
+          "symbol-skeleton",
+          "flow-capsule"
+        ],
+        "forbiddenFirstRoutes": [
+          "search-prime",
+          "full-file-read",
+          "direct-source-read"
+        ],
+        "requiredRejectedRoutes": [
+          "search-prime",
+          "full-file-read",
+          "line-selector-code"
+        ],
+        "recommendedNext": "owner-skeleton",
+        "queryCodeRequiresExact": true,
+        "requireNoExecutableLineRange": true
+      },
+      "requiredFacts": [
+        "taskGroupCreateTask",
+        "cancelScopePropagation",
+        "exceptionAggregation",
+        "asyncContextExit"
+      ],
+      "expectedGoldSelectors": [
+        "python://Lib/asyncio/taskgroups.py#item/class/TaskGroup",
+        "python://Lib/asyncio/taskgroups.py#item/function/TaskGroup.create_task",
+        "python://Lib/asyncio/tasks.py#item/function/create_task"
+      ],
+      "metrics": {
+        "commandBudgetMax": 6,
+        "firstRouteIsPrime": false,
+        "unnecessaryPrimeCount": 0,
+        "fullFileReadCount": 0,
+        "lineRangeExecutableSelectorCount": 0,
+        "ownerSkeletonCountMin": 1,
+        "syntaxFactQueryCountMin": 1,
+        "capsuleProjectionCountMin": 1
+      },
+      "simulatedPacket": {
+        "evidenceState": "known-owner+symbol",
+        "routeGraph": [
+          {
+            "route": "owner-skeleton",
+            "reason": "asyncio owners and symbols are already known"
+          },
+          {
+            "route": "flow-capsule",
+            "reason": "cancellation behavior needs compact async control-flow facts"
+          }
+        ],
+        "actionFrontier": [
+          "owner-skeleton:Lib/asyncio/taskgroups.py",
+          "symbol-skeleton:TaskGroup.create_task",
+          "flow-capsule:asyncio-taskgroup-cancel"
+        ],
+        "recommendedNext": "owner-skeleton:Lib/asyncio/taskgroups.py",
+        "avoid": [
+          "search-prime",
+          "full-file-read",
+          "line-selector-code"
+        ]
+      }
+    },
+    {
+      "id": "cpython-importlib-metadata-distribution-entry-points-flow",
+      "intent": "Trace importlib.metadata Distribution discovery and entry point selection using parser-owned owner and symbol routes.",
+      "givenEvidence": {
+        "repo": "python/cpython",
+        "language": "python",
+        "ownerScopes": [
+          "Lib/importlib/metadata/__init__.py"
+        ],
+        "symbols": [
+          "Distribution",
+          "entry_points",
+          "packages_distributions",
+          "Prepared"
+        ]
+      },
+      "routeExpectation": {
+        "evidenceState": "known-owner+symbol",
+        "allowedFirstRoutes": [
+          "owner-skeleton",
+          "symbol-skeleton",
+          "syntax-fact-query"
+        ],
+        "forbiddenFirstRoutes": [
+          "search-prime",
+          "full-file-read",
+          "direct-source-read"
+        ],
+        "requiredRejectedRoutes": [
+          "search-prime",
+          "full-file-read",
+          "line-selector-code"
+        ],
+        "recommendedNext": "symbol-skeleton",
+        "queryCodeRequiresExact": true,
+        "requireNoExecutableLineRange": true
+      },
+      "requiredFacts": [
+        "distributionDiscovery",
+        "entryPointSelection",
+        "packageNameMapping",
+        "metadataNormalization"
+      ],
+      "expectedGoldSelectors": [
+        "python://Lib/importlib/metadata/__init__.py#item/class/Distribution",
+        "python://Lib/importlib/metadata/__init__.py#item/function/entry_points",
+        "python://Lib/importlib/metadata/__init__.py#item/function/packages_distributions"
+      ],
+      "metrics": {
+        "commandBudgetMax": 6,
+        "firstRouteIsPrime": false,
+        "unnecessaryPrimeCount": 0,
+        "fullFileReadCount": 0,
+        "lineRangeExecutableSelectorCount": 0,
+        "ownerSkeletonCountMin": 1,
+        "syntaxFactQueryCountMin": 1,
+        "diagnosticCapsuleCountMin": 1
+      },
+      "simulatedPacket": {
+        "evidenceState": "known-owner+symbol",
+        "routeGraph": [
+          {
+            "route": "symbol-skeleton",
+            "reason": "symbols identify the target importlib metadata API surface"
+          },
+          {
+            "route": "syntax-fact-query",
+            "reason": "class/function boundaries are enough before exact code"
+          }
+        ],
+        "actionFrontier": [
+          "symbol-skeleton:Distribution",
+          "owner-skeleton:Lib/importlib/metadata/__init__.py",
+          "syntax-fact-query:entry_points packages_distributions"
+        ],
+        "recommendedNext": "symbol-skeleton:Distribution",
+        "avoid": [
+          "search-prime",
+          "full-file-read",
+          "line-selector-code"
+        ]
+      }
+    }
+  ]
+}

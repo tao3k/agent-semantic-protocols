@@ -5,11 +5,11 @@ use std::path::{Component, Path, PathBuf};
 
 #[derive(Debug, Clone)]
 pub(crate) struct GerbilOwnerItem {
-    name: String,
-    kind: &'static str,
-    start_line: usize,
-    end_line: usize,
-    language_kind: &'static str,
+    pub(crate) name: String,
+    pub(crate) kind: &'static str,
+    pub(crate) start_line: usize,
+    pub(crate) end_line: usize,
+    pub(crate) language_kind: &'static str,
 }
 
 pub(super) fn run_inline_gerbil_owner_items_query(
@@ -66,15 +66,17 @@ fn is_gerbil_owner_path(path: &Path) -> bool {
 
 pub(crate) fn collect_gerbil_owner_items(source: &str) -> Vec<GerbilOwnerItem> {
     let mut items = Vec::new();
-    for (line_index, line) in source.lines().enumerate() {
+    let lines: Vec<&str> = source.lines().collect();
+    for (line_index, line) in lines.iter().enumerate() {
         let line_no = line_index + 1;
         let trimmed = line.trim_start();
+        let form_end_line = gerbil_top_level_form_end_line(&lines, line_index);
         if trimmed.starts_with("(package:") {
             items.push(GerbilOwnerItem {
                 name: "gerbil.pkg".to_string(),
                 kind: "package",
                 start_line: line_no,
-                end_line: line_no,
+                end_line: form_end_line,
                 language_kind: "package-form",
             });
         }
@@ -83,7 +85,7 @@ pub(crate) fn collect_gerbil_owner_items(source: &str) -> Vec<GerbilOwnerItem> {
                 name,
                 kind: definition_kind(head),
                 start_line: line_no,
-                end_line: line_no,
+                end_line: form_end_line,
                 language_kind: "definition",
             });
         }
@@ -93,7 +95,7 @@ pub(crate) fn collect_gerbil_owner_items(source: &str) -> Vec<GerbilOwnerItem> {
                     name,
                     kind: "export",
                     start_line: line_no,
-                    end_line: line_no,
+                    end_line: form_end_line,
                     language_kind: "module-export",
                 });
             }
@@ -109,6 +111,49 @@ pub(crate) fn collect_gerbil_owner_items(source: &str) -> Vec<GerbilOwnerItem> {
         }
     }
     dedupe_items(items)
+}
+
+fn gerbil_top_level_form_end_line(lines: &[&str], start_index: usize) -> usize {
+    let mut depth = 0usize;
+    let mut saw_form = false;
+    let mut in_string = false;
+    let mut escaped = false;
+    for (line_index, line) in lines.iter().enumerate().skip(start_index) {
+        for ch in line.chars() {
+            if in_string {
+                if escaped {
+                    escaped = false;
+                    continue;
+                }
+                match ch {
+                    '\\' => escaped = true,
+                    '"' => in_string = false,
+                    _ => {}
+                }
+                continue;
+            }
+            match ch {
+                ';' => break,
+                '"' => in_string = true,
+                '(' => {
+                    depth += 1;
+                    saw_form = true;
+                }
+                ')' if depth > 0 => {
+                    depth -= 1;
+                    if saw_form && depth == 0 {
+                        return line_index + 1;
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    if saw_form {
+        lines.len().max(start_index + 1)
+    } else {
+        start_index + 1
+    }
 }
 
 fn gerbil_definition_item(line: &str) -> Option<(&str, String)> {
@@ -249,12 +294,7 @@ pub(crate) fn render_inline_gerbil_owner_items(
         shown_items.len(),
     ));
     for (index, item) in shown_items.iter().enumerate() {
-        let structural_selector = format!(
-            "gerbil-scheme://{}#item/{}/{}",
-            owner,
-            item.kind,
-            item.name.replace(char::is_whitespace, "-")
-        );
+        let structural_selector = gerbil_owner_item_structural_selector(owner, item);
         output.push_str(&format!(
             "{}=item:symbol({})@{}!syntax\n",
             item_alias(index),
@@ -264,12 +304,7 @@ pub(crate) fn render_inline_gerbil_owner_items(
     }
     for item in &shown_items {
         let source_locator_hint = format!("{}:{}:{}", owner, item.start_line, item.end_line);
-        let structural_selector = format!(
-            "gerbil-scheme://{}#item/{}/{}",
-            owner,
-            item.kind,
-            item.name.replace(char::is_whitespace, "-")
-        );
+        let structural_selector = gerbil_owner_item_structural_selector(owner, item);
         output.push_str(&format!(
             "|item kind={} name={} structuralSelector={} displayLineRange={}:{} sourceLocatorHint={} source=rust-inline languageKind={} projection=outline codePolicy=code-after-exact-selector\n",
             item.kind,
@@ -282,14 +317,24 @@ pub(crate) fn render_inline_gerbil_owner_items(
         ));
     }
     if let Some(first) = shown_items.first() {
+        let structural_selector = gerbil_owner_item_structural_selector(owner, first);
         output.push_str(&format!(
-            "nextCommand=asp gerbil-scheme query --selector {}:{}:{} --workspace . --code\n",
-            owner, first.start_line, first.end_line
+            "nextCommand=asp gerbil-scheme query --from-hook query-code --selector '{}' --workspace . --code\n",
+            structural_selector
         ));
     }
     output.push_str("reason=owner-item-selector-ready\n");
     output.push_str("|note kind=runtime-prefilter message=owner-items-rust-inline-gerbil\n");
     output
+}
+
+pub(crate) fn gerbil_owner_item_structural_selector(owner: &str, item: &GerbilOwnerItem) -> String {
+    format!(
+        "gerbil-scheme://{}#item/{}/{}",
+        owner,
+        item.kind,
+        item.name.replace(char::is_whitespace, "-")
+    )
 }
 
 fn owner_item_kind_rank(kind: &str) -> u8 {
