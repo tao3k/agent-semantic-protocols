@@ -1,0 +1,190 @@
+{
+  "id": "large-repo.route-choice-deep-semantic-effect-ts",
+  "title": "Large TypeScript monorepo route choice sandtable",
+  "language": "typescript",
+  "repo": "Effect-TS/effect",
+  "schemaVersion": "semantic-sandtable-large-repo-route-choice.v1",
+  "source": "user-attached-sandtable-simulation",
+  "purpose": "Validate that package, owner, and symbol anchors route to public-to-internal topology, owner skeletons, and runtime capsules before prime or full-file reads.",
+  "cases": [
+    {
+      "id": "effect-layer-memomap-scope-finalizer-flow",
+      "intent": "Trace Layer MemoMap caching, Scope finalizer registration, scope closing, and FiberRefsPatch propagation.",
+      "givenEvidence": {
+        "repo": "Effect-TS/effect",
+        "language": "typescript",
+        "package": "packages/effect",
+        "symbols": [
+          "Layer",
+          "MemoMap",
+          "Scope.Finalizer",
+          "FiberRefsPatch",
+          "diffFiberRefs"
+        ],
+        "likelyOwners": [
+          "packages/effect/src/internal/layer.ts"
+        ]
+      },
+      "routeExpectation": {
+        "evidenceState": "known-package+symbol+likely-owner",
+        "allowedFirstRoutes": [
+          "symbol-skeleton",
+          "owner-skeleton",
+          "flow-capsule"
+        ],
+        "forbiddenFirstRoutes": [
+          "search-prime",
+          "full-file-read",
+          "direct-source-read"
+        ],
+        "requiredRejectedRoutes": [
+          "search-prime",
+          "full-file-read",
+          "line-selector-code"
+        ],
+        "recommendedNext": "owner-skeleton",
+        "queryCodeRequiresExact": true,
+        "requireNoExecutableLineRange": true
+      },
+      "requiredFacts": [
+        "memoMapValueType",
+        "scopeAddFinalizerExit",
+        "scopeClose",
+        "diffFiberRefs",
+        "makeBuilderSwitchCases"
+      ],
+      "expectedGoldSelectors": [
+        "ts://packages/effect/src/internal/layer.ts#class:MemoMapImpl/method:getOrElseMemoize",
+        "ts://packages/effect/src/internal/layer.ts#function:makeBuilder"
+      ],
+      "metrics": {
+        "commandBudgetMax": 6,
+        "firstRouteIsPrime": false,
+        "unnecessaryPrimeCount": 0,
+        "fullFileReadCount": 0,
+        "lineRangeExecutableSelectorCount": 0,
+        "ownerSkeletonCountMin": 1,
+        "syntaxFactQueryCountMin": 1,
+        "capsuleProjectionCountMin": 1
+      },
+      "simulatedPacket": {
+        "evidenceState": "known-package+symbol+likely-owner",
+        "routeGraph": [
+          {
+            "route": "owner-skeleton",
+            "reason": "internal layer owner is already a strong anchor"
+          },
+          {
+            "route": "flow-capsule",
+            "reason": "memoization and finalizer behavior needs compact control-flow facts"
+          }
+        ],
+        "actionFrontier": [
+          "owner-skeleton:packages/effect/src/internal/layer.ts",
+          "symbol-skeleton:MemoMap",
+          "flow-capsule:layer-memomap-scope"
+        ],
+        "recommendedNext": "owner-skeleton:packages/effect/src/internal/layer.ts",
+        "avoid": [
+          "search-prime",
+          "full-file-read",
+          "line-selector-code"
+        ]
+      }
+    },
+    {
+      "id": "effect-fiberruntime-interrupt-async-runtime-flow",
+      "intent": "Trace FiberRuntime interrupt propagation, async resume, cooperative yield, WindDown, children interruption, and supervisor hooks.",
+      "givenEvidence": {
+        "repo": "Effect-TS/effect",
+        "language": "typescript",
+        "package": "packages/effect",
+        "ownerPath": "packages/effect/src/internal/fiberRuntime.ts",
+        "symbols": [
+          "FiberRuntime",
+          "interrupt",
+          "evaluateEffect",
+          "drainQueue",
+          "runtimeFlags",
+          "children"
+        ]
+      },
+      "routeExpectation": {
+        "evidenceState": "known-package+owner+symbol",
+        "allowedFirstRoutes": [
+          "owner-skeleton",
+          "class-skeleton",
+          "runtime-flow-capsule"
+        ],
+        "forbiddenFirstRoutes": [
+          "search-prime",
+          "full-file-read",
+          "direct-source-read"
+        ],
+        "requiredRejectedRoutes": [
+          "search-prime",
+          "full-file-read",
+          "line-selector-code"
+        ],
+        "recommendedNext": "owner-skeleton",
+        "queryCodeRequiresExact": true,
+        "requireNoExecutableLineRange": true
+      },
+      "requiredFacts": [
+        "interruptSignalPath",
+        "queueDrainPath",
+        "evaluateEffectLoop",
+        "runtimeFlagsWindDown",
+        "supervisorResumeSuspend"
+      ],
+      "expectedGoldSelectors": [
+        "ts://packages/effect/src/internal/fiberRuntime.ts#class:FiberRuntime/method:tell",
+        "ts://packages/effect/src/internal/fiberRuntime.ts#class:FiberRuntime/method:processNewInterruptSignal",
+        "ts://packages/effect/src/internal/fiberRuntime.ts#class:FiberRuntime/method:sendInterruptSignalToAllChildren",
+        "ts://packages/effect/src/internal/fiberRuntime.ts#class:FiberRuntime/method:evaluateEffect"
+      ],
+      "metrics": {
+        "commandBudgetMax": 6,
+        "firstRouteIsPrime": false,
+        "unnecessaryPrimeCount": 0,
+        "fullFileReadCount": 0,
+        "lineRangeExecutableSelectorCount": 0,
+        "ownerSkeletonCountMin": 1,
+        "syntaxFactQueryCountMin": 1,
+        "runtimeFlowCapsuleCountMin": 1
+      },
+      "simulatedPacket": {
+        "evidenceState": "known-package+owner+symbol",
+        "routeGraph": [
+          {
+            "route": "owner-skeleton",
+            "reason": "fiberRuntime.ts is already known"
+          },
+          {
+            "route": "runtime-flow-capsule",
+            "reason": "interrupt, async resume, and runtime flag behavior needs compact flow facts"
+          }
+        ],
+        "actionFrontier": [
+          "owner-skeleton:packages/effect/src/internal/fiberRuntime.ts",
+          "class-skeleton:FiberRuntime",
+          "runtime-flow-capsule:fiber-interrupt-async"
+        ],
+        "recommendedNext": "owner-skeleton:packages/effect/src/internal/fiberRuntime.ts",
+        "avoid": [
+          "search-prime",
+          "full-file-read",
+          "line-selector-code"
+        ]
+      }
+    }
+  ],
+  "globalGates": {
+    "firstRouteIsPrime": false,
+    "unnecessaryPrimeCount": 0,
+    "fullFileReadCount": 0,
+    "lineRangeExecutableSelectorCount": 0,
+    "queryCodeRequiresExact": true,
+    "orgArtifactByDefault": false
+  }
+}

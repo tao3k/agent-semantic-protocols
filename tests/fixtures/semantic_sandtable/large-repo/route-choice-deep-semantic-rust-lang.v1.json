@@ -1,0 +1,190 @@
+{
+  "id": "large-repo.route-choice-deep-semantic-rust-lang",
+  "title": "Large Rust repository route choice sandtable",
+  "language": "rust",
+  "repo": "rust-lang/rust",
+  "schemaVersion": "semantic-sandtable-large-repo-route-choice.v1",
+  "source": "user-attached-sandtable-simulation",
+  "purpose": "Validate that rich owner, symbol, and diagnostic anchors route to parser-owned skeleton/topology projections before prime or code reads.",
+  "cases": [
+    {
+      "id": "rust-lang-core-array-const-generic-unsafe-layout",
+      "intent": "Find const fn functions in core::array/core::slice using const N and transmute/raw pointer layout changes; extract signatures and unsafe blocks.",
+      "givenEvidence": {
+        "repo": "rust-lang/rust",
+        "language": "rust",
+        "ownerScopes": [
+          "library/core/src/array",
+          "library/core/src/slice"
+        ],
+        "symbols": [
+          "const N: usize",
+          "transmute",
+          "transmute_unchecked",
+          "cast_array"
+        ]
+      },
+      "routeExpectation": {
+        "evidenceState": "known-owner+symbol",
+        "allowedFirstRoutes": [
+          "owner-skeleton",
+          "syntax-fact-query",
+          "scoped-owner-search"
+        ],
+        "forbiddenFirstRoutes": [
+          "search-prime",
+          "full-file-read",
+          "direct-source-read"
+        ],
+        "requiredRejectedRoutes": [
+          "search-prime",
+          "line-selector-code",
+          "full-file-read"
+        ],
+        "recommendedNext": "owner-skeleton",
+        "queryCodeRequiresExact": true,
+        "requireNoExecutableLineRange": true
+      },
+      "requiredFacts": [
+        "constGenericParam",
+        "constFn",
+        "unsafeOps",
+        "unsafeBlocks"
+      ],
+      "negativeControls": [
+        "const fn with pointer cast but no const N",
+        "const fn with raw pointer but no const generic"
+      ],
+      "expectedGoldSelectors": [
+        "rust://library/core/src/array/mod.rs#impl/[T;N]/method:each_ref",
+        "rust://library/core/src/array/mod.rs#impl/[T;N]/method:each_mut",
+        "rust://library/core/src/slice/mod.rs#impl/[T]/method:shift_right"
+      ],
+      "metrics": {
+        "commandBudgetMax": 6,
+        "firstRouteIsPrime": false,
+        "unnecessaryPrimeCount": 0,
+        "fullFileReadCount": 0,
+        "lineRangeExecutableSelectorCount": 0,
+        "ownerSkeletonCountMin": 1,
+        "syntaxFactQueryCountMin": 1,
+        "unsafeBlockProjectionCountMin": 1
+      },
+      "simulatedPacket": {
+        "evidenceState": "known-owner+symbol",
+        "routeGraph": [
+          {
+            "route": "owner-skeleton",
+            "reason": "owner scopes are already known"
+          },
+          {
+            "route": "syntax-fact-query",
+            "reason": "unsafe and const-generic facts are required before code"
+          }
+        ],
+        "actionFrontier": [
+          "owner-skeleton:library/core/src/array/mod.rs",
+          "owner-skeleton:library/core/src/slice/mod.rs",
+          "syntax-fact-query:const fn unsafe const N"
+        ],
+        "recommendedNext": "owner-skeleton:library/core/src/array/mod.rs",
+        "avoid": [
+          "search-prime",
+          "full-file-read",
+          "line-selector-code"
+        ]
+      }
+    },
+    {
+      "id": "rust-lang-rustc-borrowck-live-long-enough-diagnostic",
+      "intent": "Find the rustc_borrowck diagnostic path for borrowed value does not live long enough and identify the internal data structures that trigger it.",
+      "givenEvidence": {
+        "repo": "rust-lang/rust",
+        "language": "rust",
+        "ownerScope": "compiler/rustc_borrowck",
+        "exactString": "borrowed value does not live long enough",
+        "symbols": [
+          "BorrowData",
+          "BorrowExplanation",
+          "ConstraintCategory",
+          "RegionName"
+        ]
+      },
+      "routeExpectation": {
+        "evidenceState": "known-scope+diagnostic+symbol",
+        "allowedFirstRoutes": [
+          "scoped-rg",
+          "owner-skeleton",
+          "diagnostic-capsule"
+        ],
+        "forbiddenFirstRoutes": [
+          "search-prime",
+          "workspace-wide-fzf",
+          "full-file-read"
+        ],
+        "requiredRejectedRoutes": [
+          "search-prime",
+          "workspace-wide-fzf",
+          "line-selector-code"
+        ],
+        "recommendedNext": "scoped-rg",
+        "queryCodeRequiresExact": true,
+        "requireNoExecutableLineRange": true
+      },
+      "requiredFacts": [
+        "diagnosticCode",
+        "messageTemplate",
+        "diagnosticBuilder",
+        "businessEntrypoint",
+        "triggerDataStructures"
+      ],
+      "expectedGoldSelectors": [
+        "rust://compiler/rustc_borrowck/src/borrowck_errors.rs#impl/MirBorrowckCtxt/method:path_does_not_live_long_enough",
+        "rust://compiler/rustc_borrowck/src/diagnostics/conflict_errors.rs#function:report_local_value_does_not_live_long_enough",
+        "rust://compiler/rustc_borrowck/src/diagnostics/explain_borrow.rs#enum:BorrowExplanation"
+      ],
+      "metrics": {
+        "commandBudgetMax": 6,
+        "firstRouteIsPrime": false,
+        "unnecessaryPrimeCount": 0,
+        "fullFileReadCount": 0,
+        "lineRangeExecutableSelectorCount": 0,
+        "ownerSkeletonCountMin": 1,
+        "syntaxFactQueryCountMin": 1,
+        "diagnosticCapsuleCountMin": 1
+      },
+      "simulatedPacket": {
+        "evidenceState": "known-scope+diagnostic+symbol",
+        "routeGraph": [
+          {
+            "route": "scoped-rg",
+            "reason": "exact diagnostic text is known and bounded by compiler/rustc_borrowck"
+          },
+          {
+            "route": "diagnostic-capsule",
+            "reason": "diagnostic path needs message, builder, and trigger data facts"
+          }
+        ],
+        "actionFrontier": [
+          "scoped-rg:compiler/rustc_borrowck",
+          "owner-skeleton:compiler/rustc_borrowck/src/borrowck_errors.rs",
+          "diagnostic-capsule:E0597"
+        ],
+        "recommendedNext": "scoped-rg:compiler/rustc_borrowck",
+        "avoid": [
+          "search-prime",
+          "workspace-wide-fzf",
+          "line-selector-code"
+        ]
+      }
+    }
+  ],
+  "globalGates": {
+    "firstRouteIsPrime": false,
+    "unnecessaryPrimeCount": 0,
+    "fullFileReadCount": 0,
+    "lineRangeExecutableSelectorCount": 0,
+    "queryCodeRequiresExact": true,
+    "orgArtifactByDefault": false
+  }
+}
