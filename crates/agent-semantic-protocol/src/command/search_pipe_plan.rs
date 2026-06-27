@@ -502,6 +502,9 @@ pub(super) fn render_primary_frontier_actions_only(compact: &str) -> String {
         if is_graph_debug_line(line) {
             continue;
         }
+        if line.starts_with("avoid=") {
+            continue;
+        }
         if line.starts_with("Q=query:") {
             continue;
         }

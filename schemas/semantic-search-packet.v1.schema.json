@@ -168,6 +168,15 @@
     "searchSynthesis": {
       "$ref": "#/$defs/searchSynthesis"
     },
+    "routeGraph": {
+      "$ref": "#/$defs/routeGraph"
+    },
+    "actionFrontier": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/routeAction"
+      }
+    },
     "finder": {
       "$ref": "#/$defs/finder"
     },
@@ -318,6 +327,12 @@
           }
         }
       ]
+    },
+    "stringList": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
     },
     "fields": {
       "type": "object",
@@ -1233,30 +1248,30 @@
         "ownerPath": {
           "$ref": "#/$defs/projectPath"
         },
-  "read": {
-    "type": "string",
-    "description": "Compatibility source transport locator for exact graph/code frontier actions, formatted as project/path:start:end. This is not the semantic selector identity for syntax exploration.",
-    "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*):[1-9][0-9]*:[1-9][0-9]*$"
-  },
-  "structuralSelector": {
-    "$ref": "semantic-source-location.v1.schema.json#/$defs/structuralSelector"
-  },
-  "displayLineRange": {
-    "$ref": "semantic-source-location.v1.schema.json#/$defs/lineRange"
-  },
-  "sourceLocatorHint": {
-    "$ref": "semantic-source-location.v1.schema.json#/$defs/sourceLocator"
-  },
-  "projection": {
-    "$ref": "semantic-source-location.v1.schema.json#/$defs/projection"
-  },
-  "codePolicy": {
-    "$ref": "semantic-source-location.v1.schema.json#/$defs/codePolicy"
-  },
-  "fields": {
-    "$ref": "#/$defs/fields"
-  }
-}
+        "read": {
+          "type": "string",
+          "description": "Compatibility source transport locator for exact graph/code frontier actions, formatted as project/path:start:end. This is not the semantic selector identity for syntax exploration.",
+          "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*):[1-9][0-9]*:[1-9][0-9]*$"
+        },
+        "structuralSelector": {
+          "$ref": "semantic-source-location.v1.schema.json#/$defs/structuralSelector"
+        },
+        "displayLineRange": {
+          "$ref": "semantic-source-location.v1.schema.json#/$defs/lineRange"
+        },
+        "sourceLocatorHint": {
+          "$ref": "semantic-source-location.v1.schema.json#/$defs/sourceLocator"
+        },
+        "projection": {
+          "$ref": "semantic-source-location.v1.schema.json#/$defs/projection"
+        },
+        "codePolicy": {
+          "$ref": "semantic-source-location.v1.schema.json#/$defs/codePolicy"
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
     },
     "avoidNextAction": {
       "type": "object",
@@ -1303,12 +1318,12 @@
         "avoidNextActions"
       ],
       "properties": {
-      "reason": {
-        "enum": [
-          "no-candidates",
-          "query-too-broad"
-        ]
-      },
+        "reason": {
+          "enum": [
+            "no-candidates",
+            "query-too-broad"
+          ]
+        },
         "sourceTrace": {
           "type": "array",
           "items": {
@@ -1322,60 +1337,60 @@
             "$ref": "#/$defs/nextAction"
           }
         },
-      "avoidNextActions": {
-        "type": "array",
-        "items": {
-          "$ref": "#/$defs/avoidNextAction"
+        "avoidNextActions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/avoidNextAction"
+          }
+        },
+        "queryBudget": {
+          "$ref": "#/$defs/queryBudget"
         }
-      },
-      "queryBudget": {
-        "$ref": "#/$defs/queryBudget"
       }
-    }
-  },
-  "queryBudget": {
-    "type": "object",
-    "description": "Shared wrapper admission receipt for queries rejected before backend execution.",
-    "additionalProperties": false,
-    "required": [
-      "blocked",
-      "reason",
-      "termCount",
-      "genericTerms",
-      "refineHint"
-    ],
-    "properties": {
-      "blocked": {
-        "type": "boolean",
-        "const": true
-      },
-      "reason": {
-        "enum": [
-          "query-too-broad"
-        ]
-      },
-      "termCount": {
-        "type": "integer",
-        "minimum": 1
-      },
-      "genericTerms": {
-        "$ref": "#/$defs/stringList"
-      },
-      "specificTerms": {
-        "$ref": "#/$defs/stringList"
-      },
-      "refineHint": {
-        "type": "string",
-        "minLength": 1
-      },
-      "exampleCommand": {
-        "type": "string",
-        "minLength": 1
+    },
+    "queryBudget": {
+      "type": "object",
+      "description": "Shared wrapper admission receipt for queries rejected before backend execution.",
+      "additionalProperties": false,
+      "required": [
+        "blocked",
+        "reason",
+        "termCount",
+        "genericTerms",
+        "refineHint"
+      ],
+      "properties": {
+        "blocked": {
+          "type": "boolean",
+          "const": true
+        },
+        "reason": {
+          "enum": [
+            "query-too-broad"
+          ]
+        },
+        "termCount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "genericTerms": {
+          "$ref": "#/$defs/stringList"
+        },
+        "specificTerms": {
+          "$ref": "#/$defs/stringList"
+        },
+        "refineHint": {
+          "type": "string",
+          "minLength": 1
+        },
+        "exampleCommand": {
+          "type": "string",
+          "minLength": 1
+        }
       }
-    }
-  },
-  "runtimeCost": {
-    "type": "object",
+    },
+    "runtimeCost": {
+      "type": "object",
       "additionalProperties": false,
       "required": [
         "cacheStatus"
@@ -1746,25 +1761,25 @@
         "ownerPath": {
           "$ref": "#/$defs/projectPath"
         },
-  "location": {
-    "$ref": "#/$defs/location"
-  },
-  "structuralSelector": {
-    "$ref": "semantic-source-location.v1.schema.json#/$defs/structuralSelector"
-  },
-  "displayLineRange": {
-    "$ref": "semantic-source-location.v1.schema.json#/$defs/lineRange"
-  },
-  "sourceLocatorHint": {
-    "$ref": "semantic-source-location.v1.schema.json#/$defs/sourceLocator"
-  },
-  "projection": {
-    "$ref": "semantic-source-location.v1.schema.json#/$defs/projection"
-  },
-  "fields": {
-    "$ref": "#/$defs/fields"
-  }
-}
+        "location": {
+          "$ref": "#/$defs/location"
+        },
+        "structuralSelector": {
+          "$ref": "semantic-source-location.v1.schema.json#/$defs/structuralSelector"
+        },
+        "displayLineRange": {
+          "$ref": "semantic-source-location.v1.schema.json#/$defs/lineRange"
+        },
+        "sourceLocatorHint": {
+          "$ref": "semantic-source-location.v1.schema.json#/$defs/sourceLocator"
+        },
+        "projection": {
+          "$ref": "semantic-source-location.v1.schema.json#/$defs/projection"
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
     },
     "hit": {
       "type": "object",
@@ -1849,6 +1864,280 @@
           "$ref": "#/$defs/fields"
         }
       }
+    },
+    "routeGraph": {
+      "type": "object",
+      "description": "Agent-facing search route topology derived from current evidence. This is the machine-owned source for compact route render output.",
+      "additionalProperties": false,
+      "required": [
+        "profile",
+        "evidenceState",
+        "routes",
+        "chosenRouteId",
+        "actionFrontier"
+      ],
+      "properties": {
+        "profile": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "evidenceState": {
+          "$ref": "#/$defs/routeEvidenceState"
+        },
+        "routes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/routeDecision"
+          }
+        },
+        "chosenRouteId": {
+          "$ref": "#/$defs/routeId"
+        },
+        "actionFrontier": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9]*\\.[a-z][a-z0-9_-]*$"
+          }
+        },
+        "recommendedNext": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9]*\\.[a-z][a-z0-9_-]*$"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "omit": {
+          "$ref": "#/$defs/stringList"
+        },
+        "avoid": {
+          "$ref": "#/$defs/stringList"
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "routeDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "preconditions",
+        "projection",
+        "codePolicy"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/routeId"
+        },
+        "kind": {
+          "enum": [
+            "known-selector",
+            "known-owner",
+            "known-symbol",
+            "known-dependency",
+            "failure-frontier",
+            "broad-query",
+            "unknown-workspace",
+            "no-asp",
+            "custom"
+          ]
+        },
+        "preconditions": {
+          "$ref": "#/$defs/stringList"
+        },
+        "targetRole": {
+          "$ref": "#/$defs/targetRole"
+        },
+        "projection": {
+          "$ref": "#/$defs/routeProjection"
+        },
+        "codePolicy": {
+          "$ref": "#/$defs/routeCodePolicy"
+        },
+        "requiresExact": {
+          "type": "boolean"
+        },
+        "cost": {
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ]
+        },
+        "actions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9]*\\.[a-z][a-z0-9_-]*$"
+          }
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "avoid": {
+          "$ref": "#/$defs/stringList"
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "routeAction": {
+      "type": "object",
+      "description": "Typed route action fact. Renderers may derive display commands from this object, but providers must not store command strings or argv here.",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "routeId",
+        "targetRole",
+        "projection",
+        "codePolicy"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9]*\\.[a-z][a-z0-9_-]*$"
+        },
+        "kind": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "routeId": {
+          "$ref": "#/$defs/routeId"
+        },
+        "targetRole": {
+          "$ref": "#/$defs/targetRole"
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ownerPath": {
+          "$ref": "#/$defs/projectPath"
+        },
+        "selector": {
+          "type": "string",
+          "minLength": 1
+        },
+        "query": {
+          "type": "string",
+          "minLength": 1
+        },
+        "projection": {
+          "$ref": "#/$defs/routeProjection"
+        },
+        "codePolicy": {
+          "$ref": "#/$defs/routeCodePolicy"
+        },
+        "requiresExact": {
+          "type": "boolean"
+        },
+        "displayLineRange": {
+          "type": "string",
+          "description": "Display-only line span. It is not an executable selector.",
+          "pattern": "^[1-9][0-9]*:[1-9][0-9]*$"
+        },
+        "sourceLocatorHint": {
+          "type": "string",
+          "description": "Display-only source locator hint. Agents must execute owner/symbol/structural selectors instead.",
+          "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*):[1-9][0-9]*:[1-9][0-9]*$"
+        },
+        "avoid": {
+          "$ref": "#/$defs/stringList"
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "routeEvidenceState": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "anchors": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "ownerPath",
+              "symbol",
+              "structuralSelector",
+              "dependency",
+              "failure",
+              "workspace",
+              "query",
+              "none"
+            ]
+          }
+        },
+        "ownerPath": {
+          "$ref": "#/$defs/projectPath"
+        },
+        "symbol": {
+          "type": "string",
+          "minLength": 1
+        },
+        "structuralSelector": {
+          "type": "string",
+          "minLength": 1
+        },
+        "dependency": {
+          "type": "string",
+          "minLength": 1
+        },
+        "failure": {
+          "type": "string",
+          "minLength": 1
+        },
+        "query": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workspaceKnown": {
+          "type": "boolean"
+        },
+        "intentRequiresExactCode": {
+          "type": "boolean"
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "routeId": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]*$"
+    },
+    "routeProjection": {
+      "enum": [
+        "none",
+        "metadata",
+        "names",
+        "skeleton",
+        "outline",
+        "topology",
+        "dependency",
+        "tests",
+        "failure",
+        "code"
+      ]
+    },
+    "routeCodePolicy": {
+      "enum": [
+        "disabled",
+        "metadata-only",
+        "names-only",
+        "exact-only",
+        "requires-exact-code"
+      ]
     },
     "nextAction": {
       "type": "object",
@@ -2224,29 +2513,29 @@
             "items": false,
             "minItems": 2,
             "maxItems": 2
-        },
-        "returns": {
-          "type": "array",
-          "minItems": 3,
-          "maxItems": 5,
-          "prefixItems": [
-            {
-              "const": "owners"
-            },
-            {
-              "const": "imports"
+          },
+          "returns": {
+            "type": "array",
+            "minItems": 3,
+            "maxItems": 5,
+            "prefixItems": [
+              {
+                "const": "owners"
+              },
+              {
+                "const": "imports"
+              }
+            ],
+            "items": {
+              "enum": [
+                "usage-tests",
+                "local-docs",
+                "docs-use",
+                "crate-source"
+              ]
             }
-          ],
-          "items": {
-            "enum": [
-              "usage-tests",
-              "local-docs",
-              "docs-use",
-              "crate-source"
-            ]
           }
         }
-      }
       }
     },
     "reasoningProfileOwnerTestsContract": {

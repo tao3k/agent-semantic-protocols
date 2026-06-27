@@ -1,0 +1,40 @@
+#+TITLE: 10.05.86 Search Route Graph and Action Frontier
+
+Search route choice is transient execution state, not an Org planning artifact.
+For normal =asp <language> search/query= routing, providers SHOULD expose a
+packet-owned =routeGraph= plus typed =actionFrontier= facts. The compact
+=[route-graph]= render is a prompt projection of those packet fields; it is not
+a second protocol, and production code must not parse compact text back into
+actions.
+
+The route graph SHOULD include the evidence state that justified the route
+choice, candidate routes such as =KNOWN_OWNER=, =KNOWN_SELECTOR=,
+=KNOWN_DEPENDENCY=, =FAILURE_FRONTIER=, =BROAD_QUERY=, and
+=UNKNOWN_WORKSPACE=, the chosen route id, the typed action ids in the current
+frontier, =recommendedNext=, =omit=, and =avoid=. Action facts carry typed
+fields such as =ownerPath=, =selector=, =query=, =projection=, =codePolicy=,
+=requiresExact=, and display-only =displayLineRange/sourceLocatorHint=. They
+MUST NOT carry provider-authored =command= or =argv= strings.
+
+Line ranges remain display evidence. A route action may carry a
+=displayLineRange= or =sourceLocatorHint= so a human can recognize the target,
+but agents execute owner/symbol/structural-selector routes. Treating a line
+locator hint as the executable selector is an =executable-line-range= or
+=hint-as-selector= risk in route verification.
+
+The SKILL surface owns the static choice table that teaches the agent how to
+choose the narrowest route justified by evidence. The search/query packet owns
+the dynamic evidence state and action frontier for the current command. A
+search intent SHOULD NOT materialize =agent.plan.v1= or an =asp-search-plan.org=
+file unless the user asked for durable planning.
+
+Sandtable coverage for this contract SHOULD validate four paths:
+
+- SKILL rendering contains the search route choice table and says normal search
+  routing does not create a plan artifact.
+- Search/query packets validate =routeGraph= and typed =actionFrontier= fields.
+- Known owner, symbol, selector, dependency, and failure evidence skip broader
+  =prime/fzf/raw-read= routes unless the packet records why the narrow route is
+  insufficient.
+- Committed route fixtures contain only project-relative paths so they can be
+  uploaded to GitHub without host-local absolute paths.

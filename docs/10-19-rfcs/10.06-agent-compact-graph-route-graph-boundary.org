@@ -1,0 +1,18 @@
+#+TITLE: 10.06 Search Route Graph Boundary
+
+Compact graph output is a render of packet-owned graph and route facts. It is
+not the machine contract that production code parses back into actions.
+
+The normal =semantic-search-packet.v1= agent surface owns route choice through
+optional =routeGraph= and =actionFrontier= fields. =routeGraph= explains why a
+route such as known owner, known selector, known dependency, failure frontier,
+broad query, or unknown workspace was selected from the current evidence state.
+=actionFrontier= carries typed next-action facts that compact graph rendering may
+project as =A*= rows.
+
+This keeps graph-turbo ranking and provider route selection on the same packet
+boundary. Compact =[route-graph]= text is a prompt-facing projection of
+validated fields, not a plan artifact, shell command source, or parallel
+semantic locator system. Action facts may carry display hints such as
+=displayLineRange= and =sourceLocatorHint=, but executable identity comes from
+owner, symbol, dependency, failure, or structural-selector fields.

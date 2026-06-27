@@ -96,6 +96,10 @@ aliases: graph:{G=search,Q=query,T=test,O=owner,I=item}\n",
         frontier.join(",")
     );
     if item_matches.is_empty() {
+        let _ = writeln!(
+            rendered,
+            "[route-graph] profile=asp-search-routing evidence=known-owner+symbol chosen=BROAD_QUERY reason=\"owner query did not match parser items; fall back to scoped rg refinement\" frontier=scoped-rg-query avoid=direct-source-read|line-range-selector"
+        );
         let _ = writeln!(rendered, "recommendedNext=scoped-rg-query");
         let _ = writeln!(
             rendered,
@@ -108,6 +112,10 @@ aliases: graph:{G=search,Q=query,T=test,O=owner,I=item}\n",
         let source_locator_hint =
             format!("{display_owner}:{}:{}", item_match.start, item_match.end);
         let structural_selector = structural_selector_for(item_match.kind, &item_match.term);
+        let _ = writeln!(
+            rendered,
+            "[route-graph] profile=asp-search-routing evidence=known-owner+symbol chosen=KNOWN_OWNER reason=\"owner and symbol evidence matched parser item; inspect skeleton before code\" frontier=A1.item-skeleton,A2.syntax-outline,A3.query-code avoid=search-prime|direct-source-read|line-range-selector"
+        );
         let _ = writeln!(
             rendered,
             "A1=item-skeleton(selector={structural_selector},projection=skeleton,hint={source_locator_hint})!skeleton"

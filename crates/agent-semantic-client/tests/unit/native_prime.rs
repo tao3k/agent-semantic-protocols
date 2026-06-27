@@ -42,6 +42,15 @@ fn native_prime_seed_stdout_renders_owner_nodes_without_provider() {
     assert!(!stdout.contains("next=\"asp rust search pipe"), "{stdout}");
     assert!(stdout.contains("route=evidence-state"), "{stdout}");
     assert!(
+        stdout.contains("[route-graph] profile=asp-search-routing"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("chosen=UNKNOWN_WORKSPACE"), "{stdout}");
+    assert!(stdout.contains("actionFrontier=A1.owner-map"), "{stdout}");
+    assert!(stdout.contains("recommendedNext=A1.owner-map"), "{stdout}");
+    assert!(stdout.contains("codePolicy=disabled"), "{stdout}");
+    assert!(stdout.contains("line-range-selector"), "{stdout}");
+    assert!(
         stdout.contains("routeOptions=\"owner-items when owner known"),
         "{stdout}"
     );

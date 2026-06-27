@@ -1,0 +1,103 @@
+{
+  "id": "rust.route-known-owner-skips-prime",
+  "title": "Known owner evidence routes to owner skeleton before prime",
+  "language": "rust",
+  "workdir": ".",
+  "tags": [
+    "search-routing",
+    "route-graph",
+    "line-selector-demotion"
+  ],
+  "evidence": {
+    "source": "handwritten",
+    "intent": "Inspect render_prime_seed_text after owner evidence is already known.",
+    "intentKind": "implementation-principle",
+    "editBoundary": "after-search",
+    "scenarioQuality": {
+      "intentClear": true,
+      "intentRouteAligned": true,
+      "evidenceStateComplete": true,
+      "forbiddenRoutesJustified": true,
+      "oracleRoute": [
+        "owner-skeleton",
+        "owner-items"
+      ],
+      "ambiguousIntent": false,
+      "notes": [
+        "Owner path and symbol are known, so workspace prime is broader than necessary.",
+        "displayLineRange/sourceLocatorHint may appear only as display hints."
+      ]
+    },
+    "routeVerification": {
+      "expectedEvidenceAnchors": [
+        "owner-path",
+        "symbol"
+      ],
+      "allowedFirstRoutes": [
+        "owner-skeleton",
+        "owner-items",
+        "syntax-outline"
+      ],
+      "forbiddenRoutes": [
+        "prime",
+        "direct-read"
+      ],
+      "requiredRejectedRoutes": [
+        "prime",
+        "direct-read"
+      ],
+      "forbiddenRiskFlags": [
+        "unnecessary-prime",
+        "direct-read-over-parser",
+        "executable-line-range",
+        "hint-as-selector"
+      ],
+      "requireRouteJustification": true,
+      "requireExactCodeIdentity": true,
+      "requireNoExecutableLineRange": true,
+      "requireVerificationEvidence": true,
+      "notes": [
+        "The routeGraph/actionFrontier packet is the main search route surface.",
+        "Do not materialize an org plan for this transient search decision."
+      ]
+    },
+    "findings": [
+      {
+        "kind": "expected-owner",
+        "message": "crates/agent-semantic-client/src/native_prime.rs"
+      }
+    ]
+  },
+  "steps": [
+    {
+      "id": "known-owner-route",
+      "kind": "command",
+      "command": [
+        "asp",
+        "rust",
+        "search",
+        "owner",
+        "crates/agent-semantic-client/src/native_prime.rs",
+        "items",
+        "--query",
+        "render_prime_seed_text",
+        "--workspace",
+        ".",
+        "--view",
+        "seeds"
+      ],
+      "expect": {
+        "stdoutContains": [
+          "actionFrontier=A1.item-skeleton",
+          "recommendedNext=A1.item-skeleton",
+          "query-code",
+          "requiresExact=true"
+        ],
+        "stdoutNotContains": [
+          "next=\"asp rust search pipe",
+          "line-range-selector)!query-code"
+        ]
+      }
+    }
+  ]
+}

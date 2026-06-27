@@ -213,6 +213,30 @@ fn asp_rg_query_keeps_repeated_query_clauses_separate() {
         stdout.contains("actionFrontier=A1.fd-query,A2.multi-clause-rg-query"),
         "{stdout}"
     );
+    assert_eq!(
+        stdout
+            .lines()
+            .filter(|line| line.starts_with("[graph-frontier]"))
+            .count(),
+        1,
+        "{stdout}"
+    );
+    assert_eq!(
+        stdout
+            .lines()
+            .filter(|line| line.starts_with("avoid="))
+            .count(),
+        1,
+        "{stdout}"
+    );
+    let route_graph = stdout
+        .lines()
+        .find(|line| line.starts_with("[route-graph]"))
+        .expect("route graph line");
+    assert!(route_graph.contains("routeFrontier="), "{stdout}");
+    assert!(route_graph.contains("routeAvoid="), "{stdout}");
+    assert!(!route_graph.contains(" frontier="), "{stdout}");
+    assert!(!route_graph.contains(" avoid="), "{stdout}");
     assert!(stdout.contains("recommendedNext=A1.fd-query"), "{stdout}");
     assert!(
         stdout.contains("nextClasses=owner-items,query-selector,fd-query"),

@@ -268,6 +268,7 @@ pub(super) fn render_action_rows(actions: &[ActionNode]) -> String {
         rendered.push_str("recommendedNext=-\n");
         return rendered;
     }
+    rendered.push_str(&render_route_graph_rows(actions));
     rendered.push_str(&format!(
         "actionRank={}\n",
         actions
@@ -299,6 +300,58 @@ pub(super) fn render_action_rows(actions: &[ActionNode]) -> String {
         rendered.push_str(&format!("nextCommand={command}\n"));
     }
     rendered
+}
+
+fn render_route_graph_rows(actions: &[ActionNode]) -> String {
+    let first = actions.first().expect("non-empty actions");
+    let (evidence, chosen, reason, avoid) = route_graph_metadata(&first.route);
+    let frontier = actions
+        .iter()
+        .map(|action| format!("{}.{}", action.id, action.kind))
+        .collect::<Vec<_>>()
+        .join(",");
+    format!(
+        "[route-graph] profile=asp-search-routing evidence={evidence} chosen={chosen} reason=\"{reason}\" routeFrontier={frontier} routeAvoid={avoid}\n"
+    )
+}
+
+fn route_graph_metadata(
+    route: &ActionRoute,
+) -> (&'static str, &'static str, &'static str, &'static str) {
+    match route {
+        ActionRoute::QueryCode { .. } => (
+            "known-selector+known-owner+symbol",
+            "KNOWN_SELECTOR",
+            "exact selector and owner/symbol evidence are available",
+            "search-prime|line-range-selector|direct-source-read",
+        ),
+        ActionRoute::OwnerItems { .. } | ActionRoute::OwnerItemsHint { .. } => (
+            "known-owner",
+            "KNOWN_OWNER",
+            "owner evidence is available; inspect owner items before broader search",
+            "search-prime|direct-source-read",
+        ),
+        ActionRoute::DependencySearch { .. } => (
+            "known-dependency",
+            "KNOWN_DEPENDENCY",
+            "dependency evidence is available; inspect topology/import usage",
+            "workspace-prime|direct-source-read",
+        ),
+        ActionRoute::TreeSitterQuery { .. } => (
+            "known-selector",
+            "KNOWN_SELECTOR",
+            "structural query evidence is available",
+            "search-prime|line-range-selector",
+        ),
+        ActionRoute::FdQuery { .. }
+        | ActionRoute::RgQuery { .. }
+        | ActionRoute::RgQuerySet { .. } => (
+            "broad-query",
+            "BROAD_QUERY",
+            "query has no stable owner/selector anchor; refine finder evidence",
+            "repeat-search-pipe|manual-window-scan|direct-source-read",
+        ),
+    }
 }
 
 fn query_clauses_display(queries: &[String]) -> String {

@@ -237,6 +237,7 @@ fn render_inline_python_owner_items(
             "{}:{}:{}",
             owner, first_item.start_line, first_item.end_line
         );
+        output.push_str("[route-graph] profile=asp-search-routing evidence=known-owner+symbol chosen=KNOWN_OWNER reason=\"owner and symbol evidence matched parser item; inspect skeleton before code\" frontier=A1.item-skeleton,A2.syntax-outline,A3.query-code avoid=search-prime|direct-source-read|line-range-selector\n");
         output.push_str(&format!(
             "A1=item-skeleton(selector={},projection=skeleton,hint={})!skeleton\n",
             selector, hint
