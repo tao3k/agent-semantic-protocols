@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from .models import ReceiptResult, ScenarioResult
@@ -39,10 +40,13 @@ def receipt_report_json(results: list[ReceiptResult]) -> dict[str, Any]:
     }
 
 
-def report_json(results: list[ScenarioResult]) -> dict[str, Any]:
+def report_json(
+    results: list[ScenarioResult],
+    repo_root: Path | None = None,
+) -> dict[str, Any]:
     findings = runtime_audit_findings(results)
     return {
-        "scenarios": [_scenario_json(result) for result in results],
+        "scenarios": [_scenario_json(result, repo_root) for result in results],
         "summary": {
             "total": len(results),
             "pass": sum(1 for result in results if result.status == "pass"),
@@ -57,8 +61,8 @@ def report_json(results: list[ScenarioResult]) -> dict[str, Any]:
                     "severity": finding.severity,
                     "scenarioId": finding.scenario_id,
                     "stepId": finding.step_id,
-                    "message": finding.message,
-                    "action": finding.action,
+                    "message": _public_report_text(finding.message, repo_root),
+                    "action": _public_report_text(finding.action, repo_root),
                 }
                 for finding in findings
             ],
@@ -74,13 +78,33 @@ def report_json(results: list[ScenarioResult]) -> dict[str, Any]:
     }
 
 
-def _scenario_json(result: ScenarioResult) -> dict[str, Any]:
+def _public_report_path(path: Path | None, repo_root: Path | None) -> str | None:
+    if path is None:
+        return None
+    if repo_root is None:
+        return str(path)
+    try:
+        return str(path.resolve().relative_to(repo_root.resolve()))
+    except ValueError:
+        return str(path).replace(str(repo_root.resolve()), "$ASP_REPO_ROOT")
+
+
+def _public_report_text(text: str, repo_root: Path | None) -> str:
+    if repo_root is None:
+        return text
+    return text.replace(str(repo_root.resolve()), "$ASP_REPO_ROOT")
+
+
+def _scenario_json(
+    result: ScenarioResult,
+    repo_root: Path | None,
+) -> dict[str, Any]:
     return {
         "id": result.scenario_id,
         "language": result.language,
-        "path": str(result.path),
+        "path": _public_report_path(result.path, repo_root),
         "status": result.status,
-        "workdir": str(result.workdir) if result.workdir is not None else None,
+        "workdir": _public_report_path(result.workdir, repo_root),
         "workdirSpec": result.workdir_spec,
         "coverage": result.coverage,
         "tags": result.tags,

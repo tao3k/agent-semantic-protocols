@@ -81,7 +81,13 @@ class ScenarioRunnerParallelTests(unittest.TestCase):
         ) -> subprocess.CompletedProcess[str]:
             calls.append((command, kwargs))
             return subprocess.CompletedProcess(
-                command, 0, stdout="installed\n", stderr=""
+                command,
+                0,
+                stdout=(
+                    "workspaceBin=/repo/.bin/py-harness "
+                    "installedPath=/tmp/sandtable-home/.local/bin/py-harness\n"
+                ),
+                stderr="",
             )
 
         with patch("subprocess.run", side_effect=fake_run):
@@ -110,15 +116,18 @@ class ScenarioRunnerParallelTests(unittest.TestCase):
         self.assertEqual("/repo", calls[0][0][-1])
         self.assertEqual(Path("/repo"), calls[0][1]["cwd"])
         self.assertEqual("/tmp/sandtable-home", calls[0][1]["env"]["HOME"])
+        preflight_records = result.evidence["providerPreflight"][
+            "installFromWorkspaceLanguages"
+        ]
         self.assertEqual(
             ["python", "julia"],
-            [
-                record["language"]
-                for record in result.evidence["providerPreflight"][
-                    "installFromWorkspaceLanguages"
-                ]
-            ],
+            [record["language"] for record in preflight_records],
         )
+        self.assertEqual("$ASP_REPO_ROOT", preflight_records[0]["command"][-1])
+        self.assertIn("$ASP_REPO_ROOT/.bin/py-harness", preflight_records[0]["stdout"])
+        self.assertIn("$HOME/.local/bin/py-harness", preflight_records[0]["stdout"])
+        self.assertNotIn("/repo", str(preflight_records))
+        self.assertNotIn("/tmp/sandtable-home", str(preflight_records))
 
     def test_provider_preflight_failure_marks_scenario_failed(self) -> None:
         import subprocess
@@ -137,7 +146,10 @@ class ScenarioRunnerParallelTests(unittest.TestCase):
             command: list[str], **_kwargs: object
         ) -> subprocess.CompletedProcess[str]:
             return subprocess.CompletedProcess(
-                command, 1, stdout="", stderr="stale rpath"
+                command,
+                1,
+                stdout="",
+                stderr="stale rpath in /repo/.bin/asp-julia-harness",
             )
 
         with patch("subprocess.run", side_effect=fake_run):
@@ -151,9 +163,13 @@ class ScenarioRunnerParallelTests(unittest.TestCase):
         self.assertTrue(failed)
         self.assertEqual("fail", result.status)
         self.assertEqual(
-            ["providerPreflight installFromWorkspace failed for julia: stale rpath"],
+            [
+                "providerPreflight installFromWorkspace failed for julia: "
+                "stale rpath in $ASP_REPO_ROOT/.bin/asp-julia-harness"
+            ],
             result.errors,
         )
+        self.assertNotIn("/repo", str(result.evidence))
 
 
 if __name__ == "__main__":

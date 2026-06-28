@@ -327,9 +327,7 @@ def _coverage(
     else:
         print_coverage_report(coverage)
     missing = bool(
-        coverage.missing
-        or coverage.language_missing
-        or coverage.large_library_missing
+        coverage.missing or coverage.language_missing or coverage.large_library_missing
     )
     if coverage.errors or (args.fail_on_missing and missing):
         return 1
@@ -406,7 +404,7 @@ def _run_scenarios(
 ) -> int:
     results = [run_scenario(repo_root, path) for path in scenario_paths]
     if args.json:
-        emit_json(report_json(results))
+        emit_json(report_json(results, repo_root))
     else:
         print_text_report(repo_root, results)
 

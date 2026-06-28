@@ -54,6 +54,37 @@ def _provider_preflight_languages(scenario: dict[str, Any]) -> list[str]:
     return ordered
 
 
+def _provider_preflight_public_text(
+    text: str,
+    repo_root: Path,
+    env: dict[str, str],
+) -> str:
+    replacements: list[tuple[str, str]] = []
+    for raw_path, marker in (
+        (str(repo_root.resolve()), "$ASP_REPO_ROOT"),
+        (str(repo_root), "$ASP_REPO_ROOT"),
+        (env.get("HOME", ""), "$HOME"),
+    ):
+        if raw_path:
+            replacements.append((raw_path, marker))
+
+    public = text
+    for raw_path, marker in sorted(set(replacements), key=lambda item: -len(item[0])):
+        public = public.replace(raw_path, marker)
+    return public
+
+
+def _provider_preflight_public_command(
+    command: list[str],
+    repo_root: Path,
+    env: dict[str, str],
+) -> list[str]:
+    return [
+        _provider_preflight_public_text(argument, repo_root, env)
+        for argument in command
+    ]
+
+
 def _apply_provider_preflight(
     repo_root: Path,
     scenario: dict[str, Any],
@@ -90,17 +121,28 @@ def _apply_provider_preflight(
         records.append(
             {
                 "language": language,
-                "command": command,
+                "command": _provider_preflight_public_command(
+                    command, repo_root, process_env
+                ),
                 "exitCode": completed.returncode,
-                "stdout": completed.stdout,
-                "stderr": completed.stderr,
+                "stdout": _provider_preflight_public_text(
+                    completed.stdout, repo_root, process_env
+                ),
+                "stderr": _provider_preflight_public_text(
+                    completed.stderr, repo_root, process_env
+                ),
             }
         )
         if completed.returncode != 0:
+            public_error = _provider_preflight_public_text(
+                completed.stderr.strip() or completed.stdout.strip(),
+                repo_root,
+                process_env,
+            )
             result.status = "fail"
             result.errors.append(
                 "providerPreflight installFromWorkspace failed for "
-                f"{language}: {completed.stderr.strip() or completed.stdout.strip()}"
+                f"{language}: {public_error}"
             )
             break
 
