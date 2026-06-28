@@ -8,9 +8,6 @@ use std::process::{Command, Stdio};
 use serde::Deserialize;
 use serde_json::Value;
 
-#[path = "scenario_performance_gate/scenario_benchmark_snapshot.rs"]
-mod scenario_benchmark_snapshot;
-
 const AGENT_POLICY_ID_GRAMMAR: &str = "<LANGUAGE>-AGENT-<TAGS>-<NUMBER>";
 const LARGE_LIBRARY_STEP_MAX_ELAPSED_MS: u64 = 300;
 const JULIA_LARGE_LIBRARY_STEP_MAX_ELAPSED_MS: u64 = 5_000;
@@ -75,7 +72,6 @@ struct LanguageScenarioBenchmarkRequirement {
     language: &'static str,
     root: &'static str,
     syntax: ScenarioBenchmarkSyntax,
-    snapshot_root: Option<&'static str>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -207,7 +203,6 @@ fn language_harnesses_have_shared_scenario_benchmark_schema_coverage() {
                         &pair_root,
                         &mut invalid,
                     );
-                    scenario_benchmark_snapshot::validate(requirement, &pair_root, &mut invalid);
                 }
             }
             ScenarioBenchmarkSyntax::GerbilBenchmarkSs => {
@@ -444,6 +439,7 @@ fn validate_toml_scenario_benchmark(language: &str, root: &Path, invalid: &mut V
     require_non_empty_manifest_field(invalid, &scenario_path, "agent_goal", &scenario.agent_goal);
     require_non_empty_manifest_field(invalid, &scenario_path, "inputs", &scenario.inputs);
     require_non_empty_manifest_field(invalid, &scenario_path, "expected", &scenario.expected);
+    validate_language_harness_json_boundary(root, &scenario, invalid);
     if scenario.policy_ids.is_empty() {
         invalid.push(format!(
             "{}: scenario.policy_ids must not be empty",
@@ -492,6 +488,20 @@ fn validate_toml_scenario_benchmark(language: &str, root: &Path, invalid: &mut V
         invalid.push(format!(
             "{}: benchmark.observed_timings must not be empty",
             benchmark_path.display()
+        ));
+    }
+}
+
+fn validate_language_harness_json_boundary(
+    root: &Path,
+    scenario: &SharedScenarioToml,
+    invalid: &mut Vec<String>,
+) {
+    let rendered_text = root.join(&scenario.expected).join("rendered.txt");
+    if rendered_text.exists() {
+        invalid.push(format!(
+            "{}: language harness scenario benchmarks must expose JSON schema data only; ASP owns render output",
+            rendered_text.display()
         ));
     }
 }

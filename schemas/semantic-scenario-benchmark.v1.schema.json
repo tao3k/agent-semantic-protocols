@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://agent-semantic-protocols.local/schemas/semantic-scenario-benchmark.v1.schema.json",
   "title": "Semantic Scenario Benchmark",
-  "description": "Language-neutral normalized scenario benchmark contract. TOML manifests and Gerbil benchmark.ss forms must normalize to this shape before ASP-facing validation.",
+  "description": "Language-neutral normalized scenario benchmark JSON contract. Language harnesses expose this schema data through --json; ASP consumes it for the unified render surface.",
   "type": "object",
   "required": ["schemaVersion", "language", "scenario", "benchmark"],
   "additionalProperties": false,
