@@ -1,0 +1,441 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/graph-search-observation.v1.schema.json",
+  "title": "Graph Search Observation",
+  "description": "GitHub-safe observation packet for sandtable and analyzer feedback about search route choice, graph evidence, provider health, and token cost.",
+  "type": "object",
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "subject",
+    "evidenceState",
+    "routeDecision",
+    "graphEvidence",
+    "providerHealth",
+    "cost",
+    "outcome",
+    "source"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.graph-search-observation.v1"
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "recordedAt": {
+      "type": "string"
+    },
+    "subject": {
+      "type": "object",
+      "required": [
+        "scenarioId"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "scenarioId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "language": {
+          "type": "string"
+        },
+        "intent": {
+          "type": "string"
+        },
+        "agent": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "evidenceState": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "knownSelector": {
+          "type": "boolean"
+        },
+        "knownOwner": {
+          "type": "boolean"
+        },
+        "queryQuality": {
+          "type": "string"
+        },
+        "packageCohesion": {
+          "type": "string"
+        },
+        "missingTerms": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "riskFactors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "routeDecision": {
+      "type": "object",
+      "required": [
+        "chosen"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "chosen": {
+          "type": "string"
+        },
+        "recommendedNext": {
+          "type": "string"
+        },
+        "nextCommandKind": {
+          "type": "string"
+        },
+        "avoided": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "denials": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "graphEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "owners": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/pathRef"
+          }
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/symbolRef"
+          }
+        },
+        "hotRanges": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/displayRange"
+          }
+        },
+        "tests": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/pathRef"
+          }
+        },
+        "edges": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/graphEdge"
+          }
+        },
+        "rankedEvidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/rankedEvidence"
+          }
+        }
+      }
+    },
+    "providerHealth": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/providerHealth"
+      }
+    },
+    "cost": {
+      "type": "object",
+      "required": [
+        "commands",
+        "routeTurns",
+        "inputTokens",
+        "outputTokens",
+        "totalTokens"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "commands": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "routeTurns": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "elapsedMs": {
+          "type": "number",
+          "minimum": 0
+        },
+        "candidateCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "selectedCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "inputTokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "outputTokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "totalTokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "usageRecords": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/tokenUsage"
+          }
+        }
+      }
+    },
+    "outcome": {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "type": "string"
+        },
+        "answerQuality": {
+          "type": "string"
+        },
+        "nextOptimization": {
+          "type": "string"
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "sandtable-report",
+            "trace-receipt",
+            "manual"
+          ]
+        },
+        "pathRef": {
+          "$ref": "#/$defs/pathRef"
+        },
+        "runId": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "pathRef": {
+      "type": "object",
+      "required": [
+        "kind",
+        "value"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "workspace",
+            "owner",
+            "artifact",
+            "workspace-bin",
+            "home-local-bin",
+            "external",
+            "unknown"
+          ]
+        },
+        "value": {
+          "type": "string",
+          "minLength": 1,
+          "not": {
+            "pattern": "^(?:/|~(?:/|$)|[A-Za-z]:[\\\\/])"
+          }
+        }
+      }
+    },
+    "symbolRef": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "owner": {
+          "$ref": "#/$defs/pathRef"
+        }
+      }
+    },
+    "displayRange": {
+      "type": "object",
+      "required": [
+        "owner"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "owner": {
+          "$ref": "#/$defs/pathRef"
+        },
+        "displayLineStart": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "displayLineEnd": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "selectorHint": {
+          "type": "string"
+        }
+      }
+    },
+    "graphEdge": {
+      "type": "object",
+      "required": [
+        "from",
+        "to",
+        "relation"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "from": {
+          "type": "string"
+        },
+        "to": {
+          "type": "string"
+        },
+        "relation": {
+          "type": "string"
+        },
+        "weight": {
+          "type": "number"
+        }
+      }
+    },
+    "rankedEvidence": {
+      "type": "object",
+      "required": [
+        "id",
+        "score"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "score": {
+          "type": "number"
+        },
+        "reason": {
+          "type": "string"
+        }
+      }
+    },
+    "providerHealth": {
+      "type": "object",
+      "required": [
+        "language",
+        "status"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "language": {
+          "type": "string"
+        },
+        "providerId": {
+          "type": "string"
+        },
+        "binaryRef": {
+          "$ref": "#/$defs/pathRef"
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "failed",
+            "unknown"
+          ]
+        },
+        "failureKind": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    },
+    "tokenUsage": {
+      "type": "object",
+      "required": [
+        "inputTokens",
+        "outputTokens",
+        "totalTokens"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "provider": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "inputTokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "outputTokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "totalTokens": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

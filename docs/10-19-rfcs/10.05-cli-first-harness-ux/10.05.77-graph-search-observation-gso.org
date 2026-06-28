@@ -1,0 +1,92 @@
+#+TITLE: 10.05.77 Graph Search Observation GSO
+#+PROPERTY: ASP_SCHEMA graph-search-observation.v1
+
+* Problem
+
+The sandtable can prove that a live LLM provider was called, but a token-only
+receipt is not enough for search-route optimization. AspGraphsSearch needs a
+compact, GitHub-safe observation record that says which evidence state the
+agent had, which route was chosen, what graph evidence was available, what the
+provider health looked like, and how many commands or tokens the route cost.
+
+Line ranges remain display metadata. A GSO record must not make
+=path:start:end= the executable selector identity.
+
+* Contract
+
+The shared packet is =schemas/graph-search-observation.v1.schema.json=.
+
+Required top-level groups:
+
+- =subject=: scenario, language, intent, agent, provider, model.
+- =evidenceState=: known selector or owner facts, query quality, cohesion, and
+  route risks.
+- =routeDecision=: chosen route, recommended next action, avoided routes, and
+  denials.
+- =graphEvidence=: owner refs, symbol refs, display ranges, test refs, edges,
+  and ranked evidence.
+- =providerHealth=: language provider status, binary kind, failure kind, and
+  short sanitized message.
+- =cost=: command count, route turns, elapsed time, candidate counts, and token
+  usage records.
+- =outcome=: pass or fail plus the next optimization hint.
+- =source=: source kind plus a relative artifact ref when available.
+
+* Absolute Path Rule
+
+GSO is designed for repository fixtures and public research artifacts. It may
+record path-like values only through =pathRef= objects, and those values must be
+relative or symbolic. Host-local absolute paths are rejected by the schema for
+=pathRef= values and by the Python contract guard for the full generated
+observation.
+
+Allowed examples:
+
+- ={"kind":"owner","value":"src/search_optimization.jl"}=
+- ={"kind":"workspace-bin","value":"asp-julia-harness"}=
+- ={"kind":"home-local-bin","value":"asp-julia-harness"}=
+
+Disallowed examples:
+
+- any host-local absolute workspace path
+- shell commands copied with absolute binary or workdir paths
+- raw stderr/stdout payloads that contain host-local paths
+
+* Sandtable Materialization
+
+=tools.semantic_sandtable.graph_search_observation= converts semantic
+sandtable reports into JSONL observations. It intentionally stores counts,
+route labels, provider ids, model ids, binary basenames, and failure kinds
+instead of raw command text or raw stderr.
+
+This makes the DeepSeek live smoke useful beyond "tokens were non-zero":
+
+- =inputTokens=, =outputTokens=, and =totalTokens= prove live usage.
+- =provider= and =model= preserve the LLM surface used in the run.
+- =providerHealth= says whether the language provider was healthy enough for
+  graph-route evidence.
+- =nextOptimization= gives AspGraphsSearch a direct clustering axis.
+
+* AspGraphsSearch Ingestion
+
+AspGraphsSearch should treat GSO JSONL as the canonical research input for
+route-quality tuning. A notebook or analyzer run can group records by:
+
+- =evidenceState.queryQuality= and =packageCohesion=
+- =routeDecision.chosen= and =recommendedNext=
+- =cost.commands= and =cost.totalTokens=
+- =providerHealth.failureKind=
+- =outcome.nextOptimization=
+
+This gives the analyzer a stable target for fewer route turns and more precise
+frontier ranking without depending on private sandtable trace shape.
+
+* Acceptance Gates
+
+- JSON schema validates every generated observation.
+- The generated observation contains no absolute path strings.
+- Token receipts survive as structured =cost.usageRecords=.
+- Provider failures such as missing Python module wiring or Julia dynamic
+  library resolution become =providerHealth.failureKind= values.
+- Analyzer research consumes GSO JSONL, not raw host-local traces, for public
+  fixtures.
