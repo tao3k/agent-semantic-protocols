@@ -222,7 +222,7 @@ jobs:
       - name: Python provider schema gates
         run: |
           uv run --frozen --with pytest pytest \
-            tests/unit/harness/test_semantic_cli_direct_read_registry.py \
+            tests/unit/harness/test_semantic_cli_direct_read.py \
             tests/unit/harness/test_semantic_schema_registry.py \
             -q
         working-directory: languages/python-lang-project-harness
