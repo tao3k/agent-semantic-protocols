@@ -11,7 +11,7 @@ scopeQuality=high
 clauseCoverage=C1 matched=fiber,queue missing=-
 clauseCoverage=C2 matched=stale,refresh,sqlite,cache missing=-
 packageCohesion=high packages=effect.ts
-sourceTrace=finder:used[backend=rg;candidateBasis=source-lines;collectMs=<ms>;elapsedMs=<ms>;inputCandidates=3;qualityMs=<ms>;selectedCandidates=3;sourceSearchPasses=1]
+sourceTrace=finder:used[collectMs=<ms>;elapsedMs=<ms>;qualityMs=<ms>]
 [graph-frontier] profile=owner-query alg=typed-ppr-diverse seed=Q budget=10
 legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next
 aliases=G:graph,I:item,Q:query,H:hot,I2:item,I3:item,O:owner,T:test,H2:hot,H3:hot

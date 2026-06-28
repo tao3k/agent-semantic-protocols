@@ -114,6 +114,10 @@ fn normalize_search_output(stdout: &str) -> String {
 }
 
 fn normalize_search_line(line: &str) -> String {
+    if line.starts_with("sourceTrace=finder:used[") {
+        return "sourceTrace=finder:used[collectMs=<ms>;elapsedMs=<ms>;qualityMs=<ms>]".to_string();
+    }
+
     ["collectMs", "elapsedMs", "qualityMs"]
         .into_iter()
         .fold(line.to_string(), normalize_numeric_field)
