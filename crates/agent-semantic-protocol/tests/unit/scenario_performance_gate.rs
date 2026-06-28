@@ -8,6 +8,9 @@ use std::process::{Command, Stdio};
 use serde::Deserialize;
 use serde_json::Value;
 
+#[path = "scenario_performance_gate/scenario_benchmark_snapshot.rs"]
+mod scenario_benchmark_snapshot;
+
 const AGENT_POLICY_ID_GRAMMAR: &str = "<LANGUAGE>-AGENT-<TAGS>-<NUMBER>";
 const LARGE_LIBRARY_STEP_MAX_ELAPSED_MS: u64 = 300;
 const JULIA_LARGE_LIBRARY_STEP_MAX_ELAPSED_MS: u64 = 5_000;
@@ -33,31 +36,37 @@ const LANGUAGE_SCENARIO_BENCHMARK_REQUIREMENTS: &[LanguageScenarioBenchmarkRequi
         language: "rust",
         root: "languages/rust-lang-project-harness/tests/unit/scenarios",
         syntax: ScenarioBenchmarkSyntax::TomlPair,
+        snapshot_root: None,
     },
     LanguageScenarioBenchmarkRequirement {
         language: "typescript",
         root: "languages/typescript-lang-project-harness/tests/fixtures/scenario_benchmarks",
         syntax: ScenarioBenchmarkSyntax::TomlPair,
+        snapshot_root: Some("languages/typescript-lang-project-harness/tests/snapshots"),
     },
     LanguageScenarioBenchmarkRequirement {
         language: "python",
         root: "languages/python-lang-project-harness/tests/fixtures/scenario_benchmarks",
         syntax: ScenarioBenchmarkSyntax::TomlPair,
+        snapshot_root: Some("languages/python-lang-project-harness/tests/unit/snapshots"),
     },
     LanguageScenarioBenchmarkRequirement {
         language: "julia",
         root: "languages/JuliaLangProjectHarness.jl/test/fixtures/scenario_benchmarks",
         syntax: ScenarioBenchmarkSyntax::TomlPair,
+        snapshot_root: Some("languages/JuliaLangProjectHarness.jl/test/snapshots"),
     },
     LanguageScenarioBenchmarkRequirement {
         language: "gerbil-scheme",
         root: "languages/gerbil-scheme-language-project-harness/t/scenarios/policy",
         syntax: ScenarioBenchmarkSyntax::GerbilBenchmarkSs,
+        snapshot_root: None,
     },
     LanguageScenarioBenchmarkRequirement {
         language: "orgize",
         root: "languages/orgize/tests/unit/scenarios",
         syntax: ScenarioBenchmarkSyntax::TomlPair,
+        snapshot_root: None,
     },
 ];
 
@@ -66,6 +75,7 @@ struct LanguageScenarioBenchmarkRequirement {
     language: &'static str,
     root: &'static str,
     syntax: ScenarioBenchmarkSyntax,
+    snapshot_root: Option<&'static str>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -197,6 +207,7 @@ fn language_harnesses_have_shared_scenario_benchmark_schema_coverage() {
                         &pair_root,
                         &mut invalid,
                     );
+                    scenario_benchmark_snapshot::validate(requirement, &pair_root, &mut invalid);
                 }
             }
             ScenarioBenchmarkSyntax::GerbilBenchmarkSs => {
