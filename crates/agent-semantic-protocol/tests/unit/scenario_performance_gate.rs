@@ -485,6 +485,52 @@ fn validate_toml_scenario_benchmark(language: &str, root: &Path, invalid: &mut V
     }
 }
 
+#[test]
+fn language_harnesses_do_not_use_legacy_agent_policy_ids() {
+    let languages = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../languages");
+    let mut invalid = Vec::new();
+    for relative in LEGACY_POLICY_ID_SCAN_PATHS {
+        let path = languages.join(relative);
+        if path.exists() {
+            collect_legacy_policy_ids(&path, &mut invalid);
+        }
+    }
+
+    assert!(
+        invalid.is_empty(),
+        "legacy agent policy ids must use {AGENT_POLICY_ID_GRAMMAR}:\n{}",
+        invalid.join("\n")
+    );
+}
+
+const LEGACY_POLICY_ID_SCAN_PATHS: &[&str] = &[
+    "JuliaLangProjectHarness.jl/src",
+    "JuliaLangProjectHarness.jl/docs",
+    "JuliaLangProjectHarness.jl/test",
+    "JuliaLangProjectHarness.jl/tests",
+    "gerbil-scheme-language-project-harness/docs",
+    "gerbil-scheme-language-project-harness/src",
+    "gerbil-scheme-language-project-harness/t",
+    "org/contracts",
+    "org/docs",
+    "org/src",
+    "org/tests",
+    "orgize/benches",
+    "orgize/docs",
+    "orgize/src",
+    "orgize/tests",
+    "orgize/wasm/src",
+    "python-lang-project-harness/src",
+    "python-lang-project-harness/docs",
+    "python-lang-project-harness/tests",
+    "rust-lang-project-harness/src",
+    "rust-lang-project-harness/docs",
+    "rust-lang-project-harness/tests",
+    "typescript-lang-project-harness/src",
+    "typescript-lang-project-harness/docs",
+    "typescript-lang-project-harness/tests",
+];
+
 fn validate_gerbil_benchmark_ss(path: &Path, invalid: &mut Vec<String>) {
     let text =
         fs::read_to_string(path).unwrap_or_else(|error| panic!("read {}: {error}", path.display()));
@@ -503,6 +549,128 @@ fn validate_gerbil_benchmark_ss(path: &Path, invalid: &mut Vec<String>) {
             invalid.push(format!("{}: benchmark.ss missing {token}", path.display()));
         }
     }
+    match gerbil_benchmark_rule(&text) {
+        Some(rule) if is_agent_policy_id(rule) => {}
+        Some(rule) => invalid.push(format!(
+            "{}: rule {rule:?} must match {AGENT_POLICY_ID_GRAMMAR}",
+            path.display()
+        )),
+        None => invalid.push(format!(
+            "{}: benchmark.ss missing rule value",
+            path.display()
+        )),
+    }
+}
+
+fn gerbil_benchmark_rule(text: &str) -> Option<&str> {
+    text.lines().find_map(|line| {
+        let value = line.trim().strip_prefix("(rule . ")?;
+        let value = value.trim_end_matches(')').trim();
+        Some(
+            value
+                .strip_prefix('"')
+                .and_then(|value| value.strip_suffix('"'))
+                .unwrap_or_else(|| value.trim_start_matches('\'')),
+        )
+    })
+}
+
+fn collect_legacy_policy_ids(dir: &Path, invalid: &mut Vec<String>) {
+    if is_ignored_legacy_policy_scan_path(dir) {
+        return;
+    }
+
+    let entries = match fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(err) => {
+            invalid.push(format!(
+                "{}: failed to read directory: {err}",
+                dir.display()
+            ));
+            return;
+        }
+    };
+
+    for entry in entries {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(err) => {
+                invalid.push(format!(
+                    "{}: failed to read directory entry: {err}",
+                    dir.display()
+                ));
+                continue;
+            }
+        };
+        let path = entry.path();
+        if is_ignored_legacy_policy_scan_path(&path) {
+            continue;
+        }
+        if path.is_dir() {
+            collect_legacy_policy_ids(&path, invalid);
+        } else if path.is_file() {
+            validate_no_legacy_policy_ids(&path, invalid);
+        }
+    }
+}
+
+fn validate_no_legacy_policy_ids(path: &Path, invalid: &mut Vec<String>) {
+    let Ok(text) = fs::read_to_string(path) else {
+        return;
+    };
+
+    for (line_index, line) in text.lines().enumerate() {
+        for token in policy_id_tokens(line) {
+            if is_legacy_policy_id(token) {
+                invalid.push(format!(
+                    "{}:{}: legacy policy id {token:?} must match {AGENT_POLICY_ID_GRAMMAR}",
+                    path.display(),
+                    line_index + 1
+                ));
+            }
+        }
+    }
+}
+
+fn policy_id_tokens(line: &str) -> impl Iterator<Item = &str> {
+    line.split(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '-' || ch == '_'))
+        .filter(|token| !token.is_empty())
+}
+
+fn is_legacy_policy_id(token: &str) -> bool {
+    has_numbered_legacy_marker(token, "-AGENT-R") || has_numbered_legacy_marker(token, "-PROJ-R")
+}
+
+fn has_numbered_legacy_marker(token: &str, marker: &str) -> bool {
+    let Some(index) = token.find(marker) else {
+        return false;
+    };
+    token[index + marker.len()..]
+        .chars()
+        .next()
+        .is_some_and(|ch| ch.is_ascii_digit())
+}
+
+fn is_ignored_legacy_policy_scan_path(path: &Path) -> bool {
+    path.components().any(|component| {
+        matches!(
+            component.as_os_str().to_str(),
+            Some(
+                ".git"
+                    | ".data"
+                    | ".mypy_cache"
+                    | ".pytest_cache"
+                    | ".ruff_cache"
+                    | ".venv"
+                    | "__pycache__"
+                    | "build"
+                    | "coverage"
+                    | "dist"
+                    | "node_modules"
+                    | "target"
+            )
+        )
+    })
 }
 
 fn require_non_empty_manifest_field(
