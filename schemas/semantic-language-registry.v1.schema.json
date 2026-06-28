@@ -628,7 +628,8 @@
             "enum": [
               "compact-graph-frontier",
               "corpus-locator",
-              "flow-lite-frontier"
+              "flow-lite-frontier",
+              "owner-local-projection"
             ]
           }
         },
