@@ -479,11 +479,15 @@ artifacts/notebooks/
 #+end_src
 
 These are for Python, Julia, and data-science workflows. They should never have
-to infer meaning from directory names alone.
+to infer meaning from directory names alone. The registry DB should index
+stable identities, hot fields, hashes, timestamps, and JSON locators. Dynamic
+JSON remains the payload layer for high-churn, bulky, or one-off research
+evidence.
 
 Required index surfaces:
 
 - append-only =index.jsonl= for easy Python/Julia streaming;
+- JSON locator rows for selective payload loading;
 - optional Arrow/Parquet derived tables for large analysis;
 - Turso registry tables for interactive lookup;
 - schema ids on every row.
@@ -493,7 +497,8 @@ Python and Julia analysis should be able to load:
 #+begin_src text
 artifact_id, repo_id, workspace_id, scope_id, language_id, provider_id,
 schema_id, generation_id, run_id, artifact_kind, relative_path, created_at,
-source_hashes, dependency_hashes, command_method
+source_hashes, dependency_hashes, command_method, dynamic_json_path,
+payload_hash, payload_kind
 #+end_src
 
 without scanning provider-specific folder conventions.
@@ -509,6 +514,10 @@ their roles separate. Python may consume validated graph/rank features for the
 production lane. Julia may publish algorithm research and candidate
 improvements. Neither analyzer lane should mutate source, provider,
 dependency, or route-authority facts directly.
+Not every analyzer field belongs in Turso. Fields should move into DB tables
+only when they are stable join keys, common filters, metric columns, or
+production candidates. Volatile code/search/provider payloads should stay as
+dynamic JSON and be loaded through DB-selected artifact ids.
 
 ** Receipts
 
@@ -562,6 +571,7 @@ Tracks:
 - source evidence hashes;
 - dependency evidence hashes;
 - raw-source-stored flag;
+- dynamic JSON path and payload hash;
 - input snapshot id;
 - analyzer experiment id;
 - algorithm id and metric schema id;
