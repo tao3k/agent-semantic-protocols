@@ -1,5 +1,6 @@
 use crate::provider_command::support::{
-    asp_command, provider, temp_project_root, write_activation,
+    asp_command, assert_compact_search_action_contract, provider, temp_project_root,
+    write_activation, write_rust_owner_frontier_provider,
 };
 
 #[test]
@@ -38,11 +39,11 @@ fn asp_rg_query_wrapper_stdout_snapshot() {
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert_single_line(&stdout, "[search-rg]");
     assert_single_line(&stdout, "[graph-frontier]");
-    assert_single_line(&stdout, "[route-graph]");
     assert_single_line(&stdout, "actionFrontier=");
     assert_single_line(&stdout, "recommendedNext=");
     assert_single_line(&stdout, "nextCommand=");
     assert_single_line(&stdout, "avoid=");
+    assert_compact_search_action_contract(&stdout);
     insta::assert_snapshot!(
         "asp_rg_query_wrapper_stdout",
         normalize_search_output(&stdout)
@@ -54,6 +55,7 @@ fn asp_rg_query_wrapper_stdout_snapshot() {
 #[test]
 fn asp_rust_query_owner_selector_stdout_snapshot() {
     let root = temp_project_root("asp-rust-query-owner-selector-stdout-snapshot");
+    write_rust_owner_frontier_provider(&root);
     write_activation(&root, &[provider("rust", Vec::new())]);
     std::fs::create_dir_all(root.join("src")).expect("create src");
     std::fs::write(

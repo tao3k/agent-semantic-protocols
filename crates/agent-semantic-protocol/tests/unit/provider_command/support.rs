@@ -77,6 +77,56 @@ pub(super) fn write_activation_to(root: &Path, activation_path: &Path, providers
     .expect("write activation");
 }
 
+pub(super) fn assert_compact_search_action_contract(stdout: &str) {
+    assert!(
+        !stdout.contains("[route-graph]"),
+        "default search stdout must not mix graph-frontier output with route-graph debug rows:\n{stdout}"
+    );
+    assert!(
+        !stdout.contains("actionRank="),
+        "default search stdout must use compact actionFrontier rows, not actionRank debug rows:\n{stdout}"
+    );
+    for line in stdout.lines() {
+        assert!(
+            !is_action_detail_row(line),
+            "default search stdout must not expose full action detail rows (`A<n>=kind(...)!suffix`):\n{stdout}"
+        );
+    }
+}
+
+fn is_action_detail_row(line: &str) -> bool {
+    let Some(rest) = line.strip_prefix('A') else {
+        return false;
+    };
+    let digit_count = rest.chars().take_while(|ch| ch.is_ascii_digit()).count();
+    if digit_count == 0 {
+        return false;
+    }
+    let after_digits = &rest[digit_count..];
+    after_digits.starts_with('=') && after_digits.contains('(') && after_digits.contains(")!")
+}
+
+pub(super) fn write_rust_owner_frontier_provider(root: &Path) {
+    let bin_dir = root.join(".bin");
+    write_stdout_stderr_provider(
+        &bin_dir,
+        "rs-harness",
+        "[search-owner] q=src/core.rs pkg=. selector=items alg=item-frontier\n\
+legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next\n\
+aliases: graph:{G=search,O=owner,I=item}\n\
+O=owner:path(src/core.rs)!owner;I=item:symbol(QueryExpr)@src/core.rs:1:1!syntax;I2=item:symbol(parse_query_expr)@src/core.rs:3:3!syntax\n\
+syntax I selector=src/core.rs:1:1 pattern='((struct_item name: (_) @type.name) (#eq? @type.name \"QueryExpr\"))'\n\
+syntax I2 selector=src/core.rs:3:3 pattern='((function_item name: (_) @function.name) (#eq? @function.name \"parse_query_expr\"))'\n\
+G>{O:selects}\n\
+O>{I:contains,I2:contains}\n\
+rank=I,I2,O frontier=I.syntax,I2.syntax\n\
+omit=code,projection-nodes,large-item-text\n\
+avoid=inline-code-in-search,raw-read,repeat-owner\n",
+        "",
+    );
+    write_provider_bin_config(root, "rust", &bin_dir.join("rs-harness"));
+}
+
 pub(super) fn write_provider_bin_config(root: &Path, language_id: &str, binary: &Path) {
     let config_path = root.join(".agents").join("asp.toml");
     std::fs::create_dir_all(config_path.parent().expect("config parent"))

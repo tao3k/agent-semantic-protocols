@@ -1,6 +1,6 @@
 use crate::provider_command::support::{
     asp_command, home_local_bin, make_executable, prepend_path, provider, temp_project_root,
-    write_activation, write_echo_provider,
+    write_activation, write_echo_provider, write_rust_owner_frontier_provider,
 };
 
 #[test]
@@ -157,6 +157,7 @@ printf 'pub fn provider_owned() -> usize {
 #[test]
 fn language_facade_query_owner_selector_renders_single_owner_frontier() {
     let root = temp_project_root("provider-query-owner-selector-single-frontier");
+    write_rust_owner_frontier_provider(&root);
     write_activation(&root, &[provider("rust", Vec::new())]);
     std::fs::create_dir_all(root.join("src")).expect("create src dir");
     std::fs::write(

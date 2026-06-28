@@ -1,6 +1,8 @@
 id = "asp-rust-deps-external-public-api-metadata"
 title = "Rust dependency API search resolves external package source through ASP"
-policy_ids = ["ASP-RUST-DEPS-EXTERNAL-API", "ASP-SEARCH-DEPS-SOURCE-ROOT"]
+policy_ids = ["RUST-AGENT-ASP-DEPS-EXTERNAL-API-001", "RUST-AGENT-ASP-SEARCH-DEPS-SOURCE-ROOT-001"]
 agent_goal = "When an agent asks for a Rust dependency API such as rust-lang-project-harness::Scenario, ASP must expose the dependency source root and API frontier through search deps instead of forcing manual .cargo/git checkout exploration."
+reference_repositories = ["tao3k/agent-semantic-protocols", "rust-lang/rust"]
+reference_patterns = ["dependency API source root", "search deps external public API"]
 inputs = "inputs"
 expected = "expected"

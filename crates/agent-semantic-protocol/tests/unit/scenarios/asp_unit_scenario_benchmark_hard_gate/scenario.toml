@@ -1,6 +1,8 @@
 id = "asp-unit-scenario-benchmark-hard-gate"
 title = "ASP unit scenario benchmark.toml hard gate stays enforced"
-policy_ids = ["ASP-RUST-HARNESS-SCENARIO-BENCH-001"]
+policy_ids = ["RUST-AGENT-ASP-SCENARIO-BENCH-001"]
 agent_goal = "Ensure every ASP Rust unit scenario fixture is validated through rust-lang-project-harness benchmark.toml contracts."
+reference_repositories = ["tao3k/agent-semantic-protocols"]
+reference_patterns = ["rust-lang-project-harness benchmark.toml", "scenario benchmark hard gate"]
 inputs = "inputs"
 expected = "expected"

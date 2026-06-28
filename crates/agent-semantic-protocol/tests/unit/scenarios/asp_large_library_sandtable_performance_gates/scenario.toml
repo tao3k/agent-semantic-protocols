@@ -1,6 +1,8 @@
 id = "asp-large-library-sandtable-performance-gates"
 title = "ASP large-library sandtable performance gates stay bounded"
-policy_ids = ["ASP-SANDTABLE-PERF-001"]
+policy_ids = ["RUST-AGENT-ASP-SANDTABLE-PERF-001"]
 agent_goal = "Keep large-library sandtable hard elapsed gates explicit for FastAPI, Tokio, and TypeScript compiler scenarios."
+reference_repositories = ["fastapi/fastapi", "tokio-rs/tokio", "microsoft/TypeScript"]
+reference_patterns = ["large library sandtable elapsed gate", "FastAPI Tokio TypeScript compiler"]
 inputs = "inputs"
 expected = "expected"

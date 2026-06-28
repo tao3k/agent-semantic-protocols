@@ -31,10 +31,6 @@ O>{I:contains,I3:contains,I2:contains,T:covers}
 Q>{O:matches,I:matches,I3:matches,I2:matches}
 rankedEvidence=I,H,I2,I3,O,T,H2,H3
 evidenceFrontier=I.syntax,H.hot,I2.syntax,I3.syntax,O.owner,T.tests,H2.hot,H3.hot
-[route-graph] profile=asp-search-routing evidence=broad-query chosen=BROAD_QUERY reason="query has no stable owner/selector anchor; refine finder evidence" routeFrontier=A1.fd-query,A2.multi-clause-rg-query routeAvoid=repeat-search-pipe|manual-window-scan|direct-source-read
-actionRank=A1,A2
-A1=fd-query(query=Fiber|Queue|stale|refresh|sqlite|cache,scope=src)!finder-owner
-A2=multi-clause-rg-query(queryClauses=C1='Fiber|Queue';C2='stale|refresh|sqlite|cache',scope=src)!query-pack-refine
 actionFrontier=A1.fd-query,A2.multi-clause-rg-query
 recommendedNext=A1.fd-query
 nextCommand=asp fd -query 'Fiber|Queue|stale|refresh|sqlite|cache' --workspace src

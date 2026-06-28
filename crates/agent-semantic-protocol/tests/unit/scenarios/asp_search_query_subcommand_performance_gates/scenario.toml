@@ -1,6 +1,8 @@
 id = "asp-search-query-subcommand-performance-gates"
 title = "ASP query and search subcommand performance gates stay covered"
-policy_ids = ["ASP-PERF-SUBCOMMAND-QUERY-SELECTOR", "ASP-PERF-SUBCOMMAND-QUERY-TREESITTER", "ASP-PERF-SUBCOMMAND-SEARCH-DEPS", "ASP-PERF-SUBCOMMAND-SEARCH-FD", "ASP-PERF-SUBCOMMAND-SEARCH-FZF", "ASP-PERF-SUBCOMMAND-SEARCH-OWNER", "ASP-PERF-SUBCOMMAND-SEARCH-PIPE", "ASP-PERF-SUBCOMMAND-SEARCH-RG", "ASP-PERF-SUBCOMMAND-SOURCE-INDEX", "ASP-PERF-SUBCOMMAND-PROVIDER-FACTS"]
+policy_ids = ["RUST-AGENT-ASP-PERF-SUBCOMMAND-QUERY-SELECTOR-001", "RUST-AGENT-ASP-PERF-SUBCOMMAND-QUERY-TREESITTER-001", "RUST-AGENT-ASP-PERF-SUBCOMMAND-SEARCH-DEPS-001", "RUST-AGENT-ASP-PERF-SUBCOMMAND-SEARCH-FD-001", "RUST-AGENT-ASP-PERF-SUBCOMMAND-SEARCH-FZF-001", "RUST-AGENT-ASP-PERF-SUBCOMMAND-SEARCH-OWNER-001", "RUST-AGENT-ASP-PERF-SUBCOMMAND-SEARCH-PIPE-001", "RUST-AGENT-ASP-PERF-SUBCOMMAND-SEARCH-RG-001", "RUST-AGENT-ASP-PERF-SUBCOMMAND-SOURCE-INDEX-001", "RUST-AGENT-ASP-PERF-SUBCOMMAND-PROVIDER-FACTS-001"]
 agent_goal = "Keep performance-sensitive ASP query and search subcommands represented by scenario benchmark gates so heavy agent-facing discovery paths cannot drift without a fixture."
+reference_repositories = ["tao3k/agent-semantic-protocols"]
+reference_patterns = ["asp rg query wrapper", "search pipe performance gate", "provider facts timeout"]
 inputs = "inputs"
 expected = "expected"
