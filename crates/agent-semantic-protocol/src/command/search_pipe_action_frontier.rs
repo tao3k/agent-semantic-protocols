@@ -59,41 +59,6 @@ pub(super) enum ActionRoute {
 }
 
 impl ActionNode {
-    pub(super) fn render_body(&self) -> String {
-        match &self.route {
-            ActionRoute::QueryCode {
-                selector,
-                owner,
-                symbol,
-                ..
-            } => {
-                format!(
-                    "sourceLocatorHint={selector},owner={owner},symbol={symbol},codePolicy=requires-exact-code"
-                )
-            }
-            ActionRoute::FdQuery { query, scope, .. }
-            | ActionRoute::RgQuery { query, scope, .. } => format!("query={query},scope={scope}"),
-            ActionRoute::RgQuerySet { queries, scope, .. } => {
-                format!(
-                    "queryClauses={},scope={scope}",
-                    query_clauses_display(queries)
-                )
-            }
-            ActionRoute::OwnerItems { owner, query, .. } => {
-                format!("owner={owner},query={query}")
-            }
-            ActionRoute::OwnerItemsHint { owner } => format!("owner={owner}"),
-            ActionRoute::DependencySearch {
-                dependency, scope, ..
-            } => {
-                format!("dependency={dependency},scope={scope}")
-            }
-            ActionRoute::TreeSitterQuery { recipe, names, .. } => {
-                format!("recipe={recipe},names={}", names.join("|"))
-            }
-        }
-    }
-
     pub(super) fn materialized_command(&self) -> Option<String> {
         match &self.route {
             ActionRoute::QueryCode {
@@ -263,28 +228,9 @@ impl ActionNode {
 pub(super) fn render_action_rows(actions: &[ActionNode]) -> String {
     let mut rendered = String::new();
     if actions.is_empty() {
-        rendered.push_str("actionRank=-\n");
         rendered.push_str("actionFrontier=-\n");
         rendered.push_str("recommendedNext=-\n");
         return rendered;
-    }
-    rendered.push_str(&render_route_graph_rows(actions));
-    rendered.push_str(&format!(
-        "actionRank={}\n",
-        actions
-            .iter()
-            .map(|action| action.id.as_str())
-            .collect::<Vec<_>>()
-            .join(",")
-    ));
-    for action in actions {
-        rendered.push_str(&format!(
-            "{}={}({})!{}\n",
-            action.id,
-            action.kind,
-            action.render_body(),
-            action.suffix
-        ));
     }
     rendered.push_str(&format!(
         "actionFrontier={}\n",
@@ -300,67 +246,6 @@ pub(super) fn render_action_rows(actions: &[ActionNode]) -> String {
         rendered.push_str(&format!("nextCommand={command}\n"));
     }
     rendered
-}
-
-fn render_route_graph_rows(actions: &[ActionNode]) -> String {
-    let first = actions.first().expect("non-empty actions");
-    let (evidence, chosen, reason, avoid) = route_graph_metadata(&first.route);
-    let frontier = actions
-        .iter()
-        .map(|action| format!("{}.{}", action.id, action.kind))
-        .collect::<Vec<_>>()
-        .join(",");
-    format!(
-        "[route-graph] profile=asp-search-routing evidence={evidence} chosen={chosen} reason=\"{reason}\" routeFrontier={frontier} routeAvoid={avoid}\n"
-    )
-}
-
-fn route_graph_metadata(
-    route: &ActionRoute,
-) -> (&'static str, &'static str, &'static str, &'static str) {
-    match route {
-        ActionRoute::QueryCode { .. } => (
-            "known-selector+known-owner+symbol",
-            "KNOWN_SELECTOR",
-            "exact selector and owner/symbol evidence are available",
-            "search-prime|line-range-selector|direct-source-read",
-        ),
-        ActionRoute::OwnerItems { .. } | ActionRoute::OwnerItemsHint { .. } => (
-            "known-owner",
-            "KNOWN_OWNER",
-            "owner evidence is available; inspect owner items before broader search",
-            "search-prime|direct-source-read",
-        ),
-        ActionRoute::DependencySearch { .. } => (
-            "known-dependency",
-            "KNOWN_DEPENDENCY",
-            "dependency evidence is available; inspect topology/import usage",
-            "workspace-prime|direct-source-read",
-        ),
-        ActionRoute::TreeSitterQuery { .. } => (
-            "known-selector",
-            "KNOWN_SELECTOR",
-            "structural query evidence is available",
-            "search-prime|line-range-selector",
-        ),
-        ActionRoute::FdQuery { .. }
-        | ActionRoute::RgQuery { .. }
-        | ActionRoute::RgQuerySet { .. } => (
-            "broad-query",
-            "BROAD_QUERY",
-            "query has no stable owner/selector anchor; refine finder evidence",
-            "repeat-search-pipe|manual-window-scan|direct-source-read",
-        ),
-    }
-}
-
-fn query_clauses_display(queries: &[String]) -> String {
-    queries
-        .iter()
-        .enumerate()
-        .map(|(index, query)| format!("C{}={}", index + 1, shell_arg(query)))
-        .collect::<Vec<_>>()
-        .join(";")
 }
 
 fn repeated_query_args(queries: &[String]) -> String {
@@ -498,4 +383,43 @@ fn shell_quote(value: &str) -> String {
         return "''".to_string();
     }
     format!("'{}'", value.replace('\'', "'\\''"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn render_action_rows_keeps_seed_output_compact() {
+        let actions = vec![
+            ActionNode {
+                id: "A1".to_owned(),
+                kind: "fd-query".to_owned(),
+                suffix: "finder-owner".to_owned(),
+                route: ActionRoute::FdQuery {
+                    query: "foo|bar".to_owned(),
+                    scope: ".".to_owned(),
+                    command_scope: None,
+                },
+            },
+            ActionNode {
+                id: "A2".to_owned(),
+                kind: "owner-items".to_owned(),
+                suffix: "owner-items".to_owned(),
+                route: ActionRoute::OwnerItemsHint {
+                    owner: "src/lib.rs".to_owned(),
+                },
+            },
+        ];
+
+        let rendered = render_action_rows(&actions);
+
+        assert!(!rendered.contains("[route-graph]"));
+        assert!(!rendered.contains("actionRank="));
+        assert!(!rendered.contains("A1=fd-query("));
+        assert!(!rendered.contains("query=foo|bar"));
+        assert!(rendered.contains("actionFrontier=A1.fd-query,A2.owner-items\n"));
+        assert!(rendered.contains("recommendedNext=A1.fd-query\n"));
+        assert!(rendered.contains("nextCommand=asp fd -query 'foo|bar' --workspace .\n"));
+    }
 }
