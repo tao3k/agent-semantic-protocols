@@ -40,19 +40,19 @@ const LANGUAGE_SCENARIO_BENCHMARK_REQUIREMENTS: &[LanguageScenarioBenchmarkRequi
     },
     LanguageScenarioBenchmarkRequirement {
         language: "typescript",
-        root: "languages/typescript-lang-project-harness/tests/fixtures/scenario_benchmarks",
+        root: "languages/typescript-lang-project-harness/tests/unit/scenarios/software_criteria",
         syntax: ScenarioBenchmarkSyntax::TomlPair,
         snapshot_root: Some("languages/typescript-lang-project-harness/tests/snapshots"),
     },
     LanguageScenarioBenchmarkRequirement {
         language: "python",
-        root: "languages/python-lang-project-harness/tests/fixtures/scenario_benchmarks",
+        root: "languages/python-lang-project-harness/tests/unit/harness/scenarios/software_criteria",
         syntax: ScenarioBenchmarkSyntax::TomlPair,
         snapshot_root: Some("languages/python-lang-project-harness/tests/unit/snapshots"),
     },
     LanguageScenarioBenchmarkRequirement {
         language: "julia",
-        root: "languages/JuliaLangProjectHarness.jl/test/fixtures/scenario_benchmarks",
+        root: "languages/JuliaLangProjectHarness.jl/test/unit/scenarios/software_criteria",
         syntax: ScenarioBenchmarkSyntax::TomlPair,
         snapshot_root: Some("languages/JuliaLangProjectHarness.jl/test/snapshots"),
     },
