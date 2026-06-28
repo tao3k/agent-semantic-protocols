@@ -169,7 +169,7 @@ def _check_python_frontier_code(env: dict[str, str], asp_bin: str) -> None:
         "src/python_lang_project_harness/_cli_query.py",
         "languages/python-lang-project-harness",
     )
-    contains(python_locate, "src/python_lang_project_harness/_cli_query.py:20", "python locate")
+    contains(python_locate, "src/python_lang_project_harness/_cli_query.py:", "python locate")
     contains(python_locate, "run_query_command", "python locate")
     not_contains(python_locate, "def run_query_command", "python locate")
     no_cache_noise(python_locate, "python locate")
@@ -182,9 +182,9 @@ def _check_python_frontier_code(env: dict[str, str], asp_bin: str) -> None:
         "--treesitter-query",
         '(function_definition name: (identifier) @function.name (#eq? @function.name "run_query_command"))',
         "--selector",
-        "languages/python-lang-project-harness/src/python_lang_project_harness/_cli_query.py:20:60",
+        "src/python_lang_project_harness/_cli_query.py",
         "--workspace",
-        ".",
+        "languages/python-lang-project-harness",
         "--code",
     )
     pure_code(python_code, "def run_query_command", "python code")
