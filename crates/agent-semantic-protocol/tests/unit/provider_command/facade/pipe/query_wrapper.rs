@@ -4,7 +4,9 @@ mod native_batching;
 mod org_scope;
 mod path_ranking;
 
-use crate::provider_command::support::{asp_command, make_executable, temp_project_root};
+use crate::provider_command::support::{
+    asp_command, assert_compact_search_action_contract, make_executable, temp_project_root,
+};
 
 use super::assert_graph_turbo_request_contract;
 
@@ -229,14 +231,8 @@ fn asp_rg_query_keeps_repeated_query_clauses_separate() {
         1,
         "{stdout}"
     );
-    let route_graph = stdout
-        .lines()
-        .find(|line| line.starts_with("[route-graph]"))
-        .expect("route graph line");
-    assert!(route_graph.contains("routeFrontier="), "{stdout}");
-    assert!(route_graph.contains("routeAvoid="), "{stdout}");
-    assert!(!route_graph.contains(" frontier="), "{stdout}");
-    assert!(!route_graph.contains(" avoid="), "{stdout}");
+    assert_compact_search_action_contract(&stdout);
+    assert!(stdout.contains("actionFrontier=A1.fd-query"), "{stdout}");
     assert!(stdout.contains("recommendedNext=A1.fd-query"), "{stdout}");
     assert!(
         stdout.contains("nextClasses=owner-items,query-selector,fd-query"),

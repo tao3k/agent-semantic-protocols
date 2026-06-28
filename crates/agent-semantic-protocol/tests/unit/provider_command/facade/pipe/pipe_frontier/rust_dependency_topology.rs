@@ -125,7 +125,8 @@ fn search_pipe_seeds_promotes_matching_dependency_route() {
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains("A1=search-deps(dependency=serde,scope=.)!dependency-topology"),
+        stdout.contains("recommendedNext=A1.search-deps")
+            && stdout.contains("nextCommand=asp rust search deps serde"),
         "{stdout}"
     );
     assert!(

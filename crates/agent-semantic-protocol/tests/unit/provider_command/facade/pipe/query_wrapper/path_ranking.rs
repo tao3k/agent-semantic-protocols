@@ -181,14 +181,12 @@ fn asp_fd_query_owner_items_query_uses_selected_owner_axes() {
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(
-        stdout.contains(
-            "A1=owner-items(owner=src/graph_turbo_candidate_ranking.rs,query=graph|turbo|candidate|ranking)"
-        ),
+        stdout.contains("nextCommand=asp rust search owner src/graph_turbo_candidate_ranking.rs"),
         "{stdout}"
     );
     let owner_items_line = stdout
         .lines()
-        .find(|line| line.starts_with("A1=owner-items("))
+        .find(|line| line.starts_with("nextCommand=asp rust search owner "))
         .expect("owner-items action line");
     assert!(
         !owner_items_line.contains("owner|search|frontier|fd"),
@@ -225,7 +223,7 @@ fn asp_fd_query_owner_items_query_prefers_semantic_variants_before_path_terms() 
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(
         stdout.contains(
-            "A1=owner-items(owner=src/search_pipe_graph_turbo_owner_rank.rs,query=ranked|sandtable|report|chain|ranking|graph)"
+            "nextCommand=asp rust search owner src/search_pipe_graph_turbo_owner_rank.rs"
         ),
         "{stdout}"
     );

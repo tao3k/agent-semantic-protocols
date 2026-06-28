@@ -46,11 +46,11 @@ fn source_owner_beats_test_corpus_when_query_has_no_test_intent() {
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(
-        stdout.contains("A1=owner-items(owner=src/compiler/moduleResolution.ts"),
+        stdout.contains("nextCommand=asp typescript search owner src/compiler/moduleResolution.ts"),
         "{stdout}"
     );
     assert!(
-        !stdout.contains("A1=owner-items(owner=tests/cases/"),
+        !stdout.contains("nextCommand=asp typescript search owner tests/cases/"),
         "{stdout}"
     );
     let _ = std::fs::remove_dir_all(root);
@@ -100,11 +100,12 @@ fn source_owner_beats_unittests_corpus_when_query_has_no_test_intent() {
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(
-        stdout.contains("A1=owner-items(owner=src/compiler/moduleNameResolver.ts"),
+        stdout
+            .contains("nextCommand=asp typescript search owner src/compiler/moduleNameResolver.ts"),
         "{stdout}"
     );
     assert!(
-        !stdout.contains("A1=owner-items(owner=src/testRunner/unittests/"),
+        !stdout.contains("nextCommand=asp typescript search owner src/testRunner/unittests/"),
         "{stdout}"
     );
     let _ = std::fs::remove_dir_all(root);
@@ -154,7 +155,7 @@ fn test_intent_keeps_test_corpus_owner_eligible() {
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(
-        stdout.contains("A1=owner-items(owner=tests/cases/projects/privacyCheck-IndirectReference/indirectExternalModule.ts"),
+        stdout.contains("nextCommand=asp typescript search owner tests/cases/projects/privacyCheck-IndirectReference/indirectExternalModule.ts"),
         "{stdout}"
     );
     let _ = std::fs::remove_dir_all(root);

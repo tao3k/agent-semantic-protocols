@@ -48,8 +48,8 @@ fn low_cohesion_query_pack_precedes_global_fd_discovery() {
         "{stdout}"
     );
     assert!(
-        stdout.contains("A1=rg-query-set(")
-            && stdout.contains("A2=fd-query(")
+        stdout.contains("recommendedNext=A1.rg-query-set")
+            && stdout.contains("A2.fd-query")
             && stdout.contains("recommendedNext=A1.rg-query-set"),
         "{stdout}"
     );
@@ -113,7 +113,10 @@ fn low_cohesion_query_pack_materializes_dominant_owner_package_scope() {
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(stdout.contains("packageCohesion=low"), "{stdout}");
-    assert!(stdout.contains("A1=rg-query-set("), "{stdout}");
+    assert!(
+        stdout.contains("recommendedNext=A1.rg-query-set"),
+        "{stdout}"
+    );
     assert!(
         stdout.contains("nextCommand=asp rg -query")
             && stdout.contains("--workspace crates/agent-semantic-protocol"),

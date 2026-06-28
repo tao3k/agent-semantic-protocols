@@ -222,7 +222,10 @@ fn search_pipe_package_option_scopes_finder_frontier_without_provider_spawn() {
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(stdout.contains("owner:path(program.ts)"), "{stdout}");
-    assert!(stdout.contains("scope=src/compiler"), "{stdout}");
+    assert!(
+        stdout.contains("nextCommand=asp fd -query createProgram --workspace src/compiler"),
+        "{stdout}"
+    );
     assert!(!stdout.contains("src/server/program.ts"), "{stdout}");
     assert!(stdout.contains("actionFrontier="), "{stdout}");
     assert!(

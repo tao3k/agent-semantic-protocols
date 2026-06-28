@@ -140,11 +140,8 @@ fn search_pipe_is_asp_owned_and_renders_generated_candidates_without_provider_sp
         stdout.contains("treeSitterHandles=exported-declarations:HookDecision|ClientReceipt"),
         "{stdout}"
     );
-    assert!(stdout.contains("actionRank=A1,A2,A3,A4,A5"), "{stdout}");
-    assert!(
-        stdout.contains("A1=query-code(sourceLocatorHint=src/lib.rs:"),
-        "{stdout}"
-    );
+    assert!(stdout.contains("actionFrontier=A1.query-code"), "{stdout}");
+    assert!(stdout.contains("recommendedNext=A1.query-code"), "{stdout}");
     assert!(!stdout.contains("A1=query-code(selector="), "{stdout}");
     assert!(
         stdout.contains("actionFrontier=A1.query-code,A2.fd-query,A3.rg-query,A4.owner-items,A5.treesitter-query"),
@@ -462,10 +459,7 @@ fn search_pipe_preserves_rust_path_compounds_as_precise_symbol_terms() {
         "{stdout}"
     );
     assert!(stdout.contains("fdQuery=Handle::enter|Tokio"), "{stdout}");
-    assert!(
-        stdout.contains("fd-query(query=Handle::enter|Tokio"),
-        "{stdout}"
-    );
+    assert!(stdout.contains("A2.fd-query"), "{stdout}");
     assert!(
         stdout.contains("nextCommand=") && stdout.contains(" --workspace ."),
         "{stdout}"

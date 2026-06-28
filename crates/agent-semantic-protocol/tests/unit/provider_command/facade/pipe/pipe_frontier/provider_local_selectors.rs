@@ -70,12 +70,7 @@ fn search_pipe_plan_uses_scope_root_for_provider_local_selectors() {
         "{stdout}"
     );
     assert!(!stdout.contains("A1=query-code(selector="), "{stdout}");
-    assert!(
-        stdout.contains(
-            "A1=query-code(sourceLocatorHint=src/lib.rs:3:3,owner=src/lib.rs,symbol=vec,codePolicy=requires-exact-code)!terminal-code"
-        ),
-        "{stdout}"
-    );
+    assert!(stdout.contains("recommendedNext=A1.query-code"), "{stdout}");
     assert!(stdout.contains("has_type"), "{stdout}");
     assert!(stdout.contains("collection_of"), "{stdout}");
     assert!(

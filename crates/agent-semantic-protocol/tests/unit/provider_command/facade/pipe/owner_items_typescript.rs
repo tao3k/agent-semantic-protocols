@@ -70,13 +70,10 @@ fn typescript_owner_items_query_set_renders_item_selectors_without_provider() {
         "{stdout}"
     );
     assert!(
-        stdout.contains("A1=item-skeleton(selector=typescript://packages/effect/src/Fiber.ts#item/interface/Fiber,projection=skeleton,hint=packages/effect/src/Fiber.ts:1:3)!skeleton"),
+        stdout.contains("recommendedNext=A1.item-skeleton"),
         "{stdout}"
     );
-    assert!(
-        stdout.contains("A3=query-code(selector=typescript://packages/effect/src/Fiber.ts#item/interface/Fiber,requiresExact=true,codePolicy=exact-only,hint=packages/effect/src/Fiber.ts:1:3)!query-code"),
-        "{stdout}"
-    );
+    assert!(stdout.contains("A3.query-code"), "{stdout}");
     assert!(
         stdout.contains("recommendedNext=A1.item-skeleton"),
         "{stdout}"

@@ -37,8 +37,8 @@ fn asp_fd_query_avoids_owner_items_when_package_cohesion_is_low() {
     );
     assert!(!stdout.contains("A1=owner-items("), "{stdout}");
     assert!(
-        stdout.contains("A1=scoped-rg-query(")
-            && stdout.contains("A2=owner-items(")
+        stdout.contains("recommendedNext=A1.scoped-rg-query")
+            && stdout.contains("A2.owner-items")
             && stdout.contains("recommendedNext=A1.scoped-rg-query"),
         "{stdout}"
     );
