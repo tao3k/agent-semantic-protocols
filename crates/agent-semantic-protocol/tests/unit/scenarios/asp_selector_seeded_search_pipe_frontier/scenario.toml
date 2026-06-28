@@ -1,0 +1,8 @@
+id = "asp-selector-seeded-search-pipe-frontier"
+title = "ASP selector-seeded search pipe renders a single next command without provider spawn"
+policy_ids = ["RUST-AGENT-ASP-PERF-SUBCOMMAND-SEARCH-PIPE-SELECTOR-SEED-001"]
+agent_goal = "Keep the real agent UX case where a selector plus query enters search pipe fixed as a scenario: the command must emit a compact single-command frontier, avoid shell chaining, avoid provider spawn, and remain inside a millisecond hard gate."
+reference_repositories = ["tao3k/agent-semantic-protocols"]
+reference_patterns = ["asp rust search pipe --selector", "provider_invocation_with_profile", "selector-seeded pipe nextCommand"]
+inputs = "inputs"
+expected = "expected"

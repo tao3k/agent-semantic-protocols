@@ -1077,7 +1077,7 @@ Schema evolution is versioned by file name and `schemaVersion`.
 Optional fields, enum members, and method descriptors can be additive v1
 changes. Renaming a field, changing field meaning, making an optional field
 required, or removing an enum member is breaking and requires a new schema file
-such as `semantic-search-packet.v2.schema.json`. Provider packages must update
+such as a new versioned semantic search packet schema. Provider packages must update
 their package-local copies and sync tests in the same change that advertises a
 new schema version.
 

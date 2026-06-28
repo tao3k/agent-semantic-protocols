@@ -216,7 +216,7 @@
           "evidenceNodes=I=item:symbol(concurrency)@packages/effect/src/Effect.ts:101:101!syntax;F=field:interface-field([Unify.ignoreSymbol])@packages/effect/src/Stream.ts:74:74!evidence",
           "H=hot:range(concurrency)@packages/effect/src/Effect.ts:93:113!hot",
           "evidenceEdges=F>{Y:has_type};I>{H:contains}",
-          "seedPlan=seed-query alg=asp-search-pipe-v2 budget=frontier<=3 repeated=0",
+          "seedPlan=seed-query alg=asp-search-pipe-v1 budget=frontier<=3 repeated=0",
           "commandHandles=fdQuery=Fiber|Queue|Stream|Scope;rgQuery=concurrency|Fiber|Queue|Stream|Scope|awaitShutdown;ownerItems=packages/effect/src/Effect.ts:concurrency|Fiber|Queue|Stream|Scope|effect",
           "treeSitterHandles=interface-fields:awaitShutdown;exported-declarations:Fiber|Queue|Stream|Scope",
           "fdPreview=ownerCandidates=packages/effect/src/Fiber.ts,packages/effect/src/Queue.ts,packages/effect/src/Scope.ts,packages/effect/src/Stream.ts packageClusters=packages/effect/src parserIndexNext=owner-items rgScopeNext=packages/effect/src",

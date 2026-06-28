@@ -5,7 +5,7 @@ mod language {
     fn language_facade_forwards_agent_doctor_to_provider() {
         let root =
             crate::provider_command::support::temp_project_root("language-agent-doctor-facade");
-        let bin_dir = root.join(".bin");
+        let bin_dir = crate::provider_command::support::home_local_bin(&root);
         let cache_home = root.join(".cache");
         std::fs::create_dir_all(&bin_dir).expect("create bin dir");
 
@@ -45,11 +45,11 @@ mod language {
     }
 
     #[test]
-    fn language_facade_prefers_project_bin_over_home_local_provider() {
+    fn language_facade_prefers_home_local_provider_over_project_bin() {
         let root =
             crate::provider_command::support::temp_project_root("language-agent-doctor-bin-order");
         let bin_dir = root.join(".bin");
-        let home_bin_dir = root.join("home/.local/bin");
+        let home_bin_dir = crate::provider_command::support::home_local_bin(&root);
         let cache_home = root.join(".cache");
         std::fs::create_dir_all(&bin_dir).expect("create bin dir");
         std::fs::create_dir_all(&home_bin_dir).expect("create home bin dir");
@@ -93,10 +93,10 @@ mod language {
         );
         let stdout = String::from_utf8(output.stdout).expect("stdout");
         assert!(
-            stdout.contains("project-bin:agent doctor --json"),
+            stdout.contains("home-local:agent doctor --json"),
             "stdout={stdout}"
         );
-        assert!(!stdout.contains("home-local:"), "stdout={stdout}");
+        assert!(!stdout.contains("project-bin:"), "stdout={stdout}");
         std::fs::remove_dir_all(root).expect("remove temp root");
     }
 }

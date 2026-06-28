@@ -9,6 +9,11 @@ fn asp_unit_scenarios_cover_perf_sensitive_query_search_subcommands() {
 }
 
 #[test]
+fn asp_selector_seeded_search_pipe_frontier_stays_inside_scenario_gate() {
+    super::support::asp_selector_seeded_search_pipe_frontier_stays_inside_scenario_gate();
+}
+
+#[test]
 fn asp_unit_scenarios_cover_workspace_argument_guards() {
     super::support::asp_unit_scenarios_cover_workspace_argument_guards();
 }

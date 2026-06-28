@@ -52,7 +52,7 @@ fn direct_dependency_seed_falls_back_to_asp_manifest_without_topology_capability
 #[test]
 fn direct_dependency_seed_uses_provider_dependency_topology_when_available() {
     let root = temp_project_root("direct-dependency-seed-provider-topology");
-    let bin_dir = root.join(".bin");
+    let bin_dir = crate::provider_command::support::home_local_bin(&root);
     let marker = root.join("provider-called");
     std::fs::write(
         root.join("Cargo.toml"),

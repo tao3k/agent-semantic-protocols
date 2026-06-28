@@ -1,4 +1,10 @@
 * CLI is the protocol: search plus query surface
+Selector-seeded pipe contract:
+When an agent already has an exact provider selector and still needs owner-local context terms, the canonical search surface is a selector-seeded pipe command, not a shell-joined query plus owner search:
+#+begin_src shell
+asp <language> search pipe --selector '<provider-selector>' --query '<owner-local terms>' --workspace . --view seeds
+#+end_src
+This packet must bind the exact selector, owner path, and context query into one =actionFrontier=. The primary =recommendedNext= should be the exact parser-owned =query --selector ... --code= action; secondary actions may include =search owner <owner> items --query ...= and a scoped =asp rg= fallback. The rendered packet must not ask agents to use =&&= or manually join separate =asp <language> query= and =asp <language> search owner= commands as one evidence step.
 Search flow selection is evidence-state driven. =search prime= and
 =search pipe= are available protocol surfaces, but they are not a mandatory
 prelude before every read or edit. If the user prompt, hook recovery route,
@@ -1850,7 +1856,7 @@ Schema evolution rules:
 
 #+begin_src text
 Additive v1 change     add optional fields, enum members, or descriptors
-Breaking change        new schema file and schemaVersion, e.g. *.v2.schema.json
+Breaking change        new versioned schema file and schemaVersion, coordinated by RFC
 Provider adoption      update package-local copies and sync tests together
 Registry advertisement advertise every emitted schema id/version/path
 Client behavior        accept known schema versions; reject unknown versions with a compact diagnostic

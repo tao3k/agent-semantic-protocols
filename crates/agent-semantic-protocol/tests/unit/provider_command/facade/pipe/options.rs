@@ -31,6 +31,8 @@ fn search_pipe_help_does_not_require_activation_or_provider_spawn() {
     );
     assert!(!stdout.contains("natural-intent"), "stdout={stdout}");
     assert!(stdout.contains("--workspace PROJECT_ROOT"));
+    assert!(stdout.contains("--selector SELECTOR"));
+    assert!(stdout.contains("--query TERMS"));
     assert!(stdout.contains("--source auto|provider|finder|ingest"));
     assert!(output.stderr.is_empty());
     assert!(!marker.exists(), "help should not spawn provider");
@@ -61,6 +63,73 @@ fn search_pipe_version_does_not_require_activation_or_provider_spawn() {
     );
     assert!(output.stderr.is_empty());
     assert!(!marker.exists(), "version should not spawn provider");
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn search_pipe_selector_seed_renders_single_command_frontier_without_provider_spawn() {
+    let root = temp_project_root("search-pipe-selector-seed");
+    let bin_dir = root.join(".bin");
+    let marker = root.join("provider-called");
+    write_marker_provider(&bin_dir, "rs-harness", &marker);
+    write_activation(&root, &[provider("rust", Vec::new())]);
+
+    let selector = "rust://crates/agent-semantic-protocol/src/command/provider_process.rs#item/fn/provider_invocation_with_profile";
+    let query = "runtime_profile_invocation RuntimeProfiles provider_command_prefix";
+    let output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args([
+            "rust",
+            "search",
+            "pipe",
+            "--selector",
+            selector,
+            "--query",
+            query,
+            "--workspace",
+            ".",
+            "--view",
+            "seeds",
+        ])
+        .output()
+        .expect("run asp rust search pipe with selector seed");
+
+    assert!(
+        output.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    assert!(stdout.contains("source=selector"), "{stdout}");
+    assert!(
+        stdout.contains(&format!("selectorSeed={selector}")),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("ownerSeed=crates/agent-semantic-protocol/src/command/provider_process.rs"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("symbolSeed=provider_invocation_with_profile"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("actionFrontier=A1.query-code,A2.owner-items,A3.rg-query"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("recommendedNext=A1.query-code"), "{stdout}");
+    assert!(
+        stdout.contains(&format!(
+            "nextCommand=asp rust query --selector '{selector}' --workspace . --code"
+        )),
+        "{stdout}"
+    );
+    assert!(!stdout.contains("&&"), "{stdout}");
+    assert!(
+        !marker.exists(),
+        "selector-seeded pipe should not spawn provider"
+    );
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -221,7 +290,11 @@ fn search_pipe_package_option_scopes_finder_frontier_without_provider_spawn() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
-    assert!(stdout.contains("owner:path(program.ts)"), "{stdout}");
+    assert!(
+        stdout.contains("fdPreview=ownerCandidates=program.ts")
+            && stdout.contains("ownerItems=program.ts:"),
+        "{stdout}"
+    );
     assert!(
         stdout.contains("nextCommand=asp fd -query createProgram --workspace src/compiler"),
         "{stdout}"
@@ -232,6 +305,7 @@ fn search_pipe_package_option_scopes_finder_frontier_without_provider_spawn() {
         !stdout.contains("query-code(selector=src/compiler/program.ts:"),
         "{stdout}"
     );
+    assert!(!stdout.contains("owner:path(program.ts)"), "{stdout}");
     assert!(
         !marker.exists(),
         "finder-scoped pipe should not spawn provider"

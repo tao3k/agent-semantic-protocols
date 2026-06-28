@@ -1,13 +1,14 @@
 use crate::provider_command::support::{
-    asp_command, assert_compact_search_action_contract, make_executable, prepend_path, provider,
-    temp_project_root, write_activation, write_marker_provider,
+    asp_command, assert_compact_search_action_contract, home_local_bin, make_executable,
+    prepend_path, provider, provider_with_dependency_topology, temp_project_root, write_activation,
+    write_marker_provider,
 };
 use serde_json::Value;
 
 #[test]
 fn search_pipe_graph_request_uses_rust_manifest_dependency_versions() {
     let root = temp_project_root("search-pipe-rust-dependency-topology");
-    let bin_dir = root.join(".bin");
+    let bin_dir = home_local_bin(&root);
     let marker = root.join("provider-called");
     std::fs::create_dir_all(root.join("src")).expect("create src");
     std::fs::write(
@@ -33,7 +34,10 @@ fn search_pipe_graph_request_uses_rust_manifest_dependency_versions() {
         "1.0.228",
         "Cargo.toml",
     );
-    write_activation(&root, &[provider("rust", Vec::new())]);
+    write_activation(
+        &root,
+        &[provider_with_dependency_topology("rust", Vec::new())],
+    );
 
     let output = asp_command(&root)
         .env("PATH", prepend_path(&bin_dir))

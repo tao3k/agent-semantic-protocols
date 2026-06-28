@@ -48,7 +48,14 @@ fn search_pipe_auto_uses_rust_sql_source_index_before_finder() {
     assert!(stdout.starts_with("[search-pipe]"), "{stdout}");
     assert!(stdout.contains("sourceTrace=sourceIndex:used"), "{stdout}");
     assert!(stdout.contains("finder:skipped"), "{stdout}");
-    assert!(stdout.contains("O=owner:path(src/lib.rs)"), "{stdout}");
+    assert!(
+        stdout.contains("ownerCoverage=bestOwner=src/lib.rs")
+            && stdout.contains(
+                "nextCommand=asp rust query --selector src/lib.rs:1:2 --workspace . --code"
+            ),
+        "{stdout}"
+    );
+    assert!(!stdout.contains("O=owner:path(src/lib.rs)"), "{stdout}");
     assert!(
         !marker.exists(),
         "source-index fast path should not spawn provider"

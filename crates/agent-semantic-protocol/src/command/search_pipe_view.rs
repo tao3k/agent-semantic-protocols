@@ -15,9 +15,7 @@ use super::search_pipe_graph_turbo::{
     GraphTurboSearchPipeRequest, graph_turbo_request, render_graph_turbo_request,
 };
 use super::search_pipe_model::{Candidate, SearchPipeSourceTrace};
-use super::search_pipe_plan::{
-    SearchPipePlanRequest, render_search_pipe_decision_projection, render_search_pipe_plan,
-};
+use super::search_pipe_plan::{SearchPipePlanRequest, render_search_pipe_plan};
 use super::search_pipe_provider_facts::{ProviderGraphFacts, ProviderGraphFactsContext};
 use super::search_pipe_quality::analyze_search_pipe_quality;
 use super::search_pipe_query_pack::query_clause_texts;
@@ -259,15 +257,7 @@ fn render_search_pipe_seeds_view(request: SearchPipeSeedsViewRequest<'_>) -> Res
     let ranked_compact = std::str::from_utf8(output.as_ref())
         .ok()
         .map(str::to_string);
-    let projection_started_at = Instant::now();
-    let decision_projection = if include_pipe_plan {
-        ranked_compact
-            .as_deref()
-            .map(render_search_pipe_decision_projection)
-    } else {
-        None
-    };
-    let projection_elapsed = projection_started_at.elapsed();
+    let projection_elapsed = Duration::ZERO;
     let plan_started_at = Instant::now();
     let plan_output = if include_pipe_plan {
         query.map(|query| {
@@ -318,15 +308,7 @@ fn render_search_pipe_seeds_view(request: SearchPipeSeedsViewRequest<'_>) -> Res
     if let Some(seed_plan_line) = seed_plan_line {
         println!("{seed_plan_line}");
     }
-    if include_pipe_plan {
-        if let Some(decision_projection) = decision_projection {
-            print!("{decision_projection}");
-        } else {
-            io::stdout()
-                .write_all(output.as_ref())
-                .map_err(|error| format!("failed to write graph compact stdout: {error}"))?;
-        }
-    } else {
+    if !include_pipe_plan {
         io::stdout()
             .write_all(output.as_ref())
             .map_err(|error| format!("failed to write graph compact stdout: {error}"))?;

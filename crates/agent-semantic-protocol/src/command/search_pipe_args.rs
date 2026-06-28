@@ -8,6 +8,7 @@ use super::search_pipe_surfaces::{default_search_surfaces, parse_search_surfaces
 #[derive(Debug, Eq, PartialEq)]
 pub(super) struct SearchPipeArgs {
     pub(super) seed_query: String,
+    pub(super) selector: Option<String>,
     pub(super) source: SourceSpec,
     pub(super) workspace: Option<PathBuf>,
     pub(super) scopes: Vec<PathBuf>,
@@ -49,18 +50,34 @@ pub(super) struct FailureArgs {
 }
 
 pub(super) fn parse_search_pipe_args(args: &[String]) -> Result<SearchPipeArgs, String> {
-    let seed_query = args
+    let mut seed_query = args
         .get(2)
         .filter(|seed_query| !seed_query.starts_with('-'))
-        .ok_or_else(|| "search pipe requires a seed query".to_string())?
-        .clone();
+        .cloned();
+    let mut selector = None;
     let mut source = SourceSpec::Auto;
     let mut workspace = None;
     let mut scopes = Vec::new();
     let mut view = "seeds".to_string();
-    let mut index = 3;
+    let mut index = if seed_query.is_some() { 3 } else { 2 };
     while index < args.len() {
         match args[index].as_str() {
+            "--query" => {
+                seed_query = Some(
+                    args.get(index + 1)
+                        .ok_or_else(|| "--query requires a value".to_string())?
+                        .clone(),
+                );
+                index += 2;
+            }
+            "--selector" => {
+                selector = Some(
+                    args.get(index + 1)
+                        .ok_or_else(|| "--selector requires a value".to_string())?
+                        .clone(),
+                );
+                index += 2;
+            }
             "--owners" | "--owner" => {
                 let value = args
                     .get(index + 1)
@@ -119,8 +136,16 @@ pub(super) fn parse_search_pipe_args(args: &[String]) -> Result<SearchPipeArgs, 
     if !matches!(view.as_str(), "seeds" | "graph-turbo-request") {
         return Err("search pipe supports --view seeds or --view graph-turbo-request".to_string());
     }
+    let seed_query = seed_query.ok_or_else(|| {
+        if selector.is_some() {
+            "search pipe --selector requires --query or a positional seed query".to_string()
+        } else {
+            "search pipe requires a seed query".to_string()
+        }
+    })?;
     Ok(SearchPipeArgs {
         seed_query,
+        selector,
         source,
         workspace,
         scopes,

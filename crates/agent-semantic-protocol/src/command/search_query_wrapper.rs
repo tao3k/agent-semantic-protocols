@@ -1,17 +1,13 @@
 //! ASP-owned `fd -query` and `rg -query` query-set wrappers.
 
-use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use super::graph::render_graph_turbo_packet;
 use super::provider_roots::client_backend_cache_home;
 use super::search_config::AspConfig;
 use super::search_pipe_graph_turbo::{GraphTurboSearchPipeRequest, render_graph_turbo_request};
 use super::search_pipe_model::{Candidate, SearchPipeSourceTrace};
-use super::search_pipe_plan::render_primary_frontier_actions_only;
 use super::search_pipe_provider_facts::ProviderGraphFacts;
-use super::search_pipe_render::render_ingest_frontier;
 use super::search_pipe_surfaces::default_search_surfaces;
 use super::search_query_budget::{
     SearchQueryBudgetBlock, search_rg_terms_budget_block, search_terms_budget_block,
@@ -23,7 +19,7 @@ use super::search_query_wrapper_candidates::{
 };
 use super::search_query_wrapper_frontier::{
     print_query_wrapper_empty_receipt, print_query_wrapper_refinement_frontier, query_clauses_line,
-    query_display, query_wrapper_action_frontier, render_query_wrapper_action_frontier,
+    query_display, query_wrapper_action_frontier, render_query_wrapper_next_command,
 };
 use super::search_query_wrapper_model::{
     QueryWrapperClause, QueryWrapperQuality, QueryWrapperSurface, display_terms,
@@ -296,29 +292,29 @@ fn print_query_wrapper_view(request: QueryWrapperViewRequest<'_>) -> Result<(), 
         )
         .with_fields(trace_fields),
     ];
-    let action_frontier =
-        query_wrapper_action_frontier(surface, scopes, queries, terms, candidates, quality);
-    let config = AspConfig::load(project_root, project_root);
-    let request = render_graph_turbo_request(GraphTurboSearchPipeRequest {
-        surface: surface.graph_surface(),
-        language_id,
-        dependency_root: project_root,
-        cache_home,
-        query: Some(&query),
-        query_clauses: &query_clause_texts,
-        candidates,
-        precomputed_quality: None,
-        pipes: &pipes,
-        source: "finder",
-        candidate_sources: &["finder".to_string()],
-        source_trace: &source_trace,
-        provider_facts: &ProviderGraphFacts::default(),
-        provider_context: None,
-        config: &config,
-        read_memory_selectors: &[],
-        action_frontier: &action_frontier,
-    })?;
     if view == "graph-turbo-request" {
+        let action_frontier =
+            query_wrapper_action_frontier(surface, scopes, queries, terms, candidates, quality);
+        let config = AspConfig::load(project_root, project_root);
+        let request = render_graph_turbo_request(GraphTurboSearchPipeRequest {
+            surface: surface.graph_surface(),
+            language_id,
+            dependency_root: project_root,
+            cache_home,
+            query: Some(&query),
+            query_clauses: &query_clause_texts,
+            candidates,
+            precomputed_quality: None,
+            pipes: &pipes,
+            source: "finder",
+            candidate_sources: &["finder".to_string()],
+            source_trace: &source_trace,
+            provider_facts: &ProviderGraphFacts::default(),
+            provider_context: None,
+            config: &config,
+            read_memory_selectors: &[],
+            action_frontier: &action_frontier,
+        })?;
         print!("{request}");
         return Ok(());
     }
@@ -394,22 +390,11 @@ fn print_query_wrapper_view(request: QueryWrapperViewRequest<'_>) -> Result<(), 
         print_query_wrapper_refinement_frontier(
             surface, scopes, queries, terms, candidates, quality,
         );
-    } else if let Some(output) = render_graph_turbo_packet(request.as_bytes())? {
-        if let Ok(compact) = std::str::from_utf8(output.as_ref()) {
-            print!("{}", render_primary_frontier_actions_only(compact));
-            print!(
-                "{}",
-                render_query_wrapper_action_frontier(
-                    surface, scopes, queries, terms, candidates, quality
-                )
-            );
-        } else {
-            io::stdout()
-                .write_all(output.as_ref())
-                .map_err(|error| format!("failed to write asp-graph-turbo stdout: {error}"))?;
-        }
     } else {
-        print!("{}", render_ingest_frontier(candidates, &pipes));
+        print!(
+            "{}",
+            render_query_wrapper_next_command(surface, scopes, queries, terms, candidates, quality)
+        );
     }
     println!("nextClasses={}", surface.next_classes(quality));
     println!("avoid={}", surface.avoid(quality));

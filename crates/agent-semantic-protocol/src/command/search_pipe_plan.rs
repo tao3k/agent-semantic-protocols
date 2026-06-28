@@ -4,10 +4,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use super::search_pipe_action_model::PipeAction;
-use super::search_pipe_actions::{
-    SearchPipeActionRequest, render_action_frontier, sanitize_evidence_line,
-};
-use super::search_pipe_evidence_projection::rank_frontier_has_only_owner_or_topology_nodes;
+use super::search_pipe_actions::{SearchPipeActionRequest, render_action_frontier};
 use super::search_pipe_quality::analyze_search_pipe_quality;
 use super::search_pipe_quality_model::SearchPipeQuality;
 use super::search_pipe_seed_decision::SeedActionIntent;
@@ -94,7 +91,7 @@ pub(super) fn render_search_pipe_plan(request: SearchPipePlanRequest<'_>) -> Str
         dependency_action_targets,
     });
     format!(
-        "seedPlan=seed-query alg=asp-search-pipe-v2 budget=frontier<=3 repeated=0\n\
+        "seedPlan=seed-query alg=asp-search-pipe-v1 budget=frontier<=3 repeated=0\n\
 {action_frontier_lines}\
 nextClasses=search-deps,fd-query,rg-query,owner-items,treesitter-query,query-selector\n\
 omit=source,full-candidate-list,raw-finder-output,generated-files,long-field-signatures\n\
@@ -495,205 +492,6 @@ fn node_symbol(node: &str) -> Option<String> {
     } else {
         Some(symbol.to_string())
     }
-}
-
-pub(super) fn render_primary_frontier_actions_only(compact: &str) -> String {
-    let mut rendered = String::new();
-    for line in compact.lines() {
-        if is_graph_debug_line(line) {
-            continue;
-        }
-        if line.starts_with("avoid=") {
-            continue;
-        }
-        if line.starts_with("Q=query:") {
-            continue;
-        }
-        if let Some(filtered) = seedless_rank_or_frontier_line(line) {
-            rendered.push_str(&filtered);
-            rendered.push('\n');
-            continue;
-        }
-        if line.starts_with("frontierActions=") {
-            continue;
-        }
-        rendered.push_str(&sanitize_evidence_line(line));
-        rendered.push('\n');
-    }
-    rendered
-}
-
-pub(super) fn render_search_pipe_decision_projection(compact: &str) -> String {
-    let mut rendered = String::new();
-    let mut nodes = Vec::new();
-    let mut edges = Vec::new();
-    let mut visible_aliases = HashSet::new();
-    let mut visible_node_kinds = HashMap::new();
-    let mut rank_frontier_lines = Vec::new();
-    for line in compact.lines() {
-        if is_graph_debug_line(line)
-            || line.starts_with("legend:")
-            || line.starts_with("aliases=")
-            || line.starts_with("Q=query:")
-            || line.starts_with("frontierActions=")
-            || line.starts_with("avoid=")
-        {
-            continue;
-        }
-        if let Some(filtered) = seedless_rank_or_frontier_line(line) {
-            rank_frontier_lines.push(filtered);
-            continue;
-        }
-        if line.starts_with("[graph-frontier]") {
-            rendered.push_str(line);
-            rendered.push('\n');
-            continue;
-        }
-        if is_graph_edge_line(line) {
-            if !line.starts_with("G>{") && !line.starts_with("Q>{") {
-                edges.push(line.to_string());
-            }
-            continue;
-        }
-        if is_graph_node_line(line) {
-            if let Some((alias, _)) = line.split_once('=') {
-                visible_aliases.insert(alias.to_string());
-                if let Some(kind) = graph_node_kind(line) {
-                    visible_node_kinds.insert(alias.to_string(), kind.to_string());
-                }
-            }
-            nodes.push(sanitize_evidence_line(line));
-            continue;
-        }
-        rendered.push_str(&sanitize_evidence_line(line));
-        rendered.push('\n');
-    }
-    if !rank_frontier_has_only_owner_or_topology_nodes(&visible_node_kinds) {
-        for line in rank_frontier_lines {
-            rendered.push_str(&line);
-            rendered.push('\n');
-        }
-    }
-    if !nodes.is_empty() {
-        rendered.push_str("evidenceNodes=");
-        rendered.push_str(&nodes.join(";"));
-        rendered.push('\n');
-    }
-    if !edges.is_empty() {
-        let edges = edges
-            .into_iter()
-            .filter_map(|edge| visible_graph_edge_line(&edge, &visible_aliases))
-            .collect::<Vec<_>>();
-        if edges.is_empty() {
-            return rendered;
-        }
-        rendered.push_str("evidenceEdges=");
-        rendered.push_str(&edges.join(";"));
-        rendered.push('\n');
-    }
-    rendered
-}
-
-fn seedless_rank_or_frontier_line(line: &str) -> Option<String> {
-    let (prefix, value) = if let Some(value) = line.strip_prefix("rank=") {
-        ("rankedEvidence", value)
-    } else if let Some(value) = line.strip_prefix("frontier=") {
-        ("evidenceFrontier", value)
-    } else {
-        return None;
-    };
-    let filtered = value
-        .split(',')
-        .filter(|entry| {
-            let entry = entry.trim();
-            entry != "Q" && entry != "Q.fzf"
-        })
-        .map(evidence_frontier_entry)
-        .collect::<Vec<_>>();
-    Some(format!("{prefix}={}", filtered.join(",")))
-}
-
-fn is_graph_node_line(line: &str) -> bool {
-    let Some((alias, value)) = line.split_once('=') else {
-        return false;
-    };
-    !alias.is_empty()
-        && alias
-            .chars()
-            .all(|character| character.is_ascii_uppercase() || character.is_ascii_digit())
-        && value.contains(':')
-}
-
-fn graph_node_kind(line: &str) -> Option<&str> {
-    let (_, value) = line.split_once('=')?;
-    value.split_once(':').map(|(kind, _)| kind)
-}
-
-fn is_graph_edge_line(line: &str) -> bool {
-    line.contains(">{") && line.ends_with('}')
-}
-
-fn visible_graph_edge_line(line: &str, visible_aliases: &HashSet<String>) -> Option<String> {
-    let (source, targets) = line.split_once(">{")?;
-    if !visible_aliases.contains(source) {
-        return None;
-    }
-    let visible_targets = targets
-        .trim_end_matches('}')
-        .split(',')
-        .filter(|target| {
-            target
-                .split_once(':')
-                .map(|(alias, _)| visible_aliases.contains(alias.trim()))
-                .unwrap_or(false)
-        })
-        .collect::<Vec<_>>();
-    (!visible_targets.is_empty()).then(|| format!("{source}>{{{}}}", visible_targets.join(",")))
-}
-
-fn evidence_frontier_entry(entry: &str) -> String {
-    let Some((alias, action)) = entry.split_once('.') else {
-        return entry.to_string();
-    };
-    if action != "code" {
-        return entry.to_string();
-    }
-    let replacement = if alias.starts_with('H') {
-        "hot"
-    } else if alias.starts_with('F') || alias.starts_with('Y') || alias.starts_with('C') {
-        "evidence"
-    } else {
-        "syntax"
-    };
-    format!("{alias}.{replacement}")
-}
-
-fn is_graph_debug_line(line: &str) -> bool {
-    matches!(
-        line.split_once('=').map(|(key, _)| key),
-        Some(
-            "scores"
-                | "paths"
-                | "trace"
-                | "explain"
-                | "cache"
-                | "queryCoverage"
-                | "metrics"
-                | "profiles"
-                | "omit"
-                | "pipeChoice"
-                | "pipePolicy"
-                | "pipePlan"
-                | "pipeProjections"
-                | "pipeExecution"
-                | "pipeStages"
-                | "selectorPolicy"
-                | "recommendedNext"
-                | "nextCommand"
-                | "pipeCommands"
-                | "conditionalActions"
-        )
-    )
 }
 
 fn is_source_preferred_owner(owner: &str) -> bool {

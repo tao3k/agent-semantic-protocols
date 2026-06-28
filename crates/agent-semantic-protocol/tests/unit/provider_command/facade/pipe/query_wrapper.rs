@@ -212,19 +212,11 @@ fn asp_rg_query_keeps_repeated_query_clauses_separate() {
         stdout.contains("packageCohesion=high packages=effect.ts"),
         "{stdout}"
     );
-    assert!(stdout.contains("[graph-frontier]"), "{stdout}");
     assert!(
         stdout.contains("actionFrontier=A1.fd-query,A2.multi-clause-rg-query"),
         "{stdout}"
     );
-    assert_eq!(
-        stdout
-            .lines()
-            .filter(|line| line.starts_with("[graph-frontier]"))
-            .count(),
-        1,
-        "{stdout}"
-    );
+    assert!(!stdout.contains("[graph-frontier]"), "{stdout}");
     assert_eq!(
         stdout
             .lines()

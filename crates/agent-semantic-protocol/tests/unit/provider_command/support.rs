@@ -17,12 +17,40 @@ pub(super) const CACHE_SOURCE_SHA256: &str =
 pub(super) struct ProviderSpec {
     language_id: &'static str,
     command_prefix: Vec<String>,
+    owner_items: bool,
+    dependency_topology: bool,
 }
 
 pub(super) fn provider(language_id: &'static str, command_prefix: Vec<String>) -> ProviderSpec {
     ProviderSpec {
         language_id,
         command_prefix,
+        owner_items: false,
+        dependency_topology: false,
+    }
+}
+
+pub(super) fn provider_with_owner_items(
+    language_id: &'static str,
+    command_prefix: Vec<String>,
+) -> ProviderSpec {
+    ProviderSpec {
+        language_id,
+        command_prefix,
+        owner_items: true,
+        dependency_topology: false,
+    }
+}
+
+pub(super) fn provider_with_dependency_topology(
+    language_id: &'static str,
+    command_prefix: Vec<String>,
+) -> ProviderSpec {
+    ProviderSpec {
+        language_id,
+        command_prefix,
+        owner_items: false,
+        dependency_topology: true,
     }
 }
 
@@ -43,7 +71,7 @@ pub(super) fn write_activation_to(root: &Path, activation_path: &Path, providers
                 .find(|manifest| manifest.language_id == spec.language_id)
                 .unwrap_or_else(|| panic!("missing manifest for {}", spec.language_id));
             let manifest_digest = provider_manifest_digest(&manifest).expect("manifest digest");
-            json!({
+            let mut provider = json!({
                 "manifestId": manifest.manifest_id,
                 "manifestDigest": manifest_digest,
                 "languageId": manifest.language_id,
@@ -58,7 +86,21 @@ pub(super) fn write_activation_to(root: &Path, activation_path: &Path, providers
                     "sourceExtensions": manifest.source.default_extensions,
                     "ignoredPathPrefixes": manifest.source.default_ignored_path_prefixes
                 }
-            })
+            });
+            if spec.owner_items || spec.dependency_topology {
+                provider["searchCapabilities"] = json!({
+                    "ownerItems": spec.owner_items,
+                    "dependencyTopology": spec.dependency_topology
+                });
+            }
+            if spec.dependency_topology {
+                provider["routes"] = json!({
+                    "dependencyTopology": {
+                        "argv": [manifest.binary]
+                    }
+                });
+            }
+            provider
         })
         .collect();
     let activation = json!({

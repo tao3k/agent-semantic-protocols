@@ -80,8 +80,11 @@ fn search_pipe_injects_read_loop_memory_into_graph_turbo_request_and_suppresses_
         String::from_utf8_lossy(&seeds_output.stderr)
     );
     let stdout = String::from_utf8(seeds_output.stdout).expect("stdout");
-    assert!(stdout.contains("rankedEvidence="), "{stdout}");
-    assert!(stdout.contains("evidenceFrontier="), "{stdout}");
+    assert!(!stdout.contains("[graph-frontier]"), "{stdout}");
+    assert!(!stdout.contains("evidenceNodes="), "{stdout}");
+    assert!(!stdout.contains("evidenceEdges="), "{stdout}");
+    assert!(!stdout.contains("rankedEvidence="), "{stdout}");
+    assert!(!stdout.contains("evidenceFrontier="), "{stdout}");
     assert!(
         !stdout.contains(
             "frontierActions=S1.selector(selector=languages/rust-harness/src/lib.rs:1:15"

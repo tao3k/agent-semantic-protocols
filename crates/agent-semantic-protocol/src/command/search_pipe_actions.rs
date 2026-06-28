@@ -72,29 +72,6 @@ pub(super) fn render_action_frontier(request: SearchPipeActionRequest<'_>) -> St
     rendered
 }
 
-pub(super) fn sanitize_evidence_line(line: &str) -> String {
-    line.split(';')
-        .map(sanitize_evidence_segment)
-        .collect::<Vec<_>>()
-        .join(";")
-}
-
-fn sanitize_evidence_segment(segment: &str) -> String {
-    if segment.contains("=hot:") || segment.starts_with("H=hot:") {
-        return segment.replace("!code", "!hot");
-    }
-    if segment.contains("=field:")
-        || segment.contains("=type:")
-        || segment.contains("=collection:")
-        || segment.starts_with("F=field:")
-        || segment.starts_with("Y=type:")
-        || segment.starts_with("C=collection:")
-    {
-        return segment.replace("!code", "!evidence");
-    }
-    segment.to_string()
-}
-
 fn command_handles(request: &SearchPipeActionRequest<'_>) -> String {
     let fd = request.quality.fd_query.as_deref().unwrap_or("-");
     let rg = rg_query(request.quality, request.ranked_compact).unwrap_or_else(|| "-".to_string());

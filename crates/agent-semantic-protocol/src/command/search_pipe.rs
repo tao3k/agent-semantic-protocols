@@ -26,6 +26,9 @@ use super::search_pipe_owner_query::render_owner_query_frontier;
 use super::search_pipe_provider_facts::{ProviderGraphFactsContext, collect_provider_graph_facts};
 use super::search_pipe_read_memory::read_loop_memory_selectors;
 use super::search_pipe_render::{render_empty_ingest_diagnostic, render_owner_tests_frontier};
+use super::search_pipe_selector_seed::{
+    SelectorSeedSearchPipeRequest, print_selector_seeded_search_pipe,
+};
 use super::search_pipe_source::{CandidateAcquisition, SourceSpec, collect_search_pipe_candidates};
 use super::search_pipe_surfaces::default_search_surfaces;
 use super::search_pipe_view::{
@@ -222,6 +225,19 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
         context.locator_root,
         pipe_args.workspace.as_deref(),
     );
+    if let Some(selector) = pipe_args.selector.as_deref() {
+        return print_selector_seeded_search_pipe(SelectorSeedSearchPipeRequest {
+            language_id: context.language_id,
+            project_root: &project_root,
+            locator_root: context.locator_root,
+            selector,
+            query: &pipe_args.seed_query,
+            workspace: pipe_args.workspace.as_deref(),
+            scopes: &pipe_args.scopes,
+            view: &pipe_args.view,
+            frontier_receipt: context.frontier_receipt,
+        });
+    }
     let budget_scopes = search_pipe_budget_scopes(&pipe_args);
     if let Some(block) = search_query_budget_block(&pipe_args.seed_query, &budget_scopes, false) {
         print_search_query_budget_block(

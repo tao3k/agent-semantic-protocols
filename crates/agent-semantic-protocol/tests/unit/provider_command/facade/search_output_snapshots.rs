@@ -38,9 +38,6 @@ fn asp_rg_query_wrapper_stdout_snapshot() {
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert_single_line(&stdout, "[search-rg]");
-    assert_single_line(&stdout, "[graph-frontier]");
-    assert_single_line(&stdout, "actionFrontier=");
-    assert_single_line(&stdout, "recommendedNext=");
     assert_single_line(&stdout, "nextCommand=");
     assert_single_line(&stdout, "avoid=");
     assert_compact_search_action_contract(&stdout);

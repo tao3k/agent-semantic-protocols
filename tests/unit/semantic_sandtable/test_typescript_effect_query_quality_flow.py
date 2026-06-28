@@ -112,7 +112,7 @@ class TypeScriptEffectQueryQualityFlowTests(unittest.TestCase):
             "subagentHint=profile=asp-explorer decision=advisory runtimeOwner=agent-client modelClass=cheap readOnly=true noCode=true targetActions=A1.owner-items,A2.rg-query,A3.treesitter-query",
             stdout_contains,
         )
-        self.assertIn("seedPlan=seed-query alg=asp-search-pipe-v2", stdout_contains)
+        self.assertIn("seedPlan=seed-query alg=asp-search-pipe-v1", stdout_contains)
         self.assertIn(
             "handles=inputTerms=Effect,concurrency,Fiber,Queue,Stream,Scope",
             stdout_contains,

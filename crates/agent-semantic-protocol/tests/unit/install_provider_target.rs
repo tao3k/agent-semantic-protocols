@@ -1,24 +1,4 @@
-use super::{
-    resolve_provider_binary_install_target, resolve_provider_binary_install_target_with_bin_dir,
-    resolve_provider_binary_invocation,
-};
-
-#[test]
-fn provider_install_target_uses_semantic_agent_bin_dir_when_set() {
-    let home = std::env::temp_dir().join("asp-install-target-home-with-env");
-    let bin_dir = std::env::temp_dir().join("asp-install-target-env-bin");
-
-    let target = resolve_provider_binary_install_target_with_bin_dir(
-        "rust",
-        "rs-harness",
-        Some(&home),
-        Some(&bin_dir),
-    )
-    .expect("install target");
-
-    assert_eq!(target.path, bin_dir.join("rs-harness"));
-    assert_eq!(target.source, "semantic-agent-bin-dir");
-}
+use super::{resolve_provider_binary_install_target, resolve_provider_binary_invocation};
 
 #[test]
 fn provider_install_target_uses_home_local_bin_by_default() {
@@ -41,24 +21,23 @@ fn provider_install_target_requires_home() {
 }
 
 #[test]
-fn provider_invocation_uses_semantic_agent_bin_dir_when_set() {
-    let home = std::env::temp_dir().join("asp-invocation-home-with-semantic-bin");
-    let semantic_bin = std::env::temp_dir().join("asp-invocation-semantic-bin");
+fn provider_invocation_uses_home_local_even_when_other_bin_dir_exists() {
+    let home = std::env::temp_dir().join("asp-invocation-home-with-extra-bin");
+    let extra_bin = std::env::temp_dir().join("asp-invocation-extra-bin");
     let home_bin = home.join(".local/bin");
     std::fs::create_dir_all(&home_bin).expect("create home bin dir");
-    std::fs::create_dir_all(&semantic_bin).expect("create semantic bin dir");
+    std::fs::create_dir_all(&extra_bin).expect("create extra bin dir");
     std::fs::write(home_bin.join("rs-harness"), "").expect("write home provider");
-    std::fs::write(semantic_bin.join("rs-harness"), "").expect("write semantic provider");
+    std::fs::write(extra_bin.join("rs-harness"), "").expect("write extra provider");
 
     let invocation =
-        resolve_provider_binary_invocation("rust", "rs-harness", Some(&home), Some(&semantic_bin))
-            .expect("invocation");
+        resolve_provider_binary_invocation("rust", "rs-harness", Some(&home)).expect("invocation");
 
     assert_eq!(
         invocation.command,
-        semantic_bin.join("rs-harness").to_string_lossy()
+        home.join(".local/bin/rs-harness").to_string_lossy()
     );
-    assert_eq!(invocation.source, "semantic-agent-bin-dir");
+    assert_eq!(invocation.source, "home-local-bin");
 }
 
 #[test]
@@ -68,8 +47,8 @@ fn provider_invocation_uses_home_local_bin_by_default() {
     std::fs::create_dir_all(&home_bin).expect("create home bin dir");
     std::fs::write(home_bin.join("rs-harness"), "").expect("write home provider");
 
-    let invocation = resolve_provider_binary_invocation("rust", "rs-harness", Some(&home), None)
-        .expect("invocation");
+    let invocation =
+        resolve_provider_binary_invocation("rust", "rs-harness", Some(&home)).expect("invocation");
 
     assert_eq!(
         invocation.command,
@@ -82,7 +61,7 @@ fn provider_invocation_uses_home_local_bin_by_default() {
 fn provider_invocation_rejects_missing_home_local_bin_without_fallback() {
     let home = std::env::temp_dir().join("asp-invocation-missing-home-home");
 
-    let error = resolve_provider_binary_invocation("rust", "rs-harness", Some(&home), None)
+    let error = resolve_provider_binary_invocation("rust", "rs-harness", Some(&home))
         .expect_err("missing home-local provider should fail");
 
     assert!(

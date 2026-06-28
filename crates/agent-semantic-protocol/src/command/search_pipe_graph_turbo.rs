@@ -454,7 +454,7 @@ fn graph_turbo_seed_plan(input: GraphTurboSeedPlanInput<'_>) -> Value {
         .collect::<Vec<_>>();
     json!({
         "phase": "seed-query",
-        "algorithm": "asp-search-pipe-v2",
+        "algorithm": "asp-search-pipe-v1",
         "reason": reason,
         "seedQuality": seed_quality,
         "queryPresent": input.query_present,

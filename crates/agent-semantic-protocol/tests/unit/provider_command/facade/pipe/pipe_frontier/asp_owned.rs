@@ -77,20 +77,12 @@ fn search_pipe_is_asp_owned_and_renders_generated_candidates_without_provider_sp
         ),
         "{stdout}"
     );
-    assert!(stdout.contains("[graph-frontier]"), "{stdout}");
+    assert!(!stdout.contains("[graph-frontier]"), "{stdout}");
+    assert!(!stdout.contains("evidenceNodes="), "{stdout}");
+    assert!(!stdout.contains("evidenceEdges="), "{stdout}");
+    assert!(!stdout.contains("rankedEvidence="), "{stdout}");
+    assert!(!stdout.contains("evidenceFrontier="), "{stdout}");
     assert!(!stdout.contains("Q=query:term"), "{stdout}");
-    assert!(
-        stdout.contains(
-            "I=item:symbol(hookdecision)@rust://src/lib.rs#item/symbol/hookdecision!syntax"
-        ),
-        "{stdout}"
-    );
-    assert!(
-        stdout.contains(
-            "I2=item:symbol(clientreceipt)@rust://src/lib.rs#item/symbol/clientreceipt!syntax"
-        ),
-        "{stdout}"
-    );
     assert!(
         !stdout.contains("I=item:symbol(hookdecision)@src/lib.rs:"),
         "{stdout}"
@@ -99,16 +91,8 @@ fn search_pipe_is_asp_owned_and_renders_generated_candidates_without_provider_sp
         !stdout.contains("I2=item:symbol(clientreceipt)@src/lib.rs:"),
         "{stdout}"
     );
-    let frontier_line = stdout
-        .lines()
-        .find(|line| line.starts_with("evidenceFrontier="))
-        .expect("evidence frontier line");
-    assert!(!frontier_line.contains("Q.fzf"), "{stdout}");
-    for entry in ["I.syntax", "H.hot", "I2.syntax", "H2.hot"] {
-        assert!(frontier_line.contains(entry), "{stdout}");
-    }
     assert!(
-        stdout.contains("seedPlan=seed-query alg=asp-search-pipe-v2"),
+        stdout.contains("seedPlan=seed-query alg=asp-search-pipe-v1"),
         "{stdout}"
     );
     let removed_expression_label = ["pipe", "Expr="].concat();
@@ -345,7 +329,8 @@ fn search_pipe_reports_multi_clause_query_pack_coverage() {
         stdout.contains("handles=inputTerms=lifecycle,Fiber,Queue,Scope contextTerms=- ownerSeedTerms=Fiber,Queue,Scope conceptTerms=lifecycle"),
         "{stdout}"
     );
-    assert!(stdout.contains("evidenceFrontier="), "{stdout}");
+    assert!(!stdout.contains("[graph-frontier]"), "{stdout}");
+    assert!(!stdout.contains("evidenceFrontier="), "{stdout}");
     assert!(
         stdout.contains("actionFrontier=A1.query-code,A2.fd-query,A3.rg-query,A4.owner-items,A5.treesitter-query"),
         "{stdout}"

@@ -4,7 +4,9 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::time::Instant;
 
+use agent_semantic_protocol::render_selector_seeded_search_pipe;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -21,6 +23,7 @@ const REQUIRED_PERFORMANCE_SUBCOMMAND_POLICY_IDS: &[&str] = &[
     "RUST-AGENT-ASP-PERF-SUBCOMMAND-SEARCH-FZF-001",
     "RUST-AGENT-ASP-PERF-SUBCOMMAND-SEARCH-OWNER-001",
     "RUST-AGENT-ASP-PERF-SUBCOMMAND-SEARCH-PIPE-001",
+    "RUST-AGENT-ASP-PERF-SUBCOMMAND-SEARCH-PIPE-SELECTOR-SEED-001",
     "RUST-AGENT-ASP-PERF-SUBCOMMAND-SEARCH-RG-001",
     "RUST-AGENT-ASP-PERF-SUBCOMMAND-SOURCE-INDEX-001",
     "RUST-AGENT-ASP-PERF-SUBCOMMAND-PROVIDER-FACTS-001",
@@ -144,6 +147,57 @@ pub(super) fn asp_unit_scenarios_cover_perf_sensitive_query_search_subcommands()
     assert!(
         missing.is_empty(),
         "ASP unit scenarios must cover performance-sensitive query/search subcommands; missing={missing:?}; observed={policy_ids:?}"
+    );
+}
+
+pub(super) fn asp_selector_seeded_search_pipe_frontier_stays_inside_scenario_gate() {
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let scenario_root = crate_root
+        .join("tests")
+        .join("unit")
+        .join("scenarios")
+        .join("asp_selector_seeded_search_pipe_frontier");
+    let benchmark: SharedBenchmarkToml = read_toml(&scenario_root.join("benchmark.toml"));
+    let max_total_ms = duration_millis_from_manifest(&benchmark.max_total);
+
+    let selector = "rust://crates/agent-semantic-protocol/src/command/provider_process.rs#item/fn/provider_invocation_with_profile";
+    let query = "runtime_profile_invocation RuntimeProfiles provider_command_prefix";
+    let started_at = Instant::now();
+    let stdout = render_selector_seeded_search_pipe("rust", selector, query, ".");
+    let elapsed_ms = started_at.elapsed().as_millis();
+
+    for expected in [
+        "source=selector",
+        "ranker=selector-seed",
+        "ownerSeed=crates/agent-semantic-protocol/src/command/provider_process.rs",
+        "symbolSeed=provider_invocation_with_profile",
+        "actionFrontier=A1.query-code,A2.owner-items,A3.rg-query",
+        "recommendedNext=A1.query-code",
+    ] {
+        assert!(
+            stdout.contains(expected),
+            "selector-seeded search pipe scenario missing {expected:?}; stdout={stdout}"
+        );
+    }
+    assert!(
+        stdout.contains(&format!("selectorSeed={selector}")),
+        "stdout={stdout}"
+    );
+    assert!(
+        stdout.contains(&format!(
+            "nextCommand=asp rust query --selector '{selector}' --workspace . --code"
+        )),
+        "stdout={stdout}"
+    );
+    assert!(
+        !stdout.contains("&&"),
+        "selector-seeded search pipe must not return shell-chained next commands; stdout={stdout}"
+    );
+    assert!(
+        elapsed_ms <= max_total_ms,
+        "selector-seeded search pipe scenario exceeded benchmark max_total={} observed={}ms stdout={stdout}",
+        benchmark.max_total,
+        elapsed_ms
     );
 }
 
@@ -731,6 +785,27 @@ fn require_duration_manifest_field(
             path.display()
         ));
     }
+}
+
+fn duration_millis_from_manifest(value: &str) -> u128 {
+    let trimmed = value.trim();
+    if let Some(value) = trimmed.strip_suffix("ns").and_then(parse_u128) {
+        return value.div_ceil(1_000_000);
+    }
+    if let Some(value) = trimmed.strip_suffix("us").and_then(parse_u128) {
+        return value.div_ceil(1_000);
+    }
+    if let Some(value) = trimmed.strip_suffix("ms").and_then(parse_u128) {
+        return value;
+    }
+    if let Some(value) = trimmed.strip_suffix('s').and_then(parse_u128) {
+        return value * 1_000;
+    }
+    panic!("duration manifest value must use ns/us/ms/s suffix: {value:?}");
+}
+
+fn parse_u128(value: &str) -> Option<u128> {
+    value.parse::<u128>().ok()
 }
 
 fn require_supported_language_harness(

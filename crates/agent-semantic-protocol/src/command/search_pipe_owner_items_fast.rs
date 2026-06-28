@@ -68,13 +68,6 @@ impl<'a> OwnerItemsSearchState<'a> {
         }
     }
 
-    fn provider_required_error(&self) -> String {
-        format!(
-            "python search owner items requires provider-owned owner-items; owner=`{}`; no Rust inline fallback executed",
-            self.owner.display()
-        )
-    }
-
     fn try_inline_gerbil(&self) -> Result<OwnerItemsSearchStep, String> {
         if run_inline_gerbil_owner_items_query(
             self.language_id,
@@ -128,10 +121,21 @@ pub(super) fn run_search_owner_items_query_command(
         &owner_query_args.query,
     );
     if state.language_id == "python" {
+        if state.owner.extension().and_then(|value| value.to_str()) != Some("py")
+            || !owner_path_exists(&state.owner_project_root, state.owner)
+        {
+            return Err(format!(
+                "python search owner items requires an existing .py owner path `{}`; no fallback executed",
+                state.owner.display()
+            ));
+        }
         if state.try_provider()? == OwnerItemsSearchStep::Handled {
             return Ok(());
         }
-        return Err(state.provider_required_error());
+        return Err(format!(
+            "python search owner items requires provider-owned owner-items for existing .py owner path `{}`; no fallback executed",
+            state.owner.display()
+        ));
     }
     if state.try_inline_gerbil()? == OwnerItemsSearchStep::Handled {
         return Ok(());

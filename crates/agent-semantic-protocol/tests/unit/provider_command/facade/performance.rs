@@ -29,7 +29,7 @@ struct FacadePerformanceProvider {
 #[test]
 fn language_facade_regular_commands_finish_inside_performance_gate() {
     let root = temp_project_root("language-facade-performance-gate");
-    let bin_dir = root.join(".bin");
+    let bin_dir = crate::provider_command::support::home_local_bin(&root);
     let cache_home = root.join(".cache");
     let providers = [
         FacadePerformanceProvider {
@@ -302,7 +302,7 @@ fn broad_fd_query_requires_path_or_symbol_terms() {
 #[test]
 fn provider_facts_receive_bounded_candidate_input() {
     let root = temp_project_root("provider-facts-candidate-budget-gate");
-    let bin_dir = root.join(".bin");
+    let bin_dir = crate::provider_command::support::home_local_bin(&root);
     let cache_home = root.join(".cache");
     std::fs::create_dir_all(root.join("src")).expect("create src");
     std::fs::create_dir_all(&bin_dir).expect("create bin dir");

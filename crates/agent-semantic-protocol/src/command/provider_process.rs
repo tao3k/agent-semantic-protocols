@@ -1,4 +1,4 @@
-use agent_semantic_hook::{ActivatedProvider, RuntimeProfiles, runtime_profile_invocation};
+use agent_semantic_hook::{ActivatedProvider, RuntimeProfiles};
 use agent_semantic_provider_transport::{
     OutputMode, ProviderProcessLimits, ProviderProcessOutput, ProviderProcessSpec, StdinMode,
     run_provider_process as run_transport_process,
@@ -314,14 +314,12 @@ pub(super) fn provider_invocations(
 }
 
 fn provider_command_prefix(
-    profiles: &RuntimeProfiles,
+    _profiles: &RuntimeProfiles,
     provider: &ActivatedProvider,
     project_root: &Path,
     config: &AspConfig,
 ) -> Result<Vec<String>, String> {
     let home = home_dir();
-    let semantic_agent_bin_dir =
-        std::env::var_os("SEMANTIC_AGENT_BIN_DIR").map(std::path::PathBuf::from);
     if let Some(binary) = config.provider_bin(&provider.language_id) {
         return Ok(vec![resolve_configured_provider_binary(
             &provider.language_id,
@@ -330,82 +328,8 @@ fn provider_command_prefix(
             home.as_deref(),
         )?]);
     }
-    if let Some(binary_name) = preferred_home_local_provider_binary(provider)
-        && let Some(binary) = home_local_provider_binary(binary_name, home.as_deref())
-    {
-        return Ok(vec![binary]);
-    }
-    if let Some(binary) = provider_binary_next_to_current_protocol_binary(&provider.binary) {
-        return Ok(vec![binary]);
-    }
-    if let Some(binary) = provider_binary_on_path(&provider.binary, project_root) {
-        return Ok(vec![binary]);
-    }
-    if let Ok(invocation) = resolve_provider_binary_invocation(
-        &provider.language_id,
-        &provider.binary,
-        home.as_deref(),
-        semantic_agent_bin_dir.as_deref(),
-    ) {
-        return Ok(vec![invocation.command]);
-    }
-    if let Some(invocation) = runtime_profile_invocation(profiles, provider, &[]) {
-        return Ok(invocation);
-    }
-    if let Ok(invocation) = resolve_provider_binary_invocation(
-        &provider.language_id,
-        &provider.binary,
-        home.as_deref(),
-        semantic_agent_bin_dir.as_deref(),
-    ) {
-        return Ok(vec![invocation.command]);
-    }
-    if !provider.provider_command_prefix.is_empty() {
-        return Ok(provider.provider_command_prefix.clone());
-    }
-    resolve_provider_binary_invocation(
-        &provider.language_id,
-        &provider.binary,
-        home.as_deref(),
-        semantic_agent_bin_dir.as_deref(),
-    )
-    .map(|invocation| vec![invocation.command])
-}
-
-fn preferred_home_local_provider_binary(provider: &ActivatedProvider) -> Option<&'static str> {
-    provider_is_gerbil_scheme(provider).then_some("gslph")
-}
-
-fn home_local_provider_binary(binary: &str, home: Option<&Path>) -> Option<String> {
-    let candidate = home?.join(".local/bin").join(binary);
-    candidate.is_file().then(|| {
-        candidate
-            .canonicalize()
-            .unwrap_or(candidate)
-            .to_string_lossy()
-            .to_string()
-    })
-}
-
-fn provider_is_gerbil_scheme(provider: &ActivatedProvider) -> bool {
-    provider.language_id == "gerbil-scheme"
-        || provider
-            .provider_command_prefix
-            .iter()
-            .any(|arg| arg == "gerbil-scheme")
-}
-
-fn provider_binary_next_to_current_protocol_binary(binary: &str) -> Option<String> {
-    let path = Path::new(binary);
-    if path.components().count() > 1 {
-        return None;
-    }
-    let current_exe = env::current_exe().ok()?;
-    let sibling = current_exe.parent()?.join(binary);
-    let resolved = sibling.canonicalize().unwrap_or(sibling);
-    resolved
-        .is_file()
-        .then(|| resolved.to_string_lossy().to_string())
+    resolve_provider_binary_invocation(&provider.language_id, &provider.binary, home.as_deref())
+        .map(|invocation| vec![invocation.command])
 }
 
 fn resolve_configured_provider_binary(
@@ -416,43 +340,10 @@ fn resolve_configured_provider_binary(
 ) -> Result<String, String> {
     let binary_path = Path::new(binary);
     if binary_path.components().count() <= 1 {
-        return resolve_provider_binary_invocation(language_id, binary, home, None)
+        return resolve_provider_binary_invocation(language_id, binary, home)
             .map(|invocation| invocation.command);
     }
     Ok(resolve_provider_program(binary, project_root))
-}
-
-fn provider_binary_on_path(binary: &str, project_root: &Path) -> Option<String> {
-    let path = Path::new(binary);
-    let project_root = project_root
-        .canonicalize()
-        .unwrap_or_else(|_| project_root.to_path_buf());
-    if path.components().count() > 1 {
-        let candidate = if path.is_absolute() {
-            path.to_path_buf()
-        } else {
-            project_root.join(path)
-        };
-        return candidate.is_file().then(|| {
-            candidate
-                .canonicalize()
-                .unwrap_or(candidate)
-                .to_string_lossy()
-                .to_string()
-        });
-    }
-    env::var_os("PATH").and_then(|path| {
-        env::split_paths(&path).find_map(|entry| {
-            let candidate = entry.join(binary);
-            let resolved = candidate.canonicalize().unwrap_or(candidate);
-            if !resolved.starts_with(&project_root) {
-                return None;
-            }
-            resolved
-                .is_file()
-                .then(|| resolved.to_string_lossy().to_string())
-        })
-    })
 }
 
 fn search_scope_arg_sets(args: &[String], project_root: &Path) -> Vec<Vec<String>> {

@@ -1,14 +1,15 @@
 use crate::provider_command::support::{
-    asp_command, make_executable, prepend_path, provider, temp_project_root, write_activation,
+    asp_command, home_local_bin, make_executable, provider_with_owner_items, temp_project_root,
+    write_activation,
 };
 use std::time::{Duration, Instant};
 
 const OWNER_ITEMS_FACADE_DEBUG_SUBPROCESS_GATE: Duration = Duration::from_millis(750);
 
 #[test]
-fn python_owner_items_hits_view_uses_asp_owned_inline_fast_path() {
+fn python_owner_items_hits_view_uses_provider_owned_fast_path() {
     let root = temp_project_root("search-owner-python-items-inline-fast-path");
-    let bin_dir = root.join(".bin");
+    let bin_dir = home_local_bin(&root);
     let marker = root.join("provider-called");
     std::fs::create_dir_all(root.join("src/pkg")).expect("create source");
     std::fs::write(
@@ -21,13 +22,13 @@ fn python_owner_items_hits_view_uses_asp_owned_inline_fast_path() {
     std::fs::write(
         &provider_path,
         format!(
-            "#!/bin/sh\nprintf called > '{}'\nprintf 'provider should not run\\n' >&2\nexit 2\n",
+            "#!/bin/sh\nprintf called > '{}'\ncat <<'OUT'\n[search-owner] q=src/pkg/service.py pkg=. selector=items alg=provider-owned-python-owner-items\n|item fetch kind=function structuralSelector=python://src/pkg/service.py#item/function/fetch displayLineRange=1:2 sourceLocatorHint=src/pkg/service.py:1:2 reason=owner-item-skeleton-ready\nactionFrontier=A1.item-skeleton,A2.syntax-outline,A3.query-code\nrecommendedNext=A1.item-skeleton\nreason=owner-item-skeleton-ready\nOUT\n",
             marker.display()
         ),
     )
     .expect("write provider");
     make_executable(&provider_path);
-    write_activation(&root, &[provider("python", Vec::new())]);
+    write_activation(&root, &[provider_with_owner_items("python", Vec::new())]);
 
     let args = [
         "python",
@@ -43,7 +44,6 @@ fn python_owner_items_hits_view_uses_asp_owned_inline_fast_path() {
         "hits",
     ];
     let warmup = asp_command(&root)
-        .env("PATH", prepend_path(&bin_dir))
         .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args(args)
         .output()
@@ -58,7 +58,6 @@ fn python_owner_items_hits_view_uses_asp_owned_inline_fast_path() {
     for _ in 0..5 {
         let started_at = Instant::now();
         let output = asp_command(&root)
-            .env("PATH", prepend_path(&bin_dir))
             .env("PRJ_CACHE_HOME", root.join(".cache"))
             .args(args)
             .output()
@@ -83,11 +82,11 @@ fn python_owner_items_hits_view_uses_asp_owned_inline_fast_path() {
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(
-        !marker.exists(),
-        "python owner-items should not call provider"
+        marker.exists(),
+        "python owner-items should call provider-owned owner-items"
     );
     assert!(
-        stdout.contains("reason=rust-inline-python-owner-items")
+        stdout.contains("alg=provider-owned-python-owner-items")
             && stdout.contains("|item fetch kind=function")
             && stdout
                 .contains("structuralSelector=python://src/pkg/service.py#item/function/fetch")
@@ -117,7 +116,7 @@ fn python_owner_items_hits_view_uses_asp_owned_inline_fast_path() {
 #[test]
 fn python_owner_items_missing_owner_errors_without_fallback() {
     let root = temp_project_root("search-owner-python-items-no-fallback");
-    let bin_dir = root.join(".bin");
+    let bin_dir = home_local_bin(&root);
     let marker = root.join("provider-called");
     std::fs::create_dir_all(&bin_dir).expect("create bin dir");
     let provider_path = bin_dir.join("py-harness");
@@ -130,10 +129,9 @@ fn python_owner_items_missing_owner_errors_without_fallback() {
     )
     .expect("write provider");
     make_executable(&provider_path);
-    write_activation(&root, &[provider("python", Vec::new())]);
+    write_activation(&root, &[provider_with_owner_items("python", Vec::new())]);
 
     let output = asp_command(&root)
-        .env("PATH", prepend_path(&bin_dir))
         .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args([
             "python",

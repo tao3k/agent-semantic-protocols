@@ -73,6 +73,7 @@ mod search_pipe_read_memory;
 mod search_pipe_render;
 mod search_pipe_rust_item;
 mod search_pipe_seed_decision;
+pub(super) mod search_pipe_selector_seed;
 mod search_pipe_source;
 mod search_pipe_surfaces;
 mod search_pipe_view;

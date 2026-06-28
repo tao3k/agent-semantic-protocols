@@ -12,7 +12,7 @@ SCHEMA_VERSION = 1
 
 ABSOLUTE_PATH_PREFIX = re.compile(r"^(?:/|~(?:/|$)|[A-Za-z]:[\\/])")
 ABSOLUTE_PATH_FRAGMENT = re.compile(
-    r"(?<![A-Za-z0-9+:])(?:/Users/|/private/|/tmp/|/var/folders/|/opt/|/run/|[A-Za-z]:[\\/])"
+    r"(?<![A-Za-z0-9+:])(?:/(?:[^\s'\"`<>|:]+/)+[^\s'\"`<>|:]*|[A-Za-z]:[\\/])"
 )
 
 

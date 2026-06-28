@@ -36,23 +36,14 @@ pub(super) fn print_query_wrapper_refinement_frontier(
     candidates: &[Candidate],
     quality: &QueryWrapperQuality,
 ) {
-    let fd_query = fd_query_for_surface(surface, queries, terms);
-    let multi_clause_queries = multi_clause_queries(queries, terms);
-    let evidence = evidence_preview(candidates);
-    let owner = owner_candidates(candidates)
-        .into_iter()
-        .next()
-        .unwrap_or_else(|| "-".to_string());
-    println!("rankedEvidence={evidence}");
-    println!("evidenceFrontier={evidence}");
-    println!(
-        "commandHandles=fdQuery={};rgQuery={};ownerItems={}",
-        shell_arg(&fd_query),
-        repeated_query_args(&multi_clause_queries),
-        owner
+    print!(
+        "{}",
+        render_query_wrapper_evidence_rows(surface, queries, terms, candidates)
     );
-    let actions = query_wrapper_action_nodes(surface, scopes, queries, terms, candidates, quality);
-    print!("{}", render_action_rows(&actions));
+    print!(
+        "{}",
+        render_query_wrapper_next_command(surface, scopes, queries, terms, candidates, quality)
+    );
     println!("reason=query-selector-low-confidence,clause-cohesion-required");
 }
 
@@ -92,7 +83,7 @@ pub(super) fn query_wrapper_action_frontier(
         .collect()
 }
 
-pub(super) fn render_query_wrapper_action_frontier(
+pub(super) fn render_query_wrapper_next_command(
     surface: QueryWrapperSurface,
     scopes: &[PathBuf],
     queries: &[String],
@@ -103,6 +94,26 @@ pub(super) fn render_query_wrapper_action_frontier(
     render_action_rows(&query_wrapper_action_nodes(
         surface, scopes, queries, terms, candidates, quality,
     ))
+}
+
+pub(super) fn render_query_wrapper_evidence_rows(
+    surface: QueryWrapperSurface,
+    queries: &[String],
+    terms: &[String],
+    candidates: &[Candidate],
+) -> String {
+    let fd_query = fd_query_for_surface(surface, queries, terms);
+    let multi_clause_queries = multi_clause_queries(queries, terms);
+    let evidence = evidence_preview(candidates);
+    let owner = owner_candidates(candidates)
+        .into_iter()
+        .next()
+        .unwrap_or_else(|| "-".to_string());
+    format!(
+        "rankedEvidence={evidence}\nevidenceFrontier={evidence}\ncommandHandles=fdQuery={};rgQuery={};ownerItems={owner}\n",
+        shell_arg(&fd_query),
+        repeated_query_args(&multi_clause_queries),
+    )
 }
 
 fn query_wrapper_action_nodes(

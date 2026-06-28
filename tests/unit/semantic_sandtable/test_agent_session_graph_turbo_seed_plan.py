@@ -263,7 +263,7 @@ def _request_output(
 ) -> str:
     seed_plan = {
         "phase": "seed-query",
-        "algorithm": "asp-search-pipe-v2",
+        "algorithm": "asp-search-pipe-v1",
         **seed_plan,
     }
     return json.dumps(

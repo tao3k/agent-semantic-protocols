@@ -151,7 +151,7 @@ fn assert_graph_turbo_request_contract(payload: &Value) {
 fn assert_graph_turbo_seed_plan_contract(payload: &Value, seed_ids: &[Value]) {
     let seed_plan = payload["seedPlan"].as_object().expect("seedPlan object");
     assert_eq!(payload["seedPlan"]["phase"], "seed-query");
-    assert_eq!(payload["seedPlan"]["algorithm"], "asp-search-pipe-v2");
+    assert_eq!(payload["seedPlan"]["algorithm"], "asp-search-pipe-v1");
     assert!(
         payload["seedPlan"]["reason"]
             .as_str()
