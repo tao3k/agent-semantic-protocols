@@ -1,4 +1,4 @@
-"""Resolve sandtable Claude SDK steps."""
+"""Resolve sandtable live agent SDK steps."""
 
 from __future__ import annotations
 
@@ -15,6 +15,8 @@ from .step_agent_common import (
 from .step_errors import empty_step_error
 from .utils import require_str, string_list
 
+_OPENAI_COMPATIBLE_CLIENTS = {"deepseek", "openai-compatible"}
+
 
 def resolve_agent_sdk_step(
     step: dict[str, Any],
@@ -27,17 +29,25 @@ def resolve_agent_sdk_step(
     spec = step.get("agentSdk")
     if not isinstance(spec, dict):
         return empty_step_error(scenario_id, step_id, "step.agentSdk must be an object")
-    if require_str(spec, "client", "") != "claude":
+    client = require_str(spec, "client", "")
+    if client not in {"claude", *_OPENAI_COMPATIBLE_CLIENTS}:
         return empty_step_error(
             scenario_id,
             step_id,
-            "step.agentSdk.client must be 'claude'",
+            "step.agentSdk.client must be 'claude', 'deepseek', or 'openai-compatible'",
         )
-    tool_contract_error = _validate_asp_bash_tool_contract(
-        spec, scenario_id, step_id
-    )
-    if tool_contract_error is not None:
-        return tool_contract_error
+    if client == "claude":
+        tool_contract_error = _validate_asp_bash_tool_contract(
+            spec, scenario_id, step_id
+        )
+        if tool_contract_error is not None:
+            return tool_contract_error
+    else:
+        openai_contract_error = _validate_openai_compatible_contract(
+            spec, scenario_id, step_id
+        )
+        if openai_contract_error is not None:
+            return openai_contract_error
     contract_error = _validate_agent_answer_runtime_contract(
         step,
         spec,
@@ -47,14 +57,23 @@ def resolve_agent_sdk_step(
     if contract_error is not None:
         return contract_error
 
-    resolved = _resolve_claude_sdk_command(
-        step,
-        spec,
-        scenario_id,
-        step_id,
-        captures,
-        repo_root,
-    )
+    if client == "claude":
+        resolved = _resolve_claude_sdk_command(
+            step,
+            spec,
+            scenario_id,
+            step_id,
+            captures,
+            repo_root,
+        )
+    else:
+        resolved = _resolve_openai_compatible_sdk_command(
+            client,
+            spec,
+            scenario_id,
+            step_id,
+            captures,
+        )
     if isinstance(resolved, StepResult):
         return resolved
     step_env = resolve_agent_env(spec, scenario_id, step_id, env, "agentSdk")
@@ -138,6 +157,73 @@ def _resolve_claude_sdk_command(
     )
     if setup_error is not None:
         return setup_error
+    return command
+
+
+def _validate_openai_compatible_contract(
+    spec: dict[str, Any],
+    scenario_id: str,
+    step_id: str,
+) -> StepResult | None:
+    claude_only_fields = (
+        "allowedTools",
+        "disallowedTools",
+        "requireAspBashCommands",
+        "includePartialMessages",
+        "includeHookEvents",
+        "verbose",
+        "useRepoClaudeSettings",
+        "claudeCwd",
+        "settings",
+        "addCwdDir",
+        "maxTurns",
+    )
+    for field in claude_only_fields:
+        value = spec.get(field)
+        if value not in (None, False, "", []):
+            return empty_step_error(
+                scenario_id,
+                step_id,
+                f"step.agentSdk.{field} is only supported for client 'claude'",
+            )
+    return None
+
+
+def _resolve_openai_compatible_sdk_command(
+    client: str,
+    spec: dict[str, Any],
+    scenario_id: str,
+    step_id: str,
+    captures: dict[str, str],
+) -> list[str] | StepResult:
+    command = _base_openai_compatible_command(
+        client,
+        spec,
+        scenario_id,
+        step_id,
+        captures,
+    )
+    if isinstance(command, StepResult):
+        return command
+    for option, field in (
+        ("--model", "model"),
+        ("--base-url", "baseUrl"),
+        ("--api-key-env", "apiKeyEnv"),
+    ):
+        value = optional_agent_string(
+            spec,
+            field,
+            scenario_id,
+            step_id,
+            captures,
+            "agentSdk",
+        )
+        if isinstance(value, StepResult):
+            return value
+        if value:
+            command.extend([option, value])
+    if bool(spec.get("requireLiveUsage", False)):
+        command.append("--require-live-usage")
     return command
 
 
@@ -226,6 +312,52 @@ def _max_asp_bash_commands(spec: dict[str, Any], step: dict[str, Any]) -> Any:
     if not isinstance(pipe_flow, dict):
         return None
     return pipe_flow.get("maxAspCommands")
+
+
+def _base_openai_compatible_command(
+    client: str,
+    spec: dict[str, Any],
+    scenario_id: str,
+    step_id: str,
+    captures: dict[str, str],
+) -> list[str] | StepResult:
+    prompt = required_agent_string(
+        spec,
+        "prompt",
+        scenario_id,
+        step_id,
+        captures,
+        "agentSdk",
+    )
+    output_format = required_agent_string(
+        spec,
+        "outputFormat",
+        scenario_id,
+        step_id,
+        captures,
+        "agentSdk",
+    )
+    if isinstance(prompt, StepResult):
+        return prompt
+    if isinstance(output_format, StepResult):
+        return output_format
+    if output_format not in {"text", "json", "stream-json", "summary-json"}:
+        return empty_step_error(
+            scenario_id,
+            step_id,
+            "step.agentSdk.outputFormat must be text, json, stream-json, or summary-json",
+        )
+    return [
+        sys.executable,
+        "-m",
+        "tools.semantic_sandtable.openai_compatible_runner",
+        "--provider",
+        client,
+        "--prompt",
+        prompt,
+        "--output-format",
+        output_format,
+    ]
 
 
 def _append_sdk_runtime_options(

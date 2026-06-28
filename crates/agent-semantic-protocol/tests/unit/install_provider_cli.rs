@@ -14,6 +14,54 @@ fn install_language_pinned_release_writes_runtime_bin_package_and_lock() {
 
 #[test]
 #[cfg(unix)]
+fn install_language_from_workspace_refreshes_home_local_bin() {
+    let root = temp_project_root();
+    let home = root.join("home");
+    let workspace_bin_dir = root.join(".bin");
+    std::fs::create_dir_all(&workspace_bin_dir).expect("create workspace bin");
+    let workspace_provider = workspace_bin_dir.join("rs-harness");
+    std::fs::write(&workspace_provider, b"workspace-dev-provider\n")
+        .expect("write workspace provider");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_asp"))
+        .args([
+            "install",
+            "language",
+            "rust",
+            "--from-workspace",
+            "--target",
+            "x86_64-unknown-linux-gnu",
+        ])
+        .arg("--project")
+        .arg(&root)
+        .env("HOME", &home)
+        .env_remove("PRJ_CACHE_HOME")
+        .env_remove("SEMANTIC_AGENT_BIN_DIR")
+        .output()
+        .expect("run asp install language --from-workspace");
+
+    assert!(
+        output.status.success(),
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("source=workspace-bin"), "{stdout}");
+    assert!(
+        stdout.contains("installTargetSource=home-local-bin"),
+        "{stdout}"
+    );
+
+    let installed = home.join(".local/bin/rs-harness");
+    assert_eq!(
+        std::fs::read(&installed).expect("read installed workspace provider"),
+        b"workspace-dev-provider\n"
+    );
+}
+
+#[test]
+#[cfg(unix)]
 fn install_language_pinned_release_ignores_asp_toml_provider_bin() {
     assert_install_language_pinned_release_ignores_asp_toml_provider_bin();
 }

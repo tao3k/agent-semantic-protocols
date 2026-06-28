@@ -25,12 +25,31 @@ def token_cost_from_messages(messages: list[dict[str, Any]]) -> dict[str, Any]:
     totals = {field: 0 for field in set(_TOKEN_FIELDS.values())}
     usage_records = 0
     costs: list[float] = []
+    sources: set[str] = set()
+    providers: set[str] = set()
+    models: set[str] = set()
     for value in walk(messages):
         if not isinstance(value, dict):
             continue
         usage_records += _add_usage_totals(value, totals)
         costs.extend(_cost_values(value))
-    return _compact_token_cost(totals, usage_records, costs)
+        _add_string_field(value, "source", sources)
+        _add_string_field(value, "provider", providers)
+        _add_string_field(value, "model", models)
+    compact = _compact_token_cost(totals, usage_records, costs)
+    if sources:
+        compact["source"] = ",".join(sorted(sources))
+    if providers:
+        compact["providers"] = sorted(providers)
+    if models:
+        compact["models"] = sorted(models)
+    return compact
+
+
+def _add_string_field(value: dict[str, Any], field: str, target: set[str]) -> None:
+    field_value = value.get(field)
+    if isinstance(field_value, str) and field_value:
+        target.add(field_value)
 
 
 def _add_usage_totals(value: dict[str, Any], totals: dict[str, int]) -> int:

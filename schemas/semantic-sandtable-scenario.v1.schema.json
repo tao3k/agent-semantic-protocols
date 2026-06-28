@@ -1320,7 +1320,9 @@
       "properties": {
         "client": {
           "enum": [
-            "claude"
+            "claude",
+            "deepseek",
+            "openai-compatible"
           ]
         },
         "prompt": {
@@ -1373,6 +1375,16 @@
         "model": {
           "type": "string",
           "minLength": 1
+        },
+        "baseUrl": {
+          "type": "string",
+          "minLength": 1
+        },
+        "apiKeyEnv": {
+          "$ref": "#/$defs/envName"
+        },
+        "requireLiveUsage": {
+          "type": "boolean"
         },
         "env": {
           "type": "object",

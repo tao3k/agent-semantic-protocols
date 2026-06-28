@@ -12,6 +12,8 @@ mod hook_enforcement;
 mod hook_runtime;
 mod hook_runtime_context;
 mod install_provider;
+mod install_provider_archive;
+mod install_provider_release;
 mod install_provider_target;
 mod org_archive;
 mod org_capture;
