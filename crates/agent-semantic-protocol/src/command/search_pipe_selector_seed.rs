@@ -45,7 +45,7 @@ pub fn render_selector_seeded_search_pipe(
 ) -> String {
     let owner = selector_owner(selector);
     let symbol = selector_symbol(selector).unwrap_or("-");
-    let actions = selector_seed_actions(language_id, selector, &owner, symbol, query, &workspace);
+    let actions = selector_seed_actions(language_id, selector, &owner, symbol, query, workspace);
     let mut output = String::new();
     output.push_str(&format!(
         "[search-pipe] lang={} view=seeds source=selector ranker=selector-seed\n",

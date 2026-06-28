@@ -102,7 +102,18 @@
           "type": "integer",
           "minimum": 0
         },
+        "maxNativeFinderProcessCount": {
+          "type": "integer",
+          "minimum": 0
+        },
         "maxProjectionProviderProcessCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxRenderDuration": {
+          "$ref": "#/$defs/durationLiteral"
+        },
+        "maxStdoutBytes": {
           "type": "integer",
           "minimum": 0
         },
@@ -156,18 +167,40 @@
           "type": "integer",
           "minimum": 0
         },
+        "providerElapsed": {
+          "$ref": "#/$defs/durationLiteral"
+        },
+        "nativeFinderProcessCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "nativeFinderElapsed": {
+          "$ref": "#/$defs/durationLiteral"
+        },
         "projectionProviderProcessCount": {
           "type": "integer",
           "minimum": 0
         },
+        "projectContextDuration": {
+          "$ref": "#/$defs/durationLiteral"
+        },
         "sourceIndexHit": {
           "type": "boolean"
+        },
+        "sourceIndexDuration": {
+          "$ref": "#/$defs/durationLiteral"
         },
         "factIndexHit": {
           "type": "boolean"
         },
+        "factIndexDuration": {
+          "$ref": "#/$defs/durationLiteral"
+        },
         "dependencyIndexHit": {
           "type": "boolean"
+        },
+        "dependencyIndexDuration": {
+          "$ref": "#/$defs/durationLiteral"
         },
         "graphTurboDuration": {
           "$ref": "#/$defs/durationLiteral"
@@ -201,6 +234,13 @@
             "not-supported",
             "not-applicable"
           ]
+        },
+        "renderDuration": {
+          "$ref": "#/$defs/durationLiteral"
+        },
+        "stdoutBytes": {
+          "type": "integer",
+          "minimum": 0
         },
         "indexRows": {
           "type": "object",

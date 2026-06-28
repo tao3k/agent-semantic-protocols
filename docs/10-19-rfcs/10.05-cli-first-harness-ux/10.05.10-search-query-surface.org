@@ -2212,3 +2212,9 @@ after schema validation. Harness-local benchmark manifests normalize into
 TOML syntax, =benchmark.ss= is the Gerbil syntax, and both carry policy ids
 governed by =schemas/semantic-agent-policy-id.v1.schema.json= using
 =<LANGUAGE>-AGENT-<TAGS>-<NUMBER>=.
+* Hot-path scenario receipt gate
+Search/query changes that affect Rust-owned fast routing must be representable by =schemas/semantic-hot-path-performance-gate.v1.schema.json=. This is part of the shared search/query contract, not a private test detail.
+
+Scenario gates must record the command, phase, provider process count and elapsed time, native finder process count and elapsed time, render duration, and stdout bytes. Index-backed fields such as SourceIndex, FactIndex, DependencyIndex, and GraphTurbo duration should be added to the same receipt as those subsystems become active.
+
+A selector-seeded =search pipe= scenario should assert =providerProcessCount=0= and =nativeFinderProcessCount=0= before exact projection, with a sub-millisecond target and a tight millisecond ceiling. Scenario fixtures must validate this typed gate data and the rendered packet shape directly, instead of measuring debug binary startup as search latency.

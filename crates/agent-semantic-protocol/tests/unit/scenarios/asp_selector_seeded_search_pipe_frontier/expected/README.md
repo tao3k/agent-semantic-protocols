@@ -13,3 +13,10 @@ The scenario must render:
 
 The output must not contain `&&`, and the configured provider marker must not be
 needed by the scenario renderer.
+
+The scenario performance gate must also record:
+
+- `providerProcessCount=0`
+- `nativeFinderProcessCount=0`
+- `renderDuration`
+- `stdoutBytes`

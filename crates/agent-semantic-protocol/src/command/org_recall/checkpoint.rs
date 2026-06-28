@@ -4,10 +4,7 @@ use super::{
 };
 use serde::Serialize;
 use serde_json::{Value, json};
-use std::{
-    env,
-    path::{Path, PathBuf},
-};
+use std::{env, path::Path};
 
 pub(super) struct CheckpointSyncOptions<'a> {
     pub(super) project: &'a str,
@@ -209,7 +206,7 @@ fn branch_id(candidate: &OrgPlanCandidate, branch: Option<&str>) -> Option<Strin
         .or_else(|| candidate.properties.get("PLAN_BRANCH").cloned())
 }
 
-fn source_locator(path: &PathBuf, task: &OrgTaskCandidate) -> String {
+fn source_locator(path: &Path, task: &OrgTaskCandidate) -> String {
     task.source_line
         .map(|line| format!("{}:{line}-{line}", path.display()))
         .unwrap_or_else(|| path.display().to_string())

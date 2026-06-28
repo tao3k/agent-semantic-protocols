@@ -73,20 +73,20 @@ fn task_candidates(path: &Path, properties: &BTreeMap<String, String>) -> Vec<Or
                 if !clean_heading.is_empty() {
                     section = Some(clean_heading);
                 }
-                if level >= 2 {
-                    if let Some((status, title)) = todo_heading_task(heading) {
-                        push_task_candidate(
-                            &mut candidates,
-                            &mut seen_titles,
-                            OrgTaskCandidate {
-                                kind: "heading".to_string(),
-                                status,
-                                title,
-                                section: section.clone(),
-                                source_line: Some(line_index + 1),
-                            },
-                        );
-                    }
+                if level >= 2
+                    && let Some((status, title)) = todo_heading_task(heading)
+                {
+                    push_task_candidate(
+                        &mut candidates,
+                        &mut seen_titles,
+                        OrgTaskCandidate {
+                            kind: "heading".to_string(),
+                            status,
+                            title,
+                            section: section.clone(),
+                            source_line: Some(line_index + 1),
+                        },
+                    );
                 }
                 continue;
             }

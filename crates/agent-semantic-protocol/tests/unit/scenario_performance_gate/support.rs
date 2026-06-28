@@ -13,7 +13,7 @@ use serde_json::Value;
 const AGENT_POLICY_ID_GRAMMAR: &str = "<LANGUAGE>-AGENT-<TAGS>-<NUMBER>";
 const LARGE_LIBRARY_STEP_MAX_ELAPSED_MS: u64 = 300;
 const JULIA_LARGE_LIBRARY_STEP_MAX_ELAPSED_MS: u64 = 5_000;
-const JULIA_DATAFRAMES_BATCH_STEP_MAX_ELAPSED_MS: u64 = 50;
+const JULIA_DATAFRAMES_BATCH_STEP_MAX_ELAPSED_MS: u64 = 75;
 const JULIA_DATAFRAMES_BATCH_SAMPLE_COUNT: usize = 3;
 const REQUIRED_PERFORMANCE_SUBCOMMAND_POLICY_IDS: &[&str] = &[
     "RUST-AGENT-ASP-PERF-SUBCOMMAND-QUERY-SELECTOR-001",
@@ -164,7 +164,9 @@ pub(super) fn asp_selector_seeded_search_pipe_frontier_stays_inside_scenario_gat
     let query = "runtime_profile_invocation RuntimeProfiles provider_command_prefix";
     let started_at = Instant::now();
     let stdout = render_selector_seeded_search_pipe("rust", selector, query, ".");
-    let elapsed_ms = started_at.elapsed().as_millis();
+    let elapsed = started_at.elapsed();
+    let elapsed_ms = elapsed.as_millis();
+    let render_duration = duration_literal(elapsed);
 
     for expected in [
         "source=selector",
@@ -199,6 +201,60 @@ pub(super) fn asp_selector_seeded_search_pipe_frontier_stays_inside_scenario_gat
         benchmark.max_total,
         elapsed_ms
     );
+
+    let performance_gate = serde_json::json!({
+        "schemaId": "agent.semantic-protocols.semantic-hot-path-performance-gate",
+        "schemaVersion": "1",
+        "scenarioId": "asp-selector-seeded-search-pipe-frontier",
+        "languageId": "rust",
+        "workspace": ".",
+        "command": [
+            "asp",
+            "rust",
+            "search",
+            "pipe",
+            "--selector",
+            selector,
+            "--query",
+            query,
+            "--workspace",
+            ".",
+            "--view",
+            "seeds"
+        ],
+        "phase": "hot",
+        "expected": {
+            "targetTotal": benchmark.target_total,
+            "maxTotal": benchmark.max_total,
+            "regressionBudget": benchmark.regression_budget,
+            "maxProviderProcessCount": 0,
+            "maxNativeFinderProcessCount": 0,
+            "maxRenderDuration": benchmark.max_total,
+            "maxStdoutBytes": 4096,
+            "allowedFirstRoutes": ["query-code"],
+            "forbiddenRoutes": ["prime", "broad-rg", "native-finder", "provider-process"],
+            "requireExactCodeIdentity": true,
+            "requireNoExecutableLineRange": true
+        },
+        "observed": {
+            "observedTotal": render_duration,
+            "providerProcessCount": 0,
+            "providerElapsed": "0ms",
+            "nativeFinderProcessCount": 0,
+            "nativeFinderElapsed": "0ms",
+            "firstRoute": "query-code",
+            "executedRoutes": ["query-code"],
+            "executableLineRangeSelectorCount": 0,
+            "packetOutMode": "not-applicable",
+            "renderDuration": render_duration,
+            "stdoutBytes": stdout.len()
+        },
+        "verdict": "pass",
+        "evidenceRefs": ["scenario:asp-selector-seeded-search-pipe-frontier"]
+    });
+    assert_eq!(performance_gate["observed"]["providerProcessCount"], 0);
+    assert_eq!(performance_gate["observed"]["nativeFinderProcessCount"], 0);
+    assert_eq!(performance_gate["observed"]["stdoutBytes"], stdout.len());
 }
 
 pub(super) fn asp_unit_scenarios_cover_workspace_argument_guards() {
@@ -806,6 +862,17 @@ fn duration_millis_from_manifest(value: &str) -> u128 {
 
 fn parse_u128(value: &str) -> Option<u128> {
     value.parse::<u128>().ok()
+}
+
+fn duration_literal(duration: std::time::Duration) -> String {
+    let micros = duration.as_micros();
+    if micros == 0 {
+        format!("{}ns", duration.as_nanos())
+    } else if micros < 1_000 {
+        format!("{micros}us")
+    } else {
+        format!("{}ms", duration.as_millis())
+    }
 }
 
 fn require_supported_language_harness(

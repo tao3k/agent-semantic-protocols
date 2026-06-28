@@ -51,6 +51,9 @@ def test_hot_path_performance_gate_accepts_warm_broad_index_hit() -> None:
                 "maxTotal": "25ms",
                 "regressionBudget": "5ms",
                 "maxProviderProcessCount": 0,
+                "maxNativeFinderProcessCount": 0,
+                "maxRenderDuration": "2ms",
+                "maxStdoutBytes": 4096,
                 "requireSourceIndexHit": True,
                 "requireFactIndexHit": True,
                 "allowedFirstRoutes": [
@@ -69,8 +72,14 @@ def test_hot_path_performance_gate_accepts_warm_broad_index_hit() -> None:
             "observed": {
                 "observedTotal": "3.4ms",
                 "providerProcessCount": 0,
+                "providerElapsed": "0ms",
+                "nativeFinderProcessCount": 0,
+                "nativeFinderElapsed": "0ms",
+                "projectContextDuration": "1ms",
                 "sourceIndexHit": True,
+                "sourceIndexDuration": "1ms",
                 "factIndexHit": True,
+                "factIndexDuration": "1ms",
                 "graphTurboDuration": "800us",
                 "graphTurboCacheStatus": "hit",
                 "firstRoute": "item-skeleton",
@@ -78,7 +87,9 @@ def test_hot_path_performance_gate_accepts_warm_broad_index_hit() -> None:
                     "item-skeleton"
                 ],
                 "executableLineRangeSelectorCount": 0,
-                "packetOutMode": "not-applicable"
+                "packetOutMode": "not-applicable",
+                "renderDuration": "1ms",
+                "stdoutBytes": 2048
             },
             "verdict": "pass",
             "evidenceRefs": [
