@@ -48,9 +48,9 @@ def _check_rust_frontier_code(env: dict[str, str], asp_bin: str) -> None:
         "--treesitter-query",
         '(function_item name: (identifier) @function.name (#eq? @function.name "parse_query"))',
         "--selector",
-        "languages/rust-lang-project-harness/src/cli/query.rs:31:46",
+        "src/cli/query.rs",
         "--workspace",
-        ".",
+        "languages/rust-lang-project-harness",
         "--code",
     )
     pure_code(rust_code, "pub(super) fn parse_query", "rust code")
@@ -121,9 +121,9 @@ def _check_typescript_frontier_code(env: dict[str, str], asp_bin: str) -> None:
         "--treesitter-query",
         '(function_declaration name: (identifier) @function.name (#eq? @function.name "parseTreeSitterQueryArgs"))',
         "--selector",
-        "languages/typescript-lang-project-harness/src/cli/protocol-tree-sitter-query.ts:56:61",
+        "src/cli/protocol-tree-sitter-query.ts",
         "--workspace",
-        ".",
+        "languages/typescript-lang-project-harness",
         "--code",
     )
     pure_code(ts_code, "export function parseTreeSitterQueryArgs", "typescript code")
@@ -210,11 +210,8 @@ def _check_python_frontier_code(env: dict[str, str], asp_bin: str) -> None:
     json_string(python_json, "adapterMode", "native-projection", "python json")
     json_string(python_json, "compatibilityLevel", "native-only", "python json")
     contains(python_json, '"nativeFactRefs"', "python json")
-    contains(
-        python_json,
-        "python:ast:src/python_lang_project_harness/_cli_query.py:20:60:run_query_command",
-        "python json",
-    )
+    contains(python_json, '"semanticHandleRefs"', "python json")
+    contains(python_json, '"symbol:run_query_command"', "python json")
     json_false(python_json, "rawSourceStored", "python json")
     json_string(python_json, "nodeType", "identifier", "python json")
     json_string(python_json, "field", "name", "python json")
