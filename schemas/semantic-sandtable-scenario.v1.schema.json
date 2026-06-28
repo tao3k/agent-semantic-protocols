@@ -125,6 +125,9 @@
         "type": "string"
       }
     },
+    "providerPreflight": {
+      "$ref": "#/$defs/providerPreflight"
+    },
     "skipUnlessEnv": {
       "type": "array",
       "uniqueItems": true,
@@ -1112,6 +1115,20 @@
         "maxConcurrentSteps": {
           "type": "integer",
           "minimum": 1
+        }
+      }
+    },
+    "providerPreflight": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "installFromWorkspaceLanguages": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]*$"
+          }
         }
       }
     },

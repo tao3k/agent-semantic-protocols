@@ -62,6 +62,128 @@ fn install_language_from_workspace_refreshes_home_local_bin() {
 
 #[test]
 #[cfg(unix)]
+fn install_python_from_workspace_replaces_stale_home_wrapper() {
+    let root = temp_project_root();
+    let home = root.join("home");
+    let workspace_bin_dir = root.join(".bin");
+    let home_bin_dir = home.join(".local/bin");
+    std::fs::create_dir_all(&workspace_bin_dir).expect("create workspace bin");
+    std::fs::create_dir_all(&home_bin_dir).expect("create home-local bin");
+
+    let workspace_wrapper = concat!(
+        "#!/usr/bin/env bash\n",
+        "exec uv run --project \"$ASP_PYTHON_PROJECT\" --frozen py-harness \"$@\"\n",
+    );
+    std::fs::write(workspace_bin_dir.join("py-harness"), workspace_wrapper)
+        .expect("write workspace python wrapper");
+    std::fs::write(
+        home_bin_dir.join("py-harness"),
+        concat!(
+            "#!/usr/bin/env sh\n",
+            "exec \"${PYTHON:-python3}\" -m python_lang_project_harness \"$@\"\n",
+        ),
+    )
+    .expect("write stale home-local python wrapper");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_asp"))
+        .args([
+            "install",
+            "language",
+            "python",
+            "--from-workspace",
+            "--target",
+            "x86_64-unknown-linux-gnu",
+        ])
+        .arg("--project")
+        .arg(&root)
+        .env("HOME", &home)
+        .env_remove("PRJ_CACHE_HOME")
+        .env_remove("SEMANTIC_AGENT_BIN_DIR")
+        .output()
+        .expect("run asp install language python --from-workspace");
+
+    assert!(
+        output.status.success(),
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("source=workspace-bin"), "{stdout}");
+    assert!(stdout.contains("binary=py-harness"), "{stdout}");
+    assert!(
+        stdout.contains("installTargetSource=home-local-bin"),
+        "{stdout}"
+    );
+
+    let installed =
+        std::fs::read_to_string(home_bin_dir.join("py-harness")).expect("read installed wrapper");
+    assert_eq!(installed, workspace_wrapper);
+    assert!(
+        !installed.contains("python_lang_project_harness"),
+        "stale python -m wrapper survived: {installed}"
+    );
+}
+
+#[test]
+#[cfg(unix)]
+fn install_julia_from_workspace_replaces_stale_home_binary() {
+    let root = temp_project_root();
+    let home = root.join("home");
+    let workspace_bin_dir = root.join(".bin");
+    let home_bin_dir = home.join(".local/bin");
+    std::fs::create_dir_all(&workspace_bin_dir).expect("create workspace bin");
+    std::fs::create_dir_all(&home_bin_dir).expect("create home-local bin");
+
+    std::fs::write(
+        workspace_bin_dir.join("asp-julia-harness"),
+        b"workspace-julia-provider\n",
+    )
+    .expect("write workspace julia provider");
+    std::fs::write(
+        home_bin_dir.join("asp-julia-harness"),
+        b"stale-release-provider-with-ci-rpath\n",
+    )
+    .expect("write stale home-local julia provider");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_asp"))
+        .args([
+            "install",
+            "language",
+            "julia",
+            "--from-workspace",
+            "--target",
+            "x86_64-unknown-linux-gnu",
+        ])
+        .arg("--project")
+        .arg(&root)
+        .env("HOME", &home)
+        .env_remove("PRJ_CACHE_HOME")
+        .env_remove("SEMANTIC_AGENT_BIN_DIR")
+        .output()
+        .expect("run asp install language julia --from-workspace");
+
+    assert!(
+        output.status.success(),
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("source=workspace-bin"), "{stdout}");
+    assert!(stdout.contains("binary=asp-julia-harness"), "{stdout}");
+    assert!(
+        stdout.contains("installTargetSource=home-local-bin"),
+        "{stdout}"
+    );
+
+    let installed = std::fs::read(home_bin_dir.join("asp-julia-harness"))
+        .expect("read installed julia provider");
+    assert_eq!(installed, b"workspace-julia-provider\n");
+}
+
+#[test]
+#[cfg(unix)]
 fn install_language_pinned_release_ignores_asp_toml_provider_bin() {
     assert_install_language_pinned_release_ignores_asp_toml_provider_bin();
 }

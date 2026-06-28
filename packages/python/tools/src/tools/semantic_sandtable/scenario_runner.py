@@ -33,6 +33,83 @@ def run_scenario(repo_root: Path, path: Path) -> ScenarioResult:
     return _run_loaded_scenario(repo_root, path, scenario)
 
 
+def _asp_binary(repo_root: Path) -> str:
+    workspace_binary = repo_root / "target" / "debug" / "asp"
+    if workspace_binary.is_file():
+        return str(workspace_binary)
+    return "asp"
+
+
+def _provider_preflight_languages(scenario: dict[str, Any]) -> list[str]:
+    provider_preflight = scenario.get("providerPreflight")
+    if not isinstance(provider_preflight, dict):
+        return []
+    languages = provider_preflight.get("installFromWorkspaceLanguages", [])
+    if not isinstance(languages, list):
+        return []
+    ordered: list[str] = []
+    for language in languages:
+        if isinstance(language, str) and language not in ordered:
+            ordered.append(language)
+    return ordered
+
+
+def _apply_provider_preflight(
+    repo_root: Path,
+    scenario: dict[str, Any],
+    env: dict[str, str],
+    result: ScenarioResult,
+) -> bool:
+    languages = _provider_preflight_languages(scenario)
+    if not languages:
+        return False
+
+    import os
+    import subprocess
+
+    records: list[dict[str, Any]] = []
+    process_env = {**os.environ, **env}
+    for language in languages:
+        command = [
+            _asp_binary(repo_root),
+            "install",
+            "language",
+            language,
+            "--from-workspace",
+            "--project",
+            str(repo_root),
+        ]
+        completed = subprocess.run(
+            command,
+            cwd=repo_root,
+            env=process_env,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        records.append(
+            {
+                "language": language,
+                "command": command,
+                "exitCode": completed.returncode,
+                "stdout": completed.stdout,
+                "stderr": completed.stderr,
+            }
+        )
+        if completed.returncode != 0:
+            result.status = "fail"
+            result.errors.append(
+                "providerPreflight installFromWorkspace failed for "
+                f"{language}: {completed.stderr.strip() or completed.stdout.strip()}"
+            )
+            break
+
+    result.evidence.setdefault("providerPreflight", {})[
+        "installFromWorkspaceLanguages"
+    ] = records
+    return result.status == "fail"
+
+
 def _run_loaded_scenario(
     repo_root: Path,
     path: Path,
@@ -44,6 +121,8 @@ def _run_loaded_scenario(
         return prepared
     scenario_id, workdir, result, steps, budgets, execution = prepared
     captures: dict[str, str] = {}
+    if _apply_provider_preflight(repo_root, scenario, env, result):
+        return result
     warmup_steps = _resolve_warmup_steps(scenario, result)
     if warmup_steps is None:
         return result
@@ -204,9 +283,7 @@ def _live_agent_steps_from_deep_question(
     step_ids = string_list(question_case.get("stepIds"))
     step_id = step_ids[0] if step_ids else require_str(question_case, "id", "prompt")
     expect = dict_value(live_agent.get("expect"))
-    require_asp_bash_commands = bool(
-        live_agent.get("requireAspBashCommands", True)
-    )
+    require_asp_bash_commands = bool(live_agent.get("requireAspBashCommands", True))
     agent_sdk = {
         "client": require_str(live_agent, "client", "claude"),
         "prompt": prompt,
@@ -462,7 +539,9 @@ def _cold_retry_limits(step: Any) -> tuple[int, int] | None:
     return maximum, cold_maximum
 
 
-def _should_retry_cold_start(step: Any, step_result: StepResult) -> tuple[int, int] | None:
+def _should_retry_cold_start(
+    step: Any, step_result: StepResult
+) -> tuple[int, int] | None:
     limits = _cold_retry_limits(step)
     if limits is None:
         return None
