@@ -1,6 +1,6 @@
 use agent_semantic_hook::{
     ActivatedProvider, DecisionKind, HookDecision, HookRuntime, ReasonKind, StdinMode,
-    classify_hook,
+    classify_hook, render_hook_trigger_prompt_document,
 };
 use serde_json::json;
 
@@ -89,9 +89,11 @@ pub(super) fn assert_content_dump_denied(command: &str, provider_id: &str) {
 }
 
 fn assert_agent_facade_decision(decision: &HookDecision, command: &str) {
-    let expected_message = managed_prompt_template()
-        .replace("{reason}", reason_kind_label(decision.reason_kind))
-        .replace("{routes}", &routes_markdown_for_test(&decision.routes));
+    let expected_message = render_hook_trigger_prompt_document(
+        HOOK_TRIGGER_PROMPT_TEMPLATE,
+        reason_kind_label(decision.reason_kind),
+        &decision.routes,
+    );
     assert_eq!(decision.message, expected_message, "{command}");
     for route in &decision.routes {
         assert_eq!(route.binary, "asp", "{command}: {:?}", route.argv);
@@ -117,75 +119,6 @@ fn assert_agent_facade_decision(decision: &HookDecision, command: &str) {
             decision.message
         );
     }
-}
-
-fn managed_prompt_template() -> &'static str {
-    HOOK_TRIGGER_PROMPT_TEMPLATE
-        .split("<!-- ASP-HOOK-TRIGGER-PROMPT:MANAGED-BEGIN -->")
-        .nth(1)
-        .expect("managed prompt begin")
-        .split("<!-- ASP-HOOK-TRIGGER-PROMPT:MANAGED-END -->")
-        .next()
-        .expect("managed prompt end")
-        .trim_matches('\n')
-}
-
-fn routes_markdown_for_test(routes: &[agent_semantic_hook::DecisionRoute]) -> String {
-    if routes.is_empty() {
-        return "```sh\nasp guide\n```".to_string();
-    }
-    routes
-        .iter()
-        .map(|route| format!("```sh\n{}\n```", command_line_for_test(&route.argv)))
-        .collect::<Vec<_>>()
-        .join("\n\n")
-}
-
-fn command_line_for_test(argv: &[String]) -> String {
-    let argv = display_argv_for_test(argv);
-    argv.iter()
-        .map(|arg| {
-            if arg.chars().all(|character| {
-                character.is_ascii_alphanumeric()
-                    || matches!(character, '-' | '_' | '.' | '/' | ':')
-            }) {
-                arg.to_string()
-            } else {
-                format!("'{}'", arg.replace('\'', "'\\''"))
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
-fn display_argv_for_test(argv: &[String]) -> Vec<String> {
-    if !uses_agent_facade_workspace_positional_for_test(argv) {
-        return argv.to_vec();
-    }
-
-    let workspace = argv[argv.len() - 1].clone();
-    let mut rendered = argv[..argv.len() - 1].to_vec();
-    let insert_at = rendered
-        .iter()
-        .position(|arg| arg == "--view")
-        .unwrap_or(rendered.len());
-    rendered.insert(insert_at, "--workspace".to_string());
-    rendered.insert(insert_at + 1, workspace);
-    rendered
-}
-
-fn uses_agent_facade_workspace_positional_for_test(argv: &[String]) -> bool {
-    if argv.len() < 4 || argv.iter().any(|arg| arg == "--workspace") {
-        return false;
-    }
-    if !matches!(argv.first().map(String::as_str), Some("asp")) {
-        return false;
-    }
-    if !matches!(argv.get(2).map(String::as_str), Some("query" | "search")) {
-        return false;
-    }
-    argv.last()
-        .is_some_and(|arg| !arg.is_empty() && !arg.starts_with('-'))
 }
 
 fn reason_kind_label(reason_kind: ReasonKind) -> &'static str {

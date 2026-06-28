@@ -29,12 +29,15 @@ fn search_history_backfills_artifacts_and_passes_rust_sqlite_events() {
     std::fs::write(
         artifact_dir.join("prompt-output/rust-query-direct-source-read-abc123.command.json"),
         r#"{
+  "eventTimestampMs": 111111,
   "providerCommands": [
     {
+      "startedAtMs": 222222,
       "argv": ["rs-harness", "query", "--from-hook", "direct-source-read", "--selector", "src/lib.rs:1-10", "--code"],
       "languageId": "rust"
     },
     {
+      "eventTimestampMs": 333333,
       "argv": ["rs-harness", "query", "--selector", "src/main.rs:20-24", "--workspace", ".", "--code"],
       "languageId": "rust"
     }
@@ -51,6 +54,7 @@ fn search_history_backfills_artifacts_and_passes_rust_sqlite_events() {
   "schemaVersion": "1",
   "protocolId": "agent.semantic-protocols.client",
   "protocolVersion": "1",
+  "eventTimestampMs": 444444,
   "sourceArtifactId": "prompt-output/rust-search-prime-abc123.txt",
   "sourceArtifactKind": "prompt-output",
   "languageId": "rust",
@@ -98,6 +102,7 @@ fn search_history_backfills_artifacts_and_passes_rust_sqlite_events() {
         r#"{
   "schemaId": "semantic-tree-sitter-query",
   "schemaVersion": "1",
+  "eventTimestampMs": 555555,
   "languageId": "rust",
   "method": "query",
   "query": {
@@ -183,6 +188,7 @@ fn search_history_backfills_artifacts_and_passes_rust_sqlite_events() {
             event.artifact_path == "prompt-output/rust-query-direct-source-read-abc123.command.json"
                 && event.method == "query/direct-source-read"
                 && event.target == "src/lib.rs:1-10"
+                && event.timestamp_ms == 222222
         }),
         "{events:?}"
     );
@@ -191,6 +197,7 @@ fn search_history_backfills_artifacts_and_passes_rust_sqlite_events() {
             event.artifact_path == "prompt-output/rust-query-direct-source-read-abc123.command.json"
                 && event.method == "query/code"
                 && event.target == "src/main.rs:20-24"
+                && event.timestamp_ms == 333333
         }),
         "{events:?}"
     );
@@ -200,6 +207,7 @@ fn search_history_backfills_artifacts_and_passes_rust_sqlite_events() {
                 && event.kind == "analysis-metadata"
                 && event.method == "search/prime"
                 && event.query == "ownerCandidates=src/lib.rs"
+                && event.timestamp_ms == 444444
         }),
         "{events:?}"
     );
@@ -208,6 +216,7 @@ fn search_history_backfills_artifacts_and_passes_rust_sqlite_events() {
             event.artifact_path == "semantic-tree-sitter-query/rust-query-tree-sitter-abc123.json"
                 && event.method == "query/tree-sitter"
                 && event.query == "(function_item) @item"
+                && event.timestamp_ms == 555555
         }),
         "{events:?}"
     );

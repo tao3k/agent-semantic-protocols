@@ -46,7 +46,9 @@ fn source_owner_beats_test_corpus_when_query_has_no_test_intent() {
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(
-        stdout.contains("nextCommand=asp typescript search owner src/compiler/moduleResolution.ts"),
+        stdout.contains(
+            "nextCommand=asp typescript search owner src/compiler/moduleResolution.ts items"
+        ),
         "{stdout}"
     );
     assert!(
@@ -100,8 +102,9 @@ fn source_owner_beats_unittests_corpus_when_query_has_no_test_intent() {
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(
-        stdout
-            .contains("nextCommand=asp typescript search owner src/compiler/moduleNameResolver.ts"),
+        stdout.contains(
+            "nextCommand=asp typescript search owner src/compiler/moduleNameResolver.ts items"
+        ),
         "{stdout}"
     );
     assert!(
@@ -155,7 +158,9 @@ fn test_intent_keeps_test_corpus_owner_eligible() {
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(
-        stdout.contains("nextCommand=asp typescript search owner tests/cases/projects/privacyCheck-IndirectReference/indirectExternalModule.ts"),
+        stdout.contains(
+            "nextCommand=asp typescript search owner tests/cases/projects/privacyCheck-IndirectReference/indirectExternalModule.ts items"
+        ),
         "{stdout}"
     );
     let _ = std::fs::remove_dir_all(root);
@@ -226,7 +231,10 @@ fn low_cohesion_secondary_artifact_does_not_fallback_to_owner_items_first() {
         ),
         "{stdout}"
     );
-    assert!(!stdout.contains("A1=owner-items("), "{stdout}");
+    assert!(
+        !stdout.contains("recommendedNext=A1.owner-items"),
+        "{stdout}"
+    );
     assert!(
         !stdout.contains("recommendedNext=A1.owner-items"),
         "{stdout}"
@@ -293,7 +301,10 @@ fn low_cohesion_source_owner_with_weak_axis_coverage_does_not_fallback_first() {
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(stdout.contains("packageCohesion=low"), "{stdout}");
-    assert!(!stdout.contains("A1=owner-items("), "{stdout}");
+    assert!(
+        !stdout.contains("recommendedNext=A1.owner-items"),
+        "{stdout}"
+    );
     assert!(
         !stdout.contains("recommendedNext=A1.owner-items"),
         "{stdout}"

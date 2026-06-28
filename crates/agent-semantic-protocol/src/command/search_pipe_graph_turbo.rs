@@ -24,9 +24,9 @@ use super::{
     search_pipe_model::{Candidate, SearchPipeSourceTrace},
     search_pipe_provider_facts::{ProviderGraphFacts, ProviderGraphFactsContext},
     search_pipe_quality::{
-        SearchPipeQuality, analyze_search_pipe_quality, compact_fact_value, is_generated_path,
-        query_allows_generated,
+        analyze_search_pipe_quality, compact_fact_value, is_generated_path, query_allows_generated,
     },
+    search_pipe_quality_model::SearchPipeQuality,
     search_pipe_query_evidence::{is_high_value_term, strong_match},
     search_pipe_query_pack::{query_clauses, unique_query_terms},
     search_pipe_seed_decision::{

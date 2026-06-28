@@ -1,7 +1,7 @@
 //! Owner-local query terms for graph-turbo owner-items handoff.
 
 use super::search_pipe_model::Candidate;
-use super::search_pipe_quality::SearchPipeQuality;
+use super::search_pipe_quality_model::SearchPipeQuality;
 
 pub(super) fn owner_items_query_terms(
     quality: &SearchPipeQuality,

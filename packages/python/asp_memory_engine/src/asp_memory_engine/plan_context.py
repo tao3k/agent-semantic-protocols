@@ -88,7 +88,7 @@ class PlanMemoryContext:
                 GLOBAL_PROJECT_SCOPE,
             ),
             session_id=normalize_optional_plan_token(
-                properties.get("PLAN_SESSION") or properties.get("SESSION_ID")
+                properties.get("SESSION_ID")
             ),
             plan_id=normalize_optional_plan_token(
                 properties.get("PLAN_ID") or properties.get("ID")

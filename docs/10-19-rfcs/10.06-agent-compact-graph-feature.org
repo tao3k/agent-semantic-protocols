@@ -1658,3 +1658,5 @@ display or transport hints, but the executable target is the structural selector
 until the agent deliberately asks for exact code.  Direct source read fallback
 belongs outside the normal graph frontier and requires an explicit fallback
 reason when represented in read packets.
+* Compact search action row contract
+This section supersedes older examples that treated =actionRank= or =[route-graph]= rows as part of default agent-facing seed output. Default search stdout exposes one compact action surface. When =actionFrontier= is rendered in =--view seeds= or facade stdout, the same output must not also render =[route-graph]=, =actionRank=, or full action detail rows such as =A1=fd-query(...)!finder-owner=. Those details belong to typed graph-turbo packets, explicit debug/advisory views, or tests that validate packet materialization. Seeds stdout keeps only =actionFrontier=A1.kind,A2.kind=, =recommendedNext=A1.kind=, and an optional materialized =nextCommand= display line derived from typed actions.

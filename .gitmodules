@@ -25,3 +25,6 @@
 [submodule "languages/org"]
 	path = languages/org
 	url = https://github.com/tao3k/org.git
+[submodule "analyzers/AspGraphsSearch.jl"]
+	path = analyzers/AspGraphsSearch.jl
+	url = git@github.com:tao3k/AspGraphsSearch.jl.git

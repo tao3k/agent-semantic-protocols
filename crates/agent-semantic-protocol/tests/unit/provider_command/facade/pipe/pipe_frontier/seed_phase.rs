@@ -164,10 +164,9 @@ fn search_pipe_graph_turbo_request_adds_owner_anchor_seeds_for_broad_query() {
     assert!(stdout.contains("seedWhenKnownSymbolCount=0"), "{stdout}");
     assert!(stdout.contains("seedWhenKnownSelectorCount=0"), "{stdout}");
     assert!(
-        stdout.contains("recommendedNext=A1.rg-query-set"),
+        stdout.contains("actionFrontier=A1.rg-query-set,A2.fd-query,A3.rg-query"),
         "{stdout}"
     );
-    assert!(stdout.contains("A2.fd-query"), "{stdout}");
     assert!(
         stdout.contains("recommendedNext=A1.rg-query-set"),
         "{stdout}"

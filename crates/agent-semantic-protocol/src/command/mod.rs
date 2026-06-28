@@ -1,5 +1,7 @@
 //! Command tree for the `asp` binary.
 
+mod agent_session;
+mod agent_session_registry;
 mod ast_patch;
 mod client_backend_worker;
 mod dispatch;
@@ -29,6 +31,7 @@ mod provider_roots;
 mod query_direct_read;
 mod query_owner;
 mod query_owner_item;
+mod query_owner_legacy_selector;
 mod query_owner_structural_selector;
 mod root_language_facade;
 mod search_config;
@@ -61,8 +64,8 @@ mod search_pipe_owner_roles;
 mod search_pipe_plan;
 mod search_pipe_projection;
 mod search_pipe_provider_facts;
-mod search_pipe_python_owner_items;
 mod search_pipe_quality;
+mod search_pipe_quality_model;
 mod search_pipe_query_evidence;
 mod search_pipe_query_model;
 mod search_pipe_query_pack;

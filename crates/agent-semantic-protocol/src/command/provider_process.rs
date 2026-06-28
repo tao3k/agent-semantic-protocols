@@ -320,6 +320,8 @@ fn provider_command_prefix(
     config: &AspConfig,
 ) -> Result<Vec<String>, String> {
     let home = home_dir();
+    let semantic_agent_bin_dir =
+        std::env::var_os("SEMANTIC_AGENT_BIN_DIR").map(std::path::PathBuf::from);
     if let Some(binary) = config.provider_bin(&provider.language_id) {
         return Ok(vec![resolve_configured_provider_binary(
             &provider.language_id,
@@ -333,25 +335,41 @@ fn provider_command_prefix(
     {
         return Ok(vec![binary]);
     }
-    if let Some(invocation) = runtime_profile_invocation(profiles, provider, &[]) {
-        return Ok(invocation);
-    }
     if let Some(binary) = provider_binary_next_to_current_protocol_binary(&provider.binary) {
         return Ok(vec![binary]);
     }
     if let Some(binary) = provider_binary_on_path(&provider.binary, project_root) {
         return Ok(vec![binary]);
     }
-    if let Ok(invocation) =
-        resolve_provider_binary_invocation(&provider.language_id, &provider.binary, home.as_deref())
-    {
+    if let Ok(invocation) = resolve_provider_binary_invocation(
+        &provider.language_id,
+        &provider.binary,
+        home.as_deref(),
+        semantic_agent_bin_dir.as_deref(),
+    ) {
+        return Ok(vec![invocation.command]);
+    }
+    if let Some(invocation) = runtime_profile_invocation(profiles, provider, &[]) {
+        return Ok(invocation);
+    }
+    if let Ok(invocation) = resolve_provider_binary_invocation(
+        &provider.language_id,
+        &provider.binary,
+        home.as_deref(),
+        semantic_agent_bin_dir.as_deref(),
+    ) {
         return Ok(vec![invocation.command]);
     }
     if !provider.provider_command_prefix.is_empty() {
         return Ok(provider.provider_command_prefix.clone());
     }
-    resolve_provider_binary_invocation(&provider.language_id, &provider.binary, home.as_deref())
-        .map(|invocation| vec![invocation.command])
+    resolve_provider_binary_invocation(
+        &provider.language_id,
+        &provider.binary,
+        home.as_deref(),
+        semantic_agent_bin_dir.as_deref(),
+    )
+    .map(|invocation| vec![invocation.command])
 }
 
 fn preferred_home_local_provider_binary(provider: &ActivatedProvider) -> Option<&'static str> {
@@ -398,7 +416,7 @@ fn resolve_configured_provider_binary(
 ) -> Result<String, String> {
     let binary_path = Path::new(binary);
     if binary_path.components().count() <= 1 {
-        return resolve_provider_binary_invocation(language_id, binary, home)
+        return resolve_provider_binary_invocation(language_id, binary, home, None)
             .map(|invocation| invocation.command);
     }
     Ok(resolve_provider_program(binary, project_root))

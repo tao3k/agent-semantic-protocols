@@ -154,7 +154,7 @@ fn asp_fd_query_prefers_exact_gerbil_path_owner_items() {
         "{stdout}"
     );
     assert!(
-        stdout.contains("nextCommand=asp gerbil-scheme search owner gerbil-poo/cli.ss"),
+        stdout.contains("actionFrontier=A1.owner-items,A2.scoped-rg-query"),
         "{stdout}"
     );
     assert!(

@@ -287,7 +287,8 @@ fn is_env_assignment(token: &str) -> bool {
 fn is_root_asp_command(value: &str) -> bool {
     matches!(
         value,
-        "guide"
+        "agent"
+            | "guide"
             | "providers"
             | "tools"
             | "wrap"

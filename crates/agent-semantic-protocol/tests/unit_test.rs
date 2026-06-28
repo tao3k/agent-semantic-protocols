@@ -19,6 +19,8 @@ mod client_hook_desktop_smoke;
 mod codex_plugin_install;
 #[path = "unit/command/gerbil_check_cache.rs"]
 mod command_gerbil_check_cache;
+#[path = "unit/command/query_owner_legacy_selector.rs"]
+mod command_query_owner_legacy_selector;
 #[path = "unit/command/search_pipe_evidence_projection.rs"]
 mod command_search_pipe_evidence_projection;
 #[path = "unit/command/search_pipe_gerbil_owner_items.rs"]

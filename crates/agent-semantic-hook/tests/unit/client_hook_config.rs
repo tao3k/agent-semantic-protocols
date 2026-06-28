@@ -501,7 +501,7 @@ fn deny_decision_warns_when_done_org_artifacts_should_be_archived() {
     );
     let artifacts_path = org_artifacts_root(&root);
     let expected_recall_command = format!(
-        "asp org recall plans --artifacts-root {} --archive-dir archives --intent 'active unfinished ASP Org plan'",
+        "asp org recall plans --artifacts-root {} --archive-dir archives",
         artifacts_path.display()
     );
     let expected_command = format!(

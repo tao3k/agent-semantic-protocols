@@ -523,20 +523,25 @@ fn dependency_seed_query(args: &[String]) -> Result<DependencySeedSelector<'_>, 
     if raw.trim().is_empty() {
         return Err("search deps requires a dependency query".to_string());
     }
-    if !extra.is_empty() {
+    if extra.len() > 1 || (raw.contains("::") && !extra.is_empty()) {
         let suggestion = if raw.contains("::") {
             raw.to_string()
         } else {
             format!("{raw}::{}", extra.join("::"))
         };
-        return Err(format!(
-            "search deps accepts one dependency selector; unexpected extra argument '{}'. Use `search deps {suggestion}` for API queries.",
+        let unexpected = if raw.contains("::") {
             extra[0]
+        } else {
+            extra[1]
+        };
+        return Err(format!(
+            "search deps accepts one dependency selector plus at most one api term; unexpected extra argument '{unexpected}'. Use `search deps {suggestion}` for API queries."
         ));
     }
-    let (dependency_part, api) = raw
+    let (dependency_part, inline_api) = raw
         .split_once("::")
         .map_or((raw, None), |(dependency, api)| (dependency, Some(api)));
+    let api = inline_api.or_else(|| extra.first().copied());
     let dependency = dependency_part
         .split_once('@')
         .map_or(dependency_part, |(dependency, _)| dependency);

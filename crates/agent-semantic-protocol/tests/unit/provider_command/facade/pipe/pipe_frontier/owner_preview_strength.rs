@@ -72,7 +72,7 @@ fn low_cohesion_fd_preview_needs_strong_owner_seed_before_owner_items() {
         "{stdout}"
     );
     assert!(
-        stdout.contains("nextCommand=asp typescript search owner src/worker/testInfo.ts"),
+        stdout.contains("nextCommand=asp typescript search owner src/worker/testInfo.ts items"),
         "{stdout}"
     );
     assert!(

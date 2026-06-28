@@ -2,6 +2,7 @@
 
 use super::{org_archive, org_capture, org_recall, search_config::AspConfig};
 use orgize::agent::{self, DocumentLanguage, DocumentWalkConfig};
+use std::ffi::OsString;
 
 const DOCUMENT_LANGUAGES: &[&str] = &["org", "md"];
 
@@ -45,6 +46,7 @@ pub(crate) fn run_language_command_with_config(
         );
     }
     if is_document_command(command) {
+        let _generic_session_env = GenericSessionEnvGuard::remove_for(language_id);
         return agent::run_document_command_with_walk_config(
             document_language(language_id)?,
             args.to_vec(),
@@ -65,6 +67,47 @@ pub(crate) fn run_language_command_with_config(
     }
 
     unreachable!("document commands are returned above")
+}
+
+struct GenericSessionEnvGuard {
+    values: Vec<(&'static str, Option<OsString>)>,
+}
+
+impl GenericSessionEnvGuard {
+    fn remove_for(language_id: &str) -> Self {
+        let names = if language_id == "org" {
+            &["AGENT_SESSION_ID", "SESSION_ID"][..]
+        } else {
+            &[][..]
+        };
+        let values = names
+            .iter()
+            .map(|name| {
+                let value = std::env::var_os(name);
+                unsafe {
+                    std::env::remove_var(name);
+                }
+                (*name, value)
+            })
+            .collect();
+        Self { values }
+    }
+}
+
+impl Drop for GenericSessionEnvGuard {
+    fn drop(&mut self) {
+        for (name, value) in self.values.drain(..) {
+            if let Some(value) = value {
+                unsafe {
+                    std::env::set_var(name, value);
+                }
+            } else {
+                unsafe {
+                    std::env::remove_var(name);
+                }
+            }
+        }
+    }
 }
 
 fn is_language_help(args: &[String]) -> bool {

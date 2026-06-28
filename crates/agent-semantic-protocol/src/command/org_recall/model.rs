@@ -8,17 +8,65 @@ pub(super) struct OrgPlanCandidate {
     pub(super) todo: String,
     pub(super) todo_type: String,
     pub(super) properties: BTreeMap<String, String>,
+    pub(super) task_candidates: Vec<OrgTaskCandidate>,
     pub(super) mtime: f64,
     pub(super) reflection_complete: bool,
+}
+
+const SESSION_MATCH_PROPERTIES: &[&str] = &[
+    "SESSION_ID",
+    "ROOT_SESSION_ID",
+    "PARENT_SESSION_ID",
+    "CHILD_SESSION_ID",
+    "SUBAGENT_SESSION_ID",
+];
+
+impl OrgPlanCandidate {
+    pub(super) fn has_session_scope(&self) -> bool {
+        SESSION_MATCH_PROPERTIES
+            .iter()
+            .any(|property| self.properties.contains_key(*property))
+    }
+
+    pub(super) fn matches_session(&self, session: &str) -> bool {
+        self.session_match_property(session).is_some()
+    }
+
+    pub(super) fn session_match_property(&self, session: &str) -> Option<&'static str> {
+        let session = session.trim();
+        if session.is_empty() {
+            return None;
+        }
+        SESSION_MATCH_PROPERTIES.iter().copied().find(|property| {
+            self.properties
+                .get(*property)
+                .map(|value| property_value_matches_session(value, session))
+                .unwrap_or(false)
+        })
+    }
+}
+
+fn property_value_matches_session(value: &str, session: &str) -> bool {
+    value
+        .split(|ch: char| ch == ',' || ch.is_ascii_whitespace())
+        .any(|part| part == session)
+}
+
+#[derive(Clone, Serialize)]
+pub(super) struct OrgTaskCandidate {
+    pub(super) kind: String,
+    pub(super) status: String,
+    pub(super) title: String,
+    pub(super) section: Option<String>,
+    pub(super) source_line: Option<usize>,
 }
 
 pub(super) struct RankedOrgPlan {
     pub(super) candidate: OrgPlanCandidate,
     pub(super) score: f64,
-    pub(super) text_score: f64,
+    pub(super) context_score: f64,
     pub(super) memory_score: f64,
     pub(super) recency_score: f64,
-    pub(super) intent_score: f64,
 }
 
 impl OrgPlanCandidate {

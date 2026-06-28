@@ -190,7 +190,7 @@ def test_plan_context_can_be_built_from_org_properties() -> None:
     context = PlanMemoryContext.from_org_properties(
         {
             "PLAN_PROJECT": "repo",
-            "PLAN_SESSION": "session-a",
+            "SESSION_ID": "session-a",
             "PLAN_ID": "plan-a",
             "PLAN_BRANCH": "feature-x",
         }

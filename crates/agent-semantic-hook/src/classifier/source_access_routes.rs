@@ -137,6 +137,7 @@ pub(super) fn classify_direct_read_action(
             .map(|provider| raw_search_ingest_route(provider))
             .collect();
         let message = source_access_recovery_message(
+            platform,
             "source-directory-enumeration",
             &providers,
             &routes,
@@ -318,6 +319,7 @@ fn content_dump_decision(
     let routes = direct_read_routes(&matches);
     let providers = providers_from_matches(&matches);
     let message = source_access_recovery_message(
+        platform,
         "bulk-source-dump",
         &providers,
         &routes,
@@ -351,7 +353,8 @@ fn direct_read_decision(
         return None;
     }
     let routes = direct_read_routes(&matches);
-    let message = direct_read_decision_message(&matches, &routes, semantic_ast_patch_enabled);
+    let message =
+        direct_read_decision_message(platform, &matches, &routes, semantic_ast_patch_enabled);
     Some(deny_for_action(
         platform,
         event,
@@ -407,12 +410,14 @@ pub(super) fn direct_read_language_ids(matches: &[DirectReadMatch<'_>]) -> Vec<S
 }
 
 fn direct_read_decision_message(
+    platform: &str,
     matches: &[DirectReadMatch<'_>],
     routes: &[DecisionRoute],
     semantic_ast_patch_enabled: bool,
 ) -> String {
     let providers = providers_from_matches(matches);
     source_access_recovery_message(
+        platform,
         "direct-source-read",
         &providers,
         routes,
@@ -483,6 +488,7 @@ pub(super) fn classify_raw_search_command(
         })
         .collect();
     let message = source_access_recovery_message(
+        platform,
         "raw-broad-search",
         &raw_search_providers,
         &routes,

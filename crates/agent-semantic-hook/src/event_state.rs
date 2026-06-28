@@ -10,11 +10,12 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use agent_semantic_runtime::{ensure_project_hook_cache_dir, ensure_project_hook_state_dir};
 use serde_json::{Value, json};
 
-use crate::protocol::{DecisionKind, HOOK_PROTOCOL_ID, HookDecision};
+use crate::event_replay::{deny_replay_key, repeated_deny_message};
+use crate::protocol::{HOOK_PROTOCOL_ID, HookDecision};
 
 pub(crate) const HOOK_EVENT_STATE_FILE: &str = "events.jsonl";
 const HOOK_EVENT_SCHEMA_ID: &str = "agent.semantic-protocols.hook.event";
-const DENY_REPLAY_WINDOW_MS: u128 = 5 * 60 * 1000;
+const DENY_REPLAY_WINDOW_MS: u128 = 3 * 60 * 1000;
 const SEARCH_PIPE_FEEDBACK_WINDOW_MS: u128 = 10 * 60 * 1000;
 const HOOK_EVENT_STATE_TAIL_BYTES: u64 = 1024 * 1024;
 const HOOK_EVENT_STATE_TAIL_LINE_CAP: usize = 4096;
@@ -628,63 +629,4 @@ fn language_from_flags(tokens: &[String]) -> Option<String> {
             .then(|| pair[1].clone())
             .filter(|value| !value.starts_with('-'))
     })
-}
-
-fn deny_replay_key(decision: &HookDecision) -> Option<String> {
-    if decision.decision != DecisionKind::Deny {
-        return None;
-    }
-    let reason = serde_json::to_value(decision.reason_kind).ok()?;
-    let mut language_ids = decision.language_ids.clone();
-    language_ids.sort();
-    language_ids.dedup();
-    let routes = decision
-        .routes
-        .iter()
-        .map(|route| {
-            json!({
-                "languageId": route.language_id,
-                "providerId": route.provider_id,
-                "kind": route.kind,
-                "argv": route.argv,
-            })
-        })
-        .collect::<Vec<_>>();
-    let subject = if routes.is_empty() {
-        serde_json::to_value(&decision.subject).unwrap_or(Value::Null)
-    } else {
-        Value::Null
-    };
-    let key = json!({
-        "platform": decision.platform,
-        "reasonKind": reason,
-        "languageIds": language_ids,
-        "operationIntent": decision.fields.get("operationIntent").cloned().unwrap_or(Value::Null),
-        "toolSurface": decision.fields.get("toolSurface").cloned().unwrap_or(Value::Null),
-        "sessionId": decision.fields.get("sessionId").cloned().unwrap_or(Value::Null),
-        "transcriptPath": decision.fields.get("transcriptPath").cloned().unwrap_or(Value::Null),
-        "routes": routes,
-        "subject": subject,
-    });
-    serde_json::to_string(&key).ok()
-}
-
-fn repeated_deny_message(decision: &HookDecision) -> String {
-    let reason = serde_json::to_value(decision.reason_kind)
-        .ok()
-        .and_then(|value| value.as_str().map(str::to_string))
-        .unwrap_or_else(|| "source-access".to_string());
-    [
-        format!("ASP hook already denied `{reason}` on this source-access lane."),
-        "See @.agents/skills/agent-semantic-protocols/SKILL.md for the active ASP agent workflow."
-            .to_string(),
-        String::new(),
-        "## ASP Hook Recovery".to_string(),
-        "Follow the previous recovery route instead of retrying raw source tools.".to_string(),
-        String::new(),
-        "## Stop".to_string(),
-        "Do not retry `Read`, `cat`, `sed`, `rg`, or source-dump commands on the matched source. The hook has already denied this lane."
-            .to_string(),
-    ]
-    .join("\n")
 }

@@ -35,10 +35,12 @@ fn asp_fd_query_avoids_owner_items_when_package_cohesion_is_low() {
             && stdout.contains("risk=single-flat-or-recall,broad-scope,low-package-cohesion"),
         "{stdout}"
     );
-    assert!(!stdout.contains("A1=owner-items("), "{stdout}");
     assert!(
-        stdout.contains("recommendedNext=A1.scoped-rg-query")
-            && stdout.contains("A2.owner-items")
+        !stdout.contains("recommendedNext=A1.owner-items"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("actionFrontier=A1.scoped-rg-query,A2.owner-items")
             && stdout.contains("recommendedNext=A1.scoped-rg-query"),
         "{stdout}"
     );

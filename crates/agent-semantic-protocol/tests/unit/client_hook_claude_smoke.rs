@@ -50,8 +50,9 @@ fn claude_install_writes_project_settings_hooks() {
     let prompt = std::fs::read_to_string(&prompt_path).expect("read hook trigger prompt");
     assert!(prompt.contains("ASP-HOOK-TRIGGER-PROMPT:MANAGED-BEGIN"));
     assert!(prompt.contains("ASP-HOOK-TRIGGER-PROMPT:USER-EXTENSIONS-BEGIN"));
-    assert!(prompt.contains("spawn_agent"));
-    assert!(prompt.contains("asp-search-subagent"));
+    assert!(prompt.contains("{agent_flow}"));
+    assert!(!prompt.contains("spawn_agent"));
+    assert!(!prompt.contains("asp-search-subagent"));
 }
 
 #[test]
@@ -187,8 +188,11 @@ fn claude_platform_response_uses_hook_specific_permission_decision() {
         .expect("permission reason");
     assert!(reason.contains("ASP hook blocked"), "{reason}");
     assert!(reason.contains("direct-source-read"), "{reason}");
+    assert!(reason.contains("Claude:"), "{reason}");
     assert!(reason.contains("asp rust query --selector"));
     assert!(reason.contains("--code"));
+    assert!(!reason.contains("spawn_agent"), "{reason}");
+    assert!(!reason.contains("asp_explorer"), "{reason}");
     assert!(response.get("agentHookDecision").is_none());
 }
 
@@ -221,6 +225,69 @@ fn claude_platform_response_compacts_repeated_denied_source_lane() {
     assert!(reason.starts_with("ASP hook already denied `direct-source-read`"));
     assert!(reason.contains("Follow the previous recovery route"));
     assert!(!reason.contains("## Agent Flow"));
+    let context = second["hookSpecificOutput"]["additionalContext"]
+        .as_str()
+        .expect("decision context");
+    assert!(context.contains("\"denyReplay\":\"repeated\""));
+}
+
+#[test]
+fn claude_platform_response_compacts_cross_action_source_access_lane() {
+    let root = claude_fixture();
+
+    install_claude_hooks(root.as_path());
+
+    let transcript_path = root.as_path().join("session.jsonl");
+    let first = run_claude_pre_tool_decision(
+        root.as_path(),
+        json!({
+            "session_id": "session-claude-cross-action-source-access",
+            "transcript_path": transcript_path,
+            "cwd": root.as_path(),
+            "hook_event_name": "PreToolUse",
+            "tool_use_id": "toolu_bash_raw_search",
+            "tool_name": "Bash",
+            "tool_input": {
+                "command": "rg -n --glob '*.rs' demo src"
+            }
+        }),
+        &[],
+    );
+    let second = run_claude_pre_tool_decision(
+        root.as_path(),
+        json!({
+            "session_id": "session-claude-cross-action-source-access",
+            "transcript_path": root.as_path().join("session.jsonl"),
+            "cwd": root.as_path(),
+            "hook_event_name": "PreToolUse",
+            "tool_use_id": "toolu_read_source",
+            "tool_name": "Read",
+            "tool_input": {
+                "file_path": root.as_path().join("src/lib.rs")
+            }
+        }),
+        &[],
+    );
+
+    assert_eq!(first["hookSpecificOutput"]["permissionDecision"], "deny");
+    let first_reason = first["hookSpecificOutput"]["permissionDecisionReason"]
+        .as_str()
+        .expect("first permission reason");
+    assert!(
+        first_reason.contains("Use the language harness"),
+        "{first_reason}"
+    );
+    let first_context = first["hookSpecificOutput"]["additionalContext"]
+        .as_str()
+        .expect("first decision context");
+    assert!(first_context.contains("source-access-recovery"));
+    let second_reason = second["hookSpecificOutput"]["permissionDecisionReason"]
+        .as_str()
+        .expect("second permission reason");
+    assert!(
+        second_reason.starts_with("ASP hook already denied `direct-source-read`"),
+        "{second_reason}"
+    );
     let context = second["hookSpecificOutput"]["additionalContext"]
         .as_str()
         .expect("decision context");

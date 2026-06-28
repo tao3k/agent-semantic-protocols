@@ -89,7 +89,7 @@ fn search_pipe_wide_owner_axis_query_materializes_fd_without_protocol_terms() {
         stdout.contains("fdQuery=recovery|project|runtime|session|content|source|anchor"),
         "{stdout}"
     );
-    assert!(stdout.contains("recommendedNext=A1.fd-query"), "{stdout}");
+    assert!(stdout.contains("actionFrontier=A1.fd-query"), "{stdout}");
     assert!(
         !stdout.contains("fdQuery=query|rg|fd|owner|graph|turbo"),
         "{stdout}"
@@ -198,11 +198,13 @@ fn search_pipe_owner_drift_query_pack_precedes_fd_preview() {
     assert!(stdout.contains("packageCohesion=low"), "{stdout}");
     assert!(stdout.contains("fdPreview=ownerCandidates="), "{stdout}");
     assert!(
-        stdout.contains("recommendedNext=A1.rg-query-set"),
+        stdout.contains("actionFrontier=A1.rg-query-set,A2.fd-query,A3.rg-query"),
         "{stdout}"
     );
-    assert!(!stdout.contains("A1=owner-items("), "{stdout}");
-    assert!(stdout.contains("A2.fd-query"), "{stdout}");
+    assert!(
+        !stdout.contains("recommendedNext=A1.owner-items"),
+        "{stdout}"
+    );
     assert!(
         stdout.contains("recommendedNext=A1.rg-query-set"),
         "{stdout}"

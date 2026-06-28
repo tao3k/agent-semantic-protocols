@@ -8,7 +8,8 @@ use super::search_pipe_actions::{
     SearchPipeActionRequest, render_action_frontier, sanitize_evidence_line,
 };
 use super::search_pipe_evidence_projection::rank_frontier_has_only_owner_or_topology_nodes;
-use super::search_pipe_quality::{SearchPipeQuality, analyze_search_pipe_quality};
+use super::search_pipe_quality::analyze_search_pipe_quality;
+use super::search_pipe_quality_model::SearchPipeQuality;
 use super::search_pipe_seed_decision::SeedActionIntent;
 use super::search_query_wrapper_preview::{fd_query_preview, fd_query_preview_from_candidates};
 use super::{search_pipe_model::Candidate, search_pipe_projection::candidate_selector};

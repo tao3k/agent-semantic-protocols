@@ -8,6 +8,7 @@ mod codex_config;
 mod codex_project_trust;
 mod codex_trust;
 mod command;
+mod event_replay;
 mod event_state;
 mod executable;
 mod hook_config;

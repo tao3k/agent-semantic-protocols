@@ -401,7 +401,7 @@ struct SearchPipeHeader<'a> {
     view: &'a str,
     source: &'a str,
     query: &'a str,
-    quality: &'a super::search_pipe_quality::SearchPipeQuality,
+    quality: &'a super::search_pipe_quality_model::SearchPipeQuality,
     source_trace: &'a [SearchPipeSourceTrace],
 }
 

@@ -154,6 +154,32 @@ fn pre_tool_allows_root_graph_command_without_facade_feedback() {
 }
 
 #[test]
+fn pre_tool_allows_root_agent_session_command_without_facade_feedback() {
+    let project_root = temp_project_root("asp-hook-root-agent-session-command");
+    let runtime = runtime_for_project(&project_root);
+
+    let decision = classify_hook(
+        &runtime,
+        "codex",
+        "pre-tool",
+        &json!({
+            "hook_event_name": "PreToolUse",
+            "session_id": "session-agent",
+            "transcript_path": "transcript-agent.jsonl",
+            "tool_name": "Bash",
+            "tool_input": {
+                "command": "asp agent session list"
+            }
+        }),
+    );
+
+    assert_eq!(decision.decision, DecisionKind::Allow);
+    assert!(!decision.fields.contains_key("hookFeedback"));
+    assert!(!decision.fields.contains_key("invalidFacade"));
+    let _ = fs::remove_dir_all(project_root);
+}
+
+#[test]
 fn pre_tool_allows_install_plugin_codex_command_without_facade_feedback() {
     let project_root = temp_project_root("asp-hook-root-plugin-command");
     let runtime = runtime_for_project(&project_root);

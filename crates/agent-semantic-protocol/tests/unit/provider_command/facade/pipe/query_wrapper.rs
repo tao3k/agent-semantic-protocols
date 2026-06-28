@@ -96,6 +96,7 @@ fn asp_rg_query_marks_single_broad_or_as_recall_probe() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
+    assert_compact_search_action_contract(&stdout);
     assert!(stdout.starts_with("[search-rg]"), "{stdout}");
     assert!(stdout.contains("querySet=3"), "{stdout}");
     assert!(stdout.contains("query=Fiber|Queue|Runtime"), "{stdout}");
@@ -183,6 +184,7 @@ fn asp_rg_query_keeps_repeated_query_clauses_separate() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
+    assert_compact_search_action_contract(&stdout);
     assert!(stdout.starts_with("[search-rg]"), "{stdout}");
     assert!(stdout.contains("querySet=6"), "{stdout}");
     assert!(
@@ -231,8 +233,6 @@ fn asp_rg_query_keeps_repeated_query_clauses_separate() {
         1,
         "{stdout}"
     );
-    assert_compact_search_action_contract(&stdout);
-    assert!(stdout.contains("actionFrontier=A1.fd-query"), "{stdout}");
     assert!(stdout.contains("recommendedNext=A1.fd-query"), "{stdout}");
     assert!(
         stdout.contains("nextClasses=owner-items,query-selector,fd-query"),

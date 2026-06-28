@@ -1,0 +1,46 @@
+#+TITLE: 10.05.76 Hook Recovery Platform Replay
+#+RFC_ID: 10.05.76
+#+STATUS: Draft
+
+* Problem
+
+Source-access denials can arrive through adjacent tool actions in the same
+agent turn, for example a raw shell search followed by a direct file read. The
+previous replay key was too specific: it included the exact reason, tool
+surface, subject, and route argv, so the hook repeated a full recovery prompt
+even though the agent had already received the safe ASP route.
+
+The recovery prompt was also hard-coded for Codex. That leaked Codex-only
+instructions such as resident ASP explorer agents into Claude hook output,
+where those tools are not part of the active client surface.
+
+* Decision
+
+- Treat source-access recovery as one replay family across
+  =bulk-source-dump=, =direct-source-read=, =raw-broad-search=, and
+  =source-directory-enumeration=.
+- Compact repeated source-access recovery prompts for three minutes within the
+  same session, transcript, platform, and working directory.
+- Keep the deny decision intact. Replay compaction only changes the advisory
+  prose returned to the agent.
+- Render recovery guidance from the hook platform. Codex output may mention the
+  resident ASP search agent flow. Claude output must route the agent directly
+  to the safe command and must not mention Codex-only =spawn_agent=,
+  =send_input=, or =asp_explorer= behavior.
+
+* Contract
+
+The hook runtime already receives the client platform as part of classification.
+Recovery text must use that platform before considering environment-variable
+fallbacks such as =SESSION_ID= or =CODEX_SESSION_ID=. Environment variables can
+help identify sessions, but they should not override an explicit client
+platform from the hook invocation.
+
+The replay key for source-access recovery intentionally ignores the exact
+blocked action, language ids, provider ids, and route argv. A broad shell source
+access command may not have a provider route yet, while a following Read action
+usually does. Both still represent the same source-access recovery family for
+the current agent turn. That makes a Bash source-access command such as =rg -n
+--glob '*.rs' demo src= followed by a Read source access compact to the previous
+recovery notice instead of spending a second full prompt on the same recovery
+family.

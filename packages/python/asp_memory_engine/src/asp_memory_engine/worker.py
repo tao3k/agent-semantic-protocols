@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TextIO
 
+from .checkpoint import Checkpoint
 from .plan_rank import rank_plan_candidates
 from .store import EpisodeStore, StoreConfig
 
@@ -32,7 +33,9 @@ class _StoreCache:
         store = self._stores.get(key)
         if store is not None:
             return store
-        store = EpisodeStore(StoreConfig(path=str(state_path), embedding_dim=embedding_dim))
+        store = EpisodeStore(
+            StoreConfig(path=str(state_path), embedding_dim=embedding_dim)
+        )
         store.load_state(str(state_path))
         self._stores[key] = store
         return store
@@ -105,7 +108,7 @@ def _handle_request(
     default_embedding_dim: int,
 ) -> dict[str, Any]:
     command = request.get("command", "rank-plans")
-    if command != "rank-plans":
+    if command not in {"rank-plans", "checkpoint-put", "checkpoint-list"}:
         return {
             "schemaId": "agent.semantic-protocols.memory-worker-error",
             "schemaVersion": "1",
@@ -113,12 +116,47 @@ def _handle_request(
             "error": f"unsupported command: {command}",
         }
     embedding_dim = int(request.get("embeddingDim", default_embedding_dim))
-    store = cache.load(str(request.get("state", default_state)), embedding_dim)
+    state = str(request.get("state", default_state))
+    store = cache.load(state, embedding_dim)
+    if command == "checkpoint-put":
+        checkpoint = Checkpoint.from_mapping(request.get("payload", {}))
+        store.store_checkpoint(checkpoint)
+        store.save_state(state)
+        response = {
+            "schemaId": "agent.semantic-protocols.memory-checkpoint-receipt",
+            "schemaVersion": "1",
+            "ok": True,
+            "checkpoint": checkpoint.to_mapping(),
+            "worker": "resident-jsonl",
+        }
+        request_id = request.get("id")
+        if request_id is not None:
+            response["id"] = request_id
+        return response
+    if command == "checkpoint-list":
+        top_k = request.get("topK")
+        checkpoints = store.list_checkpoints(
+            project_id=request.get("project"),
+            session_id=request.get("session"),
+            plan_id=request.get("plan"),
+            branch_id=request.get("branch"),
+            status=request.get("status"),
+            top_k=int(top_k) if top_k is not None else None,
+        )
+        response = {
+            "schemaId": "agent.semantic-protocols.memory-checkpoint-list",
+            "schemaVersion": "1",
+            "checkpoints": [checkpoint.to_mapping() for checkpoint in checkpoints],
+            "worker": "resident-jsonl",
+        }
+        request_id = request.get("id")
+        if request_id is not None:
+            response["id"] = request_id
+        return response
     payload = request.get("payload", {"plans": request.get("plans", [])})
     response = rank_plan_candidates(
         payload,
         store=store,
-        intent=str(request.get("intent", "")),
         project=str(request.get("project", "_global_project")),
         session=request.get("session"),
         branch=request.get("branch"),

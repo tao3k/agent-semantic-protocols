@@ -12,7 +12,7 @@ pub(super) fn git_project_root(name: &str) -> PathBuf {
 
 pub(super) fn protocol_command() -> Command {
     let mut command = asp_command();
-    command.env_remove("ASP_ORG_REPO_URL");
+    command.env("ASP_ORG_REPO_URL", local_test_org_repo());
     command.env_remove("PRJ_CACHE_HOME");
     command
 }
@@ -63,6 +63,45 @@ fn write_test_codex_plugin(root: &Path) {
     std::fs::create_dir_all(hooks.parent().expect("plugin hooks parent"))
         .expect("create plugin hooks dir");
     std::fs::write(&hooks, r#"{"hooks":{}}"#).expect("write plugin hooks");
+}
+
+fn local_test_org_repo() -> PathBuf {
+    let root = temp_project_root("org-state-source");
+    run_git(&root, &["init", "-q"]);
+    let skill_path = root.join("skills").join("ASP_ORG.org");
+    std::fs::create_dir_all(skill_path.parent().expect("skill parent"))
+        .expect("create org skill dir");
+    std::fs::write(&skill_path, "* ASP Org Test Skill\n").expect("write org skill fixture");
+    run_git(&root, &["add", "."]);
+    run_git(
+        &root,
+        &[
+            "-c",
+            "user.name=ASP Test",
+            "-c",
+            "user.email=asp-test@example.com",
+            "commit",
+            "-q",
+            "-m",
+            "test org resources",
+        ],
+    );
+    root
+}
+
+fn run_git(root: &Path, args: &[&str]) {
+    let output = Command::new("git")
+        .current_dir(root)
+        .args(args)
+        .output()
+        .expect("run git");
+    assert!(
+        output.status.success(),
+        "git {:?} failed: stdout={} stderr={}",
+        args,
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 fn write_fake_codex_cli(root: &Path) {

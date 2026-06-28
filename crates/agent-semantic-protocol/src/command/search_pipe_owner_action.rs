@@ -8,7 +8,7 @@ use super::search_pipe_owner_roles::{
     has_strong_secondary_owner_intent, secondary_like_owner, suppress_low_cohesion_secondary_owner,
     suppress_low_cohesion_weak_axis_owner,
 };
-use super::search_pipe_quality::SearchPipeQuality;
+use super::search_pipe_quality_model::SearchPipeQuality;
 use super::search_query_wrapper_model::FdQueryPreview;
 
 pub(super) fn preferred_owner_items_handle(

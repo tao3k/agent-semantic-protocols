@@ -1,0 +1,215 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/semantic-hot-path-performance-gate.v1.schema.json",
+  "title": "ASP Hot Path Performance Gate",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "scenarioId",
+    "languageId",
+    "command",
+    "phase",
+    "expected",
+    "observed",
+    "verdict"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.semantic-hot-path-performance-gate"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "scenarioId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "languageId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "workspace": {
+      "type": "string"
+    },
+    "command": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string"
+      }
+    },
+    "phase": {
+      "enum": [
+        "cold",
+        "warm",
+        "hot",
+        "projection"
+      ]
+    },
+    "expected": {
+      "$ref": "#/$defs/expectation"
+    },
+    "observed": {
+      "$ref": "#/$defs/observation"
+    },
+    "verdict": {
+      "enum": [
+        "pass",
+        "fail",
+        "skip",
+        "unknown"
+      ]
+    },
+    "evidenceRefs": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "$defs": {
+    "durationLiteral": {
+      "type": "string",
+      "pattern": "^[0-9]+(\\.[0-9]+)?(ns|us|ms|s)$"
+    },
+    "routeName": {
+      "type": "string",
+      "minLength": 1
+    },
+    "expectation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "targetTotal": {
+          "$ref": "#/$defs/durationLiteral"
+        },
+        "maxTotal": {
+          "$ref": "#/$defs/durationLiteral"
+        },
+        "regressionBudget": {
+          "$ref": "#/$defs/durationLiteral"
+        },
+        "maxProviderProcessCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxProjectionProviderProcessCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "requireSourceIndexHit": {
+          "type": "boolean"
+        },
+        "requireFactIndexHit": {
+          "type": "boolean"
+        },
+        "requireDependencyIndexHit": {
+          "type": "boolean"
+        },
+        "requireGraphTurboCacheHit": {
+          "type": "boolean"
+        },
+        "allowedFirstRoutes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/routeName"
+          }
+        },
+        "forbiddenRoutes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/routeName"
+          }
+        },
+        "requireExactCodeIdentity": {
+          "type": "boolean"
+        },
+        "requireNoExecutableLineRange": {
+          "type": "boolean"
+        },
+        "packetOutRequired": {
+          "type": "boolean"
+        }
+      }
+    },
+    "observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "observedTotal",
+        "providerProcessCount"
+      ],
+      "properties": {
+        "observedTotal": {
+          "$ref": "#/$defs/durationLiteral"
+        },
+        "providerProcessCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "projectionProviderProcessCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sourceIndexHit": {
+          "type": "boolean"
+        },
+        "factIndexHit": {
+          "type": "boolean"
+        },
+        "dependencyIndexHit": {
+          "type": "boolean"
+        },
+        "graphTurboDuration": {
+          "$ref": "#/$defs/durationLiteral"
+        },
+        "graphTurboCacheStatus": {
+          "enum": [
+            "hit",
+            "miss",
+            "partial",
+            "not-applicable"
+          ]
+        },
+        "firstRoute": {
+          "$ref": "#/$defs/routeName"
+        },
+        "executedRoutes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/routeName"
+          }
+        },
+        "executableLineRangeSelectorCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "packetOutMode": {
+          "enum": [
+            "packet-out",
+            "stdout-json",
+            "second-provider-command",
+            "not-supported",
+            "not-applicable"
+          ]
+        },
+        "indexRows": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    }
+  }
+}

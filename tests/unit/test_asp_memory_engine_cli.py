@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import json
 import os
 import shutil
@@ -18,73 +19,60 @@ BINARY_RANK_PLANS_MAX_MS = 500.0
 WORKER_RANK_PLANS_MAX_MS = 100.0
 
 
-def test_cli_recall_plan_filters_by_session_context(tmp_path, capsys) -> None:
-    state_path = tmp_path / "state.json"
-    store = EpisodeStore(StoreConfig(path=str(state_path), embedding_dim=8))
-    visible_context = PlanMemoryContext(
-        project_id="repo",
-        session_id="session-a",
-        plan_id="plan-a",
-        branch_id="main",
-    )
-    hidden_context = PlanMemoryContext(
-        project_id="repo",
-        session_id="session-b",
-        plan_id="plan-b",
-        branch_id="main",
-    )
-    store.store(
-        Episode.new(
-            EpisodeDraft(
-                id="visible-task",
-                intent="current unfinished org task",
-                intent_embedding=store.encoder.encode("current unfinished org task"),
-                experience="continue the visible task",
-                outcome="pending",
-            ).with_plan_context(visible_context, sharing="session")
-        )
-    )
-    store.store(
-        Episode.new(
-            EpisodeDraft(
-                id="hidden-task",
-                intent="current unfinished org task",
-                intent_embedding=store.encoder.encode("current unfinished org task"),
-                experience="do not show this",
-                outcome="pending",
-            ).with_plan_context(hidden_context, sharing="session")
-        )
-    )
-    store.save_state(state_path)
+def test_cli_checkpoint_put_and_list_filters_by_session(
+    tmp_path, capsys, monkeypatch
+) -> None:
+    state_path = tmp_path / "state.sqlite"
+    checkpoint_payload = {
+        "sessionId": "session-a",
+        "projectId": "repo",
+        "planId": "plan-a",
+        "title": "persist checkpoint from cli",
+        "sourceLocator": "plans/current.org:9:9",
+    }
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(checkpoint_payload)))
 
-    status = memory_engine_main(
+    put_status = memory_engine_main(
         [
-            "recall-plan",
+            "checkpoint-put",
             "--state",
             str(state_path),
             "--embedding-dim",
             "8",
-            "--intent",
-            "unfinished org task",
+        ]
+    )
+    put_stdout = capsys.readouterr().out
+
+    assert put_status == 0
+    put_payload = json.loads(put_stdout)
+    assert put_payload["ok"] is True
+    assert put_payload["checkpoint"]["session_id"] == "session-a"
+
+    list_status = memory_engine_main(
+        [
+            "checkpoint-list",
+            "--state",
+            str(state_path),
+            "--embedding-dim",
+            "8",
             "--project",
             "repo",
             "--session",
             "session-a",
-            "--plan",
-            "plan-a",
-            "--branch",
-            "main",
         ]
     )
+    list_stdout = capsys.readouterr().out
 
-    stdout = capsys.readouterr().out
-    assert status == 0
-    assert "[recall-plan] engine=asp-memory-engine" in stdout
-    assert "visible-task" in stdout
-    assert "hidden-task" not in stdout
+    assert list_status == 0
+    list_payload = json.loads(list_stdout)
+    assert [item["title"] for item in list_payload["checkpoints"]] == [
+        "persist checkpoint from cli"
+    ]
 
 
-def test_cli_build_binary_creates_executable_rank_plans_artifact(tmp_path, capsys) -> None:
+def test_cli_build_binary_creates_executable_rank_plans_artifact(
+    tmp_path, capsys
+) -> None:
     binary = tmp_path / "asp-memory-engine"
 
     status = memory_engine_main(["build-binary", "--output", str(binary)])
@@ -106,7 +94,9 @@ def test_cli_build_binary_creates_executable_rank_plans_artifact(tmp_path, capsy
             EpisodeDraft(
                 id="binary-plan-episode",
                 intent="binary memory engine performance",
-                intent_embedding=store.encoder.encode("binary memory engine performance"),
+                intent_embedding=store.encoder.encode(
+                    "binary memory engine performance"
+                ),
                 experience="rank plans through the executable artifact",
                 outcome="pending",
             ).with_plan_context(context, sharing="plan")
@@ -154,7 +144,9 @@ def test_cli_binary_worker_ranks_warm_request_in_milliseconds(tmp_path) -> None:
             EpisodeDraft(
                 id="worker-plan-episode",
                 intent="worker memory engine performance",
-                intent_embedding=store.encoder.encode("worker memory engine performance"),
+                intent_embedding=store.encoder.encode(
+                    "worker memory engine performance"
+                ),
                 experience="rank plans through the resident worker",
                 outcome="pending",
             ).with_plan_context(context, sharing="plan")
@@ -292,8 +284,6 @@ def _run_binary_rank_plans(binary, state_path, payload):
             "8",
             "--project",
             "repo",
-            "--intent",
-            "binary memory engine performance",
         ],
         input=json.dumps(payload),
         text=True,

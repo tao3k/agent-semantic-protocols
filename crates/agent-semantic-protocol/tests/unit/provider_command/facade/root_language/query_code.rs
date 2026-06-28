@@ -1,5 +1,6 @@
 use crate::provider_command::support::{
     asp_command, prepend_path, provider, temp_project_root, write_activation, write_echo_provider,
+    write_marker_provider,
 };
 
 #[test]
@@ -114,6 +115,46 @@ fn root_query_facade_tree_sitter_owner_code_outputs_source_for_non_rust_language
         );
         let _ = std::fs::remove_dir_all(root);
     }
+}
+
+#[test]
+fn language_facade_python_legacy_selector_code_uses_fast_owner_query_without_provider() {
+    let root = temp_project_root("python-legacy-selector-fast-query");
+    let bin_dir = root.join(".bin");
+    let cache_home = root.join(".cache");
+    let provider_marker = root.join("provider-called");
+    std::fs::create_dir_all(root.join("src")).expect("create src");
+    let source = "def rank_frontier(graph):\n    return graph\n";
+    std::fs::write(root.join("src/ranking.py"), source).expect("write python source");
+    write_marker_provider(&bin_dir, "py-harness", &provider_marker);
+    write_activation(&root, &[provider("python", Vec::new())]);
+
+    let output = asp_command(&root)
+        .env("PATH", prepend_path(&bin_dir))
+        .env("PRJ_CACHE_HOME", &cache_home)
+        .args([
+            "python",
+            "query",
+            "--selector",
+            "rank_frontier@src/ranking.py:1",
+            "--workspace",
+            ".",
+            "--code",
+        ])
+        .output()
+        .expect("run asp python legacy selector query");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(String::from_utf8(output.stdout).expect("stdout"), source);
+    assert!(
+        !provider_marker.exists(),
+        "legacy selector query fell through to python provider"
+    );
+    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]

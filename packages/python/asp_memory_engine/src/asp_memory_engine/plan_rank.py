@@ -8,7 +8,7 @@ from .plan_context import (
     normalize_plan_sharing,
     normalize_plan_token,
 )
-from .plan_rank_text import candidate_text, recency_score, token_overlap_tokens, tokens
+from .plan_rank_text import recency_score
 from .store import EpisodeStore
 from .two_phase import calculate_score
 
@@ -17,19 +17,16 @@ def rank_plan_candidates(
     payload: dict[str, object],
     *,
     store: EpisodeStore,
-    intent: str,
     project: str,
     session: str | None = None,
     branch: str | None = None,
     top_k: int = 5,
 ) -> dict[str, object]:
-    memory_index = _PlanMemoryRankIndex(store, intent)
-    intent_tokens = tokens(intent)
+    memory_index = _PlanMemoryRankIndex(store)
     ranked = [
         _rank_candidate(
             plan,
             memory_index=memory_index,
-            intent_tokens=intent_tokens,
             project=project,
             session=session,
             branch=branch,
@@ -51,7 +48,6 @@ def _rank_candidate(
     plan: dict[str, object],
     *,
     memory_index: "_PlanMemoryRankIndex",
-    intent_tokens: set[str],
     project: str,
     session: str | None,
     branch: str | None,
@@ -59,7 +55,9 @@ def _rank_candidate(
     properties = plan.get("properties", {})
     if not isinstance(properties, dict):
         properties = {}
-    plan_id = str(plan.get("id") or properties.get("PLAN_ID") or properties.get("ID") or "")
+    plan_id = str(
+        plan.get("id") or properties.get("PLAN_ID") or properties.get("ID") or ""
+    )
     context = _candidate_context(
         properties,
         plan_id=plan_id,
@@ -67,19 +65,42 @@ def _rank_candidate(
         session=session,
         branch=branch,
     )
-    memory_score = memory_index.score(context, plan_id)
-    intent_score = token_overlap_tokens(intent_tokens, candidate_text(plan, properties))
+    checkpoint_signature = _checkpoint_signature(plan)
+    memory_score = memory_index.score(
+        context,
+        plan_id,
+        checkpoint_signature=checkpoint_signature,
+    )
+    context_score = _context_score(
+        context, project=project, session=session, branch=branch
+    )
     recent = recency_score(float(plan.get("mtime") or 0.0))
-    text_score = (0.65 * intent_score) + (0.35 * recent)
-    score = (0.55 * text_score) + (0.35 * memory_score) + (0.10 * recent)
+    score = (0.50 * context_score) + (0.35 * memory_score) + (0.15 * recent)
     return {
         "id": plan_id,
         "score": score,
-        "textScore": text_score,
+        "contextScore": context_score,
         "memoryScore": memory_score,
         "recencyScore": recent,
-        "intentScore": intent_score,
     }
+
+
+def _context_score(
+    context: PlanMemoryContext,
+    *,
+    project: str,
+    session: str | None,
+    branch: str | None,
+) -> float:
+    if session:
+        return 1.0 if context.session_id == session else 0.0
+    if branch and context.branch_id == branch:
+        return 0.80
+    if project and normalize_plan_token(
+        context.project_id, GLOBAL_PROJECT_SCOPE
+    ) == normalize_plan_token(project, GLOBAL_PROJECT_SCOPE):
+        return 0.35
+    return 0.0
 
 
 def _candidate_context(
@@ -95,24 +116,30 @@ def _candidate_context(
     )
     return PlanMemoryContext(
         project_id=project or context.project_id,
-        session_id=session or context.session_id,
+        session_id=context.session_id,
         plan_id=plan_id or context.plan_id,
-        branch_id=branch or context.branch_id,
+        branch_id=context.branch_id,
     )
 
 
 class _PlanMemoryRankIndex:
-    def __init__(self, store: EpisodeStore, intent: str) -> None:
+    def __init__(self, store: EpisodeStore) -> None:
         self.global_score = 0.0
         self.project_scores: dict[str, float] = {}
         self.branch_scores: dict[tuple[str, str], float] = {}
         self.session_scores: dict[tuple[str, str], float] = {}
         self.plan_scores: dict[tuple[str, str], list[tuple[object, float]]] = {}
-        embedding = store.encoder.encode(intent)
+        self.checkpoints = list(store.checkpoints)
         for episode in store.episodes:
-            self._index_episode(store, embedding, episode)
+            self._index_episode(store, episode)
 
-    def score(self, context: PlanMemoryContext, plan_id: str) -> float:
+    def score(
+        self,
+        context: PlanMemoryContext,
+        plan_id: str,
+        *,
+        checkpoint_signature: dict[str, object] | None = None,
+    ) -> float:
         project_id = normalize_plan_token(context.project_id, GLOBAL_PROJECT_SCOPE)
         resolved_plan_id = _optional_token(plan_id or context.plan_id)
         scores = [self.global_score, self.project_scores.get(project_id, 0.0)]
@@ -124,12 +151,19 @@ class _PlanMemoryRankIndex:
             )
         if resolved_plan_id:
             scores.append(self._exact_plan_score(context, project_id, resolved_plan_id))
+        if checkpoint_signature:
+            scores.append(
+                self._checkpoint_score(
+                    context,
+                    project_id,
+                    resolved_plan_id,
+                    checkpoint_signature,
+                )
+            )
         return _clamp01(max(scores, default=0.0))
 
-    def _index_episode(
-        self, store: EpisodeStore, embedding: tuple[float, ...], episode: object
-    ) -> None:
-        base_score = _episode_rank_score(store, embedding, episode)
+    def _index_episode(self, store: EpisodeStore, episode: object) -> None:
+        base_score = _episode_rank_score(store, episode)
         project_id = normalize_plan_token(
             getattr(episode, "project_id", None), GLOBAL_PROJECT_SCOPE
         )
@@ -191,14 +225,111 @@ class _PlanMemoryRankIndex:
                 score = max(score, base_score * _plan_memory_weight(episode, plan_id))
         return score
 
+    def _checkpoint_score(
+        self,
+        context: PlanMemoryContext,
+        project_id: str,
+        plan_id: str | None,
+        checkpoint_signature: dict[str, object],
+    ) -> float:
+        score = 0.0
+        for checkpoint in getattr(self, "checkpoints", []):
+            if not _checkpoint_visible(checkpoint, context, project_id, plan_id):
+                continue
+            score = max(
+                score, _checkpoint_match_score(checkpoint, checkpoint_signature)
+            )
+        return _clamp01(score)
 
-def _episode_rank_score(
-    store: EpisodeStore, embedding: tuple[float, ...], episode: object
-) -> float:
-    similarity = store.encoder.cosine_similarity(
-        embedding, getattr(episode, "intent_embedding", ())
+
+def _episode_rank_score(store: EpisodeStore, episode: object) -> float:
+    return _clamp01(calculate_score(1.0, store.q_table.get_q(episode.id), 0.3))
+
+
+def _checkpoint_signature(plan: dict[str, object]) -> dict[str, object]:
+    task_lines: set[int] = set()
+    task_keys: set[tuple[str, str, str]] = set()
+    tasks = plan.get("taskCandidates", [])
+    if isinstance(tasks, list):
+        for task in tasks:
+            if not isinstance(task, dict):
+                continue
+            source_line = _optional_int(task.get("sourceLine"))
+            if source_line is not None:
+                task_lines.add(source_line)
+            task_keys.add(
+                (
+                    str(task.get("kind") or ""),
+                    str(task.get("status") or ""),
+                    str(task.get("title") or ""),
+                )
+            )
+    return {
+        "path": str(plan.get("path") or ""),
+        "taskLines": task_lines,
+        "taskKeys": task_keys,
+    }
+
+
+def _checkpoint_visible(
+    checkpoint: object,
+    context: PlanMemoryContext,
+    project_id: str,
+    plan_id: str | None,
+) -> bool:
+    checkpoint_project = normalize_plan_token(
+        getattr(checkpoint, "project_id", None), GLOBAL_PROJECT_SCOPE
     )
-    return _clamp01(calculate_score(similarity, store.q_table.get_q(episode.id), 0.3))
+    if checkpoint_project != project_id:
+        return False
+    checkpoint_session = _optional_token(getattr(checkpoint, "session_id", None))
+    if context.session_id and checkpoint_session != context.session_id:
+        return False
+    checkpoint_branch = _optional_token(getattr(checkpoint, "branch_id", None))
+    if (
+        context.branch_id
+        and checkpoint_branch
+        and checkpoint_branch != context.branch_id
+    ):
+        return False
+    checkpoint_plan = _optional_token(getattr(checkpoint, "plan_id", None))
+    return bool(plan_id and checkpoint_plan == plan_id) or bool(context.session_id)
+
+
+def _checkpoint_match_score(
+    checkpoint: object,
+    checkpoint_signature: dict[str, object],
+) -> float:
+    plan_path = str(checkpoint_signature.get("path") or "")
+    task_lines = checkpoint_signature.get("taskLines")
+    if not isinstance(task_lines, set):
+        task_lines = set()
+    task_keys = checkpoint_signature.get("taskKeys")
+    if not isinstance(task_keys, set):
+        task_keys = set()
+
+    metadata = getattr(checkpoint, "metadata", {}) or {}
+    checkpoint_path = str(metadata.get("planPath") or "")
+    checkpoint_line = _optional_int(metadata.get("taskSourceLine"))
+    checkpoint_key = (
+        str(getattr(checkpoint, "kind", "") or ""),
+        str(metadata.get("taskStatus") or ""),
+        str(getattr(checkpoint, "title", "") or ""),
+    )
+    source_locator = str(getattr(checkpoint, "source_locator", "") or "")
+
+    if plan_path and checkpoint_line in task_lines:
+        if checkpoint_path == plan_path:
+            return 1.0
+        if source_locator.startswith(f"{plan_path}:"):
+            return 1.0
+    if plan_path and checkpoint_path == plan_path:
+        return 0.85
+    if plan_path and source_locator == plan_path:
+        return 0.80
+    if checkpoint_key in task_keys:
+        return 0.65
+    return 0.0
 
 
 def _plan_memory_weight(episode: object, plan_id: str) -> float:
@@ -216,11 +347,16 @@ def _plan_memory_weight(episode: object, plan_id: str) -> float:
     return 0.0
 
 
-
-
 def _optional_token(value: object) -> str | None:
     normalized = str(value or "").strip()
     return normalized or None
+
+
+def _optional_int(value: object) -> int | None:
+    try:
+        return int(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
 
 
 def _clamp01(value: float) -> float:

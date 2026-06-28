@@ -1,0 +1,469 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/semantic-provider-contract.v1.schema.json",
+  "title": "Semantic Provider Contract v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "contractId",
+    "languageId",
+    "providerId",
+    "responsibilities",
+    "commands",
+    "projectionPolicy",
+    "hotPathBoundary"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.semantic-provider-contract"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "contractId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*\\.provider-contract\\.v1$"
+    },
+    "languageId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$"
+    },
+    "providerId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "responsibilities": {
+      "$ref": "#/$defs/responsibilities"
+    },
+    "commands": {
+      "$ref": "#/$defs/commands"
+    },
+    "projectionPolicy": {
+      "$ref": "#/$defs/projectionPolicy"
+    },
+    "hotPathBoundary": {
+      "$ref": "#/$defs/hotPathBoundary"
+    }
+  },
+  "$defs": {
+    "responsibility": {
+      "type": "string",
+      "enum": [
+        "native-parser-facts",
+        "typechecker-facts",
+        "project-manager-facts",
+        "bounded-owner-facts",
+        "exact-projection",
+        "batch-exact-projection",
+        "packet-out",
+        "workspace-source-index",
+        "broad-workspace-search",
+        "owner-ranking",
+        "graph-ranking",
+        "prompt-graph-rendering",
+        "dependency-cache",
+        "source-content-cache",
+        "route-engine",
+        "cache-invalidation"
+      ]
+    },
+    "forbiddenResponsibility": {
+      "type": "string",
+      "enum": [
+        "workspace-source-index",
+        "broad-workspace-search",
+        "owner-ranking",
+        "graph-ranking",
+        "prompt-graph-rendering",
+        "dependency-cache",
+        "source-content-cache",
+        "route-engine",
+        "cache-invalidation"
+      ]
+    },
+    "responsibilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "allowed",
+        "forbidden"
+      ],
+      "properties": {
+        "allowed": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/responsibility"
+          },
+          "not": {
+            "contains": {
+              "$ref": "#/$defs/forbiddenResponsibility"
+            }
+          },
+          "allOf": [
+            {
+              "contains": {
+                "const": "native-parser-facts"
+              }
+            },
+            {
+              "contains": {
+                "const": "bounded-owner-facts"
+              }
+            },
+            {
+              "contains": {
+                "const": "exact-projection"
+              }
+            }
+          ]
+        },
+        "forbidden": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/forbiddenResponsibility"
+          },
+          "allOf": [
+            {
+              "contains": {
+                "const": "workspace-source-index"
+              }
+            },
+            {
+              "contains": {
+                "const": "broad-workspace-search"
+              }
+            },
+            {
+              "contains": {
+                "const": "owner-ranking"
+              }
+            },
+            {
+              "contains": {
+                "const": "graph-ranking"
+              }
+            },
+            {
+              "contains": {
+                "const": "prompt-graph-rendering"
+              }
+            },
+            {
+              "contains": {
+                "const": "dependency-cache"
+              }
+            },
+            {
+              "contains": {
+                "const": "source-content-cache"
+              }
+            },
+            {
+              "contains": {
+                "const": "route-engine"
+              }
+            },
+            {
+              "contains": {
+                "const": "cache-invalidation"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "command": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "argv",
+        "input",
+        "output",
+        "providerProcessPolicy"
+      ],
+      "properties": {
+        "argv": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "input": {
+          "type": "string",
+          "enum": [
+            "workspace",
+            "owner",
+            "exact-selector",
+            "exact-selector-batch"
+          ]
+        },
+        "output": {
+          "type": "string",
+          "enum": [
+            "doctor",
+            "bounded-json-facts",
+            "owner-local-items",
+            "projection",
+            "code"
+          ]
+        },
+        "providerProcessPolicy": {
+          "type": "string",
+          "enum": [
+            "cold-or-refresh-only",
+            "exact-projection-only",
+            "batch-exact-projection-only"
+          ]
+        }
+      }
+    },
+    "commands": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "doctor",
+        "indexExport",
+        "ownerItems",
+        "queryProjection",
+        "queryCode"
+      ],
+      "properties": {
+        "doctor": {
+          "$ref": "#/$defs/command"
+        },
+        "indexExport": {
+          "$ref": "#/$defs/command"
+        },
+        "ownerItems": {
+          "$ref": "#/$defs/command"
+        },
+        "queryProjection": {
+          "$ref": "#/$defs/command"
+        },
+        "queryCode": {
+          "$ref": "#/$defs/command"
+        },
+        "queryBatch": {
+          "$ref": "#/$defs/command"
+        }
+      }
+    },
+    "projectionPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "codeRequiresExactSelector",
+        "sourceLocatorExecutable",
+        "sourceLocatorRole",
+        "exactIdentityKinds",
+        "forbiddenIdentityKinds"
+      ],
+      "properties": {
+        "codeRequiresExactSelector": {
+          "const": true
+        },
+        "sourceLocatorExecutable": {
+          "const": false
+        },
+        "sourceLocatorRole": {
+          "const": "hint-only"
+        },
+        "exactIdentityKinds": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "structural-selector",
+              "native-fact-id"
+            ]
+          },
+          "allOf": [
+            {
+              "contains": {
+                "const": "structural-selector"
+              }
+            },
+            {
+              "contains": {
+                "const": "native-fact-id"
+              }
+            }
+          ]
+        },
+        "forbiddenIdentityKinds": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "source-locator",
+              "display-line-range",
+              "owner-path-only"
+            ]
+          },
+          "allOf": [
+            {
+              "contains": {
+                "const": "source-locator"
+              }
+            },
+            {
+              "contains": {
+                "const": "display-line-range"
+              }
+            },
+            {
+              "contains": {
+                "const": "owner-path-only"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "hotPathBoundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "warmBroadSearchProviderProcessCount",
+        "rustOwned",
+        "providerOwned",
+        "graphTurboOwned"
+      ],
+      "properties": {
+        "warmBroadSearchProviderProcessCount": {
+          "const": 0
+        },
+        "rustOwned": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "source-index",
+              "fact-index",
+              "dependency-index",
+              "route-engine",
+              "materializer",
+              "render",
+              "receipt",
+              "cache"
+            ]
+          },
+          "allOf": [
+            {
+              "contains": {
+                "const": "source-index"
+              }
+            },
+            {
+              "contains": {
+                "const": "fact-index"
+              }
+            },
+            {
+              "contains": {
+                "const": "dependency-index"
+              }
+            },
+            {
+              "contains": {
+                "const": "route-engine"
+              }
+            },
+            {
+              "contains": {
+                "const": "materializer"
+              }
+            },
+            {
+              "contains": {
+                "const": "render"
+              }
+            },
+            {
+              "contains": {
+                "const": "receipt"
+              }
+            },
+            {
+              "contains": {
+                "const": "cache"
+              }
+            }
+          ]
+        },
+        "providerOwned": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "native-parser-facts",
+              "typechecker-facts",
+              "project-manager-facts",
+              "bounded-owner-facts",
+              "exact-projection",
+              "batch-exact-projection",
+              "packet-out"
+            ]
+          },
+          "allOf": [
+            {
+              "contains": {
+                "const": "bounded-owner-facts"
+              }
+            },
+            {
+              "contains": {
+                "const": "exact-projection"
+              }
+            }
+          ]
+        },
+        "graphTurboOwned": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "graph-ranking",
+              "ppr",
+              "topology-ranking",
+              "ablation"
+            ]
+          },
+          "allOf": [
+            {
+              "contains": {
+                "const": "graph-ranking"
+              }
+            },
+            {
+              "contains": {
+                "const": "ppr"
+              }
+            },
+            {
+              "contains": {
+                "const": "topology-ranking"
+              }
+            },
+            {
+              "contains": {
+                "const": "ablation"
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

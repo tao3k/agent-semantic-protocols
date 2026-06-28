@@ -139,6 +139,7 @@ fn packet_artifact_event(
         return Ok(Vec::new());
     }
     let packet = load_json(path)?;
+    let packet_timestamp_ms = artifact_json_timestamp_ms(&packet);
     let target = packet_target(&packet);
     let query = packet_query(&packet);
     let project_root = packet
@@ -169,6 +170,7 @@ fn packet_artifact_event(
         path,
         ArtifactEventFields {
             event_ordinal: 0,
+            timestamp_ms: packet_timestamp_ms,
             kind,
             language: &language,
             method: &method,
@@ -186,6 +188,7 @@ fn command_artifact_events(
     workspace_root: &Path,
 ) -> Result<Vec<ClientDbArtifactEvent>, String> {
     let packet = load_json(path)?;
+    let packet_timestamp_ms = artifact_json_timestamp_ms(&packet);
     let Some(commands) = packet
         .get("providerCommands")
         .and_then(serde_json::Value::as_array)
@@ -210,6 +213,7 @@ fn command_artifact_events(
             path,
             ArtifactEventFields {
                 event_ordinal: index.min(u32::MAX as usize) as u32,
+                timestamp_ms: artifact_json_timestamp_ms(command).or(packet_timestamp_ms),
                 kind: "command",
                 language: command
                     .get("languageId")
@@ -237,6 +241,7 @@ fn text_artifact_event(
         path,
         ArtifactEventFields {
             event_ordinal: 0,
+            timestamp_ms: None,
             kind,
             language: language_from_name(path),
             method: &method_from_name(path),
@@ -250,6 +255,7 @@ fn text_artifact_event(
 
 struct ArtifactEventFields<'a> {
     event_ordinal: u32,
+    timestamp_ms: Option<i64>,
     kind: &'a str,
     language: &'a str,
     method: &'a str,
@@ -269,7 +275,9 @@ fn artifact_event(
     Ok(ClientDbArtifactEvent {
         artifact_path: artifact_relative_path(artifact_dir, path),
         event_ordinal: fields.event_ordinal,
-        timestamp_ms: metadata_modified_ms(&metadata),
+        timestamp_ms: fields
+            .timestamp_ms
+            .unwrap_or_else(|| metadata_modified_ms(&metadata)),
         kind: fields.kind.to_string(),
         language: fields.language.to_string(),
         method: fields.method.to_string(),
@@ -302,6 +310,33 @@ fn load_json(path: &Path) -> Result<serde_json::Value, String> {
         .map_err(|error| format!("failed to read artifact json {}: {error}", path.display()))?;
     serde_json::from_slice(&bytes)
         .map_err(|error| format!("failed to parse artifact json {}: {error}", path.display()))
+}
+
+fn artifact_json_timestamp_ms(value: &serde_json::Value) -> Option<i64> {
+    [
+        "eventTimestampMs",
+        "startedAtMs",
+        "endedAtMs",
+        "timestampMs",
+        "timestamp_ms",
+        "timestamp",
+    ]
+    .iter()
+    .find_map(|key| artifact_json_i64(value.get(*key)))
+}
+
+fn artifact_json_i64(value: Option<&serde_json::Value>) -> Option<i64> {
+    let value = value?;
+    let number = if let Some(number) = value.as_i64() {
+        Some(number)
+    } else if let Some(number) = value.as_u64() {
+        i64::try_from(number).ok()
+    } else if let Some(value) = value.as_str() {
+        value.parse::<i64>().ok()
+    } else {
+        None
+    }?;
+    (number >= 0).then_some(number)
 }
 
 fn packet_target(packet: &serde_json::Value) -> String {

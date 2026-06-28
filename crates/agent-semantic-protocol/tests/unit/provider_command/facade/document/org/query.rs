@@ -307,8 +307,8 @@ fn org_facade_search_memory_defaults_to_codex_thread_id() {
 }
 
 #[test]
-fn org_facade_search_memory_defaults_to_generic_agent_session_id() {
-    let root = temp_project_root("org-document-search-memory-generic-agent-session");
+fn org_facade_search_memory_does_not_default_to_generic_agent_session_env() {
+    let root = temp_project_root("org-document-search-memory-no-generic-agent-session");
     std::fs::write(
         root.join("plan.org"),
         r#"* TODO Generic agent session task
@@ -331,6 +331,7 @@ fn org_facade_search_memory_defaults_to_generic_agent_session_id() {
         .env_remove("CLAUDE_CODE_SESSION_ID")
         .env_remove("CLAUDE_CODE_REMOTE_SESSION_ID")
         .env("AGENT_SESSION_ID", "agent-session-a")
+        .env("SESSION_ID", "agent-session-a")
         .args([
             "org",
             "search",
@@ -351,7 +352,7 @@ fn org_facade_search_memory_defaults_to_generic_agent_session_id() {
 
     assert!(stdout.contains("Generic agent session task"), "{stdout}");
     assert!(stdout.contains("session=\"agent-session-a\""), "{stdout}");
-    assert!(!stdout.contains("Other session task"), "{stdout}");
+    assert!(stdout.contains("Other session task"), "{stdout}");
 
     let _ = std::fs::remove_dir_all(root);
 }

@@ -63,6 +63,67 @@ fn language_facade_guide_help_is_handled_by_asp_without_provider_spawn() {
 }
 
 #[test]
+fn language_facade_search_help_lists_dependency_topology_command() {
+    let root = temp_project_root("provider-search-help-facade");
+    let profile_bin_dir = root.join(".profile-bin");
+    std::fs::create_dir_all(&profile_bin_dir).expect("create profile bin dir");
+    let provider_path = profile_bin_dir.join("rs-harness");
+    std::fs::write(
+        &provider_path,
+        "#!/bin/sh\nprintf 'provider should not run\\n' >&2\nexit 42\n",
+    )
+    .expect("write provider");
+    make_executable(&provider_path);
+
+    write_activation(&root, &[provider("rust", Vec::new())]);
+
+    let output = asp_command(&root)
+        .args(["rust", "search", "--help", "--workspace", "."])
+        .output()
+        .expect("run asp rust search --help");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&output.stderr), "");
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    assert!(
+        stdout.contains(
+            "usage: asp rust search <pipe|fzf|deps|dependency|ingest|failure|reasoning|owner|guide|prime>"
+        ),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("search deps: current manifest dependency topology"),
+        "{stdout}"
+    );
+
+    let output = asp_command(&root)
+        .args(["rust", "search", "deps", "--help", "--workspace", "."])
+        .output()
+        .expect("run asp rust search deps --help");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&output.stderr), "");
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    assert!(
+        stdout.contains("usage: asp rust search deps <dependency-or-api> [api-term]"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("Reads current manifest dependency topology"),
+        "{stdout}"
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn language_facade_rejects_unknown_agent_subcommand() {
     let root = temp_project_root("provider-unknown-agent-subcommand");
     write_activation(&root, &[provider("rust", Vec::new())]);

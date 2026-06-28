@@ -1,4 +1,5 @@
-use super::{memory, render, scan};
+use super::{checkpoint, memory, render, scan};
+use crate::command::{agent_session, agent_session_registry};
 use std::{
     env,
     path::{Path, PathBuf},
@@ -21,13 +22,13 @@ struct OrgRecallArgs {
     artifacts_root: Option<PathBuf>,
     archive_dir: String,
     state: Option<PathBuf>,
-    intent: Option<String>,
     project: Option<String>,
     session: Option<String>,
     branch: Option<String>,
     top_k: Option<String>,
     embedding_dim: Option<String>,
     org_query_bin: Option<String>,
+    checkpoint_sync: bool,
     json: bool,
     include_done: bool,
 }
@@ -45,13 +46,13 @@ impl OrgRecallArgs {
             artifacts_root: None,
             archive_dir: "archives".to_string(),
             state: None,
-            intent: None,
             project: None,
             session: None,
             branch: None,
             top_k: None,
             embedding_dim: None,
             org_query_bin: None,
+            checkpoint_sync: false,
             json: false,
             include_done: false,
         };
@@ -77,10 +78,6 @@ impl OrgRecallArgs {
                     index += 1;
                     parsed.state =
                         Some(PathBuf::from(required_flag_value(args, index, "--state")?));
-                }
-                "--intent" => {
-                    index += 1;
-                    parsed.intent = Some(required_flag_value(args, index, "--intent")?.into());
                 }
                 "--project" => {
                     index += 1;
@@ -108,6 +105,7 @@ impl OrgRecallArgs {
                     parsed.org_query_bin =
                         Some(required_flag_value(args, index, "--org-query-bin")?.into());
                 }
+                "--checkpoint-sync" => parsed.checkpoint_sync = true,
                 "--json" => parsed.json = true,
                 "--include-done" => parsed.include_done = true,
                 _ if arg.starts_with('-') => return Err(format!("unknown recall flag `{arg}`")),
@@ -127,9 +125,6 @@ fn recall_plans(args: OrgRecallArgs) -> Result<(), String> {
         Some(path) => project_root.join(path),
         None => org_artifacts_root_for_project(&project_root),
     };
-    let intent = args
-        .intent
-        .unwrap_or_else(|| "active unfinished ASP Org plan".to_string());
     let project = args
         .project
         .unwrap_or_else(|| "_global_project".to_string());
@@ -146,12 +141,20 @@ fn recall_plans(args: OrgRecallArgs) -> Result<(), String> {
         args.include_done,
         &org_query_bin,
     )?;
+    let current_session = agent_session::current_agent_session();
+    let resolved_session = match args.session {
+        Some(session) => Some(session),
+        None => current_session
+            .as_ref()
+            .map(|session| resolve_current_recall_session(&project_root, session))
+            .transpose()?,
+    };
+    let scoped_candidates = session_scoped_candidates(&candidates, resolved_session.as_deref());
     let ranked = memory::rank_plans_with_memory_engine(
-        &candidates,
+        &scoped_candidates,
         memory::MemoryRankOptions {
-            intent: &intent,
             project: &project,
-            session: args.session.as_deref(),
+            session: resolved_session.as_deref(),
             branch: args.branch.as_deref(),
             state: args.state.as_deref(),
             embedding_dim: args.embedding_dim.as_deref(),
@@ -159,12 +162,74 @@ fn recall_plans(args: OrgRecallArgs) -> Result<(), String> {
             project_root: &project_root,
         },
     )?;
-    if args.json {
-        render::print_json_report(&artifacts_root, &args.archive_dir, &ranked)?;
+    let checkpoint_sync = if args.checkpoint_sync {
+        let session = resolved_session.as_deref().ok_or_else(|| {
+            "asp org recall plans --checkpoint-sync requires --session or agent session env"
+                .to_string()
+        })?;
+        Some(checkpoint::sync_checkpoints_with_memory_engine(
+            &candidates,
+            checkpoint::CheckpointSyncOptions {
+                project: &project,
+                session,
+                branch: args.branch.as_deref(),
+                state: args.state.as_deref(),
+                embedding_dim: args.embedding_dim.as_deref(),
+                project_root: &project_root,
+            },
+        )?)
     } else {
-        render::print_text_report(&artifacts_root, &args.archive_dir, &ranked);
+        None
+    };
+    if args.json {
+        render::print_json_report(
+            &artifacts_root,
+            &args.archive_dir,
+            &ranked,
+            resolved_session.as_deref(),
+            checkpoint_sync.as_ref(),
+        )?;
+    } else {
+        render::print_text_report(
+            &artifacts_root,
+            &args.archive_dir,
+            &ranked,
+            resolved_session.as_deref(),
+            checkpoint_sync.as_ref(),
+        );
     }
     Ok(())
+}
+
+fn resolve_current_recall_session(
+    project_root: &Path,
+    session: &agent_session::AgentSession,
+) -> Result<String, String> {
+    if session.root_id.is_some() {
+        return Ok(session.recall_session_id().to_string());
+    }
+    agent_session_registry::registered_root_session_id(project_root, &session.id)
+        .map(|root_id| root_id.unwrap_or_else(|| session.id.clone()))
+}
+
+fn session_scoped_candidates(
+    candidates: &[super::model::OrgPlanCandidate],
+    session: Option<&str>,
+) -> Vec<super::model::OrgPlanCandidate> {
+    let Some(session) = session.filter(|session| !session.is_empty()) else {
+        return candidates.to_vec();
+    };
+    if !candidates
+        .iter()
+        .any(|candidate| candidate.has_session_scope())
+    {
+        return candidates.to_vec();
+    }
+    candidates
+        .iter()
+        .filter(|candidate| candidate.matches_session(session))
+        .cloned()
+        .collect()
 }
 
 fn org_artifacts_root_for_project(project_root: &Path) -> PathBuf {
@@ -194,5 +259,5 @@ fn required_flag_value<'a>(
 }
 
 fn recall_usage() -> &'static str {
-    "usage: asp org recall plans [--artifacts-root PATH] [--archive-dir DIR] [--state PATH] [--intent TEXT] [--project ID] [--session ID] [--branch ID] [--top-k N] [--embedding-dim N] [--org-query-bin BIN] [--include-done] [--json]\n\n`recall plans` keeps Org discovery and contract filtering in Rust. Plan candidates come from parser-owned Org query facts. Python asp-memory-engine owns plan ranking, including text, recency, and memory scores. Python does not scan Org files. Repeated agent runs use a resident memory-engine socket by default; set ASP_MEMORY_ENGINE_SOCKET to force a specific worker, ASP_MEMORY_ENGINE_SOCKET_DIR to choose the auto socket directory, or ASP_MEMORY_ENGINE_AUTO_SOCKET=0 to force the direct process fallback. Full cold-start performance runs should set ASP_MEMORY_ENGINE to a packaged binary or provide asp-memory-engine on PATH; build one with `asp-memory-engine build-binary --output .bin/asp-memory-engine`. Local packages/python uv fallback is for development only and is not cold-start performance evidence. The command lists active agent.plan.v1 Org plan ledgers by title, path, recovery command, and score so agents can resume recent unfinished work before archiving DONE records."
+    "usage: asp org recall plans [--artifacts-root PATH] [--archive-dir DIR] [--state PATH] [--project ID] [--session ID] [--branch ID] [--top-k N] [--embedding-dim N] [--org-query-bin BIN] [--checkpoint-sync] [--include-done] [--json]\n\n`recall plans` keeps Org discovery and contract filtering in Rust. Plan candidates come from parser-owned Org query facts. Python memory runtime owns plan ranking, including session context, recency, and memory scores. Python does not scan Org files. By default the command resolves the current agent session from supported agent environment variables; pass --session only for explicit cross-session lookup. Repeated agent runs use a resident memory runtime socket by default; set ASP_MEMORY_ENGINE_SOCKET to force a specific worker, ASP_MEMORY_ENGINE_SOCKET_DIR to choose the auto socket directory, or ASP_MEMORY_ENGINE_AUTO_SOCKET=0 to force the direct process fallback. The asp command owns worker freshness: auto sockets with stale response schemas are discarded and restarted, and source workspaces prefer the local packages/python runtime over cached project artifacts. Local packages/python uv fallback is for development only and is not cold-start performance evidence. Add --checkpoint-sync to explicitly persist current-session task candidates as durable memory checkpoints. The command lists active agent.plan.v1 Org plan ledgers by title, path, recovery command, and score so agents can resume recent unfinished work before archiving DONE records."
 }

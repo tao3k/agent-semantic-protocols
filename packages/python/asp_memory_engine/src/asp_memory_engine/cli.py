@@ -8,8 +8,8 @@ import sys
 from collections.abc import Sequence
 
 from .binary_build import DEFAULT_BINARY_INTERPRETER, build_memory_engine_binary
+from .checkpoint import Checkpoint
 from .graph_turbo_memory import read_memory_projection
-from .plan_context import PlanMemoryContext
 from .plan_rank import rank_plan_candidates
 from .store import EpisodeStore, StoreConfig
 from .worker import serve_memory_worker, serve_memory_worker_socket
@@ -35,35 +35,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             + "\n"
         )
         return 0
-    if args.command == "recall-plan":
-        store = EpisodeStore(StoreConfig(path=args.state, embedding_dim=args.embedding_dim))
-        store.load_state(args.state)
-        context = PlanMemoryContext(
-            project_id=args.project,
-            session_id=args.session,
-            plan_id=args.plan,
-            branch_id=args.branch,
-        )
-        results = store.recall_for_plan(args.intent, context, top_k=args.top_k)
-        sys.stdout.write(
-            f"[recall-plan] engine=asp-memory-engine state={args.state} hits={len(results)}\n"
-        )
-        for episode, score in results:
-            sys.stdout.write(
-                "|episode "
-                f"id={_field(episode.id)} "
-                f"score={score:.6f} "
-                f"project={_field(episode.project_id)} "
-                f"session={_field(episode.session_id or '-')} "
-                f"plan={_field(episode.plan_id or '-')} "
-                f"branch={_field(episode.branch_id or '-')} "
-                f"sharing={_field(episode.plan_sharing)} "
-                f"intent={_field(episode.intent)} "
-                f"experience={_field(episode.experience)}\n"
-            )
-        return 0
     if args.command == "rank-plans":
         return _rank_plans(args)
+    if args.command == "checkpoint-put":
+        return _checkpoint_put(args)
+    if args.command == "checkpoint-list":
+        return _checkpoint_list(args)
     if args.command == "build-binary":
         binary = build_memory_engine_binary(
             args.output,
@@ -99,23 +76,25 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     subparsers = parser.add_subparsers(dest="command", required=True)
     read_memory = subparsers.add_parser("graph-turbo-read-memory")
     read_memory.add_argument("--max-gap-lines", type=int, default=8)
-    recall_plan = subparsers.add_parser("recall-plan")
-    recall_plan.add_argument("--state", default=StoreConfig().path)
-    recall_plan.add_argument("--intent", required=True)
-    recall_plan.add_argument("--project", default="_global_project")
-    recall_plan.add_argument("--session")
-    recall_plan.add_argument("--plan")
-    recall_plan.add_argument("--branch")
-    recall_plan.add_argument("--top-k", type=int, default=5)
-    recall_plan.add_argument("--embedding-dim", type=int, default=384)
     rank_plans = subparsers.add_parser("rank-plans")
     rank_plans.add_argument("--state", default=StoreConfig().path)
-    rank_plans.add_argument("--intent", required=True)
     rank_plans.add_argument("--project", default="_global_project")
     rank_plans.add_argument("--session")
     rank_plans.add_argument("--branch")
     rank_plans.add_argument("--top-k", type=int, default=5)
     rank_plans.add_argument("--embedding-dim", type=int, default=384)
+    checkpoint_put = subparsers.add_parser("checkpoint-put")
+    checkpoint_put.add_argument("--state", default=StoreConfig().path)
+    checkpoint_put.add_argument("--embedding-dim", type=int, default=384)
+    checkpoint_list = subparsers.add_parser("checkpoint-list")
+    checkpoint_list.add_argument("--state", default=StoreConfig().path)
+    checkpoint_list.add_argument("--project")
+    checkpoint_list.add_argument("--session")
+    checkpoint_list.add_argument("--plan")
+    checkpoint_list.add_argument("--branch")
+    checkpoint_list.add_argument("--status")
+    checkpoint_list.add_argument("--top-k", type=int)
+    checkpoint_list.add_argument("--embedding-dim", type=int, default=384)
     build_binary = subparsers.add_parser("build-binary")
     build_binary.add_argument("--output", required=True)
     build_binary.add_argument("--interpreter", default=DEFAULT_BINARY_INTERPRETER)
@@ -127,6 +106,55 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def _checkpoint_put(args: argparse.Namespace) -> int:
+    payload = json.load(sys.stdin)
+    store = EpisodeStore(StoreConfig(path=args.state, embedding_dim=args.embedding_dim))
+    store.load_state(args.state)
+    checkpoint = Checkpoint.from_mapping(payload)
+    store.store_checkpoint(checkpoint)
+    store.save_state(args.state)
+    sys.stdout.write(
+        json.dumps(
+            {
+                "schemaId": "agent.semantic-protocols.memory-checkpoint-receipt",
+                "schemaVersion": "1",
+                "ok": True,
+                "state": args.state,
+                "checkpoint": checkpoint.to_mapping(),
+            },
+            sort_keys=True,
+        )
+        + "\n"
+    )
+    return 0
+
+
+def _checkpoint_list(args: argparse.Namespace) -> int:
+    store = EpisodeStore(StoreConfig(path=args.state, embedding_dim=args.embedding_dim))
+    store.load_state(args.state)
+    checkpoints = store.list_checkpoints(
+        project_id=args.project,
+        session_id=args.session,
+        plan_id=args.plan,
+        branch_id=args.branch,
+        status=args.status,
+        top_k=args.top_k,
+    )
+    sys.stdout.write(
+        json.dumps(
+            {
+                "schemaId": "agent.semantic-protocols.memory-checkpoint-list",
+                "schemaVersion": "1",
+                "state": args.state,
+                "checkpoints": [checkpoint.to_mapping() for checkpoint in checkpoints],
+            },
+            sort_keys=True,
+        )
+        + "\n"
+    )
+    return 0
+
+
 def _rank_plans(args: argparse.Namespace) -> int:
     payload = json.load(sys.stdin)
     store = EpisodeStore(StoreConfig(path=args.state, embedding_dim=args.embedding_dim))
@@ -136,7 +164,6 @@ def _rank_plans(args: argparse.Namespace) -> int:
             rank_plan_candidates(
                 payload,
                 store=store,
-                intent=args.intent,
                 project=args.project,
                 session=args.session,
                 branch=args.branch,

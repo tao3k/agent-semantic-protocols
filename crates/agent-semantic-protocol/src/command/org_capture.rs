@@ -93,19 +93,7 @@ fn default_org_repo_url() -> String {
     env::var(ASP_ORG_REPO_URL_ENV)
         .ok()
         .filter(|value| !value.trim().is_empty())
-        .or_else(bundled_org_remote_url)
         .unwrap_or_else(|| DEFAULT_ASP_ORG_REPO_URL.to_string())
-}
-
-fn bundled_org_remote_url() -> Option<String> {
-    let source_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../languages/org");
-    git_output(
-        &["config", "--get", "remote.origin.url"],
-        Some(&source_root),
-    )
-    .ok()
-    .map(|value| value.trim().to_string())
-    .filter(|value| !value.is_empty())
 }
 
 fn sync_org_state_repo(

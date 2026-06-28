@@ -1,6 +1,6 @@
 //! Structural owner role scoring for search pipe owner selection.
 
-use super::search_pipe_quality::SearchPipeQuality;
+use super::search_pipe_quality_model::SearchPipeQuality;
 use super::search_query_wrapper_model::FdQueryPreview;
 
 pub(super) fn suppress_low_cohesion_secondary_owner(

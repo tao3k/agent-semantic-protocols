@@ -41,14 +41,35 @@ fn provider_install_target_requires_home() {
 }
 
 #[test]
-fn provider_invocation_uses_home_local_bin_only() {
+fn provider_invocation_uses_semantic_agent_bin_dir_when_set() {
+    let home = std::env::temp_dir().join("asp-invocation-home-with-semantic-bin");
+    let semantic_bin = std::env::temp_dir().join("asp-invocation-semantic-bin");
+    let home_bin = home.join(".local/bin");
+    std::fs::create_dir_all(&home_bin).expect("create home bin dir");
+    std::fs::create_dir_all(&semantic_bin).expect("create semantic bin dir");
+    std::fs::write(home_bin.join("rs-harness"), "").expect("write home provider");
+    std::fs::write(semantic_bin.join("rs-harness"), "").expect("write semantic provider");
+
+    let invocation =
+        resolve_provider_binary_invocation("rust", "rs-harness", Some(&home), Some(&semantic_bin))
+            .expect("invocation");
+
+    assert_eq!(
+        invocation.command,
+        semantic_bin.join("rs-harness").to_string_lossy()
+    );
+    assert_eq!(invocation.source, "semantic-agent-bin-dir");
+}
+
+#[test]
+fn provider_invocation_uses_home_local_bin_by_default() {
     let home = std::env::temp_dir().join("asp-invocation-home-only-home");
     let home_bin = home.join(".local/bin");
     std::fs::create_dir_all(&home_bin).expect("create home bin dir");
     std::fs::write(home_bin.join("rs-harness"), "").expect("write home provider");
 
-    let invocation =
-        resolve_provider_binary_invocation("rust", "rs-harness", Some(&home)).expect("invocation");
+    let invocation = resolve_provider_binary_invocation("rust", "rs-harness", Some(&home), None)
+        .expect("invocation");
 
     assert_eq!(
         invocation.command,
@@ -61,7 +82,7 @@ fn provider_invocation_uses_home_local_bin_only() {
 fn provider_invocation_rejects_missing_home_local_bin_without_fallback() {
     let home = std::env::temp_dir().join("asp-invocation-missing-home-home");
 
-    let error = resolve_provider_binary_invocation("rust", "rs-harness", Some(&home))
+    let error = resolve_provider_binary_invocation("rust", "rs-harness", Some(&home), None)
         .expect_err("missing home-local provider should fail");
 
     assert!(

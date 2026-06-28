@@ -1,3 +1,4 @@
+use super::agent_session::current_agent_session;
 use super::org_capture_interactive::{AgentInteractiveChoice, choice_arg_value, strip_choice_args};
 use orgize::Org;
 use orgize::rowan::ast::AstNode;
@@ -41,7 +42,13 @@ fn materialize_task_contract_capture(
     capture_args: &mut Vec<String>,
     template_path: Option<&Path>,
 ) -> Result<(), String> {
-    materialize_from_template(args, capture_args, template_path, "agent.task.v1")?;
+    materialize_from_template(
+        args,
+        capture_args,
+        template_path,
+        "agent.task.v1",
+        TemplateBodyPolicy::PreserveUserBody,
+    )?;
     Ok(())
 }
 
@@ -59,9 +66,19 @@ fn materialize_plan_contract_capture(
             PlanPreCaptureChoice::Deferred(output) => return Ok(Some(output)),
             PlanPreCaptureChoice::Selected(selection) => selection.governing_contract,
         };
-    let materialized = materialize_from_template(args, capture_args, template_path, contract_id)?;
+    let materialized = materialize_from_template(
+        args,
+        capture_args,
+        template_path,
+        contract_id,
+        TemplateBodyPolicy::TemplateOwnsBody,
+    )?;
     if let Some(contract) = specification_contract {
         ensure_capture_property(capture_args, "GOVERNING_CONTRACT", &contract);
+    }
+    if let Some(session) = current_agent_session() {
+        ensure_capture_property(capture_args, "SESSION_ID", &session.id);
+        ensure_capture_property(capture_args, "SESSION_CLIENT", &session.client);
     }
     if !has_flag(args, "--kind") {
         capture_args.extend(["--kind".to_string(), "task".to_string()]);
@@ -179,6 +196,7 @@ fn materialize_from_template(
     capture_args: &mut Vec<String>,
     template_path: Option<&Path>,
     contract_id: &str,
+    body_policy: TemplateBodyPolicy,
 ) -> Result<TemplateMaterialization, String> {
     let template_path = template_path.ok_or_else(|| {
         format!(
@@ -200,10 +218,19 @@ fn materialize_from_template(
     for (key, value) in properties {
         ensure_capture_property(capture_args, &key, &value);
     }
-    if !has_flag(args, "--body") {
+    if body_policy == TemplateBodyPolicy::TemplateOwnsBody {
+        strip_flag_value_args(capture_args, "--body");
+        capture_args.extend(["--body".to_string(), body]);
+    } else if !has_flag(args, "--body") {
         capture_args.extend(["--body".to_string(), body]);
     }
     Ok(TemplateMaterialization { progress_cookies })
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum TemplateBodyPolicy {
+    PreserveUserBody,
+    TemplateOwnsBody,
 }
 
 struct TemplateMaterialization {
@@ -289,6 +316,7 @@ fn progress_cookies_from_org(org: &Org) -> Vec<String> {
 struct TemplateDynamicValues {
     id: String,
     objective: String,
+    scope_ref: String,
 }
 
 impl TemplateDynamicValues {
@@ -296,21 +324,106 @@ impl TemplateDynamicValues {
         Self {
             id: default_plan_id(args),
             objective: default_plan_objective(args),
+            scope_ref: default_plan_scope_ref(args),
         }
     }
 
     fn apply(&self, value: &str) -> String {
-        value
+        let rendered = value
             .replace("agent-plan-id", &self.id)
             .replace("agent-task-id", &self.id)
             .replace("durable outcome this plan records", &self.objective)
             .replace("Record the task intent.", &self.objective)
             .replace("stable-source-ref", "capture-request")
-            .replace(
-                "stable work boundary or design reference",
-                "current-task-boundary",
-            )
+            .replace("stable work boundary or design reference", &self.scope_ref);
+        expand_value_macros(&rendered)
     }
+}
+
+fn expand_value_macros(value: &str) -> String {
+    let rendered = if value.contains("{{SESSION_ID}}") || value.contains("{{SESSION_CLIENT}}") {
+        let session = current_agent_session();
+        value
+            .replace(
+                "{{SESSION_ID}}",
+                session
+                    .as_ref()
+                    .map(|session| session.id.as_str())
+                    .unwrap_or(""),
+            )
+            .replace(
+                "{{SESSION_CLIENT}}",
+                session
+                    .as_ref()
+                    .map(|session| session.client.as_str())
+                    .unwrap_or(""),
+            )
+    } else {
+        value.to_string()
+    };
+    expand_env_vars(&rendered)
+}
+
+fn expand_env_vars(value: &str) -> String {
+    let mut output = String::with_capacity(value.len());
+    let mut chars = value.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch != '$' {
+            output.push(ch);
+            continue;
+        }
+
+        match chars.peek().copied() {
+            Some('{') => {
+                chars.next();
+                let mut name = String::new();
+                let mut closed = false;
+                for next in chars.by_ref() {
+                    if next == '}' {
+                        closed = true;
+                        break;
+                    }
+                    name.push(next);
+                }
+                if closed && is_env_name(&name) {
+                    output.push_str(&std::env::var(&name).unwrap_or_default());
+                } else {
+                    output.push('$');
+                    output.push('{');
+                    output.push_str(&name);
+                    if closed {
+                        output.push('}');
+                    }
+                }
+            }
+            Some(next) if is_env_name_start(next) => {
+                let mut name = String::new();
+                while let Some(next) = chars.peek().copied() {
+                    if !is_env_name_char(next) {
+                        break;
+                    }
+                    name.push(next);
+                    chars.next();
+                }
+                output.push_str(&std::env::var(&name).unwrap_or_default());
+            }
+            _ => output.push('$'),
+        }
+    }
+    output
+}
+
+fn is_env_name(name: &str) -> bool {
+    let mut chars = name.chars();
+    chars.next().is_some_and(is_env_name_start) && chars.all(is_env_name_char)
+}
+
+fn is_env_name_start(ch: char) -> bool {
+    ch == '_' || ch.is_ascii_alphabetic()
+}
+
+fn is_env_name_char(ch: char) -> bool {
+    is_env_name_start(ch) || ch.is_ascii_digit()
 }
 
 fn text_size_to_usize(value: orgize::TextSize) -> usize {
@@ -326,6 +439,20 @@ fn flag_value<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
         .find(|window| window.first().is_some_and(|arg| arg == flag))
         .and_then(|window| window.get(1))
         .map(String::as_str)
+}
+
+fn strip_flag_value_args(args: &mut Vec<String>, flag: &str) {
+    let mut index = 0;
+    while index < args.len() {
+        if args[index] == flag {
+            args.remove(index);
+            if index < args.len() {
+                args.remove(index);
+            }
+        } else {
+            index += 1;
+        }
+    }
 }
 
 fn ensure_capture_tag(args: &mut Vec<String>, tag: &str) {
@@ -381,11 +508,92 @@ fn mutable_flag_value<'a>(args: &'a mut [String], flag: &str) -> Option<&'a mut 
 }
 
 fn default_plan_objective(args: &[String]) -> String {
-    flag_value(args, "--title")
+    capture_property_value(args, "OBJECTIVE")
+        .or_else(|| body_labeled_value(args, "objective"))
+        .or_else(|| body_value(args))
+        .or_else(|| {
+            flag_value(args, "--title")
+                .map(str::trim)
+                .map(str::to_string)
+        })
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "durable outcome this plan records".to_string())
+}
+
+fn default_plan_scope_ref(args: &[String]) -> String {
+    capture_property_value(args, "SCOPE_REF")
+        .or_else(|| body_labeled_value(args, "scope"))
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "current-task-boundary".to_string())
+}
+
+fn capture_property_value(args: &[String], key: &str) -> Option<String> {
+    let property_prefix = format!("{key}=");
+    args.windows(2)
+        .find(|window| {
+            window.first().is_some_and(|arg| arg == "--property")
+                && window[1].starts_with(&property_prefix)
+        })
+        .and_then(|window| window[1].strip_prefix(&property_prefix))
         .map(str::trim)
-        .filter(|title| !title.is_empty())
-        .unwrap_or("durable outcome this plan records")
-        .to_string()
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
+fn body_value(args: &[String]) -> Option<String> {
+    flag_value(args, "--body")
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
+fn body_labeled_value(args: &[String], label: &str) -> Option<String> {
+    let body = flag_value(args, "--body")?;
+    extract_labeled_value(body, label)
+}
+
+fn extract_labeled_value(body: &str, label: &str) -> Option<String> {
+    let lower = body.to_ascii_lowercase();
+    let (start, value_start) = label_marker(&lower, label)?;
+    let end = next_label_start(&lower, value_start).unwrap_or(body.len());
+    body.get(value_start..end)
+        .map(clean_labeled_value)
+        .filter(|value| !value.is_empty())
+        .or_else(|| body.get(start..end).map(clean_labeled_value))
+        .filter(|value| !value.is_empty())
+}
+
+fn label_marker(lower_body: &str, label: &str) -> Option<(usize, usize)> {
+    let compact = format!("{label}:");
+    let org = format!("{label} ::");
+    [org.as_str(), compact.as_str()]
+        .into_iter()
+        .filter_map(|marker| {
+            lower_body
+                .find(marker)
+                .map(|start| (start, start + marker.len()))
+        })
+        .min_by_key(|(start, _)| *start)
+}
+
+fn next_label_start(lower_body: &str, value_start: usize) -> Option<usize> {
+    [
+        "objective",
+        "scope",
+        "stable source reference",
+        "stable ref",
+        "out of scope",
+        "next action",
+    ]
+    .into_iter()
+    .filter_map(|label| {
+        label_marker(&lower_body[value_start..], label).map(|(start, _)| value_start + start)
+    })
+    .min()
+}
+
+fn clean_labeled_value(value: &str) -> String {
+    value.trim().trim_start_matches('-').trim().to_string()
 }
 
 fn default_plan_id(args: &[String]) -> String {

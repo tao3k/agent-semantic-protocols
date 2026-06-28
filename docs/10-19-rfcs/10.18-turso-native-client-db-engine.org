@@ -1,0 +1,460 @@
+#+TITLE: RFC 10.18 - Turso-native client DB engine
+#+AUTHOR: agent-semantic-protocols
+#+DATE: 2026-06-28
+#+OPTIONS: toc:2
+
+* One-sentence summary
+
+ASP should evaluate Turso Database as a Turso-native client DB v2, not as a
+drop-in =rusqlite= replacement. The migration only earns its cost if it exposes
+agent-facing gains that SQLite compatibility alone cannot provide.
+
+* Motivation
+
+The current client DB is SQLite-backed through =rusqlite=. That is a good v1
+storage layer for local cache rows, source index rows, structural index rows,
+artifact events, provider-command selections, and hot replay lookups.
+
+However, replacing =rusqlite= only to keep the same synchronous single-writer
+shape is not enough. A useful migration must use Turso-native capabilities to
+improve the ASP agent loop:
+
+- concurrent source and structural index imports;
+- cache invalidation that can be observed as durable DB changes;
+- async local DB access aligned with Tokio provider transport;
+- ranking inputs from vector / full-text features without weakening parser
+  authority;
+- local-first sync for optional Cloud / cross-agent state propagation;
+- encrypted local metadata and cache state;
+- agent-friendly DB introspection surfaces.
+
+The compatibility target is therefore a validation baseline, not the product
+goal. ASP can intentionally create a v2 client DB format that is not readable by
+SQLite when a Turso-only feature pays for that boundary.
+
+* Source context
+
+Current ASP contract:
+
+- RFC 10.17 makes the Rust source index SQL-backed and Rust-owned. Providers
+  emit bounded native facts; they must not own broad workspace search, cache
+  invalidation, route selection, graph ranking, or dependency cache.
+- RFC 10.08 keeps =agent-semantic-client= local-first, with native providers as
+  parser authority and a shared compact prompt contract.
+- =crates/agent-semantic-client-db= currently exports the SQLite DB surface.
+  It opens =client.sqlite3= with =rusqlite::Connection=, configures WAL-oriented
+  pragmas, and exposes read/write APIs for cache generations, syntax replay,
+  structural index, source index, provider command selections, and artifact
+  events.
+- Source and structural index refreshes already have clear transaction seams:
+  generation write, old row clear, owner/symbol/dependency/selector writes,
+  commit, then stats lookup.
+- The current benchmark surface is
+  =crates/agent-semantic-client-db/benches/sqlite_cache_hot_path.rs= and covers
+  path inspect, open report, syntax query replay, structural symbol lookup,
+  structural dependency lookup, and structural import refresh.
+
+External Turso source context, current as of 2026-06-28:
+
+- Turso Database is an in-process SQL database written in Rust and compatible
+  with SQLite; its README still marks the database beta and advises caution
+  with production data.
+- The Rust reference describes the =turso= crate as local / embedded database
+  plus sync, built on the Turso Database rewrite with concurrent writes (MVCC)
+  and async I/O.
+- The Rust API is async: build a local DB with =Builder::new_local(...).build().await=,
+  connect, then =execute= / =query= / =prepare= / =transaction= with =await=.
+- Turso features and roadmap include =BEGIN CONCURRENT= / MVCC, CDC, async I/O,
+  vector support, improved schema management, encryption at rest, DBSP
+  incremental computation, Tantivy-backed FTS, multi-process WAL coordination,
+  sync push/pull, and a CLI MCP server.
+- Compatibility is real but not complete. The compatibility document lists
+  partial query language, PRAGMA, and C API support; it also documents
+  Turso-specific PRAGMAs such as CDC capture, encryption keys, MVCC checkpoint
+  tuning, and =require_where= safety.
+
+Primary references:
+
+- [[https://github.com/tursodatabase/turso][tursodatabase/turso README]]
+- [[https://raw.githubusercontent.com/tursodatabase/turso/main/COMPAT.md][Turso compatibility notes]]
+- [[https://docs.turso.tech/sdk/rust/reference][Turso Rust SDK reference]]
+- [[https://turso.tech/blog/beyond-the-single-writer-limitation-with-tursos-concurrent-writes][Turso concurrent writes / MVCC]]
+
+* Decision framing
+
+** Compatibility-only migration is rejected
+
+The v2 project should not be scoped as:
+
+#+begin_src text
+rusqlite API parity -> same tables -> same sync calls -> same benchmark names
+#+end_src
+
+That path increases dependency and maturity risk without changing the agent
+system. It also hides the real migration cost: Turso's strongest Rust surface is
+async, while the current DB API is synchronous.
+
+** Turso-native migration is the only useful target
+
+The useful target is:
+
+#+begin_src text
+engine-v2 contract -> async DB boundary -> Turso-only experiments ->
+measured agent-loop gains -> optional default engine switch
+#+end_src
+
+The client DB can keep enough SQL compatibility to port schema and queries, but
+it may use Turso-only features when they improve ASP behavior and are visible in
+receipts, tests, schemas, or benchmarks.
+
+* Feature-to-ASP opportunity map
+
+** Async local DB API
+
+Opportunity:
+
+- align client DB I/O with the Tokio provider transport direction in RFC 10.08;
+- avoid blocking the agent client hot path during cache miss import, artifact
+  ingestion, or large source-index refresh;
+- enable concurrent provider process execution and DB import without ad hoc
+  thread pools.
+
+Experiment:
+
+- create a thin Turso DB adapter with async open, execute, query, transaction,
+  and stats operations;
+- run the existing hot path benchmark through a Tokio runtime;
+- compare sync =rusqlite= wall-clock latency against async Turso under mixed
+  lookup/import load.
+
+Acceptance:
+
+- no change to provider authority;
+- no raw source storage;
+- equal lookup correctness on existing cache fixtures;
+- measurable lower blocked time under concurrent provider/import workloads.
+
+** MVCC and =BEGIN CONCURRENT=
+
+Opportunity:
+
+- let independent providers import source index, structural index, syntax
+  replay, and artifact event rows without serializing all writes behind one
+  SQLite writer;
+- reduce =SQLITE_BUSY=-style failure paths and busy-timeout tuning;
+- make multi-agent / subagent cache refresh practical without partitioning into
+  separate DB files.
+
+Experiment:
+
+- create a write-contention benchmark with N concurrent roles;
+- role A imports source-index generations;
+- role B imports structural-index generations;
+- role C writes artifact events;
+- role D writes provider command selection rows;
+- reader roles continuously run hot lookups;
+- compare =rusqlite= WAL mode against Turso with concurrent transactions.
+
+Acceptance:
+
+- correctness is row-equivalent after replay;
+- reader latency does not regress beyond an agreed threshold;
+- write throughput improves or write conflict behavior becomes easier for
+  agents to recover from;
+- receipt reports conflict retries and committed row counts.
+
+** CDC-driven invalidation
+
+Opportunity:
+
+- replace scattered invalidation reasoning with a durable DB change stream;
+- let =asp cache status= and =asp search= explain why a generation became stale;
+- emit artifact-trail receipts from the same source of truth as cache rows.
+
+Experiment:
+
+- enable Turso CDC for cache generation, source index, structural index, and
+  artifact event tables;
+- build a prototype =asp cache changes= command that reads the CDC stream and
+  renders compact invalidation events:
+  - generation inserted / replaced;
+  - owner rows cleared;
+  - selector rows inserted;
+  - artifact event updated.
+
+Acceptance:
+
+- invalidation receipt is reconstructable from DB changes;
+- no provider source text is stored in CDC payloads;
+- repeated imports produce deterministic change-event counts;
+- old manual invalidation tests can be cross-checked against CDC output.
+
+** Vector and FTS ranking inputs
+
+Opportunity:
+
+- store query embeddings, symbol-name vectors, owner summaries, and compact
+  graph-frontier vectors as rank inputs;
+- use FTS for exact / fuzzy term matching over query keys, symbols, and artifact
+  metadata;
+- improve =search pipe= frontier selection without making the DB a semantic
+  parser.
+
+Boundary:
+
+- vector / FTS output is rank evidence only;
+- parser-owned identity remains =structuralSelector= or =nativeFactId=;
+- prompt-visible line ranges remain display hints, not executable selectors.
+
+Experiment:
+
+- add an experimental rank table keyed by owner id and native fact id;
+- index only schema-valid metadata and compact summaries, not raw source text;
+- compare graph-turbo ranking with and without Turso vector / FTS features on
+  existing ASP search receipts.
+
+Acceptance:
+
+- top-N owner recall improves on known benchmark prompts;
+- no parser-authority contract changes;
+- every ranked result includes provenance back to provider facts or cache rows;
+- rank features can be disabled without changing search correctness.
+
+** DBSP incremental view maintenance
+
+Opportunity:
+
+- materialize derived tables such as latest generation by project, owner search
+  frontier, dependency usage frontier, and artifact timelines incrementally;
+- reduce repeated aggregation over cache and index tables during hot searches.
+
+Experiment:
+
+- prototype one derived view:
+  - latest valid generation per language/provider/project/schema;
+  - or owner query-key frontier per project root.
+- compare normal SQL aggregation vs incremental view refresh under repeated
+  import cycles.
+
+Acceptance:
+
+- same rows as current queries;
+- lower warm-path latency or lower query count;
+- deterministic rebuild from base tables.
+
+** Sync push/pull
+
+Opportunity:
+
+- local-first remains default, but optional sync can propagate cache metadata,
+  artifact events, and index receipts across devices, CI, or Cloud Flight;
+- future enterprise/cloud work can consume DB-level state without inventing a
+  second protocol.
+
+Experiment:
+
+- mark a subset of tables as sync-safe:
+  - cache generation metadata;
+  - source/structural index locators and hashes;
+  - artifact events;
+  - provider command selection fingerprints.
+- exclude raw source by schema.
+- run a local push/pull prototype against a test remote.
+
+Acceptance:
+
+- sync is opt-in and never required for local search;
+- project roots and paths are normalized or redacted according to policy;
+- conflict handling is documented in receipts;
+- local DB rebuild still works without network access.
+
+** Encryption at rest
+
+Opportunity:
+
+- protect cache metadata that may reveal workspace structure, query history,
+  provider versions, and artifact paths;
+- create a real reason to accept non-SQLite-readable DB files.
+
+Experiment:
+
+- create =client.turso= with encryption enabled;
+- run existing inspect, import, lookup, and rebuild tests;
+- verify that fallback tooling reports engine/encryption state instead of
+  trying to open the DB as SQLite.
+
+Acceptance:
+
+- DB can be opened only through the configured Turso engine;
+- receipts explain encryption state without leaking keys;
+- tests cover wrong-key and missing-key diagnostics.
+
+** MCP / agent DB inspection
+
+Opportunity:
+
+- Turso CLI MCP mode is directly relevant to agent workflows;
+- it can become a debug surface for local DB inspection, not the production ASP
+  command API.
+
+Experiment:
+
+- expose a read-only MCP inspection profile over a scratch client DB;
+- map MCP tools to safe diagnostics:
+  - list tables;
+  - describe schema;
+  - query status views;
+  - inspect latest generation rows.
+
+Acceptance:
+
+- MCP cannot mutate project cache unless explicitly configured for a sandbox;
+- production commands still use typed ASP APIs, not natural-language SQL;
+- diagnostic sessions produce artifact receipts.
+
+** Turso-specific safety PRAGMAs
+
+Opportunity:
+
+- =require_where= can reduce accidental destructive update/delete statements in
+  generated SQL or migration scripts;
+- MVCC checkpoint and CDC PRAGMAs can become first-class runtime diagnostics.
+
+Experiment:
+
+- enable =require_where= for agent-generated SQL sessions;
+- add runtime report fields for Turso-specific PRAGMAs.
+
+Acceptance:
+
+- destructive migrations are explicit and tested;
+- runtime report distinguishes SQLite mode from Turso engine-v2 mode.
+
+* Experiment matrix
+
+| ID | Name | Scope | Primary value | Gate |
+|----+------+-------+---------------+------|
+| E0 | API spike | =agent-semantic-client-db= scratch module | Prove async open/query/transaction shape | Compiles and runs one import/lookup |
+| E1 | Schema portability | current DB migrations | Know which SQL/PRAGMA statements must change | All current tables created |
+| E2 | Hot path parity | current criterion benchmark port | Establish baseline cost | Results row-equivalent |
+| E3 | Concurrent import | source/structural/artifact writes | Prove MVCC value | Better throughput or clearer conflict receipts |
+| E4 | CDC invalidation | cache/index tables | Replace hidden invalidation reasoning | Deterministic change stream |
+| E5 | Vector/FTS rank input | search frontier rows | Improve owner selection | Better recall without parser drift |
+| E6 | DBSP derived views | latest generation / frontier view | Reduce warm aggregation cost | Faster warm path or fewer queries |
+| E7 | Sync prototype | metadata-only subset | Future cloud/cross-agent state | Local-first preserved |
+| E8 | Encryption prototype | whole v2 DB file | Protect local metadata | clear wrong-key diagnostics |
+| E9 | MCP diagnostic profile | scratch DB only | Agent-friendly inspection | Read-only, receipt-backed |
+
+* Metrics
+
+Every experiment should capture:
+
+- cold open latency;
+- warm lookup latency;
+- import throughput;
+- reader latency during concurrent writes;
+- conflict / retry count;
+- DB file size and WAL/log size;
+- provider command count;
+- compact packet size;
+- row counts by table;
+- receipt bytes;
+- whether raw source text was stored;
+- whether the result is rebuildable from provider artifacts.
+
+* Go / no-go gates
+
+Turso becomes a serious migration candidate only if at least one Turso-native
+experiment produces a material ASP benefit that SQLite compatibility does not:
+
+- concurrent import/read behavior improves enough to matter for multi-provider
+  or multi-agent workflows;
+- CDC removes an existing class of cache invalidation ambiguity;
+- vector/FTS improves search frontier quality while preserving parser
+  authority;
+- encryption/sync creates a required product capability;
+- async DB integration reduces blocked agent hot-path time.
+
+Default-engine migration remains blocked until:
+
+- all current DB unit tests pass through the Turso adapter or have intentional
+  v2 replacements;
+- benchmark receipts exist for SQLite v1 and Turso v2;
+- runtime reports distinguish =sqlite-v1= from =turso-v2=;
+- failure modes are agent-readable;
+- the v2 DB can be rebuilt from provider artifacts and file hashes;
+- no raw source text is stored unless a future RFC explicitly changes that
+  contract.
+
+* Implementation sketch
+
+** Phase 0 - RFC and source survey
+
+- Keep this RFC as the migration owner.
+- Do not change the public search contract yet.
+- Record exact Turso version, feature flags, and linked compatibility document
+  before each experiment run.
+
+** Phase 1 - Engine boundary
+
+- Introduce an internal engine abstraction around:
+  - open read-only existing;
+  - open or create writable;
+  - transaction;
+  - execute;
+  - query rows;
+  - runtime report;
+  - checkpoint / stats when supported.
+- Keep the existing =ClientDb= API stable where possible.
+- Add an explicit engine enum:
+  - =sqlite-v1= -> =client.sqlite3=;
+  - =turso-v2= -> =client.turso=.
+
+** Phase 2 - Parity tests and benchmark port
+
+- Port DB unit tests to run over both engines when the SQL surface is shared.
+- Add Turso-only tests for async, CDC, encryption, and sync separately.
+- Rename or clone hot path benchmarks so SQLite and Turso are compared by
+  engine, not by old filename assumptions.
+
+** Phase 3 - Turso-native experiments
+
+- Implement E3 / E4 first because they directly affect ASP cache/index value.
+- Implement E5 only after provenance and parser-authority checks are in place.
+- Implement E7 / E8 as product capability experiments, not default behavior.
+
+** Phase 4 - Default decision
+
+- Keep SQLite v1 default until Turso v2 has receipts that show a concrete
+  advantage and acceptable maturity risk.
+- If the advantage is strong but maturity is still risky, expose an
+  opt-in =ASP_CLIENT_DB_ENGINE=turso-v2= path.
+- Promote only after CI, sandtable, real-project evidence, and rebuild
+  receipts agree.
+
+* Open questions
+
+- Which Turso feature should be the first proof: MVCC concurrent imports or CDC
+  invalidation?
+- Should vector/FTS ranking live in the client DB crate or in a separate rank
+  feature crate that consumes DB rows?
+- What metadata is safe to sync by default, and what path/project identifiers
+  need redaction?
+- Should encrypted local DBs be the default for user workspaces or only for
+  enterprise / sensitive modes?
+- How should Cloud Flight and Turso sync coexist without creating two cloud
+  protocols for the agent?
+
+* Initial recommendation
+
+Start with a scratch =turso-v2= engine behind an opt-in feature flag and run
+three experiments in order:
+
+1. E1/E2 schema + hot-path parity, to bound migration cost.
+2. E3 concurrent import/read benchmark, to test the highest-value performance
+   claim for ASP.
+3. E4 CDC invalidation, to test the strongest agent-observability claim.
+
+If neither E3 nor E4 produces a durable ASP advantage, stop the migration.
+If either does, proceed to vector/FTS ranking and sync/encryption as second-wave
+product experiments.

@@ -11,7 +11,6 @@ use super::search_pipe_args::parse_search_owner_items_query_args;
 use super::search_pipe_gerbil_owner_items::run_inline_gerbil_owner_items_query;
 use super::search_pipe_owner_query::render_owner_query_frontier;
 use super::search_pipe_provider_facts::ProviderGraphFactsContext;
-use super::search_pipe_python_owner_items::run_inline_python_owner_items_query;
 use super::search_pipe_view::reject_non_graph_turbo_receipt;
 
 pub(super) struct SearchOwnerItemsFastContext<'a> {
@@ -69,21 +68,9 @@ impl<'a> OwnerItemsSearchState<'a> {
         }
     }
 
-    fn try_inline_python(&self) -> Result<OwnerItemsSearchStep, String> {
-        if run_inline_python_owner_items_query(
-            self.language_id,
-            self.owner,
-            self.query,
-            &self.owner_project_root,
-        )? {
-            return Ok(OwnerItemsSearchStep::Handled);
-        }
-        Ok(OwnerItemsSearchStep::Unsupported)
-    }
-
-    fn python_inline_miss_error(&self) -> String {
+    fn provider_required_error(&self) -> String {
         format!(
-            "search owner items requires an existing .py owner path for python; owner=`{}`; no fallback executed",
+            "python search owner items requires provider-owned owner-items; owner=`{}`; no Rust inline fallback executed",
             self.owner.display()
         )
     }
@@ -140,11 +127,11 @@ pub(super) fn run_search_owner_items_query_command(
         &owner_query_args.owner,
         &owner_query_args.query,
     );
-    if state.try_inline_python()? == OwnerItemsSearchStep::Handled {
-        return Ok(());
-    }
     if state.language_id == "python" {
-        return Err(state.python_inline_miss_error());
+        if state.try_provider()? == OwnerItemsSearchStep::Handled {
+            return Ok(());
+        }
+        return Err(state.provider_required_error());
     }
     if state.try_inline_gerbil()? == OwnerItemsSearchStep::Handled {
         return Ok(());

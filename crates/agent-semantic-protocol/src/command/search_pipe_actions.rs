@@ -9,7 +9,7 @@ use super::search_pipe_owner_action::{
     owner_items_handle, preferred_owner_items_handle, preview_owner_items_handle,
     unique_terms_without_weak_natural, usable_query_term, weak_natural_action_term,
 };
-use super::search_pipe_quality::SearchPipeQuality;
+use super::search_pipe_quality_model::SearchPipeQuality;
 use super::search_pipe_seed_decision::SeedActionIntent;
 use super::search_query_wrapper_model::FdQueryPreview;
 

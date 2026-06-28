@@ -9,12 +9,13 @@ const USER_EXTENSIONS_BEGIN: &str = "<!-- ASP-HOOK-TRIGGER-PROMPT:USER-EXTENSION
 const USER_EXTENSIONS_END: &str = "<!-- ASP-HOOK-TRIGGER-PROMPT:USER-EXTENSIONS-END -->";
 
 pub(crate) fn source_access_recovery_message(
+    platform: &str,
     reason: &str,
     _providers: &[&ActivatedProvider],
     routes: &[DecisionRoute],
     _semantic_ast_patch_enabled: bool,
 ) -> String {
-    default_hook_trigger_prompt_message(reason, routes)
+    default_hook_trigger_prompt_message_for_platform(platform, reason, routes)
 }
 
 pub fn hook_trigger_prompt_document() -> &'static str {
@@ -22,7 +23,20 @@ pub fn hook_trigger_prompt_document() -> &'static str {
 }
 
 pub fn default_hook_trigger_prompt_message(reason: &str, routes: &[DecisionRoute]) -> String {
-    render_hook_trigger_prompt_document(HOOK_TRIGGER_PROMPT_MD, reason, routes)
+    default_hook_trigger_prompt_message_for_platform("codex", reason, routes)
+}
+
+fn default_hook_trigger_prompt_message_for_platform(
+    platform: &str,
+    reason: &str,
+    routes: &[DecisionRoute],
+) -> String {
+    render_hook_trigger_prompt_document_for_platform(
+        HOOK_TRIGGER_PROMPT_MD,
+        platform,
+        reason,
+        routes,
+    )
 }
 
 pub fn render_hook_trigger_prompt_document(
@@ -30,8 +44,17 @@ pub fn render_hook_trigger_prompt_document(
     reason: &str,
     routes: &[DecisionRoute],
 ) -> String {
+    render_hook_trigger_prompt_document_for_platform(document, "codex", reason, routes)
+}
+
+fn render_hook_trigger_prompt_document_for_platform(
+    document: &str,
+    platform: &str,
+    reason: &str,
+    routes: &[DecisionRoute],
+) -> String {
     let managed = section_body(document, MANAGED_BEGIN, MANAGED_END).unwrap_or(document);
-    let mut rendered = render_hook_trigger_prompt_template(managed, reason, routes);
+    let mut rendered = render_hook_trigger_prompt_template(managed, platform, reason, routes);
     if let Some(user_extensions) = runtime_user_extensions(document) {
         rendered.push_str("\n\n");
         rendered.push_str(user_extensions);
@@ -58,13 +81,25 @@ pub fn merge_hook_trigger_prompt_document(existing: Option<&str>) -> String {
 
 fn render_hook_trigger_prompt_template(
     template: &str,
+    platform: &str,
     reason: &str,
     routes: &[DecisionRoute],
 ) -> String {
     template
         .trim_matches('\n')
         .replace("{reason}", reason)
+        .replace("{agent_flow}", agent_flow_markdown(platform))
         .replace("{routes}", &routes_markdown(routes))
+}
+
+fn agent_flow_markdown(platform: &str) -> &'static str {
+    if platform.eq_ignore_ascii_case("codex") {
+        "Codex: use one resident ASP search agent for this main task. If an ASP search agent thread is already open, call `send_input` on that recorded agent id with the safe route below and wait for `asp-search-subagent(role,action,evidence,missing,next,risk)`. Do not create another search agent for another `actionFrontier` item in the same main task.\nIf no ASP search agent is open, call `spawn_agent` once with `agent_type=\"asp_explorer\"` when the project role is available, otherwise fall back to `agent_type=\"explorer\"`; pass `fork_context=false` and a self-contained ASP Explorer branch prompt. Keep model and reasoning settings in Codex config. Record the returned `agent-...` id in the parent reasoning ledger and reuse it with `send_input` for later ASP searches.\nIf subagents are unavailable, run the selected safe route directly."
+    } else if platform.eq_ignore_ascii_case("claude") {
+        "Claude: run the selected safe route directly in this thread. Use Claude-native helper agents only when that client exposes them for this session."
+    } else {
+        "Run the selected safe route directly. Use a resident search agent only when the active client exposes one for this session."
+    }
 }
 
 fn runtime_user_extensions(document: &str) -> Option<&str> {

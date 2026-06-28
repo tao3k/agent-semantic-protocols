@@ -67,6 +67,21 @@
         "$ref": "#/$defs/providerCommand"
       }
     },
+    "eventTimestampMs": {
+      "description": "Preferred receipt event timestamp as Unix epoch milliseconds. Artifact history importers use this before falling back to file modification time.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "startedAtMs": {
+      "description": "Optional receipt start timestamp as Unix epoch milliseconds.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "endedAtMs": {
+      "description": "Optional receipt end timestamp as Unix epoch milliseconds.",
+      "type": "integer",
+      "minimum": 0
+    },
     "nativeProvenance": {
       "type": "array",
       "items": {
@@ -306,11 +321,26 @@
           "description": "Whether the provider process exceeded its configured timeout and was killed.",
           "type": "boolean"
         },
-        "elapsedMs": {
-          "type": "integer",
-          "minimum": 0
-        }
+      "elapsedMs": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "eventTimestampMs": {
+        "description": "Preferred provider command event timestamp as Unix epoch milliseconds. Artifact history importers use this before packet-level timestamps or file modification time.",
+        "type": "integer",
+        "minimum": 0
+      },
+      "startedAtMs": {
+        "description": "Optional provider command start timestamp as Unix epoch milliseconds.",
+        "type": "integer",
+        "minimum": 0
+      },
+      "endedAtMs": {
+        "description": "Optional provider command end timestamp as Unix epoch milliseconds.",
+        "type": "integer",
+        "minimum": 0
       }
     }
   }
+}
 }

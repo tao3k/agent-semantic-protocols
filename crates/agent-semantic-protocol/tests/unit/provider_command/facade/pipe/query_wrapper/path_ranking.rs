@@ -181,13 +181,19 @@ fn asp_fd_query_owner_items_query_uses_selected_owner_axes() {
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(
-        stdout.contains("nextCommand=asp rust search owner src/graph_turbo_candidate_ranking.rs"),
+        stdout.contains(
+            "nextCommand=asp rust search owner src/graph_turbo_candidate_ranking.rs items --query 'graph|turbo|candidate|ranking' --workspace . --view seeds"
+        ),
         "{stdout}"
     );
     let owner_items_line = stdout
         .lines()
-        .find(|line| line.starts_with("nextCommand=asp rust search owner "))
-        .expect("owner-items action line");
+        .find(|line| {
+            line.starts_with(
+                "nextCommand=asp rust search owner src/graph_turbo_candidate_ranking.rs items",
+            )
+        })
+        .expect("owner-items command line");
     assert!(
         !owner_items_line.contains("owner|search|frontier|fd"),
         "{stdout}"
@@ -223,7 +229,7 @@ fn asp_fd_query_owner_items_query_prefers_semantic_variants_before_path_terms() 
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(
         stdout.contains(
-            "nextCommand=asp rust search owner src/search_pipe_graph_turbo_owner_rank.rs"
+            "nextCommand=asp rust search owner src/search_pipe_graph_turbo_owner_rank.rs items --query 'ranked|sandtable|report|chain|ranking|graph' --workspace . --view seeds"
         ),
         "{stdout}"
     );

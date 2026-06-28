@@ -100,6 +100,51 @@ asp org lint ../contracts/asp.skill.v1.org
 #+end_src
 Evidence loop pressure scenario: if reflection answers a question, it must also leave an evidence loop receipt with a linked evidence cell, replayable shell command, and evaluated result.
 Pressure scenario: an agent asks for "SDD tasks" or "Wendao task records" in an Org file. The correct behavior is to query AST facts such as TODO headlines, checkbox list items, and properties first, then route any write through =asp org capture --contract CONTRACT_ID=.
+** Search Route Choice Reasoning
+
+Use this contract-owned choice window before the first ASP search/query command
+for a new intent. The choice is transient and does not create a plan artifact.
+Select the narrowest route justified by current evidence; if uncertain, inspect
+the provider =routeGraph= or guide.
+
+#+BEGIN_SRC org-contract :type agent-interactive
+id: asp-search-route
+method: choice
+stage: pre-search
+group: SEARCH_ROUTE
+create: none
+target: asp.search-routing.v1
+info: Select the narrowest ASP search route justified by current evidence. This choice is transient and does not create an Org plan artifact.
+categories: 1=KNOWN_SELECTOR,2=KNOWN_OWNER,3=KNOWN_SYMBOL,4=KNOWN_DEPENDENCY,5=FAILURE_FRONTIER,6=BROAD_QUERY,7=UNKNOWN_WORKSPACE,8=NO_ASP,?=detail
+details:
+|n|id|contract|full|use-if|
+|1|KNOWN_SELECTOR|semantic-search-packet.v1#routeGraph|Known structural selector|structuralSelector/nativeFactId exists|
+|2|KNOWN_OWNER|semantic-search-packet.v1#routeGraph|Known owner path|owner path/file exists|
+|3|KNOWN_SYMBOL|semantic-search-packet.v1#routeGraph|Known symbol|function/type/API symbol exists|
+|4|KNOWN_DEPENDENCY|semantic-search-packet.v1#routeGraph|Known dependency|dependency/API package exists|
+|5|FAILURE_FRONTIER|semantic-search-packet.v1#routeGraph|Failure frontier|failure/test/policy diagnostic exists|
+|6|BROAD_QUERY|semantic-search-packet.v1#routeGraph|Broad query refinement|terms exist but no stable anchor|
+|7|UNKNOWN_WORKSPACE|semantic-search-packet.v1#routeGraph|Unknown workspace topology|no reliable anchor exists|
+|8|NO_ASP|semantic-search-packet.v1#routeGraph|No ASP route|non-repo/prose task|
+#+END_SRC
+
+| Choice | Use if | First route | Avoid |
+| KNOWN_SELECTOR | structuralSelector/nativeFactId exists | syntax-outline; query-code only if exact code is needed | prime, line-range selector |
+| KNOWN_OWNER | owner path/file exists | owner-skeleton or owner-items | prime unless owner is stale |
+| KNOWN_SYMBOL | function/type/API symbol exists | syntax query or owner-items | broad rg before syntax |
+| KNOWN_DEPENDENCY | dependency/API package exists | dependency-topology/import-usage | workspace prime |
+| FAILURE_FRONTIER | failure/test/policy diagnostic exists | failure-frontier/test-selection | raw read loop |
+| BROAD_QUERY | terms but no stable anchor | search pipe | repeated prime/fzf |
+| UNKNOWN_WORKSPACE | no reliable anchor | search prime/project topology | pretending anchors exist |
+| NO_ASP | non-repo/prose task | no ASP | unnecessary search |
+
+** Search Packet Consumption
+
+After each ASP search/query command, follow packet-owned =actionFrontier=,
+=recommendedNext=, =routeGraph=, =omit=, and =avoid= fields. Do not reconstruct
+commands from =sourceLocatorHint= or =displayLineRange=. Do not create Org plan
+artifacts for normal search routing.
+
 ** Recovery
 If Codex does not load the plugin skill, use the configurable hook receipt and run =asp sync= from the project root. Then read =.cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org= and write durable Org state only under =.cache/agent-semantic-protocol/artifacts/org=.
 ** Adversarial Review

@@ -1,6 +1,6 @@
 use crate::provider_command::support::{
-    asp_command, make_executable, prepend_path, provider, temp_project_root, write_activation,
-    write_marker_provider,
+    asp_command, assert_compact_search_action_contract, make_executable, prepend_path, provider,
+    temp_project_root, write_activation, write_marker_provider,
 };
 use serde_json::Value;
 
@@ -124,11 +124,8 @@ fn search_pipe_seeds_promotes_matching_dependency_route() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        stdout.contains("recommendedNext=A1.search-deps")
-            && stdout.contains("nextCommand=asp rust search deps serde"),
-        "{stdout}"
-    );
+    assert!(stdout.contains("actionFrontier=A1.search-deps"), "{stdout}");
+    assert_compact_search_action_contract(&stdout);
     assert!(
         stdout.contains("recommendedNext=A1.search-deps"),
         "{stdout}"

@@ -1,8 +1,135 @@
 use crate::provider_command::support::{
     asp_command, make_executable, prepend_path, temp_project_root,
 };
-use std::path::Path;
-use std::process::Command;
+
+#[test]
+fn asp_agent_session_registers_named_root_and_subagent_sessions() {
+    let root = temp_project_root("agent-command-session-registry");
+    let state_root = root
+        .join(".cache")
+        .join("agent-semantic-protocol")
+        .join("agent");
+
+    let main_register = asp_command(&root)
+        .env("CODEX_THREAD_ID", "codex-root-thread")
+        .env_remove("CLAUDE_CODE_SESSION_ID")
+        .env_remove("CLAUDE_CODE_REMOTE_SESSION_ID")
+        .env_remove("AGENT_SESSION_ID")
+        .env_remove("SESSION_ID")
+        .args([
+            "agent",
+            "session",
+            "register",
+            "--state-root",
+            state_root.to_str().unwrap(),
+            "--name",
+            "asp-main-explore",
+            "--role",
+            "main",
+        ])
+        .output()
+        .expect("register main session");
+    assert!(
+        main_register.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&main_register.stderr)
+    );
+    let main_stdout = String::from_utf8(main_register.stdout).expect("main session stdout");
+    assert!(
+        main_stdout.contains(
+            "[agent-session-register] owner=rust rootSession=\"codex-root-thread\" session=\"codex-root-thread\" name=\"asp-main-explore\" role=\"main\" status=\"active\""
+        ),
+        "{main_stdout}"
+    );
+
+    let child_register = asp_command(&root)
+        .args([
+            "agent",
+            "session",
+            "register",
+            "--state-root",
+            state_root.to_str().unwrap(),
+            "--name",
+            "asp-explore-code",
+            "--session-id",
+            "codex-child-code-thread",
+            "--root-session-id",
+            "codex-root-thread",
+            "--parent-session-id",
+            "codex-root-thread",
+            "--role",
+            "code",
+            "--model",
+            "cheap-code-model",
+        ])
+        .output()
+        .expect("register child session");
+    assert!(
+        child_register.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&child_register.stderr)
+    );
+
+    let list = asp_command(&root)
+        .env("CODEX_THREAD_ID", "codex-root-thread")
+        .env_remove("CLAUDE_CODE_SESSION_ID")
+        .env_remove("CLAUDE_CODE_REMOTE_SESSION_ID")
+        .args([
+            "agent",
+            "session",
+            "list",
+            "--state-root",
+            state_root.to_str().unwrap(),
+        ])
+        .output()
+        .expect("list sessions");
+    assert!(
+        list.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&list.stderr)
+    );
+    let list_stdout = String::from_utf8(list.stdout).expect("session list stdout");
+    assert!(
+        list_stdout.contains(
+            "[agent-session-list] owner=rust rootSession=\"codex-root-thread\" sessions=2"
+        ),
+        "{list_stdout}"
+    );
+    assert!(
+        list_stdout.contains(
+            "|session name=\"asp-explore-code\" session=\"codex-child-code-thread\" rootSession=\"codex-root-thread\" parentSession=\"codex-root-thread\" role=\"code\" model=\"cheap-code-model\" status=\"active\""
+        ),
+        "{list_stdout}"
+    );
+
+    let show = asp_command(&root)
+        .env("CODEX_THREAD_ID", "codex-root-thread")
+        .args([
+            "agent",
+            "session",
+            "show",
+            "--state-root",
+            state_root.to_str().unwrap(),
+            "--name",
+            "asp-explore-code",
+        ])
+        .output()
+        .expect("show child session");
+    assert!(
+        show.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&show.stderr)
+    );
+    let show_stdout = String::from_utf8(show.stdout).expect("session show stdout");
+    assert!(
+        show_stdout.contains(
+            "|session name=\"asp-explore-code\" session=\"codex-child-code-thread\" rootSession=\"codex-root-thread\" parentSession=\"codex-root-thread\" role=\"code\" model=\"cheap-code-model\" status=\"active\""
+        ),
+        "{show_stdout}"
+    );
+
+    let _ = std::fs::remove_dir_all(root);
+}
 
 #[test]
 fn asp_org_exposes_ast_query_facts_and_capture_plan() {
@@ -367,7 +494,7 @@ fn asp_org_exposes_ast_query_facts_and_capture_plan() {
         "{recall_help_stdout}"
     );
     assert!(
-        recall_help_stdout.contains("Python asp-memory-engine owns plan ranking"),
+        recall_help_stdout.contains("Python memory runtime owns plan ranking"),
         "{recall_help_stdout}"
     );
 
@@ -591,88 +718,6 @@ fn asp_org_archive_done_moves_done_records_under_archives() {
 }
 
 #[test]
-fn asp_org_recall_plans_scans_in_rust_and_ranks_with_memory_engine() {
-    let root = temp_project_root("org-document-command-recall-plans-rank");
-    let org_artifacts = root
-        .join(".cache")
-        .join("agent-semantic-protocol")
-        .join("artifacts")
-        .join("org");
-    let plans = org_artifacts.join("flow").join("plans");
-    std::fs::create_dir_all(&plans).expect("create plans dir");
-    let hot_plan = plans.join("agent-plan-memory-engine-hot-path.org");
-    let cold_plan = plans.join("agent-plan-unrelated-cold-path.org");
-    std::fs::write(
-        &hot_plan,
-        "* TODO Stabilize memory engine recall flow [1/8] [12%] :agent:plan:\n:PROPERTIES:\n:CONTRACT_ORG: agent.plan.v1\n:ID: memory-engine-hot-path\n:OBJECTIVE: Stabilize memory engine recall flow\n:NEXT_ACTION: continue memory engine sandtable\n:RECOVERY_REF: PLAN_ID=memory-engine-hot-path\n:END:\n",
-    )
-    .expect("write hot plan");
-    std::fs::write(
-        &cold_plan,
-        "* TODO Unrelated packaging cleanup :agent:plan:\n:PROPERTIES:\n:CONTRACT_ORG: agent.plan.v1\n:ID: unrelated-cold-path\n:OBJECTIVE: Unrelated packaging cleanup\n:NEXT_ACTION: continue unrelated cleanup\n:END:\n",
-    )
-    .expect("write cold plan");
-    let state_path = root.join("memory-state.json");
-    write_memory_rank_state(&root, &state_path, "memory-engine-hot-path");
-
-    let output = asp_command(&root)
-        .args([
-            "org",
-            "recall",
-            "plans",
-            "--artifacts-root",
-            org_artifacts.to_str().unwrap(),
-            "--state",
-            state_path.to_str().unwrap(),
-            "--project",
-            "repo",
-            "--intent",
-            "stabilize memory engine recall flow",
-            "--top-k",
-            "1",
-            "--embedding-dim",
-            "8",
-        ])
-        .output()
-        .expect("run asp org recall plans");
-    assert!(
-        output.status.success(),
-        "stderr: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8(output.stdout).expect("recall stdout");
-    assert!(
-        stdout.contains(
-            "[org-recall-plans] owner=rust memoryEngine=asp-memory-engine ranker=memory-engine"
-        ),
-        "{stdout}"
-    );
-    assert!(stdout.contains("id=\"memory-engine-hot-path\""), "{stdout}");
-    assert!(
-        stdout.contains("objective=\"Stabilize memory engine recall flow\""),
-        "{stdout}"
-    );
-    assert!(
-        stdout.contains("memoryScore=") && !stdout.contains("id=\"unrelated-cold-path\""),
-        "{stdout}"
-    );
-    assert!(
-        stdout.contains("|plan-action rank=1 action=\"resume\""),
-        "{stdout}"
-    );
-    assert!(
-        stdout.contains("reason=\"unfinished plan ranked by memory, intent, and recency\""),
-        "{stdout}"
-    );
-    assert!(
-        stdout.contains("|next recommendedAction=\"resume\" rank=1"),
-        "{stdout}"
-    );
-
-    let _ = std::fs::remove_dir_all(root);
-}
-
-#[test]
 fn asp_org_recall_plans_uses_explicit_memory_engine_binary() {
     let root = temp_project_root("org-document-command-recall-plans-binary");
     let org_artifacts = root
@@ -692,7 +737,7 @@ fn asp_org_recall_plans_uses_explicit_memory_engine_binary() {
     let memory_engine = bin_dir.join("asp-memory-engine-test-binary");
     std::fs::write(
         &memory_engine,
-        "#!/bin/sh\ncat >/dev/null\nprintf '%s\\n' '{\"plans\":[{\"id\":\"binary-plan\",\"score\":9.0,\"textScore\":0.0,\"memoryScore\":9.0,\"recencyScore\":0.0,\"intentScore\":0.0}]}'\n",
+        "#!/bin/sh\ncat >/dev/null\nprintf '%s\\n' '{\"plans\":[{\"id\":\"binary-plan\",\"score\":9.0,\"contextScore\":0.0,\"memoryScore\":9.0,\"recencyScore\":0.0}]}'\n",
     )
     .expect("write fake memory engine binary");
     make_executable(&memory_engine);
@@ -707,8 +752,6 @@ fn asp_org_recall_plans_uses_explicit_memory_engine_binary() {
             org_artifacts.to_str().unwrap(),
             "--project",
             "repo",
-            "--intent",
-            "binary backed recall plan",
             "--top-k",
             "1",
         ])
@@ -720,14 +763,18 @@ fn asp_org_recall_plans_uses_explicit_memory_engine_binary() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8(output.stdout).expect("recall stdout");
-    assert!(stdout.contains("id=\"binary-plan\""), "{stdout}");
-    assert!(stdout.contains("score=9.000"), "{stdout}");
+    assert!(stdout.contains("plan=\"binary-plan\""), "{stdout}");
+    assert!(stdout.contains("memoryTransport=\"process\""), "{stdout}");
+    assert!(
+        stdout.contains("selectedBy=\"memory-engine+org-graph\""),
+        "{stdout}"
+    );
 
     let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
-fn asp_org_recall_plans_uses_path_memory_engine_binary() {
+fn asp_org_recall_plans_prefers_source_runtime_over_path_memory_engine_binary() {
     let root = temp_project_root("org-document-command-recall-plans-path-binary");
     let org_artifacts = root
         .join(".cache")
@@ -738,7 +785,7 @@ fn asp_org_recall_plans_uses_path_memory_engine_binary() {
     std::fs::create_dir_all(&plans).expect("create plans dir");
     std::fs::write(
         plans.join("agent-plan-path-binary-plan.org"),
-        "* TODO PATH backed recall plan :agent:plan:\n:PROPERTIES:\n:CONTRACT_ORG: agent.plan.v1\n:ID: path-binary-plan\n:OBJECTIVE: PATH backed recall plan\n:NEXT_ACTION: keep packaged asp-memory-engine ahead of development fallbacks\n:END:\n",
+        "* TODO PATH backed recall plan :agent:plan:\n:PROPERTIES:\n:CONTRACT_ORG: agent.plan.v1\n:ID: path-binary-plan\n:OBJECTIVE: PATH backed recall plan\n:NEXT_ACTION: prefer source runtime over path memory engine\n:END:\n",
     )
     .expect("write path binary plan");
     let bin_dir = root.join("bin");
@@ -746,7 +793,7 @@ fn asp_org_recall_plans_uses_path_memory_engine_binary() {
     let memory_engine = bin_dir.join("asp-memory-engine");
     std::fs::write(
         &memory_engine,
-        "#!/bin/sh\ncat >/dev/null\nprintf '%s\\n' '{\"plans\":[{\"id\":\"path-binary-plan\",\"score\":7.0,\"textScore\":0.0,\"memoryScore\":7.0,\"recencyScore\":0.0,\"intentScore\":0.0}]}'\n",
+        "#!/bin/sh\ncat >/dev/null\nprintf '%s\\n' '{\"plans\":[{\"id\":\"path-binary-plan\",\"score\":7.0,\"contextScore\":0.0,\"memoryScore\":7.0,\"recencyScore\":0.0}]}'\n",
     )
     .expect("write fake memory engine binary");
     make_executable(&memory_engine);
@@ -761,8 +808,6 @@ fn asp_org_recall_plans_uses_path_memory_engine_binary() {
             org_artifacts.to_str().unwrap(),
             "--project",
             "repo",
-            "--intent",
-            "path backed recall plan",
             "--top-k",
             "1",
         ])
@@ -774,8 +819,10 @@ fn asp_org_recall_plans_uses_path_memory_engine_binary() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8(output.stdout).expect("recall stdout");
-    assert!(stdout.contains("id=\"path-binary-plan\""), "{stdout}");
-    assert!(stdout.contains("score=7.000"), "{stdout}");
+    assert!(stdout.contains("plan=\"path-binary-plan\""), "{stdout}");
+    assert!(!stdout.contains("score=7.000"), "{stdout}");
+    assert!(stdout.contains("memoryTransport=\"process\""), "{stdout}");
+    assert!(stdout.contains("selectedBy="), "{stdout}");
 
     let _ = std::fs::remove_dir_all(root);
 }
@@ -817,7 +864,7 @@ fn asp_org_recall_plans_uses_memory_engine_socket_worker() {
         assert!(request.contains("\"socket-worker-plan\""), "{request}");
         std::io::Write::write_all(
             &mut stream,
-            b"{\"plans\":[{\"id\":\"socket-worker-plan\",\"score\":6.0,\"textScore\":0.0,\"memoryScore\":6.0,\"recencyScore\":0.0,\"intentScore\":0.0}]}\n",
+            b"{\"plans\":[{\"id\":\"socket-worker-plan\",\"score\":6.0,\"contextScore\":0.0,\"memoryScore\":6.0,\"recencyScore\":0.0}]}\n",
         )
         .expect("write worker response");
     });
@@ -832,8 +879,6 @@ fn asp_org_recall_plans_uses_memory_engine_socket_worker() {
             org_artifacts.to_str().unwrap(),
             "--project",
             "repo",
-            "--intent",
-            "socket worker recall plan",
             "--top-k",
             "1",
         ])
@@ -846,8 +891,15 @@ fn asp_org_recall_plans_uses_memory_engine_socket_worker() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8(output.stdout).expect("recall stdout");
-    assert!(stdout.contains("id=\"socket-worker-plan\""), "{stdout}");
-    assert!(stdout.contains("score=6.000"), "{stdout}");
+    assert!(stdout.contains("plan=\"socket-worker-plan\""), "{stdout}");
+    assert!(
+        stdout.contains("memoryTransport=\"socket:env\""),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("selectedBy=\"memory-engine+org-graph\""),
+        "{stdout}"
+    );
 
     let _ = std::fs::remove_dir_all(root);
     let _ = std::fs::remove_file(socket_path);
@@ -950,49 +1002,6 @@ fn asp_org_rejects_domain_specific_embedded_commands() {
     }
 
     let _ = std::fs::remove_dir_all(root);
-}
-
-fn write_memory_rank_state(root: &Path, state_path: &Path, plan_id: &str) {
-    let script = root.join("write-memory-state.py");
-    std::fs::write(
-        &script,
-        format!(
-            r#"from pathlib import Path
-import sys
-from asp_memory_engine import Episode, EpisodeDraft, EpisodeStore, PlanMemoryContext, StoreConfig
-
-state = Path(sys.argv[1])
-store = EpisodeStore(StoreConfig(path=str(state), embedding_dim=8))
-context = PlanMemoryContext(project_id="repo", plan_id="{plan_id}")
-store.store(Episode.new(EpisodeDraft(
-    id="memory-engine-hot-episode",
-    intent="stabilize memory engine recall flow",
-    intent_embedding=store.encoder.encode("stabilize memory engine recall flow"),
-    experience="continue memory engine sandtable",
-    outcome="pending",
-).with_plan_context(context, sharing="project")))
-store.save_state(state)
-"#
-        ),
-    )
-    .expect("write memory state script");
-    let packages_python = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packages/python");
-    let output = Command::new("uv")
-        .args(["run", "--project"])
-        .arg(packages_python)
-        .arg("--frozen")
-        .arg("python")
-        .arg(&script)
-        .arg(state_path)
-        .current_dir(root)
-        .output()
-        .expect("run memory state script");
-    assert!(
-        output.status.success(),
-        "stdout: {}\nstderr: {}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
 }
 
 #[test]

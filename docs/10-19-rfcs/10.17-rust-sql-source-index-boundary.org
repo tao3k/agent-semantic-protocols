@@ -161,6 +161,100 @@ language provider scan. Cold refresh may invoke bounded provider extractors, but
 it must report provider command count, changed input hashes, row counts, and
 elapsed time.
 
+* ASP Hot Path v1
+
+** Provider Contract v1
+
+Provider Contract v1 is the only Rust ASP hot-path contract for language
+harnesses and freezes the no-compatibility boundary. A provider is the authority
+for native parser/typechecker/project manager facts and bounded owner-local
+projection only. It must not own broad workspace search, source indexing, fact
+indexing, dependency indexing, route selection, graph ranking, prompt graph
+rendering, cache invalidation, source content cache, or dependency cache.
+
+The shared schema is [[../../schemas/semantic-provider-contract.v1.schema.json][semantic-provider-contract.v1]]. Provider registrations and scenario receipts should validate against this schema before advertising a method to agents.
+Required provider commands:
+
+- =asp <language> agent doctor --workspace . --json= reports provider-local
+  capability and contract metadata.
+- =asp <language> index export --workspace . --scope changed|owner|workspace --json=
+  exports bounded native facts for Rust import.
+- =asp <language> search owner <owner> items --query '<terms>' --workspace . --json=
+  returns owner-local parser facts only.
+- =asp <language> query --selector '<structuralSelector|nativeFactId>' --workspace . --view skeleton|outline|signature|comments|names|unsafe-blocks|diagnostic-capsule|flow-capsule --json=
+  performs exact provider projection after Rust has selected identity.
+- =asp <language> query --selector '<structuralSelector|nativeFactId>' --workspace . --code=
+  returns exact code only for parser-owned identity.
+
+Forbidden provider commands and advertised methods:
+
+- no =query/direct-source-read=
+- no =read-packet= output mode for provider projection
+- no provider =cacheReplay=true=
+- no executable =path:start:end= or =displayLineRange= selector
+- no wildcard or workspace broad search through provider query
+
+Executable identity is limited to =structuralSelector= and =nativeFactId=.
+=sourceLocatorHint= and =displayLineRange= remain display/transport evidence
+only. If an agent has only =path:start:end=, it must return to Rust ASP
+SourceIndex/FactIndex materialization instead of invoking provider code.
+The source-index boundary extends to the whole agent-facing search/query hot path. The durable shape is:
+#+begin_src text
+language harness = bounded native parser/typechecker/project-manager facts
+Rust ASP         = source/fact/dependency index, route, materialize, render, receipt
+Python graph    = graph algorithms, ranking, ablation, and sparse graph reuse
+#+end_src
+
+The root performance problem this RFC prevents is a split control plane: some searches using Rust cache replay, some using provider-local workspace scans, some using finder candidates, some using optional semantic-facts side channels, and some using graph-turbo request builders that no longer share one normalized fact model. Optimizations must land in the Rust client/index/materializer path unless they are a provider-local bounded projection optimization.
+
+Provider CLIs are fact authorities, not performance control planes. A language provider may expose:
+- =agent doctor --json= for capabilities, source roots, ignored prefixes, and project-manager evidence
+- =index export --scope changed|owner|workspace --json= for bounded native fact packets
+- =search owner <owner> items --json= for owner-local facts only
+- =query --selector <structural-selector|native-fact-id> --view ... --json= for bounded projections
+- =query --selector <structural-selector|native-fact-id> --code= for exact code transport
+
+Provider CLIs must not own broad recursive source search, workspace ranking, graph-turbo orchestration, source-content caches, dependency caches, or prompt graph rendering. If the Rust index state needed for a command is missing, the command must return an explicit missing-index or missing-capability response with the next Rust index command. It must not silently perform a slow provider-local workspace scan.
+* Native Fact Index Import
+Provider-emitted =semantic-native-syntax-fact-index.v1= packets are imported into a Rust-owned fact index. The fact index is the bridge from native parser/typechecker facts to language-neutral search/rank/materialize rows.
+
+The normalized row model must preserve:
+- language id and provider id
+- owner id and owner path
+- native fact id
+- structural selector
+- source locator hint and display line range as non-executable hints
+- query keys, roles, relations, visibility, test/export flags, and fact hash
+
+Agent-facing candidate selection must use this normalized fact model instead of reducing parser facts to only =path + line + text=. Line ranges may be rendered as display evidence, but they are not executable selector identity. Exact code materialization requires a structural selector or native fact id, except for explicitly marked degraded fallback routes.
+* Projection Materializer
+Provider execution is allowed at the final projection boundary. The Rust materializer chooses a typed action from indexed evidence and calls the provider only for selected exact projections.
+
+Materialization rules:
+- owner and item exploration should prefer skeleton, names, outline, diagnostic, unsafe, or flow capsule projections before code
+- =query-code= requires exact parser identity or native fact identity
+- =sourceLocatorHint= may be passed as transport evidence, but must not be treated as an executable selector by default renderers
+- multiple exact projections should be batched into one provider process when the provider supports batch query
+- prompt stdout and machine packets should be produced in one provider invocation through =--packet-out= when supported
+
+If a provider lacks batch projection or packet-out support, Rust may use a compatibility fallback, but the receipt must report the fallback mode so sandtable and CI can keep the debt visible.
+* Cold Warm Hot Gates
+Search/query performance is verified in three states.
+
+Cold path may build or refresh source, fact, or dependency indexes. Its receipt must report provider process count, provider elapsed time, indexed files, indexed owners, indexed facts, changed input hashes, SQLite write counts, graph-turbo time, render time, packet-out mode, and the explicit refresh command that produced the state.
+
+Warm broad search must answer from Rust-owned source/fact/dependency indexes before exact projection. It should not start a language provider for workspace owner discovery, dependency topology, broad search ranking, or graph-turbo input assembly. Warm receipts must expose =sourceIndexHit=, =factIndexHit= or =dependencyIndexHit= as applicable, =providerProcessCount=, first route, graph-turbo time, and render time.
+
+Hot path reuses the same Rust index generation plus graph-turbo structural backend fingerprint. It should only re-rank or render the selected frontier and should be millisecond-level for broad routing.
+
+The shared performance gate schema is =schemas/semantic-hot-path-performance-gate.v1.schema.json=. Scenario and sandtable tests should use it to prove:
+- =warmBroadProviderProcessCount == 0=
+- relevant index hit flags are true on warm paths
+- first route is not =prime= when owner, selector, dependency, failure, or test evidence already exists
+- exact code routes require parser-owned identity
+- line ranges are display hints, not executable selectors
+- projection provider process count is bounded, preferably one batch process
+- packet-out compatibility fallback is explicit
 * gtags Integration
 
 GNU Global/gtags can participate only as an optional Rust-side source-index

@@ -790,7 +790,7 @@ fn is_guide_help(args: &[String]) -> bool {
 
 fn provider_usage() -> String {
     format!(
-        "usage: asp <{}> [--help|--version] <guide|search|query|check|cache|info|bench|agent doctor|ast-patch|evidence> ...",
+        "usage: asp <{}> [--help|--version] <guide|search|query|check|cache|info|bench|agent doctor|ast-patch|evidence> ...\nsearch: pipe|fzf|deps|dependency|ingest|failure|reasoning|owner|guide|prime\nsearch deps: current manifest dependency topology and dependency-owned next actions",
         SUPPORTED_LANGUAGES.join("|")
     )
 }

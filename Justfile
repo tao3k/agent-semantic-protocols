@@ -15,6 +15,7 @@ default:
 _agent-tools-run-asp bin_dir +args:
     @bin_dir="{{bin_dir}}"; \
     if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-$HOME/.local/bin}"; fi; \
+    case ":$PATH:" in *":${bin_dir}:"*) ;; *) PATH="${bin_dir}:$PATH"; export PATH ;; esac; \
     protocol_bin="${ASP_BIN:-${bin_dir}/asp}"; \
     if [ -x "${protocol_bin}" ]; then \
       stale_reason=""; \
@@ -36,7 +37,20 @@ _agent-tools-run-asp bin_dir +args:
 
 # Install asp, asp-graph-turbo, and provider harnesses into $HOME/.local/bin by default, then install Codex hooks.
 install bin_dir="":
+	@just agent-tools-ensure-local-bin-path
 	@just agent-hooks-install "{{bin_dir}}"
+
+# Ensure interactive bash sessions can find the canonical local asp install.
+agent-tools-ensure-local-bin-path:
+	@marker="# agent-semantic-protocols: add local agent tools"; \
+	  path_line='export PATH="$HOME/.local/bin:$PATH"'; \
+	  touch "$HOME/.bashrc"; \
+	  if ! grep -Fq '$HOME/.local/bin' "$HOME/.bashrc" && ! grep -Fq "$HOME/.local/bin" "$HOME/.bashrc"; then \
+	    printf '\n%s\n%s\n' "${marker}" "${path_line}" >> "$HOME/.bashrc"; \
+	    echo "[agent-tools-ensure-local-bin-path] added $HOME/.local/bin to ~/.bashrc"; \
+	  else \
+	    echo "[agent-tools-ensure-local-bin-path] ~/.bashrc already contains $HOME/.local/bin"; \
+	  fi
 
 # Install all agent tools, including asp-graph-turbo, and Codex hook config. Optional: just agent-hooks-install ~/.local/bin
 agent-hooks-install bin_dir="":
@@ -50,7 +64,7 @@ agent-hooks-doctor bin_dir="":
 	@just _agent-hooks-doctor-codex "{{bin_dir}}"
 
 _agent-hooks-install-codex bin_dir="":
-	@just _agent-tools-run-asp "{{bin_dir}}" hook install --client codex {{repo}}
+	@just _agent-tools-run-asp "{{bin_dir}}" install plugin --codex {{repo}}
 
 _agent-hooks-doctor-codex bin_dir="":
 	@just _agent-tools-run-asp "{{bin_dir}}" hook doctor --client codex {{repo}}

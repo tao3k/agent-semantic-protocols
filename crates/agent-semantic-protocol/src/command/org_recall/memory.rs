@@ -19,7 +19,6 @@ struct MemoryRankRequest {
 struct MemoryWorkerRankRequest<'a> {
     command: &'static str,
     payload: &'a MemoryRankRequest,
-    intent: &'a str,
     project: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
     session: Option<&'a str>,
@@ -41,6 +40,18 @@ struct MemoryRankPlan {
     todo: String,
     mtime: f64,
     properties: BTreeMap<String, String>,
+    #[serde(rename = "taskCandidates")]
+    task_candidates: Vec<MemoryRankTaskCandidate>,
+}
+
+#[derive(Serialize)]
+struct MemoryRankTaskCandidate {
+    kind: String,
+    status: String,
+    title: String,
+    section: Option<String>,
+    #[serde(rename = "sourceLine")]
+    source_line: Option<usize>,
 }
 
 #[derive(Deserialize)]
@@ -52,18 +63,15 @@ struct MemoryRankResponse {
 struct MemoryRankRow {
     id: String,
     score: f64,
-    #[serde(rename = "textScore")]
-    text_score: f64,
+    #[serde(rename = "contextScore")]
+    context_score: f64,
     #[serde(rename = "memoryScore")]
     memory_score: f64,
     #[serde(rename = "recencyScore")]
     recency_score: f64,
-    #[serde(rename = "intentScore")]
-    intent_score: f64,
 }
 
 pub(super) struct MemoryRankOptions<'a> {
-    pub(super) intent: &'a str,
     pub(super) project: &'a str,
     pub(super) session: Option<&'a str>,
     pub(super) branch: Option<&'a str>,
@@ -83,7 +91,6 @@ pub(super) fn rank_plans_with_memory_engine(
     options: MemoryRankOptions<'_>,
 ) -> Result<MemoryRankedPlans, String> {
     let MemoryRankOptions {
-        intent,
         project,
         session,
         branch,
@@ -108,6 +115,17 @@ pub(super) fn rank_plans_with_memory_engine(
                 todo: candidate.todo.clone(),
                 mtime: candidate.mtime,
                 properties: candidate.properties.clone(),
+                task_candidates: candidate
+                    .task_candidates
+                    .iter()
+                    .map(|task| MemoryRankTaskCandidate {
+                        kind: task.kind.clone(),
+                        status: task.status.clone(),
+                        title: task.title.clone(),
+                        section: task.section.clone(),
+                        source_line: task.source_line,
+                    })
+                    .collect(),
             })
             .collect(),
     };
@@ -115,8 +133,6 @@ pub(super) fn rank_plans_with_memory_engine(
         .map_err(|error| format!("failed to encode memory score request: {error}"))?;
     let mut rank_args = vec![
         "rank-plans".to_string(),
-        "--intent".to_string(),
-        intent.to_string(),
         "--project".to_string(),
         project.to_string(),
         "--top-k".to_string(),
@@ -129,7 +145,6 @@ pub(super) fn rank_plans_with_memory_engine(
     let worker_request = MemoryWorkerRankRequest {
         command: "rank-plans",
         payload: &request,
-        intent,
         project,
         session,
         branch,
@@ -137,28 +152,28 @@ pub(super) fn rank_plans_with_memory_engine(
         state: state.map(|value| absolute_path(value, project_root).display().to_string()),
         embedding_dim,
     };
-    let (output, transport) = if let Ok(socket_path) = env::var("ASP_MEMORY_ENGINE_SOCKET") {
-        (
-            run_asp_memory_engine_worker(&socket_path, &worker_request)?,
-            "socket:env",
-        )
+    let (response, transport) = if let Ok(socket_path) = env::var("ASP_MEMORY_ENGINE_SOCKET") {
+        let output = run_asp_memory_engine_worker(&socket_path, &worker_request)?;
+        (decode_memory_rank_response(&output)?, "socket:env")
     } else if memory_engine_auto_socket_enabled() {
-        match run_asp_memory_engine_auto_worker(&worker_request, project_root) {
-            Ok(output) => (output, "socket:auto"),
-            Err(_) => (
-                run_asp_memory_engine(&rank_args, &request_body, project_root)?,
-                "process:auto-fallback",
-            ),
+        match run_asp_memory_engine_auto_worker_checked(
+            &worker_request,
+            project_root,
+            validate_memory_rank_response,
+        ) {
+            Ok(output) => (decode_memory_rank_response(&output)?, "socket:auto"),
+            Err(_) => {
+                let output = run_asp_memory_engine(&rank_args, &request_body, project_root)?;
+                (
+                    decode_memory_rank_response(&output)?,
+                    "process:auto-fallback",
+                )
+            }
         }
     } else {
-        (
-            run_asp_memory_engine(&rank_args, &request_body, project_root)?,
-            "process",
-        )
+        let output = run_asp_memory_engine(&rank_args, &request_body, project_root)?;
+        (decode_memory_rank_response(&output)?, "process")
     };
-    let response: MemoryRankResponse = serde_json::from_slice(&output).map_err(|error| {
-        format!("failed to decode asp-memory-engine rank-plans output: {error}")
-    })?;
     let candidates_by_id: BTreeMap<_, _> = candidates
         .iter()
         .map(|candidate| (candidate.plan_id(), candidate.clone()))
@@ -173,39 +188,60 @@ pub(super) fn rank_plans_with_memory_engine(
                 .map(|candidate| RankedOrgPlan {
                     candidate,
                     score: row.score,
-                    text_score: row.text_score,
+                    context_score: row.context_score,
                     memory_score: row.memory_score,
                     recency_score: row.recency_score,
-                    intent_score: row.intent_score,
                 })
         })
         .collect();
     Ok(MemoryRankedPlans { plans, transport })
 }
 
-fn run_asp_memory_engine_auto_worker(
-    request: &MemoryWorkerRankRequest<'_>,
-    project_root: &Path,
-) -> Result<Vec<u8>, String> {
-    let socket_path = default_memory_engine_socket(project_root);
-    if let Ok(output) = run_asp_memory_engine_worker_path(&socket_path, request) {
-        return Ok(output);
-    }
-    remove_stale_socket(&socket_path)?;
-    start_memory_engine_worker(&socket_path, project_root)?;
-    run_asp_memory_engine_worker_path(&socket_path, request)
+fn decode_memory_rank_response(output: &[u8]) -> Result<MemoryRankResponse, String> {
+    serde_json::from_slice(output)
+        .map_err(|error| format!("failed to decode asp-memory-engine rank-plans output: {error}"))
 }
 
-fn run_asp_memory_engine_worker(
+fn validate_memory_rank_response(output: &[u8]) -> Result<(), String> {
+    decode_memory_rank_response(output).map(|_| ())
+}
+
+pub(super) fn run_asp_memory_engine_auto_worker_checked<T, F>(
+    request: &T,
+    project_root: &Path,
+    validate: F,
+) -> Result<Vec<u8>, String>
+where
+    T: Serialize,
+    F: Fn(&[u8]) -> Result<(), String>,
+{
+    let socket_path = default_memory_engine_socket(project_root);
+    match run_asp_memory_engine_worker_path(&socket_path, request) {
+        Ok(output) => match validate(&output) {
+            Ok(()) => return Ok(output),
+            Err(_) => remove_stale_socket(&socket_path)?,
+        },
+        Err(_) => remove_stale_socket(&socket_path)?,
+    }
+    start_memory_engine_worker(&socket_path, project_root)?;
+    let output = run_asp_memory_engine_worker_path(&socket_path, request)?;
+    if let Err(error) = validate(&output) {
+        let _ = remove_stale_socket(&socket_path);
+        return Err(error);
+    }
+    Ok(output)
+}
+
+pub(super) fn run_asp_memory_engine_worker<T: Serialize>(
     socket_path: &str,
-    request: &MemoryWorkerRankRequest<'_>,
+    request: &T,
 ) -> Result<Vec<u8>, String> {
     run_asp_memory_engine_worker_path(Path::new(socket_path), request)
 }
 
-fn run_asp_memory_engine_worker_path(
+fn run_asp_memory_engine_worker_path<T: Serialize>(
     socket_path: &Path,
-    request: &MemoryWorkerRankRequest<'_>,
+    request: &T,
 ) -> Result<Vec<u8>, String> {
     #[cfg(unix)]
     {
@@ -289,7 +325,7 @@ fn wait_for_memory_engine_socket(socket_path: &Path) -> Result<(), String> {
     }
 }
 
-fn run_asp_memory_engine(
+pub(super) fn run_asp_memory_engine(
     args: &[String],
     stdin: &[u8],
     project_root: &Path,
@@ -333,12 +369,25 @@ fn asp_memory_engine_command(project_root: &Path) -> Result<Command, String> {
     if let Ok(binary) = env::var("ASP_MEMORY_ENGINE") {
         return Ok(Command::new(binary));
     }
+    if let Some(command) = source_memory_engine_command(project_root) {
+        return Ok(command);
+    }
     if let Some(binary) = project_memory_engine_binary(project_root) {
         return Ok(Command::new(binary));
     }
     if command_exists("asp-memory-engine") {
         return Ok(Command::new("asp-memory-engine"));
     }
+    if let Some(command) = source_memory_engine_command(Path::new(env!("CARGO_MANIFEST_DIR"))) {
+        return Ok(command);
+    }
+    Err(
+        "asp org recall plans requires ASP_MEMORY_ENGINE, a local packages/python workspace, a project packaged asp-memory-engine, or `asp-memory-engine` on PATH"
+            .to_string(),
+    )
+}
+
+fn source_memory_engine_command(project_root: &Path) -> Option<Command> {
     let root_packages_python = absolute_path(project_root, project_root).join("packages/python");
     let source_packages_python =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packages/python");
@@ -354,12 +403,9 @@ fn asp_memory_engine_command(project_root: &Path) -> Result<Command, String> {
             .arg(packages_python)
             .arg("--frozen")
             .arg("asp-memory-engine");
-        return Ok(command);
+        return Some(command);
     }
-    Err(
-        "asp org recall plans requires ASP_MEMORY_ENGINE, a project packaged asp-memory-engine, `asp-memory-engine` on PATH, or a local packages/python workspace"
-            .to_string(),
-    )
+    None
 }
 
 fn project_memory_engine_binary(project_root: &Path) -> Option<PathBuf> {
@@ -374,7 +420,7 @@ fn project_memory_engine_binary(project_root: &Path) -> Option<PathBuf> {
     .find(|candidate| candidate.is_file())
 }
 
-fn memory_engine_auto_socket_enabled() -> bool {
+pub(super) fn memory_engine_auto_socket_enabled() -> bool {
     !matches!(
         env::var("ASP_MEMORY_ENGINE_AUTO_SOCKET")
             .unwrap_or_else(|_| "1".to_string())
@@ -414,13 +460,18 @@ fn remove_stale_socket(socket_path: &Path) -> Result<(), String> {
     }
 }
 
-fn push_optional_string_arg(args: &mut Vec<String>, flag: &str, value: Option<&str>) {
+pub(super) fn push_optional_string_arg(args: &mut Vec<String>, flag: &str, value: Option<&str>) {
     if let Some(value) = value {
         args.extend([flag.to_string(), value.to_string()]);
     }
 }
 
-fn push_optional_path_arg(args: &mut Vec<String>, flag: &str, value: Option<&Path>, root: &Path) {
+pub(super) fn push_optional_path_arg(
+    args: &mut Vec<String>,
+    flag: &str,
+    value: Option<&Path>,
+    root: &Path,
+) {
     if let Some(value) = value {
         args.extend([
             flag.to_string(),
@@ -429,7 +480,7 @@ fn push_optional_path_arg(args: &mut Vec<String>, flag: &str, value: Option<&Pat
     }
 }
 
-fn absolute_path(value: &Path, root: &Path) -> PathBuf {
+pub(super) fn absolute_path(value: &Path, root: &Path) -> PathBuf {
     if value.is_absolute() {
         value.to_path_buf()
     } else {

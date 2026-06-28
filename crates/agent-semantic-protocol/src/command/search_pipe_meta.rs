@@ -36,6 +36,9 @@ fn fast_search_usage(language_id: &str, subcommand: Option<&str>) -> String {
         Some("fzf") => format!(
             "usage: asp {language_id} search fzf <term-or-error> [items|tests|deps] [--view seeds|graph-turbo-request] [owner...]\n\nRuns bounded lexical/fuzzy recall and renders an ASP-owned search frontier."
         ),
+        Some("deps" | "dependency") => format!(
+            "usage: asp {language_id} search deps <dependency-or-api> [api-term] [--workspace PROJECT_ROOT] [--view hits|seeds|public-external-types]\n\nReads current manifest dependency topology and renders dependency-owned next actions."
+        ),
         Some("ingest") => format!(
             "usage: asp {language_id} search ingest [items|tests|deps] [--view seeds|graph-turbo-request]\n\nReads candidate lines from stdin and renders an ASP-owned search frontier."
         ),
@@ -49,7 +52,7 @@ fn fast_search_usage(language_id: &str, subcommand: Option<&str>) -> String {
             "usage: asp {language_id} search owner <owner-path> items --query <symbol-or-a|b|c> --view seeds\n\nRanks owner-local items for an LLM-generated symbol/API query-set."
         ),
         _ => format!(
-            "usage: asp {language_id} search <pipe|fzf|ingest|failure|reasoning|owner|guide|prime> ...\n\nUse --help after a search subcommand for focused usage."
+            "usage: asp {language_id} search <pipe|fzf|deps|dependency|ingest|failure|reasoning|owner|guide|prime> ...\n\nUse --help after a search subcommand for focused usage.\nsearch deps: current manifest dependency topology and dependency-owned next actions."
         ),
     }
 }

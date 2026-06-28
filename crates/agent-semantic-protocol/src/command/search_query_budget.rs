@@ -61,19 +61,17 @@ pub(super) fn search_rg_terms_budget_block(
     })
 }
 
+use std::collections::BTreeSet;
+
 pub(super) fn search_query_terms(query: &str) -> Vec<String> {
-    let mut terms = Vec::new();
-    for term in query
+    let mut seen = BTreeSet::new();
+    query
         .split(|character: char| character == '|' || character == ',' || character.is_whitespace())
         .map(str::trim)
         .filter(|term| !term.is_empty())
         .map(str::to_ascii_lowercase)
-    {
-        if !terms.iter().any(|seen| seen == &term) {
-            terms.push(term);
-        }
-    }
-    terms
+        .filter(|term| seen.insert(term.clone()))
+        .collect()
 }
 
 fn broad_scope(scopes: &[PathBuf]) -> bool {

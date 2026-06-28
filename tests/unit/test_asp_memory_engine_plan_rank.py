@@ -4,7 +4,13 @@ from __future__ import annotations
 
 import json
 
-from asp_memory_engine import Episode, EpisodeDraft, EpisodeStore, PlanMemoryContext, StoreConfig
+from asp_memory_engine import (
+    Episode,
+    EpisodeDraft,
+    EpisodeStore,
+    PlanMemoryContext,
+    StoreConfig,
+)
 from asp_memory_engine import cli as memory_cli
 
 
@@ -13,7 +19,11 @@ def test_rank_plans_sorts_rust_owned_candidates_with_memory_score(
 ) -> None:
     state_path = tmp_path / "memory-state.json"
     store = EpisodeStore(StoreConfig(path=str(state_path), embedding_dim=8))
-    context = PlanMemoryContext(project_id="repo", plan_id="tighten-asp-org-recall-flow")
+    context = PlanMemoryContext(
+        project_id="repo",
+        session_id="session-a",
+        plan_id="tighten-asp-org-recall-flow",
+    )
     store.store(
         Episode.new(
             EpisodeDraft(
@@ -22,7 +32,7 @@ def test_rank_plans_sorts_rust_owned_candidates_with_memory_score(
                 intent_embedding=store.encoder.encode("tighten org recall flow"),
                 experience="continue the recall implementation",
                 outcome="pending",
-            ).with_plan_context(context, sharing="project")
+            ).with_plan_context(context, sharing="session")
         )
     )
     store.save_state(state_path)
@@ -40,6 +50,7 @@ def test_rank_plans_sorts_rust_owned_candidates_with_memory_score(
                         "properties": {
                             "CONTRACT_ORG": "agent.plan.v1",
                             "ID": "unrelated-plan",
+                            "SESSION_ID": "session-b",
                             "OBJECTIVE": "Unrelated plan",
                         },
                     },
@@ -52,6 +63,7 @@ def test_rank_plans_sorts_rust_owned_candidates_with_memory_score(
                         "properties": {
                             "CONTRACT_ORG": "agent.plan.v1",
                             "ID": "tighten-asp-org-recall-flow",
+                            "SESSION_ID": "session-a",
                             "OBJECTIVE": "Tighten ASP org recall flow",
                             "NEXT_ACTION": "continue the recall implementation",
                         },
@@ -70,8 +82,8 @@ def test_rank_plans_sorts_rust_owned_candidates_with_memory_score(
             "8",
             "--project",
             "repo",
-            "--intent",
-            "tighten org recall flow",
+            "--session",
+            "session-a",
         ]
     )
 
@@ -82,11 +94,17 @@ def test_rank_plans_sorts_rust_owned_candidates_with_memory_score(
     assert payload["ranker"] == "memory-engine"
     assert payload["plans"][0]["id"] == "tighten-asp-org-recall-flow"
     assert payload["plans"][0]["memoryScore"] > 0.0
-    assert payload["plans"][0]["textScore"] > 0.0
+    assert payload["plans"][0]["contextScore"] > 0.0
+    assert "textScore" not in payload["plans"][0]
+    assert "intentScore" not in payload["plans"][0]
     scores = {plan["id"]: plan for plan in payload["plans"]}
     assert (
         scores["tighten-asp-org-recall-flow"]["memoryScore"]
         > scores["unrelated-plan"]["memoryScore"]
+    )
+    assert (
+        scores["tighten-asp-org-recall-flow"]["contextScore"]
+        > scores["unrelated-plan"]["contextScore"]
     )
 
 
@@ -143,7 +161,7 @@ def test_rank_plans_keeps_exact_plan_memory_above_shared_memory(
                         "properties": {
                             "CONTRACT_ORG": "agent.plan.v1",
                             "ID": "unrelated-plan",
-                            "PLAN_SESSION": "session-a",
+                            "SESSION_ID": "session-a",
                             "OBJECTIVE": "stabilize memory engine recall flow",
                         },
                     },
@@ -156,7 +174,7 @@ def test_rank_plans_keeps_exact_plan_memory_above_shared_memory(
                         "properties": {
                             "CONTRACT_ORG": "agent.plan.v1",
                             "ID": "memory-engine-hot-path",
-                            "PLAN_SESSION": "session-a",
+                            "SESSION_ID": "session-a",
                             "OBJECTIVE": "stabilize memory engine recall flow",
                         },
                     },
@@ -174,8 +192,8 @@ def test_rank_plans_keeps_exact_plan_memory_above_shared_memory(
             "8",
             "--project",
             "repo",
-            "--intent",
-            "stabilize memory engine recall flow",
+            "--session",
+            "session-a",
         ]
     )
 

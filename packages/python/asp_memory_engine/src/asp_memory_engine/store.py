@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .backend import LocalMemoryStateStore, MemoryStateSnapshot
+from .checkpoint import Checkpoint
 from .encoder import IntentEncoder
 from .episode import Episode, normalize_scope
 from .plan_context import PlanMemoryContext, PlanRecallComputation
@@ -26,6 +27,7 @@ class EpisodeStore:
         self.encoder = IntentEncoder(self.config.embedding_dim)
         self.q_table = QTable()
         self.episodes: list[Episode] = []
+        self.checkpoints: list[Checkpoint] = []
         self.recall_feedback_bias_by_scope: dict[str, float] = {}
 
     def store(self, episode: Episode) -> str:
@@ -36,6 +38,42 @@ class EpisodeStore:
         self.episodes.append(episode)
         self.q_table.set_q(episode.id, episode.q_value)
         return episode.id
+
+    def store_checkpoint(self, checkpoint: Checkpoint) -> str:
+        checkpoint.normalize_tracking_fields()
+        if not checkpoint.session_id.strip():
+            raise ValueError("checkpoint session_id must not be empty")
+        if not checkpoint.title.strip():
+            raise ValueError("checkpoint title must not be empty")
+        self.checkpoints = [item for item in self.checkpoints if item.id != checkpoint.id]
+        self.checkpoints.append(checkpoint)
+        return checkpoint.id
+
+    def list_checkpoints(
+        self,
+        *,
+        project_id: str | None = None,
+        session_id: str | None = None,
+        plan_id: str | None = None,
+        branch_id: str | None = None,
+        status: str | None = None,
+        top_k: int | None = None,
+    ) -> list[Checkpoint]:
+        checkpoints = [
+            checkpoint
+            for checkpoint in self.checkpoints
+            if checkpoint.matches(
+                project_id=project_id,
+                session_id=session_id,
+                plan_id=plan_id,
+                branch_id=branch_id,
+                status=status,
+            )
+        ]
+        checkpoints.sort(key=lambda checkpoint: checkpoint.updated_at, reverse=True)
+        if top_k is None:
+            return checkpoints
+        return checkpoints[:top_k]
 
     def recall(self, intent: str, *, top_k: int = 5, scope: str | None = None) -> list[tuple[Episode, float]]:
         candidates = self._episodes_for_scope(scope)
@@ -95,12 +133,14 @@ class EpisodeStore:
     def snapshot(self) -> MemoryStateSnapshot:
         return MemoryStateSnapshot(
             episodes=tuple(self.episodes),
+            checkpoints=tuple(self.checkpoints),
             q_values=self.q_table.to_mapping(),
             recall_feedback_bias_by_scope=dict(self.recall_feedback_bias_by_scope),
         )
 
     def load_snapshot(self, snapshot: MemoryStateSnapshot) -> None:
         self.episodes = list(snapshot.episodes)
+        self.checkpoints = list(snapshot.checkpoints)
         self.q_table.load_mapping(snapshot.q_values)
         self.recall_feedback_bias_by_scope = dict(snapshot.recall_feedback_bias_by_scope)
 

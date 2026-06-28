@@ -49,9 +49,9 @@ aliases: graph:{G=search,Q=query,T=test,O=owner,I=item}\n",
     };
     for (index, item_match) in item_matches.iter().enumerate() {
         let item_id = numbered_id("I", index);
-        let source_locator_hint =
-            format!("{display_owner}:{}:{}", item_match.start, item_match.end);
         let structural_selector = structural_selector_for(item_match.kind, &item_match.term);
+        let source_locator_hint =
+            format!("{}:{}:{}", display_owner, item_match.start, item_match.end);
         let _ = writeln!(
             rendered,
             "{item_id}=item:symbol({})@{structural_selector}!syntax;",
@@ -96,11 +96,8 @@ aliases: graph:{G=search,Q=query,T=test,O=owner,I=item}\n",
         frontier.join(",")
     );
     if item_matches.is_empty() {
-        let _ = writeln!(
-            rendered,
-            "[route-graph] profile=asp-search-routing evidence=known-owner+symbol chosen=BROAD_QUERY reason=\"owner query did not match parser items; fall back to scoped rg refinement\" frontier=scoped-rg-query avoid=direct-source-read|line-range-selector"
-        );
-        let _ = writeln!(rendered, "recommendedNext=scoped-rg-query");
+        let _ = writeln!(rendered, "actionFrontier=A1.scoped-rg-query");
+        let _ = writeln!(rendered, "recommendedNext=A1.scoped-rg-query");
         let _ = writeln!(
             rendered,
             "nextCommand=asp rg -query {} {}",
@@ -109,25 +106,7 @@ aliases: graph:{G=search,Q=query,T=test,O=owner,I=item}\n",
         );
         rendered.push_str("reason=no-owner-item-match\n");
     } else if let Some(item_match) = item_matches.first() {
-        let source_locator_hint =
-            format!("{display_owner}:{}:{}", item_match.start, item_match.end);
         let structural_selector = structural_selector_for(item_match.kind, &item_match.term);
-        let _ = writeln!(
-            rendered,
-            "[route-graph] profile=asp-search-routing evidence=known-owner+symbol chosen=KNOWN_OWNER reason=\"owner and symbol evidence matched parser item; inspect skeleton before code\" frontier=A1.item-skeleton,A2.syntax-outline,A3.query-code avoid=search-prime|direct-source-read|line-range-selector"
-        );
-        let _ = writeln!(
-            rendered,
-            "A1=item-skeleton(selector={structural_selector},projection=skeleton,hint={source_locator_hint})!skeleton"
-        );
-        let _ = writeln!(
-            rendered,
-            "A2=syntax-outline(selector={structural_selector},projection=outline,hint={source_locator_hint})!syntax"
-        );
-        let _ = writeln!(
-            rendered,
-            "A3=query-code(selector={structural_selector},requiresExact=true,codePolicy=exact-only,hint={source_locator_hint})!query-code"
-        );
         let _ = writeln!(
             rendered,
             "actionFrontier=A1.item-skeleton,A2.syntax-outline,A3.query-code"

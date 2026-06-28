@@ -36,6 +36,21 @@
     "protocolVersion": {
       "const": "1"
     },
+    "eventTimestampMs": {
+      "description": "Preferred metadata event timestamp as Unix epoch milliseconds. Artifact history importers use this before falling back to file modification time.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "startedAtMs": {
+      "description": "Optional metadata start timestamp as Unix epoch milliseconds.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "endedAtMs": {
+      "description": "Optional metadata end timestamp as Unix epoch milliseconds.",
+      "type": "integer",
+      "minimum": 0
+    },
     "sourceArtifactId": {
       "type": "string",
       "minLength": 1

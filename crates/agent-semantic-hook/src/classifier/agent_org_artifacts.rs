@@ -138,7 +138,7 @@ fn archive_warning_message(warning: &AgentOrgArtifactsArchiveWarning) -> String 
 
 fn recall_plans_command(warning: &AgentOrgArtifactsArchiveWarning) -> String {
     format!(
-        "asp org recall plans --artifacts-root {} --archive-dir {} --intent 'active unfinished ASP Org plan'",
+        "asp org recall plans --artifacts-root {} --archive-dir {}",
         shell_arg(&warning.artifacts_path),
         shell_arg(&warning.archives_dir)
     )

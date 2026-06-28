@@ -1,80 +1,136 @@
-use super::{memory::MemoryRankedPlans, model::RankedOrgPlan};
+use super::{checkpoint::CheckpointSyncResult, memory::MemoryRankedPlans, model::RankedOrgPlan};
 use serde_json::json;
 use std::{
     env,
     path::{Path, PathBuf},
 };
 
-pub(super) fn print_text_report(root: &Path, archive_dir: &str, ranked: &MemoryRankedPlans) {
+pub(super) fn print_text_report(
+    root: &Path,
+    archive_dir: &str,
+    ranked: &MemoryRankedPlans,
+    session: Option<&str>,
+    checkpoint_sync: Option<&CheckpointSyncResult>,
+) {
     println!(
-        "[org-recall-plans] owner=rust memoryEngine=asp-memory-engine ranker=memory-engine memoryTransport={} artifactsRoot={} hits={}",
-        ranked.transport,
-        field(&root.display().to_string()),
+        "[org-recall-plans] owner=rust session={} hits={}",
+        field(session.unwrap_or_default()),
         ranked.plans.len()
     );
-    for (index, item) in ranked.plans.iter().enumerate() {
-        let row = plan_row(root, archive_dir, item);
-        println!(
-            "|plan rank={} score={:.6} textScore={:.6} memoryScore={:.6} recencyScore={:.6} intentScore={:.6} todo={} status={} evidenceStatus={} reviewStatus={} reflectionComplete={} title={} id={} path={} objective={} nextAction={} resumeCommand={}",
-            index + 1,
-            item.score,
-            item.text_score,
-            item.memory_score,
-            item.recency_score,
-            item.intent_score,
-            field(row["todo"].as_str().unwrap_or_default()),
-            field(row["status"].as_str().unwrap_or_default()),
-            field(row["evidenceStatus"].as_str().unwrap_or_default()),
-            field(row["reviewStatus"].as_str().unwrap_or_default()),
-            field(row["reflectionComplete"].as_str().unwrap_or_default()),
-            field(row["title"].as_str().unwrap_or_default()),
-            field(row["id"].as_str().unwrap_or_default()),
-            field(row["path"].as_str().unwrap_or_default()),
-            field(row["objective"].as_str().unwrap_or_default()),
-            field(row["nextAction"].as_str().unwrap_or_default()),
-            field(row["resumeCommand"].as_str().unwrap_or_default())
-        );
-        println!(
-            "|plan-action rank={} action={} reason={} command={}",
-            index + 1,
-            field(row["action"].as_str().unwrap_or_default()),
-            field(row["actionReason"].as_str().unwrap_or_default()),
-            field(row["actionCommand"].as_str().unwrap_or_default())
-        );
-    }
     if let Some(item) = ranked.plans.first() {
-        let row = plan_row(root, archive_dir, item);
+        let row = plan_row(
+            root,
+            archive_dir,
+            item,
+            session,
+            checkpoint_sync,
+            ranked.plans.len().saturating_sub(1),
+        );
+        let receipt = &row["selectionReceipt"];
         println!(
-            "|next recommendedAction={} rank=1 command={}",
+            "|next action={} rank=1 plan={} title={} status={} nextAction={}",
+            field(row["action"].as_str().unwrap_or_default()),
+            field(row["id"].as_str().unwrap_or_default()),
+            field(row["title"].as_str().unwrap_or_default()),
+            field(row["status"].as_str().unwrap_or_default()),
+            field(row["nextAction"].as_str().unwrap_or_default())
+        );
+        println!(
+            "|why session={} sessionMatched={} selectedBy={} taskHits={} checkpointHits={} alternatives={} memoryTransport={}",
+            field(receipt["session"].as_str().unwrap_or_default()),
+            receipt["sessionMatched"].as_bool().unwrap_or(false),
+            field(receipt["selectedBy"].as_str().unwrap_or_default()),
+            receipt["taskHits"].as_u64().unwrap_or_default(),
+            receipt["checkpointHits"].as_u64().unwrap_or_default(),
+            receipt["alternatives"].as_u64().unwrap_or_default(),
+            field(ranked.transport)
+        );
+        println!(
+            "|query action={} command={}",
             field(row["action"].as_str().unwrap_or_default()),
             field(row["actionCommand"].as_str().unwrap_or_default())
         );
+        for (task_index, task) in row["taskCandidates"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .enumerate()
+        {
+            println!(
+                "|evidence rank={} kind={} status={} section={} title={} sourceLocator={}",
+                task_index + 1,
+                field(task["kind"].as_str().unwrap_or_default()),
+                field(task["status"].as_str().unwrap_or_default()),
+                field(task["section"].as_str().unwrap_or_default()),
+                field(task["title"].as_str().unwrap_or_default()),
+                field(task["sourceLocator"].as_str().unwrap_or_default())
+            );
+        }
     }
-    println!(
-        "|next archiveCommand={}",
-        field(&format!(
-            "asp org archive done --artifacts-root {} --archive-dir {}",
-            root.display(),
-            archive_dir
-        ))
-    );
+
+    for (index, item) in ranked.plans.iter().enumerate() {
+        let row = plan_row(
+            root,
+            archive_dir,
+            item,
+            session,
+            checkpoint_sync,
+            ranked.plans.len().saturating_sub(1),
+        );
+        println!(
+            "|candidate rank={} action={} plan={} title={} status={} nextAction={}",
+            index + 1,
+            field(row["action"].as_str().unwrap_or_default()),
+            field(row["id"].as_str().unwrap_or_default()),
+            field(row["title"].as_str().unwrap_or_default()),
+            field(row["status"].as_str().unwrap_or_default()),
+            field(row["nextAction"].as_str().unwrap_or_default())
+        );
+    }
+    if let Some(sync) = checkpoint_sync {
+        println!(
+            "|checkpoint-sync checkpoints={} skippedSessionPlans={} memoryTransport={}",
+            sync.checkpoints,
+            sync.skipped_session_plans,
+            field(sync.transport)
+        );
+    }
 }
 
 pub(super) fn print_json_report(
     root: &Path,
     archive_dir: &str,
     ranked: &MemoryRankedPlans,
+    session: Option<&str>,
+    checkpoint_sync: Option<&CheckpointSyncResult>,
 ) -> Result<(), String> {
-    let payload = json!({
+    let mut payload = json!({
         "schemaId": "agent.semantic-protocols.org-plan-recall",
         "schemaVersion": "1",
         "owner": "rust",
         "memoryEngine": "asp-memory-engine",
         "ranker": "memory-engine",
         "memoryTransport": ranked.transport,
+        "session": session,
         "artifactsRoot": root.display().to_string(),
-        "plans": ranked.plans.iter().map(|item| plan_row(root, archive_dir, item)).collect::<Vec<_>>(),
+        "plans": ranked.plans.iter().map(|item| {
+            plan_row(
+                root,
+                archive_dir,
+                item,
+                session,
+                checkpoint_sync,
+                ranked.plans.len().saturating_sub(1),
+            )
+        }).collect::<Vec<_>>(),
     });
+    if let Some(sync) = checkpoint_sync {
+        payload["checkpointSync"] = json!({
+            "checkpoints": sync.checkpoints,
+            "skippedSessionPlans": sync.skipped_session_plans,
+            "memoryTransport": sync.transport,
+        });
+    }
     println!(
         "{}",
         serde_json::to_string(&payload)
@@ -83,14 +139,23 @@ pub(super) fn print_json_report(
     Ok(())
 }
 
-fn plan_row(root: &Path, archive_dir: &str, ranked: &RankedOrgPlan) -> serde_json::Value {
+fn plan_row(
+    root: &Path,
+    archive_dir: &str,
+    ranked: &RankedOrgPlan,
+    session: Option<&str>,
+    checkpoint_sync: Option<&CheckpointSyncResult>,
+    alternatives: usize,
+) -> serde_json::Value {
     let candidate = &ranked.candidate;
     let path = display_path(&candidate.path);
-    let resume_command = format!(
-        "asp org query --term {} --workspace {} --content",
+    let resume_terms = [
         candidate.plan_id(),
-        path.display()
-    );
+        "recovery".to_string(),
+        "evidence".to_string(),
+        "next-action".to_string(),
+    ];
+    let resume_command = format!("asp org query {}", resume_terms.join(" "));
     let archive_command = format!(
         "asp org archive done --artifacts-root {} --archive-dir {}",
         root.display(),
@@ -111,10 +176,15 @@ fn plan_row(root: &Path, archive_dir: &str, ranked: &RankedOrgPlan) -> serde_jso
     } else {
         (
             "resume",
-            "unfinished plan ranked by memory, intent, and recency",
+            "unfinished plan ranked by session context, memory, and recency",
             resume_command.clone(),
         )
     };
+    let task_candidates = candidate
+        .task_candidates
+        .iter()
+        .map(|task| task_candidate_row(&candidate.path, task))
+        .collect::<Vec<_>>();
     json!({
         "path": path.display().to_string(),
         "title": candidate.display_title(),
@@ -131,12 +201,73 @@ fn plan_row(root: &Path, archive_dir: &str, ranked: &RankedOrgPlan) -> serde_jso
         "actionReason": action_reason,
         "actionCommand": action_command,
         "score": ranked.score,
-        "textScore": ranked.text_score,
+        "contextScore": ranked.context_score,
         "memoryScore": ranked.memory_score,
         "recencyScore": ranked.recency_score,
-        "intentScore": ranked.intent_score,
         "resumeCommand": resume_command,
+        "selectionReceipt": selection_receipt(ranked, session, checkpoint_sync, alternatives),
+        "taskCandidates": task_candidates,
         "artifactsRoot": root.display().to_string(),
+    })
+}
+
+fn selection_receipt(
+    ranked: &RankedOrgPlan,
+    session: Option<&str>,
+    checkpoint_sync: Option<&CheckpointSyncResult>,
+    alternatives: usize,
+) -> serde_json::Value {
+    let candidate = &ranked.candidate;
+    let plan_session = candidate
+        .properties
+        .get("SESSION_ID")
+        .map(String::as_str)
+        .unwrap_or_default();
+    let session_match_property = session
+        .filter(|session| !session.is_empty())
+        .and_then(|session| candidate.session_match_property(session))
+        .unwrap_or_default();
+    let session_matched = !session_match_property.is_empty();
+    json!({
+        "session": session.unwrap_or_default(),
+        "planSession": plan_session,
+        "sessionMatched": session_matched,
+        "sessionMatchProperty": session_match_property,
+        "selectedBy": selected_by(ranked, session_matched),
+        "taskHits": candidate.task_candidates.len(),
+        "checkpointHits": checkpoint_sync.map(|sync| sync.checkpoints).unwrap_or_default(),
+        "alternatives": alternatives,
+    })
+}
+
+fn selected_by(ranked: &RankedOrgPlan, session_matched: bool) -> String {
+    let mut sources = Vec::new();
+    if session_matched || ranked.context_score > 0.0 {
+        sources.push("session");
+    }
+    sources.push("memory-engine");
+    if !ranked.candidate.task_candidates.is_empty() {
+        sources.push("org-graph");
+    }
+    if ranked.recency_score > 0.0 {
+        sources.push("recency");
+    }
+    sources.join("+")
+}
+
+fn task_candidate_row(path: &Path, task: &super::model::OrgTaskCandidate) -> serde_json::Value {
+    let path = display_path(path);
+    let source_locator = task
+        .source_line
+        .map(|line| format!("{}:{line}-{line}", path.display()))
+        .unwrap_or_else(|| path.display().to_string());
+    json!({
+        "kind": task.kind.as_str(),
+        "status": task.status.as_str(),
+        "title": task.title.as_str(),
+        "section": task.section.as_deref(),
+        "sourceLine": task.source_line,
+        "sourceLocator": source_locator,
     })
 }
 

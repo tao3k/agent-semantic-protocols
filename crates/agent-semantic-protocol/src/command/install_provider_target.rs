@@ -51,7 +51,21 @@ pub(super) fn resolve_provider_binary_invocation(
     language_id: &str,
     provider_binary: &str,
     home_dir: Option<&Path>,
+    semantic_agent_bin_dir: Option<&Path>,
 ) -> Result<ProviderBinaryInvocation, String> {
+    if let Some(bin_dir) = semantic_agent_bin_dir {
+        let binary = bin_dir.join(provider_binary);
+        if !binary.is_file() {
+            return Err(format!(
+                "provider binary `{provider_binary}` for language `{language_id}` must be installed at {}; run `asp install language {language_id}`",
+                binary.display()
+            ));
+        }
+        return Ok(ProviderBinaryInvocation {
+            command: binary.to_string_lossy().to_string(),
+            source: "semantic-agent-bin-dir",
+        });
+    }
     let home_bin = home_local_bin_required(provider_binary, home_dir, language_id)?;
     if !home_bin.is_file() {
         return Err(format!(

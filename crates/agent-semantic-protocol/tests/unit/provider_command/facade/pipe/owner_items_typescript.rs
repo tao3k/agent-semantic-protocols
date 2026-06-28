@@ -1,5 +1,6 @@
 use crate::provider_command::support::{
-    asp_command, prepend_path, provider, temp_project_root, write_activation, write_marker_provider,
+    asp_command, assert_compact_search_action_contract, prepend_path, provider, temp_project_root,
+    write_activation, write_marker_provider,
 };
 
 #[test]
@@ -69,11 +70,7 @@ fn typescript_owner_items_query_set_renders_item_selectors_without_provider() {
         stdout.contains("actionFrontier=A1.item-skeleton,A2.syntax-outline,A3.query-code"),
         "{stdout}"
     );
-    assert!(
-        stdout.contains("recommendedNext=A1.item-skeleton"),
-        "{stdout}"
-    );
-    assert!(stdout.contains("A3.query-code"), "{stdout}");
+    assert_compact_search_action_contract(&stdout);
     assert!(
         stdout.contains("recommendedNext=A1.item-skeleton"),
         "{stdout}"

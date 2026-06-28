@@ -21,8 +21,6 @@
         "plans",
         "--artifacts-root",
         ".cache/agent-semantic-protocol/artifacts/org",
-        "--intent",
-        "memory engine plan recall ranking worker socket performance",
         "--top-k",
         "3"
       ],
@@ -52,8 +50,6 @@
         "plans",
         "--artifacts-root",
         ".cache/agent-semantic-protocol/artifacts/org",
-        "--intent",
-        "memory engine plan recall ranking worker socket performance",
         "--top-k",
         "3"
       ],

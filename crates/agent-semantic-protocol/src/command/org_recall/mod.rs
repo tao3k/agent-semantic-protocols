@@ -1,3 +1,6 @@
+//! `asp org recall` ranks durable plan ledgers and projects concrete resume tasks.
+
+mod checkpoint;
 mod cli;
 mod memory;
 mod model;

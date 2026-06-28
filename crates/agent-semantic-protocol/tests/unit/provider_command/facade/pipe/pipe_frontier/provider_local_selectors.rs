@@ -1,6 +1,6 @@
 use crate::provider_command::support::{
-    asp_command, prepend_path, provider, temp_project_root, write_activation,
-    write_provider_bin_config, write_semantic_facts_provider,
+    asp_command, assert_compact_search_action_contract, prepend_path, provider, temp_project_root,
+    write_activation, write_provider_bin_config, write_semantic_facts_provider,
 };
 
 #[test]
@@ -70,7 +70,7 @@ fn search_pipe_plan_uses_scope_root_for_provider_local_selectors() {
         "{stdout}"
     );
     assert!(!stdout.contains("A1=query-code(selector="), "{stdout}");
-    assert!(stdout.contains("recommendedNext=A1.query-code"), "{stdout}");
+    assert_compact_search_action_contract(&stdout);
     assert!(stdout.contains("has_type"), "{stdout}");
     assert!(stdout.contains("collection_of"), "{stdout}");
     assert!(

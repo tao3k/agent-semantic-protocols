@@ -273,8 +273,8 @@ fn direct_dependency_seed_no_hit_does_not_dump_full_manifest() {
 }
 
 #[test]
-fn direct_dependency_seed_rejects_extra_positional_api_token() {
-    let root = temp_project_root("direct-dependency-seed-extra-positional");
+fn direct_dependency_seed_accepts_positional_api_token() {
+    let root = temp_project_root("direct-dependency-seed-positional-api");
     std::fs::write(
         root.join("Cargo.toml"),
         "[package]\nname = \"dep-seed-extra-positional\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[dependencies]\ntokio = \"1\"\n",
@@ -295,19 +295,21 @@ fn direct_dependency_seed_rejects_extra_positional_api_token() {
             "hits",
         ])
         .output()
-        .expect("run direct dependency seed with extra positional");
+        .expect("run direct dependency seed with positional api token");
 
     assert!(
-        !output.status.success(),
-        "stdout={}",
-        String::from_utf8_lossy(&output.stdout)
+        output.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&output.stderr)
     );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("search deps accepts one dependency selector"),
-        "{stderr}"
-    );
-    assert!(stderr.contains("search deps tokio::spawn"), "{stderr}");
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    assert!(stdout.contains("q=tokio"), "{stdout}");
+    assert!(stdout.contains("apiQuery=spawn"), "{stdout}");
+    assert!(stdout.contains("|dependency D:tokio"), "{stdout}");
+    assert!(stdout.contains("docs-use:tokio"), "{stdout}");
+    assert!(stdout.contains("crate-source:tokio"), "{stdout}");
+    assert!(stdout.contains("import:tokio"), "{stdout}");
+    assert!(stdout.contains("tests:spawn"), "{stdout}");
 
     let _ = std::fs::remove_dir_all(root);
 }
