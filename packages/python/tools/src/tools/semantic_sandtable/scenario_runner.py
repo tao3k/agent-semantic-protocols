@@ -11,6 +11,7 @@ from .failure_frontier_scenario import (
     failure_frontier_comparison_from_evidence,
     failure_frontier_error,
 )
+from .isolation import scenario_isolation_env
 from .models import ScenarioLoadError, ScenarioResult, StepResult, has_warnings
 from .receipts import validate_linked_receipt
 from .scenario_io import load_scenario
@@ -158,10 +159,15 @@ def _run_loaded_scenario(
     scenario: dict[str, Any],
 ) -> ScenarioResult:
     env = build_env(scenario.get("env", {}), repo_root=repo_root)
+    env, isolation_evidence = scenario_isolation_env(repo_root, path, scenario, env)
     prepared = _prepare_loaded_scenario(repo_root, path, scenario, env)
     if isinstance(prepared, ScenarioResult):
+        if isolation_evidence is not None:
+            prepared.evidence["isolation"] = isolation_evidence
         return prepared
     scenario_id, workdir, result, steps, budgets, execution = prepared
+    if isolation_evidence is not None:
+        result.evidence["isolation"] = isolation_evidence
     captures: dict[str, str] = {}
     if _apply_provider_preflight(repo_root, scenario, env, result):
         return result
@@ -225,7 +231,7 @@ def _run_scenario_warmup(
             scenario_id=scenario_id,
             step=step,
             index=index,
-            env=env,
+            env=env.copy(),
             captures=captures,
         )
         summaries.append(
@@ -496,7 +502,7 @@ def _run_scenario_steps(
             scenario_id=scenario_id,
             step=step,
             index=index,
-            env=env,
+            env=env.copy(),
             captures=captures,
         )
         _record_step_result(result, step_result, totals)
@@ -524,7 +530,7 @@ def _run_scenario_steps_parallel(
                 scenario_id=scenario_id,
                 step=step,
                 index=index,
-                env=env,
+                env=env.copy(),
                 captures=captures.copy(),
             ): index
             for index, step in enumerate(steps, start=1)
@@ -616,7 +622,7 @@ def _run_step_with_cold_retry(
         scenario_id=scenario_id,
         step=step,
         index=index,
-        env=env,
+        env=env.copy(),
         captures=captures,
     )
     retry_limits = _should_retry_cold_start(step, first_result)
@@ -630,7 +636,7 @@ def _run_step_with_cold_retry(
         scenario_id=scenario_id,
         step=step,
         index=index,
-        env=env,
+        env=env.copy(),
         captures=captures,
     )
     retry_result.observations["coldStartRetry"] = {

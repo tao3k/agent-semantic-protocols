@@ -128,6 +128,9 @@
     "providerPreflight": {
       "$ref": "#/$defs/providerPreflight"
     },
+    "isolation": {
+      "$ref": "#/$defs/isolation"
+    },
     "skipUnlessEnv": {
       "type": "array",
       "uniqueItems": true,
@@ -1131,6 +1134,23 @@
           }
         }
       }
+    },
+    "isolation": {
+      "description": "Scenario execution isolation controls. Isolation is enabled by default; disable only for scenarios that intentionally reuse the caller environment.",
+      "oneOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            }
+          }
+        }
+      ]
     },
     "step": {
       "type": "object",

@@ -42,6 +42,22 @@ class SemanticSandtableProviderPreflightSchemaTests(unittest.TestCase):
 
         self.assertEqual([], self.validation_errors(scenario))
 
+    def test_isolation_control_is_valid(self) -> None:
+        scenario: dict[str, object] = {
+            "id": "python.provider-preflight",
+            "language": "python",
+            "workdir": ".",
+            "isolation": {"enabled": False},
+            "steps": [
+                {
+                    "id": "probe",
+                    "command": ["asp", "python", "query", "--help"],
+                }
+            ],
+        }
+
+        self.assertEqual([], self.validation_errors(scenario))
+
     def test_rejects_unknown_properties(self) -> None:
         scenario: dict[str, object] = {
             "id": "python.provider-preflight",
