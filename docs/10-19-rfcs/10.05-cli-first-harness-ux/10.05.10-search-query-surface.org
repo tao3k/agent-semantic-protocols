@@ -2195,3 +2195,14 @@ gate. The gate must include =firstActionMatchesEvidenceState=,
 =seedWhenKnownSymbolCount=, and =seedWhenKnownSelectorCount=. These fields are
 contract evidence for agents and sandtable checks. They do not move arbitrary
 natural-language intent planning into the harness.
+* Language Harness JSON Boundary
+
+Language harnesses are provider packet producers at the ASP boundary. When the
+Rust ASP client or cache/replay path invokes =languages/*-harness=, the stable
+contract is =--json= structured output only; compact rendering, frontier
+rendering, replay rendering, and human failure text belong to ASP/client code
+after schema validation. Harness-local benchmark manifests normalize into
+=schemas/semantic-scenario-benchmark.v1.schema.json=: =benchmark.toml= is the
+TOML syntax, =benchmark.ss= is the Gerbil syntax, and both carry policy ids
+governed by =schemas/semantic-agent-policy-id.v1.schema.json= using
+=<LANGUAGE>-AGENT-<TAGS>-<NUMBER>=.

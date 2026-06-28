@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-agent-policy-id.v1.schema.json",
+  "title": "Semantic Agent Policy ID",
+  "description": "Stable agent policy identifier shared by language scenario benchmark manifests. The grammar is <LANGUAGE>-AGENT-<TAGS>-<NUMBER>, where LANGUAGE may contain multiple uppercase dash-separated language tokens such as GERBIL-SCHEME.",
+  "type": "string",
+  "pattern": "^[A-Z][A-Z0-9]*(?:-[A-Z][A-Z0-9]*)*-AGENT(?:-[A-Z][A-Z0-9]*)+-[0-9]{3,}$",
+  "examples": [
+    "RUST-AGENT-CFG-001",
+    "TYPESCRIPT-AGENT-JSON-BOUNDARY-001",
+    "PYTHON-AGENT-POLICY-JSON-001",
+    "JULIA-AGENT-SCENARIO-BENCHMARK-001",
+    "GERBIL-SCHEME-AGENT-FUNCTIONAL-IDIOM-013"
+  ]
+}

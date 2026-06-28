@@ -1,0 +1,149 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-scenario-benchmark.v1.schema.json",
+  "title": "Semantic Scenario Benchmark",
+  "description": "Language-neutral normalized scenario benchmark contract. TOML manifests and Gerbil benchmark.ss forms must normalize to this shape before ASP-facing validation.",
+  "type": "object",
+  "required": ["schemaVersion", "language", "scenario", "benchmark"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": "semantic-scenario-benchmark.v1"
+    },
+    "language": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$"
+    },
+    "scenario": {
+      "$ref": "#/$defs/scenario"
+    },
+    "benchmark": {
+      "$ref": "#/$defs/benchmark"
+    },
+    "sourceSyntax": {
+      "enum": ["benchmark.toml", "benchmark.ss"]
+    }
+  },
+  "$defs": {
+    "agentPolicyId": {
+      "$ref": "semantic-agent-policy-id.v1.schema.json"
+    },
+    "duration": {
+      "type": "string",
+      "pattern": "^[0-9]+(ns|us|ms|s)$"
+    },
+    "memoryBytes": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "scenario": {
+      "type": "object",
+      "required": ["id", "title", "policyIds", "agentGoal", "inputs", "expected"],
+      "additionalProperties": true,
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "policyIds": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/agentPolicyId"
+          }
+        },
+        "agentGoal": {
+          "type": "string",
+          "minLength": 1
+        },
+        "referenceRepositories": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "referencePatterns": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "inputs": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expected": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "benchmark": {
+      "type": "object",
+      "required": [
+        "harness",
+        "targetTotal",
+        "maxTotal",
+        "observedTotal",
+        "regressionBudget",
+        "memoryBudgetBytes",
+        "observedMemoryBytes",
+        "targetRationale",
+        "observedTimings"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "harness": {
+          "enum": ["libtest", "criterion", "divan", "iai-callgrind", "vitest", "pytest", "julia-test", "gerbil-test"]
+        },
+        "test": {
+          "type": "string",
+          "minLength": 1
+        },
+        "bench": {
+          "type": "string",
+          "minLength": 1
+        },
+        "case": {
+          "type": "string",
+          "minLength": 1
+        },
+        "targetTotal": {
+          "$ref": "#/$defs/duration"
+        },
+        "maxTotal": {
+          "$ref": "#/$defs/duration"
+        },
+        "observedTotal": {
+          "$ref": "#/$defs/duration"
+        },
+        "regressionBudget": {
+          "$ref": "#/$defs/duration"
+        },
+        "memoryBudgetBytes": {
+          "$ref": "#/$defs/memoryBytes"
+        },
+        "observedMemoryBytes": {
+          "$ref": "#/$defs/memoryBytes"
+        },
+        "targetRationale": {
+          "type": "string",
+          "minLength": 1
+        },
+        "observedTimings": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "$ref": "#/$defs/duration"
+          }
+        }
+      }
+    }
+  }
+}

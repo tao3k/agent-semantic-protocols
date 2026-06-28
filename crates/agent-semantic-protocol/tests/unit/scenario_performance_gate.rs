@@ -1,12 +1,14 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::env;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
+use serde::Deserialize;
 use serde_json::Value;
 
+const AGENT_POLICY_ID_GRAMMAR: &str = "<LANGUAGE>-AGENT-<TAGS>-<NUMBER>";
 const LARGE_LIBRARY_STEP_MAX_ELAPSED_MS: u64 = 300;
 const JULIA_LARGE_LIBRARY_STEP_MAX_ELAPSED_MS: u64 = 5_000;
 const JULIA_DATAFRAMES_BATCH_STEP_MAX_ELAPSED_MS: u64 = 50;
@@ -24,6 +26,87 @@ const REQUIRED_PERFORMANCE_SUBCOMMAND_POLICY_IDS: &[&str] = &[
 ];
 const REQUIRED_WORKSPACE_ARGUMENT_POLICY_IDS: &[&str] =
     &["ASP-WORKSPACE-FILE-REJECT-BEFORE-PROVIDER-SPAWN"];
+const SHARED_SCENARIO_BENCHMARK_SCHEMA: &str = "schemas/semantic-scenario-benchmark.v1.schema.json";
+const SHARED_AGENT_POLICY_ID_SCHEMA: &str = "schemas/semantic-agent-policy-id.v1.schema.json";
+const LANGUAGE_SCENARIO_BENCHMARK_REQUIREMENTS: &[LanguageScenarioBenchmarkRequirement] = &[
+    LanguageScenarioBenchmarkRequirement {
+        language: "rust",
+        root: "languages/rust-lang-project-harness/tests/unit/scenarios",
+        syntax: ScenarioBenchmarkSyntax::TomlPair,
+    },
+    LanguageScenarioBenchmarkRequirement {
+        language: "typescript",
+        root: "languages/typescript-lang-project-harness/tests/fixtures/scenario_benchmarks",
+        syntax: ScenarioBenchmarkSyntax::TomlPair,
+    },
+    LanguageScenarioBenchmarkRequirement {
+        language: "python",
+        root: "languages/python-lang-project-harness/tests/fixtures/scenario_benchmarks",
+        syntax: ScenarioBenchmarkSyntax::TomlPair,
+    },
+    LanguageScenarioBenchmarkRequirement {
+        language: "julia",
+        root: "languages/JuliaLangProjectHarness.jl/test/fixtures/scenario_benchmarks",
+        syntax: ScenarioBenchmarkSyntax::TomlPair,
+    },
+    LanguageScenarioBenchmarkRequirement {
+        language: "gerbil-scheme",
+        root: "languages/gerbil-scheme-language-project-harness/t/scenarios/policy",
+        syntax: ScenarioBenchmarkSyntax::GerbilBenchmarkSs,
+    },
+    LanguageScenarioBenchmarkRequirement {
+        language: "orgize",
+        root: "languages/orgize/tests/unit/scenarios",
+        syntax: ScenarioBenchmarkSyntax::TomlPair,
+    },
+];
+
+#[derive(Clone, Copy, Debug)]
+struct LanguageScenarioBenchmarkRequirement {
+    language: &'static str,
+    root: &'static str,
+    syntax: ScenarioBenchmarkSyntax,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum ScenarioBenchmarkSyntax {
+    TomlPair,
+    GerbilBenchmarkSs,
+}
+
+#[derive(Debug, Deserialize)]
+struct ScenarioPolicyIds {
+    #[serde(default)]
+    policy_ids: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SharedScenarioToml {
+    id: String,
+    title: String,
+    #[serde(default)]
+    policy_ids: Vec<String>,
+    agent_goal: String,
+    inputs: String,
+    expected: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct SharedBenchmarkToml {
+    harness: String,
+    #[serde(default)]
+    test: Option<String>,
+    #[serde(default)]
+    bench: Option<String>,
+    target_total: String,
+    max_total: String,
+    observed_total: String,
+    regression_budget: String,
+    memory_budget_bytes: u64,
+    observed_memory_bytes: u64,
+    target_rationale: String,
+    observed_timings: BTreeMap<String, toml::Value>,
+}
 
 #[test]
 fn asp_unit_scenarios_have_rust_harness_benchmark_toml_gates() {
@@ -39,8 +122,7 @@ fn asp_unit_scenarios_have_rust_harness_benchmark_toml_gates() {
     assert_eq!(
         receipt.status,
         rust_lang_project_harness::RustScenarioBenchmarkStatus::Pass,
-        "{}",
-        rust_lang_project_harness::render_rust_scenario_benchmark_gate_failure(&receipt)
+        "{receipt:#?}"
     );
     assert!(receipt.receipts.iter().all(|receipt| {
         receipt.benchmark.observed_total <= receipt.benchmark.max_total
@@ -83,6 +165,59 @@ fn asp_unit_scenarios_cover_workspace_argument_guards() {
     assert!(
         missing.is_empty(),
         "ASP unit scenarios must cover workspace argument guardrails before provider spawn; missing={missing:?}; observed={policy_ids:?}"
+    );
+}
+
+#[test]
+fn language_harnesses_have_shared_scenario_benchmark_schema_coverage() {
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    for schema_path in [
+        SHARED_SCENARIO_BENCHMARK_SCHEMA,
+        SHARED_AGENT_POLICY_ID_SCHEMA,
+    ] {
+        assert!(
+            repo_root.join(schema_path).is_file(),
+            "shared scenario benchmark schema is missing: {schema_path}"
+        );
+    }
+
+    let mut missing = Vec::new();
+    let mut invalid = Vec::new();
+    for requirement in LANGUAGE_SCENARIO_BENCHMARK_REQUIREMENTS {
+        let root = repo_root.join(requirement.root);
+        match requirement.syntax {
+            ScenarioBenchmarkSyntax::TomlPair => {
+                let pairs = discover_toml_scenario_benchmark_roots(&root);
+                if pairs.is_empty() {
+                    missing.push(format!("{}:{}", requirement.language, requirement.root));
+                }
+                for pair_root in pairs {
+                    validate_toml_scenario_benchmark(
+                        requirement.language,
+                        &pair_root,
+                        &mut invalid,
+                    );
+                }
+            }
+            ScenarioBenchmarkSyntax::GerbilBenchmarkSs => {
+                let paths = discover_benchmark_ss_files(&root);
+                if paths.is_empty() {
+                    missing.push(format!("{}:{}", requirement.language, requirement.root));
+                }
+                for path in paths {
+                    validate_gerbil_benchmark_ss(&path, &mut invalid);
+                }
+            }
+        }
+    }
+
+    assert!(
+        missing.is_empty(),
+        "language harnesses must each expose shared scenario benchmark coverage through benchmark.toml or benchmark.ss; missing={missing:?}"
+    );
+    assert!(
+        invalid.is_empty(),
+        "language scenario benchmark manifests must satisfy {SHARED_SCENARIO_BENCHMARK_SCHEMA}; invalid={invalid:?}"
     );
 }
 
@@ -239,9 +374,186 @@ fn discover_scenario_policy_ids(scenario_root: &Path) -> BTreeSet<String> {
         }
         let text = fs::read_to_string(&scenario_path)
             .unwrap_or_else(|error| panic!("read {}: {error}", scenario_path.display()));
-        policy_ids.extend(policy_ids_from_scenario_toml(&text));
+        policy_ids.extend(policy_ids_from_scenario_toml(&scenario_path, &text));
     }
     policy_ids
+}
+
+fn discover_toml_scenario_benchmark_roots(root: &Path) -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+    collect_toml_scenario_benchmark_roots(root, &mut roots);
+    roots.sort();
+    roots
+}
+
+fn collect_toml_scenario_benchmark_roots(root: &Path, roots: &mut Vec<PathBuf>) {
+    let scenario_path = root.join("scenario.toml");
+    let benchmark_path = root.join("benchmark.toml");
+    if scenario_path.is_file() || benchmark_path.is_file() {
+        assert!(
+            scenario_path.is_file() && benchmark_path.is_file(),
+            "scenario benchmark root must carry both scenario.toml and benchmark.toml: {}",
+            root.display()
+        );
+        roots.push(root.to_path_buf());
+        return;
+    }
+    for path in read_dir_sorted(root) {
+        if path.is_dir() && !is_non_scenario_dir(&path) {
+            collect_toml_scenario_benchmark_roots(&path, roots);
+        }
+    }
+}
+
+fn discover_benchmark_ss_files(root: &Path) -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+    collect_benchmark_ss_files(root, &mut paths);
+    paths.sort();
+    paths
+}
+
+fn collect_benchmark_ss_files(root: &Path, paths: &mut Vec<PathBuf>) {
+    for path in read_dir_sorted(root) {
+        if path.is_dir() && !is_non_scenario_dir(&path) {
+            collect_benchmark_ss_files(&path, paths);
+        } else if path.file_name().and_then(|name| name.to_str()) == Some("benchmark.ss") {
+            paths.push(path);
+        }
+    }
+}
+
+fn validate_toml_scenario_benchmark(language: &str, root: &Path, invalid: &mut Vec<String>) {
+    let scenario_path = root.join("scenario.toml");
+    let benchmark_path = root.join("benchmark.toml");
+    let scenario: SharedScenarioToml = read_toml(&scenario_path);
+    let benchmark: SharedBenchmarkToml = read_toml(&benchmark_path);
+
+    require_non_empty_manifest_field(invalid, &scenario_path, "id", &scenario.id);
+    require_non_empty_manifest_field(invalid, &scenario_path, "title", &scenario.title);
+    require_non_empty_manifest_field(invalid, &scenario_path, "agent_goal", &scenario.agent_goal);
+    require_non_empty_manifest_field(invalid, &scenario_path, "inputs", &scenario.inputs);
+    require_non_empty_manifest_field(invalid, &scenario_path, "expected", &scenario.expected);
+    if scenario.policy_ids.is_empty() {
+        invalid.push(format!(
+            "{}: scenario.policy_ids must not be empty",
+            scenario_path.display()
+        ));
+    }
+    for policy_id in &scenario.policy_ids {
+        if !is_agent_policy_id(policy_id) {
+            invalid.push(format!(
+                "{}: policy id {policy_id:?} must match {AGENT_POLICY_ID_GRAMMAR}",
+                scenario_path.display()
+            ));
+        }
+    }
+
+    require_supported_language_harness(language, &benchmark_path, &benchmark.harness, invalid);
+    if benchmark.test.as_deref().unwrap_or("").trim().is_empty()
+        && benchmark.bench.as_deref().unwrap_or("").trim().is_empty()
+    {
+        invalid.push(format!(
+            "{}: benchmark must name test or bench",
+            benchmark_path.display()
+        ));
+    }
+    for (field, value) in [
+        ("target_total", benchmark.target_total.as_str()),
+        ("max_total", benchmark.max_total.as_str()),
+        ("observed_total", benchmark.observed_total.as_str()),
+        ("regression_budget", benchmark.regression_budget.as_str()),
+    ] {
+        require_duration_manifest_field(invalid, &benchmark_path, field, value);
+    }
+    if benchmark.memory_budget_bytes == 0 || benchmark.observed_memory_bytes == 0 {
+        invalid.push(format!(
+            "{}: memory budget and observed memory must be positive",
+            benchmark_path.display()
+        ));
+    }
+    require_non_empty_manifest_field(
+        invalid,
+        &benchmark_path,
+        "target_rationale",
+        &benchmark.target_rationale,
+    );
+    if benchmark.observed_timings.is_empty() {
+        invalid.push(format!(
+            "{}: benchmark.observed_timings must not be empty",
+            benchmark_path.display()
+        ));
+    }
+}
+
+fn validate_gerbil_benchmark_ss(path: &Path, invalid: &mut Vec<String>) {
+    let text =
+        fs::read_to_string(path).unwrap_or_else(|error| panic!("read {}: {error}", path.display()));
+    for token in [
+        "max_total",
+        "observed_total",
+        "target_total",
+        "regression_budget",
+        "observedTimings",
+        "targetRationale",
+        "maxRssMb",
+        "rule",
+        "purpose",
+    ] {
+        if !text.contains(token) {
+            invalid.push(format!("{}: benchmark.ss missing {token}", path.display()));
+        }
+    }
+}
+
+fn require_non_empty_manifest_field(
+    invalid: &mut Vec<String>,
+    path: &Path,
+    field: &str,
+    value: &str,
+) {
+    if value.trim().is_empty() {
+        invalid.push(format!("{}: {field} must not be empty", path.display()));
+    }
+}
+
+fn require_duration_manifest_field(
+    invalid: &mut Vec<String>,
+    path: &Path,
+    field: &str,
+    value: &str,
+) {
+    let trimmed = value.trim();
+    if trimmed.is_empty()
+        || !["ns", "us", "ms", "s"]
+            .iter()
+            .any(|suffix| trimmed.strip_suffix(suffix).is_some_and(is_ascii_digits))
+    {
+        invalid.push(format!(
+            "{}: {field}={value:?} must be a positive duration such as 25ms",
+            path.display()
+        ));
+    }
+}
+
+fn require_supported_language_harness(
+    language: &str,
+    path: &Path,
+    harness: &str,
+    invalid: &mut Vec<String>,
+) {
+    let supported = match language {
+        "rust" | "orgize" => ["libtest", "criterion", "divan", "iai-callgrind"].contains(&harness),
+        "typescript" => harness == "vitest",
+        "python" => harness == "pytest",
+        "julia" => harness == "julia-test",
+        _ => false,
+    };
+    if !supported {
+        invalid.push(format!(
+            "{}: harness {harness:?} is not supported for language {language}",
+            path.display()
+        ));
+    }
 }
 
 fn resolve_sandtable_workdir(repo_root: &Path, scenario: &Value) -> Option<PathBuf> {
@@ -407,28 +719,40 @@ fn parse_julia_batch_step_header(header: &str) -> JuliaBatchStep {
     }
 }
 
-fn policy_ids_from_scenario_toml(text: &str) -> Vec<String> {
-    text.lines()
-        .find_map(|line| line.trim().strip_prefix("policy_ids").map(str::trim))
-        .and_then(|value| value.strip_prefix('=').map(str::trim))
-        .and_then(|value| {
-            value
-                .strip_prefix('[')
-                .and_then(|value| value.strip_suffix(']'))
-        })
-        .map(|inner| {
-            inner
-                .split(',')
-                .filter_map(|value| {
-                    let value = value.trim();
-                    value
-                        .strip_prefix('"')
-                        .and_then(|value| value.strip_suffix('"'))
-                        .map(str::to_string)
-                })
-                .collect()
-        })
-        .unwrap_or_default()
+fn policy_ids_from_scenario_toml(path: &Path, text: &str) -> Vec<String> {
+    toml::from_str::<ScenarioPolicyIds>(text)
+        .unwrap_or_else(|error| panic!("failed to parse {}: {error}", path.display()))
+        .policy_ids
+}
+
+fn is_agent_policy_id(value: &str) -> bool {
+    let parts = value.split('-').collect::<Vec<_>>();
+    if parts.len() < 4 {
+        return false;
+    }
+    let Some(agent_index) = parts.iter().position(|part| *part == "AGENT") else {
+        return false;
+    };
+    if agent_index == 0 || agent_index + 2 >= parts.len() {
+        return false;
+    }
+    parts[..agent_index].iter().all(|part| is_upper_token(part))
+        && parts[agent_index + 1..parts.len() - 1]
+            .iter()
+            .all(|part| is_upper_token(part))
+        && parts
+            .last()
+            .is_some_and(|number| number.len() >= 3 && is_ascii_digits(number))
+}
+
+fn is_upper_token(value: &str) -> bool {
+    let mut chars = value.chars();
+    chars.next().is_some_and(|ch| ch.is_ascii_uppercase())
+        && chars.all(|ch| ch.is_ascii_uppercase() || ch.is_ascii_digit())
+}
+
+fn is_ascii_digits(value: &str) -> bool {
+    !value.is_empty() && value.chars().all(|ch| ch.is_ascii_digit())
 }
 
 fn large_library_step_max_elapsed_ms(language: &str) -> u64 {
@@ -516,6 +840,16 @@ fn read_json(path: &Path) -> Value {
     let text = fs::read_to_string(path)
         .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
     serde_json::from_str(&text)
+        .unwrap_or_else(|error| panic!("failed to parse {}: {error}", path.display()))
+}
+
+fn read_toml<T>(path: &Path) -> T
+where
+    T: for<'de> Deserialize<'de>,
+{
+    let text = fs::read_to_string(path)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
+    toml::from_str(&text)
         .unwrap_or_else(|error| panic!("failed to parse {}: {error}", path.display()))
 }
 
